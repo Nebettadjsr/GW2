@@ -1,0 +1,91 @@
+-- =========================================
+-- GW2 App DB Schema (PostgreSQL)
+-- run this in your Postgre
+-- =========================================
+
+-- 1) ITEMS
+CREATE TABLE IF NOT EXISTS public.items (
+    item_id       integer PRIMARY KEY,
+    name          text,
+    type          text,
+    rarity        text,
+    level         integer,
+    vendor_value  integer,
+    fetched_at    timestamptz,
+    icon_url      text,
+    icon_path     text
+);
+
+-- 2) RECIPES
+CREATE TABLE IF NOT EXISTS public.recipes (
+    recipe_id             integer PRIMARY KEY,
+    type                  text,
+    output_item_id        integer REFERENCES public.items(item_id),
+    output_item_count     integer,
+    time_to_craft_ms      integer,
+    min_rating            integer,
+    chat_link             text,
+    disciplines           text[],
+    flags                 text[],
+    guild_ingredients     jsonb,
+    fetched_at            timestamptz
+);
+
+-- 3) RECIPE_INGREDIENTS (M:N between recipes and items)
+CREATE TABLE IF NOT EXISTS public.recipe_ingredients (
+    recipe_id   integer NOT NULL REFERENCES public.recipes(recipe_id) ON DELETE CASCADE,
+    item_id     integer NOT NULL REFERENCES public.items(item_id),
+    count       integer,
+    PRIMARY KEY (recipe_id, item_id)
+);
+
+-- 4) TP_PRICES (1:1 to items by PK item_id)
+CREATE TABLE IF NOT EXISTS public.tp_prices (
+    item_id          integer PRIMARY KEY REFERENCES public.items(item_id) ON DELETE CASCADE,
+    buy_quantity     bigint,
+    buy_unit_price   integer,
+    sell_quantity    bigint,
+    sell_unit_price  integer,
+    fetched_at       timestamptz
+);
+
+-- 5) ACCOUNT_BANK
+CREATE TABLE IF NOT EXISTS public.account_bank (
+    slot        integer PRIMARY KEY,
+    item_id     integer REFERENCES public.items(item_id),
+    count       integer,
+    binding     text,
+    bound_to    text,
+    charges     integer,
+    stats_id    integer,
+    stats_attrs jsonb,
+    fetched_at  timestamptz
+);
+
+-- 6) ACCOUNT_MATERIALS
+CREATE TABLE IF NOT EXISTS public.account_materials (
+    item_id     integer PRIMARY KEY REFERENCES public.items(item_id),
+    category    integer,
+    count       integer,
+    binding     text,
+    fetched_at  timestamptz
+);
+
+-- 7) ACCOUNT_RECIPES
+CREATE TABLE IF NOT EXISTS public.account_recipes (
+    recipe_id   integer PRIMARY KEY REFERENCES public.recipes(recipe_id) ON DELETE CASCADE,
+    fetched_at  timestamptz
+);
+
+-- Optional: hilfreiche Indizes
+CREATE INDEX IF NOT EXISTS idx_recipes_output_item_id
+    ON public.recipes(output_item_id);
+
+CREATE INDEX IF NOT EXISTS idx_recipe_ingredients_item_id
+    ON public.recipe_ingredients(item_id);
+
+CREATE INDEX IF NOT EXISTS idx_account_bank_item_id
+    ON public.account_bank(item_id);
+
+CREATE INDEX IF NOT EXISTS idx_tp_prices_fetched_at
+    ON public.tp_prices(fetched_at);
