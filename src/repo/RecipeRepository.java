@@ -21,14 +21,14 @@ public class RecipeRepository {
         public final int recipeId;
         public final int outputItemId;
         public final int outputCount;
-        public final String discipline; // we store one chosen discipline for filtering
+        public final String disciplinesText; // "Artificer, Tailor, ..."
         public final List<Ingredient> ingredients;
 
-        public Recipe(int recipeId, int outputItemId, int outputCount, String discipline, List<Ingredient> ingredients) {
+        public Recipe(int recipeId, int outputItemId, int outputCount, String disciplinesText, List<Ingredient> ingredients) {
             this.recipeId = recipeId;
             this.outputItemId = outputItemId;
             this.outputCount = outputCount;
-            this.discipline = discipline;
+            this.disciplinesText = disciplinesText;
             this.ingredients = ingredients;
         }
     }
@@ -70,16 +70,20 @@ public class RecipeRepository {
                     int outputItemId = rs.getInt("output_item_id");
                     int outputCount = rs.getInt("output_item_count");
 
-                    // pick the first discipline as "label" (good enough for UI)
+                    // pick all discipline as "label"
                     Array discsArr = rs.getArray("disciplines");
-                    String discLabel = discipline;
+                    String disciplinesText = ""; // default if null/empty
+
                     if (discsArr != null) {
                         String[] discs = (String[]) discsArr.getArray();
-                        if (discs.length > 0) discLabel = discs[0];
+                        if (discs != null && discs.length > 0) {
+                            disciplinesText = String.join(", ", discs);
+                        }
                     }
 
+
                     List<Ingredient> ings = ingredientsByRecipe.getOrDefault(recipeId, List.of());
-                    out.add(new Recipe(recipeId, outputItemId, outputCount, discLabel, ings));
+                    out.add(new Recipe(recipeId, outputItemId, outputCount, disciplinesText, ings));
                 }
             }
         }

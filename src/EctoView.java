@@ -164,7 +164,7 @@ public class EctoView {
         root.setCenter(scroll);
         root.setStyle("-fx-background-color: #0f1115;");
 
-        stage.setScene(new Scene(root, 900, 600));
+        stage.setScene(new Scene(root, 1280, 720));
 
         // ---------------- Fetch prices + icons on open ----------------
         Thread t = new Thread(() -> {

@@ -36,7 +36,7 @@ public class MaterialsView {
         root.setCenter(content);
         root.setStyle("-fx-background-color: #0f1115;");
 
-        stage.setScene(new Scene(root, 1000, 800));
+        stage.setScene(new Scene(root, 1280, 720));
     }
 
     // --- UI builder ---
@@ -44,6 +44,9 @@ public class MaterialsView {
         // VBox: viele “Blöcke” untereinander (wie im Spiel)
         VBox blocks = new VBox(22);
         blocks.setPadding(new Insets(12));
+        blocks.setMaxWidth(Region.USE_PREF_SIZE);
+        blocks.setAlignment(Pos.TOP_CENTER);
+
 
         // Daten aus DB laden: Map<KategorieName, Slots>
         LinkedHashMap<String, List<MatEntry>> grouped = loadMaterialsGrouped();
@@ -61,6 +64,7 @@ public class MaterialsView {
 
             GridPane grid = buildGrid(mats, 10);
 
+
             VBox block = new VBox(10, header, grid);
             block.setPadding(new Insets(8, 8, 18, 8));
 
@@ -70,12 +74,17 @@ public class MaterialsView {
             blocks.getChildren().add(block);
         }
 
-        ScrollPane sp = new ScrollPane(blocks);
-        sp.setFitToWidth(true);
+        StackPane centered = new StackPane(blocks);
+        centered.setAlignment(Pos.TOP_CENTER);
+        centered.setPadding(new Insets(10));
+
+        ScrollPane sp = new ScrollPane(centered);
+        sp.setFitToWidth(true);   // viewport fills width
         sp.setPannable(true);
         sp.setStyle("-fx-background: #0f1115; -fx-background-color: #0f1115;");
 
         return sp;
+
     }
 
     private static GridPane buildGrid(List<MatEntry> mats, int cols) {
@@ -172,7 +181,7 @@ public class MaterialsView {
         icon.setPreserveRatio(true);
 
         Label countLbl = new Label(count > 1 ? String.valueOf(count) : "");
-        StackPane.setAlignment(countLbl, Pos.TOP_LEFT);
+        StackPane.setAlignment(countLbl, Pos.CENTER);
         countLbl.setStyle("""
             -fx-text-fill: white;
             -fx-font-weight: bold;

@@ -519,17 +519,20 @@ public class Gw2DbSync {
             }
 
             try (ResultSet rs = st.executeQuery("""
-                SELECT DISTINCT output_item_id
-                FROM recipes
-                WHERE output_item_id IS NOT NULL
+                SELECT DISTINCT r.output_item_id
+                FROM recipes r
+                JOIN account_recipes ar ON ar.recipe_id = r.recipe_id
+                WHERE r.output_item_id IS NOT NULL
+                
             """)) {
                 while (rs.next()) itemIds.add(rs.getInt(1));
             }
 
             try (ResultSet rs = st.executeQuery("""
-                SELECT DISTINCT item_id
-                FROM recipe_ingredients
-                WHERE item_id IS NOT NULL
+                SELECT DISTINCT ri.item_id
+                FROM recipe_ingredients ri
+                JOIN account_recipes ar ON ar.recipe_id = ri.recipe_id
+                WHERE ri.item_id IS NOT NULL                
             """)) {
                 while (rs.next()) itemIds.add(rs.getInt(1));
             }
@@ -608,11 +611,10 @@ public class Gw2DbSync {
                     int itemId = p.get("id").asInt();
                     returned.add(itemId);
 
-                    boolean whitelisted = p.has("whitelisted") && p.get("whitelisted").asBoolean();
                     JsonNode buys = p.get("buys");
                     JsonNode sells = p.get("sells");
 
-                    if (!whitelisted || buys == null || sells == null || buys.isNull() || sells.isNull()) {
+                    if (buys == null || sells == null || buys.isNull() || sells.isNull()) {
                         ps.setInt(1, itemId);
                         ps.setNull(2, Types.BIGINT);
                         ps.setNull(3, Types.INTEGER);
@@ -622,6 +624,7 @@ public class Gw2DbSync {
                         continue;
                     }
 
+// Both exist -> read them
                     long buyQty = buys.get("quantity").asLong();
                     int buyUnit = buys.get("unit_price").asInt();
                     long sellQty = sells.get("quantity").asLong();
@@ -951,6 +954,435 @@ public class Gw2DbSync {
 
             System.out.println("✅ Global recipes + ingredients synced.");
         }
+    }
+
+    public static void initialFill(Path iconBaseDir) throws Exception {
+        // Assumption: account_recipes already synced (done by InitialSetupService)
+        // 1) sync recipes + ingredients (fills recipes + recipe_ingredients)
+        //    BUT recipe_ingredients has FK -> items, so we must ensure items exist first.
+        //    Therefore we do: recipes only -> items -> ingredients.
+        //
+        // Your current syncRecipesAndIngredients() does recipes + ingredients together,
+        // so we need to split the workflow. Fastest workaround:
+        //   - temporarily disable ingredient insert until items exist.
+        // We do it by:
+        //   A) syncing recipes into recipes table only
+        //   B) collecting item ids
+        //   C) syncing items
+        //   D) syncing ingredients
+
+        // Step A+B+C+D implemented by: syncAccountRecipes -> syncRecipesOnly -> syncItems -> syncIngredientsOnly
+        // We'll reuse your existing parsing logic with two tiny helper methods below.
+
+        List<Integer> recipeIds = loadAccountRecipeIds();
+        if (recipeIds.isEmpty()) {
+            System.out.println("Initial fill: no account recipes found.");
+            return;
+        }
+
+        // 1) recipes only + collect needed ids + ingredient rows in memory
+        Set<Integer> neededItemIds = new HashSet<>();
+        List<IngredientRow> ingredientRows = new ArrayList<>();
+        upsertRecipesOnlyAndCollect(recipeIds, neededItemIds, ingredientRows);
+
+        // 2) items (must exist before we insert ingredients due to FK)
+        syncItemsByIds(neededItemIds);
+
+        // 3) now safe to write recipe_ingredients
+        upsertIngredients(ingredientRows);
+
+        // 4) extras
+        syncTpPricesRelevant();
+        syncItemIconUrls();
+        syncItemIconsToDisk(iconBaseDir);
+
+        System.out.println("✅ Initial fill complete.");
+    }
+// -------- Initial fill helpers --------
+
+    private static class IngredientRow {
+        final int recipeId;
+        final int itemId;
+        final int count;
+        IngredientRow(int recipeId, int itemId, int count) {
+            this.recipeId = recipeId;
+            this.itemId = itemId;
+            this.count = count;
+        }
+    }
+
+    private static List<Integer> loadAccountRecipeIds() throws SQLException {
+        List<Integer> ids = new ArrayList<>();
+        try (Connection con = openConnection();
+             Statement st = con.createStatement();
+             ResultSet rs = st.executeQuery("SELECT recipe_id FROM account_recipes ORDER BY recipe_id")) {
+            while (rs.next()) ids.add(rs.getInt(1));
+        }
+        return ids;
+    }
+
+    private static void upsertRecipesOnlyAndCollect(
+            List<Integer> recipeIds,
+            Set<Integer> neededItemIds,
+            List<IngredientRow> ingredientRows
+    ) throws Exception {
+
+        String recipeSql = """
+        INSERT INTO recipes
+        (recipe_id, type, output_item_id, output_item_count, min_rating, time_to_craft_ms, disciplines, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, now())
+        ON CONFLICT (recipe_id) DO UPDATE SET
+          type = EXCLUDED.type,
+          output_item_id = EXCLUDED.output_item_id,
+          output_item_count = EXCLUDED.output_item_count,
+          min_rating = EXCLUDED.min_rating,
+          time_to_craft_ms = EXCLUDED.time_to_craft_ms,
+          disciplines = EXCLUDED.disciplines,
+          fetched_at = EXCLUDED.fetched_at
+        """;
+
+        try (Connection con = openConnection();
+             PreparedStatement psRecipe = con.prepareStatement(recipeSql)) {
+
+            con.setAutoCommit(false);
+            final int batchSize = 200;
+
+            for (int i = 0; i < recipeIds.size(); i += batchSize) {
+                List<Integer> batch = recipeIds.subList(i, Math.min(i + batchSize, recipeIds.size()));
+                String idsParam = batch.stream().map(String::valueOf).collect(Collectors.joining(","));
+                String url = "https://api.guildwars2.com/v2/recipes?ids=" + idsParam;
+
+                HttpRequest req = publicRequest(url).GET().build();
+                HttpResponse<String> res = CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
+
+                int code = res.statusCode();
+                if (code != 200 && code != 206) {
+                    throw new RuntimeException("Recipe fetch failed: HTTP " + code + " body=" + res.body());
+                }
+
+                JsonNode root = MAPPER.readTree(res.body());
+                if (!root.isArray()) throw new RuntimeException("Unexpected JSON (recipes batch): " + res.body());
+
+                for (JsonNode r : root) {
+                    int recipeId    = r.get("id").asInt();
+                    String type     = r.path("type").asText(null);
+                    int outputItem  = r.path("output_item_id").asInt();
+                    int outputCount = r.path("output_item_count").asInt();
+                    int minRating   = r.path("min_rating").asInt(0);
+                    int craftTime   = r.path("time_to_craft_ms").asInt(0);
+
+                    if (outputItem > 0) neededItemIds.add(outputItem);
+
+                    JsonNode discsNode = r.get("disciplines");
+                    String[] discs = (discsNode != null && discsNode.isArray())
+                            ? new String[discsNode.size()]
+                            : new String[0];
+                    for (int d = 0; d < discs.length; d++) discs[d] = discsNode.get(d).asText();
+
+                    psRecipe.setInt(1, recipeId);
+                    psRecipe.setString(2, type);
+                    psRecipe.setInt(3, outputItem);
+                    psRecipe.setInt(4, outputCount);
+                    psRecipe.setInt(5, minRating);
+                    psRecipe.setInt(6, craftTime);
+                    psRecipe.setArray(7, con.createArrayOf("text", discs));
+                    psRecipe.addBatch();
+
+                    JsonNode ingredients = r.get("ingredients");
+                    if (ingredients != null && ingredients.isArray()) {
+                        for (JsonNode ing : ingredients) {
+                            int itemId = ing.path("item_id").asInt();
+                            int count  = ing.path("count").asInt();
+                            if (itemId > 0) {
+                                neededItemIds.add(itemId);
+                                ingredientRows.add(new IngredientRow(recipeId, itemId, count));
+                            }
+                        }
+                    }
+                }
+
+                psRecipe.executeBatch();
+                con.commit();
+                System.out.println("Recipes-only batch: " + Math.min(i + batchSize, recipeIds.size()) + " / " + recipeIds.size());
+            }
+        }
+    }
+
+    public static void syncItemsByIds(Set<Integer> itemIds) throws Exception {
+        if (itemIds == null || itemIds.isEmpty()) return;
+
+        String itemSql = """
+        INSERT INTO items (item_id, name, type, rarity, vendor_value, fetched_at)
+        VALUES (?, ?, ?, ?, ?, now())
+        ON CONFLICT (item_id) DO UPDATE SET
+          name = EXCLUDED.name,
+          type = EXCLUDED.type,
+          rarity = EXCLUDED.rarity,
+          vendor_value = EXCLUDED.vendor_value,
+          fetched_at = EXCLUDED.fetched_at
+        """;
+
+        List<Integer> idsList = new ArrayList<>(itemIds);
+        final int batchSize = 200;
+
+        try (Connection con = openConnection();
+             PreparedStatement ps = con.prepareStatement(itemSql)) {
+
+            con.setAutoCommit(false);
+
+            for (int i = 0; i < idsList.size(); i += batchSize) {
+                List<Integer> batch = idsList.subList(i, Math.min(i + batchSize, idsList.size()));
+                String idsParam = batch.stream().map(String::valueOf).collect(Collectors.joining(","));
+
+                String url = "https://api.guildwars2.com/v2/items?ids=" + idsParam;
+                HttpRequest req = publicRequest(url).GET().build();
+                HttpResponse<String> res = CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
+
+                int code = res.statusCode();
+                if (code != 200 && code != 206) {
+                    throw new RuntimeException("Items fetch failed: HTTP " + code + " body=" + res.body());
+                }
+
+                JsonNode root = MAPPER.readTree(res.body());
+                if (!root.isArray()) throw new RuntimeException("Unexpected JSON (items batch): " + res.body());
+
+                for (JsonNode it : root) {
+                    int itemId = it.get("id").asInt();
+                    String name = it.hasNonNull("name") ? it.get("name").asText() : null;
+                    String type = it.hasNonNull("type") ? it.get("type").asText() : null;
+                    String rarity = it.hasNonNull("rarity") ? it.get("rarity").asText() : null;
+                    int vendorValue = it.hasNonNull("vendor_value") ? it.get("vendor_value").asInt() : 0;
+
+                    ps.setInt(1, itemId);
+                    ps.setString(2, name);
+                    ps.setString(3, type);
+                    ps.setString(4, rarity);
+                    ps.setInt(5, vendorValue);
+                    ps.addBatch();
+                }
+
+                ps.executeBatch();
+                con.commit();
+                System.out.println("Items batch: " + Math.min(i + batchSize, idsList.size()) + " / " + idsList.size());
+            }
+        }
+    }
+
+    private static void upsertIngredients(List<IngredientRow> rows) throws SQLException {
+        if (rows.isEmpty()) return;
+
+        String ingredientSql = """
+        INSERT INTO recipe_ingredients (recipe_id, item_id, count)
+        VALUES (?, ?, ?)
+        ON CONFLICT (recipe_id, item_id) DO UPDATE SET count = EXCLUDED.count
+        """;
+
+        try (Connection con = openConnection();
+             PreparedStatement ps = con.prepareStatement(ingredientSql)) {
+
+            con.setAutoCommit(false);
+
+            int n = 0;
+            for (IngredientRow r : rows) {
+                ps.setInt(1, r.recipeId);
+                ps.setInt(2, r.itemId);
+                ps.setInt(3, r.count);
+                ps.addBatch();
+
+                if (++n % 2000 == 0) {
+                    ps.executeBatch();
+                    con.commit();
+                }
+            }
+
+            ps.executeBatch();
+            con.commit();
+        }
+    }
+
+    public static void syncAllRecipesGlobalSafe() throws Exception {
+
+        // 1) Fetch all recipe IDs
+        String idsUrl = "https://api.guildwars2.com/v2/recipes";
+        HttpRequest idsReq = publicRequest(idsUrl).GET().build();
+        HttpResponse<String> idsRes = CLIENT.send(idsReq, HttpResponse.BodyHandlers.ofString());
+
+        if (idsRes.statusCode() != 200) {
+            throw new RuntimeException("All-recipes id fetch failed: HTTP " + idsRes.statusCode() + " body=" + idsRes.body());
+        }
+
+        JsonNode idsRoot = MAPPER.readTree(idsRes.body());
+        if (!idsRoot.isArray()) throw new RuntimeException("Unexpected JSON (/v2/recipes): " + idsRes.body());
+
+        List<Integer> ids = new ArrayList<>(idsRoot.size());
+        for (JsonNode n : idsRoot) ids.add(n.asInt());
+
+        System.out.println("Global recipes to sync (SAFE): " + ids.size());
+        if (ids.isEmpty()) return;
+
+        // Upsert recipes (NO ingredients here)
+        String recipeSql = """
+        INSERT INTO recipes
+        (recipe_id, type, output_item_id, output_item_count, min_rating, time_to_craft_ms, disciplines, flags, chat_link, guild_ingredients, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, now())
+        ON CONFLICT (recipe_id) DO UPDATE SET
+          type = EXCLUDED.type,
+          output_item_id = EXCLUDED.output_item_id,
+          output_item_count = EXCLUDED.output_item_count,
+          min_rating = EXCLUDED.min_rating,
+          time_to_craft_ms = EXCLUDED.time_to_craft_ms,
+          disciplines = EXCLUDED.disciplines,
+          flags = EXCLUDED.flags,
+          chat_link = EXCLUDED.chat_link,
+          guild_ingredients = EXCLUDED.guild_ingredients::jsonb,
+          fetched_at = EXCLUDED.fetched_at
+        """;
+
+        // We will collect all item IDs needed (outputs + ingredients)
+        Set<Integer> neededItemIds = new HashSet<>();
+
+        // Pass 1: recipes only + collect all item ids
+        try (Connection con = openConnection();
+             PreparedStatement psRecipe = con.prepareStatement(recipeSql)) {
+
+            con.setAutoCommit(false);
+
+            final int batchSize = 200;
+            for (int i = 0; i < ids.size(); i += batchSize) {
+
+                List<Integer> batch = ids.subList(i, Math.min(i + batchSize, ids.size()));
+                String idsParam = batch.stream().map(String::valueOf).collect(Collectors.joining(","));
+
+                String url = "https://api.guildwars2.com/v2/recipes?ids=" + idsParam;
+                HttpRequest req = publicRequest(url).GET().build();
+                HttpResponse<String> res = CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
+
+                int code = res.statusCode();
+                if (code != 200 && code != 206) {
+                    throw new RuntimeException("Global recipe batch fetch failed: HTTP " + code + " body=" + res.body());
+                }
+
+                JsonNode root = MAPPER.readTree(res.body());
+                if (!root.isArray()) throw new RuntimeException("Unexpected JSON (recipes batch): " + res.body());
+
+                for (JsonNode r : root) {
+                    int recipeId    = r.path("id").asInt();
+                    String type     = r.path("type").asText(null);
+                    int outputItem  = r.path("output_item_id").asInt();
+                    int outputCount = r.path("output_item_count").asInt();
+                    int minRating   = r.path("min_rating").asInt(0);
+                    int craftTime   = r.path("time_to_craft_ms").asInt(0);
+
+                    if (outputItem > 0) neededItemIds.add(outputItem);
+
+                    // disciplines text[]
+                    JsonNode discsNode = r.get("disciplines");
+                    String[] discs = (discsNode != null && discsNode.isArray())
+                            ? new String[discsNode.size()]
+                            : new String[0];
+                    for (int d = 0; d < discs.length; d++) discs[d] = discsNode.get(d).asText();
+
+                    // flags text[]
+                    JsonNode flagsNode = r.get("flags");
+                    String[] flags = (flagsNode != null && flagsNode.isArray())
+                            ? new String[flagsNode.size()]
+                            : new String[0];
+                    for (int f = 0; f < flags.length; f++) flags[f] = flagsNode.get(f).asText();
+
+                    String chatLink = r.hasNonNull("chat_link") ? r.get("chat_link").asText() : null;
+                    String guildIngredientsJson = r.hasNonNull("guild_ingredients") ? r.get("guild_ingredients").toString() : null;
+
+                    psRecipe.setInt(1, recipeId);
+                    psRecipe.setString(2, type);
+                    psRecipe.setInt(3, outputItem);
+                    psRecipe.setInt(4, outputCount);
+                    psRecipe.setInt(5, minRating);
+                    psRecipe.setInt(6, craftTime);
+                    psRecipe.setArray(7, con.createArrayOf("text", discs));
+                    psRecipe.setArray(8, con.createArrayOf("text", flags));
+                    psRecipe.setString(9, chatLink);
+                    psRecipe.setString(10, guildIngredientsJson);
+                    psRecipe.addBatch();
+
+                    // collect ingredient item ids (but DO NOT insert yet)
+                    JsonNode ingredients = r.get("ingredients");
+                    if (ingredients != null && ingredients.isArray()) {
+                        for (JsonNode ing : ingredients) {
+                            int itemId = ing.path("item_id").asInt();
+                            if (itemId > 0) neededItemIds.add(itemId);
+                        }
+                    }
+                }
+
+                psRecipe.executeBatch();
+                con.commit();
+
+                System.out.println("Global recipes-only progress: " + Math.min(i + batchSize, ids.size()) + " / " + ids.size());
+            }
+        }
+
+        System.out.println("Global items needed: " + neededItemIds.size());
+
+        // 2) Insert/Upsert ALL needed items (now FK can be satisfied)
+        syncItemsByIds(neededItemIds);
+
+        // 3) Pass 2: now insert ingredients safely
+        String ingredientSql = """
+        INSERT INTO recipe_ingredients (recipe_id, item_id, count)
+        VALUES (?, ?, ?)
+        ON CONFLICT (recipe_id, item_id) DO UPDATE SET count = EXCLUDED.count
+        """;
+
+        try (Connection con = openConnection();
+             PreparedStatement psIng = con.prepareStatement(ingredientSql)) {
+
+            con.setAutoCommit(false);
+
+            final int batchSize = 200;
+            int counter = 0;
+
+            for (int i = 0; i < ids.size(); i += batchSize) {
+
+                List<Integer> batch = ids.subList(i, Math.min(i + batchSize, ids.size()));
+                String idsParam = batch.stream().map(String::valueOf).collect(Collectors.joining(","));
+
+                String url = "https://api.guildwars2.com/v2/recipes?ids=" + idsParam;
+                HttpRequest req = publicRequest(url).GET().build();
+                HttpResponse<String> res = CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
+
+                int code = res.statusCode();
+                if (code != 200 && code != 206) {
+                    throw new RuntimeException("Global recipe batch fetch (ingredients) failed: HTTP " + code + " body=" + res.body());
+                }
+
+                JsonNode root = MAPPER.readTree(res.body());
+                if (!root.isArray()) throw new RuntimeException("Unexpected JSON (recipes batch): " + res.body());
+
+                for (JsonNode r : root) {
+                    int recipeId = r.path("id").asInt();
+                    JsonNode ingredients = r.get("ingredients");
+                    if (ingredients == null || !ingredients.isArray()) continue;
+
+                    for (JsonNode ing : ingredients) {
+                        psIng.setInt(1, recipeId);
+                        psIng.setInt(2, ing.path("item_id").asInt());
+                        psIng.setInt(3, ing.path("count").asInt());
+                        psIng.addBatch();
+
+                        if (++counter % 5000 == 0) {
+                            psIng.executeBatch();
+                            con.commit();
+                            System.out.println("Global ingredients inserted: " + counter);
+                        }
+                    }
+                }
+            }
+
+            psIng.executeBatch();
+            con.commit();
+        }
+
+        System.out.println("✅ Global recipes + items + ingredients synced (SAFE).");
     }
 
 

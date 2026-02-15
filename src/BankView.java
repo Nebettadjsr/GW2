@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import javafx.scene.layout.Region; // add this import
 
 public class BankView {
 
@@ -62,10 +63,12 @@ public class BankView {
 
         BorderPane root = new BorderPane();
         root.setTop(topBar);
+        BorderPane.setAlignment(centerContent, Pos.CENTER);
         root.setCenter(centerContent);
+
         root.setStyle("-fx-background-color: #0f1115;");
 
-        Scene scene = new Scene(root, 900, 650);
+        Scene scene = new Scene(root, 1280, 720);
         stage.setScene(scene);
         stage.show();
     }
@@ -107,6 +110,10 @@ public class BankView {
             cc.setPrefWidth(68);
             grid.getColumnConstraints().add(cc);
         }
+        grid.setMaxWidth(Region.USE_PREF_SIZE);
+        grid.setMinWidth(Region.USE_PREF_SIZE);
+        grid.setAlignment(Pos.TOP_CENTER);
+
 
         Map<Integer, BankSlot> bySlot = new HashMap<>();
         int maxSlot = -1;
@@ -131,11 +138,17 @@ public class BankView {
             grid.add(tile, col, gridRow);
         }
 
-        ScrollPane sp = new ScrollPane(grid);
-        sp.setFitToWidth(true);
+        StackPane centered = new StackPane(grid);
+        centered.setAlignment(Pos.TOP_CENTER);
+        centered.setPadding(new Insets(12));
+
+        ScrollPane sp = new ScrollPane(centered);
         sp.setPannable(true);
+        sp.setFitToWidth(true);   // IMPORTANT: content expands to viewport width
         sp.setStyle("-fx-background: #0f1115; -fx-background-color: #0f1115;");
+
         return sp;
+
     }
 
     private static void ensureSpacerRow(GridPane grid, int spacerRowIndex) {

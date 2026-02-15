@@ -48,34 +48,124 @@ public class CraftingPlanner {
                                                    CraftingSettings settings,
                                                    Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput) {
 
-        // 1) Compute craftableCount (max number of crafts we can do given rules)
+        // --- DAILY COOLDOWN HANDLING (buy instead of craft) ---
+        if (DailyCrafts.isDailyOutput(recipe.outputItemId) && settings.dailyBuyInsteadOfCraft) {
+
+            // If buying is not allowed -> this mode yields 0 craftable
+            if (!settings.allowBuying) {
+                return new CraftResult(
+                        recipe.outputItemId,
+                        recipe.disciplinesText,
+                        0,
+                        Map.of(),
+                        0,
+                        0,
+                        0,
+                        0,
+                        new Node(recipe.outputItemId, recipe.outputCount, "daily-buy-disabled", List.of())
+                );
+            }
+
+            TpPriceRepository.TpQuote outQ = tp.get(recipe.outputItemId);
+
+            // BUY price of the OUTPUT item
+            int buyUnit = 0;
+            if (outQ != null) {
+                // Instant buy = sellUnit, Listing buy = buyUnit
+                Integer v = settings.listingBuy ? outQ.buyUnit : outQ.sellUnit;
+                buyUnit = (v == null) ? 0 : v;
+            }
+
+            // SELL revenue of the OUTPUT item
+            int sellUnit = 0;
+            if (outQ != null) {
+                // Listing sell = sellUnit, Instant sell = buyUnit
+                Integer v = settings.listingSell ? outQ.sellUnit : outQ.buyUnit;
+                sellUnit = (v == null) ? 0 : v;
+            }
+
+            int buyCostPerCraft  = buyUnit  * recipe.outputCount;
+            int revenuePerCraft  = sellUnit * recipe.outputCount;
+            int profitPerCraft   = revenuePerCraft - buyCostPerCraft;
+
+            // how many can we "do" in buy-mode? = limited by budget (or capped)
+            int craftableCount;
+            if (buyCostPerCraft <= 0) {
+                craftableCount = 0; // no price -> can't evaluate
+            } else if (settings.maxBuyCopper <= 0) {
+                craftableCount = MAX_CRAFT_CAP; // unlimited budget -> cap
+            } else {
+                craftableCount = settings.maxBuyCopper / buyCostPerCraft;
+            }
+
+            int totalBuyCost = buyCostPerCraft * craftableCount;
+            int totalProfit  = profitPerCraft  * craftableCount;
+
+            Map<Integer, Integer> missingToBuy = new HashMap<>();
+            if (craftableCount > 0) {
+                missingToBuy.put(recipe.outputItemId, recipe.outputCount * craftableCount);
+            }
+
+            Node tree = new Node(recipe.outputItemId, recipe.outputCount, "buy", List.of());
+
+            return new CraftResult(
+                    recipe.outputItemId,
+                    recipe.disciplinesText,
+                    craftableCount,
+
+                    missingToBuy,       // totals in buy-mode
+                    totalBuyCost,       // totals in buy-mode
+
+                    revenuePerCraft,    // per craft
+                    profitPerCraft,     // per craft
+                    totalProfit,        // total
+                    tree               // readable: “buy output”
+            );
+        }
+
+
+
         int craftableCount = computeMaxCraftable(recipe, baseInventory, tp, settings, recipesByOutput);
 
-        // 2) Compute missing/buycost + tree for ONE craft (for UI summary/details)
+// Always compute per-craft view (for “profit per craft”)
         PlanRun one = simulateCraft(recipe, 1, baseInventory, tp, settings, recipesByOutput);
 
-        // 3) Revenue per craft (sell output)
+// Compute totals based on craftableCount (for “total profit” + correct Buy cost column)
+        PlanRun max = (craftableCount > 0)
+                ? simulateCraft(recipe, craftableCount, baseInventory, tp, settings, recipesByOutput)
+                : new PlanRun(Map.of(), 0, one.tree); // or simulateCraft(recipe, 0, ...) if you allow 0
+
+// Sell revenue per craft
         int outUnit = 0;
         TpPriceRepository.TpQuote outQ = tp.get(recipe.outputItemId);
         if (outQ != null) {
-            // listing sell = sell_unit_price, instant sell = buy_unit_price
             Integer v = settings.listingSell ? outQ.sellUnit : outQ.buyUnit;
             outUnit = (v == null) ? 0 : v;
         }
+        int revenuePerCraft = outUnit * recipe.outputCount;
 
-        int revenue = outUnit * recipe.outputCount;
-        int profit = revenue - one.buyCostCopper;
+// Profit per craft (uses ONE-craft buy cost)
+        int profitPerCraft = revenuePerCraft - one.buyCostCopper;
 
+// Totals (uses craftableCount-craft buy cost)
+        int totalRevenue = revenuePerCraft * craftableCount;
+        int totalProfit  = totalRevenue - max.buyCostCopper;
+
+// IMPORTANT: return totals where your UI expects totals
         return new CraftResult(
                 recipe.outputItemId,
-                recipe.discipline,
+                recipe.disciplinesText,
                 craftableCount,
-                one.missingToBuy,
-                one.buyCostCopper,
-                revenue,
-                profit,
-                one.tree
+
+                max.missingToBuy,          // totals: missing/buy list for craftableCount
+                max.buyCostCopper,         // totals: buy cost for craftableCount
+
+                revenuePerCraft,           // per craft (rename column to “Item sell price”)
+                profitPerCraft,            // per craft (rename to “Profit per craft”)
+                totalProfit,               // NEW field you add
+                one.tree                   // tree for ONE craft (nice to read)
         );
+
     }
 
     // ----------------------------

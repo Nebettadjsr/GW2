@@ -10,12 +10,13 @@ public class CraftResult {
     public final int buyCostCopper;
     public final int revenueCopper;
     public final int profitCopper;
+    public final int totalProfitCopper;
 
     public final Node tree; // NEW
 
     public CraftResult(int outputItemId, String discipline, int craftableCount,
                        Map<Integer, Integer> missingToBuy,
-                       int buyCostCopper, int revenueCopper, int profitCopper,
+                       int buyCostCopper, int revenueCopper, int profitCopper, int totalProfitCopper,
                        Node tree) {
         this.outputItemId = outputItemId;
         this.discipline = discipline;
@@ -24,6 +25,7 @@ public class CraftResult {
         this.buyCostCopper = buyCostCopper;
         this.revenueCopper = revenueCopper;
         this.profitCopper = profitCopper;
+        this.totalProfitCopper = totalProfitCopper;
         this.tree = tree;
     }
 }

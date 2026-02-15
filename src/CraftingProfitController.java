@@ -32,10 +32,12 @@ public class CraftingProfitController {
         public final int buyCostCopper;
         public final int revenueCopper;
         public final int profitCopper;
+        public final int totalProfitCopper;
+
 
         public UiRow(int recipeId, int outputItemId, String outputName, String discipline,
                      int craftableCount, String missingSummary,
-                     int buyCostCopper, int revenueCopper, int profitCopper) {
+                     int buyCostCopper, int revenueCopper, int profitCopper, int totalProfitCopper) {
             this.recipeId = recipeId;
             this.outputItemId = outputItemId;
             this.outputName = outputName;
@@ -45,18 +47,17 @@ public class CraftingProfitController {
             this.buyCostCopper = buyCostCopper;
             this.revenueCopper = revenueCopper;
             this.profitCopper = profitCopper;
+            this.totalProfitCopper = totalProfitCopper;
         }
     }
 
-    public List<UiRow> reload(String discipline, boolean includeBank, boolean allowBuying,
-                              int maxBuyCopper, boolean listingSell, boolean listingBuy, String search)
-    throws SQLException {
+    public List<UiRow> reload(String disc, CraftingSettings settings, String search) throws SQLException {
 
-        // 1) recipes
-        List<RecipeRepository.Recipe> recipes = recipeRepo.loadRecipes(discipline);
+        // 1) recipes (filter handled by SQL when disc != "All")
+        List<RecipeRepository.Recipe> recipes = recipeRepo.loadRecipes(disc);
 
-        // 2) inventory
-        Map<Integer, Integer> inv = invRepo.loadInventory(includeBank);
+        // 2) inventory (bank/materials depending on settings.includeBank)
+        Map<Integer, Integer> inv = invRepo.loadInventory(settings.includeBank);
 
         // 3) collect all itemIds we need prices+names for (outputs + ingredients)
         Set<Integer> itemIds = new HashSet<>();
@@ -72,8 +73,7 @@ public class CraftingProfitController {
         // cache items for View details (names)
         this.lastItems = items;
 
-        // 5) plan
-        CraftingSettings settings = new CraftingSettings(includeBank, allowBuying, maxBuyCopper, listingSell,  listingBuy);
+        // 5) plan (USE the settings that came from the UI)
         Map<Integer, CraftResult> resultsByRecipeId = planner.evaluateAll(recipes, inv, tp, settings);
 
         // cache results for View details (tree + missing list)
@@ -85,27 +85,28 @@ public class CraftingProfitController {
             CraftResult cr = resultsByRecipeId.get(r.recipeId);
             if (cr == null) continue;
 
-            String name = (items.containsKey(r.outputItemId) && items.get(r.outputItemId).name != null)
-                          ? items.get(r.outputItemId).name
-                          : ("Item " + r.outputItemId);
+            var it = items.get(r.outputItemId);
+            String name = (it != null && it.name != null && !it.name.isBlank())
+                    ? it.name
+                    : ("Item " + r.outputItemId);
 
-            String miss = summarizeMissing(cr.missingToBuy, items, tp, allowBuying);
-
+            String miss = summarizeMissing(cr.missingToBuy, items, tp, settings.allowBuying);
 
             uiRows.add(new UiRow(
-                    r.recipeId,            // NEW
+                    r.recipeId,
                     r.outputItemId,
                     name,
-                    r.discipline,
+                    r.disciplinesText,          // keep whatever you already had working here
                     cr.craftableCount,
                     miss,
-                    cr.buyCostCopper,
-                    cr.revenueCopper,
-                    cr.profitCopper
+                    cr.buyCostCopper,        // TOTAL buy cost
+                    cr.revenueCopper,        // per craft sell price
+                    cr.profitCopper,         // per craft profit
+                    cr.totalProfitCopper     // TOTAL profit
             ));
         }
 
-        // 7) search filter (simple)
+        // 7) search filter
         if (search != null && !search.isBlank()) {
             String s = search.trim().toLowerCase();
             uiRows = uiRows.stream()
@@ -113,24 +114,22 @@ public class CraftingProfitController {
                     .collect(Collectors.toList());
         }
 
-        // If buying is NOT allowed: only keep recipes we can fully satisfy (no missing mats)
-        if (!allowBuying) {
-            uiRows = uiRows.stream()
-                    .filter(x -> x.craftableCount > 0) // craftable at least once
-                    .collect(Collectors.toList());
-        }
-
-        // If buying is allowed AND max budget set: only show recipes that fit budget and are craftable at least once
-        if (allowBuying && maxBuyCopper > 0) {
+        // 8) budget + craftable filters
+        if (!settings.allowBuying) {
             uiRows = uiRows.stream()
                     .filter(x -> x.craftableCount > 0)
-                    .filter(x -> x.buyCostCopper <= maxBuyCopper)
+                    .collect(Collectors.toList());
+        } else if (settings.maxBuyCopper > 0) {
+            int max = settings.maxBuyCopper;
+            uiRows = uiRows.stream()
+                    .filter(x -> x.craftableCount > 0)
+                    .filter(x -> x.buyCostCopper <= max)
                     .collect(Collectors.toList());
         }
-
 
         return uiRows;
     }
+
 
     // --------- View helpers ---------
 
