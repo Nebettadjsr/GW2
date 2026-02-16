@@ -121,7 +121,7 @@ public class CraftingProfitView {
         ComboBox<String> disciplineBox = new ComboBox<>();
         disciplineBox.getItems().addAll(
                 "All",
-                "Cook",
+                "Chef",
                 "Huntsman",
                 "Weaponsmith",
                 "Armorsmith",
