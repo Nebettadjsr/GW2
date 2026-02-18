@@ -62,6 +62,7 @@ public class CraftingPlanner {
                         0,
                         0,
                         0,
+                        0,
                         new Node(recipe.outputItemId, recipe.outputCount, "daily-buy-disabled", List.of())
                 );
             }
@@ -112,14 +113,13 @@ public class CraftingPlanner {
                     recipe.outputItemId,
                     recipe.disciplinesText,
                     craftableCount,
-
-                    missingToBuy,       // totals in buy-mode
-                    totalBuyCost,       // totals in buy-mode
-
-                    revenuePerCraft,    // per craft
-                    profitPerCraft,     // per craft
-                    totalProfit,        // total
-                    tree               // readable: “buy output”
+                    missingToBuy,     // TOTAL
+                    totalBuyCost,     // TOTAL
+                    0,                // matsSellPerCraft (not applicable here)
+                    revenuePerCraft,  // PER 1 craft
+                    profitPerCraft,   // PER 1 craft
+                    totalProfit,      // TOTAL
+                    tree
             );
         }
 
@@ -127,15 +127,12 @@ public class CraftingPlanner {
 
         int craftableCount = computeMaxCraftable(recipe, baseInventory, tp, settings, recipesByOutput);
 
-// Always compute per-craft view (for “profit per craft”)
         PlanRun one = simulateCraft(recipe, 1, baseInventory, tp, settings, recipesByOutput);
-
-// Compute totals based on craftableCount (for “total profit” + correct Buy cost column)
         PlanRun max = (craftableCount > 0)
-                ? simulateCraft(recipe, craftableCount, baseInventory, tp, settings, recipesByOutput)
-                : new PlanRun(Map.of(), 0, one.tree); // or simulateCraft(recipe, 0, ...) if you allow 0
+                      ? simulateCraft(recipe, craftableCount, baseInventory, tp, settings, recipesByOutput)
+                      : new PlanRun(Map.of(), 0, one.tree);
 
-// Sell revenue per craft
+// PER 1 craft output sell revenue
         int outUnit = 0;
         TpPriceRepository.TpQuote outQ = tp.get(recipe.outputItemId);
         if (outQ != null) {
@@ -144,26 +141,26 @@ public class CraftingPlanner {
         }
         int revenuePerCraft = outUnit * recipe.outputCount;
 
-// Profit per craft (uses ONE-craft buy cost)
+// PER 1 craft mats sell value (leaf mats)
+        int matsSellPerCraft = computeMatsSellValueFromTree(one.tree, tp, settings);
+
+// PER 1 craft profit (THIS is what you want fixed)
         int profitPerCraft = revenuePerCraft - one.buyCostCopper;
 
-// Totals (uses craftableCount-craft buy cost)
-        int totalRevenue = revenuePerCraft * craftableCount;
-        int totalProfit  = totalRevenue - max.buyCostCopper;
+// TOTAL profit (must match UI rule)
+        int totalProfit = profitPerCraft * craftableCount;
 
-// IMPORTANT: return totals where your UI expects totals
         return new CraftResult(
                 recipe.outputItemId,
                 recipe.disciplinesText,
                 craftableCount,
-
-                max.missingToBuy,          // totals: missing/buy list for craftableCount
-                max.buyCostCopper,         // totals: buy cost for craftableCount
-
-                revenuePerCraft,           // per craft (rename column to “Item sell price”)
-                profitPerCraft,            // per craft (rename to “Profit per craft”)
-                totalProfit,               // NEW field you add
-                one.tree                   // tree for ONE craft (nice to read)
+                max.missingToBuy,          // TOTAL list
+                max.buyCostCopper,         // TOTAL buy cost
+                matsSellPerCraft,          // PER 1 craft
+                revenuePerCraft,           // PER 1 craft
+                profitPerCraft,            // PER 1 craft
+                totalProfit,               // TOTAL
+                one.tree
         );
 
     }
@@ -380,4 +377,32 @@ public class CraftingPlanner {
             this.tree = tree;
         }
     }
+
+    private int computeMatsSellValueFromTree(Node n,
+                                             Map<Integer, TpPriceRepository.TpQuote> tp,
+                                             CraftingSettings settings) {
+        if (n == null) return 0;
+
+        // If it has children, it’s not a leaf material -> sum children
+        if (n.children != null && !n.children.isEmpty()) {
+            int sum = 0;
+            for (Node ch : n.children) {
+                sum += computeMatsSellValueFromTree(ch, tp, settings);
+            }
+            return sum;
+        }
+
+        // Leaf: treat as a base material amount that could be sold
+        // We want to count inventory/missing/buy leaves (not "need")
+        if ("need".equals(n.action) || "craft".equals(n.action)) return 0;
+
+        TpPriceRepository.TpQuote q = tp.get(n.itemId);
+        if (q == null) return 0;
+
+        Integer unit = settings.listingSell ? q.sellUnit : q.buyUnit;
+        if (unit == null) return 0;
+
+        return unit * n.qty;
+    }
+
 }

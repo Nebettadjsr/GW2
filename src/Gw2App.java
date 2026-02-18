@@ -34,9 +34,9 @@ public class Gw2App extends Application {
     @Override
     public void start(Stage stage) {
         this.stage = stage;
-        stage.getIcons().add(new Image(
-                Objects.requireNonNull(getClass().getResourceAsStream("/images/app-icon.png"))
-        ));
+//        stage.getIcons().add(new Image(
+//                Objects.requireNonNull(getClass().getResourceAsStream("/images/app-icon.png"))
+//        ));
 
         homeScene = createHomeScene();
         homeScene.getStylesheets().add(

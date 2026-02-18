@@ -41,16 +41,20 @@ public class RecipeRepository {
         Map<Integer, List<Ingredient>> ingredientsByRecipe = loadIngredientsByRecipe();
 
         String sqlAll = """
-            SELECT recipe_id, output_item_id, output_item_count, disciplines
-            FROM recipes
-            ORDER BY recipe_id
+            SELECT r.recipe_id, output_item_id, output_item_count, disciplines
+            FROM recipes r
+            JOIN account_recipes ar
+            ON ar.recipe_id = r.recipe_id
+            ORDER BY r.recipe_id
         """;
 
         String sqlDisc = """
-            SELECT recipe_id, output_item_id, output_item_count, disciplines
-            FROM recipes
+            SELECT r.recipe_id, output_item_id, output_item_count, disciplines
+            FROM recipes r
+            JOIN account_recipes ar
+            ON ar.recipe_id = r.recipe_id
             WHERE ? = ANY(disciplines)
-            ORDER BY recipe_id
+            ORDER BY r.recipe_id
         """;
 
         List<Recipe> out = new ArrayList<>();
@@ -90,6 +94,51 @@ public class RecipeRepository {
 
         return out;
     }
+
+    /**
+     * Loads ALL recipes from DB (no account filter).
+     * Used by planner so sub-recipes can be crafted.
+     */
+    public List<Recipe> loadAllRecipes() throws SQLException {
+        Map<Integer, List<Ingredient>> ingredientsByRecipe = loadIngredientsByRecipe();
+
+        String sql = """
+        SELECT recipe_id, output_item_id, output_item_count, disciplines
+        FROM recipes
+        ORDER BY recipe_id
+    """;
+
+        List<Recipe> out = new ArrayList<>();
+
+        try (Connection con = repo.Db.open();
+             PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                int recipeId = rs.getInt("recipe_id");
+                int outputItemId = rs.getInt("output_item_id");
+                int outputCount = rs.getInt("output_item_count");
+
+                Array discsArr = rs.getArray("disciplines");
+                String disciplinesText = "";
+
+                if (discsArr != null) {
+                    String[] discs = (String[]) discsArr.getArray();
+                    if (discs != null && discs.length > 0) {
+                        disciplinesText = String.join(", ", discs);
+                    }
+                }
+
+                List<Ingredient> ings =
+                        ingredientsByRecipe.getOrDefault(recipeId, List.of());
+
+                out.add(new Recipe(recipeId, outputItemId, outputCount, disciplinesText, ings));
+            }
+        }
+
+        return out;
+    }
+
 
     private Map<Integer, List<Ingredient>> loadIngredientsByRecipe() throws SQLException {
         String sql = """

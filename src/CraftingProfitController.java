@@ -1,8 +1,8 @@
+
 import craft.CraftResult;
 import craft.CraftingPlanner;
 import craft.CraftingSettings;
 import repo.*;
-
 import java.sql.SQLException;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -19,6 +19,8 @@ public class CraftingProfitController {
     // --------- Caches for Details panel (View can ask controller) ----------
     private Map<Integer, CraftResult> lastResultsByRecipeId = Map.of();
     private Map<Integer, ItemRepository.ItemInfo> lastItems = Map.of();
+    private Map<Integer, TpPriceRepository.TpQuote> lastTp = Map.of();
+
 
     public static class UiRow {
         public final int recipeId;       // NEW
@@ -33,11 +35,14 @@ public class CraftingProfitController {
         public final int revenueCopper;
         public final int profitCopper;
         public final int totalProfitCopper;
+        public final int matsSellValueCopper;
+
 
 
         public UiRow(int recipeId, int outputItemId, String outputName, String discipline,
                      int craftableCount, String missingSummary,
-                     int buyCostCopper, int revenueCopper, int profitCopper, int totalProfitCopper) {
+                     int buyCostCopper, int matsSellValueCopper,
+                     int revenueCopper, int profitCopper, int totalProfitCopper) {
             this.recipeId = recipeId;
             this.outputItemId = outputItemId;
             this.outputName = outputName;
@@ -45,23 +50,29 @@ public class CraftingProfitController {
             this.craftableCount = craftableCount;
             this.missingSummary = missingSummary;
             this.buyCostCopper = buyCostCopper;
+            this.matsSellValueCopper = matsSellValueCopper;   // NEW
             this.revenueCopper = revenueCopper;
             this.profitCopper = profitCopper;
             this.totalProfitCopper = totalProfitCopper;
         }
+
     }
 
     public List<UiRow> reload(String disc, CraftingSettings settings, String search) throws SQLException {
 
-        // 1) recipes (filter handled by SQL when disc != "All")
-        List<RecipeRepository.Recipe> recipes = recipeRepo.loadRecipes(disc);
+        // Visible recipes (unlocked only)
+        List<RecipeRepository.Recipe> visibleRecipes = recipeRepo.loadRecipes(disc);
+
+// Full recipe graph for planner (ALL recipes)
+        List<RecipeRepository.Recipe> allRecipes = recipeRepo.loadAllRecipes();
+
 
         // 2) inventory (bank/materials depending on settings.includeBank)
         Map<Integer, Integer> inv = invRepo.loadInventory(settings.includeBank);
 
         // 3) collect all itemIds we need prices+names for (outputs + ingredients)
         Set<Integer> itemIds = new HashSet<>();
-        for (RecipeRepository.Recipe r : recipes) {
+        for (RecipeRepository.Recipe r : visibleRecipes) {
             itemIds.add(r.outputItemId);
             for (RecipeRepository.Ingredient ing : r.ingredients) itemIds.add(ing.itemId);
         }
@@ -69,21 +80,27 @@ public class CraftingProfitController {
         // 4) load tp prices + item names
         Map<Integer, TpPriceRepository.TpQuote> tp = tpRepo.loadTpQuotes(itemIds);
         Map<Integer, ItemRepository.ItemInfo> items = itemRepo.loadItems(itemIds);
+//        Map<Integer, TpPriceRepository.TpQuote> tp = tpRepo.loadTpQuotes(itemIds);
+        this.lastTp = tp;   // cache for View
+
 
         // cache items for View details (names)
         this.lastItems = items;
 
         // 5) plan (USE the settings that came from the UI)
-        Map<Integer, CraftResult> resultsByRecipeId = planner.evaluateAll(recipes, inv, tp, settings);
+        Map<Integer, CraftResult> resultsByRecipeId = planner.evaluateAll(allRecipes, inv, tp, settings);
 
         // cache results for View details (tree + missing list)
         this.lastResultsByRecipeId = resultsByRecipeId;
 
         // 6) map to UI rows
         List<UiRow> uiRows = new ArrayList<>();
-        for (RecipeRepository.Recipe r : recipes) {
+        for (RecipeRepository.Recipe r : visibleRecipes) {
             CraftResult cr = resultsByRecipeId.get(r.recipeId);
             if (cr == null) continue;
+            // Hide clutter: if we would need to BUY something with 0c price, skip this recipe
+            if (hasZeroPricedBuy(cr, tp, settings)) continue;
+
 
             var it = items.get(r.outputItemId);
             String name = (it != null && it.name != null && !it.name.isBlank())
@@ -96,14 +113,16 @@ public class CraftingProfitController {
                     r.recipeId,
                     r.outputItemId,
                     name,
-                    r.disciplinesText,          // keep whatever you already had working here
+                    r.disciplinesText,
                     cr.craftableCount,
                     miss,
-                    cr.buyCostCopper,        // TOTAL buy cost
-                    cr.revenueCopper,        // per craft sell price
-                    cr.profitCopper,         // per craft profit
-                    cr.totalProfitCopper     // TOTAL profit
+                    cr.buyCostCopper,
+                    cr.matsSellValueCopper,     // NEW
+                    cr.revenueCopper,
+                    cr.profitCopper,
+                    cr.totalProfitCopper
             ));
+
         }
 
         // 7) search filter
@@ -173,5 +192,41 @@ public class CraftingProfitController {
         if (missing.size() > 2) parts.add("...");
         return (allowBuying ? "To buy: " : "Missing: ") + String.join(", ", parts);
     }
+
+    public int itemSellUnit(int itemId, boolean listingSell) {
+        TpPriceRepository.TpQuote q = lastTp.get(itemId);
+        if (q == null) return 0;
+
+        Integer v = listingSell ? q.sellUnit : q.buyUnit;
+        return (v == null) ? 0 : v;
+    }
+
+    private boolean hasZeroPricedBuy(CraftResult cr,
+                                     Map<Integer, TpPriceRepository.TpQuote> tp,
+                                     CraftingSettings settings) {
+
+        if (!settings.allowBuying) return false;
+        if (cr == null || cr.missingToBuy == null || cr.missingToBuy.isEmpty()) return false;
+
+        for (var e : cr.missingToBuy.entrySet()) {
+            int itemId = e.getKey();
+            int qty = e.getValue();
+            if (qty <= 0) continue;
+
+            TpPriceRepository.TpQuote q = tp.get(itemId);
+
+            // Your buy mapping:
+            // listingBuy -> use buyUnit
+            // instantBuy  -> use sellUnit
+            Integer unit = null;
+            if (q != null) unit = settings.listingBuy ? q.buyUnit : q.sellUnit;
+
+            int price = (unit == null) ? 0 : unit;
+            if (price <= 0) return true; // <=0 covers null/0 cases
+        }
+
+        return false;
+    }
+
 
 }

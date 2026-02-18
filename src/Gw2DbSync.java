@@ -521,9 +521,7 @@ public class Gw2DbSync {
             try (ResultSet rs = st.executeQuery("""
                 SELECT DISTINCT r.output_item_id
                 FROM recipes r
-                JOIN account_recipes ar ON ar.recipe_id = r.recipe_id
                 WHERE r.output_item_id IS NOT NULL
-                
             """)) {
                 while (rs.next()) itemIds.add(rs.getInt(1));
             }
@@ -531,8 +529,7 @@ public class Gw2DbSync {
             try (ResultSet rs = st.executeQuery("""
                 SELECT DISTINCT ri.item_id
                 FROM recipe_ingredients ri
-                JOIN account_recipes ar ON ar.recipe_id = ri.recipe_id
-                WHERE ri.item_id IS NOT NULL                
+                WHERE ri.item_id IS NOT NULL
             """)) {
                 while (rs.next()) itemIds.add(rs.getInt(1));
             }
@@ -578,20 +575,35 @@ public class Gw2DbSync {
 
                 int code = res.statusCode();
 
-// If *all* ids in that batch are invalid -> commerce returns 404.
-// We don't want the entire refresh to fail for that.
+// 1) If batch request failed (404 or anything not 200/206) -> retry individually
                 if (code == 404) {
-                    System.out.println("TP batch returned 404 (all ids invalid). Marking batch as null prices. ids=" +
+                    System.out.println("TP batch HTTP 404. Retrying individually. Example ids=" +
                                                batch.stream().limit(10).toList() + (batch.size() > 10 ? " ..." : ""));
 
-                    for (int missId : batch) {
-                        ps.setInt(1, missId);
-                        ps.setNull(2, Types.BIGINT);
-                        ps.setNull(3, Types.INTEGER);
-                        ps.setNull(4, Types.BIGINT);
-                        ps.setNull(5, Types.INTEGER);
-                        ps.addBatch();
+                    for (int id : batch) {
+                        JsonNode one = fetchTpSingle(id);
+                        if (one == null) {
+                            // IMPORTANT: do NOT overwrite DB with NULL. Just skip and keep old value.
+                            continue;
+                        }
+
+                        JsonNode buys = one.get("buys");
+                        JsonNode sells = one.get("sells");
+
+                        // If GW2 says null -> real "no TP data" -> write NULLs
+                        if (buys == null || sells == null || buys.isNull() || sells.isNull()) {
+                            upsertTpRow(ps, id, null, null, null, null);
+                            continue;
+                        }
+
+                        long buyQty = buys.path("quantity").asLong();
+                        int buyUnit = buys.path("unit_price").asInt();
+                        long sellQty = sells.path("quantity").asLong();
+                        int sellUnit = sells.path("unit_price").asInt();
+
+                        upsertTpRow(ps, id, buyQty, buyUnit, sellQty, sellUnit);
                     }
+
                     ps.executeBatch();
                     con.commit();
                     continue;
@@ -601,7 +613,7 @@ public class Gw2DbSync {
                     throw new RuntimeException("TP price fetch failed: HTTP " + code + " body=" + res.body());
                 }
 
-
+// 2) Normal batch parse (200/206)
                 JsonNode root = MAPPER.readTree(res.body());
                 if (!root.isArray()) throw new RuntimeException("Unexpected JSON (tp_prices batch): " + res.body());
 
@@ -615,38 +627,48 @@ public class Gw2DbSync {
                     JsonNode sells = p.get("sells");
 
                     if (buys == null || sells == null || buys.isNull() || sells.isNull()) {
-                        ps.setInt(1, itemId);
-                        ps.setNull(2, Types.BIGINT);
-                        ps.setNull(3, Types.INTEGER);
-                        ps.setNull(4, Types.BIGINT);
-                        ps.setNull(5, Types.INTEGER);
-                        ps.addBatch();
+                        // REAL no TP data
+                        upsertTpRow(ps, itemId, null, null, null, null);
                         continue;
                     }
 
-// Both exist -> read them
-                    long buyQty = buys.get("quantity").asLong();
-                    int buyUnit = buys.get("unit_price").asInt();
-                    long sellQty = sells.get("quantity").asLong();
-                    int sellUnit = sells.get("unit_price").asInt();
+                    long buyQty = buys.path("quantity").asLong();
+                    int buyUnit = buys.path("unit_price").asInt();
+                    long sellQty = sells.path("quantity").asLong();
+                    int sellUnit = sells.path("unit_price").asInt();
 
-                    ps.setInt(1, itemId);
-                    ps.setLong(2, buyQty);
-                    ps.setInt(3, buyUnit);
-                    ps.setLong(4, sellQty);
-                    ps.setInt(5, sellUnit);
-                    ps.addBatch();
+                    upsertTpRow(ps, itemId, buyQty, buyUnit, sellQty, sellUnit);
                 }
 
+// 3) If 206, retry missing individually (instead of writing NULL blindly)
                 if (code == 206) {
-                    for (int missId : batch) {
-                        if (!returned.contains(missId)) {
-                            ps.setInt(1, missId);
-                            ps.setNull(2, Types.BIGINT);
-                            ps.setNull(3, Types.INTEGER);
-                            ps.setNull(4, Types.BIGINT);
-                            ps.setNull(5, Types.INTEGER);
-                            ps.addBatch();
+                    List<Integer> missing = new ArrayList<>();
+                    for (int id : batch) if (!returned.contains(id)) missing.add(id);
+
+                    if (!missing.isEmpty()) {
+                        System.out.println("TP batch HTTP 206. Missing=" + missing.size() + " -> retry individually.");
+
+                        for (int id : missing) {
+                            JsonNode one = fetchTpSingle(id);
+                            if (one == null) {
+                                // don't overwrite DB
+                                continue;
+                            }
+
+                            JsonNode buys = one.get("buys");
+                            JsonNode sells = one.get("sells");
+
+                            if (buys == null || sells == null || buys.isNull() || sells.isNull()) {
+                                upsertTpRow(ps, id, null, null, null, null);
+                                continue;
+                            }
+
+                            long buyQty = buys.path("quantity").asLong();
+                            int buyUnit = buys.path("unit_price").asInt();
+                            long sellQty = sells.path("quantity").asLong();
+                            int sellUnit = sells.path("unit_price").asInt();
+
+                            upsertTpRow(ps, id, buyQty, buyUnit, sellQty, sellUnit);
                         }
                     }
                 }
@@ -654,12 +676,37 @@ public class Gw2DbSync {
                 ps.executeBatch();
                 con.commit();
 
+
                 System.out.println("Fetched TP batch: " + Math.min(i + batchSize, ids.size()) + " / " + ids.size());
             }
 
             System.out.println("✅ TP prices synced.");
         }
     }
+
+    private static void upsertTpRow(PreparedStatement ps, int itemId,
+                                    Long buyQty, Integer buyUnit,
+                                    Long sellQty, Integer sellUnit) throws SQLException {
+        ps.setInt(1, itemId);
+
+        if (buyQty == null) ps.setNull(2, Types.BIGINT); else ps.setLong(2, buyQty);
+        if (buyUnit == null) ps.setNull(3, Types.INTEGER); else ps.setInt(3, buyUnit);
+
+        if (sellQty == null) ps.setNull(4, Types.BIGINT); else ps.setLong(4, sellQty);
+        if (sellUnit == null) ps.setNull(5, Types.INTEGER); else ps.setInt(5, sellUnit);
+
+        ps.addBatch();
+    }
+
+    /** Fetch ONE item price safely. Returns null if request totally failed. */
+    private static JsonNode fetchTpSingle(int itemId) throws IOException, InterruptedException {
+        String url = "https://api.guildwars2.com/v2/commerce/prices/" + itemId;
+        HttpRequest req = publicRequest(url).GET().build();
+        HttpResponse<String> res = CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
+        if (res.statusCode() != 200) return null;
+        return MAPPER.readTree(res.body());
+    }
+
 
     // ---------------------------
     // 5) Icons

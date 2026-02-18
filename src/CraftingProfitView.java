@@ -47,9 +47,12 @@ public class CraftingProfitView {
         private final IntegerProperty revenueCopper = new SimpleIntegerProperty();
         private final IntegerProperty profitCopper = new SimpleIntegerProperty();
 
+        private final IntegerProperty matsSellValueCopper = new SimpleIntegerProperty();
+
+
         public CraftRow(int recipeId, int outputItemId, String outputName, String discipline,
                         int craftableCount, String missingSummary,
-                        int buyCostCopper, int revenueCopper, int profitCopper) {
+                        int buyCostCopper, int revenueCopper, int profitCopper, int matsSellValueCopper) {
             this.recipeId.set(recipeId);
             this.outputItemId.set(outputItemId);
             this.outputName.set(outputName);
@@ -59,6 +62,7 @@ public class CraftingProfitView {
             this.buyCostCopper.set(buyCostCopper);
             this.revenueCopper.set(revenueCopper);
             this.profitCopper.set(profitCopper);
+            this.matsSellValueCopper.set(matsSellValueCopper);
         }
 
         public int getRecipeId() { return recipeId.get(); }
@@ -92,6 +96,10 @@ public class CraftingProfitView {
         private final IntegerProperty totalProfitCopper = new SimpleIntegerProperty();
         public int getTotalProfitCopper() { return totalProfitCopper.get(); }
         public IntegerProperty totalProfitCopperProperty() { return totalProfitCopper; }
+
+//        private final IntegerProperty matsSellValueCopper = new SimpleIntegerProperty();
+        public int getMatsSellValueCopper() { return matsSellValueCopper.get(); }
+        public IntegerProperty matsSellValueCopperProperty() { return matsSellValueCopper; }
 
     }
 
@@ -302,7 +310,8 @@ public class CraftingProfitView {
                                     r.missingSummary,
                                     r.buyCostCopper,
                                     r.revenueCopper,
-                                    r.profitCopper
+                                    r.profitCopper,
+                                    r.matsSellValueCopper
                             ));
                         }
                         table.sort();
@@ -429,7 +438,41 @@ public class CraftingProfitView {
 
         TableColumn<CraftRow, Number> colRevenue = new TableColumn<>("Item sell price");
         colRevenue.setCellValueFactory(data -> data.getValue().revenueCopperProperty());
-        colRevenue.setCellFactory(tc -> coinCell(false));
+        colRevenue.setCellFactory(tc -> new TableCell<>() {
+            @Override
+            protected void updateItem(Number copper, boolean empty) {
+                super.updateItem(copper, empty);
+
+                if (empty || copper == null) {
+                    setText(null);
+                    setStyle("");
+                    return;
+                }
+
+                CraftRow row = getTableRow().getItem();
+                if (row == null) {
+                    setText(formatCoin(copper.intValue()));
+                    return;
+                }
+
+                int revenue = copper.intValue();
+                int matsValue = row.getMatsSellValueCopper();
+
+                setText(formatCoin(revenue));
+
+                // Compare: crafting vs selling mats
+                if (revenue > matsValue) {
+                    // crafting better
+                    setStyle("-fx-text-fill: #7CFC98; -fx-font-family: 'Consolas'; -fx-font-weight: bold;");
+                } else if (revenue < matsValue) {
+                    // selling mats better
+                    setStyle("-fx-text-fill: #FF7C7C; -fx-font-family: 'Consolas'; -fx-font-weight: bold;");
+                } else {
+                    setStyle("-fx-text-fill: white; -fx-font-family: 'Consolas';");
+                }
+            }
+        });
+
 
         TableColumn<CraftRow, Number> colProfit = new TableColumn<>("Profit per craft");
         colProfit.setCellValueFactory(data -> data.getValue().profitCopperProperty());
@@ -447,14 +490,57 @@ public class CraftingProfitView {
         colTotalProfit.setSortType(TableColumn.SortType.DESCENDING);
         table.getSortOrder().setAll(colTotalProfit);
 
+        TableColumn<CraftRow, Number> colMatsSell = new TableColumn<>("Mats sell value");
+        colMatsSell.setCellValueFactory(data -> data.getValue().matsSellValueCopperProperty());
+        colMatsSell.setCellFactory(tc -> new TableCell<>() {
+            @Override
+            protected void updateItem(Number copper, boolean empty) {
+                super.updateItem(copper, empty);
+
+                if (empty || copper == null) {
+                    setText(null);
+                    setStyle("");
+                    return;
+                }
+
+                CraftRow row = getTableRow().getItem();
+                if (row == null) {
+                    setText(formatCoin(copper.intValue()));
+                    return;
+                }
+
+                int matsValue = copper.intValue();
+                int revenue = row.getRevenueCopper();
+
+                setText(formatCoin(matsValue));
+
+                // Opposite logic of Item Sell column
+                if (matsValue > revenue) {
+                    // selling mats better
+                    setStyle("-fx-text-fill: #7CFC98; -fx-font-family: 'Consolas'; -fx-font-weight: bold;");
+                } else if (matsValue < revenue) {
+                    // crafting better
+                    setStyle("-fx-text-fill: #FF7C7C; -fx-font-family: 'Consolas'; -fx-font-weight: bold;");
+                } else {
+                    setStyle("-fx-text-fill: white; -fx-font-family: 'Consolas';");
+                }
+            }
+        });
+
+
+
         // Make small columns stay small
         colCraftable.setMaxWidth(90);
 
-        colBuyCost.setMaxWidth(140);
+        colBuyCost.setMaxWidth(120);
         colRevenue.setMaxWidth(140);
         colProfit.setMaxWidth(140);
-        colTotalProfit.setMaxWidth(160);
-        colTotalProfit.setMinWidth(130);
+
+        colTotalProfit.setMaxWidth(140);
+        colTotalProfit.setMinWidth(140);
+
+        colMatsSell.setMaxWidth(140);
+        colMatsSell.setMinWidth(110);
 
 
 // Give Item most of the width (weight)
@@ -462,12 +548,13 @@ public class CraftingProfitView {
 
 // Optional: small mins so they don’t get too tiny
         colCraftable.setMinWidth(70);
-        colBuyCost.setMinWidth(110);
+        colBuyCost.setMinWidth(90);
         colRevenue.setMinWidth(110);
         colProfit.setMinWidth(110);
         colName.setMinWidth(220);
 
-        table.getColumns().addAll(colName, colCraftable, colBuyCost, colRevenue, colProfit, colTotalProfit);
+        table.getColumns().addAll(colName, colCraftable, colBuyCost, colMatsSell, colRevenue, colProfit, colTotalProfit);
+
 
 
         // ---------- Details panel (right) ----------
@@ -515,12 +602,39 @@ public class CraftingProfitView {
             recipeTree.setRoot(root);
 
             // Shopping list (aggregated)
+            boolean listingSellMode = rbListingSell.isSelected();
+
             shoppingList.getItems().setAll(
                     res.missingToBuy.entrySet().stream()
                             .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
-                            .map(e -> controller.itemName(e.getKey()) + " x " + e.getValue())
+                            .map(e -> {
+                                int itemId = e.getKey();
+                                int qty = e.getValue();
+
+                                String name = controller.itemName(itemId);
+
+                                // --- stack calc ---
+                                int stacks = qty / 250;
+                                int rest = qty % 250;
+
+                                String stackText = "";
+                                if (stacks > 0) {
+                                    stackText = " (" + stacks + "x250";
+                                    if (rest > 0) stackText += " + " + rest;
+                                    stackText += ")";
+                                }
+
+                                // --- price ---
+                                int unit = controller.itemSellUnit(itemId, listingSellMode);
+                                int total = unit * qty;
+
+                                return name + " x" + qty + stackText +
+                                        "\n 1 = " + formatCoin(unit) +
+                                        " | total = " + formatCoin(total);
+                            })
                             .toList()
                                           );
+
         });
 
 
