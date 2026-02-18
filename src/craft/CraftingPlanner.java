@@ -132,36 +132,53 @@ public class CraftingPlanner {
                       ? simulateCraft(recipe, craftableCount, baseInventory, tp, settings, recipesByOutput)
                       : new PlanRun(Map.of(), 0, one.tree);
 
-// PER 1 craft output sell revenue
+// --- PER 1 craft output sell revenue (GROSS from TP quote) ---
         int outUnit = 0;
         TpPriceRepository.TpQuote outQ = tp.get(recipe.outputItemId);
         if (outQ != null) {
-            Integer v = settings.listingSell ? outQ.sellUnit : outQ.buyUnit;
+            Integer v = settings.listingSell ? outQ.sellUnit : outQ.buyUnit; // your existing mapping
             outUnit = (v == null) ? 0 : v;
         }
-        int revenuePerCraft = outUnit * recipe.outputCount;
+        int revenuePerCraftGross = outUnit * recipe.outputCount;
 
-// PER 1 craft mats sell value (leaf mats)
-        int matsSellPerCraft = computeMatsSellValueFromTree(one.tree, tp, settings);
+// --- PER 1 craft mats sell value (GROSS) from leaf materials ---
+        int matsSellGross = computeMatsSellValueFromTree(one.tree, tp, settings);
 
-// PER 1 craft profit (THIS is what you want fixed)
-        int profitPerCraft = revenuePerCraft - one.buyCostCopper;
+// --- Apply TP fee consistently (your app assumes 15%) ---
+        int revenuePerCraftNet = applyTpFee(revenuePerCraftGross);
+        int matsSellNet        = applyTpFee(matsSellGross);
 
-// TOTAL profit (must match UI rule)
-        int totalProfit = profitPerCraft * craftableCount;
+// --- "Value add" profit per craft ---
+        int profitPerCraft = revenuePerCraftNet - matsSellNet;
 
+// --- Buy cost per craft (ONLY ONE craft!) ---
+        int buyCostPerCraft = one.buyCostCopper;
+
+// --- TOTAL profit: if buying enabled, use real cash profit ---
+        int totalProfit;
+        if (settings.allowBuying) {
+            totalProfit = (revenuePerCraftNet - buyCostPerCraft) * craftableCount;
+        } else {
+            totalProfit = profitPerCraft * craftableCount;
+        }
+
+// IMPORTANT: buyCostCopper field should now be PER 1 craft (not max)
         return new CraftResult(
                 recipe.outputItemId,
                 recipe.disciplinesText,
                 craftableCount,
-                max.missingToBuy,          // TOTAL list
-                max.buyCostCopper,         // TOTAL buy cost
-                matsSellPerCraft,          // PER 1 craft
-                revenuePerCraft,           // PER 1 craft
-                profitPerCraft,            // PER 1 craft
-                totalProfit,               // TOTAL
+
+                max.missingToBuy,      // keep TOTAL missing list for craftableCount (shopping list)
+                buyCostPerCraft,       // PER 1 craft  ✅ (THIS is your requested change)
+
+                matsSellNet,           // PER 1 craft (net)
+                revenuePerCraftNet,    // PER 1 craft (net)
+                profitPerCraft,        // PER 1 craft (value add)
+                totalProfit,           // TOTAL (cash profit if buying enabled)
+
                 one.tree
         );
+
 
     }
 
@@ -360,6 +377,13 @@ public class CraftingPlanner {
     private static int ceilDiv(int a, int b) {
         return (a + b - 1) / b;
     }
+
+    private static int applyTpFee(int grossCopper) {
+        if (grossCopper <= 0) return 0;
+        // your current assumption: -15% TP fee
+        return (int) Math.floor(grossCopper * 0.85);
+    }
+
 
     private static class IntBox {
         int value;
