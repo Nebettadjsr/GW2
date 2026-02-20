@@ -72,20 +72,20 @@ public class CraftingProfitController {
 
         // 3) collect all itemIds we need prices+names for (outputs + ingredients)
         Set<Integer> itemIds = new HashSet<>();
-        for (RecipeRepository.Recipe r : visibleRecipes) {
+
+        // IMPORTANT: use allRecipes (the planner graph), not only visibleRecipes
+        for (RecipeRepository.Recipe r : allRecipes) {
             itemIds.add(r.outputItemId);
-            for (RecipeRepository.Ingredient ing : r.ingredients) itemIds.add(ing.itemId);
+            for (RecipeRepository.Ingredient ing : r.ingredients) {
+                itemIds.add(ing.itemId);
+            }
         }
 
-        // 4) load tp prices + item names
         Map<Integer, TpPriceRepository.TpQuote> tp = tpRepo.loadTpQuotes(itemIds);
         Map<Integer, ItemRepository.ItemInfo> items = itemRepo.loadItems(itemIds);
-//        Map<Integer, TpPriceRepository.TpQuote> tp = tpRepo.loadTpQuotes(itemIds);
-        this.lastTp = tp;   // cache for View
-
-
-        // cache items for View details (names)
+        this.lastTp = tp;
         this.lastItems = items;
+
 
         // 5) plan (USE the settings that came from the UI)
         Map<Integer, CraftResult> resultsByRecipeId = planner.evaluateAll(allRecipes, inv, tp, settings);
@@ -100,6 +100,9 @@ public class CraftingProfitController {
             if (cr == null) continue;
             // Hide clutter: if we would need to BUY something with 0c price, skip this recipe
             if (hasZeroPricedBuy(cr, tp, settings)) continue;
+            // If output is not tradable (no TP sell price), don’t show it in the profit table
+            if (cr.revenueCopper <= 0) continue;
+
 
 
             var it = items.get(r.outputItemId);
@@ -200,6 +203,9 @@ public class CraftingProfitController {
         Integer v = listingSell ? q.sellUnit : q.buyUnit;
         return (v == null) ? 0 : v;
     }
+    public TpPriceRepository.TpQuote tpQuote(int itemId) {
+        return lastTp.get(itemId);
+    }
 
     private boolean hasZeroPricedBuy(CraftResult cr,
                                      Map<Integer, TpPriceRepository.TpQuote> tp,
@@ -215,16 +221,15 @@ public class CraftingProfitController {
 
             TpPriceRepository.TpQuote q = tp.get(itemId);
 
-            // Your buy mapping:
-            // listingBuy -> use buyUnit
-            // instantBuy  -> use sellUnit
-            Integer unit = null;
-            if (q != null) unit = settings.listingBuy ? q.buyUnit : q.sellUnit;
+            // If we must buy it, but we have NO TP row loaded -> treat as not tradable/unknown -> hide
+            if (q == null) return true;
 
-            int price = (unit == null) ? 0 : unit;
-            if (price <= 0) return true; // <=0 covers null/0 cases
+            // Buy price mapping (your rule)
+            Integer unit = settings.listingBuy ? q.buyUnit : q.sellUnit;
+
+            // If not tradable => DB NULL => unit null (or 0) -> hide
+            if (unit == null || unit <= 0) return true;
         }
-
         return false;
     }
 

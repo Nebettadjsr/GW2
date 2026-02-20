@@ -297,6 +297,34 @@ public class CraftingProfitView {
 
                     var data = controller.reload(disc, settings, search);
 
+// --- DEBUG STATS (UI visible) ---
+                    int totalRows = data.size();
+                    int zeroTpBuys = 0;
+                    int missingTpQuotes = 0;
+                    int totalMissingLines = 0;
+
+                    for (var r : data) {
+                        CraftResult cr = controller.getResultByRecipeId(r.recipeId);
+                        if (cr == null || cr.missingToBuy == null) continue;
+
+                        for (var e : cr.missingToBuy.entrySet()) {
+                            totalMissingLines++;
+                            int itemId = e.getKey();
+
+                            var q = controller.tpQuote(itemId); // we’ll add this helper in controller
+                            if (q == null) { missingTpQuotes++; continue; }
+
+                            Integer unit = settings.listingBuy ? q.buyUnit : q.sellUnit;
+                            int price = (unit == null) ? 0 : unit;
+                            if (price <= 0) zeroTpBuys++;
+                        }
+                    }
+
+                    String dbg = "rows=" + totalRows +
+                            " missingLines=" + totalMissingLines +
+                            " missingTp=" + missingTpQuotes +
+                            " zeroBuyPrice=" + zeroTpBuys;
+
 
                     Platform.runLater(() -> {
                         rows.clear();
@@ -316,7 +344,9 @@ public class CraftingProfitView {
                         }
                         table.sort();
 
-                        statusLabel.setText("✅ Loaded " + rows.size() + " recipes from DB.");
+//                        statusLabel.setText("✅ Loaded " + rows.size() + " recipes from DB.");
+                        statusLabel.setText("✅ Loaded " + rows.size() + " recipes.  |  " + dbg);
+
                     });
 
 
