@@ -175,7 +175,12 @@ public class Gw2App extends Application {
         btnCrafting.setStyle(buttonStyle());
         btnCrafting.setOnAction(e -> CraftingProfitView.show(stage, () -> stage.setScene(homeScene)));
 
-        VBox toolButtons = new VBox(10, btnEcto, btnCrafting);
+        Button btnCraftDiscover = new Button("Crafting Discover Helper");
+        btnCraftDiscover.setPrefWidth(320);
+        btnCraftDiscover.setStyle(buttonStyle());
+        btnCraftDiscover.setOnAction(e -> CraftingDiscoveryView.show(stage, () -> stage.setScene(homeScene)));
+
+        VBox toolButtons = new VBox(10, btnEcto, btnCrafting, btnCraftDiscover);
         toolButtons.setAlignment(Pos.CENTER);
 
 // --------------------
@@ -265,6 +270,7 @@ public class Gw2App extends Application {
                 try {
                     Gw2DbSync.syncAccountMaterials();
                     Gw2DbSync.syncAccountBank();
+                    Gw2DbSync.syncCharactersCraftingAndRecipes();
 
                     Platform.runLater(() -> {
                         status.setText("✅ Mats + Bank refreshed.");

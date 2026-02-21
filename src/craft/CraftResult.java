@@ -7,6 +7,7 @@ public class CraftResult {
     public final String                discipline;
     public final int                   craftableCount;
     public final Map<Integer, Integer> missingToBuy;
+    public final Map<Integer, Integer> missingToBuyOne;
 
     public final int buyCostCopper;          // TOTAL for craftableCount
     public final int matsSellValueCopper;    // PER 1 craft
@@ -18,6 +19,7 @@ public class CraftResult {
 
     public CraftResult(int outputItemId, String discipline, int craftableCount,
                        Map<Integer, Integer> missingToBuy,
+                       Map<Integer, Integer> missingToBuyOne,
                        int buyCostCopper,
                        int matsSellValueCopper,
                        int revenueCopper,
@@ -28,6 +30,7 @@ public class CraftResult {
         this.discipline = discipline;
         this.craftableCount = craftableCount;
         this.missingToBuy = missingToBuy;
+        this.missingToBuyOne = missingToBuyOne;
         this.buyCostCopper = buyCostCopper;
         this.matsSellValueCopper = matsSellValueCopper;
         this.revenueCopper = revenueCopper;

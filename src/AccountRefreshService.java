@@ -7,6 +7,7 @@ public final class AccountRefreshService {
         Gw2DbSync.syncAccountBank();
         Gw2DbSync.syncAccountMaterials();
         Gw2DbSync.syncAccountRecipes();
+        Gw2DbSync.syncCharactersCraftingAndRecipes();
     }
 
 

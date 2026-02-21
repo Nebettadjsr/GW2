@@ -17,68 +17,52 @@ import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import repo.DiscChoice;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-
-import java.util.Comparator;
-import java.util.Map;
-
-
-public class CraftingProfitView {
+public class CraftingDiscoveryView {
     private static ScheduledExecutorService scheduler;
 
-    public static class CraftRow {
+    // ---------- Row model ----------
+    public static class DiscoverRow {
         private final IntegerProperty recipeId = new SimpleIntegerProperty();
         private final IntegerProperty outputItemId = new SimpleIntegerProperty();
         private final StringProperty outputName = new SimpleStringProperty();
-        private final StringProperty discipline = new SimpleStringProperty();
-
-        private final IntegerProperty craftableCount = new SimpleIntegerProperty();
-        private final StringProperty missingSummary = new SimpleStringProperty();
 
         private final IntegerProperty buyCostCopper = new SimpleIntegerProperty();
         private final IntegerProperty revenueCopper = new SimpleIntegerProperty();
         private final IntegerProperty profitCopper = new SimpleIntegerProperty();
+        private final IntegerProperty recipeLevel = new SimpleIntegerProperty();
+        private final StringProperty missingSummary = new SimpleStringProperty();
 
-        private final IntegerProperty matsSellValueCopper = new SimpleIntegerProperty();
-
-
-        public CraftRow(int recipeId, int outputItemId, String outputName, String discipline,
-                        int craftableCount, String missingSummary,
-                        int buyCostCopper, int revenueCopper, int profitCopper, int matsSellValueCopper) {
+        public DiscoverRow(int recipeId, int outputItemId, String outputName, int recipeLevel,
+                           int buyCostCopper, int revenueCopper, int profitCopper,
+                           String missingSummary) {
             this.recipeId.set(recipeId);
             this.outputItemId.set(outputItemId);
             this.outputName.set(outputName);
-            this.discipline.set(discipline);
-            this.craftableCount.set(craftableCount);
-            this.missingSummary.set(missingSummary);
+            this.recipeLevel.set(recipeLevel);
             this.buyCostCopper.set(buyCostCopper);
             this.revenueCopper.set(revenueCopper);
             this.profitCopper.set(profitCopper);
-            this.matsSellValueCopper.set(matsSellValueCopper);
+            this.missingSummary.set(missingSummary);
         }
+
+        public int getRecipeLevel() { return recipeLevel.get(); }
+        public IntegerProperty recipeLevelProperty() { return recipeLevel; }
 
         public int getRecipeId() { return recipeId.get(); }
         public IntegerProperty recipeIdProperty() { return recipeId; }
-
 
         public int getOutputItemId() { return outputItemId.get(); }
         public IntegerProperty outputItemIdProperty() { return outputItemId; }
 
         public String getOutputName() { return outputName.get(); }
         public StringProperty outputNameProperty() { return outputName; }
-
-        public String getDiscipline() { return discipline.get(); }
-        public StringProperty disciplineProperty() { return discipline; }
-
-        public int getCraftableCount() { return craftableCount.get(); }
-        public IntegerProperty craftableCountProperty() { return craftableCount; }
-
-        public String getMissingSummary() { return missingSummary.get(); }
-        public StringProperty missingSummaryProperty() { return missingSummary; }
 
         public int getBuyCostCopper() { return buyCostCopper.get(); }
         public IntegerProperty buyCostCopperProperty() { return buyCostCopper; }
@@ -89,13 +73,8 @@ public class CraftingProfitView {
         public int getProfitCopper() { return profitCopper.get(); }
         public IntegerProperty profitCopperProperty() { return profitCopper; }
 
-        private final IntegerProperty totalProfitCopper = new SimpleIntegerProperty();
-        public int getTotalProfitCopper() { return totalProfitCopper.get(); }
-        public IntegerProperty totalProfitCopperProperty() { return totalProfitCopper; }
-
-//        private final IntegerProperty matsSellValueCopper = new SimpleIntegerProperty();
-        public int getMatsSellValueCopper() { return matsSellValueCopper.get(); }
-        public IntegerProperty matsSellValueCopperProperty() { return matsSellValueCopper; }
+        public String getMissingSummary() { return missingSummary.get(); }
+        public StringProperty missingSummaryProperty() { return missingSummary; }
 
     }
 
@@ -108,17 +87,17 @@ public class CraftingProfitView {
             onBack.run();
         });
 
-
         HBox topBar = new HBox(btnBack);
         topBar.setPadding(new Insets(10));
 
         // ---------- Title + status ----------
-        Label title = new Label("Crafting Profit Analyzer");
+        Label title = new Label("Crafting Discovery Helper");
         title.setStyle("-fx-text-fill: white; -fx-font-size: 24px; -fx-font-weight: bold;");
 
-        Label statusLabel = new Label("UI ready. (Next: load recipes + inventory + TP prices from DB)");
+        Label statusLabel = new Label("Pick a discipline+character to list missing DISCOVERABLE recipes.");
         statusLabel.setStyle("-fx-text-fill: white; -fx-opacity: 0.85;");
-        CraftingProfitController controller = new CraftingProfitController();
+
+        CraftingDiscoveryController controller = new CraftingDiscoveryController();
 
         // ---------- Filter bar ----------
         ComboBox<DiscChoice> disciplineBox = new ComboBox<>();
@@ -129,56 +108,47 @@ public class CraftingProfitView {
         Runnable reloadDisciplineChoices = () -> {
             Thread t = new Thread(() -> {
                 try {
-                    var crafts = charRepo.loadAllCharacterCrafting(); // List<DiscRow>
+                    var crafts = charRepo.loadAllCharacterCrafting(); // rows: discipline, rating, charName
                     Platform.runLater(() -> {
                         disciplineBox.getItems().clear();
 
-                        // 1) top: All
-                        disciplineBox.getItems().add(DiscChoice.all());
-
-                        // 2) base discipline list (static order)
-                        List<String> base = List.of(
-                                "Chef","Huntsman","Weaponsmith","Armorsmith","Artificer",
-                                "Tailor","Leatherworker","Jeweler","Scribe"
-                        );
-                        for (String d : base) disciplineBox.getItems().add(DiscChoice.disciplineOnly(d));
-
-                        // 3) per char entries
+                        // IMPORTANT for discovery: only CHAR_DISCIPLINE entries
                         for (var row : crafts) {
-                            disciplineBox.getItems().add(DiscChoice.charDiscipline(row.discipline, row.rating, row.charName));
+                            disciplineBox.getItems().add(
+                                    DiscChoice.charDiscipline(row.discipline, row.rating, row.charName)
+                            );
                         }
 
-                        disciplineBox.getSelectionModel().selectFirst(); // All
+                        if (!disciplineBox.getItems().isEmpty()) {
+                            disciplineBox.getSelectionModel().selectFirst();
+                        }
                     });
                 } catch (Exception ex) {
                     ex.printStackTrace();
+                    Platform.runLater(() -> statusLabel.setText("❌ Failed loading characters: " + ex.getMessage()));
                 }
             });
             t.setDaemon(true);
             t.start();
         };
 
-
-
-        disciplineBox.setPrefWidth(170);
-
         CheckBox bankOnlyCheck = new CheckBox("use mats from Bank ");
         bankOnlyCheck.setSelected(true);
         bankOnlyCheck.setStyle("-fx-text-fill: white;");
 
         CheckBox allowBuyCheck = new CheckBox("buy missing mats");
-        allowBuyCheck.setSelected(false);
+        allowBuyCheck.setSelected(true); // discovery usually needs buying
         allowBuyCheck.setStyle("-fx-text-fill: white;");
 
         TextField maxBudgetField = new TextField("20g");
         maxBudgetField.setPrefWidth(80);
-        maxBudgetField.setDisable(true);
+        maxBudgetField.setDisable(false);
 
         allowBuyCheck.selectedProperty().addListener((obs, oldV, newV) -> {
             maxBudgetField.setDisable(!newV);
         });
 
-        // Sell mode toggle
+        // Sell mode toggle (only affects displayed sell prices, not discovery)
         ToggleGroup sellMode = new ToggleGroup();
         RadioButton rbInstantSell = new RadioButton("Instant sell");
         RadioButton rbListingSell = new RadioButton("Listing sell");
@@ -188,8 +158,7 @@ public class CraftingProfitView {
         styleRadio(rbInstantSell);
         styleRadio(rbListingSell);
 
-
-        // Buy mode toggle (for missing mats)
+        // Buy mode toggle
         ToggleGroup buyMode = new ToggleGroup();
         RadioButton rbInstantBuy = new RadioButton("Instant buy");
         RadioButton rbListingBuy = new RadioButton("Listing buy");
@@ -199,26 +168,15 @@ public class CraftingProfitView {
         styleRadio(rbInstantBuy);
         styleRadio(rbListingBuy);
 
-        // toggle for daily craftables
-        ToggleGroup dailyBuyTogGroup = new ToggleGroup();
-        RadioButton dailyCraft = new RadioButton("craft");
-        RadioButton dailyBuy = new RadioButton("buy");
-        dailyCraft.setToggleGroup(dailyBuyTogGroup);
-        dailyBuy.setToggleGroup(dailyBuyTogGroup);
-        dailyBuy.setSelected(true);
-        styleRadio(dailyCraft);
-        styleRadio(dailyBuy);
-
-
         ComboBox<String> sortBox = new ComboBox<>();
         sortBox.getItems().addAll(
-                "Profit per item",
-                "Total profit",
-                "Max craftable count",
-                "ROI % (later)"
-                                 );
+                "Recipe level (high first)",
+                "Buy cost (low first)",
+                "Item sell price (high first)",
+                "Profit per craft (high first)"
+        );
         sortBox.getSelectionModel().select(0);
-        sortBox.setPrefWidth(170);
+        sortBox.setPrefWidth(190);
 
         TextField searchField = new TextField();
         searchField.setPromptText("Search item...");
@@ -226,81 +184,80 @@ public class CraftingProfitView {
 
         // --- Row 1 ---
         HBox filterRow1 = new HBox(12,
-                                   new LabelStyled("Discipline:"),
-                                    disciplineBox,
-                                    bankOnlyCheck,
-                                    allowBuyCheck,
-                                    new LabelStyled("Max buy:"), maxBudgetField,
-                                    new Separator(Orientation.VERTICAL)
-                            );
+                new LabelStyled("Discipline+Char:"),
+                disciplineBox,
+                bankOnlyCheck,
+                allowBuyCheck,
+                new LabelStyled("Max buy:"), maxBudgetField,
+                new Separator(Orientation.VERTICAL)
+        );
         filterRow1.setAlignment(Pos.CENTER);
 
-// --- Row 2 ---
-//        Button btnRefreshBank = new Button("Refresh Bank Materials");
+        // --- Row 2 ---
         Button btnRefreshTp = new Button("Refresh Trade Post Prices");
         Button btnRefresh = new Button("Refresh");
 
         HBox filterRow2 = new HBox(12,
-                                   new LabelStyled("Daily craftabls:"), dailyCraft, dailyBuy,
-                                    new Separator(Orientation.VERTICAL),
-                                   new LabelStyled("BUY:"), rbInstantBuy, rbListingBuy,
-                                   new Separator(Orientation.VERTICAL),
+                new LabelStyled("BUY:"), rbInstantBuy, rbListingBuy,
+                new Separator(Orientation.VERTICAL),
+                new LabelStyled("SELL:"), rbInstantSell, rbListingSell,
+                new Separator(Orientation.VERTICAL)
 
-                                   new LabelStyled("SELL:"), rbInstantSell, rbListingSell
         );
-
         filterRow2.setAlignment(Pos.CENTER);
 
-// --- Row 3 ---
-        Label autoRefreshLabel = new Label("Auto-refresh in: 90s");
+        // --- Row 3 ---
+        Label autoRefreshLabel = new Label("Auto-refresh in: 120s");
         autoRefreshLabel.setStyle("-fx-text-fill: white; -fx-opacity: 0.85;");
 
         Label lastRefreshLabel = new Label("Last refresh: —");
         lastRefreshLabel.setStyle("-fx-text-fill: white; -fx-opacity: 0.65;");
 
-
         HBox filterRow3 = new HBox(12,
                 new LabelStyled("Sort:"), sortBox,
-                new Separator(Orientation.VERTICAL),
                 searchField,
-                autoRefreshLabel,
-                lastRefreshLabel,
-                btnRefreshTp
-        );
+                btnRefreshTp,
+                btnRefresh
+                );
         filterRow3.setAlignment(Pos.CENTER);
 
-// --- Wrapper card ---
-        VBox filterBar = new VBox(10, filterRow1, filterRow2, filterRow3);
+        HBox filterRow4 = new HBox(12, autoRefreshLabel, lastRefreshLabel);
+        filterRow4.setAlignment(Pos.CENTER);
+
+        VBox filterBar = new VBox(10, filterRow1, filterRow2, filterRow3, filterRow4);
         filterBar.setPadding(new Insets(10));
         filterBar.setStyle(
                 "-fx-background-color: rgba(255,255,255,0.03);" +
                         "-fx-border-color: rgba(255,255,255,0.06);" +
                         "-fx-border-radius: 10;" +
                         "-fx-background-radius: 10;"
-                          );
-
+        );
 
         // ---------- Main table ----------
-        TableView<CraftRow> table = new TableView<>();
+        TableView<DiscoverRow> table = new TableView<>();
         table.setMaxWidth(Double.MAX_VALUE);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        table.setPlaceholder(new Label("No data yet. (Next: DB load)"));
+        table.setPlaceholder(new Label("No data yet."));
         table.setStyle(
                 "-fx-background-color: transparent;" +
-                        "-fx-control-inner-background: #12151c;" +     // rows
+                        "-fx-control-inner-background: #12151c;" +
                         "-fx-table-cell-border-color: rgba(255,255,255,0.08);" +
                         "-fx-table-header-border-color: rgba(255,255,255,0.08);"
-                      );
+        );
 
-        // --- data list (must exist BEFORE reloadTable) ---
-        ObservableList<CraftRow> rows = FXCollections.observableArrayList();
+        ObservableList<DiscoverRow> rows = FXCollections.observableArrayList();
         table.setItems(rows);
 
-// --- reload logic (must exist BEFORE button handlers that call it) ---
+        // --- reload logic ---
         Runnable reloadTable = () -> {
-            statusLabel.setText("Loading from DB...");
+            DiscChoice choice = disciplineBox.getValue();
+            if (choice == null || choice.kind != DiscChoice.Kind.CHAR_DISCIPLINE) {
+                Platform.runLater(() -> statusLabel.setText("Pick a 'Discipline lvl — Character' entry."));
+                return;
+            }
+
+            statusLabel.setText("Loading missing discoverable recipes...");
             int maxBuyCopper = parseCoinToCopper(maxBudgetField.getText());
-            statusLabel.setText("MaxBuy UI=" + maxBudgetField.getText() + " => " + maxBuyCopper + " copper");
 
             Thread t = new Thread(() -> {
                 try {
@@ -308,80 +265,51 @@ public class CraftingProfitView {
                     boolean allowBuy = allowBuyCheck.isSelected();
                     boolean listingSell = rbListingSell.isSelected();
                     boolean listingBuy  = rbListingBuy.isSelected();
-                    boolean dailyBuyMode = dailyBuy.isSelected(); // true = buy daily items, false = craft daily items
-                    DiscChoice choice = disciplineBox.getValue();
 
-                    CraftingSettings settings = new CraftingSettings(includeBank, allowBuy, maxBuyCopper, listingSell, listingBuy, dailyBuyMode);
+                    // dailyBuyMode not relevant for discovery; keep false
+                    boolean dailyBuyMode = false;
+
+                    CraftingSettings settings = new CraftingSettings(
+                            includeBank, allowBuy, maxBuyCopper, listingSell, listingBuy, dailyBuyMode
+                    );
 
                     String search = searchField.getText();
 
                     var data = controller.reload(choice, settings, search);
 
-// --- DEBUG STATS (UI visible) ---
-                    int totalRows = data.size();
-                    int zeroTpBuys = 0;
-                    int missingTpQuotes = 0;
-                    int totalMissingLines = 0;
-
-                    for (var r : data) {
-                        CraftResult cr = controller.getResultByRecipeId(r.recipeId);
-                        if (cr == null || cr.missingToBuy == null) continue;
-
-                        for (var e : cr.missingToBuy.entrySet()) {
-                            totalMissingLines++;
-                            int itemId = e.getKey();
-
-                            var q = controller.tpQuote(itemId); // we’ll add this helper in controller
-                            if (q == null) { missingTpQuotes++; continue; }
-
-                            Integer unit = settings.listingBuy ? q.buyUnit : q.sellUnit;
-                            int price = (unit == null) ? 0 : unit;
-                            if (price <= 0) zeroTpBuys++;
-                        }
-                    }
-
-                    String dbg = "rows=" + totalRows +
-                            " missingLines=" + totalMissingLines +
-                            " missingTp=" + missingTpQuotes +
-                            " zeroBuyPrice=" + zeroTpBuys;
-
-
                     Platform.runLater(() -> {
                         rows.clear();
                         for (var r : data) {
-                            rows.add(new CraftRow(
+                            rows.add(new DiscoverRow(
                                     r.recipeId,
                                     r.outputItemId,
                                     r.outputName,
-                                    r.discipline,
-                                    r.craftableCount,
-                                    r.missingSummary,
+                                    r.recipeLevel,
                                     r.buyCostCopper,
                                     r.revenueCopper,
                                     r.profitCopper,
-                                    r.matsSellValueCopper
+                                    r.missingSummary
                             ));
                         }
-                        table.sort();
 
-//                        statusLabel.setText("✅ Loaded " + rows.size() + " recipes from DB.");
-                        statusLabel.setText("✅ Loaded " + rows.size() + " recipes.  |  " + dbg);
+                        applySort(sortBox.getValue(), rows);
+                        table.refresh();
 
+                        statusLabel.setText("✅ Loaded " + rows.size() + " missing discoverable recipes.");
                     });
-
 
                 } catch (Exception ex) {
                     ex.printStackTrace();
-                    Platform.runLater(() -> statusLabel.setText("❌ DB load failed: " + ex.getMessage()));
+                    Platform.runLater(() -> statusLabel.setText("❌ Load failed: " + ex.getMessage()));
                 }
             });
+
             t.setDaemon(true);
             t.start();
-
         };
 
-// stop previous scheduler if view is reopened
-        final int REFRESH_SECONDS = 90;
+        // ---------- Auto-refresh (materials + bank) ----------
+        final int REFRESH_SECONDS = 120;
 
         if (scheduler != null) scheduler.shutdownNow();
         scheduler = Executors.newSingleThreadScheduledExecutor();
@@ -392,12 +320,12 @@ public class CraftingProfitView {
             secondsLeft[0]--;
 
             if (secondsLeft[0] <= 0) {
-                // do the refresh in this background thread
                 try {
                     Gw2DbSync.syncAccountMaterials();
                     Gw2DbSync.syncAccountBank();
+                    Gw2DbSync.syncAccountRecipes();      // vendor/learned-from-item/autolearned etc (account-wide)
+                    Gw2DbSync.syncCharactersCraftingAndRecipes();    // discovery per character
 
-                    // reset countdown
                     secondsLeft[0] = REFRESH_SECONDS;
 
                     Platform.runLater(() -> {
@@ -408,8 +336,7 @@ public class CraftingProfitView {
 
                 } catch (Exception ex) {
                     ex.printStackTrace();
-                    secondsLeft[0] = REFRESH_SECONDS; // still reset, otherwise it spams
-
+                    secondsLeft[0] = REFRESH_SECONDS;
                     Platform.runLater(() -> {
                         lastRefreshLabel.setText("Last refresh: FAILED");
                         statusLabel.setText("⚠️ Auto-refresh failed: " + ex.getMessage());
@@ -417,44 +344,29 @@ public class CraftingProfitView {
                 }
             }
 
-            // update countdown label every second
             int show = secondsLeft[0];
             Platform.runLater(() -> autoRefreshLabel.setText("Auto-refresh in: " + show + "s"));
 
         }, 1, 1, TimeUnit.SECONDS);
 
-
-        // --- auto reload when filters change ---
+        // --- listeners ---
         disciplineBox.valueProperty().addListener((obs, o, n) -> reloadTable.run());
-
         bankOnlyCheck.selectedProperty().addListener((obs, o, n) -> reloadTable.run());
-
         allowBuyCheck.selectedProperty().addListener((obs, o, n) -> reloadTable.run());
+        rbInstantBuy.selectedProperty().addListener((obs, o, n) -> { if (n) reloadTable.run(); });
+        rbListingBuy.selectedProperty().addListener((obs, o, n) -> { if (n) reloadTable.run(); });
+        rbInstantSell.selectedProperty().addListener((obs, o, n) -> { if (n) reloadTable.run(); });
+        rbListingSell.selectedProperty().addListener((obs, o, n) -> { if (n) reloadTable.run(); });
 
-        dailyCraft.selectedProperty().addListener((obs,o,n) -> { if (n) reloadTable.run(); });
-        dailyBuy.selectedProperty().addListener((obs,o,n) -> { if (n) reloadTable.run(); });
-
-        rbInstantBuy.selectedProperty().addListener((obs,o,n) -> { if(n) reloadTable.run(); });
-        rbListingBuy.selectedProperty().addListener((obs,o,n) -> { if(n) reloadTable.run(); });
-
-        rbInstantSell.selectedProperty().addListener((obs,o,n) -> { if(n) reloadTable.run(); });
-        rbListingSell.selectedProperty().addListener((obs,o,n) -> { if(n) reloadTable.run(); });
-
-
-// When allowBuy toggles, maxBudget field enable/disable changes -> still reload
         maxBudgetField.textProperty().addListener((obs, o, n) -> {
             if (allowBuyCheck.isSelected()) reloadTable.run();
         });
 
-// Search: reload on ENTER (keeps it fast)
         searchField.setOnAction(e -> reloadTable.run());
-
-// Sort: reload when changed
-        sortBox.valueProperty().addListener((obs, o, n) -> reloadTable.run());
 
         btnRefreshTp.setOnAction(e -> {
             statusLabel.setText("Refreshing TP prices...");
-            Thread t = new Thread(() -> {
+            Thread tt = new Thread(() -> {
                 try {
                     Gw2DbSync.syncTpPricesRelevant();
                     Platform.runLater(() -> {
@@ -466,147 +378,49 @@ public class CraftingProfitView {
                     Platform.runLater(() -> statusLabel.setText("❌ TP refresh failed: " + ex.getMessage()));
                 }
             });
-            t.setDaemon(true);
-            t.start();
+            tt.setDaemon(true);
+            tt.start();
         });
 
         btnRefresh.setOnAction(e -> reloadTable.run());
 
-
-
-        TableColumn<CraftRow, String> colName = new TableColumn<>("Item");
+        // ---------- Columns ----------
+        TableColumn<DiscoverRow, String> colName = new TableColumn<>("Item");
         colName.setCellValueFactory(data -> data.getValue().outputNameProperty());
 
-        TableColumn<CraftRow, Number> colCraftable = new TableColumn<>("Craftable");
-        colCraftable.setCellValueFactory(data -> data.getValue().craftableCountProperty());
+        TableColumn<DiscoverRow, Number> colLevel = new TableColumn<>("Level");
+        colLevel.setCellValueFactory(d -> d.getValue().recipeLevelProperty());
+        colLevel.setSortType(TableColumn.SortType.DESCENDING);
 
-//        TableColumn<CraftRow, String> colMissing = new TableColumn<>("Missing / To buy");
-//        colMissing.setCellValueFactory(data -> data.getValue().missingSummaryProperty());
-
-        TableColumn<CraftRow, Number> colBuyCost = new TableColumn<>("Buy cost");
+        TableColumn<DiscoverRow, Number> colBuyCost = new TableColumn<>("Buy cost");
         colBuyCost.setCellValueFactory(data -> data.getValue().buyCostCopperProperty());
         colBuyCost.setCellFactory(tc -> coinCell(false));
 
-        TableColumn<CraftRow, Number> colRevenue = new TableColumn<>("Item sell price");
-        colRevenue.setCellValueFactory(data -> data.getValue().revenueCopperProperty());
-        colRevenue.setCellFactory(tc -> new TableCell<>() {
-            @Override
-            protected void updateItem(Number copper, boolean empty) {
-                super.updateItem(copper, empty);
+        TableColumn<DiscoverRow, Number> colSell = new TableColumn<>("Item sell price");
+        colSell.setCellValueFactory(data -> data.getValue().revenueCopperProperty());
+        colSell.setCellFactory(tc -> coinCell(false));
 
-                if (empty || copper == null) {
-                    setText(null);
-                    setStyle("");
-                    return;
-                }
-
-                CraftRow row = getTableRow().getItem();
-                if (row == null) {
-                    setText(formatCoin(copper.intValue()));
-                    return;
-                }
-
-                int revenue = copper.intValue();
-                int matsValue = row.getMatsSellValueCopper();
-
-                setText(formatCoin(revenue));
-
-                // Compare: crafting vs selling mats
-                if (revenue > matsValue) {
-                    // crafting better
-                    setStyle("-fx-text-fill: #7CFC98; -fx-font-family: 'Consolas'; -fx-font-weight: bold;");
-                } else if (revenue < matsValue) {
-                    // selling mats better
-                    setStyle("-fx-text-fill: #FF7C7C; -fx-font-family: 'Consolas'; -fx-font-weight: bold;");
-                } else {
-                    setStyle("-fx-text-fill: white; -fx-font-family: 'Consolas';");
-                }
-            }
-        });
-
-
-        TableColumn<CraftRow, Number> colProfit = new TableColumn<>("Profit per craft");
+        TableColumn<DiscoverRow, Number> colProfit = new TableColumn<>("Profit per craft");
         colProfit.setCellValueFactory(data -> data.getValue().profitCopperProperty());
         colProfit.setCellFactory(tc -> profitCell());
-        colProfit.setSortType(TableColumn.SortType.DESCENDING);
+        // after all columns are added:
+        table.getSortOrder().setAll(colLevel);
 
-        TableColumn<CraftRow, Number> colTotalProfit = new TableColumn<>("Total profit");
-        colTotalProfit.setCellValueFactory(data -> {
+        // widths
+        colLevel.setMaxWidth(90);
+        colLevel.setMinWidth(70);
+        colBuyCost.setMaxWidth(130);
+        colSell.setMaxWidth(150);
+        colProfit.setMaxWidth(150);
 
-            int craftable = data.getValue().getCraftableCount();
-            int profitPer = data.getValue().getProfitCopper();
-            return new SimpleIntegerProperty(craftable * profitPer);
-        });
-        colTotalProfit.setCellFactory(tc -> profitCell());
-        colTotalProfit.setSortType(TableColumn.SortType.DESCENDING);
-        table.getSortOrder().setAll(colTotalProfit);
-
-        TableColumn<CraftRow, Number> colMatsSell = new TableColumn<>("Mats sell value");
-        colMatsSell.setCellValueFactory(data -> data.getValue().matsSellValueCopperProperty());
-        colMatsSell.setCellFactory(tc -> new TableCell<>() {
-            @Override
-            protected void updateItem(Number copper, boolean empty) {
-                super.updateItem(copper, empty);
-
-                if (empty || copper == null) {
-                    setText(null);
-                    setStyle("");
-                    return;
-                }
-
-                CraftRow row = getTableRow().getItem();
-                if (row == null) {
-                    setText(formatCoin(copper.intValue()));
-                    return;
-                }
-
-                int matsValue = copper.intValue();
-                int revenue = row.getRevenueCopper();
-
-                setText(formatCoin(matsValue));
-
-                // Opposite logic of Item Sell column
-                if (matsValue > revenue) {
-                    // selling mats better
-                    setStyle("-fx-text-fill: #7CFC98; -fx-font-family: 'Consolas'; -fx-font-weight: bold;");
-                } else if (matsValue < revenue) {
-                    // crafting better
-                    setStyle("-fx-text-fill: #FF7C7C; -fx-font-family: 'Consolas'; -fx-font-weight: bold;");
-                } else {
-                    setStyle("-fx-text-fill: white; -fx-font-family: 'Consolas';");
-                }
-            }
-        });
-
-
-
-        // Make small columns stay small
-        colCraftable.setMaxWidth(90);
-
-        colBuyCost.setMaxWidth(120);
-        colRevenue.setMaxWidth(140);
-        colProfit.setMaxWidth(140);
-
-        colTotalProfit.setMaxWidth(140);
-        colTotalProfit.setMinWidth(140);
-
-        colMatsSell.setMaxWidth(140);
-        colMatsSell.setMinWidth(110);
-
-
-// Give Item most of the width (weight)
         colName.setMaxWidth(1f * Integer.MAX_VALUE);
 
-// Optional: small mins so they don’t get too tiny
-        colCraftable.setMinWidth(70);
-        colBuyCost.setMinWidth(90);
-        colRevenue.setMinWidth(110);
-        colProfit.setMinWidth(110);
-        colName.setMinWidth(220);
+        colName.setMinWidth(240);
+        colBuyCost.setMinWidth(110);
+        colSell.setMinWidth(130);
+        colProfit.setMinWidth(130);
 
-        table.getColumns().addAll(colName, colCraftable, colBuyCost, colMatsSell, colRevenue, colProfit, colTotalProfit);
-
-
+        table.getColumns().addAll(colName, colLevel, colBuyCost, colSell, colProfit);
 
         // ---------- Details panel (right) ----------
         Label detailsTitle = new Label("Details");
@@ -616,29 +430,29 @@ public class CraftingProfitView {
         selectedItemLabel.setStyle("-fx-text-fill: white; -fx-opacity: 0.85;");
 
         TreeView<String> recipeTree = new TreeView<>();
-        recipeTree.setPrefHeight(240);
+        recipeTree.setPrefHeight(280);
         recipeTree.setStyle("-fx-control-inner-background: #12151c; -fx-text-fill: white;");
-
 
         Label shoppingTitle = new Label("Shopping list (aggregated)");
         shoppingTitle.setStyle("-fx-text-fill: white; -fx-font-weight: bold; -fx-opacity: 0.95;");
 
         ListView<String> shoppingList = new ListView<>();
-        shoppingList.setPrefHeight(180);
+        shoppingList.setPrefHeight(230);
         shoppingList.setStyle("-fx-control-inner-background: #12151c; -fx-text-fill: white;");
 
-
         VBox detailsCard = card(detailsTitle, selectedItemLabel,
-                                new LabelStyled("Recipe tree:"), recipeTree,
-                                shoppingTitle, shoppingList
-                               );
-        detailsCard.setMinWidth(340);
-        detailsCard.setMaxWidth(340);
+                new LabelStyled("Recipe tree:"), recipeTree,
+                shoppingTitle, shoppingList
+        );
+
+        // bigger than profit view
+        detailsCard.setMinWidth(420);
+        detailsCard.setMaxWidth(420);
 
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldRow, rowSel) -> {
             if (rowSel == null) return;
 
-            selectedItemLabel.setText(rowSel.getOutputName() + "  \n" + rowSel.getDiscipline());
+            selectedItemLabel.setText(rowSel.getOutputName());
 
             CraftResult res = controller.getResultByRecipeId(rowSel.getRecipeId());
             if (res == null) {
@@ -647,16 +461,16 @@ public class CraftingProfitView {
                 return;
             }
 
-            // Recipe tree
+            // tree
             TreeItem<String> root = toTreeItem(res.tree, controller);
             root.setExpanded(true);
             recipeTree.setRoot(root);
 
-            // Shopping list (aggregated)
+            // shopping list
             boolean listingSellMode = rbListingSell.isSelected();
 
             shoppingList.getItems().setAll(
-                    res.missingToBuy.entrySet().stream()
+                    res.missingToBuyOne.entrySet().stream()
                             .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
                             .map(e -> {
                                 int itemId = e.getKey();
@@ -664,7 +478,6 @@ public class CraftingProfitView {
 
                                 String name = controller.itemName(itemId);
 
-                                // --- stack calc ---
                                 int stacks = qty / 250;
                                 int rest = qty % 250;
 
@@ -675,29 +488,51 @@ public class CraftingProfitView {
                                     stackText += ")";
                                 }
 
-                                // --- price ---
                                 int unit = controller.itemSellUnit(itemId, listingSellMode);
                                 int total = unit * qty;
 
-                                return name + " x" + qty + stackText +
+                                return qty + " x " +name +  stackText +
                                         "\n 1 = " + formatCoin(unit) +
                                         " | total = " + formatCoin(total);
                             })
                             .toList()
-                                          );
-
+            );
         });
 
+//        Runnable applySort = () -> {
+//            String s = sortBox.getValue();
+//            table.getSortOrder().clear();
+//
+//            if ("Recipe level (high → low)".equals(s)) {
+//                colLevel.setSortType(TableColumn.SortType.DESCENDING);
+//                table.getSortOrder().add(colLevel);
+//
+//            } else if ("Buy cost (low → high)".equals(s)) {
+//                colBuyCost.setSortType(TableColumn.SortType.ASCENDING);
+//                table.getSortOrder().add(colBuyCost);
+//
+//            } else if ("Item sell price (high → low)".equals(s)) {
+//                colSell.setSortType(TableColumn.SortType.DESCENDING);
+//                table.getSortOrder().add(colSell);
+//
+//            } else if ("Profit per craft (high → low)".equals(s)) {
+//                colProfit.setSortType(TableColumn.SortType.DESCENDING);
+//                table.getSortOrder().add(colProfit);
+//            }
+//
+//            table.sort();
+//        };
 
-        // ---------- Main content grid ----------
+        sortBox.valueProperty().addListener((obs, o, n) -> {
+            applySort(n, rows);
+            table.refresh();
+        });
+
+        // ---------- Main area ----------
         HBox mainArea = new HBox(14, table, detailsCard);
-
-        // let the table take all leftover horizontal space
         HBox.setHgrow(table, Priority.ALWAYS);
-
         mainArea.setAlignment(Pos.TOP_CENTER);
         mainArea.setMaxWidth(Double.MAX_VALUE);
-
 
         VBox content = new VBox(14, title, statusLabel, filterBar, mainArea);
         content.setAlignment(Pos.TOP_CENTER);
@@ -715,32 +550,51 @@ public class CraftingProfitView {
             -fx-font-size: 15px;
         """);
 
-
         stage.setScene(new Scene(root, 1280, 720));
+
         reloadDisciplineChoices.run();
-        reloadTable.run();
+        // after choice list loads, selection listener triggers reloadTable()
 
         Platform.runLater(() -> {
-            // Header background
             var header = table.lookup("TableHeaderRow");
-            if (header != null) {
-                header.setStyle("-fx-background-color: #0f1115;");
-            }
+            if (header != null) header.setStyle("-fx-background-color: #0f1115;");
 
-            // Column header cells
             table.lookupAll(".column-header").forEach(node ->
-                                                              node.setStyle(
-                                                                      "-fx-background-color: #0f1115;" +
-                                                                              "-fx-border-color: rgba(255,255,255,0.08);" +
-                                                                              "-fx-text-fill: white;"
-                                                                           )
-                                                     );
+                    node.setStyle(
+                            "-fx-background-color: #0f1115;" +
+                                    "-fx-border-color: rgba(255,255,255,0.08);" +
+                                    "-fx-text-fill: white;"
+                    )
+            );
 
             table.lookupAll(".label").forEach(node ->
-                                                      node.setStyle("-fx-text-fill: white;")
-                                             );
-        });
+                    node.setStyle("-fx-text-fill: white;")
+            );
 
+            table.getSortOrder().setAll(colLevel);
+            table.sort();
+        });
+    }
+
+    // ---------- Sorting ----------
+    private static void applySort(String mode, ObservableList<DiscoverRow> rows) {
+        if (mode == null || rows == null) return;
+
+        switch (mode) {
+            case "Recipe level (high first)" ->
+                    FXCollections.sort(rows, Comparator.comparingInt(DiscoverRow::getRecipeLevel).reversed());
+
+            case "Buy cost (low first)" ->
+                    FXCollections.sort(rows, Comparator.comparingInt(DiscoverRow::getBuyCostCopper));
+
+            case "Item sell price (high first)" ->
+                    FXCollections.sort(rows, Comparator.comparingInt(DiscoverRow::getRevenueCopper).reversed());
+
+            case "Profit per craft (high first)" ->
+                    FXCollections.sort(rows, Comparator.comparingInt(DiscoverRow::getProfitCopper).reversed());
+
+            default -> { /* do nothing */ }
+        }
     }
 
     // ---------- Styling helpers ----------
@@ -752,8 +606,7 @@ public class CraftingProfitView {
                         "-fx-border-color: rgba(255,255,255,0.05);" +
                         "-fx-border-radius: 10;" +
                         "-fx-background-radius: 10;"
-                  );
-
+        );
         return v;
     }
 
@@ -768,7 +621,7 @@ public class CraftingProfitView {
         rb.setStyle("-fx-text-fill: white; -fx-opacity: 0.95;");
     }
 
-    private static TableCell<CraftRow, Number> coinCell(boolean signed) {
+    private static TableCell<DiscoverRow, Number> coinCell(boolean signed) {
         return new TableCell<>() {
             @Override protected void updateItem(Number copper, boolean empty) {
                 super.updateItem(copper, empty);
@@ -783,7 +636,7 @@ public class CraftingProfitView {
         };
     }
 
-    private static TableCell<CraftRow, Number> profitCell() {
+    private static TableCell<DiscoverRow, Number> profitCell() {
         return new TableCell<>() {
             @Override protected void updateItem(Number copper, boolean empty) {
                 super.updateItem(copper, empty);
@@ -794,7 +647,6 @@ public class CraftingProfitView {
                 }
                 int v = copper.intValue();
                 setText(signedCoin(v));
-                // simple green/red effect
                 if (v > 0) {
                     setStyle("-fx-text-fill: #7CFC98; -fx-font-family: 'Consolas'; -fx-font-weight: bold;");
                 } else if (v < 0) {
@@ -819,11 +671,7 @@ public class CraftingProfitView {
         return (copper > 0 ? "+" : "-") + formatCoin(copper);
     }
 
-    private static String trimDouble(double d) {
-        if (Math.abs(d - Math.round(d)) < 1e-9) return String.valueOf((long) Math.round(d));
-        return String.valueOf(d);
-    }
-    private static TreeItem<String> toTreeItem(Node n, CraftingProfitController controller) {
+    private static TreeItem<String> toTreeItem(Node n, CraftingDiscoveryController controller) {
         if (n == null) return new TreeItem<>("(no data)");
 
         String label = controller.itemName(n.itemId) + " x" + n.qty + "  [" + n.action + "]";
@@ -837,7 +685,6 @@ public class CraftingProfitView {
         return ti;
     }
 
-
     private static int parseCoinToCopper(String text) {
         if (text == null) return 0;
         String t = text.trim().toLowerCase();
@@ -845,7 +692,6 @@ public class CraftingProfitView {
 
         int g = 0, s = 0, c = 0;
 
-        // allow formats: "20g", "50s", "10c", "1g 20s 5c"
         String[] parts = t.split("\\s+");
         for (String p : parts) {
             p = p.trim();
@@ -853,11 +699,9 @@ public class CraftingProfitView {
             else if (p.endsWith("s")) s = Integer.parseInt(p.substring(0, p.length()-1));
             else if (p.endsWith("c")) c = Integer.parseInt(p.substring(0, p.length()-1));
             else {
-                // fallback: if user typed plain number assume gold
                 try { g = Integer.parseInt(p); } catch (Exception ignored) {}
             }
         }
         return g * 10000 + s * 100 + c;
     }
-
 }

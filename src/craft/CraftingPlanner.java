@@ -58,6 +58,7 @@ public class CraftingPlanner {
                         recipe.disciplinesText,
                         0,
                         Map.of(),
+                        Map.of(),
                         0,
                         0,
                         0,
@@ -106,6 +107,10 @@ public class CraftingPlanner {
             if (craftableCount > 0) {
                 missingToBuy.put(recipe.outputItemId, recipe.outputCount * craftableCount);
             }
+            Map<Integer, Integer> missingToBuyOne = new HashMap<>();
+            if (recipe.outputCount > 0) {
+                missingToBuyOne.put(recipe.outputItemId, recipe.outputCount);
+            }
 
             Node tree = new Node(recipe.outputItemId, recipe.outputCount, "buy", List.of());
 
@@ -113,7 +118,8 @@ public class CraftingPlanner {
                     recipe.outputItemId,
                     recipe.disciplinesText,
                     craftableCount,
-                    missingToBuy,     // TOTAL
+                    missingToBuy,
+                    missingToBuyOne, // <--- COMPILE ERROR HERE
                     totalBuyCost,     // TOTAL
                     0,                // matsSellPerCraft (not applicable here)
                     revenuePerCraft,  // PER 1 craft
@@ -169,6 +175,7 @@ public class CraftingPlanner {
                 craftableCount,
 
                 max.missingToBuy,      // keep TOTAL missing list for craftableCount (shopping list)
+                one.missingToBuy,
                 buyCostPerCraft,       // PER 1 craft  ✅ (THIS is your requested change)
 
                 matsSellNet,           // PER 1 craft (net)

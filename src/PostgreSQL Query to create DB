@@ -97,4 +97,72 @@ CREATE TABLE public.recipe_ingredients (
     FOREIGN KEY (item_id) REFERENCES public.items(item_id)
 );
 
+-- ************** Character Tables ************
+-- 1) Characters
+CREATE TABLE IF NOT EXISTS characters (
+    character_id      BIGSERIAL PRIMARY KEY,
+    name              TEXT NOT NULL UNIQUE,
+    profession        TEXT,
+    race              TEXT,
+    gender            TEXT,
+    level             INTEGER,
+    created_at_gw      TIMESTAMPTZ,
+    fetched_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 2) Character crafting disciplines
+CREATE TABLE IF NOT EXISTS character_crafting (
+    character_id  BIGINT NOT NULL REFERENCES characters(character_id) ON DELETE CASCADE,
+    discipline    TEXT   NOT NULL,          -- e.g. Chef, Tailor, Jeweler
+    rating        INTEGER NOT NULL DEFAULT 0,
+    is_active     BOOLEAN NOT NULL DEFAULT false,
+    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (character_id, discipline)
+);
+
+CREATE INDEX IF NOT EXISTS idx_character_crafting_character
+    ON character_crafting(character_id);
+
+-- 3) Character recipes (the big missing piece)
+CREATE TABLE IF NOT EXISTS character_recipes (
+    character_id  BIGINT NOT NULL REFERENCES characters(character_id) ON DELETE CASCADE,
+    recipe_id     INTEGER NOT NULL,
+    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (character_id, recipe_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_character_recipes_recipe_id
+    ON character_recipes(recipe_id);
+
+CREATE INDEX IF NOT EXISTS idx_character_recipes_character
+    ON character_recipes(character_id);
+
+-- 4) OPTIONAL: Character items (bags + equipment in one table)
+CREATE TABLE IF NOT EXISTS character_items (
+    character_id    BIGINT NOT NULL REFERENCES characters(character_id) ON DELETE CASCADE,
+
+    location        TEXT   NOT NULL,        -- 'BAG' or 'EQUIPMENT'
+    bag_index       INTEGER,                -- only for BAG
+    slot_index      INTEGER,                -- only for BAG
+    equipment_slot  TEXT,                   -- only for EQUIPMENT
+
+    item_id         INTEGER NOT NULL,       -- can FK to items(item_id) if you want
+    count           INTEGER NOT NULL DEFAULT 1,
+
+    binding         TEXT,
+    bound_to        TEXT,
+
+    fetched_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    -- one "slot" must be unique per character
+    CONSTRAINT uq_character_items_slot UNIQUE
+        (character_id, location, bag_index, slot_index, equipment_slot)
+);
+
+CREATE INDEX IF NOT EXISTS idx_character_items_character
+    ON character_items(character_id);
+
+CREATE INDEX IF NOT EXISTS idx_character_items_item
+    ON character_items(item_id);
+
 COMMIT;

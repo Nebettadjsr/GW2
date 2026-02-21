@@ -58,10 +58,18 @@ public class CraftingProfitController {
 
     }
 
-    public List<UiRow> reload(String disc, CraftingSettings settings, String search) throws SQLException {
+    public List<UiRow> reload(DiscChoice choice, CraftingSettings settings, String search) throws SQLException {
 
-        // Visible recipes (unlocked only)
-        List<RecipeRepository.Recipe> visibleRecipes = recipeRepo.loadRecipes(disc);
+        List<RecipeRepository.Recipe> visibleRecipes;
+
+        if (choice == null || choice.kind == DiscChoice.Kind.ALL) {
+            visibleRecipes = recipeRepo.loadRecipes("All"); // DISTINCT aus character_recipes (deine neue Logik)
+        } else if (choice.kind == DiscChoice.Kind.DISCIPLINE_ONLY) {
+            visibleRecipes = recipeRepo.loadRecipes(choice.discipline); // discipline across all chars
+        } else {
+            // CHAR_DISCIPLINE
+            visibleRecipes = recipeRepo.loadRecipesForCharacter(choice.charName, choice.discipline);
+        }
 
 // Full recipe graph for planner (ALL recipes)
         List<RecipeRepository.Recipe> allRecipes = recipeRepo.loadAllRecipes();

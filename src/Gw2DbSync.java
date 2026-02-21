@@ -14,6 +14,8 @@ import java.nio.file.StandardOpenOption;
 import java.sql.*;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 public class Gw2DbSync {
 
@@ -219,6 +221,198 @@ public class Gw2DbSync {
             ps.executeBatch();
             con.commit();
         }
+    }
+
+    public static List<String> fetchCharacterNames() throws Exception {
+        String url = "https://api.guildwars2.com/v2/characters";
+
+        HttpRequest req = authRequest(url).GET().build();
+        HttpResponse<String> res = CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
+
+        if (res.statusCode() != 200) {
+            throw new RuntimeException("Characters list fetch failed: HTTP " + res.statusCode() + " body=" + res.body());
+        }
+
+        JsonNode root = MAPPER.readTree(res.body());
+        if (!root.isArray()) throw new RuntimeException("Unexpected JSON (/v2/characters): not array");
+
+        List<String> names = new ArrayList<>();
+        for (JsonNode n : root) names.add(n.asText());
+        return names;
+    }
+
+    public static JsonNode fetchCharacterDetails(String characterName) throws Exception {
+        String enc = URLEncoder.encode(characterName, StandardCharsets.UTF_8).replace("+", "%20");
+        String url = "https://api.guildwars2.com/v2/characters/" + enc;
+
+        HttpRequest req = authRequest(url).GET().build();
+        HttpResponse<String> res = CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
+
+        int code = res.statusCode();
+        if (code < 200 || code >= 300) {
+            throw new RuntimeException("Character fetch failed: " + characterName +
+                    " HTTP " + code + " body=" + res.body());
+        }
+
+        return MAPPER.readTree(res.body());
+    }
+
+    private static long upsertCharacter(Connection con, JsonNode c) throws SQLException {
+        String sql = """
+    INSERT INTO characters (name, profession, race, gender, level, created_at_gw, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?::timestamptz, now())
+    ON CONFLICT (name) DO UPDATE SET
+      profession    = EXCLUDED.profession,
+      race          = EXCLUDED.race,
+      gender        = EXCLUDED.gender,
+      level         = EXCLUDED.level,
+      created_at_gw = EXCLUDED.created_at_gw,
+      fetched_at    = EXCLUDED.fetched_at
+    RETURNING character_id
+    """;
+
+        try (PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setString(1, c.path("name").asText(null));
+            ps.setString(2, c.path("profession").asText(null));
+            ps.setString(3, c.path("race").asText(null));
+            ps.setString(4, c.path("gender").asText(null));
+
+            if (c.hasNonNull("level")) ps.setInt(5, c.get("level").asInt());
+            else ps.setNull(5, Types.INTEGER);
+
+            // created is ISO string, store as timestamptz into created_at_gw
+            if (c.hasNonNull("created")) ps.setString(6, c.get("created").asText());
+            else ps.setNull(6, Types.VARCHAR);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) throw new SQLException("Upsert character failed (no RETURNING row)");
+                return rs.getLong(1);
+            }
+        }
+    }
+
+    private static void replaceCharacterCrafting(Connection con, long characterId, JsonNode craftingArr) throws SQLException {
+        try (PreparedStatement del = con.prepareStatement("DELETE FROM character_crafting WHERE character_id = ?")) {
+            del.setLong(1, characterId);
+            del.executeUpdate();
+        }
+
+        if (craftingArr == null || !craftingArr.isArray()) return;
+
+        String ins = """
+            INSERT INTO character_crafting (character_id, discipline, rating, is_active, fetched_at)
+            VALUES (?, ?, ?, ?, now())
+            ON CONFLICT (character_id, discipline) DO UPDATE SET
+              rating     = EXCLUDED.rating,
+              is_active  = EXCLUDED.is_active,
+              fetched_at = EXCLUDED.fetched_at
+            """;
+
+        try (PreparedStatement ps = con.prepareStatement(ins)) {
+            for (JsonNode row : craftingArr) {
+                String disc = row.path("discipline").asText(null);
+                int rating  = row.path("rating").asInt(0);
+                boolean active = row.path("active").asBoolean(false);
+
+                if (disc == null || disc.isBlank()) continue;
+
+                ps.setLong(1, characterId);
+                ps.setString(2, disc);
+                ps.setInt(3, rating);
+                ps.setBoolean(4, active);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+    }
+
+    private static void replaceCharacterRecipes(Connection con, long characterId, JsonNode recipesArr) throws SQLException {
+        try (PreparedStatement del = con.prepareStatement("DELETE FROM character_recipes WHERE character_id = ?")) {
+            del.setLong(1, characterId);
+            del.executeUpdate();
+        }
+
+        if (recipesArr == null || !recipesArr.isArray()) return;
+
+        String ins = """
+        INSERT INTO character_recipes (character_id, recipe_id, fetched_at)
+        VALUES (?, ?, now())
+        ON CONFLICT (character_id, recipe_id) DO UPDATE SET
+          fetched_at = EXCLUDED.fetched_at
+        """;
+
+        try (PreparedStatement ps = con.prepareStatement(ins)) {
+            for (JsonNode idNode : recipesArr) {
+                int recipeId = idNode.asInt(0);
+                if (recipeId <= 0) continue;
+
+                ps.setLong(1, characterId);
+                ps.setInt(2, recipeId);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+    }
+
+    public static void syncCharactersCraftingAndRecipes() throws Exception {
+        List<String> names = fetchCharacterNames();
+        if (names.isEmpty()) return;
+
+        try (Connection con = openConnection()) {
+            con.setAutoCommit(false);
+
+            for (String name : names) {
+                JsonNode c = fetchCharacterDetails(name);
+
+                long characterId = upsertCharacter(con, c);
+
+                // crafting disciplines
+                replaceCharacterCrafting(con, characterId, c.get("crafting"));
+
+                // unlocked recipes list (THIS fixes your missing discovered recipes)
+                replaceCharacterRecipes(con, characterId, c.get("recipes"));
+
+                con.commit(); // commit per char (safer)
+            }
+        }
+    }
+
+    public static List<Integer> loadUnlockedRecipeIdsFromCharacters() throws SQLException {
+        String sql = """
+        SELECT DISTINCT cr.recipe_id
+        FROM character_recipes cr
+        ORDER BY cr.recipe_id
+        """;
+
+        List<Integer> ids = new ArrayList<>();
+        try (Connection con = openConnection();
+             Statement st = con.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+
+            while (rs.next()) ids.add(rs.getInt(1));
+        }
+        return ids;
+    }
+
+    public static List<Integer> loadUnlockedRecipeIdsForCharacter(String charName) throws SQLException {
+        String sql = """
+        SELECT cr.recipe_id
+        FROM character_recipes cr
+        JOIN characters c ON c.character_id = cr.character_id
+        WHERE c.name = ?
+        ORDER BY cr.recipe_id
+        """;
+
+        List<Integer> ids = new ArrayList<>();
+        try (Connection con = openConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setString(1, charName);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) ids.add(rs.getInt(1));
+            }
+        }
+        return ids;
     }
 
     // ---------------------------
@@ -1021,7 +1215,8 @@ public class Gw2DbSync {
         // Step A+B+C+D implemented by: syncAccountRecipes -> syncRecipesOnly -> syncItems -> syncIngredientsOnly
         // We'll reuse your existing parsing logic with two tiny helper methods below.
 
-        List<Integer> recipeIds = loadAccountRecipeIds();
+//        List<Integer> recipeIds = loadAccountRecipeIds();
+        List<Integer> recipeIds = loadUnlockedRecipeIdsFromCharacters();
         if (recipeIds.isEmpty()) {
             System.out.println("Initial fill: no account recipes found.");
             return;
