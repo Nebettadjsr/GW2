@@ -64,7 +64,6 @@ public class CraftingProfitView {
         public int getRecipeId() { return recipeId.get(); }
         public IntegerProperty recipeIdProperty() { return recipeId; }
 
-
         public int getOutputItemId() { return outputItemId.get(); }
         public IntegerProperty outputItemIdProperty() { return outputItemId; }
 
@@ -93,7 +92,6 @@ public class CraftingProfitView {
         public int getTotalProfitCopper() { return totalProfitCopper.get(); }
         public IntegerProperty totalProfitCopperProperty() { return totalProfitCopper; }
 
-//        private final IntegerProperty matsSellValueCopper = new SimpleIntegerProperty();
         public int getMatsSellValueCopper() { return matsSellValueCopper.get(); }
         public IntegerProperty matsSellValueCopperProperty() { return matsSellValueCopper; }
 
@@ -819,10 +817,6 @@ public class CraftingProfitView {
         return (copper > 0 ? "+" : "-") + formatCoin(copper);
     }
 
-    private static String trimDouble(double d) {
-        if (Math.abs(d - Math.round(d)) < 1e-9) return String.valueOf((long) Math.round(d));
-        return String.valueOf(d);
-    }
     private static TreeItem<String> toTreeItem(Node n, CraftingProfitController controller) {
         if (n == null) return new TreeItem<>("(no data)");
 

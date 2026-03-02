@@ -381,21 +381,6 @@ public class EctoView {
         return h;
     }
 
-    private static Label monoValue(String text) {
-        Label l = new Label(text);
-        l.setStyle(
-                "-fx-text-fill: white;" +
-                        "-fx-font-family: 'Consolas';" +
-                        "-fx-font-weight: bold;" +
-                        "-fx-background-color: rgba(0,0,0,0.25);" +
-                        "-fx-border-color: rgba(255,255,255,0.10);" +
-                        "-fx-border-radius: 6;" +
-                        "-fx-background-radius: 6;" +
-                        "-fx-padding: 3 8 3 8;"
-                  );
-        return l;
-    }
-
     private static Label value(String text) {
         Label l = new Label(text);
         l.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
@@ -556,8 +541,4 @@ public class EctoView {
         return (copper > 0 ? "+" : "-") + formatCoin(copper);
     }
 
-    private static String trimDouble(double d) {
-        if (Math.abs(d - Math.round(d)) < 1e-9) return String.valueOf((long) Math.round(d));
-        return String.format(Locale.US, "%.2f", d).replaceAll("0+$", "").replaceAll("\\.$", "");
-    }
 }

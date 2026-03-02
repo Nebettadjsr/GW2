@@ -321,23 +321,6 @@ public class Gw2App extends Application {
 
     }
 
-    private Scene createPlaceholderScene(String headerText, Runnable onBack) {
-        Label header = new Label(headerText);
-        header.setFont(Font.font("System", FontWeight.BOLD, 20));
-        header.setStyle("-fx-text-fill: white;");
-
-        Button back = new Button("← Back");
-        back.setOnAction(e -> onBack.run());
-        back.setStyle(buttonStyle());
-
-        VBox root = new VBox(20, header, back);
-        root.setAlignment(Pos.CENTER);
-        root.setPadding(new Insets(30));
-        root.setStyle("-fx-background-color: #111318;");
-
-        return new Scene(root, 800, 500);
-    }
-
     private String buttonStyle() {
         return """
             -fx-background-color: #2a2f3a;

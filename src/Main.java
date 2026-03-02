@@ -7,16 +7,6 @@ public class Main {
         Price ecto = Gw2PriceFetch.getPrices(19721);   // Ecto
         Price dust = Gw2PriceFetch.getPrices(24277);   // Crystalline Dust
 
-        int ectoBuy = ecto.buy;
-        int ectoSell = ecto.sell;
-        int dustBuy = dust.buy;
-        int dustSell = dust.sell;
-
-//        System.out.println("Ecto Buy: " + ectoBuy);
-//        System.out.println("Ecto Sell: " + ectoSell);
-//        System.out.println("Dust Buy: " + dustBuy);
-//        System.out.println("Dust Sell: " + dustSell);
-
         // Costs
         int ectoInstantCost = ecto.sell;
         int ectoListingCost = ecto.buy;

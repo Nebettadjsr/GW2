@@ -153,8 +153,6 @@ public class CraftingDiscoveryController {
         return (v == null) ? 0 : v;
     }
 
-    public TpPriceRepository.TpQuote tpQuote(int itemId) { return lastTp.get(itemId); }
-
     private String summarizeMissing(Map<Integer, Integer> missing,
                                     Map<Integer, ItemRepository.ItemInfo> items,
                                     Map<Integer, TpPriceRepository.TpQuote> tp,
@@ -181,28 +179,4 @@ public class CraftingDiscoveryController {
         return (allowBuying ? "To buy: " : "Missing: ") + String.join(", ", parts);
     }
 
-    private int calcMissingBuyCostCopper(CraftResult cr,
-                                         Map<Integer, TpPriceRepository.TpQuote> tp,
-                                         CraftingSettings settings) {
-        if (cr == null || cr.missingToBuy == null || cr.missingToBuy.isEmpty()) return 0;
-        if (!settings.allowBuying) return 0;
-
-        long sum = 0;
-        for (var e : cr.missingToBuy.entrySet()) {
-            int itemId = e.getKey();
-            int qty = e.getValue();
-            if (qty <= 0) continue;
-
-            TpPriceRepository.TpQuote q = tp.get(itemId);
-            if (q == null) continue;
-
-            Integer unit = settings.listingBuy ? q.buyUnit : q.sellUnit;
-            int price = (unit == null) ? 0 : unit;
-            if (price <= 0) continue;
-
-            sum += (long) price * (long) qty;
-            if (sum > Integer.MAX_VALUE) return Integer.MAX_VALUE;
-        }
-        return (int) sum;
-    }
 }

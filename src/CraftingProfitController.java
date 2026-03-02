@@ -211,6 +211,7 @@ public class CraftingProfitController {
         Integer v = listingSell ? q.sellUnit : q.buyUnit;
         return (v == null) ? 0 : v;
     }
+
     public TpPriceRepository.TpQuote tpQuote(int itemId) {
         return lastTp.get(itemId);
     }
