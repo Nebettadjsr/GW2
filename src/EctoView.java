@@ -11,6 +11,7 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
+import util.CoinUtils;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -201,10 +202,10 @@ public class EctoView {
                     if (k3 != null) kit3Icon.setImage(k3);
 
                     // update price block
-                    ectoInstantBuyLabel.setText(formatCoin(ectoInstantBuy(ecto)));
-                    ectoListingBuyLabel.setText(formatCoin(ectoListingBuy(ecto)));
-                    dustInstantSellLabel.setText(formatCoin(dustInstantSell(dust)));
-                    dustListingSellLabel.setText(formatCoin(dustListingSell(dust)));
+                    ectoInstantBuyLabel.setText(CoinUtils.format(ectoInstantBuy(ecto)));
+                    ectoListingBuyLabel.setText(CoinUtils.format(ectoListingBuy(ecto)));
+                    dustInstantSellLabel.setText(CoinUtils.format(dustInstantSell(dust)));
+                    dustListingSellLabel.setText(CoinUtils.format(dustListingSell(dust)));
 
                     // fill tables
                     fillProfitGrid(profitGrid, ecto, dust);
@@ -237,10 +238,10 @@ public class EctoView {
         int dustRevInstant = (int) Math.round(dustInstantSell(dust) * DUST_PER_ECTO);
         int dustRevListing = (int) Math.round(dustListingSell(dust) * DUST_PER_ECTO);
 
-        setCell(grid, 1, 1, signedCoin(dustRevInstant - ectoCostInstant));
-        setCell(grid, 2, 1, signedCoin(dustRevListing - ectoCostInstant));
-        setCell(grid, 1, 2, signedCoin(dustRevInstant - ectoCostListing));
-        setCell(grid, 2, 2, signedCoin(dustRevListing - ectoCostListing));
+        setCell(grid, 1, 1, CoinUtils.formatSigned(dustRevInstant - ectoCostInstant));
+        setCell(grid, 2, 1, CoinUtils.formatSigned(dustRevListing - ectoCostInstant));
+        setCell(grid, 1, 2, CoinUtils.formatSigned(dustRevInstant - ectoCostListing));
+        setCell(grid, 2, 2, CoinUtils.formatSigned(dustRevListing - ectoCostListing));
     }
 
     private static void fillLuckGrid(GridPane grid, TpQuote ecto, TpQuote dust) {
@@ -260,10 +261,10 @@ public class EctoView {
         int c22 = ectoCostListing * n - dustRevListing * n;
 
 
-        setCell(grid, 1, 1, formatCoin(c11) );
-        setCell(grid, 2, 1, formatCoin(c12) );
-        setCell(grid, 1, 2, formatCoin(c21) );
-        setCell(grid, 2, 2, formatCoin(c22) );
+        setCell(grid, 1, 1, CoinUtils.format(c11) );
+        setCell(grid, 2, 1, CoinUtils.format(c12) );
+        setCell(grid, 1, 2, CoinUtils.format(c21) );
+        setCell(grid, 2, 2, CoinUtils.format(c22) );
     }
 
     // =========================
@@ -523,22 +524,4 @@ public class EctoView {
         }
         return null;
     }
-
-    // =========================
-    // Formatting
-    // =========================
-
-    private static String formatCoin(int copper) {
-        int abs = Math.abs(copper);
-        int g = abs / 10000;
-        int s = (abs % 10000) / 100;
-        int c = abs % 100;
-        return g + "g " + s + "s " + c + "c";
-    }
-
-    private static String signedCoin(int copper) {
-        if (copper == 0) return "0g 0s 0c";
-        return (copper > 0 ? "+" : "-") + formatCoin(copper);
-    }
-
 }

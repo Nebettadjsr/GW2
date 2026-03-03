@@ -14,13 +14,10 @@ import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
-import repo.AppConfig;
-import javafx.scene.control.TextArea;
-import java.io.OutputStream;
-import java.io.PrintStream;
 
 import java.util.Objects;
 import java.util.Optional;
+
 import javafx.scene.control.TextField;
 import javafx.scene.layout.Region;
 
@@ -41,7 +38,7 @@ public class Gw2App extends Application {
         homeScene = createHomeScene();
         homeScene.getStylesheets().add(
                 Objects.requireNonNull(getClass().getResource("/styles/dark-scroll.css")).toExternalForm()
-        );
+                                      );
 
 
         stage.setTitle("Nebet's GW2 Fan Tool");
@@ -52,7 +49,7 @@ public class Gw2App extends Application {
     private Scene createHomeScene() {
 
         // Logo + Title row
-        Image logo = new Image(getClass().getResource("/images/logo.png").toExternalForm());
+        Image     logo     = new Image(getClass().getResource("/images/logo.png").toExternalForm());
         ImageView logoView = new ImageView(logo);
         logoView.fitHeightProperty();
         logoView.setPreserveRatio(true);
@@ -69,26 +66,6 @@ public class Gw2App extends Application {
 
         Label status = new Label("");
         status.setStyle("-fx-text-fill: #c9d1d9; -fx-opacity: 0.9;");
-
-        TextArea console = new TextArea();
-        console.setEditable(false);
-        console.setWrapText(true);
-        console.setPrefWidth(900);
-        console.setPrefHeight(250);
-        console.setStyle("""
-    -fx-control-inner-background: #0b0d12;
-    -fx-text-fill: #c9d1d9;
-    -fx-font-family: Consolas;
-    -fx-font-size: 12px;
-""");
-
-// hidden initially
-        console.setVisible(false);
-        console.setManaged(false);
-
-        redirectSystemOut(console);
-        redirectSystemErr(console);
-
 
 
         // --------------------
@@ -122,7 +99,6 @@ public class Gw2App extends Application {
         spacerBottom.setMinHeight(10);
 
 
-
 // --------------------
 // Buttons (DATA / SYNC)
 // --------------------
@@ -130,13 +106,9 @@ public class Gw2App extends Application {
         btnFirstSetup.setPrefWidth(320);
         btnFirstSetup.setStyle(buttonStyle());
 
-        Button btnRefreshAccountRecipes = new Button("Refresh Account Recipes");
-        btnRefreshAccountRecipes.setPrefWidth(320);
-        btnRefreshAccountRecipes.setStyle(buttonStyle());
-
-        Button btnRefreshMatsBank = new Button("Refresh Account Mats + Bank");
-        btnRefreshMatsBank.setPrefWidth(320);
-        btnRefreshMatsBank.setStyle(buttonStyle());
+        Button btnSyncAccount = new Button("Sync Account (Bank, Mats, Characters, Recipes)");
+        btnSyncAccount.setPrefWidth(320);
+        btnSyncAccount.setStyle(buttonStyle());
 
         Button btnBank = new Button("See Bank");
         btnBank.setPrefWidth(180);
@@ -151,15 +123,13 @@ public class Gw2App extends Application {
 
 // Put the sync buttons in stack and row (centered)
         VBox syncButtons = new VBox(10,
-                btnFirstSetup,
-                btnRefreshAccountRecipes,
-                btnRefreshMatsBank
+                                    btnFirstSetup,
+                                    btnSyncAccount
         );
         syncButtons.setAlignment(Pos.CENTER);
 
         HBox bottomRow = new HBox(10, btnBank, btnMats);
         bottomRow.setAlignment(Pos.CENTER);
-
 
 
 // --------------------
@@ -183,10 +153,7 @@ public class Gw2App extends Application {
         VBox toolButtons = new VBox(10, btnEcto, btnCrafting, btnCraftDiscover);
         toolButtons.setAlignment(Pos.CENTER);
 
-// --------------------
-// EXISTING: status label (keep yours)
-// --------------------
-// status already exists above in your code
+
 
 // --------------------
 // Button actions (threads) - plug into your existing logic
@@ -205,23 +172,14 @@ public class Gw2App extends Application {
             btnFirstSetup.setDisable(true);
             status.setText("Initial fill running...");
 
-            console.clear();
-            console.setVisible(true);
-            console.setManaged(true);
-
 
             Thread t = new Thread(() -> {
                 try {
-                    // You said you already added DB bootstrap earlier:
-                    // DbBootstrap.ensureDatabaseExists(AppConfig.DB_URL, AppConfig.DB_USER, AppConfig.DB_PASS);
                     InitialSetupService.firstFill();
 
                     Platform.runLater(() -> {
                         status.setText("✅ Initial fill finished.");
                         btnFirstSetup.setDisable(false);
-
-                        console.setVisible(false);
-                        console.setManaged(false);
                     });
                 } catch (Exception ex) {
                     ex.printStackTrace();
@@ -236,51 +194,27 @@ public class Gw2App extends Application {
             t.start();
         });
 
-
-// 3) Refresh account recipes only
-        btnRefreshAccountRecipes.setOnAction(e -> {
-            btnRefreshAccountRecipes.setDisable(true);
-            status.setText("Refreshing account recipes...");
-
-            Thread t = new Thread(() -> {
-                try {
-                    Gw2DbSync.syncAccountRecipes();
-                    Platform.runLater(() -> {
-                        status.setText("✅ Account recipes refreshed.");
-                        btnRefreshAccountRecipes.setDisable(false);
-                    });
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                    Platform.runLater(() -> {
-                        status.setText("❌ Refresh failed: " + ex.getMessage());
-                        btnRefreshAccountRecipes.setDisable(false);
-                    });
-                }
-            });
-            t.setDaemon(true);
-            t.start();
-        });
-
-// 4) Refresh mats + bank
-        btnRefreshMatsBank.setOnAction(e -> {
-            btnRefreshMatsBank.setDisable(true);
-            status.setText("Refreshing mats + bank...");
+// 3) Refresh mats + bank + recepies + Char crafting
+        btnSyncAccount.setOnAction(e -> {
+            btnSyncAccount.setDisable(true);
+            status.setText("Refreshing Account data...");
 
             Thread t = new Thread(() -> {
                 try {
                     Gw2DbSync.syncAccountMaterials();
                     Gw2DbSync.syncAccountBank();
+                    Gw2DbSync.syncAccountRecipes();
                     Gw2DbSync.syncCharactersCraftingAndRecipes();
 
                     Platform.runLater(() -> {
-                        status.setText("✅ Mats + Bank refreshed.");
-                        btnRefreshMatsBank.setDisable(false);
+                        status.setText("✅ Account data refreshed.");
+                        btnSyncAccount.setDisable(false);
                     });
                 } catch (Exception ex) {
                     ex.printStackTrace();
                     Platform.runLater(() -> {
                         status.setText("❌ Refresh failed: " + ex.getMessage());
-                        btnRefreshMatsBank.setDisable(false);
+                        btnSyncAccount.setDisable(false);
                     });
                 }
             });
@@ -307,10 +241,8 @@ public class Gw2App extends Application {
                 spacerBottom,
                 bottomRow,
 
-                status,
-                console // stays hidden until needed
+                status
         );
-
 
 
         root.setAlignment(Pos.CENTER);
@@ -323,35 +255,12 @@ public class Gw2App extends Application {
 
     private String buttonStyle() {
         return """
-            -fx-background-color: #2a2f3a;
-            -fx-text-fill: white;
-            -fx-font-size: 14px;
-            -fx-padding: 10 14 10 14;
-            -fx-background-radius: 10;
-        """;
-    }
-
-    private void redirectSystemOut(TextArea console) {
-        PrintStream ps = new PrintStream(new OutputStream() {
-            @Override public void write(int b) { append(console, String.valueOf((char) b)); }
-            @Override public void write(byte[] b, int off, int len) { append(console, new String(b, off, len)); }
-        }, true);
-        System.setOut(ps);
-    }
-
-    private void redirectSystemErr(TextArea console) {
-        PrintStream ps = new PrintStream(new OutputStream() {
-            @Override public void write(int b) { append(console, String.valueOf((char) b)); }
-            @Override public void write(byte[] b, int off, int len) { append(console, new String(b, off, len)); }
-        }, true);
-        System.setErr(ps);
-    }
-
-    private void append(TextArea console, String text) {
-        Platform.runLater(() -> {
-            console.appendText(text);
-            console.positionCaret(console.getText().length());
-        });
+                   -fx-background-color: #2a2f3a;
+                   -fx-text-fill: white;
+                   -fx-font-size: 14px;
+                   -fx-padding: 10 14 10 14;
+                   -fx-background-radius: 10;
+               """;
     }
 
 

@@ -16,6 +16,7 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import repo.DiscChoice;
+import util.CoinUtils;
 
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -297,7 +298,7 @@ public class CraftingProfitView {
 // --- reload logic (must exist BEFORE button handlers that call it) ---
         Runnable reloadTable = () -> {
             statusLabel.setText("Loading from DB...");
-            int maxBuyCopper = parseCoinToCopper(maxBudgetField.getText());
+            int maxBuyCopper = CoinUtils.parseToCopper(maxBudgetField.getText());
             statusLabel.setText("MaxBuy UI=" + maxBudgetField.getText() + " => " + maxBuyCopper + " copper");
 
             Thread t = new Thread(() -> {
@@ -829,29 +830,6 @@ public class CraftingProfitView {
             }
         }
         return ti;
-    }
-
-
-    private static int parseCoinToCopper(String text) {
-        if (text == null) return 0;
-        String t = text.trim().toLowerCase();
-        if (t.isEmpty()) return 0;
-
-        int g = 0, s = 0, c = 0;
-
-        // allow formats: "20g", "50s", "10c", "1g 20s 5c"
-        String[] parts = t.split("\\s+");
-        for (String p : parts) {
-            p = p.trim();
-            if (p.endsWith("g")) g = Integer.parseInt(p.substring(0, p.length()-1));
-            else if (p.endsWith("s")) s = Integer.parseInt(p.substring(0, p.length()-1));
-            else if (p.endsWith("c")) c = Integer.parseInt(p.substring(0, p.length()-1));
-            else {
-                // fallback: if user typed plain number assume gold
-                try { g = Integer.parseInt(p); } catch (Exception ignored) {}
-            }
-        }
-        return g * 10000 + s * 100 + c;
     }
 
 }

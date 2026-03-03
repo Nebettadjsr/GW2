@@ -16,6 +16,7 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import repo.DiscChoice;
+import util.CoinUtils;
 
 import java.util.Comparator;
 import java.util.Map;
@@ -256,7 +257,7 @@ public class CraftingDiscoveryView {
             }
 
             statusLabel.setText("Loading missing discoverable recipes...");
-            int maxBuyCopper = parseCoinToCopper(maxBudgetField.getText());
+            int maxBuyCopper = CoinUtils.parseToCopper(maxBudgetField.getText());
 
             Thread t = new Thread(() -> {
                 try {
@@ -491,36 +492,12 @@ public class CraftingDiscoveryView {
                                 int total = unit * qty;
 
                                 return qty + " x " +name +  stackText +
-                                        "\n 1 = " + formatCoin(unit) +
-                                        " | total = " + formatCoin(total);
+                                        "\n 1 = " + CoinUtils.format(unit) +
+                                        " | total = " + CoinUtils.format(total);
                             })
                             .toList()
             );
         });
-
-//        Runnable applySort = () -> {
-//            String s = sortBox.getValue();
-//            table.getSortOrder().clear();
-//
-//            if ("Recipe level (high → low)".equals(s)) {
-//                colLevel.setSortType(TableColumn.SortType.DESCENDING);
-//                table.getSortOrder().add(colLevel);
-//
-//            } else if ("Buy cost (low → high)".equals(s)) {
-//                colBuyCost.setSortType(TableColumn.SortType.ASCENDING);
-//                table.getSortOrder().add(colBuyCost);
-//
-//            } else if ("Item sell price (high → low)".equals(s)) {
-//                colSell.setSortType(TableColumn.SortType.DESCENDING);
-//                table.getSortOrder().add(colSell);
-//
-//            } else if ("Profit per craft (high → low)".equals(s)) {
-//                colProfit.setSortType(TableColumn.SortType.DESCENDING);
-//                table.getSortOrder().add(colProfit);
-//            }
-//
-//            table.sort();
-//        };
 
         sortBox.valueProperty().addListener((obs, o, n) -> {
             applySort(n, rows);
@@ -629,7 +606,7 @@ public class CraftingDiscoveryView {
                     return;
                 }
                 int v = copper.intValue();
-                setText((signed ? signedCoin(v) : formatCoin(v)));
+                setText((signed ? CoinUtils.formatSigned(v) : CoinUtils.format(v)));
                 setStyle("-fx-text-fill: white; -fx-font-family: 'Consolas';");
             }
         };
@@ -645,7 +622,7 @@ public class CraftingDiscoveryView {
                     return;
                 }
                 int v = copper.intValue();
-                setText(signedCoin(v));
+                setText(CoinUtils.formatSigned(v));
                 if (v > 0) {
                     setStyle("-fx-text-fill: #7CFC98; -fx-font-family: 'Consolas'; -fx-font-weight: bold;");
                 } else if (v < 0) {
@@ -655,19 +632,6 @@ public class CraftingDiscoveryView {
                 }
             }
         };
-    }
-
-    private static String formatCoin(int copper) {
-        int abs = Math.abs(copper);
-        int g = abs / 10000;
-        int s = (abs % 10000) / 100;
-        int c = abs % 100;
-        return g + "g " + s + "s " + c + "c";
-    }
-
-    private static String signedCoin(int copper) {
-        if (copper == 0) return "0g 0s 0c";
-        return (copper > 0 ? "+" : "-") + formatCoin(copper);
     }
 
     private static TreeItem<String> toTreeItem(Node n, CraftingDiscoveryController controller) {
@@ -684,23 +648,4 @@ public class CraftingDiscoveryView {
         return ti;
     }
 
-    private static int parseCoinToCopper(String text) {
-        if (text == null) return 0;
-        String t = text.trim().toLowerCase();
-        if (t.isEmpty()) return 0;
-
-        int g = 0, s = 0, c = 0;
-
-        String[] parts = t.split("\\s+");
-        for (String p : parts) {
-            p = p.trim();
-            if (p.endsWith("g")) g = Integer.parseInt(p.substring(0, p.length()-1));
-            else if (p.endsWith("s")) s = Integer.parseInt(p.substring(0, p.length()-1));
-            else if (p.endsWith("c")) c = Integer.parseInt(p.substring(0, p.length()-1));
-            else {
-                try { g = Integer.parseInt(p); } catch (Exception ignored) {}
-            }
-        }
-        return g * 10000 + s * 100 + c;
-    }
 }
