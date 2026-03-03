@@ -1,3 +1,6 @@
+import api.Gw2PriceFetch;
+import model.Price;
+
 public class Main {
     static double DUST_PER_ECTO = 1.0;
     static int LUCK_PER_ECTO = 20;
@@ -8,12 +11,12 @@ public class Main {
         Price dust = Gw2PriceFetch.getPrices(24277);   // Crystalline Dust
 
         // Costs
-        int ectoInstantCost = ecto.sell;
-        int ectoListingCost = ecto.buy;
+        int ectoInstantCost = ecto.getSell();
+        int ectoListingCost = ecto.getBuy();
 
         // Dust prices
-        int dustInstantPrice = dust.buy;
-        int dustListingPrice = dust.sell;
+        int dustInstantPrice = dust.getBuy();
+        int dustListingPrice = dust.getSell();
 
         // Profits
         int profit_EI_DI = profitPerEcto(ectoInstantCost, dustInstantPrice);
