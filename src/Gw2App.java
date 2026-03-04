@@ -20,6 +20,8 @@ import java.util.Optional;
 
 import javafx.scene.control.TextField;
 import javafx.scene.layout.Region;
+import sync.AccountSync;
+import sync.CharacterSync;
 
 
 public class Gw2App extends Application {
@@ -201,10 +203,10 @@ public class Gw2App extends Application {
 
             Thread t = new Thread(() -> {
                 try {
-                    Gw2DbSync.syncAccountMaterials();
-                    Gw2DbSync.syncAccountBank();
-                    Gw2DbSync.syncAccountRecipes();
-                    Gw2DbSync.syncCharactersCraftingAndRecipes();
+                    AccountSync.syncAccountBank();
+                    AccountSync.syncAccountMaterials();
+                    AccountSync.syncAccountRecipes();
+                    CharacterSync.syncCharactersCraftingAndRecipes();
 
                     Platform.runLater(() -> {
                         status.setText("✅ Account data refreshed.");

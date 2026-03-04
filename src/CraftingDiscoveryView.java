@@ -16,6 +16,9 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import repo.DiscChoice;
+import sync.AccountSync;
+import sync.CharacterSync;
+import sync.TpSync;
 import util.CoinUtils;
 
 import java.util.Comparator;
@@ -321,10 +324,10 @@ public class CraftingDiscoveryView {
 
             if (secondsLeft[0] <= 0) {
                 try {
-                    Gw2DbSync.syncAccountMaterials();
-                    Gw2DbSync.syncAccountBank();
-                    Gw2DbSync.syncAccountRecipes();      // vendor/learned-from-item/autolearned etc (account-wide)
-                    Gw2DbSync.syncCharactersCraftingAndRecipes();    // discovery per character
+                    AccountSync.syncAccountBank();
+                    AccountSync.syncAccountMaterials();
+                    AccountSync.syncAccountRecipes();     // vendor/learned-from-item/autolearned etc (account-wide)
+                    CharacterSync.syncCharactersCraftingAndRecipes();    // discovery per character
 
                     secondsLeft[0] = REFRESH_SECONDS;
 
@@ -368,7 +371,7 @@ public class CraftingDiscoveryView {
             statusLabel.setText("Refreshing TP prices...");
             Thread tt = new Thread(() -> {
                 try {
-                    Gw2DbSync.syncTpPricesRelevant();
+                    TpSync.syncTpPricesRelevant();
                     Platform.runLater(() -> {
                         statusLabel.setText("✅ TP refreshed.");
                         reloadTable.run();

@@ -20,7 +20,7 @@ public final class TpPriceApi {
 
     // ---- Public API ----
 
-    /** Fetch /v2/commerce/prices?ids=... and return status + parsed array for 200/206 */
+    /** Fetch /v2/commerce/prices?ids=... and return status + parsed array for 200/206 (404 means retry single) */
     public static BatchResult fetchBatch(List<Integer> batch) throws IOException, InterruptedException {
         String idsParam = BatchUtils.idsParam(batch);
         if (idsParam.isBlank()) return new BatchResult(200, null, Set.of());
@@ -30,12 +30,11 @@ public final class TpPriceApi {
         HttpResponse<String> res = getWithRetry429(url);
         int code = res.statusCode();
 
-        // If GW2 returns 404 for the batch endpoint, caller will retry individually
-        if (code == 404) return new BatchResult(404, null, Set.of());
+        // Centralized status policy for TP batch
+        requireTpBatchStatus(code, url, res.body());
 
-        if (code != 200 && code != 206) {
-            throw new RuntimeException("TP batch fetch failed: HTTP " + code + " url=" + url);
-        }
+        // 404 => caller will retry individually
+        if (code == 404) return new BatchResult(404, null, Set.of());
 
         JsonNode root = Gw2ApiClient.readJson(res.body());
         if (root == null || !root.isArray()) {
@@ -44,19 +43,25 @@ public final class TpPriceApi {
 
         Set<Integer> returned = new HashSet<>();
         for (JsonNode p : root) {
-            if (p != null && p.hasNonNull("id")) returned.add(p.get("id").asInt());
+            if (p != null && p.hasNonNull("id")) {
+                returned.add(p.get("id").asInt());
+            }
         }
 
         return new BatchResult(code, root, returned);
     }
 
-    /** Fetch /v2/commerce/prices/<id> and return parsed JSON object or null if not 200 */
+    /** Fetch /v2/commerce/prices/<id> and return parsed JSON object, or null if 404 */
     public static JsonNode fetchSingle(int itemId) throws IOException, InterruptedException {
         String url = "https://api.guildwars2.com/v2/commerce/prices/" + itemId;
 
         HttpResponse<String> res = getWithRetry429(url);
-        if (res.statusCode() != 200) return null;
+        int code = res.statusCode();
 
+        // Centralized status policy for TP single
+        requireTpSingleStatus(code, url, res.body());
+
+        if (code == 404) return null; // item not tradeable / invalid id
         return Gw2ApiClient.readJson(res.body());
     }
 
@@ -70,7 +75,7 @@ public final class TpPriceApi {
             int code = res.statusCode();
 
             if (code != 429) return res;
-
+            HttpStatus.logWarn(429, "TP rate limit hit for " + url);
             // 429: honor Retry-After if present, else exponential backoff
             long sleepMs = retryAfterMs(res, attempt);
             Thread.sleep(sleepMs);
@@ -92,5 +97,19 @@ public final class TpPriceApi {
 
         // fallback exponential: 1s, 2s, 4s, 8s...
         return (long) Math.pow(2, attempt) * 1000L;
+    }
+
+    // ---- TP-specific status rules ----
+
+    /** TP batch endpoint: 200/206 OK, 404 means "retry individually", everything else is error */
+    private static void requireTpBatchStatus(int code, String url, String body) {
+        if (code == 200 || code == 206 || code == 404) return;
+        throw new RuntimeException("TP batch fetch failed: HTTP " + code + " url=" + url + " body=" + body);
+    }
+
+    /** TP single endpoint: 200 OK, 404 means "not found/not tradeable", everything else is error */
+    private static void requireTpSingleStatus(int code, String url, String body) {
+        if (code == 200 || code == 404) return;
+        throw new RuntimeException("TP single fetch failed: HTTP " + code + " url=" + url + " body=" + body);
     }
 }

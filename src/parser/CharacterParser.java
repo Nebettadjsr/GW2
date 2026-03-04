@@ -21,4 +21,12 @@ public final class CharacterParser {
 
         return new CharacterInfo(name, profession, race, gender, level, createdIso);
     }
+
+    public static JsonNode craftingNode(JsonNode characterRoot) {
+        return characterRoot == null ? null : characterRoot.get("crafting");
+    }
+
+    public static JsonNode recipesNode(JsonNode characterRoot) {
+        return characterRoot == null ? null : characterRoot.get("recipes");
+    }
 }

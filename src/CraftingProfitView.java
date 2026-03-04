@@ -16,6 +16,8 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import repo.DiscChoice;
+import sync.AccountSync;
+import sync.TpSync;
 import util.CoinUtils;
 
 import java.util.List;
@@ -393,8 +395,8 @@ public class CraftingProfitView {
             if (secondsLeft[0] <= 0) {
                 // do the refresh in this background thread
                 try {
-                    Gw2DbSync.syncAccountMaterials();
-                    Gw2DbSync.syncAccountBank();
+                    AccountSync.syncAccountMaterials();
+                    AccountSync.syncAccountRecipes();
 
                     // reset countdown
                     secondsLeft[0] = REFRESH_SECONDS;
@@ -455,7 +457,7 @@ public class CraftingProfitView {
             statusLabel.setText("Refreshing TP prices...");
             Thread t = new Thread(() -> {
                 try {
-                    Gw2DbSync.syncTpPricesRelevant();
+                    TpSync.syncTpPricesRelevant();
                     Platform.runLater(() -> {
                         statusLabel.setText("✅ TP refreshed.");
                         reloadTable.run();
