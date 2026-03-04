@@ -150,12 +150,8 @@ public class CraftingPlanner {
 // --- PER 1 craft mats sell value (GROSS) from leaf materials ---
         int matsSellGross = computeMatsSellValueFromTree(one.tree, tp, settings);
 
-// --- Apply TP fee consistently (your app assumes 15%) ---
-        int revenuePerCraftNet = applyTpFee(revenuePerCraftGross);
-        int matsSellNet        = applyTpFee(matsSellGross);
-
 // --- "Value add" profit per craft ---
-        int profitPerCraft = revenuePerCraftNet - matsSellNet;
+        int profitPerCraft = revenuePerCraftGross - matsSellGross;
 
 // --- Buy cost per craft (ONLY ONE craft!) ---
         int buyCostPerCraft = one.buyCostCopper;
@@ -163,7 +159,7 @@ public class CraftingPlanner {
 // --- TOTAL profit: if buying enabled, use real cash profit ---
         int totalProfit;
         if (settings.allowBuying) {
-            totalProfit = (revenuePerCraftNet - buyCostPerCraft) * craftableCount;
+            totalProfit = (revenuePerCraftGross - buyCostPerCraft) * craftableCount;
         } else {
             totalProfit = profitPerCraft * craftableCount;
         }
@@ -178,8 +174,8 @@ public class CraftingPlanner {
                 one.missingToBuy,
                 buyCostPerCraft,       // PER 1 craft  ✅ (THIS is your requested change)
 
-                matsSellNet,           // PER 1 craft (net)
-                revenuePerCraftNet,    // PER 1 craft (net)
+                matsSellGross,           // PER 1 craft (net)
+                revenuePerCraftGross,    // PER 1 craft (net)
                 profitPerCraft,        // PER 1 craft (value add)
                 totalProfit,           // TOTAL (cash profit if buying enabled)
 
@@ -384,13 +380,6 @@ public class CraftingPlanner {
     private static int ceilDiv(int a, int b) {
         return (a + b - 1) / b;
     }
-
-    private static int applyTpFee(int grossCopper) {
-        if (grossCopper <= 0) return 0;
-        // your current assumption: -15% TP fee
-        return (int) Math.floor(grossCopper * 0.85);
-    }
-
 
     private static class IntBox {
         int value;
