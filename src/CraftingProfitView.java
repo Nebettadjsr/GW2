@@ -501,14 +501,14 @@ public class CraftingProfitView {
 
                 CraftRow row = getTableRow().getItem();
                 if (row == null) {
-                    setText(formatCoin(copper.intValue()));
+                    setText(CoinUtils.format(copper.intValue()));
                     return;
                 }
 
                 int revenue = copper.intValue();
                 int matsValue = row.getMatsSellValueCopper();
 
-                setText(formatCoin(revenue));
+                setText(CoinUtils.format(revenue));
 
                 // Compare: crafting vs selling mats
                 if (revenue > matsValue) {
@@ -555,14 +555,14 @@ public class CraftingProfitView {
 
                 CraftRow row = getTableRow().getItem();
                 if (row == null) {
-                    setText(formatCoin(copper.intValue()));
+                    setText(CoinUtils.format(copper.intValue()));
                     return;
                 }
 
                 int matsValue = copper.intValue();
                 int revenue = row.getRevenueCopper();
 
-                setText(formatCoin(matsValue));
+                setText(CoinUtils.format(matsValue));
 
                 // Opposite logic of Item Sell column
                 if (matsValue > revenue) {
@@ -679,8 +679,8 @@ public class CraftingProfitView {
                                 int total = unit * qty;
 
                                 return name + " x" + qty + stackText +
-                                        "\n 1 = " + formatCoin(unit) +
-                                        " | total = " + formatCoin(total);
+                                        "\n 1 = " + CoinUtils.format(unit) +
+                                        " | total = " + CoinUtils.format(total);
                             })
                             .toList()
                                           );
@@ -776,7 +776,7 @@ public class CraftingProfitView {
                     return;
                 }
                 int v = copper.intValue();
-                setText((signed ? signedCoin(v) : formatCoin(v)));
+                setText((signed ? CoinUtils.formatSigned(v) : CoinUtils.formatSigned(v)));
                 setStyle("-fx-text-fill: white; -fx-font-family: 'Consolas';");
             }
         };
@@ -792,7 +792,7 @@ public class CraftingProfitView {
                     return;
                 }
                 int v = copper.intValue();
-                setText(signedCoin(v));
+                setText(CoinUtils.formatSigned(v));
                 // simple green/red effect
                 if (v > 0) {
                     setStyle("-fx-text-fill: #7CFC98; -fx-font-family: 'Consolas'; -fx-font-weight: bold;");
@@ -805,18 +805,7 @@ public class CraftingProfitView {
         };
     }
 
-    private static String formatCoin(int copper) {
-        int abs = Math.abs(copper);
-        int g = abs / 10000;
-        int s = (abs % 10000) / 100;
-        int c = abs % 100;
-        return g + "g " + s + "s " + c + "c";
-    }
 
-    private static String signedCoin(int copper) {
-        if (copper == 0) return "0g 0s 0c";
-        return (copper > 0 ? "+" : "-") + formatCoin(copper);
-    }
 
     private static TreeItem<String> toTreeItem(Node n, CraftingProfitController controller) {
         if (n == null) return new TreeItem<>("(no data)");
