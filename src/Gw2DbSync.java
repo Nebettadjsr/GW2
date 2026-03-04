@@ -1,5 +1,6 @@
 import api.BatchUtils;
 import api.Gw2ApiClient;
+import api.TpPriceApi;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import model.BankSlot;
@@ -7,6 +8,7 @@ import model.CharacterInfo;
 import model.MaterialStack;
 import parser.*;
 import repo.AppConfig;
+import util.DbBind;
 import util.TpPrice;
 
 import java.io.IOException;
@@ -70,16 +72,18 @@ public class Gw2DbSync {
 
                 ps.setInt(1, row.slot());
 
-                if (row.itemId() == null) ps.setNull(2, Types.INTEGER); else ps.setInt(2, row.itemId());
-                if (row.count()  == null) ps.setNull(3, Types.INTEGER); else ps.setInt(3, row.count());
+                ps.setInt(1, row.slot());
 
-                if (row.binding() == null) ps.setNull(4, Types.VARCHAR); else ps.setString(4, row.binding());
-                if (row.boundTo() == null) ps.setNull(5, Types.VARCHAR); else ps.setString(5, row.boundTo());
+                DbBind.setIntOrNull(ps, 2, row.itemId());
+                DbBind.setIntOrNull(ps, 3, row.count());
 
-                if (row.charges() == null) ps.setNull(6, Types.INTEGER); else ps.setInt(6, row.charges());
+                DbBind.setStringOrNull(ps, 4, row.binding());
+                DbBind.setStringOrNull(ps, 5, row.boundTo());
 
-                if (row.statsId() == null) ps.setNull(7, Types.INTEGER); else ps.setInt(7, row.statsId());
-                if (row.statsAttrsJson() == null) ps.setNull(8, Types.VARCHAR); else ps.setString(8, row.statsAttrsJson());
+                DbBind.setIntOrNull(ps, 6, row.charges());
+
+                DbBind.setIntOrNull(ps, 7, row.statsId());
+                DbBind.setStringOrNull(ps, 8, row.statsAttrsJson());
 
                 ps.addBatch();
             }
@@ -116,8 +120,7 @@ public class Gw2DbSync {
                 ps.setInt(2, row.category());
                 ps.setInt(3, row.count());
 
-                if (row.binding() != null) ps.setString(4, row.binding());
-                else ps.setNull(4, Types.VARCHAR);
+                DbBind.setStringOrNull(ps, 4, row.binding());
 
                 ps.addBatch();
             }
@@ -206,29 +209,26 @@ public class Gw2DbSync {
 
     private static long upsertCharacter(Connection con, model.CharacterInfo c) throws SQLException {
         String sql = """
-    INSERT INTO characters (name, profession, race, gender, level, created_at_gw, fetched_at)
-    VALUES (?, ?, ?, ?, ?, ?::timestamptz, now())
-    ON CONFLICT (name) DO UPDATE SET
-      profession    = EXCLUDED.profession,
-      race          = EXCLUDED.race,
-      gender        = EXCLUDED.gender,
-      level         = EXCLUDED.level,
-      created_at_gw = EXCLUDED.created_at_gw,
-      fetched_at    = EXCLUDED.fetched_at
-    RETURNING character_id
-    """;
+        INSERT INTO characters (name, profession, race, gender, level, created_at_gw, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?::timestamptz, now())
+        ON CONFLICT (name) DO UPDATE SET
+          profession    = EXCLUDED.profession,
+          race          = EXCLUDED.race,
+          gender        = EXCLUDED.gender,
+          level         = EXCLUDED.level,
+          created_at_gw = EXCLUDED.created_at_gw,
+          fetched_at    = EXCLUDED.fetched_at
+        RETURNING character_id
+        """;
 
         try (PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setString(1, c.name());
-            ps.setString(2, c.profession());
-            ps.setString(3, c.race());
-            ps.setString(4, c.gender());
+            util.DbBind.setStringOrNull(ps, 1, c.name());
+            util.DbBind.setStringOrNull(ps, 2, c.profession());
+            util.DbBind.setStringOrNull(ps, 3, c.race());
+            util.DbBind.setStringOrNull(ps, 4, c.gender());
 
-            if (c.level() != null) ps.setInt(5, c.level());
-            else ps.setNull(5, Types.INTEGER);
-
-            if (c.createdIso() != null) ps.setString(6, c.createdIso());
-            else ps.setNull(6, Types.VARCHAR);
+            util.DbBind.setIntOrNull(ps, 5, c.level());
+            util.DbBind.setStringOrNull(ps, 6, c.createdIso());
 
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) throw new SQLException("Upsert character failed (no RETURNING row)");
@@ -302,34 +302,26 @@ public class Gw2DbSync {
              Statement st = con.createStatement()) {
 
             try (ResultSet rs = st.executeQuery("""
-                SELECT DISTINCT item_id
-                FROM account_bank
-                WHERE item_id IS NOT NULL
-            """)) {
+            SELECT DISTINCT item_id FROM account_bank WHERE item_id IS NOT NULL
+        """)) {
                 while (rs.next()) itemIds.add(rs.getInt(1));
             }
 
             try (ResultSet rs = st.executeQuery("""
-                SELECT DISTINCT item_id
-                FROM account_materials
-                WHERE item_id IS NOT NULL
-            """)) {
+            SELECT DISTINCT item_id FROM account_materials WHERE item_id IS NOT NULL
+        """)) {
                 while (rs.next()) itemIds.add(rs.getInt(1));
             }
 
             try (ResultSet rs = st.executeQuery("""
-                SELECT DISTINCT r.output_item_id
-                FROM recipes r
-                WHERE r.output_item_id IS NOT NULL
-            """)) {
+            SELECT DISTINCT r.output_item_id FROM recipes r WHERE r.output_item_id IS NOT NULL
+        """)) {
                 while (rs.next()) itemIds.add(rs.getInt(1));
             }
 
             try (ResultSet rs = st.executeQuery("""
-                SELECT DISTINCT ri.item_id
-                FROM recipe_ingredients ri
-                WHERE ri.item_id IS NOT NULL
-            """)) {
+            SELECT DISTINCT ri.item_id FROM recipe_ingredients ri WHERE ri.item_id IS NOT NULL
+        """)) {
                 while (rs.next()) itemIds.add(rs.getInt(1));
             }
         }
@@ -352,118 +344,92 @@ public class Gw2DbSync {
           fetched_at = EXCLUDED.fetched_at
         """;
 
-        try (Connection con = openConnection();
-             PreparedStatement ps = con.prepareStatement(upsertSql)) {
+        int done = 0;
 
-            con.setAutoCommit(false);
+        for (List<Integer> batch : BatchUtils.chunk(ids, 200)) {
 
-            int done = 0;
+            // 1) HTTP + parsing FIRST (no DB connection held)
+            List<TpPrice> quotes = fetchTpBatchParsed(batch);
 
-            for (List<Integer> batch : BatchUtils.chunk(ids, 200)) {
-                String idsParam = BatchUtils.idsParam(batch);
-                if (idsParam.isBlank()) continue;
+            // 2) DB work SECOND (short transaction)
+            try (Connection con = openConnection();
+                 PreparedStatement ps = con.prepareStatement(upsertSql)) {
 
-                String url = "https://api.guildwars2.com/v2/commerce/prices?ids=" + idsParam;
+                con.setAutoCommit(false);
 
-                HttpResponse<String> res = Gw2ApiClient.getPublicResponse(url);
-                int code = res.statusCode();
-
-                // 1) If batch request failed (404 or anything not 200/206) -> retry individually
-                if (code == 404) {
-                    System.out.println("TP batch HTTP 404. Retrying individually. Example ids=" +
-                                               batch.stream().limit(10).toList() + (batch.size() > 10 ? " ..." : ""));
-
-                    for (int id : batch) {
-                        JsonNode one = fetchTpSingle(id);
-                        if (one == null) continue;
-
-                        TpPrice q = TpPriceParser.parse(one);
-                        if (q == null) continue;
-
-                        if (!q.hasMarketData()) upsertTpRow(ps, q.itemId(), null, null, null, null);
-                        else upsertTpRow(ps, q.itemId(), q.buyQty(), q.buyUnit(), q.sellQty(), q.sellUnit());
-                    }
-
-                    ps.executeBatch();
-                    con.commit();
-
-                    done += batch.size();
-                    System.out.println("Fetched TP batch: " + Math.min(done, ids.size()) + " / " + ids.size());
-                    continue;
-                }
-
-                if (code != 200 && code != 206) {
-                    throw new RuntimeException("TP price fetch failed: HTTP " + code + " body=" + res.body());
-                }
-
-                JsonNode root = Gw2ApiClient.readJson(res.body());
-
-                Set<Integer> returned = new HashSet<>();
-
-                for (JsonNode p : root) {
-                    TpPrice q = TpPriceParser.parse(p);
+                for (TpPrice q : quotes) {
                     if (q == null) continue;
 
-                    int itemId = q.itemId();
-                    returned.add(itemId);
-
-                    if (!q.hasMarketData()) upsertTpRow(ps, itemId, null, null, null, null);
-                    else upsertTpRow(ps, itemId, q.buyQty(), q.buyUnit(), q.sellQty(), q.sellUnit());
-                }
-
-                if (code == 206) {
-                    List<Integer> missing = new ArrayList<>();
-                    for (int id : batch) if (!returned.contains(id)) missing.add(id);
-
-                    if (!missing.isEmpty()) {
-                        System.out.println("TP batch HTTP 206. Missing=" + missing.size() + " -> retry individually.");
-
-                        for (int id : missing) {
-                            JsonNode one = fetchTpSingle(id);
-                            if (one == null) continue;
-
-                            TpPrice q = TpPriceParser.parse(one);
-                            if (q == null) continue;
-
-                            if (!q.hasMarketData()) upsertTpRow(ps, q.itemId(), null, null, null, null);
-                            else upsertTpRow(ps, q.itemId(), q.buyQty(), q.buyUnit(), q.sellQty(), q.sellUnit());
-                        }
+                    if (!q.hasMarketData()) {
+                        upsertTpRow(ps, q.itemId(), null, null, null, null);
+                    } else {
+                        upsertTpRow(ps, q.itemId(), q.buyQty(), q.buyUnit(), q.sellQty(), q.sellUnit());
                     }
                 }
 
                 ps.executeBatch();
                 con.commit();
-
-                done += batch.size();
-                System.out.println("Fetched TP batch: " + Math.min(done, ids.size()) + " / " + ids.size());
             }
 
-            System.out.println("✅ TP prices synced.");
+            done += batch.size();
+            System.out.println("Fetched TP progress: " + Math.min(done, ids.size()) + " / " + ids.size());
         }
+
+        System.out.println("✅ TP prices synced.");
+    }
+
+    private static List<TpPrice> fetchTpBatchParsed(List<Integer> batch) throws IOException, InterruptedException {
+        api.TpPriceApi.BatchResult br = api.TpPriceApi.fetchBatch(batch);
+
+        List<TpPrice> out = new ArrayList<>();
+
+        // 404: retry individually
+        if (br.statusCode() == 404) {
+            for (int id : batch) {
+                JsonNode one = api.TpPriceApi.fetchSingle(id);
+                if (one == null) continue;
+
+                TpPrice q = TpPriceParser.parse(one);
+                if (q != null) out.add(q);
+            }
+            return out;
+        }
+
+        // 200/206 normal
+        for (JsonNode p : br.array()) {
+            TpPrice q = TpPriceParser.parse(p);
+            if (q != null) out.add(q);
+        }
+
+        // 206: retry missing individually
+        if (br.statusCode() == 206) {
+            Set<Integer> returned = br.returnedIds();
+            for (int id : batch) {
+                if (returned.contains(id)) continue;
+
+                JsonNode one = api.TpPriceApi.fetchSingle(id);
+                if (one == null) continue;
+
+                TpPrice q = TpPriceParser.parse(one);
+                if (q != null) out.add(q);
+            }
+        }
+
+        return out;
     }
 
     private static void upsertTpRow(PreparedStatement ps, int itemId,
                                     Long buyQty, Integer buyUnit,
                                     Long sellQty, Integer sellUnit) throws SQLException {
+
         ps.setInt(1, itemId);
-
-        if (buyQty == null) ps.setNull(2, Types.BIGINT); else ps.setLong(2, buyQty);
-        if (buyUnit == null) ps.setNull(3, Types.INTEGER); else ps.setInt(3, buyUnit);
-
-        if (sellQty == null) ps.setNull(4, Types.BIGINT); else ps.setLong(4, sellQty);
-        if (sellUnit == null) ps.setNull(5, Types.INTEGER); else ps.setInt(5, sellUnit);
+        util.DbBind.setLongOrNull(ps, 2, buyQty);
+        util.DbBind.setIntOrNull(ps, 3, buyUnit);
+        util.DbBind.setLongOrNull(ps, 4, sellQty);
+        util.DbBind.setIntOrNull(ps, 5, sellUnit);
 
         ps.addBatch();
     }
-
-
-    private static JsonNode fetchTpSingle(int itemId) throws IOException, InterruptedException {
-        String url = "https://api.guildwars2.com/v2/commerce/prices/" + itemId;
-        HttpResponse<String> res = Gw2ApiClient.getPublicResponse(url);
-        if (res.statusCode() != 200) return null;
-        return Gw2ApiClient.readJson(res.body());
-    }
-
 
     // ---------------------------
     // 5) Icons
@@ -472,6 +438,7 @@ public class Gw2DbSync {
     public static void syncItemIconUrls() throws Exception {
         List<Integer> ids = new ArrayList<>();
 
+        // 1) Read ids from DB (short DB use)
         try (Connection con = openConnection();
              Statement st = con.createStatement();
              ResultSet rs = st.executeQuery("""
@@ -487,32 +454,52 @@ public class Gw2DbSync {
         System.out.println("Items missing icon_url: " + ids.size());
         if (ids.isEmpty()) return;
 
+        final int batchSize = 200;
+
         String updateSql = """
         UPDATE items
         SET icon_url = ?
         WHERE item_id = ?
         """;
 
-        try (Connection con = openConnection();
-             PreparedStatement psUpdate = con.prepareStatement(updateSql)) {
+        int done = 0;
 
-            con.setAutoCommit(false);
+        for (List<Integer> batch : BatchUtils.chunk(ids, batchSize)) {
+            String idsParam = BatchUtils.idsParam(batch);
+            if (idsParam.isBlank()) continue;
 
-            for (List<Integer> batch : BatchUtils.chunk(ids, 200)) {
-                String idsParam = BatchUtils.idsParam(batch);
-                if (idsParam.isBlank()) continue;
+            // 2) HTTP FIRST (no DB connection held)
+            String url = "https://api.guildwars2.com/v2/items?ids=" + idsParam;
+            JsonNode root = Gw2ApiClient.getPublicArray(url);
 
-                String url = "https://api.guildwars2.com/v2/items?ids=" + idsParam;
-                JsonNode root = Gw2ApiClient.getPublicArray(url);
+            // Collect updates in memory
+            List<int[]> updates = new ArrayList<>(); // [itemId, dummy]
+            List<String> iconUrls = new ArrayList<>();
 
-                int updatedThisBatch = 0;
-                for (JsonNode item : root) {
-                    int itemId = item.get("id").asInt();
-                    JsonNode iconNode = item.get("icon");
-                    if (iconNode == null || iconNode.isNull()) continue;
+            for (JsonNode item : root) {
+                if (item == null || item.isNull()) continue;
 
-                    String iconUrl = iconNode.asText();
-                    if (iconUrl == null || iconUrl.isBlank()) continue;
+                int itemId = item.path("id").asInt(0);
+                if (itemId <= 0) continue;
+
+                String iconUrl = item.hasNonNull("icon") ? item.get("icon").asText() : null;
+                if (iconUrl == null || iconUrl.isBlank()) continue;
+
+                updates.add(new int[]{itemId});
+                iconUrls.add(iconUrl);
+            }
+
+            // 3) DB SECOND (short transaction)
+            int updatedThisBatch = 0;
+
+            try (Connection con = openConnection();
+                 PreparedStatement psUpdate = con.prepareStatement(updateSql)) {
+
+                con.setAutoCommit(false);
+
+                for (int i = 0; i < updates.size(); i++) {
+                    int itemId = updates.get(i)[0];
+                    String iconUrl = iconUrls.get(i);
 
                     psUpdate.setString(1, iconUrl);
                     psUpdate.setInt(2, itemId);
@@ -522,8 +509,11 @@ public class Gw2DbSync {
 
                 psUpdate.executeBatch();
                 con.commit();
-                System.out.println("Updated icon_url batch: +" + updatedThisBatch);
             }
+
+            done += batch.size();
+            System.out.println("Updated icon_url batch: +" + updatedThisBatch + " | progress " +
+                                       Math.min(done, ids.size()) + " / " + ids.size());
         }
 
         System.out.println("✅ items.icon_url populated.");
@@ -547,68 +537,134 @@ public class Gw2DbSync {
         WHERE item_id = ?
         """;
 
-        int downloaded = 0;
-        int skippedNoUrl = 0;
+        // 1) DB FIRST (read what we need) — no downloads yet
+        record IconJob(int itemId, String iconUrl) {}
+        List<IconJob> jobs = new ArrayList<>();
 
         try (Connection con = openConnection();
              PreparedStatement psSelect = con.prepareStatement(selectSql);
+             ResultSet rs = psSelect.executeQuery()) {
+
+            while (rs.next()) {
+                int itemId = rs.getInt("item_id");
+                String iconUrl = rs.getString("icon_url");
+                if (iconUrl == null || iconUrl.isBlank()) continue;
+
+                jobs.add(new IconJob(itemId, iconUrl));
+            }
+        }
+
+        System.out.println("Icon jobs to process: " + jobs.size());
+        if (jobs.isEmpty()) return;
+
+        // We'll batch DB updates
+        record IconUpdate(int itemId, String iconPath) {}
+        List<IconUpdate> updates = new ArrayList<>();
+
+        int downloaded = 0;
+        int skippedNoUrl = 0;
+        int skippedAlreadyExists = 0;
+        int failed = 0;
+
+        // 2) IO (downloads) — no DB connection held
+        for (IconJob job : jobs) {
+            int itemId = job.itemId();
+            String iconUrl = job.iconUrl();
+
+            if (iconUrl == null || iconUrl.isBlank()) {
+                skippedNoUrl++;
+                continue;
+            }
+
+            Path target = itemsDir.resolve(itemId + ".png");
+
+            // If already on disk -> just update DB
+            if (Files.exists(target) && Files.size(target) > 0) {
+                updates.add(new IconUpdate(itemId, target.toString()));
+                skippedAlreadyExists++;
+                continue;
+            }
+
+            try {
+                var res = Gw2ApiClient.getBytesResponse(iconUrl);
+
+                if (res.statusCode() != 200 || res.body() == null || res.body().length == 0) {
+                    System.out.println("Icon download failed item " + itemId + " HTTP " + res.statusCode());
+                    failed++;
+                    continue;
+                }
+
+                Path tmp = target.resolveSibling(itemId + ".png.tmp");
+                Files.write(tmp, res.body(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+
+                updates.add(new IconUpdate(itemId, target.toString()));
+                downloaded++;
+
+            } catch (Exception ex) {
+                System.out.println("Icon download exception item " + itemId + ": " + ex.getMessage());
+                failed++;
+            }
+
+            // Flush DB updates in chunks so memory doesn't grow forever
+            if (updates.size() >= 200) {
+                flushIconPathUpdates(updateSql, updates);
+                updates.clear();
+                System.out.println("Downloaded icons: " + downloaded + " | failed=" + failed);
+            }
+        }
+
+        // Final flush
+        flushIconPathUpdates(updateSql, updates);
+
+        System.out.println("✅ Item icons synced. Downloaded=" + downloaded +
+                                   " skippedNoUrl=" + skippedNoUrl +
+                                   " skippedAlreadyExists=" + skippedAlreadyExists +
+                                   " failed=" + failed);
+    }
+
+    /** Writes icon_path updates in a short transaction. */
+    private static void flushIconPathUpdates(String updateSql, List<?> updatesRaw) throws SQLException {
+        if (updatesRaw == null || updatesRaw.isEmpty()) return;
+
+        // We know the list holds IconUpdate records from above
+        @SuppressWarnings("unchecked")
+        List<Object> updates = (List<Object>) updatesRaw;
+
+        try (Connection con = openConnection();
              PreparedStatement psUpdate = con.prepareStatement(updateSql)) {
 
             con.setAutoCommit(false);
 
-            try (ResultSet rs = psSelect.executeQuery()) {
-                while (rs.next()) {
-                    int itemId = rs.getInt("item_id");
-                    String iconUrl = rs.getString("icon_url");
+            for (Object o : updates) {
+                // unpack record without needing it visible here
+                // (works because record has accessor methods)
+                int itemId;
+                String iconPath;
 
-                    if (iconUrl == null || iconUrl.isBlank()) {
-                        skippedNoUrl++;
-                        continue;
-                    }
-
-                    Path target = itemsDir.resolve(itemId + ".png");
-
-                    if (Files.exists(target) && Files.size(target) > 0) {
-                        psUpdate.setString(1, target.toString());
-                        psUpdate.setInt(2, itemId);
-                        psUpdate.addBatch();
-                        continue;
-                    }
-
-                    HttpResponse<byte[]> res = Gw2ApiClient.getBytesResponse(iconUrl);
-                    if (res.statusCode() != 200 || res.body() == null || res.body().length == 0) {
-                        System.out.println("Icon download failed item " + itemId + " HTTP " + res.statusCode());
-                        continue;
-                    }
-
-                    Path tmp = target.resolveSibling(itemId + ".png.tmp");
-                    Files.write(tmp, res.body(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-                    Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-
-                    psUpdate.setString(1, target.toString());
-                    psUpdate.setInt(2, itemId);
-                    psUpdate.addBatch();
-
-                    downloaded++;
-                    if (downloaded % 100 == 0) {
-                        psUpdate.executeBatch();
-                        con.commit();
-                        System.out.println("Downloaded icons: " + downloaded);
-                    }
+                try {
+                    itemId = (int) o.getClass().getMethod("itemId").invoke(o);
+                    iconPath = (String) o.getClass().getMethod("iconPath").invoke(o);
+                } catch (Exception e) {
+                    throw new SQLException("Bad update row type: " + o.getClass(), e);
                 }
+
+                psUpdate.setString(1, iconPath);
+                psUpdate.setInt(2, itemId);
+                psUpdate.addBatch();
             }
 
             psUpdate.executeBatch();
             con.commit();
         }
-
-        System.out.println("✅ Item icons synced. Downloaded=" + downloaded + " skippedNoUrl=" + skippedNoUrl);
     }
 
 // -------- Initial fill helpers --------
 
     public static void syncItemsByIds(Set<Integer> itemIds) throws Exception {
         if (itemIds == null || itemIds.isEmpty()) return;
+
+        final int batchSize = 200;
 
         String itemSql = """
         INSERT INTO items (item_id, name, type, rarity, vendor_value, fetched_at)
@@ -623,37 +679,55 @@ public class Gw2DbSync {
 
         List<Integer> idsList = new ArrayList<>(itemIds);
 
+        int done = 0;
 
-        try (Connection con = openConnection();
-             PreparedStatement ps = con.prepareStatement(itemSql)) {
+        for (List<Integer> batch : BatchUtils.chunk(idsList, batchSize)) {
+            String idsParam = BatchUtils.idsParam(batch);
+            if (idsParam.isBlank()) continue;
 
-            con.setAutoCommit(false);
+            // 1) HTTP FIRST (no DB connection held)
+            String url = "https://api.guildwars2.com/v2/items?ids=" + idsParam;
+            JsonNode root = Gw2ApiClient.getPublicArray(url);
 
-            for (List<Integer> batch : BatchUtils.chunk(idsList, 200)) {
-                String idsParam = BatchUtils.idsParam(batch);
-                if (idsParam.isBlank()) continue;
+            // Parse into lightweight in-memory rows
+            record ItemRow(int itemId, String name, String type, String rarity, int vendorValue) {}
+            List<ItemRow> rows = new ArrayList<>(root.size());
 
-                String url = "https://api.guildwars2.com/v2/items?ids=" + idsParam;
-                JsonNode root = Gw2ApiClient.getPublicArray(url);
+            for (JsonNode it : root) {
+                if (it == null || it.isNull()) continue;
 
-                for (JsonNode it : root) {
-                    int itemId = it.get("id").asInt();
-                    String name = it.hasNonNull("name") ? it.get("name").asText() : null;
-                    String type = it.hasNonNull("type") ? it.get("type").asText() : null;
-                    String rarity = it.hasNonNull("rarity") ? it.get("rarity").asText() : null;
-                    int vendorValue = it.hasNonNull("vendor_value") ? it.get("vendor_value").asInt() : 0;
+                int itemId = it.path("id").asInt(0);
+                if (itemId <= 0) continue;
 
-                    ps.setInt(1, itemId);
-                    ps.setString(2, name);
-                    ps.setString(3, type);
-                    ps.setString(4, rarity);
-                    ps.setInt(5, vendorValue);
+                String name = it.hasNonNull("name") ? it.get("name").asText() : null;
+                String type = it.hasNonNull("type") ? it.get("type").asText() : null;
+                String rarity = it.hasNonNull("rarity") ? it.get("rarity").asText() : null;
+                int vendorValue = it.hasNonNull("vendor_value") ? it.get("vendor_value").asInt() : 0;
+
+                rows.add(new ItemRow(itemId, name, type, rarity, vendorValue));
+            }
+
+            // 2) DB SECOND (short transaction)
+            try (Connection con = openConnection();
+                 PreparedStatement ps = con.prepareStatement(itemSql)) {
+
+                con.setAutoCommit(false);
+
+                for (ItemRow r : rows) {
+                    ps.setInt(1, r.itemId());
+                    ps.setString(2, r.name());
+                    ps.setString(3, r.type());
+                    ps.setString(4, r.rarity());
+                    ps.setInt(5, r.vendorValue());
                     ps.addBatch();
                 }
 
                 ps.executeBatch();
                 con.commit();
             }
+
+            done += batch.size();
+            System.out.println("Items batch progress: " + Math.min(done, idsList.size()) + " / " + idsList.size());
         }
     }
 
@@ -661,7 +735,7 @@ public class Gw2DbSync {
 
         final int batchSize = 200;
 
-        // 1) Fetch all recipe IDs
+        // 1) Fetch all recipe IDs (HTTP only)
         JsonNode idsRoot = Gw2ApiClient.getPublicArray("https://api.guildwars2.com/v2/recipes");
 
         List<Integer> ids = new ArrayList<>(idsRoot.size());
@@ -673,7 +747,7 @@ public class Gw2DbSync {
         System.out.println("Global recipes to sync (SAFE): " + ids.size());
         if (ids.isEmpty()) return;
 
-        // Upsert recipes (NO ingredients here)
+        // SQL: recipes upsert (no ingredients)
         String recipeSql = """
         INSERT INTO recipes
         (recipe_id, type, output_item_id, output_item_count, min_rating, time_to_craft_ms, disciplines, flags, chat_link, guild_ingredients, fetched_at)
@@ -691,145 +765,186 @@ public class Gw2DbSync {
           fetched_at = EXCLUDED.fetched_at
         """;
 
-        // We will collect all item IDs needed (outputs + ingredients)
-        Set<Integer> neededItemIds = new HashSet<>();
-
-        // ---------------------------
-        // Pass 1: recipes only + collect all item ids
-        // ---------------------------
-        try (Connection con = openConnection();
-             PreparedStatement psRecipe = con.prepareStatement(recipeSql)) {
-
-            con.setAutoCommit(false);
-
-            int done = 0;
-
-            for (List<Integer> batch : BatchUtils.chunk(ids, batchSize)) {
-                String idsParam = BatchUtils.idsParam(batch);
-                if (idsParam.isBlank()) continue;
-
-                String url = "https://api.guildwars2.com/v2/recipes?ids=" + idsParam;
-                JsonNode root = Gw2ApiClient.getPublicArray(url);
-
-                for (JsonNode r : root) {
-                    int recipeId    = r.path("id").asInt(0);
-                    if (recipeId <= 0) continue;
-
-                    String type     = r.path("type").asText(null);
-                    int outputItem  = r.path("output_item_id").asInt(0);
-                    int outputCount = r.path("output_item_count").asInt(0);
-                    int minRating   = r.path("min_rating").asInt(0);
-                    int craftTime   = r.path("time_to_craft_ms").asInt(0);
-
-                    if (outputItem > 0) neededItemIds.add(outputItem);
-
-                    // disciplines text[]
-                    JsonNode discsNode = r.get("disciplines");
-                    String[] discs = (discsNode != null && discsNode.isArray())
-                                     ? new String[discsNode.size()]
-                                     : new String[0];
-                    for (int d = 0; d < discs.length; d++) discs[d] = discsNode.get(d).asText();
-
-                    // flags text[]
-                    JsonNode flagsNode = r.get("flags");
-                    String[] flags = (flagsNode != null && flagsNode.isArray())
-                                     ? new String[flagsNode.size()]
-                                     : new String[0];
-                    for (int f = 0; f < flags.length; f++) flags[f] = flagsNode.get(f).asText();
-
-                    String chatLink = r.hasNonNull("chat_link") ? r.get("chat_link").asText() : null;
-                    String guildIngredientsJson = r.hasNonNull("guild_ingredients") ? r.get("guild_ingredients").toString() : null;
-
-                    psRecipe.setInt(1, recipeId);
-                    psRecipe.setString(2, type);
-                    psRecipe.setInt(3, outputItem);
-                    psRecipe.setInt(4, outputCount);
-                    psRecipe.setInt(5, minRating);
-                    psRecipe.setInt(6, craftTime);
-                    psRecipe.setArray(7, con.createArrayOf("text", discs));
-                    psRecipe.setArray(8, con.createArrayOf("text", flags));
-                    psRecipe.setString(9, chatLink);
-                    psRecipe.setString(10, guildIngredientsJson);
-                    psRecipe.addBatch();
-
-                    // collect ingredient item ids (but DO NOT insert yet)
-                    JsonNode ingredients = r.get("ingredients");
-                    if (ingredients != null && ingredients.isArray()) {
-                        for (JsonNode ing : ingredients) {
-                            int itemId = ing.path("item_id").asInt(0);
-                            if (itemId > 0) neededItemIds.add(itemId);
-                        }
-                    }
-                }
-
-                psRecipe.executeBatch();
-                con.commit();
-
-                done += batch.size();
-                System.out.println("Global recipes-only progress: " + Math.min(done, ids.size()) + " / " + ids.size());
-            }
-        }
-
-        System.out.println("Global items needed: " + neededItemIds.size());
-
-        // 2) Insert/Upsert ALL needed items (now FK can be satisfied)
-        syncItemsByIds(neededItemIds);
-
-        // ---------------------------
-        // Pass 2: now insert ingredients safely
-        // ---------------------------
+        // SQL: ingredients upsert
         String ingredientSql = """
         INSERT INTO recipe_ingredients (recipe_id, item_id, count)
         VALUES (?, ?, ?)
         ON CONFLICT (recipe_id, item_id) DO UPDATE SET count = EXCLUDED.count
         """;
 
-        try (Connection con = openConnection();
-             PreparedStatement psIng = con.prepareStatement(ingredientSql)) {
+        // Collect items needed (outputs + ingredients) so FKs are satisfied
+        Set<Integer> neededItemIds = new HashSet<>();
 
-            con.setAutoCommit(false);
+        // ---------------------------
+        // Pass 1: HTTP batch -> parse -> short DB tx to upsert recipes
+        // ---------------------------
+        record RecipeRow(
+                int recipeId,
+                String type,
+                int outputItem,
+                int outputCount,
+                int minRating,
+                int craftTime,
+                String[] discs,
+                String[] flags,
+                String chatLink,
+                String guildIngredientsJson
+        ) {}
 
-            int counter = 0;
-            int done = 0;
+        int done = 0;
 
-            for (List<Integer> batch : BatchUtils.chunk(ids, batchSize)) {
-                String idsParam = BatchUtils.idsParam(batch);
-                if (idsParam.isBlank()) continue;
+        for (List<Integer> batch : BatchUtils.chunk(ids, batchSize)) {
+            String idsParam = BatchUtils.idsParam(batch);
+            if (idsParam.isBlank()) continue;
 
-                String url = "https://api.guildwars2.com/v2/recipes?ids=" + idsParam;
-                JsonNode root = Gw2ApiClient.getPublicArray(url);
+            // 1) HTTP FIRST
+            String url = "https://api.guildwars2.com/v2/recipes?ids=" + idsParam;
+            JsonNode root = Gw2ApiClient.getPublicArray(url);
 
-                for (JsonNode r : root) {
-                    int recipeId = r.path("id").asInt(0);
-                    if (recipeId <= 0) continue;
+            // 2) Parse in memory
+            List<RecipeRow> rows = new ArrayList<>(root.size());
 
-                    JsonNode ingredients = r.get("ingredients");
-                    if (ingredients == null || !ingredients.isArray()) continue;
+            for (JsonNode r : root) {
+                if (r == null || r.isNull()) continue;
 
+                int recipeId = r.path("id").asInt(0);
+                if (recipeId <= 0) continue;
+
+                String type = r.path("type").asText(null);
+                int outputItem = r.path("output_item_id").asInt(0);
+                int outputCount = r.path("output_item_count").asInt(0);
+                int minRating = r.path("min_rating").asInt(0);
+                int craftTime = r.path("time_to_craft_ms").asInt(0);
+
+                if (outputItem > 0) neededItemIds.add(outputItem);
+
+                // disciplines
+                JsonNode discsNode = r.get("disciplines");
+                String[] discs = (discsNode != null && discsNode.isArray())
+                                 ? new String[discsNode.size()]
+                                 : new String[0];
+                for (int i = 0; i < discs.length; i++) discs[i] = discsNode.get(i).asText();
+
+                // flags
+                JsonNode flagsNode = r.get("flags");
+                String[] flags = (flagsNode != null && flagsNode.isArray())
+                                 ? new String[flagsNode.size()]
+                                 : new String[0];
+                for (int i = 0; i < flags.length; i++) flags[i] = flagsNode.get(i).asText();
+
+                String chatLink = r.hasNonNull("chat_link") ? r.get("chat_link").asText() : null;
+                String guildIngredientsJson = r.hasNonNull("guild_ingredients") ? r.get("guild_ingredients").toString() : null;
+
+                rows.add(new RecipeRow(
+                        recipeId, type, outputItem, outputCount, minRating, craftTime,
+                        discs, flags, chatLink, guildIngredientsJson
+                ));
+
+                // collect ingredient item ids (do NOT insert yet)
+                JsonNode ingredients = r.get("ingredients");
+                if (ingredients != null && ingredients.isArray()) {
                     for (JsonNode ing : ingredients) {
                         int itemId = ing.path("item_id").asInt(0);
-                        int count  = ing.path("count").asInt(0);
-                        if (itemId <= 0 || count <= 0) continue;
+                        if (itemId > 0) neededItemIds.add(itemId);
+                    }
+                }
+            }
 
-                        psIng.setInt(1, recipeId);
-                        psIng.setInt(2, itemId);
-                        psIng.setInt(3, count);
-                        psIng.addBatch();
+            // 3) DB SECOND (short transaction)
+            try (Connection con = openConnection();
+                 PreparedStatement ps = con.prepareStatement(recipeSql)) {
 
-                        if (++counter % 5000 == 0) {
-                            psIng.executeBatch();
-                            con.commit();
-                            System.out.println("Global ingredients inserted: " + counter);
-                        }
+                con.setAutoCommit(false);
+
+                for (RecipeRow rr : rows) {
+                    ps.setInt(1, rr.recipeId());
+                    ps.setString(2, rr.type());
+                    ps.setInt(3, rr.outputItem());
+                    ps.setInt(4, rr.outputCount());
+                    ps.setInt(5, rr.minRating());
+                    ps.setInt(6, rr.craftTime());
+                    ps.setArray(7, con.createArrayOf("text", rr.discs()));
+                    ps.setArray(8, con.createArrayOf("text", rr.flags()));
+                    ps.setString(9, rr.chatLink());
+                    ps.setString(10, rr.guildIngredientsJson());
+                    ps.addBatch();
+                }
+
+                ps.executeBatch();
+                con.commit();
+            }
+
+            done += batch.size();
+            System.out.println("Global recipes-only progress: " + Math.min(done, ids.size()) + " / " + ids.size());
+        }
+
+        System.out.println("Global items needed: " + neededItemIds.size());
+
+        // Ensure items exist before ingredient inserts (FK safety)
+        syncItemsByIds(neededItemIds);
+
+        // ---------------------------
+        // Pass 2: HTTP batch -> parse -> short DB tx to upsert ingredients
+        // ---------------------------
+        record IngRow(int recipeId, int itemId, int count) {}
+
+        int ingDone = 0;
+
+        for (List<Integer> batch : BatchUtils.chunk(ids, batchSize)) {
+            String idsParam = BatchUtils.idsParam(batch);
+            if (idsParam.isBlank()) continue;
+
+            // 1) HTTP FIRST
+            String url = "https://api.guildwars2.com/v2/recipes?ids=" + idsParam;
+            JsonNode root = Gw2ApiClient.getPublicArray(url);
+
+            // 2) Parse in memory
+            List<IngRow> rows = new ArrayList<>();
+
+            for (JsonNode r : root) {
+                if (r == null || r.isNull()) continue;
+
+                int recipeId = r.path("id").asInt(0);
+                if (recipeId <= 0) continue;
+
+                JsonNode ingredients = r.get("ingredients");
+                if (ingredients == null || !ingredients.isArray()) continue;
+
+                for (JsonNode ing : ingredients) {
+                    int itemId = ing.path("item_id").asInt(0);
+                    int count = ing.path("count").asInt(0);
+                    if (itemId <= 0 || count <= 0) continue;
+
+                    rows.add(new IngRow(recipeId, itemId, count));
+                }
+            }
+
+            // 3) DB SECOND (short transaction)
+            try (Connection con = openConnection();
+                 PreparedStatement psIng = con.prepareStatement(ingredientSql)) {
+
+                con.setAutoCommit(false);
+
+                int counter = 0;
+
+                for (IngRow ir : rows) {
+                    psIng.setInt(1, ir.recipeId());
+                    psIng.setInt(2, ir.itemId());
+                    psIng.setInt(3, ir.count());
+                    psIng.addBatch();
+
+                    if (++counter % 5000 == 0) {
+                        psIng.executeBatch();
+                        con.commit();
                     }
                 }
 
-                done += batch.size();
-                System.out.println("Global ingredients pass progress: " + Math.min(done, ids.size()) + " / " + ids.size());
+                psIng.executeBatch();
+                con.commit();
             }
 
-            psIng.executeBatch();
-            con.commit();
+            ingDone += batch.size();
+            System.out.println("Global ingredients pass progress: " + Math.min(ingDone, ids.size()) + " / " + ids.size());
         }
 
         System.out.println("✅ Global recipes + items + ingredients synced (SAFE).");
