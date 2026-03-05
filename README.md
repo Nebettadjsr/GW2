@@ -1,5 +1,11 @@
 # Nebet's GW2 Tool
 
+![Java](https://img.shields.io/badge/Java-17-orange)
+![Database](https://img.shields.io/badge/Database-PostgreSQL-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Platform](https://img.shields.io/badge/Platform-Desktop-lightgrey)
+![Game](https://img.shields.io/badge/Game-Guild%20Wars%202-red)
+
 A desktop tool that analyzes **Guild Wars 2 crafting profitability** by combining account data, learned recipes, and Trading Post prices to identify profitable crafting opportunities.
 
 The application imports data from the official **Guild Wars 2 API**, stores it in a **PostgreSQL database**, and performs local analysis to determine which recipes can generate profit from the materials you already own.
@@ -110,6 +116,8 @@ The tool allows you to:
 
 ## Crafting Profit View
 
+![Crafting Profit](docs/images/crafting-profit.png)
+
 This view answers the core question of the application:
 
 > *"What can I craft with my current materials that is more profitable than selling the materials directly?"*
@@ -157,6 +165,8 @@ The Crafting Profit View helps identify these opportunities and convert **unused
 
 ## Crafting Discover Helper
 
+![Discovery Helper](docs/images/crafting-discovery.png)
+
 This view helps players discover new crafting recipes efficiently.
 
 The user selects:
@@ -194,6 +204,8 @@ This allows the user to either:
 ---
 
 ## Salvage Ecto for Dust & Luck
+
+![Ecto Calculator](docs/images/ecto-calculator.png)
 
 This tool estimates the **real gold cost of increasing Magic Find** by salvaging *Glob of Ectoplasm*.
 
@@ -302,3 +314,14 @@ Prices may therefore be several minutes old, which is generally acceptable becau
 # Future Improvements
 
 This section will list planned improvements as the project evolves.
+
+---
+
+# Disclaimer
+
+This project is not affiliated with or endorsed by ArenaNet or NCSoft.
+Guild Wars 2 and all associated trademarks are property of ArenaNet.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
