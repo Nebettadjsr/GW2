@@ -2,6 +2,7 @@ import craft.CraftResult;
 import craft.CraftingPlanner;
 import craft.CraftingSettings;
 import repo.*;
+import repo.tp.TpPriceRepository;
 
 import java.sql.SQLException;
 import java.util.*;
@@ -10,9 +11,9 @@ import java.util.stream.Collectors;
 public class CraftingDiscoveryController {
 
     private final RecipeRepository recipeRepo = new RecipeRepository();
-    private final InventoryRepository invRepo = new InventoryRepository();
-    private final TpPriceRepository tpRepo = new TpPriceRepository();
-    private final ItemRepository itemRepo = new ItemRepository();
+    private final InventoryRepository invRepo  = new InventoryRepository();
+    private final TpPriceRepository   tpRepo   = new TpPriceRepository();
+    private final ItemRepository      itemRepo = new ItemRepository();
 
     private final CraftingPlanner planner = new CraftingPlanner();
 

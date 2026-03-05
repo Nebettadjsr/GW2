@@ -19,7 +19,9 @@ public final class InitialSetupService {
         RecipeSync.syncAllRecipesGlobalSafe();
 
         // Then prices/icons (now DB is consistent)
-        TpSync.syncTpPricesRelevant();
+        TpSync.syncTpTradeableItems();
+        TpSync.syncTpPricesForDiscovery();
+        TpSync.syncTpPricesForProfit();
         IconSync.syncItemIconUrls();
         IconSync.syncItemIconsToDisk(Path.of("C:\\Users\\Administrator\\AppData\\Local\\NebetGw2Tool\\icons"));
     }

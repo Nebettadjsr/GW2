@@ -371,7 +371,7 @@ public class CraftingDiscoveryView {
             statusLabel.setText("Refreshing TP prices...");
             Thread tt = new Thread(() -> {
                 try {
-                    TpSync.syncTpPricesRelevant();
+                    TpSync.syncTpPricesForDiscovery();
                     Platform.runLater(() -> {
                         statusLabel.setText("✅ TP refreshed.");
                         reloadTable.run();

@@ -1,7 +1,7 @@
 package craft;
 
 import repo.RecipeRepository;
-import repo.TpPriceRepository;
+import repo.tp.TpPriceRepository;
 
 import java.util.*;
 

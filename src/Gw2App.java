@@ -22,6 +22,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.Region;
 import sync.AccountSync;
 import sync.CharacterSync;
+import sync.TpSync;
 
 
 public class Gw2App extends Application {
@@ -108,6 +109,10 @@ public class Gw2App extends Application {
         btnFirstSetup.setPrefWidth(320);
         btnFirstSetup.setStyle(buttonStyle());
 
+        Button btnSyncTpItems = new Button("Sync tradeable Items");
+        btnSyncTpItems.setPrefWidth(320);
+        btnSyncTpItems.setStyle(buttonStyle());
+
         Button btnSyncAccount = new Button("Sync Account (Bank, Mats, Characters, Recipes)");
         btnSyncAccount.setPrefWidth(320);
         btnSyncAccount.setStyle(buttonStyle());
@@ -126,6 +131,7 @@ public class Gw2App extends Application {
 // Put the sync buttons in stack and row (centered)
         VBox syncButtons = new VBox(10,
                                     btnFirstSetup,
+                                    btnSyncTpItems,
                                     btnSyncAccount
         );
         syncButtons.setAlignment(Pos.CENTER);
@@ -192,6 +198,31 @@ public class Gw2App extends Application {
                 }
             });
 
+            t.setDaemon(true);
+            t.start();
+        });
+
+        // 3) Refresh list of items that can be traded on GW2 TP
+        btnSyncTpItems.setOnAction(e -> {
+            btnSyncTpItems.setDisable(true);
+            status.setText("Refreshing TradePost Items...");
+
+            Thread t = new Thread(() -> {
+                try {
+                    TpSync.syncTpTradeableItems();
+
+                    Platform.runLater(() -> {
+                        status.setText("✅ TradePost Items refreshed.");
+                        btnSyncTpItems.setDisable(false);
+                    });
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                    Platform.runLater(() -> {
+                        status.setText("❌ Refresh failed: " + ex.getMessage());
+                        btnSyncTpItems.setDisable(false);
+                    });
+                }
+            });
             t.setDaemon(true);
             t.start();
         });

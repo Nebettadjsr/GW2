@@ -165,4 +165,9 @@ CREATE INDEX IF NOT EXISTS idx_character_items_character
 CREATE INDEX IF NOT EXISTS idx_character_items_item
     ON character_items(item_id);
 
+CREATE TABLE IF NOT EXISTS public.tp_tradeable_items (
+  item_id INTEGER PRIMARY KEY,
+  fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 COMMIT;

@@ -457,7 +457,7 @@ public class CraftingProfitView {
             statusLabel.setText("Refreshing TP prices...");
             Thread t = new Thread(() -> {
                 try {
-                    TpSync.syncTpPricesRelevant();
+                    TpSync.syncTpPricesForProfit();
                     Platform.runLater(() -> {
                         statusLabel.setText("✅ TP refreshed.");
                         reloadTable.run();

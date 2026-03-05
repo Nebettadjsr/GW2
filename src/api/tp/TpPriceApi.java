@@ -1,5 +1,8 @@
-package api;
+package api.tp;
 
+import api.BatchUtils;
+import api.Gw2ApiClient;
+import api.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.io.IOException;
@@ -111,5 +114,31 @@ public final class TpPriceApi {
     private static void requireTpSingleStatus(int code, String url, String body) {
         if (code == 200 || code == 404) return;
         throw new RuntimeException("TP single fetch failed: HTTP " + code + " url=" + url + " body=" + body);
+    }
+
+    public static Set<Integer> fetchAllTradeableItemIds() throws IOException, InterruptedException {
+        String url = "https://api.guildwars2.com/v2/commerce/prices";
+
+        HttpResponse<String> res = getWithRetry429(url);
+        int code = res.statusCode();
+        if (code != 200) {
+            throw new RuntimeException("TP prices id-list fetch failed: HTTP " + code + " url=" + url);
+        }
+
+        JsonNode root = Gw2ApiClient.readJson(res.body());
+        if (root == null || !root.isArray()) {
+            throw new RuntimeException("TP prices id-list unexpected JSON (not array). url=" + url);
+        }
+
+        Set<Integer> out = new HashSet<>();
+        for (JsonNode n : root) {
+            if (n != null && n.isInt()) {
+                out.add(n.asInt());
+            } else if (n != null && n.isObject() && n.hasNonNull("id")) {
+                // safety fallback (in case API ever returns objects)
+                out.add(n.get("id").asInt());
+            }
+        }
+        return out;
     }
 }
