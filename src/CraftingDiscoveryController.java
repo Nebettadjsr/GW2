@@ -82,7 +82,9 @@ public class CraftingDiscoveryController {
         }
 
         // 4) inventory
-        Map<Integer, Integer> inv = invRepo.loadInventory(settings.includeBank);
+        Map<Integer,Integer> inv = settings.useOwnMats
+                                   ? invRepo.loadOwnedInventory()
+                                   : Map.of();
 
         // 5) collect all item ids needed (use allRecipes for planner completeness)
         Set<Integer> itemIds = new HashSet<>();

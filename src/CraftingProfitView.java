@@ -163,9 +163,9 @@ public class CraftingProfitView {
 
         disciplineBox.setPrefWidth(170);
 
-        CheckBox bankOnlyCheck = new CheckBox("use mats from Bank ");
-        bankOnlyCheck.setSelected(true);
-        bankOnlyCheck.setStyle("-fx-text-fill: white;");
+        CheckBox useOwnMatsCheck = new CheckBox("use own mats");
+        useOwnMatsCheck.setSelected(true);
+        useOwnMatsCheck.setStyle("-fx-text-fill: white;");
 
         CheckBox allowBuyCheck = new CheckBox("buy missing mats");
         allowBuyCheck.setSelected(false);
@@ -229,7 +229,7 @@ public class CraftingProfitView {
         HBox filterRow1 = new HBox(12,
                                    new LabelStyled("Discipline:"),
                                     disciplineBox,
-                                    bankOnlyCheck,
+                                    useOwnMatsCheck,
                                     allowBuyCheck,
                                     new LabelStyled("Max buy:"), maxBudgetField,
                                     new Separator(Orientation.VERTICAL)
@@ -305,14 +305,14 @@ public class CraftingProfitView {
 
             Thread t = new Thread(() -> {
                 try {
-                    boolean includeBank = bankOnlyCheck.isSelected();
+                    boolean useOwnMats = useOwnMatsCheck.isSelected();
                     boolean allowBuy = allowBuyCheck.isSelected();
                     boolean listingSell = rbListingSell.isSelected();
                     boolean listingBuy  = rbListingBuy.isSelected();
                     boolean dailyBuyMode = dailyBuy.isSelected(); // true = buy daily items, false = craft daily items
                     DiscChoice choice = disciplineBox.getValue();
 
-                    CraftingSettings settings = new CraftingSettings(includeBank, allowBuy, maxBuyCopper, listingSell, listingBuy, dailyBuyMode);
+                    CraftingSettings settings = new CraftingSettings(useOwnMats, allowBuy, maxBuyCopper, listingSell, listingBuy, dailyBuyMode);
 
                     String search = searchField.getText();
 
@@ -428,7 +428,7 @@ public class CraftingProfitView {
         // --- auto reload when filters change ---
         disciplineBox.valueProperty().addListener((obs, o, n) -> reloadTable.run());
 
-        bankOnlyCheck.selectedProperty().addListener((obs, o, n) -> reloadTable.run());
+        useOwnMatsCheck.selectedProperty().addListener((obs, o, n) -> reloadTable.run());
 
         allowBuyCheck.selectedProperty().addListener((obs, o, n) -> reloadTable.run());
 
@@ -542,7 +542,7 @@ public class CraftingProfitView {
         colTotalProfit.setSortType(TableColumn.SortType.DESCENDING);
         table.getSortOrder().setAll(colTotalProfit);
 
-        TableColumn<CraftRow, Number> colMatsSell = new TableColumn<>("Mats sell value");
+        TableColumn<CraftRow, Number> colMatsSell = new TableColumn<>("own mats sell value");
         colMatsSell.setCellValueFactory(data -> data.getValue().matsSellValueCopperProperty());
         colMatsSell.setCellFactory(tc -> new TableCell<>() {
             @Override
@@ -600,7 +600,7 @@ public class CraftingProfitView {
 
 // Optional: small mins so they don’t get too tiny
         colCraftable.setMinWidth(70);
-        colBuyCost.setMinWidth(90);
+        colBuyCost.setMinWidth(110);
         colRevenue.setMinWidth(110);
         colProfit.setMinWidth(110);
         colName.setMinWidth(220);

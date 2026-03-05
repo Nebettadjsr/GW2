@@ -74,7 +74,7 @@ JavaFX is **not** committed to the repository due to size.
 2. In IntelliJ: **File → Project Structure → Libraries → +** and add the JavaFX `lib/` folder
 3. Add VM options (Run Configuration):
 ```
-   --module-path "PATH_TO_JAVAFX/lib" --add-modules javafx.controls,javafx.fxml
+   --module-path "C:[PATH TO YOUR PROJECT ROOT]\lib\javafx-sdk-25.0.2\lib" --add-modules javafx.controls,javafx.fxml 
 ```
 ---
 
@@ -127,6 +127,7 @@ After the database has been initialized, the application can be used normally.
 The tool allows you to:
 
 - Sync account data
+- Sync tradable items (only needed if new items are introduced to the game)
 - Refresh Trading Post prices
 - Analyze crafting profitability
 - Discover new crafting opportunities

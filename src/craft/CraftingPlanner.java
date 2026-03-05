@@ -100,7 +100,6 @@ public class CraftingPlanner {
                 craftableCount = settings.maxBuyCopper / buyCostPerCraft;
             }
 
-            int totalBuyCost = buyCostPerCraft * craftableCount;
             int totalProfit  = profitPerCraft  * craftableCount;
 
             Map<Integer, Integer> missingToBuy = new HashMap<>();
@@ -119,8 +118,8 @@ public class CraftingPlanner {
                     recipe.disciplinesText,
                     craftableCount,
                     missingToBuy,
-                    missingToBuyOne, // <--- COMPILE ERROR HERE
-                    totalBuyCost,     // TOTAL
+                    missingToBuyOne,
+                    buyCostPerCraft,  // PER 1 craft
                     0,                // matsSellPerCraft (not applicable here)
                     revenuePerCraft,  // PER 1 craft
                     profitPerCraft,   // PER 1 craft
@@ -150,19 +149,15 @@ public class CraftingPlanner {
 // --- PER 1 craft mats sell value (GROSS) from leaf materials ---
         int matsSellGross = computeMatsSellValueFromTree(one.tree, tp, settings);
 
-// --- "Value add" profit per craft ---
-        int profitPerCraft = revenuePerCraftGross - matsSellGross;
-
-// --- Buy cost per craft (ONLY ONE craft!) ---
+        // --- Buy cost per craft (ONLY ONE craft!) ---
         int buyCostPerCraft = one.buyCostCopper;
 
+// --- "Value add" profit per craft ---
+        int profitPerCraft = revenuePerCraftGross - buyCostPerCraft - matsSellGross;
+
+
 // --- TOTAL profit: if buying enabled, use real cash profit ---
-        int totalProfit;
-        if (settings.allowBuying) {
-            totalProfit = (revenuePerCraftGross - buyCostPerCraft) * craftableCount;
-        } else {
-            totalProfit = profitPerCraft * craftableCount;
-        }
+        int totalProfit = profitPerCraft * craftableCount;
 
 // IMPORTANT: buyCostCopper field should now be PER 1 craft (not max)
         return new CraftResult(
@@ -308,6 +303,29 @@ public class CraftingPlanner {
             qtyNeeded -= have;
         }
 
+// DAILY: if this item is daily-gated and user selected "buy daily craftables",
+// do NOT craft it recursively — treat it like a buy leaf.
+        if (DailyCrafts.isDailyOutput(itemId) && settings.dailyBuyInsteadOfCraft) {
+
+            missingToBuy.merge(itemId, qtyNeeded, Integer::sum);
+
+            if (settings.allowBuying) {
+                TpPriceRepository.TpQuote q = tp.get(itemId);
+                int unit = 0;
+
+                if (q != null) {
+                    Integer v = settings.listingBuy ? q.buyUnit : q.sellUnit;
+                    unit = (v == null) ? 0 : v;
+                }
+
+                buyCost.value += unit * qtyNeeded;
+
+                return new Node(itemId, original, "buy(daily)", List.of());
+            }
+
+            return new Node(itemId, original, "missing(daily)", List.of());
+        }
+
         // 2) Craft if possible (and no cycle)
         List<RecipeRepository.Recipe> producing = recipesByOutput.get(itemId);
         if (producing != null && !producing.isEmpty() && !visiting.contains(itemId)) {
@@ -414,7 +432,7 @@ public class CraftingPlanner {
 
         // Leaf: treat as a base material amount that could be sold
         // We want to count inventory/missing/buy leaves (not "need")
-        if ("need".equals(n.action) || "craft".equals(n.action)) return 0;
+        if (!"inventory".equals(n.action)) return 0;
 
         TpPriceRepository.TpQuote q = tp.get(n.itemId);
         if (q == null) return 0;

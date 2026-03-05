@@ -78,7 +78,9 @@ public class CraftingProfitController {
 
 
         // 2) inventory (bank/materials depending on settings.includeBank)
-        Map<Integer, Integer> inv = invRepo.loadInventory(settings.includeBank);
+        Map<Integer,Integer> inv = settings.useOwnMats
+                                   ? invRepo.loadOwnedInventory()
+                                   : Map.of();
 
         // 3) collect all itemIds we need prices+names for (outputs + ingredients)
         Set<Integer> itemIds = new HashSet<>();
