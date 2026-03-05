@@ -57,6 +57,27 @@ Run this query in your PostgreSQL environment before starting the application.
 
 ---
 
+## Dependencies 
+
+This project currently does not use Gradle or Maven. Dependencies are handled manually.
+
+### Included JARs
+The repository includes required third-party JARs in `lib/`:
+
+- Jackson (`jackson-core`, `jackson-databind`, `jackson-annotations`)
+- PostgreSQL JDBC driver
+
+### JavaFX (Required)
+JavaFX is **not** committed to the repository due to size.
+
+1. Download the JavaFX SDK (matching your platform)
+2. In IntelliJ: **File → Project Structure → Libraries → +** and add the JavaFX `lib/` folder
+3. Add VM options (Run Configuration):
+```
+   --module-path "PATH_TO_JAVAFX/lib" --add-modules javafx.controls,javafx.fxml
+```
+---
+
 # Configuration
 
 To use the GW2 API you must provide your **ArenaNet API key**.
