@@ -171,7 +171,7 @@ public class CraftingProfitView {
         allowBuyCheck.setSelected(false);
         allowBuyCheck.setStyle("-fx-text-fill: white;");
 
-        TextField maxBudgetField = new TextField("20g");
+        TextField maxBudgetField = new TextField("1g");
         maxBudgetField.setPrefWidth(80);
         maxBudgetField.setDisable(true);
 

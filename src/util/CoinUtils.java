@@ -52,6 +52,6 @@ public final class CoinUtils {
 
     public static String formatSigned(int copper) {
         if (copper == 0) return "0g 0s 0c";
-        return (copper > 0 ? "+" : "-") + format(Math.abs(copper));
+        return  format(Math.abs(copper));
     }
 }
