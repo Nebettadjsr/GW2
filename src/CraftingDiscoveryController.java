@@ -34,6 +34,7 @@ public class CraftingDiscoveryController {
         public final int profitCopper;      // optional, also informational
         public final String missingSummary;
 
+
         public UiRow(int recipeId, int outputItemId, String outputName,
                      int recipeLevel,
                      int buyCostCopper, int revenueCopper, int profitCopper,
