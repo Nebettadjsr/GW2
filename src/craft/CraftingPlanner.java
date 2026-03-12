@@ -502,7 +502,7 @@ public class CraftingPlanner {
         CostEvaluationResult cost = costEvaluator.evaluate(recipe, sim, ctx.tp, ctx.settings);
 
         ResolvedNeed firstCraft = sim.getFirstCraft();
-        Node tree = recipeTreeBuilder.buildTree(recipe, ctx);
+        Node tree = null;
 
         Map<Integer, Integer> missingToBuyOne = new HashMap<>();
         if (firstCraft != null) {

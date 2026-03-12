@@ -1,3 +1,5 @@
+import craft.CraftingGraph;
+import craft.CraftingGraphCache;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -20,8 +22,10 @@ import java.util.Optional;
 
 import javafx.scene.control.TextField;
 import javafx.scene.layout.Region;
+import repo.RecipeRepository;
 import sync.AccountSync;
 import sync.CharacterSync;
+import sync.RecipeSync;
 import sync.TpSync;
 
 
@@ -109,7 +113,7 @@ public class Gw2App extends Application {
         btnFirstSetup.setPrefWidth(320);
         btnFirstSetup.setStyle(buttonStyle());
 
-        Button btnSyncTpItems = new Button("Sync tradeable Items");
+        Button btnSyncTpItems = new Button("Sync ALL tradeable Items, Recipes and (re)build Crafting Graph");
         btnSyncTpItems.setPrefWidth(320);
         btnSyncTpItems.setStyle(buttonStyle());
 
@@ -205,14 +209,18 @@ public class Gw2App extends Application {
         // 3) Refresh list of items that can be traded on GW2 TP
         btnSyncTpItems.setOnAction(e -> {
             btnSyncTpItems.setDisable(true);
-            status.setText("Refreshing TradePost Items...");
+            status.setText("Refreshing TradePost Items, recipes and rebuilding craft graph ...");
 
             Thread t = new Thread(() -> {
                 try {
                     TpSync.syncTpTradeableItems();
+                    RecipeSync.syncAllRecipesGlobalSafe();
+                    RecipeRepository recipeRepo = new RecipeRepository();
+                    CraftingGraphCache cache = new CraftingGraphCache(recipeRepo);
+                    cache.rebuild();
 
                     Platform.runLater(() -> {
-                        status.setText("✅ TradePost Items refreshed.");
+                        status.setText("✅ Data refreshed.");
                         btnSyncTpItems.setDisable(false);
                     });
                 } catch (Exception ex) {

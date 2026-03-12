@@ -1,7 +1,5 @@
 
-import craft.CraftResult;
-import craft.CraftingPlanner;
-import craft.CraftingSettings;
+import craft.*;
 import repo.*;
 import repo.tp.TpPriceRepository;
 
@@ -74,8 +72,15 @@ public class CraftingProfitController {
         }
 
 // Full recipe graph for planner (ALL recipes)
-        List<RecipeRepository.Recipe> allRecipes = recipeRepo.loadAllRecipes();
+        CraftingGraph graph;
+        try {
+            CraftingGraphCache graphCache = new CraftingGraphCache(recipeRepo);
+            graph = graphCache.load();
 
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to load crafting graph cache", e);
+        }
+        List<RecipeRepository.Recipe> allRecipes = graph.getRecipes();
 
         // 2) inventory (bank/materials depending on settings.includeBank)
         Map<Integer,Integer> inv = settings.useOwnMats

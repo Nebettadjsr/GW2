@@ -276,4 +276,24 @@ public class RecipeRepository {
 
         return ids;
     }
+
+    public int countRecipes() throws SQLException {
+        String sql = "SELECT COUNT(*) FROM recipes";
+        try (Connection conn = repo.Db.open();
+             var ps = conn.prepareStatement(sql);
+             var rs = ps.executeQuery()) {
+            rs.next();
+            return rs.getInt(1);
+        }
+    }
+
+    public int countRecipeIngredients() throws SQLException {
+        String sql = "SELECT COUNT(*) FROM recipe_ingredients";
+        try (Connection conn = repo.Db.open();
+             var ps = conn.prepareStatement(sql);
+             var rs = ps.executeQuery()) {
+            rs.next();
+            return rs.getInt(1);
+        }
+    }
 }

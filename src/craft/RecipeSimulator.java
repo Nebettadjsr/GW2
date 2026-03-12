@@ -17,8 +17,6 @@ public class RecipeSimulator {
 
         PlanState state = new PlanState(baseState);
 
-        long start = System.currentTimeMillis();
-
         while (true) {
 
             PlanState attemptState = new PlanState(state);
@@ -53,19 +51,42 @@ public class RecipeSimulator {
 
             result.mergeMissing(state.missingToBuy);
 
-            // put the hard cap HERE
-//            int hardCap = ctx.settings.allowBuying ? 250 : 10000;
             if (result.getCraftCount() >= 250) {
                 break;
             }
         }
 
-        long end = System.currentTimeMillis();
-        System.out.println("DONE recipeId=" + recipe.recipeId
-                                   + " outputItemId=" + recipe.outputItemId
-                                   + " crafts=" + result.getCraftCount()
-                                   + " tookMs=" + (end - start));
-
         return result;
+    }
+
+    private ResolveResult simulateCrafts(
+            RecipeRepository.Recipe recipe,
+            PlannerContext ctx,
+            PlanState baseState,
+            int crafts
+                                        ) {
+
+        PlanState state = new PlanState(baseState);
+
+        ResolveResult last = null;
+
+        for (int i = 0; i < crafts; i++) {
+
+            ResolveResult rr = resolver.resolveOneCraft(recipe, ctx, state);
+            ResolvedNeed root = rr.getRoot();
+
+            if (root.getQtySatisfied() < root.getQtyRequested()) {
+                return null;
+            }
+
+            if (ctx.settings.maxBuyCopper > 0 &&
+                    (last != null ? last.getBuyCostCopper() : 0) + rr.getBuyCostCopper() > ctx.settings.maxBuyCopper) {
+                return null;
+            }
+
+            last = rr;
+        }
+
+        return last;
     }
 }

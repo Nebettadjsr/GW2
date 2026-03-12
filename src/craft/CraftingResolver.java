@@ -9,6 +9,10 @@ import java.util.Map;
 
 public class CraftingResolver {
 
+    private final Map<Integer, Integer> directBuyUnitCache = new HashMap<>();
+    private final Map<Integer, Integer> directSellUnitCache = new HashMap<>();
+    private final Map<Integer, RecipeRepository.Recipe> firstRecipeCache = new HashMap<>();
+
     public ResolveResult resolveOneCraft(
             RecipeRepository.Recipe recipe,
             PlannerContext ctx,
@@ -261,11 +265,21 @@ public class CraftingResolver {
             Map<Integer, TpPriceRepository.TpQuote> tp,
             CraftingSettings settings
                                    ) {
+
+        Integer cached = directBuyUnitCache.get(itemId);
+        if (cached != null) return cached;
+
         TpPriceRepository.TpQuote q = tp.get(itemId);
-        if (q == null) return 0;
+        if (q == null) {
+            directBuyUnitCache.put(itemId, 0);
+            return 0;
+        }
 
         Integer v = settings.listingBuy ? q.buyUnit : q.sellUnit;
-        return v == null ? 0 : v;
+        int result = v == null ? 0 : v;
+
+        directBuyUnitCache.put(itemId, result);
+        return result;
     }
 
     public int resolveDirectSellUnit(
@@ -273,11 +287,21 @@ public class CraftingResolver {
             Map<Integer, TpPriceRepository.TpQuote> tp,
             CraftingSettings settings
                                     ) {
+
+        Integer cached = directSellUnitCache.get(itemId);
+        if (cached != null) return cached;
+
         TpPriceRepository.TpQuote q = tp.get(itemId);
-        if (q == null) return 0;
+        if (q == null) {
+            directSellUnitCache.put(itemId, 0);
+            return 0;
+        }
 
         Integer v = settings.listingSell ? q.sellUnit : q.buyUnit;
-        return v == null ? 0 : v;
+        int result = v == null ? 0 : v;
+
+        directSellUnitCache.put(itemId, result);
+        return result;
     }
 
     private boolean containsAnyDailyItem(ResolvedNeed need) {
@@ -297,9 +321,17 @@ public class CraftingResolver {
     }
 
     public RecipeRepository.Recipe firstRecipeFor(int itemId, PlannerContext ctx) {
+
+        RecipeRepository.Recipe cached = firstRecipeCache.get(itemId);
+        if (cached != null) return cached;
+
         List<RecipeRepository.Recipe> list = ctx.recipesByOutput.get(itemId);
-        if (list == null || list.isEmpty()) return null;
-        return list.get(0);
+
+        RecipeRepository.Recipe result = (list == null || list.isEmpty()) ? null : list.get(0);
+
+        firstRecipeCache.put(itemId, result);
+
+        return result;
     }
 
     private static class CandidateEval {
