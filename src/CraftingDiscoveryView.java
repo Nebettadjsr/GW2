@@ -16,13 +16,17 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import repo.DiscChoice;
+import repo.ItemRepository;
+import repo.RecipeRepository;
 import sync.AccountSync;
 import sync.CharacterSync;
 import sync.TpSync;
 import util.CoinUtils;
 
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -41,10 +45,11 @@ public class CraftingDiscoveryView {
         private final IntegerProperty profitCopper = new SimpleIntegerProperty();
         private final IntegerProperty recipeLevel = new SimpleIntegerProperty();
         private final StringProperty missingSummary = new SimpleStringProperty();
+        private final StringProperty searchBlob = new SimpleStringProperty();
 
         public DiscoverRow(int recipeId, int outputItemId, String outputName, int recipeLevel,
                            int buyCostCopper, int revenueCopper, int profitCopper,
-                           String missingSummary) {
+                           String missingSummary, String searchBlob) {
             this.recipeId.set(recipeId);
             this.outputItemId.set(outputItemId);
             this.outputName.set(outputName);
@@ -53,7 +58,11 @@ public class CraftingDiscoveryView {
             this.revenueCopper.set(revenueCopper);
             this.profitCopper.set(profitCopper);
             this.missingSummary.set(missingSummary);
+            this.searchBlob.set(searchBlob);
         }
+
+        public String getSearchBlob() { return searchBlob.get(); }
+        public StringProperty searchBlobProperty() { return searchBlob; }
 
         public int getRecipeLevel() { return recipeLevel.get(); }
         public IntegerProperty recipeLevelProperty() { return recipeLevel; }
@@ -248,8 +257,9 @@ public class CraftingDiscoveryView {
                         "-fx-table-header-border-color: rgba(255,255,255,0.08);"
         );
 
-        ObservableList<DiscoverRow> rows = FXCollections.observableArrayList();
-        table.setItems(rows);
+        ObservableList<DiscoverRow> masterRows = FXCollections.observableArrayList();
+        ObservableList<DiscoverRow> visibleRows = FXCollections.observableArrayList();
+        table.setItems(visibleRows);
 
         // --- reload logic ---
         Runnable reloadTable = () -> {
@@ -276,14 +286,13 @@ public class CraftingDiscoveryView {
                             includeBank, allowBuy, maxBuyCopper, listingSell, listingBuy, dailyBuyMode
                     );
 
-                    String search = searchField.getText();
-
-                    var data = controller.reload(choice, settings, search);
+                    var data = controller.reload(choice, settings);
 
                     Platform.runLater(() -> {
-                        rows.clear();
+                        masterRows.clear();
+
                         for (var r : data) {
-                            rows.add(new DiscoverRow(
+                            masterRows.add(new DiscoverRow(
                                     r.recipeId,
                                     r.outputItemId,
                                     r.outputName,
@@ -291,14 +300,14 @@ public class CraftingDiscoveryView {
                                     r.buyCostCopper,
                                     r.revenueCopper,
                                     r.profitCopper,
-                                    r.missingSummary
+                                    r.missingSummary,
+                                    r.searchBlob
                             ));
                         }
 
-                        applySort(sortBox.getValue(), rows);
-                        table.refresh();
+                        applyClientFilterAndSort(masterRows, visibleRows, searchField.getText(), sortBox.getValue(), table);
 
-                        statusLabel.setText("✅ Loaded " + rows.size() + " missing discoverable recipes.");
+                        statusLabel.setText("✅ Loaded " + visibleRows.size() + " missing discoverable recipes.");
                     });
 
                 } catch (Exception ex) {
@@ -365,7 +374,8 @@ public class CraftingDiscoveryView {
             if (allowBuyCheck.isSelected()) reloadTable.run();
         });
 
-        searchField.setOnAction(e -> reloadTable.run());
+        searchField.textProperty().addListener((obs, o, n) ->
+                                                       applyClientFilterAndSort(masterRows, visibleRows, n, sortBox.getValue(), table));
 
         btnRefreshTp.setOnAction(e -> {
             statusLabel.setText("Refreshing TP prices...");
@@ -502,10 +512,8 @@ public class CraftingDiscoveryView {
             );
         });
 
-        sortBox.valueProperty().addListener((obs, o, n) -> {
-            applySort(n, rows);
-            table.refresh();
-        });
+        sortBox.valueProperty().addListener((obs, o, n) ->
+                                                    applyClientFilterAndSort(masterRows, visibleRows, searchField.getText(), n, table));
 
         // ---------- Main area ----------
         HBox mainArea = new HBox(14, table, detailsCard);
@@ -649,6 +657,70 @@ public class CraftingDiscoveryView {
             }
         }
         return ti;
+    }
+
+    private String buildSearchBlob(RecipeRepository.Recipe recipe,
+                                   Map<Integer, ItemRepository.ItemInfo> items,
+                                   Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput,
+                                   Set<Integer> visited) {
+        if (recipe == null) return "";
+
+        StringBuilder sb = new StringBuilder();
+
+        if (!visited.add(recipe.recipeId)) {
+            return "";
+        }
+
+        ItemRepository.ItemInfo out = items.get(recipe.outputItemId);
+        if (out != null && out.name != null) {
+            sb.append(out.name).append(' ');
+        }
+
+        for (RecipeRepository.Ingredient ing : recipe.ingredients) {
+            ItemRepository.ItemInfo ingInfo = items.get(ing.itemId);
+            if (ingInfo != null && ingInfo.name != null) {
+                sb.append(ingInfo.name).append(' ');
+            }
+
+            List<RecipeRepository.Recipe> subRecipes = recipesByOutput.get(ing.itemId);
+            if (subRecipes != null && !subRecipes.isEmpty()) {
+                sb.append(buildSearchBlob(subRecipes.get(0), items, recipesByOutput, visited)).append(' ');
+            }
+        }
+
+        return sb.toString().toLowerCase();
+    }
+
+    private static void applyClientFilterAndSort(ObservableList<DiscoverRow> masterRows,
+                                                 ObservableList<DiscoverRow> visibleRows,
+                                                 String search,
+                                                 String sortMode,
+                                                 TableView<DiscoverRow> table) {
+        String s = search == null ? "" : search.trim().toLowerCase();
+
+        visibleRows.clear();
+
+        for (DiscoverRow row : masterRows) {
+            if (s.isBlank() || (row.getSearchBlob() != null && row.getSearchBlob().contains(s))) {
+                visibleRows.add(row);
+            }
+        }
+
+        switch (sortMode) {
+            case "Recipe level (high first)" ->
+                    FXCollections.sort(visibleRows, Comparator.comparingInt(DiscoverRow::getRecipeLevel).reversed());
+
+            case "Buy cost (low first)" ->
+                    FXCollections.sort(visibleRows, Comparator.comparingInt(DiscoverRow::getBuyCostCopper));
+
+            case "Item sell price (high first)" ->
+                    FXCollections.sort(visibleRows, Comparator.comparingInt(DiscoverRow::getRevenueCopper).reversed());
+
+            case "Profit per craft (high first)" ->
+                    FXCollections.sort(visibleRows, Comparator.comparingInt(DiscoverRow::getProfitCopper).reversed());
+        }
+
+        table.refresh();
     }
 
 }

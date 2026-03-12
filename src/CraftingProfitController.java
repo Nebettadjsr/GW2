@@ -15,6 +15,8 @@ public class CraftingProfitController {
     private final ItemRepository      itemRepo = new ItemRepository();
 
     private final CraftingPlanner planner = new CraftingPlanner();
+    private List<RecipeRepository.Recipe> lastAllRecipes = List.of();
+    private CraftingSettings lastSettings = null;
 
     // --------- Caches for Details panel (View can ask controller) ----------
     private Map<Integer, CraftResult> lastResultsByRecipeId = Map.of();
@@ -36,13 +38,15 @@ public class CraftingProfitController {
         public final int profitCopper;
         public final int totalProfitCopper;
         public final int matsSellValueCopper;
+        public final String searchBlob;
 
 
 
         public UiRow(int recipeId, int outputItemId, String outputName, String discipline,
                      int craftableCount, String missingSummary,
                      int buyCostCopper, int matsSellValueCopper,
-                     int revenueCopper, int profitCopper, int totalProfitCopper) {
+                     int revenueCopper, int profitCopper, int totalProfitCopper,
+                     String searchBlob) {
             this.recipeId = recipeId;
             this.outputItemId = outputItemId;
             this.outputName = outputName;
@@ -50,15 +54,16 @@ public class CraftingProfitController {
             this.craftableCount = craftableCount;
             this.missingSummary = missingSummary;
             this.buyCostCopper = buyCostCopper;
-            this.matsSellValueCopper = matsSellValueCopper;   // NEW
+            this.matsSellValueCopper = matsSellValueCopper;
             this.revenueCopper = revenueCopper;
             this.profitCopper = profitCopper;
             this.totalProfitCopper = totalProfitCopper;
+            this.searchBlob = searchBlob;
         }
 
     }
 
-    public List<UiRow> reload(DiscChoice choice, CraftingSettings settings, String search) throws SQLException {
+    public List<UiRow> reload(DiscChoice choice, CraftingSettings settings) throws SQLException {
 
         List<RecipeRepository.Recipe> visibleRecipes;
 
@@ -102,6 +107,8 @@ public class CraftingProfitController {
         Map<Integer, ItemRepository.ItemInfo> items = itemRepo.loadItems(itemIds);
         this.lastTp = tp;
         this.lastItems = items;
+        this.lastAllRecipes = allRecipes;
+        this.lastSettings = settings;
 
 
         // 5) plan (USE the settings that came from the UI)
@@ -112,6 +119,10 @@ public class CraftingProfitController {
 
         // 6) map to UI rows
         List<UiRow> uiRows = new ArrayList<>();
+        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = new HashMap<>();
+        for (RecipeRepository.Recipe r : allRecipes) {
+            recipesByOutput.computeIfAbsent(r.outputItemId, k -> new ArrayList<>()).add(r);
+        }
         for (RecipeRepository.Recipe r : visibleRecipes) {
             CraftResult cr = resultsByRecipeId.get(r.recipeId);
             if (cr == null) continue;
@@ -128,6 +139,7 @@ public class CraftingProfitController {
                     : ("Item " + r.outputItemId);
 
             String miss = summarizeMissing(cr.missingToBuy, items, tp, settings.allowBuying);
+            String searchBlob = buildSearchBlob(r, items, recipesByOutput, new HashSet<>());
 
             uiRows.add(new UiRow(
                     r.recipeId,
@@ -137,21 +149,17 @@ public class CraftingProfitController {
                     cr.craftableCount,
                     miss,
                     cr.buyCostCopper,
-                    cr.matsSellValueCopper,     // NEW
+                    cr.matsSellValueCopper,
                     cr.revenueCopper,
                     cr.profitCopper,
-                    cr.totalProfitCopper
+                    cr.totalProfitCopper,
+                    searchBlob
             ));
 
         }
 
         // 7) search filter
-        if (search != null && !search.isBlank()) {
-            String s = search.trim().toLowerCase();
-            uiRows = uiRows.stream()
-                    .filter(x -> x.outputName != null && x.outputName.toLowerCase().contains(s))
-                    .collect(Collectors.toList());
-        }
+
 
         // 8) budget + craftable filters
         if (!settings.allowBuying) {
@@ -174,7 +182,34 @@ public class CraftingProfitController {
 
     /** View calls this when a row is selected */
     public CraftResult getResultByRecipeId(int recipeId) {
-        return lastResultsByRecipeId.get(recipeId);
+        CraftResult cr = lastResultsByRecipeId.get(recipeId);
+        if (cr == null) return null;
+
+        if (cr.tree != null) {
+            return cr;
+        }
+
+        Node lazyTree = buildTreeForRecipeId(recipeId);
+
+        CraftResult enriched = new CraftResult(
+                cr.outputItemId,
+                cr.discipline,
+                cr.craftableCount,
+                cr.missingToBuy,
+                cr.missingToBuyOne,
+                cr.buyCostCopper,
+                cr.matsSellValueCopper,
+                cr.revenueCopper,
+                cr.profitCopper,
+                cr.totalProfitCopper,
+                lazyTree
+        );
+
+        Map<Integer, CraftResult> copy = new HashMap<>(lastResultsByRecipeId);
+        copy.put(recipeId, enriched);
+        lastResultsByRecipeId = copy;
+
+        return enriched;
     }
 
     /** View calls this for labels in tree/list */
@@ -252,4 +287,61 @@ public class CraftingProfitController {
     }
 
 
+    private Node buildTreeForRecipeId(int recipeId) {
+        if (lastAllRecipes == null || lastAllRecipes.isEmpty() || lastSettings == null) {
+            return null;
+        }
+
+        RecipeRepository.Recipe target = null;
+        for (RecipeRepository.Recipe r : lastAllRecipes) {
+            if (r.recipeId == recipeId) {
+                target = r;
+                break;
+            }
+        }
+
+        if (target == null) return null;
+
+        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = new HashMap<>();
+        for (RecipeRepository.Recipe r : lastAllRecipes) {
+            recipesByOutput.computeIfAbsent(r.outputItemId, k -> new ArrayList<>()).add(r);
+        }
+
+        PlannerContext ctx = new PlannerContext(recipesByOutput, lastTp, lastSettings);
+        RecipeTreeBuilder treeBuilder = new RecipeTreeBuilder();
+
+        return treeBuilder.buildTree(target, ctx);
+    }
+
+    private String buildSearchBlob(RecipeRepository.Recipe recipe,
+                                   Map<Integer, ItemRepository.ItemInfo> items,
+                                   Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput,
+                                   Set<Integer> visited) {
+        if (recipe == null) return "";
+
+        StringBuilder sb = new StringBuilder();
+
+        if (!visited.add(recipe.recipeId)) {
+            return "";
+        }
+
+        ItemRepository.ItemInfo out = items.get(recipe.outputItemId);
+        if (out != null && out.name != null) {
+            sb.append(out.name).append(' ');
+        }
+
+        for (RecipeRepository.Ingredient ing : recipe.ingredients) {
+            ItemRepository.ItemInfo ingInfo = items.get(ing.itemId);
+            if (ingInfo != null && ingInfo.name != null) {
+                sb.append(ingInfo.name).append(' ');
+            }
+
+            List<RecipeRepository.Recipe> subRecipes = recipesByOutput.get(ing.itemId);
+            if (subRecipes != null && !subRecipes.isEmpty()) {
+                sb.append(buildSearchBlob(subRecipes.get(0), items, recipesByOutput, visited)).append(' ');
+            }
+        }
+
+        return sb.toString().toLowerCase();
+    }
 }

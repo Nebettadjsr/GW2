@@ -18,7 +18,7 @@ public class CraftingResolver {
             PlannerContext ctx,
             PlanState state
                                         ) {
-        ResolvedNeed root = resolveNeed(recipe.outputItemId, recipe.outputCount, ctx, state);
+        ResolvedNeed root = resolveNeed(recipe.outputItemId, recipe.outputCount, ctx, state, false);
         return new ResolveResult(root);
     }
 
@@ -26,7 +26,8 @@ public class CraftingResolver {
             int itemId,
             int qtyRequested,
             PlannerContext ctx,
-            PlanState state
+            PlanState state,
+            boolean allowDirectBuy
                                    ) {
         ResolvedNeed result = new ResolvedNeed(itemId, qtyRequested);
 
@@ -51,7 +52,7 @@ public class CraftingResolver {
 
         // 2) Evaluate direct buy on a COPY of state
         CandidateEval buyEval = null;
-        if (ctx.settings.allowBuying) {
+        if (ctx.settings.allowBuying && allowDirectBuy) {
             int buyUnit = resolveDirectBuyUnit(itemId, ctx.tp, ctx.settings);
             if (buyUnit > 0) {
                 ResolvedNeed buyNeed = new ResolvedNeed(itemId, remaining);
@@ -72,7 +73,23 @@ public class CraftingResolver {
 
         // 3) Evaluate craft on a COPY of state
         CandidateEval craftEval = null;
-        {
+        RecipeRepository.Recipe firstRecipe = firstRecipeFor(itemId, ctx);
+
+        boolean shouldTryCraft = true;
+
+        if (buyEval != null && firstRecipe != null) {
+            int estimatedCraftFloor = estimateDirectCraftFloor(firstRecipe, ctx);
+
+            // normalize to requested quantity
+            int times = ceilDiv(remaining, firstRecipe.outputCount);
+            long estimatedTotalCraftFloor = (long) estimatedCraftFloor * times;
+
+            if (estimatedTotalCraftFloor >= buyEval.need.getBuyCostCopper()) {
+                shouldTryCraft = false;
+            }
+        }
+
+        if (shouldTryCraft) {
             PlanState craftState = new PlanState(state);
             ResolvedNeed craftNeed = tryCraft(itemId, remaining, ctx, craftState);
             if (craftNeed != null) {
@@ -85,20 +102,9 @@ public class CraftingResolver {
 
         if (chosen != null) {
             if (chosen.isStateCandidate()) {
-                state.inventory.clear();
-                state.inventory.putAll(chosen.stateAfter.inventory);
-
-                state.missingToBuy.clear();
-                state.missingToBuy.putAll(chosen.stateAfter.missingToBuy);
-
-                state.visiting.clear();
-                state.visiting.addAll(chosen.stateAfter.visiting);
-
-                state.dailyLeft.clear();
-                state.dailyLeft.putAll(chosen.stateAfter.dailyLeft);
-
-                state.buyCostCopper = chosen.stateAfter.buyCostCopper;
-            } else {
+                assert chosen.stateAfter != null;
+                state.copyFrom(chosen.stateAfter);
+            }else {
                 state.buyCostCopper += chosen.extraBuyCost;
 
                 for (var e : chosen.extraMissing.entrySet()) {
@@ -197,7 +203,7 @@ public class CraftingResolver {
             for (RecipeRepository.Ingredient ing : recipe.ingredients) {
                 int childQtyNeeded = ing.count * times;
 
-                ResolvedNeed child = resolveNeed(ing.itemId, childQtyNeeded, ctx, state);
+                ResolvedNeed child = resolveNeed(ing.itemId, childQtyNeeded, ctx, state, true);
                 craftResult.addChild(child);
                 craftResult.addCostsFromChild(child);
 
@@ -245,6 +251,14 @@ public class CraftingResolver {
                 && craftEval.need.getQtyBlocked() == 0;
 
         if (buyValid && craftValid) {
+            int buyCash = buyEval.need.getBuyCostCopper();
+            int craftCash = craftEval.need.getBuyCostCopper();
+
+            // Prefer the path that needs less real spending
+            if (craftCash < buyCash) return craftEval;
+            if (buyCash < craftCash) return buyEval;
+
+            // If real cash is equal, use economic comparison
             return craftEval.need.getEffectiveCostCopper() <= buyEval.need.getEffectiveCostCopper()
                    ? craftEval
                    : buyEval;
@@ -377,5 +391,22 @@ public class CraftingResolver {
 
     public boolean hasAnyDailyCrafted(ResolvedNeed need) {
         return containsAnyDailyCrafted(need);
+    }
+
+    private int estimateDirectCraftFloor(
+            RecipeRepository.Recipe recipe,
+            PlannerContext ctx
+                                        ) {
+        int sum = 0;
+
+        for (RecipeRepository.Ingredient ing : recipe.ingredients) {
+            int buyUnit = resolveDirectBuyUnit(ing.itemId, ctx.tp, ctx.settings);
+            if (buyUnit <= 0) {
+                return Integer.MAX_VALUE;
+            }
+            sum += buyUnit * ing.count;
+        }
+
+        return sum;
     }
 }

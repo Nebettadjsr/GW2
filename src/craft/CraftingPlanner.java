@@ -24,6 +24,8 @@ public class CraftingPlanner {
     private final CostEvaluator costEvaluator = new CostEvaluator();
     private final ResolvedNeedMapper resolvedNeedMapper = new ResolvedNeedMapper();
     private final RecipeTreeBuilder recipeTreeBuilder = new RecipeTreeBuilder();
+    private List<RecipeRepository.Recipe> lastAllRecipes = List.of();
+    private CraftingSettings lastSettings = null;
 
     public Map<Integer, CraftResult> evaluateAll(List<RecipeRepository.Recipe> recipes,
                                                  Map<Integer, Integer> inventory,
@@ -47,145 +49,6 @@ public class CraftingPlanner {
 
         return out;
     }
-
-    /**
-    private CraftResult evaluateOneRecipeRecursive(
-            RecipeRepository.Recipe recipe,
-            Map<Integer, Integer> baseInventory,
-            PlannerContext ctx) {
-
-        // --- DAILY COOLDOWN HANDLING (buy instead of craft) ---
-        if (DailyCrafts.isDailyOutput(recipe.outputItemId) && ctx.settings.dailyBuyInsteadOfCraft) {
-
-            // If buying is not allowed -> this mode yields 0 craftable
-            if (!ctx.settings.allowBuying) {
-                return new CraftResult(
-                        recipe.outputItemId,
-                        recipe.disciplinesText,
-                        0,
-                        Map.of(),
-                        Map.of(),
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        new Node(recipe.outputItemId, recipe.outputCount, "daily-buy-disabled", List.of())
-                );
-            }
-
-            TpPriceRepository.TpQuote outQ = ctx.tp.get(recipe.outputItemId);
-
-            // BUY price of the OUTPUT item
-            int buyUnit = 0;
-            if (outQ != null) {
-                // Instant buy = sellUnit, Listing buy = buyUnit
-                Integer v = ctx.settings.listingBuy ? outQ.buyUnit : outQ.sellUnit;
-                buyUnit = (v == null) ? 0 : v;
-            }
-
-            // SELL revenue of the OUTPUT item
-            int sellUnit = 0;
-            if (outQ != null) {
-                // Listing sell = sellUnit, Instant sell = buyUnit
-                Integer v = ctx.settings.listingSell ? outQ.sellUnit : outQ.buyUnit;
-                sellUnit = (v == null) ? 0 : v;
-            }
-
-            int buyCostPerCraft  = buyUnit  * recipe.outputCount;
-            int revenuePerCraft  = sellUnit * recipe.outputCount;
-            int profitPerCraft   = revenuePerCraft - buyCostPerCraft;
-
-            // how many can we "do" in buy-mode? = limited by budget (or capped)
-            int craftableCount;
-            if (buyCostPerCraft <= 0) {
-                craftableCount = 0; // no price -> can't evaluate
-            } else if (ctx.settings.maxBuyCopper <= 0) {
-                craftableCount = MAX_CRAFT_CAP; // unlimited budget -> cap
-            } else {
-                craftableCount = ctx.settings.maxBuyCopper / buyCostPerCraft;
-            }
-
-            int totalProfit  = profitPerCraft  * craftableCount;
-
-            Map<Integer, Integer> missingToBuy = new HashMap<>();
-            if (craftableCount > 0) {
-                missingToBuy.put(recipe.outputItemId, recipe.outputCount * craftableCount);
-            }
-            Map<Integer, Integer> missingToBuyOne = new HashMap<>();
-            if (recipe.outputCount > 0) {
-                missingToBuyOne.put(recipe.outputItemId, recipe.outputCount);
-            }
-
-            Node tree = new Node(recipe.outputItemId, recipe.outputCount, "buy", List.of());
-
-            return new CraftResult(
-                    recipe.outputItemId,
-                    recipe.disciplinesText,
-                    craftableCount,
-                    missingToBuy,
-                    missingToBuyOne,
-                    buyCostPerCraft,  // PER 1 craft
-                    0,                // matsSellPerCraft (not applicable here)
-                    revenuePerCraft,  // PER 1 craft
-                    profitPerCraft,   // PER 1 craft
-                    totalProfit,      // TOTAL
-                    tree
-            );
-        }
-
-
-
-        int craftableCount = computeMaxCraftable(recipe, baseInventory, ctx);
-
-        PlanRun one = simulateCraft(recipe, 1, baseInventory, ctx);
-        PlanRun max = (craftableCount > 0)
-                      ? simulateCraft(recipe, craftableCount, baseInventory, ctx)
-                      : new PlanRun(Map.of(), 0, one.tree);
-
-// --- PER 1 craft output sell revenue (GROSS from TP quote) ---
-        int outUnit = 0;
-        TpPriceRepository.TpQuote outQ = ctx.tp.get(recipe.outputItemId);
-        if (outQ != null) {
-            Integer v = ctx.settings.listingSell ? outQ.sellUnit : outQ.buyUnit; // your existing mapping
-            outUnit = (v == null) ? 0 : v;
-        }
-        int revenuePerCraftGross = outUnit * recipe.outputCount;
-
-// --- PER 1 craft mats sell value (GROSS) from leaf materials ---
-        int matsSellGross = computeMatsSellValueFromTree(one.tree, ctx.tp, ctx.settings);
-
-        // --- Buy cost per craft (ONLY ONE craft!) ---
-        int buyCostPerCraft = one.buyCostCopper;
-
-// --- "Value add" profit per craft ---
-        int profitPerCraft = revenuePerCraftGross - buyCostPerCraft - matsSellGross;
-
-
-// --- TOTAL profit: if buying enabled, use real cash profit ---
-        int totalProfit = profitPerCraft * craftableCount;
-
-// IMPORTANT: buyCostCopper field should now be PER 1 craft (not max)
-        return new CraftResult(
-                recipe.outputItemId,
-                recipe.disciplinesText,
-                craftableCount,
-
-                max.missingToBuy,      // keep TOTAL missing list for craftableCount (shopping list)
-                one.missingToBuy,
-                buyCostPerCraft,       // PER 1 craft  ✅ (THIS is your requested change)
-
-                matsSellGross,           // PER 1 craft (net)
-                revenuePerCraftGross,    // PER 1 craft (net)
-                profitPerCraft,        // PER 1 craft (value add)
-                totalProfit,           // TOTAL (cash profit if buying enabled)
-
-                one.tree
-        );
-
-
-    }
- */
 
     // ----------------------------
     // Max craftable count
@@ -498,7 +361,17 @@ public class CraftingPlanner {
     ) {
         PlanState baseState = new PlanState(baseInventory);
 
-        RecipeSimulationResult sim = recipeSimulator.simulateRecipe(recipe, ctx, baseState);
+        RecipeSimulationResult sim;
+
+        boolean maySkipCheap =
+                !ctx.settings.useOwnMats &&
+                        !ctx.settings.allowBuying;
+
+        if (maySkipCheap && !shouldSimulateRecipe(recipe, ctx)) {
+            sim = new RecipeSimulationResult(recipe.recipeId, recipe.outputItemId);
+        } else {
+            sim = recipeSimulator.simulateRecipe(recipe, ctx, baseState);
+        }
         CostEvaluationResult cost = costEvaluator.evaluate(recipe, sim, ctx.tp, ctx.settings);
 
         ResolvedNeed firstCraft = sim.getFirstCraft();
@@ -516,6 +389,13 @@ public class CraftingPlanner {
         int matsSellOne = cost.getOpportunityCostPerCraft();
         int profitOne = revenueOne - buyCostOne - matsSellOne;
         int totalProfit = profitOne * sim.getCraftCount();
+
+        if (recipe.outputItemId == 70992 ) {
+            System.out.println("DEBUG shouldSimulate for " + recipe.recipeId +
+                                       " useOwnMats=" + ctx.settings.useOwnMats +
+                                       " allowBuying=" + ctx.settings.allowBuying +
+                                       " shouldSimulate=" + shouldSimulateRecipe(recipe, ctx));
+        }
 
         return new CraftResult(
                 recipe.outputItemId,
@@ -544,12 +424,6 @@ public class CraftingPlanner {
         }
     }
 
-
-
-
-
-
-
     private int computeBuyCostFromMissing(Map<Integer, Integer> missing,
                                           Map<Integer, TpPriceRepository.TpQuote> tp,
                                           CraftingSettings settings) {
@@ -572,5 +446,39 @@ public class CraftingPlanner {
         }
 
         return sum;
+    }
+
+    private boolean shouldSimulateRecipe(
+            RecipeRepository.Recipe recipe,
+            PlannerContext ctx
+                                        ) {
+
+
+        CraftingResolver resolver = new CraftingResolver();
+        int sellUnit = resolver.resolveDirectSellUnit(recipe.outputItemId, ctx.tp, ctx.settings);
+        if (sellUnit <= 0) return false;
+
+        int revenue = sellUnit * recipe.outputCount;
+
+        int minCost = 0;
+
+        for (RecipeRepository.Ingredient ing : recipe.ingredients) {
+
+            int buyUnit = resolver.resolveDirectBuyUnit(ing.itemId, ctx.tp, ctx.settings);
+            int sellUnitMat = resolver.resolveDirectSellUnit(ing.itemId, ctx.tp, ctx.settings);
+
+            int cheapest = Math.min(
+                    buyUnit > 0 ? buyUnit : Integer.MAX_VALUE,
+                    sellUnitMat > 0 ? sellUnitMat : Integer.MAX_VALUE
+                                   );
+
+            if (cheapest == Integer.MAX_VALUE) {
+                return true; // unknown cost → simulate
+            }
+
+            minCost += cheapest * ing.count;
+        }
+
+        return minCost < revenue;
     }
 }

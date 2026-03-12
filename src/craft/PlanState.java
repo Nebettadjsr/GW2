@@ -8,21 +8,40 @@ import java.util.Set;
 public class PlanState {
 
     public final Map<Integer, Integer> inventory;
-    public final Map<Integer, Integer> missingToBuy = new HashMap<>();
-    public final Set<Integer> visiting = new HashSet<>();
-    public final Map<Integer, Integer> dailyLeft = new HashMap<>();
+    public final Map<Integer, Integer> missingToBuy;
+    public final Set<Integer> visiting;
+    public final Map<Integer, Integer> dailyLeft;
 
     public int buyCostCopper = 0;
 
     public PlanState(Map<Integer, Integer> baseInventory) {
         this.inventory = new HashMap<>(baseInventory);
+        this.missingToBuy = new HashMap<>();
+        this.visiting = new HashSet<>();
+        this.dailyLeft = new HashMap<>();
     }
 
     public PlanState(PlanState other) {
-        this.inventory = new HashMap<>(other.inventory);
+        this.inventory = new HashMap<>();
+        this.missingToBuy = new HashMap<>();
+        this.visiting = new HashSet<>();
+        this.dailyLeft = new HashMap<>();
+        copyFrom(other);
+    }
+
+    public void copyFrom(PlanState other) {
+        this.inventory.clear();
+        this.inventory.putAll(other.inventory);
+
+        this.missingToBuy.clear();
         this.missingToBuy.putAll(other.missingToBuy);
+
+        this.visiting.clear();
         this.visiting.addAll(other.visiting);
+
+        this.dailyLeft.clear();
         this.dailyLeft.putAll(other.dailyLeft);
+
         this.buyCostCopper = other.buyCostCopper;
     }
 

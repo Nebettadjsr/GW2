@@ -45,13 +45,15 @@ public class CraftingProfitView {
         private final IntegerProperty buyCostCopper = new SimpleIntegerProperty();
         private final IntegerProperty revenueCopper = new SimpleIntegerProperty();
         private final IntegerProperty profitCopper = new SimpleIntegerProperty();
+        private final StringProperty searchBlob = new SimpleStringProperty();
 
         private final IntegerProperty matsSellValueCopper = new SimpleIntegerProperty();
 
 
         public CraftRow(int recipeId, int outputItemId, String outputName, String discipline,
                         int craftableCount, String missingSummary,
-                        int buyCostCopper, int revenueCopper, int profitCopper, int matsSellValueCopper) {
+                        int buyCostCopper, int revenueCopper, int profitCopper,
+                        int matsSellValueCopper, String searchBlob) {
             this.recipeId.set(recipeId);
             this.outputItemId.set(outputItemId);
             this.outputName.set(outputName);
@@ -62,6 +64,7 @@ public class CraftingProfitView {
             this.revenueCopper.set(revenueCopper);
             this.profitCopper.set(profitCopper);
             this.matsSellValueCopper.set(matsSellValueCopper);
+            this.searchBlob.set(searchBlob);
         }
 
         public int getRecipeId() { return recipeId.get(); }
@@ -97,6 +100,9 @@ public class CraftingProfitView {
 
         public int getMatsSellValueCopper() { return matsSellValueCopper.get(); }
         public IntegerProperty matsSellValueCopperProperty() { return matsSellValueCopper; }
+
+        public String getSearchBlob() { return searchBlob.get(); }
+        public StringProperty searchBlobProperty() { return searchBlob; }
 
     }
 
@@ -218,7 +224,7 @@ public class CraftingProfitView {
                 "Max craftable count",
                 "ROI % (later)"
                                  );
-        sortBox.getSelectionModel().select(0);
+        sortBox.getSelectionModel().select("Total profit");
         sortBox.setPrefWidth(170);
 
         TextField searchField = new TextField();
@@ -293,9 +299,10 @@ public class CraftingProfitView {
                         "-fx-table-header-border-color: rgba(255,255,255,0.08);"
                       );
 
-        // --- data list (must exist BEFORE reloadTable) ---
-        ObservableList<CraftRow> rows = FXCollections.observableArrayList();
-        table.setItems(rows);
+        // --- data lists ---
+        ObservableList<CraftRow> masterRows = FXCollections.observableArrayList();
+        ObservableList<CraftRow> visibleRows = FXCollections.observableArrayList();
+        table.setItems(visibleRows);
 
 // --- reload logic (must exist BEFORE button handlers that call it) ---
         Runnable reloadTable = () -> {
@@ -314,9 +321,7 @@ public class CraftingProfitView {
 
                     CraftingSettings settings = new CraftingSettings(useOwnMats, allowBuy, maxBuyCopper, listingSell, listingBuy, dailyBuyMode);
 
-                    String search = searchField.getText();
-
-                    var data = controller.reload(choice, settings, search);
+                    var data = controller.reload(choice, settings);
 
 // --- DEBUG STATS (UI visible) ---
                     int totalRows = data.size();
@@ -348,9 +353,10 @@ public class CraftingProfitView {
 
 
                     Platform.runLater(() -> {
-                        rows.clear();
+                        masterRows.clear();
+
                         for (var r : data) {
-                            rows.add(new CraftRow(
+                            masterRows.add(new CraftRow(
                                     r.recipeId,
                                     r.outputItemId,
                                     r.outputName,
@@ -360,14 +366,14 @@ public class CraftingProfitView {
                                     r.buyCostCopper,
                                     r.revenueCopper,
                                     r.profitCopper,
-                                    r.matsSellValueCopper
+                                    r.matsSellValueCopper,
+                                    r.searchBlob
                             ));
                         }
-                        table.sort();
 
-//                        statusLabel.setText("✅ Loaded " + rows.size() + " recipes from DB.");
-                        statusLabel.setText("✅ Loaded " + rows.size() + " recipes.  |  " + dbg);
+                        applyClientFilterAndSort(masterRows, visibleRows, searchField.getText(), sortBox.getValue(), table);
 
+                        statusLabel.setText("✅ Loaded " + visibleRows.size() + " recipes.  |  " + dbg);
                     });
 
 
@@ -448,10 +454,12 @@ public class CraftingProfitView {
         });
 
 // Search: reload on ENTER (keeps it fast)
-        searchField.setOnAction(e -> reloadTable.run());
+        searchField.textProperty().addListener((obs, o, n) ->
+                                                       applyClientFilterAndSort(masterRows, visibleRows, n, sortBox.getValue(), table));
 
 // Sort: reload when changed
-        sortBox.valueProperty().addListener((obs, o, n) -> reloadTable.run());
+        sortBox.valueProperty().addListener((obs, o, n) ->
+                                                    applyClientFilterAndSort(masterRows, visibleRows, searchField.getText(), n, table));
 
         btnRefreshTp.setOnAction(e -> {
             statusLabel.setText("Refreshing TP prices...");
@@ -607,6 +615,9 @@ public class CraftingProfitView {
 
         table.getColumns().addAll(colName, colCraftable, colBuyCost, colMatsSell, colRevenue, colProfit, colTotalProfit);
 
+        colTotalProfit.setSortType(TableColumn.SortType.DESCENDING);
+        table.getSortOrder().clear();
+        table.getSortOrder().add(colTotalProfit);
 
 
         // ---------- Details panel (right) ----------
@@ -807,8 +818,6 @@ public class CraftingProfitView {
         };
     }
 
-
-
     private static TreeItem<String> toTreeItem(Node n, CraftingProfitController controller) {
         if (n == null) return new TreeItem<>("(no data)");
 
@@ -821,6 +830,36 @@ public class CraftingProfitView {
             }
         }
         return ti;
+    }
+
+    private static void applyClientFilterAndSort(ObservableList<CraftRow> masterRows,
+                                                 ObservableList<CraftRow> visibleRows,
+                                                 String search,
+                                                 String sortMode,
+                                                 TableView<CraftRow> table) {
+        String s = search == null ? "" : search.trim().toLowerCase();
+
+        visibleRows.clear();
+
+        for (CraftRow row : masterRows) {
+            if (s.isBlank() || (row.getSearchBlob() != null && row.getSearchBlob().contains(s))) {
+                visibleRows.add(row);
+            }
+        }
+
+        Comparator<CraftRow> comparator = switch (sortMode) {
+            case "Total profit" ->
+                    Comparator.comparingInt((CraftRow r) -> r.getCraftableCount() * r.getProfitCopper()).reversed();
+            case "Max craftable count" ->
+                    Comparator.comparingInt(CraftRow::getCraftableCount).reversed();
+            case "Profit per item" ->
+                    Comparator.comparingInt(CraftRow::getProfitCopper).reversed();
+            default ->
+                    Comparator.comparingInt((CraftRow r) -> r.getCraftableCount() * r.getProfitCopper()).reversed();
+        };
+
+        FXCollections.sort(visibleRows, comparator);
+        table.refresh();
     }
 
 }
