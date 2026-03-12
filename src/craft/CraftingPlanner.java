@@ -496,11 +496,6 @@ public class CraftingPlanner {
             Map<Integer, Integer> baseInventory,
             PlannerContext ctx
     ) {
-        // EARLY PRUNING: skip expensive recursive simulation
-        if (shouldPruneEarly(recipe, ctx)) {
-            return buildEarlyPrunedResult(recipe, ctx);
-        }
-
         PlanState baseState = new PlanState(baseInventory);
 
         RecipeSimulationResult sim = recipeSimulator.simulateRecipe(recipe, ctx, baseState);
@@ -517,7 +512,7 @@ public class CraftingPlanner {
         int totalBuyCost = computeBuyCostFromMissing(sim.getTotalMissingToBuy(), ctx.tp, ctx.settings);
         int buyCostOne = computeBuyCostFromMissing(missingToBuyOne, ctx.tp, ctx.settings);
 
-        int revenueOne = computeOutputRevenueOne(recipe, ctx.tp, ctx.settings);
+        int revenueOne = cost.getRevenuePerCraft();
         int matsSellOne = cost.getOpportunityCostPerCraft();
         int profitOne = revenueOne - buyCostOne - matsSellOne;
         int totalProfit = profitOne * sim.getCraftCount();
@@ -528,13 +523,12 @@ public class CraftingPlanner {
                 sim.getCraftCount(),
                 sim.getTotalMissingToBuy(),
                 missingToBuyOne,
-                ,
+                totalBuyCost,
                 matsSellOne,
                 revenueOne,
                 profitOne,
                 totalProfit,
-                tree,
-                false
+                tree
         );
     }
 
@@ -550,73 +544,11 @@ public class CraftingPlanner {
         }
     }
 
-    private int computeOutputRevenueOne(RecipeRepository.Recipe recipe,
-                                        Map<Integer, TpPriceRepository.TpQuote> tp,
-                                        CraftingSettings settings) {
-        TpPriceRepository.TpQuote q = tp.get(recipe.outputItemId);
-        if (q == null) return 0;
 
-        Integer unit = settings.listingSell ? q.sellUnit : q.buyUnit;
-        if (unit == null) return 0;
 
-        return unit * recipe.outputCount;
-    }
 
-    private int computeDirectMatsSellValueOne(RecipeRepository.Recipe recipe,
-                                              Map<Integer, TpPriceRepository.TpQuote> tp,
-                                              CraftingSettings settings) {
-        int sum = 0;
 
-        for (RecipeRepository.Ingredient ing : recipe.ingredients) {
-            TpPriceRepository.TpQuote q = tp.get(ing.itemId);
-            if (q == null) continue;
 
-            Integer unit = settings.listingSell ? q.sellUnit : q.buyUnit;
-            if (unit == null) continue;
-
-            sum += unit * ing.count;
-        }
-
-        return sum;
-    }
-
-    private boolean shouldPruneEarly(RecipeRepository.Recipe recipe, PlannerContext ctx) {
-        int revenueOne = computeOutputRevenueOne(recipe, ctx.tp, ctx.settings);
-        if (revenueOne <= 0) {
-            return true; // not tradable / no revenue
-        }
-
-        int directMatsSellOne = computeDirectMatsSellValueOne(recipe, ctx.tp, ctx.settings);
-        return directMatsSellOne > revenueOne;
-    }
-
-    private CraftResult buildEarlyPrunedResult(RecipeRepository.Recipe recipe, PlannerContext ctx) {
-        int revenueOne = computeOutputRevenueOne(recipe, ctx.tp, ctx.settings);
-        int directMatsSellOne = computeDirectMatsSellValueOne(recipe, ctx.tp, ctx.settings);
-        int profitOne = revenueOne - directMatsSellOne;
-
-        Node tree = new Node(
-                recipe.outputItemId,
-                recipe.outputCount,
-                "pruned-direct-loss",
-                List.of()
-        );
-
-        return new CraftResult(
-                recipe.outputItemId,
-                recipe.disciplinesText,
-                0,                  // craftableCount
-                Map.of(),           // total missing
-                Map.of(),           // missing for one
-                0,                  // buy cost per craft
-                directMatsSellOne,  // mats sell value per craft
-                revenueOne,         // revenue per craft
-                profitOne,          // profit per craft
-                0,                  // total profit
-                tree,
-                true
-        );
-    }
 
     private int computeBuyCostFromMissing(Map<Integer, Integer> missing,
                                           Map<Integer, TpPriceRepository.TpQuote> tp,

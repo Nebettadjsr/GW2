@@ -16,7 +16,6 @@ public class CraftResult {
     public final int totalProfitCopper;      // TOTAL
 
     public final Node tree;
-    public final boolean earlyPruned;
 
     public CraftResult(int outputItemId, String discipline, int craftableCount,
                        Map<Integer, Integer> missingToBuy,
@@ -26,8 +25,7 @@ public class CraftResult {
                        int revenueCopper,
                        int profitCopper,
                        int totalProfitCopper,
-                       Node tree,
-                       boolean earlyPruned) {
+                       Node tree) {
         this.outputItemId = outputItemId;
         this.discipline = discipline;
         this.craftableCount = craftableCount;
@@ -39,6 +37,5 @@ public class CraftResult {
         this.profitCopper = profitCopper;
         this.totalProfitCopper = totalProfitCopper;
         this.tree = tree;
-        this.earlyPruned = earlyPruned;
     }
 }
