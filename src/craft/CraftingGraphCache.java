@@ -52,14 +52,6 @@ public class CraftingGraphCache {
         return graph;
     }
 
-    public boolean cacheExists() {
-        return new File(CACHE_FILE).exists();
-    }
-
-    public String getCacheFilePath() {
-        return new File(CACHE_FILE).getAbsolutePath();
-    }
-
     private String buildCacheKeyFromDb() throws SQLException {
         int recipeCount = recipeRepo.countRecipes();
         int ingredientCount = recipeRepo.countRecipeIngredients();

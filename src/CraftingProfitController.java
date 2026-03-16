@@ -23,6 +23,8 @@ public class CraftingProfitController {
     private Map<Integer, ItemRepository.ItemInfo> lastItems = Map.of();
     private Map<Integer, TpPriceRepository.TpQuote> lastTp = Map.of();
 
+    private Set<Integer> lastAllowedRecipeIds = Collections.emptySet();
+
 
     public static class UiRow {
         public final int recipeId;       // NEW
@@ -66,36 +68,35 @@ public class CraftingProfitController {
     public List<UiRow> reload(DiscChoice choice, CraftingSettings settings) throws SQLException {
 
         List<RecipeRepository.Recipe> visibleRecipes;
-
         if (choice == null || choice.kind == DiscChoice.Kind.ALL) {
-            visibleRecipes = recipeRepo.loadRecipes("All"); // DISTINCT aus character_recipes (deine neue Logik)
+            visibleRecipes = recipeRepo.loadRecipes("All");
         } else if (choice.kind == DiscChoice.Kind.DISCIPLINE_ONLY) {
-            visibleRecipes = recipeRepo.loadRecipes(choice.discipline); // discipline across all chars
-        } else {
-            // CHAR_DISCIPLINE
+            visibleRecipes = recipeRepo.loadRecipes(choice.discipline);
+        } else { // CHAR_DISCIPLINE
             visibleRecipes = recipeRepo.loadRecipesForCharacter(choice.charName, choice.discipline);
         }
 
-// Full recipe graph for planner (ALL recipes)
+        Set<Integer> allowedRecipeIds = visibleRecipes.stream()
+                .map(r -> r.recipeId)
+                .collect(Collectors.toSet());
+
+        this.lastAllowedRecipeIds = allowedRecipeIds;
+
         CraftingGraph graph;
         try {
             CraftingGraphCache graphCache = new CraftingGraphCache(recipeRepo);
             graph = graphCache.load();
-
         } catch (Exception e) {
             throw new RuntimeException("Failed to load crafting graph cache", e);
         }
+
         List<RecipeRepository.Recipe> allRecipes = graph.getRecipes();
 
-        // 2) inventory (bank/materials depending on settings.includeBank)
         Map<Integer,Integer> inv = settings.useOwnMats
-                                   ? invRepo.loadOwnedInventory()
-                                   : Map.of();
+                ? invRepo.loadOwnedInventory()
+                : Map.of();
 
-        // 3) collect all itemIds we need prices+names for (outputs + ingredients)
         Set<Integer> itemIds = new HashSet<>();
-
-        // IMPORTANT: use allRecipes (the planner graph), not only visibleRecipes
         for (RecipeRepository.Recipe r : allRecipes) {
             itemIds.add(r.outputItemId);
             for (RecipeRepository.Ingredient ing : r.ingredients) {
@@ -110,33 +111,31 @@ public class CraftingProfitController {
         this.lastAllRecipes = allRecipes;
         this.lastSettings = settings;
 
+        Map<Integer, CraftResult> resultsByRecipeId =
+                planner.evaluateAll(allRecipes, inv, tp, settings, allowedRecipeIds);
 
-        // 5) plan (USE the settings that came from the UI)
-        Map<Integer, CraftResult> resultsByRecipeId = planner.evaluateAll(allRecipes, inv, tp, settings);
-
-        // cache results for View details (tree + missing list)
         this.lastResultsByRecipeId = resultsByRecipeId;
 
-        // 6) map to UI rows
         List<UiRow> uiRows = new ArrayList<>();
         Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = new HashMap<>();
         for (RecipeRepository.Recipe r : allRecipes) {
             recipesByOutput.computeIfAbsent(r.outputItemId, k -> new ArrayList<>()).add(r);
         }
+
         for (RecipeRepository.Recipe r : visibleRecipes) {
             CraftResult cr = resultsByRecipeId.get(r.recipeId);
             if (cr == null) continue;
-            // Hide clutter: if we would need to BUY something with 0c price, skip this recipe
             if (hasZeroPricedBuy(cr, tp, settings)) continue;
-            // If output is not tradable (no TP sell price), don’t show it in the profit table
             if (cr.revenueCopper <= 0) continue;
 
-
-
             var it = items.get(r.outputItemId);
-            String name = (it != null && it.name != null && !it.name.isBlank())
+            String baseName = (it != null && it.name != null && !it.name.isBlank())
                     ? it.name
                     : ("Item " + r.outputItemId);
+
+            String name = (r.outputCount > 1)
+                    ? (r.outputCount + "x " + baseName)
+                    : baseName;
 
             String miss = summarizeMissing(cr.missingToBuy, items, tp, settings.allowBuying);
             String searchBlob = buildSearchBlob(r, items, recipesByOutput, new HashSet<>());
@@ -155,13 +154,8 @@ public class CraftingProfitController {
                     cr.totalProfitCopper,
                     searchBlob
             ));
-
         }
 
-        // 7) search filter
-
-
-        // 8) budget + craftable filters
         if (!settings.allowBuying) {
             uiRows = uiRows.stream()
                     .filter(x -> x.craftableCount > 0)
@@ -176,7 +170,6 @@ public class CraftingProfitController {
 
         return uiRows;
     }
-
 
     // --------- View helpers ---------
 
@@ -307,9 +300,14 @@ public class CraftingProfitController {
             recipesByOutput.computeIfAbsent(r.outputItemId, k -> new ArrayList<>()).add(r);
         }
 
-        PlannerContext ctx = new PlannerContext(recipesByOutput, lastTp, lastSettings);
-        RecipeTreeBuilder treeBuilder = new RecipeTreeBuilder();
+        PlannerContext ctx = new PlannerContext(
+                recipesByOutput,
+                lastTp,
+                lastSettings,
+                lastAllowedRecipeIds
+        );
 
+        RecipeTreeBuilder treeBuilder = new RecipeTreeBuilder();
         return treeBuilder.buildTree(target, ctx);
     }
 
@@ -338,7 +336,17 @@ public class CraftingProfitController {
 
             List<RecipeRepository.Recipe> subRecipes = recipesByOutput.get(ing.itemId);
             if (subRecipes != null && !subRecipes.isEmpty()) {
-                sb.append(buildSearchBlob(subRecipes.get(0), items, recipesByOutput, visited)).append(' ');
+                RecipeRepository.Recipe allowedSubRecipe = null;
+                for (RecipeRepository.Recipe sub : subRecipes) {
+                    if (lastAllowedRecipeIds.contains(sub.recipeId)) {
+                        allowedSubRecipe = sub;
+                        break;
+                    }
+                }
+
+                if (allowedSubRecipe != null) {
+                    sb.append(buildSearchBlob(allowedSubRecipe, items, recipesByOutput, visited)).append(' ');
+                }
             }
         }
 

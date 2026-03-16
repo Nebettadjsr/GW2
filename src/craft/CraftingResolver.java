@@ -334,18 +334,33 @@ public class CraftingResolver {
         return false;
     }
 
+//    public RecipeRepository.Recipe firstRecipeFor(int itemId, PlannerContext ctx) {
+//
+//        RecipeRepository.Recipe cached = firstRecipeCache.get(itemId);
+//        if (cached != null) return cached;
+//
+//        List<RecipeRepository.Recipe> list = ctx.recipesByOutput.get(itemId);
+//
+//        RecipeRepository.Recipe result = (list == null || list.isEmpty()) ? null : list.get(0);
+//
+//        firstRecipeCache.put(itemId, result);
+//
+//        return result;
+//    }
+
     public RecipeRepository.Recipe firstRecipeFor(int itemId, PlannerContext ctx) {
-
-        RecipeRepository.Recipe cached = firstRecipeCache.get(itemId);
-        if (cached != null) return cached;
-
         List<RecipeRepository.Recipe> list = ctx.recipesByOutput.get(itemId);
+        if (list == null || list.isEmpty()) {
+            return null;
+        }
 
-        RecipeRepository.Recipe result = (list == null || list.isEmpty()) ? null : list.get(0);
+        for (RecipeRepository.Recipe recipe : list) {
+            if (ctx.allowedRecipeIds.contains(recipe.recipeId)) {
+                return recipe;
+            }
+        }
 
-        firstRecipeCache.put(itemId, result);
-
-        return result;
+        return null;
     }
 
     private static class CandidateEval {
@@ -371,26 +386,6 @@ public class CraftingResolver {
         boolean isStateCandidate() {
             return stateAfter != null;
         }
-    }
-
-    private boolean containsAnyDailyCrafted(ResolvedNeed need) {
-        if (need == null) return false;
-
-        if (DailyCrafts.isDailyOutput(need.getItemId()) && need.getQtyCrafted() > 0) {
-            return true;
-        }
-
-        for (ResolvedNeed child : need.getChildren()) {
-            if (containsAnyDailyCrafted(child)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    public boolean hasAnyDailyCrafted(ResolvedNeed need) {
-        return containsAnyDailyCrafted(need);
     }
 
     private int estimateDirectCraftFloor(

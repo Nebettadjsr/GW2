@@ -55,6 +55,7 @@ public class Gw2App extends Application {
 
     private Scene createHomeScene() {
 
+
         // Logo + Title row
         Image     logo     = new Image(getClass().getResource("/images/logo.png").toExternalForm());
         ImageView logoView = new ImageView(logo);

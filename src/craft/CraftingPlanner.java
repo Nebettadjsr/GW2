@@ -19,18 +19,14 @@ import java.util.*;
  */
 public class CraftingPlanner {
 
-    private static final int MAX_CRAFT_CAP = 250;
     private final RecipeSimulator recipeSimulator = new RecipeSimulator();
     private final CostEvaluator costEvaluator = new CostEvaluator();
-    private final ResolvedNeedMapper resolvedNeedMapper = new ResolvedNeedMapper();
-    private final RecipeTreeBuilder recipeTreeBuilder = new RecipeTreeBuilder();
-    private List<RecipeRepository.Recipe> lastAllRecipes = List.of();
-    private CraftingSettings lastSettings = null;
 
     public Map<Integer, CraftResult> evaluateAll(List<RecipeRepository.Recipe> recipes,
                                                  Map<Integer, Integer> inventory,
                                                  Map<Integer, TpPriceRepository.TpQuote> tp,
-                                                 CraftingSettings settings) {
+                                                 CraftingSettings settings,
+                                                 Set<Integer> allowedRecipeIds) {
 
         // Build lookup: output_item_id -> list of recipes that produce it
         Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = new HashMap<>();
@@ -40,8 +36,7 @@ public class CraftingPlanner {
 
         Map<Integer, CraftResult> out = new HashMap<>();
 
-        PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings);
-
+        PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds);
         for (RecipeRepository.Recipe r : recipes) {
             CraftResult cr = evaluateOneRecipeNew(r, inventory, ctx);
             out.put(r.recipeId, cr);
@@ -53,35 +48,6 @@ public class CraftingPlanner {
     // ----------------------------
     // Max craftable count
     // ----------------------------
-
-    private int computeMaxCraftable(
-            RecipeRepository.Recipe recipe,
-            Map<Integer, Integer> baseInventory,
-            PlannerContext ctx) {
-
-        int lo = 0;
-        int hi = 1;
-
-        // Exponential search for an upper bound
-        while (hi < MAX_CRAFT_CAP && canCraft(recipe, hi, baseInventory, ctx)) {
-            lo = hi;
-            hi = hi * 2;
-        }
-
-        if (hi > MAX_CRAFT_CAP) hi = MAX_CRAFT_CAP;
-
-        // Binary search between lo..hi
-        while (lo < hi) {
-            int mid = (lo + hi + 1) / 2;
-            if (canCraft(recipe, mid, baseInventory, ctx)) {
-                lo = mid;
-            } else {
-                hi = mid - 1;
-            }
-        }
-
-        return lo;
-    }
 
     private boolean canCraft(
             RecipeRepository.Recipe recipe,
@@ -314,7 +280,6 @@ public class CraftingPlanner {
         return (a + b - 1) / b;
     }
 
-
     private static class PlanRun {
         final Map<Integer, Integer> missingToBuy;
         final int buyCostCopper;
@@ -325,33 +290,6 @@ public class CraftingPlanner {
             this.buyCostCopper = buyCostCopper;
             this.tree = tree;
         }
-    }
-
-    private int computeMatsSellValueFromTree(Node n,
-                                             Map<Integer, TpPriceRepository.TpQuote> tp,
-                                             CraftingSettings settings) {
-        if (n == null) return 0;
-
-        // If it has children, it’s not a leaf material -> sum children
-        if (n.children != null && !n.children.isEmpty()) {
-            int sum = 0;
-            for (Node ch : n.children) {
-                sum += computeMatsSellValueFromTree(ch, tp, settings);
-            }
-            return sum;
-        }
-
-        // Leaf: treat as a base material amount that could be sold
-        // We want to count inventory/missing/buy leaves (not "need")
-        if (!"inventory".equals(n.action)) return 0;
-
-        TpPriceRepository.TpQuote q = tp.get(n.itemId);
-        if (q == null) return 0;
-
-        Integer unit = settings.listingSell ? q.sellUnit : q.buyUnit;
-        if (unit == null) return 0;
-
-        return unit * n.qty;
     }
 
     private CraftResult evaluateOneRecipeNew(

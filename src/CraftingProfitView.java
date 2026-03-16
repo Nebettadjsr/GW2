@@ -15,6 +15,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
+import javafx.util.Duration;
 import repo.DiscChoice;
 import sync.AccountSync;
 import sync.TpSync;
@@ -107,6 +108,11 @@ public class CraftingProfitView {
     }
 
     public static void show(Stage stage, Runnable onBack) {
+
+        Tooltip tooltip = new Tooltip();
+        tooltip.setShowDelay(Duration.millis(300));
+        tooltip.setShowDuration(Duration.seconds(15));
+        tooltip.setHideDelay(Duration.millis(200));
 
         // ---------- Top bar ----------
         Button btnBack = new Button("← Back");
@@ -222,7 +228,7 @@ public class CraftingProfitView {
                 "Profit per item",
                 "Total profit",
                 "Max craftable count",
-                "ROI % (later)"
+                "Total sell value"
                                  );
         sortBox.getSelectionModel().select("Total profit");
         sortBox.setPrefWidth(170);
@@ -262,16 +268,12 @@ public class CraftingProfitView {
         Label autoRefreshLabel = new Label("Auto-refresh in: 90s");
         autoRefreshLabel.setStyle("-fx-text-fill: white; -fx-opacity: 0.85;");
 
-        Label lastRefreshLabel = new Label("Last refresh: —");
-        lastRefreshLabel.setStyle("-fx-text-fill: white; -fx-opacity: 0.65;");
-
 
         HBox filterRow3 = new HBox(12,
                 new LabelStyled("Sort:"), sortBox,
                 new Separator(Orientation.VERTICAL),
                 searchField,
                 autoRefreshLabel,
-                lastRefreshLabel,
                 btnRefreshTp
         );
         filterRow3.setAlignment(Pos.CENTER);
@@ -294,10 +296,12 @@ public class CraftingProfitView {
         table.setPlaceholder(new Label("No data yet. (Next: DB load)"));
         table.setStyle(
                 "-fx-background-color: transparent;" +
-                        "-fx-control-inner-background: #12151c;" +     // rows
+                        "-fx-control-inner-background: #12151c;" +
                         "-fx-table-cell-border-color: rgba(255,255,255,0.08);" +
-                        "-fx-table-header-border-color: rgba(255,255,255,0.08);"
-                      );
+                        "-fx-table-header-border-color: rgba(255,255,255,0.08);" +
+                        "-fx-selection-bar: #2a6df4;" +
+                        "-fx-selection-bar-non-focused: #2a6df4;"
+        );
 
         // --- data lists ---
         ObservableList<CraftRow> masterRows = FXCollections.observableArrayList();
@@ -408,7 +412,6 @@ public class CraftingProfitView {
                     secondsLeft[0] = REFRESH_SECONDS;
 
                     Platform.runLater(() -> {
-                        lastRefreshLabel.setText("Last refresh: just now");
                         statusLabel.setText("🔄 Auto-refreshed Bank + Materials");
                         reloadTable.run();
                     });
@@ -418,7 +421,6 @@ public class CraftingProfitView {
                     secondsLeft[0] = REFRESH_SECONDS; // still reset, otherwise it spams
 
                     Platform.runLater(() -> {
-                        lastRefreshLabel.setText("Last refresh: FAILED");
                         statusLabel.setText("⚠️ Auto-refresh failed: " + ex.getMessage());
                     });
                 }
@@ -426,7 +428,7 @@ public class CraftingProfitView {
 
             // update countdown label every second
             int show = secondsLeft[0];
-            Platform.runLater(() -> autoRefreshLabel.setText("Auto-refresh in: " + show + "s"));
+            Platform.runLater(() -> autoRefreshLabel.setText("Auto-refresh in: " + show + "s / 90s"));
 
         }, 1, 1, TimeUnit.SECONDS);
 
@@ -537,7 +539,7 @@ public class CraftingProfitView {
         TableColumn<CraftRow, Number> colProfit = new TableColumn<>("Profit per craft");
         colProfit.setCellValueFactory(data -> data.getValue().profitCopperProperty());
         colProfit.setCellFactory(tc -> profitCell());
-        colProfit.setSortType(TableColumn.SortType.DESCENDING);
+
 
         TableColumn<CraftRow, Number> colTotalProfit = new TableColumn<>("Total profit");
         colTotalProfit.setCellValueFactory(data -> {
@@ -550,7 +552,14 @@ public class CraftingProfitView {
         colTotalProfit.setSortType(TableColumn.SortType.DESCENDING);
         table.getSortOrder().setAll(colTotalProfit);
 
-        TableColumn<CraftRow, Number> colMatsSell = new TableColumn<>("own mats sell value");
+        TableColumn<CraftRow, Number> colLiquid = new TableColumn<>("Total sell value");
+        colLiquid.setCellValueFactory(data -> {
+            CraftRow r = data.getValue();
+            return new SimpleIntegerProperty(r.getRevenueCopper() * r.getCraftableCount());
+        });
+        colLiquid.setCellFactory(tc -> coinCell(false));
+
+        TableColumn<CraftRow, Number> colMatsSell = new TableColumn<>("Own Mats Sell Value");
         colMatsSell.setCellValueFactory(data -> data.getValue().matsSellValueCopperProperty());
         colMatsSell.setCellFactory(tc -> new TableCell<>() {
             @Override
@@ -588,37 +597,56 @@ public class CraftingProfitView {
         });
 
 
-
         // Make small columns stay small
         colCraftable.setMaxWidth(90);
-
         colBuyCost.setMaxWidth(120);
+        colMatsSell.setMaxWidth(140);
         colRevenue.setMaxWidth(140);
         colProfit.setMaxWidth(140);
-
+        colLiquid.setMaxWidth(140);
         colTotalProfit.setMaxWidth(140);
-        colTotalProfit.setMinWidth(140);
 
-        colMatsSell.setMaxWidth(140);
-        colMatsSell.setMinWidth(110);
 
 
 // Give Item most of the width (weight)
+        colName.setMinWidth(220);
         colName.setMaxWidth(1f * Integer.MAX_VALUE);
 
 // Optional: small mins so they don’t get too tiny
         colCraftable.setMinWidth(70);
         colBuyCost.setMinWidth(110);
+        colMatsSell.setMinWidth(110);
         colRevenue.setMinWidth(110);
         colProfit.setMinWidth(110);
-        colName.setMinWidth(220);
+        colLiquid.setMinWidth(110);
+        colTotalProfit.setMinWidth(110);
 
-        table.getColumns().addAll(colName, colCraftable, colBuyCost, colMatsSell, colRevenue, colProfit, colTotalProfit);
+        installHeaderTooltip(table, colCraftable,
+                "Craftable Count\nMaximum number of crafts possible with current inventory");
 
+        installHeaderTooltip(table, colBuyCost,
+                "Buy Cost\nGold required to buy missing materials for ONE craft");
+
+        installHeaderTooltip(table, colMatsSell,
+                "Own Mats Sell Value\nGold received from selling the mats for ONE craft");
+
+        installHeaderTooltip(table, colRevenue,
+                "Item Sell Price\nGold received from selling ONE crafted item\nGW2 TradingFees will still be deducted -15%!\nFor item like \"10x Potions of ...\" Price is per 10 Potions");
+
+        installHeaderTooltip(table, colProfit,
+                "Profit per Craft = Item Sell Price - Own Mats Value - Buy Cost");
+
+        installHeaderTooltip(table, colTotalProfit,
+                "Total Profit = craftcount × Profit per craft\nTotal increase in gold value gained when crafting");
+
+        installHeaderTooltip(table, colLiquid,
+                "Total Sell Value = craftcount × Item Sell Price\nTotal gold gained by crafting and selling");
+
+
+        table.getColumns().addAll(colName, colCraftable, colBuyCost, colMatsSell, colRevenue, colProfit, colLiquid, colTotalProfit);
         colTotalProfit.setSortType(TableColumn.SortType.DESCENDING);
         table.getSortOrder().clear();
         table.getSortOrder().add(colTotalProfit);
-
 
         // ---------- Details panel (right) ----------
         Label detailsTitle = new Label("Details");
@@ -724,11 +752,11 @@ public class CraftingProfitView {
         root.setCenter(scroll);
         root.setStyle("""
             -fx-background-color: #0f1115;
-            -fx-font-size: 15px;
+            -fx-font-size: 16px;
         """);
 
 
-        stage.setScene(new Scene(root, 1280, 720));
+        stage.setScene(new Scene(root, 1400, 950));
         reloadDisciplineChoices.run();
         reloadTable.run();
 
@@ -854,6 +882,8 @@ public class CraftingProfitView {
                     Comparator.comparingInt(CraftRow::getCraftableCount).reversed();
             case "Profit per item" ->
                     Comparator.comparingInt(CraftRow::getProfitCopper).reversed();
+            case "Total sell value" ->
+                    Comparator.comparingInt((CraftRow r) -> r.getRevenueCopper() * r.getCraftableCount()).reversed();
             default ->
                     Comparator.comparingInt((CraftRow r) -> r.getCraftableCount() * r.getProfitCopper()).reversed();
         };
@@ -862,4 +892,22 @@ public class CraftingProfitView {
         table.refresh();
     }
 
+    private static void installHeaderTooltip(TableView<?> table, TableColumn<?, ?> column, String text) {
+        Platform.runLater(() -> {
+            for (javafx.scene.Node header : table.lookupAll(".column-header")) {
+                if (header instanceof javafx.scene.control.skin.TableColumnHeader tch) {
+                    if (tch.getTableColumn() == column) {
+                        Tooltip tip = new Tooltip(text);
+                        tip.setShowDelay(javafx.util.Duration.millis(300));
+                        tip.setShowDuration(javafx.util.Duration.seconds(15));
+                        tip.setHideDelay(javafx.util.Duration.millis(200));
+                        tip.setWrapText(true);
+                        tip.setMaxWidth(320);
+                        Tooltip.install(tch, tip);
+                        break;
+                    }
+                }
+            }
+        });
+    }
 }

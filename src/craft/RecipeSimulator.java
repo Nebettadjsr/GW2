@@ -33,7 +33,8 @@ public class RecipeSimulator {
             PlannerContext noBuyCtx = new PlannerContext(
                     ctx.recipesByOutput,
                     ctx.tp,
-                    noBuySettings
+                    noBuySettings,
+                    ctx.allowedRecipeIds
             );
 
             simulatePhase(recipe, noBuyCtx, state, result);
