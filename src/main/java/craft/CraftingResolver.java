@@ -251,14 +251,8 @@ public class CraftingResolver {
                 && craftEval.need.getQtyBlocked() == 0;
 
         if (buyValid && craftValid) {
-            int buyCash = buyEval.need.getBuyCostCopper();
-            int craftCash = craftEval.need.getBuyCostCopper();
-
-            // Prefer the path that needs less real spending
-            if (craftCash < buyCash) return craftEval;
-            if (buyCash < craftCash) return buyEval;
-
-            // If real cash is equal, use economic comparison
+            // DOMAIN_SPEC.md section 22: choose the lowest total effective economic cost
+            // (cash + opportunity cost), not the lowest immediate cash cost.
             return craftEval.need.getEffectiveCostCopper() <= buyEval.need.getEffectiveCostCopper()
                    ? craftEval
                    : buyEval;

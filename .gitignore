@@ -13,3 +13,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Environment configuration (contains secrets; .env.example stays tracked)
+.env
