@@ -98,16 +98,22 @@ Key observed facts about dependency direction:
 ### 5.1 Crafting Profit flow
 
 ```text
-CraftingProfitView
-   -> CraftingProfitController.reload(choice, settings)
+CraftingProfitView (character selector ComboBox, populated via CharacterRepository.loadAllCharacterNames(),
+                     defaults to the first synced character on load - UD-001)
+   -> CraftingProfitController.reload(choice, settings, selectedCharacterName)
         -> RecipeRepository.loadRecipes(...) / loadRecipesForCharacter(...)   [visible/allowed set]
         -> CraftingGraphCache.load()  -> reads crafting_graph_cache.json      [full recipe graph]
-        -> InventoryRepository.loadOwnedInventory()                          [account_materials + account_bank]
+        -> if selectedCharacterName != null:
+             InventoryRepository.loadOwnedInventoryForCharacter(selectedCharacterName) [split
+             sellable/bound owned quantity, binding-aware - DOMAIN_SPEC.md section 11.1 / DQ-007]
+           else (no synced character yet):
+             InventoryRepository.loadOwnedInventory()                        [unfiltered fallback]
         -> TpPriceRepository.loadTpQuotes(itemIds)
         -> ItemRepository.loadItems(itemIds)
-        -> CraftingPlanner.evaluateAll(allRecipes, inv, tp, settings, allowedRecipeIds)
+        -> CraftingPlanner.evaluateAll(allRecipes, sellableInv, boundInv, tp, settings, allowedRecipeIds)
              -> per recipe: RecipeSimulator.simulateRecipe(...)
                   -> CraftingResolver.resolveOneCraft(...) / resolveNeed(...) / tryCraft(...)
+                       -> PlanState.consumeInventoryWithBinding(...) [bound qty first, no TP opportunity cost]
              -> CostEvaluator.evaluate(...)
         -> builds UiRow list, filters, returns to View
    -> CraftingProfitView displays table
@@ -117,7 +123,7 @@ CraftingProfitView
 
 ### 5.2 Crafting Discovery flow
 
-Structurally identical to §5.1, using `CraftingDiscoveryController` and `RecipeRepository.loadMissingDiscoverableRecipeIdsForCharacter(...)` instead of the "visible recipes" query, and filtering by `recipe.minRating <= maxLevel`. It shares the same `CraftingPlanner` / `CraftingGraphCache` / `RecipeTreeBuilder` machinery.
+Structurally identical to §5.1, using `CraftingDiscoveryController` and `RecipeRepository.loadMissingDiscoverableRecipeIdsForCharacter(...)` instead of the "visible recipes" query, and filtering by `recipe.minRating <= maxLevel`. It shares the same `CraftingPlanner` / `CraftingGraphCache` / `RecipeTreeBuilder` machinery, and the same character-selector / binding-aware inventory flow described in §5.1.
 
 ### 5.3 Ectoplasm Salvage flow (two independent implementations)
 
@@ -183,8 +189,8 @@ Only the two crafting features (Profit, Discovery) follow a View → Controller 
 
 ## 8. Configuration
 
-- `repo.AppConfig` is a `public static final` holder for the GW2 API key and PostgreSQL URL/user/password, compiled directly into the source tree (see `KNOWN_PROBLEMS.md` for the associated risk).
-- There is no environment-variable, properties-file, or command-line-argument based configuration mechanism anywhere in the codebase.
+- `repo.AppConfig` now sources the GW2 API key and PostgreSQL URL/user/password from `repo.EnvConfig`, which reads environment variables with a gitignored `.env` file as a local-development fallback (see `.env.example`). No credential values remain hardcoded in source (`docs/KNOWN_PROBLEMS.md` §2.1).
+- Configuration is supplied via environment variables / `.env` as described above; there is no properties-file or command-line-argument based configuration mechanism.
 - The `Gw2App` home screen has an API-key `TextField` and "Save" button whose handler only sets a status label (`"API key saving not implemented yet."`) and does not persist anything — confirmed by direct reading of `Gw2App.java`.
 
 ---
@@ -195,7 +201,7 @@ Observed (not inferred) mixing of concerns, by file:
 
 1. **`craft/*` importing `repo/*` types directly.** The crafting engine's core data types (`Recipe`, `Ingredient`, `TpQuote`) are repository-owned nested classes, not independent domain types. Persistence and domain are the same classes.
 2. **`repo.RecipeRepository.loadRecipes(...)`** embeds the "recipe is unlocked" business rule as a SQL `UNION` CTE rather than as an application/domain-level concept.
-3. **`EctoView`** performs the Ectoplasm Salvage domain calculation (`fillProfitGrid`, `fillLuckGrid`) inline inside the JavaFX view class, with its own hardcoded assumptions (`DUST_PER_ECTO = 0.75`, `LUCK_PER_ECTO = 20.0`, `ECTOS_PER_1000_LUCK = 50`), separate from and numerically different than the calculation in `Main.java` (`DUST_PER_ECTO = 1.0`, applies a `TOTAL_FEE = 0.15`).
+3. **`EctoView`** is the sole Ectoplasm Salvage implementation in the codebase; it performs the domain calculation (`fillProfitGrid`, `fillLuckGrid`) inline inside the JavaFX view class, with its own hardcoded assumptions (`DUST_PER_ECTO = 0.75`, `LUCK_PER_ECTO = 20.0`, `ECTOS_PER_1000_LUCK = 50`) rather than a separate domain/application class.
 4. **`Gw2App`** button handlers directly call `sync.*` static methods and construct `CraftingGraphCache`/`RecipeRepository` instances — synchronization orchestration lives in the UI event-handler layer rather than in `InitialSetupService`/`AccountRefreshService` consistently (some buttons call the service classes, others call `sync.*` directly and duplicate the same call sequence).
 5. **Two independent JDBC connection helpers** (`repo.Db`, `sync.Db`) with different method names but identical behavior, both reading `repo.AppConfig` — duplicated infrastructure rather than a mixing of layers, but relevant to dependency-direction clarity.
 

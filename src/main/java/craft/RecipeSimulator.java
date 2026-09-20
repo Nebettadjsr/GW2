@@ -70,6 +70,7 @@ public class RecipeSimulator {
             int nextBuyTotal = result.getBuyCostTotal() + rr.getBuyCostCopper();
 
             if (ctx.settings.maxBuyCopper > 0 && nextBuyTotal > ctx.settings.maxBuyCopper) {
+                result.setBlockedReason(BlockedReason.INSUFFICIENT_BUDGET);
                 break;
             }
 

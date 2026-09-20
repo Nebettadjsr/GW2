@@ -62,6 +62,16 @@ The analysis considers:
 
 ---
 
+## 2.2.1 Crafting View Selection and Refresh Behavior
+
+Crafting Profit and Crafting Discovery must preserve valid user selections during automatic and manual data refreshes within the current view/application session. This includes character selection, sort mode, ascending/reverse direction where available, and comparable existing filter/sort controls. Refreshes update results without resetting these controls to defaults. Initial view creation may use the defined defaults; an option that no longer exists must fall back gracefully. Persistence across application restarts is not required.
+
+Changing the selected character must recalculate and display results for that character. Relevant differences in usable character-bound inventory must affect the calculation; identical results alone do not establish a defect.
+
+Crafting Profit must offer `All characters` as the first and default selector entry, retaining individual synced-character options and their existing behavior. Per resolved UD-004, this replaces UD-001's first-synced-character default only for Crafting Profit. Crafting Discovery retains individual-character selection and its existing default; it must not offer `All characters`.
+
+In Crafting Profit, `All characters` means a coordinated account-wide plan across all synced characters. Different crafting steps may be assigned to different eligible characters; the complete tree need not be executable by one character. Transferable intermediates may pass between characters. Eligibility must be validated per step, including recipe and crafting requirements. Soulbound inputs remain usable only by their owning character under §11.1; copies bound to different characters must never be pooled to satisfy a single character's step. Account-wide/sellable and character-bound resources remain distinct, and quantities must not be reused within a plan (§10).
+
 ## 2.3 Ectoplasm Salvage Analysis
 
 Answer:
@@ -818,6 +828,8 @@ Craftable count must not be determined solely by inspecting direct ingredients.
 
 Recursive requirements must be included.
 
+Per resolved UD-003, simulation intentionally evaluates at most 250 crafts of a recipe, even when materials would permit more. This is an intentional domain limit; no additional user-visible capped indicator is required.
+
 ---
 
 # 29. Allowed Recipe Set
@@ -1189,8 +1201,11 @@ Relevant parameters include:
 - ectoplasm acquisition cost,
 - expected Dust per Ectoplasm,
 - expected Luck per Ectoplasm,
-- Dust sale value,
-- Trading Post fees.
+- Dust sale value.
+
+Per DQ-011, Trading Post selling fees are **not** deducted from any of the figures below — they are
+not a parameter of this calculation, only a cost the user will separately incur when the resulting
+items are actually sold.
 
 ---
 
@@ -1213,8 +1228,11 @@ net_value_of_recovered_dust
     =
 expected_dust_quantity
     ×
-dust_sale_price_after_fees
+dust_sale_price
 ```
+
+`dust_sale_price` is the raw Trading Post sell-order price with no Trading Post selling fee
+subtracted (DQ-011).
 
 ---
 
@@ -1457,6 +1475,14 @@ Reuse intermediate leftovers within the same crafting simulation, including acro
 ## DQ-010 — Discovery recipe ownership semantics
 
 Normal recipe unlocks are account-wide. Character-specific information determines whether the selected character can currently discover or craft the recipe.
+
+**Status:** DECIDED
+
+---
+
+## DQ-011 — Ectoplasm Salvage fee model
+
+`EctoView` is the sole authoritative Ectoplasm Salvage implementation. Trading Post selling fees are not deducted from its displayed price/revenue/profit figures. The UI must inform the user once that Trading Post fees will still apply when the resulting items are actually sold.
 
 **Status:** DECIDED
 

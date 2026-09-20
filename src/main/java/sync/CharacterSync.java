@@ -24,7 +24,8 @@ public final class CharacterSync {
         record CharPayload(
                 CharacterInfo info,
                 List<model.CharacterCraftingRow> crafting,
-                List<model.CharacterRecipeRow> recipes
+                List<model.CharacterRecipeRow> recipes,
+                List<model.CharacterItemRow> items
         ) {}
 
         List<CharPayload> payloads = new ArrayList<>(names.size());
@@ -38,7 +39,11 @@ public final class CharacterSync {
             var craftingRows = CharacterCraftingParser.parse(CharacterParser.craftingNode(cNode));
             var recipeRows   = CharacterRecipesParser.parse(CharacterParser.recipesNode(cNode));
 
-            payloads.add(new CharPayload(info, craftingRows, recipeRows));
+            List<model.CharacterItemRow> itemRows = new ArrayList<>();
+            itemRows.addAll(CharacterItemsParser.parseBags(CharacterParser.bagsNode(cNode)));
+            itemRows.addAll(CharacterItemsParser.parseEquipment(CharacterParser.equipmentNode(cNode)));
+
+            payloads.add(new CharPayload(info, craftingRows, recipeRows, itemRows));
         }
 
         if (payloads.isEmpty()) return;
@@ -59,6 +64,7 @@ public final class CharacterSync {
 
                     replaceCharacterCrafting(con, characterId, p.crafting(), runTs);
                     replaceCharacterRecipes(con, characterId, p.recipes(), runTs);
+                    replaceCharacterItems(con, characterId, p.items(), runTs);
 
                     con.commit();
 
@@ -82,7 +88,7 @@ public final class CharacterSync {
         return Gw2ApiClient.getAuth(url);
     }
 
-    private static long upsertCharacter(Connection con, CharacterInfo c) throws SQLException {
+    static long upsertCharacter(Connection con, CharacterInfo c) throws SQLException {
 
         String sql = """
         INSERT INTO characters (name, profession, race, gender, level, created_at_gw, fetched_at)
@@ -114,7 +120,7 @@ public final class CharacterSync {
         }
     }
 
-    private static void replaceCharacterCrafting(Connection con,
+    static void replaceCharacterCrafting(Connection con,
                                                  long characterId,
                                                  List<model.CharacterCraftingRow> rows,
                                                  Timestamp runTs) throws SQLException {
@@ -182,6 +188,58 @@ public final class CharacterSync {
                     ps.setLong(1, characterId);
                     ps.setInt(2, row.recipeId());
                     ps.setTimestamp(3, runTs);
+                    ps.addBatch();
+                }
+
+                ps.executeBatch();
+            }
+        }
+
+        try (PreparedStatement psDel = con.prepareStatement(deleteStaleSql)) {
+            psDel.setLong(1, characterId);
+            psDel.setTimestamp(2, runTs);
+            psDel.executeUpdate();
+        }
+    }
+
+    static void replaceCharacterItems(Connection con,
+                                              long characterId,
+                                              List<model.CharacterItemRow> rows,
+                                              Timestamp runTs) throws SQLException {
+
+        String upsertSql = """
+        INSERT INTO character_items
+          (character_id, location, bag_index, slot_index, equipment_slot, item_id, count, binding, bound_to, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (character_id, location, bag_index, slot_index, equipment_slot) DO UPDATE SET
+          item_id    = EXCLUDED.item_id,
+          count      = EXCLUDED.count,
+          binding    = EXCLUDED.binding,
+          bound_to   = EXCLUDED.bound_to,
+          fetched_at = EXCLUDED.fetched_at
+        """;
+
+        String deleteStaleSql = """
+        DELETE FROM character_items
+        WHERE character_id = ?
+          AND fetched_at < ?
+        """;
+
+        if (rows != null && !rows.isEmpty()) {
+            try (PreparedStatement ps = con.prepareStatement(upsertSql)) {
+
+                for (var row : rows) {
+                    ps.setLong(1, characterId);
+                    ps.setString(2, row.location());
+                    DbBind.setIntOrNull(ps, 3, row.bagIndex());
+                    DbBind.setIntOrNull(ps, 4, row.slotIndex());
+                    DbBind.setStringOrNull(ps, 5, row.equipmentSlot());
+                    ps.setInt(6, row.itemId());
+                    // count column is NOT NULL DEFAULT 1; the API omits "count" for a singular item.
+                    ps.setInt(7, row.count() != null ? row.count() : 1);
+                    DbBind.setStringOrNull(ps, 8, row.binding());
+                    DbBind.setStringOrNull(ps, 9, row.boundTo());
+                    ps.setTimestamp(10, runTs);
                     ps.addBatch();
                 }
 

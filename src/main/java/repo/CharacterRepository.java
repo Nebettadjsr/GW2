@@ -19,6 +19,26 @@ public class CharacterRepository {
         }
     }
 
+    /**
+     * All synced character names, ordered by name. Used to populate the "selected character"
+     * control (UD-001) that feeds {@code InventoryRepository.loadOwnedInventoryForCharacter(...)}
+     * (DOMAIN_SPEC.md section 11.1 / DQ-007).
+     */
+    public List<String> loadAllCharacterNames() throws SQLException {
+        String sql = "SELECT name FROM characters ORDER BY name";
+
+        List<String> out = new ArrayList<>();
+        try (Connection con = Db.open();
+             PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                out.add(rs.getString("name"));
+            }
+        }
+        return out;
+    }
+
     public List<DiscRow> loadAllCharacterCrafting() throws SQLException {
         String sql = """
             SELECT c.name AS char_name, cc.discipline, cc.rating, cc.is_active

@@ -17,6 +17,18 @@ public class TpPriceRepository {
     }
 
     public Map<Integer, TpQuote> loadTpQuotes(Set<Integer> itemIds) throws SQLException {
+        try (Connection con = repo.Db.open()) {
+            return loadTpQuotes(con, itemIds);
+        }
+    }
+
+    /**
+     * Same query as {@link #loadTpQuotes(Set)}, but runs against a caller-supplied
+     * connection instead of opening one via {@link repo.Db#open()}. Exists so repository
+     * integration tests can point this query at a disposable test schema/database
+     * (docs/TEST_STRATEGY.md §31.2) without going through production connection config.
+     */
+    public Map<Integer, TpQuote> loadTpQuotes(Connection con, Set<Integer> itemIds) throws SQLException {
         Map<Integer, TpQuote> out = new HashMap<>();
         if (itemIds.isEmpty()) return out;
 
@@ -26,8 +38,7 @@ public class TpPriceRepository {
             WHERE item_id = ANY(?)
         """;
 
-        try (Connection con = repo.Db.open();
-             PreparedStatement ps = con.prepareStatement(sql)) {
+        try (PreparedStatement ps = con.prepareStatement(sql)) {
 
             Array arr = con.createArrayOf("int", itemIds.toArray());
             ps.setArray(1, arr);

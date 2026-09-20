@@ -898,11 +898,11 @@ The project now has a standard build system (Maven, via `./mvnw`) and a test fra
 - clean architectural boundaries (the domain layer currently depends on repository types — see `docs/KNOWN_PROBLEMS.md`),
 - easy dependency injection,
 - isolated domain classes,
-- broad test coverage (one regression test exists so far).
+- broad test coverage (current test count/status lives in `agent/PROJECT_STATE.md`, not here).
 
 That setup should remain minimal.
 
-Do not introduce a large testing platform before the first useful regression tests can be written.
+Do not introduce a large testing platform beyond what the current testing need actually requires.
 
 ---
 
@@ -943,3 +943,59 @@ fix bug A
 ```
 
 The initial implementation effort should focus on high-value domain and characterization tests around the crafting engine before major refactoring or web migration begins.
+
+---
+
+# 31. Persistence & External-API Test Layers
+
+This section formalizes, as four explicit layers, how §4.1, §9, and §10 above combine to cover persistence and Guild Wars 2 API behavior specifically. `docs/ROADMAP.md` references these layer names directly in its exit criteria; this section is what defines them. `docs/ROADMAP.md` decides *when* a layer's coverage must exist by phase — it does not redefine *how* the layer works.
+
+## 31.1 Layer 1 — Unit / Domain Tests
+
+Defined in full at §4.1. Summary of the properties that matter for the other layers' contrast:
+
+- deterministic, no network, no real database,
+- small hand-built fixtures (§15), not the production crafting graph,
+- run as part of the normal fast `./mvnw test` suite.
+
+## 31.2 Layer 2 — PostgreSQL Integration Tests
+
+Extends §9. A test in this layer must:
+
+- run against a real PostgreSQL engine — never an in-memory or mocked substitute,
+- use an isolated, disposable test database — never the normal development database, and never require the developer's own local DB state or content,
+- apply the real schema/migrations/setup that production code actually runs against,
+- exercise actual SQL behavior: constraints, transactions, upserts, NULL semantics, stale-row deletion, and repository-to-model mappings,
+- be able to recreate its required test data from scratch, reproducibly, with no dependency on data left over from a previous run.
+
+Exact tooling (Testcontainers, another Docker-based approach, or another isolated-database mechanism) remains an open decision — see §29. This document intentionally requires the *property* ("isolated real PostgreSQL") rather than mandating one specific technology ahead of that decision.
+
+## 31.3 Layer 3 — GW2 API Contract/Fixture Tests
+
+Extends §10. A test in this layer must:
+
+- use captured real Guild Wars 2 API JSON responses as test resources, not hand-typed approximations that may drift from what the live API actually returns,
+- exercise parser/sync behavior against those realistic payloads,
+- remain deterministic and fully offline as part of the normal `./mvnw test` suite,
+- keep fixtures as small as practical while still preserving the real API's relevant structure (trim an irrelevant field or array size before committing a fixture, but do not hand-write a payload shape from memory).
+
+## 31.4 Layer 4 — Optional Live GW2 API Smoke Tests
+
+Formalizes §10's closing line into its own layer:
+
+- covers a small number of selected, critical endpoints only,
+- is not part of the normal deterministic `./mvnw test` run (excluded from the default Surefire execution — e.g. a separate Maven profile, JUnit tag, or naming convention that keeps it out of the default `test` goal; the exact mechanism is left to the implementing story),
+- is explicitly invoked, never run automatically as part of local or CI `mvn test`,
+- is allowed to fail because of external network/API unavailability without ever making the normal unit/integration suite flaky,
+- must never be the only coverage for parser/sync behavior — Layer 3's fixture-based tests remain the authoritative, always-run coverage; Layer 4 only adds a manual reality-check against the live API.
+
+## 31.5 General Principles
+
+- Choose the lowest layer that proves the behavior being tested; do not reach for an integration or live test when a unit test already proves the rule.
+- Domain behavior remains primarily unit-tested (§4.1, Layer 1); persistence behavior that depends on PostgreSQL-specific semantics (constraint enforcement, upsert conflict behavior, NULL-uniqueness quirks, transactional visibility) must be integration-tested against real PostgreSQL (Layer 2), not asserted from application code alone.
+- External API parsing should primarily be verified using captured real responses (Layer 3), not hand-typed minimal JSON.
+- Avoid testing implementation details (private helper structure, incidental call counts) when the same confidence can come from testing observable behavior.
+- Regression tests should accompany bug fixes where practical (§17).
+- Tests must be repeatable and independent: one test's outcome must never depend on another test's side effects or execution order.
+- No test may depend on the developer's normal local database state, content, or credentials — this extends §9's rule for repository tests to the whole suite.
+- Introducing new test tooling (e.g. Testcontainers, a fixture-generation library) is allowed when it is the practical way to satisfy a layer's requirements above, but the story that introduces it must document the choice and its reasoning, and must keep both local-developer and CI reproducibility in mind. §29 tracks which tooling decisions remain open; this section does not resolve them ahead of that decision.

@@ -1,3 +1,4 @@
+import repo.AppConfig;
 import sync.AccountSync;
 import sync.IconSync;
 import sync.RecipeSync;
@@ -23,6 +24,6 @@ public final class InitialSetupService {
         TpSync.syncTpPricesForDiscovery();
         TpSync.syncTpPricesForProfit();
         IconSync.syncItemIconUrls();
-        IconSync.syncItemIconsToDisk(Path.of("C:\\Users\\Administrator\\AppData\\Local\\NebetGw2Tool\\icons"));
+        IconSync.syncItemIconsToDisk(Path.of(AppConfig.ICON_CACHE_DIR));
     }
 }

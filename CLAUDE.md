@@ -1,347 +1,277 @@
-# CLAUDE.md
+Purpose
 
-## Purpose
+Default guide for Claude Code.
+Default role: IMPLEMENTATION MODE.
+Project planning lives in agent/PLANNER_INSTRUCTIONS.md.
+Keep context small:
 
-This file is the default operating guide for Claude Code in this repository.
+read only task-relevant files;
 
-Keep context usage efficient:
+prefer targeted inspection;
 
-- Do **not** read every document for every task.
-- Read only the files relevant to the current task.
-- Do not repeatedly reopen unchanged documentation unless needed.
-- Prefer targeted code/file inspection over broad repository-wide reading.
+do not repeatedly reopen unchanged files.
 
----
+Project
 
-## Project Overview
+GW2 crafting/economy tool.
+Current stack: Java 25, Maven, JavaFX, PostgreSQL, GW2 API.
+Target direction: containerized web app with separate frontend, backend, and PostgreSQL.
+Do not assume target architecture is already implemented.
 
-This repository contains a Guild Wars 2 crafting and economy tool.
+Documentation Router
 
-The current application is a Java desktop application using:
+Read only what the task requires:
 
-- Java 25 (Maven-built; standard `src/main/java`/`src/test/java` layout, JavaFX/Jackson/PostgreSQL/JUnit managed as Maven dependencies)
-- JavaFX (launched via the `javafx-maven-plugin`, e.g. `./mvnw javafx:run`)
-- PostgreSQL
-- Guild Wars 2 API
+docs/DOMAIN_SPEC.md — authoritative domain behavior.
 
-The intended direction is a containerized web application with separate frontend, backend, and PostgreSQL containers.
+docs/CURRENT_STATE_SPEC.md — descriptive current behavior.
 
-Do not assume that the target architecture has already been implemented.
+docs/CURRENT_ARCHITECTURE.md — current structure/runtime architecture.
 
----
+docs/TARGET_ARCHITECTURE.md — intended architecture and TBD technologies.
 
-## Documentation Router
+docs/TEST_STRATEGY.md — testing methodology/layers.
 
-Use the following rules to decide which documentation to read.
+docs/ROADMAP.md — phases, dependencies, exit criteria.
 
-### For crafting calculations, economic rules, recipe logic, discovery rules, material valuation, or daily-craft behavior
+docs/KNOWN_PROBLEMS.md — current defects, conflicts, risks, technical debt.
 
-Read:
+Documentation Ownership
 
-```text
-docs/DOMAIN_SPEC.md
-```
+Use one authoritative owner:
 
-This is the authoritative source for intended domain behavior.
+ROADMAP.md — phases, dependencies, exit criteria, high-level future work.
 
-Do not infer domain rules from existing code when the Domain Spec defines a different behavior.
+BACKLOG.md — executable queue, priority, status grouping.
 
-### For architecture, refactoring boundaries, web migration, containerization, or new structural work
+STORY-*.md — story scope, acceptance criteria, result, blockers.
 
-Read:
+CURRENT_ARCHITECTURE.md — current architecture.
 
-```text
-docs/TARGET_ARCHITECTURE.md
-```
+TARGET_ARCHITECTURE.md — target architecture/TBD technologies.
 
-Use it to understand intended dependency direction and target boundaries.
+DOMAIN_SPEC.md — normative domain rules.
 
-Do not silently finalize technologies marked `TBD`.
+KNOWN_PROBLEMS.md — known defects/risks/debt.
 
-### For understanding what the existing application currently does
+TEST_STRATEGY.md — test methodology, never live test totals.
 
-Read:
+UD-*.md — human decisions and OPEN/RESOLVED status.
 
-```text
-docs/CURRENT_STATE_SPEC.md
-```
+PROJECT_STATE.md — planner-only continuity state.
+If information is derivable from its owner, do not store another copy elsewhere.
 
-Use this for current behavior and current implementation context.
+Roles
 
-It is descriptive, not automatically authoritative for future behavior.
+IMPLEMENTATION MODE — default, defined here.
 
-### For tests or regression-protection work
+PROJECT PLANNING MODE — defined entirely in agent/PLANNER_INSTRUCTIONS.md.
+If PROJECT PLANNING MODE is explicitly requested, follow that file instead of this implementation workflow.
 
-Read:
+Story System
 
-```text
-docs/TEST_STRATEGY.md
-```
+agent/CURRENT_STORY.md — path to active story.
 
-when that file exists.
+agent/CLAUDE_RESULT.md — implementation result.
 
-### For migration sequencing
+agent/stories/BACKLOG.md — status index only.
 
-Read:
+agent/stories/ — canonical story files.
 
-```text
-docs/MIGRATION_PLAN.md
-```
+agent/stories/archive/ — archived completed milestones.
 
-only when that file exists and the task concerns migration planning or implementation order.
+agent/user-decisions/ — canonical decision files.
+Each story has one canonical file.
+Do not duplicate story content into BACKLOG.md.
+BACKLOG sections:
 
----
+Active — current story.
 
-## Source of Truth Priority
+To Do — READY/selectable.
 
-When information conflicts, use this priority:
+Blocked — blocked.
 
-```text
-1. Explicit current user instruction
-2. docs/DOMAIN_SPEC.md for domain behavior
-3. docs/TARGET_ARCHITECTURE.md for architectural direction
-4. task-specific specifications
-5. existing implementation
-6. README / comments
-```
+Done — completed in current milestone.
 
-Existing code is evidence of current behavior, not automatically the desired behavior.
+Archived — historical index.
+Never select or activate the next story.
 
-If existing behavior conflicts with a defined domain rule, report the conflict before changing behavior.
+IMPLEMENTATION MODE
 
----
+Before
 
-## Working Rules
+Read agent/CURRENT_STORY.md.
 
-### Before editing
+Open the referenced story.
 
-1. Understand the requested scope.
-2. Read only the documentation relevant to that scope.
-3. Inspect the smallest relevant part of the codebase first.
-4. Identify affected tests before making changes.
-5. If the task reveals a material ambiguity not covered by the specifications, stop and report it instead of inventing a rule.
+Treat it as the authoritative work order.
 
-### During implementation
+Read only its listed authoritative docs.
 
-Prefer small, focused changes.
+Inspect only relevant code, callers/callees, and tests.
 
-Do not combine unrelated refactoring with a bug fix or feature unless explicitly requested.
+Do not modify CURRENT_STORY.md.
 
-Avoid speculative cleanup.
+Do not select another story.
+If the story is DONE or BLOCKED, report and stop.
 
-Do not rewrite working code merely because another design looks cleaner.
+During
 
-Preserve existing behavior unless:
+Work only against the story Definition of Done.
 
-- the task explicitly changes it, or
-- it conflicts with an authoritative specification.
+Keep changes small and focused.
 
----
+Do not add unrelated refactoring.
 
-## Domain Rules
+Do not broaden scope automatically.
 
-Authoritative domain rules belong in:
+If a material ambiguity is unspecified, stop and report it.
 
-```text
-docs/DOMAIN_SPEC.md
-```
+Preserve existing behavior unless story/spec says otherwise.
 
-Do not duplicate the entire Domain Spec here.
+Update status/result in the story file.
 
-Important operating rule:
+Update agent/CLAUDE_RESULT.md.
 
-> Never invent or reinterpret a domain rule to make an implementation easier.
+Update only that story's BACKLOG status entry.
 
-If a new unresolved domain question appears, report it clearly and wait for a decision before implementing behavior that materially affects calculation results.
+Never activate the next story.
 
----
+Documentation After Implementation
 
-## Architecture Rules
+Update another document only if the story materially changes information owned by that document:
 
-The target architecture requires separation between:
+architecture -> CURRENT_ARCHITECTURE.md
 
-```text
-UI / transport
-Application use cases
-Domain logic
-Infrastructure
-```
+domain behavior -> DOMAIN_SPEC.md
 
-The domain must not depend on:
+known problem -> KNOWN_PROBLEMS.md
 
-- JavaFX
-- frontend frameworks
-- HTTP
-- REST
-- JSON transport models
-- PostgreSQL
-- JDBC
-- SQL
-- Docker
-- Guild Wars 2 API response models
+roadmap exit state -> ROADMAP.md
+Do not:
 
-Business rules belong in the backend/domain, not in the frontend or HTTP controllers.
+copy story results into PROJECT_STATE.md;
 
-External systems should be accessed through clear boundaries/adapters.
+add completed-story history to PROJECT_STATE.md;
 
----
+add live test counts to TEST_STRATEGY.md;
 
-## Frontend Technology
+duplicate BACKLOG state;
 
-Frontend technology is currently undecided.
+duplicate user-decision status;
 
-Do not choose or introduce React, Vue, TypeScript, or another frontend stack unless explicitly requested.
+duplicate architecture/domain facts into ROADMAP or PROJECT_STATE.
+agent/PROJECT_STATE.md is planner-owned. Normal implementation must not update it.
 
----
+Source Priority
 
-## Backend Framework
+When information conflicts:
 
-A Java backend is currently preferred, but the exact web framework is undecided.
+explicit current user instruction
 
-Do not introduce Spring Boot, Quarkus, or another backend framework unless explicitly requested.
+active story scope/acceptance criteria
 
----
+DOMAIN_SPEC.md
 
-## Database
+TARGET_ARCHITECTURE.md
 
+other task-specific authoritative specs
+
+existing implementation
+
+README/comments
+Existing code proves current behavior, not desired behavior.
+
+Domain
+
+Never invent or reinterpret a domain rule to make implementation easier.
+If code conflicts with DOMAIN_SPEC.md, report the conflict before changing behavior.
+
+Architecture
+
+Target separation:
+
+UI/transport
+
+application use cases
+
+domain
+
+infrastructure
+Domain code must not depend on JavaFX, frontend frameworks, HTTP/REST, JSON transport models,
+PostgreSQL/JDBC/SQL, Docker, or GW2 API response models.
+Business rules belong in backend/domain.
+External systems need clear boundaries/adapters.
+Frontend technology is undecided.
+Backend framework is undecided.
+Do not introduce either unless explicitly requested.
 PostgreSQL remains the target database.
 
-Do not embed domain behavior in SQL or repository classes.
+GW2 API / Security
 
-Database access should remain an infrastructure concern.
+Backend owns GW2 API access.
+Frontend must not call it directly.
+Do not expose API keys/database credentials to frontend code.
+Runtime configuration must not be hard-coded.
+Accepted project decisions:
 
----
+read-only GW2 API key is not an account-takeover credential;
 
-## Guild Wars 2 API
+local PostgreSQL password is not a material security finding.
+Do not repeatedly raise those as findings.
 
-The backend owns Guild Wars 2 API access.
+Testing
 
-The future frontend must not call the GW2 API directly.
+Domain behavior changes require automated tests.
+Bug fix:
 
-Do not expose API keys or database credentials to frontend code.
+reproduce with a test when practical;
 
----
+make smallest fix;
 
-## Project-Specific Security Policy
+run relevant regression tests.
+Refactor:
 
-The following are accepted project-specific decisions and must not be repeatedly re-raised as findings in future analyses:
+preserve behavior with tests;
 
-- The Guild Wars 2 API key used by this project is read-only and is not considered an account-takeover credential.
-- The local PostgreSQL password used by this project is not considered a material security finding.
+refactor;
 
-This does not relax the general rule that runtime configuration (API keys, database credentials) must not be hard-coded into source files — see the Database and Guild Wars 2 API sections above. Configuration is supplied via environment variables, with a gitignored `.env` file (see `.env.example`) as the local-development fallback.
+verify unchanged behavior.
+Do not weaken/delete tests merely to make a change pass unless the specification changed.
 
----
+Repository Exploration
 
-## Testing Expectations
+Start with named files, direct callers/callees, relevant tests, and relevant repo/domain classes.
+Expand only when necessary.
+For large files, inspect relevant sections rather than rereading the whole file.
 
-Changes to domain behavior require automated tests.
-
-For bug fixes:
-
-1. reproduce the bug with a test when practical,
-2. make the smallest fix,
-3. confirm relevant regression tests pass.
-
-For refactoring:
-
-1. preserve behavior with tests first,
-2. refactor,
-3. verify behavior remains unchanged.
-
-Do not weaken or delete tests merely to make a change pass unless the specification itself changed.
-
----
-
-## Repository Exploration
-
-Avoid reading the entire repository by default.
-
-Start with:
-
-- files named in the task,
-- direct callers/callees,
-- relevant tests,
-- relevant repository/domain classes.
-
-Expand outward only when necessary.
-
-For large files, inspect relevant sections rather than rereading the entire file repeatedly.
-
----
-
-## Generated and External Files
+Generated / External Files
 
 Do not modify or commit generated/dependency files unless explicitly required.
+Examples: third-party JARs, caches, build outputs, IDE metadata.
 
-Examples may include:
+Communication
 
-- third-party JAR files,
-- generated caches,
-- build outputs,
-- IDE metadata.
+Implementation report:
 
-When unsure whether a file is source, generated data, or external dependency, inspect repository conventions before changing it.
-
----
-
-## Documentation Changes
-
-Update documentation when a change alters:
-
-- domain behavior,
-- architecture decisions,
-- public API contracts,
-- migration assumptions.
-
-Do not rewrite large documentation files for purely cosmetic reasons.
-
-Keep documentation changes scoped to the actual decision or behavior change.
-
----
-
-## Communication
-
-When reporting work, be concise and concrete.
-
-For implementation tasks, report:
-
-```text
 What changed
+
 Why
+
 Tests run
-Any remaining uncertainty
-```
 
-For analysis-only tasks, clearly separate:
+Remaining uncertainty
+Analysis report:
 
-```text
 Observed fact
+
 Inference
+
 Recommendation
-```
+Do not present inference as observed fact.
 
-Do not present an inference as an observed fact.
+Default Behavior
 
----
-
-## Safety Rule for First Repository Analysis
-
-When explicitly asked to analyze the repository without modifying code:
-
-- do not edit source files,
-- do not reformat code,
-- do not update dependencies,
-- do not create migrations,
-- do not change configuration,
-- only create requested documentation files.
-
----
-
-## Default Behavior
-
-If the user request is clear, proceed without unnecessary clarification.
-
-If the task would require choosing a still-undecided domain or architecture rule, ask before implementing that decision.
-
+If clear, proceed without unnecessary clarification.
+If work requires choosing an undecided domain/architecture rule, stop and ask.
 Keep changes small, reviewable, and testable.

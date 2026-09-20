@@ -29,4 +29,12 @@ public final class CharacterParser {
     public static JsonNode recipesNode(JsonNode characterRoot) {
         return characterRoot == null ? null : characterRoot.get("recipes");
     }
+
+    public static JsonNode bagsNode(JsonNode characterRoot) {
+        return characterRoot == null ? null : characterRoot.get("bags");
+    }
+
+    public static JsonNode equipmentNode(JsonNode characterRoot) {
+        return characterRoot == null ? null : characterRoot.get("equipment");
+    }
 }

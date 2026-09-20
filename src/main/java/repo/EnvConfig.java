@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Minimal environment-variable / .env loader.
@@ -14,25 +15,34 @@ import java.util.Map;
  * in this project, e.g. crafting_graph_cache.json) is used as a fallback
  * for local development. See .env.example for the expected keys.
  */
-final class EnvConfig {
+public final class EnvConfig {
 
     private static final Map<String, String> DOTENV = loadDotEnvFile();
 
     private EnvConfig() {}
 
-    static String require(String key) {
+    public static String require(String key) {
+        return lookup(key).orElseThrow(() -> new IllegalStateException(
+                "Missing required configuration value: " + key +
+                        ". Set it as an environment variable, or add it to a .env file " +
+                        "in the project root (see .env.example)."
+        ));
+    }
+
+    /** Like {@link #require(String)}, but returns {@code defaultValue} instead of throwing when unset. */
+    static String optional(String key, String defaultValue) {
+        return lookup(key).orElse(defaultValue);
+    }
+
+    private static Optional<String> lookup(String key) {
         String value = System.getenv(key);
         if (value == null || value.isBlank()) {
             value = DOTENV.get(key);
         }
         if (value == null || value.isBlank()) {
-            throw new IllegalStateException(
-                    "Missing required configuration value: " + key +
-                            ". Set it as an environment variable, or add it to a .env file " +
-                            "in the project root (see .env.example)."
-            );
+            return Optional.empty();
         }
-        return value;
+        return Optional.of(value);
     }
 
     private static Map<String, String> loadDotEnvFile() {

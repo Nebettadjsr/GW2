@@ -16,6 +16,8 @@ public class RecipeSimulationResult {
     private int buyCostTotal;
     private int opportunityCostTotal;
 
+    private BlockedReason blockedReason = BlockedReason.NONE;
+
     private final Map<Integer, Integer> totalMissingToBuy = new HashMap<>();
 
     public RecipeSimulationResult(int recipeId, int outputItemId) {
@@ -79,5 +81,13 @@ public class RecipeSimulationResult {
         for (var e : missing.entrySet()) {
             totalMissingToBuy.merge(e.getKey(), e.getValue(), Integer::sum);
         }
+    }
+
+    public BlockedReason getBlockedReason() {
+        return blockedReason;
+    }
+
+    public void setBlockedReason(BlockedReason blockedReason) {
+        this.blockedReason = blockedReason;
     }
 }

@@ -20,11 +20,11 @@ public class CraftingGraphCache {
         this.recipeRepo = recipeRepo;
     }
 
-    public CraftingGraph load() throws IOException {
+    public CraftingGraph load() throws IOException, SQLException {
         File file = new File(CACHE_FILE);
 
         if (!file.exists()) {
-            throw new IOException("Crafting graph cache file not found: " + file.getAbsolutePath());
+            return rebuild();
         }
 
         CraftingGraphDto dto = mapper.readValue(file, CraftingGraphDto.class);

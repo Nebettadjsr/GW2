@@ -144,6 +144,35 @@ public class CraftingDiscoveryView {
             t.start();
         };
 
+        // Selected-character control (UD-001 / STORY-DOM-012): feeds the binding-aware
+        // owned-inventory lookup so soulbound materials are only usable by this character
+        // (DOMAIN_SPEC.md section 11.1 / DQ-007). Independent of disciplineBox above (that
+        // box picks the discipline+character combo used to filter missing recipes).
+        ComboBox<String> characterBox = new ComboBox<>();
+        characterBox.setPrefWidth(170);
+        characterBox.setPromptText("Character");
+
+        Runnable reloadCharacterChoices = () -> {
+            Thread t = new Thread(() -> {
+                try {
+                    var names = charRepo.loadAllCharacterNames();
+                    Platform.runLater(() -> {
+                        String previous = characterBox.getValue();
+                        characterBox.getItems().setAll(names);
+                        if (previous != null && names.contains(previous)) {
+                            characterBox.getSelectionModel().select(previous);
+                        } else if (!names.isEmpty()) {
+                            characterBox.getSelectionModel().selectFirst();
+                        }
+                    });
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            });
+            t.setDaemon(true);
+            t.start();
+        };
+
         CheckBox bankOnlyCheck = new CheckBox("use mats from Bank ");
         bankOnlyCheck.setSelected(true);
         bankOnlyCheck.setStyle("-fx-text-fill: white;");
@@ -198,6 +227,8 @@ public class CraftingDiscoveryView {
         HBox filterRow1 = new HBox(12,
                 new LabelStyled("Discipline+Char:"),
                 disciplineBox,
+                new LabelStyled("Character:"),
+                characterBox,
                 bankOnlyCheck,
                 allowBuyCheck,
                 new LabelStyled("Max buy:"), maxBudgetField,
@@ -286,7 +317,8 @@ public class CraftingDiscoveryView {
                             includeBank, allowBuy, maxBuyCopper, listingSell, listingBuy, dailyBuyMode
                     );
 
-                    var data = controller.reload(choice, settings);
+                    String selectedCharacter = characterBox.getValue();
+                    var data = controller.reload(choice, settings, selectedCharacter);
 
                     Platform.runLater(() -> {
                         masterRows.clear();
@@ -363,6 +395,7 @@ public class CraftingDiscoveryView {
 
         // --- listeners ---
         disciplineBox.valueProperty().addListener((obs, o, n) -> reloadTable.run());
+        characterBox.valueProperty().addListener((obs, o, n) -> reloadTable.run());
         bankOnlyCheck.selectedProperty().addListener((obs, o, n) -> reloadTable.run());
         allowBuyCheck.selectedProperty().addListener((obs, o, n) -> reloadTable.run());
         rbInstantBuy.selectedProperty().addListener((obs, o, n) -> { if (n) reloadTable.run(); });
@@ -540,7 +573,8 @@ public class CraftingDiscoveryView {
         stage.setScene(new Scene(root, 1280, 720));
 
         reloadDisciplineChoices.run();
-        // after choice list loads, selection listener triggers reloadTable()
+        reloadCharacterChoices.run();
+        // after choice lists load, their selection listeners trigger reloadTable()
 
         Platform.runLater(() -> {
             var header = table.lookup("TableHeaderRow");

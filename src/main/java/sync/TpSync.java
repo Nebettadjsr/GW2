@@ -34,24 +34,10 @@ public final class TpSync {
         System.out.println("TP price items to fetch: " + ids.size());
         if (ids.isEmpty()) return;
 
-        // 2) Upsert SQL
-        String upsertSql = """
-        INSERT INTO tp_prices
-        (item_id, buy_quantity, buy_unit_price, sell_quantity, sell_unit_price, fetched_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT (item_id) DO UPDATE SET
-          buy_quantity = EXCLUDED.buy_quantity,
-          buy_unit_price = EXCLUDED.buy_unit_price,
-          sell_quantity = EXCLUDED.sell_quantity,
-          sell_unit_price = EXCLUDED.sell_unit_price,
-          fetched_at = EXCLUDED.fetched_at
-        """;
-
         int done = 0;
 
-        // 3) One DB connection for the whole sync
-        try (Connection con = Db.openConnection();
-             PreparedStatement ps = con.prepareStatement(upsertSql)) {
+        // One DB connection for the whole sync
+        try (Connection con = Db.openConnection()) {
 
             con.setAutoCommit(false);
 
@@ -63,25 +49,7 @@ public final class TpSync {
                 List<TpPrice> quotes = fetchTpBatchParsed(batch);
 
                 try {
-                    ps.clearBatch();
-
-                    for (TpPrice q : quotes) {
-                        if (q == null) continue;
-
-                        if (!q.hasMarketData()) {
-                            upsertTpRow(ps, q.itemId(), null, null, null, null, runTs);
-                        } else {
-                            upsertTpRow(ps,
-                                        q.itemId(),
-                                        q.buyQty(),
-                                        q.buyUnit(),
-                                        q.sellQty(),
-                                        q.sellUnit(),
-                                        runTs);
-                        }
-                    }
-
-                    ps.executeBatch();
+                    upsertTpPrices(con, quotes, runTs);
                     con.commit();
 
                 } catch (Exception ex) {
@@ -98,6 +66,48 @@ public final class TpSync {
         }
 
         System.out.println("✅ TP prices synced.");
+    }
+
+    /**
+     * Upserts a batch of already-fetched {@link TpPrice} quotes into {@code tp_prices}, writing an
+     * explicit all-NULL row (via {@link DbBind#setLongOrNull}/{@link DbBind#setIntOrNull}) for quotes
+     * without market data rather than coercing to {@code 0}. Extracted from {@link #syncTpPrices}
+     * so the write path is callable independently of the live GW2 fetch in tests.
+     */
+    static void upsertTpPrices(Connection con, List<TpPrice> quotes, Timestamp runTs) throws SQLException {
+
+        String upsertSql = """
+        INSERT INTO tp_prices
+        (item_id, buy_quantity, buy_unit_price, sell_quantity, sell_unit_price, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT (item_id) DO UPDATE SET
+          buy_quantity = EXCLUDED.buy_quantity,
+          buy_unit_price = EXCLUDED.buy_unit_price,
+          sell_quantity = EXCLUDED.sell_quantity,
+          sell_unit_price = EXCLUDED.sell_unit_price,
+          fetched_at = EXCLUDED.fetched_at
+        """;
+
+        try (PreparedStatement ps = con.prepareStatement(upsertSql)) {
+
+            for (TpPrice q : quotes) {
+                if (q == null) continue;
+
+                if (!q.hasMarketData()) {
+                    upsertTpRow(ps, q.itemId(), null, null, null, null, runTs);
+                } else {
+                    upsertTpRow(ps,
+                                q.itemId(),
+                                q.buyQty(),
+                                q.buyUnit(),
+                                q.sellQty(),
+                                q.sellUnit(),
+                                runTs);
+                }
+            }
+
+            ps.executeBatch();
+        }
     }
 
 

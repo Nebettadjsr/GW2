@@ -3,8 +3,10 @@ package craft;
 public enum BlockedReason {
     NONE,
     NO_RECIPE,
-    NO_TP_PRICE,
+    PRICE_UNAVAILABLE,
     BUYING_DISABLED,
     DAILY_LIMIT,
-    CYCLE_DETECTED
+    CYCLE_DETECTED,
+    RECIPE_NOT_ALLOWED,
+    INSUFFICIENT_BUDGET
 }

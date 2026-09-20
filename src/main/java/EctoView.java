@@ -79,6 +79,15 @@ public class EctoView {
         Label statusLabel = new Label("Fetching Trading Post prices...");
         statusLabel.setStyle("-fx-text-fill: white; -fx-opacity: 0.85;");
 
+        Label feeNoticeLabel = new Label(
+                "Note: figures below do not include Trading Post selling fees. Fees will still apply " +
+                        "when the resulting items are actually sold.");
+        feeNoticeLabel.setWrapText(true);
+        feeNoticeLabel.setStyle(
+                "-fx-text-fill: #f0c060; -fx-background-color: rgba(240,192,96,0.10);" +
+                        "-fx-border-color: rgba(240,192,96,0.35); -fx-border-radius: 6;" +
+                        "-fx-background-radius: 6; -fx-padding: 8;");
+
         // ---------------- Base card (static) ----------------
         Label baseTitle = new Label("Base data");
         baseTitle.setStyle("-fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold;");
@@ -152,7 +161,7 @@ public class EctoView {
         tableCard1.setMaxWidth(760);
         tableCard2.setMaxWidth(760);
 
-        VBox center = new VBox(14, title, statusLabel, baseCard, pricesCard, tableCard1, tableCard2);
+        VBox center = new VBox(14, title, statusLabel, feeNoticeLabel, baseCard, pricesCard, tableCard1, tableCard2);
         center.setAlignment(Pos.TOP_CENTER);
         center.setPadding(new Insets(20, 20, 24, 20));
 

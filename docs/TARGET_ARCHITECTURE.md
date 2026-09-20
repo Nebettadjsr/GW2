@@ -944,7 +944,18 @@ When modifying or creating code, Claude must preserve these principles:
 
 ---
 
-# 33. Status
+# 33. Deferred crafting calculation performance requirement
+
+Performance investigation for Crafting Profit and Crafting Discovery is future planned work, blocked until intended calculation behavior is implemented and known functional defects are resolved. It is not executable work in the current planning pass.
+
+Begin with reproducible baseline measurements using representative real application data where practical: opening/refreshing each view until usable results, individual recipe resolution/evaluation where meaningful, and total time in major pipeline stages. Identify actual bottlenecks rather than assume a solution. Investigation areas may include database access and repeated queries, recipe loading, graph traversal and resolution, repeated calculations and simulation, price lookups, recomputation, and UI refreshes; caching, batching, reuse, indexing, parallelism, or avoiding work are possibilities only.
+
+Before major optimization, record the baseline, bottlenecks and measured time attribution, materially different viable approaches, their advantages/disadvantages, and correctness, maintainability, memory, database-load and complexity risks. Prefer multiple viable proposals where they exist. A clearly superior approach without meaningful tradeoffs may proceed normally; meaningful product, architecture, complexity, resource-use or maintainability tradeoffs require a User Decision. Large architectural changes require measured justification.
+
+Correctness takes priority: preserve DOMAIN_SPEC.md behavior and intentional limits, never silently skip valid calculations or reduce correctness. Avoid unrepresentative synthetic targets. Temporary instrumentation must not clutter production behavior unless it retains diagnostic value. Repeat the same measurements after optimization, verify automated tests still pass, and document before/after evidence of substantial improvement in time to usable results. Independent measured bottlenecks may be addressed separately.
+
+
+# 34. Status
 
 This document defines the initial target architecture.
 

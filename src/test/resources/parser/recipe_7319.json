@@ -1,0 +1,35 @@
+{
+  "id": 7319,
+  "type": "RefinementEctoplasm",
+  "output_item_id": 46742,
+  "output_item_count": 1,
+  "time_to_craft_ms": 5000,
+  "disciplines": [
+    "Leatherworker",
+    "Armorsmith",
+    "Tailor",
+    "Artificer",
+    "Weaponsmith",
+    "Huntsman"
+  ],
+  "min_rating": 450,
+  "flags": [
+    "AutoLearned"
+  ],
+  "ingredients": [
+    {
+      "item_id": 19684,
+      "count": 50
+    },
+    {
+      "item_id": 19721,
+      "count": 1
+    },
+    {
+      "item_id": 46747,
+      "count": 10
+    }
+  ],
+  "chat_link": "[&CZccAAA=]",
+  "guild_ingredients": []
+}

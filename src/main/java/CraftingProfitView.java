@@ -175,6 +175,34 @@ public class CraftingProfitView {
 
         disciplineBox.setPrefWidth(170);
 
+        // Selected-character control (UD-001 / STORY-DOM-012): feeds the binding-aware
+        // owned-inventory lookup so soulbound materials are only usable by this character
+        // (DOMAIN_SPEC.md section 11.1 / DQ-007). Independent of disciplineBox above.
+        ComboBox<String> characterBox = new ComboBox<>();
+        characterBox.setPrefWidth(170);
+        characterBox.setPromptText("Character");
+
+        Runnable reloadCharacterChoices = () -> {
+            Thread t = new Thread(() -> {
+                try {
+                    var names = charRepo.loadAllCharacterNames();
+                    Platform.runLater(() -> {
+                        String previous = characterBox.getValue();
+                        characterBox.getItems().setAll(names);
+                        if (previous != null && names.contains(previous)) {
+                            characterBox.getSelectionModel().select(previous);
+                        } else if (!names.isEmpty()) {
+                            characterBox.getSelectionModel().selectFirst();
+                        }
+                    });
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            });
+            t.setDaemon(true);
+            t.start();
+        };
+
         CheckBox useOwnMatsCheck = new CheckBox("use own mats");
         useOwnMatsCheck.setSelected(true);
         useOwnMatsCheck.setStyle("-fx-text-fill: white;");
@@ -241,6 +269,8 @@ public class CraftingProfitView {
         HBox filterRow1 = new HBox(12,
                                    new LabelStyled("Discipline:"),
                                     disciplineBox,
+                                    new LabelStyled("Character:"),
+                                    characterBox,
                                     useOwnMatsCheck,
                                     allowBuyCheck,
                                     new LabelStyled("Max buy:"), maxBudgetField,
@@ -322,10 +352,11 @@ public class CraftingProfitView {
                     boolean listingBuy  = rbListingBuy.isSelected();
                     boolean dailyBuyMode = dailyBuy.isSelected(); // true = buy daily items, false = craft daily items
                     DiscChoice choice = disciplineBox.getValue();
+                    String selectedCharacter = characterBox.getValue();
 
                     CraftingSettings settings = new CraftingSettings(useOwnMats, allowBuy, maxBuyCopper, listingSell, listingBuy, dailyBuyMode);
 
-                    var data = controller.reload(choice, settings);
+                    var data = controller.reload(choice, settings, selectedCharacter);
 
 // --- DEBUG STATS (UI visible) ---
                     int totalRows = data.size();
@@ -435,6 +466,8 @@ public class CraftingProfitView {
 
         // --- auto reload when filters change ---
         disciplineBox.valueProperty().addListener((obs, o, n) -> reloadTable.run());
+
+        characterBox.valueProperty().addListener((obs, o, n) -> reloadTable.run());
 
         useOwnMatsCheck.selectedProperty().addListener((obs, o, n) -> reloadTable.run());
 
@@ -758,6 +791,7 @@ public class CraftingProfitView {
 
         stage.setScene(new Scene(root, 1400, 950));
         reloadDisciplineChoices.run();
+        reloadCharacterChoices.run();
         reloadTable.run();
 
         Platform.runLater(() -> {

@@ -10,12 +10,6 @@ import java.util.*;
  * - Inventory first
  * - If missing ingredient has a recipe -> craft it (recursively)
  * - Otherwise -> buy it (if allowed) or mark missing (if not allowed)
- *
- * CraftableCount is computed via binary search using canCraft(n).
- *
- * Notes:
- * - We create a Node tree representing how the planner satisfied needs.
- * - For simplicity we pick the FIRST recipe that produces an item (later we can choose best recipe).
  */
 public class CraftingPlanner {
 
@@ -24,6 +18,23 @@ public class CraftingPlanner {
 
     public Map<Integer, CraftResult> evaluateAll(List<RecipeRepository.Recipe> recipes,
                                                  Map<Integer, Integer> inventory,
+                                                 Map<Integer, TpPriceRepository.TpQuote> tp,
+                                                 CraftingSettings settings,
+                                                 Set<Integer> allowedRecipeIds) {
+        return evaluateAll(recipes, inventory, Map.of(), tp, settings, allowedRecipeIds);
+    }
+
+    /**
+     * @param sellableInventory ordinary unbound/tradable owned quantity, priced exactly as
+     *                          {@link #evaluateAll(List, Map, Map, CraftingSettings, Set)} always has.
+     * @param boundInventory    account-bound/soulbound-and-usable-by-the-selected-character owned
+     *                          quantity (DOMAIN_SPEC.md section 11.1 / DQ-007); consumed first and
+     *                          never charged Trading-Post opportunity cost. Empty for callers that
+     *                          don't have a selected character, so behavior is unchanged for them.
+     */
+    public Map<Integer, CraftResult> evaluateAll(List<RecipeRepository.Recipe> recipes,
+                                                 Map<Integer, Integer> sellableInventory,
+                                                 Map<Integer, Integer> boundInventory,
                                                  Map<Integer, TpPriceRepository.TpQuote> tp,
                                                  CraftingSettings settings,
                                                  Set<Integer> allowedRecipeIds) {
@@ -38,266 +49,20 @@ public class CraftingPlanner {
 
         PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds);
         for (RecipeRepository.Recipe r : recipes) {
-            CraftResult cr = evaluateOneRecipeNew(r, inventory, ctx);
+            CraftResult cr = evaluateOneRecipeNew(r, sellableInventory, boundInventory, ctx);
             out.put(r.recipeId, cr);
         }
 
         return out;
     }
 
-    // ----------------------------
-    // Max craftable count
-    // ----------------------------
-
-    private boolean canCraft(
-            RecipeRepository.Recipe recipe,
-            int crafts,
-            Map<Integer, Integer> baseInventory,
-            PlannerContext ctx) {
-
-        PlanRun run = simulateCraft(recipe, crafts, baseInventory, ctx);
-
-        if (!ctx.settings.allowBuying) {
-            // no buying allowed -> must have no missing mats at all
-            return run.missingToBuy.isEmpty();
-        }
-
-        // buying allowed -> budget check (if budget <= 0 treat as unlimited)
-        if (ctx.settings.maxBuyCopper <= 0) return true;
-
-        return run.buyCostCopper <= ctx.settings.maxBuyCopper;
-    }
-
-    // ----------------------------
-    // Simulation for N crafts
-    // ----------------------------
-
-    private PlanRun simulateCraft(
-            RecipeRepository.Recipe recipe,
-            int crafts,
-            Map<Integer, Integer> baseInventory,
-            PlannerContext ctx) {
-
-        PlanState state = new PlanState(baseInventory);
-
-        // Root describes: "I need output items"
-        Node root = new Node(
-                recipe.outputItemId,
-                recipe.outputCount * crafts,
-                "need",
-                new ArrayList<>()
-        );
-
-        // Fill children = ingredient needs
-        for (RecipeRepository.Ingredient ing : recipe.ingredients) {
-            int needQty = ing.count * crafts;
-            Node child = obtain(
-                    ing.itemId,
-                    needQty,
-                    ctx,
-                    state
-                               );
-            // root.children is List<Node>; we created it as ArrayList, so safe to add
-            root.children.add(child);
-        }
-
-        return new PlanRun(state.missingToBuy, state.buyCostCopper, root);
-    }
-
-    /**
-     * Try to obtain qtyNeeded of itemId.
-     * Order: inventory -> craft -> buy/mark missing
-     *
-     * Returns a Node describing what happened.
-     */
-    private Node obtain(int itemId,
-                        int qtyNeeded,
-                        PlannerContext ctx,
-                        PlanState state) {
-
-        if (qtyNeeded <= 0) return new Node(itemId, 0, "need", List.of());
-
-        int original = qtyNeeded;
-        List<Node> children = new ArrayList<>();
-
-        // 1) Use inventory
-        int have = state.inventory.getOrDefault(itemId, 0);
-        boolean isDaily = DailyCrafts.isDailyOutput(itemId);
-
-        if (have >= qtyNeeded) {
-            state.inventory.put(itemId, have - qtyNeeded);
-            return new Node(itemId, original, "inventory", List.of());
-        } else if (have > 0) {
-            state.inventory.remove(itemId);
-            children.add(new Node(itemId, have, "inventory", List.of()));
-            qtyNeeded -= have;
-        }
-        if (isDaily) {
-            // If the user chose "buy dailies", we NEVER craft the daily item.
-            // We also generally can't buy it (most are non-tradable), so we mark it as daily-blocked.
-            if (ctx.settings.dailyBuyInsteadOfCraft) {
-                return new Node(itemId, original, "daily-blocked", List.of());
-            }
-
-            // User chose "craft dailies": allow crafting at most ONCE per simulation run.
-            int left = state.dailyLeft.getOrDefault(itemId, 1);
-            if (left <= 0) {
-                return new Node(itemId, original, "daily-capped", List.of());
-            }
-
-        }
-
-        // 2) Craft if possible (and no cycle)
-        List<RecipeRepository.Recipe> producing = ctx.recipesByOutput.get(itemId);
-        if (producing != null && !producing.isEmpty() && !state.visiting.contains(itemId)) {
-            state.visiting.add(itemId);
-
-            RecipeRepository.Recipe r = producing.get(0); // v1: first recipe
-            int times = ceilDiv(qtyNeeded, r.outputCount);
-
-// DAILY: limit crafting to at most once
-            if (isDaily) {
-                int left = state.dailyLeft.getOrDefault(itemId, 1);
-                times = Math.min(times, left);
-            }
-
-            if (times > 0) {
-                if (isDaily) {
-                    int left = state.dailyLeft.getOrDefault(itemId, 1);
-                    state.dailyLeft.put(itemId, left - times);
-                }
-
-                List<Node> craftKids = new ArrayList<>();
-                for (RecipeRepository.Ingredient sub : r.ingredients) {
-                    craftKids.add(obtain(
-                            sub.itemId,
-                            sub.count * times,
-                            ctx,
-                            state
-                                        ));
-                }
-
-                int produced = times * r.outputCount;
-                int stillNeeded = qtyNeeded - produced;
-
-                int leftover = produced - qtyNeeded;
-                if (leftover > 0) {
-                    state.inventory.merge(itemId, leftover, Integer::sum);
-                }
-
-                state.visiting.remove(itemId);
-
-                Node craftNode = new Node(itemId, produced, "craft", craftKids);
-
-                // If daily child blocked and user wants to buy dailies,
-                // try buying this parent instead.
-                if (ctx.settings.dailyBuyInsteadOfCraft && ctx.settings.allowBuying) {
-                    boolean hasDailyBlockedChild = craftKids.stream().anyMatch(n ->
-                                                                                       "daily-blocked".equals(n.action) || "daily-capped".equals(n.action)
-                                                                              );
-
-                    if (hasDailyBlockedChild) {
-                        TpPriceRepository.TpQuote q = ctx.tp.get(itemId);
-                        Integer unitObj = null;
-                        if (q != null) unitObj = ctx.settings.listingBuy ? q.buyUnit : q.sellUnit;
-                        int unit = (unitObj == null) ? 0 : unitObj;
-
-                        if (unit > 0) {
-                            state.missingToBuy.merge(itemId, qtyNeeded, Integer::sum);
-                            state.buyCostCopper += unit * qtyNeeded;
-                            return new Node(itemId, original, "buy(daily-parent)", List.of());
-                        }
-
-                        return new Node(itemId, original, "daily-chain-blocked", craftKids);
-                    }
-                }
-
-                // crafted enough
-                if (stillNeeded <= 0) {
-                    if (children.isEmpty()) return craftNode;
-
-                    children.add(craftNode);
-                    return new Node(itemId, original, "need", children);
-                }
-
-                // crafted only part of what we needed
-                children.add(craftNode);
-
-                // remaining quantity: cannot craft more daily items today
-                state.missingToBuy.merge(itemId, stillNeeded, Integer::sum);
-
-                if (ctx.settings.allowBuying) {
-                    TpPriceRepository.TpQuote q = ctx.tp.get(itemId);
-                    int unit = 0;
-                    if (q != null) {
-                        Integer v = ctx.settings.listingBuy ? q.buyUnit : q.sellUnit;
-                        unit = (v == null) ? 0 : v;
-                    }
-
-                    state.buyCostCopper += unit * stillNeeded;
-                    children.add(new Node(itemId, stillNeeded, "buy", List.of()));
-                } else {
-                    children.add(new Node(itemId, stillNeeded, "missing", List.of()));
-                }
-
-                return new Node(itemId, original, "need", children);
-            }
-        }
-
-        // 3) Not craftable (or cycle) -> buy or mark missing
-        state.missingToBuy.merge(itemId, qtyNeeded, Integer::sum);
-
-        if (ctx.settings.allowBuying) {
-            // Instant buy cost = sell_unit_price
-            TpPriceRepository.TpQuote q = ctx.tp.get(itemId);
-            int unit = 0;
-            if (q != null) {
-                // Instant buy = sellUnit, Listing buy = buyUnit
-                Integer v = ctx.settings.listingBuy ? q.buyUnit : q.sellUnit;
-                unit = (v == null) ? 0 : v;
-            }
-            state.buyCostCopper += unit * qtyNeeded;
-
-            Node buyNode = new Node(itemId, qtyNeeded, "buy", List.of());
-            if (children.isEmpty()) return buyNode;
-
-            children.add(buyNode);
-            return new Node(itemId, original, "need", children);
-        }
-
-        Node missNode = new Node(itemId, qtyNeeded, "missing", List.of());
-        if (children.isEmpty()) return missNode;
-
-        children.add(missNode);
-        return new Node(itemId, original, "need", children);
-    }
-
-    // ----------------------------
-    // Helpers
-    // ----------------------------
-
-    private static int ceilDiv(int a, int b) {
-        return (a + b - 1) / b;
-    }
-
-    private static class PlanRun {
-        final Map<Integer, Integer> missingToBuy;
-        final int buyCostCopper;
-        final Node tree;
-
-        PlanRun(Map<Integer, Integer> missingToBuy, int buyCostCopper, Node tree) {
-            this.missingToBuy = missingToBuy;
-            this.buyCostCopper = buyCostCopper;
-            this.tree = tree;
-        }
-    }
-
     private CraftResult evaluateOneRecipeNew(
             RecipeRepository.Recipe recipe,
             Map<Integer, Integer> baseInventory,
+            Map<Integer, Integer> boundInventory,
             PlannerContext ctx
     ) {
-        PlanState baseState = new PlanState(baseInventory);
+        PlanState baseState = new PlanState(baseInventory, boundInventory);
 
         RecipeSimulationResult sim;
 
@@ -327,13 +92,6 @@ public class CraftingPlanner {
         int matsSellOne = cost.getOpportunityCostPerCraft();
         int profitOne = revenueOne - buyCostOne - matsSellOne;
         int totalProfit = profitOne * sim.getCraftCount();
-
-        if (recipe.outputItemId == 70992 ) {
-            System.out.println("DEBUG shouldSimulate for " + recipe.recipeId +
-                                       " useOwnMats=" + ctx.settings.useOwnMats +
-                                       " allowBuying=" + ctx.settings.allowBuying +
-                                       " shouldSimulate=" + shouldSimulateRecipe(recipe, ctx));
-        }
 
         return new CraftResult(
                 recipe.outputItemId,

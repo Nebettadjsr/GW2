@@ -55,7 +55,7 @@ public class CraftingDiscoveryController {
      * Loads DISCOVERABLE recipes you still miss for this char+discipline.
      * Discipline can be "All" or a concrete one.
      */
-    public List<UiRow> reload(DiscChoice choice, CraftingSettings settings) throws SQLException {
+    public List<UiRow> reload(DiscChoice choice, CraftingSettings settings, String selectedCharacterName) throws SQLException {
 
         String charName = (choice == null) ? null : choice.charName;
         String discipline = (choice == null) ? "All" : choice.discipline;
@@ -101,9 +101,28 @@ public class CraftingDiscoveryController {
         this.lastAllowedRecipeIds = allowedRecipeIds;
 
         // 4) inventory
-        Map<Integer, Integer> inv = settings.useOwnMats
-                ? invRepo.loadOwnedInventory()
-                : Map.of();
+        Map<Integer, Integer> sellableInv = Map.of();
+        Map<Integer, Integer> boundInv = Map.of();
+
+        if (settings.useOwnMats) {
+            if (selectedCharacterName == null) {
+                // No synced character available: degrade to today's unfiltered pool
+                // (per STORY-DOM-012's "smaller in scope" fallback) instead of throwing.
+                sellableInv = invRepo.loadOwnedInventory();
+            } else {
+                Map<Integer, InventoryRepository.OwnedQuantity> owned =
+                        invRepo.loadOwnedInventoryForCharacter(selectedCharacterName);
+
+                Map<Integer, Integer> sellable = new HashMap<>();
+                Map<Integer, Integer> bound = new HashMap<>();
+                for (var e : owned.entrySet()) {
+                    if (e.getValue().sellableQty() > 0) sellable.put(e.getKey(), e.getValue().sellableQty());
+                    if (e.getValue().boundQty() > 0) bound.put(e.getKey(), e.getValue().boundQty());
+                }
+                sellableInv = sellable;
+                boundInv = bound;
+            }
+        }
 
         // 5) collect all item ids needed
         Set<Integer> itemIds = new HashSet<>();
@@ -131,7 +150,7 @@ public class CraftingDiscoveryController {
 
         // 6) evaluate
         Map<Integer, CraftResult> results =
-                planner.evaluateAll(allRecipes, inv, tp, settings, allowedRecipeIds);
+                planner.evaluateAll(allRecipes, sellableInv, boundInv, tp, settings, allowedRecipeIds);
         this.lastResultsByRecipeId = results;
 
         // 7) map to UI
