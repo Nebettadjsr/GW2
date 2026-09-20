@@ -59,7 +59,7 @@ None.
 - [x] New repository-level test added, passing, verifying `loadOwnedInventory()` sums `account_materials` + `account_bank` + `character_items`.
 - [x] Test does not require or mutate the developer's normal database.
 - [x] `./mvnw test` (or the documented equivalent) shows the new test passing alongside the full existing suite.
-- [x] `agent/CLAUDE_RESULT.md` filled in. Do not check off `docs/ROADMAP.md` §4 Phase 0 exit criterion 3 yourself — that criterion covers all of §3.1-§3.6 collectively, and §3.4/§3.6 remain separately blocked (`UD-001`, `UD-002`); leave the roadmap checkbox for a future planning run to update once the whole criterion is actually satisfied.
+- [x] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in. Do not check off `docs/ROADMAP.md` §4 Phase 0 exit criterion 3 yourself — that criterion covers all of §3.1-§3.6 collectively, and §3.4/§3.6 remain separately blocked (`UD-001`, `UD-002`); leave the roadmap checkbox for a future planning run to update once the whole criterion is actually satisfied.
 
 ## Result
 

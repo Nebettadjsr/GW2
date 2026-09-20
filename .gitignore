@@ -18,13 +18,9 @@ Thumbs.db
 .env
 
 #AI operations
-agent/runtime/DISPATCH_RESULT.json
-agent/runtime/EVALUATOR_RESULT.json
-agent/runtime/PLANNING_RESULT.json
-agent/runtime/SELECTOR_RESULT.json
-agent/runtime/NEXT_PROMPT.md
-agent/runtime/logs/
-agent/runtime/__pycache__/
+agent/runtime/artifacts/*
+!agent/runtime/artifacts/.gitkeep
+agent/runtime/**/__pycache__/
 
 # Derived/rebuildable data (auto-rebuilt by craft.CraftingGraphCache.load() when absent)
 crafting_graph_cache.json

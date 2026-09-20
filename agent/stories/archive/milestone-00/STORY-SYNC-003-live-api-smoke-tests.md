@@ -59,7 +59,7 @@ None. (Does not require `STORY-SYNC-002` to be done first, though both address r
 - [x] Tests are excluded from the default `./mvnw test` run, verified explicitly.
 - [x] A documented on-demand command exists to run them, recorded in the Result section.
 - [x] `./mvnw test` shows the full existing default suite passing, unaffected by the new tests.
-- [x] `agent/CLAUDE_RESULT.md` filled in.
+- [x] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in.
 
 ## Result
 

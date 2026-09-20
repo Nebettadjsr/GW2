@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from config import DISPATCH_RESULT_FILE, REPO_ROOT
-from files import write_json
-from hermes_client import call_ollama
+from agent.runtime.support.config import DISPATCH_RESULT_FILE, REPO_ROOT
+from agent.runtime.support.files import write_json
+from agent.runtime.evaluation.hermes_client import call_ollama
 
 
 # ============================================================

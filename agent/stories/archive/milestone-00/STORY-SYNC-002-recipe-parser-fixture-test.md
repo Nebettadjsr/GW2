@@ -58,7 +58,7 @@ None.
 - [x] A new test in `src/test/java/parser/` exercises `RecipeParser.parseRecipe`/`parseIngredients` against that fixture and passes.
 - [x] No production code changed (unless a defect was found and explicitly reported per the Constraints above).
 - [x] `./mvnw test` shows the new test passing alongside the full existing suite.
-- [x] `agent/CLAUDE_RESULT.md` filled in.
+- [x] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in.
 
 ## Result
 

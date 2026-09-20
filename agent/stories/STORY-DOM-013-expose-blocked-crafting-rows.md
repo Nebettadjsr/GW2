@@ -43,7 +43,7 @@ KNOWN_PROBLEMS.md §3.5 records that PRICE_UNAVAILABLE, RECIPE_NOT_ALLOWED and I
 
 - Automated regression covering a blocked result surviving controller/result preparation and retaining its reason, failing before the fix and passing afterward.
 - Cover missing, zero and negative required purchase prices, plus a valid-price control case.
-- Verify result preservation in both flows with automated tests at the narrowest practical existing boundary. Record manual UI verification that unavailable results and reasons are visible in both views.
+- Verify result preservation in both flows with automated tests at the narrowest practical existing boundary. Use STORY-UI-001's reusable capability to assert that unavailable results and reasons are displayed in both real views; record manual fallback only for specifically documented impractical automation cases.
 - Run the existing relevant domain regressions and project test suite; record actual commands and outcomes. Do not claim unexecuted checks passed.
 
 ## Constraints

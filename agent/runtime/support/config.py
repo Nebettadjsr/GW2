@@ -5,18 +5,24 @@ from pathlib import Path
 # Paths / configuration
 # ============================================================
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[3]
 AGENT_DIR = REPO_ROOT / "agent"
 RUNTIME_DIR = AGENT_DIR / "runtime"
+ARTIFACTS_DIR = RUNTIME_DIR / "artifacts"
 STORIES_DIR = AGENT_DIR / "stories"
 
 CURRENT_STORY_FILE = AGENT_DIR / "CURRENT_STORY.md"
 PROJECT_STATE_FILE = AGENT_DIR / "PROJECT_STATE.md"
-CLAUDE_RESULT_FILE = AGENT_DIR / "CLAUDE_RESULT.md"
+CLAUDE_RESULT_FILE = ARTIFACTS_DIR / "CLAUDE_RESULT.md"
 BACKLOG_FILE = STORIES_DIR / "BACKLOG.md"
 USER_DECISIONS_DIR = AGENT_DIR / "user-decisions"
 ARCHIVE_DIR = STORIES_DIR / "archive"
 PRODUCT_OWNER_REQUESTS_DIR = AGENT_DIR / "product-owner-requests"
+
+# Implementation-time human/tooling intervention records (distinct from
+# agent/user-decisions/, which is for product/domain/architecture
+# decisions only) -- see agent/user-interventions/README.md.
+USER_INTERVENTIONS_DIR = AGENT_DIR / "user-interventions"
 
 # docs/ROADMAP.md is intentionally not read by the orchestrator. The
 # selector previously received it alongside BACKLOG.md and started
@@ -24,11 +30,11 @@ PRODUCT_OWNER_REQUESTS_DIR = AGENT_DIR / "product-owner-requests"
 # entry, which produced a NEXT decision with no story_path. BACKLOG.md
 # is the sole authoritative source for story selection.
 
-NEXT_PROMPT_FILE = RUNTIME_DIR / "NEXT_PROMPT.md"
-EVALUATOR_RESULT_FILE = RUNTIME_DIR / "EVALUATOR_RESULT.json"
-SELECTOR_RESULT_FILE = RUNTIME_DIR / "SELECTOR_RESULT.json"
-DISPATCH_RESULT_FILE = RUNTIME_DIR / "DISPATCH_RESULT.json"
-PLANNING_RESULT_FILE = RUNTIME_DIR / "PLANNING_RESULT.json"
+NEXT_PROMPT_FILE = ARTIFACTS_DIR / "NEXT_PROMPT.md"
+EVALUATOR_RESULT_FILE = ARTIFACTS_DIR / "EVALUATOR_RESULT.json"
+SELECTOR_RESULT_FILE = ARTIFACTS_DIR / "SELECTOR_RESULT.json"
+DISPATCH_RESULT_FILE = ARTIFACTS_DIR / "DISPATCH_RESULT.json"
+PLANNING_RESULT_FILE = ARTIFACTS_DIR / "PLANNING_RESULT.json"
 
 DOCS_DIR = REPO_ROOT / "docs"
 ROADMAP_FILE = DOCS_DIR / "ROADMAP.md"

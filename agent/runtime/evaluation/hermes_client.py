@@ -1,7 +1,7 @@
 import json
 import urllib.request
 
-from config import MODEL, OLLAMA_URL
+from agent.runtime.support.config import MODEL, OLLAMA_URL
 
 
 # ============================================================

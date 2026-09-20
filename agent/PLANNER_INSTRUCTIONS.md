@@ -8,7 +8,7 @@ The Python harness determines the current roadmap phase before the model starts 
 - the exact current-phase excerpt from `docs/ROADMAP.md`;
 - `agent/PROJECT_STATE.md`;
 - `agent/stories/BACKLOG.md`;
-- the contents of every file under `agent/product-owner-requests/` (excluding `README.md`).
+- the contents of OPEN and NEEDS_USER files under `agent/product-owner-requests/` (excluding `README.md`; missing Status means OPEN).
 
 Use those supplied copies. Do not reread them through shell commands.
 
@@ -74,9 +74,9 @@ Authoritative owners:
     - planner continuity only
 
 - `agent/product-owner-requests/*.md` (excluding `README.md`)
-    - transient Product Owner input only
-    - never a permanent store -- see "Product Owner Requests" below
-    - deleted once its information is represented by one of the owners above
+    - Product Owner input with retained planner resolution notes
+    - authoritative requirements still belong to the owners above
+    - only the human Product Owner deletes reviewed RESOLVED files
 
 When information belongs to an authoritative owner, update that owner instead of copying the same information elsewhere.
 
@@ -101,7 +101,7 @@ If the current phase is incomplete:
 
 If the current phase is complete:
 1. update current-phase status only as necessary;
-2. report the milestone transition in `agent/runtime/PLANNING_RESULT.json`;
+2. report the milestone transition in `agent/runtime/artifacts/PLANNING_RESULT.json`;
 3. create zero next-phase stories;
 4. stop.
 
@@ -171,9 +171,9 @@ requested changes, new features, desired behavior changes, or product-level
 requirements. `README.md` in that folder documents the format for the human
 and is never itself a request.
 
-Every planning run inspects every file directly under
+Every planning run processes OPEN and NEEDS_USER files directly under
 `agent/product-owner-requests/` (excluding `README.md`) before creating any
-new stories. These files are planning input, never executable stories, and
+new stories. Ignore RESOLVED requests; legacy notes without Status are OPEN. These files are planning input, never executable stories, and
 must never be added to BACKLOG `## To Do` or referenced by the selector.
 
 The human may write a request in the recommended format (Title, Requested
@@ -219,35 +219,49 @@ For each request file, in order:
 
 ### Lifecycle
 
-A request file stays in `agent/product-owner-requests/` until its
-information has been safely transferred into the normal authoritative
-planning system. It is processed only when everything it asked for is
-represented by one or more of: an authoritative document update; an
-existing or newly created story; a user-decision file; an existing
-planning artifact that already covered it. Only then may the planner
-delete the original file.
+Never delete Product Owner request files. After processing, update the
+original file, preserving its product intent, with these sections:
 
-Do not archive processed requests -- the authoritative docs, stories, and
-decision files it produced are the permanent record.
+```markdown
+## Status
 
-Never delete a request merely because it was read. If processing fails, or
-a request caused `NEEDS_USER`, keep its file in place; a later planning
-pass will finish it once the blocking decision is resolved.
+OPEN
+
+## Planner Resolution
+
+```
+
+Status must be OPEN, NEEDS_USER, or RESOLVED. Missing Status in legacy notes
+means OPEN; add the lifecycle sections when processing them.
+
+- OPEN: processing remains incomplete; describe any progress and remaining work.
+- NEEDS_USER: identify the blocking `agent/user-decisions/UD-*.md` file in
+  Planner Resolution. Keep the request visible until that decision allows
+  planning to finish. Creating a user decision alone does not resolve a request.
+- RESOLVED: only when the entire request is represented in authoritative
+  planning artifacts. Briefly state exactly what was done: authoritative docs
+  updated, stories created, backlog entries added, existing artifacts reused,
+  or no action required. Cite the actual Markdown artifact paths and relevant
+  sections/story IDs, including existing coverage for a no-action resolution.
+
+Future passes ignore RESOLVED files. OPEN and NEEDS_USER remain visible.
+Only the human Product Owner deletes reviewed RESOLVED files manually.
+The request's resolution note is a receipt, not a second requirements store.
 
 ### Planning Result Contract
 
-`agent/runtime/PLANNING_RESULT.json` includes:
+`agent/runtime/artifacts/PLANNING_RESULT.json` includes:
 
 `"product_owner_requests_processed": ["filename.md", ...]`
 
-Report a filename there only once you have deleted that request file this
-run because it is fully processed per the Lifecycle above. Python
-validates this deterministically: every reported filename must have
-existed before the run and must no longer exist afterward, and any request
-file that disappears without being reported is treated as a validation
-failure regardless of overall status. `product_owner_requests_processed`
-must be empty whenever `status` is not `COMPLETE` -- mirroring
-`story_files_created`.
+Report only requests newly marked RESOLVED in this run. Each must still exist,
+have a nonempty Planner Resolution, and cite existing authoritative artifacts.
+Python rejects request deletion, invalid statuses, missing resolution/evidence,
+missing blocking UD files, and unreported resolutions. It validates structural
+evidence; the planner must verify that the artifacts fully cover the request.
+Already RESOLVED files must remain unchanged and must not be reported again.
+The list must be empty unless planning status is COMPLETE. On NEEDS_USER or
+FAILED passes, retain requests as OPEN or NEEDS_USER rather than RESOLVED.
 
 ## BACKLOG Contract
 
@@ -301,8 +315,8 @@ The planner may:
 - update `docs/ROADMAP.md` when current-phase status materially changes;
 - update `agent/PROJECT_STATE.md` when planner continuity materially changes;
 - create or reference user-decision files;
-- process files under `agent/product-owner-requests/` (excluding `README.md`) per the Product Owner Requests section, and delete one once fully processed;
-- write `agent/runtime/PLANNING_RESULT.json`.
+- process files under `agent/product-owner-requests/` (excluding `README.md`) per the Product Owner Requests section, and update each original file with its Status and Planner Resolution;
+- write `agent/runtime/artifacts/PLANNING_RESULT.json`.
 
 The planner must not:
 - implement features or fixes;
@@ -310,7 +324,7 @@ The planner must not:
 - inspect source to invent work;
 - write implementation tests;
 - modify build or CI configuration;
-- update `agent/CLAUDE_RESULT.md`;
+- update `agent/runtime/artifacts/CLAUDE_RESULT.md`;
 - change `agent/CURRENT_STORY.md`;
 - select or activate another story;
 - move/delete/archive story files;
@@ -319,7 +333,7 @@ The planner must not:
 - create future-phase work;
 - invent repository facts;
 - treat a file under `agent/product-owner-requests/` as an executable story or add it to BACKLOG `## To Do`;
-- delete a file under `agent/product-owner-requests/` that is not yet fully represented by an authoritative document, story, or user-decision file.
+- delete any file under `agent/product-owner-requests/`; only the human Product Owner removes reviewed RESOLVED requests.
 
 Additional rules:
 - Create only the next small useful batch.
@@ -450,7 +464,7 @@ A prose plan is not completion.
 
 The run is complete only after writing:
 
-`agent/runtime/PLANNING_RESULT.json`
+`agent/runtime/artifacts/PLANNING_RESULT.json`
 
 Required fields:
 

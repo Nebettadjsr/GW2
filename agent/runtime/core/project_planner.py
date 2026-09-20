@@ -2,8 +2,8 @@ import json
 import re
 import subprocess
 
-from local_planner_runner import run_local_planner
-from config import (
+from agent.runtime.runners.local_planner_runner import run_local_planner
+from agent.runtime.support.config import (
     BACKLOG_FILE,
     CURRENT_STORY_FILE,
     PROJECT_STATE_FILE,
@@ -16,14 +16,14 @@ from config import (
     STORIES_DIR,
     USER_DECISIONS_DIR,
 )
-from files import file_hash, write_json
-from story_archive import (
+from agent.runtime.support.files import file_hash, write_json
+from agent.runtime.core.story_archive import (
     archive_milestone_stories,
     extract_milestone,
     is_valid_milestone_slug,
     list_archived_story_files,
 )
-from user_decisions import (
+from agent.runtime.human.user_decisions import (
     find_duplicate_decision_ids,
     is_placeholder,
     list_decisions,
@@ -31,8 +31,8 @@ from user_decisions import (
     extract_section as extract_decision_section,
     extract_status as extract_decision_status,
 )
-from product_owner_requests import (
-    list_request_filenames,
+from agent.runtime.human.product_owner_requests import (
+    validate_request_updates,
     read_requests,
 )
 
@@ -164,7 +164,7 @@ def build_planning_prompt() -> str:
         )
     else:
         product_owner_requests_block = (
-            "(no files currently under agent/product-owner-requests/, "
+            "(no OPEN or NEEDS_USER requests under agent/product-owner-requests/, "
             "excluding README.md)"
         )
 
@@ -310,7 +310,7 @@ included there). Full processing rules are defined in the "Product Owner
 Requests" section of the AUTHORITATIVE PLANNER INSTRUCTIONS below --
 follow those exactly. In summary:
 - if a request is already fully covered by existing docs/stories, do
-  nothing further for it;
+  create no duplicate artifacts; record the existing coverage in its resolution;
 - if it changes long-term intended behavior or architecture, update the
   correct authoritative document first (never copy the same requirement
   into more than one document);
@@ -322,23 +322,29 @@ follow those exactly. In summary:
   or reuse an OPEN agent/user-decisions/UD-*.md file and return NEEDS_USER
   instead of guessing.
 
-Only list a request's filename in "product_owner_requests_processed"
-below once its information is fully represented by an authoritative doc
-update, a story, a user-decision file, or an existing planning artifact
-that already covered it -- and only then delete that request file
-yourself. Never delete a request file for any other reason, including
-merely having read it. If a request is not fully processed this run
-(including because it caused NEEDS_USER), leave its file in place and
-leave it out of product_owner_requests_processed.
+Never delete Product Owner request files. Update the original file's
+## Status (OPEN | NEEDS_USER | RESOLVED) and ## Planner Resolution.
+A missing Status in a legacy note means OPEN. Ignore RESOLVED requests.
+For RESOLVED, briefly state exactly what was done (docs updated, stories
+created, backlog entries added, existing artifacts reused, or no action
+required), citing the authoritative Markdown artifact paths that fully
+represent the request. An unresolved user decision is not full coverage.
+For NEEDS_USER, identify the blocking agent/user-decisions/UD-*.md file.
+For partial processing, retain OPEN and describe progress/remaining work.
+Preserve the original request intent. Only the human PO deletes reviewed
+RESOLVED files manually.
 
-product_owner_requests_processed must be empty unless status is COMPLETE.
+Only list newly RESOLVED filenames in product_owner_requests_processed.
+That list must be empty unless planning status is COMPLETE; do not resolve
+requests on NEEDS_USER/FAILED passes. OPEN and NEEDS_USER remain eligible
+for later passes, including after the blocking user decision is resolved.
 
 PLANNING RESULT
 ===============
 
 The run is not complete until you write:
 
-agent/runtime/PLANNING_RESULT.json
+agent/runtime/artifacts/PLANNING_RESULT.json
 
 with exactly these fields:
 
@@ -515,7 +521,7 @@ def validate_planning_result(
         pre_story_ids: set,
         pre_existing_story_filenames: set,
         pre_decisions: list,
-        pre_request_filenames: set,
+        pre_requests: dict[str, str],
 ) -> dict:
 
     result = dict(raw_result)
@@ -801,99 +807,19 @@ def validate_planning_result(
             status = "FAILED"
 
     # ------------------------------------------------------------
-    # Product Owner request validation
-    #
-    # Deletion is the only side effect a planning run may have on
-    # agent/product-owner-requests/, and it is never trusted from the
-    # model's claim alone. A reported filename must have existed
-    # before this run and must be gone afterward; any request file
-    # that disappeared without being reported is a silent deletion,
-    # which is never allowed regardless of overall status. Mirrors
-    # story_files_created's existing "empty outside COMPLETE" rule --
-    # a request may only be reported processed (and therefore deleted)
-    # on a COMPLETE run, so a NEEDS_USER/FAILED run never has any
-    # processed requests to reconcile against a partial result.
-    # ------------------------------------------------------------
-
-    post_request_filenames = list_request_filenames()
-
-    product_owner_requests_processed = result.get(
-        "product_owner_requests_processed"
-    ) or []
-
-    if not isinstance(product_owner_requests_processed, list):
-        problems.append(
-            "product_owner_requests_processed must be a list."
-        )
+    # Product Owner request validation: retain originals and verify lifecycle.
+    processed = result.get("product_owner_requests_processed", [])
+    if not isinstance(processed, list):
+        problems.append("product_owner_requests_processed must be a list.")
         status = "FAILED"
-        product_owner_requests_processed = []
-
-    reported_processed = set()
-
-    for filename in product_owner_requests_processed:
-        if not isinstance(filename, str) or not filename.strip():
-            problems.append(
-                "product_owner_requests_processed contains a "
-                f"non-string or empty entry: {filename!r}"
-            )
-            status = "FAILED"
-            continue
-
-        cleaned = filename.strip()
-        reported_processed.add(cleaned)
-
-        if cleaned.lower() == "readme.md":
-            problems.append(
-                "product_owner_requests_processed reports README.md, "
-                "which is never a request."
-            )
-            status = "FAILED"
-            continue
-
-        if cleaned not in pre_request_filenames:
-            problems.append(
-                "product_owner_requests_processed reports "
-                f"{cleaned!r}, which did not exist under "
-                "agent/product-owner-requests/ before this planning "
-                "run."
-            )
-            status = "FAILED"
-
-        if cleaned in post_request_filenames:
-            problems.append(
-                "product_owner_requests_processed reports "
-                f"{cleaned!r} as processed, but the file still exists "
-                "under agent/product-owner-requests/."
-            )
-            status = "FAILED"
-
-    silently_deleted = (
-        pre_request_filenames
-        - post_request_filenames
-        - reported_processed
-    )
-
-    if silently_deleted:
-        problems.append(
-            "Request file(s) disappeared from "
-            "agent/product-owner-requests/ without being reported in "
-            "product_owner_requests_processed: "
-            + ", ".join(sorted(silently_deleted))
-        )
+        processed = []
+    request_problems = validate_request_updates(pre_requests, processed, original_status)
+    if request_problems:
+        problems.extend(request_problems)
         status = "FAILED"
-
-    if original_status != "COMPLETE" and product_owner_requests_processed:
-        problems.append(
-            f"Planning status is {original_status} but "
-            "product_owner_requests_processed is non-empty; a request "
-            "may only be reported processed (and deleted) on a "
-            "COMPLETE run."
-        )
-        status = "FAILED"
-
-    result["product_owner_requests_processed"] = sorted(
-        reported_processed
-    )
+    result["product_owner_requests_processed"] = sorted({
+        name for name in processed if isinstance(name, str)
+    })
 
     # ------------------------------------------------------------
     # Milestone-transition validation
@@ -994,7 +920,8 @@ def run_planning_pass() -> dict:
 
     pre_decisions = list_decisions()
 
-    pre_request_filenames = list_request_filenames()
+    pre_requests = {item["file"]: item["content"]
+                    for item in read_requests(include_resolved=True)}
 
     prompt = build_planning_prompt()
 
@@ -1014,7 +941,7 @@ def run_planning_pass() -> dict:
             "status": "FAILED",
             "reason": (
                 "Planning run did not produce a new "
-                "agent/runtime/PLANNING_RESULT.json."
+                "agent/runtime/artifacts/PLANNING_RESULT.json."
             ),
             "planner_exit_code": planner_exit_code,
         }
@@ -1037,7 +964,7 @@ def run_planning_pass() -> dict:
             "status": "FAILED",
             "reason": (
                 "Could not parse "
-                f"agent/runtime/PLANNING_RESULT.json: {exc}"
+                f"agent/runtime/artifacts/PLANNING_RESULT.json: {exc}"
             ),
             "planner_exit_code": planner_exit_code,
         }
@@ -1056,7 +983,7 @@ def run_planning_pass() -> dict:
         pre_story_ids,
         pre_existing_story_filenames,
         pre_decisions,
-        pre_request_filenames,
+        pre_requests,
     )
 
     validated["planner_exit_code"] = planner_exit_code

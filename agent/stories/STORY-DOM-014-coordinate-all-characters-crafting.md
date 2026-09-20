@@ -43,7 +43,7 @@ Resolved UD-004 extends STORY-DOM-012 for Crafting Profit only. The existing sto
 - Add failing regression tests before changes for coordinated crafting with intermediates produced by different eligible characters and a final step performed by another character.
 - Cover split soulbound inputs that cannot satisfy one step, valid same-owner consumption, ineligible step assignment, transferable intermediate reuse, and shared inventory not being double counted.
 - Use PostgreSQL integration coverage for any changed inventory/character/recipe loading semantics; use the existing test conventions and real constraints rather than in-memory substitutes.
-- Verify Profit default/mode switching through displayed results, Discovery individual-only behavior, and graceful zero-character handling. Run relevant regressions and the project suite; report unexecuted checks honestly.
+- Use STORY-UI-001's reusable capability to automate Profit default/mode switching through displayed results, Discovery individual-only behavior, and graceful zero-character handling. Run relevant regressions and the project suite; report unexecuted checks honestly.
 
 ## Constraints
 
@@ -64,4 +64,3 @@ Not started.
 ## Blockers
 
 None.
-

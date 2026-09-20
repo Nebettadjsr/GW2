@@ -56,7 +56,7 @@ None.
 - [x] New characterization test added under `src/test/java/craft/`, passing, and clearly named/commented as characterizing the §7.4 heuristic-skip risk.
 - [x] No production code changed.
 - [x] `./mvnw test` shows the new test passing alongside the full existing suite.
-- [x] `agent/CLAUDE_RESULT.md` filled in.
+- [x] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in.
 
 ## Result
 

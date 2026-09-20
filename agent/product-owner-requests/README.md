@@ -1,59 +1,40 @@
 # Product Owner Requests
 
-Drop Markdown files here to hand the planner new work: requested changes,
-new features, desired behavior changes, or other product-level
-requirements.
-
-This folder is transient input only — not a second requirements database.
-Do not expect a request to still be here once it has been fully acted on
-(see "Lifecycle" below), and do not treat it as a place to look up product
-history later. Once processed, the permanent record lives in
-`docs/TARGET_ARCHITECTURE.md`, `docs/DOMAIN_SPEC.md`, `docs/ROADMAP.md`,
-`docs/KNOWN_PROBLEMS.md`, `agent/stories/`, `agent/stories/BACKLOG.md`, or
-`agent/user-decisions/` — whichever actually owns that information.
+Add Markdown files here describing requested changes, features, or product
+requirements. These are planning inputs, not executable stories. Authoritative
+requirements remain in docs and stories; retained requests provide a reviewable
+record of what the planner did.
 
 ## Lifecycle
 
-1. You add a `.md` file here describing what you want.
-2. Every PROJECT PLANNING MODE pass reads every file in this folder
-   (except this `README.md`) before it creates any new stories.
-3. For each request, the planner:
-   - checks whether it is already fully covered by existing docs/stories —
-     if so, nothing new is created for it;
-   - updates the correct authoritative document first if it changes
-     long-term intended behavior or architecture (`docs/TARGET_ARCHITECTURE.md`,
-     `docs/DOMAIN_SPEC.md`, `docs/ROADMAP.md`, or `docs/KNOWN_PROBLEMS.md`,
-     never more than one of these for the same fact);
-   - converts concrete, current-phase-appropriate work into normal
-     `STORY-*.md` files and `agent/stories/BACKLOG.md` entries;
-   - keeps later-phase work represented only as future planned work, never
-     as a current executable story;
-   - opens (or reuses) an OPEN file under `agent/user-decisions/` and
-     returns `NEEDS_USER` instead of guessing, whenever the request is
-     clear on outcome but a genuine human decision (UX behavior, a
-     business-rule ambiguity, a `TBD` technology choice, a materially
-     different architectural alternative, or unspecified product
-     behavior) blocks planning it.
-4. A request file is deleted **only** once its information is fully
-   represented elsewhere — by a doc update, a story, a user-decision file,
-   or an existing planning artifact that already covered it. Nothing here
-   is ever archived; the docs/stories/decisions it produced are the
-   permanent record.
-5. If a request is only partially processed, or needs a decision from you,
-   it stays in this folder untouched until a later planning pass can
-   finish it. A request is never deleted merely because it was read, and
-   never deleted if processing it failed or is still blocked on you.
-
-A request file is never turned into a directly executable unit itself —
-it is planning input, not a story, and it is never referenced from
-`agent/stories/BACKLOG.md`'s `## To Do` section.
+1. Add a request with Status OPEN. Legacy notes without Status are treated as OPEN.
+2. Planning passes process OPEN and NEEDS_USER requests before creating stories.
+   RESOLVED requests are ignored.
+3. The planner checks existing coverage, updates the authoritative documents,
+   and creates current-phase stories/backlog entries where needed. It reuses
+   existing artifacts instead of duplicating them; later-phase work stays in
+   the appropriate future planning documentation.
+4. The planner updates the original request's Status and Planner Resolution,
+   preserving the requested intent:
+   - OPEN: incomplete processing; record progress and remaining work.
+   - NEEDS_USER: record the blocking `agent/user-decisions/UD-*.md` file.
+     The request stays visible until the decision permits resolution.
+   - RESOLVED: the entire request is represented in authoritative planning
+     artifacts. Briefly state exactly what was done (docs updated, stories
+     created, backlog entries added, existing artifacts reused, or no action
+     required), citing the artifact paths and relevant sections/story IDs.
+     An unresolved user decision alone is not sufficient for resolution.
+5. The planner never deletes request files. The human Product Owner reviews
+   RESOLVED requests and deletes them manually when satisfied.
 
 ## Format
 
-Recommended, not required:
-
 ```markdown
 # Product Owner Request
+
+## Status
+
+OPEN
 
 ## Title
 
@@ -64,14 +45,14 @@ Recommended, not required:
 ## Constraints
 
 ## Additional Context
+
+## Planner Resolution
+
 ```
 
-Only **Title** and **Requested Change** need actual content — the other
-sections may be left empty.
+Fill in Title and Requested Change. Context sections are optional; leave
+Planner Resolution for the planner. Less-structured notes are accepted and
+receive lifecycle sections when processed.
 
-Less-structured notes are also fine. The planner will still attempt to
-understand a plain-language request that doesn't follow this template
-rather than rejecting it purely for formatting.
-
-Do not put implementation instructions or source-code-level detail here —
-this is a product-intent inbox, not a story file.
+Keep requests focused on product intent. They are never added directly to
+`agent/stories/BACKLOG.md` as executable work.

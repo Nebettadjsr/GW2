@@ -68,7 +68,7 @@ None.
 - [x] Test does not require or mutate the developer's normal database, and does not call the live GW2 API.
 - [x] Any production visibility change needed to make the test possible is minimal and documented in the Result section.
 - [x] `./mvnw test` shows the new test(s) passing alongside the full existing suite.
-- [x] `agent/CLAUDE_RESULT.md` filled in.
+- [x] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in.
 
 ## Result
 

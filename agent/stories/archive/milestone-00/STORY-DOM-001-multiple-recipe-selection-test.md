@@ -71,7 +71,7 @@ Queued to run **after** `STORY-TEST-001` (shared domain test fixture) so this te
 - [x] `./mvnw test` runs it and it fails for the expected reason (wrong recipe selected, not a compile error or unrelated exception).
 - [x] `craft.CraftingResolverCraftVsBuyTest` still passes.
 - [x] No file outside `src/test/java/craft/` was modified.
-- [x] `agent/CLAUDE_RESULT.md` filled in with what was added and the observed failure output.
+- [x] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in with what was added and the observed failure output.
 
 ## Result
 

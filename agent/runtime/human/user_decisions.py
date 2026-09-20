@@ -1,7 +1,7 @@
 from pathlib import Path
 import re
 
-from config import USER_DECISIONS_DIR
+from agent.runtime.support.config import USER_DECISIONS_DIR
 
 
 # ============================================================
@@ -43,8 +43,11 @@ def _section_text(
     content: str,
     heading: str
 ) -> str | None:
+    # [ \t]*\n, not \s*\n+ -- see files.find_section_span()'s
+    # fix/rationale; the same greedy-whitespace-starves-the-lookahead
+    # bug applies here.
     pattern = re.compile(
-        rf"##\s*{re.escape(heading)}\s*\n+(.*?)(?=\n##\s|\Z)",
+        rf"##\s*{re.escape(heading)}[ \t]*\n(.*?)(?=\n##\s|\Z)",
         re.DOTALL | re.IGNORECASE,
     )
 

@@ -65,7 +65,7 @@ None.
 - [ ] `RECIPE_NOT_ALLOWED` and `INSUFFICIENT_BUDGET` added to `craft.BlockedReason` and set at the identified locations.
 - [ ] New tests for both reasons pass; full existing suite still passes.
 - [ ] Any scope found to be larger than expected is reported, not silently expanded.
-- [ ] `agent/CLAUDE_RESULT.md` filled in.
+- [ ] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in.
 
 ## Result
 
@@ -128,7 +128,7 @@ not triggered.
       the identified locations.
 - [x] New tests for both reasons pass; full existing suite still passes.
 - [x] No scope expansion needed — both fixes were small and additive as anticipated.
-- [x] `agent/CLAUDE_RESULT.md` filled in.
+- [x] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in.
 
 ## Discovered Issues
 

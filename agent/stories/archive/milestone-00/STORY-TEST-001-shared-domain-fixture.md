@@ -53,7 +53,7 @@ This story runs before STORY-DOM-001 specifically so STORY-DOM-001 can use the r
 - [x] Fixture/helper class added under `src/test/java/craft/`.
 - [x] `./mvnw test` passes (existing test unaffected).
 - [x] No production code changed.
-- [x] `agent/CLAUDE_RESULT.md` filled in.
+- [x] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in.
 
 ## Result
 

@@ -99,7 +99,7 @@ None.
 - [x] Stale rows from a previous run are removed per character.
 - [x] New parsing logic has at least one unit test not requiring a live database or live API.
 - [x] `./mvnw test` passes (no regression in the existing suite).
-- [x] `agent/CLAUDE_RESULT.md` filled in.
+- [x] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in.
 
 ## Result
 

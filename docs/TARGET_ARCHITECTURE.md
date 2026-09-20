@@ -680,6 +680,16 @@ This is an implementation decision as long as domain results remain correct.
 
 The architecture must support multiple test levels.
 
+## Existing JavaFX UI Verification Capability
+
+The implementation workflow must support repeatable automated verification of the existing JavaFX application. This is intended capability, not a claim that tooling is already installed or verified. Its immediate scope is the Phase 1 crafting views and the verification gaps recorded in STORY-DOM-013 through STORY-DOM-015.
+
+The capability must launch the application, detect successful startup, interact with relevant controls (including ComboBox selection and button clicks), inspect TableView contents and displayed state, verify selection-driven result changes and important empty/error states, capture screenshots when useful, and shut down cleanly. Prefer control-based deterministic regression tests over ad-hoc desktop interaction; fixed screen coordinates are not an acceptable foundation.
+
+Evaluate TestFX or an equivalent maintained approach against the actual JavaFX version and existing Maven setup before adopting a substantial framework. Compatibility and reliability must be demonstrated rather than assumed. Keep reusable capability setup separate from the behavior coverage owned by the existing crafting stories: character-dependent results, All characters selection, refresh preservation of sorting/filtering, initial defaults, and zero-character/empty-data handling.
+
+Windows PowerShell may be used within the repository/development workflow for interim automation, including investigation of System.Windows.Automation where useful. This is not a requirement to broaden agent permissions and does not replace practical automated regression tests. Preserve application correctness and retain manual verification as a fallback when automation is genuinely impractical. Once tooling is established, document its permanent test methodology, invocation and limitations in TEST_STRATEGY.md; this section owns the intended capability, while that document owns how it is tested.
+
 ## Domain Tests
 
 Run without:

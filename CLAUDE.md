@@ -72,7 +72,7 @@ Story System
 
 agent/CURRENT_STORY.md — path to active story.
 
-agent/CLAUDE_RESULT.md — implementation result.
+agent/runtime/artifacts/CLAUDE_RESULT.md — implementation result.
 
 agent/stories/BACKLOG.md — status index only.
 
@@ -131,7 +131,7 @@ Preserve existing behavior unless story/spec says otherwise.
 
 Update status/result in the story file.
 
-Update agent/CLAUDE_RESULT.md.
+Update agent/runtime/artifacts/CLAUDE_RESULT.md.
 
 Update only that story's BACKLOG status entry.
 

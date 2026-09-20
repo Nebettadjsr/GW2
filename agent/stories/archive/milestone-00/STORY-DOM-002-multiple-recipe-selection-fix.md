@@ -52,7 +52,7 @@ STORY-DOM-001 adds a failing test proving the current gap. This story makes that
 - [x] STORY-DOM-001's test(s) pass.
 - [x] Existing craft-vs-buy test still passes.
 - [x] Implementation change is minimal — no unrelated refactor of `CraftingResolver`.
-- [x] `agent/CLAUDE_RESULT.md` filled in.
+- [x] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in.
 
 ## Result
 

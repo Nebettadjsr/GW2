@@ -43,7 +43,7 @@ Today, a required purchase with no usable TP quote causes `CraftingProfitControl
 ## Constraints
 
 - Treat the domain-layer fix (the `BlockedReason` value and where `CraftingResolver` sets it) as the core, required scope of this story.
-- Only change `CraftingProfitController.hasZeroPricedBuy(...)`'s row-filtering behavior if it can be done as a small, clearly-scoped change directly enabled by the domain fix. If changing what the UI displays turns out to be a larger decision (e.g. how to visually represent a blocked row), stop and record it as a follow-up recommendation in `agent/CLAUDE_RESULT.md` instead of expanding this story's scope.
+- Only change `CraftingProfitController.hasZeroPricedBuy(...)`'s row-filtering behavior if it can be done as a small, clearly-scoped change directly enabled by the domain fix. If changing what the UI displays turns out to be a larger decision (e.g. how to visually represent a blocked row), stop and record it as a follow-up recommendation in `agent/runtime/artifacts/CLAUDE_RESULT.md` instead of expanding this story's scope.
 - Do not implement `RECIPE_NOT_ALLOWED` or `INSUFFICIENT_BUDGET` in this story unless doing so is trivial alongside the above — otherwise defer them explicitly as follow-ups.
 - Follow `docs/CODING_GUIDELINES.md`.
 
@@ -52,7 +52,7 @@ Today, a required purchase with no usable TP quote causes `CraftingProfitControl
 - [x] `PRICE_UNAVAILABLE` (or repurposed `NO_TP_PRICE`) is added/used and set by `CraftingResolver` where a purchase price is missing/invalid.
 - [x] New test passes; full existing suite still passes.
 - [x] Any deferred sub-scope (`RECIPE_NOT_ALLOWED`, `INSUFFICIENT_BUDGET`, UI-level filtering change) is explicitly recorded as a follow-up recommendation, not silently dropped.
-- [x] `agent/CLAUDE_RESULT.md` filled in.
+- [x] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in.
 
 ## Result
 
@@ -64,7 +64,7 @@ non-positive quote), instead of falling through to the misleading `NO_RECIPE` re
 `tryCraft(...)`'s "not all children satisfied" branch, which previously always overwrote a
 child's real `BlockedReason` (e.g. `PRICE_UNAVAILABLE` surfacing from a nested ingredient) with a
 hardcoded `NO_RECIPE`, discarding it; it now propagates the first unsatisfied child's own reason
-when one is set. See `agent/CLAUDE_RESULT.md` for full detail.
+when one is set. See `agent/runtime/artifacts/CLAUDE_RESULT.md` for full detail.
 
 ## Blockers
 

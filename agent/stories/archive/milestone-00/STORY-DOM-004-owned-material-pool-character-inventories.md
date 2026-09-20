@@ -89,7 +89,7 @@ has no real data to sum, and this story's fix would be untestable/unverifiable).
 - [x] `loadOwnedInventory()` includes `character_items` quantities.
 - [x] Verification approach documented (automated test, or explicit manual-verification note if
       no automated option is practical without deciding new test tooling).
-- [x] `agent/CLAUDE_RESULT.md` filled in, explicitly noting binding/soulbound handling remains
+- [x] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in, explicitly noting binding/soulbound handling remains
       out of scope.
 
 ## Result

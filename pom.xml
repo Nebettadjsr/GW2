@@ -84,6 +84,20 @@
             <version>${junit.jupiter.version}</version>
             <scope>test</scope>
         </dependency>
+
+        <!--
+            STORY-UI-001: JavaFX UI verification capability. testfx-junit5 declares no JavaFX
+            dependency of its own (verified in its POM before adding this) - it drives whatever
+            JavaFX is already on the test classpath, so it uses this project's javafx.version
+            (25.0.2) rather than pinning its own. openjfx-monocle (transitive, for headless
+            testing) is not used: these tests run headful against a real desktop session.
+        -->
+        <dependency>
+            <groupId>org.testfx</groupId>
+            <artifactId>testfx-junit5</artifactId>
+            <version>4.0.18</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

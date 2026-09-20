@@ -6,17 +6,16 @@ The currently active story's file is the one pointed to by `agent/CURRENT_STORY.
 
 ## Active
 
-- `STORY-DOM-015-preserve-refresh-state-and-verify-character-results.md` — milestone-01; preserves session selections and verifies character-sensitive displayed results in both crafting views.
+- `STORY-UI-001-javafx-verification-capability.md` - milestone-01; establish repeatable JavaFX verification for Phase 1 crafting views.
 
 ## To Do
-
 
 - `STORY-DOM-013-expose-blocked-crafting-rows.md` — milestone-01; preserves unavailable/blocked results and their reasons in Crafting Profit and Discovery, closing the remaining controller filtering conflict in `docs/KNOWN_PROBLEMS.md` §3.5.
 - `STORY-DOM-014-coordinate-all-characters-crafting.md` — milestone-01; implements resolved coordinated account planning for Crafting Profit.
 
 ## Blocked
 
-_(none)_
+- `STORY-DOM-015-preserve-refresh-state-and-verify-character-results.md` — milestone-01; individual-character selection tracing and refresh-preservation verified with no defect found (see Result); blocked on `STORY-DOM-014` (TODO) to deliver Crafting Profit's resolved `All characters` selector default before this story's remaining acceptance criterion can be met. Tracked as `docs/KNOWN_PROBLEMS.md` §3.7.
 
 ## Done
 

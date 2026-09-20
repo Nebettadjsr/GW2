@@ -59,7 +59,7 @@ None.
 - [x] Manually verified: deleting the local `crafting_graph_cache.json` and reopening Crafting Profit/Crafting Discovery still works.
 - [x] `crafting_graph_cache.json` untracked from git (`git rm --cached`) and added to `.gitignore`.
 - [x] `./mvnw test` shows unchanged pass/fail results.
-- [x] `agent/CLAUDE_RESULT.md` filled in.
+- [x] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in.
 
 ## Result
 

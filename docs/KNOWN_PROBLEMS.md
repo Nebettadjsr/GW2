@@ -108,6 +108,18 @@ return craftEval.need.getEffectiveCostCopper() <= buyEval.need.getEffectiveCostC
 
 **Status: Resolved.** Per the resolved `agent/user-decisions/UD-002-ectoplasm-salvage-fee-model.md` (`DOMAIN_SPEC.md` DQ-011), `EctoView` is now the sole implementation; the disconnected `Main.java` was deleted.
 
+### 3.7 Crafting Profit's character selector does not yet offer `All characters`
+
+**Observed fact:** `CraftingProfitView`'s `characterBox` (`ComboBox<String>`) is populated only from `CharacterRepository.loadAllCharacterNames()` — individual synced character names — with no `All characters` entry anywhere in its item list or selection-default logic (`reloadCharacterChoices`, confirmed by direct reading). It defaults to the first synced character name, matching `UD-001`'s original default rather than `UD-004`'s.
+
+**Conflict:** `DOMAIN_SPEC.md` §2.2.1, per the resolved `agent/user-decisions/UD-004-all-characters-calculation-semantics.md`, requires Crafting Profit to offer `All characters` as the first selector entry and initial default, explicitly replacing `UD-001`'s first-synced-character default for this view only.
+
+**Inferred risk:** None beyond the documented gap itself — Crafting Profit still behaves exactly as `STORY-DOM-012` left it (individual-character selection only), which remains valid, tested behavior; it simply does not yet expose the newer coordinated `All characters` mode `UD-004` calls for.
+
+**Recommendation:** No action needed beyond tracking — `STORY-DOM-014-coordinate-all-characters-crafting.md` (Status: TODO at the time of writing) is the story explicitly scoped to add the `All characters` entry together with the coordinated multi-character planning logic it requires (per-step eligibility, transferable intermediates, soulbound-per-step enforcement). Implementing only the selector entry without that planning logic would misrepresent `All characters` as available when the underlying calculation cannot yet honor it, so this is deliberately left for that story rather than partially addressed here.
+
+**Status: Open**, tracked by `STORY-DOM-014` (TODO). `STORY-DOM-015` (verification of individual-character selection/refresh behavior) confirmed this gap during its own verification pass but its scope does not include implementing `All characters` mode.
+
 ---
 
 ## 4. Architectural Coupling
@@ -253,7 +265,8 @@ Ranked by combination of (a) confirmed conflict with an authoritative spec and (
 3. §4.1 — domain layer coupled to repository types (blocks `TEST_STRATEGY.md`'s entire domain-test strategy and `TARGET_ARCHITECTURE.md`'s migration plan). **Still open** — scheduled for Phase 2 (`docs/ROADMAP.md`).
 4. §3.2, §3.4, §3.5 — recipe-selection priority, bound-material rules, and price-unavailable state, each independently confirmed unimplemented. **§3.2 and §3.4 resolved; §3.5 partially resolved** — see each subsection.
 5. §3.6 — duplicated/disagreeing Ecto calculation (user-facing numeric inconsistency, but isolated to one feature). **Resolved** — see §3.6.
+6. §3.7 — Crafting Profit's character selector does not yet offer the resolved `All characters` default. **Open**, tracked by `STORY-DOM-014` — see §3.7.
 
 (§2.1, configuration hardcoding, is resolved — see §2.)
 
-This ranking reflects priority at the time this document was first written. Most items have since been implemented — see each subsection's Status line above and `agent/stories/BACKLOG.md` `## Done` for the stories that closed them. Still-open work: §3.5's controller-layer row filtering, and §4's architectural coupling (Phase 2).
+This ranking reflects priority at the time this document was first written. Most items have since been implemented — see each subsection's Status line above and `agent/stories/BACKLOG.md` `## Done` for the stories that closed them. Still-open work: §3.5's controller-layer row filtering, §3.7's pending `All characters` selector/planning mode, and §4's architectural coupling (Phase 2).

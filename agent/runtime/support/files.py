@@ -56,8 +56,16 @@ def find_section_span(
     disturbing the rest of it.
     """
 
+    # The trailing whitespace before the mandatory newline is
+    # deliberately [ \t]*, not \s* -- \s also matches newlines, so a
+    # greedy \s* here would swallow through any blank lines that
+    # immediately follow the heading (e.g. an empty section with no
+    # "_(none)_" placeholder), consuming the very "\n##" boundary the
+    # lookahead below needs to find the *next* heading. That silently
+    # merged an empty section's body into the next section's heading
+    # line instead of returning an empty span.
     pattern = re.compile(
-        rf"(##\s*{re.escape(heading)}\s*\n)(.*?)(?=\n##\s|\Z)",
+        rf"(##\s*{re.escape(heading)}[ \t]*\n)(.*?)(?=\n##\s|\Z)",
         re.DOTALL | re.IGNORECASE,
     )
 

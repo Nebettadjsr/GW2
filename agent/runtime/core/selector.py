@@ -1,14 +1,14 @@
-from config import SELECTOR_RESULT_FILE
-from files import read_file, write_json
-from story_state import (
-    extract_dependencies_section,
+from agent.runtime.support.config import SELECTOR_RESULT_FILE
+from agent.runtime.support.files import read_file, write_json
+from agent.runtime.core.story_state import (
     extract_status_section,
     classify_story_status,
     get_ready_story_filenames_ordered,
     get_selectable_story_candidates,
+    get_unsatisfied_dependencies,
     STORIES_DIR,
 )
-from user_decisions import get_open_decisions
+from agent.runtime.human.user_decisions import get_open_decisions
 
 
 # ============================================================
@@ -176,13 +176,13 @@ def _collect_explicit_blocked_explanations(
             )
             continue
 
-        dependencies_text = extract_dependencies_section(
+        unsatisfied = get_unsatisfied_dependencies(
             content
         )
 
-        if dependencies_text and "blocked" in dependencies_text.lower():
+        if unsatisfied:
             explanations.append(
-                f"{filename} (Dependencies: {dependencies_text})"
+                f"{filename} (" + "; ".join(unsatisfied) + ")"
             )
 
     return explanations

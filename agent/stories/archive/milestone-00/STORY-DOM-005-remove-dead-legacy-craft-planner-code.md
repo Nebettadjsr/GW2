@@ -70,7 +70,7 @@ None.
 
 - [x] Dead code re-confirmed unreachable at execution time and removed.
 - [x] `./mvnw test` shows unchanged pass/fail results.
-- [x] `agent/CLAUDE_RESULT.md` filled in.
+- [x] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in.
 
 ## Result
 

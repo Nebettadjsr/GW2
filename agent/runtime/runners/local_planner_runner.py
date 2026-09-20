@@ -3,7 +3,7 @@ import shutil
 import subprocess
 import threading
 
-from config import REPO_ROOT
+from agent.runtime.support.config import REPO_ROOT
 
 
 # ============================================================

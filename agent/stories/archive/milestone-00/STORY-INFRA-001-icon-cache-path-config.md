@@ -66,7 +66,7 @@ None.
 - [x] Hardcoded path removed from `InitialSetupService.java`.
 - [x] New optional environment variable documented in `.env.example`, with a portable default when unset.
 - [x] `./mvnw test` shows unchanged pass/fail results (plus any small new config test, if added).
-- [x] `agent/CLAUDE_RESULT.md` filled in.
+- [x] `agent/runtime/artifacts/CLAUDE_RESULT.md` filled in.
 
 ## Result
 

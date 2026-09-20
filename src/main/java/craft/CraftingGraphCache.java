@@ -13,6 +13,14 @@ public class CraftingGraphCache {
 
     private static final String CACHE_FILE = "crafting_graph_cache.json";
 
+    /**
+     * Optional system property letting an in-process UI test point the cache at a fresh,
+     * per-run temp file instead of the developer's real (possibly large, stale, or absent)
+     * {@value #CACHE_FILE} in the working directory (STORY-UI-001, docs/TEST_STRATEGY.md).
+     * Unset in normal/production use, so behavior is unchanged.
+     */
+    public static final String TEST_CACHE_FILE_PROPERTY = "gw2tool.test.craftingGraphCacheFile";
+
     private final ObjectMapper mapper = new ObjectMapper();
     private final RecipeRepository recipeRepo;
 
@@ -20,8 +28,13 @@ public class CraftingGraphCache {
         this.recipeRepo = recipeRepo;
     }
 
+    private static String cacheFilePath() {
+        String override = System.getProperty(TEST_CACHE_FILE_PROPERTY);
+        return (override != null && !override.isBlank()) ? override : CACHE_FILE;
+    }
+
     public CraftingGraph load() throws IOException, SQLException {
-        File file = new File(CACHE_FILE);
+        File file = new File(cacheFilePath());
 
         if (!file.exists()) {
             return rebuild();
@@ -32,7 +45,7 @@ public class CraftingGraphCache {
     }
 
     public CraftingGraph rebuild() throws IOException, SQLException {
-        File file = new File(CACHE_FILE);
+        File file = new File(cacheFilePath());
 
         if (file.exists() && !file.delete()) {
             throw new IOException("Could not delete old cache file: " + file.getAbsolutePath());

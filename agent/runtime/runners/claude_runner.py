@@ -4,7 +4,7 @@ import shutil
 import subprocess
 import time
 
-from config import (
+from agent.runtime.support.config import (
     CLAUDE_USAGE_LIMIT_PERCENT,
     CLAUDE_USAGE_RECHECK_SECONDS,
     REPO_ROOT,

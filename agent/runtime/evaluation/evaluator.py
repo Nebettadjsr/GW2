@@ -1,7 +1,7 @@
-from config import EVALUATOR_RESULT_FILE
-from files import write_json
-from hermes_client import call_ollama
-from story_state import classify_story_status, extract_status_section
+from agent.runtime.support.config import EVALUATOR_RESULT_FILE
+from agent.runtime.support.files import write_json
+from agent.runtime.evaluation.hermes_client import call_ollama
+from agent.runtime.core.story_state import classify_story_status, extract_status_section
 
 
 # ============================================================
@@ -112,20 +112,42 @@ and actionable_retry_items must all be empty.
 RETRY
 The story is not complete, but Claude can reasonably continue from the
 current repository state, within this story's own scope, without a
-user decision. RETRY is valid only when there is a concrete unresolved
+user decision or any capability Claude does not already have in this
+session. RETRY is valid only when there is a concrete unresolved
 deficiency that (a) belongs to the current story's own scope and (b)
-Claude can actually fix by rerunning this same story. You MUST list at
-least one concrete item in actionable_retry_items -- never return
-RETRY with an empty list. Do not use RETRY for anything in the scope
-boundary list above.
+Claude can actually fix by rerunning this same story with the tools it
+already has. You MUST list at least one concrete item in
+actionable_retry_items -- never return RETRY with an empty list. Do
+not use RETRY for anything in the scope boundary list above, and never
+use RETRY merely because Claude re-ran into the same missing
+capability described under NEEDS_USER below -- re-running Claude
+cannot make a denied permission, a missing tool, or a required manual
+step appear.
 
 BLOCKED
 The story cannot currently be completed because of a technical or
 dependency blocker. Identify the concrete blocker.
 
 NEEDS_USER
-A human decision, clarification, or approval is required. Identify the
-concrete input required.
+Claude cannot make further meaningful implementation progress without
+an external human action -- this is NOT a product/domain decision
+(that belongs to a separate process and must never be classified
+here); it is Claude lacking a capability only a human can supply in
+this session. Use NEEDS_USER when Claude's own response says
+something like: a permission or capability must be granted (e.g.
+shell/tool access was denied); a missing tool/capability must be
+installed or provided; a manual verification step only a human can
+perform (e.g. interactive GUI behavior with no automation available);
+credentials or environment access are required; or Claude explicitly
+asks the user to choose between concrete runtime/tooling options it
+cannot resolve itself. Identify the concrete external action required.
+
+Do NOT use NEEDS_USER for ordinary technical uncertainty Claude could
+resolve itself by investigating further (that is RETRY, if there is a
+concrete actionable item, or BLOCKED otherwise). Do NOT use NEEDS_USER
+merely because Claude's response contains a question mark or an
+incidental conversational question that does not actually block
+further progress.
 
 Structured fields (all four required, use empty arrays when there is
 nothing to report):

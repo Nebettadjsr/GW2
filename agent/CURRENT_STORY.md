@@ -1,1 +1,1 @@
-agent/stories/STORY-DOM-015-preserve-refresh-state-and-verify-character-results.md
+agent/stories/STORY-UI-001-javafx-verification-capability.md

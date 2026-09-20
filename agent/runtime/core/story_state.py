@@ -1,8 +1,8 @@
 from pathlib import Path
 import re
 
-from config import ARCHIVE_DIR, BACKLOG_FILE, CURRENT_STORY_FILE, REPO_ROOT, STORIES_DIR
-from files import find_section_span, read_file
+from agent.runtime.support.config import ARCHIVE_DIR, BACKLOG_FILE, CURRENT_STORY_FILE, REPO_ROOT, STORIES_DIR
+from agent.runtime.support.files import find_section_span, read_file
 
 
 # ============================================================
@@ -243,13 +243,19 @@ def move_backlog_entry_to_active(
 # already-DONE story to Claude wastes a run; sending a BLOCKED story
 # risks Claude improvising around the blocker instead of stopping.
 
+# [ \t]*\n, not \s*\n+ -- see find_section_span()'s fix/rationale in
+# files.py; the same greedy-whitespace-starves-the-lookahead bug
+# applies to every '## <heading> ... (?=\n##|\Z)' pattern in this
+# file, not only the one in files.py.
 STATUS_SECTION_PATTERN = re.compile(
-    r"##\s*Status\s*\n+(.*?)(?=\n##\s|\Z)",
+    r"##\s*Status[ \t]*\n(.*?)(?=\n##\s|\Z)",
     re.DOTALL | re.IGNORECASE,
 )
 
 DONE_PATTERN = re.compile(r"^done\b", re.IGNORECASE)
 BLOCKED_PATTERN = re.compile(r"\bblocked\b", re.IGNORECASE)
+TODO_PATTERN = re.compile(r"^todo\b", re.IGNORECASE)
+UNFINISHED_PATTERN = re.compile(r"^unfinished\b", re.IGNORECASE)
 
 
 def extract_status_section(story_content: str) -> str:
@@ -266,7 +272,7 @@ def extract_status_section(story_content: str) -> str:
 
 
 DEPENDENCIES_SECTION_PATTERN = re.compile(
-    r"##\s*Dependencies\s*\n+(.*?)(?=\n##\s|\Z)",
+    r"##\s*Dependencies[ \t]*\n(.*?)(?=\n##\s|\Z)",
     re.DOTALL | re.IGNORECASE,
 )
 
@@ -296,10 +302,24 @@ def classify_story_status(status_text: str) -> str:
     # Matches both a literal "BLOCKED" status and a "TODO" status that
     # notes a blocking dependency in the same line (e.g. "TODO --
     # blocked until STORY-DOM-001 reaches DONE"), which is exactly the
-    # case that must not be dispatched to Claude either.
+    # case that must not be dispatched to Claude either. Checked
+    # before the plain TODO_PATTERN match below so that combined line
+    # is still classified BLOCKED, not TODO.
     if BLOCKED_PATTERN.search(status_text):
         return "BLOCKED"
 
+    if TODO_PATTERN.match(first_line):
+        return "TODO"
+
+    if UNFINISHED_PATTERN.match(first_line):
+        return "UNFINISHED"
+
+    # Genuinely unrecognized/malformed Status text (blank, or
+    # something other than the four canonical values) -- every
+    # existing caller only ever branches on "DONE"/"BLOCKED"
+    # specifically and treats everything else as "still executable",
+    # so introducing this explicit "TODO" case above changes no
+    # existing behavior; "OTHER" remains the fail-safe fallback.
     return "OTHER"
 
 
@@ -338,8 +358,14 @@ def parse_backlog_section(
     not story filenames.
     """
 
+    # [ \t]*, not \s*, before the mandatory newline -- see the
+    # identical fix and its rationale in files.find_section_span().
+    # This is an independent regex (not a call into that helper), so
+    # it needed the same correction separately: a purely blank section
+    # (no "_(none)_" placeholder) previously bled into the next
+    # section's heading and body.
     pattern = re.compile(
-        rf"##\s*{re.escape(heading)}\s*\n(.*?)(?=\n##\s|\Z)",
+        rf"##\s*{re.escape(heading)}[ \t]*\n(.*?)(?=\n##\s|\Z)",
         re.DOTALL | re.IGNORECASE,
     )
 
@@ -399,6 +425,182 @@ def get_ready_story_filenames_ordered() -> list[str]:
 
 
 # ============================================================
+# Story ID / dependency resolution
+#
+# A story's own '## Dependencies' section names other Story IDs. This
+# must never be a keyword scan for the literal word "blocked" -- that
+# only catches a dependency an author happened to phrase with that
+# word (e.g. "Blocked until STORY-X reaches DONE") and silently passes
+# a plain reference like "STORY-DOM-013; STORY-DOM-014" straight
+# through as satisfied, which is exactly how STORY-DOM-015 was once
+# selected while both of its listed dependencies were still TODO.
+# Instead, every STORY-<AREA>-<NUMBER> token named in that section is
+# resolved against the actual current Status of the story it refers
+# to (active or archived) -- deterministically, in Python, never left
+# to an LLM to judge.
+# ============================================================
+
+STORY_ID_PATTERN = re.compile(
+    r"##\s*Story ID\s*\n+\s*([A-Za-z0-9_-]+)",
+    re.IGNORECASE,
+)
+
+DEPENDENCY_ID_PATTERN = re.compile(
+    r"\bSTORY-[A-Za-z0-9]+-\d+\b",
+    re.IGNORECASE,
+)
+
+# Matches a Dependencies section that *starts with* "None"/"None.",
+# regardless of what explanatory prose follows on the same or later
+# lines -- e.g. "None. Not dependent on any other story."
+NONE_DEPENDENCY_PATTERN = re.compile(
+    r"^none\b\.?",
+    re.IGNORECASE,
+)
+
+
+def extract_story_id(
+        story_content: str
+) -> str | None:
+    match = STORY_ID_PATTERN.search(
+        story_content
+    )
+
+    return match.group(1).strip() if match else None
+
+
+def parse_dependency_ids(
+        dependencies_text: str
+) -> list[str]:
+    return sorted(
+        {
+            match.group(0).upper()
+            for match in DEPENDENCY_ID_PATTERN.finditer(
+                dependencies_text
+            )
+        }
+    )
+
+
+def build_story_index() -> dict[str, dict]:
+    """
+    Scan every known story file -- active (agent/stories/*.md) and
+    archived (agent/stories/archive/**/*.md) -- once, indexed by each
+    file's own '## Story ID' value, recording its path and its current
+    classify_story_status() result. Rebuilt fresh on every call
+    (deliberately not cached): story files change between selection
+    attempts, and a stale index could wrongly keep a story blocked
+    after its dependency actually completes, or vice versa.
+    """
+
+    # Local import: story_archive imports from this module, so a
+    # module-level import here would be circular.
+    from agent.runtime.core.story_archive import list_archived_story_files
+
+    active = [
+        path
+        for path in STORIES_DIR.glob("*.md")
+        if path.name.lower() != "backlog.md"
+    ]
+
+    index = {}
+
+    for path in active + list_archived_story_files():
+        try:
+            content = read_file(path)
+        except FileNotFoundError:
+            continue
+
+        story_id = extract_story_id(content)
+
+        if not story_id:
+            continue
+
+        index[story_id] = {
+            "path": path,
+            "status": classify_story_status(
+                extract_status_section(content)
+            ),
+        }
+
+    return index
+
+
+def find_story_file_by_id(
+        story_id: str,
+        story_index: dict[str, dict] | None = None,
+) -> Path | None:
+    if story_index is None:
+        story_index = build_story_index()
+
+    entry = story_index.get(story_id)
+
+    return entry["path"] if entry else None
+
+
+def get_unsatisfied_dependencies(
+        story_content: str,
+        story_index: dict[str, dict] | None = None,
+) -> list[str]:
+    """
+    Deterministically re-derive which of a story's own
+    '## Dependencies' entries are not yet satisfied. An empty result
+    means every dependency is satisfied, including the explicit "None"
+    case. Never delegates this judgment to an LLM.
+
+    Fail-safe by construction: a referenced Story ID that does not
+    resolve to any known story file, or Dependencies text that names
+    no recognizable STORY-<AREA>-<NUMBER> reference at all despite not
+    being empty/"None", is treated as UNSATISFIED rather than ignored.
+    """
+
+    dependencies_text = extract_dependencies_section(
+        story_content
+    )
+
+    stripped = dependencies_text.strip()
+
+    # "None" (optionally followed by "." and/or free-form explanatory
+    # prose, e.g. "None. Not dependent on any other story.") always
+    # means no dependencies, regardless of what follows -- even if
+    # that prose happens to mention another Story ID in passing. Word
+    # boundary (\bnone\b) so "Nonetheless ..." does not match.
+    if not stripped or NONE_DEPENDENCY_PATTERN.match(stripped):
+        return []
+
+    dependency_ids = parse_dependency_ids(
+        dependencies_text
+    )
+
+    if not dependency_ids:
+        return [
+            "Dependencies section is non-empty but names no "
+            f"recognizable STORY-<AREA>-<NUMBER> reference: {stripped!r}"
+        ]
+
+    if story_index is None:
+        story_index = build_story_index()
+
+    unsatisfied = []
+
+    for dependency_id in dependency_ids:
+        entry = story_index.get(dependency_id)
+
+        if entry is None:
+            unsatisfied.append(
+                f"depends on {dependency_id}, which does not match "
+                "any known story file"
+            )
+        elif entry["status"] != "DONE":
+            unsatisfied.append(
+                f"depends on {dependency_id}, which is not DONE "
+                f"(currently {entry['status']})"
+            )
+
+    return unsatisfied
+
+
+# ============================================================
 # Selectable candidate set
 #
 # BACKLOG "To Do" membership is necessary but not sufficient: a story
@@ -422,12 +624,8 @@ def is_story_blocked_by_own_file(story_content: str) -> bool:
     if classify_story_status(status_text) == "BLOCKED":
         return True
 
-    dependencies_text = extract_dependencies_section(
-        story_content
-    )
-
     return bool(
-        BLOCKED_PATTERN.search(dependencies_text)
+        get_unsatisfied_dependencies(story_content)
     )
 
 
@@ -470,10 +668,9 @@ def get_selectable_story_candidates() -> list[Path]:
             status_text
         )
 
-        # A DONE story left under '## To Do' (backlog out of sync) is
-        # never executable again -- this is a distinct check from
-        # is_story_blocked_by_own_file(), which only looks for BLOCKED.
-        if classification == "DONE":
+        # Stale To Do entries must not reselect completed stories or
+        # interrupted work, which resumes through CURRENT_STORY.
+        if classification in ("DONE", "UNFINISHED"):
             continue
 
         if is_story_blocked_by_own_file(content):
@@ -586,3 +783,236 @@ def validate_backlog_consistency() -> list[str]:
             )
 
     return problems
+
+
+# ============================================================
+# Story-file Status/Blockers rewriting
+#
+# Deterministic, narrow text surgery on a story's own two structured
+# fields -- never a rewrite of its narrative content (Result, Context,
+# etc.). Used only to record/clear a block that Python itself decided
+# (a dependency check, or a user-intervention outcome) -- never to
+# express a judgment an LLM should be making.
+# ============================================================
+
+def _replace_section_body(
+        content: str,
+        heading: str,
+        new_body: str,
+) -> str:
+    span = find_section_span(
+        content,
+        heading
+    )
+
+    if span is None:
+        raise RuntimeError(
+            f"Story file has no '## {heading}' section."
+        )
+
+    start, end = span
+
+    return (
+        content[:start]
+        + "\n" + new_body.strip() + "\n"
+        + content[end:]
+    )
+
+
+def set_story_unfinished(story_path: Path) -> None:
+    """Record an interrupted attempt without changing its backlog or blockers."""
+    content = read_file(story_path)
+    content = _replace_section_body(content, "Status", "UNFINISHED")
+    story_path.write_text(content, encoding="utf-8")
+
+
+def set_story_blocked(
+        story_path: Path,
+        blocker_note: str,
+) -> None:
+    content = read_file(
+        story_path
+    )
+
+    content = _replace_section_body(
+        content, "Status", "BLOCKED"
+    )
+    content = _replace_section_body(
+        content, "Blockers", blocker_note
+    )
+
+    story_path.write_text(
+        content,
+        encoding="utf-8"
+    )
+
+
+def clear_story_blocked(
+        story_path: Path
+) -> None:
+    content = read_file(
+        story_path
+    )
+
+    content = _replace_section_body(
+        content, "Status", "TODO"
+    )
+    content = _replace_section_body(
+        content, "Blockers", "None."
+    )
+
+    story_path.write_text(
+        content,
+        encoding="utf-8"
+    )
+
+
+# ============================================================
+# BACKLOG.md Active <-> Blocked <-> To Do bullet movement
+#
+# Small, purpose-built text surgery mirroring
+# move_backlog_entry_to_active() above -- never a generic Markdown
+# editor. '## Blocked' and '## To Do' may each hold multiple entries,
+# so both destination moves append rather than replace.
+# ============================================================
+
+def _pull_bullet_from_backlog_section(
+        backlog_content: str,
+        heading: str,
+        filename: str,
+) -> tuple[str, str | None]:
+    span = find_section_span(
+        backlog_content,
+        heading
+    )
+
+    if span is None:
+        return backlog_content, None
+
+    start, end = span
+    body = backlog_content[start:end]
+
+    bullet = None
+    remaining_lines = []
+
+    for line in body.splitlines(keepends=True):
+        if bullet is None and f"`{filename}`" in line:
+            bullet = line.rstrip("\n")
+        else:
+            remaining_lines.append(line)
+
+    content = (
+        backlog_content[:start]
+        + "".join(remaining_lines)
+        + backlog_content[end:]
+    )
+
+    return content, bullet
+
+
+def _append_bullet_to_backlog_section(
+        backlog_content: str,
+        heading: str,
+        bullet: str,
+) -> str:
+    span = find_section_span(
+        backlog_content,
+        heading
+    )
+
+    if span is None:
+        raise RuntimeError(
+            f"agent/stories/BACKLOG.md has no '## {heading}' section."
+        )
+
+    start, end = span
+    body = backlog_content[start:end]
+
+    if body.strip().lower() in ("_(none)_", "(none)", ""):
+        body = ""
+
+    new_body = body.rstrip("\n")
+    new_body = (new_body + "\n" if new_body else "") + bullet + "\n"
+
+    return backlog_content[:start] + new_body + backlog_content[end:]
+
+
+def move_backlog_entry_to_blocked(
+        backlog_content: str,
+        filename: str,
+        blocker_note: str,
+) -> str:
+    """
+    Move `filename`'s bullet out of '## Active' (its only possible
+    source -- a story is only ever blocked this way while it is the
+    active story) into '## Blocked', appending a short annotation
+    citing why. If BACKLOG.md has no matching bullet under Active
+    (already out of sync), a bare bullet is used rather than leaving
+    the newly blocked story undocumented.
+    """
+
+    content, bullet = _pull_bullet_from_backlog_section(
+        backlog_content, "Active", filename
+    )
+
+    if bullet is None:
+        bullet = f"- `{filename}`"
+
+    bullet = f"{bullet} -- {blocker_note}"
+
+    return _append_bullet_to_backlog_section(
+        content, "Blocked", bullet
+    )
+
+
+def ensure_backlog_entry_blocked(
+        backlog_content: str,
+        filename: str,
+) -> str:
+    """
+    Idempotently ensure `filename` is listed under '## Blocked',
+    pulling it out of '## Active' if it is still sitting there (e.g.
+    a story whose own file already says BLOCKED -- set by Claude Code
+    itself or a human -- before BACKLOG.md was updated to match).
+    Never duplicates: does nothing if `filename` is already listed
+    under '## Blocked'. Unlike move_backlog_entry_to_blocked(), this
+    adds no extra annotation -- the story's own Blockers section is
+    assumed to already explain why.
+    """
+
+    if filename in parse_backlog_section(backlog_content, "Blocked"):
+        return backlog_content
+
+    content, bullet = _pull_bullet_from_backlog_section(
+        backlog_content, "Active", filename
+    )
+
+    if bullet is None:
+        bullet = f"- `{filename}`"
+
+    return _append_bullet_to_backlog_section(
+        content, "Blocked", bullet
+    )
+
+
+def move_backlog_entry_to_todo(
+        backlog_content: str,
+        filename: str,
+) -> str:
+    """
+    Move `filename`'s bullet out of '## Blocked' back into '## To Do',
+    appended at the end of the existing order. Performs no eligibility
+    judgment itself -- callers must already have re-verified the story
+    is genuinely executable before calling this.
+    """
+
+    content, bullet = _pull_bullet_from_backlog_section(
+        backlog_content, "Blocked", filename
+    )
+
+    if bullet is None:
+        bullet = f"- `{filename}`"
+
+    return _append_bullet_to_backlog_section(
+        content, "To Do", bullet
+    )

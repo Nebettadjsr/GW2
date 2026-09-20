@@ -2,9 +2,8 @@
 Deterministic tests for evaluator.py's normalization layer and
 orchestrator.py's retry-prompt scoping.
 
-Run with: python -m unittest agent.runtime.test_evaluator -v
-(from the repository root), or `python test_evaluator.py` from inside
-agent/runtime/.
+Run with: python -m unittest agent.runtime.tests.test_evaluator -v
+(from the repository root).
 
 These tests do not call Hermes/Ollama -- they exercise
 normalize_evaluation() directly (pure function, no network) and
@@ -12,14 +11,11 @@ build_retry_prompt() (pure string formatting), which is where PART 1-4
 of the fix actually live. No application/domain Java code is touched.
 """
 
-import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from evaluator import normalize_evaluation  # noqa: E402
-from orchestrator import build_retry_prompt  # noqa: E402
+from agent.runtime.evaluation.evaluator import normalize_evaluation
+from agent.runtime.core.orchestrator import build_retry_prompt
 
 
 DONE_STORY = """# STORY-TEST-DONE
@@ -191,7 +187,7 @@ class RetryPromptScopeTests(unittest.TestCase):
 
     def test_9_retry_prompt_contains_only_actionable_items(self):
         story_path = (
-            Path(__file__).resolve().parent.parent
+            Path(__file__).resolve().parents[2]
             / "stories"
             / "STORY-DOM-011-bound-material-domain-rule.md"
         )

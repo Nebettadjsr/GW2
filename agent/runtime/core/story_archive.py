@@ -2,9 +2,9 @@ from pathlib import Path
 import re
 import shutil
 
-from config import ARCHIVE_DIR, BACKLOG_FILE, CURRENT_STORY_FILE, STORIES_DIR
-from files import find_section_span, read_file
-from story_state import classify_story_status, extract_status_section
+from agent.runtime.support.config import ARCHIVE_DIR, BACKLOG_FILE, CURRENT_STORY_FILE, STORIES_DIR
+from agent.runtime.support.files import find_section_span, read_file
+from agent.runtime.core.story_state import classify_story_status, extract_status_section
 
 
 # ============================================================
@@ -29,8 +29,10 @@ MILESTONE_SLUG_PATTERN = re.compile(
     r"^milestone-\d{2}$"
 )
 
+# [ \t]*\n, not \s*\n+ -- see files.find_section_span()'s fix/rationale;
+# the same greedy-whitespace-starves-the-lookahead bug applies here.
 MILESTONE_SECTION_PATTERN = re.compile(
-    r"##\s*Milestone\s*\n+(.*?)(?=\n##\s|\Z)",
+    r"##\s*Milestone[ \t]*\n(.*?)(?=\n##\s|\Z)",
     re.DOTALL | re.IGNORECASE,
 )
 
