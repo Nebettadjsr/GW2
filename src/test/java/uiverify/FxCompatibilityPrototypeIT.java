@@ -17,12 +17,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * 25.0.2 (win classifier) and Java 25 - rather than assuming compatibility. Not part of the
  * reusable harness itself; kept as recorded evidence.
  *
- * Named with an "IT" suffix so Surefire's default {@code test} goal never selects it (same
+ * Named with an "IT" suffix, and deliberately not starting with "Test" or ending in
+ * "Test(s)"/"TestCase", so Surefire's default {@code test} goal never selects it (same
  * convention as {@code api.Gw2ApiLiveSmokeIT}) - this needs a real desktop/window session,
- * which is not always available where {@code ./mvnw test} runs.
- * Run explicitly: {@code ./mvnw test -Dtest=TestFxPrototypeIT}
+ * which is not always available where {@code ./mvnw test} runs. An earlier version of this
+ * class was named {@code TestFxPrototypeIT}: since it starts with "Test", it matched
+ * Surefire's default {@code **&#47;Test*.java} inclusion pattern and ran as part of the normal
+ * {@code ./mvnw test} suite despite the "IT" suffix - discovered by comparing surefire-report
+ * timestamps across a default {@code ./mvnw test} run.
+ * Run explicitly: {@code ./mvnw test -Dtest=FxCompatibilityPrototypeIT}
  */
-class TestFxPrototypeIT extends ApplicationTest {
+class FxCompatibilityPrototypeIT extends ApplicationTest {
 
     private Button button;
     private Label label;

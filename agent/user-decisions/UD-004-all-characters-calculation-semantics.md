@@ -71,4 +71,6 @@ Project owner choice of cross-character planning/discovery semantics and initial
 
 ## Resolution
 
+Planning note (2026-09-20): The explicit PO request `agent/product-owner-requests/consolidate-crafting-profit-character-and-discipline-selection.md` supersedes the separate selector presentation in point 3. Current scope selection is owned by `docs/DOMAIN_SPEC.md` §2.2.1. The coordinated planning decision and Discovery exclusion remain in effect; the original user answer is retained above as history.
+
 RESOLVED.

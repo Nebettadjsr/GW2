@@ -8,7 +8,7 @@ Establish repeatable JavaFX verification for Phase 1 crafting views
 
 ## Status
 
-UNFINISHED
+DONE
 
 ## Milestone
 
@@ -61,7 +61,18 @@ Reusable capability demonstrated against the actual application, required checks
 
 ## Result
 
-Not started.
+Established a TestFX-based JavaFX UI-verification layer (`docs/TEST_STRATEGY.md` §32), reusable by STORY-DOM-013/014/015. Most of the harness (`uiverify.JavaFxUiSupport`, `uiverify.CraftingUiTestFixtures`, `uiverify.CraftingProfitViewSmokeIT`, `uiverify.TestFxPrototypeIT`, and the `testfx-junit5:4.0.18` dependency) already existed on disk from an earlier interrupted session; this pass verified it against the real application, found and fixed three real defects blocking it, and wrote the required `docs/TEST_STRATEGY.md` documentation (none previously existed).
+
+Defects found and fixed:
+- `CraftingUiTestFixtures` pre-created its crafting-graph-cache temp file via `Files.createTempFile`, leaving an empty file where `CraftingGraphCache.load()` expected either a missing file (rebuild) or valid JSON (parse) — caused `MismatchedInputException` on every run. Fixed by deleting the reserved path immediately after creating it.
+- `CraftingProfitView`'s real "Refresh" button (`btnRefresh`) was fully implemented and wired (`setOnAction`) but never added to any visible container — a pre-existing defect confirmed present at `HEAD`, unrelated to this story or the other in-flight uncommitted changes in this working tree. Fixed by adding it to `filterRow3`; no calculation/domain logic touched.
+- The prototype class `TestFxPrototypeIT` starts with `"Test"`, so it matched Surefire's default `**/Test*.java` inclusion pattern and silently ran as part of the normal `./mvnw test` goal despite its own "IT suffix excludes it" comment. Renamed to `FxCompatibilityPrototypeIT`, confirmed excluded by diffing `target/surefire-reports/` before/after a default run.
+
+Verified: `./mvnw test -Dtest=FxCompatibilityPrototypeIT` (compatibility prototype) and `./mvnw test -Dtest=CraftingProfitViewSmokeIT` (real-view smoke test: ComboBox selection, Refresh button click, TableView assertion, screenshot capture) both pass individually, together, and on repeated runs; screenshot artifact confirmed non-empty. Startup and control-lookup failure handling were exercised for real while fixing the two defects above — both failed in ~3s with a clear diagnostic and no hang, and JUnit's extension/`@AfterAll` lifecycle still tore down the FX toolkit and dropped the fixture schema on those failing runs. `./mvnw test` (default goal) passes before and after these changes and does not select either UI test.
+
+Full detail, exact commands, prerequisites, fixture lifecycle, and limitations (headful-only; no CI headless config; no PowerShell fallback needed — none of this story's or the dependent stories' checks were found to be impractical through TestFX) are recorded in `docs/TEST_STRATEGY.md` §32, per that document's ownership of "how this layer is tested" versus `docs/TARGET_ARCHITECTURE.md`'s ownership of "that this capability must exist."
+
+Out of scope, left to the owning stories: the STORY-DOM-013/014/015 behavior matrix itself (blocked-row visibility, All-characters coordination, refresh/sort/filter preservation, zero-character handling) — none of those checks were executed here.
 
 ## Blockers
 

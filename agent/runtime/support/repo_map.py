@@ -1,0 +1,169 @@
+import shutil
+import subprocess
+import time
+import os
+
+
+from agent.runtime.support.config import (
+    REPO_MAP_ENABLED,
+    REPO_MAP_TOKEN_BUDGET,
+    REPO_ROOT,
+)
+
+
+# ============================================================
+# Aider RepoMap (experimental context helper for Claude only)
+#
+# Aider is used here purely as a repository-structure/context
+# generator -- never as a coding agent, never involved in dispatch,
+# evaluation, selection, or planning. Every failure mode (not
+# installed, non-zero exit, timeout, or any unexpected error) must
+# degrade to an empty map so Claude execution always continues; this
+# module never raises.
+# ============================================================
+
+def find_aider() -> str | None:
+    return shutil.which("aider")
+
+
+def is_repo_map_available() -> bool:
+    return find_aider() is not None
+
+
+def _approx_token_count(text: str) -> int:
+    # Rough, model-agnostic estimate (~4 chars/token for English text)
+    # -- only used for lightweight before/after logging, never for
+    # anything requiring precision.
+    return len(text) // 4 if text else 0
+
+
+def generate_repo_map(
+        token_budget: int = REPO_MAP_TOKEN_BUDGET,
+        enabled: bool | None = None,
+) -> dict:
+    """
+    Generate a repository structure map via the Aider CLI for
+    orientation context only. Never raises: any failure returns an
+    empty, clearly-marked result (result["text"] == "") so callers can
+    always proceed as if RepoMap were simply unavailable.
+
+    Result fields:
+        enabled          -- whether RepoMap was attempted this call
+        available        -- whether the Aider CLI was found on PATH
+        text             -- the generated map, or "" on any failure
+        token_budget     -- the requested budget (echoed back)
+        char_count       -- len(text)
+        approx_tokens    -- rough size estimate for logging/comparison
+        duration_seconds -- wall-clock time spent generating the map
+        error            -- short diagnostic string, or None
+    """
+
+    use_enabled = REPO_MAP_ENABLED if enabled is None else enabled
+
+    empty_result = {
+        "enabled": use_enabled,
+        "available": False,
+        "text": "",
+        "token_budget": token_budget,
+        "char_count": 0,
+        "approx_tokens": 0,
+        "duration_seconds": 0.0,
+        "error": None,
+    }
+
+    if not use_enabled:
+        return empty_result
+
+    start = time.time()
+
+    try:
+        aider = find_aider()
+
+        if aider is None:
+            return {
+                **empty_result,
+                "duration_seconds": time.time() - start,
+                "error": "Aider CLI not found on PATH.",
+            }
+
+        env = os.environ.copy()
+        env["AIDER_SHOW_MODEL_WARNINGS"] = "false"
+        env["AIDER_CHECK_UPDATE"] = "false"
+        env["AIDER_ANALYTICS_DISABLE"] = "true"
+        env["PYTHONUTF8"] = "1"
+        env["PYTHONIOENCODING"] = "utf-8"
+
+        result = subprocess.run(
+            [
+                aider,
+                "--model", "gpt-4o-mini",
+                "--show-repo-map",
+                "--map-tokens", str(token_budget),
+                "--no-check-update",
+                "--no-show-model-warnings",
+            ],
+            cwd=REPO_ROOT,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+            timeout=20,
+        )
+
+        duration = time.time() - start
+
+        if result.returncode != 0:
+            return {
+                **empty_result,
+                "available": True,
+                "duration_seconds": duration,
+                "error": (
+                    f"Aider exited with code {result.returncode}: "
+                    f"{result.stderr.strip()[:4000]}"
+                ),
+            }
+
+        map_text = result.stdout.strip()
+
+        return {
+            "enabled": True,
+            "available": True,
+            "text": map_text,
+            "token_budget": token_budget,
+            "char_count": len(map_text),
+            "approx_tokens": _approx_token_count(map_text),
+            "duration_seconds": duration,
+            "error": None,
+        }
+
+    except Exception as exc:  # noqa: BLE001 -- must never block Claude
+        return {
+            **empty_result,
+            "duration_seconds": time.time() - start,
+            "error": f"RepoMap generation failed: {exc}",
+        }
+
+
+def format_repo_map_for_prompt(repo_map: dict) -> str:
+    """
+    Render a generate_repo_map() result as a short, clearly-labeled
+    prompt section. Returns "" when there is no map text, so callers
+    can splice this straight into a prompt unconditionally.
+    """
+
+    if not repo_map.get("text"):
+        return ""
+
+    return (
+        "Repository map (orientation only, generated by Aider, "
+        f"~{repo_map['token_budget']}-token budget):\n"
+        "This is a structural overview to help you orient quickly. "
+        "It is not authoritative and may be incomplete or stale -- "
+        "full source files remain the authoritative source of truth. "
+        "Read a file in full whenever you actually need its contents "
+        "or are about to change it.\n\n"
+        f"{repo_map['text']}"
+    )

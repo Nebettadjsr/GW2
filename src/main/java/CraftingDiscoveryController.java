@@ -33,12 +33,13 @@ public class CraftingDiscoveryController {
         public final int profitCopper;      // optional, also informational
         public final String missingSummary;
         public final String searchBlob;
+        public final boolean calculationAvailable;
 
         public UiRow(int recipeId, int outputItemId, String outputName,
                      int recipeLevel,
                      int buyCostCopper, int revenueCopper, int profitCopper,
                      String missingSummary,
-                     String searchBlob) {
+                     String searchBlob, boolean calculationAvailable) {
             this.recipeId = recipeId;
             this.outputItemId = outputItemId;
             this.outputName = outputName;
@@ -48,6 +49,7 @@ public class CraftingDiscoveryController {
             this.profitCopper = profitCopper;
             this.missingSummary = missingSummary;
             this.searchBlob = searchBlob;
+            this.calculationAvailable = calculationAvailable;
         }
     }
 
@@ -141,17 +143,27 @@ public class CraftingDiscoveryController {
         this.lastAllRecipes = allRecipes;
         this.lastSettings = settings;
 
+        // 6) evaluate
+        Map<Integer, CraftResult> results =
+                planner.evaluateAll(allRecipes, sellableInv, boundInv, tp, settings, allowedRecipeIds);
+        this.lastResultsByRecipeId = results;
+
+        return prepareRows(visibleRecipes, allRecipes, results, items, tp, settings);
+    }
+
+    // Pure result preparation boundary, also used by controller regression tests.
+    List<UiRow> prepareRows(List<RecipeRepository.Recipe> visibleRecipes,
+                            List<RecipeRepository.Recipe> allRecipes,
+                            Map<Integer, CraftResult> results,
+                            Map<Integer, ItemRepository.ItemInfo> items,
+                            Map<Integer, TpPriceRepository.TpQuote> tp,
+                            CraftingSettings settings) {
         Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = new HashMap<>();
         for (RecipeRepository.Recipe rr : allRecipes) {
             recipesByOutput
                     .computeIfAbsent(rr.outputItemId, k -> new ArrayList<>())
                     .add(rr);
         }
-
-        // 6) evaluate
-        Map<Integer, CraftResult> results =
-                planner.evaluateAll(allRecipes, sellableInv, boundInv, tp, settings, allowedRecipeIds);
-        this.lastResultsByRecipeId = results;
 
         // 7) map to UI
         List<UiRow> out = new ArrayList<>();
@@ -168,7 +180,10 @@ public class CraftingDiscoveryController {
                     ? (r.outputCount + "x " + baseName)
                     : baseName;
 
-            String miss = summarizeMissing(cr.missingToBuy, items, tp, settings.allowBuying);
+            CraftingResultPresentation presentation = new CraftingResultPresentation(cr, tp, settings);
+            String miss = presentation.status.isEmpty()
+                    ? summarizeMissing(cr.missingToBuy, items, tp, settings.allowBuying)
+                    : presentation.status;
 
             int lvl = r.minRating;
             int missingBuyCost = cr.buyCostCopper;
@@ -183,7 +198,8 @@ public class CraftingDiscoveryController {
                     cr.revenueCopper,
                     cr.profitCopper,
                     miss,
-                    searchBlob
+                    searchBlob,
+                    presentation.calculationAvailable
             ));
         }
 
@@ -211,7 +227,8 @@ public class CraftingDiscoveryController {
                 cr.revenueCopper,
                 cr.profitCopper,
                 cr.totalProfitCopper,
-                lazyTree
+                lazyTree,
+                cr.blockedReason
         );
 
         Map<Integer, CraftResult> copy = new HashMap<>(lastResultsByRecipeId);

@@ -1,5 +1,9 @@
 # Product Owner Request
 
+## Status
+
+RESOLVED
+
 ## Title
 
 Establish repository-wide software quality targets and recurring cleanup cycles
@@ -118,7 +122,7 @@ Prefer larger review points such as:
 - after a substantial feature cluster where useful;
 - before declaring a major project stage complete.
 
-A cleanup cycle should review both implementation and documentation.
+A cleanup cycle should review both implementation and documentation. Such es unchecked criterias from former milestones. Are those implemented and mistakenly unchecked or skippen and therefore potentially need to be transfared into a new/ current milestone if they are still applicable and dont require legacy code. 
 
 ### Code Cleanup Pass
 
@@ -199,3 +203,7 @@ This also supports the broader experiment of evaluating how effectively AI-assis
 - Prefer small, reviewable improvements over broad rewrites.
 - Quality goals should support product development, not block it indefinitely.
 - Cleanup and quality reviews should be repeatable and evidence-based.
+
+## Planner Resolution
+
+Reused the complete repository-quality targets and recurring review policy in `docs/TARGET_ARCHITECTURE.md` §34. Added the current milestone review to `docs/ROADMAP.md` Phase 1 exit criteria and created `agent/stories/STORY-QUALITY-001-phase-one-completion-review.md`, queued after the calculation guide in `agent/stories/BACKLOG.md` under To Do. The review covers implementation, documentation, applicable prerequisite evidence and concrete findings without speculative refactoring or arbitrary metrics. No review execution or measured quality result is claimed.

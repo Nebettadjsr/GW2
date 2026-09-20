@@ -10,6 +10,8 @@ A desktop tool that analyzes **Guild Wars 2 crafting profitability** by combinin
 
 The application imports data from the official **Guild Wars 2 API**, stores it in a **PostgreSQL database**, and performs local analysis to determine which recipes can generate profit from the materials you already own.
 
+> This project is being further developed as part of an experiment in Agentic Software Development; see [the experiment documentation](agent/agent_README_experimental.md) for details. For a plain-language explanation of how the Crafting Profit / Crafting Discovery calculation works, see the [crafting guide](docs/crafting/README.md).
+
 ---
 
 # Overview

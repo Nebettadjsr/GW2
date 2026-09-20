@@ -991,7 +991,7 @@ Formalizes §10's closing line into its own layer:
 
 ## 31.5 General Principles
 
-- Choose the lowest layer that proves the behavior being tested; do not reach for an integration or live test when a unit test already proves the rule.
+- Choose the lowest layer that proves the behavior being tested; do not reach for an integration or live test when a unit test already proves the rule. This applies to Layer 5 (§32) too: a change confined to background/non-UI logic never needs a TestFX test merely because a UI-adjacent story exists nearby.
 - Domain behavior remains primarily unit-tested (§4.1, Layer 1); persistence behavior that depends on PostgreSQL-specific semantics (constraint enforcement, upsert conflict behavior, NULL-uniqueness quirks, transactional visibility) must be integration-tested against real PostgreSQL (Layer 2), not asserted from application code alone.
 - External API parsing should primarily be verified using captured real responses (Layer 3), not hand-typed minimal JSON.
 - Avoid testing implementation details (private helper structure, incidental call counts) when the same confidence can come from testing observable behavior.
@@ -999,3 +999,78 @@ Formalizes §10's closing line into its own layer:
 - Tests must be repeatable and independent: one test's outcome must never depend on another test's side effects or execution order.
 - No test may depend on the developer's normal local database state, content, or credentials — this extends §9's rule for repository tests to the whole suite.
 - Introducing new test tooling (e.g. Testcontainers, a fixture-generation library) is allowed when it is the practical way to satisfy a layer's requirements above, but the story that introduces it must document the choice and its reasoning, and must keep both local-developer and CI reproducibility in mind. §29 tracks which tooling decisions remain open; this section does not resolve them ahead of that decision.
+
+---
+
+# 32. Layer 5 — JavaFX UI Verification (TestFX)
+
+STORY-UI-001 established this layer to satisfy `docs/TARGET_ARCHITECTURE.md`'s "Existing JavaFX UI Verification Capability" section: a reusable, repeatable way to drive the real JavaFX application and inspect real controls, for STORY-DOM-013/014/015's own selection, refresh, empty/error and blocked-row acceptance checks to build on. This section is the permanent owner of that methodology; the domain stories own the behavior matrix itself.
+
+## 32.1 Tooling and Compatibility Evidence
+
+Tooling: `org.testfx:testfx-junit5:4.0.18` (the only released TestFX version; there is no newer choice available), driving the project's own JavaFX 25.0.2 (`win` classifier) and Java 25 already on the test classpath — `testfx-junit5` declares no JavaFX dependency of its own, so it does not pin a different version. `openjfx-monocle` (headless JavaFX) is intentionally not used: these tests run headful, against a real desktop/window session.
+
+Compatibility was demonstrated, not assumed: `uiverify.FxCompatibilityPrototypeIT` is a minimal standalone-scene prototype (a button click updating a label) that was run and confirmed passing before any further TestFX usage was built on top of it. It remains in the suite as recorded evidence, separate from the reusable harness itself.
+
+## 32.2 Reusable Harness
+
+- `uiverify.JavaFxUiSupport` — control lookup (`find`, wrapping TestFX's `FxRobot#lookup` with a bounded wait and a diagnostic failure naming the query and timeout instead of a silent `null`), bounded waiting (`waitUntil`, polling an actual observable condition off the FX Application Thread — never a fixed `Thread.sleep`), a `TableView` row-count wait (`waitForRowCount`), displayed-state inspection (`columnValues`, reading each row's cell through the column's own `cellValueFactory` — the value the user actually sees), and optional screenshot capture (`captureScreenshot`, a PNG snapshot of any `Node`). No fixed screen coordinates anywhere in this layer.
+- `uiverify.CraftingUiTestFixtures` — disposable-schema fixture lifecycle, reusing the same per-test uniquely-named-schema pattern as the Layer 2 repository tests (§31.2, e.g. `repo.RecipeRepositoryTest`). Creates a schema named `test_ui_<random>`, creates the minimal tables a crafting view needs, and exposes `execute(sql)` for a test to seed its own rows. Points every `repo.Db.open()` call made from *inside* application code (view → controller → repositories) at that schema via the `repo.Db.TEST_SCHEMA_PROPERTY` system property — not just calls a test can pass an explicit `Connection` to. Also points `craft.CraftingGraphCache` at a fresh, not-yet-existing temp file path via `craft.CraftingGraphCache.TEST_CACHE_FILE_PROPERTY`, so the controller's cache load always rebuilds from the fixture schema's own recipe rows instead of reading the developer's real (possibly large, stale, or absent) `crafting_graph_cache.json`. `dropSchemaAndClose()` (called from `@AfterAll`) drops the schema and clears both system properties. Both system properties default to unset/no-op in normal and production use.
+- Both production seams above are narrowly scoped (a single optional system property each, read once in an existing method) and preserve default behavior exactly when unset.
+
+## 32.3 Required Smoke Test
+
+`uiverify.CraftingProfitViewSmokeIT` launches the real `Gw2App`, navigates into the real `CraftingProfitView`, selects a fixture character from the real character `ComboBox`, clicks the real "Refresh" button, and asserts the real `TableView`'s displayed "Item" and "Craftable" column values — against a small deterministic fixture (one character owning 10 unbound "UI Test Ore", a recipe turning 2 Ore into 1 "UI Test Widget" with a real TP sell price), then captures a screenshot of the table. This is a real-view test, not a check of standalone demonstration controls.
+
+`@BeforeAll`/`@AfterAll` (`PER_CLASS` lifecycle) is required, not `@BeforeEach`/`@AfterEach`: TestFX's `ApplicationExtension` invokes `start(Stage)` — which triggers the application's own startup DB reload — from a `BeforeEachCallback`, which JUnit 5 always runs before a test class's own `@BeforeEach` methods. An earlier version of this test used `@BeforeEach` and the application's first auto-reload ran against the developer's real database, before the fixture schema existed.
+
+## 32.4 Command, Prerequisites, and Startup/Failure Behavior
+
+Run explicitly (never part of the default `./mvnw test` goal):
+
+```
+./mvnw test -Dtest=CraftingProfitViewSmokeIT
+./mvnw test -Dtest=FxCompatibilityPrototypeIT
+```
+
+Prerequisites: a real interactive Windows desktop/window session (not headless — no Monocle is configured); a reachable PostgreSQL server matching `DATABASE_URL`/`DATABASE_USER`/`DATABASE_PASSWORD` (from the process environment or `.env`), used only to create/drop the test's own disposable schema, never the developer's normal schema or data.
+
+Readiness/failure detection is not a separate mechanism layered on top — it is the same bounded-wait/lookup machinery used for assertions (§32.2), and both a startup-path failure and a control-lookup failure were actually observed and fixed while establishing this test:
+
+- A `CraftingGraphCache` load failure (`MismatchedInputException: No content to map due to end-of-input`, because `Files.createTempFile` had left an empty file where the cache expected either a missing file or valid JSON) surfaced as a clean `RuntimeException` and failed the test in ~3.2s — no hang, and the real cause was visible directly in the surefire output. Fixed in `CraftingUiTestFixtures` by deleting the reserved temp file immediately after creating it, so the cache always rebuilds from the fixture schema instead of trying to parse an empty file.
+- A control-lookup failure (`EmptyNodeQueryException`, naming the exact query `"Refresh"` that matched no node) surfaced when the real "Refresh" button turned out not to be attached to `CraftingProfitView`'s visible layout at all — a pre-existing defect, unrelated to this story's other in-flight changes, confirmed by checking `git show HEAD:src/main/java/CraftingProfitView.java`. Failed cleanly in ~2.8s. Fixed by adding the already-fully-wired `btnRefresh` to `filterRow3`, the minimal change that makes the existing, already-implemented button reachable; no calculation or domain logic changed.
+
+In both cases JUnit 5's extension lifecycle (`ApplicationExtension`'s own after-each cleanup) tore down the FX toolkit/stage and the test's `@AfterAll` dropped the fixture schema regardless of the failure — termination was bounded and test resources were still cleaned up on the failing runs, not only on success.
+
+A naming defect was also found and fixed while verifying regression isolation (§32.5): the original prototype class name `TestFxPrototypeIT` starts with `"Test"`, which matches Maven Surefire's default `**/Test*.java` inclusion pattern regardless of the "IT" suffix — so it silently ran as part of the normal `./mvnw test` goal. Renamed to `FxCompatibilityPrototypeIT`, which matches none of Surefire's default patterns (`**/Test*.java`, `**/*Test.java`, `**/*Tests.java`, `**/*TestCase.java`), confirmed by diffing `target/surefire-reports/` before and after a default `./mvnw test` run. `CraftingProfitViewSmokeIT` and `api.Gw2ApiLiveSmokeIT` (Layer 4, §31.4) were already named safely.
+
+## 32.5 Actual Commands Run and Outcomes
+
+All run locally against a real Windows desktop session and a local PostgreSQL server already listening on port 5432:
+
+- `./mvnw test -Dtest=FxCompatibilityPrototypeIT` — 1 test, passed (proved TestFX 4.0.18 drives this project's real JavaFX 25.0.2/Java 25 combination).
+- `./mvnw test -Dtest=CraftingProfitViewSmokeIT` — failed twice for the real, unrelated reasons recorded in §32.4 above, then passed after each fix; re-run twice more afterward, passed both times, screenshot (`target/ui-test-screenshots/crafting-profit-smoke.png`, ~22KB PNG) produced and verified non-empty each time.
+- `./mvnw test -Dtest=FxCompatibilityPrototypeIT,CraftingProfitViewSmokeIT` — both passed together in one Surefire invocation.
+- `./mvnw test` (default goal, full existing suite) — passed, both before this story's changes and after, confirming the domain/repository/sync/parser suite (Layer 1–3) remains unaffected and that neither UI test is selected by the default goal (verified by absence of `uiverify.*` reports after clearing `target/surefire-reports/` and re-running).
+
+No check from STORY-DOM-013/014/015's own behavior matrix (All characters selection, refresh preservation of sorting/filtering, initial defaults, zero-character/empty-data handling, blocked-row visibility) was executed here — those remain those stories' own scope, to be built on top of §32.2's reusable harness.
+
+## 32.6 Limitations and Manual/PowerShell Fallback
+
+- Headful only: no headless (Monocle) configuration exists, so this layer requires a real interactive desktop session and cannot currently run in a headless CI runner. This is a recorded limitation, not solved by this story.
+- Requires a reachable local PostgreSQL server; if none is reachable, `CraftingUiTestFixtures`'s constructor fails fast with the real JDBC connection error rather than silently skipping.
+- No genuinely impractical-for-TestFX case was identified while establishing this layer — the ComboBox-selection/button-click/TableView-assertion pattern needed for the smoke test, and intended for STORY-DOM-013/014/015's own checks, is fully covered by §32.2's harness. Per `docs/TARGET_ARCHITECTURE.md`'s "Existing JavaFX UI Verification Capability" section, Windows PowerShell (including `System.Windows.Automation`) remains available as a repository-scoped interim fallback if a future check proves genuinely impractical through TestFX (e.g. verifying a native OS-level dialog outside the JavaFX scene graph) — but no such case exists yet, so no PowerShell procedure was written for this story. A future story reaching for that fallback must name the specific impractical case, not use it as a default.
+
+---
+
+# 33. Test Effort Proportionality
+
+Broad, layered coverage (§3's pyramid, Layers 1–5) is the project's goal, not a checklist every change must exhaust. Test effort — which layers are touched, how many tests are written, how heavy each one is — must stay proportional to the size and risk of the actual change, never padded out for thoroughness alone.
+
+Concretely:
+
+- A change confined to background/non-UI logic (domain, application-service, repository, sync, parser code) does not require Layer 5 (§32, JavaFX/TestFX) coverage, or any other UI-facing test, merely because it happens to sit near a UI-adjacent story or feature. Add a UI-layer test only when the change itself alters UI-observable behavior: a view, a controller's wiring to the domain/application layer, a displayed value, or an interactive control.
+- Conversely, a change that does alter UI-observable behavior does not need it re-verified at every other layer beyond what already covers the underlying calculation — Layer 5 exists to check that the UI correctly reflects a result, not to re-prove the result itself (§12, §32 already establish this for the frontend generally).
+- §31.5's "choose the lowest layer that proves the behavior" already governs which layer to use; this section governs how much test volume is appropriate once that layer is chosen. Prefer one clear, well-named test (§16, §22, §23) over several overlapping ones asserting the same fact.
+- Heavier layers (Layer 2 PostgreSQL integration, Layer 4 live smoke, Layer 5 TestFX) cost real setup/runtime/review effort disproportionate to most changes; reach for them only when the change's own risk genuinely requires that layer's specific guarantee (real SQL semantics, real external API shape, real UI wiring), not as a default upgrade from a cheaper layer that already proves the point.
+- This does not relax any existing minimum: a domain behavior change still requires an automated test (`CLAUDE.md` Testing), and a real bug still gets a named regression test (§16). It constrains the upper bound — do not add tests, or reach for a broader/heavier layer, beyond what the specific change actually requires.

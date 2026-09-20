@@ -1,7 +1,7 @@
 package uiverify;
 
 import javafx.scene.control.Button;
-import javafx.scene.control.ComboBox;
+import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterAll;
@@ -18,15 +18,15 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * STORY-UI-001 required smoke test: launches the real application (not a standalone
- * demonstration scene), navigates into the real {@code CraftingProfitView}, selects an available
- * character from its ComboBox, activates the real "Refresh" button, and asserts the resulting
- * TableView shows the expected craftable recipe - proving the reusable capability in
- * {@link JavaFxUiSupport}/{@link CraftingUiTestFixtures} against actual application code, not
- * just standalone controls.
+ * demonstration scene), navigates into the real {@code CraftingProfitView}, activates the real
+ * "Refresh" button, and asserts the resulting TableView shows the expected craftable recipe -
+ * proving the reusable capability in {@link JavaFxUiSupport}/{@link CraftingUiTestFixtures}
+ * against actual application code, not just standalone controls.
  *
  * <p>Data is a small deterministic fixture in a disposable Postgres schema
  * ({@link CraftingUiTestFixtures}) - never the developer's normal account database or the live
@@ -36,6 +36,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * revenue-based filter does not drop it. With buying disabled and "use own mats" on (both the
  * view's own defaults), the expected result is exactly one visible row with
  * {@code craftableCount = 5} (10 owned Ore / 2 per craft).
+ *
+ * <p>STORY-DOM-014 removed Crafting Profit's separate Character selector: the Discipline
+ * selector's "All" default (DOMAIN_SPEC.md section 2.2.1) now drives a coordinated plan across
+ * every synced character with a matching discipline/rating, so the fixture character needs a
+ * {@code character_crafting} row for the recipe's discipline or the row would be blocked
+ * {@code RECIPE_NOT_ALLOWED} (nobody eligible) before "Craftable" is even computed.
  *
  * <p>Fixture setup/teardown uses {@code @BeforeAll}/{@code @AfterAll} ({@code PER_CLASS} test
  * instance lifecycle), not {@code @BeforeEach}/{@code @AfterEach}: TestFX's
@@ -67,6 +73,10 @@ class CraftingProfitViewSmokeIT extends ApplicationTest {
         fixtures = new CraftingUiTestFixtures();
 
         fixtures.execute("INSERT INTO characters (character_id, name) VALUES (1, '" + CHARACTER_NAME + "')");
+        fixtures.execute("""
+            INSERT INTO character_crafting (character_id, discipline, rating, is_active)
+            VALUES (1, 'Chef', 0, true)
+            """);
 
         fixtures.execute("""
             INSERT INTO recipes (recipe_id, output_item_id, output_item_count, min_rating, disciplines)
@@ -104,24 +114,12 @@ class CraftingProfitViewSmokeIT extends ApplicationTest {
     }
 
     @Test
-    void selectingCharacterAndRefreshing_showsExpectedCraftableRowInRealView() throws Exception {
+    void refreshingAllScope_showsExpectedCraftableRowInRealView() throws Exception {
         clickOn("Crafting Profit Calculator");
 
-        @SuppressWarnings("unchecked")
-        ComboBox<String> characterBox = lookup(".combo-box")
-                .queryAllAs(ComboBox.class)
-                .stream()
-                .filter(cb -> "Character".equals(cb.getPromptText()))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("No ComboBox with prompt text \"Character\" found"));
-
-        JavaFxUiSupport.waitUntil("character ComboBox to be populated from the fixture schema",
-                Duration.ofSeconds(10),
-                () -> !characterBox.getItems().isEmpty());
-
-        interact(() -> characterBox.getSelectionModel().select(CHARACTER_NAME));
-        assertEquals(CHARACTER_NAME, characterBox.getValue());
-
+        // STORY-DOM-014: no separate Character selector exists anymore - the Discipline
+        // selector's "All" default already coordinates every synced character (here, just
+        // CHARACTER_NAME, seeded with the Chef discipline above), so no selection is needed.
         Button refreshButton = lookup("Refresh").queryButton();
         clickOn(refreshButton);
 
@@ -135,6 +133,26 @@ class CraftingProfitViewSmokeIT extends ApplicationTest {
         assertEquals(1, craftable.size());
         assertEquals(5, ((Number) craftable.get(0)).intValue(),
                 "10 owned Ore / 2 per craft, buying disabled, should yield exactly 5 craftable widgets");
+
+        // STORY-UI-002 / KNOWN_PROBLEMS.md §7.7: the title stays, and the developer
+        // loaded-recipe/row/missing-data counter line below it must be gone after a load.
+        assertTrue(lookup("Crafting Profit Analyzer").tryQuery().isPresent(), "title should remain");
+        Label status = JavaFxUiSupport.find(this, "#craftingProfitStatusLabel", Label.class);
+        String statusText = computeOnFxThread(status::getText);
+        assertFalse(statusText.matches("(?s).*\\brows=\\d+.*"), "status line should not expose row counters: " + statusText);
+        assertFalse(statusText.contains("missingLines="), "status line should not expose missing-line counters: " + statusText);
+        assertFalse(statusText.contains("missingTp="), "status line should not expose missing-TP counters: " + statusText);
+        assertFalse(statusText.contains("zeroBuyPrice="), "status line should not expose zero-buy-price counters: " + statusText);
+        assertFalse(statusText.toLowerCase().contains("loaded"), "status line should not expose the loaded-recipe count: " + statusText);
+
+        // Clicking Refresh again (not just the initial load) must not bring the line back.
+        clickOn(refreshButton);
+        JavaFxUiSupport.waitForRowCount(this, table, 1, Duration.ofSeconds(10));
+        String statusTextAfterRefresh = computeOnFxThread(status::getText);
+        assertFalse(statusTextAfterRefresh.matches("(?s).*\\brows=\\d+.*"),
+                "status line should not expose row counters after refresh: " + statusTextAfterRefresh);
+        assertFalse(statusTextAfterRefresh.toLowerCase().contains("loaded"),
+                "status line should not expose the loaded-recipe count after refresh: " + statusTextAfterRefresh);
 
         Path screenshot = computeOnFxThread(() -> JavaFxUiSupport.captureScreenshot(table,
                 Path.of("target", "ui-test-screenshots", "crafting-profit-smoke.png")));

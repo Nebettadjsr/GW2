@@ -38,9 +38,9 @@ public class EctoView {
     private static final int SILVER_FED_SALVAGE_O_MATIC_ID = 67027;
 
     // --- Static assumptions (as requested) ---
-    private static final double LUCK_PER_ECTO = 20.0;
-    private static final double DUST_PER_ECTO = 0.75;
-    private static final int ECTOS_PER_1000_LUCK = 50;
+    private static final double LUCK_PER_ECTO = EctoSalvageCalculator.LUCK_PER_ECTO;
+    private static final double DUST_PER_ECTO = EctoSalvageCalculator.DUST_PER_ECTO;
+    private static final int ECTOS_PER_1000_LUCK = EctoSalvageCalculator.ECTOS_PER_1000_LUCK;
 
     // --- TP model (raw from /v2/commerce/prices) ---
     static class TpQuote {
@@ -80,9 +80,11 @@ public class EctoView {
         statusLabel.setStyle("-fx-text-fill: white; -fx-opacity: 0.85;");
 
         Label feeNoticeLabel = new Label(
-                "Note: figures below do not include Trading Post selling fees. Fees will still apply " +
-                        "when the resulting items are actually sold.");
+                "Note: figures below already deduct the Trading Post's 15% selling fee from recovered " +
+                        "Dust's sale proceeds. Ecto acquisition costs and Luck amounts are unaffected. " +
+                        "\"Net\" prices are proceeds after that fee; other prices are raw Trading Post quotes.");
         feeNoticeLabel.setWrapText(true);
+        feeNoticeLabel.getStyleClass().add("ecto-fee-notice");
         feeNoticeLabel.setStyle(
                 "-fx-text-fill: #f0c060; -fx-background-color: rgba(240,192,96,0.10);" +
                         "-fx-border-color: rgba(240,192,96,0.35); -fx-border-radius: 6;" +
@@ -131,11 +133,14 @@ public class EctoView {
         Label ectoListingBuyLabel = value("-");
         Label dustInstantSellLabel = value("-");
         Label dustListingSellLabel = value("-");
+        Label dustInstantSellNetLabel = value("-");
+        Label dustListingSellNetLabel = value("-");
 
         VBox pricesCard = card(
                 pricesTitle,
                 priceRow(ectoIcon, ectoName, "Instant Buy:", ectoInstantBuyLabel, "Listing Buy:", ectoListingBuyLabel),
-                priceRow(dustIcon, dustName, "Instant Sell:", dustInstantSellLabel, "Listing Sell:", dustListingSellLabel)
+                priceRow(dustIcon, dustName, "Instant Sell (raw):", dustInstantSellLabel, "Listing Sell (raw):", dustListingSellLabel),
+                priceRow(new ImageView(), new Label(""), "Instant Sell (net of TP fee):", dustInstantSellNetLabel, "Listing Sell (net of TP fee):", dustListingSellNetLabel)
                               );
         pricesCard.setMaxWidth(760);
 
@@ -215,6 +220,8 @@ public class EctoView {
                     ectoListingBuyLabel.setText(CoinUtils.format(ectoListingBuy(ecto)));
                     dustInstantSellLabel.setText(CoinUtils.format(dustInstantSell(dust)));
                     dustListingSellLabel.setText(CoinUtils.format(dustListingSell(dust)));
+                    dustInstantSellNetLabel.setText(CoinUtils.format(EctoSalvageCalculator.netSaleProceeds(dustInstantSell(dust))));
+                    dustListingSellNetLabel.setText(CoinUtils.format(EctoSalvageCalculator.netSaleProceeds(dustListingSell(dust))));
 
                     // fill tables
                     fillProfitGrid(profitGrid, ecto, dust);
@@ -239,41 +246,29 @@ public class EctoView {
     // =========================
 
     private static void fillProfitGrid(GridPane grid, TpQuote ecto, TpQuote dust) {
-        // Per 1 ecto:
-        // profit = (dustSell * dustPerEcto) - ectoCost
-        int ectoCostInstant = ectoInstantBuy(ecto);
-        int ectoCostListing = ectoListingBuy(ecto);
+        // Per 1 ecto, net of the Trading Post's 15% selling fee on recovered Dust (DOMAIN_SPEC.md §46).
+        var instantBuyInstantSell = EctoSalvageCalculator.evaluate(ectoInstantBuy(ecto), dustInstantSell(dust));
+        var instantBuyListingSell = EctoSalvageCalculator.evaluate(ectoInstantBuy(ecto), dustListingSell(dust));
+        var listingBuyInstantSell = EctoSalvageCalculator.evaluate(ectoListingBuy(ecto), dustInstantSell(dust));
+        var listingBuyListingSell = EctoSalvageCalculator.evaluate(ectoListingBuy(ecto), dustListingSell(dust));
 
-        int dustRevInstant = (int) Math.round(dustInstantSell(dust) * DUST_PER_ECTO);
-        int dustRevListing = (int) Math.round(dustListingSell(dust) * DUST_PER_ECTO);
-
-        setCell(grid, 1, 1, CoinUtils.formatSigned(dustRevInstant - ectoCostInstant));
-        setCell(grid, 2, 1, CoinUtils.formatSigned(dustRevListing - ectoCostInstant));
-        setCell(grid, 1, 2, CoinUtils.formatSigned(dustRevInstant - ectoCostListing));
-        setCell(grid, 2, 2, CoinUtils.formatSigned(dustRevListing - ectoCostListing));
+        setCell(grid, 1, 1, CoinUtils.formatSigned(instantBuyInstantSell.profitPerEcto()));
+        setCell(grid, 2, 1, CoinUtils.formatSigned(instantBuyListingSell.profitPerEcto()));
+        setCell(grid, 1, 2, CoinUtils.formatSigned(listingBuyInstantSell.profitPerEcto()));
+        setCell(grid, 2, 2, CoinUtils.formatSigned(listingBuyListingSell.profitPerEcto()));
     }
 
     private static void fillLuckGrid(GridPane grid, TpQuote ecto, TpQuote dust) {
-        // Cost for 1000 luck (~50 ectos):
-        // cost = ectoCost*50 - dustRevenue*50
-        int ectoCostInstant = ectoInstantBuy(ecto);
-        int ectoCostListing = ectoListingBuy(ecto);
+        // Cost for 1000 Luck (~50 ectos), derived from the same fee-inclusive net cost (DOMAIN_SPEC.md §47).
+        var instantBuyInstantSell = EctoSalvageCalculator.evaluate(ectoInstantBuy(ecto), dustInstantSell(dust));
+        var instantBuyListingSell = EctoSalvageCalculator.evaluate(ectoInstantBuy(ecto), dustListingSell(dust));
+        var listingBuyInstantSell = EctoSalvageCalculator.evaluate(ectoListingBuy(ecto), dustInstantSell(dust));
+        var listingBuyListingSell = EctoSalvageCalculator.evaluate(ectoListingBuy(ecto), dustListingSell(dust));
 
-        int dustRevInstant = (int) Math.round(dustInstantSell(dust) * DUST_PER_ECTO);
-        int dustRevListing = (int) Math.round(dustListingSell(dust) * DUST_PER_ECTO);
-
-        int n = ECTOS_PER_1000_LUCK;
-
-        int c11 = ectoCostInstant * n - dustRevInstant * n;
-        int c12 = ectoCostInstant * n - dustRevListing * n;
-        int c21 = ectoCostListing * n - dustRevInstant * n;
-        int c22 = ectoCostListing * n - dustRevListing * n;
-
-
-        setCell(grid, 1, 1, CoinUtils.format(c11) );
-        setCell(grid, 2, 1, CoinUtils.format(c12) );
-        setCell(grid, 1, 2, CoinUtils.format(c21) );
-        setCell(grid, 2, 2, CoinUtils.format(c22) );
+        setCell(grid, 1, 1, CoinUtils.format(instantBuyInstantSell.costPer1000Luck()));
+        setCell(grid, 2, 1, CoinUtils.format(instantBuyListingSell.costPer1000Luck()));
+        setCell(grid, 1, 2, CoinUtils.format(listingBuyInstantSell.costPer1000Luck()));
+        setCell(grid, 2, 2, CoinUtils.format(listingBuyListingSell.costPer1000Luck()));
     }
 
     // =========================

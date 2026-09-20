@@ -1,7 +1,11 @@
 from pathlib import Path
 import time
 
-from agent.runtime.runners.claude_runner import run_claude, wait_for_claude_capacity
+from agent.runtime.runners.claude_runner import (
+    get_claude_session_usage_percent,
+    run_claude,
+    wait_for_claude_capacity,
+)
 from agent.runtime.support.config import (
     BACKLOG_FILE,
     CLAUDE_RESULT_FILE,
@@ -41,6 +45,21 @@ from agent.runtime.human.user_interventions import (
     get_open_interventions_for_story,
     list_interventions,
 )
+from agent.runtime.support.repo_map import (
+    format_repo_map_for_prompt,
+    generate_repo_map,
+)
+
+
+# ============================================================
+# Claude usage measurement (best-effort, never blocks a Claude run)
+# ============================================================
+
+def _safe_claude_usage_percent() -> int | None:
+    try:
+        return get_claude_session_usage_percent()
+    except Exception:  # noqa: BLE001 -- measurement must never block
+        return None
 
 
 # ============================================================
@@ -261,9 +280,37 @@ def execute_active_story() -> str:
             f"Unexpected dispatcher result: {plan}"
         )
 
+    # RepoMap is an optional, experimental orientation aid for
+    # Claude's implementation prompt only -- never for the planner,
+    # the Hermes dispatcher/evaluator, or the deterministic selector.
+    # generate_repo_map() never raises and returns an empty map on any
+    # failure (Aider missing, non-zero exit, timeout), so this can
+    # never block story execution.
+    repo_map = generate_repo_map()
+
+    print(
+        "\nRepoMap: "
+        + ("enabled" if repo_map["enabled"] else "disabled")
+        + f", budget={repo_map['token_budget']} tokens"
+        + (
+            f", available={repo_map['available']}"
+            if repo_map["enabled"]
+            else ""
+        )
+        + (
+            f", generated={repo_map['char_count']} chars "
+            f"(~{repo_map['approx_tokens']} tokens) in "
+            f"{repo_map['duration_seconds']:.2f}s"
+            if repo_map["text"]
+            else ""
+        )
+        + (f", error={repo_map['error']}" if repo_map["error"] else "")
+    )
+
     prompt = build_claude_prompt(
         plan,
-        story_path
+        story_path,
+        repo_map_context=format_repo_map_for_prompt(repo_map),
     )
 
     NEXT_PROMPT_FILE.write_text(
@@ -279,8 +326,22 @@ def execute_active_story() -> str:
             CLAUDE_RESULT_FILE
         )
 
+        usage_before = _safe_claude_usage_percent()
+        claude_start = time.time()
+
         claude_exit_code = run_claude(
             prompt
+        )
+
+        claude_duration = time.time() - claude_start
+        usage_after = _safe_claude_usage_percent()
+
+        print(
+            "Claude run measurement: "
+            f"repo_map={'on' if repo_map['enabled'] else 'off'}, "
+            f"duration={claude_duration:.1f}s, "
+            f"usage_before={usage_before}, "
+            f"usage_after={usage_after}"
         )
 
         if claude_exit_code != 0:

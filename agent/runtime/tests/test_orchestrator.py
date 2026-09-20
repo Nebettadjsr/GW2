@@ -181,6 +181,15 @@ class InterruptedClaudeTest(OrchestratorInterventionTestCase):
                                             return_value={"status": "READY"}))
             stack.enter_context(patch.object(orchestrator, "build_claude_prompt",
                                             return_value=f"Implement {filename}"))
+            stack.enter_context(patch.object(orchestrator, "generate_repo_map",
+                                            return_value={
+                                                "enabled": False, "available": False,
+                                                "text": "", "token_budget": 1200,
+                                                "char_count": 0, "approx_tokens": 0,
+                                                "duration_seconds": 0.0, "error": None,
+                                            }))
+            stack.enter_context(patch.object(orchestrator, "get_claude_session_usage_percent",
+                                            return_value=50))
             stack.enter_context(patch.object(orchestrator, "run_claude", side_effect=run))
             stack.enter_context(patch.object(orchestrator, "evaluate_story", side_effect=evaluate))
             stack.enter_context(patch.object(orchestrator, "wait_for_claude_capacity", side_effect=capacity))

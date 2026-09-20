@@ -39,31 +39,63 @@ public class CraftingPlanner {
                                                  CraftingSettings settings,
                                                  Set<Integer> allowedRecipeIds) {
 
-        // Build lookup: output_item_id -> list of recipes that produce it
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = new HashMap<>();
-        for (RecipeRepository.Recipe r : recipes) {
-            recipesByOutput.computeIfAbsent(r.outputItemId, k -> new ArrayList<>()).add(r);
-        }
+        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
+        PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds);
 
         Map<Integer, CraftResult> out = new HashMap<>();
-
-        PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds);
         for (RecipeRepository.Recipe r : recipes) {
-            CraftResult cr = evaluateOneRecipeNew(r, sellableInventory, boundInventory, ctx);
-            out.put(r.recipeId, cr);
+            PlanState baseState = new PlanState(sellableInventory, boundInventory);
+            out.put(r.recipeId, evaluateOneRecipeNew(r, baseState, ctx));
         }
 
         return out;
     }
 
+    /**
+     * Coordinated multi-character planning (DOMAIN_SPEC.md section 2.2.1 / STORY-DOM-014): unlike
+     * {@link #evaluateAll(List, Map, Map, Map, CraftingSettings, Set)}, {@code roster} identifies
+     * every candidate character and their crafting ratings, so each recipe/sub-recipe execution
+     * may be assigned to whichever eligible candidate can perform it, and {@code
+     * characterBoundInventory} keeps each character's soulbound owned quantity usable only by a
+     * step assigned to that exact character. {@code accountBoundInventory} (account-bound, no TP
+     * opportunity cost) and {@code sellableInventory} (ordinary tradable) remain shared account-
+     * wide pools, exactly as the legacy overload's single {@code boundInventory} always was.
+     */
+    public Map<Integer, CraftResult> evaluateAllCoordinated(
+            List<RecipeRepository.Recipe> recipes,
+            Map<Integer, Integer> sellableInventory,
+            Map<Integer, Integer> accountBoundInventory,
+            Map<String, Map<Integer, Integer>> characterBoundInventory,
+            List<CharacterCraftingProfile> roster,
+            Map<Integer, TpPriceRepository.TpQuote> tp,
+            CraftingSettings settings,
+            Set<Integer> allowedRecipeIds) {
+
+        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
+        PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds, roster);
+
+        Map<Integer, CraftResult> out = new HashMap<>();
+        for (RecipeRepository.Recipe r : recipes) {
+            PlanState baseState = new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory);
+            out.put(r.recipeId, evaluateOneRecipeNew(r, baseState, ctx));
+        }
+
+        return out;
+    }
+
+    private Map<Integer, List<RecipeRepository.Recipe>> buildRecipesByOutput(List<RecipeRepository.Recipe> recipes) {
+        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = new HashMap<>();
+        for (RecipeRepository.Recipe r : recipes) {
+            recipesByOutput.computeIfAbsent(r.outputItemId, k -> new ArrayList<>()).add(r);
+        }
+        return recipesByOutput;
+    }
+
     private CraftResult evaluateOneRecipeNew(
             RecipeRepository.Recipe recipe,
-            Map<Integer, Integer> baseInventory,
-            Map<Integer, Integer> boundInventory,
+            PlanState baseState,
             PlannerContext ctx
     ) {
-        PlanState baseState = new PlanState(baseInventory, boundInventory);
-
         RecipeSimulationResult sim;
 
         boolean maySkipCheap =
@@ -104,7 +136,8 @@ public class CraftingPlanner {
                 revenueOne,
                 profitOne,
                 totalProfit,
-                tree
+                tree,
+                sim.getBlockedReason()
         );
     }
 

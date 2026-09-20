@@ -59,6 +59,10 @@ TEST_STRATEGY.md — test methodology, never live test totals.
 UD-*.md — human decisions and OPEN/RESOLVED status.
 
 PROJECT_STATE.md — planner-only continuity state.
+
+docs/crafting/ — human-readable crafting calculation guide for readers unfamiliar with the
+codebase; explanatory duplication exception and maintenance policy owned by
+docs/TARGET_ARCHITECTURE.md §35 (see that section, do not duplicate its policy here).
 If information is derivable from its owner, do not store another copy elsewhere.
 
 Roles
@@ -148,6 +152,8 @@ domain behavior -> DOMAIN_SPEC.md
 known problem -> KNOWN_PROBLEMS.md
 
 roadmap exit state -> ROADMAP.md
+
+user-visible crafting rule/calculation change -> docs/crafting/ guide (see docs/TARGET_ARCHITECTURE.md §35)
 Do not:
 
 copy story results into PROJECT_STATE.md;
@@ -238,6 +244,8 @@ refactor;
 
 verify unchanged behavior.
 Do not weaken/delete tests merely to make a change pass unless the specification changed.
+Match test scope to the change: a background/non-UI logic change does not need JavaFX/UI (TestFX) or other broad-layer tests merely for completeness -- add UI-layer tests only when the change itself alters UI-observable behavior.
+Keep total test effort proportional to the size and risk of the actual change. Broad coverage is a goal, not a mandate to add every test layer to every change; do not spend implementation effort (or tokens) on tests disproportionate to what changed. See `docs/TEST_STRATEGY.md` §31.5/§33.
 
 Repository Exploration
 

@@ -34,7 +34,8 @@ public class RecipeSimulator {
                     ctx.recipesByOutput,
                     ctx.tp,
                     noBuySettings,
-                    ctx.allowedRecipeIds
+                    ctx.allowedRecipeIds,
+                    ctx.coordinatedRoster
             );
 
             simulatePhase(recipe, noBuyCtx, state, result);
@@ -64,6 +65,7 @@ public class RecipeSimulator {
             ResolvedNeed root = rr.getRoot();
 
             if (root.getQtySatisfied() < root.getQtyRequested()) {
+                result.setBlockedReason(root.getBlockedReason());
                 break;
             }
 
@@ -74,6 +76,7 @@ public class RecipeSimulator {
                 break;
             }
 
+            result.setBlockedReason(BlockedReason.NONE);
             state.copyFrom(attemptState);
 
             if (result.getCraftCount() == 0) {

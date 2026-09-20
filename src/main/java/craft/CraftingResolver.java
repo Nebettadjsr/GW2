@@ -20,7 +20,12 @@ public class CraftingResolver {
             PlannerContext ctx,
             PlanState state
                                         ) {
-        ResolvedNeed root = resolveNeed(recipe.outputItemId, recipe.outputCount, ctx, state, false);
+        if (ctx.isCoordinated() && (!ctx.allowedRecipeIds.contains(recipe.recipeId)
+                || ctx.eligibleCharactersFor(recipe).isEmpty())) {
+            return new ResolveResult(blockedNeed(recipe.outputItemId, recipe.outputCount,
+                    BlockedReason.RECIPE_NOT_ALLOWED));
+        }
+        ResolvedNeed root = resolveNeed(recipe.outputItemId, recipe.outputCount, ctx, state, false, null, null);
         return new ResolveResult(root);
     }
 
@@ -31,7 +36,7 @@ public class CraftingResolver {
             PlanState state,
             boolean allowDirectBuy
                                    ) {
-        return resolveNeed(itemId, qtyRequested, ctx, state, allowDirectBuy, null);
+        return resolveNeed(itemId, qtyRequested, ctx, state, allowDirectBuy, null, null);
     }
 
     private ResolvedNeed resolveNeed(
@@ -40,7 +45,8 @@ public class CraftingResolver {
             PlannerContext ctx,
             PlanState state,
             boolean allowDirectBuy,
-            String parentDiscipline
+            String parentDiscipline,
+            String assignedCharacter
                                    ) {
         ResolvedNeed result = new ResolvedNeed(itemId, qtyRequested);
 
@@ -51,7 +57,10 @@ public class CraftingResolver {
             // DOMAIN_SPEC.md section 11.1 / DQ-007: account-bound/soulbound-usable owned
             // quantity is consumed before ordinary tradable owned quantity and never charged
             // TP opportunity cost, since it cannot be sold on the Trading Post either way.
-            PlanState.InventoryConsumption consumption = state.consumeInventoryWithBinding(itemId, remaining);
+            // assignedCharacter (DOMAIN_SPEC.md section 2.2.1) further restricts soulbound
+            // consumption to the character actually executing the step needing this item.
+            PlanState.InventoryConsumption consumption =
+                    state.consumeInventoryWithBinding(itemId, remaining, assignedCharacter);
             int usedFromInventory = consumption.total();
             result.setQtyFromInventory(usedFromInventory);
 
@@ -176,34 +185,69 @@ public class CraftingResolver {
         RecipeRepository.Recipe recipe = firstRecipeFor(itemId, ctx, parentDiscipline);
         if (recipe == null) {
             if (hasOnlyDisallowedRecipes(itemId, ctx)) {
-                ResolvedNeed blocked = new ResolvedNeed(itemId, qtyRequested);
-                blocked.setQtyBlocked(qtyRequested);
-                blocked.setBlockedReason(BlockedReason.RECIPE_NOT_ALLOWED);
-                blocked.determineMode();
-                return blocked;
+                return blockedNeed(itemId, qtyRequested, BlockedReason.RECIPE_NOT_ALLOWED);
             }
             return null;
-        }
-
-        // cycle protection
-        if (state.visiting.contains(itemId)) {
-            ResolvedNeed blocked = new ResolvedNeed(itemId, qtyRequested);
-            blocked.setQtyBlocked(qtyRequested);
-            blocked.setBlockedReason(BlockedReason.CYCLE_DETECTED);
-            blocked.determineMode();
-            return blocked;
         }
 
         boolean isDaily = DailyCrafts.isDailyOutput(itemId);
 
         // Daily mode = BUY -> this node may not be crafted directly
         if (isDaily && ctx.settings.dailyBuyInsteadOfCraft) {
-            ResolvedNeed blocked = new ResolvedNeed(itemId, qtyRequested);
-            blocked.setQtyBlocked(qtyRequested);
-            blocked.setBlockedReason(BlockedReason.DAILY_LIMIT);
-            blocked.determineMode();
-            return blocked;
+            return blockedNeed(itemId, qtyRequested, BlockedReason.DAILY_LIMIT);
         }
+
+        if (!ctx.isCoordinated()) {
+            return tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, null);
+        }
+
+        // DOMAIN_SPEC.md section 2.2.1: coordinated multi-character planning - a recipe may only
+        // be performed by a character who has one of its disciplines at a sufficient rating.
+        // Soulbound ingredients (below, via the assigned character's own PlanState.
+        // characterBoundInventory) are then only usable by whichever eligible character actually
+        // performs this specific craft step; the produced item itself remains a transferable
+        // intermediate usable by any later step regardless of who crafted it.
+        List<String> eligible = ctx.eligibleCharactersFor(recipe);
+        if (eligible.isEmpty()) {
+            return blockedNeed(itemId, qtyRequested, BlockedReason.RECIPE_NOT_ALLOWED);
+        }
+
+        ResolvedNeed best = null;
+        PlanState bestState = null;
+
+        for (String character : eligible) {
+            PlanState trial = new PlanState(state);
+            ResolvedNeed attempt = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, trial, character);
+            if (isBetterCraftAttempt(attempt, best)) {
+                best = attempt;
+                bestState = trial;
+            }
+        }
+
+        state.copyFrom(bestState);
+        return best;
+    }
+
+    /**
+     * Performs (or attempts) one craft-step batch of {@code recipe} for {@code itemId}, with
+     * ingredient consumption attributed to {@code assignedCharacter} (may be {@code null} for
+     * the single-character/legacy path, where every soulbound quantity already lives in the
+     * shared {@link PlanState#boundInventory} rather than per-character).
+     */
+    private ResolvedNeed tryCraftAssigned(
+            int itemId,
+            int qtyRequested,
+            RecipeRepository.Recipe recipe,
+            PlannerContext ctx,
+            PlanState state,
+            String assignedCharacter
+                                          ) {
+        // cycle protection
+        if (state.visiting.contains(itemId)) {
+            return blockedNeed(itemId, qtyRequested, BlockedReason.CYCLE_DETECTED);
+        }
+
+        boolean isDaily = DailyCrafts.isDailyOutput(itemId);
 
         state.visiting.add(itemId);
 
@@ -237,7 +281,8 @@ public class CraftingResolver {
             for (RecipeRepository.Ingredient ing : recipe.ingredients) {
                 int childQtyNeeded = ing.count * times;
 
-                ResolvedNeed child = resolveNeed(ing.itemId, childQtyNeeded, ctx, state, true, recipe.disciplinesText);
+                ResolvedNeed child = resolveNeed(ing.itemId, childQtyNeeded, ctx, state, true,
+                        recipe.disciplinesText, assignedCharacter);
                 craftResult.addChild(child);
                 craftResult.addCostsFromChild(child);
 
@@ -278,6 +323,38 @@ public class CraftingResolver {
         } finally {
             state.visiting.remove(itemId);
         }
+    }
+
+    private ResolvedNeed blockedNeed(int itemId, int qtyRequested, BlockedReason reason) {
+        ResolvedNeed blocked = new ResolvedNeed(itemId, qtyRequested);
+        blocked.setQtyBlocked(qtyRequested);
+        blocked.setBlockedReason(reason);
+        blocked.determineMode();
+        return blocked;
+    }
+
+    /**
+     * Compares two candidate character assignments for the same craft step: fully satisfied
+     * beats partially satisfied, and among fully-satisfied candidates the lowest total effective
+     * economic cost wins (DOMAIN_SPEC.md section 22), otherwise the least-blocked candidate wins.
+     * Soulbound ingredients never carry an opportunity-cost difference between characters, so
+     * this reduces to "prefer whichever eligible character can actually supply this step."
+     */
+    private boolean isBetterCraftAttempt(ResolvedNeed candidate, ResolvedNeed currentBest) {
+        if (currentBest == null) return true;
+
+        boolean candidateSatisfied = candidate.isFullySatisfied();
+        boolean bestSatisfied = currentBest.isFullySatisfied();
+
+        if (candidateSatisfied != bestSatisfied) {
+            return candidateSatisfied;
+        }
+
+        if (candidateSatisfied) {
+            return candidate.getEffectiveCostCopper() <= currentBest.getEffectiveCostCopper();
+        }
+
+        return candidate.getQtySatisfied() > currentBest.getQtySatisfied();
     }
 
     private CandidateEval chooseBetterCandidate(CandidateEval buyEval, CandidateEval craftEval) {
@@ -398,7 +475,8 @@ public class CraftingResolver {
         int bestOverallCost = Integer.MAX_VALUE;
 
         for (RecipeRepository.Recipe recipe : list) {
-            if (!ctx.allowedRecipeIds.contains(recipe.recipeId)) {
+            if (!ctx.allowedRecipeIds.contains(recipe.recipeId)
+                    || (ctx.isCoordinated() && ctx.eligibleCharactersFor(recipe).isEmpty())) {
                 continue;
             }
 
@@ -431,7 +509,8 @@ public class CraftingResolver {
         }
 
         for (RecipeRepository.Recipe recipe : list) {
-            if (ctx.allowedRecipeIds.contains(recipe.recipeId)) {
+            if (ctx.allowedRecipeIds.contains(recipe.recipeId)
+                    && (!ctx.isCoordinated() || !ctx.eligibleCharactersFor(recipe).isEmpty())) {
                 return false;
             }
         }

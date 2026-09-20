@@ -8,6 +8,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -175,5 +176,35 @@ class InventoryRepositoryBoundMaterialTest {
         // every character_items row regardless of binding/bound_to.
         Map<Integer, Integer> flat = new InventoryRepository().loadOwnedInventory(con);
         assertEquals(12, flat.get(itemId));
+    }
+
+    @Test
+    void coordinatedInventory_keepsSharedAndEachOwnersSoulboundQuantitiesSeparate() throws Exception {
+        String alice = "Alice";
+        String bea = "Bea";
+        String outsideRoster = "Outside Roster";
+
+        try (Statement st = con.createStatement()) {
+            st.execute("INSERT INTO account_materials (item_id, count) VALUES (100, 4)");
+            st.execute("INSERT INTO account_bank (slot, item_id, count, binding) VALUES (1, 200, 2, 'Account')");
+            st.execute("INSERT INTO characters (character_id, name) VALUES (1, '" + alice + "')");
+            st.execute("INSERT INTO characters (character_id, name) VALUES (2, '" + bea + "')");
+            st.execute("INSERT INTO characters (character_id, name) VALUES (3, '" + outsideRoster + "')");
+            st.execute("INSERT INTO character_items (character_id, location, bag_index, slot_index, item_id, count, binding, bound_to) "
+                    + "VALUES (1, 'BAG', 0, 0, 300, 3, 'Character', '" + alice + "')");
+            st.execute("INSERT INTO character_items (character_id, location, bag_index, slot_index, item_id, count, binding, bound_to) "
+                    + "VALUES (2, 'BAG', 0, 0, 300, 5, 'Character', '" + bea + "')");
+            st.execute("INSERT INTO character_items (character_id, location, bag_index, slot_index, item_id, count, binding, bound_to) "
+                    + "VALUES (3, 'BAG', 0, 0, 300, 7, 'Character', '" + outsideRoster + "')");
+        }
+
+        InventoryRepository.CoordinatedInventory inventory =
+                new InventoryRepository().loadOwnedInventoryForCharacters(con, Set.of(alice, bea));
+
+        assertEquals(4, inventory.sellable().get(100));
+        assertEquals(2, inventory.accountBound().get(200));
+        assertEquals(3, inventory.characterBound().get(alice).get(300));
+        assertEquals(5, inventory.characterBound().get(bea).get(300));
+        assertFalse(inventory.characterBound().containsKey(outsideRoster));
     }
 }

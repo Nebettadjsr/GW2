@@ -36,6 +36,9 @@ public class CraftingDiscoveryView {
 
     // ---------- Row model ----------
     public static class DiscoverRow {
+        private final boolean calculationAvailable;
+
+        public boolean isCalculationAvailable() { return calculationAvailable; }
         private final IntegerProperty recipeId = new SimpleIntegerProperty();
         private final IntegerProperty outputItemId = new SimpleIntegerProperty();
         private final StringProperty outputName = new SimpleStringProperty();
@@ -49,7 +52,8 @@ public class CraftingDiscoveryView {
 
         public DiscoverRow(int recipeId, int outputItemId, String outputName, int recipeLevel,
                            int buyCostCopper, int revenueCopper, int profitCopper,
-                           String missingSummary, String searchBlob) {
+                           String missingSummary, String searchBlob, boolean calculationAvailable) {
+            this.calculationAvailable = calculationAvailable;
             this.recipeId.set(recipeId);
             this.outputItemId.set(outputItemId);
             this.outputName.set(outputName);
@@ -333,7 +337,8 @@ public class CraftingDiscoveryView {
                                     r.revenueCopper,
                                     r.profitCopper,
                                     r.missingSummary,
-                                    r.searchBlob
+                                    r.searchBlob,
+                                    r.calculationAvailable
                             ));
                         }
 
@@ -434,6 +439,10 @@ public class CraftingDiscoveryView {
         TableColumn<DiscoverRow, String> colName = new TableColumn<>("Item");
         colName.setCellValueFactory(data -> data.getValue().outputNameProperty());
 
+        TableColumn<DiscoverRow, String> colStatus = new TableColumn<>("Status / requirements");
+        colStatus.setCellValueFactory(data -> data.getValue().missingSummaryProperty());
+        colStatus.setPrefWidth(260);
+
         TableColumn<DiscoverRow, Number> colLevel = new TableColumn<>("Level");
         colLevel.setCellValueFactory(d -> d.getValue().recipeLevelProperty());
         colLevel.setSortType(TableColumn.SortType.DESCENDING);
@@ -466,7 +475,7 @@ public class CraftingDiscoveryView {
         colSell.setMinWidth(130);
         colProfit.setMinWidth(130);
 
-        table.getColumns().addAll(colName, colLevel, colBuyCost, colSell, colProfit);
+        table.getColumns().addAll(colName, colStatus, colLevel, colBuyCost, colSell, colProfit);
 
         // ---------- Details panel (right) ----------
         Label detailsTitle = new Label("Details");
@@ -511,6 +520,11 @@ public class CraftingDiscoveryView {
             TreeItem<String> root = toTreeItem(res.tree, controller);
             root.setExpanded(true);
             recipeTree.setRoot(root);
+
+            if (!rowSel.isCalculationAvailable()) {
+                shoppingList.getItems().setAll(rowSel.getMissingSummary());
+                return;
+            }
 
             // shopping list
             boolean listingSellMode = rbListingSell.isSelected();
@@ -650,6 +664,12 @@ public class CraftingDiscoveryView {
                     setText(null);
                     return;
                 }
+                var row = getTableRow() == null ? null : getTableRow().getItem();
+                if (row != null && !row.isCalculationAvailable()) {
+                    setText("Unavailable");
+                    setStyle("-fx-text-fill: white;");
+                    return;
+                }
                 int v = copper.intValue();
                 setText((signed ? CoinUtils.formatSigned(v) : CoinUtils.format(v)));
                 setStyle("-fx-text-fill: white; -fx-font-family: 'Consolas';");
@@ -664,6 +684,12 @@ public class CraftingDiscoveryView {
                 if (empty || copper == null) {
                     setText(null);
                     setStyle("");
+                    return;
+                }
+                var row = getTableRow() == null ? null : getTableRow().getItem();
+                if (row != null && !row.isCalculationAvailable()) {
+                    setText("Unavailable");
+                    setStyle("-fx-text-fill: white;");
                     return;
                 }
                 int v = copper.intValue();

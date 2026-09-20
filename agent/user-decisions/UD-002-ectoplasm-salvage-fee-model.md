@@ -38,6 +38,8 @@ The UI must show a one-time informational notice that Trading Post fees will sti
 
 ## Resolution
 
+Planning note (2026-09-20): The original answer below is retained as history. Its no-fee/UI-notice portion is superseded by the explicit PO request `agent/product-owner-requests/ecto-salvage-profit-include-tp-fees.md`; current requirements are owned by `docs/DOMAIN_SPEC.md` §45–47/DQ-011. The legacy-code removal decision remains unchanged.
+
 DQ-011:
 
 - `EctoView` is the authoritative Ectoplasm Salvage implementation.

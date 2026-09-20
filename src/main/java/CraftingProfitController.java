@@ -13,6 +13,7 @@ public class CraftingProfitController {
     private final InventoryRepository invRepo  = new InventoryRepository();
     private final TpPriceRepository   tpRepo   = new TpPriceRepository();
     private final ItemRepository      itemRepo = new ItemRepository();
+    private final repo.CharacterRepository charRepo = new repo.CharacterRepository();
 
     private final CraftingPlanner planner = new CraftingPlanner();
     private List<RecipeRepository.Recipe> lastAllRecipes = List.of();
@@ -41,6 +42,7 @@ public class CraftingProfitController {
         public final int totalProfitCopper;
         public final int matsSellValueCopper;
         public final String searchBlob;
+        public final boolean calculationAvailable;
 
 
 
@@ -48,7 +50,7 @@ public class CraftingProfitController {
                      int craftableCount, String missingSummary,
                      int buyCostCopper, int matsSellValueCopper,
                      int revenueCopper, int profitCopper, int totalProfitCopper,
-                     String searchBlob) {
+                     String searchBlob, boolean calculationAvailable) {
             this.recipeId = recipeId;
             this.outputItemId = outputItemId;
             this.outputName = outputName;
@@ -61,11 +63,12 @@ public class CraftingProfitController {
             this.profitCopper = profitCopper;
             this.totalProfitCopper = totalProfitCopper;
             this.searchBlob = searchBlob;
+            this.calculationAvailable = calculationAvailable;
         }
 
     }
 
-    public List<UiRow> reload(DiscChoice choice, CraftingSettings settings, String selectedCharacterName) throws SQLException {
+    public List<UiRow> reload(DiscChoice choice, CraftingSettings settings) throws SQLException {
 
         List<RecipeRepository.Recipe> visibleRecipes;
         if (choice == null || choice.kind == DiscChoice.Kind.ALL) {
@@ -92,29 +95,6 @@ public class CraftingProfitController {
 
         List<RecipeRepository.Recipe> allRecipes = graph.getRecipes();
 
-        Map<Integer, Integer> sellableInv = Map.of();
-        Map<Integer, Integer> boundInv = Map.of();
-
-        if (settings.useOwnMats) {
-            if (selectedCharacterName == null) {
-                // No synced character available: degrade to today's unfiltered pool
-                // (per STORY-DOM-012's "smaller in scope" fallback) instead of throwing.
-                sellableInv = invRepo.loadOwnedInventory();
-            } else {
-                Map<Integer, InventoryRepository.OwnedQuantity> owned =
-                        invRepo.loadOwnedInventoryForCharacter(selectedCharacterName);
-
-                Map<Integer, Integer> sellable = new HashMap<>();
-                Map<Integer, Integer> bound = new HashMap<>();
-                for (var e : owned.entrySet()) {
-                    if (e.getValue().sellableQty() > 0) sellable.put(e.getKey(), e.getValue().sellableQty());
-                    if (e.getValue().boundQty() > 0) bound.put(e.getKey(), e.getValue().boundQty());
-                }
-                sellableInv = sellable;
-                boundInv = bound;
-            }
-        }
-
         Set<Integer> itemIds = new HashSet<>();
         for (RecipeRepository.Recipe r : allRecipes) {
             itemIds.add(r.outputItemId);
@@ -130,11 +110,64 @@ public class CraftingProfitController {
         this.lastAllRecipes = allRecipes;
         this.lastSettings = settings;
 
-        Map<Integer, CraftResult> resultsByRecipeId =
-                planner.evaluateAll(allRecipes, sellableInv, boundInv, tp, settings, allowedRecipeIds);
+        Map<Integer, CraftResult> resultsByRecipeId;
 
+        // Every scope uses the same per-step eligibility and ownership checks.
+        List<CharacterCraftingProfile> roster = buildCoordinatedRoster(choice);
+        Map<Integer, Integer> sellableInv = Map.of();
+        Map<Integer, Integer> accountBoundInv = Map.of();
+        Map<String, Map<Integer, Integer>> characterBoundInv = Map.of();
+        if (settings.useOwnMats && !roster.isEmpty()) {
+            Set<String> names = roster.stream().map(CharacterCraftingProfile::name).collect(Collectors.toSet());
+            InventoryRepository.CoordinatedInventory inv = invRepo.loadOwnedInventoryForCharacters(names);
+            sellableInv = inv.sellable();
+            accountBoundInv = inv.accountBound();
+            characterBoundInv = inv.characterBound();
+        }
+        resultsByRecipeId = planner.evaluateAllCoordinated(
+                allRecipes, sellableInv, accountBoundInv, characterBoundInv, roster, tp, settings, allowedRecipeIds);
         this.lastResultsByRecipeId = resultsByRecipeId;
 
+        return prepareRows(visibleRecipes, allRecipes, resultsByRecipeId, items, tp, settings);
+    }
+
+    /**
+     * Candidate characters for coordinated planning (DOMAIN_SPEC.md section 2.2.1): every synced
+     * character's discipline ratings, restricted to characters who hold the chosen discipline
+     * when a discipline is selected, and to the named character for a specific entry.
+     * Ratings come from synced data, not the selector's display snapshot.
+     */
+    private List<CharacterCraftingProfile> buildCoordinatedRoster(DiscChoice choice) throws SQLException {
+        Map<String, Map<String, Integer>> ratingByCharacter = new HashMap<>();
+        for (repo.CharacterRepository.DiscRow row : charRepo.loadAllCharacterCrafting()) {
+            ratingByCharacter.computeIfAbsent(row.charName, k -> new HashMap<>()).put(row.discipline, row.rating);
+        }
+
+        String requiredDiscipline = (choice != null && choice.kind != DiscChoice.Kind.ALL)
+                ? choice.discipline
+                : null;
+
+        List<CharacterCraftingProfile> roster = new ArrayList<>();
+        for (var e : ratingByCharacter.entrySet()) {
+            if (choice != null && choice.kind == DiscChoice.Kind.CHAR_DISCIPLINE
+                    && !e.getKey().equals(choice.charName)) continue;
+            if (requiredDiscipline == null || e.getValue().containsKey(requiredDiscipline)) {
+                Map<String, Integer> ratings = requiredDiscipline == null
+                        ? e.getValue()
+                        : Map.of(requiredDiscipline, e.getValue().get(requiredDiscipline));
+                roster.add(new CharacterCraftingProfile(e.getKey(), ratings));
+            }
+        }
+        return roster;
+    }
+
+    // Pure result preparation boundary, also used by controller regression tests.
+    List<UiRow> prepareRows(List<RecipeRepository.Recipe> visibleRecipes,
+                            List<RecipeRepository.Recipe> allRecipes,
+                            Map<Integer, CraftResult> resultsByRecipeId,
+                            Map<Integer, ItemRepository.ItemInfo> items,
+                            Map<Integer, TpPriceRepository.TpQuote> tp,
+                            CraftingSettings settings) {
         List<UiRow> uiRows = new ArrayList<>();
         Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = new HashMap<>();
         for (RecipeRepository.Recipe r : allRecipes) {
@@ -144,8 +177,6 @@ public class CraftingProfitController {
         for (RecipeRepository.Recipe r : visibleRecipes) {
             CraftResult cr = resultsByRecipeId.get(r.recipeId);
             if (cr == null) continue;
-            if (hasZeroPricedBuy(cr, tp, settings)) continue;
-            if (cr.revenueCopper <= 0) continue;
 
             var it = items.get(r.outputItemId);
             String baseName = (it != null && it.name != null && !it.name.isBlank())
@@ -156,7 +187,10 @@ public class CraftingProfitController {
                     ? (r.outputCount + "x " + baseName)
                     : baseName;
 
-            String miss = summarizeMissing(cr.missingToBuy, items, tp, settings.allowBuying);
+            CraftingResultPresentation presentation = new CraftingResultPresentation(cr, tp, settings);
+            String miss = presentation.status.isEmpty()
+                    ? summarizeMissing(cr.missingToBuy, items, tp, settings.allowBuying)
+                    : presentation.status;
             String searchBlob = buildSearchBlob(r, items, recipesByOutput, new HashSet<>());
 
             uiRows.add(new UiRow(
@@ -171,20 +205,9 @@ public class CraftingProfitController {
                     cr.revenueCopper,
                     cr.profitCopper,
                     cr.totalProfitCopper,
-                    searchBlob
+                    searchBlob,
+                    presentation.calculationAvailable
             ));
-        }
-
-        if (!settings.allowBuying) {
-            uiRows = uiRows.stream()
-                    .filter(x -> x.craftableCount > 0)
-                    .collect(Collectors.toList());
-        } else if (settings.maxBuyCopper > 0) {
-            int max = settings.maxBuyCopper;
-            uiRows = uiRows.stream()
-                    .filter(x -> x.craftableCount > 0)
-                    .filter(x -> x.buyCostCopper <= max)
-                    .collect(Collectors.toList());
         }
 
         return uiRows;
@@ -214,7 +237,8 @@ public class CraftingProfitController {
                 cr.revenueCopper,
                 cr.profitCopper,
                 cr.totalProfitCopper,
-                lazyTree
+                lazyTree,
+                cr.blockedReason
         );
 
         Map<Integer, CraftResult> copy = new HashMap<>(lastResultsByRecipeId);
@@ -271,33 +295,6 @@ public class CraftingProfitController {
     public TpPriceRepository.TpQuote tpQuote(int itemId) {
         return lastTp.get(itemId);
     }
-
-    private boolean hasZeroPricedBuy(CraftResult cr,
-                                     Map<Integer, TpPriceRepository.TpQuote> tp,
-                                     CraftingSettings settings) {
-
-        if (!settings.allowBuying) return false;
-        if (cr == null || cr.missingToBuy == null || cr.missingToBuy.isEmpty()) return false;
-
-        for (var e : cr.missingToBuy.entrySet()) {
-            int itemId = e.getKey();
-            int qty = e.getValue();
-            if (qty <= 0) continue;
-
-            TpPriceRepository.TpQuote q = tp.get(itemId);
-
-            // If we must buy it, but we have NO TP row loaded -> treat as not tradable/unknown -> hide
-            if (q == null) return true;
-
-            // Buy price mapping (your rule)
-            Integer unit = settings.listingBuy ? q.buyUnit : q.sellUnit;
-
-            // If not tradable => DB NULL => unit null (or 0) -> hide
-            if (unit == null || unit <= 0) return true;
-        }
-        return false;
-    }
-
 
     private Node buildTreeForRecipeId(int recipeId) {
         if (lastAllRecipes == null || lastAllRecipes.isEmpty() || lastSettings == null) {

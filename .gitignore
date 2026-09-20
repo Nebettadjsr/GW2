@@ -24,3 +24,4 @@ agent/runtime/**/__pycache__/
 
 # Derived/rebuildable data (auto-rebuilt by craft.CraftingGraphCache.load() when absent)
 crafting_graph_cache.json
+.aider*

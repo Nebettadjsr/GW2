@@ -45,8 +45,15 @@ public final class CraftingUiTestFixtures implements AutoCloseable {
         createTables();
 
         System.setProperty(repo.Db.TEST_SCHEMA_PROPERTY, schema);
-        System.setProperty(craft.CraftingGraphCache.TEST_CACHE_FILE_PROPERTY,
-                java.nio.file.Files.createTempFile("ui-test-crafting-graph-", ".json").toString());
+
+        // CraftingGraphCache.load() rebuilds from the repository whenever its cache file does not
+        // exist, and only reads/parses the file when it does. Files.createTempFile() would leave
+        // behind an empty (invalid-JSON) file, so it is deleted immediately after reserving a
+        // unique path: the first load() in a test then always rebuilds from this fixture's own
+        // recipe rows rather than failing to parse an empty file.
+        java.nio.file.Path cacheFile = java.nio.file.Files.createTempFile("ui-test-crafting-graph-", ".json");
+        java.nio.file.Files.delete(cacheFile);
+        System.setProperty(craft.CraftingGraphCache.TEST_CACHE_FILE_PROPERTY, cacheFile.toString());
     }
 
     private void createTables() throws Exception {

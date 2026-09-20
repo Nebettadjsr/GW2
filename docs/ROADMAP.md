@@ -120,6 +120,7 @@ Phase 0 (each fix needs a failing test first, per `TEST_STRATEGY.md` §17's bug-
 - All confirmed conflicts in `KNOWN_PROBLEMS.md` §3 are either resolved and covered by a passing test, or converted into an explicit, answered domain question (`DOMAIN_SPEC.md` §51/§53) if resolution requires a decision only the project owner can make. For a conflict whose correct behavior depends on real database/API semantics rather than pure in-memory domain logic (e.g. §3.3's owned-material pool), "covered by a passing test" means the PostgreSQL integration-test coverage Phase 0 already requires (`TEST_STRATEGY.md` Layer 2) — a unit test alone does not close that item.
 - `craft.BlockedReason` carries the full set of reasons `DOMAIN_SPEC.md` §42 expects, and nothing in the crafting-profit/discovery flow silently drops a row instead of exposing a blocked/unavailable state.
 - The dead legacy craft-vs-buy code path is removed once confirmed unreachable.
+- The Phase 1 implementation/documentation completion review required by `TARGET_ARCHITECTURE.md` §34 is recorded with concrete evidence and any remaining findings (`STORY-QUALITY-001`); applicable unresolved findings receive an explicit disposition before completion.
 
 ### High-Level Stories
 

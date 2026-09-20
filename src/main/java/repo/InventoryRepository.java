@@ -206,4 +206,106 @@ public class InventoryRepository {
      */
     public record OwnedQuantity(int sellableQty, int boundQty) {
     }
+
+    /**
+     * Owned inventory for coordinated multi-character planning (DOMAIN_SPEC.md section 2.2.1 /
+     * STORY-DOM-014): the shared account-wide ordinary/tradable pool, the shared account-wide
+     * account-bound pool (usable by any character), and soulbound owned quantity split by owning
+     * character - usable only by that exact character.
+     */
+    public record CoordinatedInventory(Map<Integer, Integer> sellable,
+                                        Map<Integer, Integer> accountBound,
+                                        Map<String, Map<Integer, Integer>> characterBound) {
+    }
+
+    /**
+     * Same three-way split as {@link #loadOwnedInventoryForCharacter(String)}, but in one pass
+     * for every character in {@code characterNames} at once, keyed by actual owner rather than a
+     * single selected character. A soulbound row whose {@code bound_to} is not in {@code
+     * characterNames} is excluded entirely, exactly as {@link #loadOwnedInventoryForCharacter}
+     * excludes a row bound to any character other than the one selected - nobody in the
+     * coordinated roster may use it.
+     */
+    public CoordinatedInventory loadOwnedInventoryForCharacters(Set<String> characterNames) throws SQLException {
+        try (Connection con = repo.Db.open()) {
+            return loadOwnedInventoryForCharacters(con, characterNames);
+        }
+    }
+
+    /**
+     * Same query as {@link #loadOwnedInventoryForCharacters(Set)}, but runs against a
+     * caller-supplied connection (see {@link #loadOwnedInventory(Connection)} for why).
+     */
+    public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con, Set<String> characterNames) throws SQLException {
+        Map<Integer, Integer> sellable = new HashMap<>();
+        Map<Integer, Integer> accountBound = new HashMap<>();
+        Map<String, Map<Integer, Integer>> characterBound = new HashMap<>();
+
+        // materials storage: binding is either absent or "Account" (never soulbound)
+        try (PreparedStatement ps = con.prepareStatement("""
+            SELECT item_id, count, binding
+            FROM account_materials
+            WHERE item_id IS NOT NULL
+        """);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                classifyCoordinatedRow(rs.getInt("item_id"), rs.getInt("count"), rs.getString("binding"), null,
+                        characterNames, sellable, accountBound, characterBound);
+            }
+        }
+
+        // bank
+        try (PreparedStatement ps = con.prepareStatement("""
+            SELECT item_id, count, binding, bound_to
+            FROM account_bank
+            WHERE item_id IS NOT NULL
+        """);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                classifyCoordinatedRow(rs.getInt("item_id"), rs.getInt("count"), rs.getString("binding"), rs.getString("bound_to"),
+                        characterNames, sellable, accountBound, characterBound);
+            }
+        }
+
+        // character inventories (all characters, bags + equipment)
+        try (PreparedStatement ps = con.prepareStatement("""
+            SELECT item_id, count, binding, bound_to
+            FROM character_items
+            WHERE item_id IS NOT NULL
+        """);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                classifyCoordinatedRow(rs.getInt("item_id"), rs.getInt("count"), rs.getString("binding"), rs.getString("bound_to"),
+                        characterNames, sellable, accountBound, characterBound);
+            }
+        }
+
+        return new CoordinatedInventory(sellable, accountBound, characterBound);
+    }
+
+    private static void classifyCoordinatedRow(int itemId, int count, String binding, String boundTo,
+                                                 Set<String> characterNames,
+                                                 Map<Integer, Integer> sellable,
+                                                 Map<Integer, Integer> accountBound,
+                                                 Map<String, Map<Integer, Integer>> characterBound) {
+        if ("Character".equals(binding)) {
+            if (boundTo != null && characterNames.contains(boundTo)) {
+                characterBound.computeIfAbsent(boundTo, k -> new HashMap<>())
+                        .merge(itemId, count, Integer::sum);
+            }
+            // soulbound to a character outside the coordinated roster: excluded entirely, not
+            // usable by anyone eligible in this plan.
+            return;
+        }
+
+        if ("Account".equals(binding)) {
+            accountBound.merge(itemId, count, Integer::sum);
+            return;
+        }
+
+        sellable.merge(itemId, count, Integer::sum);
+    }
 }

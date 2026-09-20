@@ -35,6 +35,9 @@ public class CraftingProfitView {
     private static ScheduledExecutorService scheduler;
 
     public static class CraftRow {
+        private final boolean calculationAvailable;
+
+        public boolean isCalculationAvailable() { return calculationAvailable; }
         private final IntegerProperty recipeId = new SimpleIntegerProperty();
         private final IntegerProperty outputItemId = new SimpleIntegerProperty();
         private final StringProperty outputName = new SimpleStringProperty();
@@ -54,7 +57,8 @@ public class CraftingProfitView {
         public CraftRow(int recipeId, int outputItemId, String outputName, String discipline,
                         int craftableCount, String missingSummary,
                         int buyCostCopper, int revenueCopper, int profitCopper,
-                        int matsSellValueCopper, String searchBlob) {
+                        int matsSellValueCopper, String searchBlob, boolean calculationAvailable) {
+            this.calculationAvailable = calculationAvailable;
             this.recipeId.set(recipeId);
             this.outputItemId.set(outputItemId);
             this.outputName.set(outputName);
@@ -130,6 +134,7 @@ public class CraftingProfitView {
         title.setStyle("-fx-text-fill: white; -fx-font-size: 24px; -fx-font-weight: bold;");
 
         Label statusLabel = new Label("UI ready. (Next: load recipes + inventory + TP prices from DB)");
+        statusLabel.setId("craftingProfitStatusLabel");
         statusLabel.setStyle("-fx-text-fill: white; -fx-opacity: 0.85;");
         CraftingProfitController controller = new CraftingProfitController();
 
@@ -174,34 +179,6 @@ public class CraftingProfitView {
 
 
         disciplineBox.setPrefWidth(170);
-
-        // Selected-character control (UD-001 / STORY-DOM-012): feeds the binding-aware
-        // owned-inventory lookup so soulbound materials are only usable by this character
-        // (DOMAIN_SPEC.md section 11.1 / DQ-007). Independent of disciplineBox above.
-        ComboBox<String> characterBox = new ComboBox<>();
-        characterBox.setPrefWidth(170);
-        characterBox.setPromptText("Character");
-
-        Runnable reloadCharacterChoices = () -> {
-            Thread t = new Thread(() -> {
-                try {
-                    var names = charRepo.loadAllCharacterNames();
-                    Platform.runLater(() -> {
-                        String previous = characterBox.getValue();
-                        characterBox.getItems().setAll(names);
-                        if (previous != null && names.contains(previous)) {
-                            characterBox.getSelectionModel().select(previous);
-                        } else if (!names.isEmpty()) {
-                            characterBox.getSelectionModel().selectFirst();
-                        }
-                    });
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                }
-            });
-            t.setDaemon(true);
-            t.start();
-        };
 
         CheckBox useOwnMatsCheck = new CheckBox("use own mats");
         useOwnMatsCheck.setSelected(true);
@@ -269,8 +246,6 @@ public class CraftingProfitView {
         HBox filterRow1 = new HBox(12,
                                    new LabelStyled("Discipline:"),
                                     disciplineBox,
-                                    new LabelStyled("Character:"),
-                                    characterBox,
                                     useOwnMatsCheck,
                                     allowBuyCheck,
                                     new LabelStyled("Max buy:"), maxBudgetField,
@@ -304,7 +279,8 @@ public class CraftingProfitView {
                 new Separator(Orientation.VERTICAL),
                 searchField,
                 autoRefreshLabel,
-                btnRefreshTp
+                btnRefreshTp,
+                btnRefresh
         );
         filterRow3.setAlignment(Pos.CENTER);
 
@@ -352,13 +328,12 @@ public class CraftingProfitView {
                     boolean listingBuy  = rbListingBuy.isSelected();
                     boolean dailyBuyMode = dailyBuy.isSelected(); // true = buy daily items, false = craft daily items
                     DiscChoice choice = disciplineBox.getValue();
-                    String selectedCharacter = characterBox.getValue();
 
                     CraftingSettings settings = new CraftingSettings(useOwnMats, allowBuy, maxBuyCopper, listingSell, listingBuy, dailyBuyMode);
 
-                    var data = controller.reload(choice, settings, selectedCharacter);
+                    var data = controller.reload(choice, settings);
 
-// --- DEBUG STATS (UI visible) ---
+// --- Internal diagnostics (console only; not shown in the normal UI - KNOWN_PROBLEMS.md §7.7) ---
                     int totalRows = data.size();
                     int zeroTpBuys = 0;
                     int missingTpQuotes = 0;
@@ -381,10 +356,10 @@ public class CraftingProfitView {
                         }
                     }
 
-                    String dbg = "rows=" + totalRows +
+                    System.out.println("Crafting Profit reload: rows=" + totalRows +
                             " missingLines=" + totalMissingLines +
                             " missingTp=" + missingTpQuotes +
-                            " zeroBuyPrice=" + zeroTpBuys;
+                            " zeroBuyPrice=" + zeroTpBuys);
 
 
                     Platform.runLater(() -> {
@@ -402,13 +377,14 @@ public class CraftingProfitView {
                                     r.revenueCopper,
                                     r.profitCopper,
                                     r.matsSellValueCopper,
-                                    r.searchBlob
+                                    r.searchBlob,
+                                    r.calculationAvailable
                             ));
                         }
 
                         applyClientFilterAndSort(masterRows, visibleRows, searchField.getText(), sortBox.getValue(), table);
 
-                        statusLabel.setText("✅ Loaded " + visibleRows.size() + " recipes.  |  " + dbg);
+                        statusLabel.setText("");
                     });
 
 
@@ -467,8 +443,6 @@ public class CraftingProfitView {
         // --- auto reload when filters change ---
         disciplineBox.valueProperty().addListener((obs, o, n) -> reloadTable.run());
 
-        characterBox.valueProperty().addListener((obs, o, n) -> reloadTable.run());
-
         useOwnMatsCheck.selectedProperty().addListener((obs, o, n) -> reloadTable.run());
 
         allowBuyCheck.selectedProperty().addListener((obs, o, n) -> reloadTable.run());
@@ -524,8 +498,9 @@ public class CraftingProfitView {
         TableColumn<CraftRow, Number> colCraftable = new TableColumn<>("Craftable");
         colCraftable.setCellValueFactory(data -> data.getValue().craftableCountProperty());
 
-//        TableColumn<CraftRow, String> colMissing = new TableColumn<>("Missing / To buy");
-//        colMissing.setCellValueFactory(data -> data.getValue().missingSummaryProperty());
+        TableColumn<CraftRow, String> colStatus = new TableColumn<>("Status / requirements");
+        colStatus.setCellValueFactory(data -> data.getValue().missingSummaryProperty());
+        colStatus.setPrefWidth(260);
 
         TableColumn<CraftRow, Number> colBuyCost = new TableColumn<>("Buy cost");
         colBuyCost.setCellValueFactory(data -> data.getValue().buyCostCopperProperty());
@@ -547,6 +522,12 @@ public class CraftingProfitView {
                 CraftRow row = getTableRow().getItem();
                 if (row == null) {
                     setText(CoinUtils.format(copper.intValue()));
+                    return;
+                }
+
+                if (!row.isCalculationAvailable()) {
+                    setText("Unavailable");
+                    setStyle("-fx-text-fill: white;");
                     return;
                 }
 
@@ -608,6 +589,12 @@ public class CraftingProfitView {
                 CraftRow row = getTableRow().getItem();
                 if (row == null) {
                     setText(CoinUtils.format(copper.intValue()));
+                    return;
+                }
+
+                if (!row.isCalculationAvailable()) {
+                    setText("Unavailable");
+                    setStyle("-fx-text-fill: white;");
                     return;
                 }
 
@@ -676,7 +663,7 @@ public class CraftingProfitView {
                 "Total Sell Value = craftcount × Item Sell Price\nTotal gold gained by crafting and selling");
 
 
-        table.getColumns().addAll(colName, colCraftable, colBuyCost, colMatsSell, colRevenue, colProfit, colLiquid, colTotalProfit);
+        table.getColumns().addAll(colName, colStatus, colCraftable, colBuyCost, colMatsSell, colRevenue, colProfit, colLiquid, colTotalProfit);
         colTotalProfit.setSortType(TableColumn.SortType.DESCENDING);
         table.getSortOrder().clear();
         table.getSortOrder().add(colTotalProfit);
@@ -724,6 +711,11 @@ public class CraftingProfitView {
             TreeItem<String> root = toTreeItem(res.tree, controller);
             root.setExpanded(true);
             recipeTree.setRoot(root);
+
+            if (!rowSel.isCalculationAvailable()) {
+                shoppingList.getItems().setAll(rowSel.getMissingSummary());
+                return;
+            }
 
             // Shopping list (aggregated)
             boolean listingSellMode = rbListingSell.isSelected();
@@ -791,7 +783,6 @@ public class CraftingProfitView {
 
         stage.setScene(new Scene(root, 1400, 950));
         reloadDisciplineChoices.run();
-        reloadCharacterChoices.run();
         reloadTable.run();
 
         Platform.runLater(() -> {
@@ -850,6 +841,12 @@ public class CraftingProfitView {
                     setText(null);
                     return;
                 }
+                var row = getTableRow() == null ? null : getTableRow().getItem();
+                if (row != null && !row.isCalculationAvailable()) {
+                    setText("Unavailable");
+                    setStyle("-fx-text-fill: white;");
+                    return;
+                }
                 int v = copper.intValue();
                 setText((signed ? CoinUtils.formatSigned(v) : CoinUtils.formatSigned(v)));
                 setStyle("-fx-text-fill: white; -fx-font-family: 'Consolas';");
@@ -864,6 +861,12 @@ public class CraftingProfitView {
                 if (empty || copper == null) {
                     setText(null);
                     setStyle("");
+                    return;
+                }
+                var row = getTableRow() == null ? null : getTableRow().getItem();
+                if (row != null && !row.isCalculationAvailable()) {
+                    setText("Unavailable");
+                    setStyle("-fx-text-fill: white;");
                     return;
                 }
                 int v = copper.intValue();

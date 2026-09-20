@@ -97,23 +97,31 @@ Key observed facts about dependency direction:
 
 ### 5.1 Crafting Profit flow
 
+STORY-DOM-014 removed Crafting Profit's separate Character selector; the Discipline selector
+(`DiscChoice`) is the sole calculation-scope control (DOMAIN_SPEC.md section 2.2.1), defaulting to
+`ALL`. Every scope resolves to a roster of `CharacterCraftingProfile` candidates that a single
+coordinated planner assigns per recipe step, instead of restricting the whole plan to one
+pre-selected character:
+
 ```text
-CraftingProfitView (character selector ComboBox, populated via CharacterRepository.loadAllCharacterNames(),
-                     defaults to the first synced character on load - UD-001)
-   -> CraftingProfitController.reload(choice, settings, selectedCharacterName)
+CraftingProfitView (Discipline selector ComboBox only; DiscChoice.Kind.ALL / DISCIPLINE_ONLY /
+                     CHAR_DISCIPLINE, defaults to ALL)
+   -> CraftingProfitController.reload(choice, settings)
         -> RecipeRepository.loadRecipes(...) / loadRecipesForCharacter(...)   [visible/allowed set]
         -> CraftingGraphCache.load()  -> reads crafting_graph_cache.json      [full recipe graph]
-        -> if selectedCharacterName != null:
-             InventoryRepository.loadOwnedInventoryForCharacter(selectedCharacterName) [split
-             sellable/bound owned quantity, binding-aware - DOMAIN_SPEC.md section 11.1 / DQ-007]
-           else (no synced character yet):
-             InventoryRepository.loadOwnedInventory()                        [unfiltered fallback]
+        -> buildCoordinatedRoster(choice): CharacterRepository.loadAllCharacterCrafting() ratings,
+             filtered to the chosen discipline (DISCIPLINE_ONLY) or character (CHAR_DISCIPLINE);
+             ALL keeps every synced character with all of their disciplines
+        -> if settings.useOwnMats && roster non-empty:
+             InventoryRepository.loadOwnedInventoryForCharacters(roster names) [sellable/account-bound/
+             per-character-bound split, binding-aware - DOMAIN_SPEC.md section 11.1 / DQ-007]
         -> TpPriceRepository.loadTpQuotes(itemIds)
         -> ItemRepository.loadItems(itemIds)
-        -> CraftingPlanner.evaluateAll(allRecipes, sellableInv, boundInv, tp, settings, allowedRecipeIds)
-             -> per recipe: RecipeSimulator.simulateRecipe(...)
-                  -> CraftingResolver.resolveOneCraft(...) / resolveNeed(...) / tryCraft(...)
-                       -> PlanState.consumeInventoryWithBinding(...) [bound qty first, no TP opportunity cost]
+        -> CraftingPlanner.evaluateAllCoordinated(allRecipes, sellableInv, accountBoundInv,
+             characterBoundInv, roster, tp, settings, allowedRecipeIds)
+             -> per recipe: RecipeSimulator assigns an eligible roster character per step
+                  (recipe discipline/rating restrictions) and resolves transferable intermediates
+                  between eligible characters, consuming shared/bound inventory without reuse
              -> CostEvaluator.evaluate(...)
         -> builds UiRow list, filters, returns to View
    -> CraftingProfitView displays table
@@ -123,7 +131,13 @@ CraftingProfitView (character selector ComboBox, populated via CharacterReposito
 
 ### 5.2 Crafting Discovery flow
 
-Structurally identical to §5.1, using `CraftingDiscoveryController` and `RecipeRepository.loadMissingDiscoverableRecipeIdsForCharacter(...)` instead of the "visible recipes" query, and filtering by `recipe.minRating <= maxLevel`. It shares the same `CraftingPlanner` / `CraftingGraphCache` / `RecipeTreeBuilder` machinery, and the same character-selector / binding-aware inventory flow described in §5.1.
+Unchanged by STORY-DOM-014: Discovery keeps its own individual-only selectors (a
+Discipline+Character `DiscChoice` combo populated with `CHAR_DISCIPLINE` entries only, plus a
+separate Character selector feeding the binding-aware inventory lookup) and the single-character
+`CraftingPlanner.evaluateAll(...)` path, structurally as in the pre-DOM-014 §5.1: using
+`CraftingDiscoveryController` and `RecipeRepository.loadMissingDiscoverableRecipeIdsForCharacter(...)`
+instead of the "visible recipes" query, and filtering by `recipe.minRating <= maxLevel`. It shares
+the same `CraftingGraphCache` / `RecipeTreeBuilder` machinery as Profit.
 
 ### 5.3 Ectoplasm Salvage flow (two independent implementations)
 
@@ -169,7 +183,7 @@ Each `sync.*` class talks to the GW2 API via `api.Gw2ApiClient`, parses the resp
 | `CraftingDiscoveryView` | `CraftingDiscoveryController` | yes (same engine) | yes (4 repos) | no |
 | `BankView` | none observed | no | (not inspected in depth this pass) | — |
 | `MaterialsView` | none observed | no | (not inspected in depth this pass) | — |
-| `EctoView` | none | no (inline calculation in the view class itself) | no | yes, direct `HttpClient` to `api.guildwars2.com/v2/commerce/prices` |
+| `EctoView` | none | `EctoSalvageCalculator` (plain class, no repo/controller wiring) | no | yes, direct `HttpClient` to `api.guildwars2.com/v2/commerce/prices` |
 | `Gw2App` | none (calls `sync.*`/`InitialSetupService` directly from button handlers) | indirectly (`CraftingGraphCache.rebuild()`) | indirectly (`RecipeRepository` for graph rebuild) | indirectly via `sync.*` |
 
 Only the two crafting features (Profit, Discovery) follow a View → Controller → Domain/Repository separation. The other three UI entry points (`Gw2App` sync buttons, `EctoView`, and the legacy `Main`) call infrastructure or perform calculations directly from the presentation layer.
@@ -201,7 +215,7 @@ Observed (not inferred) mixing of concerns, by file:
 
 1. **`craft/*` importing `repo/*` types directly.** The crafting engine's core data types (`Recipe`, `Ingredient`, `TpQuote`) are repository-owned nested classes, not independent domain types. Persistence and domain are the same classes.
 2. **`repo.RecipeRepository.loadRecipes(...)`** embeds the "recipe is unlocked" business rule as a SQL `UNION` CTE rather than as an application/domain-level concept.
-3. **`EctoView`** is the sole Ectoplasm Salvage implementation in the codebase; it performs the domain calculation (`fillProfitGrid`, `fillLuckGrid`) inline inside the JavaFX view class, with its own hardcoded assumptions (`DUST_PER_ECTO = 0.75`, `LUCK_PER_ECTO = 20.0`, `ECTOS_PER_1000_LUCK = 50`) rather than a separate domain/application class.
+3. **`EctoView`** is the sole Ectoplasm Salvage implementation in the codebase. As of `STORY-DOM-016`, its calculation (`DUST_PER_ECTO = 0.75`, `LUCK_PER_ECTO = 20.0`, `ECTOS_PER_1000_LUCK = 50`, and DOMAIN_SPEC.md §46-47's fee-inclusive net cost) lives in `EctoSalvageCalculator`, a plain class with no JavaFX/repo/controller dependency; `EctoView`'s `fillProfitGrid`/`fillLuckGrid` only format and display that class's results. It is still not wired through a repository or controller like Profit/Discovery.
 4. **`Gw2App`** button handlers directly call `sync.*` static methods and construct `CraftingGraphCache`/`RecipeRepository` instances — synchronization orchestration lives in the UI event-handler layer rather than in `InitialSetupService`/`AccountRefreshService` consistently (some buttons call the service classes, others call `sync.*` directly and duplicate the same call sequence).
 5. **Two independent JDBC connection helpers** (`repo.Db`, `sync.Db`) with different method names but identical behavior, both reading `repo.AppConfig` — duplicated infrastructure rather than a mixing of layers, but relevant to dependency-direction clarity.
 

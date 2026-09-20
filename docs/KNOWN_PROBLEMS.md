@@ -94,7 +94,7 @@ return craftEval.need.getEffectiveCostCopper() <= buyEval.need.getEffectiveCostC
 
 **Recommendation:** Report as a defined-rule conflict; extend `BlockedReason` with the missing values and thread them through instead of filtering rows at the controller layer.
 
-**Status: Partially Resolved.** `craft.BlockedReason` now has `PRICE_UNAVAILABLE`, `RECIPE_NOT_ALLOWED`, and `INSUFFICIENT_BUDGET`, each set instead of silently dropping the row, each covered by a regression test. `CraftingProfitController.hasZeroPricedBuy(...)`'s controller-level row filtering was deliberately left unchanged and remains open.
+**Status: Resolved.** `craft.BlockedReason` has `PRICE_UNAVAILABLE`, `RECIPE_NOT_ALLOWED`, and `INSUFFICIENT_BUDGET`, each set instead of silently dropping the row. `CraftingProfitController.hasZeroPricedBuy(...)` no longer exists; both `CraftingProfitController`/`CraftingDiscoveryController` now route result preparation through a shared `prepareRows(...)` boundary plus `CraftingResultPresentation`, which recomputes "required purchase has no usable price" (missing, zero, or negative — `DOMAIN_SPEC.md` §21) and reports it as `PRICE_UNAVAILABLE` instead of dropping the row. `CraftingProfitView`/`CraftingDiscoveryView` render a "Status / requirements" column carrying the blocked reason and replace numeric cells with "Unavailable" text (never a fabricated zero/free cost or completed profit) for rows where `calculationAvailable` is false. Per `STORY-DOM-013`: covered by unit regression `CraftingBlockedRowsTest` (missing/zero/negative/absent-quote price, both controllers, plus a valid-price control case unaffected) and by real-view TestFX regressions `uiverify.CraftingProfitViewBlockedRowIT`/`uiverify.CraftingDiscoveryViewBlockedRowIT` (STORY-UI-001's harness), each asserting the row stays visible with `PRICE_UNAVAILABLE` in the actual running view. `./mvnw test` (53 tests) and the four real-view IT tests (`FxCompatibilityPrototypeIT`, `CraftingProfitViewSmokeIT`, `CraftingProfitViewBlockedRowIT`, `CraftingDiscoveryViewBlockedRowIT`) all passed together — actual commands and evidence recorded in `STORY-DOM-013`'s Result.
 
 ### 3.6 Ectoplasm Salvage calculation exists in two disagreeing implementations
 
@@ -108,17 +108,15 @@ return craftEval.need.getEffectiveCostCopper() <= buyEval.need.getEffectiveCostC
 
 **Status: Resolved.** Per the resolved `agent/user-decisions/UD-002-ectoplasm-salvage-fee-model.md` (`DOMAIN_SPEC.md` DQ-011), `EctoView` is now the sole implementation; the disconnected `Main.java` was deleted.
 
-### 3.7 Crafting Profit's character selector does not yet offer `All characters`
+**Subsequent product change, implemented:** The PO superseded the no-fee decision in DOMAIN_SPEC.md §45–47/DQ-011. `STORY-DOM-016-ecto-salvage-net-sale-proceeds.md` (DONE) applied it: `EctoView`'s calculation now lives in `EctoSalvageCalculator`, a plain class that deducts the project's 15% Trading Post selling fee from recovered Dust's sale proceeds exactly once (§46) before computing profit and cost-per-1000-Luck (§47), across all four Ecto-buy/Dust-sell combinations. Ecto acquisition cost and the expected yield assumptions (`DUST_PER_ECTO`, `LUCK_PER_ECTO`, `ECTOS_PER_1000_LUCK`) are unchanged and never fee-adjusted. The old duplicate-implementation defect (this section's original subject) remains resolved separately — this is a same-implementation behavior change, not a reappearance of the deleted `Main.java` duplicate.
 
-**Observed fact:** `CraftingProfitView`'s `characterBox` (`ComboBox<String>`) is populated only from `CharacterRepository.loadAllCharacterNames()` — individual synced character names — with no `All characters` entry anywhere in its item list or selection-default logic (`reloadCharacterChoices`, confirmed by direct reading). It defaults to the first synced character name, matching `UD-001`'s original default rather than `UD-004`'s.
+### 3.7 Crafting selection and refresh verification remains pending
 
-**Conflict:** `DOMAIN_SPEC.md` §2.2.1, per the resolved `agent/user-decisions/UD-004-all-characters-calculation-semantics.md`, requires Crafting Profit to offer `All characters` as the first selector entry and initial default, explicitly replacing `UD-001`'s first-synced-character default for this view only.
+**Implementation evidence:** `agent/stories/STORY-DOM-014-coordinate-all-characters-crafting.md` is DONE and records implementation and PostgreSQL/real-view verification of `docs/DOMAIN_SPEC.md` §2.2.1. Earlier observations about the missing coordinated selector predated that completed story and no longer establish an implementation gap.
 
-**Inferred risk:** None beyond the documented gap itself — Crafting Profit still behaves exactly as `STORY-DOM-012` left it (individual-character selection only), which remains valid, tested behavior; it simply does not yet expose the newer coordinated `All characters` mode `UD-004` calls for.
+**Verification completed:** `agent/stories/STORY-DOM-015-preserve-refresh-state-and-verify-character-results.md` is DONE. Two new real-view TestFX regressions (`uiverify.CraftingProfitViewRefreshPreservationIT`, `uiverify.CraftingDiscoveryViewRefreshPreservationIT`, reusing `STORY-UI-001`'s harness) prove, by live execution against a disposable PostgreSQL schema, that the manual "Refresh" button in both views preserves the current Discipline/Character scope, sort mode, search text and checkboxes instead of resetting them to defaults, and that a scope/character change made after a refresh still reaches the coordinated-planner/inventory calculation for characters with differing bound-material ownership. No defect was found; no production code changed. Automatic refresh was confirmed by code reading to invoke the identical reload path as manual refresh; live scheduler execution remains impractical to automate without the live GW2 API (both schedulers call `AccountSync`/`CharacterSync` methods that hit `https://api.guildwars2.com`), consistent with `STORY-UI-001`'s own constraint against the live API as a normal test dependency. See `STORY-DOM-015`'s Result for full detail, including a recorded (non-blocking) open wording question about whether `DOMAIN_SPEC.md` §2.2.1's "ascending/reverse direction" also covers `TableView`'s native per-column click-sort, separate from the sort-mode `ComboBox` whose own preservation is proven.
 
-**Recommendation:** No action needed beyond tracking — `STORY-DOM-014-coordinate-all-characters-crafting.md` (Status: TODO at the time of writing) is the story explicitly scoped to add the `All characters` entry together with the coordinated multi-character planning logic it requires (per-step eligibility, transferable intermediates, soulbound-per-step enforcement). Implementing only the selector entry without that planning logic would misrepresent `All characters` as available when the underlying calculation cannot yet honor it, so this is deliberately left for that story rather than partially addressed here.
-
-**Status: Open**, tracked by `STORY-DOM-014` (TODO). `STORY-DOM-015` (verification of individual-character selection/refresh behavior) confirmed this gap during its own verification pass but its scope does not include implementing `All characters` mode.
+**Status: Resolved.**
 
 ---
 
@@ -239,13 +237,30 @@ a conditional debug print hardcoded to one specific item ID.
 
 **Status: Resolved.** `crafting_graph_cache.json` was untracked from git and added to `.gitignore`, and `CraftingGraphCache.load()` now auto-rebuilds when the file is missing.
 
-### 7.6 Arbitrary craft-count cap
+### 7.6 Intentional craft-count cap (resolved)
 
 **Observed fact:** `RecipeSimulator.simulatePhase(...)` hard-stops at `result.getCraftCount() >= 250`.
 
 **Inferred risk:** Not itself a bug, but an undocumented behavior boundary — a very large craftable count (plausible for cheap, high-volume materials) is silently truncated to 250 with no domain-level state indicating truncation occurred, which could misrepresent `totalProfitCopper` as a true maximum when it is actually a capped figure.
 
-**Recommendation:** Document this as an intentional performance guard in `DOMAIN_SPEC.md` if it is meant to stay, or expose a "capped" indicator if it should be visible to users.
+**Status: Resolved by explicit decision.** `agent/user-decisions/UD-003-craft-simulation-cap.md` is answered and `docs/DOMAIN_SPEC.md` §28 records the intentional limit and indicator policy. No implementation change or new passing-test claim is made by this planning update.
+
+### 7.7 Crafting Profit exposes technical status counters (resolved)
+
+**PO-reported issue:** `remove-crafting-profit-debug-status-text.md` reports a line below the Crafting Profit Analyzer title such as `Loaded 2179 recipes. | rows=2179 missingLines=0 missingTp=0 zeroBuyPrice=0`. These numbers are the request's example, not measured repository/runtime facts.
+
+**Required correction:** Remove this developer diagnostic line from normal Crafting Profit presentation; preserve useful internal log diagnostics and actual user-facing errors. Keep the title and surrounding layout clean. This differs from the resolved planner console instrumentation in §7.2.
+
+**Status: Resolved.** `STORY-UI-002-remove-crafting-profit-debug-text.md`: `CraftingProfitView`'s
+reload success handler now logs the same row/missing/zero-price counters via `System.out.println`
+instead of the shared `statusLabel`, and clears that label's text on success, so neither the "Loaded
+N recipes" count nor the counters appear in the UI on initial load, manual Refresh, or auto-refresh.
+Genuine user-facing messages on the same label (load/auto-refresh/TP-refresh failure text) are
+unchanged. Verified live via `uiverify.CraftingProfitViewSmokeIT` (line absent after load and after
+Refresh, title retained) and a new `uiverify.CraftingProfitViewErrorStatusIT` (a forced `SQLException`
+still surfaces `"❌ DB load failed: ..."`). Not addressed: the same label's separate, transient
+`"MaxBuy UI=..."` debug text shown at the very start of every reload — a different statement than the
+one reported here, out of this story's scope.
 
 ---
 
@@ -263,10 +278,10 @@ Ranked by combination of (a) confirmed conflict with an authoritative spec and (
 1. §3.1 — craft-vs-buy selection optimizes cash over effective cost (directly contradicts a worked example in `DOMAIN_SPEC.md`, affects every profit calculation). **Resolved** — see §3.1.
 2. §3.3 — owned-material pool omits character inventories (affects every profit/discovery calculation for any item held on a character). **Resolved** — see §3.3.
 3. §4.1 — domain layer coupled to repository types (blocks `TEST_STRATEGY.md`'s entire domain-test strategy and `TARGET_ARCHITECTURE.md`'s migration plan). **Still open** — scheduled for Phase 2 (`docs/ROADMAP.md`).
-4. §3.2, §3.4, §3.5 — recipe-selection priority, bound-material rules, and price-unavailable state, each independently confirmed unimplemented. **§3.2 and §3.4 resolved; §3.5 partially resolved** — see each subsection.
+4. §3.2, §3.4, §3.5 — recipe-selection priority, bound-material rules, and price-unavailable state, each independently confirmed unimplemented. **Resolved** — see each subsection.
 5. §3.6 — duplicated/disagreeing Ecto calculation (user-facing numeric inconsistency, but isolated to one feature). **Resolved** — see §3.6.
-6. §3.7 — Crafting Profit's character selector does not yet offer the resolved `All characters` default. **Open**, tracked by `STORY-DOM-014` — see §3.7.
+6. §3.7 — Crafting Profit's coordinated scope selector and its refresh/selection verification. **Resolved** — see §3.7.
 
 (§2.1, configuration hardcoding, is resolved — see §2.)
 
-This ranking reflects priority at the time this document was first written. Most items have since been implemented — see each subsection's Status line above and `agent/stories/BACKLOG.md` `## Done` for the stories that closed them. Still-open work: §3.5's controller-layer row filtering, §3.7's pending `All characters` selector/planning mode, and §4's architectural coupling (Phase 2).
+This ranking reflects priority at the time this document was first written. Most items have since been implemented — see each subsection's Status line above and `agent/stories/BACKLOG.md` `## Done` for the stories that closed them. Still-open work: §4's architectural coupling (Phase 2).

@@ -8,7 +8,7 @@ Preserve crafting view selections and verify character-sensitive results
 
 ## Status
 
-BLOCKED
+DONE
 
 ## Milestone
 
@@ -33,7 +33,7 @@ STORY-DOM-012 records a selection listener and preservation of character choice,
 
 - Trace individual-character selection through each view, controller, domain calculation and displayed list using characters whose relevant bound inventory differs. Fix only demonstrated defects; if correct, record evidence without unnecessary behavior changes.
 - Automatic and manual data refreshes preserve valid character, sort mode, sort direction and comparable existing filter/sort selections in both views for the current session.
-- Initial creation uses authoritative defaults. Removed options fall back gracefully; invalid selections are not retained.
+- Initial creation uses authoritative defaults. Removed options fall back gracefully; invalid selections are not retained. For Profit, exercise All, generic discipline and specific character/discipline scopes through the sole Discipline selector defined in DOMAIN_SPEC.md §2.2.1; do not reintroduce a separate Character selector. Historical Result references to that control describe the earlier implementation only.
 - Updated results use current selections rather than resetting controls to defaults; verify visible recalculation when relevant bound-material differences affect the plan.
 - Keep both views consistent without introducing persisted settings. Record the actual cause of any confirmed refresh or selection defect and the evidence for its correction.
 
@@ -57,6 +57,8 @@ STORY-DOM-013; STORY-DOM-014 (establishes final Profit selector semantics); STOR
 Acceptance criteria met, required verification completed and recorded in Result, relevant regression suite passing, and authoritative documentation consistent with the implemented behavior.
 
 ## Result
+
+Planning update (2026-09-20): Dependencies STORY-DOM-013 and STORY-DOM-014 are DONE; returned to TODO for the remaining verification under the final selector semantics. The following evidence is historical and does not establish completion of the current required real-view checks.
 
 Verified the parts of this story that do not depend on `STORY-DOM-014`'s still-undelivered `All
 characters` selector semantics; found no refresh/selection defect in either view. One genuine gap
@@ -177,10 +179,134 @@ the next story"). All other acceptance criteria (individual-character tracing/ve
 preservation in both views, Discovery's default, view consistency for everything except the pending
 `All characters` entry) are verified and met, with evidence above and in the new test/documentation.
 
+**Completion pass under the final selector semantics (2026-09-20):** `STORY-DOM-014` (DONE) removed
+Crafting Profit's separate `Character` selector and replaced it with the `Discipline` selector as
+the sole calculation-scope control (`All`/generic discipline/specific character+discipline). The
+historical evidence above still refers to the removed `characterBox` for Profit and predates this
+change; the work below re-verifies AC1/AC2/AC4 in the real views under the current selector shape
+and closes the remaining real-view refresh-preservation gap the historical Result left unexecuted.
+
+**Individual-character/scope selection reaches the displayed calculation (AC1), re-confirmed under
+the current selectors:** `STORY-DOM-014`'s own `uiverify.CraftingProfitCoordinatedScopeIT` already
+executed this exact check against the real `CraftingProfitView`/`CraftingDiscoveryView` with two
+characters differing in bound-ore ownership (`All`/generic-discipline/specific-character+discipline
+scopes each produce a different, correct displayed `Craftable` count; Discovery's individual-only
+selector is unaffected; deleting all characters degrades to `All` with zero rows rather than
+erroring). That test is unchanged and still passes; re-reading and re-running it here rather than
+duplicating its scenario satisfies this story's "do not duplicate work already done" concern while
+still recording it as executed real-view evidence for this story's own AC1.
+
+**Refresh preserves valid selections, and a post-refresh scope/character change still recalculates
+(AC2, AC3, AC4) — now proven by live TestFX execution, not code reading alone:** added two new
+real-view regressions reusing `STORY-UI-001`'s harness
+(`uiverify.CraftingProfitViewRefreshPreservationIT`,
+`uiverify.CraftingDiscoveryViewRefreshPreservationIT`), each against a disposable-schema fixture
+with two characters differing in owned bound (soulbound) material for the same recipe:
+
+- Profit: selects the `Alice — Chef` scope (craftable = 1), sets the sort mode to `Max craftable
+  count`, types `widget` into the search field, and enables `buy missing mats`, then clicks the
+  real `Refresh` button. Confirms the Discipline scope, sort mode, search text, and checkbox all
+  keep their values (not reset to startup defaults) and the displayed `Craftable` count is
+  unchanged. Then, after that Refresh has already been used once, switches the scope to `Bea —
+  Chef` (who owns none of Alice's bound Ore) and confirms `Craftable` becomes 0 — proving a scope
+  change made after a refresh cycle still reaches the coordinated-planner recalculation.
+- Discovery: selects character `Alice` and the sole `Chef lvl 400 — Alice` discipline+char scope,
+  disables `buy missing mats` (see note below), confirms the `Status / requirements` column shows
+  nothing missing, then sets sort mode to `Buy cost (low first)`, types `widget` into search, and
+  clicks `Refresh`. Confirms the Character selection, sort mode, search text and checkbox all
+  persist, and the row still reports nothing missing. Then switches the Character selector to
+  `Bea` (independent of the unchanged Discipline+Char scope, per
+  `CraftingDiscoveryController.reload`'s separate `selectedCharacterName` parameter) and confirms
+  the status column reports `BUYING_DISABLED` — Bea's own lack of the bound Ore reaching the
+  calculation.
+- Both new tests were run individually, together, and alongside the full existing `uiverify` IT
+  suite (`CraftingDiscoveryViewBlockedRowIT`, `CraftingProfitCoordinatedScopeIT`,
+  `CraftingProfitViewBlockedRowIT`, `CraftingProfitViewSmokeIT`, `FxCompatibilityPrototypeIT`,
+  `EctoFeeNoticeSmokeIT`) — 8/8 passing, no interference. `./mvnw -o test` (default goal, non-UI
+  suite) is unaffected: 72/72 passing, confirming the `IT` suffix still excludes the new tests from
+  the default goal.
+- `CraftingDiscoveryViewRefreshPreservationIT` reproduced `STORY-DOM-014`'s already-documented
+  "first `ApplicationTest` window in the JVM" TestFX flake (a `ComboBox`-construction timeout) when
+  run cold/alone, exactly like the pre-existing `CraftingDiscoveryViewBlockedRowIT` does under the
+  same condition. Both pass reliably once any other JavaFX window has already opened in the same
+  JVM (e.g. run together, as in the 8/8 evidence above) — this is the same pre-existing
+  headful-TestFX-harness characteristic `STORY-DOM-014` recorded, not a defect introduced here.
+- Note on the Discovery fixture's buying toggle: Discovery's `allowBuyCheck` ("buy missing mats")
+  defaults on. With it enabled, the resolver also evaluates buying *further* (beyond-owned) units
+  of the bound, unpriced Ore for a possible second craft and correctly reports the whole row as
+  `PRICE_UNAVAILABLE` per `DOMAIN_SPEC.md` §21/`STORY-DOM-013` — even for Alice, who owns enough
+  for one craft. This was investigated (via temporary debug output, since removed) and confirmed to
+  be existing, correct, already-verified `STORY-DOM-013` behavior, not a defect of this story's
+  scope; the new tests disable buying to isolate this story's own concern (selection/refresh
+  preservation and owned-bound-material recalculation) from that already-covered interaction,
+  matching `CraftingProfitCoordinatedScopeIT`'s own buying-disabled comparison.
+- No production code was changed by this pass. Both new tests passed on first correctly-designed
+  execution once the fixture assumptions above were corrected against actually-observed application
+  behavior (not asserted from assumption) — confirming, by live execution rather than code reading,
+  that neither view's manual "Refresh" resets the Discipline/Character scope, sort mode, search
+  text, or checkbox controls, consistent with this story's original (still-valid) code-reading
+  finding that no refresh code path in either view touches those controls' contents.
+
+**Automatic refresh (remaining part of AC2):** unchanged from the original finding — neither view's
+background scheduler (`CraftingProfitView.java`/`CraftingDiscoveryView.java`, the
+`scheduler.scheduleAtFixedRate(...)` blocks) ever calls `reloadDisciplineChoices`/
+`reloadCharacterChoices`; on a successful sync cycle each scheduler's `Platform.runLater(...)` calls
+the identical `reloadTable` `Runnable` object that the manual `Refresh` button's `setOnAction`
+handler calls. Since manual-refresh preservation is now proven by live execution above, and
+automatic refresh invokes the exact same reload code path on success, this is sound inference by
+construction, not a separate unexecuted claim. Live execution of the scheduler path itself remains
+impractical to automate under `STORY-UI-001`'s own constraint against the live GW2 API as a normal
+test dependency: both schedulers call `AccountSync.syncAccountMaterials()`/`syncAccountRecipes()`
+(Profit) or additionally `AccountSync.syncAccountBank()`/`CharacterSync.syncCharactersCraftingAndRecipes()`
+(Discovery) before reloading, all of which hit `https://api.guildwars2.com` via `Gw2ApiClient`, and
+neither scheduler's interval is configurable, so waiting for a real cycle (90s/120s) would also be
+impractical inside a bounded test. This is recorded as the documented impractical-automation case,
+not claimed as executed.
+
+**Sort "direction" observation (AC2's "ascending/reverse direction where available" wording):**
+neither view exposes a distinct ascending/descending toggle separate from the sort-mode `ComboBox`
+itself (direction is encoded in the mode text, e.g. "Buy cost (low first)"); that `ComboBox`'s
+preservation was verified above. Both `TableView`s also leave their columns' default
+click-to-sort-by-column behavior enabled, which — if used — would be overwritten by the next
+`applyClientFilterAndSort` call (search/refresh/filter/scope change all re-apply the sort-mode
+`ComboBox`'s comparator unconditionally). Whether the domain intends the native per-column click
+sort to be a "sort... direction... control" in scope for section 2.2.1, or whether the sort-mode
+`ComboBox` is the sole intended sort control, is not stated by `DOMAIN_SPEC.md` §2.2.1 and predates
+this story unchanged either way. Recorded here as an observed, unresolved ambiguity rather than a
+demonstrated defect (`CLAUDE.md`: existing code proves current behavior, not desired behavior; do
+not invent a domain rule to resolve it) — flagged for the product owner rather than fixed.
+
+**Removed-option fallback (AC3):** unchanged from the original finding.
+`CraftingDiscoveryView.reloadCharacterChoices` already preserves the previous character selection
+when it still exists and falls back to the first available one otherwise; Profit's
+`reloadDisciplineChoices` always calls `selectFirst()` unconditionally. Both remain reachable only
+once, at view startup, in the current code (confirmed again by a repository-wide search for both
+call sites) — `STORY-DOM-014`'s own `CraftingProfitCoordinatedScopeIT` exercises the closest live
+boundary that exists (deleting all characters, then reopening the view), which still passes. No new
+call path was introduced by `STORY-DOM-014`/this story, so this remains a code-reading confirmation
+of unreached-but-correct-when-reached logic, not a demonstrated defect requiring a fix under this
+story's "fix only demonstrated defects" constraint.
+
+**Tests run:** `./mvnw -o test-compile` (clean); `./mvnw -o test -Dtest=CraftingDiscoveryViewBlockedRowIT,
+CraftingDiscoveryViewRefreshPreservationIT,CraftingProfitViewRefreshPreservationIT,
+CraftingProfitCoordinatedScopeIT,CraftingProfitViewBlockedRowIT,CraftingProfitViewSmokeIT,
+FxCompatibilityPrototypeIT,EctoFeeNoticeSmokeIT` — 8/8 passing (run together, and the two new tests
+re-run alone afterward to confirm repeatability); `./mvnw -o test` (default goal) — 72/72 passing,
+0 failures/errors. `mvnw.cmd`'s embedded PowerShell wrapper bootstrap required
+`C:\Windows\System32\WindowsPowerShell\v1.0` on `PATH` for this shell, matching `STORY-DOM-014`'s
+already-documented environment note (no project file changed).
+
+**Documentation:** `docs/KNOWN_PROBLEMS.md` §3.7 updated from Open to Resolved with this evidence.
+No `docs/CURRENT_ARCHITECTURE.md`/`DOMAIN_SPEC.md` change was needed — no production behavior
+changed, only new regression tests were added.
+
+**Definition of Done:** all acceptance criteria are met and their verification is recorded above
+with actual executed evidence (real PostgreSQL schema, real JavaFX views); the relevant regression
+suites pass; `docs/KNOWN_PROBLEMS.md` is consistent with the implemented (unchanged) behavior. The
+sort-direction ambiguity noted above is flagged for product-owner input, not a blocker: it is an
+unresolved wording question about scope, not a demonstrated defect in existing behavior. Status set
+to DONE.
+
 ## Blockers
 
-Blocked on `STORY-DOM-014` (TODO) delivering Crafting Profit's `All characters` selector entry and
-its required coordinated multi-character planning logic, per the RESOLVED `UD-004` and
-`DOMAIN_SPEC.md` §2.2.1. This story cannot reach its Definition of Done (all acceptance criteria met)
-until that dependency lands; re-run this story's verification against Crafting Profit's `All
-characters` mode once `STORY-DOM-014` is DONE. Tracked as `docs/KNOWN_PROBLEMS.md` §3.7.
+None.

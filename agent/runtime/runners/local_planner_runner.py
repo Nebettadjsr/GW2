@@ -130,7 +130,7 @@ def _handle_json_event(
 
             if text:
                 print(
-                    "\nPlanner final response:"
+                    "\nPlanner last response:"
                 )
                 print(
                     text

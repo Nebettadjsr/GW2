@@ -1,1 +1,1 @@
-agent/stories/STORY-UI-001-javafx-verification-capability.md
+agent/stories/STORY-QUALITY-001-phase-one-completion-review.md

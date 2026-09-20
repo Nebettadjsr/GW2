@@ -62,4 +62,28 @@ final class CraftTestFixtures {
     static PlanState stateWithBoundInventory(Map<Integer, Integer> sellableInventory, Map<Integer, Integer> boundInventory) {
         return new PlanState(sellableInventory, boundInventory);
     }
+
+    /** DOMAIN_SPEC.md section 2.2.1: coordinated multi-character planning context. */
+    static PlannerContext coordinatedContext(Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput,
+                                              Map<Integer, TpPriceRepository.TpQuote> tp,
+                                              CraftingSettings settings,
+                                              Set<Integer> allowedRecipeIds,
+                                              List<CharacterCraftingProfile> roster) {
+        return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds, roster);
+    }
+
+    /** A candidate character trained in exactly one discipline, at {@code rating}. */
+    static CharacterCraftingProfile profile(String name, String discipline, int rating) {
+        return new CharacterCraftingProfile(name, Map.of(discipline, rating));
+    }
+
+    /**
+     * DOMAIN_SPEC.md section 2.2.1: sellable/account-bound pools shared across every character,
+     * plus soulbound owned quantity usable only by the exact owning character.
+     */
+    static PlanState coordinatedState(Map<Integer, Integer> sellableInventory,
+                                       Map<Integer, Integer> accountBoundInventory,
+                                       Map<String, Map<Integer, Integer>> characterBoundInventory) {
+        return new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory);
+    }
 }

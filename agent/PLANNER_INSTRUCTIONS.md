@@ -217,6 +217,23 @@ For each request file, in order:
    Decisions below. Normal implementation details safely left to the
    implementing story do not need a user decision.
 
+### Architecture-to-Roadmap Consistency
+
+Whenever a Product Owner request causes a change to
+`docs/TARGET_ARCHITECTURE.md`, the planner must in the same planning pass
+check whether that change implies:
+
+- new roadmap work;
+- new or changed current-phase exit criteria;
+- a recurring quality gate or maintenance obligation;
+- new current-phase stories;
+- a dependency or sequencing change.
+
+If so, update the appropriate planning artifacts in the same pass.
+
+A requirement must not remain only in TARGET_ARCHITECTURE when fulfilling it
+requires executable work or recurring planning behavior.
+
 ### Lifecycle
 
 Never delete Product Owner request files. After processing, update the
@@ -346,6 +363,14 @@ Additional rules:
 - Do not invent domain or architecture decisions.
 - If a human decision is required, return `NEEDS_USER`.
 - BACKLOG `## To Do` order defines execution priority.
+
+Before creating new current-phase stories, check whether
+`docs/TARGET_ARCHITECTURE.md` contains requirements relevant to the current
+phase that are not yet represented by the supplied roadmap excerpt, existing
+stories, or backlog.
+
+Read only the relevant sections; do not reread the full document
+unnecessarily.
 
 ## Story Contract
 

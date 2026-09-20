@@ -68,7 +68,7 @@ Crafting Profit and Crafting Discovery must preserve valid user selections durin
 
 Changing the selected character must recalculate and display results for that character. Relevant differences in usable character-bound inventory must affect the calculation; identical results alone do not establish a defect.
 
-Crafting Profit must offer `All characters` as the first and default selector entry, retaining individual synced-character options and their existing behavior. Per resolved UD-004, this replaces UD-001's first-synced-character default only for Crafting Profit. Crafting Discovery retains individual-character selection and its existing default; it must not offer `All characters`.
+Crafting Profit uses its existing `Discipline` selector as the sole calculation-scope control; remove its separate `Character` selector. `All` is the initial default and selects all synced characters using the coordinated planning semantics below. A generic discipline selects all synced characters having that discipline for coordinated planning, respecting the existing recipe discipline and rating restrictions. A specific character/discipline entry (for example, `Armorsmith lvl 500 — Nbt Anch`) restricts calculation to that character and discipline. Retain these character-specific entries. This presentation supersedes UD-004's separate `All characters` selector requirement while retaining its coordinated planning decision. Crafting Discovery retains individual-character selection and its existing default; this consolidation applies only to Crafting Profit.
 
 In Crafting Profit, `All characters` means a coordinated account-wide plan across all synced characters. Different crafting steps may be assigned to different eligible characters; the complete tree need not be executable by one character. Transferable intermediates may pass between characters. Eligibility must be validated per step, including recipe and crafting requirements. Soulbound inputs remain usable only by their owning character under §11.1; copies bound to different characters must never be pooled to satisfy a single character's step. Account-wide/sellable and character-bound resources remain distinct, and quantities must not be reused within a plan (§10).
 
@@ -1203,9 +1203,7 @@ Relevant parameters include:
 - expected Luck per Ectoplasm,
 - Dust sale value.
 
-Per DQ-011, Trading Post selling fees are **not** deducted from any of the figures below — they are
-not a parameter of this calculation, only a cost the user will separately incur when the resulting
-items are actually sold.
+Trading Post sales of recovered materials use net proceeds under §46. This rule applies only to Ectoplasm Salvage; it does not change Crafting Profit's §25 exemption or other application calculations.
 
 ---
 
@@ -1231,8 +1229,7 @@ expected_dust_quantity
 dust_sale_price
 ```
 
-`dust_sale_price` is the raw Trading Post sell-order price with no Trading Post selling fee
-subtracted (DQ-011).
+`dust_sale_price` is the selected gross Trading Post price (§20) after the project's 15% selling-fee deduction: selected gross price × 0.85. Apply this deduction only to proceeds representing a Trading Post sale, not to acquisition cost or Luck. Preserve instant-sell versus listing-sell prices and instant-buy versus listing-buy acquisition costs. Profit is recovered net sale value minus acquisition cost; §47 uses the same fee-inclusive net cost. Preserve the existing expected yield assumptions. This expected-value model does not add a separate fee formula for this view.
 
 ---
 
@@ -1482,7 +1479,7 @@ Normal recipe unlocks are account-wide. Character-specific information determine
 
 ## DQ-011 — Ectoplasm Salvage fee model
 
-`EctoView` is the sole authoritative Ectoplasm Salvage implementation. Trading Post selling fees are not deducted from its displayed price/revenue/profit figures. The UI must inform the user once that Trading Post fees will still apply when the resulting items are actually sold.
+`EctoView` remains the sole Ectoplasm Salvage implementation. The Product Owner request `ecto-salvage-profit-include-tp-fees.md` supersedes UD-002's no-fee decision: apply §46 to the four Ecto-buy/Dust-sell scenarios and the derived Luck costs. Replace the fee-exclusion warning with a short notice that displayed results include Trading Post selling fees. Raw price quotations remain distinguishable from net sale proceeds. This decision is scoped only to this view.
 
 **Status:** DECIDED
 

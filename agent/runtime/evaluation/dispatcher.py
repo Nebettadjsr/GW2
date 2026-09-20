@@ -244,7 +244,8 @@ ACTIVE STORY:
 
 def build_claude_prompt(
         plan: dict,
-        story_path: Path
+        story_path: Path,
+        repo_map_context: str = "",
 ) -> str:
 
     criteria = "\n".join(
@@ -265,9 +266,21 @@ def build_claude_prompt(
         REPO_ROOT
     ).as_posix()
 
-    return f"""Execute {plan["story_id"]}.
+    # repo_map_context (see agent/runtime/support/repo_map.py) is
+    # purely optional orientation context for Claude's implementation
+    # prompt -- when empty (the default, and always the case for the
+    # Codex planner/Hermes/selector, which never call this with one),
+    # the prompt is byte-for-byte identical to before this parameter
+    # existed.
+    sections = [
+        f"Execute {plan['story_id']}."
+    ]
 
-Active story:
+    if repo_map_context:
+        sections.append(repo_map_context)
+
+    sections.append(
+        f"""Active story:
 {relative_story}
 
 Goal:
@@ -283,3 +296,6 @@ Use CLAUDE.md and the active story as the source of truth.
 
 Stop after completing or blocking this story.
 """
+    )
+
+    return "\n\n".join(sections)

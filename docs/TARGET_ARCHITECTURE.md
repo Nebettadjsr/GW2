@@ -965,7 +965,35 @@ Before major optimization, record the baseline, bottlenecks and measured time at
 Correctness takes priority: preserve DOMAIN_SPEC.md behavior and intentional limits, never silently skip valid calculations or reduce correctness. Avoid unrepresentative synthetic targets. Temporary instrumentation must not clutter production behavior unless it retains diagnostic value. Repeat the same measurements after optimization, verify automated tests still pass, and document before/after evidence of substantial improvement in time to usable results. Independent measured bottlenecks may be addressed separately.
 
 
-# 34. Status
+# 34. Repository quality and recurring review policy
+
+Aim for a functioning, maintainable, well-tested and well-documented product with low technical debt. Protect meaningful domain behavior, persistence semantics, integration paths, regression-prone logic and critical user workflows with automated tests where practical; coverage percentage alone is not a success criterion. Testing methodology remains owned by `docs/TEST_STRATEGY.md`.
+
+Review implementation and documentation at milestone completion, after substantial feature clusters where useful, and before declaring major stages complete, rather than after every story. Implementation reviews examine duplication, competing implementations, redundant abstractions, dead or obsolete compatibility code, complexity hotspots, inconsistent patterns, guideline violations, unnecessary coupling, cycles, architecture drift and weak regression protection. Converge toward clear responsibilities, stable interfaces and understandable dependency direction. Preserve intended behavior unless separately authorized to change it.
+
+Documentation reviews check stale facts, contradictions, duplication, obsolete references, missing domain/architecture/test explanations and incorrect ownership. Correct the authoritative owner; prefer concise documentation over volume. Review unchecked criteria from completed milestones against evidence: correct mistaken checkboxes, or record still-applicable gaps for scope-appropriate planning without reviving obsolete implementation paths. Phase locks still apply.
+
+Keep build/test commands deterministic and repeatable, document environment requirements and automate hidden manual setup where practical. Important tests should not depend on developer-local state. Record defects and debt in `docs/KNOWN_PROBLEMS.md`, mark resolved items accurately, and seek a downward trend in open problem severity and count. Create small cleanup stories only for concrete evidenced improvements; do not mandate broad rewrites, filler work or indefinite quality gates.
+
+Where practical, review evidence such as tests by layer, critical-path coverage, code coverage, defect/debt count and severity, duplicate-code/static-analysis findings, complexity, dependency cycles, build/test reliability, documentation inconsistencies, manual-only checks and unresolved technology decisions. These are diagnostic signals, not numeric product goals. Record actual observations in review/story results, not live totals in testing methodology or planner continuity state. This policy establishes recurring review expectations; it does not claim any review has run.
+
+# 35. Human-readable crafting documentation
+
+Maintain a small Markdown guide for readers with little Guild Wars 2 knowledge. Its entry point is `docs/crafting/README.md`; split into a few files only when readability benefits. Explain the end-to-end Profit and Discovery calculation, inputs, assumptions and why rules matter, with compact glossary/FAQ and worked economic examples rather than class/method walkthroughs. Cover the applicable rules in `DOMAIN_SPEC.md`: recipe choice/unlocks, discipline/rating and character eligibility, coordinated crafting and transferable intermediates, binding, account/bank/character inventory, opportunity cost, buying and craft-versus-buy, price modes, feature-specific fees, unavailable prices and blocked results, daily restrictions, discovery, the intentional simulation cap, and total/per-output-item profit. Distinguish game mechanics, project choices and documented implementation gaps; do not invent rules.
+
+This guide is an explicit exception to the normal prohibition on documentation duplication: a self-contained explanatory summary is permitted; authoritative documents remain the source of truth. Every change materially affecting user-visible crafting rules, character/binding handling, pricing, fees, profit, blocked states or limits must update the relevant guide alongside the authoritative owner. Development/implementation documentation must link this maintenance requirement. Add only concise links near the top of root `README.md` to `agent/README.md` (AI-assisted development/orchestration) and the crafting guide. Do not rewrite `agent/README.md` or duplicate it in the root README.
+
+# 36. Deferred independent model availability in development orchestration
+
+Future planned orchestration work, not executable Phase 1 domain-stabilization work: Python must manage Claude and Codex capacity independently while retaining deterministic story selection and a simple single-writer model for workflow state. No implementation state or current defect is asserted here.
+
+Priority is to resume an active Claude story when capacity permits, then execute selectable To Do work. At To Do <= 2, invoke Codex to replenish within existing phase/story rules if its capacity permits. Codex exhaustion must not stop Claude from draining already-planned work, even to zero. When Claude is unavailable, Codex may perform useful current-scope planning until no further useful work should be created. This does not authorize future-phase stories. If both lack capacity, wait locally; resume the appropriate flow when capacity returns.
+
+Usage exhaustion is neither story nor planning failure. Do not invoke an exhausted model repeatedly. Reuse the existing Claude usage-wait approach where practical and add equivalent Codex detection/wait handling; local checks should avoid consuming model tokens. Claude resumes the same unfinished active story; planning resumes only while its trigger remains applicable.
+
+Capacity checks and safe preparation may proceed independently. Python must serialize all commits to shared workflow state, including BACKLOG, CURRENT_STORY, story statuses, planner/evaluator/runtime result artifacts and milestone/planning state. Codex must not modify an active implementation story; Claude must not select its next story. Prefer understandable scheduling and single-writer state updates over concurrent file-locking complexity.
+
+# 37. Status
 
 This document defines the initial target architecture.
 

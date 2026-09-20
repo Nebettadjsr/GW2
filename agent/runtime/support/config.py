@@ -1,3 +1,5 @@
+import os
+import shutil
 from pathlib import Path
 
 
@@ -77,3 +79,31 @@ PLANNING_TRIGGER_MAX_READY_STORIES = 2
 # the first place -- see PLANNER_INSTRUCTIONS.md.
 PLANNING_MIN_STORIES_PER_RUN = 1
 PLANNING_MAX_STORIES_PER_RUN = 6
+
+# ============================================================
+# Aider RepoMap (experimental, orientation-only context for Claude)
+#
+# Aider is used only as a repository-structure/context generator for
+# Claude's implementation prompt -- never as a coding agent, and never
+# added to the Codex planner, the Hermes evaluator/dispatcher, or the
+# deterministic selector. See agent/runtime/support/repo_map.py.
+# ============================================================
+
+# Recommended initial budget; see agent/runtime/README.md.
+REPO_MAP_TOKEN_BUDGET = 1200
+
+
+def _default_repo_map_enabled() -> bool:
+    # AGENT_REPO_MAP_ENABLED lets a single run be forced on/off (e.g.
+    # for an A/B comparison) without editing this file. Unset falls
+    # back to "on only if the Aider CLI is actually installed", so a
+    # normal checkout without Aider behaves exactly as if this feature
+    # did not exist.
+    override = os.environ.get("AGENT_REPO_MAP_ENABLED")
+
+    if override is not None:
+        return override.strip().lower() not in ("0", "false", "no", "")
+
+    return shutil.which("aider") is not None
+
+REPO_MAP_ENABLED = _default_repo_map_enabled()
