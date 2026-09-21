@@ -1,7 +1,5 @@
 package craft;
 
-import repo.RecipeRepository;
-
 import java.util.HashMap;
 import java.util.Map;
 
@@ -10,7 +8,7 @@ public class RecipeSimulator {
     private final CraftingResolver resolver = new CraftingResolver();
 
     public RecipeSimulationResult simulateRecipe(
-            RecipeRepository.Recipe recipe,
+            Recipe recipe,
             PlannerContext ctx,
             PlanState baseState
                                                 ) {
@@ -53,7 +51,7 @@ public class RecipeSimulator {
     }
 
     private void simulatePhase(
-            RecipeRepository.Recipe recipe,
+            Recipe recipe,
             PlannerContext ctx,
             PlanState state,
             RecipeSimulationResult result

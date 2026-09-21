@@ -1,30 +1,28 @@
 package craft;
 
-import repo.RecipeRepository;
-
 import java.util.*;
 
 public class CraftingGraph {
 
-    private final List<RecipeRepository.Recipe> recipes;
-    private final Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput;
+    private final List<Recipe> recipes;
+    private final Map<Integer, List<Recipe>> recipesByOutput;
 
-    public CraftingGraph(List<RecipeRepository.Recipe> recipes) {
+    public CraftingGraph(List<Recipe> recipes) {
         this.recipes = recipes;
         this.recipesByOutput = new HashMap<>();
 
-        for (RecipeRepository.Recipe r : recipes) {
+        for (Recipe r : recipes) {
             recipesByOutput
                     .computeIfAbsent(r.outputItemId, k -> new ArrayList<>())
                     .add(r);
         }
     }
 
-    public List<RecipeRepository.Recipe> getRecipes() {
+    public List<Recipe> getRecipes() {
         return recipes;
     }
 
-    public Map<Integer, List<RecipeRepository.Recipe>> getRecipesByOutput() {
+    public Map<Integer, List<Recipe>> getRecipesByOutput() {
         return recipesByOutput;
     }
 }

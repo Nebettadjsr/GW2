@@ -1,7 +1,7 @@
 import craft.BlockedReason;
 import craft.CraftResult;
 import craft.CraftingSettings;
-import repo.tp.TpPriceRepository;
+import craft.PriceQuote;
 
 import java.util.Map;
 
@@ -10,7 +10,7 @@ final class CraftingResultPresentation {
     final boolean calculationAvailable;
     final String status;
 
-    CraftingResultPresentation(CraftResult result, Map<Integer, TpPriceRepository.TpQuote> quotes,
+    CraftingResultPresentation(CraftResult result, Map<Integer, PriceQuote> quotes,
                                CraftingSettings settings) {
         boolean purchaseUnavailable = settings.allowBuying && result.missingToBuy.entrySet().stream()
                 .anyMatch(entry -> {

@@ -39,6 +39,14 @@ PO requests, user decisions and interventions remain in their existing locations
 outside this package. Their ownership rules remain in `CLAUDE.md` and
 `agent/PLANNER_INSTRUCTIONS.md`.
 
+`agent/logs/` (a sibling of `agent/stories/`, defined as `LOGS_DIR` in
+`support/config.py`) is also outside this package, for the same reason
+`artifacts/` stays inside it: `artifacts/` is disposable/regenerated and
+gitignored, while `agent/logs/` is a committed, append-only historical
+record and therefore does not belong in a folder whose whole convention is
+"generated, not source of truth, safe to delete." See "Daily operational
+log" below.
+
 Place new runtime files by responsibility, not in the root. Keep shared helpers
 small, tests separate from production code, and generated outputs separate from
 source. Avoid duplicate state, compatibility copies and redundant abstractions.
@@ -94,3 +102,48 @@ python -m agent.runtime.core.orchestrator   # run B: with RepoMap (needs Aider i
 Compare the two runs' `usage_before`/`usage_after` and `duration` log lines
 for the same story to see whether RepoMap measurably reduced Claude's
 context/token usage.
+
+## Independent Claude/Codex capacity scheduling
+
+`support/capacity.py`'s `CapacityProbe` is a generic, reusable local-cooldown
+gate: `available()` calls a model-specific check function at most once per
+`MODEL_CAPACITY_RECHECK_SECONDS` (`support/config.py`), caching the result in
+between so neither model is probed more than necessary. `core/orchestrator.py`'s
+`CapacityScheduler` holds one `CapacityProbe` per model -- Claude's checks
+`get_claude_session_usage_percent()` (`runners/claude_runner.py`), Codex's
+calls `codex_available()` (`runners/codex_capacity.py`, a genuinely
+token-free `app-server` JSON-RPC quota read) -- and applies the scheduling
+priority order: resume an unfinished active story first, then execute other
+selectable To Do work, then use Codex to replenish the queue while Claude is
+busy or the queue is empty, then fall back to local waiting (never a busy
+loop) if neither model can currently make progress.
+
+Codex is a planner only: `core/project_planner.py`'s `_run_guarded_planner()`
+snapshots protected state (the active story file, `CURRENT_STORY.md`, the
+BACKLOG `## Active` section) before every planning pass and verifies it
+byte-for-byte afterwards, rolling back and raising if anything protected
+changed. This is what guarantees Codex never touches the active story and
+never becomes a second writer of orchestration state -- there is exactly one
+process (the orchestrator) writing workflow state at a time, by construction,
+not by locking.
+
+## Daily operational log
+
+`agent/logs/` holds one append-only file per calendar day, named by date
+(`YYYY-MM-DD.log`, e.g. `agent/logs/2026-09-20.log`), written by
+`support/daily_log.py`'s `log_line()` and located via `LOGS_DIR` in
+`support/config.py`. A file is created automatically the first time a line
+is logged after the date rolls over; an existing day's file is only ever
+appended to, never truncated or overwritten.
+
+Every orchestrator cycle (`core/orchestrator.py`'s `main()`) logs two lines
+before acting: the raw Claude/Codex availability check (`Availability
+check: ...`), and the scheduling decision made from it and why (`Decision:
+...`). This makes the check -> decide -> (optionally prepare a RepoMap) ->
+act ordering described above independently auditable after the fact, not
+just verifiable by reading the code.
+
+Unlike `artifacts/`, `agent/logs/` is **committed to Git, not ignored** --
+it is meant to be a permanent historical record, not disposable runtime
+output. `.gitignore`'s blanket `*.log` rule is deliberately carved out for
+it with a negation pattern (`!agent/logs/*.log`).

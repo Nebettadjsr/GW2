@@ -4,6 +4,7 @@ import api.BatchUtils;
 import api.Gw2ApiClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import parser.ItemParser;
+import repo.Db;
 
 import java.nio.file.*;
 import java.sql.*;
@@ -21,7 +22,7 @@ public final class IconSync {
 
         List<Integer> ids = new ArrayList<>();
 
-        try (Connection con = Db.openConnection();
+        try (Connection con = Db.open();
              Statement st = con.createStatement();
              ResultSet rs = st.executeQuery("""
              SELECT item_id
@@ -47,7 +48,7 @@ public final class IconSync {
 
         int done = 0;
 
-        try (Connection con = Db.openConnection();
+        try (Connection con = Db.open();
              PreparedStatement psUpdate = con.prepareStatement(updateSql)) {
 
             for (List<Integer> batch : BatchUtils.chunk(ids, SyncConstants.HTTP_IDS_BATCH)) {
@@ -134,7 +135,7 @@ public final class IconSync {
         record IconJob(int itemId, String iconUrl) {}
         List<IconJob> jobs = new ArrayList<>();
 
-        try (Connection con = Db.openConnection();
+        try (Connection con = Db.open();
              PreparedStatement psSelect = con.prepareStatement(selectSql);
              ResultSet rs = psSelect.executeQuery()) {
 
@@ -235,7 +236,7 @@ public final class IconSync {
 
         if (updates == null || updates.isEmpty()) return;
 
-        try (Connection con = Db.openConnection();
+        try (Connection con = Db.open();
              PreparedStatement psUpdate = con.prepareStatement(updateSql)) {
 
             con.setAutoCommit(false);

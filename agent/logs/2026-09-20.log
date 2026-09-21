@@ -1,0 +1,112 @@
+[22:34:17] Availability check: claude_available=True, codex_available=True
+[22:34:17] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[22:52:09] Availability check: claude_available=True, codex_available=True
+[22:52:09] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[22:53:56] Availability check: claude_available=True, codex_available=True
+[22:53:56] Decision: code (select next story) -- reason: 1 selectable To Do candidate(s), Claude available
+[22:54:04] Availability check: claude_available=True, codex_available=True
+[22:54:04] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[23:02:17] Availability check: claude_available=True, codex_available=True
+[23:02:17] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[23:03:16] Availability check: claude_available=True, codex_available=True
+[23:03:16] Decision: plan (attempt) -- reason: To Do queue is empty
+[23:05:07] Availability check: claude_available=True, codex_available=True
+[23:05:07] Decision: code (select next story) -- reason: 2 selectable To Do candidate(s), Claude available
+[23:05:16] Availability check: claude_available=True, codex_available=True
+[23:05:16] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[23:16:58] Availability check: claude_available=True, codex_available=True
+[23:16:58] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[23:18:39] Availability check: claude_available=True, codex_available=True
+[23:18:39] Decision: code (select next story) -- reason: 2 selectable To Do candidate(s), Claude available
+[23:18:47] Availability check: claude_available=True, codex_available=True
+[23:18:47] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[23:26:33] Availability check: claude_available=False, codex_available=True
+[23:26:33] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[23:27:13] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:28:19] Availability check: claude_available=False, codex_available=True
+[23:28:19] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:28:19] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:29:24] Availability check: claude_available=False, codex_available=True
+[23:29:24] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:29:24] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:30:30] Availability check: claude_available=False, codex_available=True
+[23:30:30] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:30:30] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:31:36] Availability check: claude_available=False, codex_available=True
+[23:31:36] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:31:36] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:32:42] Availability check: claude_available=False, codex_available=True
+[23:32:42] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:32:42] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:33:47] Availability check: claude_available=False, codex_available=True
+[23:33:47] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:33:47] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:34:53] Availability check: claude_available=False, codex_available=True
+[23:34:53] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:34:53] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:35:59] Availability check: claude_available=False, codex_available=True
+[23:35:59] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:35:59] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:37:05] Availability check: claude_available=False, codex_available=True
+[23:37:05] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:37:05] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:38:10] Availability check: claude_available=False, codex_available=True
+[23:38:10] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:38:10] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:39:16] Availability check: claude_available=False, codex_available=True
+[23:39:16] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:39:16] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:40:22] Availability check: claude_available=False, codex_available=True
+[23:40:22] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:40:22] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:41:28] Availability check: claude_available=False, codex_available=True
+[23:41:28] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:41:28] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:42:34] Availability check: claude_available=False, codex_available=True
+[23:42:34] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:42:34] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:43:39] Availability check: claude_available=False, codex_available=True
+[23:43:39] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:43:39] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:44:45] Availability check: claude_available=False, codex_available=True
+[23:44:45] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:44:45] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:45:51] Availability check: claude_available=False, codex_available=True
+[23:45:51] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:45:51] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:46:57] Availability check: claude_available=False, codex_available=True
+[23:46:57] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:46:57] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:48:03] Availability check: claude_available=False, codex_available=True
+[23:48:03] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:48:03] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:49:08] Availability check: claude_available=False, codex_available=True
+[23:49:08] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:49:08] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:50:14] Availability check: claude_available=False, codex_available=True
+[23:50:14] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:50:14] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:51:20] Availability check: claude_available=False, codex_available=True
+[23:51:20] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:51:20] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:52:26] Availability check: claude_available=False, codex_available=True
+[23:52:26] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:52:26] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:53:32] Availability check: claude_available=False, codex_available=True
+[23:53:32] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:53:32] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:54:37] Availability check: claude_available=False, codex_available=True
+[23:54:37] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:54:37] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:55:43] Availability check: claude_available=False, codex_available=True
+[23:55:43] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:55:43] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:56:49] Availability check: claude_available=False, codex_available=True
+[23:56:49] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:56:49] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:57:55] Availability check: claude_available=False, codex_available=True
+[23:57:55] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:57:55] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress
+[23:59:00] Availability check: claude_available=False, codex_available=True
+[23:59:00] Decision: plan (attempt) -- reason: Claude unavailable, using idle time for planning
+[23:59:01] Decision: wait -- reason: claude_available=False, codex_available=True, neither can currently make progress

@@ -5,6 +5,7 @@ import api.Gw2ApiClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import parser.IdListParser;
 import parser.RecipeParser;
+import repo.Db;
 
 import java.sql.*;
 import java.util.*;
@@ -28,7 +29,7 @@ public final class RecipeSync {
 
         int done = 0;
 
-        try (Connection con = Db.openConnection();
+        try (Connection con = Db.open();
              PreparedStatement psNow = con.prepareStatement("SELECT now()")) {
 
             for (List<Integer> batch : BatchUtils.chunk(ids, SyncConstants.HTTP_IDS_BATCH)) {
@@ -145,7 +146,7 @@ public final class RecipeSync {
 
         int ingDone = 0;
 
-        try (Connection con = Db.openConnection()) {
+        try (Connection con = Db.open()) {
 
             for (List<Integer> batch : BatchUtils.chunk(ids, SyncConstants.HTTP_IDS_BATCH)) {
 

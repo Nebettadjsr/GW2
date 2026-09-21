@@ -1,26 +1,15 @@
+import application.CraftingDiscoveryService;
 import craft.*;
-import repo.*;
-import repo.tp.TpPriceRepository;
+import repo.DiscChoice;
+import repo.ItemRepository;
 
 import java.sql.SQLException;
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class CraftingDiscoveryController {
 
-    private final RecipeRepository recipeRepo = new RecipeRepository();
-    private final InventoryRepository invRepo  = new InventoryRepository();
-    private final TpPriceRepository   tpRepo   = new TpPriceRepository();
-    private final ItemRepository      itemRepo = new ItemRepository();
+    private final CraftingDiscoveryService discoveryService = new CraftingDiscoveryService();
 
-    private final CraftingPlanner planner = new CraftingPlanner();
-    private List<RecipeRepository.Recipe> lastAllRecipes = List.of();
-    private CraftingSettings lastSettings = null;
-
-    // caches for right-side details
-    private Map<Integer, CraftResult> lastResultsByRecipeId = Map.of();
-    private Map<Integer, ItemRepository.ItemInfo> lastItems = Map.of();
-    private Map<Integer, TpPriceRepository.TpQuote> lastTp = Map.of();
     private Set<Integer> lastAllowedRecipeIds = Collections.emptySet();
 
     public static class UiRow {
@@ -59,115 +48,33 @@ public class CraftingDiscoveryController {
      */
     public List<UiRow> reload(DiscChoice choice, CraftingSettings settings, String selectedCharacterName) throws SQLException {
 
-        String charName = (choice == null) ? null : choice.charName;
-        String discipline = (choice == null) ? "All" : choice.discipline;
-        int maxLevel = (choice != null) ? choice.rating : Integer.MAX_VALUE;
+        CraftingDiscoveryService.DiscoveryData data = discoveryService.reload(choice, settings, selectedCharacterName);
 
-        // 1) all recipes for planner graph
-        CraftingGraph graph;
-        try {
-            CraftingGraphCache graphCache = new CraftingGraphCache(recipeRepo);
-            graph = graphCache.load();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to load crafting graph cache", e);
-        }
-
-        List<RecipeRepository.Recipe> allRecipes = graph.getRecipes();
-
-        // 2) missing discoverable recipe ids
-        List<Integer> missingIds = recipeRepo.loadMissingDiscoverableRecipeIdsForCharacter(charName, discipline);
-
-        if (missingIds.isEmpty()) {
-            this.lastAllowedRecipeIds = Collections.emptySet();
-            return List.of();
-        }
-
-        Set<Integer> missingSet = new HashSet<>(missingIds);
-
-        // 3) visible recipes are subset of allRecipes
-        List<RecipeRepository.Recipe> visibleRecipes = allRecipes.stream()
-                .filter(r -> missingSet.contains(r.recipeId))
-                .collect(Collectors.toList());
-
-        // Only show recipes that are discoverable NOW for this character level
-        if (choice != null) {
-            visibleRecipes = visibleRecipes.stream()
-                    .filter(r -> r.minRating <= maxLevel)
-                    .toList();
-        }
-
-        Set<Integer> allowedRecipeIds = visibleRecipes.stream()
+        this.lastAllowedRecipeIds = data.visibleRecipes().stream()
                 .map(r -> r.recipeId)
-                .collect(Collectors.toSet());
+                .collect(java.util.stream.Collectors.toSet());
 
-        this.lastAllowedRecipeIds = allowedRecipeIds;
-
-        // 4) inventory
-        Map<Integer, Integer> sellableInv = Map.of();
-        Map<Integer, Integer> boundInv = Map.of();
-
-        if (settings.useOwnMats) {
-            if (selectedCharacterName == null) {
-                // No synced character available: degrade to today's unfiltered pool
-                // (per STORY-DOM-012's "smaller in scope" fallback) instead of throwing.
-                sellableInv = invRepo.loadOwnedInventory();
-            } else {
-                Map<Integer, InventoryRepository.OwnedQuantity> owned =
-                        invRepo.loadOwnedInventoryForCharacter(selectedCharacterName);
-
-                Map<Integer, Integer> sellable = new HashMap<>();
-                Map<Integer, Integer> bound = new HashMap<>();
-                for (var e : owned.entrySet()) {
-                    if (e.getValue().sellableQty() > 0) sellable.put(e.getKey(), e.getValue().sellableQty());
-                    if (e.getValue().boundQty() > 0) bound.put(e.getKey(), e.getValue().boundQty());
-                }
-                sellableInv = sellable;
-                boundInv = bound;
-            }
-        }
-
-        // 5) collect all item ids needed
-        Set<Integer> itemIds = new HashSet<>();
-        for (RecipeRepository.Recipe r : allRecipes) {
-            itemIds.add(r.outputItemId);
-            for (RecipeRepository.Ingredient ing : r.ingredients) {
-                itemIds.add(ing.itemId);
-            }
-        }
-
-        Map<Integer, TpPriceRepository.TpQuote> tp = tpRepo.loadTpQuotes(itemIds);
-        Map<Integer, ItemRepository.ItemInfo> items = itemRepo.loadItems(itemIds);
-        this.lastTp = tp;
-        this.lastItems = items;
-
-        this.lastAllRecipes = allRecipes;
-        this.lastSettings = settings;
-
-        // 6) evaluate
-        Map<Integer, CraftResult> results =
-                planner.evaluateAll(allRecipes, sellableInv, boundInv, tp, settings, allowedRecipeIds);
-        this.lastResultsByRecipeId = results;
-
-        return prepareRows(visibleRecipes, allRecipes, results, items, tp, settings);
+        return prepareRows(data.visibleRecipes(), data.allRecipes(), data.resultsByRecipeId(),
+                data.items(), data.tp(), settings);
     }
 
     // Pure result preparation boundary, also used by controller regression tests.
-    List<UiRow> prepareRows(List<RecipeRepository.Recipe> visibleRecipes,
-                            List<RecipeRepository.Recipe> allRecipes,
+    List<UiRow> prepareRows(List<Recipe> visibleRecipes,
+                            List<Recipe> allRecipes,
                             Map<Integer, CraftResult> results,
                             Map<Integer, ItemRepository.ItemInfo> items,
-                            Map<Integer, TpPriceRepository.TpQuote> tp,
+                            Map<Integer, PriceQuote> tp,
                             CraftingSettings settings) {
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = new HashMap<>();
-        for (RecipeRepository.Recipe rr : allRecipes) {
+        Map<Integer, List<Recipe>> recipesByOutput = new HashMap<>();
+        for (Recipe rr : allRecipes) {
             recipesByOutput
                     .computeIfAbsent(rr.outputItemId, k -> new ArrayList<>())
                     .add(rr);
         }
 
-        // 7) map to UI
+        // map to UI
         List<UiRow> out = new ArrayList<>();
-        for (RecipeRepository.Recipe r : visibleRecipes) {
+        for (Recipe r : visibleRecipes) {
             CraftResult cr = results.get(r.recipeId);
             if (cr == null) continue;
 
@@ -207,53 +114,20 @@ public class CraftingDiscoveryController {
     }
     // --- details helpers (same style as your profit controller) ---
     public CraftResult getResultByRecipeId(int recipeId) {
-        CraftResult cr = lastResultsByRecipeId.get(recipeId);
-        if (cr == null) return null;
-
-        if (cr.tree != null) {
-            return cr;
-        }
-
-        Node lazyTree = buildTreeForRecipeId(recipeId);
-
-        CraftResult enriched = new CraftResult(
-                cr.outputItemId,
-                cr.discipline,
-                cr.craftableCount,
-                cr.missingToBuy,
-                cr.missingToBuyOne,
-                cr.buyCostCopper,
-                cr.matsSellValueCopper,
-                cr.revenueCopper,
-                cr.profitCopper,
-                cr.totalProfitCopper,
-                lazyTree,
-                cr.blockedReason
-        );
-
-        Map<Integer, CraftResult> copy = new HashMap<>(lastResultsByRecipeId);
-        copy.put(recipeId, enriched);
-        lastResultsByRecipeId = copy;
-
-        return enriched;
+        return discoveryService.getResultByRecipeId(recipeId);
     }
 
     public String itemName(int itemId) {
-        ItemRepository.ItemInfo it = lastItems.get(itemId);
-        if (it != null && it.name != null && !it.name.isBlank()) return it.name;
-        return "Item " + itemId;
+        return discoveryService.itemName(itemId);
     }
 
     public int itemSellUnit(int itemId, boolean listingSell) {
-        TpPriceRepository.TpQuote q = lastTp.get(itemId);
-        if (q == null) return 0;
-        Integer v = listingSell ? q.sellUnit : q.buyUnit;
-        return (v == null) ? 0 : v;
+        return discoveryService.itemSellUnit(itemId, listingSell);
     }
 
     private String summarizeMissing(Map<Integer, Integer> missing,
                                     Map<Integer, ItemRepository.ItemInfo> items,
-                                    Map<Integer, TpPriceRepository.TpQuote> tp,
+                                    Map<Integer, PriceQuote> tp,
                                     boolean allowBuying) {
         if (missing == null || missing.isEmpty()) return allowBuying ? "To buy: 0" : "Missing: 0";
 
@@ -268,7 +142,7 @@ public class CraftingDiscoveryController {
                     ? items.get(itemId).name
                     : ("Item " + itemId);
 
-            TpPriceRepository.TpQuote q = tp.get(itemId);
+            PriceQuote q = tp.get(itemId);
             boolean noTp = (q == null || q.sellUnit == null);
 
             parts.add(name + " x" + qty + (noTp ? " (no TP)" : ""));
@@ -277,40 +151,9 @@ public class CraftingDiscoveryController {
         return (allowBuying ? "To buy: " : "Missing: ") + String.join(", ", parts);
     }
 
-    private Node buildTreeForRecipeId(int recipeId) {
-        if (lastAllRecipes == null || lastAllRecipes.isEmpty() || lastSettings == null) {
-            return null;
-        }
-
-        RecipeRepository.Recipe target = null;
-        for (RecipeRepository.Recipe r : lastAllRecipes) {
-            if (r.recipeId == recipeId) {
-                target = r;
-                break;
-            }
-        }
-
-        if (target == null) return null;
-
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = new HashMap<>();
-        for (RecipeRepository.Recipe r : lastAllRecipes) {
-            recipesByOutput.computeIfAbsent(r.outputItemId, k -> new ArrayList<>()).add(r);
-        }
-
-        PlannerContext ctx = new PlannerContext(
-                recipesByOutput,
-                lastTp,
-                lastSettings,
-                lastAllowedRecipeIds
-        );
-
-        RecipeTreeBuilder treeBuilder = new RecipeTreeBuilder();
-        return treeBuilder.buildTree(target, ctx);
-    }
-
-    private String buildSearchBlob(RecipeRepository.Recipe recipe,
+    private String buildSearchBlob(Recipe recipe,
                                    Map<Integer, ItemRepository.ItemInfo> items,
-                                   Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput,
+                                   Map<Integer, List<Recipe>> recipesByOutput,
                                    Set<Integer> visited) {
         if (recipe == null) return "";
 
@@ -325,16 +168,16 @@ public class CraftingDiscoveryController {
             sb.append(out.name).append(' ');
         }
 
-        for (RecipeRepository.Ingredient ing : recipe.ingredients) {
+        for (Ingredient ing : recipe.ingredients) {
             ItemRepository.ItemInfo ingInfo = items.get(ing.itemId);
             if (ingInfo != null && ingInfo.name != null) {
                 sb.append(ingInfo.name).append(' ');
             }
 
-            List<RecipeRepository.Recipe> subRecipes = recipesByOutput.get(ing.itemId);
+            List<Recipe> subRecipes = recipesByOutput.get(ing.itemId);
             if (subRecipes != null && !subRecipes.isEmpty()) {
-                RecipeRepository.Recipe allowedSubRecipe = null;
-                for (RecipeRepository.Recipe sub : subRecipes) {
+                Recipe allowedSubRecipe = null;
+                for (Recipe sub : subRecipes) {
                     if (lastAllowedRecipeIds.contains(sub.recipeId)) {
                         allowedSubRecipe = sub;
                         break;

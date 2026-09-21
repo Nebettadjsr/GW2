@@ -1,0 +1,51 @@
+{
+  "name": "Fixture Character One",
+  "bags": [
+    {
+      "id": 9571,
+      "size": 20,
+      "inventory": [
+        {
+          "id": 19575,
+          "count": 2,
+          "binding": "Character",
+          "bound_to": "Fixture Character One"
+        },
+        {
+          "id": 97254,
+          "count": 1,
+          "binding": "Account"
+        },
+        {
+          "id": 9285,
+          "count": 1
+        },
+        null
+      ]
+    },
+    {
+      "id": 8932,
+      "size": 20,
+      "inventory": [
+        {
+          "id": 21683,
+          "count": 1
+        },
+        null
+      ]
+    }
+  ],
+  "equipment": [
+    {
+      "id": 63602,
+      "slot": "HelmAquatic",
+      "binding": "Character",
+      "bound_to": "Fixture Character One"
+    },
+    {
+      "id": 72446,
+      "slot": "Backpack",
+      "binding": "Account"
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import api.Gw2ApiClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import model.CharacterInfo;
 import parser.*;
+import repo.Db;
 
 import util.DbBind;
 
@@ -48,7 +49,7 @@ public final class CharacterSync {
 
         if (payloads.isEmpty()) return;
 
-        try (Connection con = Db.openConnection()) {
+        try (Connection con = Db.open()) {
             con.setAutoCommit(false);
 
             for (CharPayload p : payloads) {

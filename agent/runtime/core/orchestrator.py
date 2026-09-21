@@ -9,6 +9,13 @@ from agent.runtime.runners.claude_runner import (
 from agent.runtime.support.config import (
     BACKLOG_FILE,
     CLAUDE_RESULT_FILE,
+    CLAUDE_USAGE_LIMIT_PERCENT,
+    CURRENT_STORY_FILE,
+    PROJECT_STATE_FILE,
+    USER_DECISIONS_DIR,
+    PRODUCT_OWNER_REQUESTS_DIR,
+    ROADMAP_FILE,
+    TARGET_ARCHITECTURE_FILE,
     MAX_RETRIES_PER_STORY,
     MODEL,
     NEXT_PROMPT_FILE,
@@ -17,6 +24,9 @@ from agent.runtime.support.config import (
 )
 from agent.runtime.evaluation.dispatcher import build_claude_prompt, dispatch_story
 from agent.runtime.evaluation.evaluator import evaluate_story
+from agent.runtime.runners.codex_capacity import codex_available
+from agent.runtime.support.capacity import CapacityProbe, ModelCapacityUnavailable
+from agent.runtime.support.daily_log import log_line
 from agent.runtime.support.files import file_hash, read_file
 from agent.runtime.core.project_planner import run_planning_pass, should_trigger_planning
 from agent.runtime.core.selector import select_next_story
@@ -169,7 +179,7 @@ def _create_intervention_and_block_story(
 # Story execution loop
 # ============================================================
 
-def execute_active_story() -> str:
+def execute_active_story(before_attempt=None, on_interruption=None) -> str:
 
     story_path = get_active_story_path()
 
@@ -280,6 +290,17 @@ def execute_active_story() -> str:
             f"Unexpected dispatcher result: {plan}"
         )
 
+    # Confirm Claude actually has capacity BEFORE doing any
+    # RepoMap/prompt work -- never generate the map speculatively for
+    # an attempt that might not run yet. before_attempt (the
+    # scheduler's wait_for_claude) blocks here -- using idle time for
+    # Codex planning -- only when Claude is not currently available;
+    # it returns immediately (a no-op) when it already is, so calling
+    # it here in addition to its normal per-attempt call inside the
+    # retry loop below is safe and cheap.
+    if before_attempt is not None:
+        before_attempt()
+
     # RepoMap is an optional, experimental orientation aid for
     # Claude's implementation prompt only -- never for the planner,
     # the Hermes dispatcher/evaluator, or the deterministic selector.
@@ -322,6 +343,9 @@ def execute_active_story() -> str:
 
     while True:
 
+        if before_attempt is not None:
+            before_attempt()
+
         old_result_hash = file_hash(
             CLAUDE_RESULT_FILE
         )
@@ -361,7 +385,10 @@ def execute_active_story() -> str:
             if not prompt.startswith(continuation):
                 prompt = continuation + prompt
             NEXT_PROMPT_FILE.write_text(prompt + "\n", encoding="utf-8")
-            wait_for_claude_capacity()
+            if on_interruption is not None:
+                on_interruption()
+            else:
+                wait_for_claude_capacity()
             continue
 
         new_result_hash = file_hash(
@@ -816,195 +843,148 @@ def requeue_resolved_interventions() -> None:
 # Main orchestrator loop
 # ============================================================
 
+def planning_fingerprint():
+    # No-work/NEEDS_USER suppression lasts only while relevant local inputs stay unchanged.
+    paths = {BACKLOG_FILE, CURRENT_STORY_FILE, PROJECT_STATE_FILE, ROADMAP_FILE, TARGET_ARCHITECTURE_FILE}
+    for directory in (BACKLOG_FILE.parent, USER_DECISIONS_DIR, PRODUCT_OWNER_REQUESTS_DIR):
+        paths.update(directory.glob("*.md"))
+    return tuple((str(path), file_hash(path)) for path in sorted(paths))
+
+
+class CapacityScheduler:
+    def __init__(self, claude=None, codex=None):
+        self.claude = claude or CapacityProbe(
+            lambda: get_claude_session_usage_percent() < CLAUDE_USAGE_LIMIT_PERCENT)
+        self.codex = codex or CapacityProbe(codex_available)
+        self.no_work_at = None
+
+    def plan_if_useful(self, idle=False):
+        if not idle and not should_trigger_planning(len(get_selectable_story_candidates())):
+            return False
+        fingerprint = planning_fingerprint()
+        if fingerprint == self.no_work_at or not self.codex.available():
+            return False
+        try:
+            result = run_planning_pass()
+        except ModelCapacityUnavailable:
+            self.codex.defer()
+            return False
+        status = result.get("status")
+        if status not in ("COMPLETE", "NEEDS_USER"):
+            raise RuntimeError("Project planning failed: " + result.get("reason", "unknown"))
+        changed = planning_fingerprint() != fingerprint
+        useful = status == "COMPLETE" and changed and bool(
+            result.get("story_files_created") or result.get("milestone_transition"))
+        if not useful:
+            self.no_work_at = planning_fingerprint()
+        return useful
+
+    def wait_for_claude(self):
+        # Called between attempts, so an interruption retains the exact retry prompt/budget.
+        while not self.claude.available():
+            if not self.plan_if_useful(idle=True):
+                time.sleep(60)
+
+
+def _active_is_executable():
+    if not CURRENT_STORY_FILE.exists() or not read_file(CURRENT_STORY_FILE).strip():
+        return False
+    path = get_active_story_path()
+    return classify_story_status(extract_status_section(read_file(path))) not in ("DONE", "BLOCKED")
+
+
 def main() -> None:
-
-    print(
-        "GW2 AI Orchestrator started."
-    )
-
-    print(
-        f"Repository: {REPO_ROOT}"
-    )
-
-    print(
-        f"Model:      {MODEL}"
-    )
-
-    print()
-
+    print(f"GW2 AI Orchestrator started. Repository: {REPO_ROOT}")
+    scheduler = CapacityScheduler()
+    replenish = False
     while True:
+        requeue_resolved_interventions()
 
-        # Usage guard only before a new story begins.
-        wait_for_claude_capacity()
-
-        result = execute_active_story()
-
-        if result == "BLOCKED":
-            # The active story's own file already said BLOCKED before
-            # Claude Code was ever called (e.g. a dependency it
-            # discovered itself, or a human edit) -- BACKLOG.md has
-            # already been kept in sync above. Never retry Claude for
-            # it; fall through to the same post-story bookkeeping
-            # COMPLETE/NEEDS_USER use below so deterministic selection
-            # can pick up other independent work instead of stopping
-            # the whole orchestrator.
-            print(
-                "\nActive story is blocked -- "
-                "continuing with other independent work."
-            )
-        elif result == "NEEDS_USER":
-            # The affected story has already been moved to BACKLOG
-            # '## Blocked' with a user-intervention record created
-            # (see _create_intervention_and_block_story()) -- fall
-            # through to the same post-story bookkeeping COMPLETE
-            # uses below. NEEDS_USER blocks only that one story, never
-            # the whole orchestrator.
-            print(
-                "\nStory blocked on user intervention -- "
-                "continuing with other independent work."
-            )
-        elif result != "COMPLETE":
-            print(
-                f"\nUnexpected story result: {result}"
-            )
-            break
-        else:
-            print(
-                "\nStory completed."
-            )
-
-        ready_count = len(
-            get_ready_story_filenames()
+        # Step 1 (per cycle): check both models' availability
+        # independently and log the raw result before any decision is
+        # made. A cheap, cached local check (CapacityProbe) -- never a
+        # fresh model call once a probe is within its cooldown window.
+        claude_ready = scheduler.claude.available()
+        codex_ready = scheduler.codex.available()
+        log_line(
+            f"Availability check: claude_available={claude_ready}, "
+            f"codex_available={codex_ready}"
         )
 
-        planning_failed = False
-        planning_pass_count = 0
-
-        while should_trigger_planning(
-                ready_count
-        ):
-            planning_pass_count += 1
-
-            if planning_pass_count > 3:
-                raise RuntimeError(
-                    "More than 3 consecutive planning passes were "
-                    "requested. Refusing to loop indefinitely."
-                )
-
-            print(
-                f"\nOnly {ready_count} selectable 'To Do' "
-                "stor" + ("y" if ready_count == 1 else "ies")
-                + " remaining -- running a project-planning pass."
+        # Step 2: decide the next action using the scheduling priority
+        # order (resume > execute To Do > replenish at <=2 > idle-plan
+        # if Claude is down > wait). Resuming an active story is always
+        # priority 1 regardless of claude_ready -- if Claude is not
+        # ready yet, execute_active_story()'s own wait_for_claude
+        # callback blocks (using idle Codex capacity for planning
+        # meanwhile) before it ever prepares a RepoMap or invokes
+        # Claude, so the decision here is still "code", just not yet
+        # runnable this instant.
+        if _active_is_executable():
+            log_line(
+                "Decision: code (resume active story) -- reason: an "
+                "unfinished active story exists, which is always "
+                "priority 1"
             )
+            result = execute_active_story(scheduler.wait_for_claude, scheduler.claude.defer)
+            if result not in ("COMPLETE", "BLOCKED", "NEEDS_USER"):
+                raise RuntimeError(f"Unexpected story result: {result}")
+            replenish = True
+            continue
 
-            planning_result = run_planning_pass()
+        candidates = get_selectable_story_candidates()
 
-            planning_status = planning_result.get("status")
-
-            if planning_status == "NEEDS_USER":
-                user_decision_ids = (
-                        planning_result.get("user_decision_ids") or []
+        # After completing work, give a low queue one replenishment opportunity.
+        # On startup existing executable work takes precedence over planning.
+        if replenish or not claude_ready or not candidates:
+            log_line(
+                "Decision: plan (attempt) -- reason: "
+                + (
+                    "just finished a story (replenish check)" if replenish
+                    else "Claude unavailable, using idle time for planning" if not claude_ready
+                    else "To Do queue is empty"
                 )
-
-                print(
-                    "\nPlanning requires user input: "
-                    + (
-                        ", ".join(user_decision_ids)
-                        if user_decision_ids
-                        else "(no decision IDs reported)"
-                    )
-                )
-
-                selectable = get_selectable_story_candidates()
-
-                if selectable:
-                    count = len(selectable)
-
-                    if count == 1:
-                        print(
-                            "1 independent To Do story remains; "
-                            "continuing normal execution."
-                        )
-                    else:
-                        print(
-                            f"{count} independent To Do stories "
-                            "remain; continuing normal execution."
-                        )
-
-                    # Leave the unresolved decision(s) untouched and
-                    # fall through to normal deterministic selection
-                    # below -- NEEDS_USER blocks only the work that
-                    # actually depends on it, never unrelated
-                    # current-milestone work.
-                    break
-
-                print(
-                    "No independent executable stories remain."
-                )
-
-                wait_for_user_decisions(
-                    user_decision_ids
-                )
-
-                # wait_for_user_decisions() only ever returns once
-                # every listed decision is RESOLVED -- rerun planning
-                # fresh so the planner (never this loop) interprets
-                # the resolution and updates planning artifacts.
-                #
-                # A human resolving a decision is a genuine external
-                # state change, not another iteration of the automatic
-                # replanning sequence planning_pass_count guards
-                # against -- reset it here so this rerun (and any
-                # later, separately human-resolved rerun, however many
-                # occur over the orchestrator's lifetime) never
-                # accumulates toward the rapid/automatic-loop cap. A
-                # still-OPEN decision never reaches this line at all,
-                # since wait_for_user_decisions() only returns after
-                # resolution.
-                planning_pass_count = 0
-
-                ready_count = len(
-                    get_ready_story_filenames()
-                )
-
-                continue
-
-            if planning_status != "COMPLETE":
-                print(
-                    "\nOrchestrator stopped: project "
-                    "planning did not complete."
-                )
-                planning_failed = True
-                break
-
-            ready_count = len(
-                get_ready_story_filenames()
             )
-
-            # A milestone transition intentionally creates no
-            # next-phase stories in the same planning pass. Run one
-            # fresh, separately scoped pass so Python can expose only
-            # the newly current roadmap phase.
-            if planning_result.get(
-                    "milestone_transition"
-            ):
-                print(
-                    "\nMilestone transition validated -- "
-                    "running a fresh planning pass for the "
-                    "new current phase."
-                )
+            if scheduler.plan_if_useful(idle=not claude_ready):
+                replenish = False
                 continue
+            replenish = False
+            candidates = get_selectable_story_candidates()
 
-            # Normal planning created/confirmed the current phase's
-            # next work. Do not repeatedly call the planner merely
-            # because the resulting READY count is still <= 2.
-            break
+        if candidates and claude_ready:
+            log_line(
+                f"Decision: code (select next story) -- reason: "
+                f"{len(candidates)} selectable To Do candidate(s), Claude available"
+            )
+            _select_and_activate_next_story()
+            continue
 
-        if planning_failed:
-            break
+        # Never declare NO_WORK merely because the planner is temporarily exhausted.
+        if not claude_ready or not codex_ready:
+            log_line(
+                "Decision: wait -- reason: "
+                f"claude_available={claude_ready}, codex_available={codex_ready}, "
+                "neither can currently make progress"
+            )
+            time.sleep(60)
+            continue
 
+        unresolved = [item["id"] for item in list_decisions()
+                      if item["status"] != "RESOLVED" and item["id"]]
+        if unresolved:
+            log_line(
+                "Decision: wait (user decision) -- reason: unresolved "
+                f"user decision(s) block remaining work: {unresolved}"
+            )
+            wait_for_user_decisions(unresolved)
+            continue
+
+        log_line(
+            "Decision: stop -- reason: no active story, no selectable "
+            "work, no useful planning, no unresolved user decision"
+        )
         if _select_and_activate_next_story() == "FINISHED":
-            break
+            return
 
 
 # ============================================================

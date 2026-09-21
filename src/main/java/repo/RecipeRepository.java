@@ -1,39 +1,33 @@
 package repo;
 
+import craft.Ingredient;
+import craft.Recipe;
+import craft.RecipeKnowledgePolicy;
+
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+/**
+ * Loads recipe/ingredient rows and maps them to the independent {@code craft.Recipe}/
+ * {@code craft.Ingredient} domain types (STORY-DOM-017, TARGET_ARCHITECTURE.md section 10):
+ * this class is the persistence-to-domain mapping boundary, so callers - including {@code craft.*} -
+ * never see JDBC-shaped types.
+ *
+ * Recipe-known decisions (which recipe rows/ids count as "unlocked") are delegated to
+ * {@link RecipeKnowledgePolicy} (STORY-DOM-018): this class only fetches the plain unlock facts
+ * (which recipe ids appear in {@code account_recipes}/{@code character_recipes}) and applies the
+ * policy in Java, rather than expressing the unlock rule itself as SQL. Recipe ownership is
+ * account-wide for every entry point below, including the character-scoped ones - a recipe
+ * unlocked by any character on the account counts as known regardless of which character is
+ * selected (DOMAIN_SPEC.md DQ-010, STORY-DOM-019); {@code charName} only selects the connection's
+ * eligibility filtering (crafting discipline), not recipe ownership.
+ */
 public class RecipeRepository {
-
-    public static class Ingredient {
-        public final int itemId;
-        public final int count;
-        public Ingredient(int itemId, int count) {
-            this.itemId = itemId;
-            this.count = count;
-        }
-    }
-
-    public static class Recipe {
-        public final int recipeId;
-        public final int outputItemId;
-        public final int outputCount;
-        public final int minRating;
-        public final String disciplinesText; // "Artificer, Tailor, ..."
-        public final List<Ingredient> ingredients;
-
-        public Recipe(int recipeId, int outputItemId, int outputCount, int minRating, String disciplinesText, List<Ingredient> ingredients) {
-            this.recipeId = recipeId;
-            this.outputItemId = outputItemId;
-            this.outputCount = outputCount;
-            this.minRating = minRating;
-            this.disciplinesText = disciplinesText;
-            this.ingredients = ingredients;
-        }
-    }
 
     /**
      * Loads recipes already in DB (you sync unlocked recipes into recipes table).
@@ -53,26 +47,18 @@ public class RecipeRepository {
      */
     public List<Recipe> loadRecipes(Connection con, String discipline) throws SQLException {
         Map<Integer, List<Ingredient>> ingredientsByRecipe = loadIngredientsByRecipe(con);
+        Set<Integer> accountUnlocked = loadAccountUnlockedRecipeIds(con);
+        Set<Integer> unlockedByAnyCharacter = loadAnyCharacterUnlockedRecipeIds(con);
 
-        String unlockedCte = """
-        WITH unlocked AS (
-            SELECT recipe_id FROM account_recipes
-            UNION
-            SELECT recipe_id FROM character_recipes
-        )
-    """;
-
-        String sqlAll = unlockedCte + """
+        String sqlAll = """
         SELECT r.recipe_id, r.output_item_id, r.output_item_count, r.min_rating, r.disciplines
         FROM recipes r
-        JOIN unlocked u ON u.recipe_id = r.recipe_id
         ORDER BY r.recipe_id
     """;
 
-        String sqlDisc = unlockedCte + """
+        String sqlDisc = """
         SELECT r.recipe_id, r.output_item_id, r.output_item_count,r.min_rating, r.disciplines
         FROM recipes r
-        JOIN unlocked u ON u.recipe_id = r.recipe_id
         WHERE ? = ANY(r.disciplines)
         ORDER BY r.recipe_id
     """;
@@ -90,6 +76,12 @@ public class RecipeRepository {
         try (ps; ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 int recipeId = rs.getInt("recipe_id");
+
+                boolean known = RecipeKnowledgePolicy.isKnownAccountWide(
+                        accountUnlocked.contains(recipeId),
+                        unlockedByAnyCharacter.contains(recipeId));
+                if (!known) continue;
+
                 int outputItemId = rs.getInt("output_item_id");
                 int outputCount = rs.getInt("output_item_count");
                 int outputMinRating = rs.getInt("min_rating");
@@ -121,19 +113,12 @@ public class RecipeRepository {
      */
     public List<Recipe> loadRecipesForCharacter(Connection con, String charName, String discipline) throws SQLException {
         Map<Integer, List<Ingredient>> ingredientsByRecipe = loadIngredientsByRecipe(con);
+        Set<Integer> accountUnlocked = loadAccountUnlockedRecipeIds(con);
+        Set<Integer> unlockedByAnyCharacter = loadAnyCharacterUnlockedRecipeIds(con);
 
         String sql = """
-        WITH unlocked AS (
-            SELECT recipe_id FROM account_recipes
-            UNION
-            SELECT cr.recipe_id
-            FROM character_recipes cr
-            JOIN characters c ON c.character_id = cr.character_id
-            WHERE c.name = ?
-        )
         SELECT r.recipe_id, r.output_item_id, r.output_item_count,r.min_rating, r.disciplines
         FROM recipes r
-        JOIN unlocked u ON u.recipe_id = r.recipe_id
         WHERE ? = ANY(r.disciplines)
         ORDER BY r.recipe_id
     """;
@@ -142,12 +127,20 @@ public class RecipeRepository {
 
         try (PreparedStatement ps = con.prepareStatement(sql)) {
 
-            ps.setString(1, charName);
-            ps.setString(2, discipline);
+            ps.setString(1, discipline);
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     int recipeId = rs.getInt("recipe_id");
+
+                    // Ownership is account-wide (DQ-010): unlocked by ANY character counts as known
+                    // for the selected character too. charName selects the discipline/rating
+                    // eligibility filtering elsewhere; it does not narrow ownership (STORY-DOM-019).
+                    boolean known = RecipeKnowledgePolicy.isKnownAccountWide(
+                            accountUnlocked.contains(recipeId),
+                            unlockedByAnyCharacter.contains(recipeId));
+                    if (!known) continue;
+
                     int outputItemId = rs.getInt("output_item_id");
                     int outputCount = rs.getInt("output_item_count");
                     int outputMinRating = rs.getInt("min_rating");
@@ -252,10 +245,25 @@ public class RecipeRepository {
      *
      * Rules:
      * - discoverable = flags is NULL OR empty array (your " {} " case)
-     * - missing = NOT in account_recipes AND NOT in character_recipes(for that char)
+     * - missing = recipe not known account-wide, per {@link RecipeKnowledgePolicy#isKnownAccountWide}
+     *   (STORY-DOM-019: same account-wide ownership policy used by {@link #loadRecipesForCharacter}
+     *   and {@link #loadRecipes(Connection, String)} - a recipe already known via ANY character's
+     *   unlock is not a Discovery candidate for the selected character either)
      * - discipline filter: if discipline == "All" => no filter, else must be in recipes.disciplines
      */
     public List<Integer> loadMissingDiscoverableRecipeIdsForCharacter(String charName, String discipline) throws SQLException {
+        try (Connection con = repo.Db.open()) {
+            return loadMissingDiscoverableRecipeIdsForCharacter(con, charName, discipline);
+        }
+    }
+
+    /**
+     * Same query as {@link #loadMissingDiscoverableRecipeIdsForCharacter(String, String)}, but runs
+     * against a caller-supplied connection (see {@link #loadRecipes(Connection, String)} for why).
+     */
+    public List<Integer> loadMissingDiscoverableRecipeIdsForCharacter(Connection con, String charName, String discipline) throws SQLException {
+        Set<Integer> accountUnlocked = loadAccountUnlockedRecipeIds(con);
+        Set<Integer> unlockedByAnyCharacter = loadAnyCharacterUnlockedRecipeIds(con);
 
         String sql = """
             SELECT r.recipe_id
@@ -269,38 +277,49 @@ public class RecipeRepository {
                     ? = 'All'
                     OR ? = ANY(r.disciplines)
                 )
-
-                -- not unlocked on account
-                AND NOT EXISTS (
-                    SELECT 1 FROM account_recipes ar
-                    WHERE ar.recipe_id = r.recipe_id
-                )
-
-                -- not discovered on that character
-                AND NOT EXISTS (
-                    SELECT 1
-                    FROM character_recipes cr
-                    JOIN characters c ON c.character_id = cr.character_id
-                    WHERE c.name = ?
-                      AND cr.recipe_id = r.recipe_id
-                )
             ORDER BY r.recipe_id
         """;
 
         List<Integer> ids = new ArrayList<>();
 
-        try (Connection con = repo.Db.open();
-             PreparedStatement ps = con.prepareStatement(sql)) {
+        try (PreparedStatement ps = con.prepareStatement(sql)) {
 
             ps.setString(1, discipline == null ? "All" : discipline);
             ps.setString(2, discipline == null ? "All" : discipline);
-            ps.setString(3, charName);
 
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) ids.add(rs.getInt(1));
+                while (rs.next()) {
+                    int recipeId = rs.getInt(1);
+
+                    // Ownership is account-wide (DQ-010); see loadRecipesForCharacter above.
+                    boolean known = RecipeKnowledgePolicy.isKnownAccountWide(
+                            accountUnlocked.contains(recipeId),
+                            unlockedByAnyCharacter.contains(recipeId));
+                    if (!known) ids.add(recipeId);
+                }
             }
         }
 
+        return ids;
+    }
+
+    private Set<Integer> loadAccountUnlockedRecipeIds(Connection con) throws SQLException {
+        Set<Integer> ids = new HashSet<>();
+        String sql = "SELECT recipe_id FROM account_recipes";
+        try (PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) ids.add(rs.getInt(1));
+        }
+        return ids;
+    }
+
+    private Set<Integer> loadAnyCharacterUnlockedRecipeIds(Connection con) throws SQLException {
+        Set<Integer> ids = new HashSet<>();
+        String sql = "SELECT DISTINCT recipe_id FROM character_recipes";
+        try (PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) ids.add(rs.getInt(1));
+        }
         return ids;
     }
 

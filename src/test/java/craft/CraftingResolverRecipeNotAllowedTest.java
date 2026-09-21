@@ -1,8 +1,6 @@
 package craft;
 
 import org.junit.jupiter.api.Test;
-import repo.RecipeRepository;
-import repo.tp.TpPriceRepository;
 
 import java.util.List;
 import java.util.Map;
@@ -28,15 +26,15 @@ class CraftingResolverRecipeNotAllowedTest {
         // FilteredItem has exactly one producing recipe, but that recipe's id is not in
         // ctx.allowedRecipeIds. With direct buying disallowed at this node, the resolver's
         // only possible path is that filtered-out recipe.
-        RecipeRepository.Recipe filteredRecipe = CraftTestFixtures.recipe(
+        Recipe filteredRecipe = CraftTestFixtures.recipe(
                 FILTERED_RECIPE_ID, FILTERED_ITEM_ID, List.of(CraftTestFixtures.ingredient(INGREDIENT_ITEM_ID, 1))
         );
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of(
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of(
                 FILTERED_ITEM_ID, List.of(filteredRecipe)
         );
 
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of();
+        Map<Integer, PriceQuote> tp = Map.of();
 
         CraftingSettings settings = CraftTestFixtures.defaultSettings();
         // FILTERED_RECIPE_ID is deliberately excluded from allowedRecipeIds.

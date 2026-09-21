@@ -1,8 +1,6 @@
 package craft;
 
 import org.junit.jupiter.api.Test;
-import repo.RecipeRepository;
-import repo.tp.TpPriceRepository;
 
 import java.util.List;
 import java.util.Map;
@@ -35,12 +33,12 @@ class CraftingResolverBoundMaterialTest {
     void soulboundItemBoundToSelectedCharacter_isUsableWithNoOpportunityCost() {
         int qtyOwned = 5;
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of();
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of();
 
         // A TP quote is supplied even though soulbound items cannot actually be sold, to prove
         // the bound-owned-quantity path ignores it entirely rather than happening to compute
         // zero because no quote existed.
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(
+        Map<Integer, PriceQuote> tp = Map.of(
                 SOULBOUND_TO_SELECTED_ITEM_ID, CraftTestFixtures.quote(200, 150)
         );
 
@@ -73,9 +71,9 @@ class CraftingResolverBoundMaterialTest {
     void accountBoundItem_isUsableByAnyCharacterWithNoOpportunityCost() {
         int qtyOwned = 3;
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of();
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of();
 
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(
+        Map<Integer, PriceQuote> tp = Map.of(
                 ACCOUNT_BOUND_ITEM_ID, CraftTestFixtures.quote(200, 150)
         );
 
@@ -103,10 +101,10 @@ class CraftingResolverBoundMaterialTest {
     void soulboundItemBoundToDifferentCharacter_isNotUsableOwnedInventoryForSelectedCharacter() {
         int qtyRequested = 5;
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of();
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of();
 
         // Soulbound items cannot be sold on the Trading Post.
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(
+        Map<Integer, PriceQuote> tp = Map.of(
                 SOULBOUND_TO_OTHER_ITEM_ID, CraftTestFixtures.noQuote()
         );
 

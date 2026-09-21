@@ -1,8 +1,5 @@
 package craft;
 
-import repo.RecipeRepository;
-import repo.tp.TpPriceRepository;
-
 import java.util.*;
 
 /**
@@ -16,9 +13,9 @@ public class CraftingPlanner {
     private final RecipeSimulator recipeSimulator = new RecipeSimulator();
     private final CostEvaluator costEvaluator = new CostEvaluator();
 
-    public Map<Integer, CraftResult> evaluateAll(List<RecipeRepository.Recipe> recipes,
+    public Map<Integer, CraftResult> evaluateAll(List<Recipe> recipes,
                                                  Map<Integer, Integer> inventory,
-                                                 Map<Integer, TpPriceRepository.TpQuote> tp,
+                                                 Map<Integer, PriceQuote> tp,
                                                  CraftingSettings settings,
                                                  Set<Integer> allowedRecipeIds) {
         return evaluateAll(recipes, inventory, Map.of(), tp, settings, allowedRecipeIds);
@@ -32,18 +29,18 @@ public class CraftingPlanner {
      *                          never charged Trading-Post opportunity cost. Empty for callers that
      *                          don't have a selected character, so behavior is unchanged for them.
      */
-    public Map<Integer, CraftResult> evaluateAll(List<RecipeRepository.Recipe> recipes,
+    public Map<Integer, CraftResult> evaluateAll(List<Recipe> recipes,
                                                  Map<Integer, Integer> sellableInventory,
                                                  Map<Integer, Integer> boundInventory,
-                                                 Map<Integer, TpPriceRepository.TpQuote> tp,
+                                                 Map<Integer, PriceQuote> tp,
                                                  CraftingSettings settings,
                                                  Set<Integer> allowedRecipeIds) {
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
+        Map<Integer, List<Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
         PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds);
 
         Map<Integer, CraftResult> out = new HashMap<>();
-        for (RecipeRepository.Recipe r : recipes) {
+        for (Recipe r : recipes) {
             PlanState baseState = new PlanState(sellableInventory, boundInventory);
             out.put(r.recipeId, evaluateOneRecipeNew(r, baseState, ctx));
         }
@@ -62,20 +59,20 @@ public class CraftingPlanner {
      * wide pools, exactly as the legacy overload's single {@code boundInventory} always was.
      */
     public Map<Integer, CraftResult> evaluateAllCoordinated(
-            List<RecipeRepository.Recipe> recipes,
+            List<Recipe> recipes,
             Map<Integer, Integer> sellableInventory,
             Map<Integer, Integer> accountBoundInventory,
             Map<String, Map<Integer, Integer>> characterBoundInventory,
             List<CharacterCraftingProfile> roster,
-            Map<Integer, TpPriceRepository.TpQuote> tp,
+            Map<Integer, PriceQuote> tp,
             CraftingSettings settings,
             Set<Integer> allowedRecipeIds) {
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
+        Map<Integer, List<Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
         PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds, roster);
 
         Map<Integer, CraftResult> out = new HashMap<>();
-        for (RecipeRepository.Recipe r : recipes) {
+        for (Recipe r : recipes) {
             PlanState baseState = new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory);
             out.put(r.recipeId, evaluateOneRecipeNew(r, baseState, ctx));
         }
@@ -83,16 +80,16 @@ public class CraftingPlanner {
         return out;
     }
 
-    private Map<Integer, List<RecipeRepository.Recipe>> buildRecipesByOutput(List<RecipeRepository.Recipe> recipes) {
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = new HashMap<>();
-        for (RecipeRepository.Recipe r : recipes) {
+    private Map<Integer, List<Recipe>> buildRecipesByOutput(List<Recipe> recipes) {
+        Map<Integer, List<Recipe>> recipesByOutput = new HashMap<>();
+        for (Recipe r : recipes) {
             recipesByOutput.computeIfAbsent(r.outputItemId, k -> new ArrayList<>()).add(r);
         }
         return recipesByOutput;
     }
 
     private CraftResult evaluateOneRecipeNew(
-            RecipeRepository.Recipe recipe,
+            Recipe recipe,
             PlanState baseState,
             PlannerContext ctx
     ) {
@@ -154,7 +151,7 @@ public class CraftingPlanner {
     }
 
     private int computeBuyCostFromMissing(Map<Integer, Integer> missing,
-                                          Map<Integer, TpPriceRepository.TpQuote> tp,
+                                          Map<Integer, PriceQuote> tp,
                                           CraftingSettings settings) {
         if (missing == null || missing.isEmpty()) return 0;
 
@@ -165,7 +162,7 @@ public class CraftingPlanner {
             int qty = e.getValue();
             if (qty <= 0) continue;
 
-            TpPriceRepository.TpQuote q = tp.get(itemId);
+            PriceQuote q = tp.get(itemId);
             if (q == null) continue;
 
             Integer unit = settings.listingBuy ? q.buyUnit : q.sellUnit;
@@ -178,7 +175,7 @@ public class CraftingPlanner {
     }
 
     private boolean shouldSimulateRecipe(
-            RecipeRepository.Recipe recipe,
+            Recipe recipe,
             PlannerContext ctx
                                         ) {
 
@@ -191,7 +188,7 @@ public class CraftingPlanner {
 
         int minCost = 0;
 
-        for (RecipeRepository.Ingredient ing : recipe.ingredients) {
+        for (Ingredient ing : recipe.ingredients) {
 
             int buyUnit = resolver.resolveDirectBuyUnit(ing.itemId, ctx.tp, ctx.settings);
             int sellUnitMat = resolver.resolveDirectSellUnit(ing.itemId, ctx.tp, ctx.settings);

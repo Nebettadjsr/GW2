@@ -1,8 +1,6 @@
 package craft;
 
 import org.junit.jupiter.api.Test;
-import repo.RecipeRepository;
-import repo.tp.TpPriceRepository;
 
 import java.util.List;
 import java.util.Map;
@@ -39,12 +37,12 @@ class CraftingResolverBoundMaterialCharacterizationTest {
         // ordinary owned inventory as far as the resolver is concerned.
         int qtyOwnedButSoulboundToAnotherCharacter = 5;
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of();
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of();
 
         // Soulbound items cannot be sold on the Trading Post, so no TP quote exists -
         // irrelevant here since the request is fully satisfied from "owned" inventory
         // before any buy/sell path is even considered.
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(
+        Map<Integer, PriceQuote> tp = Map.of(
                 SOULBOUND_MATERIAL_ITEM_ID, CraftTestFixtures.noQuote()
         );
 

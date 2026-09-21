@@ -4,6 +4,7 @@ import api.BatchUtils;
 import api.tp.TpPriceApi;
 import com.fasterxml.jackson.databind.JsonNode;
 import parser.TpPriceParser;
+import repo.Db;
 import sync.tp.relevance.CraftingProfitItemCollector;
 import sync.tp.relevance.DiscoveryItemCollector;
 import util.DbBind;
@@ -37,7 +38,7 @@ public final class TpSync {
         int done = 0;
 
         // One DB connection for the whole sync
-        try (Connection con = Db.openConnection()) {
+        try (Connection con = Db.open()) {
 
             con.setAutoCommit(false);
 
@@ -180,7 +181,7 @@ public final class TpSync {
 
     public static void syncTpPricesForProfit() throws Exception {
         Set<Integer> itemIds;
-        try (Connection con = Db.openConnection()) {
+        try (Connection con = Db.open()) {
             itemIds = new CraftingProfitItemCollector().collect(con);
         }
         syncTpPrices(itemIds);
@@ -188,7 +189,7 @@ public final class TpSync {
 
     public static void syncTpPricesForDiscovery() throws Exception {
         Set<Integer> itemIds;
-        try (Connection con = Db.openConnection()) {
+        try (Connection con = Db.open()) {
             itemIds = new DiscoveryItemCollector().collect(con);
         }
         syncTpPrices(itemIds);
@@ -205,7 +206,7 @@ public final class TpSync {
         ON CONFLICT (item_id) DO UPDATE SET fetched_at = EXCLUDED.fetched_at
         """;
 
-        try (Connection con = Db.openConnection();
+        try (Connection con = Db.open();
              PreparedStatement ps = con.prepareStatement(insertSql)) {
 
             con.setAutoCommit(false);

@@ -1,8 +1,5 @@
 package craft;
 
-import repo.RecipeRepository;
-import repo.tp.TpPriceRepository;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -17,25 +14,25 @@ final class CraftTestFixtures {
     private CraftTestFixtures() {
     }
 
-    static RecipeRepository.Ingredient ingredient(int itemId, int count) {
-        return new RecipeRepository.Ingredient(itemId, count);
+    static Ingredient ingredient(int itemId, int count) {
+        return new Ingredient(itemId, count);
     }
 
-    static RecipeRepository.Recipe recipe(int recipeId, int outputItemId, List<RecipeRepository.Ingredient> ingredients) {
+    static Recipe recipe(int recipeId, int outputItemId, List<Ingredient> ingredients) {
         return recipe(recipeId, outputItemId, 1, ingredients);
     }
 
-    static RecipeRepository.Recipe recipe(int recipeId, int outputItemId, int outputCount, List<RecipeRepository.Ingredient> ingredients) {
-        return new RecipeRepository.Recipe(recipeId, outputItemId, outputCount, 0, "Artificer", ingredients);
+    static Recipe recipe(int recipeId, int outputItemId, int outputCount, List<Ingredient> ingredients) {
+        return new Recipe(recipeId, outputItemId, outputCount, 0, "Artificer", ingredients);
     }
 
-    static TpPriceRepository.TpQuote quote(Integer buyUnit, Integer sellUnit) {
-        return new TpPriceRepository.TpQuote(buyUnit, sellUnit);
+    static PriceQuote quote(Integer buyUnit, Integer sellUnit) {
+        return new PriceQuote(buyUnit, sellUnit);
     }
 
     /** No buy or sell listing available on the TP - e.g. a non-tradable item. */
-    static TpPriceRepository.TpQuote noQuote() {
-        return new TpPriceRepository.TpQuote(null, null);
+    static PriceQuote noQuote() {
+        return new PriceQuote(null, null);
     }
 
     /** useOwnMats=true, allowBuying=true, unlimited maxBuyCopper, instant sell/buy, daily craft. */
@@ -43,8 +40,8 @@ final class CraftTestFixtures {
         return new CraftingSettings(true, true, 0, false, false, false);
     }
 
-    static PlannerContext context(Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput,
-                                   Map<Integer, TpPriceRepository.TpQuote> tp,
+    static PlannerContext context(Map<Integer, List<Recipe>> recipesByOutput,
+                                   Map<Integer, PriceQuote> tp,
                                    CraftingSettings settings,
                                    Set<Integer> allowedRecipeIds) {
         return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds);
@@ -64,8 +61,8 @@ final class CraftTestFixtures {
     }
 
     /** DOMAIN_SPEC.md section 2.2.1: coordinated multi-character planning context. */
-    static PlannerContext coordinatedContext(Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput,
-                                              Map<Integer, TpPriceRepository.TpQuote> tp,
+    static PlannerContext coordinatedContext(Map<Integer, List<Recipe>> recipesByOutput,
+                                              Map<Integer, PriceQuote> tp,
                                               CraftingSettings settings,
                                               Set<Integer> allowedRecipeIds,
                                               List<CharacterCraftingProfile> roster) {

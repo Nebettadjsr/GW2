@@ -4,6 +4,20 @@ import subprocess
 import threading
 
 from agent.runtime.support.config import REPO_ROOT
+from agent.runtime.support.capacity import ModelCapacityUnavailable
+
+
+def is_capacity_error(event):
+    if event.get("type") not in ("error", "turn.failed"):
+        return False
+    error = event.get("error") or event
+    if not isinstance(error, dict):
+        return False
+    code = str(error.get("code", "")).lower()
+    message = str(error.get("message", "")).lower()
+    return code in ("usage_limit_reached", "rate_limit_exceeded", "insufficient_quota") or any(
+        phrase in message for phrase in ("usage limit", "usage_limit_reached", "rate limit exceeded",
+                                         "insufficient quota", "rate_limit_exceeded"))
 
 
 # ============================================================
@@ -311,6 +325,7 @@ Do not blindly append to BACKLOG.md.
     )
     process.stdin.close()
 
+    capacity_exhausted = False
     for line in process.stdout:
         stripped = line.strip()
 
@@ -328,6 +343,7 @@ Do not blindly append to BACKLOG.md.
             )
             continue
 
+        capacity_exhausted = capacity_exhausted or is_capacity_error(event)
         _handle_json_event(
             event
         )
@@ -350,4 +366,6 @@ Do not blindly append to BACKLOG.md.
         "========================================\n"
     )
 
+    if capacity_exhausted:
+        raise ModelCapacityUnavailable("Codex usage exhausted")
     return return_code

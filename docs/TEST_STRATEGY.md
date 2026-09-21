@@ -1065,6 +1065,8 @@ No check from STORY-DOM-013/014/015's own behavior matrix (All characters select
 
 # 33. Test Effort Proportionality
 
+For PROJECT HEALTH REVIEW tasks, verification is an evidence source under `docs/TARGET_ARCHITECTURE.md` §34, not an automatic requirement to run broad suites or add tests. Use that policy to bound review checks; the implementation-change rules below remain unchanged.
+
 Broad, layered coverage (§3's pyramid, Layers 1–5) is the project's goal, not a checklist every change must exhaust. Test effort — which layers are touched, how many tests are written, how heavy each one is — must stay proportional to the size and risk of the actual change, never padded out for thoroughness alone.
 
 Concretely:

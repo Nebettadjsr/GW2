@@ -55,6 +55,7 @@ Authoritative owners:
 - `docs/TARGET_ARCHITECTURE.md`
     - intended architecture
     - TBD technology choices
+    - repository quality targets and PROJECT HEALTH REVIEW policy (§34)
 
 - `docs/DOMAIN_SPEC.md`
     - normative domain behavior
@@ -372,6 +373,14 @@ stories, or backlog.
 Read only the relevant sections; do not reread the full document
 unnecessarily.
 
+## Planning PROJECT HEALTH REVIEW tasks
+
+Treat PROJECT HEALTH REVIEW as a special assessment task governed by `docs/TARGET_ARCHITECTURE.md` §34, not an implementation or cleanup batch. Near current-milestone exit, after implementation work is substantially complete, ensure its review is scheduled before closure. Reuse an existing review task when present (Phase 1: `STORY-QUALITY-001`, "Review Phase 1 project health before milestone completion"); do not duplicate it or schedule reviews after every story. Newly added roadmap phases must inherit the review exit requirement by reference to §34.
+
+When planning such a task, keep explicit **Non-Goals** within its Constraints: no broad bug hunting, automatic broad regression testing, arbitrary test expansion, speculative cleanup/refactoring, or later-milestone architecture implementation. Planned future replacement alone is not evidence of current debt. Its Required Tests should describe evidence assessment and targeted checks for concrete questions, not mandate every suite. Preserve review first, remediation later.
+
+Use review evidence and findings recorded through the existing story Result and workflow reporting mechanisms. Do not automatically populate the backlog or commission substantial remediation within the review. The review may finish with unresolved findings; it does not close the milestone. In a subsequent normal planning pass, assess concrete findings within phase locks and decide whether separately scoped normal stories are warranted. Transfers require an explicit destination/rationale and planner/user disposition, not silent deletion of exit criteria.
+
 ## Story Contract
 
 Each new story must be directly under:
@@ -477,7 +486,7 @@ with zero-padding.
 
 A planning run handles exactly one milestone.
 
-Only report a milestone transition when the supplied current phase's exit criteria are fully and confidently satisfied.
+Only report a milestone transition when the supplied current phase's exit criteria are fully and confidently satisfied, including its PROJECT HEALTH REVIEW under `docs/TARGET_ARCHITECTURE.md` §34. Review completion alone is insufficient: assess its recorded findings and confirm explicit disposition of blocking findings and criteria proposed for transfer before reporting the phase complete. Otherwise keep `phase_exit_criteria_satisfied` and `milestone_transition` false.
 
 The planner never moves story files and never edits BACKLOG `## Archived`.
 

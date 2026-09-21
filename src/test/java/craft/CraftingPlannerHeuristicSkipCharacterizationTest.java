@@ -1,8 +1,6 @@
 package craft;
 
 import org.junit.jupiter.api.Test;
-import repo.RecipeRepository;
-import repo.tp.TpPriceRepository;
 
 import java.util.List;
 import java.util.Map;
@@ -35,19 +33,19 @@ class CraftingPlannerHeuristicSkipCharacterizationTest {
         // cheaper than its direct TP price suggests. shouldSimulateRecipe only ever looks
         // at Intermediate's direct price (1000), never at its recipe, so
         // minCost(1000) >= revenue(500) and the whole Output recipe is skipped outright.
-        RecipeRepository.Recipe outputRecipe = CraftTestFixtures.recipe(
+        Recipe outputRecipe = CraftTestFixtures.recipe(
                 1, OUTPUT_ITEM_ID, List.of(CraftTestFixtures.ingredient(INTERMEDIATE_ITEM_ID, 1)));
 
         // Base has no ingredients at all, so it can always be "crafted" without buying or
         // owning anything - standing in for a recursively-cheap base material so the
         // Intermediate -> Base chain fully resolves under allowBuying=false/useOwnMats=false.
-        RecipeRepository.Recipe baseRecipe = CraftTestFixtures.recipe(3, BASE_ITEM_ID, List.of());
-        RecipeRepository.Recipe intermediateRecipe = CraftTestFixtures.recipe(
+        Recipe baseRecipe = CraftTestFixtures.recipe(3, BASE_ITEM_ID, List.of());
+        Recipe intermediateRecipe = CraftTestFixtures.recipe(
                 2, INTERMEDIATE_ITEM_ID, List.of(CraftTestFixtures.ingredient(BASE_ITEM_ID, 1)));
 
-        List<RecipeRepository.Recipe> recipes = List.of(outputRecipe, intermediateRecipe, baseRecipe);
+        List<Recipe> recipes = List.of(outputRecipe, intermediateRecipe, baseRecipe);
 
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(
+        Map<Integer, PriceQuote> tp = Map.of(
                 // Instant-sell value of Output (listingSell=false -> buyUnit) = 500.
                 OUTPUT_ITEM_ID, CraftTestFixtures.quote(500, null),
                 // Instant-buy cost of Intermediate (listingBuy=false -> sellUnit) = 1000;

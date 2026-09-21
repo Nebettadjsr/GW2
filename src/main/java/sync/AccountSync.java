@@ -7,6 +7,7 @@ import model.MaterialStack;
 import parser.BankParser;
 import parser.MaterialParser;
 import parser.RecipeIdParser;
+import repo.Db;
 import util.DbBind;
 
 import java.io.IOException;
@@ -31,7 +32,7 @@ public final class AccountSync {
             rows.add(BankParser.parseSlot(slot, entry));
         }
 
-        try (Connection con = Db.openConnection()) {
+        try (Connection con = Db.open()) {
             con.setAutoCommit(false);
             try {
                 Timestamp runTs;
@@ -111,7 +112,7 @@ public final class AccountSync {
             if (row != null) rows.add(row);
         }
 
-        try (Connection con = Db.openConnection()) {
+        try (Connection con = Db.open()) {
             con.setAutoCommit(false);
             try {
                 Timestamp runTs;
@@ -182,7 +183,7 @@ public final class AccountSync {
             if (id != null && id > 0) ids.add(id);
         }
 
-        try (Connection con = Db.openConnection()) {
+        try (Connection con = Db.open()) {
             con.setAutoCommit(false);
             try {
                 Timestamp runTs;

@@ -1,8 +1,6 @@
 package craft;
 
 import org.junit.jupiter.api.Test;
-import repo.RecipeRepository;
-import repo.tp.TpPriceRepository;
 
 import java.util.List;
 import java.util.Map;
@@ -28,28 +26,28 @@ class CraftingResolverCraftVsBuyTest {
         // This is DOMAIN_SPEC.md section 22's own worked example: buy must win despite
         // costing more cash up front, because its effective cost is lower.
 
-        RecipeRepository.Recipe finalRecipe = new RecipeRepository.Recipe(
+        Recipe finalRecipe = new Recipe(
                 1, FINAL_ITEM_ID, 1, 0, "Artificer",
-                List.of(new RecipeRepository.Ingredient(INTERMEDIATE_ITEM_ID, 1))
+                List.of(new Ingredient(INTERMEDIATE_ITEM_ID, 1))
         );
-        RecipeRepository.Recipe intermediateRecipe = new RecipeRepository.Recipe(
+        Recipe intermediateRecipe = new Recipe(
                 2, INTERMEDIATE_ITEM_ID, 1, 0, "Artificer",
-                List.of(new RecipeRepository.Ingredient(RAW_MATERIAL_ITEM_ID, 1))
+                List.of(new Ingredient(RAW_MATERIAL_ITEM_ID, 1))
         );
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of(
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of(
                 FINAL_ITEM_ID, List.of(finalRecipe),
                 INTERMEDIATE_ITEM_ID, List.of(intermediateRecipe)
         );
 
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(
+        Map<Integer, PriceQuote> tp = Map.of(
                 // Intermediate: buyable directly for 60 cash (instant buy -> sellUnit, DOMAIN_SPEC.md section 20).
-                INTERMEDIATE_ITEM_ID, new TpPriceRepository.TpQuote(null, 60),
+                INTERMEDIATE_ITEM_ID, new PriceQuote(null, 60),
                 // RawMaterial: cheap to buy fresh (5) -- this keeps the resolver's internal
                 // craft-viability pre-filter (CraftingResolver.estimateDirectCraftFloor) from
                 // skipping the craft path entirely -- but worth 80 if sold instead of consumed
                 // (instant sell -> buyUnit). That 80 is the opportunity cost of using the owned copy.
-                RAW_MATERIAL_ITEM_ID, new TpPriceRepository.TpQuote(80, 5)
+                RAW_MATERIAL_ITEM_ID, new PriceQuote(80, 5)
         );
 
         CraftingSettings settings = new CraftingSettings(

@@ -24,6 +24,18 @@ No source files were modified while producing this document.
 
 **Accepted project policy:** Per project decision, the GW2 API key used by this project is read-only and is not treated as an account-takeover credential, and the local PostgreSQL password is not treated as a material security finding. These two items are intentionally not re-raised as security findings — see `CLAUDE.md` § Project-Specific Security Policy. The externalization above was done for configuration hygiene (environment-based config is the direction defined in `TARGET_ARCHITECTURE.md` §15), not because either value was treated as a live security incident.
 
+**Scope correction (found by `STORY-QUALITY-001`):** The "No credential values remain in source" statement above is only true for the `repo.AppConfig`/`sync.*`/`repo.*` code path. §2.2 below records two view classes that were never migrated to it.
+
+### 2.2 Hardcoded database credentials remain in `BankView`/`MaterialsView` (open)
+
+**Observed fact:** `BankView.java` (lines 33-35, 54) and `MaterialsView.java` (lines 19-21, 135) each declare their own literal `DB_URL`/`DB_USER`/`DB_PASS` constants (`jdbc:postgresql://localhost:5432/GWDatabase`, `postgres`, `0`) and call `DriverManager.getConnection(...)` directly, bypassing `repo.AppConfig`/`repo.EnvConfig` entirely. `MaterialsView.java` carries an explicit German TODO acknowledging this: `// TODO: später sauber zentralisieren (repo.AppConfig), für jetzt hier wie bei BankView:`.
+
+**Inferred risk:** This is a third and fourth independent hardcoded-connection path beyond the two already tracked in §4.3 (`repo.Db`, `sync.Db`), and it re-opens exactly the hardcoding pattern §2.1 was resolved to eliminate for the rest of the codebase — a future environment/credential change (e.g. moving `DATABASE_URL`) silently would not reach these two views. Per the accepted project policy above, the specific literal value ("0", localhost) is not itself a material security finding; the finding is the hardcoded/uncentralized pattern and its architectural drift from `TARGET_ARCHITECTURE.md` §15.
+
+**Recommendation:** When next touched, route both views through `repo.AppConfig`/`repo.Db` like the rest of the application (or their Phase 3 application-service replacement). Not urgent in isolation; not part of Phase 1's domain-stabilization scope.
+
+**Status: Open.** Newly recorded by `STORY-QUALITY-001`'s Phase 1 project-health review; not previously tracked in this document.
+
 ---
 
 ## 3. Domain-Spec Conflicts (verified against `docs/DOMAIN_SPEC.md`)
@@ -124,39 +136,56 @@ return craftEval.need.getEffectiveCostCopper() <= buyEval.need.getEffectiveCostC
 
 See `docs/CURRENT_ARCHITECTURE.md` §9 for the full structural observations; below is problem/risk framing and recommendations for each.
 
-### 4.1 Domain layer depends on the persistence layer's types
+### 4.1 Domain layer depends on the persistence layer's types (resolved)
 
-**Observed fact:** See `docs/CURRENT_ARCHITECTURE.md` §9 item 1 — the crafting engine's core data types (`Recipe`, `Ingredient`, `TpQuote`) are repository-owned nested classes, not independent domain types.
+**Observed fact:** See `docs/CURRENT_ARCHITECTURE.md` §9 item 1 — the crafting engine's core data types (`Recipe`, `Ingredient`, `TpQuote`) were repository-owned nested classes, not independent domain types.
 
-**Inferred risk:** This is a direct violation of `TARGET_ARCHITECTURE.md` §7's Domain Independence Rule and §26's forbidden-dependency list (no `Domain → PostgreSQL`-adjacent coupling). It means the crafting engine cannot be unit tested, reused, or moved to a backend module without also carrying `repo.*` (and therefore JDBC-shaped) types along with it.
+**Inferred risk:** This was a direct violation of `TARGET_ARCHITECTURE.md` §7's Domain Independence Rule and §26's forbidden-dependency list (no `Domain → PostgreSQL`-adjacent coupling). It meant the crafting engine could not be unit tested, reused, or moved to a backend module without also carrying `repo.*` (and therefore JDBC-shaped) types along with it.
 
-**Recommendation:** Introduce independent domain types (`Recipe`, `Ingredient`, `PriceQuote`) and a mapping boundary in `repo.*`, per `TARGET_ARCHITECTURE.md` §10. This is foundational for `TEST_STRATEGY.md` §4.1 domain unit tests, which currently cannot exist without either a live/fake PostgreSQL-shaped repository or awkward direct construction of repository-nested classes.
+**Status: Resolved by `STORY-DOM-017`.** Independent domain types `craft.Recipe`, `craft.Ingredient`, and `craft.PriceQuote` replace the repository-nested classes; `repo.RecipeRepository`/`repo.tp.TpPriceRepository` own the persistence-to-domain mapping boundary per `TARGET_ARCHITECTURE.md` §10, and `craft.*` no longer imports anything from `repo.*`.
 
-### 4.2 Business rule embedded in SQL
+### 4.2 Business rule embedded in SQL (resolved)
 
-**Observed fact:** See `docs/CURRENT_ARCHITECTURE.md` §9 item 2 — the "recipe is unlocked" business rule is embedded in a SQL `UNION` CTE rather than application/domain code.
+**Status: Resolved by `STORY-DOM-019`** (extracted by `STORY-DOM-018`). The "recipe is unlocked"
+decision itself is no longer expressed as SQL: `craft.RecipeKnowledgePolicy.isKnownAccountWide` (no
+JDBC/SQL/repository dependency) is the single pure function over plain unlock facts, and
+`repo.RecipeRepository` only fetches those facts (`account_recipes` ids, `character_recipes` ids)
+and calls the policy in Java. `loadRecipes`, `loadRecipesForCharacter`, and
+`loadMissingDiscoverableRecipeIdsForCharacter` all call this same policy function with the same two
+facts (account unlock, unlock by any character on the account).
 
-**Inferred risk:** This duplicates a domain concept (recipe knowledge, `DOMAIN_SPEC.md` §6) inside SQL text, making it untestable without a database and harder to keep consistent with the same rule if it's ever needed outside this one query (e.g., in Discovery's "already unlocked account-wide" rule, §34, which is currently implemented via a *different* query — `loadMissingDiscoverableRecipeIdsForCharacter` — not inspected in full this pass, but structurally a second, separate implementation of "is this recipe known").
+**Historical note — cross-character disagreement, now corrected:** `STORY-DOM-018` extracted the
+policy but preserved a pre-existing disagreement, per its behavior-preservation constraint:
+`loadRecipesForCharacter`/`loadMissingDiscoverableRecipeIdsForCharacter` checked only the *selected*
+character's own `character_recipes` rows (`isKnownByCharacter`), while `loadRecipes` checked *any*
+character's rows (`isKnownAccountWide`) — so a recipe unlocked only by a different character was
+"known account-wide" for `loadRecipes` but still reported as a missing/undiscovered candidate for
+another character, contradicting `DOMAIN_SPEC.md` §35's "once any character unlocks the recipe, it
+must no longer appear as undiscovered for other characters on the account" and the decided
+`DQ-010` ("Discovery recipe ownership semantics").
 
-**Recommendation:** Flagged per CLAUDE.md's Database rule ("do not embed domain behavior in SQL or repository classes"); worth confirming both unlock-related queries encode the same semantics before any refactor.
+`STORY-DOM-019` corrected `loadRecipesForCharacter` and `loadMissingDiscoverableRecipeIdsForCharacter`
+to use `isKnownAccountWide` (account_recipes OR any character's character_recipes) instead of the
+narrower `isKnownByCharacter`, which was removed as no longer used anywhere. Selected-character
+discipline filtering and minimum-rating eligibility are unchanged and remain separate from this
+ownership decision. Verified by `repo.RecipeRepositoryTest#knowledgeCrossCheck_recipeKnownOnlyByAnotherCharacterAgreesAcrossAllThreeEntryPoints`,
+which now asserts agreement across all three entry points for the same underlying unlock facts,
+plus dedicated per-entry-point cases (`loadRecipesForCharacter_knownOnlyByAnotherCharacter_isIncluded`,
+`loadMissingDiscoverableRecipeIdsForCharacter_knownOnlyByAnotherCharacter_isExcluded`).
 
 ### 4.3 Duplicated JDBC connection helper
 
-**Observed fact:** See `docs/CURRENT_ARCHITECTURE.md` §9 item 5 — two independent JDBC connection helpers (`repo.Db`, `sync.Db`) with identical behavior, both reading `repo.AppConfig`.
-
-**Inferred risk:** Low functional risk today (both are simple `DriverManager.getConnection` calls), but any future change to connection handling (pooling, timeouts, SSL params) requires remembering to update both, and the duplication signals the `repo`/`sync` split was not deliberately designed as a layering boundary.
-
-**Recommendation:** Collapse to one shared connection helper when touching either package next; not urgent in isolation.
+**Status: Resolved by `STORY-INFRA-003`.** `sync.Db` was removed; all `repo.*` and `sync.*` callers now share `repo.Db.open()`. See `docs/CURRENT_ARCHITECTURE.md` §9 item 5.
 
 ### 4.4 UI-layer classes perform synchronization orchestration and domain calculation directly
 
-**Observed fact:** See `docs/CURRENT_ARCHITECTURE.md` §9 items 3–4 — `EctoView` performs its domain calculation inline, and `Gw2App`'s button handlers call `sync.*`/construct repository instances directly rather than exclusively through `InitialSetupService`/`AccountRefreshService`. (The historical third path, `Main.java`, was deleted — see Status below.)
+**Observed fact:** See `docs/CURRENT_ARCHITECTURE.md` §9 items 3–4 — `EctoView` calls its own `EctoSalvageCalculator` directly (no repository/controller/application-service boundary), and `Gw2App`'s button handlers call `sync.*`/construct repository instances directly rather than exclusively through `InitialSetupService`/`AccountRefreshService`. (The historical third path, `Main.java`, was deleted — see Status below.)
 
-**Inferred risk:** Business logic reachable from three different UI-adjacent paths for what should be one calculation (see §3.6) increases the chance that a future domain-rule change is applied in one place and missed in another — this is very likely how the `EctoView`/`Main` divergence in §3.6 happened in the first place (**inferred**, not confirmed by commit-history analysis).
+**Inferred risk:** Business logic reachable from multiple UI-adjacent paths for what should be one calculation (see §3.6) increases the chance that a future domain-rule change is applied in one place and missed in another — this is very likely how the `EctoView`/`Main` divergence in §3.6 happened in the first place (**inferred**, not confirmed by commit-history analysis).
 
-**Recommendation:** Consolidate to a single domain calculation source before any further Ecto-feature changes; matches `TARGET_ARCHITECTURE.md` §12's rule that the frontend must not reproduce authoritative calculations.
+**Recommendation:** Wire `EctoSalvageCalculator` through an application service alongside Profit/Discovery before any further Ecto-feature changes; matches `TARGET_ARCHITECTURE.md` §12's rule that the frontend must not reproduce authoritative calculations.
 
-**Status: Partially Resolved.** `Main.java` was deleted (per the resolved `agent/user-decisions/UD-002-ectoplasm-salvage-fee-model.md`), removing that third path. `Gw2App`'s direct `sync.*`/`repo.*` calls and `EctoView`'s inline calculation remain unconsolidated — open, scheduled for Phase 3 (`docs/ROADMAP.md`).
+**Status: Partially Resolved.** `Main.java` was deleted (per the resolved `agent/user-decisions/UD-002-ectoplasm-salvage-fee-model.md`), removing that third path. `STORY-DOM-016` also extracted `EctoView`'s calculation out of the view class into the plain `EctoSalvageCalculator` (no JavaFX/repo/controller dependency), so it is no longer literally inline — but it remains directly called from the view rather than through a repository/controller/application-service boundary like Profit/Discovery. `Gw2App`'s direct `sync.*`/`repo.*` calls and this remaining Ecto wiring gap are open, scheduled for Phase 3 (`docs/ROADMAP.md`).
 
 ---
 
@@ -177,8 +206,8 @@ See `docs/CURRENT_ARCHITECTURE.md` §9 for the full structural observations; bel
 | Concern | Location A | Location B | Status |
 |---|---|---|---|
 | Ectoplasm salvage profit/luck-cost calculation | `EctoView.java` (live UI, sole implementation) | `Main.java` (deleted) | Resolved — see §3.6 |
-| JDBC connection acquisition | `repo.Db.open()` | `sync.Db.openConnection()` | Behaviorally identical, structurally duplicated — see §4.3 |
-| "Recipe is unlocked" semantics | `RecipeRepository.loadRecipes` (SQL CTE) | `RecipeRepository.loadMissingDiscoverableRecipeIdsForCharacter` (separate query, not fully inspected) | Not confirmed consistent — see §4.2 |
+| JDBC connection acquisition | `repo.Db.open()` (shared by `repo.*` and `sync.*`, see §4.3) | `BankView`/`MaterialsView` inline `DriverManager.getConnection(...)` with hardcoded literals | Three independent connection paths — see §4.3 (resolved), §2.2 (open) |
+| "Recipe is unlocked" semantics | `RecipeRepository.loadRecipes`/`loadRecipesForCharacter` (via `craft.RecipeKnowledgePolicy.isKnownAccountWide`) | `RecipeRepository.loadMissingDiscoverableRecipeIdsForCharacter` (via `isKnownAccountWide`) | Resolved — all three entry points share one policy function, see §4.2 |
 | Craft-vs-buy cost comparison | `CraftingResolver.chooseBetterCandidate` (active path) | dead code: `CraftingPlanner.canCraft`/`simulateCraft`/`obtain` (removed, see §7.1) | Resolved — dead code removed |
 
 ---
@@ -262,6 +291,16 @@ still surfaces `"❌ DB load failed: ..."`). Not addressed: the same label's sep
 `"MaxBuy UI=..."` debug text shown at the very start of every reload — a different statement than the
 one reported here, out of this story's scope.
 
+### 7.8 Orphaned dead code left behind by the `Main.java` deletion (open)
+
+**Observed fact:** `api/Gw2PriceFetch.java` (a ~50-line HTTP price-fetch helper) has no callers anywhere in the codebase (confirmed by repository-wide search) since its only caller, `Main.java`, was deleted per the resolved `agent/user-decisions/UD-002-ectoplasm-salvage-fee-model.md` (§3.6).
+
+**Inferred risk:** Same category as §7.1's now-resolved dead code — unreachable logic that a future reader or agent could mistake for a live code path, or edit without observing any effect.
+
+**Recommendation:** Safe to delete once independently confirmed (a full repository-wide search already shows zero callers here); not attempted in this review per its no-implementation-changes scope.
+
+**Status: Open.** Newly recorded by `STORY-QUALITY-001`'s Phase 1 project-health review.
+
 ---
 
 ## 8. Incomplete Functionality (matches `CURRENT_STATE_SPEC.md` §31, confirmed by direct reading)
@@ -277,11 +316,11 @@ Ranked by combination of (a) confirmed conflict with an authoritative spec and (
 
 1. §3.1 — craft-vs-buy selection optimizes cash over effective cost (directly contradicts a worked example in `DOMAIN_SPEC.md`, affects every profit calculation). **Resolved** — see §3.1.
 2. §3.3 — owned-material pool omits character inventories (affects every profit/discovery calculation for any item held on a character). **Resolved** — see §3.3.
-3. §4.1 — domain layer coupled to repository types (blocks `TEST_STRATEGY.md`'s entire domain-test strategy and `TARGET_ARCHITECTURE.md`'s migration plan). **Still open** — scheduled for Phase 2 (`docs/ROADMAP.md`).
+3. §4.1 — domain layer coupled to repository types (blocks `TEST_STRATEGY.md`'s entire domain-test strategy and `TARGET_ARCHITECTURE.md`'s migration plan). **Resolved** — see §4.1 (`STORY-DOM-017`).
 4. §3.2, §3.4, §3.5 — recipe-selection priority, bound-material rules, and price-unavailable state, each independently confirmed unimplemented. **Resolved** — see each subsection.
 5. §3.6 — duplicated/disagreeing Ecto calculation (user-facing numeric inconsistency, but isolated to one feature). **Resolved** — see §3.6.
 6. §3.7 — Crafting Profit's coordinated scope selector and its refresh/selection verification. **Resolved** — see §3.7.
 
-(§2.1, configuration hardcoding, is resolved — see §2.)
+(§2.1, configuration hardcoding, is resolved for `repo.*`/`sync.*`; §2.2 records a remaining gap in two view classes.)
 
-This ranking reflects priority at the time this document was first written. Most items have since been implemented — see each subsection's Status line above and `agent/stories/BACKLOG.md` `## Done` for the stories that closed them. Still-open work: §4's architectural coupling (Phase 2).
+This ranking reflects priority at the time this document was first written. Most items have since been implemented — see each subsection's Status line above and `agent/stories/BACKLOG.md` `## Done` for the stories that closed them. §4.1–§4.3's Phase 2 architectural-coupling items are resolved (`STORY-DOM-017`/`STORY-DOM-018`/`STORY-DOM-019`/`STORY-INFRA-003`). Still-open work: §4.4's Ecto UI-to-calculation wiring gap (Phase 3 scope); §2.2's hardcoded view-level DB credentials and §7.8's orphaned dead code (both low-risk, not Phase 1 blockers, newly recorded by `STORY-QUALITY-001`).

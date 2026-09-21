@@ -18,7 +18,7 @@ import java.util.UUID;
  * <p>Sets {@link repo.Db#TEST_SCHEMA_PROPERTY} so every {@code repo.Db.open()} call made from
  * inside the real application code (view -&gt; controller -&gt; repositories) - not just calls a
  * test can pass an explicit {@link Connection} to - resolves against this fixture schema.
- * Also points {@link craft.CraftingGraphCache} at a fresh temp file so the real crafting graph
+ * Also points {@link repo.CraftingGraphCache} at a fresh temp file so the real crafting graph
  * cache in the project's working directory is never read or overwritten by a test run.
  *
  * <p>Intended for reuse by STORY-DOM-013/014/015's own real-view checks: extend the minimal
@@ -53,7 +53,7 @@ public final class CraftingUiTestFixtures implements AutoCloseable {
         // recipe rows rather than failing to parse an empty file.
         java.nio.file.Path cacheFile = java.nio.file.Files.createTempFile("ui-test-crafting-graph-", ".json");
         java.nio.file.Files.delete(cacheFile);
-        System.setProperty(craft.CraftingGraphCache.TEST_CACHE_FILE_PROPERTY, cacheFile.toString());
+        System.setProperty(repo.CraftingGraphCache.TEST_CACHE_FILE_PROPERTY, cacheFile.toString());
     }
 
     private void createTables() throws Exception {
@@ -175,7 +175,7 @@ public final class CraftingUiTestFixtures implements AutoCloseable {
         } finally {
             con.close();
             System.clearProperty(repo.Db.TEST_SCHEMA_PROPERTY);
-            System.clearProperty(craft.CraftingGraphCache.TEST_CACHE_FILE_PROPERTY);
+            System.clearProperty(repo.CraftingGraphCache.TEST_CACHE_FILE_PROPERTY);
         }
     }
 

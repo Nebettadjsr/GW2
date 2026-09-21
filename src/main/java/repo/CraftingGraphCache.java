@@ -1,7 +1,9 @@
-package craft;
+package repo;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import repo.RecipeRepository;
+import craft.CraftingGraph;
+import craft.Ingredient;
+import craft.Recipe;
 
 import java.io.File;
 import java.io.IOException;
@@ -9,6 +11,12 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Persistence-backed cache of the crafting graph, mapping cached JSON rows into the independent
+ * {@code craft.Recipe}/{@code craft.Ingredient} domain types (STORY-DOM-017): this class - not
+ * {@code craft.*} - owns both the database load and the on-disk cache (de)serialization boundary,
+ * per TARGET_ARCHITECTURE.md section 10.
+ */
 public class CraftingGraphCache {
 
     private static final String CACHE_FILE = "crafting_graph_cache.json";
@@ -51,7 +59,7 @@ public class CraftingGraphCache {
             throw new IOException("Could not delete old cache file: " + file.getAbsolutePath());
         }
 
-        List<RecipeRepository.Recipe> recipes = recipeRepo.loadAllRecipes();
+        List<Recipe> recipes = recipeRepo.loadAllRecipes();
         CraftingGraph graph = new CraftingGraph(recipes);
 
         CraftingGraphDto dto = toDto(graph);
@@ -72,19 +80,19 @@ public class CraftingGraphCache {
     }
 
     private CraftingGraph fromDto(CraftingGraphDto dto) {
-        List<RecipeRepository.Recipe> recipes = new ArrayList<>();
+        List<Recipe> recipes = new ArrayList<>();
 
         for (CraftingGraphDto.RecipeDto r : dto.recipes) {
-            List<RecipeRepository.Ingredient> ingredients = new ArrayList<>();
+            List<Ingredient> ingredients = new ArrayList<>();
 
             for (CraftingGraphDto.IngredientDto ing : r.ingredients) {
-                ingredients.add(new RecipeRepository.Ingredient(
+                ingredients.add(new Ingredient(
                         ing.itemId,
                         ing.count
                 ));
             }
 
-            recipes.add(new RecipeRepository.Recipe(
+            recipes.add(new Recipe(
                     r.recipeId,
                     r.outputItemId,
                     r.outputCount,
@@ -101,7 +109,7 @@ public class CraftingGraphCache {
         CraftingGraphDto dto = new CraftingGraphDto();
         dto.recipes = new ArrayList<>();
 
-        for (RecipeRepository.Recipe r : graph.getRecipes()) {
+        for (Recipe r : graph.getRecipes()) {
             CraftingGraphDto.RecipeDto rd = new CraftingGraphDto.RecipeDto();
             rd.recipeId = r.recipeId;
             rd.outputItemId = r.outputItemId;
@@ -111,7 +119,7 @@ public class CraftingGraphCache {
 
             rd.ingredients = new ArrayList<>();
 
-            for (RecipeRepository.Ingredient ing : r.ingredients) {
+            for (Ingredient ing : r.ingredients) {
                 CraftingGraphDto.IngredientDto id = new CraftingGraphDto.IngredientDto();
                 id.itemId = ing.itemId;
                 id.count = ing.count;

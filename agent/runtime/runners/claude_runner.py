@@ -6,7 +6,7 @@ import time
 
 from agent.runtime.support.config import (
     CLAUDE_USAGE_LIMIT_PERCENT,
-    CLAUDE_USAGE_RECHECK_SECONDS,
+    MODEL_CAPACITY_RECHECK_SECONDS,
     REPO_ROOT,
 )
 
@@ -53,6 +53,7 @@ def get_claude_session_usage_percent() -> int:
         text=True,
         encoding="utf-8",
         capture_output=True,
+        timeout=30,
     )
 
     if result.returncode != 0:
@@ -101,7 +102,7 @@ def wait_for_claude_capacity(
         )
 
         time.sleep(
-            CLAUDE_USAGE_RECHECK_SECONDS
+            MODEL_CAPACITY_RECHECK_SECONDS
         )
 
 

@@ -1,8 +1,6 @@
 package craft;
 
 import org.junit.jupiter.api.Test;
-import repo.RecipeRepository;
-import repo.tp.TpPriceRepository;
 
 import java.util.List;
 import java.util.Map;
@@ -34,28 +32,28 @@ class CraftingResolverMultipleRecipeSelectionTest {
         int sameDisciplineRawId = 1101;
         int otherDisciplineRawId = 1102;
 
-        RecipeRepository.Recipe finalRecipe = new RecipeRepository.Recipe(
+        Recipe finalRecipe = new Recipe(
                 1, finalItemId, 1, 0, "Artificer",
                 List.of(ingredient(intermediateItemId, 1))
         );
         // Matches the parent's discipline but is economically more expensive.
-        RecipeRepository.Recipe sameDisciplineRecipe = new RecipeRepository.Recipe(
+        Recipe sameDisciplineRecipe = new Recipe(
                 10, intermediateItemId, 1, 0, "Artificer",
                 List.of(ingredient(sameDisciplineRawId, 1))
         );
         // Cheaper, but a different discipline than the parent recipe.
-        RecipeRepository.Recipe otherDisciplineRecipe = new RecipeRepository.Recipe(
+        Recipe otherDisciplineRecipe = new Recipe(
                 11, intermediateItemId, 1, 0, "Weaponsmith",
                 List.of(ingredient(otherDisciplineRawId, 1))
         );
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of(
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of(
                 finalItemId, List.of(finalRecipe),
                 // Cheaper/wrong-discipline recipe listed first, to expose a first-in-list bug.
                 intermediateItemId, List.of(otherDisciplineRecipe, sameDisciplineRecipe)
         );
 
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(
+        Map<Integer, PriceQuote> tp = Map.of(
                 sameDisciplineRawId, quote(null, 100),
                 otherDisciplineRawId, quote(null, 50)
         );
@@ -81,26 +79,26 @@ class CraftingResolverMultipleRecipeSelectionTest {
         int cheapRawId = 2101;
         int expensiveRawId = 2102;
 
-        RecipeRepository.Recipe finalRecipe = new RecipeRepository.Recipe(
+        Recipe finalRecipe = new Recipe(
                 2, finalItemId, 1, 0, "Artificer",
                 List.of(ingredient(intermediateItemId, 1))
         );
-        RecipeRepository.Recipe expensiveSameDisciplineRecipe = new RecipeRepository.Recipe(
+        Recipe expensiveSameDisciplineRecipe = new Recipe(
                 20, intermediateItemId, 1, 0, "Artificer",
                 List.of(ingredient(expensiveRawId, 1))
         );
-        RecipeRepository.Recipe cheapSameDisciplineRecipe = new RecipeRepository.Recipe(
+        Recipe cheapSameDisciplineRecipe = new Recipe(
                 21, intermediateItemId, 1, 0, "Artificer",
                 List.of(ingredient(cheapRawId, 1))
         );
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of(
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of(
                 finalItemId, List.of(finalRecipe),
                 // More expensive recipe listed first, to expose a first-in-list bug.
                 intermediateItemId, List.of(expensiveSameDisciplineRecipe, cheapSameDisciplineRecipe)
         );
 
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(
+        Map<Integer, PriceQuote> tp = Map.of(
                 expensiveRawId, quote(null, 100),
                 cheapRawId, quote(null, 50)
         );
@@ -126,27 +124,27 @@ class CraftingResolverMultipleRecipeSelectionTest {
         int expensiveRawId = 3101;
         int cheapRawId = 3102;
 
-        RecipeRepository.Recipe finalRecipe = new RecipeRepository.Recipe(
+        Recipe finalRecipe = new Recipe(
                 3, finalItemId, 1, 0, "Artificer",
                 List.of(ingredient(intermediateItemId, 1))
         );
-        RecipeRepository.Recipe expensiveOtherDisciplineRecipe = new RecipeRepository.Recipe(
+        Recipe expensiveOtherDisciplineRecipe = new Recipe(
                 30, intermediateItemId, 1, 0, "Tailor",
                 List.of(ingredient(expensiveRawId, 1))
         );
-        RecipeRepository.Recipe cheapOtherDisciplineRecipe = new RecipeRepository.Recipe(
+        Recipe cheapOtherDisciplineRecipe = new Recipe(
                 31, intermediateItemId, 1, 0, "Weaponsmith",
                 List.of(ingredient(cheapRawId, 1))
         );
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of(
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of(
                 finalItemId, List.of(finalRecipe),
                 // More expensive recipe listed first, to expose a first-in-list bug. Neither
                 // candidate matches the parent's "Artificer" discipline.
                 intermediateItemId, List.of(expensiveOtherDisciplineRecipe, cheapOtherDisciplineRecipe)
         );
 
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(
+        Map<Integer, PriceQuote> tp = Map.of(
                 expensiveRawId, quote(null, 100),
                 cheapRawId, quote(null, 50)
         );

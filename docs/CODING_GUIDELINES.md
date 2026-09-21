@@ -1,78 +1,146 @@
 # Coding Guidelines
 
-This file defines binding rules for generated/edited code in this project (Java 25). Goal: maintainable, clearly structured code with no spaghetti code.
+Binding rules for generated/edited code across this project — the Java client/backend and the
+Python agent orchestrator (`agent/runtime/`) alike. Sections 1–6 apply to any language used
+here; Section 7 is Java 25 specific. Goal: maintainable, clearly structured code, no spaghetti,
+no unverified "done."
 
-## 1. Structure & File Size
+These bias toward caution over speed. For genuinely trivial tasks (a one-line fix, a typo),
+use judgment — don't ritualize the process past the point it adds value.
 
-- **Max. 500 lines per file.** If a class is foreseeably going to exceed this, split it (Extract Class) rather than cramming it in somehow.
-- **Single Responsibility per class.** One class does one thing. If a class has more than one reason to change → split it.
-- Prefer many small, clearly named classes/interfaces over a few large "God Classes".
-- Structure packages by business domain, not purely by technical layer (`orders.pricing`, not just `service`, `util`, `impl`).
-- No method > ~40 lines as a guideline. Long methods → extract into well-named helper methods (this often replaces the need for comments, see below).
-- Nesting depth ideally ≤ 2-3 (guard clauses instead of nested if/else pyramids).
+## 1. Evaluate, Decide, Proceed
 
-## 2. Comments — as few as possible, as many as necessary
+**Most changes are local — treat them that way.** A typical bugfix, small feature slice, or
+change confined to one component: just implement it per Sections 2–6, verify it (Section 4),
+and move on. Do not read `ROADMAP.md`, the backlog, or unrelated parts of the codebase for a
+change like this — that's wasted context/tokens for something that doesn't need it.
 
-No comment that just restates what the code obviously does.
+**Only widen the lens for changes that are genuinely cross-cutting**, specifically:
+- adding a new dependency/library, or a new external tool/service integration;
+- introducing or changing a shared contract used across modules/components — DTOs, public
+  interfaces, API shapes, database schema, event/message formats;
+- an architectural decision (new layer, new pattern, changed module boundary);
+- a change you can already tell will touch multiple existing components.
 
-**Only comment:**
-- **Why**, not **what** (the intent/reason behind a non-obvious decision).
-- **Pitfalls/edge cases**: e.g. "intentionally no trim here, whitespace is significant", side effects, race conditions, edge cases, workarounds for library bugs (with ticket/link if available).
-- Non-trivial invariants or preconditions the compiler doesn't enforce.
-- Public API (Javadoc on public classes/methods of reusable modules): brief, describe the contract (parameters, return value, exceptions, thread-safety), no prose.
+For those, actually evaluate the options against the project before choosing: how each fits
+`CURRENT_ARCHITECTURE.md`/`TARGET_ARCHITECTURE.md`, how it interacts with the other parts of
+the codebase it will be shared with, and — only when directly relevant, not as a routine
+scan — whether it conflicts with clearly related planned work. Prefer the approach that
+minimizes conflicts with other in-flight/planned work and minimizes refactor work later, not
+necessarily the fastest one to write now. State the reasoning and any assumption made in the
+story result/report.
 
-**No comment for:**
-- Self-explanatory code (a good name makes a comment redundant — prefer `isEligibleForDiscount()` over `// checks if discount applies` above a cryptic condition).
-- Commented-out old code (delete it, Git has the history).
-- Trivial getters/setters/constructors.
+If a simpler approach than the one requested exists (local or cross-cutting), say so in the
+report and use it, rather than building the more complex thing just because it was implied.
 
-## 3. Naming & Readability
+Reserve stopping the story (marking it BLOCKED per CLAUDE.md, with the conflict reported) for
+genuine blockers only: the Definition of Done is actually contradictory or unspecified, or
+every available approach risks materially wrong or hard-to-reverse changes to shared state.
+This should be rare — most ambiguity gets resolved by picking the best-reasoned option and
+documenting why, not by stopping.
 
-- Expressive names instead of comments: `remainingRetryCount` instead of `int n // retries left`.
-- No abbreviations except well-established ones (`id`, `url`, `dto`).
-- Boolean names as a question/state: `isValid`, `hasExpired`.
-- Magic numbers/strings → named constants or enums.
+## 2. Simplicity First
 
-## 4. Error Handling
+Minimum code that solves the problem. Nothing speculative.
 
-- No empty `catch` blocks. Either handle exceptions meaningfully, wrap them in a more meaningful exception, or deliberately rethrow — never swallow silently.
-- Only use checked exceptions when the caller can realistically react to them; otherwise use an unchecked/domain-specific exception.
-- Don't use `null` as a return value for "not found" → use `Optional<T>` (see below).
-- Fail fast: validate preconditions early (`Objects.requireNonNull`, `IllegalArgumentException`) instead of letting errors surface deep in the call stack.
+- No features beyond what was asked.
+- No abstractions for single-use code, no "flexibility" or config that wasn't requested.
+- No error handling for scenarios that can't occur.
+- If it could be a third the size, rewrite it. Ask: would a senior engineer call this
+  overcomplicated? If yes, simplify.
 
-## 5. Modern Java 25 — Best Practices
+## 3. Surgical Changes
 
-**Data modeling**
-- Use `record` for immutable data carriers (DTOs, value objects) instead of classic classes with getter/setter/equals/hashCode boilerplate.
-- Use `sealed` interfaces/classes for closed hierarchies (e.g. result/state types), combined with **pattern matching for `switch`** (exhaustive switch without `default` when all cases are covered).
-- Use record patterns to destructure in `switch`/`instanceof` instead of manual getter chains.
+Touch only what you must. Clean up only your own mess.
 
-**Immutability**
-- Fields `final` by default. Mutable state only when explicitly needed (e.g. builders, performance-critical paths).
-- Return collections defensively as unmodifiable (`List.copyOf`, `Collections.unmodifiableList`) instead of exposing internal lists directly.
+- Don't "improve" adjacent code, comments, or formatting while you're in a file for something
+  else. Don't refactor things that aren't broken. Match existing style even if you'd do it
+  differently.
+- If you notice unrelated dead code, mention it — don't delete it unasked.
+- When your own change orphans an import/variable/function, remove it. Don't remove
+  pre-existing dead code unless asked.
+- Test: every changed line should trace directly to the task at hand.
 
-**Concurrency**
-- **Virtual threads** (`Executors.newVirtualThreadPerTaskExecutor()`) for I/O-heavy concurrent work instead of hand-tuning platform-thread pools.
-- **Structured concurrency** (`StructuredTaskScope`) when several subtasks should run/fail as one unit — instead of manually wiring `CompletableFuture`s.
-- Avoid shared mutable state; where unavoidable, clearly document why (thread-safety shouldn't rely on "forgotten" state).
+## 4. Goal-Driven Execution
 
-**API & readability**
-- `Optional<T>` only as a return type (never as a field or method parameter), to make "no value" explicit.
-- Text blocks (`"""..."""`) for multi-line strings (SQL, JSON, error messages) instead of string concatenation.
-- `var` only when the type is immediately obvious from context (the right-hand side is unambiguous) — otherwise write the explicit type.
-- Use streams for transformations/filtering, but don't force it when a plain loop is clearer — readability beats "elegant".
-- Dependency injection instead of `new`-ing dependencies in the middle of business code, to keep things testable.
+Define success criteria. Loop until verified. Never mark something done without proving it.
 
-**Other**
-- No static utility classes as a dumping ground for unrelated methods (the "junk drawer" anti-pattern) — put behavior where the data lives.
-- Tests mirror the structure: one test class per production class, test names describe behavior (`returnsEmptyList_whenNoMatch`), not implementation.
+- Turn vague asks into verifiable goals: "add validation" → write tests for invalid input,
+  then make them pass; "fix the bug" → write a test that reproduces it, then make it pass;
+  "refactor X" → tests pass before and after.
+- For multi-step work, state a brief plan first (step → how you'll verify it), and check in
+  before implementing anything non-trivial (3+ steps or an architectural decision). For
+  larger stories, track it in `tasks/todo.md` with checkable items; mark items off as you go.
+- If something goes sideways mid-task, stop and re-plan rather than pushing through.
+- Given a bug report or failing CI: reproduce from the logs/errors/failing test yourself and
+  resolve it — don't wait to be told how.
 
-## 6. Checklist Before Commit
+## 5. Structure & File Size
 
-- [ ] No file > 500 lines
-- [ ] Every class has exactly one responsibility
-- [ ] Comments explain only why/pitfalls, not what
-- [ ] No empty catch blocks, no `null` for "not found"
-- [ ] Records/sealed types used where appropriate instead of boilerplate
-- [ ] Immutability by default
-- [ ] Virtual threads/structured concurrency instead of low-level threading, where concurrency is needed
+- Prefer many small, clearly named units over a few large ones. ~500 lines per file is a
+  ceiling, not a target — if a file is foreseeably going to exceed it, split it rather than
+  cram more in.
+- Single responsibility per unit (class, module, function group). More than one reason to
+  change it → split it.
+- Organize by business domain, not purely by technical layer (`orders/pricing`, not a bare
+  `util`/`service` dumping ground).
+- No function/method longer than ~40 lines as a guideline — extract well-named helpers
+  instead (this usually removes the need for a comment, too).
+- Keep nesting shallow (≤2–3 levels) — guard clauses over nested conditionals.
+
+## 6. Naming, Comments & Errors
+
+**Naming:** expressive names instead of comments (`remainingRetryCount`, not `n # retries
+left`). No abbreviations beyond well-established ones (`id`, `url`, `dto`). Boolean names read
+as a question/state (`isValid`, `hasExpired`). Magic numbers/strings become named
+constants/enums.
+
+**Comments — as few as possible, as many as necessary.** Only comment the *why*, not the
+*what*: non-obvious intent, pitfalls/edge cases, side effects, workarounds for library bugs
+(link the issue if there is one), invariants the compiler/interpreter won't catch. Public-API
+docs on reusable modules: brief, contract-only (params, return, errors, thread-safety), no
+prose. Never comment self-explanatory code, and never leave commented-out old code — delete
+it, Git has the history.
+
+**Error handling:** never swallow an error silently — handle it meaningfully, wrap it with
+more context, or deliberately propagate it. Fail fast: validate preconditions up front rather
+than letting a bad value surface deep in the call stack. Don't use a bare null/None (or
+equivalent silent "nothing here") as a "not found" signal where the language gives you an
+explicit way to say so (e.g. `Optional<T>` in Java).
+
+## 7. Java 25 Specific
+
+- `record` for immutable data carriers instead of manual getter/setter/equals/hashCode
+  boilerplate; `sealed` interfaces/classes for closed hierarchies, paired with exhaustive
+  pattern-matching `switch`; record patterns to destructure instead of manual getter chains.
+- `Optional<T>` only as a return type, never as a field or parameter.
+- **Virtual threads** (`Executors.newVirtualThreadPerTaskExecutor()`) for I/O-heavy concurrent
+  work instead of hand-tuned platform-thread pools. **Structured concurrency**
+  (`StructuredTaskScope`) when subtasks should run/fail as one unit, instead of wiring
+  `CompletableFuture`s by hand. Avoid shared mutable state; where unavoidable, document why.
+- Text blocks (`"""..."""`) for multi-line strings (SQL, JSON, error messages).
+- `var` only when the right-hand side makes the type unambiguous at a glance — otherwise
+  write the explicit type.
+- Streams for transformation/filtering where they read cleanly; a plain loop is fine when
+  it's clearer — readability beats "elegant."
+- Dependency injection instead of `new`-ing dependencies inside business logic, to keep things
+  testable.
+- No junk-drawer static utility classes for unrelated methods — put behavior where the data
+  lives.
+- Tests mirror production structure: one test class per production class, test names
+  describe behavior (`returnsEmptyList_whenNoMatch`), not implementation.
+
+## 8. Workflow Mechanics
+
+**Planning:** for non-trivial tasks (3+ steps or an architectural decision), state a short
+plan and check in before implementing — see Section 4.
+
+**Subagents:** offload research, exploration, and parallel analysis to subagents to keep the
+main context window clean. One task per subagent, for focused execution.
+
+**Version control:** when a story is completed, stage and commit all changed files with a
+short, descriptive message (e.g. `implemented story XYZ`). Commit regularly as work
+progresses, not only at the end. Do not push — pushing is handled separately.
+
+Self-improvement (updating `tasks/lessons.md` after a correction, reviewing it at session
+start) is defined in `CLAUDE.md`, not here.

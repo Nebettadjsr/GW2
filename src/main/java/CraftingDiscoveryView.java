@@ -1,6 +1,8 @@
 import craft.CraftResult;
 import craft.CraftingSettings;
+import craft.Ingredient;
 import craft.Node;
+import craft.Recipe;
 import javafx.application.Platform;
 import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.SimpleIntegerProperty;
@@ -17,7 +19,6 @@ import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import repo.DiscChoice;
 import repo.ItemRepository;
-import repo.RecipeRepository;
 import sync.AccountSync;
 import sync.CharacterSync;
 import sync.TpSync;
@@ -719,9 +720,9 @@ public class CraftingDiscoveryView {
         return ti;
     }
 
-    private String buildSearchBlob(RecipeRepository.Recipe recipe,
+    private String buildSearchBlob(Recipe recipe,
                                    Map<Integer, ItemRepository.ItemInfo> items,
-                                   Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput,
+                                   Map<Integer, List<Recipe>> recipesByOutput,
                                    Set<Integer> visited) {
         if (recipe == null) return "";
 
@@ -736,13 +737,13 @@ public class CraftingDiscoveryView {
             sb.append(out.name).append(' ');
         }
 
-        for (RecipeRepository.Ingredient ing : recipe.ingredients) {
+        for (Ingredient ing : recipe.ingredients) {
             ItemRepository.ItemInfo ingInfo = items.get(ing.itemId);
             if (ingInfo != null && ingInfo.name != null) {
                 sb.append(ingInfo.name).append(' ');
             }
 
-            List<RecipeRepository.Recipe> subRecipes = recipesByOutput.get(ing.itemId);
+            List<Recipe> subRecipes = recipesByOutput.get(ing.itemId);
             if (subRecipes != null && !subRecipes.isEmpty()) {
                 sb.append(buildSearchBlob(subRecipes.get(0), items, recipesByOutput, visited)).append(' ');
             }

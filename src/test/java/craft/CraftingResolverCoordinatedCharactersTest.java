@@ -1,8 +1,6 @@
 package craft;
 
 import org.junit.jupiter.api.Test;
-import repo.RecipeRepository;
-import repo.tp.TpPriceRepository;
 
 import java.util.List;
 import java.util.Map;
@@ -32,7 +30,7 @@ class CraftingResolverCoordinatedCharactersTest {
 
     @Test
     void ownedOutputDoesNotBypassMissingCharacterEligibility() {
-        var recipe = new RecipeRepository.Recipe(1, FINAL_ITEM_ID, 1, 400, "Chef",
+        var recipe = new Recipe(1, FINAL_ITEM_ID, 1, 400, "Chef",
                 List.of(CraftTestFixtures.ingredient(RAW_ITEM_ID, 1)));
         var ctx = coordinatedContext(Map.of(FINAL_ITEM_ID, List.of(recipe)), Map.of(),
                 defaultSettings(), Set.of(1), List.of());
@@ -44,9 +42,9 @@ class CraftingResolverCoordinatedCharactersTest {
 
     @Test
     void ineligiblePreferredRecipeDoesNotHideEligibleAlternative() {
-        var unavailable = new RecipeRepository.Recipe(1, INTERMEDIATE_ITEM_ID, 1, 400,
+        var unavailable = new Recipe(1, INTERMEDIATE_ITEM_ID, 1, 400,
                 "Weaponsmith", List.of(CraftTestFixtures.ingredient(RAW_ITEM_ID, 1)));
-        var available = new RecipeRepository.Recipe(2, INTERMEDIATE_ITEM_ID, 1, 0,
+        var available = new Recipe(2, INTERMEDIATE_ITEM_ID, 1, 0,
                 "Armorsmith", List.of(CraftTestFixtures.ingredient(RAW_ITEM_ID, 1)));
         var ctx = coordinatedContext(Map.of(INTERMEDIATE_ITEM_ID, List.of(unavailable, available)),
                 Map.of(), defaultSettings(), Set.of(1, 2),
@@ -60,18 +58,18 @@ class CraftingResolverCoordinatedCharactersTest {
     void intermediateProducedByOneEligibleCharacter_finalStepByAnotherEligibleCharacter() {
         // Final recipe needs a Weaponsmith; its intermediate needs an Armorsmith. No single
         // character in the roster has both discipline - this can only succeed by coordinating.
-        RecipeRepository.Recipe finalRecipe = new RecipeRepository.Recipe(
+        Recipe finalRecipe = new Recipe(
                 1, FINAL_ITEM_ID, 1, 0, "Weaponsmith",
                 List.of(CraftTestFixtures.ingredient(INTERMEDIATE_ITEM_ID, 1)));
-        RecipeRepository.Recipe intermediateRecipe = new RecipeRepository.Recipe(
+        Recipe intermediateRecipe = new Recipe(
                 2, INTERMEDIATE_ITEM_ID, 1, 0, "Armorsmith",
                 List.of(CraftTestFixtures.ingredient(RAW_ITEM_ID, 1)));
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of(
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of(
                 FINAL_ITEM_ID, List.of(finalRecipe),
                 INTERMEDIATE_ITEM_ID, List.of(intermediateRecipe));
 
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(RAW_ITEM_ID, CraftTestFixtures.quote(null, 100));
+        Map<Integer, PriceQuote> tp = Map.of(RAW_ITEM_ID, CraftTestFixtures.quote(null, 100));
 
         List<CharacterCraftingProfile> roster = List.of(
                 profile("Armorsmith Alice", "Armorsmith", 50),
@@ -93,22 +91,22 @@ class CraftingResolverCoordinatedCharactersTest {
     void twoTransferableIntermediatesProducedByDifferentCharacters_feedAThirdCharactersFinalStep() {
         // This is UD-004's three-character case: neither intermediate needs to remain with
         // its crafter, but every recipe step still has its own discipline assignment.
-        RecipeRepository.Recipe finalRecipe = new RecipeRepository.Recipe(
+        Recipe finalRecipe = new Recipe(
                 1, FINAL_ITEM_ID, 1, 0, "Weaponsmith", List.of(
                 CraftTestFixtures.ingredient(INTERMEDIATE_ITEM_ID, 1),
                 CraftTestFixtures.ingredient(INTERMEDIATE_ITEM_ID + 1, 1)));
-        RecipeRepository.Recipe firstIntermediate = new RecipeRepository.Recipe(
+        Recipe firstIntermediate = new Recipe(
                 2, INTERMEDIATE_ITEM_ID, 1, 0, "Armorsmith",
                 List.of(CraftTestFixtures.ingredient(RAW_ITEM_ID, 1)));
-        RecipeRepository.Recipe secondIntermediate = new RecipeRepository.Recipe(
+        Recipe secondIntermediate = new Recipe(
                 3, INTERMEDIATE_ITEM_ID + 1, 1, 0, "Huntsman",
                 List.of(CraftTestFixtures.ingredient(RAW_ITEM_ID + 1, 1)));
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of(
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of(
                 FINAL_ITEM_ID, List.of(finalRecipe),
                 INTERMEDIATE_ITEM_ID, List.of(firstIntermediate),
                 INTERMEDIATE_ITEM_ID + 1, List.of(secondIntermediate));
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(
+        Map<Integer, PriceQuote> tp = Map.of(
                 RAW_ITEM_ID, CraftTestFixtures.quote(null, 100),
                 RAW_ITEM_ID + 1, CraftTestFixtures.quote(null, 100));
         List<CharacterCraftingProfile> roster = List.of(
@@ -128,13 +126,13 @@ class CraftingResolverCoordinatedCharactersTest {
 
     @Test
     void transferableIntermediateAndSharedInventoryAreConsumedOncePerCraft() {
-        RecipeRepository.Recipe finalRecipe = new RecipeRepository.Recipe(
+        Recipe finalRecipe = new Recipe(
                 1, FINAL_ITEM_ID, 1, 0, "Weaponsmith",
                 List.of(CraftTestFixtures.ingredient(INTERMEDIATE_ITEM_ID, 1)));
-        RecipeRepository.Recipe intermediateRecipe = new RecipeRepository.Recipe(
+        Recipe intermediateRecipe = new Recipe(
                 2, INTERMEDIATE_ITEM_ID, 1, 0, "Armorsmith",
                 List.of(CraftTestFixtures.ingredient(RAW_ITEM_ID, 1)));
-        List<RecipeRepository.Recipe> recipes = List.of(finalRecipe, intermediateRecipe);
+        List<Recipe> recipes = List.of(finalRecipe, intermediateRecipe);
         List<CharacterCraftingProfile> roster = List.of(
                 profile("Armorsmith Alice", "Armorsmith", 50),
                 profile("Weaponsmith Carl", "Weaponsmith", 50));
@@ -150,18 +148,18 @@ class CraftingResolverCoordinatedCharactersTest {
 
     @Test
     void noRosterCharacterHasTheRequiredDiscipline_stepIsBlockedRecipeNotAllowed() {
-        RecipeRepository.Recipe finalRecipe = new RecipeRepository.Recipe(
+        Recipe finalRecipe = new Recipe(
                 1, FINAL_ITEM_ID, 1, 0, "Weaponsmith",
                 List.of(CraftTestFixtures.ingredient(INTERMEDIATE_ITEM_ID, 1)));
-        RecipeRepository.Recipe intermediateRecipe = new RecipeRepository.Recipe(
+        Recipe intermediateRecipe = new Recipe(
                 2, INTERMEDIATE_ITEM_ID, 1, 0, "Armorsmith",
                 List.of(CraftTestFixtures.ingredient(RAW_ITEM_ID, 1)));
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of(
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of(
                 FINAL_ITEM_ID, List.of(finalRecipe),
                 INTERMEDIATE_ITEM_ID, List.of(intermediateRecipe));
 
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(RAW_ITEM_ID, CraftTestFixtures.quote(null, 100));
+        Map<Integer, PriceQuote> tp = Map.of(RAW_ITEM_ID, CraftTestFixtures.quote(null, 100));
 
         // Only a Weaponsmith is synced - nobody can perform the Armorsmith intermediate step.
         List<CharacterCraftingProfile> roster = List.of(profile("Weaponsmith Carl", "Weaponsmith", 50));
@@ -177,12 +175,12 @@ class CraftingResolverCoordinatedCharactersTest {
 
     @Test
     void ratingBelowRecipeMinimum_excludesThatCharacterFromEligibility() {
-        RecipeRepository.Recipe recipe = new RecipeRepository.Recipe(
+        Recipe recipe = new Recipe(
                 1, FINAL_ITEM_ID, 1, 400, "Armorsmith",
                 List.of(CraftTestFixtures.ingredient(RAW_ITEM_ID, 1)));
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of(FINAL_ITEM_ID, List.of(recipe));
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(RAW_ITEM_ID, CraftTestFixtures.quote(null, 100));
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of(FINAL_ITEM_ID, List.of(recipe));
+        Map<Integer, PriceQuote> tp = Map.of(RAW_ITEM_ID, CraftTestFixtures.quote(null, 100));
 
         // Below the recipe's min_rating of 400 - not eligible despite having the discipline.
         List<CharacterCraftingProfile> roster = List.of(profile("Novice Nora", "Armorsmith", 50));
@@ -200,13 +198,13 @@ class CraftingResolverCoordinatedCharactersTest {
     void twoCharactersEachHoldingOneSoulboundUnit_cannotJointlySatisfyStepNeedingTwo() {
         // DOMAIN_SPEC.md section 2.2.1's own example: neither character alone owns the required
         // 2 units, and their separate soulbound copies must never be pooled together.
-        RecipeRepository.Recipe recipe = new RecipeRepository.Recipe(
+        Recipe recipe = new Recipe(
                 1, FINAL_ITEM_ID, 1, 0, "Tailor",
                 List.of(CraftTestFixtures.ingredient(SOULBOUND_ITEM_ID, 2)));
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of(FINAL_ITEM_ID, List.of(recipe));
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of(FINAL_ITEM_ID, List.of(recipe));
         // No Trading Post quote at all - soulbound items cannot be sold or bought either way.
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of();
+        Map<Integer, PriceQuote> tp = Map.of();
 
         List<CharacterCraftingProfile> roster = List.of(
                 profile("Tailor Amy", "Tailor", 10),
@@ -228,12 +226,12 @@ class CraftingResolverCoordinatedCharactersTest {
 
     @Test
     void oneCharacterOwningBothSoulboundUnits_canSatisfyTheStepAlone() {
-        RecipeRepository.Recipe recipe = new RecipeRepository.Recipe(
+        Recipe recipe = new Recipe(
                 1, FINAL_ITEM_ID, 1, 0, "Tailor",
                 List.of(CraftTestFixtures.ingredient(SOULBOUND_ITEM_ID, 2)));
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of(FINAL_ITEM_ID, List.of(recipe));
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of(FINAL_ITEM_ID, List.of(recipe));
+        Map<Integer, PriceQuote> tp = Map.of(
                 SOULBOUND_ITEM_ID, CraftTestFixtures.quote(200, 150));
 
         List<CharacterCraftingProfile> roster = List.of(profile("Tailor Amy", "Tailor", 10));
@@ -253,11 +251,11 @@ class CraftingResolverCoordinatedCharactersTest {
 
     @Test
     void emptyRoster_blocksEveryRecipeAsRecipeNotAllowed() {
-        RecipeRepository.Recipe recipe = new RecipeRepository.Recipe(
+        Recipe recipe = new Recipe(
                 1, FINAL_ITEM_ID, 1, 0, "Tailor", List.of(CraftTestFixtures.ingredient(RAW_ITEM_ID, 1)));
 
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of(FINAL_ITEM_ID, List.of(recipe));
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(RAW_ITEM_ID, CraftTestFixtures.quote(null, 100));
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of(FINAL_ITEM_ID, List.of(recipe));
+        Map<Integer, PriceQuote> tp = Map.of(RAW_ITEM_ID, CraftTestFixtures.quote(null, 100));
 
         PlannerContext ctx = coordinatedContext(recipesByOutput, tp, defaultSettings(), Set.of(1), List.of());
         PlanState state = coordinatedState(Map.of(), Map.of(), Map.of());

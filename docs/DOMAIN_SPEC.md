@@ -1118,7 +1118,7 @@ RECIPE_NOT_ALLOWED
 INSUFFICIENT_BUDGET
 ```
 
-Not every one of these is currently represented explicitly in the implementation.
+All of these are represented explicitly in the implementation (`craft.BlockedReason`) and are assigned by the planner rather than only declared (`docs/KNOWN_PROBLEMS.md` §3.5).
 
 The domain should ultimately preserve the reason rather than returning only:
 

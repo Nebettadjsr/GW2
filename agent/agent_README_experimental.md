@@ -512,6 +512,8 @@ Phase 1 -> milestone-01
 Phase 2 -> milestone-02
 ```
 
+Milestone closure includes the bounded PROJECT HEALTH REVIEW required by `docs/ROADMAP.md`; review policy is defined in `docs/TARGET_ARCHITECTURE.md` §34, with subsequent planner disposition governed by `agent/PLANNER_INSTRUCTIONS.md`.
+
 Future-milestone stories must not become executable while the current milestone remains incomplete.
 
 Later work may exist in roadmap/target planning, but the runtime `## To Do` queue should contain only currently executable work.

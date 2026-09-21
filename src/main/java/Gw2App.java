@@ -1,5 +1,5 @@
 import craft.CraftingGraph;
-import craft.CraftingGraphCache;
+import repo.CraftingGraphCache;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;

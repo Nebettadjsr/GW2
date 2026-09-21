@@ -1,1 +1,1 @@
-agent/stories/STORY-QUALITY-001-phase-one-completion-review.md
+agent/stories/STORY-APP-002-extract-crafting-discovery-use-case.md

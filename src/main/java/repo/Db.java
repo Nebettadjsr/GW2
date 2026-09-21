@@ -4,6 +4,10 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 
+/**
+ * Shared JDBC connection helper for both the {@code repo} and {@code sync} packages
+ * (STORY-INFRA-003; previously duplicated as {@code sync.Db}).
+ */
 public final class Db {
     private Db() {}
 

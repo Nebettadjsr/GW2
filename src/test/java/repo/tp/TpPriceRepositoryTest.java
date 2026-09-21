@@ -1,5 +1,6 @@
 package repo.tp;
 
+import craft.PriceQuote;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -78,10 +79,10 @@ class TpPriceRepositoryTest {
                     "VALUES (" + itemId + ", 100, 150)");
         }
 
-        Map<Integer, TpPriceRepository.TpQuote> quotes =
+        Map<Integer, PriceQuote> quotes =
                 new TpPriceRepository().loadTpQuotes(con, Set.of(itemId));
 
-        TpPriceRepository.TpQuote q = quotes.get(itemId);
+        PriceQuote q = quotes.get(itemId);
         assertEquals(100, q.buyUnit);
         assertEquals(150, q.sellUnit);
     }
@@ -95,10 +96,10 @@ class TpPriceRepositoryTest {
                     "VALUES (" + itemId + ", NULL, NULL)");
         }
 
-        Map<Integer, TpPriceRepository.TpQuote> quotes =
+        Map<Integer, PriceQuote> quotes =
                 new TpPriceRepository().loadTpQuotes(con, Set.of(itemId));
 
-        TpPriceRepository.TpQuote q = quotes.get(itemId);
+        PriceQuote q = quotes.get(itemId);
         assertNull(q.buyUnit);
         assertNull(q.sellUnit);
     }
@@ -112,10 +113,10 @@ class TpPriceRepositoryTest {
                     "VALUES (" + itemId + ", 200, NULL)");
         }
 
-        Map<Integer, TpPriceRepository.TpQuote> quotes =
+        Map<Integer, PriceQuote> quotes =
                 new TpPriceRepository().loadTpQuotes(con, Set.of(itemId));
 
-        TpPriceRepository.TpQuote q = quotes.get(itemId);
+        PriceQuote q = quotes.get(itemId);
         assertEquals(200, q.buyUnit);
         assertNull(q.sellUnit);
     }
@@ -124,7 +125,7 @@ class TpPriceRepositoryTest {
     void loadTpQuotes_itemNotInTpPrices_isAbsentFromResultingMap() throws Exception {
         int itemId = 19724;
 
-        Map<Integer, TpPriceRepository.TpQuote> quotes =
+        Map<Integer, PriceQuote> quotes =
                 new TpPriceRepository().loadTpQuotes(con, Set.of(itemId));
 
         assertFalse(quotes.containsKey(itemId));
@@ -145,7 +146,7 @@ class TpPriceRepositoryTest {
                     "(" + itemC + ", 999, 999)");
         }
 
-        Map<Integer, TpPriceRepository.TpQuote> quotes =
+        Map<Integer, PriceQuote> quotes =
                 new TpPriceRepository().loadTpQuotes(con, Set.of(itemA, itemB, itemD));
 
         assertEquals(2, quotes.size());
@@ -162,7 +163,7 @@ class TpPriceRepositoryTest {
 
     @Test
     void loadTpQuotes_emptyItemIdSet_returnsEmptyMapWithoutQueryingDatabase() throws Exception {
-        Map<Integer, TpPriceRepository.TpQuote> quotes =
+        Map<Integer, PriceQuote> quotes =
                 new TpPriceRepository().loadTpQuotes(con, Set.of());
 
         assertTrue(quotes.isEmpty());

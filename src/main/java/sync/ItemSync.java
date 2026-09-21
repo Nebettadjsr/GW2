@@ -4,6 +4,7 @@ import api.BatchUtils;
 import api.Gw2ApiClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import parser.ItemParser;
+import repo.Db;
 import util.DbBind;
 
 import java.sql.*;
@@ -34,7 +35,7 @@ public final class ItemSync {
 
         int done = 0;
 
-        try (Connection con = Db.openConnection();
+        try (Connection con = Db.open();
              PreparedStatement ps = con.prepareStatement(itemSql);
              PreparedStatement psNow = con.prepareStatement("SELECT now()")) {
 

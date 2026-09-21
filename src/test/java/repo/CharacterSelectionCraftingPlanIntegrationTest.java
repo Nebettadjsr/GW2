@@ -3,10 +3,12 @@ package repo;
 import craft.CraftResult;
 import craft.CraftingPlanner;
 import craft.CraftingSettings;
+import craft.Ingredient;
+import craft.PriceQuote;
+import craft.Recipe;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import repo.tp.TpPriceRepository;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -147,22 +149,22 @@ class CharacterSelectionCraftingPlanIntegrationTest {
                     "VALUES (1, 'BAG', 0, 0, " + SOULBOUND_ITEM_ID + ", 5, 'Character', '" + selectedHero + "')");
         }
 
-        RecipeRepository.Recipe soulboundRecipe = new RecipeRepository.Recipe(
+        Recipe soulboundRecipe = new Recipe(
                 1, SOULBOUND_RECIPE_OUTPUT_ITEM_ID, 1, 0, "Artificer",
-                List.of(new RecipeRepository.Ingredient(SOULBOUND_ITEM_ID, 5)));
+                List.of(new Ingredient(SOULBOUND_ITEM_ID, 5)));
 
-        RecipeRepository.Recipe controlRecipe = new RecipeRepository.Recipe(
+        Recipe controlRecipe = new Recipe(
                 2, CONTROL_RECIPE_OUTPUT_ITEM_ID, 1, 0, "Artificer",
-                List.of(new RecipeRepository.Ingredient(ORDINARY_ITEM_ID, 3)));
+                List.of(new Ingredient(ORDINARY_ITEM_ID, 3)));
 
-        List<RecipeRepository.Recipe> recipes = List.of(soulboundRecipe, controlRecipe);
+        List<Recipe> recipes = List.of(soulboundRecipe, controlRecipe);
         Set<Integer> allowedRecipeIds = Set.of(1, 2);
 
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(
+        Map<Integer, PriceQuote> tp = Map.of(
                 // Soulbound item has no Trading Post listing at all - realistic per section 11.1.
-                SOULBOUND_ITEM_ID, new TpPriceRepository.TpQuote(null, null),
+                SOULBOUND_ITEM_ID, new PriceQuote(null, null),
                 // Ordinary tradable ingredient neither character owns - both must buy it identically.
-                ORDINARY_ITEM_ID, new TpPriceRepository.TpQuote(null, 100));
+                ORDINARY_ITEM_ID, new PriceQuote(null, 100));
 
         // useOwnMats=true, allowBuying=true, maxBuyCopper=500, instant sell/buy, not daily.
         CraftingSettings settings = new CraftingSettings(true, true, 500, false, false, false);

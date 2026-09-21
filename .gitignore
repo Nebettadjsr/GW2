@@ -13,6 +13,9 @@ Thumbs.db
 
 # Logs
 *.log
+# ...except the orchestrator's daily append-only log, which is a
+# committed historical record, not disposable output.
+!agent/logs/*.log
 
 # Environment configuration (contains secrets; .env.example stays tracked)
 .env

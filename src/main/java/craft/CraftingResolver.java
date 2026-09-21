@@ -1,8 +1,5 @@
 package craft;
 
-import repo.RecipeRepository;
-import repo.tp.TpPriceRepository;
-
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -13,10 +10,10 @@ public class CraftingResolver {
 
     private final Map<Integer, Integer> directBuyUnitCache = new HashMap<>();
     private final Map<Integer, Integer> directSellUnitCache = new HashMap<>();
-    private final Map<Integer, RecipeRepository.Recipe> firstRecipeCache = new HashMap<>();
+    private final Map<Integer, Recipe> firstRecipeCache = new HashMap<>();
 
     public ResolveResult resolveOneCraft(
-            RecipeRepository.Recipe recipe,
+            Recipe recipe,
             PlannerContext ctx,
             PlanState state
                                         ) {
@@ -103,7 +100,7 @@ public class CraftingResolver {
 
         // 3) Evaluate craft on a COPY of state
         CandidateEval craftEval = null;
-        RecipeRepository.Recipe firstRecipe = firstRecipeFor(itemId, ctx, parentDiscipline);
+        Recipe firstRecipe = firstRecipeFor(itemId, ctx, parentDiscipline);
 
         boolean shouldTryCraft = true;
 
@@ -182,7 +179,7 @@ public class CraftingResolver {
             PlanState state,
             String parentDiscipline
                                  ) {
-        RecipeRepository.Recipe recipe = firstRecipeFor(itemId, ctx, parentDiscipline);
+        Recipe recipe = firstRecipeFor(itemId, ctx, parentDiscipline);
         if (recipe == null) {
             if (hasOnlyDisallowedRecipes(itemId, ctx)) {
                 return blockedNeed(itemId, qtyRequested, BlockedReason.RECIPE_NOT_ALLOWED);
@@ -237,7 +234,7 @@ public class CraftingResolver {
     private ResolvedNeed tryCraftAssigned(
             int itemId,
             int qtyRequested,
-            RecipeRepository.Recipe recipe,
+            Recipe recipe,
             PlannerContext ctx,
             PlanState state,
             String assignedCharacter
@@ -278,7 +275,7 @@ public class CraftingResolver {
             boolean allChildrenSatisfied = true;
             BlockedReason unsatisfiedChildReason = BlockedReason.NONE;
 
-            for (RecipeRepository.Ingredient ing : recipe.ingredients) {
+            for (Ingredient ing : recipe.ingredients) {
                 int childQtyNeeded = ing.count * times;
 
                 ResolvedNeed child = resolveNeed(ing.itemId, childQtyNeeded, ctx, state, true,
@@ -386,14 +383,14 @@ public class CraftingResolver {
 
     public int resolveDirectBuyUnit(
             int itemId,
-            Map<Integer, TpPriceRepository.TpQuote> tp,
+            Map<Integer, PriceQuote> tp,
             CraftingSettings settings
                                    ) {
 
         Integer cached = directBuyUnitCache.get(itemId);
         if (cached != null) return cached;
 
-        TpPriceRepository.TpQuote q = tp.get(itemId);
+        PriceQuote q = tp.get(itemId);
         if (q == null) {
             directBuyUnitCache.put(itemId, 0);
             return 0;
@@ -408,14 +405,14 @@ public class CraftingResolver {
 
     public int resolveDirectSellUnit(
             int itemId,
-            Map<Integer, TpPriceRepository.TpQuote> tp,
+            Map<Integer, PriceQuote> tp,
             CraftingSettings settings
                                     ) {
 
         Integer cached = directSellUnitCache.get(itemId);
         if (cached != null) return cached;
 
-        TpPriceRepository.TpQuote q = tp.get(itemId);
+        PriceQuote q = tp.get(itemId);
         if (q == null) {
             directSellUnitCache.put(itemId, 0);
             return 0;
@@ -444,14 +441,14 @@ public class CraftingResolver {
         return false;
     }
 
-//    public RecipeRepository.Recipe firstRecipeFor(int itemId, PlannerContext ctx) {
+//    public Recipe firstRecipeFor(int itemId, PlannerContext ctx) {
 //
-//        RecipeRepository.Recipe cached = firstRecipeCache.get(itemId);
+//        Recipe cached = firstRecipeCache.get(itemId);
 //        if (cached != null) return cached;
 //
-//        List<RecipeRepository.Recipe> list = ctx.recipesByOutput.get(itemId);
+//        List<Recipe> list = ctx.recipesByOutput.get(itemId);
 //
-//        RecipeRepository.Recipe result = (list == null || list.isEmpty()) ? null : list.get(0);
+//        Recipe result = (list == null || list.isEmpty()) ? null : list.get(0);
 //
 //        firstRecipeCache.put(itemId, result);
 //
@@ -463,18 +460,18 @@ public class CraftingResolver {
      * recipe's crafting discipline; among same-discipline candidates prefer the lowest
      * effective cost; otherwise prefer the lowest effective cost among all valid candidates.
      */
-    public RecipeRepository.Recipe firstRecipeFor(int itemId, PlannerContext ctx, String parentDiscipline) {
-        List<RecipeRepository.Recipe> list = ctx.recipesByOutput.get(itemId);
+    public Recipe firstRecipeFor(int itemId, PlannerContext ctx, String parentDiscipline) {
+        List<Recipe> list = ctx.recipesByOutput.get(itemId);
         if (list == null || list.isEmpty()) {
             return null;
         }
 
-        RecipeRepository.Recipe bestSameDiscipline = null;
+        Recipe bestSameDiscipline = null;
         int bestSameDisciplineCost = Integer.MAX_VALUE;
-        RecipeRepository.Recipe bestOverall = null;
+        Recipe bestOverall = null;
         int bestOverallCost = Integer.MAX_VALUE;
 
-        for (RecipeRepository.Recipe recipe : list) {
+        for (Recipe recipe : list) {
             if (!ctx.allowedRecipeIds.contains(recipe.recipeId)
                     || (ctx.isCoordinated() && ctx.eligibleCharactersFor(recipe).isEmpty())) {
                 continue;
@@ -503,12 +500,12 @@ public class CraftingResolver {
      * ctx.allowedRecipeIds" (RECIPE_NOT_ALLOWED) - firstRecipeFor(...) returns null for both.
      */
     private boolean hasOnlyDisallowedRecipes(int itemId, PlannerContext ctx) {
-        List<RecipeRepository.Recipe> list = ctx.recipesByOutput.get(itemId);
+        List<Recipe> list = ctx.recipesByOutput.get(itemId);
         if (list == null || list.isEmpty()) {
             return false;
         }
 
-        for (RecipeRepository.Recipe recipe : list) {
+        for (Recipe recipe : list) {
             if (ctx.allowedRecipeIds.contains(recipe.recipeId)
                     && (!ctx.isCoordinated() || !ctx.eligibleCharactersFor(recipe).isEmpty())) {
                 return false;
@@ -570,12 +567,12 @@ public class CraftingResolver {
     }
 
     private int estimateDirectCraftFloor(
-            RecipeRepository.Recipe recipe,
+            Recipe recipe,
             PlannerContext ctx
                                         ) {
         int sum = 0;
 
-        for (RecipeRepository.Ingredient ing : recipe.ingredients) {
+        for (Ingredient ing : recipe.ingredients) {
             int buyUnit = resolveDirectBuyUnit(ing.itemId, ctx.tp, ctx.settings);
             if (buyUnit <= 0) {
                 return Integer.MAX_VALUE;

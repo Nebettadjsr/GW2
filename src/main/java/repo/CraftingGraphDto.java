@@ -1,7 +1,8 @@
-package craft;
+package repo;
 
 import java.util.List;
 
+/** JSON transport shape for {@link CraftingGraphCache}'s on-disk crafting graph cache. */
 public class CraftingGraphDto {
 
     public String cacheKey;

@@ -1,16 +1,13 @@
 package craft;
 
-import repo.RecipeRepository;
-import repo.tp.TpPriceRepository;
-
 import java.util.Map;
 
 public class CostEvaluator {
 
     public CostEvaluationResult evaluate(
-            RecipeRepository.Recipe recipe,
+            Recipe recipe,
             RecipeSimulationResult sim,
-            Map<Integer, TpPriceRepository.TpQuote> tp,
+            Map<Integer, PriceQuote> tp,
             CraftingSettings settings
                                         ) {
 
@@ -38,12 +35,12 @@ public class CostEvaluator {
     }
 
     private int computeRevenue(
-            RecipeRepository.Recipe recipe,
-            Map<Integer, TpPriceRepository.TpQuote> tp,
+            Recipe recipe,
+            Map<Integer, PriceQuote> tp,
             CraftingSettings settings
                               ) {
 
-        TpPriceRepository.TpQuote q = tp.get(recipe.outputItemId);
+        PriceQuote q = tp.get(recipe.outputItemId);
 
         if (q == null) {
             return 0;

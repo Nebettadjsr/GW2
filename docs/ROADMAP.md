@@ -61,6 +61,8 @@ Phase 7  Deployment / Runtime Configuration      (not started)
 Phase 8  Final Cleanup / JavaFX Removal          (not started)
 ```
 
+Every new or revised phase must retain the PROJECT HEALTH REVIEW exit requirement, with execution and findings governed by `TARGET_ARCHITECTURE.md` §34. Schedule the review near exit, after milestone implementation; planner/user disposition of blocking findings precedes closure. Phase 1 uses the existing `STORY-QUALITY-001` ("Review Phase 1 project health before milestone completion").
+
 Phases are listed in dependency order. A later phase should not be started while an earlier phase has open blocking exit criteria, unless a story explicitly documents why it's safe to jump ahead.
 
 ---
@@ -68,6 +70,8 @@ Phases are listed in dependency order. A later phase should not be started while
 ## 4. Phase 0 — Build & Test Foundation
 
 **Status:** complete (confirmed 2026-09-19 from completed Phase 0 stories).
+
+This historical closure predates the recurring review requirement below; no retrospective review is claimed and the archived milestone is not reopened. Relevant inherited gaps are assessed in the current milestone under `TARGET_ARCHITECTURE.md` §34.
 
 ### Objective
 
@@ -79,6 +83,7 @@ None. This is the foundation everything else assumes.
 
 ### Exit Criteria
 
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
 - [x] A standard build system exists (Maven, via `./mvnw`), replacing the manual JAR/`lib/` setup.
 - [x] A test framework is wired in (JUnit 5 via Maven/Surefire) and at least one regression test runs (`craft.CraftingResolverCraftVsBuyTest`).
 - [x] The highest-priority domain conflicts already identified in `KNOWN_PROBLEMS.md` §3 each have at least one test expressing the *intended* (spec-correct) behavior, per `TEST_STRATEGY.md` §24's priority order. §3.1/§3.2/§3.3/§3.5 are fixed-and-tested; §3.4 gained an intended-behavior test at the repo+domain layer (`STORY-DOM-011`, not yet wired into production — see Phase 1's `STORY-DOM-012`); §3.6 was explicitly decided to need no new automated test (`STORY-DOM-010`, no test seam exists for its live-HTTP-calling JavaFX view) — an accepted decision of that story, not a gap.
@@ -99,7 +104,7 @@ None. This is the foundation everything else assumes.
 - **(Done)** Add a regression/characterization test for price-unavailable handling (`KNOWN_PROBLEMS.md` §3.5) (`STORY-DOM-003`).
 - **(Done)** Build a small, reusable in-memory domain fixture (a handful of items/recipes/prices) usable across the above tests, instead of each test hand-rolling its own (`STORY-TEST-001`).
 - **(Done)** Add PostgreSQL integration-test infrastructure using an isolated disposable test database (`STORY-TEST-002`).
-- Add integration tests for character/item sync and the repositories consumed by crafting logic.
+- **(Done)** Add integration tests for character/item sync and the repositories consumed by crafting logic (`STORY-TEST-002` `InventoryRepository`, `STORY-TEST-003` `CharacterSync` incl. `replaceCharacterItems`, `STORY-TEST-004` `RecipeRepository`, `STORY-TEST-005` `TpPriceRepository`); documentation correction made during `STORY-QUALITY-001` — this bullet was left unchecked despite the underlying work being complete.
 - Add captured real GW2 API payload fixtures for character, inventory, recipe, and related parser/sync tests.
 - **(Done)** Add optional live GW2 API smoke tests outside the default `mvn test` path (`STORY-SYNC-003`).
 
@@ -117,10 +122,10 @@ Phase 0 (each fix needs a failing test first, per `TEST_STRATEGY.md` §17's bug-
 
 ### Exit Criteria
 
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
 - All confirmed conflicts in `KNOWN_PROBLEMS.md` §3 are either resolved and covered by a passing test, or converted into an explicit, answered domain question (`DOMAIN_SPEC.md` §51/§53) if resolution requires a decision only the project owner can make. For a conflict whose correct behavior depends on real database/API semantics rather than pure in-memory domain logic (e.g. §3.3's owned-material pool), "covered by a passing test" means the PostgreSQL integration-test coverage Phase 0 already requires (`TEST_STRATEGY.md` Layer 2) — a unit test alone does not close that item.
 - `craft.BlockedReason` carries the full set of reasons `DOMAIN_SPEC.md` §42 expects, and nothing in the crafting-profit/discovery flow silently drops a row instead of exposing a blocked/unavailable state.
 - The dead legacy craft-vs-buy code path is removed once confirmed unreachable.
-- The Phase 1 implementation/documentation completion review required by `TARGET_ARCHITECTURE.md` §34 is recorded with concrete evidence and any remaining findings (`STORY-QUALITY-001`); applicable unresolved findings receive an explicit disposition before completion.
 
 ### High-Level Stories
 
@@ -128,15 +133,17 @@ Phase 0 (each fix needs a failing test first, per `TEST_STRATEGY.md` §17's bug-
 - **(Done)** Implement discipline-aware, cost-based multi-recipe selection (`KNOWN_PROBLEMS.md` §3.2, `DOMAIN_SPEC.md` §30 / DQ-003) (`STORY-DOM-002`).
 - **(Done)** Extend the owned-material pool to include character inventories (`KNOWN_PROBLEMS.md` §3.3, `DOMAIN_SPEC.md` §9 / DQ-006) — `STORY-DOM-004` extended `InventoryRepository.loadOwnedInventory()` to sum `character_items`, and `STORY-SYNC-001` made `sync.CharacterSync` actually populate that table from the GW2 API's `bags`/`equipment` data, so the fix now has a real effect.
 - **(Done)** Implement account-bound/soulbound material handling (`KNOWN_PROBLEMS.md` §3.4, `DOMAIN_SPEC.md` §11.1 / DQ-007). `UD-001` resolved the "selected character" design; `STORY-DOM-011` implemented the repo + domain layers; `STORY-DOM-012` added the character-selector UI to `CraftingProfitView`/`CraftingDiscoveryView` and wired their controllers to call the binding-aware repository method, giving this rule real-user effect.
-- Add the missing `BlockedReason` values (`PRICE_UNAVAILABLE`, `RECIPE_NOT_ALLOWED`, `INSUFFICIENT_BUDGET`) and stop silently filtering unresolvable rows at the controller layer (`KNOWN_PROBLEMS.md` §3.5, `DOMAIN_SPEC.md` §21 / §42).
+- **(Done)** Add the missing `BlockedReason` values (`PRICE_UNAVAILABLE`, `RECIPE_NOT_ALLOWED`, `INSUFFICIENT_BUDGET`) and stop silently filtering unresolvable rows at the controller layer (`KNOWN_PROBLEMS.md` §3.5, `DOMAIN_SPEC.md` §21 / §42) (`STORY-DOM-008`, `STORY-DOM-013`); documentation correction made during `STORY-QUALITY-001` — this bullet was left unchecked despite the underlying work being complete.
 - **(Done)** Resolve the Ectoplasm Salvage fee-model ambiguity as a new, explicitly answered domain question (`KNOWN_PROBLEMS.md` §3.6 — proposed "DQ-011"), then make `EctoView` and `Main.java` agree (`STORY-DOM-010`; full convergence into one implementation happens in Phase 3, once an application-service layer exists to hold it).
 - **(Done)** Remove the dead legacy code path in `CraftingPlanner` (`canCraft`/`simulateCraft`/`obtain`/`PlanRun`) once confirmed unused (`KNOWN_PROBLEMS.md` §7.1).
 - **(Done)** Remove leftover debug instrumentation (`KNOWN_PROBLEMS.md` §7.2) (`STORY-DOM-006`).
-- Decide whether the 250-craft simulation cap is intentional and document it in `DOMAIN_SPEC.md`, or expose a "capped" indicator (`KNOWN_PROBLEMS.md` §7.6).
+- **(Done)** Decide whether the 250-craft simulation cap is intentional and document it in `DOMAIN_SPEC.md`, or expose a "capped" indicator (`KNOWN_PROBLEMS.md` §7.6) — resolved by `agent/user-decisions/UD-003-craft-simulation-cap.md`, recorded in `DOMAIN_SPEC.md` §28; documentation correction made during `STORY-QUALITY-001` — this bullet was left unchecked despite the underlying decision being resolved.
 
 ---
 
 ## 6. Phase 2 — Domain Isolation / Decoupling
+
+Status: Complete (2026-09-21). Planner closure assessment accepted `STORY-QUALITY-002`'s evidence: all implementation exit criteria are satisfied, no blocking findings remain, and no criterion transfer is needed. The disclosed cross-character Discovery live-view verification gap is non-blocking for this milestone's domain/persistence scope; no additional story is required for closure.
 
 ### Objective
 
@@ -148,19 +155,20 @@ Phase 1. This must be a behavior-preserving refactor (`TEST_STRATEGY.md` §18) �
 
 ### Exit Criteria
 
-- `craft.*` no longer imports anything from `repo.*` (`KNOWN_PROBLEMS.md` §4.1).
-- Independent domain types exist (e.g. `Recipe`, `Ingredient`, `PriceQuote`) with a mapping boundary living in `repo.*`, per `TARGET_ARCHITECTURE.md` §10.
-- The "recipe is unlocked" rule is no longer expressed only as a SQL CTE (`KNOWN_PROBLEMS.md` §4.2); both places that currently determine recipe-known status (`RecipeRepository.loadRecipes` and `loadMissingDiscoverableRecipeIdsForCharacter`) are confirmed to agree.
-- `repo.Db` and `sync.Db` are consolidated into one connection helper (`KNOWN_PROBLEMS.md` §4.3).
-- All Phase 0/1 domain tests still pass, now exercising only the independent domain types with no database or repository involved.
+- **(Done — `STORY-QUALITY-002`; planner disposition 2026-09-21)** Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
+- **(Done — `STORY-DOM-017`)** `craft.*` no longer imports anything from `repo.*` (`KNOWN_PROBLEMS.md` §4.1).
+- **(Done — `STORY-DOM-017`)** Independent domain types exist (e.g. `Recipe`, `Ingredient`, `PriceQuote`) with a mapping boundary living in `repo.*`, per `TARGET_ARCHITECTURE.md` §10.
+- **(Done — `STORY-DOM-018`/`STORY-DOM-019`)** The "recipe is unlocked" rule is no longer expressed as a SQL CTE (`KNOWN_PROBLEMS.md` §4.2): `craft.RecipeKnowledgePolicy.isKnownAccountWide` is the single pure domain policy shared by `RecipeRepository.loadRecipes`, `loadRecipesForCharacter`, and `loadMissingDiscoverableRecipeIdsForCharacter`. `STORY-DOM-018` extracted the policy but left the character-scoped entry points checking only the selected character's own unlocks; `STORY-DOM-019` corrected them to agree with `loadRecipes`'s account-wide (any-character) knowledge decision, matching `DOMAIN_SPEC.md` §34/35 and decided `DQ-010`.
+- **(Done — `STORY-INFRA-003`)** `repo.Db` and `sync.Db` are consolidated into one connection helper (`KNOWN_PROBLEMS.md` §4.3).
+- **(Done — `STORY-DOM-017`)** All Phase 0/1 domain tests still pass, now exercising only the independent domain types with no database or repository involved.
 
 ### High-Level Stories
 
-- Introduce independent domain model types, separate from the `repo.RecipeRepository`/`repo.tp.TpPriceRepository` nested classes currently reused as the domain model.
-- Introduce a mapping/adapter layer in `repo.*` converting persistence rows into the new domain model.
-- Move "recipe is unlocked" logic out of SQL into an application/domain-level concept; verify Discovery's separate unlock query stays semantically consistent with it.
-- Consolidate `repo.Db` and `sync.Db`.
-- Port the Phase 0/1 domain tests to construct only the new independent types (no `repo.*` construction inside domain tests).
+- **(Done — `STORY-DOM-017`)** Introduce independent domain model types, separate from the `repo.RecipeRepository`/`repo.tp.TpPriceRepository` nested classes currently reused as the domain model.
+- **(Done — `STORY-DOM-017`)** Introduce a mapping/adapter layer in `repo.*` converting persistence rows into the new domain model.
+- **(Done — `STORY-DOM-018`/`STORY-DOM-019`)** Move "recipe is unlocked" logic out of SQL into an application/domain-level concept (`craft.RecipeKnowledgePolicy`); `STORY-DOM-018` found Discovery's separate unlock query was **not** semantically consistent with it for cross-character knowledge (`KNOWN_PROBLEMS.md` §4.2) and reported it rather than fixing it mid-refactor; `STORY-DOM-019` implemented the already-decided (`DQ-010`) account-wide correction.
+- **(Done — `STORY-INFRA-003`)** Consolidate `repo.Db` and `sync.Db`.
+- **(Done — `STORY-DOM-017`)** Port the Phase 0/1 domain tests to construct only the new independent types (no `repo.*` construction inside domain tests).
 
 ---
 
@@ -176,6 +184,7 @@ Phase 2. Building an application layer on top of a still-coupled domain would ju
 
 ### Exit Criteria
 
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
 - Application services exist for at least: crafting profit calculation, crafting discovery candidates, account refresh, global data refresh, Trading Post price refresh, crafting graph rebuild — matching the example use-case list in `TARGET_ARCHITECTURE.md` §8.
 - `Gw2App` button handlers, `EctoView`, and `Main.java` no longer call `sync.*`/`repo.*`/`craft.*` directly; they call application services.
 - The two disagreeing Ectoplasm Salvage implementations (`KNOWN_PROBLEMS.md` §3.6/§4.4) converge into one application service with one calculation.
@@ -202,6 +211,7 @@ Phase 3. The API layer should be a thin translation over existing application se
 
 ### Exit Criteria
 
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
 - **Explicit decision made** on the backend web framework (`TARGET_ARCHITECTURE.md` §30 marks this `TBD` — must not be silently finalized).
 - HTTP endpoints exist for at least the crafting profit/discovery calculations and the sync/refresh operations sketched in `TARGET_ARCHITECTURE.md` §9.
 - Controllers/routes contain no business logic (thin translation only).
@@ -231,6 +241,7 @@ Phase 4. The frontend needs a stable API to build against; building it earlier w
 
 ### Exit Criteria
 
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
 - **Explicit decision made** on frontend framework and language (`TARGET_ARCHITECTURE.md` §30 marks both `TBD`).
 - The frontend renders crafting profit/discovery results, the resolution tree, and special domain states (e.g. `UNVALUED_NONTRADEABLE`, `PRICE_UNAVAILABLE`) using only backend-provided values (`TARGET_ARCHITECTURE.md` §13/§14).
 - The frontend triggers sync operations via the API instead of reproducing them.
@@ -260,6 +271,7 @@ Phase 4 at minimum (a backend process must exist to containerize). Phase 5 if th
 
 ### Exit Criteria
 
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
 - **Explicit decision made** on the database migration tool (`TARGET_ARCHITECTURE.md` §30 marks this `TBD`).
 - The manually-executed `src/PostgreSQL Query to create DB` script is replaced by versioned, repeatable migrations (`TARGET_ARCHITECTURE.md` §16).
 - Backend, frontend, and PostgreSQL each run in their own container.
@@ -290,6 +302,7 @@ Phase 6. Deployment configuration only matters once there is something container
 
 ### Exit Criteria
 
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
 - All configuration (GW2 API key, database URL/user/password, and any future settings) is supplied via environment variables at the container level — continuing the pattern already established for the desktop app's `.env`/`EnvConfig` (see `CLAUDE.md` § Project-Specific Security Policy), carried into `docker-compose` environment configuration.
 - **Explicit decisions made, only when actually needed** (not speculatively) on: reverse proxy, hosting provider, and authentication (`TARGET_ARCHITECTURE.md` §20–21 explicitly warn against adding authentication or multi-tenancy merely because the app is now web-based).
 - The application remains scoped to one configured GW2 account per instance unless a future requirement explicitly changes that (`TARGET_ARCHITECTURE.md` §21).
@@ -315,6 +328,7 @@ Phase 5 (frontend functional parity) and Phase 7 (a deployable system users can 
 
 ### Exit Criteria
 
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
 - Every JavaFX view's functionality is confirmed present in the web frontend (explicit parity checklist, not an assumption).
 - JavaFX views, controllers in the default package, and the `Gw2App` entry point are removed.
 - `Main.java` (superseded by the unified Ecto application service from Phase 3) is removed.

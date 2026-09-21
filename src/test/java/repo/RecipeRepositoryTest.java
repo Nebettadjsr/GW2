@@ -1,5 +1,6 @@
 package repo;
 
+import craft.Recipe;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -98,7 +99,7 @@ class RecipeRepositoryTest {
             st.execute("INSERT INTO account_recipes (recipe_id) VALUES (1)");
         }
 
-        List<RecipeRepository.Recipe> recipes = new RecipeRepository().loadRecipes(con, "All");
+        List<Recipe> recipes = new RecipeRepository().loadRecipes(con, "All");
 
         assertEquals(1, recipes.size());
         assertEquals(1, recipes.get(0).recipeId);
@@ -115,7 +116,7 @@ class RecipeRepositoryTest {
             st.execute("INSERT INTO character_recipes (character_id, recipe_id) VALUES (1, 2)");
         }
 
-        List<RecipeRepository.Recipe> recipes = new RecipeRepository().loadRecipes(con, "All");
+        List<Recipe> recipes = new RecipeRepository().loadRecipes(con, "All");
 
         assertEquals(1, recipes.size());
         assertEquals(2, recipes.get(0).recipeId);
@@ -130,7 +131,7 @@ class RecipeRepositoryTest {
                 """);
         }
 
-        List<RecipeRepository.Recipe> recipes = new RecipeRepository().loadRecipes(con, "All");
+        List<Recipe> recipes = new RecipeRepository().loadRecipes(con, "All");
 
         assertTrue(recipes.isEmpty());
     }
@@ -149,7 +150,7 @@ class RecipeRepositoryTest {
             st.execute("INSERT INTO account_recipes (recipe_id) VALUES (4), (5)");
         }
 
-        List<RecipeRepository.Recipe> chefRecipes = new RecipeRepository().loadRecipes(con, "Chef");
+        List<Recipe> chefRecipes = new RecipeRepository().loadRecipes(con, "Chef");
 
         assertEquals(1, chefRecipes.size());
         assertEquals(4, chefRecipes.get(0).recipeId);
@@ -165,7 +166,7 @@ class RecipeRepositoryTest {
             st.execute("INSERT INTO account_recipes (recipe_id) VALUES (6)");
         }
 
-        List<RecipeRepository.Recipe> recipes = new RecipeRepository().loadRecipes(con, "All");
+        List<Recipe> recipes = new RecipeRepository().loadRecipes(con, "All");
 
         assertEquals(1, recipes.size());
         assertEquals("", recipes.get(0).disciplinesText);
@@ -181,11 +182,11 @@ class RecipeRepositoryTest {
             st.execute("INSERT INTO account_recipes (recipe_id) VALUES (7)");
         }
 
-        List<RecipeRepository.Recipe> allRecipes = new RecipeRepository().loadRecipes(con, "All");
+        List<Recipe> allRecipes = new RecipeRepository().loadRecipes(con, "All");
         assertEquals(1, allRecipes.size());
         assertEquals("", allRecipes.get(0).disciplinesText);
 
-        List<RecipeRepository.Recipe> chefRecipes = new RecipeRepository().loadRecipes(con, "Chef");
+        List<Recipe> chefRecipes = new RecipeRepository().loadRecipes(con, "Chef");
         assertTrue(chefRecipes.isEmpty());
     }
 
@@ -205,12 +206,12 @@ class RecipeRepositoryTest {
             st.execute("INSERT INTO recipe_ingredients (recipe_id, item_id, count) VALUES (9, 5, 1)");
         }
 
-        List<RecipeRepository.Recipe> recipes = new RecipeRepository().loadRecipes(con, "All");
+        List<Recipe> recipes = new RecipeRepository().loadRecipes(con, "All");
         assertEquals(3, recipes.size());
 
-        RecipeRepository.Recipe recipe8 = recipes.stream().filter(r -> r.recipeId == 8).findFirst().orElseThrow();
-        RecipeRepository.Recipe recipe9 = recipes.stream().filter(r -> r.recipeId == 9).findFirst().orElseThrow();
-        RecipeRepository.Recipe recipe10 = recipes.stream().filter(r -> r.recipeId == 10).findFirst().orElseThrow();
+        Recipe recipe8 = recipes.stream().filter(r -> r.recipeId == 8).findFirst().orElseThrow();
+        Recipe recipe9 = recipes.stream().filter(r -> r.recipeId == 9).findFirst().orElseThrow();
+        Recipe recipe10 = recipes.stream().filter(r -> r.recipeId == 10).findFirst().orElseThrow();
 
         assertEquals(2, recipe8.ingredients.size());
         assertTrue(recipe8.ingredients.stream().anyMatch(i -> i.itemId == 1 && i.count == 2));
@@ -231,9 +232,187 @@ class RecipeRepositoryTest {
                 """);
         }
 
-        List<RecipeRepository.Recipe> recipes = new RecipeRepository().loadAllRecipes(con);
+        List<Recipe> recipes = new RecipeRepository().loadAllRecipes(con);
 
         assertEquals(1, recipes.size());
         assertEquals(11, recipes.get(0).recipeId);
+    }
+
+    // --- STORY-DOM-018: RecipeKnowledgePolicy wiring ---------------------------------------
+
+    @Test
+    void loadRecipesForCharacter_knownViaAccountRecipes_isIncluded() throws Exception {
+        try (Statement st = con.createStatement()) {
+            st.execute("""
+                INSERT INTO recipes (recipe_id, output_item_id, output_item_count, min_rating, disciplines)
+                VALUES (20, 2000, 1, 0, ARRAY['Chef'])
+                """);
+            st.execute("INSERT INTO account_recipes (recipe_id) VALUES (20)");
+            st.execute("INSERT INTO characters (character_id, name) VALUES (1, 'Alice')");
+        }
+
+        List<Recipe> recipes = new RecipeRepository().loadRecipesForCharacter(con, "Alice", "Chef");
+
+        assertEquals(1, recipes.size());
+        assertEquals(20, recipes.get(0).recipeId);
+    }
+
+    @Test
+    void loadRecipesForCharacter_knownViaThisCharactersOwnRecipes_isIncluded() throws Exception {
+        try (Statement st = con.createStatement()) {
+            st.execute("""
+                INSERT INTO recipes (recipe_id, output_item_id, output_item_count, min_rating, disciplines)
+                VALUES (21, 2100, 1, 0, ARRAY['Chef'])
+                """);
+            st.execute("INSERT INTO characters (character_id, name) VALUES (1, 'Alice')");
+            st.execute("INSERT INTO character_recipes (character_id, recipe_id) VALUES (1, 21)");
+        }
+
+        List<Recipe> recipes = new RecipeRepository().loadRecipesForCharacter(con, "Alice", "Chef");
+
+        assertEquals(1, recipes.size());
+        assertEquals(21, recipes.get(0).recipeId);
+    }
+
+    @Test
+    void loadRecipesForCharacter_knownOnlyByAnotherCharacter_isIncluded() throws Exception {
+        // DQ-010 / STORY-DOM-019: recipe ownership is account-wide, so a recipe unlocked only by
+        // another character on the account is already known for the selected character too - this
+        // character-scoped entry point must agree with loadRecipes(discipline)'s account-wide
+        // knowledge decision (RecipeKnowledgePolicy.isKnownAccountWide), not just this character's
+        // own character_recipes rows. This intentionally changes STORY-DOM-018's characterization,
+        // where this entry point still excluded another character's unlock.
+        try (Statement st = con.createStatement()) {
+            st.execute("""
+                INSERT INTO recipes (recipe_id, output_item_id, output_item_count, min_rating, disciplines)
+                VALUES (22, 2200, 1, 0, ARRAY['Chef'])
+                """);
+            st.execute("INSERT INTO characters (character_id, name) VALUES (1, 'Alice'), (2, 'Bob')");
+            st.execute("INSERT INTO character_recipes (character_id, recipe_id) VALUES (1, 22)");
+        }
+
+        List<Recipe> recipes = new RecipeRepository().loadRecipesForCharacter(con, "Bob", "Chef");
+
+        assertEquals(1, recipes.size());
+        assertEquals(22, recipes.get(0).recipeId);
+    }
+
+    @Test
+    void loadMissingDiscoverableRecipeIdsForCharacter_discoverableAndUnknown_isIncluded() throws Exception {
+        try (Statement st = con.createStatement()) {
+            st.execute("""
+                INSERT INTO recipes (recipe_id, output_item_id, output_item_count, min_rating, disciplines, flags)
+                VALUES (30, 3000, 1, 0, ARRAY['Chef'], NULL)
+                """);
+            st.execute("INSERT INTO characters (character_id, name) VALUES (1, 'Alice')");
+        }
+
+        List<Integer> missing = new RecipeRepository()
+                .loadMissingDiscoverableRecipeIdsForCharacter(con, "Alice", "All");
+
+        assertEquals(List.of(30), missing);
+    }
+
+    @Test
+    void loadMissingDiscoverableRecipeIdsForCharacter_knownViaAccountRecipes_isExcluded() throws Exception {
+        try (Statement st = con.createStatement()) {
+            st.execute("""
+                INSERT INTO recipes (recipe_id, output_item_id, output_item_count, min_rating, disciplines, flags)
+                VALUES (31, 3100, 1, 0, ARRAY['Chef'], NULL)
+                """);
+            st.execute("INSERT INTO account_recipes (recipe_id) VALUES (31)");
+            st.execute("INSERT INTO characters (character_id, name) VALUES (1, 'Alice')");
+        }
+
+        List<Integer> missing = new RecipeRepository()
+                .loadMissingDiscoverableRecipeIdsForCharacter(con, "Alice", "All");
+
+        assertTrue(missing.isEmpty());
+    }
+
+    @Test
+    void loadMissingDiscoverableRecipeIdsForCharacter_knownViaThisCharactersOwnRecipes_isExcluded() throws Exception {
+        try (Statement st = con.createStatement()) {
+            st.execute("""
+                INSERT INTO recipes (recipe_id, output_item_id, output_item_count, min_rating, disciplines, flags)
+                VALUES (32, 3200, 1, 0, ARRAY['Chef'], NULL)
+                """);
+            st.execute("INSERT INTO characters (character_id, name) VALUES (1, 'Alice')");
+            st.execute("INSERT INTO character_recipes (character_id, recipe_id) VALUES (1, 32)");
+        }
+
+        List<Integer> missing = new RecipeRepository()
+                .loadMissingDiscoverableRecipeIdsForCharacter(con, "Alice", "All");
+
+        assertTrue(missing.isEmpty());
+    }
+
+    @Test
+    void loadMissingDiscoverableRecipeIdsForCharacter_knownOnlyByAnotherCharacter_isExcluded() throws Exception {
+        // DQ-010 / STORY-DOM-019: a recipe unlocked only by another character (no account_recipes
+        // row) is already known account-wide, so it must not be reported as a missing/discoverable
+        // candidate for the selected character. Intentional behavior change from STORY-DOM-018,
+        // which preserved this case as a still-missing disagreement with loadRecipes.
+        try (Statement st = con.createStatement()) {
+            st.execute("""
+                INSERT INTO recipes (recipe_id, output_item_id, output_item_count, min_rating, disciplines, flags)
+                VALUES (34, 3400, 1, 0, ARRAY['Chef'], NULL)
+                """);
+            st.execute("INSERT INTO characters (character_id, name) VALUES (1, 'Alice'), (2, 'Bob')");
+            st.execute("INSERT INTO character_recipes (character_id, recipe_id) VALUES (1, 34)");
+        }
+
+        List<Integer> missing = new RecipeRepository()
+                .loadMissingDiscoverableRecipeIdsForCharacter(con, "Bob", "All");
+
+        assertTrue(missing.isEmpty());
+    }
+
+    @Test
+    void loadMissingDiscoverableRecipeIdsForCharacter_nonDiscoverableFlaggedRecipe_isExcludedRegardlessOfKnowledge() throws Exception {
+        try (Statement st = con.createStatement()) {
+            st.execute("""
+                INSERT INTO recipes (recipe_id, output_item_id, output_item_count, min_rating, disciplines, flags)
+                VALUES (33, 3300, 1, 0, ARRAY['Chef'], ARRAY['AutoLearned'])
+                """);
+            st.execute("INSERT INTO characters (character_id, name) VALUES (1, 'Alice')");
+        }
+
+        List<Integer> missing = new RecipeRepository()
+                .loadMissingDiscoverableRecipeIdsForCharacter(con, "Alice", "All");
+
+        assertTrue(missing.isEmpty());
+    }
+
+    @Test
+    void knowledgeCrossCheck_recipeKnownOnlyByAnotherCharacterAgreesAcrossAllThreeEntryPoints() throws Exception {
+        // STORY-DOM-019 resolves the disagreement STORY-DOM-018 preserved and characterized
+        // (docs/KNOWN_PROBLEMS.md section 4.2): loadRecipes, loadRecipesForCharacter and
+        // loadMissingDiscoverableRecipeIdsForCharacter must now all agree that a recipe unlocked by
+        // ANY character on the account is known account-wide (RecipeKnowledgePolicy.isKnownAccountWide,
+        // DOMAIN_SPEC.md section 34/35, DQ-010) - it is not a Discovery candidate for a different,
+        // selected character, and it is included in that character's recipe list.
+        try (Statement st = con.createStatement()) {
+            st.execute("""
+                INSERT INTO recipes (recipe_id, output_item_id, output_item_count, min_rating, disciplines, flags)
+                VALUES (40, 4000, 1, 0, ARRAY['Chef'], NULL)
+                """);
+            st.execute("INSERT INTO characters (character_id, name) VALUES (1, 'Alice'), (2, 'Bob')");
+            st.execute("INSERT INTO character_recipes (character_id, recipe_id) VALUES (1, 40)");
+        }
+
+        List<Recipe> allRecipes = new RecipeRepository().loadRecipes(con, "All");
+        List<Recipe> recipesForBob = new RecipeRepository().loadRecipesForCharacter(con, "Bob", "Chef");
+        List<Integer> missingForBob = new RecipeRepository()
+                .loadMissingDiscoverableRecipeIdsForCharacter(con, "Bob", "All");
+
+        assertTrue(allRecipes.stream().anyMatch(r -> r.recipeId == 40),
+                "loadRecipes should treat a recipe known by any character as known account-wide");
+        assertTrue(recipesForBob.stream().anyMatch(r -> r.recipeId == 40),
+                "loadRecipesForCharacter should treat a recipe known by any character as known "
+                        + "account-wide for a different selected character too");
+        assertTrue(missingForBob.isEmpty(),
+                "loadMissingDiscoverableRecipeIdsForCharacter must no longer report a recipe known "
+                        + "account-wide via another character as missing for a different character");
     }
 }

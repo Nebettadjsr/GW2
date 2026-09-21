@@ -26,6 +26,13 @@ PRODUCT_OWNER_REQUESTS_DIR = AGENT_DIR / "product-owner-requests"
 # decisions only) -- see agent/user-interventions/README.md.
 USER_INTERVENTIONS_DIR = AGENT_DIR / "user-interventions"
 
+# Daily append-only operational log (agent/logs/, a sibling of
+# agent/stories/ -- deliberately NOT under agent/runtime/artifacts/,
+# since artifacts/ is generated-and-gitignored while these logs are a
+# committed historical record). One file per calendar day; see
+# support/daily_log.py.
+LOGS_DIR = AGENT_DIR / "logs"
+
 # docs/ROADMAP.md is intentionally not read by the orchestrator. The
 # selector previously received it alongside BACKLOG.md and started
 # reasoning about roadmap phases instead of picking a concrete backlog
@@ -59,7 +66,11 @@ MODEL = "hermes3:8b"
 MAX_RETRIES_PER_STORY = 2
 
 CLAUDE_USAGE_LIMIT_PERCENT = 90
-CLAUDE_USAGE_RECHECK_SECONDS = 60 * 60
+
+# Shared local-recheck cooldown for both models' capacity probes
+# (see support/capacity.py's CapacityProbe) -- deliberately not named
+# for Claude specifically, since Codex's probe uses this same default.
+MODEL_CAPACITY_RECHECK_SECONDS = 60 * 60
 
 # When a planning pass returns NEEDS_USER and no other current-milestone
 # story is independently selectable, the orchestrator waits locally and

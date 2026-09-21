@@ -3,6 +3,10 @@ import re
 import subprocess
 
 from agent.runtime.runners.local_planner_runner import run_local_planner
+from agent.runtime.support.capacity import ModelCapacityUnavailable
+from agent.runtime.core.story_state import (
+    get_active_story_path, classify_story_status, extract_status_section, parse_backlog_section,
+)
 from agent.runtime.support.config import (
     BACKLOG_FILE,
     CURRENT_STORY_FILE,
@@ -889,6 +893,52 @@ def validate_planning_result(
 # Planning run
 # ============================================================
 
+def _planning_snapshot():
+    paths = set((REPO_ROOT / "docs").rglob("*.md"))
+    paths.update(path for path in (REPO_ROOT / "agent").rglob("*.md")
+                 if "artifacts" not in path.parts)
+    paths.add(PLANNING_RESULT_FILE)
+    return {path: path.read_bytes() for path in paths if path.is_file()}
+
+
+def _run_guarded_planner(prompt):
+    """One synchronous writer; interrupted planning cannot publish partial queue changes."""
+    before = _planning_snapshot()
+    protected = {CURRENT_STORY_FILE: CURRENT_STORY_FILE.read_bytes()
+                 if CURRENT_STORY_FILE.exists() else None}
+    active = None
+    active_entries = parse_backlog_section(BACKLOG_FILE.read_text(encoding="utf-8"), "Active")
+    if CURRENT_STORY_FILE.exists() and CURRENT_STORY_FILE.read_text(encoding="utf-8").strip():
+        active = get_active_story_path()
+        if classify_story_status(extract_status_section(active.read_text(encoding="utf-8"))) not in ("DONE", "BLOCKED"):
+            protected[active] = active.read_bytes()
+            prompt += ("\nAn unfinished Claude story is active: " + str(active.relative_to(REPO_ROOT))
+                       + ". Do not modify it or CURRENT_STORY.md. Do not transition the milestone. "
+                       "Plan only other useful current-scope work; creating zero stories is valid.\n")
+    try:
+        code = run_local_planner(prompt)
+        for path, content in protected.items():
+            if (path.read_bytes() if path.exists() else None) != content:
+                raise RuntimeError(f"Planner modified protected active state: {path.name}")
+        if parse_backlog_section(BACKLOG_FILE.read_text(encoding="utf-8"), "Active") != active_entries:
+            raise RuntimeError("Planner modified BACKLOG Active section")
+        if active in protected and PLANNING_RESULT_FILE.exists():
+            result = json.loads(PLANNING_RESULT_FILE.read_text(encoding="utf-8"))
+            if result.get("milestone_transition"):
+                raise RuntimeError("Planner tried to transition with an unfinished active story")
+        if code != 0:
+            raise RuntimeError(f"Codex planner exited with code {code}")
+        return code
+    except (ModelCapacityUnavailable, RuntimeError, ValueError, OSError):
+        after = _planning_snapshot()
+        for path in after.keys() - before.keys():
+            path.unlink()
+        for path, content in before.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+        raise
+
+
 def run_planning_pass() -> dict:
 
     print(
@@ -925,7 +975,7 @@ def run_planning_pass() -> dict:
 
     prompt = build_planning_prompt()
 
-    planner_exit_code = run_local_planner(
+    planner_exit_code = _run_guarded_planner(
         prompt
     )
 

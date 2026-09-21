@@ -1,8 +1,6 @@
 package craft;
 
 import org.junit.jupiter.api.Test;
-import repo.RecipeRepository;
-import repo.tp.TpPriceRepository;
 
 import java.util.List;
 import java.util.Map;
@@ -25,9 +23,9 @@ class CraftingResolverPriceUnavailableTest {
         // RawMaterial has no recipe and no usable TP quote at all -> a required purchase
         // of it must be flagged as price-unavailable, not silently resolved as a free/
         // zero-cost purchase (DOMAIN_SPEC.md section 21).
-        Map<Integer, List<RecipeRepository.Recipe>> recipesByOutput = Map.of();
+        Map<Integer, List<Recipe>> recipesByOutput = Map.of();
 
-        Map<Integer, TpPriceRepository.TpQuote> tp = Map.of(
+        Map<Integer, PriceQuote> tp = Map.of(
                 RAW_MATERIAL_ITEM_ID, CraftTestFixtures.noQuote()
         );
 
