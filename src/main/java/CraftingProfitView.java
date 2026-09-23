@@ -1,3 +1,5 @@
+import application.AccountRefreshService;
+import application.TradingPostPriceRefreshService;
 import craft.CraftResult;
 import craft.CraftingSettings;
 import craft.Node;
@@ -17,8 +19,6 @@ import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 import repo.DiscChoice;
-import sync.AccountSync;
-import sync.TpSync;
 import util.CoinUtils;
 
 import java.util.List;
@@ -33,6 +33,14 @@ import java.util.Map;
 
 public class CraftingProfitView {
     private static ScheduledExecutorService scheduler;
+
+    /**
+     * The auto-refresh body the countdown scheduler runs when it reaches zero, published by
+     * {@link #show(Stage, Runnable, TradingPostPriceRefreshService, AccountRefreshService)} so a
+     * deterministic UI check can run exactly that production path without waiting out a real
+     * 90-second interval (STORY-APP-008). Not read by production code.
+     */
+    static Runnable autoRefreshTask;
 
     public static class CraftRow {
         private final boolean calculationAvailable;
@@ -112,6 +120,16 @@ public class CraftingProfitView {
     }
 
     public static void show(Stage stage, Runnable onBack) {
+        show(stage, onBack, new TradingPostPriceRefreshService());
+    }
+
+    public static void show(Stage stage, Runnable onBack, TradingPostPriceRefreshService tradingPostPriceRefreshService) {
+        show(stage, onBack, tradingPostPriceRefreshService, new AccountRefreshService());
+    }
+
+    public static void show(Stage stage, Runnable onBack,
+                            TradingPostPriceRefreshService tradingPostPriceRefreshService,
+                            AccountRefreshService accountRefreshService) {
 
         Tooltip tooltip = new Tooltip();
         tooltip.setShowDelay(Duration.millis(300));
@@ -340,7 +358,11 @@ public class CraftingProfitView {
                     int totalMissingLines = 0;
 
                     for (var r : data) {
-                        CraftResult cr = controller.getResultByRecipeId(r.recipeId);
+                        // Raw result deliberately: these counters only read missingToBuy, and
+                        // getResultByRecipeId(...) would additionally build each row's resolution
+                        // tree - work the user never sees here, and the single largest non-planner
+                        // cost on the page-load path (STORY-PERF-001).
+                        CraftResult cr = controller.getRawResultByRecipeId(r.recipeId);
                         if (cr == null || cr.missingToBuy == null) continue;
 
                         for (var e : cr.missingToBuy.entrySet()) {
@@ -406,31 +428,35 @@ public class CraftingProfitView {
 
         final int[] secondsLeft = { REFRESH_SECONDS };
 
+        // Runs on the scheduler's background thread, never on the JavaFX thread.
+        Runnable autoRefresh = () -> {
+            try {
+                accountRefreshService.refreshMaterialsAndRecipes();
+
+                // reset countdown
+                secondsLeft[0] = REFRESH_SECONDS;
+
+                Platform.runLater(() -> {
+                    statusLabel.setText("🔄 Auto-refreshed Bank + Materials");
+                    reloadTable.run();
+                });
+
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                secondsLeft[0] = REFRESH_SECONDS; // still reset, otherwise it spams
+
+                Platform.runLater(() -> {
+                    statusLabel.setText("⚠️ Auto-refresh failed: " + ex.getMessage());
+                });
+            }
+        };
+        autoRefreshTask = autoRefresh;
+
         scheduler.scheduleAtFixedRate(() -> {
             secondsLeft[0]--;
 
             if (secondsLeft[0] <= 0) {
-                // do the refresh in this background thread
-                try {
-                    AccountSync.syncAccountMaterials();
-                    AccountSync.syncAccountRecipes();
-
-                    // reset countdown
-                    secondsLeft[0] = REFRESH_SECONDS;
-
-                    Platform.runLater(() -> {
-                        statusLabel.setText("🔄 Auto-refreshed Bank + Materials");
-                        reloadTable.run();
-                    });
-
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                    secondsLeft[0] = REFRESH_SECONDS; // still reset, otherwise it spams
-
-                    Platform.runLater(() -> {
-                        statusLabel.setText("⚠️ Auto-refresh failed: " + ex.getMessage());
-                    });
-                }
+                autoRefresh.run();
             }
 
             // update countdown label every second
@@ -441,7 +467,15 @@ public class CraftingProfitView {
 
 
         // --- auto reload when filters change ---
-        disciplineBox.valueProperty().addListener((obs, o, n) -> reloadTable.run());
+        // Only when the *scope* actually changes. Populating the selector in the background
+        // (reloadDisciplineChoices below) ends with selectFirst(), moving the value from null to
+        // "All" - the very scope the initial reloadTable.run() already computes, since
+        // CraftingProfitService.reload treats a null choice and Kind.ALL identically. Reloading on
+        // that transition ran the entire pipeline a second time, concurrently with the first, for
+        // a bit-identical result and roughly doubled the measured page-load time (STORY-PERF-001).
+        disciplineBox.valueProperty().addListener((obs, o, n) -> {
+            if (!sameScope(o, n)) reloadTable.run();
+        });
 
         useOwnMatsCheck.selectedProperty().addListener((obs, o, n) -> reloadTable.run());
 
@@ -474,7 +508,7 @@ public class CraftingProfitView {
             statusLabel.setText("Refreshing TP prices...");
             Thread t = new Thread(() -> {
                 try {
-                    TpSync.syncTpPricesForProfit();
+                    tradingPostPriceRefreshService.refreshForProfit();
                     Platform.runLater(() -> {
                         statusLabel.setText("✅ TP refreshed.");
                         reloadTable.run();
@@ -806,6 +840,23 @@ public class CraftingProfitView {
                                              );
         });
 
+    }
+
+    /**
+     * True when two selector values request the same computation from
+     * {@code CraftingProfitService.reload}: {@code null} and {@code Kind.ALL} are the same All
+     * scope, and a per-character entry is identified by its character and discipline (the entry's
+     * displayed rating never reaches the query). Used to suppress a reload that could only
+     * reproduce the results already on screen.
+     */
+    static boolean sameScope(DiscChoice a, DiscChoice b) {
+        return scopeKey(a).equals(scopeKey(b));
+    }
+
+    static String scopeKey(DiscChoice choice) {
+        if (choice == null || choice.kind == DiscChoice.Kind.ALL) return "ALL";
+        if (choice.kind == DiscChoice.Kind.DISCIPLINE_ONLY) return "DISCIPLINE|" + choice.discipline;
+        return "CHARACTER|" + choice.charName + "|" + choice.discipline;
     }
 
     // ---------- Styling helpers ----------

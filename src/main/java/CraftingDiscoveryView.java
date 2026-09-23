@@ -1,3 +1,5 @@
+import application.AccountRefreshService;
+import application.TradingPostPriceRefreshService;
 import craft.CraftResult;
 import craft.CraftingSettings;
 import craft.Ingredient;
@@ -19,9 +21,6 @@ import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import repo.DiscChoice;
 import repo.ItemRepository;
-import sync.AccountSync;
-import sync.CharacterSync;
-import sync.TpSync;
 import util.CoinUtils;
 
 import java.util.Comparator;
@@ -34,6 +33,14 @@ import java.util.concurrent.TimeUnit;
 
 public class CraftingDiscoveryView {
     private static ScheduledExecutorService scheduler;
+
+    /**
+     * The auto-refresh body the countdown scheduler runs when it reaches zero, published by
+     * {@link #show(Stage, Runnable, TradingPostPriceRefreshService, AccountRefreshService)} so a
+     * deterministic UI check can run exactly that production path without waiting out a real
+     * 120-second interval (STORY-APP-008). Not read by production code.
+     */
+    static Runnable autoRefreshTask;
 
     // ---------- Row model ----------
     public static class DiscoverRow {
@@ -96,6 +103,16 @@ public class CraftingDiscoveryView {
     }
 
     public static void show(Stage stage, Runnable onBack) {
+        show(stage, onBack, new TradingPostPriceRefreshService());
+    }
+
+    public static void show(Stage stage, Runnable onBack, TradingPostPriceRefreshService tradingPostPriceRefreshService) {
+        show(stage, onBack, tradingPostPriceRefreshService, new AccountRefreshService());
+    }
+
+    public static void show(Stage stage, Runnable onBack,
+                            TradingPostPriceRefreshService tradingPostPriceRefreshService,
+                            AccountRefreshService accountRefreshService) {
 
         // ---------- Top bar ----------
         Button btnBack = new Button("← Back");
@@ -112,6 +129,7 @@ public class CraftingDiscoveryView {
         title.setStyle("-fx-text-fill: white; -fx-font-size: 24px; -fx-font-weight: bold;");
 
         Label statusLabel = new Label("Pick a discipline+character to list missing DISCOVERABLE recipes.");
+        statusLabel.setId("craftingDiscoveryStatusLabel");
         statusLabel.setStyle("-fx-text-fill: white; -fx-opacity: 0.85;");
 
         CraftingDiscoveryController controller = new CraftingDiscoveryController();
@@ -366,32 +384,37 @@ public class CraftingDiscoveryView {
 
         final int[] secondsLeft = { REFRESH_SECONDS };
 
+        // Runs on the scheduler's background thread, never on the JavaFX thread. The account-wide
+        // recipe step covers vendor/learned-from-item/autolearned unlocks, the character step the
+        // per-character discovery state.
+        Runnable autoRefresh = () -> {
+            try {
+                accountRefreshService.refreshAll();
+
+                secondsLeft[0] = REFRESH_SECONDS;
+
+                Platform.runLater(() -> {
+                    lastRefreshLabel.setText("Last refresh: just now");
+                    statusLabel.setText("🔄 Auto-refreshed Bank + Materials");
+                    reloadTable.run();
+                });
+
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                secondsLeft[0] = REFRESH_SECONDS;
+                Platform.runLater(() -> {
+                    lastRefreshLabel.setText("Last refresh: FAILED");
+                    statusLabel.setText("⚠️ Auto-refresh failed: " + ex.getMessage());
+                });
+            }
+        };
+        autoRefreshTask = autoRefresh;
+
         scheduler.scheduleAtFixedRate(() -> {
             secondsLeft[0]--;
 
             if (secondsLeft[0] <= 0) {
-                try {
-                    AccountSync.syncAccountBank();
-                    AccountSync.syncAccountMaterials();
-                    AccountSync.syncAccountRecipes();     // vendor/learned-from-item/autolearned etc (account-wide)
-                    CharacterSync.syncCharactersCraftingAndRecipes();    // discovery per character
-
-                    secondsLeft[0] = REFRESH_SECONDS;
-
-                    Platform.runLater(() -> {
-                        lastRefreshLabel.setText("Last refresh: just now");
-                        statusLabel.setText("🔄 Auto-refreshed Bank + Materials");
-                        reloadTable.run();
-                    });
-
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                    secondsLeft[0] = REFRESH_SECONDS;
-                    Platform.runLater(() -> {
-                        lastRefreshLabel.setText("Last refresh: FAILED");
-                        statusLabel.setText("⚠️ Auto-refresh failed: " + ex.getMessage());
-                    });
-                }
+                autoRefresh.run();
             }
 
             int show = secondsLeft[0];
@@ -420,7 +443,7 @@ public class CraftingDiscoveryView {
             statusLabel.setText("Refreshing TP prices...");
             Thread tt = new Thread(() -> {
                 try {
-                    TpSync.syncTpPricesForDiscovery();
+                    tradingPostPriceRefreshService.refreshForDiscovery();
                     Platform.runLater(() -> {
                         statusLabel.setText("✅ TP refreshed.");
                         reloadTable.run();
