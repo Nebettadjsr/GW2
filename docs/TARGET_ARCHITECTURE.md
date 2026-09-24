@@ -647,14 +647,14 @@ Some synchronization operations may take longer than a normal HTTP request.
 
 The first implementation should remain as simple as practical.
 
-Potential approaches include:
+Per resolved `agent/user-decisions/UD-007-http-long-running-sync-approach.md`, use a mixed approach:
 
-- synchronous request where acceptable,
-- backend task with status endpoint for longer operations.
+- GW2 API synchronization operations use asynchronous backend tasks with status reporting.
+- For other endpoints, obtain representative real-world runtime measurements during implementation. Prefer synchronous requests for consistently short operations; use backend tasks with a status endpoint when execution takes materially longer or risks interruption/connection timeout. Do not assume durations or assign the split speculatively.
 
 A full queue system or distributed job platform is not currently required.
 
-**Status:** implementation approach TBD
+**Status:** approach decided in UD-007; per-endpoint choices outside GW2 synchronization follow measured behavior. Routine task implementation details remain implementation work.
 
 ---
 
@@ -832,6 +832,10 @@ Avoid adding abstractions solely because they are common in large enterprise app
 
 The following target decisions are currently established:
 
+Backend web framework: **Spring Boot**, per resolved `agent/user-decisions/UD-006-backend-web-framework.md`. Choose a supported version compatible with the project's actual Java and Maven versions at implementation time. Spring provides HTTP routing, validation, transport DTO handling and runtime infrastructure at the backend boundary; existing application/domain behavior must not become dependent on Spring APIs or be redesigned around the framework. Phase 4 remains additive: JavaFX continues calling application services in-process.
+
+Long-running HTTP operation policy is decided in section 23 (UD-007); concrete implementation choices follow that policy.
+
 ```text
 Application type:
 Web application
@@ -878,11 +882,6 @@ Frontend language:
 TBD
 TypeScript possible, not yet mandatory
 
-Backend web framework:
-TBD
-Java preferred
-Possible: Spring Boot / Quarkus / other
-
 Database migration tool:
 TBD
 
@@ -895,8 +894,6 @@ TBD
 Authentication:
 TBD, only if required
 
-Long-running job implementation:
-TBD
 ```
 
 An implementation agent must not choose one of these technologies merely because it is familiar without an explicit project decision.
@@ -954,16 +951,19 @@ When modifying or creating code, Claude must preserve these principles:
 
 ---
 
-# 33. Deferred crafting calculation performance requirement
+# 33. Crafting calculation performance and Phase 3 acceptance gate
 
-Performance investigation for Crafting Profit and Crafting Discovery is future planned work, blocked until intended calculation behavior is implemented and known functional defects are resolved. It is not executable work in the current planning pass.
+Crafting Profit load performance is required current Phase 3 work before proceeding to Phase 4/backend HTTP API work. The Product Owner reported approximately 20 seconds to populate CraftingProfitView (2026-09-22); that is a reported observation, not an independently measured baseline. Investigate and resolve it now, preserving intended calculation behavior. This supersedes the earlier deferral for Crafting Profit; Discovery performance remains future work unless separately authorized.
 
-Begin with reproducible baseline measurements using representative real application data where practical: opening/refreshing each view until usable results, individual recipe resolution/evaluation where meaningful, and total time in major pipeline stages. Identify actual bottlenecks rather than assume a solution. Investigation areas may include database access and repeated queries, recipe loading, graph traversal and resolution, repeated calculations and simulation, price lookups, recomputation, and UI refreshes; caching, batching, reuse, indexing, parallelism, or avoiding work are possibilities only.
+**Required result:** opening Crafting Profit must take **at most 7 seconds from page-load initiation to the complete page being populated and interactive**, measured against the user's current real PostgreSQL database with its real account, recipe, inventory and price data. Faster is welcome but not required. Time starts with the navigation action, not after loading a service or starting the calculation. Completion includes initial scope/control loading, data acquisition, calculation, presentation preparation, table population and rendered usable UI for the complete requested result set. An empty shell, spinner, first rows, partial results, or only backend execution time does not satisfy this limit. Do not hide work before the timer, omit recipes, lower simulation limits or silently serve stale results to meet it.
 
-Before major optimization, record the baseline, bottlenecks and measured time attribution, materially different viable approaches, their advantages/disadvantages, and correctness, maintainability, memory, database-load and complexity risks. Prefer multiple viable proposals where they exist. A clearly superior approach without meaningful tradeoffs may proceed normally; meaningful product, architecture, complexity, resource-use or maintainability tradeoffs require a User Decision. Large architectural changes require measured justification.
+Use the actual user environment and database, not a mock, disposable tiny fixture, reduced dataset or synthetic benchmark as acceptance evidence. Cover the default All scope, repeat openings and the first opening after application startup; record selected settings, data scale, software/hardware environment and cache state. Report individual end-to-end timings and the maximum; an average below seven seconds does not excuse a measured opening above it. A separately initiated first-time setup/account synchronization is outside page navigation; any work triggered by opening the page remains inside the timer. The measurement procedure is owned by `TEST_STRATEGY.md` §34.
 
-Correctness takes priority: preserve DOMAIN_SPEC.md behavior and intentional limits, never silently skip valid calculations or reduce correctness. Avoid unrepresentative synthetic targets. Temporary instrumentation must not clutter production behavior unless it retains diagnostic value. Repeat the same measurements after optimization, verify automated tests still pass, and document before/after evidence of substantial improvement in time to usable results. Independent measured bottlenecks may be addressed separately.
+Begin with a reproducible baseline and attribute elapsed time to database access, recipe/graph/cache loading, calculation/simulation, presentation preparation and UI rendering. Optimize evidenced bottlenecks, not assumed ones. Before major optimization, compare materially different viable approaches and correctness, freshness, maintainability, memory and database-load trade-offs. Meaningful product/architecture trade-offs require a User Decision; the time budget does not authorize changing domain rules. Keep reusable calculation improvements behind the application/domain boundary so future REST callers benefit. Repeat the same real-data measurements and relevant correctness checks after changes.
 
+**Blocking acceptance gate — satisfied 2026-09-23; the requirement below stands for all future work:** both recorded measurements meeting the limit and an explicit subsequent Product Owner confirmation that the issue is solved are required to close this requirement. Both were obtained for the current implementation; the measurements and the dated confirmation are recorded in `STORY-PERF-001`'s Result, which owns that evidence. Record the user's dated confirmation, tied to the tested revision/results, in `STORY-PERF-001`'s Result through the normal workflow. This instruction establishes the requirement; it is not that confirmation. Automated success, an agent/evaluator marking implementation complete, silence, or merely moving the work elsewhere cannot substitute for user acceptance. Until both conditions are met, Phase 3 remains open and Phase 4 or later work must not proceed. If measurement or user confirmation is unavailable, report the outstanding blocker rather than claiming success or relaxing the target.
+
+Future backend API and web frontend phases must preserve this performance requirement and reverify it at their respective boundaries; service/API timing alone never substitutes for the eventual browser-navigation-to-complete-page measurement. Later-phase checks do not defer the current Phase 3 gate.
 
 # 34. Repository quality and recurring project-health review policy
 

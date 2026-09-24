@@ -1,0 +1,33 @@
+[06:19:04] Availability check: claude_available=True, codex_available=True
+[06:19:04] Decision: code (select next story) -- reason: 4 selectable To Do candidate(s), Claude available
+[06:19:12] Availability check: claude_available=True, codex_available=True
+[06:19:12] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[06:35:30] Availability check: claude_available=True, codex_available=True
+[06:35:30] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[06:35:30] Decision: code (select next story) -- reason: 3 selectable To Do candidate(s), Claude available
+[06:35:37] Availability check: claude_available=True, codex_available=True
+[06:35:37] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[06:48:17] Availability check: claude_available=True, codex_available=True
+[06:48:17] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[06:48:50] Decision: code (select next story) -- reason: 2 selectable To Do candidate(s), Claude available
+[06:48:58] Availability check: claude_available=True, codex_available=True
+[06:48:58] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[06:59:37] Availability check: claude_available=True, codex_available=True
+[06:59:37] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[07:01:13] Availability check: claude_available=True, codex_available=True
+[07:01:13] Decision: code (select next story) -- reason: 1 selectable To Do candidate(s), Claude available
+[07:01:21] Availability check: claude_available=True, codex_available=True
+[07:01:21] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[07:18:05] Availability check: claude_available=True, codex_available=True
+[07:18:05] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[07:18:52] Decision: code (select next story) -- reason: 2 selectable To Do candidate(s), Claude available
+[07:19:00] Availability check: claude_available=True, codex_available=True
+[07:19:00] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[11:57:01] Availability check: claude_available=True, codex_available=True
+[11:57:01] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[11:58:22] Decision: code (select next story) -- reason: 1 selectable To Do candidate(s), Claude available
+[11:58:30] Availability check: claude_available=True, codex_available=True
+[11:58:30] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[12:12:01] Availability check: claude_available=True, codex_available=True
+[12:12:01] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[12:12:54] Decision: wait (user decision) -- reason: unresolved user decision(s) block remaining work: ['UD-005']

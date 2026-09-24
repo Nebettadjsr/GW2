@@ -10,7 +10,6 @@ public class CraftingResolver {
 
     private final Map<Integer, Integer> directBuyUnitCache = new HashMap<>();
     private final Map<Integer, Integer> directSellUnitCache = new HashMap<>();
-    private final Map<Integer, Recipe> firstRecipeCache = new HashMap<>();
 
     public ResolveResult resolveOneCraft(
             Recipe recipe,
@@ -98,8 +97,10 @@ public class CraftingResolver {
             }
         }
 
-        // 3) Evaluate craft on a COPY of state
+        // 3) Evaluate craft speculatively: performed on the live state and undone below if the
+        //    craft is not the candidate finally chosen (this used to run on a full copy of state).
         CandidateEval craftEval = null;
+        int craftMark = -1;
         Recipe firstRecipe = firstRecipeFor(itemId, ctx, parentDiscipline);
 
         boolean shouldTryCraft = true;
@@ -117,10 +118,13 @@ public class CraftingResolver {
         }
 
         if (shouldTryCraft) {
-            PlanState craftState = new PlanState(state);
-            ResolvedNeed craftNeed = tryCraft(itemId, remaining, ctx, craftState, parentDiscipline);
+            craftMark = state.mark();
+            ResolvedNeed craftNeed = tryCraft(itemId, remaining, ctx, state, parentDiscipline);
             if (craftNeed != null) {
-                craftEval = new CandidateEval(craftNeed, craftState);
+                craftEval = new CandidateEval(craftNeed);
+            } else {
+                state.rollbackTo(craftMark);
+                craftMark = -1;
             }
         }
 
@@ -129,13 +133,16 @@ public class CraftingResolver {
 
         if (chosen != null) {
             if (chosen.isStateCandidate()) {
-                assert chosen.stateAfter != null;
-                state.copyFrom(chosen.stateAfter);
-            }else {
-                state.buyCostCopper += chosen.extraBuyCost;
+                // The craft attempt is already applied to state; keeping it is the whole point.
+                assert craftMark >= 0;
+            } else {
+                // Buying won: undo the speculative craft before charging the purchase.
+                if (craftMark >= 0) state.rollbackTo(craftMark);
+
+                state.addBuyCost(chosen.extraBuyCost);
 
                 for (var e : chosen.extraMissing.entrySet()) {
-                    state.missingToBuy.merge(e.getKey(), e.getValue(), Integer::sum);
+                    state.addMissingToBuy(e.getKey(), e.getValue());
                 }
             }
 
@@ -155,6 +162,10 @@ public class CraftingResolver {
                 result.addChild(child);
             }
         } else {
+            // Neither candidate is usable: the speculative craft leaves no trace, exactly as the
+            // discarded trial copy did before.
+            if (craftMark >= 0) state.rollbackTo(craftMark);
+
             result.setQtyBlocked(remaining);
 
             if (!ctx.settings.allowBuying) {
@@ -209,19 +220,30 @@ public class CraftingResolver {
             return blockedNeed(itemId, qtyRequested, BlockedReason.RECIPE_NOT_ALLOWED);
         }
 
-        ResolvedNeed best = null;
-        PlanState bestState = null;
-
-        for (String character : eligible) {
-            PlanState trial = new PlanState(state);
-            ResolvedNeed attempt = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, trial, character);
-            if (isBetterCraftAttempt(attempt, best)) {
-                best = attempt;
-                bestState = trial;
-            }
+        // A single candidate is always "best" (isBetterCraftAttempt(attempt, null) is always
+        // true), so the speculative trial-copy-then-copyFrom dance below is unnecessary and,
+        // being on the hot recursive path, materially expensive (STORY-PERF-001) - apply directly.
+        if (eligible.size() == 1) {
+            return tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, eligible.get(0));
         }
 
-        state.copyFrom(bestState);
+        // Each candidate is tried from the same starting point, then undone; the winner's net
+        // effect is captured and re-applied at the end. Previously each candidate ran on its own
+        // full copy of the state and the winning copy was copied back.
+        ResolvedNeed best = null;
+        PlanState.Delta bestEffect = null;
+        int mark = state.mark();
+
+        for (String character : eligible) {
+            ResolvedNeed attempt = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, character);
+            if (isBetterCraftAttempt(attempt, best)) {
+                best = attempt;
+                bestEffect = state.captureDelta(mark);
+            }
+            state.rollbackTo(mark);
+        }
+
+        state.applyDelta(bestEffect);
         return best;
     }
 
@@ -240,13 +262,13 @@ public class CraftingResolver {
             String assignedCharacter
                                           ) {
         // cycle protection
-        if (state.visiting.contains(itemId)) {
+        if (state.isVisiting(itemId)) {
             return blockedNeed(itemId, qtyRequested, BlockedReason.CYCLE_DETECTED);
         }
 
         boolean isDaily = DailyCrafts.isDailyOutput(itemId);
 
-        state.visiting.add(itemId);
+        state.beginVisiting(itemId);
 
         try {
             ResolvedNeed craftResult = new ResolvedNeed(itemId, qtyRequested);
@@ -256,7 +278,7 @@ public class CraftingResolver {
 
             // Daily mode = CRAFT -> at most one craft operation
             if (isDaily) {
-                int left = state.dailyLeft.getOrDefault(itemId, 1);
+                int left = state.dailyLeft(itemId, 1);
                 times = Math.min(timesNeeded, left);
 
                 if (times <= 0) {
@@ -266,7 +288,7 @@ public class CraftingResolver {
                     return craftResult;
                 }
 
-                state.dailyLeft.put(itemId, left - times);
+                state.setDailyLeft(itemId, left - times);
             }
 
             int produced = times * recipe.outputCount;
@@ -318,7 +340,7 @@ public class CraftingResolver {
             return craftResult;
 
         } finally {
-            state.visiting.remove(itemId);
+            state.endVisiting(itemId);
         }
     }
 
@@ -441,26 +463,32 @@ public class CraftingResolver {
         return false;
     }
 
-//    public Recipe firstRecipeFor(int itemId, PlannerContext ctx) {
-//
-//        Recipe cached = firstRecipeCache.get(itemId);
-//        if (cached != null) return cached;
-//
-//        List<Recipe> list = ctx.recipesByOutput.get(itemId);
-//
-//        Recipe result = (list == null || list.isEmpty()) ? null : list.get(0);
-//
-//        firstRecipeCache.put(itemId, result);
-//
-//        return result;
-//    }
-
     /**
      * DOMAIN_SPEC.md section 30 / DQ-003: prefer a valid recipe matching the parent
      * recipe's crafting discipline; among same-discipline candidates prefer the lowest
      * effective cost; otherwise prefer the lowest effective cost among all valid candidates.
+     *
+     * <p>The answer depends only on {@code itemId}, {@code parentDiscipline} and data fixed for
+     * {@code ctx}'s lifetime, but the recursive planner asks for the same pairs millions of times
+     * per page load, each time rescanning the candidate list, re-estimating every candidate's cost
+     * and re-splitting discipline strings. It is therefore memoized per context
+     * (STORY-PERF-001); the computation itself is unchanged.
      */
     public Recipe firstRecipeFor(int itemId, PlannerContext ctx, String parentDiscipline) {
+        var memo = ctx.firstRecipeMemo();
+        var key = new PlannerContext.FirstRecipeKey(itemId, parentDiscipline);
+
+        Object cached = memo.get(key);
+        if (cached != null) {
+            return cached == PlannerContext.NO_RECIPE ? null : (Recipe) cached;
+        }
+
+        Recipe computed = computeFirstRecipeFor(itemId, ctx, parentDiscipline);
+        memo.putIfAbsent(key, computed == null ? PlannerContext.NO_RECIPE : computed);
+        return computed;
+    }
+
+    private Recipe computeFirstRecipeFor(int itemId, PlannerContext ctx, String parentDiscipline) {
         List<Recipe> list = ctx.recipesByOutput.get(itemId);
         if (list == null || list.isEmpty()) {
             return null;
@@ -543,26 +571,27 @@ public class CraftingResolver {
 
     private static class CandidateEval {
         final ResolvedNeed need;
-        final PlanState stateAfter;
+        /** True for the craft candidate, whose effect is already applied to the live PlanState. */
+        final boolean stateCandidate;
         final int extraBuyCost;
         final Map<Integer, Integer> extraMissing;
 
-        CandidateEval(ResolvedNeed need, PlanState stateAfter) {
+        CandidateEval(ResolvedNeed need) {
             this.need = need;
-            this.stateAfter = stateAfter;
+            this.stateCandidate = true;
             this.extraBuyCost = 0;
             this.extraMissing = Map.of();
         }
 
         CandidateEval(ResolvedNeed need, int extraBuyCost, Map<Integer, Integer> extraMissing) {
             this.need = need;
-            this.stateAfter = null;
+            this.stateCandidate = false;
             this.extraBuyCost = extraBuyCost;
             this.extraMissing = extraMissing;
         }
 
         boolean isStateCandidate() {
-            return stateAfter != null;
+            return stateCandidate;
         }
     }
 

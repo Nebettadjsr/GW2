@@ -50,10 +50,10 @@ Applied here as: **fix behavior before refactoring, refactor before extracting, 
 ## 3. Phase Overview
 
 ```text
-Phase 0  Build & Test Foundation                (in progress)
-Phase 1  Domain Stabilization                   (not started)
-Phase 2  Domain Isolation / Decoupling          (not started)
-Phase 3  Backend / Application-Service Extraction (not started)
+Phase 0  Build & Test Foundation                (complete, 2026-09-19 — see §4)
+Phase 1  Domain Stabilization                   (complete — milestone-01 archived)
+Phase 2  Domain Isolation / Decoupling          (complete, 2026-09-21 — see §6)
+Phase 3  Backend / Application-Service Extraction (in progress — current milestone)
 Phase 4  Backend HTTP API                       (not started)
 Phase 5  Frontend Migration                     (not started)
 Phase 6  PostgreSQL / Containerization           (not started)
@@ -174,6 +174,10 @@ Phase 1. This must be a behavior-preserving refactor (`TEST_STRATEGY.md` §18) �
 
 ## 7. Phase 3 — Backend / Application-Service Extraction
 
+**Status: Complete — 2026-09-23.** All exit criteria are satisfied. Review findings are explicitly dispositioned in `STORY-QUALITY-003`'s Result; `STORY-APP-010` and `STORY-APP-011` complete its two scoped follow-ups. The documented current phase advances through `agent/PROJECT_STATE.md`; no next-phase stories are planned in this pass.
+
+**Blocking performance gate (PO requirement, 2026-09-22) — satisfied 2026-09-23:** this phase could not close or advance to Phase 4 until the Crafting Profit performance requirement in `TARGET_ARCHITECTURE.md` §33 passed real-user-database measurement and received explicit subsequent user acceptance. Both happened: the measurements and the Product Owner's dated acceptance are recorded in `STORY-PERF-001`'s Result. This gate no longer blocks the phase; the remaining exit criteria below still govern whether Phase 3 closes.
+
 ### Objective
 
 Introduce an Application Layer of named use cases that orchestrate the now-independent domain plus infrastructure, per `TARGET_ARCHITECTURE.md` §8, replacing the current pattern of UI classes and button handlers calling `sync.*`/`repo.*`/`craft.*` directly.
@@ -184,18 +188,20 @@ Phase 2. Building an application layer on top of a still-coupled domain would ju
 
 ### Exit Criteria
 
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
-- Application services exist for at least: crafting profit calculation, crafting discovery candidates, account refresh, global data refresh, Trading Post price refresh, crafting graph rebuild — matching the example use-case list in `TARGET_ARCHITECTURE.md` §8.
-- `Gw2App` button handlers, `EctoView`, and `Main.java` no longer call `sync.*`/`repo.*`/`craft.*` directly; they call application services.
-- The two disagreeing Ectoplasm Salvage implementations (`KNOWN_PROBLEMS.md` §3.6/§4.4) converge into one application service with one calculation.
-- `AccountRefreshService`'s current dead-call situation (`KNOWN_PROBLEMS.md` §8) is resolved — either wired up as the account-refresh use case or removed.
+- **(Done)** Crafting Profit meets the complete-page, at-most-7-second real-user-database requirement in `TARGET_ARCHITECTURE.md` §33, with measurement evidence and explicit dated user acceptance recorded in `STORY-PERF-001`.
+- **(Done)** Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
+- **(Done)** Application services exist for at least: crafting profit calculation, crafting discovery candidates, account refresh, global data refresh, Trading Post price refresh, crafting graph rebuild — matching the example use-case list in `TARGET_ARCHITECTURE.md` §8.
+- **(Done)** `Gw2App` button handlers, `EctoView`, and `Main.java` no longer call `sync.*`/`repo.*`/`craft.*` directly; they call application services.
+- **(Done)** The two disagreeing Ectoplasm Salvage implementations (`KNOWN_PROBLEMS.md` §3.6/§4.4) converge into one application service with one calculation.
+- **(Done)** `AccountRefreshService`'s current dead-call situation (`KNOWN_PROBLEMS.md` §8) is resolved — either wired up as the account-refresh use case or removed.
 
 ### High-Level Stories
 
-- Define application services wrapping the crafting-profit and crafting-discovery flows currently implemented inside `CraftingProfitController`/`CraftingDiscoveryController`.
-- Define application services for the synchronization use cases currently invoked ad hoc from `Gw2App`/`InitialSetupService`/`AccountRefreshService`.
-- Migrate the Ectoplasm Salvage calculation into a domain calculation plus application service; retire the inline `EctoView` calculation and `Main.java`.
-- Update JavaFX views/controllers to call application services only.
+- **(Done)** Measure and resolve Crafting Profit page-load latency on the current real user database; obtain explicit user acceptance (`STORY-PERF-001`).
+- **(Done)** Define application services wrapping the crafting-profit and crafting-discovery flows currently implemented inside `CraftingProfitController`/`CraftingDiscoveryController`.
+- **(Done)** Define application services for the synchronization use cases currently invoked ad hoc from `Gw2App`/`InitialSetupService`/`AccountRefreshService`.
+- **(Done)** Migrate the Ectoplasm Salvage calculation into a domain calculation plus application service; retire the inline `EctoView` calculation and `Main.java`.
+- **(Done)** Update JavaFX views/controllers to call application services only.
 
 ---
 
@@ -211,6 +217,7 @@ Phase 3. The API layer should be a thin translation over existing application se
 
 ### Exit Criteria
 
+- Preserve and reverify the accepted Crafting Profit performance requirement at the backend/API boundary (`TARGET_ARCHITECTURE.md` §33); API timing is only one part of the full page-load budget.
 - Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
 - **Explicit decision made** on the backend web framework (`TARGET_ARCHITECTURE.md` §30 marks this `TBD` — must not be silently finalized).
 - HTTP endpoints exist for at least the crafting profit/discovery calculations and the sync/refresh operations sketched in `TARGET_ARCHITECTURE.md` §9.
@@ -241,6 +248,7 @@ Phase 4. The frontend needs a stable API to build against; building it earlier w
 
 ### Exit Criteria
 
+- Verify the full browser-navigation-to-complete-Crafting-Profit-page performance requirement against the real user database (`TARGET_ARCHITECTURE.md` §33), including backend, transport and rendering time.
 - Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
 - **Explicit decision made** on frontend framework and language (`TARGET_ARCHITECTURE.md` §30 marks both `TBD`).
 - The frontend renders crafting profit/discovery results, the resolution tree, and special domain states (e.g. `UNVALUED_NONTRADEABLE`, `PRICE_UNAVAILABLE`) using only backend-provided values (`TARGET_ARCHITECTURE.md` §13/§14).

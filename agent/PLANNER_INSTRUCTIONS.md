@@ -488,6 +488,8 @@ A planning run handles exactly one milestone.
 
 Only report a milestone transition when the supplied current phase's exit criteria are fully and confidently satisfied, including its PROJECT HEALTH REVIEW under `docs/TARGET_ARCHITECTURE.md` §34. Review completion alone is insufficient: assess its recorded findings and confirm explicit disposition of blocking findings and criteria proposed for transfer before reporting the phase complete. Otherwise keep `phase_exit_criteria_satisfied` and `milestone_transition` false.
 
+For Phase 3, the explicit Product Owner performance gate in `docs/ROADMAP.md` / `docs/TARGET_ARCHITECTURE.md` §33 overrides ordinary completion inference. Require the real-user-database measurements and explicit subsequent, dated user confirmation tied to the tested revision/results in `STORY-PERF-001`'s Result. Until both exist, keep Phase 3 open, `phase_exit_criteria_satisfied = false` and `milestone_transition = false`; do not plan/activate Phase 4 or later work, silently defer the requirement, or treat automated/evaluator success as user acceptance. Schedule the existing performance story as current-phase work; do not create a duplicate. If only user acceptance remains, use the existing human-input workflow rather than generating filler work or another implementation retry.
+
 The planner never moves story files and never edits BACKLOG `## Archived`.
 
 The harness performs archiving after validating the transition.

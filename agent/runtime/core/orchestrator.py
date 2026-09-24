@@ -1,21 +1,29 @@
 from pathlib import Path
 import time
+import traceback
 
 from agent.runtime.runners.claude_runner import (
     get_claude_session_usage_percent,
-    run_claude,
+    run_claude_attempt,
     wait_for_claude_capacity,
 )
 from agent.runtime.support.config import (
     BACKLOG_FILE,
+    CAPACITY_STATUS_INTERVAL_SECONDS,
+    CAPACITY_WAIT_POLL_SECONDS,
     CLAUDE_RESULT_FILE,
     CLAUDE_USAGE_LIMIT_PERCENT,
     CURRENT_STORY_FILE,
+    CYCLE_RETRY_SECONDS,
+    EVALUATION_ATTEMPTS,
+    EVALUATION_RETRY_SECONDS,
     PROJECT_STATE_FILE,
     USER_DECISIONS_DIR,
     PRODUCT_OWNER_REQUESTS_DIR,
     ROADMAP_FILE,
     TARGET_ARCHITECTURE_FILE,
+    MAX_CLAUDE_FAILED_RUNS_PER_STORY,
+    MAX_CONSECUTIVE_CYCLE_ERRORS,
     MAX_RETRIES_PER_STORY,
     MODEL,
     NEXT_PROMPT_FILE,
@@ -26,7 +34,11 @@ from agent.runtime.evaluation.dispatcher import build_claude_prompt, dispatch_st
 from agent.runtime.evaluation.evaluator import evaluate_story
 from agent.runtime.runners.codex_capacity import codex_available
 from agent.runtime.support.capacity import CapacityProbe, ModelCapacityUnavailable
-from agent.runtime.support.daily_log import log_line
+from agent.runtime.support.daily_log import (
+    log_line,
+    print_status,
+    start_console_logging,
+)
 from agent.runtime.support.files import file_hash, read_file
 from agent.runtime.core.project_planner import run_planning_pass, should_trigger_planning
 from agent.runtime.core.selector import select_next_story
@@ -70,6 +82,112 @@ def _safe_claude_usage_percent() -> int | None:
         return get_claude_session_usage_percent()
     except Exception:  # noqa: BLE001 -- measurement must never block
         return None
+
+
+# ============================================================
+# Terminal-only waiting status
+#
+# A wait can last hours. Its heartbeat belongs on the terminal and
+# nowhere else (see support/daily_log.py's print_status): agent/logs/
+# records transitions -- exhaustion first detected, capacity back,
+# orchestration resumed -- not the fact that the orchestrator is still
+# waiting.
+# ============================================================
+
+class StatusHeartbeat:
+    def __init__(
+            self,
+            interval: int = CAPACITY_STATUS_INTERVAL_SECONDS,
+            clock=time.monotonic,
+    ):
+        self.interval = interval
+        self.clock = clock
+        self.next_at = 0.0
+
+    def say(self, *lines: str) -> bool:
+        now = self.clock()
+
+        if now < self.next_at:
+            return False
+
+        self.next_at = now + self.interval
+
+        for line in lines:
+            print_status(line)
+
+        return True
+
+
+def _seconds_until_recheck(probe) -> int | None:
+    """
+    How long a CapacityProbe's local cooldown still has to run, or None
+    when that cannot be read (e.g. a test double). Never probes the
+    model itself.
+    """
+
+    retry_at = getattr(probe, "retry_at", None)
+    clock = getattr(probe, "clock", None)
+
+    if not isinstance(retry_at, (int, float)) or not callable(clock):
+        return None
+
+    try:
+        remaining = retry_at - clock()
+    except TypeError:
+        return None
+
+    return max(0, int(remaining))
+
+
+# ============================================================
+# Evaluation with local retries
+#
+# Hermes/Ollama is local infrastructure, not a model with a usage
+# budget. If it is briefly unreachable after Claude has already
+# finished, the finished implementation must not be thrown away and
+# Claude must not be re-invoked to "try again" -- retry the evaluation
+# itself instead.
+# ============================================================
+
+def _evaluate_with_local_retries(
+        story_content: str,
+        result_content: str,
+        claude_exit_code: int,
+        result_was_updated: bool,
+) -> dict:
+
+    last_error = None
+
+    for attempt in range(1, EVALUATION_ATTEMPTS + 1):
+        try:
+            return evaluate_story(
+                story_content,
+                result_content,
+                claude_exit_code,
+                result_was_updated,
+            )
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
+            last_error = exc
+
+            print_status(
+                f"Evaluator unavailable ({type(exc).__name__}: {exc}); "
+                f"local retry {attempt}/{EVALUATION_ATTEMPTS} "
+                f"in {EVALUATION_RETRY_SECONDS}s "
+                "(Claude is not re-invoked)."
+            )
+
+            if attempt < EVALUATION_ATTEMPTS:
+                time.sleep(
+                    EVALUATION_RETRY_SECONDS
+                )
+
+    log_line(
+        f"Evaluation failed after {EVALUATION_ATTEMPTS} local attempts "
+        f"({type(last_error).__name__}: {last_error}). The completed "
+        "Claude work is preserved; the cycle will be retried."
+    )
+
+    raise last_error
 
 
 # ============================================================
@@ -340,6 +458,7 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
     )
 
     retry_count = 0
+    failed_runs = 0
 
     while True:
 
@@ -353,9 +472,11 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
         usage_before = _safe_claude_usage_percent()
         claude_start = time.time()
 
-        claude_exit_code = run_claude(
+        attempt = run_claude_attempt(
             prompt
         )
+
+        claude_exit_code = attempt.exit_code
 
         claude_duration = time.time() - claude_start
         usage_after = _safe_claude_usage_percent()
@@ -371,11 +492,22 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
         if claude_exit_code != 0:
             # An interrupted attempt is not an evaluator retry or a
             # story outcome. Keep the same story and work order.
+            capacity_limited = attempt.capacity_exhausted or (
+                usage_after is not None
+                and usage_after >= CLAUDE_USAGE_LIMIT_PERCENT
+            )
+
             set_story_unfinished(story_path)
             print(
-                f"Claude exited with code {claude_exit_code}. "
-                "Story remains active and UNFINISHED; waiting for "
-                "capacity before continuing the same story."
+                f"Claude exited with code {claude_exit_code} "
+                + (
+                    "after running out of capacity. Story remains active "
+                    "and UNFINISHED; waiting locally for capacity before "
+                    "continuing the same story."
+                    if capacity_limited
+                    else "with no capacity signal. Story remains active "
+                    "and UNFINISHED; retrying the same story."
+                )
             )
             continuation = (
                 "Continue the interrupted attempt on the SAME active story.\n"
@@ -385,10 +517,54 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
             if not prompt.startswith(continuation):
                 prompt = continuation + prompt
             NEXT_PROMPT_FILE.write_text(prompt + "\n", encoding="utf-8")
-            if on_interruption is not None:
-                on_interruption()
-            else:
-                wait_for_claude_capacity()
+
+            if capacity_limited:
+                # Capacity exhaustion is a scheduling event: it never
+                # counts against the story's retry budget and never
+                # escalates to a human.
+                failed_runs = 0
+                log_line(
+                    f"Claude capacity exhausted during {story_path.name}; "
+                    "story preserved as UNFINISHED, waiting locally."
+                )
+
+                if on_interruption is not None:
+                    on_interruption()
+                else:
+                    wait_for_claude_capacity()
+
+                continue
+
+            # A non-zero exit with no capacity signal is a failed run,
+            # not a pause. Waiting an hour and re-invoking Claude
+            # forever would never resolve it, so escalate once it
+            # repeats instead of looping.
+            failed_runs += 1
+
+            log_line(
+                f"Claude run on {story_path.name} exited "
+                f"{claude_exit_code} with no capacity signal "
+                f"({failed_runs}/{MAX_CLAUDE_FAILED_RUNS_PER_STORY})."
+            )
+
+            if failed_runs >= MAX_CLAUDE_FAILED_RUNS_PER_STORY:
+                _create_intervention_and_block_story(
+                    story_path,
+                    read_file(story_path),
+                    f"Claude Code exited with code {claude_exit_code} on "
+                    f"{failed_runs} consecutive runs without any capacity "
+                    "signal, so this is a failing invocation rather than a "
+                    "usage pause. The orchestrator continues with other "
+                    "work; this story needs a human to inspect the run.",
+                    read_file(CLAUDE_RESULT_FILE)
+                    if CLAUDE_RESULT_FILE.exists()
+                    else "(CLAUDE_RESULT.md does not exist -- the Claude "
+                         "process exited non-zero without writing a "
+                         "result.)",
+                )
+
+                return "NEEDS_USER"
+
             continue
 
         new_result_hash = file_hash(
@@ -414,7 +590,9 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
             story_path
         )
 
-        evaluation = evaluate_story(
+        failed_runs = 0
+
+        evaluation = _evaluate_with_local_retries(
             story_content,
             result_content,
             claude_exit_code,
@@ -567,6 +745,15 @@ def get_unresolved_user_decisions(
     return unresolved
 
 
+def _unresolved_ids(
+        unresolved: list[dict]
+) -> set[str]:
+    return {
+        item.get("id") or "?"
+        for item in unresolved
+    }
+
+
 def _describe_unresolved_decision(
         decision: dict
 ) -> str:
@@ -591,13 +778,19 @@ def wait_for_user_decisions(
         decision_ids: list[str]
 ) -> None:
     """
-    Block until every listed decision ID is RESOLVED. Checks once
-    immediately (the user may have already resolved it before this
-    state was entered) and, if still unresolved, prints which IDs are
-    blocking and sleeps for USER_DECISION_POLL_SECONDS before each
-    recheck -- a plain local file read, never a model call. Remains
-    interruptible with Ctrl+C: KeyboardInterrupt is never caught here
-    and propagates normally.
+    Wait locally until the set of blocking decisions actually changes --
+    i.e. as soon as ANY of them becomes RESOLVED, not only once every
+    one has. Resolving one decision can be enough to unblock planning or
+    a dependent story, and the caller re-derives what is permissible
+    from scratch afterwards, so returning early is always safe and
+    never skips a gate that is still open.
+
+    Checks once immediately (the user may have resolved it before this
+    state was entered), then re-reads agent/user-decisions/*.md every
+    USER_DECISION_POLL_SECONDS -- a plain local file read, never a model
+    call. Heartbeat output is terminal-only; only entering and leaving
+    the wait are logged. Remains interruptible with Ctrl+C:
+    KeyboardInterrupt is never caught here and propagates normally.
     """
 
     unresolved = get_unresolved_user_decisions(
@@ -613,28 +806,26 @@ def wait_for_user_decisions(
         )
         return
 
-    print(
-        "Waiting for user decision resolution."
+    blocking = _unresolved_ids(unresolved)
+
+    log_line(
+        "Waiting locally for user decision(s): "
+        + ", ".join(sorted(blocking))
     )
 
-    first_check = True
+    heartbeat = StatusHeartbeat()
 
-    while unresolved:
-        if not first_check:
-            print(
-                "Still unresolved: "
-                + ", ".join(
-                    _describe_unresolved_decision(decision)
-                    for decision in unresolved
-                )
-            )
-
-        print(
+    while unresolved and _unresolved_ids(unresolved) == blocking:
+        heartbeat.say(
+            "Waiting for user decision resolution - waiting...",
+            "Still unresolved: "
+            + ", ".join(
+                _describe_unresolved_decision(decision)
+                for decision in unresolved
+            ),
             "Next local check in "
-            f"{USER_DECISION_POLL_SECONDS // 60} minutes."
+            f"{USER_DECISION_POLL_SECONDS // 60} minutes.",
         )
-
-        first_check = False
 
         time.sleep(
             USER_DECISION_POLL_SECONDS
@@ -644,8 +835,17 @@ def wait_for_user_decisions(
             decision_ids
         )
 
+    resolved = sorted(
+        blocking - _unresolved_ids(unresolved)
+    )
+
+    log_line(
+        "User decision(s) resolved: " + ", ".join(resolved)
+        + "; resuming orchestration."
+    )
+
     print(
-        "\nUser decision resolved: " + ", ".join(decision_ids)
+        "\nUser decision resolved: " + ", ".join(resolved)
     )
     print(
         "Re-running project planning."
@@ -711,10 +911,12 @@ def wait_for_user_interventions(
         intervention_ids: list[str]
 ) -> None:
     """
-    Block until every listed intervention ID is RESOLVED. Checks once
-    immediately, then prints which IDs are blocking and sleeps for
-    USER_DECISION_POLL_SECONDS before each recheck -- a plain local
-    file read, never a model call. Interruptible with Ctrl+C.
+    Mirror of wait_for_user_decisions() for agent/user-interventions/:
+    returns as soon as ANY listed intervention becomes RESOLVED, since
+    one resolution can be enough to requeue a story and the caller
+    re-derives eligibility from each story's own file afterwards.
+    Heartbeat output is terminal-only; local file reads only, never a
+    model call. Interruptible with Ctrl+C.
     """
 
     unresolved = get_unresolved_user_interventions(
@@ -727,28 +929,26 @@ def wait_for_user_interventions(
         )
         return
 
-    print(
-        "Waiting for user intervention resolution."
+    blocking = _unresolved_ids(unresolved)
+
+    log_line(
+        "Waiting locally for user intervention(s): "
+        + ", ".join(sorted(blocking))
     )
 
-    first_check = True
+    heartbeat = StatusHeartbeat()
 
-    while unresolved:
-        if not first_check:
-            print(
-                "Still unresolved: "
-                + ", ".join(
-                    _describe_unresolved_intervention(item)
-                    for item in unresolved
-                )
-            )
-
-        print(
+    while unresolved and _unresolved_ids(unresolved) == blocking:
+        heartbeat.say(
+            "Waiting for user intervention resolution - waiting...",
+            "Still unresolved: "
+            + ", ".join(
+                _describe_unresolved_intervention(item)
+                for item in unresolved
+            ),
             "Next local check in "
-            f"{USER_DECISION_POLL_SECONDS // 60} minutes."
+            f"{USER_DECISION_POLL_SECONDS // 60} minutes.",
         )
-
-        first_check = False
 
         time.sleep(
             USER_DECISION_POLL_SECONDS
@@ -758,8 +958,17 @@ def wait_for_user_interventions(
             intervention_ids
         )
 
+    resolved = sorted(
+        blocking - _unresolved_ids(unresolved)
+    )
+
+    log_line(
+        "User intervention(s) resolved: " + ", ".join(resolved)
+        + "; resuming orchestration."
+    )
+
     print(
-        "\nUser intervention resolved: " + ", ".join(intervention_ids)
+        "\nUser intervention resolved: " + ", ".join(resolved)
     )
 
 
@@ -852,26 +1061,77 @@ def planning_fingerprint():
 
 
 class CapacityScheduler:
+    """
+    Independent per-model capacity gating. Neither model's exhaustion is
+    ever a story or planning failure, and neither blocks the other:
+    Claude drains already-planned work while Codex is exhausted, Codex
+    replenishes the queue while Claude is exhausted, and when both are
+    out the orchestrator waits locally instead of exiting.
+    """
+
     def __init__(self, claude=None, codex=None):
-        self.claude = claude or CapacityProbe(
-            lambda: get_claude_session_usage_percent() < CLAUDE_USAGE_LIMIT_PERCENT)
+        self.claude = claude or CapacityProbe(self._read_claude_capacity)
         self.codex = codex or CapacityProbe(codex_available)
         self.no_work_at = None
+        self.claude_usage_percent = None
+        self.planning_failure = None
+        # Remembered purely so a transition is logged once, instead of
+        # the same "unavailable" line every polling cycle.
+        self.exhausted = {"Claude": False, "Codex": False}
+        self.heartbeat = StatusHeartbeat()
+
+    def _read_claude_capacity(self):
+        # `claude -p /usage` runs a slash command, so this costs no
+        # tokens and never invokes the exhausted model. The reading is
+        # kept for the terminal status line.
+        self.claude_usage_percent = get_claude_session_usage_percent()
+
+        return self.claude_usage_percent < CLAUDE_USAGE_LIMIT_PERCENT
+
+    def _availability(self, name, probe):
+        available = probe.available()
+
+        if available and self.exhausted[name]:
+            log_line(f"{name} capacity available again.")
+            self.exhausted[name] = False
+        elif not available and not self.exhausted[name]:
+            log_line(f"{name} capacity exhausted (first detected).")
+            self.exhausted[name] = True
+
+        return available
+
+    def claude_available(self):
+        return self._availability("Claude", self.claude)
+
+    def codex_available(self):
+        return self._availability("Codex", self.codex)
 
     def plan_if_useful(self, idle=False):
         if not idle and not should_trigger_planning(len(get_selectable_story_candidates())):
             return False
         fingerprint = planning_fingerprint()
-        if fingerprint == self.no_work_at or not self.codex.available():
+        if fingerprint == self.no_work_at or not self.codex_available():
             return False
         try:
             result = run_planning_pass()
         except ModelCapacityUnavailable:
             self.codex.defer()
+            self.exhausted["Codex"] = True
+            log_line("Codex capacity exhausted during planning; "
+                     "planning will resume after the local cooldown.")
             return False
+        except (RuntimeError, ValueError, OSError) as exc:
+            # A planning pass that fails or is rolled back must never
+            # take the orchestrator down with it -- Claude may still
+            # have planned work to drain. Back the planner off for one
+            # cooldown instead, so it is retried later rather than
+            # hammered now, and never mark the state as "no work".
+            return self._planning_failed(f"{type(exc).__name__}: {exc}")
         status = result.get("status")
         if status not in ("COMPLETE", "NEEDS_USER"):
-            raise RuntimeError("Project planning failed: " + result.get("reason", "unknown"))
+            return self._planning_failed(
+                f"planner reported {status}: {result.get('reason', 'unknown')}")
+        self.planning_failure = None
         changed = planning_fingerprint() != fingerprint
         useful = status == "COMPLETE" and changed and bool(
             result.get("story_files_created") or result.get("milestone_transition"))
@@ -879,111 +1139,316 @@ class CapacityScheduler:
             self.no_work_at = planning_fingerprint()
         return useful
 
+    def _planning_failed(self, description):
+        self.planning_failure = description
+        self.codex.defer()
+        log_line(f"Project planning failed ({description}). Execution of "
+                 "already-planned work continues; planning is retried after "
+                 "the local cooldown.")
+        return False
+
+    def status_lines(self, unavailable):
+        lines = [
+            " and ".join(unavailable)
+            + " capacity unavailable - waiting..."
+        ]
+
+        if "Claude" in unavailable:
+            lines.append(
+                f"Current usage: Claude session {self.claude_usage_percent}% "
+                f"(resumes below {CLAUDE_USAGE_LIMIT_PERCENT}%)"
+                if self.claude_usage_percent is not None
+                else "Current usage: Claude session usage unreadable "
+                     "(last local probe failed)"
+            )
+
+        for name, probe in (("Claude", self.claude), ("Codex", self.codex)):
+            if name not in unavailable:
+                continue
+
+            seconds = _seconds_until_recheck(probe)
+
+            if seconds is not None:
+                lines.append(
+                    f"Next {name} capacity check in "
+                    f"{max(1, seconds // 60)} min"
+                )
+
+        if self.planning_failure and "Codex" in unavailable:
+            lines.append(
+                f"Last planning attempt failed: {self.planning_failure}"
+            )
+
+        return lines
+
+    def wait_locally(self, unavailable):
+        """Stay alive without invoking any exhausted model."""
+
+        self.heartbeat.say(*self.status_lines(unavailable))
+
+        time.sleep(CAPACITY_WAIT_POLL_SECONDS)
+
     def wait_for_claude(self):
         # Called between attempts, so an interruption retains the exact retry prompt/budget.
-        while not self.claude.available():
-            if not self.plan_if_useful(idle=True):
-                time.sleep(60)
+        waited = False
+        while not self.claude_available():
+            waited = True
+            if self.plan_if_useful(idle=True):
+                continue
+            self.wait_locally(["Claude"])
+        if waited:
+            log_line("Orchestration resumed: continuing the active story "
+                     "after waiting locally for Claude capacity.")
+
+
+_reported_pointer_problem = None
 
 
 def _active_is_executable():
+    global _reported_pointer_problem
+
     if not CURRENT_STORY_FILE.exists() or not read_file(CURRENT_STORY_FILE).strip():
         return False
-    path = get_active_story_path()
-    return classify_story_status(extract_status_section(read_file(path))) not in ("DONE", "BLOCKED")
+
+    try:
+        path = get_active_story_path()
+        executable = classify_story_status(
+            extract_status_section(read_file(path))
+        ) not in ("DONE", "BLOCKED")
+    except (FileNotFoundError, RuntimeError) as exc:
+        # Stale workflow state must not strand execution: an
+        # unresolvable/unreadable pointer means "no active story", so
+        # deterministic selection can proceed and overwrite it. Logged
+        # once per distinct problem, never once per polling cycle.
+        problem = f"{type(exc).__name__}: {exc}"
+
+        if problem != _reported_pointer_problem:
+            _reported_pointer_problem = problem
+            log_line(
+                "agent/CURRENT_STORY.md does not resolve to a usable "
+                f"story ({problem}); continuing with deterministic "
+                "selection."
+            )
+
+        return False
+
+    _reported_pointer_problem = None
+
+    return executable
+
+
+class DecisionLog:
+    """
+    Persistent log entries for scheduling *transitions* only.
+
+    Every cycle still checks both models and decides what to do next,
+    before acting -- but the orchestrator can legitimately repeat the
+    same cycle once a minute for hours (waiting for capacity or for a
+    user decision, which announces a suppressed planning attempt and a
+    wait every single time). Re-logging that holding pattern would bury
+    the transitions that matter, so a cycle whose decisions the previous
+    cycle already recorded is silent in agent/logs/ and visible only on
+    the terminal, through the wait loops' own heartbeat.
+    """
+
+    def __init__(self):
+        self.previous = set()
+        self.current = set()
+        self.availability_logged = False
+
+    def begin_cycle(self) -> None:
+        if self.current:
+            self.previous = self.current
+
+        self.current = set()
+        self.availability_logged = False
+
+    def announce(self, availability: str, decision: str) -> None:
+        entry = (availability, decision)
+
+        self.current.add(entry)
+
+        if entry in self.previous:
+            return
+
+        if not self.availability_logged:
+            log_line(f"Availability check: {availability}")
+            self.availability_logged = True
+
+        log_line(f"Decision: {decision}")
+
+
+def _run_cycle(scheduler, replenish, decisions) -> tuple[str, bool]:
+    """
+    One scheduling cycle. Returns ("CONTINUE"|"STOP", replenish).
+
+    Priority order: resume the active story > execute selectable To Do
+    work > replenish a low queue through Codex > use Claude's idle time
+    for planning > wait locally. Every branch either performs work or
+    leaves the orchestrator alive; only a genuinely empty, unblocked,
+    unplannable repository reaches "STOP".
+    """
+
+    decisions.begin_cycle()
+
+    requeue_resolved_interventions()
+
+    # Step 1 (per cycle): check both models' availability
+    # independently, before any decision is made. A cheap, cached local
+    # check (CapacityProbe) -- never a fresh model call once a probe is
+    # within its cooldown window.
+    claude_ready = scheduler.claude_available()
+    codex_ready = scheduler.codex_available()
+    availability = (
+        f"claude_available={claude_ready}, codex_available={codex_ready}"
+    )
+
+    # Step 2: decide the next action. Resuming an active story is always
+    # priority 1 regardless of claude_ready -- if Claude is not ready
+    # yet, execute_active_story()'s own wait_for_claude callback blocks
+    # (using idle Codex capacity for planning meanwhile) before it ever
+    # prepares a RepoMap or invokes Claude, so the decision here is
+    # still "code", just not yet runnable this instant.
+    if _active_is_executable():
+        decisions.announce(
+            availability,
+            "code (resume active story) -- reason: an unfinished active "
+            "story exists, which is always priority 1",
+        )
+        result = execute_active_story(scheduler.wait_for_claude, scheduler.claude.defer)
+        if result not in ("COMPLETE", "BLOCKED", "NEEDS_USER"):
+            raise RuntimeError(f"Unexpected story result: {result}")
+        return "CONTINUE", True
+
+    candidates = get_selectable_story_candidates()
+
+    # After completing work, give a low queue one replenishment opportunity.
+    # On startup existing executable work takes precedence over planning.
+    if replenish or not claude_ready or not candidates:
+        decisions.announce(
+            availability,
+            "plan (attempt) -- reason: "
+            + (
+                "just finished a story (replenish check)" if replenish
+                else "Claude unavailable, using idle time for planning" if not claude_ready
+                else "To Do queue is empty"
+            ),
+        )
+        planned = scheduler.plan_if_useful(idle=not claude_ready)
+        replenish = False
+        if planned:
+            # Newly planned work is picked up by the next cycle's own
+            # selection -- never by restarting the orchestrator.
+            return "CONTINUE", False
+        candidates = get_selectable_story_candidates()
+        # A planning attempt can itself discover that Codex is out of
+        # capacity, or fail and put it on cooldown. Re-read that (a
+        # cached local check, never a fresh probe) so a planner that
+        # cannot run right now leads to local waiting and a later retry
+        # instead of being mistaken for "nothing left to plan".
+        codex_ready = scheduler.codex_available()
+        availability = (
+            f"claude_available={claude_ready}, codex_available={codex_ready}"
+        )
+
+    if candidates and claude_ready:
+        decisions.announce(
+            availability,
+            f"code (select next story) -- reason: {len(candidates)} "
+            "selectable To Do candidate(s), Claude available",
+        )
+        if _select_and_activate_next_story() == "ACTIVATED":
+            return "CONTINUE", replenish
+        # Selection found nothing executable after all (a candidate
+        # changed underneath us). Fall through to waiting/stopping
+        # rather than re-selecting in a tight loop.
+        candidates = []
+
+    # Never declare NO_WORK merely because one model is temporarily
+    # exhausted: stay alive locally and let the other model work.
+    unavailable = [
+        name
+        for name, ready in (("Claude", claude_ready), ("Codex", codex_ready))
+        if not ready
+    ]
+    if unavailable:
+        decisions.announce(
+            availability,
+            f"wait -- reason: {availability}; no work an available model "
+            "can currently make progress on ("
+            + ", ".join(unavailable) + " out of capacity)",
+        )
+        scheduler.wait_locally(unavailable)
+        return "CONTINUE", replenish
+
+    unresolved = [item["id"] for item in list_decisions()
+                  if item["status"] != "RESOLVED" and item["id"]]
+    if unresolved:
+        decisions.announce(
+            availability,
+            "wait (user decision) -- reason: unresolved user "
+            f"decision(s) block remaining work: {unresolved}",
+        )
+        wait_for_user_decisions(unresolved)
+        return "CONTINUE", replenish
+
+    decisions.announce(
+        availability,
+        "stop -- reason: no active story, no selectable work, no useful "
+        "planning, no unresolved user decision",
+    )
+    if _select_and_activate_next_story() == "FINISHED":
+        return "STOP", replenish
+    return "CONTINUE", replenish
 
 
 def main() -> None:
     print(f"GW2 AI Orchestrator started. Repository: {REPO_ROOT}")
     scheduler = CapacityScheduler()
+    decisions = DecisionLog()
     replenish = False
+    failures = 0
+
     while True:
-        requeue_resolved_interventions()
-
-        # Step 1 (per cycle): check both models' availability
-        # independently and log the raw result before any decision is
-        # made. A cheap, cached local check (CapacityProbe) -- never a
-        # fresh model call once a probe is within its cooldown window.
-        claude_ready = scheduler.claude.available()
-        codex_ready = scheduler.codex.available()
-        log_line(
-            f"Availability check: claude_available={claude_ready}, "
-            f"codex_available={codex_ready}"
-        )
-
-        # Step 2: decide the next action using the scheduling priority
-        # order (resume > execute To Do > replenish at <=2 > idle-plan
-        # if Claude is down > wait). Resuming an active story is always
-        # priority 1 regardless of claude_ready -- if Claude is not
-        # ready yet, execute_active_story()'s own wait_for_claude
-        # callback blocks (using idle Codex capacity for planning
-        # meanwhile) before it ever prepares a RepoMap or invokes
-        # Claude, so the decision here is still "code", just not yet
-        # runnable this instant.
-        if _active_is_executable():
+        try:
+            outcome, replenish = _run_cycle(scheduler, replenish, decisions)
+            failures = 0
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            # An unattended run must survive one recoverable failure
+            # (a local evaluator outage, a transient file/OS error)
+            # rather than dying with work left in the queue. A failure
+            # that keeps repeating is not recoverable and needs a human,
+            # so it stops the orchestrator explicitly instead of
+            # looping forever.
+            failures += 1
             log_line(
-                "Decision: code (resume active story) -- reason: an "
-                "unfinished active story exists, which is always "
-                "priority 1"
+                f"Orchestration cycle failed ({type(exc).__name__}: {exc}) "
+                f"[{failures}/{MAX_CONSECUTIVE_CYCLE_ERRORS}]"
             )
-            result = execute_active_story(scheduler.wait_for_claude, scheduler.claude.defer)
-            if result not in ("COMPLETE", "BLOCKED", "NEEDS_USER"):
-                raise RuntimeError(f"Unexpected story result: {result}")
-            replenish = True
-            continue
+            traceback.print_exc()
 
-        candidates = get_selectable_story_candidates()
-
-        # After completing work, give a low queue one replenishment opportunity.
-        # On startup existing executable work takes precedence over planning.
-        if replenish or not claude_ready or not candidates:
-            log_line(
-                "Decision: plan (attempt) -- reason: "
-                + (
-                    "just finished a story (replenish check)" if replenish
-                    else "Claude unavailable, using idle time for planning" if not claude_ready
-                    else "To Do queue is empty"
+            if failures >= MAX_CONSECUTIVE_CYCLE_ERRORS:
+                log_line(
+                    "Decision: stop -- reason: the same orchestration "
+                    "cycle keeps failing; human action required"
                 )
-            )
-            if scheduler.plan_if_useful(idle=not claude_ready):
-                replenish = False
-                continue
-            replenish = False
-            candidates = get_selectable_story_candidates()
+                print(
+                    "\nOrchestration failed "
+                    f"{failures} times in a row. Stopping -- see the "
+                    "traceback above and agent/logs/."
+                )
+                return
 
-        if candidates and claude_ready:
-            log_line(
-                f"Decision: code (select next story) -- reason: "
-                f"{len(candidates)} selectable To Do candidate(s), Claude available"
+            print_status(
+                "Retrying the orchestration cycle in "
+                f"{CYCLE_RETRY_SECONDS}s..."
             )
-            _select_and_activate_next_story()
+            time.sleep(CYCLE_RETRY_SECONDS)
             continue
 
-        # Never declare NO_WORK merely because the planner is temporarily exhausted.
-        if not claude_ready or not codex_ready:
-            log_line(
-                "Decision: wait -- reason: "
-                f"claude_available={claude_ready}, codex_available={codex_ready}, "
-                "neither can currently make progress"
-            )
-            time.sleep(60)
-            continue
-
-        unresolved = [item["id"] for item in list_decisions()
-                      if item["status"] != "RESOLVED" and item["id"]]
-        if unresolved:
-            log_line(
-                "Decision: wait (user decision) -- reason: unresolved "
-                f"user decision(s) block remaining work: {unresolved}"
-            )
-            wait_for_user_decisions(unresolved)
-            continue
-
-        log_line(
-            "Decision: stop -- reason: no active story, no selectable "
-            "work, no useful planning, no unresolved user decision"
-        )
-        if _select_and_activate_next_story() == "FINISHED":
+        if outcome == "STOP":
             return
 
 
@@ -1131,6 +1596,8 @@ def _select_and_activate_next_story() -> str:
 
 
 if __name__ == "__main__":
+    start_console_logging()
+
     try:
         main()
     except KeyboardInterrupt:

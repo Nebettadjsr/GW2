@@ -133,6 +133,11 @@ public class CraftingProfitController {
         return profitService.getResultByRecipeId(recipeId);
     }
 
+    /** As {@link #getResultByRecipeId(int)} but without the lazy recipe-tree build, for callers that only read numbers. */
+    public CraftResult getRawResultByRecipeId(int recipeId) {
+        return profitService.getRawResultByRecipeId(recipeId);
+    }
+
     /** View calls this for labels in tree/list */
     public String itemName(int itemId) {
         ItemRepository.ItemInfo it = lastItems.get(itemId);

@@ -1,3 +1,4 @@
+import application.EctoSalvageService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import javafx.application.Platform;
@@ -24,47 +25,20 @@ import java.util.stream.Collectors;
 
 public class EctoView {
 
-    // --- HTTP + JSON ---
+    // --- HTTP + JSON (icon lookups only; price acquisition lives in application.EctoSalvageService) ---
     private static final HttpClient CLIENT = HttpClient.newHttpClient();
     private static final ObjectMapper MAPPER = new ObjectMapper();
-
-    // --- GW2 IDs ---
-    private static final int ECTO_ID = 19721;
-    private static final int DUST_ID = 24277;
 
     // Salvage kit IDs (provided by you)
     private static final int MASTERS_SALVAGE_KIT_ID = 23043;
     private static final int MYSTIC_SALVAGE_KIT_ID = 23045;
     private static final int SILVER_FED_SALVAGE_O_MATIC_ID = 67027;
 
-    // --- Static assumptions (as requested) ---
-    private static final double LUCK_PER_ECTO = EctoSalvageCalculator.LUCK_PER_ECTO;
-    private static final double DUST_PER_ECTO = EctoSalvageCalculator.DUST_PER_ECTO;
-    private static final int ECTOS_PER_1000_LUCK = EctoSalvageCalculator.ECTOS_PER_1000_LUCK;
-
-    // --- TP model (raw from /v2/commerce/prices) ---
-    static class TpQuote {
-        final int buyUnit;   // buys.unit_price  (you RECEIVE this if you instant-sell)
-        final int sellUnit;  // sells.unit_price (you PAY this if you instant-buy)
-
-        TpQuote(int buyUnit, int sellUnit) {
-            this.buyUnit = buyUnit;
-            this.sellUnit = sellUnit;
-        }
+    public static void show(Stage stage, Runnable onBack) {
+        show(stage, onBack, new EctoSalvageService());
     }
 
-    // Meanings we want in UI (matches your terminal wording):
-    // Instant Buy  = sells.unit_price
-    // Listing Buy  = buys.unit_price
-    // Instant Sell = buys.unit_price
-    // Listing Sell = sells.unit_price
-    private static int ectoInstantBuy(TpQuote ecto) { return ecto.sellUnit; }
-    private static int ectoListingBuy(TpQuote ecto) { return ecto.buyUnit; }
-
-    private static int dustInstantSell(TpQuote dust) { return dust.buyUnit; }
-    private static int dustListingSell(TpQuote dust) { return dust.sellUnit; }
-
-    public static void show(Stage stage, Runnable onBack) {
+    public static void show(Stage stage, Runnable onBack, EctoSalvageService ectoSalvageService) {
 
         // ---------------- UI: top ----------------
         Button btnBack = new Button("← Back");
@@ -77,6 +51,7 @@ public class EctoView {
         title.setStyle("-fx-text-fill: white; -fx-font-size: 24px; -fx-font-weight: bold;");
 
         Label statusLabel = new Label("Fetching Trading Post prices...");
+        statusLabel.setId("ectoStatusLabel");
         statusLabel.setStyle("-fx-text-fill: white; -fx-opacity: 0.85;");
 
         Label feeNoticeLabel = new Label(
@@ -152,6 +127,7 @@ public class EctoView {
                 "Dust Instant Sell", "Dust Listing Sell",
                 "Ecto Instant Buy", "Ecto Listing Buy"
                                           );
+        profitGrid.setId("ectoProfitGrid");
 
         Label t2Title = new Label("Cost per 1000 Luck ~ 50 ectos");
         t2Title.setStyle("-fx-text-fill: white; -fx-font-size: 13px; -fx-font-weight: bold; -fx-opacity: 0.95;");
@@ -160,6 +136,7 @@ public class EctoView {
                 "Dust Instant Sell", "Dust Listing Sell",
                 "Ecto Instant Buy", "Ecto Listing Buy"
                                         );
+        luckGrid.setId("ectoLuckGrid");
 
         VBox tableCard1 = card(t1Title, profitGrid);
         VBox tableCard2 = card(t2Title, luckGrid);
@@ -184,26 +161,24 @@ public class EctoView {
         // ---------------- Fetch prices + icons on open ----------------
         Thread t = new Thread(() -> {
             try {
-                // prices
-                Map<Integer, TpQuote> quotes = fetchTpQuotes(ECTO_ID, DUST_ID);
-                TpQuote ecto = quotes.get(ECTO_ID);
-                TpQuote dust = quotes.get(DUST_ID);
+                // prices, via the application use case (STORY-APP-003)
+                EctoSalvageService.EctoScenarios scenarios = ectoSalvageService.calculate();
 
-                // icons (ecto+dust+kits)
+                // icons (ecto+dust+kits) - presentation-only, stays a direct view concern
                 Map<Integer, Image> icons = fetchItemIcons(
-                        ECTO_ID, DUST_ID,
+                        EctoSalvageService.ECTO_ID, EctoSalvageService.DUST_ID,
                         MASTERS_SALVAGE_KIT_ID, MYSTIC_SALVAGE_KIT_ID, SILVER_FED_SALVAGE_O_MATIC_ID
                                                           );
 
                 Platform.runLater(() -> {
-                    if (ecto == null || dust == null) {
+                    if (!scenarios.available()) {
                         statusLabel.setText("❌ Failed to load prices (missing data)");
                         return;
                     }
 
                     // set item icons
-                    Image eImg = icons.get(ECTO_ID);
-                    Image dImg = icons.get(DUST_ID);
+                    Image eImg = icons.get(EctoSalvageService.ECTO_ID);
+                    Image dImg = icons.get(EctoSalvageService.DUST_ID);
                     if (eImg != null) ectoIcon.setImage(eImg);
                     if (dImg != null) dustIcon.setImage(dImg);
 
@@ -216,16 +191,16 @@ public class EctoView {
                     if (k3 != null) kit3Icon.setImage(k3);
 
                     // update price block
-                    ectoInstantBuyLabel.setText(CoinUtils.format(ectoInstantBuy(ecto)));
-                    ectoListingBuyLabel.setText(CoinUtils.format(ectoListingBuy(ecto)));
-                    dustInstantSellLabel.setText(CoinUtils.format(dustInstantSell(dust)));
-                    dustListingSellLabel.setText(CoinUtils.format(dustListingSell(dust)));
-                    dustInstantSellNetLabel.setText(CoinUtils.format(EctoSalvageCalculator.netSaleProceeds(dustInstantSell(dust))));
-                    dustListingSellNetLabel.setText(CoinUtils.format(EctoSalvageCalculator.netSaleProceeds(dustListingSell(dust))));
+                    ectoInstantBuyLabel.setText(CoinUtils.format(scenarios.instantBuyInstantSell().ectoAcquisitionCost()));
+                    ectoListingBuyLabel.setText(CoinUtils.format(scenarios.listingBuyInstantSell().ectoAcquisitionCost()));
+                    dustInstantSellLabel.setText(CoinUtils.format(scenarios.instantBuyInstantSell().dustGrossUnitPrice()));
+                    dustListingSellLabel.setText(CoinUtils.format(scenarios.instantBuyListingSell().dustGrossUnitPrice()));
+                    dustInstantSellNetLabel.setText(CoinUtils.format(scenarios.instantBuyInstantSell().dustNetUnitPrice()));
+                    dustListingSellNetLabel.setText(CoinUtils.format(scenarios.instantBuyListingSell().dustNetUnitPrice()));
 
                     // fill tables
-                    fillProfitGrid(profitGrid, ecto, dust);
-                    fillLuckGrid(luckGrid, ecto, dust);
+                    fillProfitGrid(profitGrid, scenarios);
+                    fillLuckGrid(luckGrid, scenarios);
 
                     // timestamp status
                     DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -245,72 +220,25 @@ public class EctoView {
     // Tables
     // =========================
 
-    private static void fillProfitGrid(GridPane grid, TpQuote ecto, TpQuote dust) {
+    private static void fillProfitGrid(GridPane grid, EctoSalvageService.EctoScenarios scenarios) {
         // Per 1 ecto, net of the Trading Post's 15% selling fee on recovered Dust (DOMAIN_SPEC.md §46).
-        var instantBuyInstantSell = EctoSalvageCalculator.evaluate(ectoInstantBuy(ecto), dustInstantSell(dust));
-        var instantBuyListingSell = EctoSalvageCalculator.evaluate(ectoInstantBuy(ecto), dustListingSell(dust));
-        var listingBuyInstantSell = EctoSalvageCalculator.evaluate(ectoListingBuy(ecto), dustInstantSell(dust));
-        var listingBuyListingSell = EctoSalvageCalculator.evaluate(ectoListingBuy(ecto), dustListingSell(dust));
-
-        setCell(grid, 1, 1, CoinUtils.formatSigned(instantBuyInstantSell.profitPerEcto()));
-        setCell(grid, 2, 1, CoinUtils.formatSigned(instantBuyListingSell.profitPerEcto()));
-        setCell(grid, 1, 2, CoinUtils.formatSigned(listingBuyInstantSell.profitPerEcto()));
-        setCell(grid, 2, 2, CoinUtils.formatSigned(listingBuyListingSell.profitPerEcto()));
+        setCell(grid, 1, 1, CoinUtils.formatSigned(scenarios.instantBuyInstantSell().profitPerEcto()));
+        setCell(grid, 2, 1, CoinUtils.formatSigned(scenarios.instantBuyListingSell().profitPerEcto()));
+        setCell(grid, 1, 2, CoinUtils.formatSigned(scenarios.listingBuyInstantSell().profitPerEcto()));
+        setCell(grid, 2, 2, CoinUtils.formatSigned(scenarios.listingBuyListingSell().profitPerEcto()));
     }
 
-    private static void fillLuckGrid(GridPane grid, TpQuote ecto, TpQuote dust) {
+    private static void fillLuckGrid(GridPane grid, EctoSalvageService.EctoScenarios scenarios) {
         // Cost for 1000 Luck (~50 ectos), derived from the same fee-inclusive net cost (DOMAIN_SPEC.md §47).
-        var instantBuyInstantSell = EctoSalvageCalculator.evaluate(ectoInstantBuy(ecto), dustInstantSell(dust));
-        var instantBuyListingSell = EctoSalvageCalculator.evaluate(ectoInstantBuy(ecto), dustListingSell(dust));
-        var listingBuyInstantSell = EctoSalvageCalculator.evaluate(ectoListingBuy(ecto), dustInstantSell(dust));
-        var listingBuyListingSell = EctoSalvageCalculator.evaluate(ectoListingBuy(ecto), dustListingSell(dust));
-
-        setCell(grid, 1, 1, CoinUtils.format(instantBuyInstantSell.costPer1000Luck()));
-        setCell(grid, 2, 1, CoinUtils.format(instantBuyListingSell.costPer1000Luck()));
-        setCell(grid, 1, 2, CoinUtils.format(listingBuyInstantSell.costPer1000Luck()));
-        setCell(grid, 2, 2, CoinUtils.format(listingBuyListingSell.costPer1000Luck()));
+        setCell(grid, 1, 1, CoinUtils.format(scenarios.instantBuyInstantSell().costPer1000Luck()));
+        setCell(grid, 2, 1, CoinUtils.format(scenarios.instantBuyListingSell().costPer1000Luck()));
+        setCell(grid, 1, 2, CoinUtils.format(scenarios.listingBuyInstantSell().costPer1000Luck()));
+        setCell(grid, 2, 2, CoinUtils.format(scenarios.listingBuyListingSell().costPer1000Luck()));
     }
 
     // =========================
     // Fetching
     // =========================
-
-    private static Map<Integer, TpQuote> fetchTpQuotes(int... itemIds) throws Exception {
-        String idsParam = Arrays.stream(itemIds)
-                .mapToObj(String::valueOf)
-                .collect(Collectors.joining(","));
-
-        String url = "https://api.guildwars2.com/v2/commerce/prices?ids=" + idsParam;
-
-        HttpRequest req = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Accept", "application/json")
-                .GET()
-                .build();
-
-        HttpResponse<String> res = CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
-        if (res.statusCode() != 200 && res.statusCode() != 206) {
-            throw new RuntimeException("TP price fetch failed: HTTP " + res.statusCode());
-        }
-
-        JsonNode root = MAPPER.readTree(res.body());
-        if (!root.isArray()) throw new RuntimeException("Unexpected TP JSON");
-
-        Map<Integer, TpQuote> out = new HashMap<>();
-        for (JsonNode p : root) {
-            int id = p.get("id").asInt();
-            JsonNode buys = p.get("buys");
-            JsonNode sells = p.get("sells");
-
-            if (buys == null || sells == null || buys.isNull() || sells.isNull()) continue;
-
-            int buyUnit = buys.get("unit_price").asInt();
-            int sellUnit = sells.get("unit_price").asInt();
-
-            out.put(id, new TpQuote(buyUnit, sellUnit));
-        }
-        return out;
-    }
 
     private static Map<Integer, Image> fetchItemIcons(int... itemIds) throws Exception {
         if (itemIds == null || itemIds.length == 0) return Collections.emptyMap();

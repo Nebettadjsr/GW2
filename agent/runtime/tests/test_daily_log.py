@@ -7,6 +7,7 @@ Run with: python -m unittest agent.runtime.tests.test_daily_log -v
 (from the repository root).
 """
 
+import io
 import tempfile
 import unittest
 from datetime import datetime
@@ -89,6 +90,90 @@ class DailyLogTest(unittest.TestCase):
 
         # Writing to the new day must never touch the previous day's file.
         self.assertNotIn("start of day two", file_one.read_text(encoding="utf-8"))
+
+
+class ConsoleTeeTest(unittest.TestCase):
+    """
+    Terminal output must be mirrored into the log, never replaced by it:
+    an unattended run has to be readable afterwards without losing the
+    live console.
+    """
+
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.logs_dir = Path(self._tmpdir.name).resolve() / "logs"
+        self._patch = patch.object(daily_log, "LOGS_DIR", self.logs_dir)
+        self._patch.start()
+        self.addCleanup(self._patch.stop)
+        self.addCleanup(self._tmpdir.cleanup)
+
+    def logged_text(self):
+        path = self.logs_dir / f"{datetime.now().date().isoformat()}.log"
+        return path.read_text(encoding="utf-8")
+
+    def test_output_reaches_both_the_terminal_and_the_log(self):
+        terminal = io.StringIO()
+        tee = daily_log.ConsoleTee(terminal)
+
+        print("Starting Claude Code", file=tee)
+
+        self.assertEqual(terminal.getvalue(), "Starting Claude Code\n")
+        self.assertIn("Starting Claude Code", self.logged_text())
+
+    def test_partial_writes_are_assembled_into_one_line(self):
+        # print() writes the value and the newline as separate calls,
+        # so a tee that logged per write() would split every line.
+        terminal = io.StringIO()
+        tee = daily_log.ConsoleTee(terminal)
+
+        tee.write("exit ")
+        tee.write("code: 0")
+        tee.write("\n")
+
+        lines = self.logged_text().splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertTrue(lines[0].endswith("exit code: 0"), lines[0])
+
+    def test_unterminated_text_is_not_logged_until_its_newline(self):
+        terminal = io.StringIO()
+        tee = daily_log.ConsoleTee(terminal)
+
+        tee.write("still streaming")
+
+        self.assertEqual(terminal.getvalue(), "still streaming")
+        self.assertFalse(self.logs_dir.exists())
+
+    def test_print_status_reaches_the_terminal_but_never_the_log(self):
+        # Wait-loop heartbeats can repeat for hours; they must not fill
+        # the permanent record.
+        terminal = io.StringIO()
+        tee = daily_log.ConsoleTee(terminal)
+
+        with patch.object(daily_log.sys, "stdout", tee):
+            daily_log.print_status("Claude capacity unavailable - waiting...")
+            daily_log.print_status("Next capacity check in 42 min")
+
+        self.assertIn("waiting...", terminal.getvalue())
+        self.assertIn("42 min", terminal.getvalue())
+        self.assertFalse(self.logs_dir.exists())
+
+    def test_print_status_works_without_the_tee_installed(self):
+        terminal = io.StringIO()
+
+        with patch.object(daily_log.sys, "stdout", terminal):
+            daily_log.print_status("Current usage: 97%")
+
+        self.assertEqual(terminal.getvalue(), "Current usage: 97%\n")
+        self.assertFalse(self.logs_dir.exists())
+
+    def test_blank_separator_lines_are_not_logged(self):
+        terminal = io.StringIO()
+        tee = daily_log.ConsoleTee(terminal)
+
+        tee.write("\n\n   \n")
+
+        self.assertEqual(terminal.getvalue(), "\n\n   \n")
+        self.assertFalse(self.logs_dir.exists())
 
 
 if __name__ == "__main__":

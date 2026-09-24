@@ -74,6 +74,13 @@ class OrchestratorInterventionTestCase(unittest.TestCase):
 
         self._stack = ExitStack()
 
+        # No test may append to the real, committed agent/logs/ -- every
+        # transition the code under test records lands here instead.
+        self.logged = []
+        self._stack.enter_context(
+            patch.object(orchestrator, "log_line", side_effect=self.logged.append)
+        )
+
         for target, name, value in [
             (story_state, "STORIES_DIR", self.stories_dir),
             (story_state, "BACKLOG_FILE", self.backlog_file),
@@ -125,7 +132,8 @@ class OrchestratorInterventionTestCase(unittest.TestCase):
 
 class InterruptedClaudeTest(OrchestratorInterventionTestCase):
 
-    def run_attempts(self, exits, evaluations, initial_status="TODO"):
+    def run_attempts(self, exits, evaluations, initial_status="TODO",
+                     capacity_signal=True):
         filename = "STORY-UI-001-test.md"
         story = self.write_story(
             filename,
@@ -153,7 +161,11 @@ class InterruptedClaudeTest(OrchestratorInterventionTestCase):
                 self.assertEqual(story_state.validate_backlog_consistency(), [])
             code = next(codes)
             events.append(code)
-            return code
+            # A non-zero exit that carries a capacity signal is a
+            # scheduling pause; without one it is a failed run.
+            return claude_runner.ClaudeAttempt(
+                code, capacity_signal and code != 0
+            )
 
         outcomes = iter(evaluations)
 
@@ -190,7 +202,7 @@ class InterruptedClaudeTest(OrchestratorInterventionTestCase):
                                             }))
             stack.enter_context(patch.object(orchestrator, "get_claude_session_usage_percent",
                                             return_value=50))
-            stack.enter_context(patch.object(orchestrator, "run_claude", side_effect=run))
+            stack.enter_context(patch.object(orchestrator, "run_claude_attempt", side_effect=run))
             stack.enter_context(patch.object(orchestrator, "evaluate_story", side_effect=evaluate))
             stack.enter_context(patch.object(orchestrator, "wait_for_claude_capacity", side_effect=capacity))
             self.assertEqual(orchestrator.execute_active_story(), "COMPLETE")
@@ -221,6 +233,69 @@ class InterruptedClaudeTest(OrchestratorInterventionTestCase):
         self.run_attempts([0], [{"decision": "COMPLETE", "reason": "ok"}],
                           initial_status="UNFINISHED")
         self.assertEqual(story_state.classify_story_status("unfinished"), "UNFINISHED")
+
+    def test_failing_runs_without_capacity_signal_escalate_instead_of_looping(self):
+        # A crash, a bad invocation or a denied permission makes Claude
+        # exit non-zero forever. Treating that as a capacity pause would
+        # re-invoke Claude every hour with no possible progress, so it
+        # must escalate to a user intervention and free the orchestrator
+        # to work on something else.
+        filename = "STORY-UI-002-test.md"
+        story = self.write_story(
+            filename,
+            story_with_id("STORY-UI-002", "## Status\n\nTODO\n"),
+        )
+        self.write_backlog(active=[filename])
+        self.set_active(filename)
+
+        runs = []
+
+        def run(prompt):
+            runs.append(prompt)
+            return claude_runner.ClaudeAttempt(1, False)
+
+        with ExitStack() as stack:
+            for name, value in [
+                ("CLAUDE_RESULT_FILE", self.stories_dir / "result.md"),
+                ("NEXT_PROMPT_FILE", self.stories_dir / "prompt.md"),
+            ]:
+                stack.enter_context(patch.object(orchestrator, name, value))
+            stack.enter_context(patch.object(orchestrator, "dispatch_story",
+                                             return_value={"status": "READY"}))
+            stack.enter_context(patch.object(orchestrator, "build_claude_prompt",
+                                             return_value="Implement"))
+            stack.enter_context(patch.object(orchestrator, "generate_repo_map",
+                                             return_value={
+                                                 "enabled": False, "available": False,
+                                                 "text": "", "token_budget": 0,
+                                                 "char_count": 0, "approx_tokens": 0,
+                                                 "duration_seconds": 0.0, "error": None,
+                                             }))
+            stack.enter_context(patch.object(orchestrator, "_safe_claude_usage_percent",
+                                             return_value=10))
+            stack.enter_context(patch.object(orchestrator, "run_claude_attempt",
+                                             side_effect=run))
+            stack.enter_context(patch.object(
+                orchestrator, "wait_for_claude_capacity",
+                side_effect=AssertionError(
+                    "a failed run must never wait for capacity"),
+            ))
+            stack.enter_context(patch.object(
+                orchestrator, "evaluate_story",
+                side_effect=AssertionError(
+                    "a non-zero exit is never evaluated"),
+            ))
+
+            self.assertEqual(orchestrator.execute_active_story(), "NEEDS_USER")
+
+        self.assertEqual(len(runs), orchestrator.MAX_CLAUDE_FAILED_RUNS_PER_STORY)
+        self.assertEqual(
+            story_state.classify_story_status(
+                story_state.extract_status_section(story.read_text())
+            ),
+            "BLOCKED",
+        )
+        self.assertEqual(len(user_interventions.list_interventions()), 1)
 
     def test_unfinished_is_not_selected_as_new_work(self):
         filename = "STORY-UI-001-test.md"

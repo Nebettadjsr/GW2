@@ -2,6 +2,7 @@
 import unittest
 from unittest.mock import Mock, patch
 from agent.runtime.core import orchestrator
+from agent.runtime.runners import claude_runner
 from agent.runtime.support.capacity import CapacityProbe, ModelCapacityUnavailable
 
 
@@ -28,6 +29,12 @@ class SchedulerTest(unittest.TestCase):
         self.scheduler = orchestrator.CapacityScheduler(self.claude, self.codex)
         self.claude.available.return_value = True
         self.codex.available.return_value = True
+        # Transition logging is exercised separately; no test may write
+        # to the real, committed agent/logs/.
+        self.logged = []
+        patcher = patch.object(orchestrator, "log_line", side_effect=self.logged.append)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_codex_unavailable_does_not_delay_claude(self):
         self.codex.available.return_value = False
@@ -153,7 +160,10 @@ class CooperativeResumeTest(OrchestratorInterventionTestCase):
         def run(prompt):
             prompts.append(prompt)
             events.append("claude")
-            return 1 if len(prompts) == 1 else 0
+            # First attempt is cut short by capacity exhaustion.
+            if len(prompts) == 1:
+                return claude_runner.ClaudeAttempt(1, True)
+            return claude_runner.ClaudeAttempt(0, False)
 
         def plan():
             self.assertEqual(events, ["claude"])
@@ -169,7 +179,7 @@ class CooperativeResumeTest(OrchestratorInterventionTestCase):
              patch.object(orchestrator, "generate_repo_map", return_value={
                  "enabled":False,"text":"","token_budget":0,"error":None}), \
              patch.object(orchestrator, "_safe_claude_usage_percent", return_value=0), \
-             patch.object(orchestrator, "run_claude", side_effect=run), \
+             patch.object(orchestrator, "run_claude_attempt", side_effect=run), \
              patch.object(orchestrator, "run_planning_pass", side_effect=plan), \
              patch.object(orchestrator, "planning_fingerprint", return_value="state"), \
              patch.object(orchestrator, "evaluate_story", return_value={"decision":"COMPLETE","reason":"ok"}) as evaluate, \
@@ -221,7 +231,7 @@ class RepoMapOrderingTest(OrchestratorInterventionTestCase):
 
         def fake_run(prompt):
             events.append("claude")
-            return 0
+            return claude_runner.ClaudeAttempt(0, False)
 
         with patch.object(orchestrator, "dispatch_story", return_value={"status": "READY"}), \
              patch.object(orchestrator, "build_claude_prompt", return_value="Implement"), \
@@ -229,7 +239,7 @@ class RepoMapOrderingTest(OrchestratorInterventionTestCase):
              patch.object(orchestrator, "CLAUDE_RESULT_FILE", self.stories_dir / "result.md"), \
              patch.object(orchestrator, "generate_repo_map", side_effect=fake_generate_repo_map), \
              patch.object(orchestrator, "_safe_claude_usage_percent", return_value=0), \
-             patch.object(orchestrator, "run_claude", side_effect=fake_run), \
+             patch.object(orchestrator, "run_claude_attempt", side_effect=fake_run), \
              patch.object(orchestrator, "run_planning_pass", side_effect=fake_plan), \
              patch.object(orchestrator, "planning_fingerprint", return_value="state"), \
              patch.object(orchestrator, "get_selectable_story_candidates", return_value=list(range(6))), \

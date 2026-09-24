@@ -1,4 +1,5 @@
 import application.AccountRefreshService;
+import application.CharacterSelectionService;
 import application.TradingPostPriceRefreshService;
 import craft.CraftResult;
 import craft.CraftingSettings;
@@ -113,6 +114,14 @@ public class CraftingDiscoveryView {
     public static void show(Stage stage, Runnable onBack,
                             TradingPostPriceRefreshService tradingPostPriceRefreshService,
                             AccountRefreshService accountRefreshService) {
+        show(stage, onBack, tradingPostPriceRefreshService, accountRefreshService,
+             new CharacterSelectionService());
+    }
+
+    public static void show(Stage stage, Runnable onBack,
+                            TradingPostPriceRefreshService tradingPostPriceRefreshService,
+                            AccountRefreshService accountRefreshService,
+                            CharacterSelectionService characterSelectionService) {
 
         // ---------- Top bar ----------
         Button btnBack = new Button("← Back");
@@ -138,12 +147,10 @@ public class CraftingDiscoveryView {
         ComboBox<DiscChoice> disciplineBox = new ComboBox<>();
         disciplineBox.setPrefWidth(320);
 
-        repo.CharacterRepository charRepo = new repo.CharacterRepository();
-
         Runnable reloadDisciplineChoices = () -> {
             Thread t = new Thread(() -> {
                 try {
-                    var crafts = charRepo.loadAllCharacterCrafting(); // rows: discipline, rating, charName
+                    var crafts = characterSelectionService.getCraftingCharacterOptions(); // rows: discipline, rating, charName
                     Platform.runLater(() -> {
                         disciplineBox.getItems().clear();
 
@@ -178,7 +185,7 @@ public class CraftingDiscoveryView {
         Runnable reloadCharacterChoices = () -> {
             Thread t = new Thread(() -> {
                 try {
-                    var names = charRepo.loadAllCharacterNames();
+                    var names = characterSelectionService.getCharacterNames();
                     Platform.runLater(() -> {
                         String previous = characterBox.getValue();
                         characterBox.getItems().setAll(names);

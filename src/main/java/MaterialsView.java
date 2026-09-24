@@ -1,3 +1,5 @@
+import application.MaterialStorageService;
+import application.MaterialStorageService.MaterialCategory;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Parent;
@@ -9,19 +11,19 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
+import repo.MaterialStorageRepository.MaterialStorageRow;
 
-import java.sql.*;
 import java.util.*;
 
 public class MaterialsView {
 
-    // TODO: später sauber zentralisieren (repo.AppConfig), für jetzt hier wie bei BankView:
-    private static final String DB_URL  = "jdbc:postgresql://localhost:5432/GWDatabase";
-    private static final String DB_USER = "postgres";
-    private static final String DB_PASS = "0";
-
     // --- Public entry ---
     public static void show(Stage stage, Runnable onBack) {
+        show(stage, onBack, new MaterialStorageService());
+    }
+
+    /** Overload used by UI verification to inject a controlled {@link MaterialStorageService} (STORY-APP-009). */
+    public static void show(Stage stage, Runnable onBack, MaterialStorageService materialStorageService) {
         Button btnBack = new Button("← Back");
         btnBack.setOnAction(e -> onBack.run());
 
@@ -29,7 +31,7 @@ public class MaterialsView {
         topBar.setPadding(new Insets(10));
         topBar.setAlignment(Pos.CENTER_LEFT);
 
-        Parent content = buildMaterialsContent();
+        Parent content = buildMaterialsContent(materialStorageService);
 
         BorderPane root = new BorderPane();
         root.setTop(topBar);
@@ -40,20 +42,21 @@ public class MaterialsView {
     }
 
     // --- UI builder ---
-    private static Parent buildMaterialsContent() {
+    private static Parent buildMaterialsContent(MaterialStorageService materialStorageService) {
         // VBox: viele “Blöcke” untereinander (wie im Spiel)
         VBox blocks = new VBox(22);
+        blocks.setId("materialsBlocks");
         blocks.setPadding(new Insets(12));
         blocks.setMaxWidth(Region.USE_PREF_SIZE);
         blocks.setAlignment(Pos.TOP_CENTER);
 
 
-        // Daten aus DB laden: Map<KategorieName, Slots>
-        LinkedHashMap<String, List<MatEntry>> grouped = loadMaterialsGrouped();
+        // Daten über den Application Service laden: Kategorien mit ihren Slots
+        List<MaterialCategory> grouped = loadMaterialsGrouped(materialStorageService);
 
-        for (Map.Entry<String, List<MatEntry>> e : grouped.entrySet()) {
-            String categoryName = e.getKey();
-            List<MatEntry> mats = e.getValue();
+        for (MaterialCategory e : grouped) {
+            String categoryName = e.name();
+            List<MaterialStorageRow> mats = e.materials();
 
             Label header = new Label(categoryName);
             header.setStyle("""
@@ -87,7 +90,7 @@ public class MaterialsView {
 
     }
 
-    private static GridPane buildGrid(List<MatEntry> mats, int cols) {
+    private static GridPane buildGrid(List<MaterialStorageRow> mats, int cols) {
         GridPane grid = new GridPane();
         grid.setHgap(6);
         grid.setVgap(6);
@@ -103,59 +106,23 @@ public class MaterialsView {
             int row = i / cols;
             int col = i % cols;
 
-            MatEntry m = mats.get(i);
-            grid.add(createTile(m.iconPath, m.count, m.rarity), col, row);
+            MaterialStorageRow m = mats.get(i);
+            grid.add(createTile(m.iconPath(), m.count(), m.rarity()), col, row);
         }
 
         return grid;
     }
 
-    // --- DB load (grouped) ---
-    private static LinkedHashMap<String, List<MatEntry>> loadMaterialsGrouped() {
-        // Kategorien “wie im Spiel”: Wir mappen category-id -> Name.
-        // Später können wir das automatisch aus /v2/materials/categories holen, aber erstmal fix.
-        Map<Integer, String> catName = materialCategoryNames();
-
-        // Ergebnis: in stabiler Reihenfolge (LinkedHashMap)
-        LinkedHashMap<String, List<MatEntry>> out = new LinkedHashMap<>();
-        for (String name : catName.values()) out.put(name, new ArrayList<>());
-
-        // Falls doch Kategorien kommen, die wir nicht kennen:
-        final String UNKNOWN_PREFIX = "Category ";
-
-        String sql = """
-            SELECT am.category, am.item_id, am.count,
-                   i.icon_path, i.rarity
-            FROM account_materials am
-            LEFT JOIN items i ON i.item_id = am.item_id
-            WHERE am.count IS NOT NULL AND am.count > 0
-            ORDER BY am.category, am.item_id
-        """;
-
-        try (Connection con = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
-             PreparedStatement ps = con.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-
-            while (rs.next()) {
-                int category = rs.getInt("category");
-                int count = rs.getInt("count");
-                String iconPath = rs.getString("icon_path");
-                String rarity = rs.getString("rarity");
-
-                String group = catName.getOrDefault(category, UNKNOWN_PREFIX + category);
-
-                out.computeIfAbsent(group, k -> new ArrayList<>());
-                out.get(group).add(new MatEntry(iconPath, count, rarity));
-            }
-
+    // --- Load (grouped) via the application service ---
+    private static List<MaterialCategory> loadMaterialsGrouped(MaterialStorageService materialStorageService) {
+        try {
+            return materialStorageService.getMaterialStorage();
         } catch (Exception ex) {
+            // Unchanged failure presentation: log the stack trace and render an empty page - this
+            // view has never shown a load error to the user (STORY-APP-009).
             ex.printStackTrace();
+            return List.of();
         }
-
-        // Leere Gruppen entfernen
-        out.entrySet().removeIf(e -> e.getValue().isEmpty());
-
-        return out;
     }
 
     // --- Tile (GW style: icon + stack number, rarity border) ---
@@ -208,33 +175,4 @@ public class MaterialsView {
         };
     }
 
-    private static Map<Integer, String> materialCategoryNames() {
-        // Wichtig: Die IDs können bei ArenaNet so sein – wenn deine DB andere category-IDs liefert,
-        // sehen wir’s sofort (dann tauchen “Category 12” etc. auf).
-        LinkedHashMap<Integer, String> m = new LinkedHashMap<>();
-        m.put(1,  "Basic Crafting Materials");
-        m.put(2,  "Intermediate Crafting Materials");
-        m.put(3,  "Advanced Crafting Materials");
-        m.put(4,  "Ascended Materials");
-        m.put(5,  "Cooking Materials");
-        m.put(6,  "Cooking Ingredients");
-        m.put(7,  "Scribing Materials");
-        m.put(8,  "Festive Materials");
-        m.put(9,  "Guild Materials");
-        m.put(10, "Other");
-        return m;
-    }
-
-    // --- Tiny DTO ---
-    private static class MatEntry {
-        final String iconPath;
-        final int count;
-        final String rarity;
-
-        MatEntry(String iconPath, int count, String rarity) {
-            this.iconPath = iconPath;
-            this.count = count;
-            this.rarity = rarity;
-        }
-    }
 }

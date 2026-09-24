@@ -1,3 +1,4 @@
+import application.BankContentsService;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -15,14 +16,8 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.RowConstraints;
 import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
+import repo.BankRepository;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,14 +25,12 @@ import javafx.scene.layout.Region; // add this import
 
 public class BankView {
 
-    private static final String DB_URL  = "jdbc:postgresql://localhost:5432/GWDatabase";
-    private static final String DB_USER = "postgres";
-    private static final String DB_PASS = "0";
-
-    // --- simple model for slot-based bank data ---
-    public record BankSlot(int slot, Integer itemId, Integer count, String iconPath, String rarity) {}
-
     public static void show(Stage stage, Runnable onBack) {
+        show(stage, onBack, new BankContentsService());
+    }
+
+    /** Overload used by UI verification to inject a controlled {@link BankContentsService} (STORY-APP-009). */
+    public static void show(Stage stage, Runnable onBack, BankContentsService bankContentsService) {
 
         Button btnBack = new Button("← Back");
         btnBack.setOnAction(e -> onBack.run());
@@ -51,12 +44,13 @@ public class BankView {
         topBar.setStyle("-fx-background-color: #0b0d12;");
 
         Parent centerContent;
-        try (Connection con = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS)) {
-            List<BankSlot> slots = loadBankSlots(con);
+        try {
+            List<BankRepository.BankSlotRow> slots = bankContentsService.getBankContents();
             centerContent = buildBankGrid(slots);
         } catch (Exception ex) {
             ex.printStackTrace();
             Label err = new Label("DB error: " + ex.getMessage());
+            err.setId("bankErrorLabel");
             err.setStyle("-fx-text-fill: red;");
             centerContent = new StackPane(err);
         }
@@ -73,33 +67,9 @@ public class BankView {
         stage.show();
     }
 
-    private static List<BankSlot> loadBankSlots(Connection con) throws SQLException {
-        String sql = """
-            SELECT b.slot, b.item_id, b.count, i.icon_path, i.rarity
-            FROM account_bank b
-            LEFT JOIN items i ON i.item_id = b.item_id
-            ORDER BY b.slot
-        """;
-
-        List<BankSlot> out = new ArrayList<>();
-        try (PreparedStatement ps = con.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-
-            while (rs.next()) {
-                int slot = rs.getInt("slot");
-                Integer itemId  = (Integer) rs.getObject("item_id");
-                Integer count   = (Integer) rs.getObject("count");
-                String iconPath = rs.getString("icon_path");
-                String rarity   = rs.getString("rarity");
-
-                out.add(new BankSlot(slot, itemId, count, iconPath, rarity));
-            }
-        }
-        return out;
-    }
-
-    private static Parent buildBankGrid(List<BankSlot> slots) {
+    private static Parent buildBankGrid(List<BankRepository.BankSlotRow> slots) {
         GridPane grid = new GridPane();
+        grid.setId("bankGrid");
         grid.setHgap(6);
         grid.setVgap(6);
         grid.setPadding(new Insets(12));
@@ -115,9 +85,9 @@ public class BankView {
         grid.setAlignment(Pos.TOP_CENTER);
 
 
-        Map<Integer, BankSlot> bySlot = new HashMap<>();
+        Map<Integer, BankRepository.BankSlotRow> bySlot = new HashMap<>();
         int maxSlot = -1;
-        for (BankSlot s : slots) {
+        for (BankRepository.BankSlotRow s : slots) {
             bySlot.put(s.slot(), s);
             if (s.slot() > maxSlot) maxSlot = s.slot();
         }
@@ -133,7 +103,7 @@ public class BankView {
             int gridRow = block * 4 + row; // 3 rows + spacer row
             ensureSpacerRow(grid, block * 4 + 3);
 
-            BankSlot data = bySlot.get(slot);
+            BankRepository.BankSlotRow data = bySlot.get(slot);
             Node tile = createSlotTile(data);
             grid.add(tile, col, gridRow);
         }
@@ -160,7 +130,7 @@ public class BankView {
         spacer.setPrefHeight(18);
     }
 
-    private static Node createSlotTile(BankSlot s) {
+    private static Node createSlotTile(BankRepository.BankSlotRow s) {
         int size = 64;
 
         StackPane tile = new StackPane();

@@ -1076,3 +1076,56 @@ Concretely:
 - §31.5's "choose the lowest layer that proves the behavior" already governs which layer to use; this section governs how much test volume is appropriate once that layer is chosen. Prefer one clear, well-named test (§16, §22, §23) over several overlapping ones asserting the same fact.
 - Heavier layers (Layer 2 PostgreSQL integration, Layer 4 live smoke, Layer 5 TestFX) cost real setup/runtime/review effort disproportionate to most changes; reach for them only when the change's own risk genuinely requires that layer's specific guarantee (real SQL semantics, real external API shape, real UI wiring), not as a default upgrade from a cheaper layer that already proves the point.
 - This does not relax any existing minimum: a domain behavior change still requires an automated test (`CLAUDE.md` Testing), and a real bug still gets a named regression test (§16). It constrains the upper bound — do not add tests, or reach for a broader/heavier layer, beyond what the specific change actually requires.
+
+---
+
+# 34. Real-user Crafting Profit performance acceptance
+
+The acceptance threshold, scope and user-confirmation gate belong to `TARGET_ARCHITECTURE.md` §33. Measure the real application's navigation event through completed calculation and table/control rendering on the user's current real PostgreSQL database. Include UI-thread completion/rendering, not just background-worker return or the first row appearing. Existing miniature/disposable-schema UI fixtures and mocked application adapters remain useful for correctness but cannot supply performance acceptance evidence.
+
+Record reproducible baseline and post-change runs: revision, hardware/JVM/database environment, selected scope/settings, relevant data counts, cache state, individual elapsed times and maximum. Include the default All scope, the first opening after startup and repeat openings; do not select only favorable warm-cache runs. Attribute major pipeline stages without excluding them from the end-to-end total. Preserve full requested results and verify relevant calculations/ownership/limits have not changed. Keep any correctness tests that mutate fixtures isolated; do not point their setup/teardown at the user's database or reduce/replace real data for a faster benchmark. Measurement must not disclose credentials or private account contents.
+
+Report missing environment access honestly; small synthetic data, unit-test duration, service-only timings and a loading placeholder cannot prove compliance. Record measurements and the outstanding/received user acceptance in the normal executing story Result. Explicit user acceptance supplements measured compliance and cannot replace it.
+
+Detect page completion by quiescence, not by the first rows appearing: sample the displayed state until it stops changing, and report the moment of the last observed change, excluding the settling window itself from the elapsed time. Include the identity of the row objects in that sample, so a redundant second reload that recomputes identical numbers is still observed. Verify that the completed table answers a real displayed-value read before treating it as interactive. A performance change to shared calculation code additionally needs a real-data equivalence check: record every computed result from the real database across the settings combinations the change can reach, before the change, and compare afterwards. Such a reference contains real account-derived values, so it stays out of version control and the comparison is a deliberate before/after step rather than a standing test.
+
+---
+
+# 35. Layer 6 — Backend HTTP boundary (Spring Boot)
+
+`STORY-API-001` established this layer; §11 owns *what* to test at an HTTP contract, this section owns the *methodology* for doing it in this repository. The rule from §11 still governs: API tests verify transport behavior and are not where crafting mathematics is tested.
+
+The methodology below applies unchanged to every route added afterwards — `STORY-API-002` reused it for Crafting Discovery without extending it. Two points it already implies are worth stating explicitly, because that second route is what made them visible:
+
+- **A route's own defaults are part of its contract.** Where two routes over comparable use cases open with *different* defaults, assert each route's own values rather than assuming the earlier route's, and say in the test why they differ.
+- **When a boundary change is shared, re-run the existing routes' real-database equivalence checks (§35.2), not only their contract tests.** A contract test proves the JSON field names survived; only the real-database comparison proves the values did.
+
+## 35.1 Contract tests (default `./mvnw test` run)
+
+- Build the controller directly with Spring's standalone MockMvc setup (`MockMvcBuilders.standaloneSetup(controller).setControllerAdvice(...)`) rather than a full application context. It exercises the real routing, argument resolution, message conversion and exception-handler mapping without starting a server, a context or a database, so these stay fast enough to belong in the default goal.
+- Substitute the application service through the controller's own constructor seam — the `Supplier<CraftingProfitService>` the production wiring also uses — with a hand-written recording stub rather than a mocking framework, matching the fake-adapter style of the application-layer suites (§8, §31.2).
+- Cover, per §11: a valid request (including the all-defaults request), each validation rule, the applicable missing-resource behavior, and each mapped failure status. A validation test must additionally assert that **no** service instance was created, so "rejected before any calculation starts" is proven rather than assumed.
+- Assert on the serialized JSON (`jsonPath`), not on a deserialized copy of the response record: field names are part of the contract, and round-tripping through the same record cannot detect a rename.
+- Where a boundary introduces per-request state, test isolation explicitly: issue successive *and* concurrent requests whose stubbed results are derived from each request's own input, then assert each response carries its own input's result and that no two requests shared a service instance. A stub that returns the same canned value for every call cannot detect leakage.
+- One context-startup test (`@SpringBootTest`) belongs in the default goal as evidence that the entry point genuinely boots and binds a port on the actual Java/Maven setup. Keep it from touching the database — with a per-request service factory, simply never invoking it is enough.
+
+## 35.2 Real-database API checks (explicit runs only)
+
+Name these `*IT` so Surefire's default patterns exclude them (§32.4), and run them explicitly. They boot the real application on a random port with the real application service and no schema override, so they read the developer's real database exactly as the running application does.
+
+- **Timing** (§34, and `TARGET_ARCHITECTURE.md` §33 at this boundary): measure wall-clock from issuing the HTTP request to holding the *complete* response body, so routing, calculation and full JSON serialization are all inside the timer. Report the first request after startup separately from repeats, report the maximum, and record row count, response size, settings, data scale and environment. Context/server startup sits outside the per-request timer and must be stated as such. Backend request time is one part of the §33 navigation-to-complete-page budget and is never reported as proof of it.
+- **Result equivalence**: for each settings combination, call the endpoint over HTTP and call the same application-service method in process with identical inputs, then compare every row field by field — count, order, each authoritative value, blocked state and both missing-material maps. This is what proves a mapping preserves results on real data; fixture-based contract tests cannot. Both runs must be read-only, with no synchronization in between.
+- These print evidence and, for timing, assert nothing — matching `application.CraftingProfitServiceRealDbPerfIT`'s precedent. The equivalence check does assert, since a mismatch is a defect rather than a measurement.
+
+## 35.3 Asynchronous trigger and task-status routes
+
+`STORY-API-003` added the first route whose work outlives its request. §35.1 still governs the transport assertions; this subsection owns the methodology the asynchrony adds, and applies to any later sync/refresh trigger.
+
+- **Control the work with latches, never with a sleep.** The substituted application service signals a latch when it is entered and then blocks on a second latch the test releases. That makes "the trigger returned while the work was still running" an observation at a point the test chose, rather than a race against a guessed duration — and it is the only way to assert a non-terminal state without flakiness.
+- **Prove non-blocking acceptance by what is true *between* those two latches**: the HTTP response has been read, the service has been entered, and the status route already answers with a running state and no finish time. Asserting only that a 202 came back does not distinguish an asynchronous trigger from a fast synchronous one.
+- **Wait for a terminal state with a bounded poll that fails loudly** (a deadline plus an `AssertionError` naming the task), not a fixed sleep. Poll through the status route where the route is what is under test, and through the facility where it is not.
+- **Use the real task facility, not a stub, in the trigger's own tests.** The asynchrony, the identifier and the admission rule *are* the contract; a same-thread fake would pass while proving none of them. The application service is still substituted, so no GW2 API call or database write happens.
+- **Assert exactly-once delegation per accepted task, and zero for a rejected one.** A validation test must show both that the service was never called and that no task was admitted — the latter is visible in a following trigger being accepted rather than refused as already-running, since an admitted task would still be unfinished.
+- **Assert every documented lifetime property of the facility**, including the retention bound and the answer for an unknown identifier. Those properties are written down as facts in `CURRENT_ARCHITECTURE.md`, so they need a test rather than a claim; the retention test simply submits one more task than the bound.
+- **Assert the absence of things too, in a failure body**: that it contains no successful-completion wording, and that the exception's own text — hosts, endpoints, JDBC URLs — is not in it. A failure path is where disclosure conventions actually get broken.
+- **Do not require live account mutation to test a task protocol.** Trigger validation, the 404, the 405 and the framework's own routing can be verified against a really running server without starting a synchronization; whether the accepted path was exercised live must then be recorded as a limitation rather than implied.

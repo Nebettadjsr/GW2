@@ -1,6 +1,7 @@
 package craft;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Recursive planner:
@@ -10,7 +11,6 @@ import java.util.*;
  */
 public class CraftingPlanner {
 
-    private final RecipeSimulator recipeSimulator = new RecipeSimulator();
     private final CostEvaluator costEvaluator = new CostEvaluator();
 
     public Map<Integer, CraftResult> evaluateAll(List<Recipe> recipes,
@@ -39,13 +39,16 @@ public class CraftingPlanner {
         Map<Integer, List<Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
         PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds);
 
-        Map<Integer, CraftResult> out = new HashMap<>();
-        for (Recipe r : recipes) {
-            PlanState baseState = new PlanState(sellableInventory, boundInventory);
-            out.put(r.recipeId, evaluateOneRecipeNew(r, baseState, ctx));
-        }
-
-        return out;
+        // Every recipe's simulation only reads shared/immutable inputs (ctx, sellableInventory,
+        // boundInventory) and writes to its own fresh PlanState/RecipeSimulator, so recipes are
+        // evaluated independently of one another; the profiled bottleneck (STORY-PERF-001) is
+        // this per-recipe simulation cost, not I/O, so distributing it across cores is a bounded,
+        // result-preserving optimization rather than an assumed one.
+        return recipes.parallelStream().collect(Collectors.toConcurrentMap(
+                r -> r.recipeId,
+                r -> evaluateOneRecipeNew(r, new PlanState(sellableInventory, boundInventory), ctx, new RecipeSimulator()),
+                (a, b) -> b
+        ));
     }
 
     /**
@@ -71,13 +74,17 @@ public class CraftingPlanner {
         Map<Integer, List<Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
         PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds, roster);
 
-        Map<Integer, CraftResult> out = new HashMap<>();
-        for (Recipe r : recipes) {
-            PlanState baseState = new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory);
-            out.put(r.recipeId, evaluateOneRecipeNew(r, baseState, ctx));
-        }
-
-        return out;
+        // See evaluateAll(...)'s parallelization note: identical independence argument applies
+        // here, including for the coordinated per-character trial paths, since each recipe still
+        // only ever mutates its own fresh PlanState.
+        return recipes.parallelStream().collect(Collectors.toConcurrentMap(
+                r -> r.recipeId,
+                r -> evaluateOneRecipeNew(
+                        r,
+                        new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory),
+                        ctx,
+                        new RecipeSimulator())
+        ));
     }
 
     private Map<Integer, List<Recipe>> buildRecipesByOutput(List<Recipe> recipes) {
@@ -91,7 +98,8 @@ public class CraftingPlanner {
     private CraftResult evaluateOneRecipeNew(
             Recipe recipe,
             PlanState baseState,
-            PlannerContext ctx
+            PlannerContext ctx,
+            RecipeSimulator recipeSimulator
     ) {
         RecipeSimulationResult sim;
 

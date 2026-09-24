@@ -273,7 +273,7 @@ While waiting, Python checks only the relevant local User Decision files.
 
 It does not repeatedly call Codex, Claude, Hermes, or Ollama merely to ask whether the user has answered.
 
-Once the required decision becomes `RESOLVED`, project planning resumes.
+As soon as any blocking decision becomes `RESOLVED`, the wait ends and Python re-derives what is now permissible — it does not keep waiting for the remaining open decisions, since one answer can be enough to unblock planning or a dependent story.
 
 
 # 2. Codex — Project Planner

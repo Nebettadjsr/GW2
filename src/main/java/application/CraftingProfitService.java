@@ -189,6 +189,18 @@ public class CraftingProfitService {
      * coordinated result for {@code recipeId}, building and caching its resolution tree on first
      * request. Returns {@code null} if {@code recipeId} is not part of the most recent reload().
      */
+    /**
+     * The most recent reload()'s result for {@code recipeId} exactly as the planner produced it,
+     * without building its resolution tree. For callers that only read the computed numbers (such
+     * as the reload-summary counters logged to the console), since
+     * {@link #getResultByRecipeId(int)}'s lazy tree build is expensive enough that doing it once
+     * per visible recipe dominated page-load time (STORY-PERF-001). Returns {@code null} if
+     * {@code recipeId} is not part of the most recent reload().
+     */
+    public CraftResult getRawResultByRecipeId(int recipeId) {
+        return lastResultsByRecipeId.get(recipeId);
+    }
+
     public CraftResult getResultByRecipeId(int recipeId) {
         CraftResult cr = lastResultsByRecipeId.get(recipeId);
         if (cr == null) return null;

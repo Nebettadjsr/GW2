@@ -1,4 +1,5 @@
 import application.AccountRefreshService;
+import application.CharacterSelectionService;
 import application.TradingPostPriceRefreshService;
 import craft.CraftResult;
 import craft.CraftingSettings;
@@ -65,6 +66,7 @@ public class CraftingProfitView {
         public CraftRow(int recipeId, int outputItemId, String outputName, String discipline,
                         int craftableCount, String missingSummary,
                         int buyCostCopper, int revenueCopper, int profitCopper,
+                        int totalProfitCopper,
                         int matsSellValueCopper, String searchBlob, boolean calculationAvailable) {
             this.calculationAvailable = calculationAvailable;
             this.recipeId.set(recipeId);
@@ -76,6 +78,7 @@ public class CraftingProfitView {
             this.buyCostCopper.set(buyCostCopper);
             this.revenueCopper.set(revenueCopper);
             this.profitCopper.set(profitCopper);
+            this.totalProfitCopper.set(totalProfitCopper);
             this.matsSellValueCopper.set(matsSellValueCopper);
             this.searchBlob.set(searchBlob);
         }
@@ -107,6 +110,11 @@ public class CraftingProfitView {
         public int getProfitCopper() { return profitCopper.get(); }
         public IntegerProperty profitCopperProperty() { return profitCopper; }
 
+        /**
+         * The authoritative total profit computed by the domain and carried through
+         * {@code CraftingProfitController.UiRow} (STORY-APP-011). Presentation displays and sorts
+         * by this value and never recomputes it from craftable count and per-craft profit.
+         */
         private final IntegerProperty totalProfitCopper = new SimpleIntegerProperty();
         public int getTotalProfitCopper() { return totalProfitCopper.get(); }
         public IntegerProperty totalProfitCopperProperty() { return totalProfitCopper; }
@@ -130,6 +138,14 @@ public class CraftingProfitView {
     public static void show(Stage stage, Runnable onBack,
                             TradingPostPriceRefreshService tradingPostPriceRefreshService,
                             AccountRefreshService accountRefreshService) {
+        show(stage, onBack, tradingPostPriceRefreshService, accountRefreshService,
+             new CharacterSelectionService());
+    }
+
+    public static void show(Stage stage, Runnable onBack,
+                            TradingPostPriceRefreshService tradingPostPriceRefreshService,
+                            AccountRefreshService accountRefreshService,
+                            CharacterSelectionService characterSelectionService) {
 
         Tooltip tooltip = new Tooltip();
         tooltip.setShowDelay(Duration.millis(300));
@@ -160,12 +176,10 @@ public class CraftingProfitView {
         ComboBox<DiscChoice> disciplineBox = new ComboBox<>();
         disciplineBox.setPrefWidth(320);
 
-        repo.CharacterRepository charRepo = new repo.CharacterRepository();
-
         Runnable reloadDisciplineChoices = () -> {
             Thread t = new Thread(() -> {
                 try {
-                    var crafts = charRepo.loadAllCharacterCrafting(); // List<DiscRow>
+                    var crafts = characterSelectionService.getCraftingCharacterOptions(); // List<DiscRow>
                     Platform.runLater(() -> {
                         disciplineBox.getItems().clear();
 
@@ -388,20 +402,7 @@ public class CraftingProfitView {
                         masterRows.clear();
 
                         for (var r : data) {
-                            masterRows.add(new CraftRow(
-                                    r.recipeId,
-                                    r.outputItemId,
-                                    r.outputName,
-                                    r.discipline,
-                                    r.craftableCount,
-                                    r.missingSummary,
-                                    r.buyCostCopper,
-                                    r.revenueCopper,
-                                    r.profitCopper,
-                                    r.matsSellValueCopper,
-                                    r.searchBlob,
-                                    r.calculationAvailable
-                            ));
+                            masterRows.add(toCraftRow(r));
                         }
 
                         applyClientFilterAndSort(masterRows, visibleRows, searchField.getText(), sortBox.getValue(), table);
@@ -590,12 +591,7 @@ public class CraftingProfitView {
 
 
         TableColumn<CraftRow, Number> colTotalProfit = new TableColumn<>("Total profit");
-        colTotalProfit.setCellValueFactory(data -> {
-
-            int craftable = data.getValue().getCraftableCount();
-            int profitPer = data.getValue().getProfitCopper();
-            return new SimpleIntegerProperty(craftable * profitPer);
-        });
+        colTotalProfit.setCellValueFactory(data -> data.getValue().totalProfitCopperProperty());
         colTotalProfit.setCellFactory(tc -> profitCell());
         colTotalProfit.setSortType(TableColumn.SortType.DESCENDING);
         table.getSortOrder().setAll(colTotalProfit);
@@ -948,6 +944,49 @@ public class CraftingProfitView {
         return ti;
     }
 
+    /**
+     * Maps one prepared application row onto its displayed row. Every displayed number - including
+     * the total profit - comes from the supplied {@code UiRow}; presentation derives none of them
+     * (STORY-APP-011).
+     */
+    static CraftRow toCraftRow(CraftingProfitController.UiRow r) {
+        return new CraftRow(
+                r.recipeId,
+                r.outputItemId,
+                r.outputName,
+                r.discipline,
+                r.craftableCount,
+                r.missingSummary,
+                r.buyCostCopper,
+                r.revenueCopper,
+                r.profitCopper,
+                r.totalProfitCopper,
+                r.matsSellValueCopper,
+                r.searchBlob,
+                r.calculationAvailable
+        );
+    }
+
+    /**
+     * The sort-box comparator for {@code sortMode}. "Total profit" - and the default, which is the
+     * same ordering - read the authoritative {@link CraftRow#getTotalProfitCopper()} rather than
+     * multiplying craftable count by per-craft profit (STORY-APP-011).
+     */
+    static Comparator<CraftRow> rowComparator(String sortMode) {
+        return switch (sortMode) {
+            case "Total profit" ->
+                    Comparator.comparingInt(CraftRow::getTotalProfitCopper).reversed();
+            case "Max craftable count" ->
+                    Comparator.comparingInt(CraftRow::getCraftableCount).reversed();
+            case "Profit per item" ->
+                    Comparator.comparingInt(CraftRow::getProfitCopper).reversed();
+            case "Total sell value" ->
+                    Comparator.comparingInt((CraftRow r) -> r.getRevenueCopper() * r.getCraftableCount()).reversed();
+            default ->
+                    Comparator.comparingInt(CraftRow::getTotalProfitCopper).reversed();
+        };
+    }
+
     private static void applyClientFilterAndSort(ObservableList<CraftRow> masterRows,
                                                  ObservableList<CraftRow> visibleRows,
                                                  String search,
@@ -963,20 +1002,7 @@ public class CraftingProfitView {
             }
         }
 
-        Comparator<CraftRow> comparator = switch (sortMode) {
-            case "Total profit" ->
-                    Comparator.comparingInt((CraftRow r) -> r.getCraftableCount() * r.getProfitCopper()).reversed();
-            case "Max craftable count" ->
-                    Comparator.comparingInt(CraftRow::getCraftableCount).reversed();
-            case "Profit per item" ->
-                    Comparator.comparingInt(CraftRow::getProfitCopper).reversed();
-            case "Total sell value" ->
-                    Comparator.comparingInt((CraftRow r) -> r.getRevenueCopper() * r.getCraftableCount()).reversed();
-            default ->
-                    Comparator.comparingInt((CraftRow r) -> r.getCraftableCount() * r.getProfitCopper()).reversed();
-        };
-
-        FXCollections.sort(visibleRows, comparator);
+        FXCollections.sort(visibleRows, rowComparator(sortMode));
         table.refresh();
     }
 

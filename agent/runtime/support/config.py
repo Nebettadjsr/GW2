@@ -62,6 +62,12 @@ OLLAMA_URL = "http://localhost:11434/api/chat"
 # Hermes remains responsible for dispatch/evaluation/selection.
 MODEL = "hermes3:8b"
 
+# Model the orchestrator launches Claude Code with (`claude --model`).
+# Pinned here so unattended runs do not silently follow whatever the
+# interactive CLI default happens to be set to. Change this one value
+# to move story execution and Claude planning to a different model.
+CLAUDE_MODEL = "claude-opus-5"
+
 
 MAX_RETRIES_PER_STORY = 2
 
@@ -71,6 +77,33 @@ CLAUDE_USAGE_LIMIT_PERCENT = 90
 # (see support/capacity.py's CapacityProbe) -- deliberately not named
 # for Claude specifically, since Codex's probe uses this same default.
 MODEL_CAPACITY_RECHECK_SECONDS = 60 * 60
+
+# Local waiting cadence while a model is out of capacity. The cooldown
+# above governs when a model is actually re-probed; these two only
+# control how often the orchestrator wakes up to re-derive permissible
+# work, and how often it refreshes the terminal while it waits. Status
+# output during a wait is terminal-only (support/daily_log.py's
+# print_status) -- never a persistent log entry.
+CAPACITY_WAIT_POLL_SECONDS = 60
+CAPACITY_STATUS_INTERVAL_SECONDS = 300
+
+# A Claude run that exits non-zero while carrying no capacity signal is a
+# failed attempt, not a capacity pause. After this many consecutive such
+# runs on the same story the orchestrator escalates to a user
+# intervention instead of re-invoking Claude forever.
+MAX_CLAUDE_FAILED_RUNS_PER_STORY = 2
+
+# Hermes/Ollama is local infrastructure. A transient outage must not
+# throw away a finished Claude run, so evaluation is retried locally
+# (never by re-invoking Claude) before the cycle is treated as failed.
+EVALUATION_ATTEMPTS = 3
+EVALUATION_RETRY_SECONDS = 60
+
+# One unexpected failure in a single orchestration cycle is retried
+# locally rather than killing an unattended run; a failure that keeps
+# repeating needs a human and stops the orchestrator explicitly.
+MAX_CONSECUTIVE_CYCLE_ERRORS = 3
+CYCLE_RETRY_SECONDS = 60
 
 # When a planning pass returns NEEDS_USER and no other current-milestone
 # story is independently selectable, the orchestrator waits locally and

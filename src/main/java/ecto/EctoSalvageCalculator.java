@@ -1,6 +1,8 @@
+package ecto;
+
 /**
  * Pure Ectoplasm Salvage domain calculation (DOMAIN_SPEC.md §45-47), kept free of JavaFX so it can
- * be exercised by deterministic unit tests. {@link EctoView} is the sole caller.
+ * be exercised by deterministic unit tests. {@code application.EctoSalvageService} is the sole caller.
  */
 public final class EctoSalvageCalculator {
 

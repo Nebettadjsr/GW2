@@ -15,18 +15,49 @@
 
         <javafx.version>25.0.2</javafx.version>
         <javafx.platform>win</javafx.platform>
-        <jackson.version>2.17.2</jackson.version>
         <postgresql.version>42.7.9</postgresql.version>
-        <junit.jupiter.version>5.10.2</junit.jupiter.version>
+
+        <!--
+            STORY-API-001 (UD-006): backend web framework. Chosen from implementation-time
+            evidence rather than pinned by the architecture decision - see the story Result for
+            the recorded Java 25.0.1 / Maven 3.9.16 compatibility verification. The
+            spring-boot-dependencies BOM below also manages JUnit, so the test stack stays
+            consistent with the Spring test support instead of being pinned independently.
+        -->
+        <spring.boot.version>4.1.1</spring.boot.version>
 
         <main.class>Gw2App</main.class>
+        <!-- Spring Boot HTTP entry point; JavaFX keeps ${main.class} untouched. -->
+        <api.main.class>web.Gw2ApiApplication</api.main.class>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring.boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!--
+            Version managed by the spring-boot-dependencies BOM. Spring Boot 4 serves HTTP with
+            Jackson 3 (tools.jackson), which shares the com.fasterxml.jackson.annotation artifact
+            with this Jackson 2 usage - pinning Jackson 2 independently left Jackson 3 without
+            annotations it needs, so the whole Jackson line stays BOM-aligned (STORY-API-001).
+        -->
+        <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>${jackson.version}</version>
         </dependency>
 
         <dependency>
@@ -81,7 +112,12 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>${junit.jupiter.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
 
@@ -121,6 +157,20 @@
                 <version>0.0.8</version>
                 <configuration>
                     <mainClass>${main.class}</mainClass>
+                </configuration>
+            </plugin>
+
+            <!--
+                STORY-API-001: makes the API runnable with `./mvnw spring-boot:run`. Deliberately
+                declares no <executions>, so the `repackage` goal never runs and the existing
+                gw2-tool jar / JavaFX launch stay exactly as before.
+            -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring.boot.version}</version>
+                <configuration>
+                    <mainClass>${api.main.class}</mainClass>
                 </configuration>
             </plugin>
         </plugins>

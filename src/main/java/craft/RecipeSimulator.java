@@ -19,24 +19,9 @@ public class RecipeSimulator {
 
         // Phase 1: consume zero-cash / own-mats crafts first
         if (ctx.settings.useOwnMats && ctx.settings.allowBuying) {
-            CraftingSettings noBuySettings = new CraftingSettings(
-                    ctx.settings.useOwnMats,
-                    false,
-                    0,
-                    ctx.settings.listingSell,
-                    ctx.settings.listingBuy,
-                    ctx.settings.dailyBuyInsteadOfCraft
-            );
-
-            PlannerContext noBuyCtx = new PlannerContext(
-                    ctx.recipesByOutput,
-                    ctx.tp,
-                    noBuySettings,
-                    ctx.allowedRecipeIds,
-                    ctx.coordinatedRoster
-            );
-
-            simulatePhase(recipe, noBuyCtx, state, result);
+            // Same no-buy settings this phase has always used; withBuyingDisabled() additionally
+            // shares ctx's memo tables instead of giving every recipe's phase 1 an empty one.
+            simulatePhase(recipe, ctx.withBuyingDisabled(), state, result);
         }
 
         // Phase 2: continue with buying enabled if originally requested
@@ -57,12 +42,17 @@ public class RecipeSimulator {
             RecipeSimulationResult result
                               ) {
         while (true) {
-            PlanState attemptState = new PlanState(state);
+            // Each additional batch is attempted on the live state and undone if it turns out to
+            // be unaffordable or unsatisfiable; the accepted batches stay. Previously every one of
+            // these up-to-250 iterations copied the entire state before attempting
+            // (STORY-PERF-001).
+            int mark = state.mark();
 
-            ResolveResult rr = resolver.resolveOneCraft(recipe, ctx, attemptState);
+            ResolveResult rr = resolver.resolveOneCraft(recipe, ctx, state);
             ResolvedNeed root = rr.getRoot();
 
             if (root.getQtySatisfied() < root.getQtyRequested()) {
+                state.rollbackTo(mark);
                 result.setBlockedReason(root.getBlockedReason());
                 break;
             }
@@ -70,12 +60,15 @@ public class RecipeSimulator {
             int nextBuyTotal = result.getBuyCostTotal() + rr.getBuyCostCopper();
 
             if (ctx.settings.maxBuyCopper > 0 && nextBuyTotal > ctx.settings.maxBuyCopper) {
+                state.rollbackTo(mark);
                 result.setBlockedReason(BlockedReason.INSUFFICIENT_BUDGET);
                 break;
             }
 
             result.setBlockedReason(BlockedReason.NONE);
-            state.copyFrom(attemptState);
+            // Accepted: this batch is never revisited, so its undo information can be dropped -
+            // without this the journal would grow across all 250 iterations.
+            state.commitTo(mark);
 
             if (result.getCraftCount() == 0) {
                 result.setFirstCraft(root);

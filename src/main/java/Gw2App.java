@@ -1,5 +1,3 @@
-import craft.CraftingGraph;
-import repo.CraftingGraphCache;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -22,11 +20,9 @@ import java.util.Optional;
 
 import javafx.scene.control.TextField;
 import javafx.scene.layout.Region;
-import repo.RecipeRepository;
-import sync.AccountSync;
-import sync.CharacterSync;
-import sync.RecipeSync;
-import sync.TpSync;
+import application.AccountRefreshService;
+import application.GlobalDataRefreshService;
+import application.InitialSetupService;
 
 
 public class Gw2App extends Application {
@@ -37,12 +33,27 @@ public class Gw2App extends Application {
 
     @Override
     public void start(Stage stage) {
+        start(stage, new AccountRefreshService(), new GlobalDataRefreshService(), new InitialSetupService());
+    }
+
+    /** Seam used by deterministic JavaFX checks to substitute a controlled {@link AccountRefreshService} (TARGET_ARCHITECTURE.md §25). */
+    void start(Stage stage, AccountRefreshService accountRefreshService) {
+        start(stage, accountRefreshService, new GlobalDataRefreshService(), new InitialSetupService());
+    }
+
+    /** Seam used by deterministic JavaFX checks to substitute controlled application services (TARGET_ARCHITECTURE.md §25). */
+    void start(Stage stage, AccountRefreshService accountRefreshService, GlobalDataRefreshService globalDataRefreshService) {
+        start(stage, accountRefreshService, globalDataRefreshService, new InitialSetupService());
+    }
+
+    /** Seam used by deterministic JavaFX checks to substitute controlled application services (TARGET_ARCHITECTURE.md §25). */
+    void start(Stage stage, AccountRefreshService accountRefreshService, GlobalDataRefreshService globalDataRefreshService, InitialSetupService initialSetupService) {
         this.stage = stage;
 //        stage.getIcons().add(new Image(
 //                Objects.requireNonNull(getClass().getResourceAsStream("/images/app-icon.png"))
 //        ));
 
-        homeScene = createHomeScene();
+        homeScene = createHomeScene(accountRefreshService, globalDataRefreshService, initialSetupService);
         homeScene.getStylesheets().add(
                 Objects.requireNonNull(getClass().getResource("/styles/dark-scroll.css")).toExternalForm()
                                       );
@@ -53,7 +64,7 @@ public class Gw2App extends Application {
         stage.show();
     }
 
-    private Scene createHomeScene() {
+    private Scene createHomeScene(AccountRefreshService accountRefreshService, GlobalDataRefreshService globalDataRefreshService, InitialSetupService initialSetupService) {
 
 
         // Logo + Title row
@@ -73,6 +84,7 @@ public class Gw2App extends Application {
         subtitle.setStyle("-fx-text-fill: white; -fx-opacity: 0.75;");
 
         Label status = new Label("");
+        status.setId("homeStatusLabel");
         status.setStyle("-fx-text-fill: #c9d1d9; -fx-opacity: 0.9;");
 
 
@@ -188,7 +200,7 @@ public class Gw2App extends Application {
 
             Thread t = new Thread(() -> {
                 try {
-                    InitialSetupService.firstFill();
+                    initialSetupService.firstFill();
 
                     Platform.runLater(() -> {
                         status.setText("✅ Initial fill finished.");
@@ -214,11 +226,7 @@ public class Gw2App extends Application {
 
             Thread t = new Thread(() -> {
                 try {
-                    TpSync.syncTpTradeableItems();
-                    RecipeSync.syncAllRecipesGlobalSafe();
-                    RecipeRepository recipeRepo = new RecipeRepository();
-                    CraftingGraphCache cache = new CraftingGraphCache(recipeRepo);
-                    cache.rebuild();
+                    globalDataRefreshService.refreshAll();
 
                     Platform.runLater(() -> {
                         status.setText("✅ Data refreshed.");
@@ -243,10 +251,7 @@ public class Gw2App extends Application {
 
             Thread t = new Thread(() -> {
                 try {
-                    AccountSync.syncAccountBank();
-                    AccountSync.syncAccountMaterials();
-                    AccountSync.syncAccountRecipes();
-                    CharacterSync.syncCharactersCraftingAndRecipes();
+                    accountRefreshService.refreshAll();
 
                     Platform.runLater(() -> {
                         status.setText("✅ Account data refreshed.");

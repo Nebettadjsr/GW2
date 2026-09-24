@@ -103,6 +103,19 @@ Compare the two runs' `usage_before`/`usage_after` and `duration` log lines
 for the same story to see whether RepoMap measurably reduced Claude's
 context/token usage.
 
+## Pinned Claude model
+
+`runners/claude_runner.py` launches Claude Code with an explicit
+`--model` flag whose value is `CLAUDE_MODEL` in `support/config.py`
+(currently `claude-opus-5`). Both story execution and Claude planning
+runs go through `run_claude()`, so both use that one value -- change it
+in that single place to move the orchestrator to a different model.
+
+The pin exists so unattended runs do not silently follow whatever the
+interactive CLI default (`~/.claude/settings.json`, `/model`) happens to
+be set to. The usage probe (`claude -p /usage`) is deliberately left
+unpinned: it runs a slash command and never performs inference.
+
 ## Independent Claude/Codex capacity scheduling
 
 `support/capacity.py`'s `CapacityProbe` is a generic, reusable local-cooldown
@@ -117,6 +130,44 @@ priority order: resume an unfinished active story first, then execute other
 selectable To Do work, then use Codex to replenish the queue while Claude is
 busy or the queue is empty, then fall back to local waiting (never a busy
 loop) if neither model can currently make progress.
+
+Once started, the loop keeps going while any permissible work exists. The
+properties that guarantee it, each covered by `tests/test_orchestration_flow.py`:
+
+- **Capacity exhaustion is a scheduling event, never a work result.** A Claude
+  run that exits non-zero is classified from its own output tail plus the
+  token-free usage probe (`runners/claude_runner.py`'s `run_claude_attempt()`
+  and `output_indicates_capacity_exhaustion()`). A capacity interruption keeps
+  the story active and `UNFINISHED`, costs nothing from the story's evaluator
+  retry budget, and resumes the same work order. A non-zero exit with no
+  capacity signal is a *failed run*: retrying it hourly forever could never fix
+  it, so after `MAX_CLAUDE_FAILED_RUNS_PER_STORY` consecutive such runs the
+  story is escalated to a user intervention and the orchestrator moves on.
+- **A failed planning pass never stops execution.** Codex reporting `FAILED`,
+  a rolled-back guarded pass, or an unreadable planning input puts the planner
+  on one local cooldown (`CapacityScheduler._planning_failed()`) and is logged;
+  Claude keeps draining already-planned work, and planning is retried later.
+- **Neither model blocks the other.** Codex exhausted -> Claude still executes
+  the queue to zero. Claude exhausted -> Codex still performs useful
+  current-scope planning (deliberately past the To Do <= 2 watermark, until a
+  pass reports nothing further worth creating). Both exhausted -> the
+  orchestrator waits locally and resumes the correct flow by itself.
+- **Newly planned work needs no restart**; the next cycle re-reads state and
+  selects it.
+- **Real gates still block.** An unresolved user decision or an open user
+  intervention is waited on locally, never bypassed. Both waits return as soon
+  as *any* blocking item resolves, because one resolution can be enough to
+  unblock planning or requeue a story, and eligibility is then re-derived from
+  scratch.
+- **Stale state does not strand execution.** An unusable
+  `agent/CURRENT_STORY.md` counts as "no active story" so deterministic
+  selection can proceed and overwrite it.
+- **One recoverable cycle failure is not fatal.** An unexpected exception (a
+  local Hermes/Ollama outage, a transient file error) is retried; evaluation
+  itself is retried locally first, so a finished Claude run is never thrown
+  away and Claude is never re-invoked to work around an evaluator outage. After
+  `MAX_CONSECUTIVE_CYCLE_ERRORS` consecutive failures the orchestrator stops
+  explicitly rather than looping.
 
 Codex is a planner only: `core/project_planner.py`'s `_run_guarded_planner()`
 snapshots protected state (the active story file, `CURRENT_STORY.md`, the
@@ -136,12 +187,52 @@ not by locking.
 is logged after the date rolls over; an existing day's file is only ever
 appended to, never truncated or overwritten.
 
-Every orchestrator cycle (`core/orchestrator.py`'s `main()`) logs two lines
-before acting: the raw Claude/Codex availability check (`Availability
+Every orchestrator cycle (`core/orchestrator.py`'s `main()`) still checks
+both models and decides what to do next before acting, and logs two lines
+when it does: the raw Claude/Codex availability check (`Availability
 check: ...`), and the scheduling decision made from it and why (`Decision:
 ...`). This makes the check -> decide -> (optionally prepare a RepoMap) ->
 act ordering described above independently auditable after the fact, not
 just verifiable by reading the code.
+
+**Transitions only.** A cycle whose decisions are identical to the previous
+cycle's is not logged again (`DecisionLog`). The orchestrator can repeat the
+same holding pattern once a minute for hours while it waits for capacity or
+for a human, and re-recording it would bury the entries that matter. What is
+always logged: capacity exhaustion first detected, capacity available again,
+orchestration resumed, planning failures, a story interrupted by exhaustion,
+an escalation, and entering/leaving a user-decision or intervention wait.
+
+**Waiting output is terminal-only.** Heartbeat lines -- `Claude capacity
+unavailable - waiting...`, `Current usage: ...`, `Next Claude capacity check
+in N min`, `Still unresolved: ...` -- go through `support/daily_log.py`'s
+`print_status()`, which writes to the stream `ConsoleTee` wraps and therefore
+never reaches `agent/logs/`. They are throttled to one burst per
+`CAPACITY_STATUS_INTERVAL_SECONDS` (`StatusHeartbeat`). An overnight wait
+leaves a readable terminal and a log containing only what happened.
+
+**Re-checks cost no tokens.** Claude's probe runs `claude -p /usage` (a slash
+command, no inference); Codex's reads `account/rateLimits/read` over
+`app-server`. Both are gated by `CapacityProbe`'s local cooldown, so an
+exhausted model is never re-invoked while waiting -- only re-probed, at most
+once per `MODEL_CAPACITY_RECHECK_SECONDS`.
+
+**Full console transcript.** `start_console_logging()` (called from the
+orchestrator's `__main__` entry point) wraps `sys.stdout`/`sys.stderr` in
+`ConsoleTee`, so everything printed to the terminal is appended to the same
+daily file -- the orchestrator's own progress output, the Codex planner's
+streamed events, and Claude's implementation output. The terminal still
+shows exactly what it always did; the log is an addition, not a
+replacement. This is what makes an unattended overnight run readable
+afterwards.
+
+For Claude's output to reach the log at all, `runners/claude_runner.py`
+pipes it (`stdout=PIPE`, `stderr=STDOUT`) and reprints each line rather
+than letting the child inherit the terminal -- an inherited descriptor
+writes past Python and leaves no record. One consequence: Claude no longer
+sees a TTY on stdout, so it emits plain streamed lines instead of
+terminal-rendered progress. Tests call `main()` directly and never call
+`start_console_logging()`, so they never write to the real `agent/logs/`.
 
 Unlike `artifacts/`, `agent/logs/` is **committed to Git, not ignored** --
 it is meant to be a permanent historical record, not disposable runtime

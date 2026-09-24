@@ -1,1 +1,1 @@
-agent/stories/STORY-APP-002-extract-crafting-discovery-use-case.md
+agent/stories/STORY-API-003-account-sync-task-endpoint.md
