@@ -128,7 +128,8 @@ function answerApi({ request, response, url, body }) {
         maxBuyCopper: 10000,
         listingSell: false,
         listingBuy: false,
-        dailyBuyInsteadOfCraft: true
+        dailyBuyInsteadOfCraft: true,
+        allowNonTradeableMaterials: true
       },
       rowCount: 0,
       rows: []

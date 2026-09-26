@@ -1,0 +1,34 @@
+[00:08:18] Claude capacity available again.
+[00:08:18] Orchestration resumed: continuing the active story after waiting locally for Claude capacity.
+[00:08:21] ========================================
+[00:08:21] Starting Claude Code
+[00:08:21] ========================================
+[00:31:53] STORY-DOM-021 is complete. I resumed the interrupted attempt rather than restarting it.
+[00:31:53] ## What was already on disk, and what I did with it
+[00:31:53] The domain/application/web/frontend implementation and two new Java suites existed. I verified them against each acceptance criterion, found and fixed two things that did not actually work, added the missing coverage, measured the cost, and wrote the records.
+[00:31:53] **Two defects in the existing work:**
+[00:31:53] 1. `CraftingProfitServiceTest`'s recording planner still overrode the eight-argument `evaluateAllCoordinated` that the service no longer calls — it captured nothing and five tests failed with NPEs.
+[00:31:53] 2. The new frontend test used a `data-test="resolution-node"` hook that does not exist (it is `tree-node`) and matched node text a parent also contains, so it would have asserted the *root's* reason with the child unmarked.
+[00:31:53] **Coverage I added:** `TpTradeableItemRepositoryTest` (5 tests, real PostgreSQL — proves the classification follows `tp_tradeable_items` and not price data), two detail-association tests for the option-sensitive stale answer, four new steps in the profit browser check, and a second measured scenario in the real-DB perf IT.
+[00:31:53] ## Implementation shape
+[00:31:53] `craft.CraftingSettings.allowNonTradeableMaterials` (policy, default enabled) plus new `craft.MaterialTradeability` (classification from `repo.tp.TpTradeableItemRepository`), meeting only in `PlannerContext.excludesNonTradeableMaterial(itemId)`. Off, the resolver blocks a forbidden ingredient before any owned quantity is taken and before a path for it is attempted, and §30's candidate comparison runs a first pass over candidates consuming none — so a dearer tradeable-only alternative wins instead of losing on cost. The six-arg settings constructor, eight-arg planner/explainer overloads and adapter-free service constructor all remain, so JavaFX and Discovery are unchanged and issue no extra query.
+[00:31:53] ## Tests run
+[00:31:53] | Command | Result |
+[00:31:53] | --- | --- |
+[00:31:53] | `./mvnw -o test -Dtest='craft.*Test'` | **82 passed**, 0 failures |
+[00:31:53] | `./mvnw -o test -Dtest='web.*Test,application.*Test,repo.tp.*Test'` | all green |
+[00:31:53] | `npx vitest run` | **215 passed**, 15 files |
+[00:31:53] | `npm run type-check` / `npm run build` | clean / built |
+[00:31:53] | `npm run smoke:profit` / `smoke:layout` | **30 steps** / **11 steps** passed, real Chrome |
+[00:31:53] | `CraftingProfitApiRealDbPerfIT` | 2 tests, real database |
+[00:31:53] Real-DB backend request time: enabled 1980 ms cold / 795–895 ms warm; disabled 1054 ms cold / 707–920 ms warm, same 3176 rows but 5,515 fewer bytes — the restriction applying to live data. One extra indexed query, inside the existing range. This is not §33 full-page proof; the Phase 5 page-load gate stays open.
+[00:31:53] ## Worth your attention
+[00:31:53] I recorded a real gap as `KNOWN_PROBLEMS.md` §7.12 rather than designing around it: since an item absent from `tp_tradeable_items` is classified non-Trading-Post, a never-synchronized or half-rewritten table classifies *everything* as non-Trading-Post. With the option off that would block nearly every path with truthful-but-misleading reasons, and nothing tells the user the classification itself is stale. The enabled default is unaffected (no query is issued). Also note `ResolutionState.UNVALUED_NONTRADEABLE` still derives from a `<= 0` sell unit under §11.2 — untouched here, but it shares the word "nontradeable" with the new classification while meaning something different.
+[00:31:53] ========================================
+[00:31:53] Claude Code exit code: 0
+[00:31:53] ========================================
+[00:31:56] Claude run measurement: repo_map=off, duration=1411.7s, usage_before=0, usage_after=48
+[00:33:20] ========================================
+[00:33:20] Evaluator decision: COMPLETE
+[00:33:20] Reason: The active story satisfied its own Acceptance Criteria and its own Definition of Done, as written in the story file. The implementation was verified against the criteria, the two defects were fixed, the missing frontend test was added, the performance was measured against the real database, and the documentation was updated. No Phase 5 exit criteria are claimed.
+[00:33:20] ========================================

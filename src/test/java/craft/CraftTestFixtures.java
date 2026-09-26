@@ -40,6 +40,28 @@ final class CraftTestFixtures {
         return new CraftingSettings(true, true, 0, false, false, false);
     }
 
+    /**
+     * As {@link #defaultSettings()}, with the non-Trading-Post material option off (DOMAIN_SPEC.md
+     * section 2.1.1 / UD-010): only paths consuming no non-Trading-Post material may be used.
+     */
+    static CraftingSettings settingsExcludingNonTradeableMaterials() {
+        return new CraftingSettings(true, true, 0, false, false, false, false);
+    }
+
+    /**
+     * A single-character context whose inputs classify {@code nonTradeableItemIds} as items that
+     * cannot be traded on the Trading Post - the fact the option above is evaluated against, supplied
+     * independently of any Trading Post quote.
+     */
+    static PlannerContext contextWithNonTradeableItems(Map<Integer, List<Recipe>> recipesByOutput,
+                                                       Map<Integer, PriceQuote> tp,
+                                                       CraftingSettings settings,
+                                                       Set<Integer> allowedRecipeIds,
+                                                       Set<Integer> nonTradeableItemIds) {
+        return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds, null,
+                MaterialTradeability.ofNonTradeableItems(nonTradeableItemIds));
+    }
+
     static PlannerContext context(Map<Integer, List<Recipe>> recipesByOutput,
                                    Map<Integer, PriceQuote> tp,
                                    CraftingSettings settings,

@@ -41,6 +41,15 @@ class CraftingProfitApiRealDbPerfIT {
     /** Empty body: the documented defaults, i.e. the default All scope with the view's settings. */
     private static final String DEFAULT_ALL_REQUEST = "{}";
 
+    /**
+     * The same default scope with STORY-DOM-021's material rule switched off: the one request shape
+     * that also loads the Trading Post tradeability classification and restricts paths with it. Its
+     * figures are recorded beside the default so the option's cost is visible (DOMAIN_SPEC.md §2.1.1);
+     * the default above issues no classification query at all.
+     */
+    private static final String NON_TRADEABLE_EXCLUDED_REQUEST =
+            "{\"settings\": {\"allowNonTradeableMaterials\": false}}";
+
     private static final int REPEAT_REQUESTS = 3;
 
     @LocalServerPort
@@ -55,9 +64,9 @@ class CraftingProfitApiRealDbPerfIT {
         System.out.println("Endpoint: POST " + endpoint + "  body: " + DEFAULT_ALL_REQUEST);
 
         List<Long> timings = new ArrayList<>();
-        timings.add(measure(client, endpoint, "FIRST (cold JVM/JIT, cold caches)"));
+        timings.add(measure(client, endpoint, DEFAULT_ALL_REQUEST, "FIRST (cold JVM/JIT, cold caches)"));
         for (int i = 1; i <= REPEAT_REQUESTS; i++) {
-            timings.add(measure(client, endpoint, "REPEAT " + i));
+            timings.add(measure(client, endpoint, DEFAULT_ALL_REQUEST, "REPEAT " + i));
         }
 
         long max = timings.stream().mapToLong(Long::longValue).max().orElse(0);
@@ -66,10 +75,31 @@ class CraftingProfitApiRealDbPerfIT {
                 + " browser and complete page rendering)");
     }
 
-    private long measure(HttpClient client, URI endpoint, String label) throws Exception {
+    @Test
+    void reportsRealDatabaseRequestTimingsWithNonTradingPostMaterialsExcluded() throws Exception {
+        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+        URI endpoint = URI.create("http://localhost:" + port + "/api/crafting/profit");
+
+        System.out.println("=== STORY-DOM-021 API request timing (real DB, All scope, "
+                + "allowNonTradeableMaterials=false) ===");
+        System.out.println("Endpoint: POST " + endpoint + "  body: " + NON_TRADEABLE_EXCLUDED_REQUEST);
+
+        List<Long> timings = new ArrayList<>();
+        timings.add(measure(client, endpoint, NON_TRADEABLE_EXCLUDED_REQUEST,
+                "FIRST (cold JVM/JIT, cold caches)"));
+        for (int i = 1; i <= REPEAT_REQUESTS; i++) {
+            timings.add(measure(client, endpoint, NON_TRADEABLE_EXCLUDED_REQUEST, "REPEAT " + i));
+        }
+
+        long max = timings.stream().mapToLong(Long::longValue).max().orElse(0);
+        System.out.println("MAXIMUM request time: " + max + " ms"
+                + "  (backend request only, one classification query included; not §33 page proof)");
+    }
+
+    private long measure(HttpClient client, URI endpoint, String requestBody, String label) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(endpoint)
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(DEFAULT_ALL_REQUEST))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .build();
 
         long start = System.nanoTime();

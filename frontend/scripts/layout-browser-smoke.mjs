@@ -132,7 +132,8 @@ function answerApi({ url, sendJson }) {
         maxBuyCopper: 250_000,
         listingSell: false,
         listingBuy: false,
-        dailyBuyInsteadOfCraft: true
+        dailyBuyInsteadOfCraft: true,
+        allowNonTradeableMaterials: true
       },
       rowCount: rows.length,
       rows

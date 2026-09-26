@@ -14,10 +14,13 @@ import {
   lossRow,
   movedReasonRows,
   noResultRow,
+  nonTradeableMaterialRow,
+  nonTradeableMaterialTree,
   notAllowedRow,
   priceUnavailableRow,
   profitResponse,
   profitableRow,
+  resolutionResponse,
   selectorOptions,
   zeroProfitRow
 } from './fixtures'
@@ -795,5 +798,123 @@ describe('CraftingProfitScreen', () => {
     expect(maximumInput(wrapper).value).toBe('3')
     // The reload asked for the same scope and settings; no display control reached the request.
     expect(api.profitRequests.at(1)).toEqual({ scope: { kind: 'ALL' }, settings: DEFAULT_SETTINGS })
+  })
+
+  // ---------- the non-Trading-Post material rule (DOMAIN_SPEC 2.1.1, UD-009/UD-010) ----------
+
+  it('groupsTheNonTradingPostMaterialRuleWithTheCalculationAndOpensItEnabled', async () => {
+    const api = new FakeCraftingApi()
+
+    const wrapper = await openScreen(api)
+    await wrapper.find('[data-test="settings-disclosure"]').trigger('click')
+
+    const control = wrapper.find('[data-test="setting-allowNonTradeableMaterials"]')
+    expect(control.exists()).toBe(true)
+    // A calculation control, not a fourth display filter.
+    expect(
+      wrapper.find('[data-test="calculation-controls"]').element.contains(control.element)
+    ).toBe(true)
+    expect(wrapper.find('[data-test="display-controls"]').element.contains(control.element)).toBe(false)
+
+    // Enabled by default, as the backend's echo reported it.
+    expect(isChecked(wrapper, 'setting-allowNonTradeableMaterials')).toBe(true)
+    expect(wrapper.find('[data-test="effective-settings"]').text()).toContain(
+      'non-Trading-Post materials allowed'
+    )
+
+    // The help states the decided rule for both values, in the user's own terms.
+    const help = wrapper.find('[data-test="setting-allowNonTradeableMaterials-help"]').text()
+    expect(help).toContain('own them or can craft them')
+    expect(help).toContain('unavailable')
+    expect(help).toContain('consume no such material')
+  })
+
+  it('recalculatesThroughTheApiWhenTheMaterialRuleIsSwitchedOffAndFiltersNothingLocally', async () => {
+    const api = new FakeCraftingApi()
+    const wrapper = await openScreenListingEveryRow(api)
+    const rowsBefore = wrapper.findAll('[data-test="profit-row"]').length
+
+    await wrapper.find('[data-test="setting-allowNonTradeableMaterials"]').setValue(false)
+    await flushPromises()
+
+    // One fresh request carrying the new rule — the browser did not drop or hide a row itself.
+    expect(api.profitRequests.at(1)).toEqual({
+      scope: { kind: 'ALL' },
+      settings: { ...DEFAULT_SETTINGS, allowNonTradeableMaterials: false }
+    })
+    expect(wrapper.findAll('[data-test="profit-row"]').length).toBe(rowsBefore)
+    expect(isChecked(wrapper, 'setting-allowNonTradeableMaterials')).toBe(false)
+    expect(wrapper.find('[data-test="effective-settings"]').text()).toContain(
+      'non-Trading-Post materials excluded'
+    )
+
+    // The three display filters are untouched by it, and it is untouched by them.
+    await wrapper.find('[data-test="filter-zero-craftable"]').setValue(true)
+    expect(api.profitRequests).toHaveLength(2)
+    expect(isChecked(wrapper, 'setting-allowNonTradeableMaterials')).toBe(false)
+  })
+
+  it('keepsTheMaterialRuleThroughAnExplicitReload', async () => {
+    const api = new FakeCraftingApi()
+    const wrapper = await openScreen(api)
+
+    await wrapper.find('[data-test="setting-allowNonTradeableMaterials"]').setValue(false)
+    await flushPromises()
+    await wrapper.find('[data-test="reload"]').trigger('click')
+    await flushPromises()
+
+    expect(api.profitRequests.at(2)).toEqual({
+      scope: { kind: 'ALL' },
+      settings: { ...DEFAULT_SETTINGS, allowNonTradeableMaterials: false }
+    })
+    expect(isChecked(wrapper, 'setting-allowNonTradeableMaterials')).toBe(false)
+  })
+
+  it('explainsAMaterialRestrictedRecipeInTheSelectedResultWithoutATableTag', async () => {
+    const api = new FakeCraftingApi()
+    api.profitHandler = () =>
+      Promise.resolve(
+        profitResponse([profitableRow, nonTradeableMaterialRow], 'ALL', {
+          ...DEFAULT_SETTINGS,
+          allowNonTradeableMaterials: false
+        })
+      )
+    api.resolutionHandler = (request) =>
+      Promise.resolve(resolutionResponse(request, { row: nonTradeableMaterialRow, tree: nonTradeableMaterialTree }))
+
+    const wrapper = await openScreenListingEveryRow(api)
+
+    // No row label, and the raw code stays out of the comparison table.
+    expect(rowDiagnostics(wrapper)).toEqual([])
+    expect(wrapper.find('[data-test="profit-table"]').text()).not.toContain('NON_TRADEABLE_MATERIAL')
+
+    await selectRecipe(wrapper, nonTradeableMaterialRow.outputName as string)
+    await flushPromises()
+
+    const explanation = wrapper.find('[data-test="detail-status-explanation"]').text()
+    expect(explanation).toContain('cannot be traded on the Trading Post')
+    expect(explanation).toContain('switched off')
+    expect(wrapper.find('[data-test="detail-state-code"]').text()).toBe('NON_TRADEABLE_MATERIAL')
+
+    // And beside the material it applies to, in the tree the backend supplied.
+    // Matched on each node's own name, so a parent containing the child's text is not mistaken
+    // for it.
+    const nodes = wrapper.findAll('[data-test="tree-node"]')
+    const named = (name: string) =>
+      nodes.find((element) => element.find('[data-test="node-name"]').text().includes(name))
+
+    const restricted = named('Account Bound Scrap')
+    expect(restricted).toBeDefined()
+    expect(restricted?.find('[data-test="node-blocked-reason"]').text()).toBe(
+      'Non-Trading-Post material'
+    )
+    expect(restricted?.find('[data-test="node-blocked-explanation"]').text()).toContain(
+      'cannot be traded on the Trading Post'
+    )
+
+    // The tradeable sibling in the same craft carries no restriction.
+    const sibling = named('Iron Ore')
+    expect(sibling).toBeDefined()
+    expect(sibling?.find('[data-test="node-blocked-reason"]').exists()).toBe(false)
   })
 })

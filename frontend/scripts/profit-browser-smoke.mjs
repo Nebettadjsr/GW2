@@ -8,7 +8,11 @@
  * the changeable maximum and Show all — and whole-row selection by pointer, on both viewports. Since
  * STORY-WEB-011 those controls are the *Displayed results* subgroup of the calculation-controls
  * panel, all three filters open enabled, and the removed explanatory paragraphs are checked to be
- * gone without the accessible description going with them.
+ * gone without the accessible description going with them. Since STORY-DOM-021 it also covers
+ * 2.1.1's "Allow non-Trading-Post materials" *calculation* rule: its grouping and enabled default,
+ * that switching it submits one calculation carrying it rather than filtering rows in the page, that
+ * a reload keeps it for the table and its detail, and that the restricted result is kept and
+ * explained beside the material it applies to.
  *
  * Runs the built frontend against a *controlled* API boundary (`scripts/stubOrigin.mjs`): every
  * answer comes from this process, so no backend, database or GW2 API is involved and nothing can be
@@ -134,6 +138,75 @@ const NON_POSITIVE_PROFIT_ROW = 'Charged Quartz Crystal'
 /** The narrower scope deliberately drops recipe 1, so a replacement calculation can remove it. */
 function rowsForScope(scopeKind) {
   return scopeKind === 'ALL' ? allRows() : allRows().filter((row) => row.recipeId !== 1)
+}
+
+/**
+ * The row a calculation with "Allow non-Trading-Post materials" switched off returns, and only then
+ * (DOMAIN_SPEC 2.1.1, UD-010): the backend kept the recipe and reported its restriction, so the
+ * browser has a blocked result to explain rather than a row to delete. Its name is what proves the
+ * listing changed because a *new calculation* answered, not because the page filtered anything.
+ */
+const RESTRICTED_ROW = {
+  recipeId: 8,
+  outputItemId: 1008,
+  outputName: 'Bound Blade',
+  outputCount: 1,
+  disciplines: 'Weaponsmith',
+  minRating: 400,
+  resultAvailable: true,
+  craftableCount: 3,
+  profitCopper: 2_222,
+  totalProfitCopper: 6_666,
+  totalSellValueCopper: 60_000,
+  buyCostCopper: 1_000,
+  matsSellValueCopper: 500,
+  revenueCopper: 20_000,
+  blockedReason: 'NON_TRADEABLE_MATERIAL',
+  outputPrice: { buyUnitCopper: 19_000, sellUnitCopper: 20_000 },
+  missingToBuy: [],
+  missingToBuyOne: []
+}
+
+/** Every row a request may be answered with, for the detail route's own candidate lookup. */
+function everyKnownRow() {
+  return [...allRows(), RESTRICTED_ROW]
+}
+
+/**
+ * The tree for {@link RESTRICTED_ROW}: the restriction sits on the ingredient it applies to, while
+ * that ingredient's tradeable sibling in the same craft carries none.
+ */
+function restrictedResolutionTree(recipeId) {
+  return treeNode(1008, 'Bound Blade', {
+    requestedQuantity: 1,
+    missingQuantity: 1,
+    recipeId,
+    methods: [],
+    states: ['BLOCKED'],
+    blockedReasons: ['NON_TRADEABLE_MATERIAL'],
+    cashCostCopper: null,
+    opportunityCostCopper: null,
+    effectiveCostCopper: null,
+    children: [
+      treeNode(19_695, 'Account Bound Scrap', {
+        requestedQuantity: 3,
+        missingQuantity: 3,
+        states: ['BLOCKED'],
+        blockedReasons: ['NON_TRADEABLE_MATERIAL'],
+        cashCostCopper: null,
+        opportunityCostCopper: null,
+        effectiveCostCopper: null
+      }),
+      treeNode(19_700, 'Mithril Ore', {
+        requestedQuantity: 2,
+        boughtQuantity: 2,
+        methods: ['BUY'],
+        cashCostCopper: 240,
+        opportunityCostCopper: 0,
+        effectiveCostCopper: 240
+      })
+    ]
+  })
 }
 
 /**
@@ -270,7 +343,10 @@ function answerApi({ url, body, sendJson }) {
   if (url.pathname === '/api/crafting/profit') {
     const request = body === '' ? {} : JSON.parse(body)
     const scope = request.scope ?? { kind: 'ALL' }
-    const rows = rowsForScope(scope.kind)
+    // A different material rule is a different calculation, so this answer's rows differ too.
+    const rows = request.settings?.allowNonTradeableMaterials === false
+      ? [...rowsForScope(scope.kind), RESTRICTED_ROW]
+      : rowsForScope(scope.kind)
     return sendJson(200, {
       scope: {
         kind: scope.kind,
@@ -284,7 +360,9 @@ function answerApi({ url, body, sendJson }) {
         maxBuyCopper: 250_000,
         listingSell: false,
         listingBuy: false,
-        dailyBuyInsteadOfCraft: true
+        dailyBuyInsteadOfCraft: true,
+        // DOMAIN_SPEC 2.1.1 / UD-009: the option opens enabled.
+        allowNonTradeableMaterials: true
       },
       rowCount: rows.length,
       rows
@@ -293,7 +371,7 @@ function answerApi({ url, body, sendJson }) {
   if (url.pathname === '/api/crafting/profit/resolution') {
     const request = JSON.parse(body)
     const scope = request.calculation?.scope ?? { kind: 'ALL' }
-    const row = allRows().find((candidate) => candidate.recipeId === request.recipeId)
+    const row = everyKnownRow().find((candidate) => candidate.recipeId === request.recipeId)
     if (row === undefined) {
       return sendJson(404, {
         error: 'RECIPE_NOT_IN_CALCULATION',
@@ -317,7 +395,9 @@ function answerApi({ url, body, sendJson }) {
       row,
       treeStatus: 'AVAILABLE',
       treeBasis: 'SINGLE_OUTPUT_REQUIREMENT',
-      tree: resolutionTree(request.recipeId)
+      tree: request.recipeId === RESTRICTED_ROW.recipeId
+        ? restrictedResolutionTree(request.recipeId)
+        : resolutionTree(request.recipeId)
     })
   }
   sendJson(404, { error: 'NOT_FOUND', message: url.pathname })
@@ -370,6 +450,20 @@ async function textOf(page, selector) {
  */
 function requestsToPath(stub, path) {
   return stub.requests.filter((request) => request.path === path)
+}
+
+/** Waits until this process has answered `atLeast` requests to `path`, or fails naming the shortfall. */
+async function waitForRequestCount(stub, path, atLeast) {
+  const deadline = Date.now() + TIMEOUT_MS
+  while (requestsToPath(stub, path).length < atLeast) {
+    if (Date.now() > deadline) {
+      throw new Error(
+        `Timed out waiting for ${atLeast} requests to ${path}; ` +
+          `${requestsToPath(stub, path).length} arrived.`
+      )
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
 }
 
 async function listedRecipes(page) {
@@ -1220,7 +1314,184 @@ async function run() {
       )
     }
 
-    // 16. Nothing here submitted a synchronization, and nothing failed in the page.
+    // 16. DOMAIN_SPEC 2.1.1's "Allow non-Trading-Post materials" calculation rule (UD-009/UD-010):
+    // grouped with the calculation, open enabled, recalculated in the backend, preserved on reload,
+    // and explained from the backend's own facts — never a display filter.
+    await openProfit(page, stub.origin, WIDE)
+    await page.click('[data-test="settings-disclosure"] summary')
+    const materialRule = await page.evaluate(() => {
+      const control = document.querySelector('[data-test="setting-allowNonTradeableMaterials"]')
+      return {
+        present: control !== null,
+        checked: control?.checked ?? null,
+        inCalculationGroup:
+          document.querySelector('[data-test="calculation-controls"]')?.contains(control) ?? false,
+        inDisplayGroup:
+          document.querySelector('[data-test="display-controls"]')?.contains(control) ?? false,
+        describedBy: control?.getAttribute('aria-describedby'),
+        help:
+          document
+            .querySelector('[data-test="setting-allowNonTradeableMaterials-help"]')
+            ?.textContent?.replace(/\s+/g, ' ')
+            .trim() ?? null
+      }
+    })
+    check(materialRule.present, 'The "Allow non-Trading-Post materials" control is missing.')
+    check(
+      materialRule.inCalculationGroup && !materialRule.inDisplayGroup,
+      `The material rule is not grouped with the calculation: ${JSON.stringify(materialRule)}`
+    )
+    check(materialRule.checked === true, 'The material rule did not open enabled.')
+    check(
+      materialRule.help !== null && materialRule.describedBy === 'allow-non-tp-help',
+      `The material rule has no help text bound to it: ${JSON.stringify(materialRule)}`
+    )
+    for (const phrase of ['own them or can craft them', 'unavailable', 'consume no such material']) {
+      check(
+        materialRule.help.includes(phrase),
+        `The material rule's help does not state "${phrase}": ${materialRule.help}`
+      )
+    }
+    check(
+      (await textOf(page, '[data-test="effective-settings"]')).includes(
+        'non-Trading-Post materials allowed'
+      ),
+      'The effective-settings summary does not report the material rule in force.'
+    )
+    record(
+      'the material rule is a calculation control, enabled by default',
+      `help: ${materialRule.help.slice(0, 72)}…`
+    )
+
+    // Switching it off is a *calculation*: exactly one new request carrying the rule, and the list
+    // changes because that answer's rows differ — the page deleted nothing.
+    const listedUnderTheRule = await listedRecipes(page)
+    const calculationsBeforeRule = requestsToPath(stub, '/api/crafting/profit').length
+    const filtersBeforeRule = await displayControlState(page)
+    await page.setChecked('[data-test="setting-allowNonTradeableMaterials"]', false)
+    await page.waitForFunction(
+      () =>
+        [...document.querySelectorAll('[data-test="profit-row"] .recipe-name')].some(
+          (name) => (name.textContent ?? '').trim() === 'Bound Blade'
+        ),
+      undefined,
+      { timeout: TIMEOUT_MS }
+    )
+    const ruleCalculations = requestsToPath(stub, '/api/crafting/profit').slice(calculationsBeforeRule)
+    check(
+      ruleCalculations.length === 1,
+      `Switching the material rule submitted ${ruleCalculations.length} calculations, not 1.`
+    )
+    check(
+      JSON.parse(ruleCalculations[0].body).settings?.allowNonTradeableMaterials === false,
+      `The calculation did not carry the rule: ${ruleCalculations[0].body}`
+    )
+    const filtersAfterRule = await displayControlState(page)
+    check(
+      JSON.stringify(filtersBeforeRule) === JSON.stringify(filtersAfterRule),
+      'Switching the material rule changed a display control.'
+    )
+    const listedWithoutTheRule = await listedRecipes(page)
+    check(
+      listedWithoutTheRule.length === listedUnderTheRule.length + 1 &&
+        listedWithoutTheRule.includes('Bound Blade'),
+      `The new calculation's rows are not what is listed: ${listedWithoutTheRule.join(', ')}`
+    )
+    check(
+      (await textOf(page, '[data-test="effective-settings"]')).includes(
+        'non-Trading-Post materials excluded'
+      ),
+      'The effective-settings summary still reports the material rule as allowed.'
+    )
+    record(
+      'switching the rule recalculates in the backend and hides nothing locally',
+      `1 calculation carrying the rule, ${listedUnderTheRule.length} → ${listedWithoutTheRule.length} rows`
+    )
+
+    // The restricted result is kept and explained — in the detail and beside the material, not as a
+    // row label and not as a restored State column.
+    const restrictedIndex = listedWithoutTheRule.indexOf('Bound Blade')
+    await (await page.$$('[data-test="select-row"]'))[restrictedIndex].click()
+    await page.waitForFunction(
+      () => document.querySelector('[data-test="detail-name"]')?.textContent?.trim() === 'Bound Blade',
+      undefined,
+      { timeout: TIMEOUT_MS }
+    )
+    await page.waitForSelector('[data-test="resolution-tree"]', { timeout: TIMEOUT_MS })
+    const restrictedExplanation = await textOf(page, '[data-test="detail-status-explanation"]')
+    check(
+      restrictedExplanation.includes('cannot be traded on the Trading Post') &&
+        restrictedExplanation.includes('switched off'),
+      `The detail does not explain the material restriction: ${restrictedExplanation}`
+    )
+    const restrictedNode = await page.evaluate(() => {
+      const nodes = [...document.querySelectorAll('[data-test="tree-node"]')]
+      const own = (node) => node.querySelector('[data-test="node-name"]')?.textContent?.trim() ?? ''
+      const restricted = nodes.find((node) => own(node).includes('Account Bound Scrap'))
+      const sibling = nodes.find((node) => own(node).includes('Mithril Ore'))
+      const reasonOf = (node) =>
+        node?.querySelector('[data-test="node-blocked-reason"]')?.textContent?.trim() ?? null
+      return {
+        restricted: reasonOf(restricted),
+        restrictedNote:
+          restricted?.querySelector('[data-test="node-blocked-explanation"]')?.textContent?.trim() ??
+          null,
+        sibling: reasonOf(sibling)
+      }
+    })
+    check(
+      restrictedNode.restricted === 'Non-Trading-Post material',
+      `The restriction is not reported at the material it applies to: ${JSON.stringify(restrictedNode)}`
+    )
+    check(
+      restrictedNode.sibling === null,
+      'A tradeable ingredient of the same craft was marked restricted too.'
+    )
+    const tableTextUnderTheRule = await textOf(page, '[data-test="profit-table"]')
+    check(
+      !tableTextUnderTheRule.includes('NON_TRADEABLE_MATERIAL') &&
+        !tableTextUnderTheRule.includes('Non-Trading-Post material'),
+      'The comparison table labels the restriction as an ordinary row state.'
+    )
+    const headersUnderTheRule = await page.$$eval('[data-test="profit-table"] thead th', (cells) =>
+      cells.map((cell) => (cell.textContent ?? '').replace(/\s+/g, ' ').trim())
+    )
+    check(
+      !headersUnderTheRule.some((header) => header.startsWith('State')),
+      `The restriction brought a State column back: ${headersUnderTheRule.join(' | ')}`
+    )
+    record(
+      'the restricted result is kept and explained from backend facts',
+      `detail: ${restrictedExplanation.slice(0, 72)}…`
+    )
+
+    // Reload results keeps the rule, and a detail asked afterwards carries it too.
+    const calculationsBeforeReload = requestsToPath(stub, '/api/crafting/profit').length
+    const detailsBeforeReload = requestsToPath(stub, '/api/crafting/profit/resolution').length
+    await page.click('[data-test="reload"]')
+    await waitForRequestCount(stub, '/api/crafting/profit', calculationsBeforeReload + 1)
+    await waitForRequestCount(stub, '/api/crafting/profit/resolution', detailsBeforeReload + 1)
+    const afterReload = requestsToPath(stub, '/api/crafting/profit').at(-1)
+    check(
+      JSON.parse(afterReload.body).settings?.allowNonTradeableMaterials === false,
+      `A reload dropped the material rule: ${afterReload.body}`
+    )
+    const stillChecked = await page.$eval(
+      '[data-test="setting-allowNonTradeableMaterials"]',
+      (control) => control.checked
+    )
+    check(stillChecked === false, 'The reloaded page reset the material rule to its default.')
+    const detailAfterReload = requestsToPath(stub, '/api/crafting/profit/resolution').at(-1)
+    check(
+      JSON.parse(detailAfterReload.body).calculation?.settings?.allowNonTradeableMaterials === false,
+      `A detail was asked for under a different material rule than the table's: ${detailAfterReload.body}`
+    )
+    record(
+      'the material rule survives a reload, for the table and its detail',
+      `${requestsToPath(stub, '/api/crafting/profit').length} calculations so far`
+    )
+
+    // 17. Nothing here submitted a synchronization, and nothing failed in the page.
     check(
       stub.requestsTo('/api/sync').length === 0 && stub.requestsTo('/api/prices').length === 0,
       `The Profit screen submitted a synchronization: ${JSON.stringify(stub.requestsTo('/api'))}`

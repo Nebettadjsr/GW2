@@ -52,11 +52,12 @@ Label each monetary value's per-craft or total basis; keep secondary diagnostics
 in selected-result details. Total sell value is the applicable Trading Post sell
 value for the craftable output quantity: section 24's gross revenue per execution
 times section 28's craftable count, including recipe output quantity. It remains
-gross market value, not received revenue. Selected-result details must distinguish
-gross sale value, listing and exchange fees, net sale revenue and resulting profit,
-with each value's quantity basis labelled. All amounts come from the backend;
-neither Vue nor another presentation layer calculates fees or profit. Section 25
-owns the selling-fee policy and its outstanding sale-grouping decision.
+gross market value, not received revenue. Output Revenue, Total Sell Value and
+Instant Buy / Instant Sell displays retain gross Trading Post values. In calculation
+details, Profit and Total Profit carry a small explanatory note, such as
+"after 15% TP fees". Section 25 owns the decided fee policy; separate rounded
+listing/exchange-fee and net-revenue displays are not required. All amounts come
+from the backend; no presentation layer calculates fees or profit.
 
 The entire recipe row must be selectable, with an accessible keyboard equivalent
 and a visible selection indicator. On wide screens, selection populates a dedicated
@@ -870,118 +871,56 @@ The selected output price depends on the configured sale mode:
 
 # 25. Trading Post Selling Fees
 
-Request-008 supersedes the prior Crafting Profit selling-fee exemption. Wherever
-Trading Post sale proceeds are used as profitability revenue, the authoritative
-domain calculation must deduct the 5% listing fee and 10% exchange fee exactly
-once, reproducing actual Guild Wars 2 copper-level rounding and applicable minimum
-fees. A floating-point gross-price multiplier is not an adequate substitute when
-it gives a different result. Verify factual edge rules before implementing them.
+Resolved UD-011 supersedes Request-008's copper-accurate transaction-model
+requirement. For application profitability, TP fees are 15% of the corresponding
+gross Sell Value. Copper-level differences due only to transaction rounding,
+minimum fees or sale grouping need not be modeled separately.
 
 ```text
-net_sale_revenue = gross_sale_value - listing_fee - exchange_fee
-profit = net_sale_revenue - relevant_material_cost_or_value
+profit = sell_value - (0.15 * sell_value) - own_material_value - buy_cost
 ```
 
-For the PO's example, gross sale value 300c incurs listing fee 15c and exchange
-fee 30c, leaving 255c; with unchanged material value 204c, profit is 51c.
+Apply this rule to both per-craft Profit and Total Profit, using each value's
+corresponding quantity basis. Apply it consistently to Crafting Profit, Discovery
+informational profit, profitability comparisons/ranking and Ectoplasm profit.
+Compute monetary results in the backend/domain and deduct fees exactly once.
+Existing monetary precision/formatting conventions may be retained; no separate
+transaction grouping model or rounding investigation is required.
+
+Displayed Trading Post prices, Output Revenue, Total Sell Value and Instant Buy /
+Instant Sell prices remain gross. Fees affect profit, not those displayed prices.
+The 300c gross / 204c material example gives 51c profit. Recipe eligibility,
+owned-material valuation, missing-material resolution, craft quantities, buying
+costs, budgets and expected salvage yields remain unchanged.
 
 ## 25.1 Verified fee semantics
 
-Established from the Guild Wars 2 Wiki, "Trading Post" section *Additional fees*
-(https://wiki.guildwars2.com/wiki/Trading_Post, retrieved 2026-09-26):
+STORY-DOM-022 records the evidence and limitations of the existing explicit-sale
+primitive, including unverified rounding direction. That historical calculation
+does not define application profitability after resolved UD-011. Do not impose
+its separately rounded component/minimum fees on section 25's 15% model, or
+describe an inferred rounding direction as verified game behavior.
 
-- both fees are charged on the **total sale price** of the transaction, not per item;
-- listing fee: 5% of that total, **minimum 1 copper**, taken immediately when the
-  item is listed or instantly sold, and never refunded;
-- exchange fee: 10% of that total, **minimum 1 copper**, deducted from the coins
-  delivered after a successful sale.
-
-The two components are rounded separately, so a single rounded 15% is not
-equivalent: a 15c sale owes 1c listing (5% = 0.75) and 2c exchange (10% = 1.5),
-totalling 3c, where one rounded 15% would give 2c and `gross × 0.85` would give
-13c net instead of 12c.
-
-**Unverified edge rule.** No reliable source states the game's rounding direction
-for a fractional copper fee, and the PO's 300c example divides exactly, so it
-cannot settle it. Rounding *up* is excluded by inference — it would make both
-documented 1-copper minimums unreachable and therefore meaningless. Rounding half
-away from zero is the applied rule; rounding down remains possible on the present
-evidence. This is a known, single-point limitation, not established accuracy.
-
-Both minimum fees apply to a very small non-zero sale, so net proceeds can be
-negative there. A sale worth nothing is not a transaction and carries no fee.
-
-Keep gross market quotes, gross sale value, fees, net revenue and profit distinct.
-This policy applies consistently to per-craft and total profit, profit comparisons,
-rankings and other sale-revenue consumers, including informational Discovery
-profit and Ectoplasm's sale proceeds. Monetary results originate in the domain
-and pass through application/transport/presentation without recalculation.
-
-The application's assumed sale grouping is awaiting the Product Owner answer in
-agent/user-decisions/UD-011-trading-post-sale-quantity-basis.md. That decision must
-settle how actual-sale rounding applies to multi-output crafts, all counted crafts
-and fractional expected salvage yields, and reconcile section 27 if necessary.
-Do not silently select a grouping or claim complete fee accuracy before it is set.
-
-This change does not alter recipe eligibility, owned-material handling or its
-existing opportunity-cost valuation, missing-material resolution, craft quantities,
-buy-mode acquisition costs, budgets or expected salvage yields. It corrects sale
-revenue used in profitability; it does not authorize retuning the resolver.
-
+---
 
 # 26. Profit Per Craft
 
-The current intended economic model is conceptually:
-
-```text
-profit_per_craft
-    =
-output_revenue
-    -
-purchased_material_cost
-    -
-owned_material_opportunity_cost
-```
-
-Where:
-
-```text
-purchased_material_cost
-```
-
-represents actual copper required for missing materials.
-
-And:
-
-```text
-owned_material_opportunity_cost
-```
-
-represents value sacrificed by consuming existing inventory.
-
-For Crafting Profit, `output_revenue` means net sale revenue under section 25;
-section 24's gross revenue remains separately available as market-value information.
+Profit per craft is the gross output sell value less section 25's 15% fee,
+purchased-material cost and owned-material opportunity cost. Purchased-material
+cost remains the actual copper required for missing materials; opportunity cost
+remains the value sacrificed by consuming existing inventory. Displayed Output
+Revenue remains gross, not the fee-adjusted intermediate used for profit.
 
 ---
 
 # 27. Total Profit
 
-Total profit is conceptually:
-
-```text
-total_profit
-    =
-profit_per_craft
-    ×
-craft_count
-```
-
-This is only valid if the craft count itself was determined using a resource simulation that prevents material reuse.
-
-Section 25's new fee policy also requires an explicit sale-grouping decision.
-UD-011 must settle whether rounding on a combined sale changes the relationship
-between per-craft profit and total profit; do not infer that decision from this
-existing conceptual multiplication rule.
+Apply section 25's 15% fee to the corresponding total gross Sell Value,
+subtracting the existing total purchased-material and owned-material costs.
+The existing conceptual relationship of per-craft profit times craft count
+remains applicable under the same cost aggregation; UD-011 requires no separate
+transaction-rounding or sale-grouping adjustment. Craft count must still come
+from a resource simulation that prevents material reuse.
 
 ---
 
@@ -1294,7 +1233,13 @@ CYCLE_DETECTED
 PRICE_UNAVAILABLE
 RECIPE_NOT_ALLOWED
 INSUFFICIENT_BUDGET
+NON_TRADEABLE_MATERIAL
 ```
+
+`NON_TRADEABLE_MATERIAL` is section 2.1.1's material restriction: the requirement could only be met
+by consuming a material that is not tradeable on the Trading Post while that calculation was asked
+not to use such a path. It is a chosen restriction, not a missing price and not a missing recipe, so
+it never replaces `PRICE_UNAVAILABLE` or `NO_RECIPE` and never appears while the option is enabled.
 
 All of these are represented explicitly in the implementation (`craft.BlockedReason`) and are assigned by the planner rather than only declared (`docs/KNOWN_PROBLEMS.md` §3.5).
 
@@ -1388,34 +1333,18 @@ Trading Post sales of recovered materials use net proceeds under sections 25 and
 
 # 46. Ectoplasm Net Cost
 
-Conceptually:
+Economic net cost per Ectoplasm is acquisition cost minus expected recovered
+Dust value after section 25's 15% deduction. Calculate expected gross recovered
+value from the unchanged expected Dust yield and selected gross Dust sale price;
+do not round each Dust unit into a modeled sale transaction before scaling yield.
 
-```text
-net_cost_per_ecto
-    =
-ecto_acquisition_cost
-    -
-net_value_of_recovered_dust
-```
-
-where:
-
-```text
-net_value_of_recovered_dust
-    =
-expected_dust_quantity
-    ×
-dust_sale_price
-```
-
-`dust_sale_price` represents net Trading Post sale proceeds under section 25,
-not a second view-specific fee formula or an approximate gross-price × 0.85 rule.
-UD-011 must settle the sale basis used with fractional expected Dust quantities
-before copper-accurate integration is implemented. Apply selling fees only to
-sale proceeds, not to Ecto acquisition cost or Luck. Preserve instant/listing
-sale modes, instant/order acquisition modes and the existing expected yields.
-Profit is recovered net sale value minus acquisition cost; section 47 uses the
-same fee-inclusive net cost. Expected values are not guaranteed integer drops.
+Profit is expected recovered sale value minus the 15% fee and acquisition cost.
+Section 47 retains its existing fee-inclusive economic net-cost basis for Luck.
+These economic costs are distinct from displayed market prices: Dust quotes
+and gross recovered sale values remain gross. Apply no selling fee to acquisition
+cost or Luck, and do not deduct fees twice. Preserve instant/listing sale modes,
+instant/order acquisition modes and existing yields. Expected values are not
+guaranteed integer drops.
 
 ---
 
@@ -1582,9 +1511,9 @@ The previously open domain questions have been resolved as follows.
 
 ## DQ-001 — Trading Post fees
 
-Request-008 supersedes the former exemption: apply section 25's authoritative
-net-sale-revenue policy. The fee requirement is decided; its modeled sale grouping
-remains explicitly pending UD-011.
+Resolved UD-011 establishes section 25's 15% profitability model with gross
+displayed prices; transaction-rounding and sale-grouping differences are outside
+the required application model.
 
 **Status:** DECIDED
 

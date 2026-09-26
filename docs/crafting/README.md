@@ -169,6 +169,32 @@ You can also cap how much cash the plan is allowed to spend on purchases (§19).
 value means no limit. When a positive budget is set, any plan whose total purchase cost would
 exceed it is not treated as feasible.
 
+## Allowing or excluding non-Trading-Post materials
+
+Some materials can't be traded on the Trading Post at all — bound items, rewards and similar. The
+web Crafting Profit page has a calculation control for them, **"Allow non-Trading-Post materials"**,
+which opens switched **on** (§2.1.1, decisions UD-009 and UD-010). It is a calculation setting, not a
+display filter: switching it asks the backend for a new calculation rather than hiding rows you
+already have.
+
+- **On** (the default, and how the tool has always behaved): such a material may be used when you
+  own it or can craft it, under the same binding, buying, budget, daily and scope rules as anything
+  else. If a recipe needs one that you neither own nor can craft, the recipe stays unavailable — the
+  tool never invents a way to acquire it, because there isn't one.
+- **Off**: the calculation only uses paths that consume no such material anywhere in them, including
+  owned copies, bound copies and intermediates several steps down. Alternative paths that avoid them
+  are still evaluated normally, so a recipe with a second, dearer route that uses only tradable
+  materials is calculated along that route instead of disappearing.
+
+Whether an item counts as non-Trading-Post is a fact about the item, taken from the Trading Post's
+own list of tradable items — never guessed from a missing price. An ordinary tradable material with
+no usable quote is still `PRICE_UNAVAILABLE` (below), not "non-Trading-Post".
+
+Results restricted this way are kept rather than deleted: the recipe stays in the list with the
+reason `NON_TRADEABLE_MATERIAL`, and the selected result explains it beside the material it applies
+to. The ordinary display filters decide what you actually see. This control applies only to the web
+Crafting Profit page — Crafting Discovery and the JavaFX windows are unaffected.
+
 ## Choosing between crafting and buying an ingredient
 
 When an ingredient could be either crafted or bought, the tool picks whichever path has the lower
@@ -233,6 +259,7 @@ silently-completed calculation. The same principle extends to every reason a cra
 | `PRICE_UNAVAILABLE` | A required purchase has no usable Trading Post price. |
 | `RECIPE_NOT_ALLOWED` | The only recipe(s) found aren't allowed in this analysis (wrong discipline/character/context, §29). |
 | `INSUFFICIENT_BUDGET` | Completing the plan would exceed the purchase budget. |
+| `NON_TRADEABLE_MATERIAL` | The path needs a material that can't be traded on the Trading Post while "Allow non-Trading-Post materials" is switched off (above). |
 
 Both views show a **Status / requirements** column carrying this reason, and replace numeric
 buy-cost/revenue/profit cells with literal "Unavailable" text for a blocked row rather than a

@@ -86,7 +86,9 @@ class CraftingProfitApiControllerTest {
                 .andExpect(jsonPath("$.settings.maxBuyCopper").value(10000))
                 .andExpect(jsonPath("$.settings.listingSell").value(false))
                 .andExpect(jsonPath("$.settings.listingBuy").value(false))
-                .andExpect(jsonPath("$.settings.dailyBuyInsteadOfCraft").value(true));
+                .andExpect(jsonPath("$.settings.dailyBuyInsteadOfCraft").value(true))
+                // DOMAIN_SPEC §2.1.1 / UD-009: the non-Trading-Post material option opens enabled.
+                .andExpect(jsonPath("$.settings.allowNonTradeableMaterials").value(true));
 
         StubProfitService used = factory.only();
         assertEquals(DiscChoice.Kind.ALL, used.capturedChoice.kind);
@@ -97,6 +99,35 @@ class CraftingProfitApiControllerTest {
         assertFalse(settings.listingSell);
         assertFalse(settings.listingBuy);
         assertTrue(settings.dailyBuyInsteadOfCraft);
+        assertTrue(settings.allowNonTradeableMaterials);
+    }
+
+    @Test
+    void nonTradeableMaterialOptionIsPassedToTheCalculationAndEchoedBothWays() throws Exception {
+        factory.next(service -> service.canned = profitData(List.of(), Map.of(), Map.of(), Map.of()));
+
+        mockMvc.perform(post("/api/crafting/profit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"settings": {"allowNonTradeableMaterials": false}}"""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.settings.allowNonTradeableMaterials").value(false))
+                // The other settings still default; this option is independent of all of them.
+                .andExpect(jsonPath("$.settings.useOwnMats").value(true))
+                .andExpect(jsonPath("$.settings.maxBuyCopper").value(10000));
+
+        assertFalse(factory.only().capturedSettings.allowNonTradeableMaterials);
+
+        factory.next(service -> service.canned = profitData(List.of(), Map.of(), Map.of(), Map.of()));
+
+        mockMvc.perform(post("/api/crafting/profit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"settings": {"allowNonTradeableMaterials": true}}"""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.settings.allowNonTradeableMaterials").value(true));
+
+        assertTrue(factory.last().capturedSettings.allowNonTradeableMaterials);
     }
 
     @Test
@@ -568,6 +599,12 @@ class CraftingProfitApiControllerTest {
         StubProfitService only() {
             assertEquals(1, created.size(), "expected exactly one service instance");
             return created.get(0);
+        }
+
+        /** The most recently handed-out service, for a test that performs more than one request. */
+        StubProfitService last() {
+            assertFalse(created.isEmpty(), "expected at least one service instance");
+            return created.get(created.size() - 1);
         }
 
         @Override

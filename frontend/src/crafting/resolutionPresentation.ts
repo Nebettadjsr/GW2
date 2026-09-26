@@ -72,6 +72,12 @@ const BLOCKED_REASONS: Record<string, { label: string; because: string }> = {
   INSUFFICIENT_BUDGET: {
     label: 'Over the buy limit',
     because: 'buying it costs more than the maximum buy setting allows'
+  },
+  NON_TRADEABLE_MATERIAL: {
+    label: 'Non-Trading-Post material',
+    because:
+      'it cannot be traded on the Trading Post and “Allow non-Trading-Post materials” is switched ' +
+      'off, so no path consuming it was used'
   }
 }
 

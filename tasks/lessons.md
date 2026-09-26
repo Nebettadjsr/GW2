@@ -123,6 +123,38 @@ second broken diagnostic, and `taskkill`/`powershell.exe` are not on the Bash to
 need their absolute `/c/Windows/System32/…` path. Kill only the PIDs whose command line you recognize as yours — this repository normally has
 several pre-existing `npm run dev` servers that must survive.
 
+## A new overload silently orphans the test double that overrides the old one
+
+Adding a parameter by introducing an overload keeps production callers compiling, but a test stub
+that overrides the *old* signature still compiles too — and is never called again. Its captured
+fields stay null and the failure surfaces as an unrelated `NullPointerException`.
+
+**Why:** `STORY-DOM-021` added a ninth `MaterialTradeability` parameter to
+`CraftingPlanner.evaluateAllCoordinated` as an overload. `CraftingProfitService` moved to the new
+entry point; `CraftingProfitServiceTest.RecordingCraftingPlanner` still overrode the eight-argument
+one, so five tests failed with `"planner.capturedRoster" is null` — nothing in the message named the
+overload.
+
+**How to apply:** after adding an overload that existing callers are migrated to, `grep` for
+subclasses and `@Override`s of the old signature and move each one, or make the old signature
+`final`/delegating so an orphaned override cannot compile. When an existing test suddenly NPEs on a
+field a stub was supposed to fill, check which overload the production code now calls before
+debugging the test's own logic.
+
+## Verify a browser/DOM test hook against the component, not from memory
+
+A `data-test` name that does not exist makes `findAll` return nothing, and `expect(undefined?.…)`
+can pass or fail for the wrong reason. Matching an element by `text()` is worse: a parent contains
+every descendant's text, so `find(el => el.text().includes(name))` returns the ancestor.
+
+**Why:** the same story's new test looked for `[data-test="resolution-node"]` — the real hook is
+`tree-node` — and then found the tree *root* when matching "Account Bound Scrap", so it asserted the
+root's own blocked reason and would have passed with the child unmarked.
+
+**How to apply:** grep the component for the hook before asserting on it, and match a node by its own
+label element (`el.find('[data-test="node-name"]').text()`), not by the subtree's text. Pair every
+"this node is marked" assertion with a sibling that must *not* be.
+
 ## The prompt outranks the contract it embeds — keep both in step
 
 When a role's behavior is set by a Markdown contract *and* by the harness

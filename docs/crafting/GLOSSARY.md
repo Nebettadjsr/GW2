@@ -37,6 +37,10 @@ Companion to [README.md](README.md), which explains the full calculation flow. S
 - **Transferable intermediate** — a crafted intermediate item that is not soulbound, and can
   therefore be produced by one character and used by another within a coordinated plan (§2.2.1).
 - **Simulation cap** — the intentional 250-craft limit per recipe per calculation (§28, UD-003).
+- **Non-Trading-Post material** — an item that cannot be traded on the Trading Post by its own
+  classification, taken from the Trading Post's list of tradable items and never guessed from a
+  missing price. Web Crafting Profit's "Allow non-Trading-Post materials" control decides whether
+  paths consuming one may be used (§2.1.1, UD-009/UD-010).
 
 ## FAQ
 
@@ -92,6 +96,14 @@ So "this can't currently be evaluated" (e.g. a missing price, buying disabled, o
 visibly distinct from "this was evaluated and isn't profitable." Hiding the row would make those two
 very different situations look identical. See
 [Unavailable prices and blocked results](README.md#unavailable-prices-and-blocked-results).
+
+**What does "Allow non-Trading-Post materials" do?**
+Switched on (the default), materials that can't be traded on the Trading Post may be used when you
+own them or can craft them; one you can do neither with still makes the recipe unavailable. Switched
+off, only paths consuming no such material are calculated, and alternative routes that avoid them are
+evaluated instead. It changes the calculation the backend runs, not which of the returned rows are
+displayed. See
+[Allowing or excluding non-Trading-Post materials](README.md#allowing-or-excluding-non-trading-post-materials).
 
 **Why is crafting simulation capped at 250?**
 It's an intentional, project-chosen limit to keep calculations bounded, not a game rule. Craftable

@@ -217,6 +217,59 @@ describe('Crafting Profit resolution detail association', () => {
       expect(wrapper.find('[data-test="resolution-tree"]').exists()).toBe(false)
     })
 
+    it('refusesADetailEchoingThePreviousNonTradingPostMaterialRule', async () => {
+      // Every answer claims the rule was on, whatever the request asked for.
+      const api = new FakeCraftingApi()
+      api.resolutionHandler = (request) =>
+        Promise.resolve(
+          resolutionResponse(request, {
+            calculation: {
+              scope: { kind: 'ALL', discipline: null, characterName: null, rating: 0 },
+              settings: { ...DEFAULT_SETTINGS, allowNonTradeableMaterials: true }
+            }
+          })
+        )
+      const wrapper = await openScreen(api)
+
+      await selectRecipe(wrapper, 'Iron Ingot')
+      expect(rootItem(wrapper)).not.toBeNull()
+
+      await wrapper.find('[data-test="setting-allowNonTradeableMaterials"]').setValue(false)
+      await flushPromises()
+
+      // The table now reports the rule off, so an answer calculated with it on is not this detail.
+      expect(wrapper.find('[data-test="resolution-failed"]').text()).toContain(
+        'a different recipe or different calculation inputs'
+      )
+      expect(wrapper.find('[data-test="resolution-tree"]').exists()).toBe(false)
+    })
+
+    it('ignoresADetailStillInFlightFromThePreviousMaterialRule', async () => {
+      const api = new FakeCraftingApi()
+      const underTheOldRule = deferred<CraftingProfitResolutionResponse>()
+      api.resolutionHandler = (request, callIndex) =>
+        callIndex === 0
+          ? underTheOldRule.promise
+          : Promise.resolve(resolutionResponse(request, { tree: treeNamed('Restricted root') }))
+
+      const wrapper = await openScreen(api)
+      await selectRecipe(wrapper, 'Iron Ingot')
+
+      await wrapper.find('[data-test="setting-allowNonTradeableMaterials"]').setValue(false)
+      await flushPromises()
+
+      underTheOldRule.resolve(
+        resolutionResponse(api.resolutionRequests[0]!, { tree: treeNamed('Permissive root') })
+      )
+      await flushPromises()
+
+      expect(api.resolutionRequests.at(1)?.calculation.settings).toEqual({
+        ...DEFAULT_SETTINGS,
+        allowNonTradeableMaterials: false
+      })
+      expect(rootItem(wrapper)).toBe('Restricted root')
+    })
+
     it('clearsTheDetailWhenANewResultSetNoLongerContainsTheSelectedRecipe', async () => {
       const api = new FakeCraftingApi()
       const wrapper = await openScreen(api)

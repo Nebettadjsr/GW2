@@ -33,6 +33,13 @@ final class CraftingProfitApiMapper {
     static final boolean DEFAULT_LISTING_BUY = false;  // instant buy
     static final boolean DEFAULT_DAILY_BUY_INSTEAD_OF_CRAFT = true;
 
+    /**
+     * DOMAIN_SPEC.md §2.1.1 / UD-009: the non-Trading-Post material option opens <em>enabled</em>, so
+     * an omitted field - and therefore an empty request body - calculates exactly as this route did
+     * before the option existed.
+     */
+    static final boolean DEFAULT_ALLOW_NON_TRADEABLE_MATERIALS = true;
+
     private static final String SCOPE_ALL = "ALL";
     private static final String SCOPE_DISCIPLINE = "DISCIPLINE";
     private static final String SCOPE_CHARACTER_DISCIPLINE = "CHARACTER_DISCIPLINE";
@@ -100,7 +107,9 @@ final class CraftingProfitApiMapper {
                 orDefault(settings == null ? null : settings.listingSell(), DEFAULT_LISTING_SELL),
                 orDefault(settings == null ? null : settings.listingBuy(), DEFAULT_LISTING_BUY),
                 orDefault(settings == null ? null : settings.dailyBuyInsteadOfCraft(),
-                        DEFAULT_DAILY_BUY_INSTEAD_OF_CRAFT));
+                        DEFAULT_DAILY_BUY_INSTEAD_OF_CRAFT),
+                orDefault(settings == null ? null : settings.allowNonTradeableMaterials(),
+                        DEFAULT_ALLOW_NON_TRADEABLE_MATERIALS));
     }
 
     /** A validated request, in both its transport form (echoed back) and its application form. */
@@ -123,7 +132,8 @@ final class CraftingProfitApiMapper {
                     settings.maxBuyCopper(),
                     settings.listingSell(),
                     settings.listingBuy(),
-                    settings.dailyBuyInsteadOfCraft());
+                    settings.dailyBuyInsteadOfCraft(),
+                    settings.allowNonTradeableMaterials());
         }
     }
 

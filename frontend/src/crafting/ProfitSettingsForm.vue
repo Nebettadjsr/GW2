@@ -49,6 +49,11 @@ function onDailyBuyChange(event: Event): void {
   if (dailyBuyInsteadOfCraft !== null) emitWith({ dailyBuyInsteadOfCraft })
 }
 
+function onAllowNonTradeableMaterialsChange(event: Event): void {
+  const allowNonTradeableMaterials = checkedValue(event)
+  if (allowNonTradeableMaterials !== null) emitWith({ allowNonTradeableMaterials })
+}
+
 function onListingSellChange(event: Event): void {
   const listingSell = isListingMode(event)
   if (listingSell !== null) emitWith({ listingSell })
@@ -102,6 +107,28 @@ function onMaxBuyChange(event: Event): void {
       Buy daily items instead of crafting
     </label>
 
+    <!--
+      A calculation rule, not one of the Displayed results filters: switching it asks the backend for a
+      new calculation (DOMAIN_SPEC 2.1.1, UD-009/UD-010). The help text states the decided rule for both
+      values, in the user's terms.
+    -->
+    <label class="wide">
+      <input
+        type="checkbox"
+        data-test="setting-allowNonTradeableMaterials"
+        aria-describedby="allow-non-tp-help"
+        :checked="settings.allowNonTradeableMaterials"
+        @change="onAllowNonTradeableMaterialsChange"
+      />
+      Allow non-Trading-Post materials
+      <span id="allow-non-tp-help" class="hint" data-test="setting-allowNonTradeableMaterials-help">
+        On: materials that cannot be traded on the Trading Post may be used when you own them or can
+        craft them; a required one you can neither own nor craft still makes the recipe unavailable.
+        Off: the backend calculates only paths that consume no such material, and evaluates the
+        alternatives that avoid them.
+      </span>
+    </label>
+
     <label>
       Max buy (copper)
       <input
@@ -152,6 +179,11 @@ function onMaxBuyChange(event: Event): void {
 
 input[type='number'] {
   width: 8rem;
+}
+
+/* The one control with a help sentence takes the full row, so its wording stays readable. */
+.wide {
+  flex-basis: 100%;
 }
 
 .hint {

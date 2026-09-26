@@ -81,6 +81,13 @@ export interface EffectiveSettings {
   listingSell: boolean
   listingBuy: boolean
   dailyBuyInsteadOfCraft: boolean
+  /**
+   * Whether the backend allowed calculation paths that consume materials which cannot be traded on
+   * the Trading Post (`DOMAIN_SPEC.md` 2.1.1, UD-009/UD-010). A **calculation** rule the backend
+   * applies, not one of the three display filters: switching it sends a new request, and with it off
+   * the backend returns different results rather than the browser hiding rows.
+   */
+  allowNonTradeableMaterials: boolean
 }
 
 /** Response body of `POST /api/crafting/profit`. */

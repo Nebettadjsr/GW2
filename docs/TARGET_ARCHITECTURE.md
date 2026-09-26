@@ -658,7 +658,11 @@ Each required JSON body contains `recipeId` (positive integer) and `calculation`
 - Settings retain `useOwnMats`, `allowBuying`, `maxBuyCopper`, `listingSell`,
   `listingBuy`, and Profit's `dailyBuyInsteadOfCraft`. Discovery fixes the latter
   to false and does not accept it as a selectable input. Existing validation,
-  defaults and rating semantics apply; this adds no new calculation controls.
+  defaults and rating semantics apply; this decision itself adds no new calculation
+  controls. Profit's settings additionally carry `allowNonTradeableMaterials`, the
+  control `DOMAIN_SPEC.md` section 2.1.1 decided separately: both routes take and
+  echo it with the same defaults and validation, so a detail is evaluated under the
+  table's own material rule. Discovery does not have it.
 
 The browser copies the table response's effective inputs into the appropriate
 request fields rather than relying on defaults again. It must not send row

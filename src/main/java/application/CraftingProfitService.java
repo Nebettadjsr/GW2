@@ -6,6 +6,7 @@ import craft.CraftingGraph;
 import craft.CraftingPlanner;
 import craft.CraftingSettings;
 import craft.Ingredient;
+import craft.MaterialTradeability;
 import craft.Node;
 import craft.PlannerContext;
 import craft.PriceQuote;
@@ -20,6 +21,7 @@ import repo.InventoryRepository;
 import repo.ItemRepository;
 import repo.RecipeRepository;
 import repo.tp.TpPriceRepository;
+import repo.tp.TpTradeableItemRepository;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -43,6 +45,7 @@ public class CraftingProfitService {
     private final RecipeRepository recipeRepo;
     private final InventoryRepository invRepo;
     private final TpPriceRepository tpRepo;
+    private final TpTradeableItemRepository tradeableRepo;
     private final ItemRepository itemRepo;
     private final CharacterRepository charRepo;
     private final CraftingGraphCache graphCache;
@@ -54,6 +57,7 @@ public class CraftingProfitService {
     private CraftingSettings lastSettings;
     private Set<Integer> lastAllowedRecipeIds = Collections.emptySet();
     private Map<Integer, PriceQuote> lastTp = Map.of();
+    private MaterialTradeability lastTradeability = MaterialTradeability.noneKnown();
     private Map<Integer, CraftResult> lastResultsByRecipeId = Map.of();
 
     public CraftingProfitService() {
@@ -70,7 +74,12 @@ public class CraftingProfitService {
                 new CraftingGraphCache(recipeRepo), new CraftingPlanner());
     }
 
-    /** Full seam used by application-layer tests to substitute fake/in-memory adapters (TARGET_ARCHITECTURE.md §25). */
+    /**
+     * Full seam used by application-layer tests to substitute fake/in-memory adapters
+     * (TARGET_ARCHITECTURE.md §25). Kept for callers that predate the Trading Post tradeability
+     * classification; it supplies the real adapter for it, which is only consulted when a request
+     * actually turns the non-Trading-Post material option off.
+     */
     public CraftingProfitService(RecipeRepository recipeRepo,
                                  InventoryRepository invRepo,
                                  TpPriceRepository tpRepo,
@@ -78,9 +87,23 @@ public class CraftingProfitService {
                                  CharacterRepository charRepo,
                                  CraftingGraphCache graphCache,
                                  CraftingPlanner planner) {
+        this(recipeRepo, invRepo, tpRepo, new TpTradeableItemRepository(), itemRepo, charRepo,
+                graphCache, planner);
+    }
+
+    /** As above, additionally substituting the Trading Post tradeability classification adapter. */
+    public CraftingProfitService(RecipeRepository recipeRepo,
+                                 InventoryRepository invRepo,
+                                 TpPriceRepository tpRepo,
+                                 TpTradeableItemRepository tradeableRepo,
+                                 ItemRepository itemRepo,
+                                 CharacterRepository charRepo,
+                                 CraftingGraphCache graphCache,
+                                 CraftingPlanner planner) {
         this.recipeRepo = recipeRepo;
         this.invRepo = invRepo;
         this.tpRepo = tpRepo;
+        this.tradeableRepo = tradeableRepo;
         this.itemRepo = itemRepo;
         this.charRepo = charRepo;
         this.graphCache = graphCache;
@@ -104,12 +127,13 @@ public class CraftingProfitService {
         Map<Integer, CraftResult> resultsByRecipeId = planner.evaluateAllCoordinated(
                 candidates.allRecipes(), inputs.sellableInventory(), inputs.accountBoundInventory(),
                 inputs.characterBoundInventory(), inputs.roster(), inputs.tp(), settings,
-                candidates.allowedRecipeIds());
+                candidates.allowedRecipeIds(), inputs.tradeability());
 
         this.lastAllRecipes = candidates.allRecipes();
         this.lastSettings = settings;
         this.lastAllowedRecipeIds = candidates.allowedRecipeIds();
         this.lastTp = inputs.tp();
+        this.lastTradeability = inputs.tradeability();
         this.lastResultsByRecipeId = resultsByRecipeId;
 
         return new ProfitData(candidates.visibleRecipes(), candidates.allRecipes(),
@@ -144,12 +168,12 @@ public class CraftingProfitService {
         CraftResult row = planner.evaluateOneCoordinated(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
                 inputs.accountBoundInventory(), inputs.characterBoundInventory(), inputs.roster(),
-                inputs.tp(), settings, candidates.allowedRecipeIds());
+                inputs.tp(), settings, candidates.allowedRecipeIds(), inputs.tradeability());
 
         SingleCraftExplanation explanation = new SingleCraftExplainer().explainCoordinated(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
                 inputs.accountBoundInventory(), inputs.characterBoundInventory(), inputs.roster(),
-                inputs.tp(), settings, candidates.allowedRecipeIds());
+                inputs.tp(), settings, candidates.allowedRecipeIds(), inputs.tradeability());
 
         return CraftingResolutionDetail.of(
                 recipeId, selected, row, explanation, inputs.items(), inputs.tp());
@@ -178,13 +202,18 @@ public class CraftingProfitService {
         }
     }
 
-    /** The roster, inventory pools, quotes and item metadata one operation captured. */
+    /**
+     * The roster, inventory pools, quotes, item metadata and Trading Post tradeability
+     * classification one operation captured. Both the table calculation and one row's fresh detail
+     * build their result from exactly one of these, so they apply the same setting to the same facts.
+     */
     private record CalculationInputs(List<CharacterCraftingProfile> roster,
                                      Map<Integer, Integer> sellableInventory,
                                      Map<Integer, Integer> accountBoundInventory,
                                      Map<String, Map<Integer, Integer>> characterBoundInventory,
                                      Map<Integer, PriceQuote> tp,
-                                     Map<Integer, ItemRepository.ItemInfo> items) {
+                                     Map<Integer, ItemRepository.ItemInfo> items,
+                                     MaterialTradeability tradeability) {
     }
 
     private Candidates loadCandidates(DiscChoice choice) throws SQLException {
@@ -225,6 +254,14 @@ public class CraftingProfitService {
         Map<Integer, PriceQuote> tp = tpRepo.loadTpQuotes(itemIds);
         Map<Integer, ItemRepository.ItemInfo> items = itemRepo.loadItems(itemIds);
 
+        // DOMAIN_SPEC.md section 2.1.1: the classification is a separate authoritative fact, read
+        // from its own table and never derived from the quotes above. It is only needed when the
+        // request actually restricts non-Trading-Post materials; with the option at its enabled
+        // default nothing is classified, so no path is restricted and no query is issued.
+        MaterialTradeability tradeability = settings.allowNonTradeableMaterials
+                ? MaterialTradeability.noneKnown()
+                : tradeableRepo.loadTradeability(itemIds);
+
         // Every scope uses the same per-step eligibility and ownership checks.
         List<CharacterCraftingProfile> roster = buildCoordinatedRoster(choice);
         Map<Integer, Integer> sellableInv = Map.of();
@@ -238,7 +275,8 @@ public class CraftingProfitService {
             characterBoundInv = inv.characterBound();
         }
 
-        return new CalculationInputs(roster, sellableInv, accountBoundInv, characterBoundInv, tp, items);
+        return new CalculationInputs(roster, sellableInv, accountBoundInv, characterBoundInv, tp,
+                items, tradeability);
     }
 
     /**
@@ -345,7 +383,9 @@ public class CraftingProfitService {
                 recipesByOutput,
                 lastTp,
                 lastSettings,
-                lastAllowedRecipeIds
+                lastAllowedRecipeIds,
+                null,
+                lastTradeability
         );
 
         RecipeTreeBuilder treeBuilder = new RecipeTreeBuilder();

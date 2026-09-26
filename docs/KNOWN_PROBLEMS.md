@@ -366,6 +366,16 @@ one reported here, out of this story's scope.
 
 **Status: Open, by instruction.** Recorded by `STORY-WEB-008`; removal is the Product Owner's decision, not a defect to fix unprompted.
 
+### 7.12 The non-Trading-Post material rule is only as current as the last global synchronization (open)
+
+**Observed fact:** `STORY-DOM-021` reads the tradeability classification from `tp_tradeable_items` (`repo.tp.TpTradeableItemRepository`), the item-id list that global synchronization rewrites wholesale from the Trading Post's own tradeable-item listing (`sync.TpSync.syncTpTradeableItems`, `CURRENT_ARCHITECTURE.md` §5.8). An item the table does not list is classified as non-Trading-Post. With the table never synchronized, or emptied by an interrupted rewrite, *no* item is listed and every material is classified non-Trading-Post.
+
+**Inferred risk:** a Crafting Profit calculation with "Allow non-Trading-Post materials" switched off would then block nearly every path, with `NON_TRADEABLE_MATERIAL` reported for ordinary tradable materials. That is what the stored data says, and it surfaces as visibly blocked results rather than silently permitting a path (`DOMAIN_SPEC.md` §2.1.1), but the user is given no indication that the *classification itself* is stale or absent — only that the recipes are restricted. The enabled default is unaffected: nothing is classified and no query is issued.
+
+**Recommendation:** treat an empty or absent classification as its own reportable state rather than as "nothing is tradeable", and surface the classification's freshness the way other synchronized data's is. Related: `TRUNCATE`-then-reinsert has no atomic replacement, the same shape as CH-08's graph-cache finding.
+
+**Status: Open.** Recorded by `STORY-DOM-021`; not in that story's scope and not a defect introduced by it.
+
 ---
 
 ## 8. Incomplete Functionality (matches `CURRENT_STATE_SPEC.md` §31, confirmed by direct reading)

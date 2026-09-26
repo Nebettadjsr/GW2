@@ -23,6 +23,13 @@ public class PlannerContext {
     public final List<CharacterCraftingProfile> coordinatedRoster;
 
     /**
+     * Which items this calculation's inputs classify as not tradeable on the Trading Post
+     * (DOMAIN_SPEC.md section 2.1.1). {@link MaterialTradeability#noneKnown()} for every caller that
+     * supplies no classification, which leaves resolution unchanged for them.
+     */
+    public final MaterialTradeability tradeability;
+
+    /**
      * Memoized {@link #eligibleCharactersFor(Recipe)} answers, keyed by recipe id. Eligibility is a
      * pure function of the recipe's disciplines/minimum rating and {@link #coordinatedRoster}, all
      * of which are fixed for the lifetime of a context, so memoizing cannot change an answer - it
@@ -61,6 +68,16 @@ public class PlannerContext {
                           Set<Integer> allowedRecipeIds,
                           List<CharacterCraftingProfile> coordinatedRoster) {
         this(recipesByOutput, tp, settings, allowedRecipeIds, coordinatedRoster,
+                MaterialTradeability.noneKnown());
+    }
+
+    public PlannerContext(Map<Integer, List<Recipe>> recipesByOutput,
+                          Map<Integer, PriceQuote> tp,
+                          CraftingSettings settings,
+                          Set<Integer> allowedRecipeIds,
+                          List<CharacterCraftingProfile> coordinatedRoster,
+                          MaterialTradeability tradeability) {
+        this(recipesByOutput, tp, settings, allowedRecipeIds, coordinatedRoster, tradeability,
                 new ConcurrentHashMap<>(), new ConcurrentHashMap<>());
     }
 
@@ -69,6 +86,7 @@ public class PlannerContext {
                            CraftingSettings settings,
                            Set<Integer> allowedRecipeIds,
                            List<CharacterCraftingProfile> coordinatedRoster,
+                           MaterialTradeability tradeability,
                            Map<Integer, List<String>> eligibleCharactersByRecipeId,
                            Map<FirstRecipeKey, Object> firstRecipeByKey) {
         this.recipesByOutput = recipesByOutput;
@@ -76,6 +94,7 @@ public class PlannerContext {
         this.settings = settings;
         this.allowedRecipeIds = allowedRecipeIds;
         this.coordinatedRoster = coordinatedRoster;
+        this.tradeability = tradeability == null ? MaterialTradeability.noneKnown() : tradeability;
         this.eligibleCharactersByRecipeId = eligibleCharactersByRecipeId;
         this.firstRecipeByKey = firstRecipeByKey;
     }
@@ -86,7 +105,8 @@ public class PlannerContext {
      * both memo tables with this context: neither memoized answer depends on
      * {@code allowBuying}/{@code maxBuyCopper}. Eligibility does not consult settings at all, and
      * the first-recipe choice consults only the buy-side price mode ({@code listingBuy}) and the
-     * candidate/price data, all of which are carried over unchanged.
+     * candidate/price data, all of which are carried over unchanged - as is the non-Trading-Post
+     * material policy and its classification, so both simulation phases apply the same rule.
      */
     public PlannerContext withBuyingDisabled() {
         CraftingSettings noBuySettings = new CraftingSettings(
@@ -95,10 +115,26 @@ public class PlannerContext {
                 0,
                 settings.listingSell,
                 settings.listingBuy,
-                settings.dailyBuyInsteadOfCraft);
+                settings.dailyBuyInsteadOfCraft,
+                settings.allowNonTradeableMaterials);
 
         return new PlannerContext(recipesByOutput, tp, noBuySettings, allowedRecipeIds,
-                coordinatedRoster, eligibleCharactersByRecipeId, firstRecipeByKey);
+                coordinatedRoster, tradeability, eligibleCharactersByRecipeId, firstRecipeByKey);
+    }
+
+    /**
+     * Whether {@code itemId} may not be consumed by this calculation: the option is off
+     * <em>and</em> this calculation's inputs classify the item as non-Trading-Post
+     * (DOMAIN_SPEC.md section 2.1.1, UD-010). False while the option is on, and false for any item
+     * the classification does not name.
+     */
+    public boolean excludesNonTradeableMaterial(int itemId) {
+        return !settings.allowNonTradeableMaterials && tradeability.isNonTradeable(itemId);
+    }
+
+    /** Whether the non-Trading-Post material restriction applies to this calculation at all. */
+    public boolean excludesNonTradeableMaterials() {
+        return !settings.allowNonTradeableMaterials;
     }
 
     public boolean isCoordinated() {

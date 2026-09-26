@@ -31,12 +31,19 @@ public record CraftingProfitRequest(ScopeDto scope, SettingsDto settings) {
      * Requested calculation settings, mapping onto {@code craft.CraftingSettings}. Each omitted
      * field defaults to the value the JavaFX Crafting Profit view opens with, so an empty request
      * body reproduces the default page load.
+     *
+     * @param allowNonTradeableMaterials whether the calculation may use a path consuming a material
+     *                                   that cannot be traded on the Trading Post (DOMAIN_SPEC.md
+     *                                   §2.1.1, UD-009/UD-010); defaults to {@code true}. It is a
+     *                                   calculation rule, not a result-display filter: with it off the
+     *                                   backend calculates different results rather than hiding rows.
      */
     public record SettingsDto(Boolean useOwnMats,
                               Boolean allowBuying,
                               Integer maxBuyCopper,
                               Boolean listingSell,
                               Boolean listingBuy,
-                              Boolean dailyBuyInsteadOfCraft) {
+                              Boolean dailyBuyInsteadOfCraft,
+                              Boolean allowNonTradeableMaterials) {
     }
 }

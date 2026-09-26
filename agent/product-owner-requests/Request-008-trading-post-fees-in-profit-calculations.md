@@ -2,7 +2,7 @@
 
 ## Status
 
-NEEDS_USER
+RESOLVED
 
 ## Title
 
@@ -180,34 +180,22 @@ The planner should inspect the existing authoritative economic calculation paths
 
 ## Planner Resolution
 
-2026-09-26: Partially planned; blocked by
-agent/user-decisions/UD-011-trading-post-sale-quantity-basis.md. The request's
-one-item example does not determine sale grouping for multi-output crafts,
-totals or fractional expected salvage yields. No policy answer was invented.
+2026-09-26: RESOLVED as planning coverage, not implementation completion.
+Consumed the resolved answer in agent/user-decisions/UD-011-trading-post-sale-quantity-basis.md:
+its 15% profit model and gross displayed prices supersede the original exact-sale
+rounding/grouping requirement. Updated docs/DOMAIN_SPEC.md sections 2.1.1, 25-27,
+46 and DQ-001 as the authoritative policy owner.
 
-Updated docs/DOMAIN_SPEC.md sections 2.1.1, 25-27, 37, 45-46 and DQ-001 to
-supersede the Crafting Profit fee exemption, require accurate shared net sale
-revenue and distinguish gross market value from received revenue. Preserved
-unrelated material valuation, eligibility, resolution and acquisition semantics.
+Reused agent/stories/STORY-DOM-022-trading-post-sale-fee-calculation.md's recorded
+consumer inventory; its explicit-sale primitive is not the decided profit model.
+Created agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md for shared
+Profit/Discovery economics, comparisons, HTTP table/fresh-detail projections,
+browser detail notes and JavaFX compatibility. Created
+agent/stories/STORY-DOM-024-ectoplasm-fee-policy-alignment.md for expected-value
+economics, existing net-cost/Luck relationships and gross-price presentation.
+Added both to agent/stories/BACKLOG.md in execution order.
 
-Reviewed the documented calculation boundaries in docs/CURRENT_ARCHITECTURE.md
-sections 5.1-5.3 and supplied completed story evidence. Created
-agent/stories/STORY-DOM-022-trading-post-sale-fee-calculation.md and added it to
-agent/stories/BACKLOG.md for independent factual fee verification, a shared
-explicit-sale domain calculation and an implementation-time consumer inventory.
-No source code was inspected and no fee correction is claimed implemented.
-
-After UD-011, finish planning shared crafting/Discovery profit integration,
-table and fresh-detail transport/presentation, JavaFX compatibility and the
-Ectoplasm expected-value integration. Existing
-agent/stories/STORY-WEB-012-crafting-discovery-page.md and
-agent/stories/STORY-WEB-013-ectoplasm-salvage-page.md cover their independent
-browser workflows, not this new fee correction. The request remains NEEDS_USER
-until all of its integration work has concrete planning coverage.
-
-2026-09-26 follow-up review: UD-011 remains OPEN with no answer. Rechecked
-docs/DOMAIN_SPEC.md sections 25-27 and 45-46 and the existing DOM-022,
-WEB-012 and WEB-013 contracts. The independent primitive and browser workflows
-remain covered; consumer integration still requires the same sale-grouping
-decision. No duplicate story or decision is warranted. Retain NEEDS_USER;
-the other queued milestone-05 stories can proceed independently.
+Updated agent/stories/STORY-WEB-012-crafting-discovery-page.md and
+agent/stories/STORY-WEB-013-ectoplasm-salvage-page.md to consume the decided policy
+and preserve gross price labels within their existing browser workflows.
+No implementation, test success or Phase 5 completion is claimed.
