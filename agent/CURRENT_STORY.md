@@ -1,1 +1,1 @@
-agent/stories/STORY-API-009-web-item-icon-metadata.md
+agent/stories/STORY-DOM-022-trading-post-sale-fee-calculation.md

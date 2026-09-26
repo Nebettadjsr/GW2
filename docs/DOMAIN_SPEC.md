@@ -885,6 +885,32 @@ profit = net_sale_revenue - relevant_material_cost_or_value
 For the PO's example, gross sale value 300c incurs listing fee 15c and exchange
 fee 30c, leaving 255c; with unchanged material value 204c, profit is 51c.
 
+## 25.1 Verified fee semantics
+
+Established from the Guild Wars 2 Wiki, "Trading Post" section *Additional fees*
+(https://wiki.guildwars2.com/wiki/Trading_Post, retrieved 2026-09-26):
+
+- both fees are charged on the **total sale price** of the transaction, not per item;
+- listing fee: 5% of that total, **minimum 1 copper**, taken immediately when the
+  item is listed or instantly sold, and never refunded;
+- exchange fee: 10% of that total, **minimum 1 copper**, deducted from the coins
+  delivered after a successful sale.
+
+The two components are rounded separately, so a single rounded 15% is not
+equivalent: a 15c sale owes 1c listing (5% = 0.75) and 2c exchange (10% = 1.5),
+totalling 3c, where one rounded 15% would give 2c and `gross × 0.85` would give
+13c net instead of 12c.
+
+**Unverified edge rule.** No reliable source states the game's rounding direction
+for a fractional copper fee, and the PO's 300c example divides exactly, so it
+cannot settle it. Rounding *up* is excluded by inference — it would make both
+documented 1-copper minimums unreachable and therefore meaningless. Rounding half
+away from zero is the applied rule; rounding down remains possible on the present
+evidence. This is a known, single-point limitation, not established accuracy.
+
+Both minimum fees apply to a very small non-zero sale, so net proceeds can be
+negative there. A sale worth nothing is not a transaction and carries no fee.
+
 Keep gross market quotes, gross sale value, fees, net revenue and profit distinct.
 This policy applies consistently to per-craft and total profit, profit comparisons,
 rankings and other sale-revenue consumers, including informational Discovery

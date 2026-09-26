@@ -8,7 +8,7 @@ Render backend-supplied icons through one reusable frontend component
 
 ## Status
 
-BLOCKED
+TODO
 
 ## Milestone
 
@@ -68,5 +68,4 @@ Not started.
 
 ## Blockers
 
-STORY-API-009 must complete before selection. STORY-WEB-007 is DONE. AR-005 is
-resolved and both icon stories are rescoped; no architecture blocker remains.
+None.
