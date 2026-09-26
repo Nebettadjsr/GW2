@@ -32,16 +32,21 @@ MAX_MESSAGE_CHARS = 600
 UNITTEST_FAILURE = re.compile(r"^(FAIL|ERROR):\s+(.+)$")
 
 
-def escape(value: str) -> str:
-    """Workflow-command escaping (GitHub's documented %-encoding)."""
+def escape_message(value: str) -> str:
+    """Escaping for a workflow command's message.
 
-    return (
-        value.replace("%", "%25")
-        .replace("\r", "%0D")
-        .replace("\n", "%0A")
-        .replace(":", "%3A")
-        .replace(",", "%2C")
-    )
+    Only these three are decoded again by the runner. A real run showed why
+    that distinction matters: escaping ':' and ',' here left literal "%3A"
+    and "%2C" in the annotation the orchestrator reads back.
+    """
+
+    return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def escape_property(value: str) -> str:
+    """Escaping for a property value such as `title=`, where ':' and ',' end it."""
+
+    return escape_message(value).replace(":", "%3A").replace(",", "%2C")
 
 
 def shorten(text: str) -> str:
@@ -143,8 +148,8 @@ def main() -> int:
         # compile error, missing service). Say exactly that instead of
         # implying the suite passed.
         print(
-            f"::error title={escape(arguments.label)}::"
-            + escape(
+            f"::error title={escape_property(arguments.label)}::"
+            + escape_message(
                 "The job failed without producing test failures "
                 "(build, setup or infrastructure error -- see the job log)."
             )
@@ -153,16 +158,19 @@ def main() -> int:
 
     for name, detail in failures[:MAX_ANNOTATIONS]:
         print(
-            f"::error title={escape(arguments.label + ': ' + name)}::"
-            + escape(detail)
+            f"::error title={escape_property(arguments.label + ': ' + name)}::"
+            + escape_message(detail)
         )
 
     remaining = len(failures) - MAX_ANNOTATIONS
 
     if remaining > 0:
         print(
-            f"::error title={escape(arguments.label)}::"
-            + escape(f"{remaining} further test failure(s) not listed here; see the job log.")
+            f"::error title={escape_property(arguments.label)}::"
+            + escape_message(
+                f"{remaining} further test failure(s) not listed here; "
+                "see the job log."
+            )
         )
 
     return 0

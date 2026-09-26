@@ -138,9 +138,21 @@ plan and check in before implementing — see Section 4.
 **Subagents:** offload research, exploration, and parallel analysis to subagents to keep the
 main context window clean. One task per subagent, for focused execution.
 
-**Version control:** when a story is completed, stage and commit all changed files with a
-short, descriptive message (e.g. `implemented story XYZ`). Commit regularly as work
-progresses, not only at the end. Do not push — pushing is handled separately.
+**Version control:** the orchestrator owns committing and pushing. When the evaluator
+accepts a story, `agent/runtime` stages everything outstanding, commits it as
+`implemented <STORY-ID>: <title>`, pushes it, and waits for the GitHub CI gate
+(`docs/TEST_STRATEGY.md` §36). One commit per verified story, not one per file
+touched — so do not commit during implementation, and never push, unless a human
+explicitly asks for it. A commit is a verification point, not a save button.
+
+Two consequences worth keeping in mind while implementing:
+
+- whatever is in the working tree when a story completes gets committed, so leave
+  no scratch files, and never disable a `.gitignore` rule to get something in;
+- a red pipeline comes back to you as a short list of failing tests, and is fixed
+  under `TEST_STRATEGY.md` §21 like any other failure — reproduce the named tests
+  locally with the narrowest command that covers them (§20), fix the cause, and
+  the harness pushes again.
 
 Self-improvement (updating `tasks/lessons.md` after a correction, reviewing it at session
 start) is defined in `CLAUDE.md`, not here.

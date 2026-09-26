@@ -559,6 +559,12 @@ Rules:
 - New stories start with `Status: TODO`.
 - Every story uses the current milestone.
 - `Required Tests` may be `None` only when genuinely not applicable.
+- `Required Tests` names the tests that must exist and pass. Neither it nor
+  `Definition of Done` may require a full local regression run: the GitHub CI gate
+  owns the complete suites and a story is not complete until that gate is green
+  (`docs/TEST_STRATEGY.md` §36). Where a story touches a layer the gate cannot run
+  — TestFX UI verification, a browser smoke script, a real-database `*IT` check —
+  name that check explicitly, because nothing else will run it.
 - `Dependencies` may be `None`.
 - `Result` starts as `Not started.` or equivalent.
 - `Blockers` starts as `None.` when unblocked.

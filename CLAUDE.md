@@ -98,11 +98,32 @@ PostgreSQL password is not a material security finding.
 ## Testing
 
 Domain behavior changes need automated tests. Bug fix: reproduce with a test where practical,
-make the smallest fix, run relevant regression tests. Refactor: cover with tests, refactor,
+make the smallest fix, run the tests covering it. Refactor: cover with tests, refactor,
 verify unchanged behavior. Don't weaken or delete tests to force a pass unless the spec
 changed. Match test scope to the change — a non-UI logic change doesn't need JavaFX/TestFX
 coverage just for completeness. See `TEST_STRATEGY.md` §31.5/§33 and `CODING_GUIDELINES.md`
 for methodology and effort calibration.
+
+**Run only the tests that cover what you are changing** — one test, one class, at most the
+directly related suite. Do not run the full backend/frontend/harness suite locally: GitHub
+Actions is the authoritative full-regression gate and runs it on the pushed commit
+(`TEST_STRATEGY.md` §20, §36). Report the exact commands you ran and their real output.
+Exception: a change with genuinely unbounded blast radius (shared fixture, build/dependency,
+repository-wide rename) is worth a broad local run before it is pushed.
+
+Layers the gate cannot run stay local and explicit when a story touches them: TestFX UI
+verification (§32, needs a real desktop), browser smoke scripts (§12.2), real-database `*IT`
+checks (§34, §35.2) and live GW2 API smoke (§31.4).
+
+## Version Control and CI
+
+The orchestrator commits and pushes a story once the evaluator accepts it, then waits for
+that commit's CI result. Don't commit or push yourself unless asked — see
+`CODING_GUIDELINES.md` §8. If CI fails you get the failing tests back as a short report:
+reproduce them with the narrowest command, fix the cause, and stop; the harness re-pushes
+and re-runs the gate. CI runs on Linux against an empty PostgreSQL database and a
+placeholder GW2 API key, so a test that needs your machine's data, display or network is
+itself the defect.
 
 ## Working Habits
 

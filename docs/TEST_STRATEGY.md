@@ -855,20 +855,24 @@ The same domain test suite should survive the removal of JavaFX.
 
 # 20. Test Execution Scope
 
-Claude should run the smallest relevant test scope first.
+Local execution and full-regression execution are two different jobs with two different owners (§36).
 
-Preferred order:
+**Locally, Claude runs the smallest scope that actually proves the change it just made**, and stops there:
 
 ```text
 1. exact affected test
 2. affected test class/module
-3. related domain suite
-4. full test suite
+3. related domain suite (only when the change genuinely spans it)
 ```
 
-Do not run expensive broad test suites repeatedly when a focused test is sufficient during iteration.
+There is no fourth step. Do not run the complete backend, frontend or harness suite locally, and never re-run a broad suite repeatedly while iterating: **GitHub CI owns the full regression run** against the pushed commit, and it is the authoritative verdict for it (§36). A local full-suite run costs a model session minutes of output for information the gate produces anyway.
 
-Before declaring a significant change complete, run an appropriately broad regression set.
+Two exceptions, where a local broad run is the cheaper answer:
+
+- a change whose blast radius is genuinely unbounded (a shared fixture, a build/dependency change, a rename across packages) — run the affected suite locally before pushing rather than discovering it three CI cycles later;
+- a human explicitly asks for it.
+
+"An appropriately broad regression set before declaring a change complete" is therefore satisfied by the CI gate, not by a local run. Story completion is not final until that gate is green (§36).
 
 ---
 
@@ -986,8 +990,8 @@ For tasks involving behavior changes, Claude should:
 2. read this document,
 3. inspect existing relevant tests,
 4. add or update tests before or together with the code change,
-5. run the smallest relevant test scope,
-6. report the exact tests run.
+5. run the smallest relevant test scope (§20) — the tests covering the code actually being changed, not the whole suite,
+6. report the exact tests run, with their real output.
 
 For pure UI styling or documentation-only changes, domain test execution is not automatically required.
 
@@ -996,7 +1000,11 @@ Claude must not:
 - delete failing tests merely to make a build green,
 - weaken assertions without justification,
 - introduce live external API dependencies into normal tests,
-- rely solely on manual verification for domain behavior.
+- rely solely on manual verification for domain behavior,
+- run the complete regression suite locally as routine verification — that is the CI gate's job (§20, §36),
+- treat a green targeted run as proof that nothing else broke; the gate decides that.
+
+A CI failure comes back as a short list of failing tests (§36). It is handled like any other failing test under §21: find out whether the code, the test or the specification is wrong, and fix the cause. Making the pipeline green by deleting, skipping or weakening a test is the one thing that is never an acceptable fix.
 
 ---
 
@@ -1025,6 +1033,12 @@ Not yet decided:
 Mockito or simple handwritten fakes
 Testcontainers for PostgreSQL integration
 ```
+
+The CI gate (§36) does not resolve the Testcontainers question: it supplies an
+isolated, disposable PostgreSQL *service container* to the pipeline, which is how
+§31.2's property is satisfied there, while a local run still uses the developer's
+own server. A test-managed container remains a candidate for making the two
+environments identical.
 
 These remain candidates, not mandatory decisions.
 
@@ -1166,7 +1180,7 @@ No check from STORY-DOM-013/014/015's own behavior matrix (All characters select
 
 ## 32.6 Limitations and Manual/PowerShell Fallback
 
-- Headful only: no headless (Monocle) configuration exists, so this layer requires a real interactive desktop session and cannot currently run in a headless CI runner. This is a recorded limitation, not solved by this story.
+- Headful only: no headless (Monocle) configuration exists, so this layer requires a real interactive desktop session and cannot currently run in a headless CI runner. This is a recorded limitation, not solved by this story. It is also the reason this layer sits outside the CI gate (§36.4): a story that changes JavaFX UI behavior still owes this check locally, because a green pipeline says nothing about it.
 - Requires a reachable local PostgreSQL server; if none is reachable, `CraftingUiTestFixtures`'s constructor fails fast with the real JDBC connection error rather than silently skipping.
 - No genuinely impractical-for-TestFX case was identified while establishing this layer — the ComboBox-selection/button-click/TableView-assertion pattern needed for the smoke test, and intended for STORY-DOM-013/014/015's own checks, is fully covered by §32.2's harness. Per `docs/TARGET_ARCHITECTURE.md`'s "Existing JavaFX UI Verification Capability" section, Windows PowerShell (including `System.Windows.Automation`) remains available as a repository-scoped interim fallback if a future check proves genuinely impractical through TestFX (e.g. verifying a native OS-level dialog outside the JavaFX scene graph) — but no such case exists yet, so no PowerShell procedure was written for this story. A future story reaching for that fallback must name the specific impractical case, not use it as a default.
 
@@ -1246,3 +1260,94 @@ Name these `*IT` so Surefire's default patterns exclude them (§32.4), and run t
 - **Where a trigger selects between use cases, assert the one that must *not* have run** (`STORY-API-005`). "The requested variant was called once" is half the contract; without "the other variant was called zero times" a controller that called both, or the wrong one plus the right one, still passes. This needs the substituted service to count each entry point separately rather than share one counter — and separate latches too, so one variant can be held while the other runs to completion, which is what makes two independent operation keys observable rather than asserted.
 - **Sweep the rejected values of an enumerated request field in one test, including the plausible-but-unsupported one.** A value the route deliberately does not implement (here a combined "all" refresh) belongs in the same rejection sweep as a mistyped case, a blank and a wrong JSON type: it is the value a caller is most likely to try, and asserting its 400 is what records that no such operation exists rather than that nobody thought of it.
 - **Substituting a real application service by subclassing it is acceptable only when constructing the real one is inert.** Here the superclass's constructor builds a gateway over static sync utilities that open no connection until a refresh runs, and none ever does in these tests; where a constructor would connect or fetch, use the collaborator seam instead.
+
+---
+
+# 36. The CI gate — who runs which tests, and when
+
+This section owns the division of test execution between the local implementation
+loop and GitHub Actions. §20 states the local scope rule; this states what the gate
+is, what it runs, what it cannot run, and what "verified" therefore means.
+
+## 36.1 Division of responsibility
+
+| Where | Runs | Authoritative for |
+|---|---|---|
+| Local (Claude, during implementation) | the narrowest scope covering the change: one test, one class, at most the directly related suite (§20) | that the change under construction behaves as intended |
+| GitHub Actions (`.github/workflows/ci.yml`) | the complete default suites: `./mvnw test`, the frontend `npm test` plus type-check/build, and the `agent/runtime` harness tests | that nothing else in the repository broke |
+| Local, explicitly invoked by a human | Layer 4 live GW2 API smoke (§31.4), Layer 5 TestFX UI verification (§32), the browser smoke scripts (§12.2), real-database `*IT` equivalence/performance checks (§34, §35.2) | the things the gate cannot run at all — see §36.4 |
+
+Neither side's scope is reduced by this split: the gate runs the same commands the
+developer runs, with the same test selection. What changed is *who pays for the
+broad run* — CI, once per pushed commit, instead of a model session on every
+attempt.
+
+## 36.2 What the gate runs
+
+Three jobs, in parallel, on every pushed commit and every pull request:
+
+- **Backend** — `./mvnw -B -ntp test -Djavafx.platform=linux` on `ubuntu-latest`,
+  against a `postgres:17` service container. Surefire's default patterns still
+  select `*Test` classes only, so every `*IT` class stays excluded exactly as it
+  is locally. `javafx.platform` overrides the pom's Windows default for the Linux
+  runner; this is verified safe because no class in the default suite loads a
+  JavaFX native library (the whole suite passes with the Linux classifier).
+- **Frontend** — `npm ci`, then `npm test` (Vitest, with Vitest's own
+  `github-actions` reporter added so failures become annotations), then
+  `npm run build`, which type-checks first (§12.1).
+- **Agent runtime** — `python -m unittest discover -s agent/runtime/tests -t .`,
+  the offline harness contract tests.
+
+## 36.3 Required services and configuration
+
+- **PostgreSQL**: a `postgres:17` service container with an empty database. This
+  satisfies §31.2 better than a developer machine does — the database is isolated
+  and disposable by construction, and each Layer 2 test still creates and drops
+  its own uniquely named schema inside it. No schema, migration or seed data is
+  pre-provisioned, because every such test builds what it needs.
+- **`GW2_API_KEY`**: set to a literal placeholder. `repo.AppConfig` reads it at
+  class-initialization time, so the variable must exist, but no test in the
+  default run makes a live Guild Wars 2 API call (§14, §31.4). **A real key must
+  never appear in the workflow, in a log, or in a repository variable for CI**;
+  if a future test genuinely needs one, it belongs in Layer 4 and therefore
+  outside this gate.
+- **Database credentials** in the workflow are the service container's own,
+  reachable only from that job for its lifetime. They are configuration, not
+  secrets, and no secret of any kind is required by the gate today.
+- **No GitHub token is required** for the orchestrator to read the result of a
+  public repository's run. A token may be supplied through the environment purely
+  to raise the API rate limit; it is never written to a file or a log.
+
+## 36.4 What the gate deliberately cannot verify
+
+- **Layer 5 (TestFX, §32)** is headful and Windows-native: it needs a real
+  interactive desktop session and the Windows JavaFX classifier, so it cannot run
+  on the CI runner. §32.6 already records this. It remains an explicitly invoked
+  local check, and a story that changes JavaFX UI behavior still owes that check
+  locally — the gate will not catch it.
+- **Layer 4 live GW2 API smoke (§31.4)** must never run automatically anywhere,
+  by definition.
+- **Real-database `*IT` equivalence and performance checks (§34, §35.2)** read a
+  populated real database; CI has an empty one. They stay local and explicit.
+- **Browser smoke scripts (§12.2)** need a real Chrome/Edge binary and a running
+  origin, and remain local.
+
+A green gate therefore means "the deterministic default suites pass", not "every
+layer passed". It is the regression gate, not the whole strategy.
+
+## 36.5 What "verified" means for a story
+
+The orchestrator (`agent/runtime`, see its README) commits and pushes a story once
+the evaluator accepts it, then waits for that commit's CI conclusion:
+
+- **green** — the story completes normally;
+- **red** — the failing tests, and only those, come back to Claude as a bounded
+  failure report; it fixes them, the harness pushes again, and the gate re-runs.
+  After a small number of failed attempts the story is blocked for a human
+  instead of looping;
+- **undetermined** (no run appeared, a cancelled run, an unreadable API, a
+  rejected push) — never treated as a pass; a human is asked.
+
+A story's Definition of Done must not demand a full local regression run. Where
+it needs test evidence, it names the tests that must exist and pass, and the gate
+is what proves the rest of the repository still passes with them.

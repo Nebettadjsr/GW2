@@ -17,7 +17,7 @@ run tests separately from live orchestration. Individual suites can be run as
 | `runners/` | Claude and Codex process execution, output and capacity handling. |
 | `evaluation/` | Dispatch/evaluation prompts and the Hermes/Ollama client. |
 | `human/` | Product Owner requests, architect requests, user decisions and intervention records. |
-| `support/` | Shared configuration, paths and file helpers. |
+| `support/` | Shared configuration, paths, file helpers, and the Git/GitHub CI verification integration. |
 | `tests/` | Runtime regression tests and temporary fixtures. |
 | `artifacts/` | Generated results and the next execution prompt. |
 
@@ -51,6 +51,68 @@ log" below.
 Place new runtime files by responsibility, not in the root. Keep shared helpers
 small, tests separate from production code, and generated outputs separate from
 source. Avoid duplicate state, compatibility copies and redundant abstractions.
+
+## Commit, push, and the GitHub CI verification gate
+
+A story used to be finished when the evaluator said so. The evaluator judges the
+story against its own Definition of Done from what Claude reports; it cannot know
+whether the rest of the repository still passes, and proving that inside a model
+session means paying for a full regression run on every attempt. So the
+authoritative regression verdict moved to GitHub Actions
+(`.github/workflows/ci.yml`, defined in `docs/TEST_STRATEGY.md` §36) and this
+package waits for it.
+
+What happens the moment the evaluator returns COMPLETE, inside
+`execute_active_story()`:
+
+1. `support/git_sync.py` stages everything outstanding, commits it as
+   `implemented <STORY-ID>: <title>` and pushes the current branch to `origin`.
+   This is the only place either model's work is committed, so one commit is one
+   verified story rather than one per file touched, and `.gitignore` alone decides
+   what can be swept in (`.env` and `artifacts/` therefore cannot).
+2. `support/github_ci.py` polls that commit's workflow runs until they are
+   decided, then reports one of three outcomes.
+3. **PASSED** completes the story. **FAILED** returns a bounded failure report to
+   Claude as another attempt on the same story, with the story set back to
+   UNFINISHED so nothing claims to be done that CI has contradicted. Anything
+   **UNVERIFIED** — no run appeared, a cancelled run, an unreadable API, a
+   rejected push — creates a user intervention: an unproven pipeline is never
+   completed as if it were green.
+
+`MAX_CI_FIX_ATTEMPTS` (default 2) bounds the fix loop. It is deliberately a
+separate budget from `MAX_RETRIES_PER_STORY`: an evaluator retry and a red
+pipeline are different failures, and exhausting either escalates through the
+existing user-intervention path rather than looping.
+
+**Cost control is the point of the reporting path.** Only failing jobs are read,
+and only their failure annotations — the compact lines
+`.github/scripts/summarize_test_failures.py` (and Vitest's own `github-actions`
+reporter) publish. A green run costs nothing in Claude's prompt; a red one costs
+at most `CI_MAX_REPORTED_FAILURES` entries and `CI_FAILURE_REPORT_MAX_CHARS`
+characters. CI logs are never downloaded, and successful output is never fetched.
+
+**Waiting is bounded and quiet.** One poll per `CI_POLL_SECONDS`, a
+`CI_RUN_START_TIMEOUT_SECONDS` deadline for a run to appear at all, a
+`CI_WAIT_TIMEOUT_SECONDS` ceiling overall, rate-limit backoff instead of hammering
+the API, and a terminal-only heartbeat throttled to
+`CAPACITY_STATUS_INTERVAL_SECONDS`. The log records transitions — published,
+verdict — not the waiting.
+
+**Configuration.** No secret is required: a public repository's run conclusion is
+public, and a token in `AGENT_GITHUB_TOKEN`/`GITHUB_TOKEN`/`GH_TOKEN` is optional,
+used only to raise the API rate limit, and never logged or written anywhere.
+`AGENT_CI_VERIFICATION=0` turns the gate off for a run; unset means "on when this
+checkout actually has a GitHub `origin` remote and the workflow file", so a clone
+without one behaves exactly as it did before the gate existed (the story completes
+on the evaluator's verdict, with a log line saying the gate was skipped).
+
+`tests/__init__.py` reports the gate unavailable to every test and makes
+`git_sync.commit_and_push`, `git_sync.push_branch` and `github_ci.fetch_json`
+raise. Those paths resolve their own configuration, so a fixture patching
+`orchestrator.REPO_ROOT` does not redirect them — without the guard a test that
+reached the completion path would commit and push this repository for real.
+`tests/test_ci_verification.py` exercises the real implementations against a
+throwaway repository with a local bare remote and a scripted API.
 
 ## Aider RepoMap (experimental)
 
