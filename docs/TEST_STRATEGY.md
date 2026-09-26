@@ -580,7 +580,7 @@ They should not be the primary place where crafting mathematics is tested.
 
 # 12. Frontend Tests
 
-The future frontend should focus tests on:
+The frontend should focus tests on:
 
 - rendering,
 - user interaction,
@@ -598,6 +598,115 @@ frontend displays visible warning marker
 ```
 
 The frontend test does not recalculate whether the item should have that domain state.
+
+## 12.1 How frontend tests are run
+
+Frontend tests live beside the code they cover, under `frontend/src/**/__tests__/`, and run with
+`npm test` in `frontend/`. They execute components in jsdom against a hand-written stand-in for the
+API client interface; the global `fetch` is not stubbed, and no test starts a backend or a database.
+
+Five rules follow from §12 and are worth stating explicitly, because the failure they prevent is
+silent:
+
+1. **A stand-in must answer like the contract it stands in for.** The Profit route echoes back the
+   scope and settings it calculated with, and the screen takes its control state from that echo. A
+   fake that ignored the request and always returned fixed settings would make the screen look
+   correct while the real backend made it wrong — so the stand-in reproduces the echo.
+2. **Fixtures must be able to expose a derived value.** Where a test checks that a
+   backend-supplied figure is displayed or sorted as supplied, the fixture's supplied total is
+   deliberately *not* the product of its own parts, so a frontend that recomputed it would fail the
+   test instead of agreeing with it by coincidence.
+3. **A test must be able to reach the interaction it claims to cover.** A control disabled while a
+   request is in flight cannot receive the event a test sends it, and the test then passes against
+   an interaction that never happened. Assert the effect (a further request was sent, the rows
+   changed), not only the absence of an error.
+4. **A recursive payload is compared by walking it, not by spot-checking a node.** Where the browser
+   renders a supplied tree, the check flattens the *response* in its own child order and compares the
+   whole sequence against what was rendered, so a dropped, reordered, merged or silently truncated
+   occurrence fails. The expectation is the supplied structure itself; nothing about it is recomputed
+   in the test, and a repeated item is expected to appear as many times as it was sent.
+5. **A late or superseded answer needs its own test, with the promise resolved by hand.** Request
+   isolation is a property of which answers are *refused*, so a fixture resolves a first request only
+   after a second has started, and asserts that the first cannot reach the screen — including the
+   A → B → A case, where the stale answer carries the identity that is once again selected.
+
+## 12.2 Frontend verification levels
+
+| Level | Command | Establishes | Does **not** establish |
+|---|---|---|---|
+| Type check | `npm run type-check` | strict typing across `.ts` and `.vue` | that received JSON matches those types |
+| Component/unit | `npm test` | rendering, interaction, request construction, state transitions | that the real backend connection works |
+| Production build | `npm run build` | the locked dependency set builds to static assets | runtime behavior |
+| Browser smoke | `npm run smoke:browser`, `npm run smoke:account` | a real browser retrieves and renders real backend results, compared against the very response it received | performance (§33), any state the live data did not contain, and whether a compared value is domain-correct |
+| Browser smoke, controlled boundary | `npm run smoke:sync` | a real browser drives controls whose live counterpart would mutate data, and presents the answers | that a real operation ran, or anything about the backend's own behavior |
+| Browser layout and accessibility | `npm run smoke:layout`, `npm run smoke:profit` | measured reflow at several viewport widths and at increased text size, keyboard focus order and visible focus, computed text/background contrast, per-destination URLs and titles, measured side-by-side versus stacked result/detail placement with keyboard-operated selection, and a measured sticky offset against a taller sibling column | conformance beyond the combinations it measured, and anything about real data or performance |
+
+The browser smoke check needs the backend and the dev server already running; it drives an
+installed Chrome/Edge and asserts on what the page actually rendered and which backend routes the
+browser actually called. Mocked levels cannot substitute for it, and it cannot substitute for §33:
+a smoke run records that results arrived and were displayed, not that a full page met a timing
+budget. Record the database/environment a smoke run used, without exposing secrets.
+
+A special state that the live database does not currently produce (for example an unavailable
+price) is covered at the component level with a controlled response, and the Result says so rather
+than implying the browser run exercised it.
+
+## 12.3 Checking controls that would mutate data
+
+A read-only screen can be smoke-checked against the live backend; a control that starts a
+synchronization cannot, because running it to see the button work would spend the GW2 API budget
+and write to the user's database. Two rules follow:
+
+1. **Point the real browser at a controlled origin instead of dropping the level.** The check serves
+   the built assets and answers the trigger and status routes itself, with scripted task lifecycles
+   — so the browser, the click handling, the polling and the rendering are all real while nothing
+   is synchronized. It establishes interaction and presentation only; it says nothing about the
+   backend, which is covered by that route's own backend tests.
+2. **Never imply the operation ran.** A passing controlled-boundary run is recorded as what it is,
+   and a live synchronization is claimed only when one was actually observed.
+3. **Prove the browser is on the controlled origin before driving any control.** A successful bind
+   is not that proof: an address the check did not take (an IPv6-only dev server on the same port)
+   can still answer the name `localhost` and proxy to the real backend, turning a "nothing real was
+   touched" check into a live synchronization. Bind and navigate to `127.0.0.1` explicitly, fail on
+   a `listen` error rather than ignoring it, and assert the check's own server served the page.
+
+Asynchronous polling is tested with faked timers and hand-resolved promises, never with real
+delays: a test asserts how many status requests were issued, that none overlapped, and that they
+stopped — none of which a wall-clock wait can establish reliably.
+
+## 12.4 Checking presentation and accessibility
+
+Layout, focus and contrast claims are *measured in a real browser*, never inferred from the stylesheet.
+Six rules keep such a check honest:
+
+1. **Measure the rendered combination, not the declared value.** Contrast is computed from the
+   `getComputedStyle` foreground and the nearest opaque background of elements that are actually on the
+   page, with the WCAG large-text threshold applied by the measured font size and weight. A palette
+   table establishes nothing on its own. A tone the current page does not happen to show is measured by
+   applying the shared class to a probe element, so it is still the real treatment being measured.
+2. **Reflow and zoom are numbers.** Horizontal overflow is `documentElement.scrollWidth` against
+   `clientWidth` at each checked viewport width; increased text size is the root font size raised and
+   the same comparison repeated. "It looked fine" is not a result, and a screenshot is not a
+   measurement.
+3. **Start each observation from a fresh load.** A navigation that only changes the URL fragment is a
+   same-document navigation: the previous page's focus, scroll position and component state survive it,
+   which silently invalidates a focus-order or first-load assertion. Reload before observing, and assert
+   the focus order from an actual sequence of Tab presses rather than from the DOM order.
+4. **Record what was not established.** An automated pass over the combinations a script happened to
+   visit is not conformance; the implementing story's Result names the widths, the interactions and the
+   states that were checked, and the accessibility questions that remain open.
+5. **Set up the condition a positional claim needs, or the measurement proves nothing.** A
+   `position: sticky` element can only travel inside its own containing block, so a panel beside a
+   *shorter* column has nowhere to stick and scrolls away with the page exactly as a non-sticky one
+   would. Check pinning at a viewport where the sibling column is measurably the taller one, assert
+   the offset the stylesheet declares, and assert separately that the element had left its flow
+   position — otherwise the check either fails against correct behavior or passes against none.
+   Component-scoped styles cannot be measured on a probe element, because the scope attribute is what
+   selects them; sample a real instance that the page is actually showing.
+6. **Name what overflowed.** A failing reflow assertion that reports only a width difference sends
+   the next reader guessing. Collect the elements whose right edge passes the viewport and report
+   them with the failure — a single unbreakable label is a common cause, and it is invisible in a
+   scroll-width number alone.
 
 ---
 
@@ -1115,7 +1224,10 @@ Name these `*IT` so Surefire's default patterns exclude them (§32.4), and run t
 
 - **Timing** (§34, and `TARGET_ARCHITECTURE.md` §33 at this boundary): measure wall-clock from issuing the HTTP request to holding the *complete* response body, so routing, calculation and full JSON serialization are all inside the timer. Report the first request after startup separately from repeats, report the maximum, and record row count, response size, settings, data scale and environment. Context/server startup sits outside the per-request timer and must be stated as such. Backend request time is one part of the §33 navigation-to-complete-page budget and is never reported as proof of it.
 - **Result equivalence**: for each settings combination, call the endpoint over HTTP and call the same application-service method in process with identical inputs, then compare every row field by field — count, order, each authoritative value, blocked state and both missing-material maps. This is what proves a mapping preserves results on real data; fixture-based contract tests cannot. Both runs must be read-only, with no synchronization in between.
+- **Compare a nullable field's JSON null against the source null explicitly.** Jackson's `asInt()`/`asText()` on a JSON null return `0`/`""`, so a naive comparison agrees with a mapping that substituted a zero for an absent value — which is precisely the distinction a response carrying absent items, quantities or display metadata exists to preserve. Read such fields through a null-returning helper, and print how many rows actually carried a null, so a run's output says whether the real data exercised that path at all.
 - These print evidence and, for timing, assert nothing — matching `application.CraftingProfitServiceRealDbPerfIT`'s precedent. The equivalence check does assert, since a mismatch is a defect rather than a measurement.
+- **A recursive payload is compared recursively, in order, or not at all.** For a tree-shaped response, walk the domain structure and the JSON together and compare every node's own fields and its child count and child order, rather than comparing a root, a size or a serialized string. A root-only comparison passes while children are reordered, merged, dropped or silently truncated, which is exactly what a repeated occurrence and a split-sourcing case exist to detect.
+- **Choose the measured case by probing, not by assuming it is representative.** Where a payload's size depends on what the domain decided rather than on the request, select the candidate by running the operation on a few plausible inputs and keeping the one that actually produced the larger structure — and print how many were tried and what was found. A single arbitrary input can resolve in one node and turn a "deep tree" measurement into an unmarked shallow one; the selection heuristic must stay outside every assertion so its approximation cannot make a check pass.
 
 ## 35.3 Asynchronous trigger and task-status routes
 
@@ -1129,3 +1241,8 @@ Name these `*IT` so Surefire's default patterns exclude them (§32.4), and run t
 - **Assert every documented lifetime property of the facility**, including the retention bound and the answer for an unknown identifier. Those properties are written down as facts in `CURRENT_ARCHITECTURE.md`, so they need a test rather than a claim; the retention test simply submits one more task than the bound.
 - **Assert the absence of things too, in a failure body**: that it contains no successful-completion wording, and that the exception's own text — hosts, endpoints, JDBC URLs — is not in it. A failure path is where disclosure conventions actually get broken.
 - **Do not require live account mutation to test a task protocol.** Trigger validation, the 404, the 405 and the framework's own routing can be verified against a really running server without starting a synchronization; whether the accepted path was exercised live must then be recorded as a limitation rather than implied.
+- **Where a second trigger shares the facility, test the operation key's independence, not just its exclusion** (`STORY-API-004`). Registering both triggers against one real facility, holding the first operation at its latch and then submitting the *other* one is what distinguishes "one unfinished task per operation" from "one unfinished task"; asserting only the 409 on a repeat of the same operation cannot tell the two rules apart. Await the second task's own terminal state rather than reading its delegation count straight after the 202 — it runs on another thread, so an immediate count is a race, not an observation.
+- **A reused boundary is verified by the reused tests passing unchanged, not by copying their assertions.** When a later trigger extracts something shared out of an earlier one (here the parameterless-body rule), the earlier route's untouched contract test asserting its exact message is the evidence that the extraction preserved it; the new route asserts only its own message.
+- **Where a trigger selects between use cases, assert the one that must *not* have run** (`STORY-API-005`). "The requested variant was called once" is half the contract; without "the other variant was called zero times" a controller that called both, or the wrong one plus the right one, still passes. This needs the substituted service to count each entry point separately rather than share one counter — and separate latches too, so one variant can be held while the other runs to completion, which is what makes two independent operation keys observable rather than asserted.
+- **Sweep the rejected values of an enumerated request field in one test, including the plausible-but-unsupported one.** A value the route deliberately does not implement (here a combined "all" refresh) belongs in the same rejection sweep as a mistyped case, a blank and a wrong JSON type: it is the value a caller is most likely to try, and asserting its 400 is what records that no such operation exists rather than that nobody thought of it.
+- **Substituting a real application service by subclassing it is acceptable only when constructing the real one is inert.** Here the superclass's constructor builds a gateway over static sync utilities that open no connection until a refresh runs, and none ever does in these tests; where a constructor would connect or fetch, use the collaborator seam instead.

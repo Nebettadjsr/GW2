@@ -47,7 +47,7 @@ User Browser
 | Frontend Container   |
 |                      |
 | Web UI               |
-| Framework: TBD       |
+| Technology: see 4.1  |
 +----------+-----------+
            |
            | HTTP / JSON
@@ -101,17 +101,28 @@ Examples of logic that must remain in the backend:
 
 ### Technology
 
-**Status:** TBD
+**Status:** DECIDED — Vue 3 with TypeScript, using strict type checking.
 
-Possible candidates include:
+Use Vue single-file components with the Composition API and `<script setup lang="ts">`
+as the default component convention. Build a browser-rendered client of the existing
+backend HTTP API; static frontend assets fit the existing frontend container without
+requiring a server-side JavaScript application runtime. Select compatible stable
+dependency versions when implementing, lock them reproducibly, and include component
+and TypeScript type checking in verification. Build tooling and optional UI libraries
+are separate decisions, not selected here.
 
-- React,
-- Vue,
-- another modern web framework.
+This is the simplest overall fit by architectural judgment for the small, single-maintainer
+UI: consistent component conventions for tables, recursive tree presentation and
+interaction state, with typed API contracts for bounded agent changes. React with
+TypeScript remains viable but offers no required capability that outweighs the additional
+application-convention choices here. Decision history, evidence and alternatives are in
+[ADR-001](architecture/decisions/ADR-001-frontend-framework-and-language.md).
 
-TypeScript is a possible choice but is not yet required.
-
-The architecture must not depend on a specific frontend framework.
+Framework dependencies stay inside the frontend. Backend/domain architecture and HTTP
+contracts must remain independent of Vue; TypeScript types describe transport and
+presentation data, not a second implementation of domain rules. Static types do not
+validate received JSON or replace backend validation. Existing frontend responsibilities,
+secret boundaries and the full-page performance requirement remain binding.
 
 ---
 
@@ -396,6 +407,12 @@ GW2 JSON structures must not leak into domain logic.
 
 The frontend is responsible for presentation and interaction.
 
+Reusable web UX/UI requirements are owned by
+[`FRONTEND_UX_GUIDELINES.md`](FRONTEND_UX_GUIDELINES.md). Frontend implementation
+stories must reference its relevant sections. Phase 5's initial frontend must
+be brought into compliance before extending its presentation patterns to
+additional pages; presentation correction preserves the backend contracts below.
+
 It may:
 
 - display tables,
@@ -420,38 +437,398 @@ but must not independently recalculate crafting profit from raw materials and pr
 
 ---
 
+## 12.1 Web presentation assets and product requirements
+
+Crafting Profit's requested result content and interactions are owned by
+DOMAIN_SPEC section 2.1.1; apply the frontend UX guidelines to their presentation.
+These are Phase 5 frontend migration requirements, covered incrementally by its
+normal stories, without changing its existing backend-authority or review gates.
+
+Provide standard browser favicon support using a replaceable asset file in the
+frontend project. Document the exact filename and path where the Product Owner
+should place the final icon; do not embed the final image into source code.
+
+### Item and recipe icon delivery
+
+**DECIDED (AR-005, Class C).** Use browser HTTP caching over a backend-owned
+persistent filesystem cache, with ArenaNet image retrieval only on local miss.
+This satisfies Request-005 and replaces the AR-004 direct-browser contract for
+Crafting Profit, Bank, Materials, recipe/detail trees and future item views.
+This is target intent, not implemented behavior.
+[ADR-005](architecture/decisions/ADR-005-persistent-web-icon-cache.md) records
+the rationale; ADR-004 is superseded. API-009 and WEB-010 still require planner
+rescoping before selection. Phase 5 performance and health-review gates remain.
+
+**Metadata and boundaries.** Backend synchronization owns canonical upstream
+metadata in existing `items.icon_url`; do not create a parallel web metadata
+store. Synchronization must cover referenced account items, recipe outputs and
+ingredients, including nontradeable items, and refresh changed URLs during
+explicit metadata refresh. The existing null-only backfill does not establish
+coverage or refresh. Missing metadata is tolerable and repaired through backend
+synchronization, never navigation or an image request. Keep metadata acquisition
+usable without binary downloads or desktop setup; no new browser sync control
+is required.
+
+Application reads batch-enrich presentation results from retained metadata,
+outside domain calculations. Item-bearing HTTP representations carry nullable
+`iconUrl`; recipes use their backend-known output item and detail nodes their
+actual item identity. Non-item/unsupported nodes and missing or rejected sources
+yield null. Page-data reads/calculations perform no per-row database lookup,
+live GW2 metadata request or image download. A local metadata read on an image
+cache miss is allowed; it must not trigger GW2 JSON acquisition. URL, disk and
+HTTP concerns stay outside the domain. A backend application icon-delivery
+boundary coordinates filesystem and upstream HTTP adapters behind thin HTTP
+controllers.
+
+**Application URL and validation.** Emit application-relative
+`/api/items/{itemId}/icon/{sourceKey}.{ext}` as `iconUrl`, served by backend
+`GET`. The frontend consumes it verbatim through existing application API
+routing; development routing must also forward this path to the backend.
+Remove filesystem `iconPath` from browser contracts and migrate affected
+transport consumers together. Retain local paths for in-process JavaFX.
+Never emit or redirect to an upstream image URL; no direct-browser fallback.
+
+Accept only parsed absolute HTTPS sources on exactly
+`render.guildwars2.com`, with `/file/{signature}/{file_id}.{ext}` paths:
+hexadecimal signature, positive decimal file ID, and lowercase `png` or `jpg`.
+Reject userinfo, nondefault ports, queries, fragments, encoded separators,
+dot segments and other hosts/schemes/paths. Canonicalize scheme/host to lowercase,
+omit explicit port 443, and retain accepted path spelling. The source key is
+lowercase 64-hex SHA-256 of the canonical URL's UTF-8 bytes. Centralize this
+backend policy. Validate route item ID, key and extension before file access.
+
+On a miss, load the item's retained source and require its validated derived
+key/extension to match the route before fetching. Unknown items, missing metadata,
+obsolete or mismatched keys return 404 without upstream access. A cached old key
+may still serve its original image, never new-version bytes. Accept no
+caller-provided URL/path/host. Disable upstream redirects; forward no API key,
+cookies, application authorization or account data. This is an asset endpoint,
+not an arbitrary proxy. Browser GW2 API requests remain forbidden.
+
+**Persistent storage and hits.** Reuse `ICON_CACHE_DIR`, whose existing local
+default is `<user.home>/.nebet-gw2-tool/icons`. The backend infrastructure
+adapter owns `<ICON_CACHE_DIR>/assets-v1/{sourceKey}.{ext}`; items sharing a
+source share one binary. Only fully committed, validated images are entries.
+Partial, empty or corrupt files are misses. Constrain resolved paths to the
+configured root, including symlink handling; expose no directory listing or
+generic file-serving route.
+
+Serve valid hits without any upstream request/revalidation or live metadata
+dependency, including during upstream outage. Browser expiry does not expire
+the disk copy. No backend age-based expiry or routine redownload is selected.
+Changed retained metadata produces a new key and browser URL on the next read.
+
+**Misses and failures.** Fetch only the matched canonical image URL. Require
+HTTP 200 and a complete, nonempty, decodable PNG/JPEG matching the extension.
+Reject HTML/error bodies and unsupported images. Enforce finite connection and
+response deadlines, response-byte and decoded-pixel limits, bounded download
+concurrency and bounded waiting requests. Implementation must document chosen
+bounds; these are protective limits, not measured latency claims. Coalesce
+same-key concurrent misses within the backend process and recheck disk after
+acquiring the key's coordination slot; no distributed lock service.
+
+Write a unique temporary file beside the destination, validate, and atomically
+publish before success. All writers must use this protocol; readers must never
+see partial files. A concurrent publisher must not overwrite a valid committed
+entry. Persistence failure is an unavailable response, not a successful uncached
+image stream. Bulk warmup is not required.
+
+Malformed route values return 400; absent/rejected metadata or upstream 404
+returns 404; transient upstream failure, invalid images, exhausted capacity and
+disk failure return 503. All non-success responses use
+`Cache-Control: no-store`; 503 includes finite `Retry-After`.
+Never persist failures or placeholders at image keys. Use short-lived, bounded
+in-process failure suppression by key to avoid repeated outage requests; it
+must expire and never hide a valid disk hit. No persistent negative cache or
+automatic request retry loop. Log diagnosable failures without secrets or
+exposing local paths to the browser.
+
+**Browser caching and rendering.** Successful responses use
+`Cache-Control: public, max-age=86400`, verified `Content-Type`,
+`X-Content-Type-Options: nosniff`, and a strong ETag derived from stored bytes.
+Support `If-None-Match`/304 using the local copy, retaining Cache-Control and
+ETag on 304. This one-day freshness interval is an application choice, not an
+upstream guarantee. Do not use `immutable`: finite freshness allows repairs
+to become visible after revalidation. Browser eviction/reload can issue
+requests, which still use disk. Never substitute new-version bytes at an old
+key. No timestamp cache busting, base64 embedding, blob-fetch layer, service
+worker or IndexedDB image store is required.
+
+Use one shared frontend image component, reserved dimensions, prompt visible
+image loading and appropriate native offscreen lazy loading.
+Set `referrerpolicy="no-referrer"`; configured CSP needs no ArenaNet image
+origin exception. Null/rejected URLs and load/decode failures use one bundled
+neutral placeholder without upstream fallback or retry loops. Reset failure
+state on identity/URL change. Retain item text (backend name or item ID),
+quantities, rarity, domain states and keyboard interaction; avoid redundant
+accessible announcements. Empty bank slots stay empty. Image failure cannot
+affect crafting eligibility or result availability.
+
+**JavaFX coexistence and reuse.** Keep `ICON_CACHE_DIR` and `items.icon_path`
+compatibility, while routing future `IconSync` binary writes and web misses
+through the same adapter/key/publication policy. Existing explicit desktop
+bulk sync remains callable; web use does not depend on it. JavaFX consumes
+shared files through `icon_path`, updated only after publication and while the
+item's retained source still matches. A desktop-path database update failure
+does not invalidate a committed asset. Sharing across desktop/backend processes
+requires the same root at usable local paths; host-specific absolute database
+paths are not portable web inputs.
+
+Legacy `items/{itemId}.png` files are migration candidates. Observed
+`IconSync` records no source-version provenance and uses .png filenames even
+for .jpg sources. Validate actual bytes and require evidence associating them
+with the canonical source before adoption: recorded provenance, or byte
+equality with a successful on-demand fetch of that source. Current database
+URL plus filename alone cannot prove this. With evidence, adopt into the keyed
+cache through safe linking/copying and update the desktop path; without it,
+leave legacy files usable by JavaFX and populate the new entry on demand.
+No mass redownload or startup migration is required. Remove legacy copies
+only after successful adoption/path migration and confirmation that no
+retained desktop reference needs them. Temporary migration copies are acceptable;
+do not maintain independent web and desktop download stores going forward.
+
+**Retention and deployment.** Preserve committed files across backend restarts,
+upgrades and container replacement. Container deployment must mount a writable
+persistent volume or host directory at `ICON_CACHE_DIR`; an image layer,
+ephemeral writable layer or temporary directory is insufficient. The frontend
+needs no mount. Keep the configured root stable across restarts, diagnose
+missing/unwritable storage, and never silently downgrade to memory-only caching.
+This constrains existing deployment work; it does not commission a new service,
+container, deployment story or multi-replica requirement. No database binary
+store, distributed cache or external cache service is selected.
+
+Do not schedule age-based eviction, refresh or sweeping of valid images.
+Cleanup may remove abandoned temporary files, corrupt entries and safely
+unreferenced legacy duplicates, protecting active readers/writers. Old source
+keys may remain; no measured storage pressure justifies a garbage collector.
+Manual removal of a corrupt entry permits on-demand repair. Disk-full failures
+must preserve existing hits and surface bounded failure on misses. Any later
+retention policy needs evidence and must preserve normal persistent reuse.
+
+**Verification and planner follow-up.** Rescope API-009 and WEB-010 before
+selection; old direct-CDN/no-cache constraints are obsolete. Verify URL/null
+mapping, actual item identities, batch enrichment, source/route rejection, path
+confinement, no secrets/paths on the wire, and no external calls on page-data
+reads. Verify hits with upstream disabled; persistence before success; concurrent
+misses; interrupted writes and restart reuse; changed metadata; malformed,
+oversized and failed images; disk errors; bounded recovery; HTTP headers/304;
+safe legacy reuse and JavaFX compatibility. Use disposable cache roots and
+controlled HTTP fixtures, with no implicit live metadata sync. Verify shared
+rendering, layout stability and empty slots.
+
+Then record real-browser/real-database integration and section 33 full-page
+timings for cold browser/cold application cache, cold browser/warm application
+cache and warm browser/warm application cache, including restart and warm-cache
+upstream-unavailable checks. Record metadata coverage, cache conditions,
+first/repeat openings, settings, result counts, individual timings/maxima,
+browser/backend/upstream requests and image completion/failures. Warm application
+cache must demonstrate zero upstream image requests for cached entries.
+Fixtures do not establish live performance; this decision claims no timings or
+successful integration. Do not conceal pending images, truncate requested
+results, or use lazy loading/forced placeholders to claim the gate is met.
+Record fallback runs separately from successful delivery; report missing
+evidence or unmet gates for planner disposition. Request-005 closure and
+Phase 5 review remain planner-owned. Crafting calculations and the active
+resolution-endpoint story are unchanged.
+
 # 13. Resolution Tree
 
-The backend should return structured resolution information rather than UI-specific tree widgets.
+**Status: DECIDED (AR-002; root identity clarified by AR-003, Class C).** The contract below is target intent,
+not a claim that detail endpoints or semantic resolution traces exist today.
+[ADR-002](architecture/decisions/ADR-002-resolution-tree-http-contract.md)
+records the original alternatives and rationale;
+[ADR-003](architecture/decisions/ADR-003-resolution-root-identity.md) records the
+root-identity and explanation-basis clarification. This section owns the wire contract.
 
-Conceptually:
+## 13.1 Detail operations and explicit inputs
 
-```json
-{
-  "itemId": 123,
-  "quantity": 5,
-  "method": "CRAFT",
-  "children": []
-}
-```
+Add `POST /api/crafting/profit/resolution` and
+`POST /api/crafting/discovery/resolution`. These paths are fixed by this decision,
+unlike the illustrative endpoints in section 9. Both are read-only calculations;
+neither consumes persisted inventory nor triggers GW2 synchronization.
 
-The exact transport schema is TBD.
+Each required JSON body contains `recipeId` (positive integer) and `calculation`
+(object). `calculation` uses the corresponding existing table request contract:
 
-The important architectural rule is:
+- Profit: `scope` (`kind`: `ALL`, `DISCIPLINE`, `CHARACTER_DISCIPLINE`, plus
+  `discipline`, `characterName`, `rating` as applicable) and `settings`.
+- Discovery: `scope` (`discipline`, `characterName`, `rating`), independent nullable
+  `inventoryCharacterName`, and `settings`. Preserve the separate inventory
+  character and the existing null/unfiltered-pool semantics.
+- Settings retain `useOwnMats`, `allowBuying`, `maxBuyCopper`, `listingSell`,
+  `listingBuy`, and Profit's `dailyBuyInsteadOfCraft`. Discovery fixes the latter
+  to false and does not accept it as a selectable input. Existing validation,
+  defaults and rating semantics apply; this adds no new calculation controls.
 
-```text
-Backend decides what happened.
-Frontend decides how to display it.
-```
+The browser copies the table response's effective inputs into the appropriate
+request fields rather than relying on defaults again. It must not send row
+numbers, prices, material maps or a prior service/context identifier as inputs.
+Recipe identity is the recipe ID, never merely its output item ID.
 
-UI concerns such as:
+## 13.2 Calculation lifetime and consistency
 
-- tree colors,
-- icons,
-- expansion state,
-- layout,
+Validate first, then create one fresh application-service calculation context
+for the detail operation. Load data, check the recipe against the newly returned
+visible candidate set, evaluate and produce its explanation inside that operation.
+Initially reusing the existing reload use case is acceptable; selected-recipe
+optimization must preserve its eligibility and domain semantics. Never look up a
+previous request's service or share mutable last-result fields across requests.
+An empty Discovery reload cannot expose any previous result or lookup state.
 
-must not exist in the domain layer.
+Capture the loaded inputs used by this operation and use them for both its row
+summary and tree evaluation. Do not reload prices, inventory or graph midway
+through explanation construction. Release request-local state after completion or
+failure; no retained calculation session, TTL, cache token, durable snapshot or
+new task store is required. Shared reference data must not carry mutable
+simulation/inventory state between operations.
+
+This is a **fresh calculation**, not retrieval of the table's historical result.
+Even identical input values may yield different results after synchronization or
+price changes. There is no cross-request snapshot guarantee and no claim of an
+atomic database-plus-graph snapshot during loading. Request-local reuse prevents
+explanation construction from introducing a second data read, but does not settle
+future synchronization consistency design (section 23 / UD-007).
+
+## 13.3 Successful response
+
+The completed response is JSON with these required fields:
+
+| Field | Type and meaning |
+| --- | --- |
+| `recipeId` | Requested recipe ID, used for selection and response association; does not assert that this recipe produced the root requirement. |
+| `calculation` | Effective scope and settings, shaped as the corresponding table response's scope/settings; Discovery also includes nullable `inventoryCharacterName`. All effective settings are explicit, including Discovery's fixed daily setting. |
+| `consistency` | Literal `FRESH_CALCULATION`. |
+| `calculatedAt` | UTC ISO-8601 completion timestamp; informational, not a data version or snapshot identifier. |
+| `row` | Existing shared crafting row DTO for this recipe, recalculated in this operation; retains its existing per-craft/total field meanings and nullability. |
+| `treeStatus` | `AVAILABLE` or `RESULT_UNAVAILABLE`. |
+| `treeBasis` | Literal `SINGLE_OUTPUT_REQUIREMENT`: resolution of one output batch of the requested recipe from this operation's initial inventory, budget and daily state, applying the existing simulation phase order, selected settings and authoritative resolver rules. It does not assert execution of the requested recipe. |
+| `tree` | Recursive node below, or null only when `treeStatus` is `RESULT_UNAVAILABLE`. |
+
+The explanation is a domain evaluation, not multiplication of a recipe skeleton
+and not a trace of all `row.craftableCount` crafts or the next craft after
+exhausting a simulation. Its root item and requested quantity are the requested
+recipe's output item and output count. The trace records how that requirement
+was actually sourced; it is not a guarantee of one execution of that recipe.
+The row remains the normal simulation summary. In particular, tree costs must
+not be presented as the row's multi-craft totals; the browser labels the basis.
+Both evaluations use the same captured inputs and authoritative resolver rules.
+A blocked first evaluation still returns an available explanation with reasons. If the
+backend has no calculation result, retain the row's existing unavailable/null
+semantics and return `RESULT_UNAVAILABLE`, not a fabricated empty tree.
+
+Each recursive requirement node has exactly this initial semantic shape:
+
+| Field | Type and meaning |
+| --- | --- |
+| `itemId` | Positive integer item identifier. |
+| `itemName` | String or null when metadata is unavailable; display may fall back to the ID. |
+| `requestedQuantity` | Nonnegative integer units required by this occurrence. |
+| `inventoryQuantity`, `craftedQuantity`, `boughtQuantity`, `missingQuantity` | Nonnegative integer contributions to that requirement, decided by the backend. Crafted quantity means units used here, not surplus output. Their sum equals requested quantity. |
+| `recipeId` | Actually selected producing recipe ID (including a selected blocked attempt), or null when no crafting path is selected. This applies equally to the root and descendants; the root ID may differ from the response-level requested `recipeId`. |
+| `craftCount`, `producedQuantity` | Nonnegative integers for the selected crafting contribution; zero when none completes. Production can exceed crafted quantity because of recipe batch size. |
+| `characterName` | Assigned crafting character or null when not applicable/not assigned; preserve backend character selection. |
+| `methods` | Array containing the actually used contributions from `INVENTORY`, `CRAFT`, `BUY`; multiple methods are allowed for split sourcing. Empty if no contribution succeeds. |
+| `states` | Array of backend flags from `BLOCKED`, `PRICE_UNAVAILABLE`, `DAILY_LIMIT`, `UNVALUED_NONTRADEABLE`; empty if none apply. These may coexist with methods. |
+| `blockedReasons` | Array of the explicit reasons in DOMAIN_SPEC section 42 (`NO_RECIPE`, `BUYING_DISABLED`, `DAILY_LIMIT`, `CYCLE_DETECTED`, `PRICE_UNAVAILABLE`, `RECIPE_NOT_ALLOWED`, `INSUFFICIENT_BUDGET`); empty for an unblocked node. |
+| `cashCostCopper`, `opportunityCostCopper`, `effectiveCostCopper` | Backend-provided numeric amounts in copper for this node's complete requirement, inclusive of descendants; null when a complete value cannot be established. Preserve domain precision; no UI rounding in transport. Known zero is distinct from null. |
+| `children` | Ordered array of ingredient requirement nodes for the selected crafting path (including a blocked attempted path); empty for leaves. |
+
+Requested identity belongs only to the response envelope and its row association;
+actual sourcing belongs to the tree. For an inventory-only root, node `recipeId`
+is null, `craftCount` and `producedQuantity` are zero, and no recipe ingredients
+are invented. If another recipe supplies the output, its actual ID, executions,
+production and ingredient children are retained. For a blocked selected crafting
+path, retain that attempted recipe's identity without claiming completed crafts.
+Never overwrite node identity with the requested ID, wrap the trace in a fabricated
+craft node, suppress an otherwise available trace because identities differ, or
+repair quantities/costs in an API mapper or browser. The browser identifies the
+requested recipe separately from the root's actual methods and producing recipe;
+it must not label output supplied from stock or another recipe as execution of
+the requested recipe. Response association still uses the envelope `recipeId`.
+
+Costs on ancestors include descendant costs; the frontend must not add them again.
+For a blocked requirement, a complete cost is null rather than a misleading
+partial total. A domain-established zero for an unvalued non-tradable item remains
+zero with its explicit state. Unknown purchase prices never become zero. Failed
+speculative paths must not leak committed quantities or costs. Cycle detection
+terminates with a finite blocked node; no object references or graph back-links
+are serialized. Repeated items in different branches remain separate occurrences;
+a presentation key may use the child-index path and is not a persistent node ID.
+Do not truncate a tree silently or infer states from raw quotes in a mapper.
+
+The domain produces resolution choices, quantities, valuation and failure facts;
+the application coordinates the captured context, and the API maps those facts
+into DTOs. Existing `Node.action` text and a first-recipe dependency expansion are
+not sufficient evidence of actual resolution. The implementation must obtain a
+semantic trace from authoritative resolution, not build a competing resolver in
+the controller, DTO mapper or browser. Domain types remain independent of JSON,
+HTTP and JavaFX. No color, widget, CSS class or expansion state belongs in this
+schema. Unknown future state/reason codes must remain visibly representable,
+never silently treated as success.
+
+## 13.4 Missing results, errors and browser association
+
+A valid recipe ID absent from the fresh visible candidate set returns HTTP 404
+with the existing error-body shape `{ "error": "RECIPE_NOT_IN_CALCULATION",
+"message": "..." }`. This includes a recipe that is no longer discoverable;
+it does not assert that the recipe is absent from the global database. Invalid
+input uses existing 400 validation/malformed-request errors; store failures use
+503 and unexpected calculation failures use 500 with existing safe error codes.
+Blocked domain paths and available rows with unavailable calculation results are
+completed HTTP 200 responses, not transport failures. Existing table endpoints
+retain their empty-list 200 behavior and do not eagerly attach trees.
+
+The browser associates a request with feature, recipe ID, effective calculation
+inputs and a local request generation. Changing selection or calculation inputs,
+starting a table reload, or leaving the view invalidates the previous detail.
+Cancellation is optional; ignoring late responses for invalid generations is
+required even for A-to-B-to-A selection. Accept a response only for the active
+generation and matching echoed identity/inputs. Sorting or formatting alone does
+not change calculation identity. Preserve valid user controls during refresh.
+
+Display the returned row and tree together as freshly calculated detail, with
+its single-output-requirement basis. Do not label it as the exact explanation of the earlier
+table row or silently overwrite the old table row with it. Errors/unavailable
+results clear the active tree; they must not leave an old tree under a new
+selection. Expansion and rendering remain frontend concerns.
+
+## 13.5 Migration, execution and verification constraints
+
+JavaFX continues to call application services in process. Keep the table routes
+and their response shapes compatible; adding detail does not force JavaFX through
+HTTP or attach tree-building work to every table row. Local class names and trace
+representation are implementation choices within these boundaries.
+
+AR-003 replaces the earlier `SINGLE_CRAFT` wire literal and requested-root
+identity assertion before detail HTTP/browser integration. Internal explainer
+names may remain unchanged. This is a truthful representation of the existing
+calculation, not a redefinition of DOMAIN_SPEC section 28: craftable count still
+normatively means executions of the requested recipe. KNOWN_PROBLEMS CH-15
+remains an unresolved domain defect. Correcting it is not an architectural
+prerequisite to shipping this explanation of current results; the detail contract
+neither fixes nor accepts it as intended domain behavior. A later correction must
+occur in the authoritative domain path shared by calculations and explanation,
+not exclusively in detail, transport or presentation. The separated identities
+remain valid after that correction. This decision grants no Phase 5 completion
+or waiver of existing correctness, review or performance gates.
+
+The schema above defines the completed response. Per section 23 and UD-007,
+measure the detail operation on representative real data before fixing its
+synchronous/asynchronous execution policy: prefer direct HTTP 200 completion when
+consistently short; if measurements require a task, retain these inputs and
+completed payload and document the task transport before shipping the consumer.
+This decision does not prescribe or assume a new task mechanism.
+
+Phase 5 must still verify section 33's complete browser-page timing, including
+any detail automatically loaded on navigation. Lazy selection does not excuse
+hiding required initial work or omitting results. No performance result is
+claimed by this contract. Verification must cover semantic split sourcing,
+blocked/unvalued nodes, null costs, cycles, requested identity versus actual root
+sourcing (owned finished stock only, an alternative producing recipe, the
+requested recipe, mixed sourcing and a blocked attempted path), fresh-input row/tree consistency,
+concurrent scope isolation, empty Discovery after populated calculation, and
+late browser responses. Test responsibilities remain owned by TEST_STRATEGY.md;
+the planner owns bounded implementation and verification work.
 
 ---
 
@@ -836,6 +1213,8 @@ Backend web framework: **Spring Boot**, per resolved `agent/user-decisions/UD-00
 
 Long-running HTTP operation policy is decided in section 23 (UD-007); concrete implementation choices follow that policy.
 
+Frontend framework and language are decided in section 4.1; that section owns the selection and implementation constraints.
+
 ```text
 Application type:
 Web application
@@ -874,14 +1253,6 @@ Docker Compose preferred
 The following decisions intentionally remain open:
 
 ```text
-Frontend framework:
-TBD
-Possible: React / Vue / other
-
-Frontend language:
-TBD
-TypeScript possible, not yet mandatory
-
 Database migration tool:
 TBD
 

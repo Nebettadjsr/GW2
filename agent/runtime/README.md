@@ -13,10 +13,10 @@ run tests separately from live orchestration. Individual suites can be run as
 
 | Folder | Responsibility |
 | --- | --- |
-| `core/` | Workflow orchestration, planning, story selection/state and archiving. |
-| `runners/` | Claude and planner process execution, output and capacity handling. |
+| `core/` | Workflow orchestration, planning, architecture, story selection/state and archiving. |
+| `runners/` | Claude and Codex process execution, output and capacity handling. |
 | `evaluation/` | Dispatch/evaluation prompts and the Hermes/Ollama client. |
-| `human/` | Product Owner requests, user decisions and intervention records. |
+| `human/` | Product Owner requests, architect requests, user decisions and intervention records. |
 | `support/` | Shared configuration, paths and file helpers. |
 | `tests/` | Runtime regression tests and temporary fixtures. |
 | `artifacts/` | Generated results and the next execution prompt. |
@@ -27,9 +27,10 @@ the runtime root. All repository and artifact paths belong in
 `support/config.py` and are resolved independently of the working directory.
 
 `artifacts/` contains `CLAUDE_RESULT.md`, `DISPATCH_RESULT.json`,
-`EVALUATOR_RESULT.json`, `PLANNING_RESULT.json`, `SELECTOR_RESULT.json`, and
-`NEXT_PROMPT.md`. Claude owns its implementation result; dispatch/evaluation,
-planning, selection and orchestration own their respective generated outputs.
+`EVALUATOR_RESULT.json`, `PLANNING_RESULT.json`, `ARCHITECT_RESULT.json`,
+`SELECTOR_RESULT.json`, and `NEXT_PROMPT.md`. Claude owns its implementation
+result; dispatch/evaluation, planning, architecture, selection and
+orchestration own their respective generated outputs.
 These files are local runtime state, ignored by Git, and are not authoritative
 requirements or reusable test fixtures. The tracked `.gitkeep` preserves the
 directory in a fresh checkout. Python bytecode caches are also ignored.
@@ -145,8 +146,9 @@ properties that guarantee it, each covered by `tests/test_orchestration_flow.py`
   story is escalated to a user intervention and the orchestrator moves on.
 - **A failed planning pass never stops execution.** Codex reporting `FAILED`,
   a rolled-back guarded pass, or an unreadable planning input puts the planner
-  on one local cooldown (`CapacityScheduler._planning_failed()`) and is logged;
-  Claude keeps draining already-planned work, and planning is retried later.
+  on a persistent hold for those inputs and is logged; Claude keeps draining
+  already-planned work. Changed planning inputs or an explicit cache reset
+  permit a retry; a capacity cooldown alone does not.
 - **Neither model blocks the other.** Codex exhausted -> Claude still executes
   the queue to zero. Claude exhausted -> Codex still performs useful
   current-scope planning (deliberately past the To Do <= 2 watermark, until a
@@ -169,7 +171,77 @@ properties that guarantee it, each covered by `tests/test_orchestration_flow.py`
   `MAX_CONSECUTIVE_CYCLE_ERRORS` consecutive failures the orchestrator stops
   explicitly rather than looping.
 
-Codex is a planner only: `core/project_planner.py`'s `_run_guarded_planner()`
+## Codex Architect
+
+Codex runs in two logically separate roles, routed by `AGENTS.md`: PROJECT
+PLANNING MODE (`core/project_planner.py`) and ARCHITECTURE MODE
+(`core/architect.py`). They share one capacity budget and one writer, never a
+responsibility.
+
+**Invocation is demand-driven.** `human/architect_requests.py` reads the
+`agent/architect-requests/` inbox and answers one scheduling question: which
+requests, if any, the architect should be dispatched for. A request is
+actionable when it is `OPEN`, or when it is `NEEDS_USER` and every
+`agent/user-decisions/UD-*.md` it names is `RESOLVED`. An empty inbox means the
+architect never runs -- there is no periodic architecture review.
+
+A human re-queues a request by setting its `## Status` back to `OPEN`
+(`TODO`/`NEW`/`PENDING`/`REOPENED` are read as `OPEN` too, because that is what
+"not done yet" looks like in every story file). Any other value is never
+dispatched on a guess, but `undispatchable_requests()` reports it, and
+`_report_undispatchable_architect_requests()` logs each distinct problem once
+and names the file in the stop reason. That path exists because the opposite --
+a silently skipped request while the planner keeps reporting itself blocked by
+that same question -- happened, and is indistinguishable from the architect
+ignoring the question.
+
+The
+orchestrator attempts it before planning (step 2a in `_run_cycle`), because an
+answered question is what unblocks the planner, and dispatches exactly one
+request per invocation.
+
+**The flow has no manual step in it:**
+
+```text
+Planner hits a question it may not decide
+        -> creates agent/architect-requests/AR-NNN-*.md (OPEN)
+        -> Architect answers it
+              -> RESOLVED   -> planning continues automatically
+              -> NEEDS_USER -> OPEN UD-* named in the request
+                    -> human resolves the UD
+                    -> Architect resumes the same request automatically
+                    -> RESOLVED -> planning continues automatically
+```
+
+`planning_fingerprint()` includes the inbox, and a finished architect pass
+clears the scheduler's "nothing useful to plan" verdict, so a resolved question
+always leads to a fresh planning pass rather than a suppressed one. A RESOLVED
+request is never dispatched again.
+
+**Role separation is enforced, not requested.** `_run_guarded_architect()`
+snapshots and verifies the planner/harness state ARCHITECTURE MODE must not
+touch (`CURRENT_STORY.md`, `PROJECT_STATE.md`, BACKLOG, every story, the
+Product Owner inbox, every *other* architect request, and the role contracts
+themselves) and rolls the pass back if any of it changed. `_run_guarded_planner()`
+does the same for the inbox and for `docs/architecture/decisions/ADR-*.md`, so
+the planner can add a question but never answer, edit or resolve one.
+`validate_architect_result()` then checks the reported result against the files:
+the lifecycle transition, the escalation (an OPEN decision the request itself
+names), that no existing User Decision was resolved, and that every changed
+Markdown file was reported and every reported file really changed. A rejected
+pass has its request file restored, so the inbox never holds an unvalidated
+transition.
+
+**Capacity exhaustion is never an architecture failure**: the request keeps its
+status and is dispatched again after the local cooldown, exactly like a
+deferred planning pass.
+
+`validate_planning_result()` additionally rejects a planner that creates a
+duplicate of an unresolved question (normalized question text), reuses an
+`AR-*` ID, fills in its own `Architect Decision`, creates a request without
+reporting it in `architect_requests_created`, or writes an ADR.
+
+Codex as planner: `core/project_planner.py`'s `_run_guarded_planner()`
 snapshots protected state (the active story file, `CURRENT_STORY.md`, the
 BACKLOG `## Active` section) before every planning pass and verifies it
 byte-for-byte afterwards, rolling back and raising if anything protected
@@ -238,3 +310,186 @@ Unlike `artifacts/`, `agent/logs/` is **committed to Git, not ignored** --
 it is meant to be a permanent historical record, not disposable runtime
 output. `.gitignore`'s blanket `*.log` rule is deliberately carved out for
 it with a negation pattern (`!agent/logs/*.log`).
+
+
+### Planning holds and independent work
+
+`NEEDS_USER` blocks only work dependent on the listed decisions. The planner
+must finish justified independent stories/request processing in that same pass;
+those outputs undergo the normal validation. Milestone transitions still require
+COMPLETE. An unfinished Claude story and its active pointer remain protected
+while Codex plans during Claude capacity waits.
+
+`user_decision_ids` uses stable IDs (`UD-010`), resolved from exactly one filename
+`agent/user-decisions/UD-010-*.md` (or `UD-010.md`). Markdown titles are optional;
+filenames/paths in this result field and duplicate filename IDs are rejected.
+
+The scheduler atomically persists `artifacts/PLANNING_CACHE.json` after NEEDS_USER,
+no-work results, or planner execution/validation failure. It fingerprints the
+post-pass inputs, including UDs, PO/architect requests, stories/backlog, current
+story, continuity, authoritative docs, and runtime contracts/code. Changes,
+additions and deletions trigger another pass; logs, result JSON, timestamps and
+capacity cooldowns do not. Holds survive restarts. COMPLETE passes that report
+further independent work and demonstrate concrete progress continue replenishment; a validated milestone transition can plan the
+next phase. Model capacity interruption is not a planning failure and resumes
+after capacity returns.
+
+FAILED is distinct from NEEDS_USER and retains diagnostics in the local cache.
+It does not repeatedly retry after a cooldown or prevent independent execution
+or architecture work. Correct the input/contract problem to retry, or remove
+PLANNING_CACHE.json to request an explicit retry. Waiting polls local files and
+prints terminal heartbeats; user waits also wake for unrelated planning input
+changes. No model is called merely because a wait timer expired.
+
+
+### Review past individual milestone blockers
+
+A planning pass explores past individual blockers and maximizes useful independent
+planning progress within the current milestone before declaring itself blocked.
+The planner first reviews the remaining relevant phase areas and inbox requests,
+then creates a bounded batch of at most six stories. It discovers all currently
+identifiable independent UD/AR questions during that review; the story limit does
+not cap question discovery. A question genuinely dependent on an earlier answer
+can wait, but an unrelated question must not be deferred to the next human-input cycle.
+
+The result now requires:
+- `phase_review`: compact entries with `area`, `outcome`, and `references`. Outcomes
+  are PLANNED, READY (independent work left for another batch), USER_DECISION,
+  ARCHITECT_REQUEST, COVERED, or PREREQUISITE. Mixed areas use separate entries.
+  User/architect blockers cite stable UD/AR IDs; other entries cite source/story artifacts.
+- `independent_work_remaining`: true exactly when the review includes READY work.
+  It requires COMPLETE plus concrete progress (new stories, UDs, ARs or resolved
+  PO requests). Prose-only edits cannot request repeated model calls.
+
+COMPLETE means a successful planning batch, not phase completion. It may report
+open UDs, new ARs and independent stories together. NEEDS_USER is valid only after
+the review finds no further useful independent planning without human input. A
+final NEEDS_USER batch may still publish independent stories; those execute normally.
+Architecture-only or story-prerequisite waits use COMPLETE with the flag false.
+The scheduler holds either exhausted planning state locally, while separately
+executing eligible stories or dispatching actionable architect requests. During
+Claude capacity waits, Codex continues bounded batches only while independent
+work remains. Meaningful input changes release the existing persistent hold.
+
+For A -> UD-010, B -> UD-011, C -> AR-006 and executable D/E, one pass records
+both UDs, the AR, and D/E stories, with five review entries. If another executable
+area remains beyond that batch, it is READY and the flag is true; otherwise the
+flag is false. Answering UD-010 later does not cause the already-identifiable
+UD-011 question to be created for the first time.
+
+Before creating artifacts, reuse existing coverage and OPEN/NEEDS_USER questions,
+and consume RESOLVED answers. The prompt includes decision summaries and resolved
+PO coverage receipts. Validation rejects duplicate decision IDs/questions, duplicate
+story IDs, unreported new UDs, repeated reports of existing ARs, and duplicate open
+architecture questions. Semantic coverage/deduplication remains the planner's duty:
+local validation can verify a review's structure and consistency, not prove that a
+model noticed every relevant area or paraphrased duplicate.
+
+Dependencies remain local. Story eligibility now checks explicit UD and AR references
+as well as story IDs, including mixed lists. Every referenced decision must resolve
+uniquely with RESOLVED status; every story prerequisite must be DONE. Missing or
+ambiguous references stay blocked. New stories with unresolved prerequisites cannot
+claim an executable status. Do not guess acceptance criteria behind an unanswered
+product or architecture question.
+
+`tests/test_milestone_planning.py` exercises mixed outcomes, early multi-question
+reporting, continued idle batches, local exhaustion, duplicate guards and dependent
+story selection with scripted outputs. These are offline contract/flow tests, not
+a claim of measured live-model discovery completeness.
+
+### Stable planning holds and Codex quota visibility
+
+A final NEEDS_USER pass is held against its post-pass inputs. Schema 2 of
+PLANNING_CACHE.json records normalized per-file hashes, the aggregate fingerprint,
+the remaining-work flag, and paths changed by that pass. Its new UDs/stories,
+backlog changes and PO resolutions are already part of that baseline.
+
+Fingerprinting normalizes UTF-8 BOMs and CRLF/CR/LF line endings only; all other
+content and whitespace remains significant. Delayed editor/Git line-ending saves
+cannot launch another model pass. Real UD/PO/AR changes, story completion,
+CLAUDE_RESULT.md, authoritative documents and planning/validation contracts can.
+Own results/cache/logs, test code and presentation/runner code cannot. Changed
+input paths are logged once when planning actually resumes. An architect invocation
+alone no longer clears a hold; changed authoritative artifacts do. A successful
+COMPLETE batch with independent_work_remaining=true can still continue.
+Schema-1 aggregate hashes are invalidated by this schema/contract upgrade;
+subsequent holds persist in schema 2.
+
+Both CapacityScheduler.plan_if_useful() and answer_architect_request() check quota
+before invoking the role. The default probe reads codex app-server's
+account/rateLimits/read, never a model turn. Invalid/missing quota fails closed.
+Both windows must be below 100%; an explicit reached-limit state also blocks.
+This is an availability check, not a reservation for the entire run.
+
+That same reading now prints one terminal-only pre-role line, for example:
+`Codex available before architect: primary 25% used/300min; secondary 80% used/10080min`.
+Display causes no extra RPC. Local capacity-wait heartbeats show the last reading.
+The endpoint provides percentages/windows, not an exact number of tokens remaining.
+Role completion lines now distinguish planner/architect and include cached input.
+Gross input is cumulative across model requests, not initial prompt size.
+
+See [the measured usage investigation](reports/2026-09-26-planner-usage.md) for
+the evidence behind the supplied-context bounds described next.
+
+### Supplied context is indexed, not narrated
+
+`core/planning_context.py` builds everything the two Codex roles receive up
+front. Each role starts a fresh session, so whatever is supplied is resent in
+full with every model request inside the run; the measured planning prompt was
+221k characters, 139k of it completed-story narrative from `BACKLOG.md`.
+
+What is compacted, and what is guaranteed to survive it:
+
+- **Backlog index.** `## Active`/`## To Do`/`## Blocked` keep BACKLOG's own
+  order (the To Do order is the execution priority) and their descriptions.
+  `## Done`/`## Archived` become one line per story:
+  `ID | filename | status | milestone | title`. Every story ID and filename in
+  the project is present, so duplicate detection and milestone-coverage review
+  need nothing else; status, milestone and dependencies come from each story
+  file, not from backlog prose, and every prerequisite identifier
+  (`STORY-*`, `UD-*`, `AR-*`) is listed in full even when the surrounding prose
+  is summarized. A per-milestone status roll-up is derived at the end. A
+  backlog entry whose story file is missing is reported as `FILE MISSING`
+  rather than silently indexed.
+- **Decisions, receipts, architect requests.** Anything unresolved is supplied
+  in full -- its wording is what makes a duplicate recognizable. A RESOLVED
+  user decision keeps its question and its answer; a resolved PO receipt keeps
+  a summary plus the artifacts it cites; a resolved architect request keeps its
+  decision line plus the documents recording it.
+
+Nothing is dropped: each compacted entry names the file that holds the detail,
+and both role contracts allow reading that one file, or one named BACKLOG
+section, when a specific detail decides something. Both prompts and both
+contracts (and `AGENTS.md`'s routing step) now state that a contract supplied
+in the prompt must not be read again from disk, and the shared
+`CONTEXT_DISCIPLINE` block in `runners/local_planner_runner.py` states the
+read rules both roles share: section reads over whole documents, batched
+independent reads, never the same read twice, never a file printed merely to
+edit it, and never truncated evidence.
+
+Measured on the repository state of 2026-09-26, the planning prompt went from
+221,331 to ~86,600 characters (backlog 139,117 -> ~17,100; user decisions
+16,822 -> ~7,600; resolved PO receipts 10,530 -> ~5,700; architect requests
+3,429 -> ~2,200). These are prompt characters, not model tokens: the recorded
+token counters below are what actually establishes a usage change.
+
+### Prompt-size and usage diagnostics
+
+Before each planner/architect run, a terminal-only breakdown prints how many
+characters each supplied section costs (never the sections themselves):
+
+```text
+Planner context:
+  backlog index: 17,141 chars
+  ...
+  role instructions: 29,110 chars
+  harness prompt scaffolding: 13,497 chars
+  total supplied context: 86,610 chars (prompt only; tool output during the run adds to it)
+```
+
+When the run ends, `UsageTally` reports what the model actually charged:
+number of model requests, gross input, cached input, arithmetic uncached input
+and output tokens. Per-request `token_count` updates and the turn's own
+`turn.completed` usage are reported as separate lines rather than added
+together, and a run whose stream carried no usage says so instead of printing
+zeros.

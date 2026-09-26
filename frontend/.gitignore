@@ -1,0 +1,18 @@
+# Installed dependencies — restored by `npm ci` from the committed package-lock.json
+node_modules/
+
+# Build output of `npm run build`
+dist/
+
+# Machine-readable test report the CI gate's failure summarizer reads
+# (.github/workflows/ci.yml); the run itself is the same `npm test`.
+reports/
+
+# Local environment overrides (GW2_BACKEND_ORIGIN, GW2_FRONTEND_PORT, ...)
+.env
+.env.local
+.env.*.local
+
+# Tool caches
+.vite/
+*.tsbuildinfo

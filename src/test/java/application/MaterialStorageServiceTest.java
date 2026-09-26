@@ -83,7 +83,7 @@ class MaterialStorageServiceTest {
     }
 
     private static MaterialStorageRow row(int category, int itemId, int count) {
-        return new MaterialStorageRow(category, itemId, count, "C:\\icons\\" + itemId + ".png", "Basic");
+        return new MaterialStorageRow(category, itemId, count, "C:\\icons\\" + itemId + ".png", null, "Basic");
     }
 
     private static List<String> names(List<MaterialCategory> categories) {

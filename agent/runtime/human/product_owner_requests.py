@@ -91,8 +91,8 @@ def validate_request_updates(before: dict[str, str], processed: list,
         if status in ("RESOLVED", "NEEDS_USER") and not resolution.strip():
             problems.append(f"{name} requires a Planner Resolution.")
         if status == "RESOLVED":
-            if name not in reported or planning_status != "COMPLETE":
-                problems.append(f"{name} may be resolved only as a reported request on a COMPLETE run.")
+            if name not in reported or planning_status not in ("COMPLETE", "NEEDS_USER"):
+                problems.append(f"{name} may be resolved only as a reported request on a COMPLETE or NEEDS_USER run (independent work only).")
             # Require concrete, existing authoritative evidence, including for
             # existing coverage/no-action resolutions. Do not accept prose alone.
             refs = re.findall(r"(?:docs|agent/stories)/[A-Za-z0-9_./-]+\.md", resolution)

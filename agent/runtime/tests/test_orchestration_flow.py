@@ -55,24 +55,38 @@ class MainFlowTestCase(unittest.TestCase):
                 )
             )
 
-        self.scheduler = orchestrator.CapacityScheduler(self.claude, self.codex)
+        self.scheduler = orchestrator.CapacityScheduler(self.claude, self.codex, cache_file=None)
 
         self.planning_result = {"status": "COMPLETE", "story_files_created": []}
         self.decisions = []
+        self.architect_requests = []
+        self.undispatchable_requests = []
+        self.architect_result = {
+            "status": "COMPLETE",
+            "request_status": "RESOLVED",
+            "user_decision_ids": [],
+        }
 
         patches = [
             patch.object(orchestrator, "CapacityScheduler", return_value=self.scheduler),
             patch.object(orchestrator, "requeue_resolved_interventions"),
+            patch.object(orchestrator, "get_actionable_architect_requests",
+                         side_effect=lambda: list(self.architect_requests)),
+            patch.object(orchestrator, "undispatchable_architect_requests",
+                         side_effect=lambda: list(self.undispatchable_requests)),
             patch.object(orchestrator, "_active_is_executable",
                          side_effect=lambda: self.state["active"]),
             patch.object(orchestrator, "get_selectable_story_candidates",
                          side_effect=lambda: list(self.state["candidates"])),
+            patch.object(orchestrator, "planning_input_snapshot",
+                         side_effect=lambda: {"fixture": self.state["fingerprint"]}),
             patch.object(orchestrator, "planning_fingerprint",
-                         side_effect=lambda: self.state["fingerprint"]),
+                         side_effect=lambda snapshot=None: self.state["fingerprint"]),
             patch.object(orchestrator, "execute_active_story", side_effect=self.execute),
             patch.object(orchestrator, "_select_and_activate_next_story",
                          side_effect=self.select),
             patch.object(orchestrator, "run_planning_pass", side_effect=self.plan),
+            patch.object(orchestrator, "run_architect_pass", side_effect=self.architect),
             patch.object(orchestrator, "list_decisions", side_effect=lambda: list(self.decisions)),
             patch.object(orchestrator, "wait_for_user_decisions", side_effect=self.wait_decision),
             patch.object(orchestrator, "log_line", side_effect=self.logged.append),
@@ -108,9 +122,22 @@ class MainFlowTestCase(unittest.TestCase):
         self.events.append("plan")
         return self.planning_result
 
+    def architect(self, request):
+        self.events.append(f"architect:{request['file']}")
+        # A finished pass always moves the request out of the actionable
+        # set -- RESOLVED, or NEEDS_USER behind a decision.
+        self.architect_requests = [
+            item for item in self.architect_requests
+            if item["file"] != request["file"]
+        ]
+        return self.architect_result
+
     def wait_decision(self, ids):
         self.events.append(f"decision-wait:{sorted(ids)}")
         self.decisions = [dict(item, status="RESOLVED") for item in self.decisions]
+        # Answering a decision edits its file, so the planning
+        # fingerprint really does change and planning is reconsidered.
+        self.state["fingerprint"] += "+"
 
     def sleep(self, seconds):
         self.events.append("wait")
@@ -254,9 +281,9 @@ class PlanningFailureTest(MainFlowTestCase):
         self.run_main()
 
         self.assertEqual(self.events, ["select", "claude", "plan", "wait"])
-        self.codex.defer.assert_called_once()
+        self.codex.defer.assert_not_called()
         self.assertTrue(
-            any("Project planning failed" in line for line in self.logged),
+            any("Project planning FAILED" in line for line in self.logged),
             self.logged,
         )
 
@@ -268,10 +295,28 @@ class PlanningFailureTest(MainFlowTestCase):
             self.run_main()
 
         self.assertEqual(self.events, ["select", "claude", "wait"])
-        self.codex.defer.assert_called_once()
+        self.codex.defer.assert_not_called()
 
 
 class UserDecisionGateTest(MainFlowTestCase):
+
+    def test_independent_work_executes_while_user_decision_stays_open(self):
+        self.decisions = [{"id": "UD-010", "status": "OPEN", "file": "UD-010-choice.md"}]
+        def plan():
+            self.events.append("plan")
+            self.state["fingerprint"] = "independent story added"
+            self.state["candidates"] = ["STORY-INDEPENDENT.md"]
+            return {"status": "NEEDS_USER", "user_decision_ids": ["UD-010"],
+                    "story_files_created": ["STORY-INDEPENDENT.md"]}
+        with patch.object(orchestrator, "run_planning_pass", side_effect=plan) as model:
+            decisions = orchestrator.DecisionLog()
+            replenish = False
+            for _ in range(3):
+                outcome, replenish = orchestrator._run_cycle(self.scheduler, replenish, decisions)
+                self.assertEqual(outcome, "CONTINUE")
+            model.assert_called_once()
+        self.assertEqual(self.events, ["plan", "select", "claude"])
+        self.assertEqual(self.decisions[0]["status"], "OPEN")
 
     def test_open_user_decision_blocks_instead_of_being_bypassed(self):
         self.decisions = [{"id": "UD-006", "status": "OPEN", "file": "UD-006.md"}]
@@ -280,10 +325,11 @@ class UserDecisionGateTest(MainFlowTestCase):
         self.run_main(expect_stop=True)
 
         # No story is invented around the open decision: the
-        # orchestrator plans, waits for the human, and only resumes
-        # afterwards.
+        # orchestrator plans, waits for the human, re-plans with the
+        # answer, and only then concludes there is nothing to run.
         self.assertEqual(
-            self.events, ["plan", "decision-wait:['UD-006']", "select"]
+            self.events,
+            ["plan", "decision-wait:['UD-006']", "plan", "select"],
         )
         self.assertNotIn("claude", self.events)
 
@@ -317,7 +363,7 @@ class CapacityStatusTest(unittest.TestCase):
     def test_status_lines_report_usage_and_next_check_without_probing(self):
         claude = orchestrator.CapacityProbe(Mock(return_value=False),
                                             recheck_seconds=1800, clock=lambda: 0)
-        scheduler = orchestrator.CapacityScheduler(claude, Mock())
+        scheduler = orchestrator.CapacityScheduler(claude, Mock(), cache_file=None)
         scheduler.claude_usage_percent = 97
         claude.defer()
 

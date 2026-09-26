@@ -10,6 +10,8 @@ import craft.PlannerContext;
 import craft.PriceQuote;
 import craft.Recipe;
 import craft.RecipeTreeBuilder;
+import craft.SingleCraftExplainer;
+import craft.SingleCraftExplanation;
 import repo.CraftingGraphCache;
 import repo.DiscChoice;
 import repo.InventoryRepository;
@@ -97,6 +99,113 @@ public class CraftingDiscoveryService {
      */
     public DiscoveryData reload(DiscChoice choice, CraftingSettings settings, String selectedCharacterName) throws SQLException {
 
+        Candidates candidates = loadCandidates(choice);
+
+        if (!candidates.missingRecipesFound()) {
+            this.lastAllowedRecipeIds = Collections.emptySet();
+            return new DiscoveryData(List.of(), List.of(), Map.of(), Map.of(), Map.of());
+        }
+
+        this.lastAllowedRecipeIds = candidates.allowedRecipeIds();
+
+        CalculationInputs inputs =
+                loadCalculationInputs(settings, selectedCharacterName, candidates.allRecipes());
+
+        Map<Integer, CraftResult> results = planner.evaluateAll(
+                candidates.allRecipes(), inputs.sellableInventory(), inputs.boundInventory(),
+                inputs.tp(), settings, candidates.allowedRecipeIds());
+
+        this.lastAllRecipes = candidates.allRecipes();
+        this.lastSettings = settings;
+        this.lastTp = inputs.tp();
+        this.lastItems = inputs.items();
+        this.lastResultsByRecipeId = results;
+
+        return new DiscoveryData(candidates.visibleRecipes(), candidates.allRecipes(),
+                results, inputs.items(), inputs.tp());
+    }
+
+    /**
+     * Freshly calculated detail for one selected recipe (TARGET_ARCHITECTURE.md section 13.1/13.2):
+     * loads this operation's own inputs, checks {@code recipeId} against the candidate set those
+     * inputs just produced, and derives both the row summary and the semantic explanation from
+     * them. This is a fresh calculation, not retrieval of an earlier reload()'s result.
+     *
+     * <p>{@code inventoryCharacterName} keeps Discovery's separate, nullable inventory character
+     * with its existing semantics: null falls back to the unfiltered owned pool exactly as
+     * reload(...) does, and it is independent of {@code choice}'s crafting character.
+     *
+     * <p>Nothing here reads or writes the {@code last*} fields above, so an operation that finds
+     * nothing discoverable reports exactly that instead of an earlier operation's row, metadata or
+     * trace, and successive, concurrent or failing invocations cannot contaminate one another.
+     * The explanation starts from the same captured initial inventory the row's simulation started
+     * from, never from what that simulation had left, and no price, inventory, item or graph read
+     * happens while it is built.
+     */
+    public CraftingResolutionDetail resolveDetail(int recipeId,
+                                                  DiscChoice choice,
+                                                  CraftingSettings settings,
+                                                  String inventoryCharacterName) throws SQLException {
+
+        Candidates candidates = loadCandidates(choice);
+
+        Recipe selected = candidates.selected(recipeId);
+        if (selected == null) {
+            return CraftingResolutionDetail.recipeNotInCalculation(recipeId);
+        }
+
+        CalculationInputs inputs =
+                loadCalculationInputs(settings, inventoryCharacterName, candidates.allRecipes());
+
+        CraftResult row = planner.evaluateOne(
+                selected, candidates.allRecipes(), inputs.sellableInventory(),
+                inputs.boundInventory(), inputs.tp(), settings, candidates.allowedRecipeIds());
+
+        SingleCraftExplanation explanation = new SingleCraftExplainer().explainIndividual(
+                selected, candidates.allRecipes(), inputs.sellableInventory(),
+                inputs.boundInventory(), inputs.tp(), settings, candidates.allowedRecipeIds());
+
+        return CraftingResolutionDetail.of(
+                recipeId, selected, row, explanation, inputs.items(), inputs.tp());
+    }
+
+    /**
+     * The recipes this operation may show and resolve through. Request-local: an instance belongs
+     * to the one reload()/resolveDetail() call that loaded it.
+     *
+     * @param missingRecipesFound whether the character has any missing discoverable recipe at all,
+     *                            which reload(...) short-circuits on before loading anything else.
+     *                            An empty {@code visibleRecipes} with this set is the different
+     *                            case where every missing recipe was filtered out by the rating
+     *                            ceiling.
+     */
+    private record Candidates(boolean missingRecipesFound,
+                              List<Recipe> visibleRecipes,
+                              List<Recipe> allRecipes,
+                              Set<Integer> allowedRecipeIds) {
+
+        static Candidates noMissingRecipes() {
+            return new Candidates(false, List.of(), List.of(), Set.of());
+        }
+
+        /** The recipe this operation would produce a row for, or null when it would produce none. */
+        Recipe selected(int recipeId) {
+            if (!allowedRecipeIds.contains(recipeId)) return null;
+            for (Recipe r : allRecipes) {
+                if (r.recipeId == recipeId) return r;
+            }
+            return null;
+        }
+    }
+
+    /** The inventory pools, quotes and item metadata one operation captured. */
+    private record CalculationInputs(Map<Integer, Integer> sellableInventory,
+                                     Map<Integer, Integer> boundInventory,
+                                     Map<Integer, PriceQuote> tp,
+                                     Map<Integer, ItemRepository.ItemInfo> items) {
+    }
+
+    private Candidates loadCandidates(DiscChoice choice) throws SQLException {
         String charName = (choice == null) ? null : choice.charName;
         String discipline = (choice == null) ? "All" : choice.discipline;
         int maxLevel = (choice != null) ? choice.rating : Integer.MAX_VALUE;
@@ -113,8 +222,7 @@ public class CraftingDiscoveryService {
         List<Integer> missingIds = recipeRepo.loadMissingDiscoverableRecipeIdsForCharacter(charName, discipline);
 
         if (missingIds.isEmpty()) {
-            this.lastAllowedRecipeIds = Collections.emptySet();
-            return new DiscoveryData(List.of(), List.of(), Map.of(), Map.of(), Map.of());
+            return Candidates.noMissingRecipes();
         }
 
         Set<Integer> missingSet = new HashSet<>(missingIds);
@@ -133,8 +241,12 @@ public class CraftingDiscoveryService {
                 .map(r -> r.recipeId)
                 .collect(Collectors.toSet());
 
-        this.lastAllowedRecipeIds = allowedRecipeIds;
+        return new Candidates(true, visibleRecipes, allRecipes, allowedRecipeIds);
+    }
 
+    private CalculationInputs loadCalculationInputs(CraftingSettings settings,
+                                                    String selectedCharacterName,
+                                                    List<Recipe> allRecipes) throws SQLException {
         Map<Integer, Integer> sellableInv = Map.of();
         Map<Integer, Integer> boundInv = Map.of();
 
@@ -169,16 +281,7 @@ public class CraftingDiscoveryService {
         Map<Integer, PriceQuote> tp = tpRepo.loadTpQuotes(itemIds);
         Map<Integer, ItemRepository.ItemInfo> items = itemRepo.loadItems(itemIds);
 
-        Map<Integer, CraftResult> results =
-                planner.evaluateAll(allRecipes, sellableInv, boundInv, tp, settings, allowedRecipeIds);
-
-        this.lastAllRecipes = allRecipes;
-        this.lastSettings = settings;
-        this.lastTp = tp;
-        this.lastItems = items;
-        this.lastResultsByRecipeId = results;
-
-        return new DiscoveryData(visibleRecipes, allRecipes, results, items, tp);
+        return new CalculationInputs(sellableInv, boundInv, tp, items);
     }
 
     /**
@@ -207,6 +310,7 @@ public class CraftingDiscoveryService {
                 cr.revenueCopper,
                 cr.profitCopper,
                 cr.totalProfitCopper,
+                cr.totalSellValueCopper,
                 lazyTree,
                 cr.blockedReason
         );

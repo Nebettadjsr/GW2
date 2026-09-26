@@ -52,6 +52,14 @@ class CraftingProfitApiControllerTest {
     private static final Recipe RECIPE = new Recipe(
             7, 100, 2, 275, "Artificer", List.of(new Ingredient(200, 3)));
 
+    /** Retained icon sources and the application URLs they must derive (STORY-API-009). */
+    private static final String OUTPUT_SOURCE = "https://render.guildwars2.com/file/ABCDEF0123456789/1234.png";
+    private static final String OUTPUT_ICON_URL =
+            "/api/items/100/icon/50dc20284b8e24f872bc768471d8ec57efa59bb49b012531b2293dc8c50e6472.png";
+    private static final String INGOT_SOURCE = "https://render.guildwars2.com/file/FEDCBA9876543210/4321.jpg";
+    private static final String INGOT_ICON_URL =
+            "/api/items/200/icon/9247ad5f6cd4702a0c12724f8a90235191e8831a61be53d54a138b86e3984f8d.jpg";
+
     private RecordingServiceFactory factory;
     private MockMvc mockMvc;
 
@@ -163,8 +171,8 @@ class CraftingProfitApiControllerTest {
         factory.next(service -> service.canned = profitData(
                 List.of(RECIPE),
                 Map.of(RECIPE.recipeId, result),
-                Map.of(100, new ItemRepository.ItemInfo(100, "Widget", null),
-                        200, new ItemRepository.ItemInfo(200, "Ingot", null)),
+                Map.of(100, new ItemRepository.ItemInfo(100, "Widget", null, null),
+                        200, new ItemRepository.ItemInfo(200, "Ingot", null, null)),
                 Map.of(100, new PriceQuote(900, 1_000), 200, new PriceQuote(10, 12))));
 
         mockMvc.perform(post("/api/crafting/profit").contentType(MediaType.APPLICATION_JSON).content("{}"))
@@ -201,6 +209,105 @@ class CraftingProfitApiControllerTest {
                 .andExpect(jsonPath("$.rows[0].missingToBuyOne.length()").value(1))
                 .andExpect(jsonPath("$.rows[0].missingToBuyOne[0].itemId").value(200))
                 .andExpect(jsonPath("$.rows[0].missingToBuyOne[0].quantity").value(2));
+    }
+
+    @Test
+    void aRowCarriesItsOutputItemsIconUrlAndEachMissingMaterialItsOwn() throws Exception {
+        // Icons come from the retained sources the calculation's own batch item read already carried
+        // (STORY-API-009): a recipe has no icon of its own, so the row uses its output item's.
+        CraftResult result = new CraftResult(100, "Artificer", 4,
+                new HashMap<>(Map.of(300, 9, 200, 5)), new HashMap<>(Map.of(200, 2)),
+                1_234, 56, 7_890, 700, 2_800, null);
+
+        factory.next(service -> service.canned = profitData(
+                List.of(RECIPE),
+                Map.of(RECIPE.recipeId, result),
+                Map.of(100, new ItemRepository.ItemInfo(100, "Widget", "C:\\icons\\items\\100.png", OUTPUT_SOURCE),
+                        200, new ItemRepository.ItemInfo(200, "Ingot", null, INGOT_SOURCE),
+                        300, new ItemRepository.ItemInfo(300, "Scrap", null, "https://cdn.example.com/x.png")),
+                Map.of()));
+
+        String body = mockMvc.perform(post("/api/crafting/profit")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rows[0].iconUrl").value(OUTPUT_ICON_URL))
+                .andExpect(jsonPath("$.rows[0].missingToBuy[0].itemId").value(200))
+                .andExpect(jsonPath("$.rows[0].missingToBuy[0].iconUrl").value(INGOT_ICON_URL))
+                // a rejected source and an item outside the loaded set are both simply null
+                .andExpect(jsonPath("$.rows[0].missingToBuy[1].itemId").value(300))
+                .andExpect(jsonPath("$.rows[0].missingToBuy[1].iconUrl").doesNotExist())
+                .andExpect(jsonPath("$.rows[0].missingToBuyOne[0].iconUrl").value(INGOT_ICON_URL))
+                // the economics are untouched by icon enrichment
+                .andExpect(jsonPath("$.rows[0].totalProfitCopper").value(2800))
+                .andExpect(jsonPath("$.rows[0].craftableCount").value(4))
+                .andReturn().getResponse().getContentAsString();
+
+        assertFalse(body.contains("C:\\icons"), "no backend filesystem path may reach the browser: " + body);
+        assertFalse(body.contains("render.guildwars2.com"), "no upstream URL may reach the browser: " + body);
+    }
+
+    @Test
+    void anItemWithoutRetainedMetadataHasANullIconUrlAndAnUnavailableRowStillCarriesOne() throws Exception {
+        factory.next(service -> service.canned = profitData(
+                List.of(RECIPE),
+                Map.of(),
+                Map.of(100, new ItemRepository.ItemInfo(100, "Widget", null, OUTPUT_SOURCE)),
+                Map.of()));
+
+        mockMvc.perform(post("/api/crafting/profit")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk())
+                // a row whose calculation produced no result is still reported, icon included: an image
+                // is display metadata and says nothing about craftability (§12.1)
+                .andExpect(jsonPath("$.rows[0].resultAvailable").value(false))
+                .andExpect(jsonPath("$.rows[0].iconUrl").value(OUTPUT_ICON_URL));
+
+        factory.next(service -> service.canned = profitData(
+                List.of(RECIPE), Map.of(), Map.of(), Map.of()));
+
+        mockMvc.perform(post("/api/crafting/profit")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rows[0].outputItemId").value(100))
+                .andExpect(jsonPath("$.rows[0].iconUrl").doesNotExist());
+    }
+
+    @Test
+    void totalSellValueIsCopiedFromTheResultRatherThanMultipliedOutOfRevenueAndCount() throws Exception {
+        // 4 crafts at 7890 revenue would be 31560. The domain says 9999, so 9999 is what the
+        // response must carry - the mapper states the supplied economics, it does not check them.
+        CraftResult result = new CraftResult(100, "Artificer", 4,
+                Map.of(), Map.of(), 1_234, 56, 7_890, 700, 2_800, 9_999, null, BlockedReason.NONE);
+
+        factory.next(service -> service.canned = profitData(
+                List.of(RECIPE), Map.of(RECIPE.recipeId, result), Map.of(), Map.of()));
+
+        mockMvc.perform(post("/api/crafting/profit").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rows[0].revenueCopper").value(7890))
+                .andExpect(jsonPath("$.rows[0].craftableCount").value(4))
+                .andExpect(jsonPath("$.rows[0].totalSellValueCopper").value(9999));
+    }
+
+    @Test
+    void aTotalSellValueOfZeroIsReportedAsZeroAndAnAbsentResultAsAbsent() throws Exception {
+        Recipe zeroValue = new Recipe(8, 101, 1, 0, "Chef", List.of());
+        Recipe withoutResult = new Recipe(9, 102, 1, 0, "Chef", List.of());
+        // A result exists and its sell value is a known zero; that is not the same answer as a
+        // recipe the calculation produced no result for at all.
+        CraftResult zeroResult = new CraftResult(101, "Chef", 0,
+                Map.of(), Map.of(), 0, 0, 0, 0, 0, 0, null, BlockedReason.PRICE_UNAVAILABLE);
+
+        factory.next(service -> service.canned = profitData(
+                List.of(zeroValue, withoutResult), Map.of(zeroValue.recipeId, zeroResult),
+                Map.of(), Map.of()));
+
+        mockMvc.perform(post("/api/crafting/profit").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rows[0].resultAvailable").value(true))
+                .andExpect(jsonPath("$.rows[0].totalSellValueCopper").value(0))
+                .andExpect(jsonPath("$.rows[1].resultAvailable").value(false))
+                .andExpect(jsonPath("$.rows[1].totalSellValueCopper").doesNotExist());
     }
 
     @Test
@@ -443,7 +550,7 @@ class CraftingProfitApiControllerTest {
                 Thread.currentThread().interrupt();
             }
             return new ProfitData(List.of(recipe), List.of(recipe), Map.of(),
-                    Map.of(recipeId, new ItemRepository.ItemInfo(recipeId, choice.discipline, null)),
+                    Map.of(recipeId, new ItemRepository.ItemInfo(recipeId, choice.discipline, null, null)),
                     Map.of());
         }
     }

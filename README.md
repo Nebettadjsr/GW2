@@ -42,6 +42,8 @@ After the initial synchronization, most analysis is performed **locally**, meani
 - **IDE:** IntelliJ IDEA
 - **Database:** PostgreSQL
 - **External API:** Guild Wars 2 Official API (ArenaNet)
+- **Desktop UI:** JavaFX
+- **Browser UI (in progress):** Vue 3 with TypeScript, built by Vite — see *Running the Application*
 
 ---
 
@@ -133,6 +135,67 @@ The tool allows you to:
 - Refresh Trading Post prices
 - Analyze crafting profitability
 - Discover new crafting opportunities
+
+## Desktop (JavaFX)
+
+The JavaFX application remains the complete interface and is unchanged. Start it as before.
+
+## Browser (in progress)
+
+A browser client is being built alongside the desktop application; it does not replace it. It has a
+dark, responsive application shell with four pages, each reachable from the header and by its own
+address (so Back, Forward and bookmarks work): **Crafting Profit** — scope, search and settings on
+one side, a short comparison table of recipe, disciplines, craftable count, profit per craft, total
+profit and state on the other, and the chosen recipe's full detail beside the table on a wide screen
+or below it on a phone — **Synchronization**, whose buttons start the same
+account, game-data and Trading Post refresh operations as the desktop buttons and then follow each
+task ("Accepted, waiting to start", "Running", "Completed", "Failed", with the task id and timestamps
+under "Technical details") — and read-only **Bank** and **Materials** pages showing your stored bank
+slots (empty ones included, in place) and material storage as the backend groups them. Those two
+pages identify items by item id and show no icon image — the backend supplies no item name, and the
+icon it knows about is a file on the backend machine, not something the browser can load.
+
+Choosing a recipe opens its details — revenue, costs and profit under whether they are for one craft
+or for every craft counted, the output item's Trading Post quote, and the materials the calculation
+said still have to be bought. The step-by-step crafting tree is **not** there yet: the backend has no
+route that supplies one, and the page says so rather than guessing at one. That tree and the other
+views are desktop-only for now.
+
+Moving between pages keeps your crafting selection and any synchronization still being followed, and
+never re-submits anything. A page reload starts fresh: nothing is stored in the browser, so a task
+started before the reload keeps running in the backend but can no longer be followed here.
+
+It needs Node.js and two processes, started in this order:
+
+```bash
+# 1. backend HTTP API (repository root) — serves http://localhost:8080
+./mvnw spring-boot:run
+
+# 2. frontend dev server (frontend/) — serves http://localhost:5173
+cd frontend
+npm ci
+npm run dev
+```
+
+Then open <http://localhost:5173>.
+
+The dev server forwards `/api` to the backend, so the browser talks to one origin only. Point it at
+a different backend with `GW2_BACKEND_ORIGIN`, and change its own port with `GW2_FRONTEND_PORT`.
+The browser never receives your GW2 API key or database credentials — those stay with the backend,
+exactly as they do for the desktop application, and the frontend needs no configuration of its own.
+
+Other commands, all run in `frontend/`:
+
+| Command | Purpose |
+|---|---|
+| `npm run build` | type-check and build the production assets into `frontend/dist/` |
+| `npm run type-check` | strict TypeScript check |
+| `npm test` | component and unit tests |
+| `npm run smoke:browser` | drive a real browser against a running backend (both processes above must already be up) |
+| `npm run smoke:sync` | drive a real browser over the synchronization page against a stub backend the script runs itself — needs `npm run build` first, starts no real synchronization |
+| `npm run smoke:layout` | drive a real browser over all four pages at desktop, tablet and phone widths, checking navigation, zoom, keyboard focus and contrast against a stub backend — needs `npm run build` first |
+| `npm run smoke:profit` | drive a real browser over Crafting Profit, checking the results/detail split at desktop and phone widths and keyboard result selection against a stub backend — needs `npm run build` first |
+| `npm run smoke:account` | drive a real browser over the Bank and Materials views against a running backend and compare what is shown with the API responses (both processes above must already be up; reads only) |
 
 ---
 
@@ -337,7 +400,70 @@ Prices may therefore be several minutes old, which is generally acceptable becau
 
 # Future Improvements
 
-This section will list planned improvements as the project evolves.
+## Frontend / UI Direction
+
+The first web frontend should provide a modern, clear, and user-friendly replacement for the existing JavaFX interface.
+
+The initial goal is **not** to design the final product UI. The first version should establish a usable web interface that exposes the functionality and information already available in the JavaFX application in a more approachable layout.
+
+### First Web Version
+
+The first version should:
+
+* support a single primary user;
+* reproduce the useful information and functionality currently available through the JavaFX UI;
+* reorganize that information where necessary to improve usability rather than copying the JavaFX layout exactly;
+* use a modern but relatively simple visual design;
+* make important actions, results, filters, status information, and calculation explanations easy to find;
+* avoid unnecessary visual or interaction complexity;
+* provide a good foundation for later Product Owner-driven UI development.
+
+The JavaFX interface is therefore a **functional reference**, not a visual specification.
+
+The web frontend may improve grouping, navigation, presentation, terminology, and interaction patterns as long as documented product/domain behavior remains unchanged.
+
+### Design Reference
+
+Existing Guild Wars 2 crafting/economy tools and similar applications may be used as reference material for:
+
+* common information layouts;
+* navigation patterns;
+* result tables;
+* filtering;
+* recipe/crafting presentation;
+* economic data presentation;
+* generally useful UX conventions.
+
+These products are references only. Their behavior, architecture, or design should not automatically become project requirements.
+
+### Future User Model
+
+The first version is intended primarily for a single user.
+
+The architecture should not unnecessarily prevent a later version from supporting multiple users, but multi-user functionality must not be implemented speculatively.
+
+A possible future model may allow individual users to provide and retain their own Guild Wars 2 API key without requiring a traditional username/password login.
+
+For such a model, the API key may be retained through browser-associated state such as a secure cookie or an equivalent mechanism. The exact security, storage, session, and account-isolation design is intentionally **TBD** and must be decided before multi-user support is implemented.
+
+### Future UI Evolution
+
+The first web UI is a functional and visual starting point, not the final interface.
+
+Additional functionality, workflows, screens, and UX requirements will be introduced by the Product Owner as development reaches those areas.
+
+The final UI structure and visual design should therefore evolve through Product Owner requirements and actual usage rather than being fully specified in advance.
+
+Until then, prefer:
+
+* simple navigation;
+* understandable layouts;
+* modern but restrained visual design;
+* clear presentation of calculation results;
+* visible loading/error/blocked states;
+* sensible defaults;
+* minimal unnecessary interaction steps;
+* reusable frontend patterns that can evolve without requiring a complete redesign.
 
 ---
 

@@ -22,11 +22,20 @@ public class MaterialStorageRepository {
 
     /**
      * One non-empty {@code account_materials} stack exactly as the query returns it.
-     * {@code iconPath}/{@code rarity} are null when the stack's item has no matching {@code items}
-     * row (LEFT JOIN). {@code itemId} carries the query's secondary ordering key; the Materials
-     * view does not display it.
+     * {@code iconPath}/{@code iconUrl}/{@code rarity} are null when the stack's item has no matching
+     * {@code items} row (LEFT JOIN). {@code itemId} carries the query's secondary ordering key; the
+     * Materials view does not display it.
+     *
+     * <p>{@code iconPath} is the local desktop file JavaFX renders; {@code iconUrl} is the retained
+     * upstream icon source ({@code items.icon_url}) a browser-facing read derives its image URL from
+     * (TARGET_ARCHITECTURE.md §12.1). Both come from this one batch read.
      */
-    public record MaterialStorageRow(int category, Integer itemId, int count, String iconPath, String rarity) {}
+    public record MaterialStorageRow(int category,
+                                     Integer itemId,
+                                     int count,
+                                     String iconPath,
+                                     String iconUrl,
+                                     String rarity) {}
 
     /** Reads every non-empty material stack using the shared {@link Db#open()} connection configuration. */
     public List<MaterialStorageRow> loadMaterialStorage() throws SQLException {
@@ -43,7 +52,7 @@ public class MaterialStorageRepository {
     public List<MaterialStorageRow> loadMaterialStorage(Connection con) throws SQLException {
         String sql = """
             SELECT am.category, am.item_id, am.count,
-                   i.icon_path, i.rarity
+                   i.icon_path, i.icon_url, i.rarity
             FROM account_materials am
             LEFT JOIN items i ON i.item_id = am.item_id
             WHERE am.count IS NOT NULL AND am.count > 0
@@ -59,9 +68,10 @@ public class MaterialStorageRepository {
                 Integer itemId = (Integer) rs.getObject("item_id");
                 int count = rs.getInt("count");
                 String iconPath = rs.getString("icon_path");
+                String iconUrl = rs.getString("icon_url");
                 String rarity = rs.getString("rarity");
 
-                out.add(new MaterialStorageRow(category, itemId, count, iconPath, rarity));
+                out.add(new MaterialStorageRow(category, itemId, count, iconPath, iconUrl, rarity));
             }
         }
         return out;

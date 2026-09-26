@@ -3,6 +3,8 @@ import re
 
 from agent.runtime.support.config import ARCHIVE_DIR, BACKLOG_FILE, CURRENT_STORY_FILE, REPO_ROOT, STORIES_DIR
 from agent.runtime.support.files import find_section_span, read_file
+from agent.runtime.human.user_decisions import list_decisions
+from agent.runtime.human.architect_requests import list_requests as list_architect_requests
 
 
 # ============================================================
@@ -550,7 +552,7 @@ def get_unsatisfied_dependencies(
 
     Fail-safe by construction: a referenced Story ID that does not
     resolve to any known story file, or Dependencies text that names
-    no recognizable STORY-<AREA>-<NUMBER> reference at all despite not
+    no recognizable STORY/UD/AR reference at all despite not
     being empty/"None", is treated as UNSATISFIED rather than ignored.
     """
 
@@ -572,16 +574,27 @@ def get_unsatisfied_dependencies(
         dependencies_text
     )
 
-    if not dependency_ids:
+    decision_ids = set(re.findall(r"\b(?:UD|AR)-\d+\b", dependencies_text))
+    if not dependency_ids and not decision_ids:
         return [
             "Dependencies section is non-empty but names no "
-            f"recognizable STORY-<AREA>-<NUMBER> reference: {stripped!r}"
+            f"recognizable STORY/UD/AR reference: {stripped!r}"
         ]
 
     if story_index is None:
         story_index = build_story_index()
 
     unsatisfied = []
+    if decision_ids:
+        records = []
+        if any(item.startswith("UD-") for item in decision_ids):
+            records.extend(list_decisions())
+        if any(item.startswith("AR-") for item in decision_ids):
+            records.extend(list_architect_requests())
+        for decision_id in sorted(decision_ids):
+            matches = [item for item in records if item["id"] == decision_id]
+            if len(matches) != 1 or matches[0]["status"] != "RESOLVED":
+                unsatisfied.append(f"depends on {decision_id}, which is not uniquely RESOLVED")
 
     for dependency_id in dependency_ids:
         entry = story_index.get(dependency_id)

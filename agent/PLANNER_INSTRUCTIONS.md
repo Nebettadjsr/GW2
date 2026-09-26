@@ -7,10 +7,17 @@ Defines PROJECT PLANNING MODE for the local planning model.
 The Python harness determines the current roadmap phase before the model starts and supplies:
 - the exact current-phase excerpt from `docs/ROADMAP.md`;
 - `agent/PROJECT_STATE.md`;
-- `agent/stories/BACKLOG.md`;
-- the contents of OPEN and NEEDS_USER files under `agent/product-owner-requests/` (excluding `README.md`; missing Status means OPEN).
+- a deterministic index of `agent/stories/BACKLOG.md`: every story ID and filename in the project, with each story's status, milestone and dependencies; the live `## Active`/`## To Do`/`## Blocked` sections in their own order and wording, and completed entries compacted to one line each;
+- the contents of OPEN and NEEDS_USER files under `agent/product-owner-requests/` (excluding `README.md`; missing Status means OPEN);
+- the `agent/architect-requests/` inbox: unresolved requests in full, resolved ones as a compact architect-decision line;
+- user-decision questions, blockers and answers across all statuses: unresolved decisions in full, resolved ones as question and answer;
+- resolved PO request coverage receipts, summarized with the artifacts they cite, as read-only deduplication input.
 
 Use those supplied copies. Do not reread them through shell commands.
+
+Finished history is compacted, never discarded: the index names the file that
+holds each detail. Read that one file, or that one BACKLOG section, when a
+specific detail decides something.
 
 The planner must stay inside the supplied phase.
 
@@ -74,6 +81,15 @@ Authoritative owners:
 - `agent/PROJECT_STATE.md`
     - planner continuity only
 
+- `agent/architect-requests/AR-*.md`
+    - architecture questions for the architect role
+    - OPEN / NEEDS_USER / RESOLVED status
+    - planner-created, architect-owned; never planner-answered
+
+- `docs/architecture/decisions/ADR-*.md`
+    - significant architecture decision records
+    - architect-owned; planning never writes here
+
 - `agent/product-owner-requests/*.md` (excluding `README.md`)
     - Product Owner input with retained planner resolution notes
     - authoritative requirements still belong to the owners above
@@ -98,7 +114,7 @@ Rules:
 If the current phase is incomplete:
 - create only current-phase work;
 - keep later-phase work non-selectable;
-- stop after producing the next useful current-phase plan.
+- review remaining current-phase areas before producing the next useful bounded plan.
 
 If the current phase is complete:
 1. update current-phase status only as necessary;
@@ -137,23 +153,29 @@ If authoritative sources do not establish a fact, treat it as unknown.
 
 ## Read Scope
 
-Mandatory context is already supplied by the harness.
+Mandatory context is already supplied by the harness, and the task prompt's
+own read list is authoritative for the run.
 
 Do not reread:
 - `agent/PLANNER_INSTRUCTIONS.md`;
+- `AGENTS.md` (its instruction to read this contract is already satisfied by the supplied copy);
 - the full `docs/ROADMAP.md`;
 - `agent/PROJECT_STATE.md`;
-- `agent/stories/BACKLOG.md`.
+- the supplied requests, decision summaries and backlog index.
 
-Additional reads are allowed only when needed:
+Targeted reads are allowed when a specific detail actually decides something:
 
-- `docs/KNOWN_PROBLEMS.md`
-- `docs/CURRENT_ARCHITECTURE.md`
-- `docs/TARGET_ARCHITECTURE.md`
-- `docs/DOMAIN_SPEC.md`
-- `docs/TEST_STRATEGY.md`
-- current-phase files directly under `agent/stories/`
-- files under `agent/user-decisions/`
+- one named section of `docs/KNOWN_PROBLEMS.md`, `docs/CURRENT_ARCHITECTURE.md`,
+  `docs/TARGET_ARCHITECTURE.md`, `docs/DOMAIN_SPEC.md` or `docs/TEST_STRATEGY.md`
+- one story file under `agent/stories/` or `agent/stories/archive/`
+- one file under `agent/user-decisions/`
+- one named section of `agent/stories/BACKLOG.md`, when a completed entry's
+  narrative is the evidence you need
+
+Read a section or line range rather than a whole large document, batch
+independent reads into one command, and never read the same thing twice.
+Editing `agent/stories/BACKLOG.md` is not a read: change it in place with a
+script that never prints its contents.
 
 Do not inspect:
 - `CLAUDE.md`
@@ -174,7 +196,7 @@ and is never itself a request.
 
 Every planning run processes OPEN and NEEDS_USER files directly under
 `agent/product-owner-requests/` (excluding `README.md`) before creating any
-new stories. Ignore RESOLVED requests; legacy notes without Status are OPEN. These files are planning input, never executable stories, and
+new stories. Consult RESOLVED coverage receipts to avoid duplicates, but never edit them; legacy notes without Status are OPEN. These files are planning input, never executable stories, and
 must never be added to BACKLOG `## To Do` or referenced by the selector.
 
 The human may write a request in the recommended format (Title, Requested
@@ -214,8 +236,9 @@ For each request file, in order:
    interpretations, a domain/business-rule ambiguity, a technology choice
    marked `TBD`, a materially different architectural alternative, or
    product behavior the request does not specify), create or reuse an OPEN
-   `agent/user-decisions/UD-*.md` file and return `NEEDS_USER`, per User
-   Decisions below. Normal implementation details safely left to the
+   `agent/user-decisions/UD-*.md` file for that work, then continue examining
+   other work. Route technical architecture questions to Architect Requests.
+   Choose the final result only after the phase review below. Normal implementation details safely left to the
    implementing story do not need a user decision.
 
 ### Architecture-to-Roadmap Consistency
@@ -262,7 +285,8 @@ means OPEN; add the lifecycle sections when processing them.
   or no action required. Cite the actual Markdown artifact paths and relevant
   sections/story IDs, including existing coverage for a no-action resolution.
 
-Future passes ignore RESOLVED files. OPEN and NEEDS_USER remain visible.
+Future passes do not reprocess RESOLVED files; their coverage receipts remain
+read-only deduplication input. OPEN and NEEDS_USER remain visible.
 Only the human Product Owner deletes reviewed RESOLVED files manually.
 The request's resolution note is a receipt, not a second requirements store.
 
@@ -278,8 +302,68 @@ Python rejects request deletion, invalid statuses, missing resolution/evidence,
 missing blocking UD files, and unreported resolutions. It validates structural
 evidence; the planner must verify that the artifacts fully cover the request.
 Already RESOLVED files must remain unchanged and must not be reported again.
-The list must be empty unless planning status is COMPLETE. On NEEDS_USER or
-FAILED passes, retain requests as OPEN or NEEDS_USER rather than RESOLVED.
+On COMPLETE or NEEDS_USER, list independently resolved requests. A blocked
+request remains NEEDS_USER; unrelated requests may be resolved in the same pass.
+On FAILED, retain requests as OPEN or NEEDS_USER rather than RESOLVED.
+
+## Architect Requests
+
+Architecture is owned by a separate Codex role, the **architect**
+(`agent/ARCHITECT_INSTRUCTIONS.md`, routed by `AGENTS.md`). The planner never
+enters ARCHITECTURE MODE and never decides an architectural question it is not
+authorized to decide.
+
+When planning runs into such a question -- a component/layer boundary the
+authoritative documents do not settle, a technology still marked `TBD`, a
+structural alternative with materially different consequences, or a conflict
+between two architecture documents -- create an architect request instead of
+guessing, and instead of going straight to a User Decision:
+
+`agent/architect-requests/AR-<NUMBER>-short-name.md`
+
+Required `##` headings, in this exact order:
+
+1. Status (`OPEN`)
+2. Architecture Question
+3. Context and Constraints
+4. Authoritative References
+5. Blocked Work
+6. Blocking User Decision (`None.`)
+7. Architect Decision (`TODO`)
+8. Resolution (`TODO`)
+
+Rules:
+- state the question precisely, the context and constraints already known, the
+  authoritative documents/sections that bear on it, and exactly what planning
+  or story work it blocks;
+- leave `Architect Decision` and `Resolution` as `TODO`; answering your own
+  request is a role violation;
+- IDs and filenames are unique for all time;
+- never create a second request for a question an unresolved request already
+  asks -- record that the work is blocked by the existing `AR-*` instead;
+- never modify, resolve or delete an existing request; the harness compares
+  them byte-for-byte after every pass and rolls the pass back if one changed;
+- never write `docs/architecture/decisions/ADR-*.md`.
+
+Do not route a trivial implementation choice to the architect: naming, local
+structure inside one class, test placement, or obvious reuse of an existing
+pattern belong to the implementing story.
+
+Consuming architect output:
+- a `RESOLVED` request's `Architect Decision` is established architecture
+  input. Plan with it, and convert the implementation work it implies into
+  normal current-phase stories when the phase allows;
+- the authoritative home of that decision is the document or ADR the architect
+  updated -- do not copy it into a story, the roadmap or `PROJECT_STATE.md`;
+- a `NEEDS_USER` request is waiting on the Product Owner through its own
+  `agent/user-decisions/UD-*.md` file. Treat the work it blocks as blocked, and
+  do not create a competing decision for the same question;
+- if an architecture change affects roadmap sequencing or phase exit criteria,
+  reconcile `docs/ROADMAP.md` in a normal planning pass.
+
+Python supplies the inbox with the planning prompt: unresolved requests in
+full, resolved ones as a compact decision line. Do not read the folder through
+the shell.
 
 ## BACKLOG Contract
 
@@ -333,6 +417,8 @@ The planner may:
 - update `docs/ROADMAP.md` when current-phase status materially changes;
 - update `agent/PROJECT_STATE.md` when planner continuity materially changes;
 - create or reference user-decision files;
+- create architect requests under `agent/architect-requests/` for architectural
+  questions it is not authorized to decide, per Architect Requests below;
 - process files under `agent/product-owner-requests/` (excluding `README.md`) per the Product Owner Requests section, and update each original file with its Status and Planner Resolution;
 - write `agent/runtime/artifacts/PLANNING_RESULT.json`.
 
@@ -351,7 +437,9 @@ The planner must not:
 - create future-phase work;
 - invent repository facts;
 - treat a file under `agent/product-owner-requests/` as an executable story or add it to BACKLOG `## To Do`;
-- delete any file under `agent/product-owner-requests/`; only the human Product Owner removes reviewed RESOLVED requests.
+- delete any file under `agent/product-owner-requests/`; only the human Product Owner removes reviewed RESOLVED requests;
+- enter ARCHITECTURE MODE, answer its own architect request, or modify/resolve/delete an existing one;
+- write `docs/architecture/decisions/ADR-*.md`.
 
 Additional rules:
 - Create only the next small useful batch.
@@ -362,7 +450,7 @@ Additional rules:
 - Respect dependencies and blockers.
 - Keep stories small enough for autonomous implementation where practical.
 - Do not invent domain or architecture decisions.
-- If a human decision is required, return `NEEDS_USER`.
+- An open UD blocks only its dependent work; choose status after the phase review.
 - BACKLOG `## To Do` order defines execution priority.
 
 Before creating new current-phase stories, check whether
@@ -372,6 +460,65 @@ stories, or backlog.
 
 Read only the relevant sections; do not reread the full document
 unnecessarily.
+
+## Explore Past Individual Blockers
+
+A planning pass explores past individual blockers and maximizes useful independent
+planning progress within the current milestone before declaring itself blocked.
+
+Before drafting the small story batch, review the remaining relevant areas in the
+supplied phase excerpt, current PO requests, existing backlog/stories and relevant
+authoritative requirements. For each area, establish one or more of:
+- PLANNED: executable work created in this pass;
+- READY: justified independent work still available for a subsequent small batch;
+- USER_DECISION: the specific OPEN UD(s) needed for that area;
+- ARCHITECT_REQUEST: the specific unresolved AR(s) needed for that area;
+- COVERED: existing authoritative artifacts or stories already cover the work;
+- PREREQUISITE: a specific unfinished story must finish before this work can proceed.
+
+Record a compact `phase_review` in the result: area, outcome and artifact references.
+Use separate entries if an area has both ready and blocked parts. This is a receipt
+of the review, not a new requirements store or an exhaustive implementation plan.
+Do not infer later-phase work or invent requirements to fill the review.
+
+Discover blockers across those areas before stopping to draft stories. Create ALL
+currently identifiable independent UDs and ARs in this pass, even after the first
+blocker or after reaching the story batch limit. The six-story limit does not limit
+the number of independently justified questions. Never speculate about a question
+whose existence or options genuinely depend on an unanswered decision: record that
+dependency and revisit it after the answer. A previously discoverable independent
+question must not be deferred merely because another question is unanswered.
+
+Before creating any artifact, check OPEN/NEEDS_USER/RESOLVED decisions and requests,
+existing story coverage and the backlog. Reuse unresolved questions, consume resolved
+answers, and reuse covered stories. A changed premise needing a new decision must
+explicitly explain what changed; do not reopen an answered question by renaming it.
+
+Create only the next 1?6 justified executable stories. Unknown product/architecture
+choices stay in their UD/AR; do not create speculative implementation contracts.
+Existing dependent stories remain blocked with explicit UD/AR/story IDs in their
+Dependencies and Blockers, outside the executable queue until their prerequisites
+are satisfied. An unfinished active story is a dependency only for work that actually
+needs its result, not a reason to stop examining the milestone.
+
+Result semantics:
+- COMPLETE means this planning batch succeeded, not that the phase is complete.
+  It may include open/new UDs, ARs and independent stories together.
+- `independent_work_remaining` is true only if a READY area can be advanced by
+  another bounded pass without waiting for a decision or story. Use COMPLETE and
+  identify the remaining ready area(s). The current pass must have created real
+  artifacts or resolved a PO request; prose-only churn cannot request another pass.
+- NEEDS_USER means the review is finished and no further useful independent planning
+  is available without user input (`independent_work_remaining = false`). It may
+  retain independent stories created in this final batch. Never use it just because
+  any UD exists. List all relevant OPEN UD IDs, not only the first encountered one.
+- If only architecture/story prerequisites or already-covered work remain, use
+  COMPLETE with `independent_work_remaining = false` and explain the local waits.
+  The scheduler dispatches actionable ARs and executes eligible stories separately.
+
+While Claude is unavailable, apply the same review and continue bounded independent
+batches while justified. Once no independent planning remains, wait locally until
+inputs change; do not repeatedly ask a model to rediscover unchanged blockers.
 
 ## Planning PROJECT HEALTH REVIEW tasks
 
@@ -446,11 +593,26 @@ New decisions start with:
 
 Never invent the human answer.
 
+An architectural question belongs to the architect, not here: create an
+architect request for it rather than a User Decision. A User Decision remains
+correct for product/domain behavior, and the architect raises its own when a
+question turns out to need the Product Owner.
+
 When returning `NEEDS_USER`:
 - create no speculative stories;
-- `story_files_created` must be empty;
-- `product_owner_requests_processed` must be empty -- leave the triggering (and any other unprocessed) request file in place;
-- `PLANNING_RESULT.json.user_decision_ids` must contain the relevant OPEN decision IDs.
+- complete all justified independent planning before returning; a decision blocks only dependent work;
+- `story_files_created` may list independent stories (normal batch limits apply);
+- `product_owner_requests_processed` may list independently resolved requests;
+- leave dependent requests NEEDS_USER and identify their blocking decision;
+- `PLANNING_RESULT.json.user_decision_ids` must contain stable OPEN IDs such as
+  `UD-010`, never filenames or paths. Each resolves by filename to exactly one
+  `UD-010-*.md` or `UD-010.md` under `agent/user-decisions/`. Markdown titles are
+  optional and do not define identity; duplicate filename IDs are invalid.
+
+Do not stop a planning pass at the first open decision. NEEDS_USER describes
+a reviewed state with no further independent planning available without user input.
+The runtime caches post-pass planning inputs and will not invoke the planner
+again for unchanged NEEDS_USER state. Finish independent work in this pass.
 
 ## PROJECT_STATE Contract
 
@@ -508,10 +670,13 @@ Required fields:
 {
   "status": "COMPLETE | NEEDS_USER | FAILED",
   "phase_considered": "Phase N",
+  "independent_work_remaining": false,
+  "phase_review": [{"area": "remaining area", "outcome": "USER_DECISION", "references": ["UD-010"]}],
   "phase_exit_criteria_satisfied": false,
   "story_files_created": [],
   "user_decision_ids": [],
   "product_owner_requests_processed": [],
+  "architect_requests_created": [],
   "milestone_transition": false,
   "completed_milestone": null,
   "next_milestone": null,

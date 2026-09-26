@@ -87,7 +87,56 @@ public class CraftingPlanner {
         ));
     }
 
-    private Map<Integer, List<Recipe>> buildRecipesByOutput(List<Recipe> recipes) {
+    /**
+     * The result for exactly one recipe, computed the way
+     * {@link #evaluateAll(List, Map, Map, Map, CraftingSettings, Set)} computes that recipe's
+     * entry: the same context, the same fresh {@link PlanState} built from the supplied initial
+     * inventory, and the same per-recipe evaluation - including its heuristic skip. Provided for
+     * the selected-recipe detail operation (TARGET_ARCHITECTURE.md section 13.2), which needs one
+     * row rather than a whole table; it is an entry point, not a second set of rules.
+     */
+    public CraftResult evaluateOne(Recipe recipe,
+                                   List<Recipe> recipes,
+                                   Map<Integer, Integer> sellableInventory,
+                                   Map<Integer, Integer> boundInventory,
+                                   Map<Integer, PriceQuote> tp,
+                                   CraftingSettings settings,
+                                   Set<Integer> allowedRecipeIds) {
+
+        PlannerContext ctx = new PlannerContext(
+                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds);
+
+        return evaluateOneRecipeNew(
+                recipe, new PlanState(sellableInventory, boundInventory), ctx, new RecipeSimulator());
+    }
+
+    /**
+     * As {@link #evaluateOne(Recipe, List, Map, Map, Map, CraftingSettings, Set)}, but on the
+     * coordinated-roster path, computing exactly that recipe's entry of
+     * {@link #evaluateAllCoordinated(List, Map, Map, Map, List, Map, CraftingSettings, Set)}.
+     */
+    public CraftResult evaluateOneCoordinated(
+            Recipe recipe,
+            List<Recipe> recipes,
+            Map<Integer, Integer> sellableInventory,
+            Map<Integer, Integer> accountBoundInventory,
+            Map<String, Map<Integer, Integer>> characterBoundInventory,
+            List<CharacterCraftingProfile> roster,
+            Map<Integer, PriceQuote> tp,
+            CraftingSettings settings,
+            Set<Integer> allowedRecipeIds) {
+
+        PlannerContext ctx = new PlannerContext(
+                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster);
+
+        return evaluateOneRecipeNew(
+                recipe,
+                new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory),
+                ctx,
+                new RecipeSimulator());
+    }
+
+    static Map<Integer, List<Recipe>> buildRecipesByOutput(List<Recipe> recipes) {
         Map<Integer, List<Recipe>> recipesByOutput = new HashMap<>();
         for (Recipe r : recipes) {
             recipesByOutput.computeIfAbsent(r.outputItemId, k -> new ArrayList<>()).add(r);
@@ -130,6 +179,11 @@ public class CraftingPlanner {
         int profitOne = revenueOne - buyCostOne - matsSellOne;
         int totalProfit = profitOne * sim.getCraftCount();
 
+        // DOMAIN_SPEC.md §2.1.1: §25's per-execution output revenue - which already carries the
+        // recipe's output quantity and deducts no selling fee - for §28's craftable count. Built
+        // from the two figures above rather than from a second resolver or price read.
+        int totalSellValue = revenueOne * sim.getCraftCount();
+
         return new CraftResult(
                 recipe.outputItemId,
                 recipe.disciplinesText,
@@ -141,6 +195,7 @@ public class CraftingPlanner {
                 revenueOne,
                 profitOne,
                 totalProfit,
+                totalSellValue,
                 tree,
                 sim.getBlockedReason()
         );

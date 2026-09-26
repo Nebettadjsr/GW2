@@ -21,6 +21,27 @@ USER_DECISIONS_DIR = AGENT_DIR / "user-decisions"
 ARCHIVE_DIR = STORIES_DIR / "archive"
 PRODUCT_OWNER_REQUESTS_DIR = AGENT_DIR / "product-owner-requests"
 
+# Architecture questions the planner is not authorized to decide
+# (AR-<NUMBER>-<slug>.md). The planner creates them; ARCHITECTURE MODE
+# (agent/ARCHITECT_INSTRUCTIONS.md) is the only role that answers them,
+# and is invoked only while an unresolved request exists -- never
+# periodically. Genuine Product Owner questions still escalate through
+# USER_DECISIONS_DIR; this is not a second human-decision mechanism.
+ARCHITECT_REQUESTS_DIR = AGENT_DIR / "architect-requests"
+ARCHITECT_INSTRUCTIONS_FILE = AGENT_DIR / "ARCHITECT_INSTRUCTIONS.md"
+PLANNER_INSTRUCTIONS_FILE = AGENT_DIR / "PLANNER_INSTRUCTIONS.md"
+
+# The role contracts themselves (AGENTS.md's router, each role's own
+# instructions, and Claude's). A model run in one role may never
+# rewrite the rules that govern it or another role: both Codex guards
+# verify these byte-for-byte and roll back a run that touches them.
+ROLE_CONTRACT_FILES = (
+    REPO_ROOT / "AGENTS.md",
+    REPO_ROOT / "CLAUDE.md",
+    ARCHITECT_INSTRUCTIONS_FILE,
+    PLANNER_INSTRUCTIONS_FILE,
+)
+
 # Implementation-time human/tooling intervention records (distinct from
 # agent/user-decisions/, which is for product/domain/architecture
 # decisions only) -- see agent/user-interventions/README.md.
@@ -44,6 +65,7 @@ EVALUATOR_RESULT_FILE = ARTIFACTS_DIR / "EVALUATOR_RESULT.json"
 SELECTOR_RESULT_FILE = ARTIFACTS_DIR / "SELECTOR_RESULT.json"
 DISPATCH_RESULT_FILE = ARTIFACTS_DIR / "DISPATCH_RESULT.json"
 PLANNING_RESULT_FILE = ARTIFACTS_DIR / "PLANNING_RESULT.json"
+ARCHITECT_RESULT_FILE = ARTIFACTS_DIR / "ARCHITECT_RESULT.json"
 
 DOCS_DIR = REPO_ROOT / "docs"
 ROADMAP_FILE = DOCS_DIR / "ROADMAP.md"
@@ -51,6 +73,11 @@ KNOWN_PROBLEMS_FILE = DOCS_DIR / "KNOWN_PROBLEMS.md"
 CURRENT_ARCHITECTURE_FILE = DOCS_DIR / "CURRENT_ARCHITECTURE.md"
 TARGET_ARCHITECTURE_FILE = DOCS_DIR / "TARGET_ARCHITECTURE.md"
 DOMAIN_SPEC_FILE = DOCS_DIR / "DOMAIN_SPEC.md"
+
+# Architecture Decision Records -- architect-owned
+# (agent/ARCHITECT_INSTRUCTIONS.md "Architecture Decision Records").
+# A planning run must never add or change one.
+ADR_DIR = DOCS_DIR / "architecture" / "decisions"
 
 # Application/domain source. Planning runs must never touch this --
 # only story execution (Claude Code running against an active story)
@@ -123,6 +150,65 @@ PLANNING_TRIGGER_MAX_READY_STORIES = 2
 # the first place -- see PLANNER_INSTRUCTIONS.md.
 PLANNING_MIN_STORIES_PER_RUN = 1
 PLANNING_MAX_STORIES_PER_RUN = 6
+
+# ============================================================
+# GitHub CI verification gate
+#
+# The full regression suite is owned by .github/workflows/ci.yml, not by
+# Claude's local implementation loop (docs/TEST_STRATEGY.md §36). The
+# orchestrator commits and pushes a completed story, then waits for that
+# commit's CI conclusion before the story counts as verified.
+#
+# AGENT_CI_VERIFICATION=0 turns the gate off for a run (a story then
+# completes on the evaluator's verdict alone, exactly as before this
+# existed). Unset means "on when the repository actually has a GitHub
+# origin remote", so a clone without one behaves normally instead of
+# waiting for a run that can never appear.
+# ============================================================
+
+CI_WORKFLOW_FILE = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+
+# One poll per minute: enough to notice a finished run promptly, few
+# enough that an unauthenticated public-API budget (60 requests/hour)
+# survives a normal verification. Status output while waiting is
+# terminal-only and throttled by CAPACITY_STATUS_INTERVAL_SECONDS.
+CI_POLL_SECONDS = 60
+
+# A push must produce a queued run quickly; if none appears the gate
+# reports an unverified outcome instead of waiting out the full budget.
+CI_RUN_START_TIMEOUT_SECONDS = 10 * 60
+
+# Hard ceiling on one commit's verification. Reaching it is an
+# unverified outcome (human escalation), never a silent pass.
+CI_WAIT_TIMEOUT_SECONDS = 45 * 60
+
+# How many times a CI failure may be handed back to Claude for the same
+# story before the orchestrator escalates to a user intervention. This
+# is deliberately separate from MAX_RETRIES_PER_STORY: an evaluator
+# retry and a red pipeline are different failures.
+MAX_CI_FIX_ATTEMPTS = 2
+
+# Bounds on what a failure report may cost in Claude's prompt. The full
+# output always remains in the CI job log for a human.
+CI_MAX_REPORTED_FAILURES = 12
+CI_FAILURE_REPORT_MAX_CHARS = 4000
+
+
+def _configured_ci_verification() -> bool | None:
+    """True/False from AGENT_CI_VERIFICATION, or None for auto-detection."""
+
+    override = os.environ.get("AGENT_CI_VERIFICATION")
+
+    if override is None:
+        return None
+
+    return override.strip().lower() not in ("0", "false", "no", "")
+
+
+# None means "decide from the repository's own remote and workflow file
+# at call time" (support/git_sync.py). An explicit override wins.
+CI_VERIFICATION_ENABLED = _configured_ci_verification()
+
 
 # ============================================================
 # Aider RepoMap (experimental, orientation-only context for Claude)

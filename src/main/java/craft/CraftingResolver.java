@@ -11,6 +11,22 @@ public class CraftingResolver {
     private final Map<Integer, Integer> directBuyUnitCache = new HashMap<>();
     private final Map<Integer, Integer> directSellUnitCache = new HashMap<>();
 
+    /**
+     * When true, every resolved requirement additionally records the explanation facts a semantic
+     * trace needs (STORY-DOM-020, see {@link ResolvedNeed.NodeTrace}). Off for every table
+     * calculation, whose resolution is unchanged and whose nodes carry no trace at all.
+     */
+    private final boolean tracing;
+
+    public CraftingResolver() {
+        this(false);
+    }
+
+    /** @param tracing see {@link #tracing}; only the single-craft explanation turns this on. */
+    public CraftingResolver(boolean tracing) {
+        this.tracing = tracing;
+    }
+
     public ResolveResult resolveOneCraft(
             Recipe recipe,
             PlannerContext ctx,
@@ -19,7 +35,7 @@ public class CraftingResolver {
         if (ctx.isCoordinated() && (!ctx.allowedRecipeIds.contains(recipe.recipeId)
                 || ctx.eligibleCharactersFor(recipe).isEmpty())) {
             return new ResolveResult(blockedNeed(recipe.outputItemId, recipe.outputCount,
-                    BlockedReason.RECIPE_NOT_ALLOWED));
+                    BlockedReason.RECIPE_NOT_ALLOWED, recipe, null));
         }
         ResolvedNeed root = resolveNeed(recipe.outputItemId, recipe.outputCount, ctx, state, false, null, null);
         return new ResolveResult(root);
@@ -60,8 +76,15 @@ public class CraftingResolver {
             int usedFromInventory = consumption.total();
             result.setQtyFromInventory(usedFromInventory);
 
-            int oppCost = consumption.usedSellable() * resolveDirectSellUnit(itemId, ctx.tp, ctx.settings);
+            int sellUnit = resolveDirectSellUnit(itemId, ctx.tp, ctx.settings);
+            int oppCost = consumption.usedSellable() * sellUnit;
             result.setOpportunityCostCopper(oppCost);
+
+            if (tracing && consumption.usedSellable() > 0 && sellUnit <= 0) {
+                // DOMAIN_SPEC.md section 11.2: this quantity was valued at zero because no value
+                // could be established for it, which is not the same as it being free.
+                result.traceForWrite().markUnvaluedNonTradable();
+            }
 
             remaining -= usedFromInventory;
         }
@@ -148,6 +171,12 @@ public class CraftingResolver {
 
             ResolvedNeed chosenNeed = chosen.need;
 
+            if (tracing && chosen.isStateCandidate()) {
+                // Only the accepted craft is linked; a craft that lost to buying was rolled back
+                // above and its node is unreachable from here.
+                result.traceForWrite().setCraftAttempt(chosenNeed);
+            }
+
             result.setQtyCrafted(chosenNeed.getQtyCrafted());
             result.setQtyBought(chosenNeed.getQtyBought());
             result.setQtyBlocked(chosenNeed.getQtyBlocked());
@@ -165,6 +194,14 @@ public class CraftingResolver {
             // Neither candidate is usable: the speculative craft leaves no trace, exactly as the
             // discarded trial copy did before.
             if (craftMark >= 0) state.rollbackTo(craftMark);
+
+            if (tracing && craftEval != null) {
+                // TARGET_ARCHITECTURE.md section 13.3: a blocked requirement still shows the
+                // ingredient requirements of the craft path that was attempted for it. The attempt's
+                // state changes are rolled back above; only its explanatory facts survive, and this
+                // node's own quantities and costs below remain those of the blocked requirement.
+                result.traceForWrite().setCraftAttempt(craftEval.need);
+            }
 
             result.setQtyBlocked(remaining);
 
@@ -202,7 +239,7 @@ public class CraftingResolver {
 
         // Daily mode = BUY -> this node may not be crafted directly
         if (isDaily && ctx.settings.dailyBuyInsteadOfCraft) {
-            return blockedNeed(itemId, qtyRequested, BlockedReason.DAILY_LIMIT);
+            return blockedNeed(itemId, qtyRequested, BlockedReason.DAILY_LIMIT, recipe, null);
         }
 
         if (!ctx.isCoordinated()) {
@@ -217,7 +254,7 @@ public class CraftingResolver {
         // intermediate usable by any later step regardless of who crafted it.
         List<String> eligible = ctx.eligibleCharactersFor(recipe);
         if (eligible.isEmpty()) {
-            return blockedNeed(itemId, qtyRequested, BlockedReason.RECIPE_NOT_ALLOWED);
+            return blockedNeed(itemId, qtyRequested, BlockedReason.RECIPE_NOT_ALLOWED, recipe, null);
         }
 
         // A single candidate is always "best" (isBetterCraftAttempt(attempt, null) is always
@@ -263,7 +300,7 @@ public class CraftingResolver {
                                           ) {
         // cycle protection
         if (state.isVisiting(itemId)) {
-            return blockedNeed(itemId, qtyRequested, BlockedReason.CYCLE_DETECTED);
+            return blockedNeed(itemId, qtyRequested, BlockedReason.CYCLE_DETECTED, recipe, assignedCharacter);
         }
 
         boolean isDaily = DailyCrafts.isDailyOutput(itemId);
@@ -272,6 +309,12 @@ public class CraftingResolver {
 
         try {
             ResolvedNeed craftResult = new ResolvedNeed(itemId, qtyRequested);
+
+            if (tracing) {
+                ResolvedNeed.NodeTrace trace = craftResult.traceForWrite();
+                trace.setSelectedRecipeId(recipe.recipeId);
+                trace.setAssignedCharacter(assignedCharacter);
+            }
 
             int timesNeeded = ceilDiv(qtyRequested, recipe.outputCount);
             int times = timesNeeded;
@@ -331,6 +374,10 @@ public class CraftingResolver {
 
             craftResult.setQtyCrafted(qtySatisfied);
 
+            if (tracing) {
+                craftResult.traceForWrite().setCraft(times, produced);
+            }
+
             if (qtySatisfied < qtyRequested) {
                 craftResult.setQtyBlocked(qtyRequested - qtySatisfied);
                 craftResult.setBlockedReason(BlockedReason.DAILY_LIMIT);
@@ -349,6 +396,26 @@ public class CraftingResolver {
         blocked.setQtyBlocked(qtyRequested);
         blocked.setBlockedReason(reason);
         blocked.determineMode();
+        return blocked;
+    }
+
+    /**
+     * As {@link #blockedNeed(int, int, BlockedReason)}, for the blocked paths where a specific
+     * recipe (and possibly a character) was identified before the path turned out to be unusable;
+     * while tracing, that identity is part of the explanation.
+     */
+    private ResolvedNeed blockedNeed(int itemId, int qtyRequested, BlockedReason reason,
+                                     Recipe recipe, String assignedCharacter) {
+        ResolvedNeed blocked = blockedNeed(itemId, qtyRequested, reason);
+
+        if (tracing) {
+            ResolvedNeed.NodeTrace trace = blocked.traceForWrite();
+            if (recipe != null) {
+                trace.setSelectedRecipeId(recipe.recipeId);
+            }
+            trace.setAssignedCharacter(assignedCharacter);
+        }
+
         return blocked;
     }
 

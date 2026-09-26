@@ -12,7 +12,10 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Status mapping for the synchronization trigger and task-status routes (STORY-API-003).
+ * Status mapping for the synchronization/refresh trigger and task-status routes (STORY-API-003; the
+ * global-sync trigger was added to its scope by STORY-API-004 and the price-refresh trigger by
+ * STORY-API-005, neither of which needed new code here — their 400/409/404 mean the same things and
+ * read the same way, and sharing them is what lets a caller handle all three triggers identically).
  *
  * <p>A separate advice from {@link ApiExceptionHandler} on purpose. That one's messages, and its 500
  * {@code CALCULATION_FAILED}, describe a crafting calculation — the wrong thing to tell a caller
@@ -28,6 +31,8 @@ import java.util.logging.Logger;
  */
 @RestControllerAdvice(assignableTypes = {
         AccountSyncApiController.class,
+        GlobalSyncApiController.class,
+        PriceRefreshApiController.class,
         SyncTaskApiController.class})
 public class SyncApiExceptionHandler {
 

@@ -204,7 +204,7 @@ class CraftingDiscoveryServiceTest {
         var tpRepo = new FakeTpPriceRepository();
         tpRepo.canned = Map.of(200, new PriceQuote(50, 60));
         var itemRepo = new FakeItemRepository();
-        itemRepo.canned = Map.of(200, new ItemRepository.ItemInfo(200, "Ore", null));
+        itemRepo.canned = Map.of(200, new ItemRepository.ItemInfo(200, "Ore", null, null));
         var planner = new RecordingCraftingPlanner();
         var service = serviceWith(recipeRepo, new FakeInventoryRepository(), tpRepo, itemRepo,
                 List.of(RECIPE), planner);

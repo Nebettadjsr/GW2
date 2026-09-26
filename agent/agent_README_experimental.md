@@ -97,6 +97,7 @@ Responsibilities are intentionally separated between:
 
 - deterministic Python orchestration;
 - Codex as project planner;
+- Codex as architect, in a separate invocation and a separate role;
 - Claude Code as implementation agent;
 - Hermes as implementation evaluator;
 - the human Product Owner for genuine product decisions.
@@ -127,10 +128,24 @@ agent/product-owner-requests/    agent/user-decisions/
                          ▼
                 Python Orchestrator
                          │
+        ┌────────────────┴────────────────┐
+        │                                 │
+        ▼                                 │
+  Codex Architect                         │
+  (only while an unresolved               │
+   agent/architect-requests/              │
+   AR-* exists)                           │
+        │                                 │
+ architecture docs / ADRs                 │
+ or a new OPEN UD-*                       │
+        │                                 │
+        └────────────────┬────────────────┘
+                         │
                          ▼
                   Codex Planner
                          │
                  planning artifacts
+                 (incl. new AR-* questions)
                          │
                          ▼
                 Python validation
@@ -169,6 +184,12 @@ WHAT should the product become?
         ▼
 Product Owner
 + authoritative project/domain documentation
+
+WHAT architecture should satisfy those requirements?
+        │
+        ▼
+Codex architect
+(only when asked a queued question)
 
 WHAT work is still required?
         │
@@ -217,6 +238,8 @@ It is responsible for:
 - deciding when project planning is required;
 - invoking the project planner;
 - validating planner output;
+- invoking the architect when, and only when, an unresolved architecture question is queued;
+- validating architect output;
 - determining which stories are selectable;
 - deterministically selecting the next executable story;
 - activating stories;
@@ -327,7 +350,69 @@ If the current phase completes:
 4. Python starts a fresh planning pass for the newly current phase.
 
 
-# 3. Product Owner Requests
+# 3. Codex — Architect
+
+Codex also runs in a second, logically separate role: the architect
+(`agent/ARCHITECT_INSTRUCTIONS.md`, routed by `AGENTS.md`).
+
+The planner decides *what work is required*. The architect decides *how the
+system should be structured* to satisfy the documented requirements. The same
+model may perform both, but never in the same invocation.
+
+## Demand-Driven, Not Periodic
+
+The architect is invoked only when there is a question waiting for it.
+
+Architecture questions the planner is not authorized to decide are queued as
+one file per question:
+
+`agent/architect-requests/AR-<NUMBER>-short-name.md`
+
+Each request records the question, its context and constraints, the
+authoritative documents that bear on it, and what work it blocks.
+
+The orchestrator dispatches exactly one request per invocation, and only while
+an unresolved request is actionable. An empty inbox means the architect never
+runs: there is no periodic architecture review, and no architecture pass
+"just in case".
+
+## Lifecycle
+
+```text
+OPEN         needs the architect
+NEEDS_USER   escalated; waiting on the UD-* the request names
+RESOLVED     answered; never processed again
+```
+
+The architect may answer a request from existing authoritative documentation,
+make a local architectural decision inside established boundaries, or record a
+significant decision whose answer existing constraints already force. When a
+genuine Product Owner choice remains -- most importantly a technology still
+marked `TBD` -- it escalates through the existing `agent/user-decisions/` flow.
+Architecture does not get its own human-decision mechanism.
+
+Once the human resolves that decision, the orchestrator runs the architect
+again for the same request automatically. Once the request is `RESOLVED`,
+planning continues automatically and consumes the recorded decision as input.
+
+## What the Architect Does Not Do
+
+- implement source code;
+- create, prioritize or activate stories;
+- touch the backlog, the active story, or planner continuity state;
+- perform roadmap phase planning;
+- silently finalize a technology marked `TBD`;
+- answer a User Decision on the Product Owner's behalf;
+- rewrite its own role contract.
+
+Python verifies each of those after every pass and rolls the pass back if one
+was violated, the same way it protects the active story from the planner.
+
+Usage exhaustion is not an architecture failure: the request keeps its status
+and is dispatched again when capacity returns.
+
+
+# 4. Product Owner Requests
 
 New desired features, behavior changes, and product requirements can be placed in:
 
@@ -350,7 +435,7 @@ Once the request is fully represented in authoritative planning artifacts, the p
 The request inbox is intentionally not a second permanent requirements database.
 
 
-# 4. Human User Decisions
+# 5. Human User Decisions
 
 Product behavior must not be guessed when a genuine decision belongs to the Product Owner.
 
@@ -374,7 +459,7 @@ Normal technical implementation choices should remain with the implementation/pl
 User Decisions are for decisions that materially affect intended product behavior or architecture.
 
 
-# 5. Claude Code — Implementation Agent
+# 6. Claude Code — Implementation Agent
 
 Claude Code performs bounded implementation.
 
@@ -411,7 +496,7 @@ Claude does not decide:
 Those decisions belong to the planning/orchestration/product layers.
 
 
-# 6. Hermes — Evaluator
+# 7. Hermes — Evaluator
 
 Hermes runs locally through Ollama.
 
@@ -458,6 +543,8 @@ The repository follows a single-source-of-truth approach.
 | `agent/stories/BACKLOG.md` | executable work queue |
 | `agent/stories/STORY-*.md` | individual implementation contracts and results |
 | `agent/user-decisions/UD-*.md` | human decisions |
+| `agent/architect-requests/AR-*.md` | architecture questions for the architect role |
+| `docs/architecture/decisions/ADR-*.md` | significant architecture decision records |
 | `agent/PROJECT_STATE.md` | minimal planner continuity |
 | `agent/product-owner-requests/` | transient Product Owner input |
 
@@ -529,6 +616,8 @@ The current architecture is:
 Python orchestrator
         │
         ├── hosted Codex project planner
+        │
+        ├── hosted Codex architect (demand-driven)
         │
         ├── deterministic Python story selector
         │

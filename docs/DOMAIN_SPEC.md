@@ -43,6 +43,102 @@ The analysis may consider:
 
 ---
 
+## 2.1.1 Crafting Profit result presentation
+
+The web view must preserve useful information hierarchy and interactions without
+visually copying JavaFX. The comparison table must include recipe/item, craftable
+count, own materials value, profit per craft, total sell value and total profit.
+Label each monetary value's per-craft or total basis; keep secondary diagnostics
+in selected-result details. Total sell value is the applicable Trading Post sell
+value for the craftable output quantity: section 24's gross revenue per execution
+times section 28's craftable count, including recipe output quantity. It remains
+gross market value, not received revenue. Selected-result details must distinguish
+gross sale value, listing and exchange fees, net sale revenue and resulting profit,
+with each value's quantity basis labelled. All amounts come from the backend;
+neither Vue nor another presentation layer calculates fees or profit. Section 25
+owns the selling-fee policy and its outstanding sale-grouping decision.
+
+The entire recipe row must be selectable, with an accessible keyboard equivalent
+and a visible selection indicator. On wide screens, selection populates a dedicated
+right-hand detail panel that remains visible while scrolling; small screens may
+use a suitable responsive arrangement. Show applicable buy cost prominently with
+cost wording and the negative/cost visual treatment, a clearly labelled Trading
+Post price for one output item, useful recipe and shopping/material information,
+and a GW2 Wiki link when a reliable URL can be constructed. Remove a redundant
+Result summary and explanatory text when the same information is already clear.
+Resolution detail follows TARGET_ARCHITECTURE section 13's decided basis and
+consistency contract: show actual sourcing, required quantities and produced
+quantities, not merely recipe relationships or an invented execution trace.
+
+Place result-display controls inside the Calculation controls panel, in a compact
+Displayed results subgroup distinct from the Calculation subgroup. Do not retain
+a separate top-level Result display section. Provide these display controls:
+
+- Hide items with craftable count 0, enabled by default.
+- Hide recipes not allowed, enabled by default.
+- Hide recipes with profit per craft <= 0, enabled by default.
+- A changeable maximum displayed recipe count, initially 250, and Show all to
+  remove that display limit for the full matching set.
+
+These controls do not change the underlying calculation or section 28's separate
+simulation cap. Preserve valid controls on refresh under section 2.2.1. Unknown
+or unavailable facts must not be silently converted into zero or success.
+
+All three filters can be disabled independently. Communicate ordinary behavior
+through concise labels and grouping: remove permanent row-selection/keyboard
+instructions, the paragraph explaining display filters, and the dynamic paragraph
+explaining the display limit. A compact displayed/matching count may remain.
+Column headings must communicate per-craft versus total values. Use a concise
+"Trading Post price / item" label instead of generic unit-price explanatory prose;
+keep output quantity with recipe/crafting information. Preserve keyboard selection,
+accessibility semantics, errors, blocked explanations and necessary recipe-specific
+domain information.
+
+Blocked/unavailable information remains meaningful even where further crafting
+is blocked after some crafts succeed. Preserve all backend reasons, but remove
+the general State/Status comparison column. BUYING_DISABLED, NO_RECIPE,
+DAILY_LIMIT, RECIPE_NOT_ALLOWED and INSUFFICIENT_BUDGET belong in selected-result
+details as concise contextual explanations, not repeated ordinary row labels.
+Explain downstream requirements beside the affected material/tree node when the
+backend supplies that context. Describe buying disabled, missing usable recipes,
+scope restrictions, daily restrictions and budget limits in user-facing language;
+show useful supplied purchase costs and budget where available without inventing
+missing amounts or recomputing economics. Raw enums may remain in secondary
+technical information. Preserve unavailable-versus-zero distinctions and meaningful
+price/unavailable-result information; do not imply success by removing a column.
+
+Retain a minimal row-level CYCLE_DETECTED diagnostic, explicitly temporary
+presentation technical debt, until the Product Owner requests its removal. It
+does not justify retaining a general State/Status column.
+
+Provide an explicit calculation/material control labelled "Allow
+non-Trading-Post materials", grouped with calculation rules rather than display
+filters. UD-009 establishes that it opens enabled and applies only to web Crafting
+Profit, without changing Discovery or JavaFX behavior. Non-Trading-Post means
+nontradeable by item/domain classification, not a missing selected quote for a
+normally tradeable item; PRICE_UNAVAILABLE remains unchanged.
+
+With the option enabled, owned non-TP materials and materials produced through
+allowed crafting paths, including recursive intermediates, remain usable under
+existing inventory/binding, buying, budget, daily and scope rules. Evaluate valid
+alternative sourcing paths normally. Under this rule a plan is unavailable only
+when a required non-TP material has neither usable owned inventory nor an allowed
+crafting acquisition path; do not pretend it can be acquired externally. Preserve
+blocked results in the backend/domain; normal display filters may hide them.
+Explain the restriction in selected-result details, preferably at the affected
+material/tree node, without a normal state column. Valuation under section 11.2
+is unchanged.
+
+With the option disabled, exclude calculation paths that consume a non-TP
+material, including owned, account-bound, recursively craftable and intermediate
+ingredients. Continue evaluating alternative valid sourcing/crafting paths that
+do not consume non-TP materials. Retain blocked/domain information for selected
+details; ordinary result-display filters determine visibility. This is the
+disabled behavior decided in UD-010, not a reclassification of missing quotes.
+
+Profit, costs and important totals must be easy to scan with consistent application
+colors and emphasis; signs, wording or other non-color cues must carry meaning too.
+
 ## 2.2 Crafting Discovery Assistance
 
 Answer:
@@ -71,6 +167,40 @@ Changing the selected character must recalculate and display results for that ch
 Crafting Profit uses its existing `Discipline` selector as the sole calculation-scope control; remove its separate `Character` selector. `All` is the initial default and selects all synced characters using the coordinated planning semantics below. A generic discipline selects all synced characters having that discipline for coordinated planning, respecting the existing recipe discipline and rating restrictions. A specific character/discipline entry (for example, `Armorsmith lvl 500 — Nbt Anch`) restricts calculation to that character and discipline. Retain these character-specific entries. This presentation supersedes UD-004's separate `All characters` selector requirement while retaining its coordinated planning decision. Crafting Discovery retains individual-character selection and its existing default; this consolidation applies only to Crafting Profit.
 
 In Crafting Profit, `All characters` means a coordinated account-wide plan across all synced characters. Different crafting steps may be assigned to different eligible characters; the complete tree need not be executable by one character. Transferable intermediates may pass between characters. Eligibility must be validated per step, including recipe and crafting requirements. Soulbound inputs remain usable only by their owning character under §11.1; copies bound to different characters must never be pooled to satisfy a single character's step. Account-wide/sellable and character-bound resources remain distinct, and quantities must not be reused within a plan (§10).
+
+## 2.2.2 Crafting Discovery web presentation
+
+Provide a dedicated Crafting Discovery Helper page in the main navigation.
+JavaFX is a functional reference, not a visual specification. Follow the shared
+frontend UX guidelines with grouped controls, a scan-friendly comparison list
+and a dedicated selected-result detail area.
+
+Let the user select a character and an available crafting discipline, using
+backend-provided character/rating facts and the established eligibility rules in
+sections 34-35. The backend must exclude recipes above the character's applicable
+rating, already-known recipes under account-wide ownership semantics, and recipes
+that cannot be learned through normal ingredient-combination discovery, including
+vendor/scroll-only recipes. The browser must not reimplement these rules.
+
+Show item/recipe name, recipe level, missing-material cost, crafted-output Trading
+Post sell value and profit per craft from authoritative backend values, with
+clear monetary bases. Offer sorting by recipe level (including highest first),
+output sell value and profit per craft, plus search/filtering to narrow the list.
+Keep leveling relevance separate from profitability per sections 37-38; do not
+invent an XP/profit score or make negative profit a discovery exclusion rule.
+Preserve valid scope, search and sort selections on refresh under section 2.2.1.
+
+Reuse applicable owned-material, buying, budget and Trading Post price-mode
+controls with existing Discovery semantics. Do not change Profit behavior.
+Selection uses recipe identity, not table position. Where supported by supplied
+data, details show recipe information, material requirements, owned/missing
+quantities, buy requirements/costs, the resolution tree, shopping/material lists
+and contextual blocked/unavailable explanations. Follow TARGET_ARCHITECTURE
+section 13's fresh-detail consistency contract; do not derive missing economics.
+
+Use the application-wide icon strategy when available, established signed money
+formatting/treatments, keyboard-operable selection and clear loading, empty,
+blocked and error states. Keep raw backend diagnostics secondary.
 
 ## 2.3 Ectoplasm Salvage Analysis
 
@@ -740,23 +870,37 @@ The selected output price depends on the configured sale mode:
 
 # 25. Trading Post Selling Fees
 
-Crafting Profit does **not** subtract Guild Wars 2 Trading Post selling fees from output revenue.
-
-For general crafting-profit calculations:
+Request-008 supersedes the prior Crafting Profit selling-fee exemption. Wherever
+Trading Post sale proceeds are used as profitability revenue, the authoritative
+domain calculation must deduct the 5% listing fee and 10% exchange fee exactly
+once, reproducing actual Guild Wars 2 copper-level rounding and applicable minimum
+fees. A floating-point gross-price multiplier is not an adequate substitute when
+it gives a different result. Verify factual edge rules before implementing them.
 
 ```text
-output_revenue
-=
-selected_output_sell_price
-×
-recipe_output_count
+net_sale_revenue = gross_sale_value - listing_fee - exchange_fee
+profit = net_sale_revenue - relevant_material_cost_or_value
 ```
 
-No additional 15% Trading Post fee deduction is applied.
+For the PO's example, gross sale value 300c incurs listing fee 15c and exchange
+fee 30c, leaving 255c; with unchanged material value 204c, profit is 51c.
 
-This is an intentional domain rule for the Crafting Profit feature.
+Keep gross market quotes, gross sale value, fees, net revenue and profit distinct.
+This policy applies consistently to per-craft and total profit, profit comparisons,
+rankings and other sale-revenue consumers, including informational Discovery
+profit and Ectoplasm's sale proceeds. Monetary results originate in the domain
+and pass through application/transport/presentation without recalculation.
 
-The separate Ectoplasm Salvage calculator may use its own fee model as defined in its dedicated domain section.
+The application's assumed sale grouping is awaiting the Product Owner answer in
+agent/user-decisions/UD-011-trading-post-sale-quantity-basis.md. That decision must
+settle how actual-sale rounding applies to multi-output crafts, all counted crafts
+and fractional expected salvage yields, and reconcile section 27 if necessary.
+Do not silently select a grouping or claim complete fee accuracy before it is set.
+
+This change does not alter recipe eligibility, owned-material handling or its
+existing opportunity-cost valuation, missing-material resolution, craft quantities,
+buy-mode acquisition costs, budgets or expected salvage yields. It corrects sale
+revenue used in profitability; it does not authorize retuning the resolver.
 
 
 # 26. Profit Per Craft
@@ -789,7 +933,8 @@ owned_material_opportunity_cost
 
 represents value sacrificed by consuming existing inventory.
 
-For the Crafting Profit feature, `output_revenue` uses the selected Trading Post price directly without an additional selling-fee deduction.
+For Crafting Profit, `output_revenue` means net sale revenue under section 25;
+section 24's gross revenue remains separately available as market-value information.
 
 ---
 
@@ -806,6 +951,11 @@ craft_count
 ```
 
 This is only valid if the craft count itself was determined using a resource simulation that prevents material reuse.
+
+Section 25's new fee policy also requires an explicit sale-grouping decision.
+UD-011 must settle whether rounding on a combined sale changes the relationship
+between per-craft profit and total profit; do not infer that decision from this
+existing conceptual multiplication rule.
 
 ---
 
@@ -1010,6 +1160,8 @@ Therefore a negative immediate crafting profit does not make a discovery invalid
 
 Profit is informational rather than an eligibility rule.
 
+Any Trading Post sale revenue in this profit comparison follows section 25.
+
 ---
 
 # 38. Discovery Level Relevance
@@ -1203,7 +1355,8 @@ Relevant parameters include:
 - expected Luck per Ectoplasm,
 - Dust sale value.
 
-Trading Post sales of recovered materials use net proceeds under §46. This rule applies only to Ectoplasm Salvage; it does not change Crafting Profit's §25 exemption or other application calculations.
+Trading Post sales of recovered materials use net proceeds under sections 25 and
+46. The fee policy is shared; the expected salvage-yield model remains distinct.
 
 ---
 
@@ -1229,7 +1382,14 @@ expected_dust_quantity
 dust_sale_price
 ```
 
-`dust_sale_price` is the selected gross Trading Post price (§20) after the project's 15% selling-fee deduction: selected gross price × 0.85. Apply this deduction only to proceeds representing a Trading Post sale, not to acquisition cost or Luck. Preserve instant-sell versus listing-sell prices and instant-buy versus listing-buy acquisition costs. Profit is recovered net sale value minus acquisition cost; §47 uses the same fee-inclusive net cost. Preserve the existing expected yield assumptions. This expected-value model does not add a separate fee formula for this view.
+`dust_sale_price` represents net Trading Post sale proceeds under section 25,
+not a second view-specific fee formula or an approximate gross-price × 0.85 rule.
+UD-011 must settle the sale basis used with fractional expected Dust quantities
+before copper-accurate integration is implemented. Apply selling fees only to
+sale proceeds, not to Ecto acquisition cost or Luck. Preserve instant/listing
+sale modes, instant/order acquisition modes and the existing expected yields.
+Profit is recovered net sale value minus acquisition cost; section 47 uses the
+same fee-inclusive net cost. Expected values are not guaranteed integer drops.
 
 ---
 
@@ -1396,7 +1556,9 @@ The previously open domain questions have been resolved as follows.
 
 ## DQ-001 — Trading Post fees
 
-Crafting Profit does not subtract Trading Post selling fees from output revenue.
+Request-008 supersedes the former exemption: apply section 25's authoritative
+net-sale-revenue policy. The fee requirement is decided; its modeled sale grouping
+remains explicitly pending UD-011.
 
 **Status:** DECIDED
 

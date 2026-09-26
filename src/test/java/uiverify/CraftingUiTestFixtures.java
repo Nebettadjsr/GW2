@@ -142,7 +142,8 @@ public final class CraftingUiTestFixtures implements AutoCloseable {
                 CREATE TABLE items (
                     item_id     INTEGER PRIMARY KEY,
                     name        TEXT,
-                    icon_path   TEXT
+                    icon_path   TEXT,
+                    icon_url    TEXT
                 )
                 """);
             st.execute("""

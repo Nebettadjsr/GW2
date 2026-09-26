@@ -18,6 +18,8 @@ DECISION_TITLE_PATTERN = re.compile(
     re.MULTILINE,
 )
 
+DECISION_FILENAME_PATTERN = re.compile(r"^(UD-\d+)(?:-[A-Za-z0-9_-]+)?\.md$")
+
 STATUS_PATTERN = re.compile(
     r"##\s*Status\s*\n+\s*(OPEN|RESOLVED)\b",
     re.IGNORECASE,
@@ -144,10 +146,11 @@ def list_decisions() -> list[dict]:
             encoding="utf-8"
         )
 
+        filename_id = DECISION_FILENAME_PATTERN.fullmatch(path.name)
         decisions.append(
             {
                 "file": path.name,
-                "id": extract_decision_id(content),
+                "id": filename_id.group(1) if filename_id else None,
                 "title": extract_title(content),
                 "status": extract_status(content),
             }

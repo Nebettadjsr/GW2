@@ -13,24 +13,45 @@ from agent.runtime.runners.local_planner_runner import find_codex
 from agent.runtime.support.config import REPO_ROOT
 
 
-def quota_available(result):
+def parse_codex_capacity(result):
     bucket = (result.get("rateLimitsByLimitId") or {}).get("codex")
     if bucket is None:
         bucket = result.get("rateLimits")
     if not isinstance(bucket, dict):
         raise ValueError("Missing Codex quota bucket")
-    if bucket.get("rateLimitReachedType"):
-        return False
+    reached = bucket.get("rateLimitReachedType")
     windows = [bucket[key] for key in ("primary", "secondary") if bucket.get(key)]
-    if not windows:
+    if not windows and not reached:
         raise ValueError("Missing Codex quota windows")
     percentages = [window.get("usedPercent") for window in windows]
     if any(type(value) not in (int, float) or not 0 <= value <= 100 for value in percentages):
         raise ValueError("Invalid Codex quota percentage")
-    return all(value < 100 for value in percentages)
+    return {
+        "available": not reached and all(value < 100 for value in percentages),
+        "primary": bucket.get("primary"), "secondary": bucket.get("secondary"),
+        "limit_reached": reached,
+    }
 
 
-def codex_available(timeout=30):
+def quota_available(result):
+    return bool(parse_codex_capacity(result)["available"])
+
+
+def format_codex_capacity(capacity):
+    parts = []
+    for name in ("primary", "secondary"):
+        window = capacity.get(name)
+        if not window:
+            continue
+        minutes = window.get("windowDurationMins")
+        duration = f"/{minutes}min" if minutes else ""
+        parts.append(f"{name} {window['usedPercent']:g}% used{duration}")
+    if capacity.get("limit_reached"):
+        parts.append(f"limit reached: {capacity['limit_reached']}")
+    return "; ".join(parts) or "quota windows unavailable"
+
+
+def read_codex_capacity(timeout=30):
     process = subprocess.Popen(
         [find_codex(), "app-server"], cwd=REPO_ROOT, text=True, encoding="utf-8",
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -72,7 +93,7 @@ def codex_available(timeout=30):
         response(1)
         send({"method": "initialized"})
         send({"id": 2, "method": "account/rateLimits/read"})
-        return quota_available(response(2))
+        return parse_codex_capacity(response(2))
     finally:
         if process.poll() is None:
             process.terminate()
@@ -84,3 +105,8 @@ def codex_available(timeout=30):
         reader.join(timeout=5)
         process.stdin.close()
         process.stdout.close()
+
+
+def codex_available(timeout=30):
+    """Compatibility boolean gate; the scheduler retains the detailed reading."""
+    return bool(read_codex_capacity(timeout)["available"])

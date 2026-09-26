@@ -54,7 +54,8 @@ Phase 0  Build & Test Foundation                (complete, 2026-09-19 — see §
 Phase 1  Domain Stabilization                   (complete — milestone-01 archived)
 Phase 2  Domain Isolation / Decoupling          (complete, 2026-09-21 — see §6)
 Phase 3  Backend / Application-Service Extraction (in progress — current milestone)
-Phase 4  Backend HTTP API                       (not started)
+Phase 4  Backend HTTP API                       (implementation complete; bounded review run,
+                                                 closure pending planner/user disposition — see §8)
 Phase 5  Frontend Migration                     (not started)
 Phase 6  PostgreSQL / Containerization           (not started)
 Phase 7  Deployment / Runtime Configuration      (not started)
@@ -206,6 +207,8 @@ Phase 2. Building an application layer on top of a still-coupled domain would ju
 ---
 
 ## 8. Phase 4 — Backend HTTP API
+
+**Status: COMPLETE — milestone-04 closed by planning on 2026-09-24.** All eight exit criteria below are satisfied on the recorded evidence in `agent/stories/STORY-QUALITY-004-phase-four-completion-review.md`; its Result records the subsequent planner disposition of all eight non-blocking findings. No criterion is transferred. API timing remains boundary-only evidence, not a new full-page measurement. The documented current-phase pointer is maintained in `agent/PROJECT_STATE.md`.
 
 ### Objective
 

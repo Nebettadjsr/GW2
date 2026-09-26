@@ -18,6 +18,13 @@ public class RecipeSimulationResult {
 
     private BlockedReason blockedReason = BlockedReason.NONE;
 
+    /**
+     * The craft attempt that ended the last phase without being accepted, paired with
+     * {@link #blockedReason} and cleared the same way (STORY-DOM-020). Its state changes were
+     * rolled back; it is kept only so a blocked first craft can still be explained.
+     */
+    private ResolvedNeed blockedAttempt;
+
     private final Map<Integer, Integer> totalMissingToBuy = new HashMap<>();
 
     public RecipeSimulationResult(int recipeId, int outputItemId) {
@@ -89,5 +96,14 @@ public class RecipeSimulationResult {
 
     public void setBlockedReason(BlockedReason blockedReason) {
         this.blockedReason = blockedReason;
+    }
+
+    /** @see #blockedAttempt */
+    public ResolvedNeed getBlockedAttempt() {
+        return blockedAttempt;
+    }
+
+    public void setBlockedAttempt(ResolvedNeed blockedAttempt) {
+        this.blockedAttempt = blockedAttempt;
     }
 }

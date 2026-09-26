@@ -5,7 +5,24 @@ import java.util.Map;
 
 public class RecipeSimulator {
 
-    private final CraftingResolver resolver = new CraftingResolver();
+    private final CraftingResolver resolver;
+
+    /**
+     * Stops each phase once one craft has been accepted (STORY-DOM-020). The single-craft
+     * explanation needs exactly the simulation's first craft, including the phase order that
+     * decides it, but none of the batches after it. Always false for table calculations, whose
+     * loop is therefore unchanged.
+     */
+    private final boolean stopAfterFirstCraft;
+
+    public RecipeSimulator() {
+        this(new CraftingResolver(), false);
+    }
+
+    RecipeSimulator(CraftingResolver resolver, boolean stopAfterFirstCraft) {
+        this.resolver = resolver;
+        this.stopAfterFirstCraft = stopAfterFirstCraft;
+    }
 
     public RecipeSimulationResult simulateRecipe(
             Recipe recipe,
@@ -42,6 +59,10 @@ public class RecipeSimulator {
             RecipeSimulationResult result
                               ) {
         while (true) {
+            if (stopAfterFirstCraft && result.getCraftCount() > 0) {
+                break;
+            }
+
             // Each additional batch is attempted on the live state and undone if it turns out to
             // be unaffordable or unsatisfiable; the accepted batches stay. Previously every one of
             // these up-to-250 iterations copied the entire state before attempting
@@ -54,6 +75,7 @@ public class RecipeSimulator {
             if (root.getQtySatisfied() < root.getQtyRequested()) {
                 state.rollbackTo(mark);
                 result.setBlockedReason(root.getBlockedReason());
+                result.setBlockedAttempt(root);
                 break;
             }
 
@@ -62,10 +84,12 @@ public class RecipeSimulator {
             if (ctx.settings.maxBuyCopper > 0 && nextBuyTotal > ctx.settings.maxBuyCopper) {
                 state.rollbackTo(mark);
                 result.setBlockedReason(BlockedReason.INSUFFICIENT_BUDGET);
+                result.setBlockedAttempt(root);
                 break;
             }
 
             result.setBlockedReason(BlockedReason.NONE);
+            result.setBlockedAttempt(null);
             // Accepted: this batch is never revisited, so its undo information can be dropped -
             // without this the journal would grow across all 250 iterations.
             state.commitTo(mark);

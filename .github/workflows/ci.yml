@@ -1,0 +1,155 @@
+# Authoritative full-regression gate (docs/TEST_STRATEGY.md §36).
+#
+# Claude runs only targeted tests locally; this workflow runs the complete
+# suites against the pushed commit, and agent/runtime's orchestrator waits for
+# its result before a story counts as verified.
+#
+# Every job runs the repository's own existing test command -- no parallel test
+# system, no reduced scope. The only additions are a report summarizer that
+# turns a failure into a handful of compact annotations (so the orchestrator can
+# return a short failure report to Claude without shipping whole CI logs into a
+# model prompt) and, for the backend, the JavaFX platform override and the
+# PostgreSQL service the local developer machine already provides.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # Deliberately NOT cancel-in-progress: the orchestrator waits for the run of
+  # one specific commit, and cancelling a superseded run would turn its wait
+  # into an unverifiable outcome instead of a pass or a fail.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend tests (Maven)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      # docs/TEST_STRATEGY.md §31.2 requires Layer 2 tests to run against a real
+      # PostgreSQL engine in an isolated, disposable database. Each test creates
+      # and drops its own uniquely named schema inside this one, exactly as it
+      # does locally. These credentials are an ephemeral service container's
+      # own, reachable only from this job -- never a secret, and never the
+      # developer's database.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: gw2ci
+          POSTGRES_PASSWORD: gw2ci
+          POSTGRES_DB: gw2ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Run backend test suite
+        env:
+          DATABASE_URL: jdbc:postgresql://localhost:5432/gw2ci
+          DATABASE_USER: gw2ci
+          DATABASE_PASSWORD: gw2ci
+          # repo.AppConfig reads this at class-initialization time, so the suite
+          # needs the key to be *set*. No test in the default Surefire run makes
+          # a live Guild Wars 2 API call (docs/TEST_STRATEGY.md §14, §31.4), so a
+          # placeholder is correct here. Never put a real key in this file.
+          GW2_API_KEY: ci-placeholder-no-live-api-calls
+          ICON_CACHE_DIR: ${{ runner.temp }}/gw2-icons
+        # The default Surefire run: *Test classes only. *IT classes (Layer 4
+        # live GW2 API smoke, Layer 5 TestFX, real-database perf/equivalence
+        # checks) stay excluded by their naming convention, exactly as locally.
+        # javafx.platform overrides the pom's Windows default; no test in this
+        # suite loads a JavaFX native library.
+        run: ./mvnw -B -ntp test -Djavafx.platform=linux
+
+      - name: Summarize failing tests
+        if: failure()
+        run: >-
+          python .github/scripts/summarize_test_failures.py
+          --label "Backend (Maven)"
+          --junit target/surefire-reports
+
+  frontend:
+    name: Frontend tests (Vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      # The repository's own `npm test` (vitest run); the extra reporter only
+      # writes a machine-readable copy of the same run for the summarizer.
+      - name: Run frontend unit tests
+        run: npm test -- --reporter=default --reporter=junit --outputFile=reports/junit.xml
+
+      # `npm run build` type-checks first (vue-tsc --noEmit), so this covers
+      # docs/TEST_STRATEGY.md §12.1's type-check and build verification levels.
+      - name: Type-check and build
+        run: npm run build
+
+      - name: Summarize failing tests
+        if: failure()
+        run: >-
+          python ../.github/scripts/summarize_test_failures.py
+          --label "Frontend (Vitest)"
+          --junit reports
+
+  agent-runtime:
+    name: Agent runtime tests (unittest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Offline contract/flow tests. tests/__init__.py makes every model
+      # runner, git push and GitHub API call raise, so this job can never
+      # start a model, push a commit or reach the network.
+      - name: Run orchestrator/harness tests
+        # `shell: bash` (not the default `bash -e`) runs with `-o pipefail`, so
+        # a failing test run cannot be hidden by tee's own exit status.
+        shell: bash
+        run: python -m unittest discover -s agent/runtime/tests -t . 2>&1 | tee runtime-tests.log
+
+      - name: Summarize failing tests
+        if: failure()
+        run: >-
+          python .github/scripts/summarize_test_failures.py
+          --label "Agent runtime (unittest)"
+          --unittest-log runtime-tests.log

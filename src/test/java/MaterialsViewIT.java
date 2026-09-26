@@ -83,7 +83,7 @@ class MaterialsViewIT extends ApplicationTest {
     }
 
     private static MaterialStorageRow row(int category, int itemId, int count) {
-        return new MaterialStorageRow(category, itemId, count, "C:\\icons\\" + itemId + ".png", "Basic");
+        return new MaterialStorageRow(category, itemId, count, "C:\\icons\\" + itemId + ".png", null, "Basic");
     }
 
     private static String headerOf(VBox blocks, int index) {

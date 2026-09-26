@@ -1,0 +1,637 @@
+/*
+ * The shared presentation layer: design tokens and the reusable layout, control, notice and status
+ * treatments every screen builds on (`FRONTEND_UX_GUIDELINES.md` 3, 9, 10).
+ *
+ * Colors are the guidelines' baseline palette, declared once as semantic tokens; screens use the
+ * tokens and never introduce a page-specific color. Spacing comes from one 4/8/12/16/24/32/48 scale,
+ * and type from one body face with a small heading scale. Brand and semantic roles stay separate:
+ * `--color-primary` is the main action fill and never means "error".
+ */
+:root {
+  color-scheme: dark;
+
+  --color-bg: #11161b;
+  --color-surface: #1b232b;
+  --color-raised: #26323d;
+  --color-border: #52616e;
+  --color-text: #f3eee4;
+  --color-muted: #b7c0c8;
+  --color-primary: #b83a32;
+  --color-secondary: #79c9c0;
+  --color-highlight: #e1ba70;
+  --color-success: #88d4a1;
+  --color-danger: #ff9990;
+  --color-warning: #f0c36a;
+  --color-info: #9acbff;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --radius-panel: 10px;
+  --radius-control: 8px;
+  --radius-pill: 999px;
+
+  --font-body: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+
+  /* Data-rich pages may use the wider bound; explanatory copy stays at a readable measure. */
+  --page-max: 1440px;
+  --prose-max: 68ch;
+
+  --transition-fast: 140ms ease;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* Never a fixed pixel root size: browser zoom and a user's own font size must both take effect. */
+  font-size: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.25;
+}
+
+h1 {
+  font-size: var(--text-2xl);
+}
+
+h2 {
+  font-size: var(--text-xl);
+}
+
+h3 {
+  font-size: var(--text-lg);
+}
+
+p {
+  margin: 0;
+}
+
+code {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.9em;
+}
+
+a {
+  color: var(--color-secondary);
+}
+
+/* One visible focus treatment for every interactive element, distinguishable from selection. */
+:focus-visible {
+  outline: 2px solid var(--color-info);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------- application shell ----------- */
+
+.skip-link {
+  position: absolute;
+  left: var(--space-2);
+  top: var(--space-2);
+  z-index: 2;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--color-raised);
+  color: var(--color-text);
+  transform: translateY(-200%);
+  transition: transform var(--transition-fast);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.site-header {
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.site-header__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-4);
+}
+
+.site-wordmark {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.site-wordmark__accent {
+  color: var(--color-highlight);
+}
+
+.site-wordmark__scope {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+.site-nav__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.site-nav__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.5rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  text-decoration: none;
+  transition: background var(--transition-fast);
+}
+
+.site-nav__link:hover {
+  background: var(--color-raised);
+}
+
+/* The current destination is marked by weight, an underline bar and color together — never color
+   alone — so it survives a monochrome or high-contrast rendering. */
+.site-nav__link[aria-current="page"] {
+  background: var(--color-raised);
+  border-color: var(--color-highlight);
+  box-shadow: inset 0 -2px 0 0 var(--color-highlight);
+  font-weight: 600;
+}
+
+.page {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4) var(--space-7);
+}
+
+/* Every screen is one vertical flow with the same separation between its regions. */
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ---------------------------------------------------------------- page structure --------------- */
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+}
+
+.page-head__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: var(--prose-max);
+}
+
+.page-head__intro {
+  color: var(--color-muted);
+}
+
+/* Page actions stay together and stay findable in every arrangement. */
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.panel {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+}
+
+.panel > * + * {
+  margin-top: var(--space-3);
+}
+
+.panel__title {
+  font-size: var(--text-lg);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Lets a control group shrink below its natural width instead of pushing the page wider. */
+.cluster > * {
+  min-width: 0;
+}
+
+.prose {
+  max-width: var(--prose-max);
+}
+
+/* Secondary, lower-priority text: labels, counts and supplied-value qualifications. */
+.meta {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+/*
+ * A comparison region and the details of the one result selected in it: side by side once there is
+ * width for both, one below the other before that. The breakpoint comes from the content — below it
+ * a useful table and a useful detail column cannot both fit — not from a device size.
+ */
+.results-split {
+  display: grid;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (min-width: 64rem) {
+  .results-split {
+    grid-template-columns: minmax(0, 1fr) minmax(20rem, 26rem);
+  }
+}
+
+/* `minmax(0, …)` above is what lets the main column's table region shrink instead of stretching. */
+.results-split__main {
+  min-width: 0;
+}
+
+/*
+ * The detail column stays put while the comparison list scrolls past it (DOMAIN_SPEC 2.1.1), which
+ * only works where the two sit side by side. A detail longer than the viewport would otherwise have
+ * its foot pinned off-screen and unreachable, so the column becomes its own scroll container and is
+ * focusable — the same treatment `.table-region` gets — rather than being clipped.
+ *
+ * Below the breakpoint the column is an ordinary block in the page flow: sticking a full-width panel
+ * to the top of a phone screen would eat the viewport instead of helping (FRONTEND_UX_GUIDELINES 11).
+ */
+@media (min-width: 64rem) {
+  .results-split__aside {
+    position: sticky;
+    top: var(--space-4);
+    max-height: calc(100vh - 2 * var(--space-4));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+/* ----------------------------------------------------------------- detail ---------------------- */
+
+/* The basis a group of values is stated under; never decoration, always a real sub-heading. */
+.detail__basis {
+  margin: var(--space-2) 0 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.detail-values {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.detail-values dd {
+  margin: 0;
+}
+
+/* The one value in its group that should be read first; the label still carries the meaning. */
+.detail-values__lead {
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+/* The backend's own code and message: available, but read after the sentence that explains it. */
+.detail-line {
+  display: block;
+  margin-top: var(--space-2);
+}
+
+/* Available to assistive technology, absent from the visual layout. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- controls --------------------- */
+
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 2.5rem;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-raised);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--color-secondary);
+}
+
+button:active:not(:disabled) {
+  background: var(--color-surface);
+}
+
+/* A disabled control keeps its size and stays readable; the reason is stated next to it. */
+button:disabled {
+  border-style: dashed;
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  cursor: default;
+}
+
+/* One clear primary action per action group; supporting actions keep the quiet outline above. */
+.button--primary {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  font-weight: 600;
+}
+
+.button--primary:hover:not(:disabled) {
+  border-color: var(--color-highlight);
+}
+
+input,
+select {
+  min-height: 2.5rem;
+  /* Never wider than what contains it: a narrow screen must reflow, not scroll sideways. */
+  max-width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-bg);
+  color: inherit;
+  font: inherit;
+}
+
+input[type="checkbox"] {
+  min-height: 0;
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--color-primary);
+}
+
+/* A label and its control stay together, and wrap onto two lines rather than widening the page. */
+label {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+fieldset {
+  margin: 0;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+}
+
+legend {
+  padding: 0 var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ---------------------------------------------------------------- states and status ------------ */
+
+.notice {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-left-width: 4px;
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+.notice--error {
+  border-left-color: var(--color-danger);
+}
+
+.notice--warning {
+  border-left-color: var(--color-warning);
+}
+
+.notice--info {
+  border-left-color: var(--color-info);
+}
+
+.notice__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/*
+ * A status treatment always carries its own words; the tone only reinforces them, so none of these
+ * states is distinguishable by color alone.
+ */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.status--success {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.status--failure {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.status--busy {
+  border-color: var(--color-info);
+  color: var(--color-info);
+}
+
+.status--unknown {
+  border-style: dashed;
+  border-color: var(--color-highlight);
+  color: var(--color-highlight);
+}
+
+.status--caution {
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+}
+
+.status--idle {
+  color: var(--color-muted);
+}
+
+/* Diagnostic evidence: available, labelled, and closed until it is asked for. */
+.diagnostics {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-bg);
+}
+
+.diagnostics > summary {
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-muted);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.diagnostics > summary:focus-visible {
+  outline-offset: -2px;
+}
+
+.diagnostics__body {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+  padding: 0 var(--space-3) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.diagnostics__body dt {
+  color: var(--color-muted);
+}
+
+.diagnostics__body dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- data regions ----------------- */
+
+/*
+ * A table that genuinely needs two dimensions scrolls inside this region only: the page around it
+ * keeps reflowing and never gains a horizontal scrollbar of its own. The region is focusable and
+ * named so the columns are reachable by keyboard as well as by pointer.
+ */
+.table-region {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+}
+
+.numeric {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/*
+ * A money result that can go either way. The written sign is what distinguishes gain from loss; the
+ * tone only reinforces it, so the distinction survives without color. A supplied zero and a value
+ * the backend did not supply both stay neutral rather than being tinted into an outcome.
+ */
+.money {
+  font-variant-numeric: tabular-nums;
+}
+
+.money--gain {
+  color: var(--color-success);
+}
+
+.money--loss {
+  color: var(--color-danger);
+}
+
+/*
+ * Money that is spent rather than earned (DOMAIN_SPEC 2.1.1: cost wording plus the negative/cost
+ * treatment). It shares the loss color deliberately — one treatment for "money leaving" — and the
+ * label beside it always says "cost", so the color is never what tells the two apart.
+ */
+.money--cost {
+  color: var(--color-danger);
+}
+
+@media (max-width: 40rem) {
+  .page {
+    padding: var(--space-4) var(--space-3) var(--space-6);
+  }
+
+  .page-actions,
+  .page-actions > button {
+    width: 100%;
+  }
+}

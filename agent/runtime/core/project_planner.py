@@ -6,21 +6,28 @@ from agent.runtime.runners.local_planner_runner import run_local_planner
 from agent.runtime.support.capacity import ModelCapacityUnavailable
 from agent.runtime.core.story_state import (
     get_active_story_path, classify_story_status, extract_status_section, parse_backlog_section,
+    get_unsatisfied_dependencies,
 )
 from agent.runtime.support.config import (
+    ADR_DIR,
+    ARCHITECT_REQUESTS_DIR,
     BACKLOG_FILE,
     CURRENT_STORY_FILE,
     PROJECT_STATE_FILE,
     ROADMAP_FILE,
+    PLANNER_INSTRUCTIONS_FILE,
     PLANNING_MAX_STORIES_PER_RUN,
     PLANNING_MIN_STORIES_PER_RUN,
     PLANNING_RESULT_FILE,
     PLANNING_TRIGGER_MAX_READY_STORIES,
     REPO_ROOT,
+    ROLE_CONTRACT_FILES,
     STORIES_DIR,
     USER_DECISIONS_DIR,
 )
 from agent.runtime.support.files import file_hash, write_json
+from agent.runtime.support.daily_log import print_status
+from agent.runtime.core import planning_context
 from agent.runtime.core.story_archive import (
     archive_milestone_stories,
     extract_milestone,
@@ -38,7 +45,9 @@ from agent.runtime.human.user_decisions import (
 from agent.runtime.human.product_owner_requests import (
     validate_request_updates,
     read_requests,
+    request_status,
 )
+from agent.runtime.human import architect_requests
 
 
 # ============================================================
@@ -129,20 +138,20 @@ def _extract_phase_section(
 # Python determines the current phase and supplies only that phase's
 # roadmap section. The model is not allowed to discover or redefine
 # its own roadmap scope.
+#
+# What each block costs is measured, not assumed: see
+# agent/runtime/reports/2026-09-26-planner-usage.md. Finished history
+# (completed backlog entries, resolved decisions, resolved receipts) is
+# compacted by core/planning_context.py into indexes that keep every
+# identifier planning needs and name the file holding the detail;
+# unresolved questions are always supplied in full.
 # ============================================================
 
-def build_planning_prompt() -> str:
+def build_planning_context() -> tuple[str, dict]:
+    """The planning prompt plus the size of each supplied section."""
 
-    planner_instructions_file = (
-            REPO_ROOT
-            / "agent"
-            / "PLANNER_INSTRUCTIONS.md"
-    )
-
-    planner_instructions = (
-        planner_instructions_file.read_text(
-            encoding="utf-8"
-        )
+    planner_instructions = PLANNER_INSTRUCTIONS_FILE.read_text(
+        encoding="utf-8"
     )
 
     project_state = (
@@ -151,10 +160,9 @@ def build_planning_prompt() -> str:
         )
     )
 
-    backlog = (
-        BACKLOG_FILE.read_text(
-            encoding="utf-8"
-        )
+    backlog_index = planning_context.backlog_index(
+        BACKLOG_FILE.read_text(encoding="utf-8"),
+        planning_context.story_facts(_existing_story_files()),
     )
 
     product_owner_requests = read_requests()
@@ -171,6 +179,22 @@ def build_planning_prompt() -> str:
             "(no OPEN or NEEDS_USER requests under agent/product-owner-requests/, "
             "excluding README.md)"
         )
+
+    resolved_request_coverage = planning_context.resolved_request_index([
+        item for item in read_requests(include_resolved=True)
+        if request_status(item["content"]) == "RESOLVED"
+    ])
+
+    decision_coverage_block = planning_context.decision_index([
+        dict(item, content=(USER_DECISIONS_DIR / item["file"]).read_text(
+            encoding="utf-8"
+        ))
+        for item in list_decisions()
+    ])
+
+    architect_requests_block = planning_context.architect_request_index(
+        architect_requests.list_requests()
+    )
 
     roadmap = (
         ROADMAP_FILE.read_text(
@@ -191,7 +215,18 @@ def build_planning_prompt() -> str:
         f"milestone-{phase_number:02d}"
     )
 
-    return f"""PROJECT PLANNING MODE
+    sections = {
+        "backlog index": backlog_index,
+        "open PO requests": product_owner_requests_block,
+        "resolved PO summary": resolved_request_coverage,
+        "UD summary": decision_coverage_block,
+        "architect requests": architect_requests_block,
+        "current roadmap phase": phase_section,
+        "project state": project_state,
+        "role instructions": planner_instructions,
+    }
+
+    prompt = f"""PROJECT PLANNING MODE
 
 You are the local project-planning agent.
 
@@ -250,27 +285,42 @@ directly traced to at least one of:
 Missing information by itself is NOT permission to invent a story.
 
 If required information is genuinely a human decision, create/reference the
-appropriate OPEN user-decision file and return NEEDS_USER.
+appropriate OPEN user-decision file for that area, then continue reviewing other
+current-phase areas. Choose result status only after the full area review.
 
 Do not invent repository facts, implementation state, test results, coverage,
 dependency versions, CI state, migration requirements, or later-phase work.
 
-ADDITIONAL READS
-================
+SUPPLIED CONTEXT AND ADDITIONAL READS
+=====================================
 
-The authoritative planning context below has already been loaded for you.
-Do not reread these files through the shell.
+Everything below is already in your context. Do not read, reread or print any
+of it through the shell: your role contract, AGENTS.md (its instruction to
+read agent/PLANNER_INSTRUCTIONS.md is already satisfied by this prompt), the
+current-phase roadmap section, agent/PROJECT_STATE.md, the backlog index, the
+supplied requests and the decision summaries.
 
-You may additionally inspect only when necessary:
-- docs/KNOWN_PROBLEMS.md
-- docs/CURRENT_ARCHITECTURE.md
-- docs/TARGET_ARCHITECTURE.md
-- docs/DOMAIN_SPEC.md
-- existing files directly under agent/stories/
-- existing files under agent/user-decisions/
+The backlog index below is generated from agent/stories/BACKLOG.md. It lists
+every story ID and filename in the project, so it is sufficient to detect a
+duplicate story, to see the queue in priority order, and to see what the
+current milestone already covers. Completed entries are compacted; the full
+text of any story is in its own file.
 
-Do not inspect CLAUDE.md, src/, pom.xml, build files, CI files, Git history, or
-unrelated repository files.
+Targeted reads, only when a specific detail actually decides something:
+- a single story file under agent/stories/ (or agent/stories/archive/)
+- a single file under agent/user-decisions/
+- the relevant section of docs/KNOWN_PROBLEMS.md, docs/CURRENT_ARCHITECTURE.md,
+  docs/TARGET_ARCHITECTURE.md, docs/DOMAIN_SPEC.md or docs/TEST_STRATEGY.md
+- one named section of agent/stories/BACKLOG.md, when a completed entry's
+  narrative is the evidence you need
+
+Read a section or line range rather than a whole large document, batch
+independent reads into one command, and never read the same thing twice. The
+forbidden-read list in your role contract's "Read Scope" still applies.
+
+Editing agent/stories/BACKLOG.md is not a read: add your entries with a small
+Python script (read the file, insert under the exact section, write it back)
+that never prints its contents.
 
 STORY OUTPUT
 ============
@@ -323,12 +373,13 @@ follow those exactly. In summary:
 - if it belongs to a later phase, only record it as future planned work --
   never create a later-phase story;
 - if an implementation/product decision genuinely requires a human, create
-  or reuse an OPEN agent/user-decisions/UD-*.md file and return NEEDS_USER
-  instead of guessing.
+  or reuse an OPEN agent/user-decisions/UD-*.md file instead of guessing,
+  then continue with other areas. Do not return at the first blocker.
 
 Never delete Product Owner request files. Update the original file's
 ## Status (OPEN | NEEDS_USER | RESOLVED) and ## Planner Resolution.
-A missing Status in a legacy note means OPEN. Ignore RESOLVED requests.
+A missing Status in a legacy note means OPEN. Use RESOLVED coverage receipts
+to avoid duplicates; never edit or reprocess them.
 For RESOLVED, briefly state exactly what was done (docs updated, stories
 created, backlog entries added, existing artifacts reused, or no action
 required), citing the authoritative Markdown artifact paths that fully
@@ -339,9 +390,60 @@ Preserve the original request intent. Only the human PO deletes reviewed
 RESOLVED files manually.
 
 Only list newly RESOLVED filenames in product_owner_requests_processed.
-That list must be empty unless planning status is COMPLETE; do not resolve
-requests on NEEDS_USER/FAILED passes. OPEN and NEEDS_USER remain eligible
+On COMPLETE or NEEDS_USER, resolve independently covered requests.
+On FAILED, do not resolve requests. OPEN and NEEDS_USER remain eligible
 for later passes, including after the blocking user decision is resolved.
+
+ARCHITECT REQUESTS
+==================
+
+A separate Codex role, the ARCHITECT (agent/ARCHITECT_INSTRUCTIONS.md), owns
+architecture decisions. You are the PLANNER. Do not switch roles: never enter
+ARCHITECTURE MODE, never answer an architecture question you are not
+authorized to decide, and never write
+docs/architecture/decisions/ADR-*.md.
+
+When planning runs into an architectural question you are not authorized to
+decide -- a component/layer boundary that authoritative documents do not
+settle, a technology still marked TBD, a structural alternative with
+materially different consequences, a conflict between two architecture
+documents -- create an architect request instead of guessing and instead of
+going straight to a User Decision:
+
+- one file per question, directly under agent/architect-requests/;
+- filename AR-<NUMBER>-short-name.md, with an ID unique for all time;
+- these `##` headings, in this exact order:
+  1. Status               (OPEN)
+  2. Architecture Question
+  3. Context and Constraints
+  4. Authoritative References
+  5. Blocked Work
+  6. Blocking User Decision   (None.)
+  7. Architect Decision       (TODO)
+  8. Resolution               (TODO)
+- state the question precisely, the constraints and context you already know,
+  the authoritative documents/sections that bear on it, and exactly what
+  planning or story work it blocks;
+- leave Architect Decision and Resolution as TODO. Answering your own request
+  is a role violation and Python rejects it.
+
+Do NOT create an architect request for a trivial implementation choice a story
+can safely make (naming, local structure inside one class, test placement,
+obvious reuse of an existing pattern). Those belong to the implementing story.
+
+Duplicates are rejected: the unresolved requests supplied below are the
+current architecture questions. If your question is already one of them, do
+not create a second request -- record that the work is blocked by the existing
+AR-* instead.
+
+You may never modify an existing file under agent/architect-requests/. Python
+compares them byte-for-byte after this run. A RESOLVED request's Architect
+Decision is established architecture input: plan with it, and convert its
+implied work into normal current-phase stories when the phase allows.
+
+If a request is NEEDS_USER, it is waiting on the Product Owner through its own
+agent/user-decisions/UD-*.md file. Treat the work it blocks as blocked; do not
+duplicate that decision and do not create a competing one.
 
 PLANNING RESULT
 ===============
@@ -355,10 +457,13 @@ with exactly these fields:
 {{
   "status": "COMPLETE" | "NEEDS_USER" | "FAILED",
   "phase_considered": "Phase {phase_number}",
+  "independent_work_remaining": true | false,
+  "phase_review": [{{"area": "current-phase area", "outcome": "PLANNED | READY | USER_DECISION | ARCHITECT_REQUEST | COVERED | PREREQUISITE", "references": ["artifact path or stable ID", ...]}}],
   "phase_exit_criteria_satisfied": true | false,
   "story_files_created": ["STORY-AREA-NUMBER-short-name.md", ...],
   "user_decision_ids": ["UD-NUMBER", ...],
   "product_owner_requests_processed": ["filename.md", ...],
+  "architect_requests_created": ["AR-NUMBER-short-name.md", ...],
   "milestone_transition": true | false,
   "completed_milestone": "{milestone}" | null,
   "next_milestone": "milestone-NN" | null,
@@ -368,10 +473,30 @@ with exactly these fields:
   "reason": "<short explanation grounded in the supplied current-phase context>"
 }}
 
+Review remaining relevant current-phase areas BEFORE choosing the result.
+Discover all currently identifiable independent UDs and ARs in the same pass.
+One blocker, an active story, or the story batch limit must not terminate that review.
+Record each area's disposition and evidence in phase_review; split mixed areas.
+Reuse existing OPEN/NEEDS_USER/RESOLVED artifacts and backlog coverage.
+Do not exhaustively decompose the milestone: keep the 1?6 story batch limit.
+
+COMPLETE means a successful batch, and may contain UDs, ARs and stories together.
+If a READY area can advance in another bounded pass, set independent_work_remaining
+true and use COMPLETE. This requires concrete progress in this pass (new stories,
+UDs, ARs or resolved PO requests), not just changed prose. Otherwise set it false.
+NEEDS_USER means no further useful independent planning is available without user
+input after this review; it does not mean merely that an open UD exists.
+Architecture-only/prerequisite waits use COMPLETE with no independent work remaining.
+
 If status is NEEDS_USER:
-- story_files_created must be empty;
-- product_owner_requests_processed must be empty;
-- user_decision_ids must contain the relevant OPEN decision IDs.
+- independent_work_remaining must be false and no phase_review entry may be READY;
+- finish independent planning and request processing in this same pass;
+- story_files_created may contain only stories independent of the open decisions;
+- product_owner_requests_processed may contain independently resolved requests;
+- user_decision_ids must contain stable OPEN IDs, e.g. UD-010 (not filenames).
+  Each ID resolves to exactly one UD-010-*.md (or UD-010.md) filename;
+  no Markdown title is required. Duplicate IDs are invalid.
+A decision blocks only dependent work. Never stop the whole pass at the first UD.
 
 If milestone_transition is true:
 - status must be COMPLETE;
@@ -399,16 +524,40 @@ PROJECT STATE
 
 {project_state}
 
-CURRENT BACKLOG
-===============
+BACKLOG INDEX (agent/stories/BACKLOG.md; COMPLETE LIST OF STORY IDS)
+====================================================================
 
-{backlog}
+{backlog_index}
 
 PRODUCT OWNER REQUESTS (INBOX CONTENTS)
 ========================================
 
 {product_owner_requests_block}
+
+USER DECISION COVERAGE (ALL STATUSES; REUSE QUESTIONS AND ANSWERS)
+===============================================================
+
+Unresolved decisions are supplied in full. A RESOLVED one is supplied as its
+question and its answer; read agent/user-decisions/<file> for the rest.
+
+{decision_coverage_block}
+
+RESOLVED PO REQUEST COVERAGE (READ ONLY; DO NOT REPROCESS)
+=========================================================
+
+{resolved_request_coverage}
+
+ARCHITECT REQUESTS (INBOX CONTENTS)
+====================================
+
+{architect_requests_block}
 """
+
+    return prompt, sections
+
+
+def build_planning_prompt() -> str:
+    return build_planning_context()[0]
 
 
 # ============================================================
@@ -488,6 +637,18 @@ def _existing_story_ids() -> set:
     return ids
 
 
+def _adr_snapshot() -> dict:
+    """ADR filename -> content hash. Architect-owned; planning must not move it."""
+
+    if not ADR_DIR.exists():
+        return {}
+
+    return {
+        path.name: file_hash(path)
+        for path in sorted(ADR_DIR.glob("*.md"))
+    }
+
+
 def _git_dirty_src_lines() -> set:
     # Scoped to src/ only -- unrelated pre-existing dirty state
     # elsewhere in the working tree (e.g. an in-progress story) must
@@ -518,6 +679,67 @@ def _git_dirty_src_lines() -> set:
     }
 
 
+REVIEW_OUTCOMES = {"PLANNED", "READY", "USER_DECISION", "ARCHITECT_REQUEST", "COVERED", "PREREQUISITE"}
+
+
+def _validate_phase_review(result, made_progress):
+    """Validate the review receipt, not the model's semantic completeness judgment."""
+    problems = []
+    remaining = result.get("independent_work_remaining")
+    review = result.get("phase_review")
+    if not isinstance(remaining, bool):
+        problems.append("independent_work_remaining must be a boolean.")
+    if not isinstance(review, list) or not review:
+        return problems + ["phase_review must contain the remaining current-phase areas (or phase-exit coverage)."]
+    ready = False
+    reviewed_decisions = set()
+    reviewed_architecture = set()
+    for entry in review:
+        if not isinstance(entry, dict):
+            problems.append("phase_review entries must be objects.")
+            continue
+        outcome = entry.get("outcome")
+        refs = entry.get("references")
+        if not isinstance(entry.get("area"), str) or not entry["area"].strip():
+            problems.append("phase_review entries need a nonempty area.")
+        if not isinstance(outcome, str) or outcome not in REVIEW_OUTCOMES:
+            problems.append(f"Invalid phase_review outcome: {outcome!r}")
+        if not isinstance(refs, list) or not refs or not all(isinstance(ref, str) and ref.strip() for ref in refs):
+            problems.append("phase_review entries need artifact references.")
+            continue
+        ready |= outcome == "READY"
+        if outcome == "ARCHITECT_REQUEST":
+            reviewed_architecture.update(ref for ref in refs if re.fullmatch(r"AR-\d+", ref))
+            if not any(re.fullmatch(r"AR-\d+", ref) for ref in refs):
+                problems.append("ARCHITECT_REQUEST review entries must reference stable AR IDs.")
+        if outcome == "USER_DECISION":
+            reviewed_decisions.update(ref for ref in refs if re.fullmatch(r"UD-\d+", ref))
+            if not any(re.fullmatch(r"UD-\d+", ref) for ref in refs):
+                problems.append("USER_DECISION review entries must reference stable UD IDs.")
+    if reviewed_architecture:
+        requests = architect_requests.list_requests()
+        for request_id in reviewed_architecture:
+            matches = [item for item in requests if item["id"] == request_id]
+            if len(matches) != 1 or matches[0]["status"] == "RESOLVED":
+                problems.append(f"phase_review references no unique unresolved request: {request_id}")
+    for filename in result.get("architect_requests_created", []):
+        match = re.match(r"(AR-\d+)-", filename)
+        if match and match.group(1) not in reviewed_architecture:
+            problems.append(f"New architect request {filename} is missing from phase_review.")
+    ids = result.get("user_decision_ids", [])
+    if isinstance(ids, list) and all(isinstance(item, str) for item in ids):
+        if set(ids) != reviewed_decisions:
+            problems.append("phase_review USER_DECISION references must match all user_decision_ids.")
+    if remaining != ready:
+        problems.append("independent_work_remaining must agree with READY areas in phase_review.")
+    if remaining:
+        if result.get("status") != "COMPLETE":
+            problems.append("Independent READY work remains: use COMPLETE, not NEEDS_USER/FAILED.")
+        if not made_progress:
+            problems.append("Another planning batch requires concrete progress; prose-only changes cannot trigger retries.")
+    return problems
+
+
 def validate_planning_result(
         raw_result: dict,
         pre_current_story_hash,
@@ -526,8 +748,13 @@ def validate_planning_result(
         pre_existing_story_filenames: set,
         pre_decisions: list,
         pre_requests: dict[str, str],
+        pre_architect_requests: dict[str, str],
+        pre_adr_files: dict[str, str | None],
 ) -> dict:
 
+    if not isinstance(raw_result, dict):
+        return {"status": "FAILED", "reason": "Malformed planning output",
+                "validation_problems": ["Planning result must be a JSON object."]}
     result = dict(raw_result)
     problems = []
 
@@ -582,7 +809,7 @@ def validate_planning_result(
     # minimum that would incentivize filler stories: 1 is as valid a
     # batch as 6.
     if (
-            status == "COMPLETE"
+            original_status in ("COMPLETE", "NEEDS_USER")
             and story_files_created
             and not (
             PLANNING_MIN_STORIES_PER_RUN
@@ -598,11 +825,11 @@ def validate_planning_result(
         )
         status = "FAILED"
 
-    if original_status != "COMPLETE" and story_files_created:
+    if original_status not in ("COMPLETE", "NEEDS_USER") and story_files_created:
         problems.append(
             f"Planning status is {original_status} but "
             "story_files_created is non-empty; speculative "
-            "stories must not be created outside COMPLETE."
+            "stories require COMPLETE or NEEDS_USER (independent work only)."
         )
         status = "FAILED"
 
@@ -610,6 +837,10 @@ def validate_planning_result(
     new_story_milestones = set()
 
     for relative_name in story_files_created:
+        if not isinstance(relative_name, str):
+            problems.append("story_files_created entries must be filenames.")
+            status = "FAILED"
+            continue
         story_path = STORIES_DIR / relative_name
 
         if (
@@ -633,6 +864,11 @@ def validate_planning_result(
         content = story_path.read_text(
             encoding="utf-8"
         )
+
+        unresolved = get_unsatisfied_dependencies(content)
+        if unresolved and classify_story_status(extract_status_section(content)) != "BLOCKED":
+            problems.append(f"{relative_name} has unresolved prerequisites but is not BLOCKED: {unresolved}")
+            status = "FAILED"
 
         missing_headings = [
             heading
@@ -707,6 +943,17 @@ def validate_planning_result(
         for decision in post_decisions
         if decision["id"]
     }
+
+    questions = {}
+    for decision in post_decisions:
+        content = (USER_DECISIONS_DIR / decision["file"]).read_text(encoding="utf-8")
+        question = " ".join((extract_decision_section(content, "Decision Needed") or "").casefold().split())
+        if question:
+            questions.setdefault(question, []).append(decision["file"])
+    for names in questions.values():
+        if len(names) > 1 and any(name not in pre_decisions_by_file for name in names):
+            problems.append("Duplicate user-decision question (reuse existing OPEN/RESOLVED decision): " + ", ".join(names))
+            status = "FAILED"
 
     for decision in post_decisions:
         is_new_file = decision["file"] not in pre_decisions_by_file
@@ -793,6 +1040,10 @@ def validate_planning_result(
         status = "FAILED"
 
     for decision_id in user_decision_ids:
+        if not isinstance(decision_id, str) or not re.fullmatch(r"UD-\d+", decision_id):
+            problems.append(f"Invalid user_decision_ids entry {decision_id!r}; expected stable UD-NUMBER.")
+            status = "FAILED"
+            continue
         referenced = post_decisions_by_id.get(decision_id)
 
         if referenced is None:
@@ -810,6 +1061,11 @@ def validate_planning_result(
             )
             status = "FAILED"
 
+    for decision in post_decisions:
+        if decision["file"] not in pre_decisions_by_file and decision["id"] not in user_decision_ids:
+            problems.append(f"New decision {decision['file']} is missing from user_decision_ids.")
+            status = "FAILED"
+
     # ------------------------------------------------------------
     # Product Owner request validation: retain originals and verify lifecycle.
     processed = result.get("product_owner_requests_processed", [])
@@ -824,6 +1080,50 @@ def validate_planning_result(
     result["product_owner_requests_processed"] = sorted({
         name for name in processed if isinstance(name, str)
     })
+
+    # ------------------------------------------------------------
+    # Architect requests: the planner may only ADD a question for the
+    # architect (AGENTS.md's "No Implicit Role Switching"). Answering
+    # one, editing one, duplicating an unresolved one, or writing an
+    # architect-owned ADR are all role violations, and all of them are
+    # detectable from the files themselves.
+    # ------------------------------------------------------------
+
+    architect_created = result.get("architect_requests_created", [])
+
+    if not isinstance(architect_created, list):
+        problems.append("architect_requests_created must be a list.")
+        status = "FAILED"
+        architect_created = []
+
+    architect_problems = architect_requests.validate_planner_updates(
+        pre_architect_requests, architect_created, original_status
+    )
+
+    if architect_problems:
+        problems.extend(architect_problems)
+        status = "FAILED"
+
+    result["architect_requests_created"] = sorted({
+        name for name in architect_created if isinstance(name, str)
+    })
+
+    duplicate_request_ids = architect_requests.find_duplicate_request_ids()
+
+    if duplicate_request_ids:
+        problems.append(
+            "Duplicate architect request IDs exist under "
+            f"agent/architect-requests/: {', '.join(duplicate_request_ids)}"
+        )
+        status = "FAILED"
+
+    if _adr_snapshot() != pre_adr_files:
+        problems.append(
+            "Planning run added or modified an Architecture Decision Record "
+            "under docs/architecture/decisions/, which only ARCHITECTURE "
+            "MODE may write."
+        )
+        status = "FAILED"
 
     # ------------------------------------------------------------
     # Milestone-transition validation
@@ -881,6 +1181,14 @@ def validate_planning_result(
         completed_milestone if milestone_transition else None
     )
 
+    review_problems = _validate_phase_review(result, bool(
+        story_files_created or processed or architect_created
+        or any(item["file"] not in pre_decisions_by_file for item in post_decisions)
+    ))
+    if review_problems:
+        problems.extend(review_problems)
+        status = "FAILED"
+
     if problems:
         result["validation_problems"] = problems
 
@@ -906,6 +1214,17 @@ def _run_guarded_planner(prompt):
     before = _planning_snapshot()
     protected = {CURRENT_STORY_FILE: CURRENT_STORY_FILE.read_bytes()
                  if CURRENT_STORY_FILE.exists() else None}
+    # The planner may add an architect request but never answer, edit or
+    # resolve one, and never touch an architect-owned ADR: those belong
+    # to ARCHITECTURE MODE. Creation is validated afterwards; any change
+    # to an existing file rolls the whole pass back here.
+    protected.update({path: path.read_bytes()
+                      for path in architect_requests.list_request_files()})
+    # No role rewrites the contract that governs it (see config.py).
+    protected.update({path: path.read_bytes() if path.exists() else None
+                      for path in ROLE_CONTRACT_FILES})
+    protected.update({path: path.read_bytes()
+                      for path in sorted(ADR_DIR.glob("*.md"))})
     active = None
     active_entries = parse_backlog_section(BACKLOG_FILE.read_text(encoding="utf-8"), "Active")
     if CURRENT_STORY_FILE.exists() and CURRENT_STORY_FILE.read_text(encoding="utf-8").strip():
@@ -916,6 +1235,9 @@ def _run_guarded_planner(prompt):
                        + ". Do not modify it or CURRENT_STORY.md. Do not transition the milestone. "
                        "Plan only other useful current-scope work; creating zero stories is valid.\n")
     try:
+        # Presence now proves fresh output, even when its contents match the
+        # previous pass exactly. Failed/interrupted invocations restore it.
+        PLANNING_RESULT_FILE.unlink(missing_ok=True)
         code = run_local_planner(prompt)
         for path, content in protected.items():
             if (path.read_bytes() if path.exists() else None) != content:
@@ -929,7 +1251,7 @@ def _run_guarded_planner(prompt):
         if code != 0:
             raise RuntimeError(f"Codex planner exited with code {code}")
         return code
-    except (ModelCapacityUnavailable, RuntimeError, ValueError, OSError):
+    except (ModelCapacityUnavailable, RuntimeError, ValueError, OSError, TypeError, AttributeError):
         after = _planning_snapshot()
         for path in after.keys() - before.keys():
             path.unlink()
@@ -955,10 +1277,6 @@ def run_planning_pass() -> dict:
         CURRENT_STORY_FILE
     )
 
-    pre_planning_result_hash = file_hash(
-        PLANNING_RESULT_FILE
-    )
-
     pre_src_status = _git_dirty_src_lines()
 
     pre_story_ids = _existing_story_ids()
@@ -973,20 +1291,27 @@ def run_planning_pass() -> dict:
     pre_requests = {item["file"]: item["content"]
                     for item in read_requests(include_resolved=True)}
 
-    prompt = build_planning_prompt()
+    pre_architect_requests = {
+        request["file"]: request["content"]
+        for request in architect_requests.list_requests()
+    }
+
+    pre_adr_files = _adr_snapshot()
+
+    prompt, sections = build_planning_context()
+
+    # Terminal only: what the harness is about to supply, by section.
+    # Characters are not tokens -- the runner reports what the model
+    # actually charged once the run finishes.
+    print_status(
+        planning_context.context_report("Planner", sections, prompt)
+    )
 
     planner_exit_code = _run_guarded_planner(
         prompt
     )
 
-    post_planning_result_hash = file_hash(
-        PLANNING_RESULT_FILE
-    )
-
-    if (
-            not PLANNING_RESULT_FILE.exists()
-            or post_planning_result_hash == pre_planning_result_hash
-    ):
+    if not PLANNING_RESULT_FILE.exists():
         result = {
             "status": "FAILED",
             "reason": (
@@ -1034,6 +1359,8 @@ def run_planning_pass() -> dict:
         pre_existing_story_filenames,
         pre_decisions,
         pre_requests,
+        pre_architect_requests,
+        pre_adr_files,
     )
 
     validated["planner_exit_code"] = planner_exit_code

@@ -1,1 +1,1 @@
-agent/stories/STORY-API-003-account-sync-task-endpoint.md
+agent/stories/STORY-API-009-web-item-icon-metadata.md

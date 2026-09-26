@@ -81,6 +81,15 @@ class OrchestratorInterventionTestCase(unittest.TestCase):
             patch.object(orchestrator, "log_line", side_effect=self.logged.append)
         )
 
+        # No test may dispatch the real architect against the real
+        # agent/architect-requests/ inbox; test_architect_flow.py drives
+        # that path explicitly instead.
+        for name in ("get_actionable_architect_requests",
+                     "undispatchable_architect_requests"):
+            self._stack.enter_context(
+                patch.object(orchestrator, name, return_value=[])
+            )
+
         for target, name, value in [
             (story_state, "STORIES_DIR", self.stories_dir),
             (story_state, "BACKLOG_FILE", self.backlog_file),

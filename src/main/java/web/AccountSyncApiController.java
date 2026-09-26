@@ -42,6 +42,9 @@ public class AccountSyncApiController {
      */
     static final String ACCOUNT_SYNC_OPERATION = "ACCOUNT_SYNC";
 
+    /** This route's path, also used in its validation message. */
+    static final String ACCOUNT_SYNC_PATH = "/api/sync/account";
+
     private final AccountRefreshService accountRefreshService;
     private final BackgroundTaskService taskService;
 
@@ -55,8 +58,7 @@ public class AccountSyncApiController {
      * Accepts an account synchronization and returns without waiting for it.
      *
      * <p>The use case takes no inputs, so neither does the route: the body must be absent or an empty
-     * JSON object. An unexpected field is rejected rather than silently ignored, so a caller that
-     * believes it is parameterising the sync finds out.
+     * JSON object (see {@link SyncRequestValidation}).
      *
      * <p>Status contract: <b>202</b> with the task identifier, its operation and its status path,
      * plus a {@code Location} header pointing at the same path — acceptance only, since the work has
@@ -71,7 +73,7 @@ public class AccountSyncApiController {
     public ResponseEntity<SyncTaskAcceptedResponse> syncAccount(
             @RequestBody(required = false) Map<String, Object> request) {
 
-        rejectAnyRequestField(request);
+        SyncRequestValidation.rejectAnyRequestField(ACCOUNT_SYNC_PATH, request);
 
         String taskId = taskService.submit(ACCOUNT_SYNC_OPERATION, accountRefreshService::refreshAll);
         String statusPath = SyncTaskApiController.statusPath(taskId);
@@ -79,12 +81,5 @@ public class AccountSyncApiController {
         return ResponseEntity.accepted()
                 .location(URI.create(statusPath))
                 .body(new SyncTaskAcceptedResponse(taskId, ACCOUNT_SYNC_OPERATION, statusPath));
-    }
-
-    private static void rejectAnyRequestField(Map<String, Object> request) {
-        if (request != null && !request.isEmpty()) {
-            throw new ApiValidationException(
-                    "POST /api/sync/account accepts no request fields; send no body or an empty JSON object");
-        }
     }
 }

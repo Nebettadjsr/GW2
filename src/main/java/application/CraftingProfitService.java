@@ -11,6 +11,8 @@ import craft.PlannerContext;
 import craft.PriceQuote;
 import craft.Recipe;
 import craft.RecipeTreeBuilder;
+import craft.SingleCraftExplainer;
+import craft.SingleCraftExplanation;
 import repo.CharacterRepository;
 import repo.CraftingGraphCache;
 import repo.DiscChoice;
@@ -96,6 +98,96 @@ public class CraftingProfitService {
 
     public ProfitData reload(DiscChoice choice, CraftingSettings settings) throws SQLException {
 
+        Candidates candidates = loadCandidates(choice);
+        CalculationInputs inputs = loadCalculationInputs(choice, settings, candidates.allRecipes());
+
+        Map<Integer, CraftResult> resultsByRecipeId = planner.evaluateAllCoordinated(
+                candidates.allRecipes(), inputs.sellableInventory(), inputs.accountBoundInventory(),
+                inputs.characterBoundInventory(), inputs.roster(), inputs.tp(), settings,
+                candidates.allowedRecipeIds());
+
+        this.lastAllRecipes = candidates.allRecipes();
+        this.lastSettings = settings;
+        this.lastAllowedRecipeIds = candidates.allowedRecipeIds();
+        this.lastTp = inputs.tp();
+        this.lastResultsByRecipeId = resultsByRecipeId;
+
+        return new ProfitData(candidates.visibleRecipes(), candidates.allRecipes(),
+                resultsByRecipeId, inputs.items(), inputs.tp());
+    }
+
+    /**
+     * Freshly calculated detail for one selected recipe (TARGET_ARCHITECTURE.md section 13.1/13.2):
+     * loads this operation's own inputs, checks {@code recipeId} against the candidate set those
+     * inputs just produced, and derives both the row summary and the semantic explanation from
+     * them. This is a fresh calculation, not retrieval of an earlier reload()'s result.
+     *
+     * <p>Nothing here reads or writes the {@code last*} fields above, and every mutable planning
+     * state belongs to one {@link CraftingPlanner}/{@link SingleCraftExplainer} call, so
+     * successive or concurrent invocations with different scopes and settings cannot contaminate
+     * one another and a failure leaves nothing behind. The explanation starts from the same
+     * captured initial inventory the row's simulation started from, never from what that
+     * simulation had left, and no price, inventory, item or graph read happens while it is built.
+     */
+    public CraftingResolutionDetail resolveDetail(int recipeId, DiscChoice choice, CraftingSettings settings)
+            throws SQLException {
+
+        Candidates candidates = loadCandidates(choice);
+
+        Recipe selected = candidates.selected(recipeId);
+        if (selected == null) {
+            return CraftingResolutionDetail.recipeNotInCalculation(recipeId);
+        }
+
+        CalculationInputs inputs = loadCalculationInputs(choice, settings, candidates.allRecipes());
+
+        CraftResult row = planner.evaluateOneCoordinated(
+                selected, candidates.allRecipes(), inputs.sellableInventory(),
+                inputs.accountBoundInventory(), inputs.characterBoundInventory(), inputs.roster(),
+                inputs.tp(), settings, candidates.allowedRecipeIds());
+
+        SingleCraftExplanation explanation = new SingleCraftExplainer().explainCoordinated(
+                selected, candidates.allRecipes(), inputs.sellableInventory(),
+                inputs.accountBoundInventory(), inputs.characterBoundInventory(), inputs.roster(),
+                inputs.tp(), settings, candidates.allowedRecipeIds());
+
+        return CraftingResolutionDetail.of(
+                recipeId, selected, row, explanation, inputs.items(), inputs.tp());
+    }
+
+    /**
+     * The recipes this operation may show and resolve through. Request-local: an instance belongs
+     * to the one reload()/resolveDetail() call that loaded it.
+     */
+    private record Candidates(List<Recipe> visibleRecipes,
+                              List<Recipe> allRecipes,
+                              Set<Integer> allowedRecipeIds) {
+
+        /**
+         * The graph recipe this operation would produce a row for, or null when it would produce
+         * none - either because the recipe is outside the visible set, or because the visible set
+         * named a recipe the crafting graph does not contain, for which the table has no row
+         * either.
+         */
+        Recipe selected(int recipeId) {
+            if (!allowedRecipeIds.contains(recipeId)) return null;
+            for (Recipe r : allRecipes) {
+                if (r.recipeId == recipeId) return r;
+            }
+            return null;
+        }
+    }
+
+    /** The roster, inventory pools, quotes and item metadata one operation captured. */
+    private record CalculationInputs(List<CharacterCraftingProfile> roster,
+                                     Map<Integer, Integer> sellableInventory,
+                                     Map<Integer, Integer> accountBoundInventory,
+                                     Map<String, Map<Integer, Integer>> characterBoundInventory,
+                                     Map<Integer, PriceQuote> tp,
+                                     Map<Integer, ItemRepository.ItemInfo> items) {
+    }
+
+    private Candidates loadCandidates(DiscChoice choice) throws SQLException {
         List<Recipe> visibleRecipes;
         if (choice == null || choice.kind == DiscChoice.Kind.ALL) {
             visibleRecipes = recipeRepo.loadRecipes("All");
@@ -116,8 +208,12 @@ public class CraftingProfitService {
             throw new RuntimeException("Failed to load crafting graph cache", e);
         }
 
-        List<Recipe> allRecipes = graph.getRecipes();
+        return new Candidates(visibleRecipes, graph.getRecipes(), allowedRecipeIds);
+    }
 
+    private CalculationInputs loadCalculationInputs(DiscChoice choice,
+                                                    CraftingSettings settings,
+                                                    List<Recipe> allRecipes) throws SQLException {
         Set<Integer> itemIds = new HashSet<>();
         for (Recipe r : allRecipes) {
             itemIds.add(r.outputItemId);
@@ -142,16 +238,7 @@ public class CraftingProfitService {
             characterBoundInv = inv.characterBound();
         }
 
-        Map<Integer, CraftResult> resultsByRecipeId = planner.evaluateAllCoordinated(
-                allRecipes, sellableInv, accountBoundInv, characterBoundInv, roster, tp, settings, allowedRecipeIds);
-
-        this.lastAllRecipes = allRecipes;
-        this.lastSettings = settings;
-        this.lastAllowedRecipeIds = allowedRecipeIds;
-        this.lastTp = tp;
-        this.lastResultsByRecipeId = resultsByRecipeId;
-
-        return new ProfitData(visibleRecipes, allRecipes, resultsByRecipeId, items, tp);
+        return new CalculationInputs(roster, sellableInv, accountBoundInv, characterBoundInv, tp, items);
     }
 
     /**
@@ -222,6 +309,7 @@ public class CraftingProfitService {
                 cr.revenueCopper,
                 cr.profitCopper,
                 cr.totalProfitCopper,
+                cr.totalSellValueCopper,
                 lazyTree,
                 cr.blockedReason
         );

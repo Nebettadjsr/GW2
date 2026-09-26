@@ -8,6 +8,13 @@ package web.dto;
  *
  * @param itemName null when the item is not in the loaded item set, so "unknown" stays
  *                 distinguishable from a blank name
+ * @param iconUrl  this application's image URL for the material (TARGET_ARCHITECTURE.md §12.1), or
+ *                 null when the item's retained metadata is absent or not an accepted source. It is
+ *                 display metadata only: a missing icon changes no quantity and no price
  */
-public record MissingItemDto(int itemId, String itemName, int quantity, TradingPostQuoteDto price) {
+public record MissingItemDto(int itemId,
+                             String itemName,
+                             int quantity,
+                             TradingPostQuoteDto price,
+                             String iconUrl) {
 }

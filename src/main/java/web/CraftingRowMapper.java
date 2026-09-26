@@ -1,5 +1,6 @@
 package web;
 
+import application.icons.ItemIconUrls;
 import craft.CraftResult;
 import craft.PriceQuote;
 import craft.Recipe;
@@ -19,8 +20,10 @@ import java.util.Map;
  *
  * <p>This class only copies. It performs no crafting calculation, derives no total, and applies no
  * display rule - every number it emits is the one the domain produced, and no row is dropped
- * because its calculation was blocked or its result unavailable. It is stateless, so it is safe to
- * share across concurrent requests.
+ * because its calculation was blocked or its result unavailable. {@code totalSellValueCopper} and
+ * {@code totalProfitCopper} in particular are read off the result rather than multiplied out of
+ * revenue, profit and the craftable count here. It is stateless, so it is safe to share across
+ * concurrent requests.
  */
 final class CraftingRowMapper {
 
@@ -43,16 +46,22 @@ final class CraftingRowMapper {
         return rows;
     }
 
-    private static CraftingRowDto toRow(Recipe recipe,
-                                        CraftResult result,
-                                        Map<Integer, ItemRepository.ItemInfo> items,
-                                        Map<Integer, PriceQuote> tp) {
+    /**
+     * Maps one recipe and its result, for a route that reports a single row - the resolution-detail
+     * routes (STORY-API-008) - so that row is the same projection, field for field, as the one the
+     * table routes report for the same pair.
+     */
+    static CraftingRowDto toRow(Recipe recipe,
+                                CraftResult result,
+                                Map<Integer, ItemRepository.ItemInfo> items,
+                                Map<Integer, PriceQuote> tp) {
         if (result == null) {
             return new CraftingRowDto(
                     recipe.recipeId, recipe.outputItemId, itemName(recipe.outputItemId, items),
                     recipe.outputCount, recipe.disciplinesText, recipe.minRating,
-                    false, null, null, null, null, null, null, null,
-                    toQuote(tp.get(recipe.outputItemId)), List.of(), List.of());
+                    false, null, null, null, null, null, null, null, null,
+                    toQuote(tp.get(recipe.outputItemId)), List.of(), List.of(),
+                    iconUrl(recipe.outputItemId, items));
         }
 
         return new CraftingRowDto(
@@ -68,11 +77,13 @@ final class CraftingRowMapper {
                 result.matsSellValueCopper,
                 result.revenueCopper,
                 result.profitCopper,
+                result.totalSellValueCopper,
                 result.totalProfitCopper,
                 result.blockedReason == null ? null : result.blockedReason.name(),
                 toQuote(tp.get(recipe.outputItemId)),
                 toMissing(result.missingToBuy, items, tp),
-                toMissing(result.missingToBuyOne, items, tp));
+                toMissing(result.missingToBuyOne, items, tp),
+                iconUrl(recipe.outputItemId, items));
     }
 
     /** Sorted by item id purely so the response is stable; the domain's maps are unordered. */
@@ -85,7 +96,8 @@ final class CraftingRowMapper {
         List<MissingItemDto> out = new ArrayList<>(missing.size());
         for (Map.Entry<Integer, Integer> e : missing.entrySet()) {
             out.add(new MissingItemDto(
-                    e.getKey(), itemName(e.getKey(), items), e.getValue(), toQuote(tp.get(e.getKey()))));
+                    e.getKey(), itemName(e.getKey(), items), e.getValue(), toQuote(tp.get(e.getKey())),
+                    iconUrl(e.getKey(), items)));
         }
         out.sort(Comparator.comparingInt(MissingItemDto::itemId));
         return out;
@@ -99,5 +111,15 @@ final class CraftingRowMapper {
     private static String itemName(int itemId, Map<Integer, ItemRepository.ItemInfo> items) {
         ItemRepository.ItemInfo info = items.get(itemId);
         return info == null ? null : info.name;
+    }
+
+    /**
+     * The item's image URL, derived from the retained source the calculation's own batch item read
+     * already carried (TARGET_ARCHITECTURE.md §12.1). Null when the item is not in that set or its
+     * metadata is absent or unacceptable - no lookup, no request and no calculation happens here.
+     */
+    private static String iconUrl(int itemId, Map<Integer, ItemRepository.ItemInfo> items) {
+        ItemRepository.ItemInfo info = items.get(itemId);
+        return info == null ? null : ItemIconUrls.iconUrlFor(itemId, info.iconUrl);
     }
 }

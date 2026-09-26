@@ -62,6 +62,7 @@ class MaterialStorageRepositoryTest {
                     rarity       TEXT,
                     vendor_value INTEGER,
                     icon_path    TEXT,
+                    icon_url     TEXT,
                     fetched_at   TIMESTAMPTZ
                 )
                 """);
@@ -82,7 +83,9 @@ class MaterialStorageRepositoryTest {
     @Test
     void ordersByCategoryThenItemIdAndJoinsIconAndRarity() throws Exception {
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO items (item_id, name, rarity, icon_path) VALUES (19697, 'Copper Ore', 'Basic', 'C:\\icons\\19697.png')");
+            // 19697 carries retained icon metadata as well, so the batch read is proven to supply both
+            // the desktop path and the upstream source without a second query (STORY-API-009).
+            st.execute("INSERT INTO items (item_id, name, rarity, icon_path, icon_url) VALUES (19697, 'Copper Ore', 'Basic', 'C:\\icons\\19697.png', 'https://render.guildwars2.com/file/ABCD/1.png')");
             st.execute("INSERT INTO items (item_id, name, rarity, icon_path) VALUES (19719, 'Pile of Glittering Dust', 'Basic', 'C:\\icons\\19719.png')");
             st.execute("INSERT INTO items (item_id, name, rarity, icon_path) VALUES (12142, 'Head of Garlic', 'Basic', 'C:\\icons\\12142.png')");
             // Inserted out of order on purpose: ORDER BY category, item_id must decide the order.
@@ -95,7 +98,9 @@ class MaterialStorageRepositoryTest {
                 new MaterialStorageRepository().loadMaterialStorage(con);
 
         assertEquals(List.of(19697, 19719, 12142), rows.stream().map(MaterialStorageRepository.MaterialStorageRow::itemId).toList());
-        assertEquals(new MaterialStorageRepository.MaterialStorageRow(1, 19697, 100, "C:\\icons\\19697.png", "Basic"), rows.get(0));
+        assertEquals(new MaterialStorageRepository.MaterialStorageRow(
+                1, 19697, 100, "C:\\icons\\19697.png", "https://render.guildwars2.com/file/ABCD/1.png", "Basic"),
+                rows.get(0));
         assertEquals(5, rows.get(2).category());
     }
 

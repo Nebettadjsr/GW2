@@ -26,15 +26,20 @@ class SchedulerTest(unittest.TestCase):
     def setUp(self):
         self.claude = Mock()
         self.codex = Mock()
-        self.scheduler = orchestrator.CapacityScheduler(self.claude, self.codex)
+        self.scheduler = orchestrator.CapacityScheduler(self.claude, self.codex, cache_file=None)
         self.claude.available.return_value = True
         self.codex.available.return_value = True
         # Transition logging is exercised separately; no test may write
         # to the real, committed agent/logs/.
         self.logged = []
-        patcher = patch.object(orchestrator, "log_line", side_effect=self.logged.append)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for patcher in (
+            patch.object(orchestrator, "log_line", side_effect=self.logged.append),
+            # Never dispatch the real architect from a scheduling test.
+            patch.object(orchestrator, "get_actionable_architect_requests",
+                         return_value=[]),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def test_codex_unavailable_does_not_delay_claude(self):
         self.codex.available.return_value = False
@@ -86,7 +91,7 @@ class MainLoopTest(unittest.TestCase):
         claude.available.return_value = True
         codex = Mock()
         codex.available.return_value = False
-        scheduler = orchestrator.CapacityScheduler(claude, codex)
+        scheduler = orchestrator.CapacityScheduler(claude, codex, cache_file=None)
         writing = [False]
 
         def execute(before, interrupted):
@@ -121,6 +126,8 @@ class MainLoopTest(unittest.TestCase):
             return {"status": "COMPLETE", "story_files_created": []}
 
         with patch.object(orchestrator, "CapacityScheduler", return_value=scheduler), \
+             patch.object(orchestrator, "get_actionable_architect_requests", return_value=[]), \
+             patch.object(orchestrator, "undispatchable_architect_requests", return_value=[]), \
              patch.object(orchestrator, "requeue_resolved_interventions"), \
              patch.object(orchestrator, "_active_is_executable", side_effect=lambda: active[0]), \
              patch.object(orchestrator, "get_selectable_story_candidates", side_effect=lambda: pending[:]), \
@@ -153,7 +160,7 @@ class CooperativeResumeTest(OrchestratorInterventionTestCase):
         # -> still down (fingerprint-suppressed, no replan) -> ready again.
         claude.available.side_effect = [True, True, False, False, True]
         codex.available.return_value = True
-        scheduler = orchestrator.CapacityScheduler(claude, codex)
+        scheduler = orchestrator.CapacityScheduler(claude, codex, cache_file=None)
         events = []
         prompts = []
 
@@ -170,7 +177,7 @@ class CooperativeResumeTest(OrchestratorInterventionTestCase):
             self.assertEqual(self.current_story_file.read_bytes(), pointer)
             self.assertIn("UNFINISHED", story.read_text())
             events.append("plan")
-            return {"status": "COMPLETE", "story_files_created": []}
+            return {"status": "NEEDS_USER", "user_decision_ids": ["UD-010"], "story_files_created": []}
 
         with patch.object(orchestrator, "dispatch_story", return_value={"status":"READY"}), \
              patch.object(orchestrator, "build_claude_prompt", return_value="Implement active"), \
@@ -215,7 +222,7 @@ class RepoMapOrderingTest(OrchestratorInterventionTestCase):
         # per-attempt check).
         claude.available.side_effect = [False, True, True]
         codex.available.return_value = True
-        scheduler = orchestrator.CapacityScheduler(claude, codex)
+        scheduler = orchestrator.CapacityScheduler(claude, codex, cache_file=None)
 
         def fake_generate_repo_map(*args, **kwargs):
             events.append("repo_map")
@@ -265,13 +272,15 @@ class MainCycleLoggingTest(unittest.TestCase):
         claude, codex = Mock(), Mock()
         claude.available.return_value = True
         codex.available.return_value = True
-        scheduler = orchestrator.CapacityScheduler(claude, codex)
+        scheduler = orchestrator.CapacityScheduler(claude, codex, cache_file=None)
         logged = []
 
         def fake_select():
             return "FINISHED"
 
         with patch.object(orchestrator, "CapacityScheduler", return_value=scheduler), \
+             patch.object(orchestrator, "get_actionable_architect_requests", return_value=[]), \
+             patch.object(orchestrator, "undispatchable_architect_requests", return_value=[]), \
              patch.object(orchestrator, "requeue_resolved_interventions"), \
              patch.object(orchestrator, "_active_is_executable", return_value=False), \
              patch.object(orchestrator, "get_selectable_story_candidates", return_value=[]), \

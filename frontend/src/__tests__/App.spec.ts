@@ -1,0 +1,273 @@
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { BankContents } from '@/api/types'
+import { deferred, bankWithEmptySlots, materialStorage } from '@/account/__tests__/accountFixtures'
+import { profitResponse, selectorOptions } from '@/crafting/__tests__/fixtures'
+
+/**
+ * The application shell: navigation between the areas, what each navigation costs at the network
+ * boundary, and what survives moving between them (STORY-WEB-004).
+ *
+ * `fetch` is stubbed, so every assertion here is about what the browser would request and when. The
+ * real API clients are used on purpose — this is the check that opening an area calls that area's own
+ * route, that no navigation submits a calculation or a synchronization operation, and that an
+ * unfinished synchronization keeps being tracked without a second trigger or a second polling loop.
+ */
+interface RecordedRequest {
+  readonly method: string
+  readonly path: string
+}
+
+const requested: RecordedRequest[] = []
+let bankAnswer: Promise<BankContents> = Promise.resolve(bankWithEmptySlots)
+let wrapper: VueWrapper | null = null
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
+  })
+}
+
+const SYNC_TASK_ID = 'task-account-1'
+
+async function answer(path: string): Promise<Response> {
+  if (path === '/api/crafting/selector-options') return jsonResponse(selectorOptions)
+  if (path === '/api/crafting/profit') return jsonResponse(profitResponse())
+  if (path === '/api/account/bank') return jsonResponse(await bankAnswer)
+  if (path === '/api/account/materials') return jsonResponse(materialStorage)
+  if (path === '/api/sync/account') {
+    return jsonResponse(
+      {
+        taskId: SYNC_TASK_ID,
+        operation: 'ACCOUNT_SYNC',
+        statusUrl: `/api/sync/tasks/${SYNC_TASK_ID}`
+      },
+      202
+    )
+  }
+  if (path === `/api/sync/tasks/${SYNC_TASK_ID}`) {
+    return jsonResponse({
+      taskId: SYNC_TASK_ID,
+      operation: 'ACCOUNT_SYNC',
+      state: 'RUNNING',
+      submittedAt: '2026-09-25T10:00:00Z',
+      startedAt: '2026-09-25T10:00:01Z',
+      finishedAt: null,
+      failure: null
+    })
+  }
+  throw new Error(`Unexpected request: ${path}`)
+}
+
+/** Imported late, so each test sees the shell with the location hash it set up. */
+async function openApp(): Promise<VueWrapper> {
+  const App = (await import('../App.vue')).default
+  wrapper = mount(App, { attachTo: document.body })
+  await flushPromises()
+  return wrapper
+}
+
+async function navigateTo(open: VueWrapper, destination: string): Promise<void> {
+  await open.find(`[data-test="nav-${destination}"]`).trigger('click')
+  await flushPromises()
+}
+
+function pathsOf(prefix: string): string[] {
+  return requested.filter((request) => request.path.startsWith(prefix)).map(({ path }) => path)
+}
+
+function currentDestination(open: VueWrapper): string | undefined {
+  return open.find('[aria-current="page"]').attributes('data-test')
+}
+
+beforeEach(() => {
+  requested.length = 0
+  bankAnswer = Promise.resolve(bankWithEmptySlots)
+  window.history.replaceState(null, '', '/')
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: string, init?: RequestInit) => {
+      requested.push({ method: init?.method ?? 'GET', path: input })
+      return answer(input)
+    })
+  )
+})
+
+afterEach(() => {
+  // Unmounted so no tracked task keeps a timer alive past the test that started it.
+  wrapper?.unmount()
+  wrapper = null
+  vi.unstubAllGlobals()
+})
+
+describe('App shell', () => {
+  it('opensOnCraftingProfitWithThatDestinationMarkedAndNothingElseRequested', async () => {
+    const open = await openApp()
+
+    expect(open.find('[data-test="profit-table"]').exists()).toBe(true)
+    expect(open.find('[data-test="page-heading"]').text()).toBe('Crafting Profit')
+    expect(currentDestination(open)).toBe('nav-crafting')
+    expect(document.title).toBe('Crafting Profit · GW2 Crafting Tool')
+    expect(pathsOf('/api/account')).toEqual([])
+    expect(pathsOf('/api/sync')).toEqual([])
+  })
+
+  it('offersOnlyTheImplementedDestinationsAsRealLinks', async () => {
+    const open = await openApp()
+
+    const links = open.findAll('[data-test="screen-nav"] a')
+    expect(links.map((link) => link.attributes('href'))).toEqual([
+      '#/crafting',
+      '#/synchronization',
+      '#/bank',
+      '#/materials'
+    ])
+    // Real links, so they are reachable and operable by keyboard without any handler of ours.
+    expect(links.every((link) => link.element.tagName === 'A')).toBe(true)
+    expect(open.find('.skip-link').attributes('href')).toBe('#main-content')
+  })
+
+  it('opensEachDestinationWithItsOwnUrlTitleAndFocusedHeading', async () => {
+    const open = await openApp()
+
+    await navigateTo(open, 'synchronization')
+
+    expect(window.location.hash).toBe('#/synchronization')
+    expect(document.title).toBe('Synchronization · GW2 Crafting Tool')
+    expect(currentDestination(open)).toBe('nav-synchronization')
+    const heading = open.find('[data-test="page-heading"]')
+    expect(heading.text()).toBe('Synchronization')
+    expect(document.activeElement).toBe(heading.element)
+  })
+
+  it('opensCraftingProfitWhenTheUrlNamesNoKnownDestination', async () => {
+    window.history.replaceState(null, '', '#/not-a-screen')
+
+    const open = await openApp()
+
+    expect(open.find('[data-test="page-heading"]').text()).toBe('Crafting Profit')
+    // The address bar is corrected rather than left claiming a destination that does not exist.
+    expect(window.location.hash).toBe('#/crafting')
+  })
+
+  it('followsTheBrowsersOwnHashNavigationSoBackAndForwardWork', async () => {
+    const open = await openApp()
+    await navigateTo(open, 'bank')
+
+    window.history.replaceState(null, '', '#/materials')
+    window.dispatchEvent(new HashChangeEvent('hashchange'))
+    await flushPromises()
+
+    expect(open.find('[data-test="materials-screen"]').exists()).toBe(true)
+    expect(currentDestination(open)).toBe('nav-materials')
+  })
+
+  it('loadsTheBankRouteWhenTheBankScreenIsOpened', async () => {
+    const open = await openApp()
+
+    await navigateTo(open, 'bank')
+
+    expect(pathsOf('/api/account')).toEqual(['/api/account/bank'])
+    expect(open.find('[data-test="bank-screen"]').exists()).toBe(true)
+    expect(open.find('[data-test="profit-table"]').exists()).toBe(false)
+  })
+
+  it('loadsTheMaterialsRouteWhenTheMaterialsScreenIsOpenedAndTheBankRouteAgainOnReturn', async () => {
+    const open = await openApp()
+
+    await navigateTo(open, 'bank')
+    await navigateTo(open, 'materials')
+    await navigateTo(open, 'bank')
+
+    expect(pathsOf('/api/account')).toEqual([
+      '/api/account/bank',
+      '/api/account/materials',
+      '/api/account/bank'
+    ])
+    expect(open.find('[data-test="materials-screen"]').exists()).toBe(false)
+    expect(open.findAll('[data-test="bank-slot"]')).toHaveLength(bankWithEmptySlots.slots.length)
+  })
+
+  it('triggersNoSynchronizationAndCallsNoOtherHostWhileNavigating', async () => {
+    const open = await openApp()
+
+    await navigateTo(open, 'bank')
+    await navigateTo(open, 'synchronization')
+    await navigateTo(open, 'materials')
+    await navigateTo(open, 'crafting')
+
+    // Opening the synchronization area is not a trigger, and returning from it is not a second one.
+    expect(pathsOf('/api/sync')).toEqual([])
+    expect(pathsOf('/api/prices')).toEqual([])
+    expect(requested.every((request) => request.path.startsWith('/api/'))).toBe(true)
+  })
+
+  it('keepsTheCraftingSelectionAndPostsNoSecondCalculationWhenReturningToIt', async () => {
+    const open = await openApp()
+    await open.find('[data-test="search"]').setValue('Iron')
+    // The display controls are part of that selection: they too must survive leaving and returning.
+    await open.find('[data-test="filter-zero-craftable"]').setValue(false)
+    // The maximum is applied when the entry is committed, not on every keystroke.
+    const maximum = open.find('[data-test="max-displayed"]')
+    ;(maximum.element as HTMLInputElement).value = '25'
+    await maximum.trigger('change')
+    await flushPromises()
+    const rowsBefore = open.findAll('[data-test="profit-row"]').length
+    const calculationsBefore = pathsOf('/api/crafting/profit').length
+
+    await navigateTo(open, 'bank')
+    await navigateTo(open, 'crafting')
+
+    expect(pathsOf('/api/crafting/profit')).toHaveLength(calculationsBefore)
+    expect((open.find('[data-test="search"]').element as HTMLInputElement).value).toBe('Iron')
+    expect((open.find('[data-test="filter-zero-craftable"]').element as HTMLInputElement).checked).toBe(false)
+    expect((open.find('[data-test="max-displayed"]').element as HTMLInputElement).value).toBe('25')
+    expect(open.findAll('[data-test="profit-row"]')).toHaveLength(rowsBefore)
+  })
+
+  it('keepsAnUnfinishedSynchronizationTrackedWhileAnotherAreaIsOpen', async () => {
+    const open = await openApp()
+    await navigateTo(open, 'synchronization')
+    await open.find('[data-test="sync-trigger-ACCOUNT_SYNC"]').trigger('click')
+    await flushPromises()
+
+    expect(open.find('[data-test="sync-state-ACCOUNT_SYNC"]').text()).toBe('Running')
+    const triggersWhileOnThePage = pathsOf('/api/sync/account').length
+    const lookupsWhileOnThePage = pathsOf(`/api/sync/tasks/`).length
+
+    await navigateTo(open, 'materials')
+
+    // The activity indication is on the link to that area; it is not a control and starts nothing.
+    expect(open.find('[data-test="nav-sync-activity"]').text()).toBe('1 task running')
+    expect(pathsOf('/api/sync/account')).toHaveLength(triggersWhileOnThePage)
+
+    await navigateTo(open, 'synchronization')
+
+    expect(open.find('[data-test="sync-state-ACCOUNT_SYNC"]').text()).toBe('Running')
+    expect(open.find('[data-test="sync-task-ACCOUNT_SYNC"]').text()).toContain(SYNC_TASK_ID)
+    // Neither the trigger nor a second polling loop followed from leaving and coming back.
+    expect(pathsOf('/api/sync/account')).toHaveLength(triggersWhileOnThePage)
+    expect(pathsOf('/api/sync/tasks/')).toHaveLength(lookupsWhileOnThePage)
+  })
+
+  it('doesNotLetABankAnswerThatArrivesAfterNavigationReachTheMaterialsScreen', async () => {
+    const pendingBank = deferred<BankContents>()
+    bankAnswer = pendingBank.promise
+    const open = await openApp()
+
+    await navigateTo(open, 'bank')
+    expect(open.find('[data-test="bank-loading"]').exists()).toBe(true)
+
+    await navigateTo(open, 'materials')
+    pendingBank.resolve(bankWithEmptySlots)
+    await flushPromises()
+
+    expect(open.find('[data-test="materials-screen"]').exists()).toBe(true)
+    expect(open.findAll('[data-test="material-category"]')).toHaveLength(
+      materialStorage.categories.length
+    )
+    expect(open.find('[data-test="bank-screen"]').exists()).toBe(false)
+    expect(open.findAll('[data-test="bank-slot"]')).toHaveLength(0)
+  })
+})

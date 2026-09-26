@@ -23,9 +23,9 @@ class BankContentsServiceTest {
     void returnsTheRepositoryRowsInOrderAndDelegatesExactlyOnce() throws Exception {
         var repo = new FakeBankRepository();
         repo.canned = List.of(
-                new BankRepository.BankSlotRow(0, 19721, 5, "C:\\icons\\19721.png", "Rare"),
-                new BankRepository.BankSlotRow(1, null, null, null, null),
-                new BankRepository.BankSlotRow(2, 24277, 250, "C:\\icons\\24277.png", "Basic"));
+                new BankRepository.BankSlotRow(0, 19721, 5, "C:\\icons\\19721.png", null, "Rare"),
+                new BankRepository.BankSlotRow(1, null, null, null, null, null),
+                new BankRepository.BankSlotRow(2, 24277, 250, "C:\\icons\\24277.png", null, "Basic"));
 
         List<BankRepository.BankSlotRow> slots = new BankContentsService(repo).getBankContents();
 

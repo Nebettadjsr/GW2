@@ -58,3 +58,70 @@ class CodexCapacityTest(unittest.TestCase):
              self.assertRaises(RuntimeError):
             codex_capacity.codex_available()
         process.terminate.assert_called_once()
+
+
+class CodexRoleVisibilityTest(unittest.TestCase):
+    def test_both_roles_check_quota_before_invocation_and_reuse_it_for_display(self):
+        from agent.runtime.core import orchestrator as loop
+        events = []
+        quota = {"available": True, "primary": {"usedPercent": 25, "windowDurationMins": 300},
+                 "secondary": {"usedPercent": 80, "windowDurationMins": 10080}, "limit_reached": None}
+        def read():
+            events.append("quota")
+            return quota
+        def show(line):
+            self.assertIn("25%", line)
+            self.assertIn("80%", line)
+            events.append("status")
+        def plan():
+            events.append("planner")
+            return {"status": "NEEDS_USER", "independent_work_remaining": False}
+        def architect(request):
+            events.append("architect")
+            return {"status": "COMPLETE"}
+        with patch.object(loop, "read_codex_capacity", side_effect=read) as rpc, \
+             patch.object(loop, "print_status", side_effect=show), \
+             patch.object(loop, "planning_input_snapshot", return_value={}), \
+             patch.object(loop, "run_planning_pass", side_effect=plan), \
+             patch.object(loop, "run_architect_pass", side_effect=architect), patch.object(loop, "log_line"):
+            scheduler = loop.CapacityScheduler(claude=Mock(), cache_file=None)
+            scheduler.plan_if_useful(idle=True)
+            scheduler.answer_architect_request({"file": "AR-001.md"})
+        self.assertEqual(events, ["quota", "status", "planner", "quota", "status", "architect"])
+        self.assertEqual(rpc.call_count, 2)  # Display caused no additional RPC.
+
+    def test_exhausted_or_unknown_quota_prevents_both_roles(self):
+        from agent.runtime.core import orchestrator as loop
+        for reading in (False, RuntimeError("endpoint unavailable")):
+            with self.subTest(reading=reading), \
+                 patch.object(loop, "read_codex_capacity", side_effect=reading if isinstance(reading, Exception) else None,
+                              return_value={"available": False}) as rpc, \
+                 patch.object(loop, "planning_input_snapshot", return_value={}), \
+                 patch.object(loop, "run_planning_pass") as plan, \
+                 patch.object(loop, "run_architect_pass") as architect, patch.object(loop, "log_line"):
+                scheduler = loop.CapacityScheduler(claude=Mock(), cache_file=None)
+                self.assertFalse(scheduler.plan_if_useful(idle=True))
+                self.assertFalse(scheduler.answer_architect_request({"file": "AR-001.md"}))
+                plan.assert_not_called()
+                architect.assert_not_called()
+                rpc.assert_called_once()  # Local exhaustion cooldown.
+
+    def test_capacity_display_bypasses_persistent_console_log(self):
+        from agent.runtime.core import orchestrator as loop
+        from agent.runtime.support import daily_log
+        terminal = io.StringIO()
+        scheduler = loop.CapacityScheduler(claude=Mock(), codex=Mock(), cache_file=None)
+        scheduler.codex_capacity = {"primary": {"usedPercent": 12}, "secondary": None}
+        with patch("sys.stdout", daily_log.ConsoleTee(terminal)), patch.object(daily_log, "_write") as log:
+            scheduler._show_codex_capacity("architect")
+        self.assertIn("Codex available before architect: primary 12% used", terminal.getvalue())
+        log.assert_not_called()
+
+    def test_usage_line_exposes_cached_input_and_role(self):
+        from agent.runtime.runners import local_planner_runner as runner
+        terminal = io.StringIO()
+        with patch("sys.stdout", terminal):
+            runner._handle_json_event({"type": "turn.completed", "usage": {
+                "input_tokens": 727623, "cached_input_tokens": 637312, "output_tokens": 6894}}, role="architect")
+        self.assertIn("[architect] turn completed", terminal.getvalue())
+        self.assertIn("input tokens: 727623 | cached input tokens: 637312", terminal.getvalue())

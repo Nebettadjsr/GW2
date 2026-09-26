@@ -27,11 +27,23 @@ import java.util.List;
  * @param matsSellValueCopper material sell value per single craft
  * @param revenueCopper       revenue per single craft
  * @param profitCopper        profit per single craft
+ * @param totalSellValueCopper the domain's authoritative total sell value for {@code craftableCount}
+ *                            crafts (DOMAIN_SPEC.md 2.1.1): the applicable Trading Post sell value of
+ *                            everything those crafts produce, with the recipe's output quantity
+ *                            already in it and no selling fee deducted (DOMAIN_SPEC.md 25). Copied
+ *                            from {@code craft.CraftResult}; never recomputed here from revenue and
+ *                            count, so a value that disagrees with that product is still reported as
+ *                            the domain stated it
  * @param totalProfitCopper   the domain's authoritative total profit, never recomputed here
  * @param blockedReason       {@code craft.BlockedReason} name; {@code NONE} when not blocked
  * @param outputPrice         the raw trading-post quote for the output item, null when unquoted
  * @param missingToBuy        still-missing materials for {@code craftableCount} crafts
  * @param missingToBuyOne     still-missing materials for one further craft
+ * @param iconUrl             this application's image URL for the recipe's <em>output item</em>
+ *                            (TARGET_ARCHITECTURE.md §12.1) - a recipe has no icon of its own - or
+ *                            null when that item's retained metadata is absent or not an accepted
+ *                            source. Display metadata only: it never affects craftability, a result's
+ *                            availability or any economic value
  */
 public record CraftingRowDto(int recipeId,
                              int outputItemId,
@@ -45,9 +57,11 @@ public record CraftingRowDto(int recipeId,
                              Integer matsSellValueCopper,
                              Integer revenueCopper,
                              Integer profitCopper,
+                             Integer totalSellValueCopper,
                              Integer totalProfitCopper,
                              String blockedReason,
                              TradingPostQuoteDto outputPrice,
                              List<MissingItemDto> missingToBuy,
-                             List<MissingItemDto> missingToBuyOne) {
+                             List<MissingItemDto> missingToBuyOne,
+                             String iconUrl) {
 }

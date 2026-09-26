@@ -13,7 +13,7 @@ import java.util.logging.Logger;
 
 /**
  * Maps failures of the crafting calculation controllers onto the HTTP status contract
- * (STORY-API-001, STORY-API-002, TEST_STRATEGY.md §11).
+ * (STORY-API-001, STORY-API-002, STORY-API-008, TEST_STRATEGY.md §11).
  *
  * <p>Scoped to those controllers with {@code assignableTypes} on purpose: a blanket
  * {@code RuntimeException} handler applied application-wide would also swallow the framework's own
@@ -39,6 +39,19 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleValidation(ApiValidationException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ApiErrorResponse("INVALID_REQUEST", e.getMessage()));
+    }
+
+    /**
+     * The resolution-detail routes' only non-200 outcome that is not an error on the caller's or the
+     * backend's side (STORY-API-008, TARGET_ARCHITECTURE.md §13.4): the request was valid and the
+     * calculation ran, but its own fresh visible recipes do not include the requested one. Blocked
+     * resolutions and unavailable calculation results are completed 200 responses, not failures, so
+     * they never reach this advice.
+     */
+    @ExceptionHandler(RecipeNotInCalculationException.class)
+    public ResponseEntity<ApiErrorResponse> handleRecipeNotInCalculation(RecipeNotInCalculationException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse("RECIPE_NOT_IN_CALCULATION", e.getMessage()));
     }
 
     /** Body was absent-but-required, not JSON, or structurally unusable. */

@@ -1,5 +1,7 @@
 from pathlib import Path
 import time
+import json
+import hashlib
 import traceback
 
 from agent.runtime.runners.claude_runner import (
@@ -8,6 +10,7 @@ from agent.runtime.runners.claude_runner import (
     wait_for_claude_capacity,
 )
 from agent.runtime.support.config import (
+    ARCHITECT_REQUESTS_DIR,
     BACKLOG_FILE,
     CAPACITY_STATUS_INTERVAL_SECONDS,
     CAPACITY_WAIT_POLL_SECONDS,
@@ -15,6 +18,7 @@ from agent.runtime.support.config import (
     CLAUDE_USAGE_LIMIT_PERCENT,
     CURRENT_STORY_FILE,
     CYCLE_RETRY_SECONDS,
+    MAX_CI_FIX_ATTEMPTS,
     EVALUATION_ATTEMPTS,
     EVALUATION_RETRY_SECONDS,
     PROJECT_STATE_FILE,
@@ -32,7 +36,7 @@ from agent.runtime.support.config import (
 )
 from agent.runtime.evaluation.dispatcher import build_claude_prompt, dispatch_story
 from agent.runtime.evaluation.evaluator import evaluate_story
-from agent.runtime.runners.codex_capacity import codex_available
+from agent.runtime.runners.codex_capacity import read_codex_capacity, format_codex_capacity
 from agent.runtime.support.capacity import CapacityProbe, ModelCapacityUnavailable
 from agent.runtime.support.daily_log import (
     log_line,
@@ -40,6 +44,8 @@ from agent.runtime.support.daily_log import (
     start_console_logging,
 )
 from agent.runtime.support.files import file_hash, read_file
+from agent.runtime.support import git_sync, github_ci
+from agent.runtime.core.architect import run_architect_pass
 from agent.runtime.core.project_planner import run_planning_pass, should_trigger_planning
 from agent.runtime.core.selector import select_next_story
 from agent.runtime.core.story_state import (
@@ -61,7 +67,11 @@ from agent.runtime.core.story_state import (
     set_story_blocked,
     set_story_unfinished,
 )
-from agent.runtime.human.user_decisions import list_decisions
+from agent.runtime.human.architect_requests import (
+    get_actionable_requests as get_actionable_architect_requests,
+    undispatchable_requests as undispatchable_architect_requests,
+)
+from agent.runtime.human.user_decisions import extract_section, list_decisions
 from agent.runtime.human.user_interventions import (
     create_intervention_file,
     get_open_interventions_for_story,
@@ -229,6 +239,137 @@ Do not perform any work outside the deficiencies listed above -- in
 particular, do not touch roadmap/milestone planning, future/next
 stories, or unrelated documentation unless one of the listed
 deficiencies explicitly requires it.
+
+Use CLAUDE.md and the active story as the source of truth.
+
+Stop after completing or blocking this story.
+"""
+
+
+# ============================================================
+# GitHub CI verification gate
+#
+# The evaluator judges the story against its own Definition of Done from
+# what Claude reports. It cannot tell whether the repository still builds
+# and the whole suite still passes -- and asking Claude to prove that
+# locally means paying for a full regression run inside a model session
+# on every attempt. So the gate moved: Claude verifies its own change
+# with targeted tests, the harness commits and pushes, and
+# .github/workflows/ci.yml is the authoritative regression verdict
+# (docs/TEST_STRATEGY.md §36).
+#
+# Three outcomes, and nothing in between:
+#   PASSED/SKIPPED -- the story completes as before;
+#   FAILED         -- a short report goes back to Claude as more work;
+#   UNVERIFIED     -- nobody can say whether it passed, so a human is
+#                     asked rather than a green result assumed.
+# ============================================================
+
+COMMIT_SUBJECT_MAX_CHARS = 72
+
+
+def _story_commit_message(story_path: Path, story_content: str) -> str:
+    story_id = extract_story_id(story_content) or story_path.stem
+    title = " ".join((extract_section(story_content, "Title") or "").split())
+
+    subject = f"implemented {story_id}" + (f": {title}" if title else "")
+
+    if len(subject) > COMMIT_SUBJECT_MAX_CHARS:
+        subject = subject[:COMMIT_SUBJECT_MAX_CHARS].rstrip() + "..."
+
+    return subject
+
+
+def verify_with_github_ci(story_path: Path, story_content: str) -> dict:
+    """Commit, push and wait for this commit's CI verdict."""
+
+    available, detail = git_sync.ci_verification_available()
+
+    if not available:
+        log_line(
+            f"CI verification skipped for {story_path.name}: {detail}. "
+            "The story completes on the evaluator's verdict alone."
+        )
+        return {"status": "SKIPPED", "reason": detail, "report": "",
+                "sha": "", "run_urls": []}
+
+    push = git_sync.commit_and_push(
+        _story_commit_message(story_path, story_content)
+    )
+
+    if push["status"] in ("UNAVAILABLE", "PUSH_REJECTED"):
+        log_line(
+            f"Could not publish {story_path.name} for CI verification "
+            f"({push['status']}): {push['reason']}"
+        )
+        return {
+            "status": "UNVERIFIED", "report": "", "sha": push.get("sha", ""),
+            "run_urls": [],
+            "reason": f"the completed work could not be pushed ({push['status']}): "
+                      f"{push['reason']}",
+        }
+
+    log_line(
+        f"{story_path.name} published for CI verification: {push['sha'][:7]} on "
+        f"{push['branch']} ({push.get('changed_files', 0)} changed path(s), "
+        + ("new commit" if push["committed"] else "no new commit needed")
+        + ("," if push["pushed"] else ", already on origin,")
+        + " waiting for GitHub Actions."
+    )
+
+    heartbeat = StatusHeartbeat()
+
+    result = github_ci.wait_for_commit(
+        git_sync.remote_slug(),
+        push["sha"],
+        sleep=time.sleep,
+        monotonic=time.monotonic,
+        notify=heartbeat.say,
+    )
+
+    log_line(
+        f"GitHub CI {result['status']} for {push['sha'][:7]} "
+        f"({story_path.name}): {result['reason']}"
+    )
+
+    return result
+
+
+def build_ci_failure_prompt(
+        verification: dict,
+        story_path: Path,
+) -> str:
+    """Return a red pipeline to Claude as bounded, actionable work."""
+
+    relative_story = story_path.relative_to(REPO_ROOT).as_posix()
+
+    return f"""Continue the active story: its change is committed and pushed, but
+the authoritative GitHub CI regression run failed for that commit.
+
+Active story:
+{relative_story}
+
+CI failure report (the failing tests only -- successful output is deliberately
+not included):
+
+{verification["report"] or verification["reason"]}
+
+Fix the cause of these failures, and only these.
+
+- Reproduce each failing test locally with the narrowest command that covers
+  it (a single test class or test name), never the full suite: CI owns the
+  full regression run.
+- A failing test is evidence about the code first. Do not delete, skip or
+  weaken a test to make the pipeline green; if a test itself is genuinely
+  wrong, say why in your result.
+- Remember CI runs on Linux against an empty, disposable PostgreSQL database
+  and a placeholder GW2 API key -- a test that depends on your local machine's
+  data, paths, display or network is the defect.
+- Do not start unrelated work, refactoring or planning.
+- Update the story's Result and Status the same way a normal completed
+  attempt does.
+
+The harness commits, pushes and re-runs CI again once you are done.
 
 Use CLAUDE.md and the active story as the source of truth.
 
@@ -459,6 +600,7 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
 
     retry_count = 0
     failed_runs = 0
+    ci_fix_attempts = 0
 
     while True:
 
@@ -621,7 +763,56 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
         )
 
         if decision == "COMPLETE":
-            return "COMPLETE"
+            verification = verify_with_github_ci(story_path, story_content)
+
+            if verification["status"] in ("PASSED", "SKIPPED"):
+                return "COMPLETE"
+
+            if verification["status"] != "FAILED":
+                # Nobody can say whether the suite passed (no run, a
+                # cancelled run, an unreadable API, a rejected push). A
+                # story must never be completed on that basis, and there
+                # is nothing concrete to send Claude back to fix.
+                _create_intervention_and_block_story(
+                    story_path,
+                    story_content,
+                    "The story's work is finished and accepted by the evaluator, "
+                    "but its GitHub CI result could not be established: "
+                    f"{verification['reason']}. Verify the pipeline manually, "
+                    "then resolve this intervention.",
+                    result_content,
+                )
+
+                return "NEEDS_USER"
+
+            ci_fix_attempts += 1
+            set_story_unfinished(story_path)
+
+            if ci_fix_attempts > MAX_CI_FIX_ATTEMPTS:
+                _create_intervention_and_block_story(
+                    story_path,
+                    story_content,
+                    f"GitHub CI still fails after {MAX_CI_FIX_ATTEMPTS} "
+                    "automatic fix attempts.\n\n"
+                    + (verification["report"] or verification["reason"]),
+                    result_content,
+                )
+
+                return "NEEDS_USER"
+
+            print(
+                f"\nGitHub CI failed; returning the story to Claude "
+                f"({ci_fix_attempts}/{MAX_CI_FIX_ATTEMPTS})."
+            )
+
+            prompt = build_ci_failure_prompt(verification, story_path)
+
+            NEXT_PROMPT_FILE.write_text(
+                prompt + "\n",
+                encoding="utf-8"
+            )
+
+            continue
 
         if decision == "BLOCKED":
             return "BLOCKED"
@@ -807,6 +998,7 @@ def wait_for_user_decisions(
         return
 
     blocking = _unresolved_ids(unresolved)
+    initial_inputs = planning_fingerprint()
 
     log_line(
         "Waiting locally for user decision(s): "
@@ -831,6 +1023,9 @@ def wait_for_user_decisions(
             USER_DECISION_POLL_SECONDS
         )
 
+        if planning_fingerprint() != initial_inputs:
+            log_line("Planning inputs changed; resuming orchestration.")
+            return
         unresolved = get_unresolved_user_decisions(
             decision_ids
         )
@@ -1052,12 +1247,57 @@ def requeue_resolved_interventions() -> None:
 # Main orchestrator loop
 # ============================================================
 
-def planning_fingerprint():
+def planning_input_snapshot():
     # No-work/NEEDS_USER suppression lasts only while relevant local inputs stay unchanged.
+    # An answered architect request is one of those inputs: resolving it is
+    # exactly what makes a previously unplannable question plannable.
     paths = {BACKLOG_FILE, CURRENT_STORY_FILE, PROJECT_STATE_FILE, ROADMAP_FILE, TARGET_ARCHITECTURE_FILE}
-    for directory in (BACKLOG_FILE.parent, USER_DECISIONS_DIR, PRODUCT_OWNER_REQUESTS_DIR):
+    for directory in (BACKLOG_FILE.parent, USER_DECISIONS_DIR, PRODUCT_OWNER_REQUESTS_DIR,
+                      ARCHITECT_REQUESTS_DIR):
         paths.update(directory.glob("*.md"))
-    return tuple((str(path), file_hash(path)) for path in sorted(paths))
+    paths.update((REPO_ROOT / "docs").rglob("*.md"))
+    paths.update((REPO_ROOT / "agent").glob("*INSTRUCTIONS.md"))
+    paths.add(REPO_ROOT / "AGENTS.md")
+    # Contract/validator fixes are meaningful inputs too; logs, result JSON,
+    # capacity readings and timestamps are deliberately excluded.
+    # Only code defining planning/validation contracts belongs in this key.
+    # Test edits and terminal/runner changes are not new planning information.
+    paths.update(REPO_ROOT / "agent/runtime" / relative for relative in (
+        "core/project_planner.py", "core/planning_context.py",
+        "core/story_state.py", "support/config.py",
+        "human/user_decisions.py", "human/product_owner_requests.py",
+        "human/architect_requests.py",
+    ))
+    # An implementation result is external planning evidence, unlike the
+    # planner's own JSON result/cache or terminal logs.
+    paths.add(REPO_ROOT / "agent/runtime/artifacts/CLAUDE_RESULT.md")
+    snapshot = {}
+    for path in sorted(paths):
+        try:
+            key = path.relative_to(REPO_ROOT).as_posix()
+        except ValueError:
+            key = path.as_posix()
+        if path.exists():
+            # Editors/Git may save LF as CRLF after the planner exits. That is
+            # not a changed requirement. Preserve all other whitespace/content.
+            content = path.read_bytes().decode("utf-8-sig")
+            content = content.replace("\r\n", "\n").replace("\r", "\n")
+            snapshot[key] = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        else:
+            snapshot[key] = None
+    return snapshot
+
+
+def planning_fingerprint(snapshot=None):
+    if snapshot is None:
+        snapshot = planning_input_snapshot()
+    return hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
+
+
+def changed_planning_inputs(before, after):
+    return sorted(key for key in before.keys() | after.keys()
+                  if before.get(key) != after.get(key))
+
 
 
 class CapacityScheduler:
@@ -1069,12 +1309,24 @@ class CapacityScheduler:
     out the orchestrator waits locally instead of exiting.
     """
 
-    def __init__(self, claude=None, codex=None):
+    def __init__(self, claude=None, codex=None,
+                 cache_file=REPO_ROOT / "agent/runtime/artifacts/PLANNING_CACHE.json"):
         self.claude = claude or CapacityProbe(self._read_claude_capacity)
-        self.codex = codex or CapacityProbe(codex_available)
+        self.codex_capacity = None
+        self.codex = codex or CapacityProbe(self._read_codex_capacity)
+        self.cache_file = cache_file
         self.no_work_at = None
+        self.planning_hold = None
+        if cache_file is not None:
+            try:
+                cached = json.loads(cache_file.read_text(encoding="utf-8"))
+                if cached.get("version") == 2:
+                    self.no_work_at = cached["fingerprint"]
+                    self.planning_hold = cached
+            except (OSError, ValueError, KeyError, AttributeError):
+                pass
         self.claude_usage_percent = None
-        self.planning_failure = None
+        self.codex_failure = None
         # Remembered purely so a transition is logged once, instead of
         # the same "unavailable" line every polling cycle.
         self.exhausted = {"Claude": False, "Codex": False}
@@ -1087,6 +1339,16 @@ class CapacityScheduler:
         self.claude_usage_percent = get_claude_session_usage_percent()
 
         return self.claude_usage_percent < CLAUDE_USAGE_LIMIT_PERCENT
+
+    def _read_codex_capacity(self):
+        self.codex_capacity = None  # Never present an old successful reading as fresh.
+        self.codex_capacity = read_codex_capacity()
+        return self.codex_capacity["available"]
+
+    def _show_codex_capacity(self, role):
+        # Reuse the gate's reading, not another RPC (and never a model turn).
+        detail = format_codex_capacity(self.codex_capacity) if self.codex_capacity else "quota details unavailable"
+        print_status(f"Codex available before {role}: {detail}")
 
     def _availability(self, name, probe):
         available = probe.available()
@@ -1106,44 +1368,150 @@ class CapacityScheduler:
     def codex_available(self):
         return self._availability("Codex", self.codex)
 
+    def _hold_planning(self, result, snapshot=None, fingerprint=None, planner_changes=None):
+        # Store POST-pass inputs: the planner may have created the blocking UD
+        # or independent stories. Its own writes must not trigger a retry.
+        snapshot = planning_input_snapshot() if snapshot is None else snapshot
+        self.no_work_at = planning_fingerprint(snapshot) if fingerprint is None else fingerprint
+        self.planning_hold = {
+            "version": 2, "fingerprint": self.no_work_at,
+            "inputs": snapshot,
+            "planner_changed_inputs": planner_changes or [],
+            "independent_work_remaining": result.get("independent_work_remaining"),
+            "status": result.get("status", "FAILED"),
+            "user_decision_ids": result.get("user_decision_ids", []),
+            "reason": result.get("reason", ""),
+            "validation_problems": result.get("validation_problems", []),
+        }
+        if self.cache_file is not None:
+            self.cache_file.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.cache_file.with_suffix(".tmp")
+            temporary.write_text(json.dumps(self.planning_hold, indent=2), encoding="utf-8")
+            temporary.replace(self.cache_file)
+
+    def _planning_failed(self, description):
+        self._hold_planning({"status": "FAILED", "reason": description})
+        log_line(f"Project planning failed ({description}). Planning is held until "
+                 "inputs change or PLANNING_CACHE.json is removed; independent execution continues.")
+        return False
+
     def plan_if_useful(self, idle=False):
         if not idle and not should_trigger_planning(len(get_selectable_story_candidates())):
             return False
-        fingerprint = planning_fingerprint()
+        if self.cache_file is not None and self.no_work_at and not self.cache_file.exists():
+            self.no_work_at = None
+            self.planning_hold = None
+        before = planning_input_snapshot()
+        fingerprint = planning_fingerprint(before)
         if fingerprint == self.no_work_at or not self.codex_available():
             return False
+        if self.planning_hold and self.planning_hold.get("inputs"):
+            changes = changed_planning_inputs(self.planning_hold["inputs"], before)
+            if changes:
+                log_line("Planning resumed for changed inputs: " + ", ".join(changes))
+        self._show_codex_capacity("planner")
         try:
             result = run_planning_pass()
         except ModelCapacityUnavailable:
-            self.codex.defer()
-            self.exhausted["Codex"] = True
-            log_line("Codex capacity exhausted during planning; "
-                     "planning will resume after the local cooldown.")
-            return False
-        except (RuntimeError, ValueError, OSError) as exc:
-            # A planning pass that fails or is rolled back must never
-            # take the orchestrator down with it -- Claude may still
-            # have planned work to drain. Back the planner off for one
-            # cooldown instead, so it is retried later rather than
-            # hammered now, and never mark the state as "no work".
+            return self._codex_exhausted("planning")
+        except (RuntimeError, ValueError, OSError, TypeError, AttributeError) as exc:
             return self._planning_failed(f"{type(exc).__name__}: {exc}")
         status = result.get("status")
         if status not in ("COMPLETE", "NEEDS_USER"):
-            return self._planning_failed(
-                f"planner reported {status}: {result.get('reason', 'unknown')}")
-        self.planning_failure = None
-        changed = planning_fingerprint() != fingerprint
-        useful = status == "COMPLETE" and changed and bool(
-            result.get("story_files_created") or result.get("milestone_transition"))
-        if not useful:
-            self.no_work_at = planning_fingerprint()
+            self._hold_planning(result)
+            log_line(f"Project planning FAILED: {result.get('reason', 'invalid output')}; "
+                     f"validation: {result.get('validation_problems', [])}. "
+                     "Held until planning inputs change; independent execution continues.")
+            return False
+        self.codex_failure = None
+        after = planning_input_snapshot()
+        after_fingerprint = planning_fingerprint(after)
+        changed = after_fingerprint != fingerprint
+        useful = changed and bool(
+            result.get("story_files_created") or result.get("milestone_transition")
+            or result.get("architect_requests_created") or result.get("independent_work_remaining"))
+        if (status == "NEEDS_USER" or not useful
+                or (result.get("independent_work_remaining") is False
+                    and not result.get("milestone_transition"))):
+            self._hold_planning(result, after, after_fingerprint, changed_planning_inputs(before, after))
         return useful
 
-    def _planning_failed(self, description):
-        self.planning_failure = description
+    def answer_architect_request(self, request):
+        """
+        Run ARCHITECTURE MODE for one already-selected architect request
+        (agent/ARCHITECT_INSTRUCTIONS.md). The caller decides *whether*
+        there is an actionable request; this only runs one and reports
+        whether the inbox state moved.
+        """
+
+        if not self.codex_available():
+            return False
+
+        self._show_codex_capacity("architect")
+        try:
+            result = run_architect_pass(request)
+        except ModelCapacityUnavailable:
+            # Never an architecture failure: the request keeps its exact
+            # status and is dispatched again once capacity returns.
+            return self._codex_exhausted(
+                "architecture work",
+                f"{request['file']} left unchanged",
+            )
+        except (RuntimeError, ValueError, OSError) as exc:
+            return self._codex_failed(
+                f"Architect pass for {request['file']}",
+                f"{type(exc).__name__}: {exc}")
+
+        status = result.get("status")
+
+        if status not in ("COMPLETE", "NEEDS_USER"):
+            return self._codex_failed(
+                f"Architect pass for {request['file']}",
+                f"architect reported {status}: {result.get('reason', 'unknown')}")
+
+        self.codex_failure = None
+
+        blocking = result.get("user_decision_ids") or []
+
+        log_line(
+            f"Architect {status} for {request['file']} -> "
+            f"{result.get('request_status')}"
+            + (f"; blocked on {', '.join(blocking)}" if blocking else "")
+        )
+
+        # Actual changes to the request/architecture invalidate the input
+        # snapshot naturally. Merely running a role must not erase a hold.
+
+        return True
+
+    def codex_work_if_useful(self, idle=False):
+        """
+        Whatever Codex may usefully do right now, architecture first: a
+        resolved architect request is what unblocks the planner, so
+        answering one before planning avoids a pass that would only
+        re-discover the same open question.
+        """
+
+        pending = get_actionable_architect_requests()
+
+        if pending and self.answer_architect_request(pending[0]):
+            return True
+
+        return self.plan_if_useful(idle=idle)
+
+    def _codex_exhausted(self, activity, detail=None):
         self.codex.defer()
-        log_line(f"Project planning failed ({description}). Execution of "
-                 "already-planned work continues; planning is retried after "
+        self.exhausted["Codex"] = True
+        log_line(f"Codex capacity exhausted during {activity}"
+                 + (f" ({detail})" if detail else "")
+                 + "; retried after the local cooldown.")
+        return False
+
+    def _codex_failed(self, activity, description):
+        self.codex_failure = f"{activity}: {description}"
+        self.codex.defer()
+        log_line(f"{activity} failed ({description}). Execution of "
+                 "already-planned work continues; Codex work is retried after "
                  "the local cooldown.")
         return False
 
@@ -1162,6 +1530,11 @@ class CapacityScheduler:
                      "(last local probe failed)"
             )
 
+        if "Codex" in unavailable:
+            lines.append("Codex quota (last reading): " + (
+                format_codex_capacity(self.codex_capacity) if self.codex_capacity else "unreadable"
+            ))
+
         for name, probe in (("Claude", self.claude), ("Codex", self.codex)):
             if name not in unavailable:
                 continue
@@ -1174,9 +1547,9 @@ class CapacityScheduler:
                     f"{max(1, seconds // 60)} min"
                 )
 
-        if self.planning_failure and "Codex" in unavailable:
+        if self.codex_failure and "Codex" in unavailable:
             lines.append(
-                f"Last planning attempt failed: {self.planning_failure}"
+                f"Last Codex attempt failed: {self.codex_failure}"
             )
 
         return lines
@@ -1193,7 +1566,7 @@ class CapacityScheduler:
         waited = False
         while not self.claude_available():
             waited = True
-            if self.plan_if_useful(idle=True):
+            if self.codex_work_if_useful(idle=True):
                 continue
             self.wait_locally(["Claude"])
         if waited:
@@ -1235,6 +1608,41 @@ def _active_is_executable():
     _reported_pointer_problem = None
 
     return executable
+
+
+_reported_inbox_problems = set()
+
+
+def _report_undispatchable_architect_requests() -> list[str]:
+    """
+    Name every architect request the architect can never be dispatched
+    for, logging each distinct problem once -- not once per polling
+    cycle. Returning the filenames lets the caller include them in a
+    stop reason.
+
+    This exists because the alternative is the worst possible failure
+    mode for this inbox: the planner reports itself blocked by an
+    architecture question, cycle after cycle, while the architect is
+    never invoked and nothing says why.
+    """
+
+    stranded = undispatchable_architect_requests()
+
+    for request in stranded:
+        problem = f"{request['file']}: {request['reason']}"
+
+        if problem in _reported_inbox_problems:
+            continue
+
+        _reported_inbox_problems.add(problem)
+
+        log_line(
+            "Architect request cannot be dispatched -- " + problem
+            + ". The architect will be invoked as soon as its Status is "
+            "OPEN (or NEEDS_USER with a resolvable decision)."
+        )
+
+    return [request["file"] for request in stranded]
 
 
 class DecisionLog:
@@ -1320,6 +1728,35 @@ def _run_cycle(scheduler, replenish, decisions) -> tuple[str, bool]:
             raise RuntimeError(f"Unexpected story result: {result}")
         return "CONTINUE", True
 
+    # Step 2a: architecture. ARCHITECTURE MODE is invoked only while an
+    # actionable architect request exists -- an OPEN one, or a
+    # NEEDS_USER one whose blocking decision(s) the human has since
+    # resolved. There is no periodic architect run and no architecture
+    # review against an empty inbox. It is attempted before planning
+    # because an answered question is precisely what unblocks the
+    # planner; if it cannot run (Codex exhausted, or the pass failed),
+    # the cycle falls through and unrelated work continues.
+    architect_pending = get_actionable_architect_requests()
+
+    # Anything unresolved that is NOT actionable and NOT legitimately
+    # waiting for the Product Owner is named in the log immediately,
+    # rather than only surfacing in a stop reason at the end of a cycle.
+    stranded_architect_requests = _report_undispatchable_architect_requests()
+
+    if architect_pending and codex_ready:
+        decisions.announce(
+            availability,
+            f"architect (answer {architect_pending[0]['file']}) -- reason: "
+            f"{len(architect_pending)} actionable architect request(s), "
+            "Codex available",
+        )
+        if scheduler.answer_architect_request(architect_pending[0]):
+            return "CONTINUE", replenish
+        codex_ready = scheduler.codex_available()
+        availability = (
+            f"claude_available={claude_ready}, codex_available={codex_ready}"
+        )
+
     candidates = get_selectable_story_candidates()
 
     # After completing work, give a low queue one replenishment opportunity.
@@ -1381,6 +1818,14 @@ def _run_cycle(scheduler, replenish, decisions) -> tuple[str, bool]:
         scheduler.wait_locally(unavailable)
         return "CONTINUE", replenish
 
+    if (scheduler.planning_hold
+            and scheduler.planning_hold["status"] == "FAILED"
+            and scheduler.no_work_at == planning_fingerprint()):
+        scheduler.heartbeat.say("Planning validation/execution failed; waiting for changed inputs. "
+                                "See PLANNING_CACHE.json for diagnostics.")
+        time.sleep(CAPACITY_WAIT_POLL_SECONDS)
+        return "CONTINUE", replenish
+
     unresolved = [item["id"] for item in list_decisions()
                   if item["status"] != "RESOLVED" and item["id"]]
     if unresolved:
@@ -1392,10 +1837,22 @@ def _run_cycle(scheduler, replenish, decisions) -> tuple[str, bool]:
         wait_for_user_decisions(unresolved)
         return "CONTINUE", replenish
 
+    # An unresolved architect request that is neither actionable nor
+    # waiting on a real OPEN decision cannot be advanced by any model.
+    # Name it in the stop reason instead of reporting a bare "nothing
+    # left to do".
+    stranded = stranded_architect_requests
+
     decisions.announce(
         availability,
         "stop -- reason: no active story, no selectable work, no useful "
-        "planning, no unresolved user decision",
+        "planning, no unresolved user decision"
+        + (
+            "; unadvanceable architect request(s) need a human: "
+            + ", ".join(stranded)
+            if stranded
+            else ""
+        ),
     )
     if _select_and_activate_next_story() == "FINISHED":
         return "STOP", replenish

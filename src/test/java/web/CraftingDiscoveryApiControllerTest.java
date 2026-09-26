@@ -166,8 +166,8 @@ class CraftingDiscoveryApiControllerTest {
         factory.next(service -> service.canned = discoveryData(
                 List.of(RECIPE),
                 Map.of(RECIPE.recipeId, result),
-                Map.of(100, new ItemRepository.ItemInfo(100, "Widget", null),
-                        200, new ItemRepository.ItemInfo(200, "Ingot", null)),
+                Map.of(100, new ItemRepository.ItemInfo(100, "Widget", null, null),
+                        200, new ItemRepository.ItemInfo(200, "Ingot", null, null)),
                 Map.of(100, new PriceQuote(900, 1_000), 200, new PriceQuote(10, 12))));
 
         mockMvc.perform(post("/api/crafting/discovery")
@@ -522,7 +522,7 @@ class CraftingDiscoveryApiControllerTest {
                 Thread.currentThread().interrupt();
             }
             return new DiscoveryData(List.of(recipe), List.of(recipe), Map.of(),
-                    Map.of(recipeId, new ItemRepository.ItemInfo(recipeId, choice.charName, null)),
+                    Map.of(recipeId, new ItemRepository.ItemInfo(recipeId, choice.charName, null, null)),
                     Map.of());
         }
     }

@@ -48,6 +48,11 @@ class RequestLifecycleTest(unittest.TestCase):
         self.assertEqual(requests.validate_request_updates(before, ["request.md"], "COMPLETE"), [])
         self.assertTrue((self.inbox / "request.md").exists())
 
+    def test_independent_request_can_resolve_on_needs_user_pass(self):
+        before = {"request.md": self.write()}
+        self.write(status="RESOLVED", resolution="Reused docs/TARGET_ARCHITECTURE.md.")
+        self.assertEqual(requests.validate_request_updates(before, ["request.md"], "NEEDS_USER"), [])
+
     def test_any_deletion_is_rejected_even_when_reported(self):
         before = {"request.md": self.write()}
         (self.inbox / "request.md").unlink()
@@ -57,7 +62,7 @@ class RequestLifecycleTest(unittest.TestCase):
     def test_unreported_or_premature_resolution_is_rejected(self):
         before = {"request.md": self.write()}
         self.write(status="RESOLVED", resolution="Updated docs/TARGET_ARCHITECTURE.md.")
-        for processed, status in [([], "COMPLETE"), (["request.md"], "NEEDS_USER"),
+        for processed, status in [([], "COMPLETE"),
                                   (["request.md"], "FAILED")]:
             self.assertTrue(requests.validate_request_updates(before, processed, status))
 

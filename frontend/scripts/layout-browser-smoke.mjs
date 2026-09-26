@@ -1,0 +1,484 @@
+/**
+ * Real-browser check of the application shell: navigation, responsive layout, zoom, keyboard focus
+ * and text contrast (STORY-WEB-004, FRONTEND_UX_GUIDELINES 2, 3, 7, 8).
+ *
+ * Runs the built frontend against a *controlled* API boundary (`scripts/stubOrigin.mjs`): this script
+ * answers every route the four areas read, so no real backend, no database and no GW2 API is involved
+ * and no synchronization can be started. It therefore evidences structure, layout and interaction —
+ * never real data, and never page-load performance (TARGET_ARCHITECTURE 33).
+ *
+ * Usage:  npm run build && npm run smoke:layout
+ * Environment:
+ *   GW2_LAYOUT_SMOKE_PORT  port for the stub origin  (default 5175)
+ *   GW2_BROWSER_PATH       browser executable        (default: the first installed Chrome/Edge)
+ *   GW2_SMOKE_TIMEOUT_MS   per-step wait             (default 30000)
+ *
+ * Exits 0 when every step passed, 1 otherwise.
+ */
+import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { chromium } from 'playwright-core'
+import { resolveBrowserPath } from './resolveBrowserPath.mjs'
+import { startStubOrigin } from './stubOrigin.mjs'
+
+const PORT = Number(process.env.GW2_LAYOUT_SMOKE_PORT ?? 5175)
+const TIMEOUT_MS = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 30_000)
+const DIST_DIR = fileURLToPath(new URL('../dist/', import.meta.url))
+
+/** Verification examples, not breakpoint values: a phone, a tablet and a desktop width. */
+const VIEWPORTS = [
+  { name: 'desktop 1440×900', width: 1440, height: 900 },
+  { name: 'tablet 768×1024', width: 768, height: 1024 },
+  { name: 'phone 360×800', width: 360, height: 800 }
+]
+
+const AREAS = [
+  { id: 'crafting', heading: 'Crafting Profit', ready: '[data-test="profit-table"]' },
+  { id: 'synchronization', heading: 'Synchronization', ready: '[data-test="sync-controls"]' },
+  { id: 'bank', heading: 'Bank', ready: '[data-test="bank-slots"]' },
+  { id: 'materials', heading: 'Materials', ready: '[data-test="material-category"]' }
+]
+
+const steps = []
+
+function record(name, detail) {
+  steps.push({ name, detail })
+  console.log(`  ok   ${name}${detail === undefined ? '' : ` — ${detail}`}`)
+}
+
+function check(condition, message) {
+  if (!condition) throw new Error(message)
+}
+
+/** A row set wide enough to need the table's own horizontal scrolling, with real null cases. */
+function profitRows() {
+  const row = (recipeId, outputName, overrides) => ({
+    recipeId,
+    outputItemId: 1000 + recipeId,
+    outputName,
+    outputCount: 1,
+    disciplines: 'Armorsmith,Weaponsmith',
+    minRating: 400,
+    craftableCount: 12,
+    profitCopper: 12_345,
+    totalProfitCopper: 148_140,
+    buyCostCopper: 98_765,
+    matsSellValueCopper: 4_321,
+    revenueCopper: 111_110,
+    resultAvailable: true,
+    blockedReason: 'NONE',
+    outputPrice: { buyUnitCopper: 120_000, sellUnitCopper: 130_000 },
+    missingToBuy: [],
+    missingToBuyOne: [],
+    ...overrides
+  })
+
+  return [
+    row(1, 'Deldrimor Steel Ingot'),
+    row(2, 'Elonian Leather Square', { blockedReason: 'BUYING_DISABLED', craftableCount: 0 }),
+    row(3, 'Spiritwood Plank of Considerable Length and Name', {
+      blockedReason: 'PRICE_UNAVAILABLE',
+      profitCopper: null,
+      totalProfitCopper: null,
+      missingToBuy: [{ itemId: 19_699, itemName: 'Charged Core', quantity: 3, price: null }],
+      missingToBuyOne: [{ itemId: 19_699, itemName: 'Charged Core', quantity: 1, price: null }]
+    }),
+    row(4, 'Bolt of Damask', {
+      resultAvailable: false,
+      craftableCount: null,
+      profitCopper: null,
+      totalProfitCopper: null,
+      buyCostCopper: null,
+      outputPrice: null,
+      missingToBuy: null,
+      missingToBuyOne: null
+    }),
+    // A loss, so the negative money treatment is on screen to be measured as well as the positive.
+    row(5, 'Charged Quartz Crystal', { profitCopper: -3_400, totalProfitCopper: -40_800 })
+  ]
+}
+
+function bankSlots() {
+  return Array.from({ length: 12 }, (_, index) => {
+    const isEmpty = index === 3 || index === 7
+    return {
+      slot: index,
+      itemId: isEmpty ? null : 24_295 + index,
+      count: isEmpty ? null : 250,
+      iconUrl: null,
+      rarity: isEmpty ? null : 'Rare'
+    }
+  })
+}
+
+function answerApi({ url, sendJson }) {
+  if (url.pathname === '/api/crafting/selector-options') {
+    return sendJson(200, {
+      defaultScopeKind: 'ALL',
+      disciplines: ['Armorsmith', 'Chef', 'Weaponsmith'],
+      characterOptionCount: 1,
+      characterOptions: [
+        { characterName: 'A Long Character Name', discipline: 'Chef', rating: 500, active: true }
+      ]
+    })
+  }
+  if (url.pathname === '/api/crafting/profit') {
+    const rows = profitRows()
+    return sendJson(200, {
+      scope: { kind: 'ALL', discipline: null, characterName: null, rating: 0 },
+      settings: {
+        useOwnMats: true,
+        allowBuying: true,
+        maxBuyCopper: 250_000,
+        listingSell: false,
+        listingBuy: false,
+        dailyBuyInsteadOfCraft: true
+      },
+      rowCount: rows.length,
+      rows
+    })
+  }
+  if (url.pathname === '/api/account/bank') {
+    const slots = bankSlots()
+    return sendJson(200, { slotCount: slots.length, slots })
+  }
+  if (url.pathname === '/api/account/materials') {
+    return sendJson(200, {
+      categoryCount: 2,
+      categories: [
+        {
+          name: 'Basic Crafting Materials',
+          materials: [
+            { category: 5, itemId: 19_697, count: 250, iconUrl: null, rarity: 'Basic' },
+            { category: 5, itemId: 19_699, count: 41, iconUrl: null, rarity: null }
+          ]
+        },
+        {
+          name: 'Category 38',
+          materials: [{ category: 38, itemId: 46_731, count: 7, iconUrl: null, rarity: null }]
+        }
+      ]
+    })
+  }
+  sendJson(404, { error: 'NOT_FOUND', message: url.pathname })
+}
+
+/** Page-level horizontal overflow: the failure section 3 forbids outright. */
+async function pageOverflow(page) {
+  return page.evaluate(() => {
+    const root = document.documentElement
+    return { scrollWidth: root.scrollWidth, clientWidth: root.clientWidth }
+  })
+}
+
+/**
+ * Opens an area by a fresh load of its own URL. The reload matters: a `goto` that only changes the
+ * fragment is a same-document navigation, which would test in-page routing rather than the direct
+ * URL — and would leave the previous page's focus and state in place.
+ */
+async function openArea(page, origin, area) {
+  await page.goto(`${origin}/#/${area.id}`, { waitUntil: 'networkidle', timeout: TIMEOUT_MS })
+  await page.reload({ waitUntil: 'networkidle', timeout: TIMEOUT_MS })
+  await page.waitForSelector(area.ready, { timeout: TIMEOUT_MS })
+}
+
+async function textOf(page, selector) {
+  return (await page.$eval(selector, (element) => element.textContent ?? ''))
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Measures real text/background pairs from computed styles and returns WCAG contrast ratios. Token
+ * values alone establish nothing; these are the combinations the browser actually rendered.
+ */
+async function measureContrast(page) {
+  return page.evaluate(() => {
+    const channel = (value) => {
+      const srgb = value / 255
+      return srgb <= 0.03928 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4
+    }
+    const luminance = ([r, g, b]) =>
+      0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+    const parse = (color) => (color.match(/\d+(\.\d+)?/g) ?? ['0', '0', '0']).map(Number)
+    const ratio = (foreground, background) => {
+      const light = Math.max(luminance(foreground), luminance(background))
+      const dark = Math.min(luminance(foreground), luminance(background))
+      return (light + 0.05) / (dark + 0.05)
+    }
+    const opaqueBackgroundOf = (element) => {
+      let node = element
+      while (node !== null) {
+        const background = getComputedStyle(node).backgroundColor
+        if (background !== 'rgba(0, 0, 0, 0)' && background !== 'transparent') return background
+        node = node.parentElement
+      }
+      return getComputedStyle(document.body).backgroundColor
+    }
+
+    const samples = []
+    const sample = (name, element) => {
+      if (element === null) return
+      const style = getComputedStyle(element)
+      const background = opaqueBackgroundOf(element)
+      samples.push({
+        name,
+        color: style.color,
+        background,
+        fontSize: Number.parseFloat(style.fontSize),
+        bold: Number(style.fontWeight) >= 700,
+        ratio: ratio(parse(style.color), parse(background))
+      })
+    }
+
+    sample('page heading', document.querySelector('[data-page-heading]'))
+    sample('page intro', document.querySelector('[data-test="page-intro"]'))
+    sample('secondary text', document.querySelector('.meta'))
+    sample('primary action', document.querySelector('.button--primary'))
+    sample('quiet action', document.querySelector('.table-region button'))
+    sample('current destination', document.querySelector('[aria-current="page"]'))
+    sample('other destination', document.querySelector('.site-nav__link:not([aria-current])'))
+    sample('table cell', document.querySelector('.profit-table tbody td'))
+    sample('column basis note', document.querySelector('.column-note'))
+    sample('recipe identifier', document.querySelector('.recipe-ids'))
+    sample('settings summary', document.querySelector('.settings-disclosure > summary'))
+    sample('blocked row state', document.querySelector('.status--caution'))
+    sample('unavailable row state', document.querySelector('.status--unknown'))
+    sample('ok row state', document.querySelector('.status--success'))
+    sample('profit value', document.querySelector('.money--gain'))
+    sample('loss value', document.querySelector('.money--loss'))
+
+    // Status tones the current page does not happen to show, measured from the shared treatments
+    // themselves rather than asserted from token values.
+    const probe = document.createElement('span')
+    probe.textContent = 'probe'
+    document.body.append(probe)
+    for (const tone of ['success', 'failure', 'busy', 'unknown', 'idle']) {
+      probe.className = `status status--${tone}`
+      sample(`status tone ${tone}`, probe)
+    }
+    probe.remove()
+
+    return samples
+  })
+}
+
+async function focusWalk(page, stepCount) {
+  const focused = []
+  for (let step = 0; step < stepCount; step += 1) {
+    await page.keyboard.press('Tab')
+    focused.push(
+      await page.evaluate(() => {
+        const active = document.activeElement
+        if (active === null) return null
+        const style = getComputedStyle(active)
+        return {
+          tag: active.tagName,
+          test: active.getAttribute('data-test'),
+          text: (active.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 40),
+          outlineStyle: style.outlineStyle,
+          outlineWidth: Number.parseFloat(style.outlineWidth)
+        }
+      })
+    )
+  }
+  return focused
+}
+
+async function run() {
+  check(existsSync(`${DIST_DIR}index.html`), 'frontend/dist is missing — run `npm run build` first.')
+
+  const browserPath = resolveBrowserPath()
+  const stub = await startStubOrigin({ port: PORT, distDir: DIST_DIR, answerApi })
+  console.log(`Browser : ${browserPath}`)
+  console.log(`Page    : ${stub.origin} (stub backend in this process)\n`)
+
+  const browser = await chromium.launch({ executablePath: browserPath })
+  const page = await browser.newPage({ viewport: VIEWPORTS[0] })
+  const pageErrors = []
+  page.on('pageerror', (error) => pageErrors.push(String(error)))
+  const browserCalls = []
+  page.on('response', (response) => browserCalls.push(new URL(response.url()).pathname))
+
+  try {
+    await page.goto(`${stub.origin}/`, { waitUntil: 'networkidle', timeout: TIMEOUT_MS })
+    check(
+      stub.servedCount() > 0,
+      `The page at ${stub.origin} was not served by this script — stop whatever else is listening ` +
+        'on that port. Nothing was checked.'
+    )
+    record('page served by this script', `${stub.servedCount()} requests answered so far`)
+
+    // 1. Every area reachable by its own URL, named, marked and reflowing at three widths.
+    for (const viewport of VIEWPORTS) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height })
+      for (const area of AREAS) {
+        await openArea(page, stub.origin, area)
+
+        check(
+          (await textOf(page, '[data-page-heading]')) === area.heading,
+          `${area.id} at ${viewport.name}: the page heading did not read "${area.heading}".`
+        )
+        check(
+          (await page.title()) === `${area.heading} · GW2 Crafting Tool`,
+          `${area.id}: the document title did not name the area (${await page.title()}).`
+        )
+        const current = await page.$eval('[aria-current="page"]', (link) => ({
+          test: link.getAttribute('data-test'),
+          href: link.getAttribute('href')
+        }))
+        check(
+          current.test === `nav-${area.id}` && current.href === `#/${area.id}`,
+          `${area.id}: the marked destination was ${current.test} (${current.href}).`
+        )
+
+        const overflow = await pageOverflow(page)
+        check(
+          overflow.scrollWidth <= overflow.clientWidth + 1,
+          `${area.id} at ${viewport.name}: the page itself scrolls horizontally ` +
+            `(${overflow.scrollWidth} > ${overflow.clientWidth}).`
+        )
+      }
+      record(`all four areas reflow at ${viewport.name}`, 'no page-level horizontal scrolling')
+    }
+
+    // 2. The wide comparison table keeps its scrolling local, and is reachable by keyboard.
+    await page.setViewportSize({ width: 360, height: 800 })
+    await openArea(page, stub.origin, AREAS[0])
+    const region = await page.$eval('.table-region', (element) => ({
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+      tabindex: element.getAttribute('tabindex'),
+      role: element.getAttribute('role'),
+      label: element.getAttribute('aria-label')
+    }))
+    check(
+      region.scrollWidth > region.clientWidth,
+      'The table did not overflow its region at 360px, so this check proved nothing.'
+    )
+    check(
+      region.tabindex === '0' && region.role === 'region' && region.label !== null,
+      `The scrollable region is not a named, focusable region: ${JSON.stringify(region)}`
+    )
+    record(
+      'table scrolling stays inside its own region at 360px',
+      `region ${region.clientWidth}px wide holds ${region.scrollWidth}px of columns`
+    )
+
+    // 3. Browser zoom: doubling the text size must reflow, not overflow the page.
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await openArea(page, stub.origin, AREAS[0])
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '200%'
+    })
+    const zoomed = await pageOverflow(page)
+    check(
+      zoomed.scrollWidth <= zoomed.clientWidth + 1,
+      `At 200% text size the page scrolls horizontally (${zoomed.scrollWidth} > ${zoomed.clientWidth}).`
+    )
+    check(
+      (await page.$eval('[data-page-heading]', (h) => h.getBoundingClientRect().height)) > 0,
+      'The page heading was not rendered at 200% text size.'
+    )
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = ''
+    })
+    record('reflows at 200% text size', `${zoomed.scrollWidth}px content in ${zoomed.clientWidth}px`)
+
+    // 4. Keyboard: the skip link and every destination are focusable, visibly, in document order.
+    await openArea(page, stub.origin, AREAS[0])
+    const walk = await focusWalk(page, 6)
+    check(walk[0]?.test === null && walk[0]?.tag === 'A', `First stop was not the skip link: ${JSON.stringify(walk[0])}`)
+    const navStops = walk.filter((stop) => stop?.test?.startsWith('nav-'))
+    check(
+      navStops.length === 4,
+      `Expected the four destinations in the focus order, saw ${navStops.map((stop) => stop.test).join(', ')}.`
+    )
+    const invisibleFocus = walk.filter(
+      (stop) => stop === null || stop.outlineStyle === 'none' || stop.outlineWidth < 1
+    )
+    check(
+      invisibleFocus.length === 0,
+      `Keyboard focus was not visible on: ${JSON.stringify(invisibleFocus)}`
+    )
+    record('keyboard focus order and visible focus', walk.map((stop) => stop.test ?? 'skip link').join(' → '))
+
+    // 5. Enter on a focused destination opens it, and the new page's heading takes focus.
+    await page.focus('[data-test="nav-bank"]')
+    await page.keyboard.press('Enter')
+    await page.waitForSelector('[data-test="bank-slots"]', { timeout: TIMEOUT_MS })
+    const focusedAfterNavigation = await page.evaluate(
+      () => document.activeElement?.getAttribute('data-test') ?? null
+    )
+    check(
+      focusedAfterNavigation === 'page-heading',
+      `After keyboard navigation the focus sat on ${focusedAfterNavigation}.`
+    )
+    check(
+      (await textOf(page, '[data-page-heading]')) === 'Bank',
+      'Enter on the Bank destination did not open the Bank area.'
+    )
+    record('destinations are operable by keyboard', 'Enter opened Bank and focused its heading')
+
+    // 6. Contrast of the combinations actually rendered, not of the token values.
+    await openArea(page, stub.origin, AREAS[0])
+    const samples = await measureContrast(page)
+    check(samples.length >= 15, `Too few contrast samples were taken: ${samples.length}`)
+    const failures = samples.filter((sample) => {
+      const isLargeText = sample.fontSize >= 24 || (sample.fontSize >= 18.66 && sample.bold)
+      return sample.ratio < (isLargeText ? 3 : 4.5)
+    })
+    check(
+      failures.length === 0,
+      `Insufficient contrast: ${failures
+        .map((sample) => `${sample.name} ${sample.ratio.toFixed(2)}:1 (${sample.color} on ${sample.background})`)
+        .join('; ')}`
+    )
+    const worst = samples.reduce((lowest, sample) => (sample.ratio < lowest.ratio ? sample : lowest))
+    record(
+      `${samples.length} rendered text/background pairs meet WCAG AA`,
+      `lowest ${worst.name} at ${worst.ratio.toFixed(2)}:1`
+    )
+
+    // 7. Reduced motion: the decorative transitions are actually switched off.
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await openArea(page, stub.origin, AREAS[0])
+    const durations = await page.evaluate(() =>
+      [...document.querySelectorAll('.site-nav__link, .button--primary')].map(
+        (element) => getComputedStyle(element).transitionDuration
+      )
+    )
+    check(
+      durations.length > 0 && durations.every((duration) => duration === '0s'),
+      `Transitions still run under prefers-reduced-motion: ${durations.join(', ')}`
+    )
+    await page.emulateMedia({ reducedMotion: null })
+    record('reduced-motion preference respected', `${durations.length} controls at 0s`)
+
+    // 8. Nothing in any of the above submitted a synchronization or called another host.
+    check(
+      stub.requestsTo('/api/sync').length === 0 && stub.requestsTo('/api/prices').length === 0,
+      `Navigating submitted a synchronization request: ${JSON.stringify(stub.requestsTo('/api'))}`
+    )
+    const foreignCalls = browserCalls.filter(
+      (path) => path !== '/' && !path.startsWith('/api/') && !path.startsWith('/assets/')
+    )
+    check(foreignCalls.length === 0, `Calls outside the backend API and page assets: ${foreignCalls.join(', ')}`)
+    check(pageErrors.length === 0, `Uncaught page errors: ${pageErrors.join(' | ')}`)
+    record(
+      'no synchronization, no foreign call, no page error',
+      `${stub.requests.length} API requests, all reads`
+    )
+
+    console.log(`\nLayout and accessibility browser check PASSED (${steps.length} steps).`)
+    console.log('Every backend answer was produced by this script; no real data was read or written.')
+  } finally {
+    await browser.close()
+    stub.close()
+  }
+}
+
+run().catch((error) => {
+  console.error(`\nLayout and accessibility browser check FAILED after ${steps.length} step(s): ${error.message}`)
+  process.exitCode = 1
+})

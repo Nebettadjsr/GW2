@@ -65,6 +65,7 @@ class BankRepositoryTest {
                     rarity       TEXT,
                     vendor_value INTEGER,
                     icon_path    TEXT,
+                    icon_url     TEXT,
                     fetched_at   TIMESTAMPTZ
                 )
                 """);
@@ -85,7 +86,9 @@ class BankRepositoryTest {
     @Test
     void loadsEverySlotInSlotOrderWithJoinedIconAndRarity() throws Exception {
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO items (item_id, name, rarity, icon_path) VALUES (19721, 'Glob of Ectoplasm', 'Rare', 'C:\\icons\\19721.png')");
+            // 19721 carries retained icon metadata as well, so the batch read is proven to supply both
+            // the desktop path and the upstream source without a second query (STORY-API-009).
+            st.execute("INSERT INTO items (item_id, name, rarity, icon_path, icon_url) VALUES (19721, 'Glob of Ectoplasm', 'Rare', 'C:\\icons\\19721.png', 'https://render.guildwars2.com/file/ABCD/1.png')");
             st.execute("INSERT INTO items (item_id, name, rarity, icon_path) VALUES (24277, 'Pile of Crystalline Dust', 'Basic', 'C:\\icons\\24277.png')");
             // Inserted out of slot order on purpose: ORDER BY slot must decide the result order.
             st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (2, 24277, 250)");
@@ -95,8 +98,10 @@ class BankRepositoryTest {
         List<BankRepository.BankSlotRow> slots = new BankRepository().loadBankSlots(con);
 
         assertEquals(2, slots.size());
-        assertEquals(new BankRepository.BankSlotRow(0, 19721, 5, "C:\\icons\\19721.png", "Rare"), slots.get(0));
-        assertEquals(new BankRepository.BankSlotRow(2, 24277, 250, "C:\\icons\\24277.png", "Basic"), slots.get(1));
+        assertEquals(new BankRepository.BankSlotRow(
+                0, 19721, 5, "C:\\icons\\19721.png", "https://render.guildwars2.com/file/ABCD/1.png", "Rare"),
+                slots.get(0));
+        assertEquals(new BankRepository.BankSlotRow(2, 24277, 250, "C:\\icons\\24277.png", null, "Basic"), slots.get(1));
     }
 
     @Test
