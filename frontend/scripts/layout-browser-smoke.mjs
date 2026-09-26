@@ -422,6 +422,12 @@ async function run() {
 
     // 6. Contrast of the combinations actually rendered, not of the token values.
     await openArea(page, stub.origin, AREAS[0])
+    // DOMAIN_SPEC 2.1.1's three display filters open enabled, and two of them hide exactly the rows
+    // whose treatments are measured here (a loss and a zero count). Switching them off puts those
+    // treatments back on screen; it changes nothing about the styles being measured.
+    for (const filter of ['filter-zero-craftable', 'filter-not-allowed', 'filter-non-positive-profit']) {
+      await page.setChecked(`[data-test="${filter}"]`, false)
+    }
     const samples = await measureContrast(page)
     check(samples.length >= 15, `Too few contrast samples were taken: ${samples.length}`)
     const failures = samples.filter((sample) => {

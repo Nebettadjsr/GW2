@@ -187,9 +187,10 @@ describe('SelectedResultDetail', () => {
     const forOne = detail.findAll('[data-test="missing-one-item"]').map((item) => item.text())
     expect(forOne).toHaveLength(1)
     expect(forOne[0]).toContain('×2')
+    // Each list is under its own basis heading, and no total is produced from either.
+    expect(detail.text()).toContain('For all 4 crafts counted')
     expect(detail.text()).toContain('For one further craft')
-    // Quantities and prices are shown as supplied; no shopping total is produced.
-    expect(detail.text()).toContain('no shopping total is worked out here')
+    expect(detail.text()).not.toContain('no shopping total is worked out here')
   })
 
   it('keepsAnEmptyMaterialListApartFromAnUnsuppliedOne', () => {
@@ -218,20 +219,22 @@ describe('SelectedResultDetail', () => {
     expect(buyCost.text()).toBe('2s 50c')
   })
 
-  it('namesTheTradingPostQuoteAsThePriceOfOneOutputItem', () => {
-    // The recipe produces 2 per craft, so "for one item" is a distinction worth making.
+  it('namesTheTradingPostQuoteWithTheConciseItemLabel', () => {
+    // The recipe produces 2 per craft, so per item and per craft are a distinction worth keeping —
+    // the label carries it, and the output quantity stays with the crafting values (DOMAIN_SPEC
+    // 2.1.1), instead of a paragraph explaining both.
     const detail = detailOf(lessProfitableRow)
 
-    expect(detail.find('[data-test="detail-quote-heading"]').text()).toBe(
-      'Trading Post price for one Bowl of Soup'
-    )
+    expect(detail.find('[data-test="detail-quote-heading"]').text()).toBe('Trading Post price / item')
     const quote = detail.find('[data-test="detail-output-quote"]').text()
-    expect(quote).toContain('Instant buy, one item')
+    expect(quote).toContain('Instant buy')
     expect(quote).toContain('4s 70c')
-    expect(quote).toContain('Instant sell, one item')
-    expect(detail.find('[data-test="detail-quote-basis"]').text()).toContain(
-      'One craft of this recipe produces 2'
-    )
+    expect(quote).toContain('Instant sell')
+    expect(detail.find('[data-test="detail-quote-basis"]').exists()).toBe(false)
+
+    const perCraft = detail.find('[data-test="detail-per-craft"]').text()
+    expect(perCraft).toContain('Output quantity')
+    expect(perCraft).toContain('2')
   })
 
   it('linksToTheWikiOnlyWhenTheBackendNamedTheItem', () => {

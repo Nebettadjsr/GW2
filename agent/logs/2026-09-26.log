@@ -1587,3 +1587,45 @@
 [19:15:00] Evaluator decision: COMPLETE
 [19:15:00] Reason: The story's Acceptance Criteria and Definition of Done are satisfied. The implementation correctly calculates the Trading Post fees based on the provided sale amount and quantity. The evidence from the Guild Wars 2 Wiki supports the implemented rules. The consumer map was traced in the code and no existing shared abstraction was changed. The tests cover various scenarios and all pass. The documentation records the verified fee semantics and the implementation facts. The story is bounded and does not integrate with the consumer or choose a sale grouping policy, which is left to a future story to resolve.
 [19:15:00] ========================================
+[19:15:03] STORY-DOM-022-trading-post-sale-fee-calculation.md published for CI verification: 337bfef on master (9 changed path(s), new commit, waiting for GitHub Actions.
+[19:17:05] GitHub CI PASSED for 337bfef (STORY-DOM-022-trading-post-sale-fee-calculation.md): CI: success
+[19:17:14] Availability check: claude_available=True, codex_available=True
+[19:17:14] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[19:17:20] Decision: code (select next story) -- reason: 5 selectable To Do candidate(s), Claude available
+[19:17:20] ========================================
+[19:17:20] Story selector: NEXT
+[19:17:20] Reason: Deterministic selection: first executable entry in BACKLOG.md's 'To Do' order (STORY-WEB-011-profit-controls-text-cleanup.md).
+[19:17:20] ========================================
+[19:17:20] Next story activated:
+[19:17:20] agent/stories/STORY-WEB-011-profit-controls-text-cleanup.md
+[19:17:29] Availability check: claude_available=True, codex_available=True
+[19:17:29] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[19:17:29] ========================================
+[19:17:29] Active story: agent/stories/STORY-WEB-011-profit-controls-text-cleanup.md
+[19:17:29] ========================================
+[19:19:25] RepoMap: disabled, budget=1200 tokens
+[19:19:32] ========================================
+[19:19:32] Starting Claude Code
+[19:19:32] ========================================
+[19:36:09] STORY-WEB-011 is complete. Everything changed is under `frontend/` plus `docs/CURRENT_ARCHITECTURE.md` — no `src/`, `pom.xml`, resource or HTTP contract was touched, so no domain, backend or JavaFX behavior changed.
+[19:36:09] **What changed**
+[19:36:09] - **Grouping (AC 1):** the "Calculation controls" panel now holds two fieldsets — **Calculation** (scope, settings disclosure) and **Displayed results** (`ResultDisplayControls.vue`, legend renamed from "Result display"). The separate top-level section in *Opportunities* is gone. The **search moved into the display group** through a `#search` slot: like the filters it narrows rows already returned, so leaving it in the Calculation subgroup would have mislabelled it. That is the one inference beyond the literal AC text.
+[19:36:09] - **Defaults (AC 2):** all three filters open enabled, each still an independent ref and independently reversible; matching logic untouched, so null ≠ 0, null profit ≠ "0 or less", and `resultAvailable: false` ≠ "not allowed". 250 maximum and Show all unchanged; no control reaches the API.
+[19:36:09] - **Removed text (AC 3):** the group note, the row-selection/keyboard paragraph, the dynamic limit paragraph, the "Show all is on…" paragraph and the detail's trailing reassurance sentence. Kept: the compact displayed/matching/calculated count (now the only report of a cut-off list), the refused-maximum warning, the empty-list notice naming every restriction, the hidden-selection notice, and the table's visually hidden `<caption>`. Show all now *disables* the maximum input instead of explaining itself in prose.
+[19:36:09] - **Detail wording (AC 4):** concise **"Trading Post price / item"** heading, "Instant buy"/"Instant sell" rows, unit-price paragraph removed with `Output quantity` retained in the *For one craft* group; the "no shopping total" note dropped while both material lists keep their basis headings. All bases, blocked reasons, the cycle diagnostic and the fresh-resolution region are unchanged.
+[19:36:09] - **Preserved (AC 5):** selection by recipe identity, whole-row/keyboard selection, focus, and control state across reload and navigation. The only shared file touched is `layout-browser-smoke.mjs`, where crafting-page contrast sampling now switches the filters off so the loss/zero-count treatments are still rendered.
+[19:36:09] **Tests run (real output)**
+[19:36:09] - `npx vitest run src/crafting` → 8 files, **137 passed**
+[19:36:09] - `npx vitest run src/__tests__/App.spec.ts` → **11 passed**
+[19:36:09] - `npm run type-check` → clean; `npm run build` → built
+[19:36:09] - `npm run smoke:profit` → **PASSED, 26 steps** (real Chrome, 1440×900 / 1440×420 / 360×800), now asserting panel placement, both legends, search membership, three filters at 250, absence of the three paragraphs with the caption intact, independent reversal, the concise quote label, Show all suspending the maximum, Tab focus, and zero backend requests from display controls
+[19:36:09] - `npm run smoke:layout` → **PASSED, 11 steps**, 20 contrast samples
+[19:36:09] No backend suite run — nothing outside the browser client changed. Story file, BACKLOG entry, `CLAUDE_RESULT.md` and `CURRENT_ARCHITECTURE.md` updated; nothing committed.
+[19:36:10] ========================================
+[19:36:10] Claude Code exit code: 0
+[19:36:10] ========================================
+[19:36:13] Claude run measurement: repo_map=off, duration=998.2s, usage_before=8, usage_after=48
+[19:37:37] ========================================
+[19:37:37] Evaluator decision: COMPLETE
+[19:37:37] Reason: The story's Acceptance Criteria and Definition of Done are fully satisfied. The controls are grouped as specified, with the search moved into the Displayed results group. The filters are enabled by default and independently reversible. The specified text has been removed, and the concise wording is implemented. The detail wording is preserved as specified. Selection behavior is unchanged. The browser tests pass, and no backend changes are claimed.
+[19:37:37] ========================================

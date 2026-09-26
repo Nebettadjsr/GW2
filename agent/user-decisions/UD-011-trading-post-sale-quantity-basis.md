@@ -1,6 +1,6 @@
 ## Status
 
-OPEN
+RESOLVED
 
 ## Decision Needed
 
@@ -35,8 +35,27 @@ The Product Owner must select the modeled sale grouping. Implementation must sep
 
 ## User Decision
 
-TODO
+Trading Post fees are applied only when calculating profit.
 
-## Resolution
+Profit is calculated as:
 
-TODO
+`Profit = Sell Value - TP Fees - Own Material Value - Buy Cost`
+
+TP Fees are calculated as 15% of the corresponding Sell Value.
+
+The same rule applies to both per-craft profit and total profit.
+
+Copper-level differences caused only by Trading Post fee rounding or sale grouping are irrelevant for this application and do not need to be modeled separately.
+
+Displayed Trading Post prices remain the gross Trading Post prices before fees.
+
+This also applies to:
+- Output Revenue
+- Total Sell Value
+- Instant Buy / Instant Sell price displays
+
+Trading Post fees must therefore not reduce or alter the displayed sell prices. They only affect the calculated Profit and Total Profit values.
+
+In the calculation details, Profit and Total Profit should include a small explanatory note such as:
+
+`after 15% TP fees`

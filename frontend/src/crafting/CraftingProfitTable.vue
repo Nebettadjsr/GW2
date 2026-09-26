@@ -102,7 +102,9 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
     <!--
       The table's accessible description. It is visually hidden because this table is the horizontal
       scroll container's content: a visible caption would be laid out at the full column width and
-      would stop wrapping. The same sentence is on screen above the region instead.
+      would stop wrapping. It is the one place these sentences are stated: DOMAIN_SPEC 2.1.1 removed
+      the permanent on-screen selection/keyboard instructions, not the accessible description of the
+      table, and the column headings carry the per-craft/total basis visually.
     -->
     <caption class="visually-hidden">
       Crafting opportunities. Own materials value and profit are stated per single craft; total sell

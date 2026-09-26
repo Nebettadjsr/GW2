@@ -6,14 +6,20 @@ import { MIN_MAX_DISPLAYED } from './useProfitTableView'
  * DOMAIN_SPEC 2.1.1's result-display controls: three filters over the rows already returned, plus a
  * changeable maximum displayed recipe count and Show all.
  *
- * They belong to the results region, not to the calculation controls panel, and they say so: nothing
- * here submits a calculation, changes what was asked for, or changes the backend's own per-recipe
+ * Since STORY-WEB-011 they are the *Displayed results* subgroup **inside** the calculation-controls
+ * panel, beside the Calculation subgroup rather than in a separate top-level section. The two groups
+ * are told apart by their own legends and borders, not by a paragraph saying so: nothing in here
+ * submits a calculation, changes what was asked for, or changes the backend's own per-recipe
  * simulation cap. Every row the calculation returned stays loaded; these controls only decide which
  * of them is listed.
  *
+ * The search over the answer is the fourth thing that decides what is listed, so the screen passes it
+ * into this group through the `search` slot rather than leaving it among the calculation settings.
+ *
  * The maximum is applied on `change` rather than on every keystroke, and a value that could not
  * display anything is refused — the control returns to the maximum in effect and says why, rather
- * than blanking the list or quietly showing everything.
+ * than blanking the list or quietly showing everything. Show all disables the maximum instead of
+ * explaining in prose that it is not being applied; switching it off puts the typed maximum back.
  */
 const props = defineProps<{
   hideZeroCraftable: boolean
@@ -84,15 +90,11 @@ function onMaxDisplayedChange(event: Event): void {
 
 <template>
   <fieldset class="display-controls" data-test="display-controls">
-    <legend>Result display</legend>
-
-    <p class="meta display-controls__note">
-      These change which of the calculated recipes are listed below. They never recalculate anything,
-      never change the calculation controls above, and never change how far the backend simulated each
-      recipe.
-    </p>
+    <legend>Displayed results</legend>
 
     <div class="display-controls__group">
+      <slot name="search" />
+
       <label>
         <input
           type="checkbox"
@@ -100,7 +102,7 @@ function onMaxDisplayedChange(event: Event): void {
           :checked="hideZeroCraftable"
           @change="onZeroCraftableChange"
         />
-        Hide recipes with a craftable count of 0
+        Hide craftable count 0
       </label>
 
       <label>
@@ -110,7 +112,7 @@ function onMaxDisplayedChange(event: Event): void {
           :checked="hideNotAllowed"
           @change="onNotAllowedChange"
         />
-        Hide recipes reported as not allowed
+        Hide recipes not allowed
       </label>
 
       <label>
@@ -120,7 +122,7 @@ function onMaxDisplayedChange(event: Event): void {
           :checked="hideNonPositiveProfit"
           @change="onNonPositiveProfitChange"
         />
-        Hide recipes with a profit per craft of 0 or less
+        Hide profit per craft ≤ 0
       </label>
     </div>
 
@@ -133,24 +135,20 @@ function onMaxDisplayedChange(event: Event): void {
           step="1"
           data-test="max-displayed"
           :value="maxDisplayed"
+          :disabled="showAll"
           @change="onMaxDisplayedChange"
         />
-        recipes
       </label>
 
       <label>
         <input type="checkbox" data-test="show-all" :checked="showAll" @change="onShowAllChange" />
-        Show all matching recipes
+        Show all
       </label>
     </div>
 
-    <p v-if="showAll" class="meta" data-test="max-displayed-note">
-      Show all is on, so the maximum above is not applied. Switch it off to return to
-      {{ maxDisplayed }}.
-    </p>
     <p v-if="maxRejected" class="notice notice--warning" role="status" data-test="max-displayed-rejected">
-      A maximum has to be a whole number of at least {{ MIN_MAX_DISPLAYED }}. That entry was not
-      applied, so the maximum is still {{ maxDisplayed }}.
+      A maximum has to be a whole number of at least {{ MIN_MAX_DISPLAYED }}; it is still
+      {{ maxDisplayed }}.
     </p>
   </fieldset>
 </template>
@@ -159,20 +157,14 @@ function onMaxDisplayedChange(event: Event): void {
 .display-controls {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-}
-
-/* Why this group is not the calculation settings, said once and kept next to the controls. */
-.display-controls__note {
-  max-width: var(--prose-max);
-  margin: 0;
+  gap: var(--space-2);
 }
 
 .display-controls__group {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2) var(--space-5);
+  gap: var(--space-2) var(--space-4);
 }
 
 input[type='number'] {

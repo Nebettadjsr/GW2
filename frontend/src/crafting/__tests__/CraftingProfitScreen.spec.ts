@@ -29,13 +29,15 @@ async function openScreen(api: FakeCraftingApi): Promise<VueWrapper> {
 }
 
 /**
- * Opens the screen and switches DOMAIN_SPEC 2.1.1's default zero-count filter off, so a test about
+ * Opens the screen and switches DOMAIN_SPEC 2.1.1's three default filters off, so a test about
  * something else still sees every row the backend returned. The filters' own behavior — including
- * that this one is on to begin with — is covered by the display-control tests further down.
+ * that all three are on to begin with — is covered by the display-control tests further down.
  */
 async function openScreenListingEveryRow(api: FakeCraftingApi): Promise<VueWrapper> {
   const wrapper = await openScreen(api)
   await wrapper.find('[data-test="filter-zero-craftable"]').setValue(false)
+  await wrapper.find('[data-test="filter-not-allowed"]').setValue(false)
+  await wrapper.find('[data-test="filter-non-positive-profit"]').setValue(false)
   return wrapper
 }
 
@@ -275,7 +277,7 @@ describe('CraftingProfitScreen', () => {
     const api = new FakeCraftingApi()
     api.profitHandler = () => Promise.resolve(profitResponse([lessProfitableRow, lossRow, profitableRow]))
 
-    const wrapper = await openScreen(api)
+    const wrapper = await openScreenListingEveryRow(api)
     await wrapper.find('[data-test="sort-totalSellValueCopper"]').trigger('click')
 
     // Supplied 2222, 1777, 1650. A browser deriving revenue x count would put lossRow (1800) second.
@@ -290,7 +292,7 @@ describe('CraftingProfitScreen', () => {
     const api = new FakeCraftingApi()
     api.profitHandler = () => Promise.resolve(profitResponse(movedReasonRows))
 
-    const wrapper = await openScreen(api)
+    const wrapper = await openScreenListingEveryRow(api)
 
     // Every one of the five is on screen as an ordinary row, with no label of its own anywhere.
     expect(recipeNames(wrapper)).toHaveLength(movedReasonRows.length)
@@ -560,46 +562,76 @@ describe('CraftingProfitScreen', () => {
     expect(wrapper.find('[data-test="no-matches"]').exists()).toBe(true)
   })
 
-  it('offersTheThreeDisplayFiltersWithOnlyTheRequiredOneOnAndA250Maximum', async () => {
+  it('opensTheThreeDisplayFiltersEnabledWithA250Maximum', async () => {
     const api = new FakeCraftingApi()
+    api.profitHandler = () =>
+      Promise.resolve(profitResponse([...allRows, notAllowedRow, zeroProfitRow]))
 
     const wrapper = await openScreen(api)
 
     expect(isChecked(wrapper, 'filter-zero-craftable')).toBe(true)
-    expect(isChecked(wrapper, 'filter-not-allowed')).toBe(false)
-    expect(isChecked(wrapper, 'filter-non-positive-profit')).toBe(false)
+    expect(isChecked(wrapper, 'filter-not-allowed')).toBe(true)
+    expect(isChecked(wrapper, 'filter-non-positive-profit')).toBe(true)
     expect(maximumInput(wrapper).value).toBe('250')
     expect(isChecked(wrapper, 'show-all')).toBe(false)
 
-    // The controls sit in the results region, not in the calculation-controls panel.
-    const controls = wrapper.find('[data-test="display-controls"]')
-    expect(wrapper.find('[data-test="results-region"]').element.contains(controls.element)).toBe(true)
-    expect(controls.text()).toContain('never recalculate anything')
-
-    // The zero-count filter is on, so the only supplied count of 0 is not listed; a null count is.
+    // One row per filter is gone; the rows whose count and profit were not supplied are not.
     expect(recipeNames(wrapper)).toEqual([
       profitableRow.outputName,
       lessProfitableRow.outputName,
       noResultRow.outputName
     ])
+    expect(api.profitRequests).toEqual([{}])
   })
 
-  it('appliesEachDisplayFilterWithoutAskingTheBackendAgain', async () => {
+  it('groupsTheDisplayControlsInsideTheCalculationControlsPanel', async () => {
+    const api = new FakeCraftingApi()
+
+    const wrapper = await openScreen(api)
+
+    // DOMAIN_SPEC 2.1.1: a Displayed results subgroup of the controls panel, beside the Calculation
+    // subgroup — not a section of its own in the results region.
+    const controls = wrapper.find('[data-test="display-controls"]')
+    const panel = wrapper.find('[data-test="calculation-controls"]').element.parentElement
+    expect(panel?.contains(controls.element)).toBe(true)
+    expect(wrapper.find('[data-test="results-region"]').element.contains(controls.element)).toBe(false)
+    expect(controls.find('legend').text()).toBe('Displayed results')
+    expect(wrapper.find('[data-test="calculation-controls"]').find('legend').text()).toBe('Calculation')
+    // The search narrows the listed rows, so it belongs to that subgroup too.
+    expect(controls.element.contains(wrapper.find('[data-test="search"]').element)).toBe(true)
+
+    // The prose the correction removes: the group's own note, the row-selection/keyboard
+    // instructions and the paragraph explaining the display limit.
+    expect(controls.text()).not.toContain('never recalculate anything')
+    expect(wrapper.find('[data-test="table-note"]').exists()).toBe(false)
+    await typeMaximum(wrapper, '1')
+    expect(wrapper.find('[data-test="limit-note"]').exists()).toBe(false)
+  })
+
+  it('appliesEachDisplayFilterReversiblyWithoutAskingTheBackendAgain', async () => {
     const api = new FakeCraftingApi()
     api.profitHandler = () =>
       Promise.resolve(profitResponse([profitableRow, zeroProfitRow, notAllowedRow, priceUnavailableRow]))
     const wrapper = await openScreen(api)
 
-    await wrapper.find('[data-test="filter-zero-craftable"]').setValue(false)
-    expect(recipeNames(wrapper)).toContain(priceUnavailableRow.outputName)
+    // All three on: only the row none of them describes is listed.
+    expect(recipeNames(wrapper)).toEqual([profitableRow.outputName])
 
+    await wrapper.find('[data-test="filter-zero-craftable"]').setValue(false)
+    // The blocked row's profit is null, not zero or less, so only the count filter was holding it.
+    expect(recipeNames(wrapper)).toEqual([profitableRow.outputName, priceUnavailableRow.outputName])
+
+    await wrapper.find('[data-test="filter-not-allowed"]').setValue(false)
+    expect(recipeNames(wrapper)).toContain(notAllowedRow.outputName)
+    expect(recipeNames(wrapper)).not.toContain(zeroProfitRow.outputName)
+
+    await wrapper.find('[data-test="filter-non-positive-profit"]').setValue(false)
+    expect(recipeNames(wrapper)).toHaveLength(4)
+
+    // And each switches back on again, on its own.
     await wrapper.find('[data-test="filter-not-allowed"]').setValue(true)
     expect(recipeNames(wrapper)).not.toContain(notAllowedRow.outputName)
-
-    await wrapper.find('[data-test="filter-non-positive-profit"]').setValue(true)
-    expect(recipeNames(wrapper)).not.toContain(zeroProfitRow.outputName)
-    // The blocked row's profit is null, not zero or less, so no filter removed it.
-    expect(recipeNames(wrapper)).toEqual([profitableRow.outputName, priceUnavailableRow.outputName])
+    expect(recipeNames(wrapper)).toContain(zeroProfitRow.outputName)
 
     expect(api.profitRequests).toEqual([{}])
   })
@@ -610,18 +642,33 @@ describe('CraftingProfitScreen', () => {
       Promise.resolve(profitResponse([profitableRow, lessProfitableRow, notAllowedRow, priceUnavailableRow]))
     const wrapper = await openScreen(api)
 
-    // Three of four match (the zero-count row is filtered out); all three are displayed.
+    // Two of four match (the not-allowed and zero-count rows are filtered out); both are displayed.
     expect(wrapper.find('[data-test="summary"]').text()).toContain(
-      'Showing 3 of 3 matching recipes · 4 calculated'
+      'Showing 2 of 2 matching recipes · 4 calculated'
     )
-    expect(wrapper.find('[data-test="limit-note"]').exists()).toBe(false)
 
-    await typeMaximum(wrapper, '2')
+    await typeMaximum(wrapper, '1')
 
+    // The compact count is the only thing that says the maximum is holding a row back.
     expect(wrapper.find('[data-test="summary"]').text()).toContain(
-      'Showing 2 of 3 matching recipes · 4 calculated'
+      'Showing 1 of 2 matching recipes · 4 calculated'
     )
-    expect(wrapper.find('[data-test="limit-note"]').text()).toContain('1 further matching recipe')
+  })
+
+  it('suspendsTheMaximumWhileShowAllIsOnWithoutForgettingIt', async () => {
+    const api = new FakeCraftingApi()
+    const wrapper = await openScreen(api)
+
+    await typeMaximum(wrapper, '1')
+    expect(maximumInput(wrapper).disabled).toBe(false)
+
+    await wrapper.find('[data-test="show-all"]').setValue(true)
+    expect(maximumInput(wrapper).disabled).toBe(true)
+    expect(maximumInput(wrapper).value).toBe('1')
+
+    await wrapper.find('[data-test="show-all"]').setValue(false)
+    expect(maximumInput(wrapper).disabled).toBe(false)
+    expect(recipeNames(wrapper)).toEqual([profitableRow.outputName])
   })
 
   it('appliesTheMaximumAfterTheSearchFiltersAndSortSoShowAllRevealsTheMatchingSet', async () => {
@@ -630,7 +677,7 @@ describe('CraftingProfitScreen', () => {
       Promise.resolve(profitResponse([profitableRow, lessProfitableRow, zeroProfitRow, priceUnavailableRow]))
     const wrapper = await openScreen(api)
 
-    await wrapper.find('[data-test="filter-non-positive-profit"]').setValue(true)
+    // The zero-profit and zero-count rows are already out, by the filters the screen opens with.
     await wrapper.find('[data-test="sort-outputName"]').trigger('click')
     await typeMaximum(wrapper, '1')
 
@@ -640,7 +687,6 @@ describe('CraftingProfitScreen', () => {
 
     // The full *matching* set in the chosen order — not the rows the filters removed.
     expect(recipeNames(wrapper)).toEqual([lessProfitableRow.outputName, profitableRow.outputName])
-    expect(wrapper.find('[data-test="limit-note"]').exists()).toBe(false)
     expect(maximumInput(wrapper).value).toBe('1')
     expect(api.profitRequests).toEqual([{}])
   })
@@ -666,13 +712,15 @@ describe('CraftingProfitScreen', () => {
     api.profitHandler = () => Promise.resolve(profitResponse([priceUnavailableRow, notAllowedRow]))
     const wrapper = await openScreen(api)
 
-    await wrapper.find('[data-test="filter-not-allowed"]').setValue(true)
-
     expect(wrapper.find('[data-test="no-matches"]').text()).toContain('The calculation returned 2 recipes')
     const restrictions = wrapper.find('[data-test="active-restrictions"]').text()
     expect(restrictions).toContain('craftable count of 0')
     expect(restrictions).toContain('not allowed')
-    expect(restrictions).not.toContain('profit per craft')
+    expect(restrictions).toContain('profit per craft')
+
+    // Only what is actually applied is named: a filter switched off leaves the list.
+    await wrapper.find('[data-test="filter-non-positive-profit"]').setValue(false)
+    expect(wrapper.find('[data-test="active-restrictions"]').text()).not.toContain('profit per craft')
 
     // The controls stay reachable so the user can undo what emptied the list.
     expect(wrapper.find('[data-test="display-controls"]').exists()).toBe(true)
@@ -733,7 +781,7 @@ describe('CraftingProfitScreen', () => {
     const wrapper = await openScreen(api)
 
     await wrapper.find('[data-test="filter-zero-craftable"]').setValue(false)
-    await wrapper.find('[data-test="filter-not-allowed"]').setValue(true)
+    await wrapper.find('[data-test="filter-not-allowed"]').setValue(false)
     await typeMaximum(wrapper, '3')
     await wrapper.find('[data-test="show-all"]').setValue(true)
 
@@ -741,7 +789,8 @@ describe('CraftingProfitScreen', () => {
     await flushPromises()
 
     expect(isChecked(wrapper, 'filter-zero-craftable')).toBe(false)
-    expect(isChecked(wrapper, 'filter-not-allowed')).toBe(true)
+    expect(isChecked(wrapper, 'filter-not-allowed')).toBe(false)
+    expect(isChecked(wrapper, 'filter-non-positive-profit')).toBe(true)
     expect(isChecked(wrapper, 'show-all')).toBe(true)
     expect(maximumInput(wrapper).value).toBe('3')
     // The reload asked for the same scope and settings; no display control reached the request.

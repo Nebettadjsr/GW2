@@ -16,9 +16,12 @@ import {
 
 function viewOf(rows: readonly CraftingRow[] = allRows) {
   const view = useProfitTableView(shallowRef(rows))
-  // Most of these cases are about something other than DOMAIN_SPEC 2.1.1's default filter, which
-  // would otherwise remove every zero-count row before they got to look at it.
+  // Most of these cases are about something other than DOMAIN_SPEC 2.1.1's three default filters,
+  // which would otherwise remove the zero-count, not-allowed and unprofitable rows before they got
+  // to look at them. That all three open enabled is covered by the defaults case below.
   view.hideZeroCraftable.value = false
+  view.hideNotAllowed.value = false
+  view.hideNonPositiveProfit.value = false
   return view
 }
 
@@ -176,19 +179,29 @@ describe('useProfitTableView', () => {
     expect(view.selectedRow.value).toBeNull()
   })
 
-  it('startsWithOnlyTheRequiredZeroCountFilterOnAndA250Maximum', () => {
-    const view = freshViewOf(allRows)
+  it('startsWithAllThreeFiltersOnAndA250Maximum', () => {
+    const view = freshViewOf([...allRows, notAllowedRow, zeroProfitRow])
 
     expect(view.hideZeroCraftable.value).toBe(true)
-    expect(view.hideNotAllowed.value).toBe(false)
-    expect(view.hideNonPositiveProfit.value).toBe(false)
+    expect(view.hideNotAllowed.value).toBe(true)
+    expect(view.hideNonPositiveProfit.value).toBe(true)
     expect(view.maxDisplayed.value).toBe(INITIAL_MAX_DISPLAYED)
     expect(INITIAL_MAX_DISPLAYED).toBe(250)
     expect(view.showAll.value).toBe(false)
 
-    // priceUnavailableRow is the only supplied count of 0; noResultRow's count is null, not zero.
+    // One row per filter is removed, and none of the three touches an unsupplied value:
+    // priceUnavailableRow is the only supplied count of 0 and noResultRow's count is null, while
+    // both rows' null profit is not "0 or less" and neither is a recipe reported as not allowed.
     expect(idsOf(view)).not.toContain(priceUnavailableRow.recipeId)
+    expect(idsOf(view)).not.toContain(notAllowedRow.recipeId)
+    expect(idsOf(view)).not.toContain(zeroProfitRow.recipeId)
     expect(idsOf(view)).toContain(noResultRow.recipeId)
+
+    // Each filter is reversible on its own: switching one off brings back only what it hid.
+    view.hideNotAllowed.value = false
+    expect(idsOf(view)).toContain(notAllowedRow.recipeId)
+    expect(idsOf(view)).not.toContain(zeroProfitRow.recipeId)
+    expect(idsOf(view)).not.toContain(priceUnavailableRow.recipeId)
   })
 
   it('matchesTheZeroCountFilterOnZeroExactly', () => {

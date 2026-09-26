@@ -5,7 +5,10 @@
  * `FRONTEND_UX_GUIDELINES.md` 4, 3, 5, 7, 8).
  *
  * Since STORY-WEB-006 it also covers DOMAIN_SPEC 2.1.1's result-display controls — the three filters,
- * the changeable maximum and Show all — and whole-row selection by pointer, on both viewports.
+ * the changeable maximum and Show all — and whole-row selection by pointer, on both viewports. Since
+ * STORY-WEB-011 those controls are the *Displayed results* subgroup of the calculation-controls
+ * panel, all three filters open enabled, and the removed explanatory paragraphs are checked to be
+ * gone without the accessible description going with them.
  *
  * Runs the built frontend against a *controlled* API boundary (`scripts/stubOrigin.mjs`): every
  * answer comes from this process, so no backend, database or GW2 API is involved and nothing can be
@@ -114,17 +117,19 @@ function allRows() {
   ]
 }
 
-/** The rows a freshly opened screen lists: DOMAIN_SPEC 2.1.1's zero-count filter is on to begin with. */
-const DEFAULT_LISTED = [
-  'Deldrimor Steel Ingot',
-  'Mystic Clover Attempt',
-  'Self-Referential Ingot',
-  'Spiritwood',
-  'Bolt of Damask'
-]
+/**
+ * The rows a freshly opened screen lists: DOMAIN_SPEC 2.1.1's three filters are all on to begin
+ * with, so the two zero-count rows and the not-allowed one are out while the rows whose count and
+ * profit the backend did not supply stay.
+ */
+const DEFAULT_LISTED = ['Deldrimor Steel Ingot', 'Self-Referential Ingot', 'Spiritwood', 'Bolt of Damask']
 
 /** The two rows whose supplied craftable count is exactly 0. */
 const ZERO_COUNT_ROWS = ['Elonian Leather Square', 'Charged Quartz Crystal']
+
+/** The row the "not allowed" filter matches, and the one the "0 or less" filter matches. */
+const NOT_ALLOWED_ROW = 'Mystic Clover Attempt'
+const NON_POSITIVE_PROFIT_ROW = 'Charged Quartz Crystal'
 
 /** The narrower scope deliberately drops recipe 1, so a replacement calculation can remove it. */
 function rowsForScope(scopeKind) {
@@ -376,18 +381,31 @@ async function listedRecipes(page) {
 async function displayControlState(page) {
   return page.evaluate(() => {
     const checked = (test) => document.querySelector(`[data-test="${test}"]`)?.checked ?? null
+    const controls = document.querySelector('[data-test="display-controls"]')
     return {
-      inResultsRegion:
-        document
-          .querySelector('[data-test="results-region"]')
-          ?.contains(document.querySelector('[data-test="display-controls"]')) ?? false,
+      inControlsPanel:
+        document.querySelector('[data-test="calculation-controls"]')?.closest('.panel')?.contains(controls) ??
+        false,
+      inResultsRegion: document.querySelector('[data-test="results-region"]')?.contains(controls) ?? false,
+      legend: controls?.querySelector('legend')?.textContent?.trim() ?? null,
+      calculationLegend:
+        document.querySelector('[data-test="calculation-controls"] legend')?.textContent?.trim() ?? null,
+      holdsSearch: controls?.contains(document.querySelector('[data-test="search"]')) ?? false,
       zeroCraftable: checked('filter-zero-craftable'),
       notAllowed: checked('filter-not-allowed'),
       nonPositiveProfit: checked('filter-non-positive-profit'),
       showAll: checked('show-all'),
-      maximum: document.querySelector('[data-test="max-displayed"]')?.value ?? null
+      maximum: document.querySelector('[data-test="max-displayed"]')?.value ?? null,
+      maximumDisabled: document.querySelector('[data-test="max-displayed"]')?.disabled ?? null
     }
   })
+}
+
+/** Switches DOMAIN_SPEC 2.1.1's three filters off, so a check about something else sees every row. */
+async function showEveryRow(page) {
+  await page.setChecked('[data-test="filter-zero-craftable"]', false)
+  await page.setChecked('[data-test="filter-not-allowed"]', false)
+  await page.setChecked('[data-test="filter-non-positive-profit"]', false)
 }
 
 /** Types a maximum and commits it the way a person does: entry, then leaving the control. */
@@ -570,8 +588,9 @@ async function run() {
       'For all 12 crafts counted',
       'Output revenue',
       'Cost of materials to buy',
-      'Trading Post price for one Deldrimor Steel Ingot',
-      'Instant buy, one item',
+      'Output quantity',
+      'Trading Post price / item',
+      'Instant buy',
       'Crafting resolution',
       'Materials still to buy',
       'For one further craft',
@@ -584,7 +603,7 @@ async function run() {
       !detailText.includes('shopping list total'),
       'The detail region claimed a total it must not calculate.'
     )
-    record('detail separates summary, resolution and materials', '11 expected labels present')
+    record('detail separates summary, resolution and materials', '12 expected labels present')
 
     // 5b. Buy cost is emphasized as a cost, and the quote is identified as a single-item price.
     const costPresentation = await page.evaluate(() => {
@@ -616,9 +635,19 @@ async function run() {
       costPresentation.size > costPresentation.plainSize,
       `Buy cost is not emphasized over ordinary values: ${JSON.stringify(costPresentation)}`
     )
+    // The concise label carries the basis now; the paragraph that used to explain it is gone, and
+    // the output quantity stays with the crafting values (DOMAIN_SPEC 2.1.1).
     check(
-      (await textOf(page, '[data-test="detail-quote-basis"]')).includes('price of a single item'),
-      'The Trading Post quote was not identified as the price for one output item.'
+      (await textOf(page, '[data-test="detail-quote-heading"]')) === 'Trading Post price / item',
+      'The Trading Post quote does not carry the concise per-item label.'
+    )
+    check(
+      (await page.$('[data-test="detail-quote-basis"]')) === null,
+      'The removed unit-price explanatory paragraph is still on screen.'
+    )
+    check(
+      (await textOf(page, '[data-test="detail-per-craft"]')).includes('Output quantity'),
+      'The output quantity was removed along with the unit-price prose.'
     )
     record(
       'buy cost reads as a cost and the quote as a single-item price',
@@ -808,24 +837,49 @@ async function run() {
         .name} at ${Math.min(...treeContrast.map((sample) => sample.ratio)).toFixed(2)}:1`
     )
 
-    // 6. The display controls are in the results region, with DOMAIN_SPEC 2.1.1's initial state.
+    // 6. The display controls are the Displayed results subgroup of the controls panel, in
+    // DOMAIN_SPEC 2.1.1's initial state, and the removed paragraphs are not on screen.
     const calculationsBeforeDisplayControls = requestsToPath(stub, '/api/crafting/profit').length
     const detailsBeforeDisplayControls = requestsToPath(stub, '/api/crafting/profit/resolution').length
     const defaults = await displayControlState(page)
-    check(defaults.inResultsRegion, 'The display controls are not inside the results region.')
+    check(
+      defaults.inControlsPanel && !defaults.inResultsRegion,
+      `The display controls are not a subgroup of the calculation-controls panel: ${JSON.stringify(defaults)}`
+    )
+    check(
+      defaults.legend === 'Displayed results' && defaults.calculationLegend === 'Calculation',
+      `The two subgroups are not labelled as specified: ${JSON.stringify(defaults)}`
+    )
+    check(defaults.holdsSearch, 'The search over the listed rows is not in the Displayed results group.')
     check(
       defaults.zeroCraftable === true &&
-        defaults.notAllowed === false &&
-        defaults.nonPositiveProfit === false &&
+        defaults.notAllowed === true &&
+        defaults.nonPositiveProfit === true &&
         defaults.showAll === false &&
         defaults.maximum === '250',
       `The display controls did not open in their specified state: ${JSON.stringify(defaults)}`
     )
+    const removedProse = await page.evaluate(() => ({
+      groupNote: document.querySelector('[data-test="display-controls"]').textContent.includes(
+        'never recalculate anything'
+      ),
+      tableNote: document.querySelector('[data-test="table-note"]') !== null,
+      limitNote: document.querySelector('[data-test="limit-note"]') !== null,
+      // Removed from view, not from the accessible tree: the table keeps its own description.
+      caption: (document.querySelector('[data-test="profit-table"] caption')?.textContent ?? '').includes(
+        'button that opens its details'
+      )
+    }))
+    check(
+      !removedProse.groupNote && !removedProse.tableNote && !removedProse.limitNote,
+      `A paragraph DOMAIN_SPEC 2.1.1 removes is still on screen: ${JSON.stringify(removedProse)}`
+    )
+    check(removedProse.caption, 'The table lost its accessible description along with the visible prose.')
     const listedAtStart = await listedRecipes(page)
-    for (const hidden of ZERO_COUNT_ROWS) {
+    for (const hidden of [...ZERO_COUNT_ROWS, NOT_ALLOWED_ROW]) {
       check(
         !listedAtStart.some((name) => name.startsWith(hidden)),
-        `"${hidden}" has a craftable count of 0 and was still listed: ${listedAtStart.join(', ')}`
+        `"${hidden}" is hidden by a filter that opens enabled and was still listed: ${listedAtStart.join(', ')}`
       )
     }
     check(
@@ -833,34 +887,41 @@ async function run() {
       'The row with no supplied craftable count was hidden as if its count were 0.'
     )
     check(
+      listedAtStart.some((name) => name.startsWith('Spiritwood')),
+      'A row whose profit the backend did not supply was hidden as if it were 0 or less.'
+    )
+    check(
       listedAtStart.length === DEFAULT_LISTED.length,
       `Expected ${DEFAULT_LISTED.length} rows listed by default, got ${listedAtStart.join(', ')}`
     )
     record(
-      'display controls open filtered by craftable count only',
+      'Displayed results subgroup opens with all three filters on and no explanatory prose',
       `${listedAtStart.length} of ${allRows().length} rows listed, maximum 250`
     )
 
-    // 7. Each filter changes what is listed, and nothing else.
-    await page.setChecked('[data-test="filter-zero-craftable"]', false)
+    // 7. Each filter is reversible on its own, and changes nothing but what is listed.
+    await page.setChecked('[data-test="filter-not-allowed"]', false)
     check(
-      (await listedRecipes(page)).length === allRows().length,
-      'Switching the zero-count filter off did not bring the whole result set back.'
+      (await listedRecipes(page)).some((name) => name.startsWith(NOT_ALLOWED_ROW)),
+      'Switching the "not allowed" filter off did not bring its row back.'
+    )
+    check(
+      !(await listedRecipes(page)).some((name) => name.startsWith(NON_POSITIVE_PROFIT_ROW)),
+      'Switching one filter off also released a row a different filter holds.'
+    )
+    await page.setChecked('[data-test="filter-zero-craftable"]', false)
+    await page.setChecked('[data-test="filter-non-positive-profit"]', false)
+    const allFiltersOff = await listedRecipes(page)
+    check(
+      allFiltersOff.length === allRows().length,
+      `Switching all three filters off listed ${allFiltersOff.length} of ${allRows().length} rows.`
     )
     await page.setChecked('[data-test="filter-not-allowed"]', true)
+    const afterNotAllowedAgain = await listedRecipes(page)
     check(
-      !(await listedRecipes(page)).some((name) => name.startsWith('Mystic Clover Attempt')),
-      'The "not allowed" filter left the RECIPE_NOT_ALLOWED row listed.'
-    )
-    await page.setChecked('[data-test="filter-non-positive-profit"]', true)
-    const afterProfitFilter = await listedRecipes(page)
-    check(
-      !afterProfitFilter.some((name) => name.startsWith('Charged Quartz Crystal')),
-      'The "0 or less" filter left the loss-making row listed.'
-    )
-    check(
-      afterProfitFilter.some((name) => name.startsWith('Spiritwood')),
-      'A row whose profit the backend did not supply was hidden as if it were 0 or less.'
+      !afterNotAllowedAgain.some((name) => name.startsWith(NOT_ALLOWED_ROW)) &&
+        afterNotAllowedAgain.some((name) => name.startsWith(NON_POSITIVE_PROFIT_ROW)),
+      `Switching one filter back on removed more than it names: ${afterNotAllowedAgain.join(', ')}`
     )
     // Reached by Tab from the search box rather than focused by script, so `:focus-visible` is
     // decided the way it is for a person using the keyboard.
@@ -878,9 +939,10 @@ async function run() {
       focusedFilter.outlineStyle !== 'none' && focusedFilter.outlineWidth >= 1,
       `A display filter has no visible keyboard focus: ${JSON.stringify(focusedFilter)}`
     )
+    await page.setChecked('[data-test="filter-non-positive-profit"]', true)
     record(
-      'each filter removes only what it names, and Tab reaches them',
-      `${afterProfitFilter.length} rows under all three; ${walked.join(' → ')}`
+      'each filter reverses on its own, and Tab reaches them',
+      `${afterNotAllowedAgain.length} rows with only "not allowed" back on; ${walked.join(' → ')}`
     )
 
     // 7b. Every combination that empties the list still explains itself and stays undoable.
@@ -907,13 +969,14 @@ async function run() {
     record('zero matches names every restriction in force', restrictions.slice(0, 96))
 
     // 8. The maximum limits the matching set, and Show all reveals the rest of *that* set.
-    await page.setChecked('[data-test="filter-not-allowed"]', false)
-    await page.setChecked('[data-test="filter-non-positive-profit"]', false)
     await page.setChecked('[data-test="filter-zero-craftable"]', true)
     await setMaximum(page, '1')
     check((await listedRecipes(page)).length === 1, 'A maximum of 1 did not reduce the list to one row.')
-    const limitNote = await textOf(page, '[data-test="limit-note"]')
-    check(limitNote.includes('holding back'), `The limited list did not say what it withheld: "${limitNote}"`)
+    const summary = await textOf(page, '[data-test="summary"]')
+    check(
+      summary.includes(`Showing 1 of ${DEFAULT_LISTED.length}`),
+      `The compact count did not report the withheld rows: "${summary}"`
+    )
     const hiddenSelection = await textOf(page, '[data-test="detail-hidden"]')
     check(
       hiddenSelection.includes('not in the displayed list') && hiddenSelection.includes('Show all'),
@@ -930,19 +993,24 @@ async function run() {
       shownAll.length === DEFAULT_LISTED.length,
       `Show all listed ${shownAll.length} rows instead of the ${DEFAULT_LISTED.length} matching ones.`
     )
-    for (const hidden of ZERO_COUNT_ROWS) {
+    for (const hidden of [...ZERO_COUNT_ROWS, NOT_ALLOWED_ROW]) {
       check(
         !shownAll.some((name) => name.startsWith(hidden)),
-        `Show all revealed "${hidden}", which the zero-count filter still excludes.`
+        `Show all revealed "${hidden}", which a filter that is still on excludes.`
       )
     }
     check(
       (await page.$('[data-test="detail-hidden"]')) === null,
       'The selected recipe was listed again but the detail still called it hidden.'
     )
+    const suspended = await displayControlState(page)
+    check(
+      suspended.maximumDisabled === true && suspended.maximum === '1',
+      `Show all did not suspend the maximum while keeping it: ${JSON.stringify(suspended)}`
+    )
     record(
       'Show all reveals the matching set, not an unfiltered one',
-      `1 → ${shownAll.length} rows, maximum kept at ${(await displayControlState(page)).maximum}`
+      `1 → ${shownAll.length} rows, maximum suspended but kept at ${suspended.maximum}`
     )
 
     // 9. None of that asked the backend for anything.
@@ -1037,14 +1105,21 @@ async function run() {
 
     // 13. The narrow layout still selects — by row background too — and its controls stay usable.
     // A fresh load, so this is the default scope again with the display controls back at their
-    // defaults: switching the one default filter off must bring every returned row back.
+    // defaults: switching all three off must bring every returned row back.
     const narrowDefaults = await displayControlState(page)
     check(
-      narrowDefaults.zeroCraftable === true && narrowDefaults.maximum === '250',
+      narrowDefaults.zeroCraftable === true &&
+        narrowDefaults.notAllowed === true &&
+        narrowDefaults.nonPositiveProfit === true &&
+        narrowDefaults.maximum === '250',
       `The display controls did not reopen in their specified state at ${NARROW.width}px: ` +
         JSON.stringify(narrowDefaults)
     )
-    await page.setChecked('[data-test="filter-zero-craftable"]', false)
+    check(
+      narrowDefaults.inControlsPanel,
+      `The Displayed results subgroup left the controls panel at ${NARROW.width}px.`
+    )
+    await showEveryRow(page)
     const expectedRows = allRows().length
     const narrowRows = await page.$$eval('[data-test="profit-row"]', (rows) => rows.length)
     check(
@@ -1095,7 +1170,7 @@ async function run() {
     // supplied, no general State column, and the one retained row-level diagnostic.
     for (const viewport of [WIDE, NARROW]) {
       await openProfit(page, stub.origin, viewport)
-      await page.setChecked('[data-test="filter-zero-craftable"]', false)
+      await showEveryRow(page)
 
       const headers = await page.$$eval('[data-test="profit-table"] thead th', (cells) =>
         cells.map((cell) => (cell.textContent ?? '').replace(/\s+/g, ' ').trim())

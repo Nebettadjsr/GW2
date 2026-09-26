@@ -92,15 +92,6 @@ const totalsLabel = computed(() => {
 const missingForAllCrafts = computed<MissingItem[] | null>(() => props.row?.missingToBuy ?? null)
 const missingForOneCraft = computed<MissingItem[] | null>(() => props.row?.missingToBuyOne ?? null)
 
-/**
- * The quote is per single item, which is not the same thing as per craft: a recipe whose output
- * count is above one produces several of them at once. Saying so is the point of the heading.
- */
-const quoteHeading = computed(() => {
-  if (props.row === null) return ''
-  return `Trading Post price for one ${recipeLabel(props.row)}`
-})
-
 function materialQuoteText(item: MissingItem): string {
   if (item.price === null) return 'No price supplied'
   return `Instant buy ${formatCopper(item.price.buyUnitCopper)} · Instant sell ${formatCopper(item.price.sellUnitCopper)}`
@@ -142,7 +133,6 @@ function materialQuoteText(item: MissingItem): string {
         <template v-else>
           the current search or display filters hide its row. Change them to list it again.
         </template>
-        Its details stay available until another recipe is chosen or a new calculation replaces it.
       </p>
 
       <div class="stack">
@@ -202,21 +192,22 @@ function materialQuoteText(item: MissingItem): string {
           </dd>
         </dl>
 
-        <h4 class="detail__basis" data-test="detail-quote-heading">{{ quoteHeading }}</h4>
+        <!--
+          The quote is per single item, which is not per craft: the output quantity above says how
+          many one craft produces, so the basis needs the label and not a paragraph (DOMAIN_SPEC
+          2.1.1).
+        -->
+        <h4 class="detail__basis" data-test="detail-quote-heading">Trading Post price / item</h4>
         <p v-if="row.outputPrice === null" class="meta" data-test="detail-output-quote">
           No quote supplied
         </p>
         <dl v-else class="detail-values" data-test="detail-output-quote">
-          <dt>Instant buy, one item</dt>
+          <dt>Instant buy</dt>
           <dd class="numeric">{{ formatCopper(row.outputPrice.buyUnitCopper) }}</dd>
 
-          <dt>Instant sell, one item</dt>
+          <dt>Instant sell</dt>
           <dd class="numeric">{{ formatCopper(row.outputPrice.sellUnitCopper) }}</dd>
         </dl>
-        <p class="meta" data-test="detail-quote-basis">
-          Each is the price of a single item. One craft of this recipe produces
-          {{ row.outputCount }}.
-        </p>
       </section>
 
       <section class="detail__section" aria-labelledby="detail-tree-heading">
@@ -231,11 +222,8 @@ function materialQuoteText(item: MissingItem): string {
 
       <section class="detail__section" aria-labelledby="detail-materials-heading">
         <h3 id="detail-materials-heading">Materials still to buy</h3>
-        <p class="meta">
-          Each line is a quantity the table's calculation reported; no shopping total is worked out
-          here.
-        </p>
 
+        <!-- Each line is a supplied quantity under its own basis heading; no total is produced. -->
         <h4 class="detail__basis">{{ totalsLabel }}</h4>
         <p v-if="missingForAllCrafts === null" class="meta" data-test="missing-all-none">
           Not supplied for this recipe.

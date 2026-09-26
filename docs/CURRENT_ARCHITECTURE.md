@@ -918,7 +918,7 @@ frontend/
     │   ├── ScopeSelector.vue         the sole Discipline selector (DOMAIN_SPEC.md §2.2.1)
     │   ├── ProfitSettingsForm.vue    the settings the Profit contract supports
     │   ├── CraftingProfitTable.vue   the seven comparison columns and the row-selection control
-    │   ├── ResultDisplayControls.vue the three display filters, the maximum and Show all
+    │   ├── ResultDisplayControls.vue the Displayed results subgroup: search slot, three filters, maximum
     │   ├── SelectedResultDetail.vue  the selected row's supplied summary, quote and materials
     │   ├── CraftingResolution.vue    the §5.13 answer: its five situations, basis and fresh row
     │   ├── ResolutionTreeNode.vue    one requirement and, recursively, its ingredient occurrences
@@ -953,8 +953,11 @@ no longer the newest is discarded, so a slow earlier answer cannot overwrite the
 results. The scope and settings controls stay enabled while a request is in flight — a calculation
 takes seconds, and disabling them would both strand the user and make that superseding unreachable.
 Since `STORY-WEB-004` the page separates the page action (Reload results) from a labelled "Calculation
-controls" panel holding scope, search and settings, and from an "Opportunities" region holding the
-summary, the state messages and the table; a failed calculation offers a retry.
+controls" panel and from an "Opportunities" region holding the summary, the state messages and the
+table; a failed calculation offers a retry. Since `STORY-WEB-011` that panel holds two subgroups — a
+"Calculation" fieldset (scope, settings) and a "Displayed results" fieldset (search, the three
+display filters, the maximum and Show all) — so what is asked of the backend and what is made of its
+answer are separated inside one panel.
 
 **Crafting Profit information hierarchy (`STORY-WEB-005`).** The page is three groups: the controls
 panel, the comparison region and the selected-result detail. `.results-split` puts the comparison and
@@ -1006,40 +1009,49 @@ below the comparison under that width; the table keeps its own `.table-region` s
   `PRICE_UNAVAILABLE`, `resultAvailable: false` and an unreported or unrecognized code (worded, never
   the raw code). The `CYCLE_DETECTED` diagnostic is **temporary presentation technical debt**, kept
   until the Product Owner asks for its removal, and is recorded in `KNOWN_PROBLEMS.md` as such.
-  Ordinary blocked rows are hidden by no filter of their own — the display controls are unchanged.
+  Of these reasons only `RECIPE_NOT_ALLOWED` has a display filter of its own (§2.1.1, on initially);
+  the others are hidden by no filter, and none of them is dropped from the loaded result set.
 - **Money that may go either way carries its sign.** `formatSignedCopper` writes `+`/`-` and
   `moneyTone` adds the shared `.money--gain`/`.money--loss` treatment, so the distinction survives
   without color; a supplied `0c` and an unsupplied `—` both stay neutral and stay distinct.
 - **The settings are one collapsed group with their effect on show.** The six controls sit behind a
   "Price and material settings" disclosure whose summary line words the settings the backend echoed;
-  no default is repeated in the browser. Scope, search and Reload results stay in the open.
+  no default is repeated in the browser. Scope and Reload results stay in the open.
 
-**Result-display controls and whole-row selection (`STORY-WEB-006`).** `DOMAIN_SPEC.md` §2.1.1's
-display controls are a "Result display" fieldset (`ResultDisplayControls.vue`) inside the
-*Opportunities* region, not in the calculation-controls panel — a structural separation the group's
-own note repeats in words. They are pure view state in `useProfitTableView`, so changing one cannot
-issue a request, cannot alter what was asked for, and cannot alter §28's per-recipe simulation cap;
-`api.calculateProfit` still runs only for an opened screen, a changed scope, changed settings and an
-explicit reload. The whole result set stays loaded — a hidden row is hidden, never dropped.
+**Result-display controls and whole-row selection (`STORY-WEB-006`, regrouped by `STORY-WEB-011`).**
+`DOMAIN_SPEC.md` §2.1.1's display controls are a "Displayed results" fieldset
+(`ResultDisplayControls.vue`) inside the calculation-controls panel, beside the "Calculation"
+fieldset — the separation is the two legends and boundaries, not a paragraph saying so. They are pure
+view state in `useProfitTableView`, so changing one cannot issue a request, cannot alter what was
+asked for, and cannot alter §28's per-recipe simulation cap; `api.calculateProfit` still runs only
+for an opened screen, a changed scope, changed settings and an explicit reload. The whole result set
+stays loaded — a hidden row is hidden, never dropped. The search sits in this group too: it narrows
+the listed rows exactly as the filters do, and it reaches the backend no more than they do.
 
 - **Three filters, each reading one supplied field.** Craftable count exactly `0`, a
   `blockedReason` of `RECIPE_NOT_ALLOWED` on a row the backend actually calculated, and a
-  `profitCopper` of `0` or less. Only the zero-count filter is on initially. A value the backend did
-  not supply is its own answer and is never folded into any of the three: a null count is not `0`, a
-  null profit is not "0 or less", and `resultAvailable: false` is a technical failure, not a recipe
-  reported as not allowed — the not-allowed test reads `resultAvailable` as well as the code.
+  `profitCopper` of `0` or less. All three are on initially and each reverses on its own. A value the
+  backend did not supply is its own answer and is never folded into any of the three: a null count is
+  not `0`, a null profit is not "0 or less", and `resultAvailable: false` is a technical failure, not
+  a recipe reported as not allowed — the not-allowed test reads `resultAvailable` as well as the code.
 - **Search and filters run before the sort, and the sort before the cut-off.** `matchingRows` is the
   searched, filtered and ordered set; `visibleRows` is that set cut off at the maximum. So Show all
   reveals the rest of *that* matching set rather than an unrelated unfiltered one.
 - **The maximum is changeable and starts at 250.** It is applied on the committed entry rather than
   per keystroke; an entry that is not a whole number of at least 1 is refused — the control returns
   to the maximum in effect and says so, instead of blanking the list or silently showing everything.
-  "Show all matching recipes" removes the limit while keeping the typed maximum for switching back.
-- **Three counts, kept apart.** The summary reads "Showing *displayed* of *matching* matching
-  recipes · *calculated* calculated for this scope"; a cut-off list additionally says how many
-  further matching recipes the maximum is holding back. A list emptied by the controls states that
-  the calculation's rows are all still held and names every restriction currently applied, with the
-  controls still on screen to undo.
+  "Show all" removes the limit and disables the maximum while it is on, rather than explaining in a
+  paragraph that the typed maximum is not being applied; switching it off puts that maximum back.
+- **Three counts, kept apart.** The compact summary reads "Showing *displayed* of *matching* matching
+  recipes · *calculated* calculated for this scope", which is also the only thing that reports a
+  cut-off list — `STORY-WEB-011` removed the paragraph that used to explain the limit. A list
+  emptied by the controls states that the calculation's rows are all still held and names every
+  restriction currently applied, with the controls still on screen to undo.
+- **No permanent instructions.** The row-selection/keyboard sentence, the paragraph explaining the
+  filters and the dynamic limit paragraph are gone (`DOMAIN_SPEC.md` §2.1.1). What they carried for
+  assistive technology stays: the comparison table's visually hidden `<caption>` still describes the
+  per-craft/total bases and how a row is opened, and the column headings still carry the basis
+  visually.
 - **The whole row selects, the button is still the control.** A click on any part of a row that is
   not itself interactive selects that row's recipe; a click that started inside a nested `a`,
   `button`, `input`, `select`, `textarea`, `label`, `summary` or `role="button"`/`role="link"` is

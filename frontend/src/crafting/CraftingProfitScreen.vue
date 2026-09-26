@@ -17,16 +17,16 @@ import { useProfitTableView, type SortKey } from './useProfitTableView'
  * The Crafting Profit screen, in the three groups `FRONTEND_UX_GUIDELINES.md` 4 asks for: what is
  * calculated, the opportunities to compare, and the details of the one result that is selected.
  *
- * Scope, search and settings sit in their own panel, with the settings themselves behind a labelled
- * disclosure whose summary keeps the effective ones readable. The comparison table carries the
- * columns worth comparing and scrolls inside its own region so the page still reflows; everything
- * else the response supplied is in the detail region beside it on a wide viewport and below it on a
- * narrow one.
+ * The controls panel holds two subgroups (DOMAIN_SPEC 2.1.1): *Calculation* — scope and the settings
+ * behind a labelled disclosure whose summary keeps the effective ones readable — and *Displayed
+ * results*, which is the search, the three display filters and the maximum. The comparison table
+ * carries the columns worth comparing and scrolls inside its own region so the page still reflows;
+ * everything else the response supplied is in the detail region beside it on a wide viewport and
+ * below it on a narrow one.
  *
- * DOMAIN_SPEC 2.1.1's result-display filters and maximum sit inside the results region rather than
- * in that panel, because they decide what is listed and not what is calculated. They are pure view
- * state (`useProfitTableView`): changing one cannot issue a request, so `api.calculateProfit` is
- * called for an opened screen, a changed scope, changed settings and an explicit reload only.
+ * The Displayed results subgroup is pure view state (`useProfitTableView`): changing one of its
+ * controls cannot issue a request, so `api.calculateProfit` is called for an opened screen, a changed
+ * scope, changed settings and an explicit reload only.
  *
  * The screen is kept alive while another application area is open, so returning to it neither loses
  * the chosen scope, settings, search, sort, display controls and selection nor posts the calculation
@@ -201,36 +201,57 @@ function onReload(): void {
       </template>
     </PageHeader>
 
-    <!-- What is calculated: scope, settings and the search over the answer, kept out of the results. -->
+    <!--
+      One panel, two subgroups: what is calculated, and what of the answer is displayed
+      (DOMAIN_SPEC 2.1.1). The search belongs to the second one — like the filters and the maximum it
+      narrows the rows already returned and never reaches the backend.
+    -->
     <section class="panel" aria-labelledby="crafting-controls-heading">
       <h2 id="crafting-controls-heading" class="panel__title">Calculation controls</h2>
 
-      <div class="cluster">
+      <fieldset class="calculation-controls" data-test="calculation-controls">
+        <legend>Calculation</legend>
+
         <ScopeSelector
           :options="profit.scopeOptions.value"
           :selected-id="profit.selectedScopeId.value"
           @select="onScopeSelected"
         />
 
-        <label class="search">
-          <span>Search</span>
-          <input
-            type="search"
-            data-test="search"
-            placeholder="Recipe, item id, discipline, state"
-            :value="table.searchText.value"
-            @input="onSearchInput"
-          />
-        </label>
-      </div>
+        <details class="settings-disclosure" data-test="settings-disclosure">
+          <summary>
+            Price and material settings
+            <span class="meta" data-test="effective-settings">{{ effectiveSettingsSummary }}</span>
+          </summary>
+          <ProfitSettingsForm :settings="profit.settings.value" @apply="onSettingsApplied" />
+        </details>
+      </fieldset>
 
-      <details class="settings-disclosure" data-test="settings-disclosure">
-        <summary>
-          Price and material settings
-          <span class="meta" data-test="effective-settings">{{ effectiveSettingsSummary }}</span>
-        </summary>
-        <ProfitSettingsForm :settings="profit.settings.value" @apply="onSettingsApplied" />
-      </details>
+      <ResultDisplayControls
+        :hide-zero-craftable="table.hideZeroCraftable.value"
+        :hide-not-allowed="table.hideNotAllowed.value"
+        :hide-non-positive-profit="table.hideNonPositiveProfit.value"
+        :max-displayed="table.maxDisplayed.value"
+        :show-all="table.showAll.value"
+        @update:hide-zero-craftable="table.hideZeroCraftable.value = $event"
+        @update:hide-not-allowed="table.hideNotAllowed.value = $event"
+        @update:hide-non-positive-profit="table.hideNonPositiveProfit.value = $event"
+        @update:max-displayed="table.setMaxDisplayed($event)"
+        @update:show-all="table.showAll.value = $event"
+      >
+        <template #search>
+          <label class="search">
+            <span>Search</span>
+            <input
+              type="search"
+              data-test="search"
+              placeholder="Recipe, item id, discipline, state"
+              :value="table.searchText.value"
+              @input="onSearchInput"
+            />
+          </label>
+        </template>
+      </ResultDisplayControls>
 
       <p
         v-if="profit.selectorError.value !== null"
@@ -271,19 +292,6 @@ function onReload(): void {
         </p>
 
         <template v-else-if="profit.hasResult.value">
-          <ResultDisplayControls
-            :hide-zero-craftable="table.hideZeroCraftable.value"
-            :hide-not-allowed="table.hideNotAllowed.value"
-            :hide-non-positive-profit="table.hideNonPositiveProfit.value"
-            :max-displayed="table.maxDisplayed.value"
-            :show-all="table.showAll.value"
-            @update:hide-zero-craftable="table.hideZeroCraftable.value = $event"
-            @update:hide-not-allowed="table.hideNotAllowed.value = $event"
-            @update:hide-non-positive-profit="table.hideNonPositiveProfit.value = $event"
-            @update:max-displayed="table.setMaxDisplayed($event)"
-            @update:show-all="table.showAll.value = $event"
-          />
-
           <p class="meta" data-test="summary">
             Showing {{ displayedCount }} of {{ matchingCount }} matching
             {{ matchingCount === 1 ? 'recipe' : 'recipes' }} · {{ calculatedCount }} calculated for
@@ -309,21 +317,6 @@ function onReload(): void {
           </p>
 
           <template v-else>
-            <p class="meta" data-test="table-note">
-              Choose a recipe — click anywhere on its row, or reach its name with Tab and press Enter
-              — to see its details, including why a recipe the calculation could not finish stopped.
-              Own materials value and profit are per single craft; total sell value and total profit
-              are the backend's totals for every craft it counted. The table scrolls sideways inside
-              its own region when the columns do not fit; the page around it does not.
-            </p>
-
-            <p v-if="table.hiddenByLimitCount.value > 0" class="notice" data-test="limit-note">
-              The display maximum of {{ table.maxDisplayed.value }} is holding back
-              {{ table.hiddenByLimitCount.value }} further matching
-              {{ table.hiddenByLimitCount.value === 1 ? 'recipe' : 'recipes' }}. Switch on Show all
-              matching recipes to list every one of them.
-            </p>
-
             <div
               class="table-region"
               role="region"
@@ -364,6 +357,13 @@ function onReload(): void {
 </template>
 
 <style scoped>
+/* The two subgroups of the controls panel are told apart by their own boundary and legend. */
+.calculation-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .search input {
   width: 16rem;
 }

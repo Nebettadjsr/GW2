@@ -47,7 +47,7 @@ export interface ProfitTableView {
   sortKey: Ref<SortKey>
   sortDirection: Ref<SortDirection>
 
-  /** DOMAIN_SPEC 2.1.1's required filter, the only one enabled initially. */
+  /** DOMAIN_SPEC 2.1.1's three display filters: each enabled initially, each reversible on its own. */
   hideZeroCraftable: Ref<boolean>
   hideNotAllowed: Ref<boolean>
   hideNonPositiveProfit: Ref<boolean>
@@ -83,8 +83,8 @@ export function useProfitTableView(rows: Ref<readonly CraftingRow[]>): ProfitTab
   const selectedRecipeId = ref<number | null>(null)
 
   const hideZeroCraftable = ref(true)
-  const hideNotAllowed = ref(false)
-  const hideNonPositiveProfit = ref(false)
+  const hideNotAllowed = ref(true)
+  const hideNonPositiveProfit = ref(true)
   const maxDisplayed = ref(INITIAL_MAX_DISPLAYED)
   const showAll = ref(false)
 
