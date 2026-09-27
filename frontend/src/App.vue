@@ -4,6 +4,7 @@ import BankScreen from './account/BankScreen.vue'
 import MaterialsScreen from './account/MaterialsScreen.vue'
 import CraftingDiscoveryScreen from './crafting/CraftingDiscoveryScreen.vue'
 import CraftingProfitScreen from './crafting/CraftingProfitScreen.vue'
+import EctoSalvageScreen from './ecto/EctoSalvageScreen.vue'
 import { DESTINATIONS, type DestinationId } from './shell/destinations'
 import SiteHeader from './shell/SiteHeader.vue'
 import { useHashRoute } from './shell/useHashRoute'
@@ -84,7 +85,14 @@ watch(
       <CraftingDiscoveryScreen v-if="route.current.value.id === 'discovery'" />
     </KeepAlive>
 
-    <SyncScreen v-if="route.current.value.id === 'synchronization'" />
+    <!--
+      Ectoplasm Salvage is deliberately not kept alive: it has no scope, settings, search or
+      selection to preserve, and its result is a snapshot of live Trading Post prices — so opening it
+      again should calculate again rather than re-present an older snapshot as current.
+    -->
+    <EctoSalvageScreen v-if="route.current.value.id === 'ecto'" />
+
+    <SyncScreen v-else-if="route.current.value.id === 'synchronization'" />
     <BankScreen v-else-if="route.current.value.id === 'bank'" />
     <MaterialsScreen v-else-if="route.current.value.id === 'materials'" />
   </main>

@@ -68,8 +68,34 @@ Post price for one output item, useful recipe and shopping/material information,
 and a GW2 Wiki link when a reliable URL can be constructed. Remove a redundant
 Result summary and explanatory text when the same information is already clear.
 Resolution detail follows TARGET_ARCHITECTURE section 13's decided basis and
-consistency contract: show actual sourcing, required quantities and produced
-quantities, not merely recipe relationships or an invented execution trace.
+consistency contract: show actual sourcing and required quantities, not merely
+recipe relationships or an invented execution trace. Produced quantities remain
+available in the backend contract but need not appear in the normal tree.
+
+Crafting Resolution uses compact summaries and progressive disclosure. Each
+requirement shows item identity, required quantity (for example, "20 needed"),
+backend-provided sourcing labels such as "From stock", "Crafted" and "Bought",
+and the supplied crafting character under "Crafted by" where applicable. Preserve
+multiple sourcing methods when supplied; do not force a mixed requirement into
+one label. Child ingredient groups start collapsed at every level, including the
+root's children. Users can expand each group independently to inspect the complete
+ordered nested structure; collapsed presentation must not discard requirements.
+
+Remove the permanent introductory explanation beneath "Crafting resolution".
+Normal nodes omit bookkeeping rows for stock/crafted/bought/missing quantities,
+producing recipe and recipe ID, crafts run and produced total. This does not hide
+meaningful blocked/unavailable explanations. Internal values may remain in optional
+technical details without removing data from the backend contract. Review cash,
+opportunity and effective cost rows for usefulness and compactness; retain useful
+backend-supplied economic information without repeating verbose per-node panels.
+
+The normal selected detail should omit the redundant "THIS RECIPE IN THAT FRESH
+CALCULATION" summary. Preserve the existing backend-owned fresh resolution and
+its response association; do not replace table results with fresh values or claim
+the tree traces all counted crafts. A concise basis label or optional explanation
+may retain that distinction without the permanent technical paragraph. Removing
+the summary is presentation work, not permission to remove the calculation or
+change its API contract.
 
 For a valid selected result still present in the fresh calculation, display the
 actual backend resolution tree; a failed explanation request is not a substitute.

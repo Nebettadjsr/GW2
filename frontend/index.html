@@ -3,6 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      The browser tab icon. The href is written against the build's configured base path, so the
+      served URL stays correct if the application is ever hosted below the origin root. The file it
+      points at, `public/favicon.ico`, is copied verbatim into the build output: replacing that one
+      file is the whole replacement procedure (README.md, "Replacing the browser favicon").
+    -->
+    <link rel="icon" type="image/x-icon" href="%BASE_URL%favicon.ico" />
     <!-- The open destination replaces this as soon as the application mounts (`useHashRoute`). -->
     <title>GW2 Crafting Tool</title>
   </head>

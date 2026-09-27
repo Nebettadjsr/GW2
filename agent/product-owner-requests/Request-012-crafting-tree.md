@@ -2,7 +2,7 @@
 
 ## Status
 
-OPEN
+RESOLVED
 
 ## Title
 
@@ -146,3 +146,5 @@ The desired presentation is substantially more compact while preserving the info
 A separate concern was also observed in the selected-result detail: the UI shows a `THIS RECIPE IN THAT FRESH CALCULATION` block representing a separate fresh calculation whose values may differ from the table result. The planner should verify whether this second calculation and its presentation are still necessary and whether it belongs in the normal user-facing detail view.
 
 ## Planner Resolution
+
+2026-09-27: RESOLVED as planning coverage, not implementation completion. Updated docs/DOMAIN_SPEC.md section 2.1.1 as the presentation requirement owner before creating agent/stories/STORY-WEB-016-compact-crafting-resolution-tree.md and adding it to agent/stories/BACKLOG.md. WEB-016 covers compact summaries, preserved sourcing/quantities/crafters, recursively collapsed ingredient groups, removal of normal bookkeeping and introductory prose, and review of economic rows. Reused agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md for counted-craft purchases and concrete blocking causes. Reviewed the fresh calculation against docs/TARGET_ARCHITECTURE.md section 13 and agent/stories/STORY-WEB-007-profit-resolution-detail-view.md: preserve the established backend calculation supplying the tree and response association, while WEB-016 removes the redundant fresh-row summary from the normal view and keeps its basis concise or optional. No backend contract or calculation change is authorized by this presentation request.

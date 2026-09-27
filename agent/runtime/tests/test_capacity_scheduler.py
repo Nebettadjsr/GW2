@@ -52,8 +52,10 @@ class SchedulerTest(unittest.TestCase):
         with patch.object(orchestrator, "planning_fingerprint", side_effect=["a", "b", "c", "c", "c", "c"]), \
              patch.object(orchestrator, "get_selectable_story_candidates", return_value=list(range(6))), \
              patch.object(orchestrator, "run_planning_pass", side_effect=[
-                 {"status": "COMPLETE", "story_files_created": ["new.md"]},
-                 {"status": "COMPLETE", "story_files_created": []},
+                 {"status": "COMPLETE", "story_files_created": ["new.md"],
+                  "independent_work_remaining": True},
+                 {"status": "COMPLETE", "story_files_created": [],
+                  "independent_work_remaining": False},
              ]) as plan, patch.object(orchestrator.time, "sleep"):
             self.scheduler.wait_for_claude()
             self.assertEqual(plan.call_count, 2)

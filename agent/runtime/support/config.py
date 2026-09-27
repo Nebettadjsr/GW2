@@ -125,6 +125,7 @@ MAX_CLAUDE_FAILED_RUNS_PER_STORY = 2
 # (never by re-invoking Claude) before the cycle is treated as failed.
 EVALUATION_ATTEMPTS = 3
 EVALUATION_RETRY_SECONDS = 60
+EVALUATOR_REQUEST_TIMEOUT_SECONDS = 120
 
 # One unexpected failure in a single orchestration cycle is retried
 # locally rather than killing an unattended run; a failure that keeps

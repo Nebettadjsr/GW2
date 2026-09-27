@@ -1,7 +1,7 @@
 import json
 import urllib.request
 
-from agent.runtime.support.config import MODEL, OLLAMA_URL
+from agent.runtime.support.config import EVALUATOR_REQUEST_TIMEOUT_SECONDS, MODEL, OLLAMA_URL
 
 
 # ============================================================
@@ -35,7 +35,8 @@ def call_ollama(
     )
 
     with urllib.request.urlopen(
-        request
+        request,
+        timeout=EVALUATOR_REQUEST_TIMEOUT_SECONDS,
     ) as response:
 
         result = json.loads(

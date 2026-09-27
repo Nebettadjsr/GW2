@@ -1,1 +1,1 @@
-agent/stories/STORY-WEB-012-crafting-discovery-page.md
+agent/stories/STORY-WEB-009-replaceable-favicon.md

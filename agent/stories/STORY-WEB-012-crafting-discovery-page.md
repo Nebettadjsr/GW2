@@ -8,7 +8,7 @@ Build the Crafting Discovery browser workflow over existing APIs
 
 ## Status
 
-UNFINISHED
+DONE
 
 ## Milestone
 
@@ -65,7 +65,121 @@ Discovery is reachable and usable with backend-authoritative results and fresh d
 
 ## Result
 
-Not started.
+DONE, **frontend only** — nothing under `src/`, `pom.xml` or the backend changed, and no backend test
+was run or needed.
+
+**An interrupted attempt was resumed, not restarted.** The previous session had committed the whole
+production implementation and the Discovery test fixtures in `04d7555` and stopped before writing any
+test. On disk already: `CraftingDiscoveryScreen.vue`, `DiscoveryScopeSelector.vue`,
+`DiscoverySettingsForm.vue`, `DiscoveryTable.vue`, `SelectedDiscoveryDetail.vue`,
+`useCraftingDiscovery.ts`, `useDiscoveryTableView.ts`, `useDiscoveryResolution.ts`,
+`discoveryScopeOptions.ts`, the shared `useResolutionDetail.ts` extraction, the `discovery` navigation
+destination and the `DISCOVERY_SETTINGS`/`discoveryRows`/`echoedDiscoveryResponse`/
+`discoveryResolutionResponse` fixtures with the `FakeCraftingApi` Discovery handlers. That code was
+verified rather than rewritten; this session added the tests, the browser evidence and the
+documentation, and fixed the three defects the new tests exposed.
+
+**Three defects found and fixed in that existing code.**
+
+1. *A reload silently rewrote the inventory character.* `reconcileInventoryCharacter` re-derived the
+   value from the currently selected scope on every selector read whenever the user had not explicitly
+   picked one, while a scope change deliberately does not reconcile. Selecting Chef/Sat Anat and then
+   pressing Reload therefore submitted `inventoryCharacterName: "Sat Anat"` where the result on screen
+   had been calculated with `"Nbt Anch"` — a changed calculation input from an action that must
+   preserve them (criterion 5). It now re-derives only when no value is in effect or the selector no
+   longer offers the one that is; an explicit "No character" still survives a reload, which is why
+   `inventoryChosen` is kept.
+2. *The page claimed "no character" before it knew.* The results region tested
+   `!canCalculate && selectorError === null` before `isLoading`, and `isLoading` stayed false during
+   the selector read, so first paint asserted "No character with a crafting discipline is available …
+   Synchronize the account" while that read was still in flight. `open()`/`reload()` now enter the
+   loading state before reading the selector and both the region and the detail placeholder order
+   loading first. Found because the live check read the page immediately after `domcontentloaded`.
+3. *A live-check failure could not be seen.* `discovery-live-smoke.mjs` created `waitForResponse`
+   promises it does not always await (a reload may drop the selected recipe); when the browser closed,
+   that rejection became an uncaught exception and replaced the real assertion message. Every wait is
+   now marked handled and the run reports its own error.
+
+**What the page does** is recorded in `CURRENT_ARCHITECTURE.md` §5.11 ("Crafting Discovery page"),
+which this story updated along with the file layout, the five-destination shell, the two new commands,
+the corrected "Not built yet" paragraph and §5.13's stale "no browser consumer" claim. In summary:
+`#/discovery` is a first-class addressable destination on its own `KeepAlive` boundary; scope choices
+are individual character disciplines built from §5.10 with the supplied rating and no All entry; the
+separate `inventoryCharacterName` control keeps "No character" as a real omission; no character or a
+failed selector read sends no calculation; settings state comes from Discovery's own echo and never
+Profit's; the fixed daily value is reported, not sent, and `allowNonTradeableMaterials` is unreachable;
+six columns each state their per-craft/total basis; level sorting works both ways and opens highest
+first; **there is no profit filter**, so negative and zero-profit candidates stay listed; §25's
+gross/after-15%-fees note is carried; and selection lazily posts one resolution request carrying the
+table's echoed scope, nullable inventory character and settings, checked back against all three.
+
+**Acceptance criterion 8 (icons) is met, not deferred.** WEB-010 is DONE, so rows, the detail heading
+and both material lists consume `ItemIcon` with the backend's `iconUrl` verbatim; there is no competing
+image mechanism and no GW2 request from the browser. No outstanding icon integration to record.
+
+**Tests written and run** (exact commands and real output):
+
+- `npx vitest run src/crafting/__tests__/CraftingDiscoveryScreen.spec.ts` — **33 passed**. New file:
+  scope/rating/inventory request bodies, no request without a character, selector failure and retry,
+  loading-before-no-character, Discovery's echoed defaults against Profit's, only the five accepted
+  settings, losses and break-even kept with no profit filter offered, supplied economics with
+  non-derivable totals (2222 ≠ 5 × 380, 1650 ≠ 4 × 450), nulls not zeroed, the fee note, both material
+  lists, the echoed budget, level/sell-value/profit sorting in both directions, search over name,
+  level and state words, whole-row and keyboard selection, reload preservation, selection clearing,
+  superseded answers, the grouping pattern and the shared icon component.
+- `npx vitest run src/crafting/__tests__/discoveryResolutionAssociation.spec.ts` — **23 passed**. New
+  file: lazy detail, the exact request body including the nullable inventory character, changed
+  scope/inventory/settings, sorting and searching sending nothing, reload invalidation, superseded
+  answers, A → B → A, mismatched recipe/inventory/pool/settings echoes, empty-after-populated, 404,
+  `RESULT_UNAVAILABLE`, transport failure, leave/return under `KeepAlive`, and the fresh row and tree
+  shown beside the table row with truthful basis and root-sourcing labels. Node-level presentation is
+  deliberately not duplicated — `CraftingResolution.spec.ts` owns it and is unchanged.
+- `npx vitest run src/crafting src/__tests__` — **12 files, 219 passed**. `App.spec.ts` needed two
+  changes: its exact navigation-link list asserted the four destinations from before this story and
+  now includes `#/discovery` (the `tasks/lessons.md` "a check that asserts an absence expires the day
+  the feature arrives" pattern — it was the one baseline failure at the start of this session), and it
+  gained two tests driving the real HTTP client through a body-aware `fetch` stub: Discovery as its own
+  addressable destination with its own title and focused heading, and the two crafting screens staying
+  independent with no second calculation on return and only the detail re-requested.
+- `npx vitest run` — **19 files, 289 passed** (whole frontend suite, 16s). Run once at the end as a
+  closing check; GitHub Actions remains the authoritative full-regression gate.
+- `npm run type-check` (`vue-tsc --noEmit`) — clean, exit 0. `npm run build` — type-check plus
+  `vite build`, **✓ built in 642ms**, 97 modules.
+- `npm run smoke:discovery` (new `scripts/discovery-browser-smoke.mjs`, controlled stub origin, real
+  Chrome) — **PASSED, 13 steps**: served-by-this-script identity assertion, the addressable
+  destination, list and detail side by side at 1440×900 (list 968px, detail 416px, no page overflow),
+  the Calculation/Displayed-results grouping with no profit filter, individual character disciplines
+  with supplied ratings, five candidates including a loss and an exact zero, Enter-to-select with
+  visible retained focus, selection marked for sight and assistive technology, the fresh row
+  (+42g 42s 42c) kept apart from the table row (+14g 81s 40c), requirements in supplied order with the
+  root's own inclusive cost and a null cost left as `—`, keyboard sort reversal and search issuing no
+  request while keeping the valid detail, the detail below the list at 360×800 with the table region
+  focusable, and a final audit that only Discovery's own routes were called, no Profit-only setting was
+  ever sent, and nothing left the origin.
+- `npm run smoke:discovery:live` (new `scripts/discovery-live-smoke.mjs`) against the **real backend
+  already running on 8080 with a populated database**, through a dev server this session started on an
+  isolated port 5193 — **PASSED**. Armorsmith/Nbt Anch rating 500, `inventoryCharacterName: "Nbt Anch"`,
+  `rowCount 672` and **672 rendered rows matching the response field for field** (name, recipe id,
+  level, craftable, buy cost, sell value, signed profit), of which **637 had non-positive profit and
+  were all still listed** — direct evidence that Profit's filter was not imported as eligibility.
+  Recipe 291 resolved to a real 4-node tree, `SINGLE_OUTPUT_REQUIREMENT`/`FRESH_CALCULATION`, node
+  labels matching the backend's own depth-first order, and a reload re-sent the same scope and
+  inventory character and re-requested the detail. Read-only throughout: no synchronization control was
+  touched and the check fails rather than synchronizing when the selector offers no character. The dev
+  server was then stopped and **port release was confirmed by a failed `curl`**, killing the `vite`
+  child by command line after `TaskStop` left it listening (`tasks/lessons.md`); the pre-existing
+  backend on 8080 was left running.
+
+**Verification limits, stated honestly.** The eligibility rules themselves — the rating filter, the
+account-wide recipe-knowledge rule and normal-discovery eligibility — are backend-owned and were
+**not** re-verified here; `smoke:discovery`'s special states (blocked, no-result, null-versus-zero,
+mismatched echoes, 404, `RESULT_UNAVAILABLE`) are **controlled-response evidence only**, and the live
+run confirms rendering fidelity against whatever the real backend returned, never that a value is
+domain-correct. No `TARGET_ARCHITECTURE.md` §33 timing is claimed for this page: Discovery is untimed,
+has no display limit and no virtualization, so 672 live candidates put 672 rows in the DOM — recorded
+in §5.11 rather than measured. Discovery's DOM-023 consumption is by construction (it displays the
+shared row's supplied `profitCopper`/`totalProfitCopper` and recreates no fee); DOM-023 is still TODO,
+so when it lands, only those supplied numbers change and this page needs no edit.
 
 ## Blockers
 

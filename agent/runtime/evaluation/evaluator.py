@@ -2,6 +2,7 @@ from agent.runtime.support.config import EVALUATOR_RESULT_FILE
 from agent.runtime.support.files import write_json
 from agent.runtime.evaluation.hermes_client import call_ollama
 from agent.runtime.core.story_state import classify_story_status, extract_status_section
+from agent.runtime.support.daily_log import log_line
 
 
 # ============================================================
@@ -190,6 +191,7 @@ CLAUDE_RESULT.md changed during this run:
 {result_was_updated}
 """
 
+    log_line("Evaluator started")
     raw_result = call_ollama(
         [
             {

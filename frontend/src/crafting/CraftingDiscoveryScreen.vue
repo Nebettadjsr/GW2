@@ -146,9 +146,11 @@ const effectiveSettingsSummary = computed(() => {
 
 /** What the detail region says when nothing is selected, in the results region's own situation. */
 const detailPlaceholder = computed(() => {
+  // Loading first, for the same reason the results region orders its states that way: while the
+  // selector is still being read, "no character is available" is not yet known to be true.
+  if (discovery.isLoading.value) return 'Details appear once the calculation has answered.'
   if (!discovery.canCalculate.value)
     return 'No character and discipline is available to calculate, so there is nothing to select.'
-  if (discovery.isLoading.value) return 'Details appear once the calculation has answered.'
   if (discovery.requestError.value !== null)
     return 'No result was loaded for this character, so there is nothing to select.'
   if (isEmptyResult.value)
@@ -272,23 +274,28 @@ function onReload(): void {
       >
         <h2 id="discovery-results-heading">Discoverable recipes</h2>
 
+        <!--
+          Loading comes first on purpose: the selector read is part of it, and until that has answered
+          the page does not yet know whether there is a character discipline to offer. Claiming there
+          is none while still looking would state something nothing has established.
+        -->
         <p
-          v-if="!discovery.canCalculate.value && discovery.selectorError.value === null"
+          v-if="discovery.isLoading.value"
+          class="notice notice--info"
+          role="status"
+          data-test="discovery-loading"
+        >
+          Looking for recipes this character can discover…
+        </p>
+
+        <p
+          v-else-if="!discovery.canCalculate.value && discovery.selectorError.value === null"
           class="notice notice--warning"
           data-test="discovery-no-character"
         >
           No character with a crafting discipline is available, so there is nothing to calculate.
           Discovery always applies to one character and one discipline, and this page will not guess
           either. Synchronize the account, then reload.
-        </p>
-
-        <p
-          v-else-if="discovery.isLoading.value"
-          class="notice notice--info"
-          role="status"
-          data-test="discovery-loading"
-        >
-          Looking for recipes this character can discover…
         </p>
 
         <p

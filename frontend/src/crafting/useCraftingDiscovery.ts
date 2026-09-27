@@ -77,9 +77,9 @@ export function useCraftingDiscovery(api: CraftingApi): CraftingDiscoveryState {
   let newestRequestId = 0
 
   /**
-   * Whether the user has chosen an inventory character themselves. Until they do, the initial value
-   * follows the initially selected character discipline; once they have, no selector reload overrides
-   * their choice — it only falls back when the backend no longer offers it (`DOMAIN_SPEC.md` 2.2.1).
+   * Whether the user has chosen an inventory character themselves. It tells an explicit "no character"
+   * apart from a value that has not been established yet — the two are both null, and only the first
+   * one must survive a selector reload (`DOMAIN_SPEC.md` 2.2.1).
    */
   let inventoryChosen = false
 
@@ -110,15 +110,19 @@ export function useCraftingDiscovery(api: CraftingApi): CraftingDiscoveryState {
   /**
    * The inventory character opens on the selected character discipline's own character — the page's
    * established individual-character start, rather than an account-wide pool the user did not ask for.
-   * It is only an initial value: like the two JavaFX selectors, the two controls are independent
-   * afterwards, so changing the character discipline never rewrites a chosen inventory character. A
-   * chosen name the selector no longer offers falls back to this default instead of being submitted.
+   *
+   * That is an *initial* value only. Once a name is in effect it is the calculation's own input and a
+   * selector reload leaves it alone, whether the user picked it or it started as this default: a
+   * reload re-reads the selector, and re-deriving from the scope there would silently submit different
+   * owned materials than the result on screen was calculated with. Like the two JavaFX selectors, the
+   * two controls are independent afterwards, so changing the character discipline never rewrites it
+   * either. Only a name the selector no longer offers falls back to this default, and an explicit
+   * "no character" is a choice that stays.
    */
   function reconcileInventoryCharacter(): void {
-    if (inventoryChosen) {
-      const chosen = selectedInventoryCharacter.value
-      if (chosen === null || inventoryCharacterNames.value.includes(chosen)) return
-    }
+    const current = selectedInventoryCharacter.value
+    if (current === null && inventoryChosen) return
+    if (current !== null && inventoryCharacterNames.value.includes(current)) return
     selectedInventoryCharacter.value = selectedScope.value?.request.characterName ?? null
   }
 
@@ -194,14 +198,20 @@ export function useCraftingDiscovery(api: CraftingApi): CraftingDiscoveryState {
      * Opening the screen loads the selector facts first and only then calculates: the route needs a
      * character discipline, so the request cannot be issued in parallel the way Profit's default one
      * is. Nothing is sent when the selector supplied no character or failed.
+     *
+     * The selector read is part of the page's loading state. Until it has answered, whether there is
+     * a character discipline at all is simply not known yet — reporting "no character" there would
+     * state something the page has not established, so `requestDiscovery` is what clears this again.
      */
     async open(): Promise<void> {
+      isLoading.value = true
       await loadSelectorOptions()
       await requestDiscovery()
     },
 
     /** Manual reload. Keeps the current scope, inventory character and settings; search and sort too. */
     async reload(): Promise<void> {
+      isLoading.value = true
       await loadSelectorOptions()
       await requestDiscovery()
     },

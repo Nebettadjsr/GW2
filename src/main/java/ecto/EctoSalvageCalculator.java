@@ -10,6 +10,16 @@ public final class EctoSalvageCalculator {
     public static final double DUST_PER_ECTO = 0.75;
     public static final int ECTOS_PER_1000_LUCK = 50;
 
+    /**
+     * The percentage form of the same fee, for boundaries that have to state it (DOMAIN_SPEC.md §25).
+     *
+     * <p>Declared separately from {@link #SELL_FEE_MULTIPLIER} rather than derived from it: deriving
+     * the multiplier from this would change the existing double arithmetic, and the existing
+     * calculation must keep producing exactly the values it produces today. {@code
+     * EctoSalvageCalculatorTest} pins the two to each other so they cannot drift apart silently.
+     */
+    public static final int SELL_FEE_PERCENT = 15;
+
     /** The project's Trading Post selling fee: 15% deducted from a Trading Post sale (DOMAIN_SPEC.md §46). */
     private static final double SELL_FEE_MULTIPLIER = 0.85;
 

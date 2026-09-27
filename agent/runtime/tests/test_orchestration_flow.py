@@ -157,6 +157,124 @@ class MainFlowTestCase(unittest.TestCase):
         return [line for line in self.logged if line.startswith("Decision:")]
 
 
+class EvaluatorRetryTests(unittest.TestCase):
+    def test_timeout_retries_and_then_returns_evaluation(self):
+        result = {"decision": "COMPLETE", "reason": "ok"}
+        with patch.object(orchestrator, "evaluate_story",
+                          side_effect=[TimeoutError("slow"), result]), \
+             patch.object(orchestrator, "EVALUATION_ATTEMPTS", 2), \
+             patch.object(orchestrator, "EVALUATION_RETRY_SECONDS", 0), \
+             patch.object(orchestrator.time, "sleep"), \
+             patch.object(orchestrator, "log_line") as log:
+            actual = orchestrator._evaluate_with_local_retries("story", "result", 0, True)
+        self.assertEqual(actual, result)
+        self.assertTrue(any("Evaluator timeout after" in c.args[0]
+                            and "attempt 1/2" in c.args[0]
+                            for c in log.call_args_list))
+
+    def test_retry_exhaustion_keeps_evaluation_local_without_reinvoking_claude(self):
+        class RetryLater(BaseException):
+            pass
+
+        claude = Mock()
+        with patch.object(orchestrator, "evaluate_story",
+                          side_effect=TimeoutError("slow")) as evaluate, \
+             patch.object(orchestrator, "EVALUATION_ATTEMPTS", 2), \
+             patch.object(orchestrator, "EVALUATION_RETRY_SECONDS", 0), \
+             patch.object(orchestrator.time, "sleep", side_effect=[None, RetryLater]), \
+             patch.object(orchestrator, "print_status") as status:
+            with self.assertRaises(RetryLater):
+                orchestrator._evaluate_preserving_completed_attempt(
+                    "story", "completed result", 0, True
+                )
+        self.assertEqual(evaluate.call_count, 2)
+        claude.assert_not_called()
+        self.assertIn("completed Claude work is preserved", status.call_args.args[0])
+
+
+class IdlePlanningTriggerTests(unittest.TestCase):
+    def make_scheduler(self, snapshot, result):
+        scheduler = orchestrator.CapacityScheduler(Mock(), Mock(), cache_file=None)
+        scheduler.codex_available = Mock(return_value=True)
+        scheduler._show_codex_capacity = Mock()
+        return scheduler
+
+    def test_unchanged_no_work_result_suppresses_idle_call(self):
+        scheduler = self.make_scheduler({"po": "a"},
+                                        {"status": "COMPLETE", "independent_work_remaining": False})
+        with patch.object(orchestrator, "planning_input_snapshot", return_value={"po": "a"}), \
+             patch.object(orchestrator, "planning_fingerprint", return_value="same"), \
+             patch.object(orchestrator, "get_selectable_story_candidates", return_value=["queued"]), \
+             patch.object(orchestrator, "should_trigger_planning", return_value=False), \
+             patch.object(orchestrator, "run_planning_pass") as run, \
+             patch.object(orchestrator, "log_line") as log:
+            scheduler._hold_planning({"status": "COMPLETE", "independent_work_remaining": False},
+                                     {"po": "a"}, "same")
+            self.assertFalse(scheduler.plan_if_useful(idle=True))
+        run.assert_not_called()
+        self.assertTrue(any("no planning inputs changed" in c.args[0]
+                            for c in log.call_args_list))
+
+    def test_independent_work_remaining_allows_bounded_followup(self):
+        scheduler = self.make_scheduler({"po": "a"},
+                                        {"status": "COMPLETE", "independent_work_remaining": True})
+        with patch.object(orchestrator, "planning_input_snapshot", return_value={"po": "a"}), \
+             patch.object(orchestrator, "planning_fingerprint", return_value="same"), \
+             patch.object(orchestrator, "get_selectable_story_candidates", return_value=["queued"]), \
+             patch.object(orchestrator, "should_trigger_planning", return_value=False), \
+             patch.object(orchestrator, "run_planning_pass", return_value={
+                 "status": "COMPLETE", "independent_work_remaining": True,
+                 "story_files_created": []}):
+            scheduler._hold_planning({"status": "COMPLETE", "independent_work_remaining": True},
+                                     {"po": "a"}, "same")
+            self.assertFalse(scheduler.plan_if_useful(idle=True))
+
+    def test_changed_po_ud_ar_or_story_completion_input_triggers_with_stocked_queue(self):
+        for key in ("product_owner_request", "user_decision", "architect_request",
+                    "claude_result_story_completion"):
+            with self.subTest(input=key):
+                scheduler = self.make_scheduler({key: "new"},
+                                                {"status": "COMPLETE", "independent_work_remaining": False})
+                scheduler._hold_planning({"status": "COMPLETE", "independent_work_remaining": False},
+                                         {key: "old"}, "old")
+                with patch.object(orchestrator, "planning_input_snapshot", return_value={key: "new"}), \
+                     patch.object(orchestrator, "planning_fingerprint", return_value="new"), \
+                     patch.object(orchestrator, "get_selectable_story_candidates", return_value=["queued"]), \
+                     patch.object(orchestrator, "should_trigger_planning", return_value=False), \
+                     patch.object(orchestrator, "run_planning_pass", return_value={
+                         "status": "COMPLETE", "independent_work_remaining": False,
+                         "story_files_created": []}) as run:
+                    scheduler.plan_if_useful(idle=False)
+                run.assert_called_once()
+
+    def test_planner_self_changes_are_snapshotted_after_pass(self):
+        scheduler = orchestrator.CapacityScheduler(Mock(), Mock(), cache_file=None)
+        scheduler.codex_available = Mock(return_value=True)
+        snapshots = iter([{"source": "before"}, {"source": "before", "planner_story": "created"}])
+        with patch.object(orchestrator, "planning_input_snapshot", side_effect=lambda: next(snapshots)), \
+             patch.object(orchestrator, "planning_fingerprint", side_effect=lambda s=None: "post" if s and "planner_story" in s else "pre"), \
+             patch.object(orchestrator, "get_selectable_story_candidates", return_value=[]), \
+             patch.object(orchestrator, "should_trigger_planning", return_value=True), \
+             patch.object(orchestrator, "run_planning_pass", return_value={
+                 "status": "COMPLETE", "independent_work_remaining": False,
+                 "story_files_created": ["new.md"]}):
+            self.assertTrue(scheduler.plan_if_useful())
+            self.assertEqual(scheduler.no_work_at, "post")
+
+    def test_stocked_queue_and_unchanged_inputs_do_not_idle_replan(self):
+        scheduler = orchestrator.CapacityScheduler(Mock(), Mock(), cache_file=None)
+        scheduler.codex_available = Mock(return_value=True)
+        scheduler._hold_planning({"status": "COMPLETE", "independent_work_remaining": False},
+                                 {"stable": "same"}, "stable")
+        with patch.object(orchestrator, "planning_input_snapshot", return_value={"stable": "same"}), \
+             patch.object(orchestrator, "planning_fingerprint", return_value="stable"), \
+             patch.object(orchestrator, "get_selectable_story_candidates", return_value=["queued", "queued-2"]), \
+             patch.object(orchestrator, "should_trigger_planning", return_value=False), \
+             patch.object(orchestrator, "run_planning_pass") as run:
+            self.assertFalse(scheduler.plan_if_useful(idle=True))
+        run.assert_not_called()
+
+
 class ClaudeWithWorkTest(MainFlowTestCase):
 
     def test_available_claude_selects_executes_and_continues_automatically(self):
@@ -267,7 +385,7 @@ class PlannerReplenishmentTest(MainFlowTestCase):
             self.run_main(expect_stop=True)
 
         self.assertEqual(
-            self.events, ["plan", "select", "claude", "plan", "select"]
+            self.events, ["plan", "select", "claude", "select"]
         )
 
 

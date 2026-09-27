@@ -800,3 +800,466 @@
 [07:20:50] Hosted codex planner exit code: 1
 [07:20:50] ========================================
 [07:20:50] Codex capacity exhausted during planning; retried after the local cooldown.
+[10:08:19] Claude capacity available again.
+[10:08:19] Orchestration resumed: continuing the active story after waiting locally for Claude capacity.
+[10:08:23] ========================================
+[10:08:23] Starting Claude Code
+[10:08:23] ========================================
+[10:36:18] STORY-WEB-012 is complete. I resumed the interrupted attempt rather than restarting it.
+[10:36:18] ## What I found
+[10:36:18] The previous session had committed the **entire production implementation** plus the Discovery test fixtures in `04d7555` and stopped before writing a single test. I verified that code against the acceptance criteria instead of rewriting it, then added what was missing: the tests, the browser evidence, and the documentation.
+[10:36:18] ## Three defects the new tests exposed
+[10:36:18] 1. **A reload silently rewrote the inventory character.** `reconcileInventoryCharacter` re-derived the value from the currently selected scope on every selector read whenever the user hadn't explicitly picked one — but a scope change deliberately *doesn't* reconcile. So selecting Chef/Sat Anat then pressing Reload submitted `inventoryCharacterName: "Sat Anat"` where the result on screen had been calculated with `"Nbt Anch"`: a changed calculation input from the one action whose job is to preserve them.
+[10:36:18] 2. **The page claimed "no character" before it knew.** The results region tested `!canCalculate` ahead of `isLoading`, and `isLoading` stayed false during the selector read — so first paint asserted "No character with a crafting discipline is available… Synchronize the account" while that read was still in flight. Found because the live check reads the page right after `domcontentloaded`.
+[10:36:18] 3. **My live script hid its own failures.** Unawaited `waitForResponse` promises became uncaught rejections on browser close, replacing the real assertion message with an error pointing at a setup line. Fixed, and recorded in `tasks/lessons.md` since it cost a full debug cycle.
+[10:36:18] ## Evidence
+[10:36:18] | Check | Result |
+[10:36:18] |---|---|
+[10:36:18] | `CraftingDiscoveryScreen.spec.ts` (new) | 33 passed |
+[10:36:18] | `discoveryResolutionAssociation.spec.ts` (new) | 23 passed |
+[10:36:18] | `vitest run src/crafting src/__tests__` | 12 files, 219 passed |
+[10:36:18] | `vitest run` (whole frontend) | 19 files, 289 passed |
+[10:36:18] | type-check / build | clean, ✓ 642ms |
+[10:36:18] | `smoke:discovery` (new, stub origin) | PASSED, 13 steps, real Chrome |
+[10:36:18] | `smoke:discovery:live` (new, real backend) | PASSED |
+[10:36:18] The live run is the strongest evidence: against the real backend on 8080 with real data, **672 rendered rows matched the response field for field**, and **637 of them had non-positive profit and every one was still listed** — direct proof that Profit's "hide profit ≤ 0" filter was not imported as Discovery eligibility. Recipe 291 resolved to a real 4-node tree matching the backend's depth-first order.
+[10:36:18] One baseline failure existed before I started: `App.spec.ts` asserted the exact navigation list from *before* this story added `#/discovery` — the `lessons.md` "a check that asserts an absence expires the day the feature arrives" pattern.
+[10:36:18] ## Limits I want to be explicit about
+[10:36:18] - The eligibility rules themselves (rating filter, account-wide knowledge, normal-discovery) are backend-owned and **were not re-verified**. Every special state — blocked, no-result, null-vs-zero, mismatched echo, 404, `RESULT_UNAVAILABLE` — is **controlled-response evidence only**.
+[10:36:18] - **No §33 timing is claimed.** Discovery has no display limit and no virtualization, so those 672 live candidates put 672 rows in the DOM. I recorded that in `CURRENT_ARCHITECTURE.md` §5.11 rather than measuring it.
+[10:36:18] - Criterion 8 (icons) is **met, not deferred** — WEB-010 is DONE, so `ItemIcon` is reused with the backend's `iconUrl` verbatim. Nothing outstanding to record.
+[10:36:18] I started a dev server on isolated port 5193 for the live check and stopped it afterwards; `TaskStop` left the `vite` child listening, so I killed it by command line and **confirmed port release with a failed `curl`**. The pre-existing backend on 8080 is untouched. Nothing under `src/` or `pom.xml` changed, and I did not commit — per `CODING_GUIDELINES.md` §8 that's the orchestrator's step.
+[10:36:18] ========================================
+[10:36:18] Claude Code exit code: 0
+[10:36:18] ========================================
+[10:36:22] Claude run measurement: repo_map=off, duration=1675.4s, usage_before=0, usage_after=59
+[11:38:34] GW2 AI Orchestrator started. Repository: C:\Users\Administrator\IdeaProjects\GW2
+[11:38:46] Availability check: claude_available=True, codex_available=True
+[11:38:46] Decision: code (select next story) -- reason: 2 selectable To Do candidate(s), Claude available
+[11:38:46] ========================================
+[11:38:46] Story selector: NEXT
+[11:38:46] Reason: Deterministic selection: first executable entry in BACKLOG.md's 'To Do' order (STORY-WEB-013-ectoplasm-salvage-page.md).
+[11:38:46] ========================================
+[11:38:46] Next story activated:
+[11:38:46] agent/stories/STORY-WEB-013-ectoplasm-salvage-page.md
+[11:38:55] Availability check: claude_available=True, codex_available=True
+[11:38:55] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[11:38:55] ========================================
+[11:38:55] Active story: agent/stories/STORY-WEB-013-ectoplasm-salvage-page.md
+[11:38:55] ========================================
+[11:44:52] RepoMap: disabled, budget=1200 tokens
+[11:45:03] ========================================
+[11:45:03] Starting Claude Code
+[11:45:03] ========================================
+[12:07:09] You've hit your session limit · resets 3pm (Europe/Berlin)
+[12:07:09] ========================================
+[12:07:09] Claude Code exit code: 1
+[12:07:09] ========================================
+[12:07:14] Claude run measurement: repo_map=off, duration=1326.7s, usage_before=59, usage_after=100
+[12:07:14] Claude exited with code 1 after running out of capacity. Story remains active and UNFINISHED; waiting locally for capacity before continuing the same story.
+[12:07:14] Claude capacity exhausted during STORY-WEB-013-ectoplasm-salvage-page.md; story preserved as UNFINISHED, waiting locally.
+[12:07:14] Claude capacity exhausted (first detected).
+[12:07:21] Planning resumed for changed inputs: agent/CURRENT_STORY.md, agent/product-owner-requests/Request-011-chenged-app-state.md, agent/product-owner-requests/Request-012-crafting-tree.md, agent/runtime/artifacts/CLAUDE_RESULT.md, agent/stories/BACKLOG.md, agent/stories/STORY-WEB-012-crafting-discovery-page.md, agent/stories/STORY-WEB-013-ectoplasm-salvage-page.md, agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md, docs/CURRENT_ARCHITECTURE.md, docs/KNOWN_PROBLEMS.md, docs/ROADMAP.md, docs/TARGET_ARCHITECTURE.md, docs/TEST_STRATEGY.md
+[12:07:21] ========================================
+[12:07:21] Running project-planning pass
+[12:07:21] ========================================
+[12:07:22] ========================================
+[12:07:22] Starting hosted Codex planner
+[12:07:22] ========================================
+[12:07:22] [planner] session 01a0e255-658c-7973-bf68-2e36ab740e17
+[12:07:23] [planner] reasoning...
+[12:07:29] Planner last response:
+[12:07:29] I’ll check Request-012 against the existing detail-view story and authoritative requirements, then plan any uncovered Phase 5 work. I’ll leave the active story and milestone unchanged.
+[12:07:39] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[12:07:39] from pathlib import Path
+[12:07:39] import re
+[12:07:39] for name, patterns in [
+[12:07:39]  ('docs/DOMAIN_SPEC.md', [r'"'^## 2'"\\.', r'"'^### 2'"\\.1',r'"'^#### 2'"\\.1']),
+[12:07:39]  ('docs/TARGET_ARCHITECTURE.md', [r'"'^## (4|12|13|14|30|33|34)'"\\.',r'"'^### (4'"\\.1|12\\.|13\\.)']),
+[12:07:39]  ('docs/TEST_STRATEGY.md', [r'"'^## (12|36)'"\\.'])]:
+[12:07:39]  print(name)
+[12:07:39]  for i,line in enumerate(Path(name).read_text(encoding='utf-8').splitlines(),1):
+[12:07:39]   if any(re.search(p,line) for p in patterns): print(f'{i}: {line}')
+[12:07:39] print(Path('agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md').read_text(encoding='utf-8'))
+[12:07:39] '@ | python -"
+[12:07:39] [planner command done] exit 0
+[12:07:49] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[12:07:49] from pathlib import Path
+[12:07:49] import re
+[12:07:49] for name, ranges in [('docs/DOMAIN_SPEC.md',[(46,163)]),('docs/TARGET_ARCHITECTURE.md',[(84,131),(425,620)]),('docs/TEST_STRATEGY.md',[(570,601),(633,665),(1333,1372)])]:
+[12:07:49]  lines=Path(name).read_text(encoding='utf-8').splitlines()
+[12:07:49]  print(name)
+[12:07:50]  for a,b in ranges:
+[12:07:50]   for i in range(a-1,min(b,len(lines))): print(f'{i+1}: {lines[i]}')
+[12:07:50]  if 'TARGET' in name:
+[12:07:50]   for i,line in enumerate(lines,1):
+[12:07:50]    if re.search(r'"'^#{1,3} (14|30|33|34)[ .—]'"',line):print(f'{i}: {line}')
+[12:07:50] '@ | python -"
+[12:07:50] [planner command done] exit 0
+[12:07:55] Planner last response:
+[12:07:55] Request-012 adds tree presentation work beyond WEB-015’s purchase and blocking-detail changes. I’ll add a small story for collapsed nodes and compact summaries, preserving the existing backend calculation contract.
+[12:08:00] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[12:08:00] from pathlib import Path
+[12:08:00] p=Path('docs/TARGET_ARCHITECTURE.md').read_text(encoding='utf-8')
+[12:08:00] for title in ['# 30. Technology Decisions','# 33. Crafting Calculation Performance','# 34. Repository Quality and Project-Health Reviews']:
+[12:08:00]  start=p.index(title); end=p.find('\\n# ',start+len(title)); print(p[start:end if end>=0 else len(p)])
+[12:08:00] print(Path('agent/stories/STORY-WEB-007-profit-resolution-detail-view.md').read_text(encoding='utf-8'))
+[12:08:00] '@ | python -"
+[12:08:01] [planner command done] exit 1
+[12:08:09] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$env:PYTHONIOENCODING='"'utf-8'; @'
+[12:08:09] from pathlib import Path
+[12:08:09] p=Path('agent/stories/STORY-WEB-007-profit-resolution-detail-view.md').read_text(encoding='utf-8')
+[12:08:09] for heading in ['## Acceptance Criteria','## Result']:
+[12:08:09]  start=p.index(heading); end=p.find('\\n## ',start+len(heading)); print(p[start:end if end>=0 else len(p)])
+[12:08:09] '@ | python -"
+[12:08:09] [planner command done] exit 0
+[12:09:11] [planner file change] completed
+[12:09:16] Planner last response:
+[12:09:16] The review found one uncovered slice: compact tree presentation. The other implementation areas are covered by completed or queued stories. Full-page performance verification and the health review remain prerequisites for milestone closure once the integrated frontend is ready.
+[12:09:16] I’ve recorded the presentation requirements and created WEB-016. It will preserve the fresh calculation that supplies the tree while removing its redundant summary from the normal view.
+[12:09:40] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[12:09:40] from pathlib import Path
+[12:09:40] import re
+[12:09:40] p=Path('agent/stories/BACKLOG.md')
+[12:09:40] s=p.read_text(encoding='utf-8')
+[12:09:40] a=s.index('## To Do'); b=s.index('\\n## ',a+1)
+[12:09:40] section=s[a:b]
+[12:09:40] entry='- STORY-WEB-016 | STORY-WEB-016-compact-crafting-resolution-tree.md | TODO | milestone-05: Compact resolution summaries and recursively collapsed ingredient groups; execute after WEB-015 and preserve backend fresh-resolution semantics.\\n'
+[12:09:40] assert 'STORY-WEB-016' not in s
+[12:09:40] s=s[:b].rstrip()+'\\n\\n'+entry+'\\n'+s[b:]
+[12:09:40] p.write_text(s,encoding='utf-8')
+[12:09:40] p=Path('agent/product-owner-requests/Request-012-crafting-tree.md')
+[12:09:40] s=p.read_text(encoding='utf-8')
+[12:09:40] def replace_section(s,heading,body):
+[12:09:40]  pattern=re.compile(r'("'^## '"'+re.escape(heading)+r'\\s*\\n).*?(?="'^## |'"\\Z)',re.M|re.S)
+[12:09:40]  assert len(pattern.findall(s))==1, heading
+[12:09:40]  return pattern.sub(lambda m:m.group(1).rstrip()+'\\n\\n'+body+'\\n\\n',s)
+[12:09:40] s=replace_section(s,'Status','RESOLVED')
+[12:09:40] s=replace_section(s,'Planner Resolution','2026-09-27: RESOLVED as planning coverage, not implementation completion. Updated docs/DOMAIN_SPEC.md section 2.1.1 as the presentation requirement owner before creating agent/stories/STORY-WEB-016-compact-crafting-resolution-tree.md and adding it to agent/stories/BACKLOG.md. WEB-016 covers compact summaries, preserved sourcing/quantities/crafters, recursively collapsed ingredient groups, removal of normal bookkeeping and introductory prose, and review of economic rows. Reused agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md for counted-craft purchases and concrete blocking causes. Reviewed the fresh calculation against docs/TARGET_ARCHITECTURE.md section 13 and agent/stories/STORY-WEB-007-profit-resolution-detail-view.md: preserve the established backend calculation supplying the tree and response association, while WEB-016 removes the redundant fresh-row summary from the normal view and keeps its basis concise or optional. No backend contract or calculation change is authorized by this presentation request.')
+[12:09:40] p.write_text(s,encoding='utf-8')
+[12:09:40] p=Path('agent/PROJECT_STATE.md'); s=p.read_text(encoding='utf-8'); assert 'Last planning run: 2026-09-26' in s; p.write_text(s.replace('Last planning run: 2026-09-26','Last planning run: 2026-09-27'),encoding='utf-8')
+[12:09:40] p=Path('agent/stories/STORY-WEB-016-compact-crafting-resolution-tree.md')
+[12:09:40] headings=re.findall(r'"'^## (.+)$'"',p.read_text(encoding='utf-8'),re.M)
+[12:09:40] assert headings==['Story ID','Title','Status','Milestone','Goal','Authoritative Source Documents / Sections','Context','Acceptance Criteria','Required Tests','Constraints','Dependencies','Definition of Done','Result','Blockers']
+[12:09:40] print('Planning edits applied; story heading contract verified.')
+[12:09:40] '@ | python -"
+[12:09:40] [planner command done] exit 1
+[12:10:02] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[12:10:02] from pathlib import Path
+[12:10:02] import re
+[12:10:02] p=Path('agent/product-owner-requests/Request-012-crafting-tree.md'); s=p.read_text(encoding='utf-8')
+[12:10:02] def section(s,heading,body):
+[12:10:02]  pattern=re.compile(r'"'^## '"'+re.escape(heading)+r'["'^'"\\S\\n]*(?:\\n|"'$).*?(?=''^## |'"\\Z)',re.M|re.S)
+[12:10:02]  assert len(pattern.findall(s))==1,heading
+[12:10:02]  return pattern.sub(lambda m:'## '+heading+'\\n\\n'+body+'\\n\\n',s)
+[12:10:02] s=section(s,'Status','RESOLVED')
+[12:10:02] s=section(s,'Planner Resolution','2026-09-27: RESOLVED as planning coverage, not implementation completion. Updated docs/DOMAIN_SPEC.md section 2.1.1 as the presentation requirement owner before creating agent/stories/STORY-WEB-016-compact-crafting-resolution-tree.md and adding it to agent/stories/BACKLOG.md. WEB-016 covers compact summaries, preserved sourcing/quantities/crafters, recursively collapsed ingredient groups, removal of normal bookkeeping and introductory prose, and review of economic rows. Reused agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md for counted-craft purchases and concrete blocking causes. Reviewed the fresh calculation against docs/TARGET_ARCHITECTURE.md section 13 and agent/stories/STORY-WEB-007-profit-resolution-detail-view.md: preserve the established backend calculation supplying the tree and response association, while WEB-016 removes the redundant fresh-row summary from the normal view and keeps its basis concise or optional. No backend contract or calculation change is authorized by this presentation request.')
+[12:10:02] p.write_text(s,encoding='utf-8')
+[12:10:02] p=Path('agent/PROJECT_STATE.md'); s=p.read_text(encoding='utf-8'); assert 'Last planning run: 2026-09-26' in s; p.write_text(s.replace('Last planning run: 2026-09-26','Last planning run: 2026-09-27'),encoding='utf-8')
+[12:10:02] p=Path('agent/stories/STORY-WEB-016-compact-crafting-resolution-tree.md')
+[12:10:02] assert re.findall(r'"'^## (.+)$'"',p.read_text(encoding='utf-8'),re.M)==['Story ID','Title','Status','Milestone','Goal','Authoritative Source Documents / Sections','Context','Acceptance Criteria','Required Tests','Constraints','Dependencies','Definition of Done','Result','Blockers']
+[12:10:02] print('Request resolved; continuity date and story structure verified.')
+[12:10:02] '@ | python -"
+[12:10:02] [planner command done] exit 0
+[12:10:36] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[12:10:36] from pathlib import Path
+[12:10:36] import json
+[12:10:36] result={
+[12:10:36]  'status':'COMPLETE',
+[12:10:36]  'phase_considered':'Phase 5',
+[12:10:36]  'independent_work_remaining':False,
+[12:10:36]  'phase_review':[
+[12:10:36]   {'area':'Frontend framework and language','outcome':'COVERED','references':['AR-001','docs/TARGET_ARCHITECTURE.md section 4.1']},
+[12:10:36]   {'area':'Profit table, resolution and special-state rendering','outcome':'COVERED','references':['STORY-WEB-001','STORY-WEB-006','STORY-WEB-007','STORY-WEB-008','STORY-DOM-021','STORY-WEB-014']},
+[12:10:36]   {'area':'Compact recursive tree and redundant fresh summary (Request-012)','outcome':'PLANNED','references':['docs/DOMAIN_SPEC.md section 2.1.1','agent/stories/STORY-WEB-016-compact-crafting-resolution-tree.md','agent/product-owner-requests/Request-012-crafting-tree.md']},
+[12:10:36]   {'area':'Counted-craft purchases and concrete blocking details','outcome':'COVERED','references':['STORY-WEB-015']},
+[12:10:36]   {'area':'Discovery and bank/material views','outcome':'COVERED','references':['STORY-WEB-012','STORY-WEB-003','STORY-API-007']},
+[12:10:36]   {'area':'Sync triggers and task progress','outcome':'COVERED','references':['STORY-WEB-002','UD-007']},
+[12:10:36]   {'area':'Ectoplasm browser workflow','outcome':'PREREQUISITE','references':['STORY-WEB-013']},
+[12:10:36]   {'area':'Shared backend fee policy and client integration','outcome':'COVERED','references':['UD-011','STORY-DOM-022','STORY-DOM-023','STORY-DOM-024']},
+[12:10:36]   {'area':'Icons, referenced metadata and favicon','outcome':'COVERED','references':['STORY-API-009','STORY-WEB-010','STORY-SYNC-004','STORY-WEB-009']},
+[12:10:36]   {'area':'Backend authority, JavaFX coexistence and frontend verification','outcome':'COVERED','references':['docs/TARGET_ARCHITECTURE.md sections 12-14','docs/TEST_STRATEGY.md sections 12 and 36','STORY-WEB-013','STORY-DOM-023','STORY-DOM-024','STORY-WEB-016']},
+[12:10:36]   {'area':'Final integrated Profit full-page real-database performance verification','outcome':'PREREQUISITE','references':['docs/TARGET_ARCHITECTURE.md section 33','agent/PROJECT_STATE.md','STORY-WEB-015','STORY-WEB-016','STORY-DOM-023','STORY-SYNC-004']},
+[12:10:36]   {'area':'Bounded health review before milestone closure','outcome':'PREREQUISITE','references':['docs/TARGET_ARCHITECTURE.md section 34','agent/PROJECT_STATE.md','STORY-WEB-013','STORY-WEB-016','STORY-DOM-024']},
+[12:10:36]   {'area':'Executable queue phase gating','outcome':'COVERED','references':['agent/stories/BACKLOG.md']}
+[12:10:36]  ],
+[12:10:36]  'phase_exit_criteria_satisfied':False,
+[12:10:36]  'story_files_created':['STORY-WEB-016-compact-crafting-resolution-tree.md'],
+[12:10:36]  'user_decision_ids':[],
+[12:10:36]  'product_owner_requests_processed':['Request-012-crafting-tree.md'],
+[12:10:36]  'architect_requests_created':[],
+[12:10:36]  'milestone_transition':False,
+[12:10:36]  'completed_milestone':None,
+[12:10:36]  'next_milestone':None,
+[12:10:36]  'backlog_updated':True,
+[12:10:36]  'roadmap_updated':False,
+[12:10:36]  'project_state_updated':True,
+[12:10:36]  'reason':'Resolved Request-012 through authoritative presentation requirements and one milestone-05 story, queued after WEB-015. Existing stories cover the other implementation areas; the active Ectoplasm story remains untouched. Final integrated Profit performance evidence and the bounded health review await remaining implementation. No independent planning gap or new decision was identified; Phase 5 stays open and all selectable stories remain milestone-05.'
+[12:10:36] }
+[12:10:36] p=Path('agent/runtime/artifacts/PLANNING_RESULT.json'); p.parent.mkdir(parents=True,exist_ok=True); p.write_text(json.dumps(result,indent=2)+'\\n',encoding='utf-8')
+[12:10:36] '@ | python -"
+[12:10:36] [planner command done] exit 0
+[12:10:41] Planner last response:
+[12:10:41] Created STORY-WEB-016 for compact, collapsed crafting trees and resolved Request-012 as planning coverage. Updated domain requirements, backlog and continuity date.
+[12:10:41] Phase 5 remains open; the active story is untouched. Wrote `PLANNING_RESULT.json` with status `COMPLETE` and no milestone transition.
+[12:10:41] [planner] turn completed | input tokens: 418998 | cached input tokens: 363904 | output tokens: 5200
+[12:10:42] ========================================
+[12:10:42] [planner] turn totals | model requests: 1 | gross input tokens: 418,998 | cached input tokens: 363,904 | uncached input tokens: 55,094 | output tokens: 5,200
+[12:10:42] Hosted codex planner exit code: 0
+[12:10:42] ========================================
+[12:10:42] ========================================
+[12:10:42] Planning result: FAILED
+[12:10:42] Reason: Resolved Request-012 through authoritative presentation requirements and one milestone-05 story, queued after WEB-015. Existing stories cover the other implementation areas; the active Ectoplasm story remains untouched. Final integrated Profit performance evidence and the bounded health review await remaining implementation. No independent planning gap or new decision was identified; Phase 5 stays open and all selectable stories remain milestone-05.
+[12:10:42] Validation problems:
+[12:10:42] - STORY-WEB-016-compact-crafting-resolution-tree.md has unresolved prerequisites but is not BLOCKED: ['depends on STORY-WEB-015, which is not DONE (currently TODO)']
+[12:10:42] ========================================
+[12:10:42] Project planning FAILED: Resolved Request-012 through authoritative presentation requirements and one milestone-05 story, queued after WEB-015. Existing stories cover the other implementation areas; the active Ectoplasm story remains untouched. Final integrated Profit performance evidence and the bounded health review await remaining implementation. No independent planning gap or new decision was identified; Phase 5 stays open and all selectable stories remain milestone-05.; validation: ["STORY-WEB-016-compact-crafting-resolution-tree.md has unresolved prerequisites but is not BLOCKED: ['depends on STORY-WEB-015, which is not DONE (currently TODO)']"]. Held until planning inputs change; independent execution continues.
+[12:39:50] Planning resumed for changed inputs: agent/product-owner-requests/Request-012-crafting-tree.md
+[12:39:50] ========================================
+[12:39:50] Running project-planning pass
+[12:39:50] ========================================
+[12:39:50] ========================================
+[12:39:50] Starting hosted Codex planner
+[12:39:50] ========================================
+[12:39:51] [planner] session 01a0e273-201e-7451-80c3-3baf3a3f85f2
+[12:39:51] [planner] reasoning...
+[12:39:55] Planner last response:
+[12:39:55] I’ll review Phase 5 coverage and the prerequisites for its performance check and health review. I’ll leave the active story unchanged and keep the milestone open.
+[12:39:59] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$p = '"'docs/TARGET_ARCHITECTURE.md'; Select-String -Path "'$p -Pattern '"'"'^#{2,3} (4'"\\.1|12\\.|12 |13\\.|13 |14\\.|14 |30\\.|30 |33\\.|33 |34\\.|34 )'"
+[12:39:59] [planner command done] exit 0
+[12:40:03] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path docs/TARGET_ARCHITECTURE.md -Pattern '"'^## '"'"
+[12:40:04] [planner command done] exit 0
+[12:40:08] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path docs/TARGET_ARCHITECTURE.md -Pattern '"'^# (12|13|14|30|31|32|33|34|35)[. ]'"'"
+[12:40:08] [planner command done] exit 0
+[12:40:12] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$lines = Get-Content docs/TARGET_ARCHITECTURE.md; $lines[83..130]; $lines[431..527]; $lines[899..925]; $lines[977..1004]'
+[12:40:12] [planner command done] exit 0
+[12:40:18] Planner last response:
+[12:40:18] The queue already covers the remaining feature changes, and the frontend framework decision is settled. The full-page performance check still depends on the pending Profit changes; the health review belongs near completion. I’m checking the existing verification coverage before recording a zero-story result.
+[12:40:24] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$paths = @('"'agent/stories/STORY-WEB-001-crafting-profit-table.md', 'agent/stories/STORY-WEB-012-crafting-discovery-page.md', 'agent/stories/STORY-WEB-002-sync-task-controls.md'); foreach ("'$path in $paths) { Write-Output $path; $raw = Get-Content -Raw -Encoding UTF8 $path; [regex]::Matches($raw, '"'(?ms)"'^## (Required Tests|Result)'"\\r?\\n.*?(?="'^## |'"\\z)') | ForEach-Object { "'$_.Value } }'
+[12:40:25] [planner command done] exit 0
+[12:40:29] Planner last response:
+[12:40:29] Existing stories cover the reviewed Phase 5 work, including frontend interaction tests and backend-owned calculations. Earlier browser timings explicitly do not establish final performance acceptance. No new story or decision is justified in this pass; I’ll record the outstanding exit checks as waiting on implementation.
+[12:41:05] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[12:41:05] import json
+[12:41:05] from pathlib import Path
+[12:41:05] result = {
+[12:41:05]     'status': 'COMPLETE',
+[12:41:05]     'phase_considered': 'Phase 5',
+[12:41:05]     'independent_work_remaining': False,
+[12:41:05]     'phase_review': [
+[12:41:05]         {'area': 'Frontend framework and language', 'outcome': 'COVERED', 'references': ['AR-001', 'docs/TARGET_ARCHITECTURE.md §4.1', 'STORY-WEB-001']},
+[12:41:05]         {'area': 'Crafting Profit table, resolution tree and special-state presentation', 'outcome': 'COVERED', 'references': ['docs/TARGET_ARCHITECTURE.md §§12–14', 'STORY-WEB-007', 'STORY-WEB-008', 'STORY-DOM-021', 'STORY-WEB-014', 'STORY-WEB-015', 'STORY-WEB-016']},
+[12:41:05]         {'area': 'Crafting Discovery browser workflow', 'outcome': 'COVERED', 'references': ['agent/stories/STORY-WEB-012-crafting-discovery-page.md']},
+[12:41:05]         {'area': 'Bank and materials browser views', 'outcome': 'COVERED', 'references': ['STORY-API-007', 'STORY-WEB-003']},
+[12:41:05]         {'area': 'Ectoplasm browser screen and shared fee policy', 'outcome': 'COVERED', 'references': ['STORY-WEB-013', 'STORY-DOM-022', 'STORY-DOM-023', 'STORY-DOM-024', 'UD-011']},
+[12:41:05]         {'area': 'API-triggered synchronization and task status presentation', 'outcome': 'COVERED', 'references': ['agent/stories/STORY-WEB-002-sync-task-controls.md']},
+[12:41:05]         {'area': 'Item metadata, reusable icons and browser favicon', 'outcome': 'COVERED', 'references': ['docs/TARGET_ARCHITECTURE.md §12.1', 'STORY-API-009', 'STORY-WEB-010', 'STORY-SYNC-004', 'STORY-WEB-009']},
+[12:41:05]         {'area': 'Frontend rendering and interaction verification without domain recalculation', 'outcome': 'COVERED', 'references': ['agent/stories/STORY-WEB-001-crafting-profit-table.md', 'agent/stories/STORY-WEB-002-sync-task-controls.md', 'agent/stories/STORY-WEB-012-crafting-discovery-page.md', 'docs/TARGET_ARCHITECTURE.md §§4.1,12']},
+[12:41:05]         {'area': 'JavaFX coexistence and shared backend economics', 'outcome': 'COVERED', 'references': ['STORY-WEB-001', 'STORY-WEB-002', 'STORY-WEB-013', 'STORY-DOM-023', 'STORY-DOM-024']},
+[12:41:05]         {'area': 'Final integrated Profit full-page performance verification on the real user database', 'outcome': 'PREREQUISITE', 'references': ['docs/TARGET_ARCHITECTURE.md §33', 'agent/PROJECT_STATE.md', 'agent/stories/STORY-WEB-001-crafting-profit-table.md', 'STORY-WEB-015', 'STORY-WEB-016', 'STORY-SYNC-004', 'STORY-DOM-023']},
+[12:41:05]         {'area': 'Bounded project health review near milestone completion', 'outcome': 'PREREQUISITE', 'references': ['docs/TARGET_ARCHITECTURE.md §34', 'agent/PROJECT_STATE.md', 'STORY-WEB-013', 'STORY-WEB-015', 'STORY-WEB-016', 'STORY-SYNC-004', 'STORY-DOM-023', 'STORY-DOM-024', 'STORY-WEB-009']},
+[12:41:05]         {'area': 'Executable queue phase gating', 'outcome': 'COVERED', 'references': ['agent/stories/BACKLOG.md']}
+[12:41:05]     ],
+[12:41:05]     'phase_exit_criteria_satisfied': False,
+[12:41:05]     'story_files_created': [],
+[12:41:05]     'user_decision_ids': [],
+[12:41:05]     'product_owner_requests_processed': [],
+[12:41:05]     'architect_requests_created': [],
+[12:41:05]     'milestone_transition': False,
+[12:41:05]     'completed_milestone': None,
+[12:41:05]     'next_milestone': None,
+[12:41:05]     'backlog_updated': False,
+[12:41:05]     'roadmap_updated': False,
+[12:41:05]     'project_state_updated': False,
+[12:41:05]     'reason': 'Phase 5 feature work is already covered by completed, active and queued stories; all supplied selectable entries belong to milestone-05. No unresolved PO request or independently identifiable decision requires a new artifact. Final integrated Profit performance verification awaits pending Profit changes, and the bounded health review awaits substantially complete implementation. Earlier WEB-001 timings explicitly do not establish final performance acceptance. Keep Phase 5 open, preserve the active WEB-013 story and reuse the existing queue without duplication.'
+[12:41:05] }
+[12:41:05] p = Path('agent/runtime/artifacts/PLANNING_RESULT.json')
+[12:41:05] p.parent.mkdir(parents=True, exist_ok=True)
+[12:41:05] p.write_text(json.dumps(result, indent=2, ensure_ascii=False) + '\\n', encoding='utf-8')
+[12:41:05] '@ | python -"
+[12:41:05] [planner command done] exit 0
+[12:41:09] Planner last response:
+[12:41:09] Recorded `COMPLETE` in [PLANNING_RESULT.json](agent/runtime/artifacts/PLANNING_RESULT.json).
+[12:41:09] Created zero stories; existing work covers the remaining scope. Phase 5 stays open pending implementation, final performance verification, and health review. Active story and backlog unchanged.
+[12:41:09] [planner] turn completed | input tokens: 265277 | cached input tokens: 227712 | output tokens: 1938
+[12:41:09] ========================================
+[12:41:09] [planner] turn totals | model requests: 1 | gross input tokens: 265,277 | cached input tokens: 227,712 | uncached input tokens: 37,565 | output tokens: 1,938
+[12:41:09] Hosted codex planner exit code: 0
+[12:41:09] ========================================
+[12:41:09] ========================================
+[12:41:09] Planning result: COMPLETE
+[12:41:09] Reason: Phase 5 feature work is already covered by completed, active and queued stories; all supplied selectable entries belong to milestone-05. No unresolved PO request or independently identifiable decision requires a new artifact. Final integrated Profit performance verification awaits pending Profit changes, and the bounded health review awaits substantially complete implementation. Earlier WEB-001 timings explicitly do not establish final performance acceptance. Keep Phase 5 open, preserve the active WEB-013 story and reuse the existing queue without duplication.
+[12:41:09] ========================================
+[15:08:33] Claude capacity available again.
+[15:08:33] Orchestration resumed: continuing the active story after waiting locally for Claude capacity.
+[15:08:39] ========================================
+[15:08:39] Starting Claude Code
+[15:08:39] ========================================
+[15:30:00] STORY-WEB-013 is **DONE**. I resumed the interrupted attempt rather than restarting it.
+[15:30:00] **What was already on disk (verified, not rewritten):** `EctoSalvageApiController`, `EctoSalvageApiExceptionHandler`, `web.dto.EctoSalvageResponse`, the contract test, the `EctoSalvageService` bean + boot-test assertions, the additive `EctoSalvageCalculator.SELL_FEE_PERCENT` with its pinning test, `ectoApi.ts`/`types.ts`, all of `frontend/src/ecto/` and its three test files, the `ecto` destination, the `App.spec.ts` additions, and `ecto-browser-smoke.mjs`. No defect turned up in it — every check passed first run.
+[15:30:00] **What was missing and I added:** `frontend/scripts/ecto-live-smoke.mjs`. `package.json`'s `smoke:ecto:live` already pointed at that file but it did not exist, so AC 3's measured-execution evidence and the browser-to-backend comparison had no harness. Plus every verification run and all documentation.
+[15:30:00] **Tests run (real output):**
+[15:30:00] - `./mvnw test -Dtest='EctoSalvageApiControllerTest,EctoSalvageCalculatorTest,EctoSalvageServiceTest'` → Tests run: 24, Failures: 0, Errors: 0, BUILD SUCCESS
+[15:30:00] - `./mvnw test -Dtest='Gw2ApiApplicationBootTest'` → 7 passed (route mapped, bean wired, nothing called)
+[15:30:00] - `./mvnw test -Dtest='EctoSalvageViewIT'` → 1 passed — local TestFX, the JavaFX coexistence check
+[15:30:00] - `npx vitest run src/ecto src/__tests__/App.spec.ts` → 3 files, 36 passed; `npm run build` clean
+[15:30:00] - `npm run smoke:ecto` → PASSED, 10 steps, real Chrome on its own stub origin (`127.0.0.1:5182`)
+[15:30:00] - `npm run smoke:ecto:live` → PASSED twice against the real backend and real Trading Post
+[15:30:00] **§23 measurement:** 15 sequential live samples — medians 294 ms and 164 ms, min 62 ms, one 6.1 s upstream outlier → the route stays synchronous, no task/status endpoint. 5173 was already occupied by a pre-existing dev server, so I ran mine on 5183 and killed only my own two process trees (both ports confirmed released by a failed `curl`).
+[15:30:00] **Docs:** `CURRENT_ARCHITECTURE.md` only — new §5.15, §5.3's "second caller, not second implementation" note, the `web` package/dependency entries, and §5.11's layout, new page block, corrected "Not built yet" paragraph and two command rows. `TEST_STRATEGY.md` needed nothing (no new verification level). Story Result, its BACKLOG entry and `CLAUDE_RESULT.md` updated.
+[15:30:00] **Limitations recorded:** no §33 full-page timing and no Phase 5 completion claim; real Ecto/Dust images remain an open shared-icon dependency (needs API-009's `iconUrl` on this route); a live no-result and a live upstream failure were never observed, so both stay controlled-response evidence; the 6.1 s outlier was not diagnosed further; DOM-023/DOM-024 remain TODO and this boundary exposes today's domain policy unchanged. I did not commit anything — the tree also carries uncommitted WEB-012 work that is not mine.
+[15:30:00] ========================================
+[15:30:00] Claude Code exit code: 0
+[15:30:00] ========================================
+[15:30:06] Claude run measurement: repo_map=off, duration=1281.3s, usage_before=0, usage_after=27
+[16:06:04] Evaluator request failed after 120s timeout setting (attempt 1/3): OSError: connection refused
+[16:06:04] Evaluator request failed after 120s timeout setting (attempt 2/3): OSError: connection refused
+[16:08:02] Evaluator request failed after 120s timeout setting (attempt 1/3): OSError: connection refused
+[16:08:02] Evaluator request failed after 120s timeout setting (attempt 2/3): OSError: connection refused
+[16:08:02] Evaluator timeout after 120s (attempt 1/2)
+[16:08:02] Planning resumed for changed inputs: po
+[16:08:35] Evaluator request failed after 120s timeout setting (attempt 1/3): OSError: connection refused
+[16:08:35] Evaluator request failed after 120s timeout setting (attempt 2/3): OSError: connection refused
+[16:08:35] Evaluator timeout after 120s (attempt 1/2)
+[16:08:35] Planning resumed for changed inputs: po
+[16:10:04] Evaluator request failed after 120s timeout setting (attempt 1/3): OSError: connection refused
+[16:10:04] Evaluator request failed after 120s timeout setting (attempt 2/3): OSError: connection refused
+[16:10:04] Evaluator timeout after 120s (attempt 1/2)
+[16:10:04] Evaluator timeout after 120s (attempt 2/2)
+[16:10:04] Evaluation failed after 2 local attempts (TimeoutError: slow). The completed Claude work is preserved; the cycle will be retried.
+[16:10:04] Planning resumed for changed inputs: product_owner_request
+[16:10:04] Planning resumed for changed inputs: user_decision
+[16:10:04] Planning resumed for changed inputs: architect_request
+[16:10:04] Planning resumed for changed inputs: claude_result_story_completion
+[16:10:04] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[16:10:28] Evaluator request failed after 120s timeout setting (attempt 1/3): OSError: connection refused
+[16:10:28] Evaluator request failed after 120s timeout setting (attempt 2/3): OSError: connection refused
+[16:10:28] Evaluator timeout after 120s (attempt 1/2)
+[16:10:28] Evaluator timeout after 120s (attempt 2/2)
+[16:10:28] Evaluation failed after 2 local attempts (TimeoutError: slow). The completed Claude work is preserved; the cycle will be retried.
+[16:10:28] Planning resumed for changed inputs: product_owner_request
+[16:10:28] Planning resumed for changed inputs: user_decision
+[16:10:28] Planning resumed for changed inputs: architect_request
+[16:10:28] Planning resumed for changed inputs: claude_result_story_completion
+[16:10:28] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[16:11:09] Evaluator request failed after 120s timeout setting (attempt 1/3): OSError: connection refused
+[16:11:09] Evaluator request failed after 120s timeout setting (attempt 2/3): OSError: connection refused
+[16:11:09] Evaluator timeout after 120s (attempt 1/2)
+[16:11:09] Evaluator timeout after 120s (attempt 2/2)
+[16:11:09] Evaluation failed after 2 local attempts (TimeoutError: slow). The completed Claude work is preserved; the cycle will be retried.
+[16:11:09] Planning resumed for changed inputs: product_owner_request
+[16:11:09] Planning resumed for changed inputs: user_decision
+[16:11:09] Planning resumed for changed inputs: architect_request
+[16:11:09] Planning resumed for changed inputs: claude_result_story_completion
+[16:11:09] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[16:11:35] Planning resumed for changed inputs: product_owner_request
+[16:11:35] Planning resumed for changed inputs: user_decision
+[16:11:35] Planning resumed for changed inputs: architect_request
+[16:11:35] Planning resumed for changed inputs: claude_result_story_completion
+[16:11:35] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[16:11:59] Evaluator request failed after 120s timeout setting (attempt 1/3): OSError: connection refused
+[16:11:59] Evaluator request failed after 120s timeout setting (attempt 2/3): OSError: connection refused
+[16:11:59] Evaluator timeout after 120s (attempt 1/2)
+[16:11:59] Evaluator timeout after 120s (attempt 2/2)
+[16:11:59] Evaluation failed after 2 local attempts (TimeoutError: slow). The completed Claude work is preserved; the cycle will be retried.
+[16:11:59] Planning resumed for changed inputs: product_owner_request
+[16:11:59] Planning resumed for changed inputs: user_decision
+[16:11:59] Planning resumed for changed inputs: architect_request
+[16:11:59] Planning resumed for changed inputs: claude_result_story_completion
+[16:11:59] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[16:15:27] GW2 AI Orchestrator started. Repository: C:\Users\Administrator\IdeaProjects\GW2
+[16:15:39] Availability check: claude_available=True, codex_available=True
+[16:15:39] Decision: code (select next story) -- reason: 1 selectable To Do candidate(s), Claude available
+[16:15:39] ========================================
+[16:15:39] Story selector: NEXT
+[16:15:39] Reason: Deterministic selection: first executable entry in BACKLOG.md's 'To Do' order (STORY-WEB-009-replaceable-favicon.md).
+[16:15:39] ========================================
+[16:15:39] Next story activated:
+[16:15:39] agent/stories/STORY-WEB-009-replaceable-favicon.md
+[16:15:52] Availability check: claude_available=True, codex_available=True
+[16:15:52] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[16:15:52] ========================================
+[16:15:52] Active story: agent/stories/STORY-WEB-009-replaceable-favicon.md
+[16:15:52] ========================================
+[16:17:54] Orchestration cycle failed (TimeoutError: timed out) [1/3]
+[16:17:54] Traceback (most recent call last):
+[16:17:54]   File "C:\Users\Administrator\IdeaProjects\GW2\agent\runtime\core\orchestrator.py", line 1931, in main
+[16:17:54]     outcome, replenish = _run_cycle(scheduler, replenish, decisions)
+[16:17:54]                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[16:17:54]   File "C:\Users\Administrator\IdeaProjects\GW2\agent\runtime\core\orchestrator.py", line 1786, in _run_cycle
+[16:17:54]     result = execute_active_story(scheduler.wait_for_claude, scheduler.claude.defer)
+[16:17:54]              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[16:17:54]   File "C:\Users\Administrator\IdeaProjects\GW2\agent\runtime\core\orchestrator.py", line 551, in execute_active_story
+[16:17:54]     plan = dispatch_story(
+[16:17:54]            ^^^^^^^^^^^^^^^
+[16:17:54]   File "C:\Users\Administrator\IdeaProjects\GW2\agent\runtime\evaluation\dispatcher.py", line 215, in dispatch_story
+[16:17:54]     result = call_ollama(
+[16:17:54]              ^^^^^^^^^^^^
+[16:17:54]   File "C:\Users\Administrator\IdeaProjects\GW2\agent\runtime\evaluation\hermes_client.py", line 37, in call_ollama
+[16:17:54]     with urllib.request.urlopen(
+[16:17:54]          ^^^^^^^^^^^^^^^^^^^^^^^
+[16:17:54]   File "C:\Program Files\Python311\Lib\urllib\request.py", line 216, in urlopen
+[16:17:54]     return opener.open(url, data, timeout)
+[16:17:54]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[16:17:54]   File "C:\Program Files\Python311\Lib\urllib\request.py", line 519, in open
+[16:17:54]     response = self._open(req, data)
+[16:17:54]                ^^^^^^^^^^^^^^^^^^^^^
+[16:17:54]   File "C:\Program Files\Python311\Lib\urllib\request.py", line 536, in _open
+[16:17:54]     result = self._call_chain(self.handle_open, protocol, protocol +
+[16:17:54]              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[16:17:54]   File "C:\Program Files\Python311\Lib\urllib\request.py", line 496, in _call_chain
+[16:17:54]     result = func(*args)
+[16:17:54]              ^^^^^^^^^^^
+[16:17:54]   File "C:\Program Files\Python311\Lib\urllib\request.py", line 1377, in http_open
+[16:17:54]     return self.do_open(http.client.HTTPConnection, req)
+[16:17:54]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[16:17:54]   File "C:\Program Files\Python311\Lib\urllib\request.py", line 1352, in do_open
+[16:17:54]     r = h.getresponse()
+[16:17:54]         ^^^^^^^^^^^^^^^
+[16:17:54]   File "C:\Program Files\Python311\Lib\http\client.py", line 1395, in getresponse
+[16:17:54]     response.begin()
+[16:17:54]   File "C:\Program Files\Python311\Lib\http\client.py", line 325, in begin
+[16:17:54]     version, status, reason = self._read_status()
+[16:17:54]                               ^^^^^^^^^^^^^^^^^^^
+[16:17:54]   File "C:\Program Files\Python311\Lib\http\client.py", line 286, in _read_status
+[16:17:54]     line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+[16:17:54]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[16:17:54]   File "C:\Program Files\Python311\Lib\socket.py", line 706, in readinto
+[16:17:54]     return self._sock.recv_into(b)
+[16:17:54]            ^^^^^^^^^^^^^^^^^^^^^^^
+[16:17:54] TimeoutError: timed out
+[16:19:06] ========================================
+[16:19:06] Active story: agent/stories/STORY-WEB-009-replaceable-favicon.md
+[16:19:06] ========================================
+[16:20:55] RepoMap: disabled, budget=1200 tokens
+[16:21:04] ========================================
+[16:21:04] Starting Claude Code
+[16:21:04] ========================================
+[16:50:43] Story complete. Summary:
+[16:50:43] ## What changed
+[16:50:43] **The asset and the reference** (AC 1, 2)
+[16:50:43] - `frontend/public/favicon.ico` — new, the documented replaceable file. A plain 32×32 neutral grey rounded square as a real binary ICO (4286 bytes, sha256 `bed9e566fb26…`): no base64 in source, no data URI, no image service, no generator script and no new dependency in the repo. The bytes came from a throwaway Node script kept *outside* the repository, so the project doesn't acquire an icon-generation step for a disposable placeholder.
+[16:50:43] - `frontend/index.html:6` — one standard `<link rel="icon" type="image/x-icon" href="%BASE_URL%favicon.ico" />`. `%BASE_URL%` is Vite's own base substitution, so the emitted href tracks the configured base exactly like the script/stylesheet URLs.
+[16:50:43] **Instructions** (AC 3) — `README.md`, "Running locally" → "Browser favicon": exact path, expected `.ico` format (single 32×32, or 16/32/48 multi-size), overwrite-then-reload / `npm run build` steps, and the favicon-cache trap with three ways out. It says plainly the current file is a placeholder, "not intended as the project's final icon".
+[16:50:43] **Verification** (AC 4) — new `frontend/scripts/favicon-browser-smoke.mjs` + `npm run smoke:favicon`.
+[16:50:43] ## Tests run (in `frontend/`)
+[16:50:43] - `npm run build` — clean; `dist/index.html` emits `href="/favicon.ico"` with no unresolved `%BASE_URL%`, and `dist/favicon.ico` is byte-identical to `public/favicon.ico`.
+[16:50:43] - `npx vite build --base=/gw2/ --outDir dist-base-check` → `href="/gw2/favicon.ico"` beside `/gw2/assets/index-*.js`; temp dir removed.
+[16:50:43] - `npm run smoke:favicon` — **PASSED, 7 steps** in real Chrome 152 on its own stub origin at `127.0.0.1:5186`: one icon link resolving to that origin, a real in-page request answered **HTTP 200 `image/x-icon`, 4286 bytes with the source file's sha256** (served by the origin, not from cache), those bytes **decoded to a 32×32 image**, all six destinations still opening, no `/api/` route involved, nothing off-origin, no page errors.
+[16:50:43] - `npm run smoke:icons` — **PASSED, 10 steps**, unchanged (5 image requests, 17 same-origin), re-run because a new asset can break an existing request assertion. Chromium loads tab icons through its own loader, which Playwright reports in no script's request list — that's why the new check counts server-side hits rather than page request events.
+[16:50:43] - Not run: `npm test` (the Vitest suite never loads `index.html`) and the other smoke scripts; CI is the full gate.
+[16:50:43] Docs updated: `README.md` and `docs/CURRENT_ARCHITECTURE.md` §5.11 (file tree, new "Browser tab icon" paragraph, the "Not built yet" paragraph that claimed there is no favicon, one command row). Story file, `BACKLOG.md` and `CLAUDE_RESULT.md` updated; `CURRENT_STORY.md` and `PROJECT_STATE.md` untouched.
+[16:50:43] ## Two things worth your attention
+[16:50:43] 1. The story cites `TARGET_ARCHITECTURE.md` §12.1 as authoritative for a "standard replaceable favicon asset", but §12.1 as written covers only item/recipe icon delivery and states no favicon rule — `Request-004`'s resolution note assumed it did. I followed the acceptance criteria (which are unambiguous) and invented no rule; whether §12.1 should gain that sentence is an architecture decision I left open, recorded in the Result and backlog entry.
+[16:50:43] 2. The icon was verified from the built output against a controlled origin. Nothing serves `frontend/dist/` from the backend or a container today, so that path is unverified by design.
+[16:50:43] ========================================
+[16:50:43] Claude Code exit code: 0
+[16:50:43] ========================================
+[16:50:46] Claude run measurement: repo_map=off, duration=1778.7s, usage_before=27, usage_after=47
+[16:50:46] Evaluator started
+[16:52:48] Evaluator timeout after 120s (attempt 1/3)
+[16:53:48] Evaluator started
+[16:55:29] ========================================
+[16:55:29] Evaluator decision: COMPLETE
+[16:55:29] Reason: Every acceptance criterion and Definition of Done item for this story is satisfied. The replaceable favicon is served by the built frontend, and the Product Owner has precise instructions for supplying the final file. The README.md 'Running locally' section now includes the exact repository path, expected .ico format, replacement/build steps, and browser-cache refresh considerations. The new smoke test `npm run smoke:favicon` verifies that the built document exposes exactly one icon link resolving to http://127.0.0.1:5186/favicon.ico, and a real in-page request for it returns HTTP 200, image/x-icon, 4286 bytes with the sha256 of public/favicon.ico. No new automated test suite was added, and the Vitest suite never loads index.html, so it cannot reach this change.
+[16:55:29] ========================================

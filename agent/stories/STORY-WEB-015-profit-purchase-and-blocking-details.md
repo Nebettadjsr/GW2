@@ -55,7 +55,10 @@ The completed detail story explicitly retained two purchase-list bases and gener
 
 ## Dependencies
 
-Completed STORY-WEB-007, STORY-WEB-008 and STORY-WEB-011. Queue after WEB-014 for integration continuity; presentation work has no unresolved decision prerequisite.
+Completed STORY-WEB-007, STORY-WEB-008, STORY-WEB-011 and STORY-WEB-014. WEB-014's
+runtime-contract symptoms are closed and are not reopened here; this story remains the
+executable work for the presentation requirements that Request-011 confirms are still open.
+Presentation work has no unresolved decision prerequisite.
 
 ## Definition of Done
 

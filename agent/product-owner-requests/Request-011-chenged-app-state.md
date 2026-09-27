@@ -2,7 +2,7 @@
 
 ## Status
 
-OPEN
+RESOLVED
 
 ## Title
 
@@ -107,3 +107,23 @@ These observations supersede the earlier Product Owner observations for those fo
 The remaining UI/presentation cleanup requirements are unchanged.
 
 ## Planner Resolution
+
+2026-09-27: Reconciled against the open milestone-05 queue. The four runtime symptoms
+(icons visible, Total Sell Value, Crafting Resolution and the non-Trading-Post-material
+control) are accepted as resolved after the clean backend restart recorded in
+`agent/stories/STORY-WEB-014-profit-live-contract-repairs.md`; that story remains DONE.
+No new implementation story was created and no completed icon or Profit feature story
+was reopened. `STORY-WEB-015-profit-purchase-and-blocking-details.md` remains TODO because
+its seven presentation requirements are explicitly still open. `STORY-SYNC-004-complete-
+referenced-item-metadata.md` remains TODO because its scope is metadata coverage and
+repair for referenced account/crafting items, not merely whether currently available
+icons render. `STORY-DOM-023-crafting-profit-fee-integration.md`,
+`STORY-DOM-024-ectoplasm-fee-policy-alignment.md`, `STORY-WEB-013-ectoplasm-salvage-
+page.md` and `STORY-WEB-009-replaceable-favicon.md` are unaffected and remain TODO.
+
+Added the permanent clean-runtime verification rule to `docs/TEST_STRATEGY.md` section
+12.2 and the operational lesson in `tasks/lessons.md`: after substantial backend/
+frontend integration or contract changes, build current source, stop stale backend and
+frontend processes, start the current runtime, verify process identity/port ownership,
+and only then rely on browser or integration observations. This does not require a
+restart for trivial edits. Phase 5 remains open; no milestone completion is claimed.

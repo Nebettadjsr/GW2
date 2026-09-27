@@ -16,8 +16,13 @@
     "smoke:layout": "node scripts/layout-browser-smoke.mjs",
     "smoke:profit": "node scripts/profit-browser-smoke.mjs",
     "smoke:profit:live": "node scripts/profit-live-smoke.mjs",
+    "smoke:discovery": "node scripts/discovery-browser-smoke.mjs",
+    "smoke:discovery:live": "node scripts/discovery-live-smoke.mjs",
+    "smoke:ecto": "node scripts/ecto-browser-smoke.mjs",
+    "smoke:ecto:live": "node scripts/ecto-live-smoke.mjs",
     "smoke:account": "node scripts/account-browser-smoke.mjs",
     "smoke:icons": "node scripts/icon-browser-smoke.mjs",
+    "smoke:favicon": "node scripts/favicon-browser-smoke.mjs",
     "check:icons:live": "node scripts/icon-live-check.mjs",
     "perf:profit-page": "node scripts/profit-page-perf.mjs"
   },

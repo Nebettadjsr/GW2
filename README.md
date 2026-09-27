@@ -199,6 +199,50 @@ http://localhost:5173
 
 During development, the Vite server forwards `/api` requests to the backend.
 
+### Browser favicon
+
+The icon the browser shows in the tab, the bookmark list and the history is one static file:
+
+```text
+frontend/public/favicon.ico
+```
+
+The file currently in the repository is a **neutral placeholder** — a plain grey rounded square — put
+there so the integration is complete and testable. It is not artwork, and it is not intended as the
+project's final icon.
+
+To supply the final icon, replace that file:
+
+1. Save the icon as a Windows icon file (`.ico`). A single 32×32 image works; a multi-size `.ico`
+   containing 16×16, 32×32 and 48×48 is the usual choice, because the browser then picks the size it
+   needs instead of scaling one down.
+2. Overwrite `frontend/public/favicon.ico`, keeping that exact path, filename and extension. Nothing
+   else has to change: the document's icon link in `frontend/index.html` refers to the file by name
+   and never to its contents, and the file is served byte-for-byte — the build does not convert,
+   rename or re-encode it.
+3. For the development server (`npm run dev`), reload the page. For a production build, run
+   `npm run build` in `frontend/`; everything in `frontend/public/` is copied into `frontend/dist/`,
+   and the served URL follows the build's configured base path.
+
+Browsers cache favicons far more stubbornly than pages, so a normal reload usually keeps showing the
+old icon even though the new file is being served. To see the replacement:
+
+- hard-reload the page (`Ctrl`+`Shift`+`R`, or `Cmd`+`Shift`+`R` on macOS), or
+- open `http://localhost:5173/favicon.ico` directly and reload *that* — this also shows exactly which
+  file is being served — or
+- open the application in a private/incognito window, or clear the browser's cached images.
+
+An unchanged tab icon is therefore not by itself evidence that the replacement failed.
+
+To verify a replacement, run the following in `frontend/` — it builds, then drives a real browser and
+checks that the page requests the icon and receives exactly the bytes of
+`frontend/public/favicon.ico`:
+
+```bash
+npm run build
+npm run smoke:favicon
+```
+
 ---
 
 ## Testing

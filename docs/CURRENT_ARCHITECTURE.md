@@ -114,7 +114,10 @@ src/
 │                             and the status mapping they share),
 │                             CraftingResolutionMapper, RecipeNotInCalculationException
 │                             (STORY-API-008 — the part of the resolution-detail contract
-│                             both crafting controllers share, and its one 404 outcome)
+│                             both crafting controllers share, and its one 404 outcome),
+│                             EctoSalvageApiController, EctoSalvageApiExceptionHandler
+│                             (STORY-WEB-013 — the parameterless Ectoplasm Salvage
+│                             calculation route and its own status mapping, §5.15)
 │   ├── task/                 BackgroundTaskService, TaskState, TaskSnapshot,
 │   │                         TaskAlreadyRunningException (STORY-API-003) — the in-process
 │   │                         background-task facility the sync triggers share; plain Java, no
@@ -159,7 +162,7 @@ The project is now built with Maven (`./mvnw`, Java 25 target), using the standa
 | `repo` | PostgreSQL access via JDBC (`Db`) plus per-domain repositories (items, recipes, inventory, characters, TP prices), the persistence-to-domain mapping boundary for `craft.*` types (`TARGET_ARCHITECTURE.md` §10), the crafting-graph JSON cache (`CraftingGraphCache`/`CraftingGraphDto`), and hardcoded configuration (`AppConfig`) |
 | `sync` | Orchestrates: call `api` → parse via `parser` → upsert via JDBC directly (not via `repo` repositories) into PostgreSQL, sharing `repo.Db.open()` with the `repo` package. |
 | `util` | Coin formatting, JDBC null-binding helpers, a `TpPrice` value type |
-| `web` | Inbound HTTP boundary (`TARGET_ARCHITECTURE.md` §9 and §13, `STORY-API-001`/`STORY-API-002`/`STORY-API-003`/`STORY-API-004`/`STORY-API-005`/`STORY-API-006`/`STORY-API-007`/`STORY-API-008`): Spring Boot entry point (`Gw2ApiApplication`), the Crafting Profit and Crafting Discovery routes (`CraftingProfitApiController`, `CraftingDiscoveryApiController`), their request defaulting/validation and DTO translation (`CraftingProfitApiMapper`, `CraftingDiscoveryApiMapper`, plus `CraftingRowMapper` for the row projection both share), the two resolution-detail operations on those same controllers with the input rules, envelope literals and recursive tree copy they share (`CraftingResolutionMapper`, `RecipeNotInCalculationException`), the read-only crafting selector-options route (`CraftingSelectorOptionsApiController`), the two read-only account-inventory routes (`BankContentsApiController`, `MaterialStorageApiController`), the account- and global-synchronization triggers and the Trading Post price-refresh trigger with their shared task-status route and shared body-strictness rule (`AccountSyncApiController`, `GlobalSyncApiController`, `PriceRefreshApiController` with `PriceRefreshVariant`, `SyncTaskApiController`, `SyncTaskStatusMapper`, `SyncRequestValidation`), and the status mapping (`ApiExceptionHandler` for the calculation routes, `SyncApiExceptionHandler` for the synchronization routes, `CraftingSelectorOptionsApiExceptionHandler` for the selector read, `AccountReadApiExceptionHandler` for the two account reads, each scoped to its own controllers). Contains no crafting rule, no synchronization step and no orchestration — each route calls its existing application service and copies what comes back. `web.dto` holds transport-only records. |
+| `web` | Inbound HTTP boundary (`TARGET_ARCHITECTURE.md` §9 and §13, `STORY-API-001`/`STORY-API-002`/`STORY-API-003`/`STORY-API-004`/`STORY-API-005`/`STORY-API-006`/`STORY-API-007`/`STORY-API-008`): Spring Boot entry point (`Gw2ApiApplication`), the Crafting Profit and Crafting Discovery routes (`CraftingProfitApiController`, `CraftingDiscoveryApiController`), their request defaulting/validation and DTO translation (`CraftingProfitApiMapper`, `CraftingDiscoveryApiMapper`, plus `CraftingRowMapper` for the row projection both share), the two resolution-detail operations on those same controllers with the input rules, envelope literals and recursive tree copy they share (`CraftingResolutionMapper`, `RecipeNotInCalculationException`), the read-only crafting selector-options route (`CraftingSelectorOptionsApiController`), the two read-only account-inventory routes (`BankContentsApiController`, `MaterialStorageApiController`), the parameterless Ectoplasm Salvage calculation route (`EctoSalvageApiController`, `STORY-WEB-013`, §5.15), the account- and global-synchronization triggers and the Trading Post price-refresh trigger with their shared task-status route and shared body-strictness rule (`AccountSyncApiController`, `GlobalSyncApiController`, `PriceRefreshApiController` with `PriceRefreshVariant`, `SyncTaskApiController`, `SyncTaskStatusMapper`, `SyncRequestValidation`), and the status mapping (`ApiExceptionHandler` for the calculation routes, `SyncApiExceptionHandler` for the synchronization routes, `CraftingSelectorOptionsApiExceptionHandler` for the selector read, `AccountReadApiExceptionHandler` for the two account reads, `EctoSalvageApiExceptionHandler` for the Ectoplasm calculation, each scoped to its own controllers). Contains no crafting rule, no synchronization step and no orchestration — each route calls its existing application service and copies what comes back. `web.dto` holds transport-only records. |
 | `web.task` | The in-process background-task facility the synchronization triggers share (`STORY-API-003`, `TARGET_ARCHITECTURE.md` §23): identifier issue, lifecycle state, one-unfinished-task-per-operation admission, virtual-thread execution and bounded in-memory retention (`BackgroundTaskService`, `TaskState`, `TaskSnapshot`, `TaskAlreadyRunningException`). Plain Java — no Spring, servlet, HTTP or domain import — so the asynchrony is testable without a server and reusable by later sync/refresh routes. |
 
 ---
@@ -231,6 +234,13 @@ web.dto.BankContentsResponse / web.dto.MaterialStorageResponse  (copy only; read
                                           repo.BankRepository.BankSlotRow and
                                           repo.MaterialStorageRepository.MaterialStorageRow,
                                           never hand them to a client)
+
+web.EctoSalvageApiController --> application.EctoSalvageService  (the same parameterless use case
+   |                                              EctoView calls in process, STORY-WEB-013)
+   |                         --> ecto.EctoSalvageCalculator  (its public constants only, to state
+   v                                                         the assumptions; no evaluate() call)
+web.dto.EctoSalvageResponse  (copy only; reads ecto.EctoSalvageCalculator.ScenarioResult,
+                              never hands it to a client)
 
 web.AccountSyncApiController --> web.task.BackgroundTaskService  (submits the task)
    |                         --> application.AccountRefreshService::refreshAll  (the task body, the
@@ -452,6 +462,8 @@ EctoView
 ```
 
 `EctoLivePriceGateway` is a live, unsynchronized lookup for exactly Ecto/Dust - distinct from the DB-backed `repo.tp.TpPriceRepository` the Crafting flows use; it is not part of the `sync.*`/`repo.*` synchronization machinery described in §5.4.
+
+`STORY-WEB-013` added an HTTP entry point over this same service (`web.EctoSalvageApiController`, §5.15) without touching the service, the gateway, the calculator or the view: the two paths call the identical `calculate()` method, the JavaFX one still runs in process, and the salvage economics still exist exactly once.
 
 ### 5.4 Synchronization / initialization flow
 
@@ -911,7 +923,7 @@ Observed properties of this flow:
 
 ---
 
-## 5.11 Browser frontend (`STORY-WEB-001`, `STORY-WEB-002`, `STORY-WEB-003`, `STORY-WEB-004`, `STORY-WEB-005`, `STORY-WEB-006`, `STORY-WEB-007`)
+## 5.11 Browser frontend (`STORY-WEB-001`, `STORY-WEB-002`, `STORY-WEB-003`, `STORY-WEB-004`, `STORY-WEB-005`, `STORY-WEB-006`, `STORY-WEB-007`, `STORY-WEB-012`, `STORY-WEB-013`)
 
 The browser client of the HTTP API. It lives in `frontend/`, entirely outside the Maven
 module — no Java source, build step or package depends on it, and removing the directory would
@@ -928,7 +940,9 @@ JavaScript application runtime, matching `TARGET_ARCHITECTURE.md` §4.1.
 
 ```text
 frontend/
-├── index.html                        page shell
+├── index.html                        page shell, and the document's tab-icon link
+├── public/
+│   └── favicon.ico                   the replaceable tab icon, copied verbatim into dist/
 ├── scripts/
 │   ├── resolveBrowserPath.mjs        locates an installed Chrome/Edge for the checks below
 │   ├── stubOrigin.mjs                serves dist/ and answers /api/ for the controlled-origin checks
@@ -936,9 +950,20 @@ frontend/
 │   ├── sync-browser-smoke.mjs        real-browser check against a stub origin in its own process
 │   ├── layout-browser-smoke.mjs      real-browser navigation/layout/zoom/focus/contrast check
 │   ├── profit-browser-smoke.mjs      real-browser check of the Profit split, tree, selection and reflow
+│   ├── discovery-browser-smoke.mjs   real-browser check of the Discovery split, keyboard selection and
+│   │                                 sorting, grouped controls and fresh detail, against a stub origin
+│   ├── discovery-live-smoke.mjs      read-only Discovery comparison: listed rows and one selected
+│   │                                 tree against the responses a real backend returned
+│   ├── ecto-browser-smoke.mjs        real-browser check of the Ectoplasm page against a stub origin:
+│   │                                 four scenarios as supplied, reload, keyboard, narrow layout,
+│   │                                 loading/failure/no-result states and what the page requests
+│   ├── ecto-live-smoke.mjs           real backend: §23 runtime samples of the calculation route, and
+│   │                                 the rendered scenarios against the live responses received
 │   ├── account-browser-smoke.mjs     real-browser check of Bank/Materials against a running backend
 │   ├── icon-browser-smoke.mjs        real-browser item images against a controlled origin: 503/404/
 │   │                                 undecodable/slow images, fallback, layout, empty slots
+│   ├── favicon-browser-smoke.mjs     real-browser check that the built page requests the tab icon
+│   │                                 and receives public/favicon.ico byte for byte
 │   ├── recordingProxy.mjs            records what the backend really answered, for the live icon runs
 │   ├── upstream-proxy.mjs            counts (or refuses) the backend's CONNECT tunnels to ArenaNet
 │   ├── icon-live-check.mjs           real backend/database/upstream: delivery, browser cache,
@@ -948,16 +973,18 @@ frontend/
 └── src/
     ├── main.ts, App.vue, styles.css  mount point; the shell; the shared tokens and treatments
     ├── shell/
-    │   ├── destinations.ts           the four implemented destinations and their URLs/titles
+    │   ├── destinations.ts           the six implemented destinations and their URLs/titles
     │   ├── useHashRoute.ts           the open destination, kept in the location hash
     │   ├── SiteHeader.vue            wordmark, destination links, compact synchronization activity
     │   └── PageHeader.vue            every page's h1, intro sentence and grouped page actions
     ├── api/
-    │   ├── types.ts                  TypeScript shapes of the §5.5/§5.7–§5.10/§5.12/§5.13 transport records
+    │   ├── types.ts                  TypeScript shapes of the §5.5/§5.7–§5.10/§5.12/§5.13/§5.15
+    │   │                             transport records
     │   ├── http.ts                   fetch wrapper; maps the uniform error body to ApiRequestError
-    │   ├── craftingApi.ts            the three routes the Profit screen calls, behind an interface
+    │   ├── craftingApi.ts            the five crafting routes the two screens call, behind an interface
     │   ├── syncApi.ts                the three triggers and the shared status route
-    │   └── accountApi.ts             the two §5.12 account reads, behind an interface
+    │   ├── accountApi.ts             the two §5.12 account reads, behind an interface
+    │   └── ectoApi.ts                the one §5.15 calculation route, behind an interface
     ├── account/
     │   ├── BankScreen.vue            the bank as §5.12 supplies it, empty slots kept in place
     │   ├── MaterialsScreen.vue       the backend's categories, labels and stack order, unchanged
@@ -975,14 +1002,27 @@ frontend/
     │   ├── SelectedResultDetail.vue  the selected row's supplied summary, quote and materials
     │   ├── CraftingResolution.vue    the §5.13 answer: its five situations, basis and fresh row
     │   ├── ResolutionTreeNode.vue    one requirement and, recursively, its ingredient occurrences
-    │   ├── useProfitResolution.ts    the lazy detail request and §13.4's association rules
+    │   ├── useResolutionDetail.ts    §13.4's association rules, shared by both features
+    │   ├── useProfitResolution.ts    Profit's detail request body and its own identity check
     │   ├── resolutionPresentation.ts method/state/blocked-reason codes in user-oriented words
     │   ├── useCraftingProfit.ts      scope/settings state and request lifecycle
     │   ├── useProfitTableView.ts     search, filters, sort, display limit and identity selection
     │   ├── scopeOptions.ts           builds selector entries from the §5.10 response
+    │   ├── CraftingDiscoveryScreen.vue  the Discovery page: grouped controls, states, list, detail
+    │   ├── DiscoveryScopeSelector.vue   character/discipline scope and the separate inventory input
+    │   ├── DiscoverySettingsForm.vue    the five settings the Discovery contract accepts
+    │   ├── DiscoveryTable.vue           the six comparison columns and the row-selection control
+    │   ├── SelectedDiscoveryDetail.vue  the selected candidate's supplied values, lists and tree
+    │   ├── useCraftingDiscovery.ts      Discovery scope/inventory/settings state and its lifecycle
+    │   ├── useDiscoveryTableView.ts     search, sort (no profit filter) and identity selection
+    │   ├── useDiscoveryResolution.ts    Discovery's detail request body and identity check
+    │   ├── discoveryScopeOptions.ts     individual character-discipline entries from §5.10
     │   ├── rowState.ts               supplied state in words, plus the minimal row diagnostic
     │   ├── recipeLabel.ts            name, or the item id when the backend supplied none; wiki URL
     │   └── formatCopper.ts           copper → gold/silver/copper text, signed where it may be a loss
+    ├── ecto/
+    │   ├── EctoSalvageScreen.vue      the §5.15 answer: assumptions, quotes and the four scenarios
+    │   └── useEctoSalvage.ts          that one calculation's phase, data, failure and explicit reload
     └── sync/
         ├── SyncScreen.vue            the synchronization area: one trigger and task state each
         ├── useSyncOperations.ts      per-operation submission and status-polling state
@@ -1389,6 +1429,89 @@ from this one machine, this revision and the default All scope, and no Product O
 claimed by them; `TARGET_ARCHITECTURE.md` §33's confirmation gate is unchanged. The favicon, the
 Discovery and Ectoplasm screens, and Phase 5's bounded health review remain outside this work.
 
+**Crafting Discovery page (`STORY-WEB-012`).** The browser consumer of §5.6 and the Discovery half of
+§5.13, at `#/discovery` — a destination of its own with its own document title and page heading, kept
+alive across navigation on its own `KeepAlive` boundary so returning to it loses neither the selection
+nor posts the calculation again. It reuses the Profit page's structure and every shared presentation
+module (`ItemIcon`, `CraftingResolution`, `ResolutionTreeNode`, `rowState`, `resolutionPresentation`,
+`recipeLabel`, `formatCopper`) and adds no second mechanism for any of them.
+
+- **Two independent scope controls, both from selector facts.** The scope is one character *and* one
+  discipline: `discoveryScopeOptions.ts` builds one entry per synced character discipline from §5.10,
+  each carrying the rating that response reported, and there is no All entry and no default scope
+  because the route has neither. The separate `inventoryCharacterName` input is its own labelled
+  control — it decides whose owned materials may be consumed, not which recipes are listed, since
+  recipe knowledge is account-wide — and "No character" is a real choice that omits the field and
+  leaves the backend's own unfiltered-pool fallback in place. It opens on the selected character
+  discipline's own character; once a value is in effect, neither a scope change nor a reload rewrites
+  it, and only a name the selector stops offering falls back to that default. With no character
+  discipline to offer, or a failed selector read, the page says so in that situation's own words and
+  sends **no** calculation at all. Until the selector has answered the page reports loading, because
+  whether a character exists is not yet established.
+- **Discovery's own defaults and echo.** The first request carries the scope and inventory character
+  only; the five settings controls (`useOwnMats`, `allowBuying`, `maxBuyCopper`, `listingSell`,
+  `listingBuy`) are populated from that response's `settings` echo, so Discovery's defaults are the
+  backend's and never Profit's. `dailyBuyInsteadOfCraft` is *reported* as the value the flow fixes and
+  is never sent; Profit's `allowNonTradeableMaterials` is not reachable from this page at all.
+- **Six comparison columns, each stating its basis.** Recipe (row header), Level *recipe minimum*,
+  Craftable *crafts*, Materials to buy *cost, all crafts*, Output sell value *all crafts* and Profit
+  *per craft*. Sorting is offered on those six keys, level sorting works in both directions and opens
+  on highest first, and a row whose value the backend did not supply sorts last rather than as zero.
+  Search narrows the listed rows over name, discipline, level, ids and the words a state is called.
+  Neither sorting nor searching issues any request.
+- **No eligibility or economics of its own.** The rating filter, the account-wide recipe-knowledge
+  rule and normal-discovery eligibility stay entirely in the backend (`DOMAIN_SPEC.md` §34/§35). The
+  page has **no** profit filter: a zero or negative immediate profit is a legitimate discovery
+  candidate (§37), so Profit's "hide profit ≤ 0" default is deliberately not imported here and no
+  candidate the backend returned is removed. Per `DOMAIN_SPEC.md` §25 the displayed prices and output
+  sell value stay gross and the profit detail carries a concise note that the domain's 15% selling fee
+  is already in the backend's profit figure and is never applied again on this page.
+- **Lazy fresh detail over the shared association rules.** Selecting a recipe by id — whole row by
+  pointer, the row's own `<button>` by keyboard — issues one `POST /api/crafting/discovery/resolution`
+  carrying the recipe id and the effective scope, **nullable inventory character** and settings the
+  *table response echoed*. `useResolutionDetail` holds §13.4's generation and identity rules for both
+  features; `useDiscoveryResolution` supplies only Discovery's request body and the check that an
+  answer echoes back that recipe, those settings **and that inventory character** — resolving the same
+  recipe against another character's materials is a different calculation, so an answer echoing the
+  previous one is refused. Selection, reload, any input change and leaving the page invalidate the
+  detail, including A → B → A; sorting and searching do not. The fresh row and tree are shown beside
+  the table row without replacing it, with the tree's one-output-batch basis and the actual root
+  sourcing labelled truthfully.
+
+**Ectoplasm Salvage page (`STORY-WEB-013`).** The browser consumer of §5.15, at `#/ecto` — a
+destination of its own with its own document title and page heading. It is the one screen deliberately
+**not** kept alive across navigation: it has no scope, settings, search or selection to preserve, and
+its result is a snapshot of live Trading Post prices, so reopening it calculates again rather than
+re-presenting an older snapshot as current. `useEctoSalvage` is `useAccountRead`'s shape with one
+difference — a reload asked for while one is in flight is *suppressed* rather than superseded, because
+each one costs the backend a live upstream lookup — and the page's only control is that explicit reload;
+nothing here polls or retries by itself.
+
+- **Every figure is a backend field.** The four scenarios are rendered in the order §5.15 names them,
+  through the shared `formatCopper`/`formatSignedCopper`/`moneyTone` helpers and nothing else. No fee
+  is applied, no expected yield is scaled, and profit, net cost and the cost of 1000 Luck are shown as
+  supplied rather than related to the quotes beside them. The quote panel reads each price out of the
+  scenario that used it (the Ecto instant-buy cost is the instant-buy scenarios' own acquisition cost),
+  so nothing is averaged or reconciled across scenarios, and the stated fee percentage and expected
+  yields come from the response's `assumptions` — labelled as expected values over many salvages, not a
+  guaranteed drop. Gross and fee-inclusive columns state their own basis in their headers.
+- **Both modes written out.** Buying is "Instant buy" or "Buy order" and selling "Instant sell" or
+  "Listing sell" in every row, because "buy price"/"sell price" is ambiguous without whose perspective
+  is meant (`DOMAIN_SPEC.md` §20). Profit carries the word `gain`/`loss`/`break-even` beside the signed
+  figure, so the meaning survives a monochrome rendering; a supplied zero reads `break-even`, never
+  "missing".
+- **Three presentable situations, kept apart.** Loading (a `role="status"` notice), a result, and a
+  failure carrying the backend's own sanitized code with an explicit "Try again". A failed reload drops
+  the previous answer instead of presenting stale prices as fresh, and a completed calculation with
+  `resultAvailable: false` is its own warning — an answer, not a failure, with no figure shown as zero
+  in its place. A superseded answer, and any answer arriving after the screen is gone, is discarded.
+- **Shared shell and styles only.** `PageHeader`, the shared tokens, the `.table-region` scrolling
+  pattern and `ItemIcon` — the latter with no supplied source, since this route carries no item
+  metadata, so the established neutral placeholder stands in. No URL is built here, no upstream image
+  fallback exists and nothing on this page contacts the GW2 API. **Remaining shared-icon dependency:**
+  giving the two items their real images needs `iconUrl` on this response, which is `STORY-API-009`'s
+  metadata contract extended to this route and is not part of this story.
+
 **What the frontend does not do.** No profit, fee, valuation, crafting, inventory or eligibility
 calculation exists in `frontend/`. Every number rendered is a value the backend supplied;
 `totalProfitCopper` and `totalSellValueCopper` in particular are displayed and sorted exactly as
@@ -1406,20 +1529,35 @@ is derived from the others, no state is inferred from a price, no two occurrence
 merged, and no shopping total is produced from any of it. The TypeScript types in `api/types.ts` describe transport shape; they do not
 validate received JSON and do not replace backend validation.
 
-**Not built yet.** The Discovery page, which is the other §13 detail route's consumer: `frontend/`
-calls `POST /api/crafting/profit/resolution` only, and nothing in the browser reaches
-`POST /api/crafting/discovery/resolution` (§5.13). Item names in a resolution node are whatever the
-backend supplied. Also missing: automatic refresh, task cancellation, any
+**Not built yet.** Item names in a resolution node are whatever the backend supplied. The Ectoplasm
+page names its two items itself and shows the neutral icon placeholder, because §5.15 carries no item
+metadata. Missing: automatic refresh, task cancellation, any
 client-side progress mechanism, item names on the inventory screens (no contract supplies them,
-§5.12), any persistence across a browser reload, and every other screen. Crafting Profit still has no
-virtualization and no paging: every row the display controls leave visible enters the DOM at once, and
-Show all over the live default scope means all 3176 of them. `STORY-WEB-006`'s maximum is a display
-control the user owns, not a performance mechanism. Full-page timings now exist for the table itself
-(see "Measured browser behaviour" above); the **detail a selection loads** is still untimed, and
-`TARGET_ARCHITECTURE.md` §33 requires it as part of a complete page. The result table's header does not
-stay visible while scrolling. There is no favicon yet (`STORY-WEB-009`), no mobile navigation menu
-(four short destination links wrap instead), no footer and no artwork or icon set beyond item images.
+§5.12), any persistence across a browser reload, and every other screen. Neither crafting screen has
+virtualization or paging: every row left visible enters the DOM at once — Show all over the live
+default Profit scope means all 3176 of them, and Discovery has no display limit at all, so a live
+character discipline putting 672 candidates on screen puts 672 rows in the DOM. `STORY-WEB-006`'s
+maximum is a display control the user owns, not a performance mechanism, and Discovery has no
+equivalent. Full-page timings exist for the Profit table only
+(see "Measured browser behaviour" above); the **detail a selection loads** is still untimed, and so is
+the Discovery page as a whole —
+`TARGET_ARCHITECTURE.md` §33 requires both as part of a complete page. The Ectoplasm page has backend
+route timings (§5.15) but no full-page timing either. Neither result table's header
+stays visible while scrolling. The tab icon is a neutral placeholder awaiting the Product Owner's file
+(see "Browser tab icon" below); there is no mobile navigation menu
+(six short destination links wrap instead), no footer and no artwork or icon set beyond item images.
 `docs/ROADMAP.md` Phase 5 owns what remains.
+
+**Browser tab icon (`STORY-WEB-009`).** `frontend/public/favicon.ico` is the whole mechanism. Vite
+copies `public/` into `dist/` unprocessed, unhashed and unrenamed, and `index.html` carries one
+`<link rel="icon" type="image/x-icon" href="%BASE_URL%favicon.ico">`, so the emitted href follows the
+build's configured base path — `/favicon.ico` at the default root base, `/gw2/favicon.ico` for a build
+with `--base=/gw2/`, exactly like the emitted script and stylesheet URLs. No component, module or API
+route participates, and nothing in the application source depends on the file's contents: replacing
+that one file replaces the icon. The committed file is a neutral 32×32 grey rounded square placeholder,
+not the Product Owner's artwork; `README.md` owns the replacement and cache-refresh instructions.
+Chromium loads a tab icon through its own loader, which Playwright does not report as a page request,
+so `smoke:favicon` counts what the origin actually served rather than page request events.
 
 **Local commands** (run in `frontend/`, after `npm ci`):
 
@@ -1434,9 +1572,14 @@ stay visible while scrolling. There is no favicon yet (`STORY-WEB-009`), no mobi
 | `npm run smoke:layout` | real-browser check of navigation, three viewports, zoom, keyboard focus and contrast; needs `npm run build` only |
 | `npm run smoke:profit` | real-browser check of the Crafting Profit comparison/detail split, the resolution tree, keyboard and whole-row selection, the sticky panel, the display controls and its reflow; needs `npm run build` only |
 | `npm run smoke:account` | real-browser check of Bank and Materials; needs the backend **and** `npm run dev` already running |
+| `npm run smoke:discovery` | real-browser check of the Crafting Discovery split at two viewports, keyboard selection and sorting, the grouped controls, the fresh detail and what the page sends; needs `npm run build` only |
+| `npm run smoke:discovery:live` | read-only comparison of the rendered Discovery rows and one selected tree against the responses a real backend returned; needs the backend **and** `npm run dev` already running |
+| `npm run smoke:ecto` | real-browser check of the Ectoplasm page: its destination, the four scenarios as supplied, the keyboard-operated reload, duplicate suppression, the narrow layout and the loading/failure/no-result states; needs `npm run build` only |
+| `npm run smoke:ecto:live` | §23 runtime samples of the calculation route (`GW2_ECTO_LIVE_SAMPLES`, default 5) plus the rendered scenarios against the live responses received; needs the backend **and** `npm run dev` already running |
+| `npm run smoke:favicon` | real-browser check of the tab icon: the built document's single icon link, and the bytes of `public/favicon.ico` loaded from it; answers every `/api/` call 404, so it evidences nothing about any screen's data; needs `npm run build` only |
 
 The backend is started separately with `./mvnw spring-boot:run` from the repository root (§8).
-All five checks drive an installed Chrome/Edge through `playwright-core` (`GW2_BROWSER_PATH`
+All of these checks drive an installed Chrome/Edge through `playwright-core` (`GW2_BROWSER_PATH`
 overrides the executable, `scripts/resolveBrowserPath.mjs` finds it); none downloads a browser of its
 own. `smoke:browser` and `smoke:account` use the real backend, which is safe because Crafting Profit
 and both inventory screens only read; `smoke:account` additionally re-reads each route itself and
@@ -1448,20 +1591,30 @@ establishes is that the page displayed that response, never that a value is doma
 detail route is only mapped in a backend built after `STORY-API-008`, a long-running older backend
 process answers it with Spring's default 404 body; the check then records the situation instead of a
 comparison, which is the honest outcome and not a frontend failure.
-`smoke:sync`, `smoke:layout` and `smoke:profit` deliberately do not: through `scripts/stubOrigin.mjs`
+`smoke:discovery:live` uses the real backend for the same reason — both Discovery routes only
+calculate over stored data — and triggers no synchronization: it re-reads nothing it did not already
+receive, compares every listed row and the selected recipe's whole tree against the responses the
+browser itself got, and fails rather than synchronizing when the live selector offers no character.
+What it establishes is that the page displayed those responses, never that a value is domain-correct.
+`smoke:sync`, `smoke:layout`, `smoke:profit` and `smoke:discovery` deliberately do not: through `scripts/stubOrigin.mjs`
 they serve `dist/` and answer every route they need from their own process — the trigger and status
 routes with scripted task lifecycles for the first, the four areas' reads for the second, and for the
 third a row set covering gain, loss, blocked, not-allowed, no-result and null-versus-zero plus a
 scripted resolution response whose tree carries split sourcing, a repeated item, a known zero, a
-missing price and an unrecognized method/state/reason — so the pages are exercised in a real browser
+missing price and an unrecognized method/state/reason, and for the fourth two character disciplines
+and a candidate set covering a gain, a loss, an exact zero, a blocked row with null economics and a
+recipe with no result — so the pages are exercised in a real browser
 without starting a real synchronization or touching user data.
 `stubOrigin` binds and the scripts open `127.0.0.1` rather than the name `localhost`, it fails on a
 `listen` error, and each run asserts that this server served the page — without those, another process
 on that port (a dev server bound to `::1` alone leaves the IPv4 port free) would be driven instead,
 and its `/api` proxy would reach the real backend. A passing `smoke:sync` therefore evidences browser
-interaction and task-state presentation only, never that a backend synchronization ran; `smoke:layout`
-and `smoke:profit` evidence structure, layout, selection, display-control behavior, tree rendering,
-focus and contrast, and nothing about real data or page-load performance.
+interaction and task-state presentation only, never that a backend synchronization ran; `smoke:layout`,
+`smoke:profit` and `smoke:discovery` evidence structure, layout, selection, display-control behavior,
+tree rendering, focus and contrast, and nothing about real data or page-load performance. In
+particular, `smoke:discovery` exercises no eligibility rule: the rating filter, the account-wide
+recipe-knowledge rule and normal-discovery eligibility are the backend's, and what that run shows
+about them is controlled-response evidence only.
 
 ---
 
@@ -1679,10 +1832,12 @@ Observed properties of this flow:
   and a Discovery character scope, so both operations complete synchronously with no background task
   or status endpoint.
 
-**Remaining work.** The browser consumer of these routes — request/generation association, tree
-rendering, the requested-versus-actual labelling of §13.3/§13.4 — is not implemented, and no
-`TARGET_ARCHITECTURE.md` §33 full-page timing is claimed: the figures above are backend request time
-only. `KNOWN_PROBLEMS.md` CH-15 and CH-17 show through the tree unchanged, as §5.12 records.
+**Remaining work.** Both routes now have a browser consumer — Profit's since `STORY-WEB-007` and
+Discovery's since `STORY-WEB-012`, sharing one implementation of §13.4's request/generation
+association and one tree/detail presentation (§5.11) — but no `TARGET_ARCHITECTURE.md` §33 full-page
+timing is claimed for either: the figures above are backend request time only, and the detail a
+selection loads is still untimed. `KNOWN_PROBLEMS.md` CH-15 and CH-17 show through the tree
+unchanged, as §5.12 records.
 
 ---
 
@@ -1821,6 +1976,78 @@ through `ProxySelector.getDefault()` instead of the builder's no-proxy default, 
 configuration rather than a code change). With nothing configured the selector chooses a direct
 connection, which is what every earlier run made; the observable consequence is that an upstream image
 fetch can be *counted* by a proxy instead of inferred from a rendered picture.
+
+---
+
+### 5.15 Ectoplasm Salvage HTTP flow (`STORY-WEB-013`)
+
+An HTTP entry point over the §5.3 use case, added without touching it: `EctoView` still calls
+`application.EctoSalvageService.calculate()` in process, and the two paths call the identical method.
+Unlike every crafting route this one reads no database and needs no synchronization — its quotes are
+acquired live by the application's own gateway (§5.3).
+
+```text
+GET /api/ecto/salvage
+   |
+   v
+web.EctoSalvageApiController
+   |  1. reject any query parameter (the use case accepts no input) — before delegating
+   |  2. ectoSalvageService.calculate()          one call per accepted request
+   |       -> api.tp.EctoLivePriceGateway.fetchQuotes(...)   (live, unsynchronized)
+   |       -> ecto.EctoSalvageCalculator.evaluate(...) x4
+   |  3. field-for-field copy into web.dto.EctoSalvageResponse
+   v
+200 EctoSalvageResponse | 400 UNSUPPORTED_REQUEST | 502 PRICE_SOURCE_UNAVAILABLE
+```
+
+**Contract.** `GET /api/ecto/salvage`, `application/json`, no request body and **no** accepted
+parameter — there is no adjustable yield, fee, item, quantity or acquisition mode, so a request
+carrying any query parameter is rejected with 400 `UNSUPPORTED_REQUEST` *before* the service is
+called rather than answered with the unparameterised result. The response carries
+`resultAvailable`, the `ectoItemId`/`dustItemId` the quotes were taken for, an `assumptions` group
+(`expectedLuckPerEcto`, `expectedDustPerEcto`, `ectosPer1000Luck`, `tradingPostSellFeePercent`) read
+from the domain constants in `ecto.EctoSalvageCalculator`, and the four named scenarios
+`instantBuyInstantSell`, `instantBuyListingSell`, `listingBuyInstantSell`, `listingBuyListingSell`.
+Each scenario is seven integers in copper, per one Ectoplasm except the last:
+`ectoAcquisitionCostCopper` and `dustGrossUnitPriceCopper` are **gross** Trading Post quotes carrying
+no fee, while `dustNetUnitPriceCopper`, `netValueOfRecoveredDustCopper`, `netCostPerEctoCopper`,
+`profitPerEctoCopper` and `costPer1000LuckCopper` are the domain's **fee-inclusive** results with
+`DOMAIN_SPEC.md` §25's selling fee applied once, on the Dust side only (§46–§47). Signs are
+preserved — a negative net cost or Luck cost means the recovered Dust is worth more than the
+Ectoplasm — and a supplied zero stays zero. `SELL_FEE_PERCENT` was added to
+`ecto.EctoSalvageCalculator` so the boundary states the fee from its domain owner instead of holding a
+second copy; `EctoSalvageCalculatorTest` pins it to the multiplier the calculation actually applies,
+and the existing `0.85` arithmetic is unchanged.
+
+**Nothing economic at the boundary.** The controller fetches no price, holds no quote-acquisition
+sequence, applies no fee, scales no yield and computes no profit, net cost or Luck cost: every number
+it returns came out of that one service call. The assumptions are reported as **expected values**, not
+guaranteed drops (`DOMAIN_SPEC.md` §45/§47), and no field is derivable from another by design — a
+client multiplying a net unit price by the expected yield would be running its own economics.
+
+**Statuses.** 200 with `resultAvailable: true` and four scenarios; 200 with `resultAvailable: false`
+and four **null** scenarios when the Trading Post returned no usable quote for both items — a
+completed calculation with no result, never zeros (`DOMAIN_SPEC.md` §21); 400 `UNSUPPORTED_REQUEST`
+with nothing calculated; 502 `PRICE_SOURCE_UNAVAILABLE` when the live lookup or the calculation failed.
+`web.EctoSalvageApiExceptionHandler` is scoped to this controller (`assignableTypes`), so framework
+404/405 routing answers are untouched, and it catches `Exception` because the use case declares the
+checked `IOException` of a failed live fetch. 502 rather than 500: the failing work is an upstream
+service the backend does not control. Only this application's own validation message is returned —
+upstream URLs, status text and stack traces are logged server-side and never sent.
+
+**No shared request state.** One `EctoSalvageService` bean, for the reason §5.12's account reads
+record: it keeps no per-call state — only its price gateway — and returns a fresh result object per
+call, so no request can observe another's result.
+
+**Synchronous, by measurement.** Per §23 / `UD-007`, measured against the real backend and the real
+Trading Post before the policy was fixed (`frontend/scripts/ecto-live-smoke.mjs`; 15 sequential
+samples in two runs, figures in `STORY-WEB-013`'s Result): median 164–294 ms, minimum 62 ms, with a
+single 6.1 s outlier attributable to the upstream GW2 API. Comfortably inside a normal HTTP request, so
+this route answers synchronously with no background task and no status endpoint — and it is the
+browser's explicit reload, never a timer, that repeats it. The outlier is why the screen shows a
+loading state and suppresses a duplicate in-flight reload rather than assuming the answer is instant.
+No `TARGET_ARCHITECTURE.md` §33 claim follows from these figures: they are this route's backend
+request time, and §33 is about the Crafting pages.
 
 ---
 

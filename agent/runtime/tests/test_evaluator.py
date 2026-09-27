@@ -13,8 +13,11 @@ of the fix actually live. No application/domain Java code is touched.
 
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from agent.runtime.evaluation.evaluator import normalize_evaluation
+from agent.runtime.evaluation import hermes_client
+from agent.runtime.support.config import EVALUATOR_REQUEST_TIMEOUT_SECONDS
 from agent.runtime.core.orchestrator import build_retry_prompt
 
 
@@ -32,6 +35,16 @@ DONE
 
 - Tests pass.
 """
+
+
+class EvaluatorRequestTimeoutTest(unittest.TestCase):
+    def test_ollama_http_request_has_bounded_timeout(self):
+        with patch.object(hermes_client.urllib.request, "urlopen",
+                          side_effect=TimeoutError("timed out")) as urlopen:
+            with self.assertRaises(TimeoutError):
+                hermes_client.call_ollama([], {})
+        self.assertEqual(urlopen.call_args.kwargs["timeout"],
+                         EVALUATOR_REQUEST_TIMEOUT_SECONDS)
 
 TODO_STORY = """# STORY-TEST-TODO
 

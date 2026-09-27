@@ -21,6 +21,7 @@ from agent.runtime.support.config import (
     MAX_CI_FIX_ATTEMPTS,
     EVALUATION_ATTEMPTS,
     EVALUATION_RETRY_SECONDS,
+    EVALUATOR_REQUEST_TIMEOUT_SECONDS,
     PROJECT_STATE_FILE,
     USER_DECISIONS_DIR,
     PRODUCT_OWNER_REQUESTS_DIR,
@@ -179,6 +180,19 @@ def _evaluate_with_local_retries(
         except (OSError, RuntimeError, ValueError, KeyError) as exc:
             last_error = exc
 
+            if isinstance(exc, TimeoutError):
+                log_line(
+                    f"Evaluator timeout after {EVALUATOR_REQUEST_TIMEOUT_SECONDS}s "
+                    f"(attempt {attempt}/{EVALUATION_ATTEMPTS})"
+                )
+            else:
+                log_line(
+                    f"Evaluator request failed after "
+                    f"{EVALUATOR_REQUEST_TIMEOUT_SECONDS}s timeout setting "
+                    f"(attempt {attempt}/{EVALUATION_ATTEMPTS}): "
+                    f"{type(exc).__name__}: {exc}"
+                )
+
             print_status(
                 f"Evaluator unavailable ({type(exc).__name__}: {exc}); "
                 f"local retry {attempt}/{EVALUATION_ATTEMPTS} "
@@ -198,6 +212,29 @@ def _evaluate_with_local_retries(
     )
 
     raise last_error
+
+
+def _evaluate_preserving_completed_attempt(
+        story_content: str,
+        result_content: str,
+        claude_exit_code: int,
+        result_was_updated: bool,
+) -> dict:
+    """Retry evaluation indefinitely in bounded batches, never rerunning Claude."""
+    while True:
+        try:
+            return _evaluate_with_local_retries(
+                story_content, result_content, claude_exit_code,
+                result_was_updated,
+            )
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
+            # Keep the completed Claude output in this stack frame. Returning
+            # to main() would see the story still active and invoke Claude again.
+            print_status(
+                "Evaluation retry batch exhausted; completed Claude work is "
+                f"preserved. Retrying evaluation in {CYCLE_RETRY_SECONDS}s."
+            )
+            time.sleep(CYCLE_RETRY_SECONDS)
 
 
 # ============================================================
@@ -734,7 +771,7 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
 
         failed_runs = 0
 
-        evaluation = _evaluate_with_local_retries(
+        evaluation = _evaluate_preserving_completed_attempt(
             story_content,
             result_content,
             claude_exit_code,
@@ -1395,15 +1432,37 @@ class CapacityScheduler:
                  "inputs change or PLANNING_CACHE.json is removed; independent execution continues.")
         return False
 
-    def plan_if_useful(self, idle=False):
-        if not idle and not should_trigger_planning(len(get_selectable_story_candidates())):
-            return False
+    def plan_if_useful(self, idle=False, force=False):
         if self.cache_file is not None and self.no_work_at and not self.cache_file.exists():
             self.no_work_at = None
             self.planning_hold = None
         before = planning_input_snapshot()
         fingerprint = planning_fingerprint(before)
-        if fingerprint == self.no_work_at or not self.codex_available():
+        changed_since_hold = bool(
+            self.no_work_at
+            and fingerprint != self.no_work_at
+        )
+        queue_low = should_trigger_planning(len(get_selectable_story_candidates()))
+        if (idle and fingerprint == self.no_work_at and self.planning_hold
+                and self.planning_hold.get("independent_work_remaining") is not True):
+            log_line(
+                "Decision: wait -- no planning inputs changed and previous "
+                "planner result has no independent work remaining"
+            )
+            return False
+        if not (force or queue_low or changed_since_hold or
+                (idle and self.planning_hold is None)):
+            return False
+        if fingerprint == self.no_work_at:
+            if self.planning_hold and self.planning_hold.get("independent_work_remaining") is True:
+                pass  # A bounded follow-up pass was explicitly requested by the planner result.
+            else:
+                log_line(
+                    "Decision: wait -- no planning inputs changed and previous "
+                    "planner result has no independent work remaining"
+                )
+                return False
+        if not self.codex_available():
             return False
         if self.planning_hold and self.planning_hold.get("inputs"):
             changes = changed_planning_inputs(self.planning_hold["inputs"], before)
@@ -1430,10 +1489,11 @@ class CapacityScheduler:
         useful = changed and bool(
             result.get("story_files_created") or result.get("milestone_transition")
             or result.get("architect_requests_created") or result.get("independent_work_remaining"))
-        if (status == "NEEDS_USER" or not useful
-                or (result.get("independent_work_remaining") is False
-                    and not result.get("milestone_transition"))):
-            self._hold_planning(result, after, after_fingerprint, changed_planning_inputs(before, after))
+        # Always checkpoint the post-pass state: planner-owned artifacts must
+        # not be mistaken for fresh inputs on the next idle scheduling cycle.
+        # independent_work_remaining=True still permits one follow-up pass.
+        self._hold_planning(result, after, after_fingerprint,
+                            changed_planning_inputs(before, after))
         return useful
 
     def answer_architect_request(self, request):
@@ -1771,7 +1831,7 @@ def _run_cycle(scheduler, replenish, decisions) -> tuple[str, bool]:
                 else "To Do queue is empty"
             ),
         )
-        planned = scheduler.plan_if_useful(idle=not claude_ready)
+        planned = scheduler.plan_if_useful(idle=not claude_ready, force=replenish)
         replenish = False
         if planned:
             # Newly planned work is picked up by the next cycle's own

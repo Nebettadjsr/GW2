@@ -391,6 +391,53 @@ export interface MaterialStorage {
   categories: MaterialCategory[]
 }
 
+/**
+ * One Ecto-buy / Dust-sell scenario of `GET /api/ecto/salvage` (`CURRENT_ARCHITECTURE.md` 5.15).
+ *
+ * Gross quotes and fee-inclusive economic results are separate fields on purpose (DOMAIN_SPEC 25,
+ * 46): the first two are raw Trading Post prices, the rest are results the domain produced with the
+ * selling fee already applied once. Nothing here may be derived from anything else here — the
+ * browser displays these, it does not relate them.
+ */
+export interface EctoSalvageScenario {
+  ectoAcquisitionCostCopper: number
+  dustGrossUnitPriceCopper: number
+  dustNetUnitPriceCopper: number
+  netValueOfRecoveredDustCopper: number
+  netCostPerEctoCopper: number
+  profitPerEctoCopper: number
+  costPer1000LuckCopper: number
+}
+
+/**
+ * The salvage parameters the backend calculated with. They are expected values, not guaranteed
+ * drops (DOMAIN_SPEC 45, 47), and are reported whether or not a price snapshot was available.
+ */
+export interface EctoSalvageAssumptions {
+  expectedLuckPerEcto: number
+  expectedDustPerEcto: number
+  ectosPer1000Luck: number
+  /** The selling fee already deducted from the recovered Dust proceeds, stated by the backend. */
+  tradingPostSellFeePercent: number
+}
+
+/**
+ * Response body of `GET /api/ecto/salvage`.
+ *
+ * `resultAvailable` false is a completed calculation the Trading Post had no usable quotes for: all
+ * four scenarios are then null, and a null must never be displayed as zero (DOMAIN_SPEC 21).
+ */
+export interface EctoSalvage {
+  resultAvailable: boolean
+  ectoItemId: number
+  dustItemId: number
+  assumptions: EctoSalvageAssumptions
+  instantBuyInstantSell: EctoSalvageScenario | null
+  instantBuyListingSell: EctoSalvageScenario | null
+  listingBuyInstantSell: EctoSalvageScenario | null
+  listingBuyListingSell: EctoSalvageScenario | null
+}
+
 /** Uniform backend error body. */
 export interface ApiErrorBody {
   error: string

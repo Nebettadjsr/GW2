@@ -86,6 +86,21 @@ class EctoSalvageCalculatorTest {
         assertEquals(300, r.costPer1000Luck());
     }
 
+    /**
+     * The percentage the boundaries state and the multiplier this calculator applies are two
+     * declarations of one domain rule (DOMAIN_SPEC.md §25), so they are pinned to each other: a
+     * changed fee that reached only one of them fails here rather than producing a screen whose
+     * stated percentage disagrees with its own numbers.
+     */
+    @Test
+    void theStatedFeePercentageIsTheOneTheCalculationActuallyDeducts() {
+        assertEquals(15, EctoSalvageCalculator.SELL_FEE_PERCENT);
+
+        int gross = 10_000;
+        assertEquals(gross - (gross * EctoSalvageCalculator.SELL_FEE_PERCENT / 100),
+                EctoSalvageCalculator.netSaleProceeds(gross));
+    }
+
     @Test
     void ectoAcquisitionCostAndExpectedYieldsAreUnchangedAndNeverFeeAdjusted() {
         assertEquals(20.0, EctoSalvageCalculator.LUCK_PER_ECTO);

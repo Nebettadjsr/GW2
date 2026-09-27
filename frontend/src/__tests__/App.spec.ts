@@ -2,7 +2,13 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BankContents } from '@/api/types'
 import { deferred, bankWithEmptySlots, materialStorage } from '@/account/__tests__/accountFixtures'
-import { profitResponse, selectorOptions } from '@/crafting/__tests__/fixtures'
+import {
+  discoveryResolutionResponse,
+  echoedDiscoveryResponse,
+  profitResponse,
+  selectorOptions
+} from '@/crafting/__tests__/fixtures'
+import { ectoSalvage } from '@/ecto/__tests__/ectoFixtures'
 
 /**
  * The application shell: navigation between the areas, what each navigation costs at the network
@@ -31,9 +37,18 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 const SYNC_TASK_ID = 'task-account-1'
 
-async function answer(path: string): Promise<Response> {
+async function answer(path: string, init?: RequestInit): Promise<Response> {
   if (path === '/api/crafting/selector-options') return jsonResponse(selectorOptions)
   if (path === '/api/crafting/profit') return jsonResponse(profitResponse())
+  // The two Discovery routes answer from the request body, the way the contract does: the screen
+  // reads its control state and its detail's identity out of that echo.
+  if (path === '/api/crafting/discovery') {
+    return jsonResponse(echoedDiscoveryResponse(JSON.parse(String(init?.body ?? '{}'))))
+  }
+  if (path === '/api/crafting/discovery/resolution') {
+    return jsonResponse(discoveryResolutionResponse(JSON.parse(String(init?.body ?? '{}'))))
+  }
+  if (path === '/api/ecto/salvage') return jsonResponse(ectoSalvage)
   if (path === '/api/account/bank') return jsonResponse(await bankAnswer)
   if (path === '/api/account/materials') return jsonResponse(materialStorage)
   if (path === '/api/sync/account') {
@@ -89,7 +104,7 @@ beforeEach(() => {
     'fetch',
     vi.fn((input: string, init?: RequestInit) => {
       requested.push({ method: init?.method ?? 'GET', path: input })
-      return answer(input)
+      return answer(input, init)
     })
   )
 })
@@ -119,6 +134,8 @@ describe('App shell', () => {
     const links = open.findAll('[data-test="screen-nav"] a')
     expect(links.map((link) => link.attributes('href'))).toEqual([
       '#/crafting',
+      '#/discovery',
+      '#/ecto',
       '#/synchronization',
       '#/bank',
       '#/materials'
@@ -139,6 +156,90 @@ describe('App shell', () => {
     const heading = open.find('[data-test="page-heading"]')
     expect(heading.text()).toBe('Synchronization')
     expect(document.activeElement).toBe(heading.element)
+  })
+
+  it('opensCraftingDiscoveryAsItsOwnAddressableDestinationAndCalculatesThere', async () => {
+    const open = await openApp()
+
+    await navigateTo(open, 'discovery')
+
+    // A real URL of its own, so Back, Forward, a bookmark and a reload all work (STORY-WEB-012).
+    expect(window.location.hash).toBe('#/discovery')
+    expect(document.title).toBe('Crafting Discovery · GW2 Crafting Tool')
+    expect(currentDestination(open)).toBe('nav-discovery')
+    const heading = open.find('[data-test="page-heading"]')
+    expect(heading.text()).toBe('Crafting Discovery')
+    expect(document.activeElement).toBe(heading.element)
+
+    // Opening it posts its own calculation once, on its own route, and nothing else.
+    expect(pathsOf('/api/crafting/discovery')).toEqual(['/api/crafting/discovery'])
+    expect(open.find('[data-test="discovery-table"]').exists()).toBe(true)
+    expect(open.find('[data-test="profit-table"]').exists()).toBe(false)
+    expect(pathsOf('/api/account')).toEqual([])
+    expect(pathsOf('/api/sync')).toEqual([])
+  })
+
+  it('opensEctoplasmSalvageAsItsOwnAddressableDestinationAndCalculatesThere', async () => {
+    const open = await openApp()
+
+    await navigateTo(open, 'ecto')
+
+    // A real URL of its own, so Back, Forward, a bookmark and a reload all work (STORY-WEB-013).
+    expect(window.location.hash).toBe('#/ecto')
+    expect(document.title).toBe('Ectoplasm Salvage · GW2 Crafting Tool')
+    expect(currentDestination(open)).toBe('nav-ecto')
+    const heading = open.find('[data-test="page-heading"]')
+    expect(heading.text()).toBe('Ectoplasm Salvage')
+    expect(document.activeElement).toBe(heading.element)
+
+    // Opening it calls its own route once, and nothing else — no crafting calculation follows from
+    // navigating here, and the live price lookup stays entirely on the backend.
+    expect(pathsOf('/api/ecto')).toEqual(['/api/ecto/salvage'])
+    expect(open.find('[data-test="ecto-scenario-table"]').exists()).toBe(true)
+    expect(pathsOf('/api/account')).toEqual([])
+    expect(pathsOf('/api/sync')).toEqual([])
+  })
+
+  it('recalculatesEctoplasmOnReturnRatherThanRepresentingTheOlderPriceSnapshot', async () => {
+    const open = await openApp()
+
+    await navigateTo(open, 'ecto')
+    await navigateTo(open, 'bank')
+    await navigateTo(open, 'ecto')
+
+    // Unlike the two crafting screens, this one holds no scope or settings to preserve and its
+    // result is a live price snapshot, so reopening it asks the backend again.
+    expect(pathsOf('/api/ecto')).toEqual(['/api/ecto/salvage', '/api/ecto/salvage'])
+  })
+
+  it('keepsTheTwoCraftingScreensSeparateAndPostsNoSecondCalculationOnReturn', async () => {
+    const open = await openApp()
+    const profitCalculations = pathsOf('/api/crafting/profit').length
+
+    await navigateTo(open, 'discovery')
+    await open.find('[data-test="discovery-search"]').setValue('Iron')
+    await open.findAll('[data-test="discovery-select-row"]')[0]?.trigger('click')
+    await flushPromises()
+    const selectedRecipe = open.find('[data-test="discovery-detail-name"]').text()
+    expect(pathsOf('/api/crafting/discovery/resolution')).toHaveLength(1)
+
+    await navigateTo(open, 'crafting')
+
+    // Opening Discovery did not re-post Profit's calculation, and returning to Profit does not
+    // re-post it either: the two screens are independent kept-alive boundaries.
+    expect(pathsOf('/api/crafting/profit')).toHaveLength(profitCalculations)
+
+    await navigateTo(open, 'discovery')
+
+    // The Discovery selection survived the trip with no second table calculation; only the detail is
+    // asked for again, freshly, as 13.4 requires after leaving the view.
+    expect(pathsOf('/api/crafting/discovery')).toEqual([
+      '/api/crafting/discovery',
+      '/api/crafting/discovery/resolution',
+      '/api/crafting/discovery/resolution'
+    ])
+    expect((open.find('[data-test="discovery-search"]').element as HTMLInputElement).value).toBe('Iron')
+    expect(open.find('[data-test="discovery-detail-name"]').text()).toBe(selectedRecipe)
   })
 
   it('opensCraftingProfitWhenTheUrlNamesNoKnownDestination', async () => {

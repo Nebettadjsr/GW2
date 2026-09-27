@@ -10,6 +10,15 @@ When asked a factual question about the repository, report the finding and
 stop. Do not append adjacent concerns, risks, or implications that were not
 asked about.
 
+## Restart the runtime before trusting integration evidence
+
+After substantial backend/frontend, DTO, route or configuration changes, build the current
+source, stop stale backend and frontend processes, start the current runtime, and verify the
+expected process owns the ports before browser or integration checks. A browser refresh does
+not update an already-running Java process, and an unidentified listener can make an old
+contract look like a current defect. Trivial edits that cannot affect served behavior do not
+require a restart.
+
 **Why:** Asked which model the orchestrator launches, the answer volunteered an
 unrelated warning about the interactive chat model affecting the RepoMap
 token-usage comparison. The chat model and the orchestrator-launched model are
@@ -174,6 +183,25 @@ not create it — verify a referenced harness exists before trusting an acceptan
 and `page.reload()` does not revalidate a *fresh* subresource, so asserting 304s after a reload asserts
 on an empty list. Use the browser's own `fetch(url, {cache: 'no-cache'})` when the point is the stored
 validator.
+
+## An unawaited `waitForResponse` deletes the error message you actually need
+
+A Playwright wait created on a path the run might not take is an unhandled rejection the moment the
+browser closes. Node reports *that* and exits, so the real assertion failure — which already
+triggered the `finally` that closed the browser — is never printed.
+
+**Why:** `discovery-live-smoke.mjs` creates `nextResponse(discoveryPath)` and
+`nextResponse(detailPath)` before a reload, but skips the second when the reloaded calculation no
+longer offers the selected recipe. The first run failed with
+`page.waitForResponse: Target page, context or browser has been closed` pointing at the *setup* line,
+which says nothing at all. The actual cause was a wrong assumption three steps earlier — the check
+read the page before the selector had answered — and it took a second run to see it.
+
+**How to apply:** mark every created wait handled at creation (`pending.catch(() => undefined)`;
+this leaves `await pending` still throwing the original error) and wrap the script body in
+`try/catch/finally` that prints the caught error itself rather than leaving the process to report
+whichever promise rejected last. A script whose failure mode is "an error from a line that cannot
+fail" is unusable as evidence.
 
 ## The prompt outranks the contract it embeds — keep both in step
 

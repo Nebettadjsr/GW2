@@ -5,6 +5,7 @@ import application.BankContentsService;
 import application.CharacterSelectionService;
 import application.CraftingDiscoveryService;
 import application.CraftingProfitService;
+import application.EctoSalvageService;
 import application.GlobalDataRefreshService;
 import application.MaterialStorageService;
 import application.TradingPostPriceRefreshService;
@@ -145,6 +146,21 @@ public class Gw2ApiApplication {
     @Bean
     public MaterialStorageService materialStorageService() {
         return new MaterialStorageService();
+    }
+
+    /**
+     * The Ectoplasm Salvage use case (STORY-WEB-013), shared for the same reason as the reads above:
+     * it keeps no per-call state, holding only its {@code api.tp.EctoLivePriceGateway} collaborator
+     * and returning a fresh result object per call.
+     *
+     * <p>Constructing it opens nothing — the gateway's HTTP client connects only when a calculation
+     * runs — so this bean costs no database connection and no GW2 API request at startup. It reads
+     * no database at all: this use case sources its Ecto/Dust quotes live (CURRENT_ARCHITECTURE.md
+     * §5.3), which is why it needs no synchronization and no synced price rows.
+     */
+    @Bean
+    public EctoSalvageService ectoSalvageService() {
+        return new EctoSalvageService();
     }
 
     /**

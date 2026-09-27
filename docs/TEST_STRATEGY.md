@@ -651,6 +651,18 @@ A special state that the live database does not currently produce (for example a
 price) is covered at the component level with a controlled response, and the Result says so rather
 than implying the browser run exercised it.
 
+### Fresh-runtime prerequisite after substantial changes
+
+After a substantial backend/frontend integration change—especially an API contract, DTO field,
+route, configuration or other change that can be hidden by a long-running process—browser and
+integration observations must use a freshly started runtime. Build the current source, stop the
+backend and frontend processes that may still serve older assets/classes, start the current
+backend and frontend, verify the expected process owns the configured ports, and only then run
+the check. A browser refresh alone is insufficient when a Java backend or dev server remains
+running. This is not required for trivial presentation-only edits that cannot affect served
+behavior. Record the revision and any restart limitation in the story Result; never treat a
+check against an unidentified long-running process as evidence for the current source.
+
 ## 12.3 Checking controls that would mutate data
 
 A read-only screen can be smoke-checked against the live backend; a control that starts a

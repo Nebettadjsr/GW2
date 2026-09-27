@@ -693,7 +693,7 @@ class ArchitectSchedulingTest(MainFlowTestCase):
         self.assertEqual(
             self.events,
             ["architect:AR-001-frontend.md", "plan", "select", "claude",
-             "plan", "select"],
+             "select"],
         )
 
     def test_architect_needs_user_waits_for_the_existing_decision_flow(self):

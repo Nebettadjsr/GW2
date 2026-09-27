@@ -5,6 +5,7 @@ import application.BankContentsService;
 import application.CharacterSelectionService;
 import application.CraftingDiscoveryService;
 import application.CraftingProfitService;
+import application.EctoSalvageService;
 import application.GlobalDataRefreshService;
 import application.MaterialStorageService;
 import application.TradingPostPriceRefreshService;
@@ -102,6 +103,12 @@ class Gw2ApiApplicationBootTest {
     private MaterialStorageService materialStorageService;
 
     @Autowired
+    private EctoSalvageApiController ectoSalvageController;
+
+    @Autowired
+    private EctoSalvageService ectoSalvageService;
+
+    @Autowired
     private RequestMappingHandlerMapping handlerMapping;
 
     @Test
@@ -161,6 +168,26 @@ class Gw2ApiApplicationBootTest {
                 "mapped POST paths: " + postPaths);
         assertTrue(postPaths.contains("/api/crafting/discovery/resolution"),
                 "mapped POST paths: " + postPaths);
+    }
+
+    /**
+     * STORY-WEB-013: the Ectoplasm route is wired to the existing use case and mapped at its path in
+     * the real context. Nothing is called, so no live Trading Post request follows from this test.
+     */
+    @Test
+    void theEctoSalvageRouteIsWiredToTheExistingUseCaseAndMappedAtItsPath() {
+        assertNotNull(ectoSalvageController);
+        assertNotNull(ectoSalvageService,
+                "the route delegates to the existing use case, so it must be a bean");
+
+        Set<String> getPaths = handlerMapping.getHandlerMethods().keySet().stream()
+                .filter(info -> info.getMethodsCondition().getMethods().contains(RequestMethod.GET))
+                .flatMap(info -> info.getPathPatternsCondition() == null
+                        ? Stream.<String>empty()
+                        : info.getPathPatternsCondition().getPatternValues().stream())
+                .collect(Collectors.toSet());
+
+        assertTrue(getPaths.contains("/api/ecto/salvage"), "mapped GET paths: " + getPaths);
     }
 
     @Test
