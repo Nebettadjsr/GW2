@@ -155,6 +155,26 @@ root's own blocked reason and would have passed with the child unmarked.
 label element (`el.find('[data-test="node-name"]').text()`), not by the subtree's text. Pair every
 "this node is marked" assertion with a sibling that must *not* be.
 
+## A check that asserts an absence expires the day the feature arrives
+
+When a story adds the thing an existing check asserted was missing, that check fails for the right
+reason in the wrong place. Search for assertions of absence before running anything, and convert them
+into "only this, and here is the count" rather than deleting them.
+
+**Why:** `STORY-WEB-010` made the browser render item images. `account-browser-smoke.mjs` had already
+been updated for the new `<img>` assertions, but a *different* step still demanded a bank reload produce
+exactly `['/api/account/bank']` — and it now legitimately produces image requests too, so the first real
+run against live data failed after three steps. The neighbouring step had been fixed; this one had not
+been looked for.
+
+**How to apply:** grep the checks for the old negative claim (`no <img>`, `imageCount > 0`, "requests
+nothing") and for exact-equality assertions on request lists, and rewrite each one as a filter plus a
+reported count. Two more from the same session: a comment naming a script (`profit-page-perf.mjs`) does
+not create it — verify a referenced harness exists before trusting an acceptance criterion is covered;
+and `page.reload()` does not revalidate a *fresh* subresource, so asserting 304s after a reload asserts
+on an empty list. Use the browser's own `fetch(url, {cache: 'no-cache'})` when the point is the stored
+validator.
+
 ## The prompt outranks the contract it embeds — keep both in step
 
 When a role's behavior is set by a Markdown contract *and* by the harness

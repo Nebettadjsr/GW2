@@ -32,3 +32,100 @@
 [00:33:20] Evaluator decision: COMPLETE
 [00:33:20] Reason: The active story satisfied its own Acceptance Criteria and its own Definition of Done, as written in the story file. The implementation was verified against the criteria, the two defects were fixed, the missing frontend test was added, the performance was measured against the real database, and the documentation was updated. No Phase 5 exit criteria are claimed.
 [00:33:20] ========================================
+[00:33:23] STORY-DOM-021-profit-non-tp-material-control.md published for CI verification: e1d7f3d on master (49 changed path(s), new commit, waiting for GitHub Actions.
+[00:34:24] GitHub CI PASSED for e1d7f3d (STORY-DOM-021-profit-non-tp-material-control.md): CI: success
+[00:34:33] Availability check: claude_available=True, codex_available=True
+[00:34:33] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[00:34:39] Decision: code (select next story) -- reason: 3 selectable To Do candidate(s), Claude available
+[00:34:39] ========================================
+[00:34:39] Story selector: NEXT
+[00:34:39] Reason: Deterministic selection: first executable entry in BACKLOG.md's 'To Do' order (STORY-WEB-010-shared-item-icon-presentation.md).
+[00:34:39] ========================================
+[00:34:39] Next story activated:
+[00:34:39] agent/stories/STORY-WEB-010-shared-item-icon-presentation.md
+[00:34:48] Availability check: claude_available=True, codex_available=True
+[00:34:48] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[00:34:48] ========================================
+[00:34:48] Active story: agent/stories/STORY-WEB-010-shared-item-icon-presentation.md
+[00:34:48] ========================================
+[00:38:06] RepoMap: disabled, budget=1200 tokens
+[00:38:12] ========================================
+[00:38:12] Starting Claude Code
+[00:38:12] ========================================
+[01:00:50] You've hit your session limit · resets 5am (Europe/Berlin)
+[01:00:50] ========================================
+[01:00:50] Claude Code exit code: 1
+[01:00:50] ========================================
+[01:00:53] Claude run measurement: repo_map=off, duration=1358.3s, usage_before=48, usage_after=100
+[01:00:53] Claude exited with code 1 after running out of capacity. Story remains active and UNFINISHED; waiting locally for capacity before continuing the same story.
+[01:00:53] Claude capacity exhausted during STORY-WEB-010-shared-item-icon-presentation.md; story preserved as UNFINISHED, waiting locally.
+[01:00:53] Claude capacity exhausted (first detected).
+[01:00:59] Planning resumed for changed inputs: agent/CURRENT_STORY.md, agent/runtime/artifacts/CLAUDE_RESULT.md, agent/stories/BACKLOG.md, agent/stories/STORY-DOM-021-profit-non-tp-material-control.md, agent/stories/STORY-WEB-010-shared-item-icon-presentation.md, docs/CURRENT_ARCHITECTURE.md, docs/DOMAIN_SPEC.md, docs/KNOWN_PROBLEMS.md, docs/TARGET_ARCHITECTURE.md, docs/crafting/GLOSSARY.md, docs/crafting/README.md
+[01:00:59] ========================================
+[01:00:59] Running project-planning pass
+[01:00:59] ========================================
+[01:00:59] ========================================
+[01:00:59] Starting hosted Codex planner
+[01:00:59] ========================================
+[01:01:00] [planner] session 01a0dff3-4f7e-77d2-9259-480775d8a010
+[01:01:00] [planner] reasoning...
+[01:01:06] Planner last response:
+[01:01:06] I’ll review the remaining Phase 5 areas against existing story coverage, focusing on the performance and health-review exit gates. I’ll leave the active story unchanged and keep the milestone open.
+[01:01:10] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$p = '"'docs/TARGET_ARCHITECTURE.md'; Select-String -Path "'$p -Pattern '"'"'^## .*|''^### .*'"' | Where-Object { "'$_.Line -match '"'"'^## (4'"\\.|12\\.|13\\.|14\\.|30\\.|33\\.|34\\.)|"'^### (4'"\\.1|12\\.)' } | ForEach-Object { \""'$($_.LineNumber):$($_.Line)" }'
+[01:01:10] [planner command done] exit 0
+[01:01:18] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path docs/TARGET_ARCHITECTURE.md -Pattern '"'^## '"' | ForEach-Object { \""'$($_.LineNumber):$($_.Line)" } | Select-Object -Last 18; $lines = Get-Content docs/TARGET_ARCHITECTURE.md; $lines[80..128]; $lines[413..459]; Get-Content agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md; Get-Content agent/stories/STORY-WEB-013-ectoplasm-salvage-page.md'
+[01:01:19] [planner command done] exit 0
+[01:01:26] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path docs/TARGET_ARCHITECTURE.md -Pattern '"'^# 3[0345]|''^# 1[234]'"' | ForEach-Object { \""'$($_.LineNumber):$($_.Line)" }; $lines = Get-Content docs/TARGET_ARCHITECTURE.md; $lines[1280..1386]; Get-Content agent/stories/STORY-WEB-012-crafting-discovery-page.md'
+[01:01:26] [planner command done] exit 0
+[01:01:30] Planner last response:
+[01:01:30] Existing stories cover the remaining Phase 5 implementation work. Final Profit performance verification awaits the icon and fee integration work; the health review should follow substantial implementation completion. No new stories or decision requests are needed in this pass, and all queued work is tagged milestone-05.
+[01:01:59] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[01:01:59] import json
+[01:01:59] from pathlib import Path
+[01:01:59] result = json.loads(r'''{\"status\":\"COMPLETE\",\"phase_considered\":\"Phase 5\",\"independent_work_remaining\":false,\"phase_review\":[{\"area\":\"Frontend framework and language\",\"outcome\":\"COVERED\",\"references\":[\"AR-001\",\"docs/TARGET_ARCHITECTURE.md#41-frontend-container\"]},{\"area\":\"Crafting Profit table, controls, resolution and special-state presentation\",\"outcome\":\"COVERED\",\"references\":[\"STORY-WEB-001\",\"STORY-WEB-005\",\"STORY-WEB-006\",\"STORY-WEB-007\",\"STORY-WEB-008\",\"STORY-WEB-011\",\"STORY-DOM-021\"]},{\"area\":\"Shared item icons and replaceable favicon\",\"outcome\":\"COVERED\",\"references\":[\"STORY-API-009\",\"STORY-WEB-010\",\"STORY-WEB-009\",\"docs/TARGET_ARCHITECTURE.md section 12.1\"]},{\"area\":\"Shared crafting fee policy and client integration\",\"outcome\":\"COVERED\",\"references\":[\"UD-011\",\"STORY-DOM-022\",\"agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md\"]},{\"area\":\"Discovery browser workflow and authoritative resolution\",\"outcome\":\"COVERED\",\"references\":[\"agent/stories/STORY-WEB-012-crafting-discovery-page.md\",\"STORY-API-008\",\"STORY-APP-012\"]},{\"area\":\"Bank and material storage views\",\"outcome\":\"COVERED\",\"references\":[\"STORY-WEB-003\",\"STORY-API-007\"]},{\"area\":\"Ectoplasm HTTP/browser workflow and economic policy alignment\",\"outcome\":\"COVERED\",\"references\":[\"agent/stories/STORY-WEB-013-ectoplasm-salvage-page.md\",\"STORY-DOM-024\",\"UD-011\"]},{\"area\":\"API synchronization triggers and progress/status\",\"outcome\":\"COVERED\",\"references\":[\"STORY-WEB-002\",\"STORY-API-003\",\"STORY-API-004\",\"STORY-API-005\"]},{\"area\":\"Backend authority, JavaFX coexistence and frontend rendering/interaction verification\",\"outcome\":\"COVERED\",\"references\":[\"docs/TARGET_ARCHITECTURE.md sections 4.1 and 12\",\"agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md\",\"agent/stories/STORY-WEB-012-crafting-discovery-page.md\",\"agent/stories/STORY-WEB-013-ectoplasm-salvage-page.md\"]},{\"area\":\"Final integrated Profit browser-navigation performance verification\",\"outcome\":\"PREREQUISITE\",\"references\":[\"STORY-WEB-010\",\"STORY-DOM-023\",\"docs/TARGET_ARCHITECTURE.md section 33\",\"agent/PROJECT_STATE.md\"]},{\"area\":\"Bounded milestone health review and subsequent findings disposition\",\"outcome\":\"PREREQUISITE\",\"references\":[\"docs/TARGET_ARCHITECTURE.md section 34\",\"STORY-WEB-010\",\"STORY-DOM-023\",\"STORY-DOM-024\",\"STORY-WEB-012\",\"STORY-WEB-013\",\"STORY-WEB-009\",\"agent/PROJECT_STATE.md\"]},{\"area\":\"Executable queue phase gating\",\"outcome\":\"COVERED\",\"references\":[\"agent/stories/BACKLOG.md\"]}],\"phase_exit_criteria_satisfied\":false,\"story_files_created\":[],\"user_decision_ids\":[],\"product_owner_requests_processed\":[],\"architect_requests_created\":[],\"milestone_transition\":false,\"completed_milestone\":null,\"next_milestone\":null,\"backlog_updated\":false,\"roadmap_updated\":false,\"project_state_updated\":false,\"reason\":\"Existing milestone-05 stories cover remaining implementation; no open PO requests or independently identifiable unresolved decisions require new artifacts. All selectable work is current-phase. Final integrated Profit performance evidence awaits WEB-010 and DOM-023; schedule the bounded health review after implementation is substantially complete. Active WEB-010 remains untouched. Phase 5 stays open; no duplicate stories or transition.\"}''')
+[01:01:59] p = Path('agent/runtime/artifacts/PLANNING_RESULT.json')
+[01:01:59] p.parent.mkdir(parents=True, exist_ok=True)
+[01:01:59] p.write_text(json.dumps(result, indent=2) + '\\n', encoding='utf-8')
+[01:01:59] '@ | python -"
+[01:01:59] [planner command done] exit 0
+[01:02:03] Planner last response:
+[01:02:03] Wrote `agent/runtime/artifacts/PLANNING_RESULT.json` with status `COMPLETE`.
+[01:02:03] No new stories needed; existing work covers remaining implementation. Phase 5 stays open pending implementation, final browser performance verification, and health review. Active story and backlog unchanged.
+[01:02:03] [planner] turn completed | input tokens: 193292 | cached input tokens: 148736 | output tokens: 1533
+[01:02:03] ========================================
+[01:02:03] [planner] turn totals | model requests: 1 | gross input tokens: 193,292 | cached input tokens: 148,736 | uncached input tokens: 44,556 | output tokens: 1,533
+[01:02:03] Hosted codex planner exit code: 0
+[01:02:03] ========================================
+[01:02:03] ========================================
+[01:02:03] Planning result: COMPLETE
+[01:02:03] Reason: Existing milestone-05 stories cover remaining implementation; no open PO requests or independently identifiable unresolved decisions require new artifacts. All selectable work is current-phase. Final integrated Profit performance evidence awaits WEB-010 and DOM-023; schedule the bounded health review after implementation is substantially complete. Active WEB-010 remains untouched. Phase 5 stays open; no duplicate stories or transition.
+[01:02:03] ========================================
+[05:01:25] Claude capacity available again.
+[05:01:25] Orchestration resumed: continuing the active story after waiting locally for Claude capacity.
+[05:01:28] ========================================
+[05:01:28] Starting Claude Code
+[05:01:28] ========================================
+[05:42:46] STORY-WEB-010 is complete. I resumed the interrupted attempt rather than restarting it.
+[05:42:46] ## What was already on disk, and what I added
+[05:42:46] The previous session had written `frontend/src/items/ItemIcon.vue`, its spec, the six consumer changes (Profit rows, detail heading, both "still to buy" lists, tree nodes, Bank/Materials), `icon-browser-smoke.mjs`, `icon-live-check.mjs`, `recordingProxy.mjs` and `upstream-proxy.mjs`. I verified all of it against the criteria and added what was missing:
+[05:42:46] - **`frontend/scripts/profit-page-perf.mjs`** — AC 5 had no evidence at all; the other scripts' comments referenced a harness that didn't exist.
+[05:42:46] - **One production line**: `HttpIconImageFetcher`'s default client now uses `.proxy(ProxySelector.getDefault())`. Without it the JVM's proxy settings are ignored, so no upstream image request could be *counted or refused* — AC 4's upstream evidence would have had to be inferred. Behaviour is unchanged when no proxy is configured; covered by a new test that fetches an unresolvable host through a fixture proxy.
+[05:42:46] ## Three defects fixed
+[05:42:46] 1. `account-browser-smoke.mjs` demanded a bank reload produce exactly one request — item images now accompany it (failed on the first real-data run).
+[05:42:46] 2. `icon-live-check.mjs` revalidated with `page.reload()`, which doesn't revalidate a fresh subresource, so it asserted on an empty list.
+[05:42:46] 3. My own first perf run mis-attributed one opening's lazy-loading tail to the next, and treated a same-hash `goto` as a document load; both fixed before any number was recorded.
+[05:42:46] ## Evidence
+[05:42:46] - `smoke:icons` 10 steps, `smoke:profit` 30, `smoke:account` 8 (real data: 504 material images, all on the icon route, all no-referrer).
+[05:42:46] - Live checks: 43 real images with the documented headers; reopening re-requested **0 of 43**; **12/12** `If-None-Match` → **304**; a **restarted** backend served 41 images with **0 upstream tunnels**; behind a *refusing* proxy (proven armed first by an independent CONNECT) stored images still rendered with **0 tunnels**.
+[05:42:46] - §33 reverified across all three cache combinations against the real database: maxima **2 979 / 3 694 / 3 571 ms**, all inside 7 000 ms, with the complete requested set (**3 176 of 3 176** rows) in the DOM and no visible image left pending. Cold caches used isolated profiles and an isolated `ICON_CACHE_DIR` — the user's own cache was never touched.
+[05:42:46] - Frontend 230 tests pass, build clean; backend icon suites `Tests run: 84, Failures: 0 — BUILD SUCCESS`.
+[05:42:46] Limits are recorded explicitly rather than smoothed over: in-app renavigation isn't a comparable reopening (the client keeps the rows), offscreen icons keep loading after completion (counted, not waited out), a CONNECT count is tunnels not requests, revalidation used the browser's validate mode rather than a waited-out 24-hour window, and the selection detail is still untimed. **No performance acceptance, Phase 5 closure or health-review substitute is claimed.**
+[05:42:46] I also stopped two leftover backends and a dev server the interrupted attempt had left listening, and confirmed every port I used is released while the user's own backend on 8080 still answers. Docs went into `CURRENT_ARCHITECTURE.md` only; story file, BACKLOG, `CLAUDE_RESULT.md` and `tasks/lessons.md` are updated. Nothing was committed.
+[05:42:47] ========================================
+[05:42:47] Claude Code exit code: 0
+[05:42:47] ========================================
+[05:42:50] Claude run measurement: repo_map=off, duration=2479.2s, usage_before=0, usage_after=63
+[05:44:40] ========================================
+[05:44:40] Evaluator decision: COMPLETE
+[05:44:40] Reason: The active story satisfied its own Acceptance Criteria and its own Definition of Done, as written in the story file. The story was completed in the repository, with all acceptance criteria and Definition of Done items met. The evidence and documentation updates were made, and the required tests were run successfully.
+[05:44:40] ========================================

@@ -15,7 +15,10 @@
     "smoke:sync": "node scripts/sync-browser-smoke.mjs",
     "smoke:layout": "node scripts/layout-browser-smoke.mjs",
     "smoke:profit": "node scripts/profit-browser-smoke.mjs",
-    "smoke:account": "node scripts/account-browser-smoke.mjs"
+    "smoke:account": "node scripts/account-browser-smoke.mjs",
+    "smoke:icons": "node scripts/icon-browser-smoke.mjs",
+    "check:icons:live": "node scripts/icon-live-check.mjs",
+    "perf:profit-page": "node scripts/profit-page-perf.mjs"
   },
   "dependencies": {
     "vue": "^3.5.43"

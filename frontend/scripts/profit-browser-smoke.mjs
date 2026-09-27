@@ -79,17 +79,21 @@ function allRows() {
     outputPrice: { buyUnitCopper: 120_000, sellUnitCopper: 130_000 },
     missingToBuy: [],
     missingToBuyOne: [],
+    // This check is about the information hierarchy, not about images: every row here has no
+    // retained icon metadata, so the shared component shows its fallback and asks for nothing.
+    // Image delivery itself is `smoke:icons` and the live integration run (STORY-WEB-010).
+    iconUrl: null,
     ...overrides
   })
 
   return [
     row(1, 'Deldrimor Steel Ingot', {
       missingToBuy: [
-        { itemId: 19_700, itemName: 'Mithril Ore', quantity: 60, price: { buyUnitCopper: 120, sellUnitCopper: 140 } },
-        { itemId: 19_701, itemName: null, quantity: 5, price: null }
+        { itemId: 19_700, itemName: 'Mithril Ore', quantity: 60, price: { buyUnitCopper: 120, sellUnitCopper: 140 }, iconUrl: null },
+        { itemId: 19_701, itemName: null, quantity: 5, price: null, iconUrl: null }
       ],
       missingToBuyOne: [
-        { itemId: 19_700, itemName: 'Mithril Ore', quantity: 5, price: { buyUnitCopper: 120, sellUnitCopper: 140 } }
+        { itemId: 19_700, itemName: 'Mithril Ore', quantity: 5, price: { buyUnitCopper: 120, sellUnitCopper: 140 }, iconUrl: null }
       ]
     }),
     row(2, 'Elonian Leather Square', { blockedReason: 'BUYING_DISABLED', craftableCount: 0 }),
@@ -99,7 +103,7 @@ function allRows() {
       totalProfitCopper: null,
       totalSellValueCopper: null,
       buyCostCopper: null,
-      missingToBuy: [{ itemId: 19_699, itemName: 'Charged Core', quantity: 3, price: null }]
+      missingToBuy: [{ itemId: 19_699, itemName: 'Charged Core', quantity: 3, price: null, iconUrl: null }]
     }),
     row(4, 'Bolt of Damask', {
       resultAvailable: false,
@@ -164,7 +168,8 @@ const RESTRICTED_ROW = {
   blockedReason: 'NON_TRADEABLE_MATERIAL',
   outputPrice: { buyUnitCopper: 19_000, sellUnitCopper: 20_000 },
   missingToBuy: [],
-  missingToBuyOne: []
+  missingToBuyOne: [],
+  iconUrl: null
 }
 
 /** Every row a request may be answered with, for the detail route's own candidate lookup. */
@@ -236,6 +241,7 @@ function treeNode(itemId, itemName, overrides) {
     opportunityCostCopper: 0,
     effectiveCostCopper: 0,
     children: [],
+    iconUrl: null,
     ...overrides
   }
 }

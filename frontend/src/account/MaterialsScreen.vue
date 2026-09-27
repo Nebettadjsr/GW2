@@ -58,8 +58,9 @@ function onReload(): void {
     <div class="stack">
       <p class="meta prose">
         The grouping, the order and the group names are the backend's and are shown unchanged. Items
-        are shown by their id: no item name and no icon image is available for material storage, so
-        none is invented here.
+        are shown by their id: the backend supplies no item name for material storage, so none is
+        invented here. An item's icon is the image this application serves for it, and a neutral
+        placeholder stands in wherever there is none.
       </p>
 
       <p

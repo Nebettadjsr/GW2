@@ -2,6 +2,7 @@
 // `formatCount`/`NO_VALUE` are the presentation helpers the Crafting Profit table already uses;
 // they are reused rather than copied so a missing value renders as "—" here too, never as 0.
 import { formatCount, NO_VALUE } from '@/crafting/formatCopper'
+import ItemIcon from '@/items/ItemIcon.vue'
 
 /**
  * One inventory entry as the backend supplied it: its item identity, its count and its display
@@ -12,32 +13,21 @@ import { formatCount, NO_VALUE } from '@/crafting/formatCopper'
  * item (`TARGET_ARCHITECTURE.md` 12.1) or null when the backend has none; it is never an upstream URL
  * and never a filesystem path.
  *
- * Rendering that image is `STORY-WEB-010`'s shared image component. Until it lands, every entry keeps
- * the same neutral placeholder and no image is requested, so the prop is used only to say whether the
- * backend offered one.
+ * The image itself is the shared `ItemIcon`, which is the only place an item image is rendered
+ * (`STORY-WEB-010`). Bank and material storage are long grids, so entries load lazily; the id, the
+ * count and the rarity beside the icon are unaffected by whether the picture arrives.
  */
-const props = defineProps<{
+defineProps<{
   itemId: number | null
   count: number | null
   rarity: string | null
   iconUrl: string | null
 }>()
-
-const iconTitle = (): string =>
-  props.iconUrl === null
-    ? 'No icon metadata was supplied for this item.'
-    : 'An image URL was supplied; shared image rendering arrives with STORY-WEB-010.'
 </script>
 
 <template>
   <span class="entry">
-    <span
-      class="icon"
-      data-test="item-icon-fallback"
-      :data-icon-supplied="iconUrl === null ? 'false' : 'true'"
-      :title="iconTitle()"
-      aria-hidden="true"
-    />
+    <ItemIcon :icon-url="iconUrl" :item-id="itemId" loading="lazy" />
 
     <span class="identity" data-test="item-identity">
       <template v-if="itemId !== null">#{{ itemId }}</template>
@@ -55,16 +45,6 @@ const iconTitle = (): string =>
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-}
-
-/* Deliberately a plain block: no icon is fetched, so this is the fallback for every entry. */
-.icon {
-  width: 1.25rem;
-  height: 1.25rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: var(--color-bg);
-  flex: none;
 }
 
 .identity {

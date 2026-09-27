@@ -936,7 +936,15 @@ frontend/
 │   ├── sync-browser-smoke.mjs        real-browser check against a stub origin in its own process
 │   ├── layout-browser-smoke.mjs      real-browser navigation/layout/zoom/focus/contrast check
 │   ├── profit-browser-smoke.mjs      real-browser check of the Profit split, tree, selection and reflow
-│   └── account-browser-smoke.mjs     real-browser check of Bank/Materials against a running backend
+│   ├── account-browser-smoke.mjs     real-browser check of Bank/Materials against a running backend
+│   ├── icon-browser-smoke.mjs        real-browser item images against a controlled origin: 503/404/
+│   │                                 undecodable/slow images, fallback, layout, empty slots
+│   ├── recordingProxy.mjs            records what the backend really answered, for the live icon runs
+│   ├── upstream-proxy.mjs            counts (or refuses) the backend's CONNECT tunnels to ArenaNet
+│   ├── icon-live-check.mjs           real backend/database/upstream: delivery, browser cache,
+│   │                                 revalidation, restart reuse, upstream unavailable
+│   └── profit-page-perf.mjs          §33 navigation-to-complete-page measurement, real database,
+│                                     three browser/application cache combinations
 └── src/
     ├── main.ts, App.vue, styles.css  mount point; the shell; the shared tokens and treatments
     ├── shell/
@@ -953,8 +961,11 @@ frontend/
     ├── account/
     │   ├── BankScreen.vue            the bank as §5.12 supplies it, empty slots kept in place
     │   ├── MaterialsScreen.vue       the backend's categories, labels and stack order, unchanged
-    │   ├── InventoryItem.vue         one entry: supplied item id, count, rarity, neutral icon fallback
+    │   ├── InventoryItem.vue         one entry: supplied item id, count, rarity and its shared icon
     │   └── useAccountRead.ts         one account read's phase, data, failure and explicit reload
+    ├── items/
+    │   └── ItemIcon.vue              the one item image: supplied URL verbatim, reserved box, no
+    │                                 referrer, lazy/eager, one bundled fallback, no retry
     ├── crafting/
     │   ├── CraftingProfitScreen.vue  the screen: controls, states, comparison and detail regions
     │   ├── ScopeSelector.vue         the sole Discipline selector (DOMAIN_SPEC.md §2.2.1)
@@ -1307,13 +1318,12 @@ contrast.
   order unchanged, and shows each stack's own `category` id, since that is the only way to see which
   id produced a fallback label. Nothing is regrouped, deduplicated, sorted, aggregated or filtered
   here: no category map and no inclusion rule exists in the browser (§5.12).
-- **Items are identified by id, and no image is requested yet.** The two routes supply no item name,
-  so `InventoryItem.vue` shows `#<itemId>` and invents nothing; no item-detail lookup exists and the
-  GW2 API is never contacted. Both routes now carry a requestable `iconUrl` (`STORY-API-009`, §5.14),
-  but **no `<img>` is rendered on either screen**: every entry still gets the same neutral
-  placeholder and the supplied URL is used only to say whether the metadata existed at all
-  (`data-icon-supplied`). `STORY-WEB-010` owns the shared image component that will request it.
-  Rarity is displayed when supplied and omitted when not.
+- **Items are identified by id, and their image comes from this application.** The two routes supply
+  no item name, so `InventoryItem.vue` shows `#<itemId>` and invents nothing; no item-detail lookup
+  exists and the GW2 API is never contacted. The supplied `iconUrl` (`STORY-API-009`, §5.14) is
+  rendered by the shared `items/ItemIcon.vue` (see "One image component" below), lazily, because both
+  screens are long grids. An empty bank slot gets no icon at all. Rarity is displayed when supplied
+  and omitted when not, and none of the text depends on whether the picture arrived.
 - **Four states, kept apart, per screen.** `useAccountRead.ts` holds `loading`, `loaded` and
   `failed`, with a successful empty result rendered as its own message inside `loaded`. A failure
   shows the backend's sanitized code and message (503 `DATA_STORE_UNAVAILABLE`, 500
@@ -1325,6 +1335,59 @@ contrast.
   composable drops any answer — success or failure — whose id is no longer the newest or whose screen
   has been unmounted, so a late bank response cannot reach the Materials screen and a slow first read
   cannot overwrite a reload's result.
+
+**One image component (`STORY-WEB-010`, `TARGET_ARCHITECTURE.md` §12.1).** `items/ItemIcon.vue` is the
+only place `frontend/` renders an item image, and every item surface uses it: the Crafting Profit rows
+(inside the selection button, so the control's accessible name stays the recipe), the selected
+recipe's detail heading, both "still to buy" material lists, every resolution-tree node, and the Bank
+and Materials entries through `InventoryItem.vue`.
+
+- **The URL is the backend's, used verbatim.** The component takes `iconUrl` and the *item's* id —
+  a row passes its recipe's `outputItemId`, a node its own `itemId` — and builds no address of its
+  own: not from a recipe id, not from an item id, and never from an upstream one. There is no cache
+  busting, so an item keeps one URL across openings and both browser caching and the backend's
+  revalidation can work.
+- **Delivery attributes.** An ordinary `<img>` with reserved `width`/`height` (20 px in lists, 32 px
+  on the detail heading) inside a box the wrapper reserves as well, `referrerpolicy="no-referrer"`,
+  `decoding="async"`, `loading="eager"` for the detail's single visible image and `loading="lazy"` for
+  list entries. No CSP is configured anywhere in this repository today, so there is no ArenaNet
+  image-origin exception to remove; the browser makes no ArenaNet request to need one.
+- **One bundled fallback, no retries.** A null `iconUrl` (absent *or* backend-rejected metadata) and a
+  load/decode failure both end in the same inline neutral SVG — inline so the fallback for a failed
+  request cannot itself be a request that fails. A failure sets a flag and stops; the `src` is never
+  reassigned. The flag resets when the item id or the URL changes, so a new item, or the same item
+  whose retained source changed, gets its own attempt. The image carries `alt=""`/`aria-hidden`, since
+  every consumer already names the item beside it, and it is not focusable, so row and detail keyboard
+  interaction is untouched.
+- **Nothing is inferred from an image.** Its presence, absence or failure says nothing about
+  craftability, ownership, price or any other domain state, and no code reads one out of it.
+
+**Measured browser behaviour (`STORY-WEB-010`, real backend, real user database).** `npm run
+smoke:icons` drives the built page against a controlled origin for the cases a real backend will not
+produce on demand (503, 404, an undecodable body, a 1.2 s image); `npm run check:icons:live` and `npm
+run perf:profit-page` use the real backend behind `scripts/recordingProxy.mjs` (backend-side request
+records) and `scripts/upstream-proxy.mjs` (a counting HTTPS forward proxy the backend's image fetcher
+reaches through the JVM's own proxy selector). What those runs observed, with the figures in
+`STORY-WEB-010`'s Result: the browser asked only this application for images and never ArenaNet; the
+development server forwards `/api/items/.../icon/...`; real images arrived with `public,
+max-age=86400`, a strong ETag and a verified type; a reopened page re-requested none of what the
+browser already held; the browser's stored validator produced `If-None-Match` → 304 from the backend's
+local copy with no upstream tunnel; a **restarted** backend process served its stored images with zero
+upstream tunnels, as did a backend whose upstream proxy refused every tunnel. Navigation to a
+complete, interactive Crafting Profit page — detected by quiescence, with every in-viewport image
+finished and the complete requested row set in the DOM — stayed inside `TARGET_ARCHITECTURE.md` §33's
+7 s across cold browser/cold application cache, cold browser/warm application cache and warm
+browser/warm application cache.
+
+**Evidence limits.** Offscreen list icons are deferred by native lazy loading and keep loading after
+the page is complete; the measurements report how many were unfinished and how many requests were
+still in flight at that moment rather than waiting them out, and a complete page never depends on
+them. A CONNECT count is tunnels, not requests: zero for a freshly started backend proves no upstream
+fetch, a positive number only proves at least one. The 304 path was exercised through the browser's
+own "validate with the server" mode, not by waiting out the one-day freshness window. Timings come
+from this one machine, this revision and the default All scope, and no Product Owner acceptance is
+claimed by them; `TARGET_ARCHITECTURE.md` §33's confirmation gate is unchanged. The favicon, the
+Discovery and Ectoplasm screens, and Phase 5's bounded health review remain outside this work.
 
 **What the frontend does not do.** No profit, fee, valuation, crafting, inventory or eligibility
 calculation exists in `frontend/`. Every number rendered is a value the backend supplied;
@@ -1348,16 +1411,15 @@ calls `POST /api/crafting/profit/resolution` only, and nothing in the browser re
 `POST /api/crafting/discovery/resolution` (§5.13). Item names in a resolution node are whatever the
 backend supplied. Also missing: automatic refresh, task cancellation, any
 client-side progress mechanism, item names on the inventory screens (no contract supplies them,
-§5.12), **any rendered item image anywhere** — every affected contract now carries a requestable
-`iconUrl` (§5.14) but nothing in the browser requests one yet, which is `STORY-WEB-010`'s shared image
-component — any persistence across a browser reload, and every other screen. Crafting Profit still has no
+§5.12), any persistence across a browser reload, and every other screen. Crafting Profit still has no
 virtualization and no paging: every row the display controls leave visible enters the DOM at once, and
-Show all over the live default scope means all 3175 of them. `STORY-WEB-006`'s maximum is a display
-control the user owns, not a performance mechanism, and no browser check establishes full-page
-performance either way — including the detail a selection loads, which `TARGET_ARCHITECTURE.md` §33
-still requires to be timed as part of a complete page. The result table's header does not stay visible while scrolling. There is no mobile navigation menu (four short
-destination links wrap instead), no footer and no artwork or icon set. `docs/ROADMAP.md` Phase 5 owns
-what remains. No browser check establishes full-page performance.
+Show all over the live default scope means all 3176 of them. `STORY-WEB-006`'s maximum is a display
+control the user owns, not a performance mechanism. Full-page timings now exist for the table itself
+(see "Measured browser behaviour" above); the **detail a selection loads** is still untimed, and
+`TARGET_ARCHITECTURE.md` §33 requires it as part of a complete page. The result table's header does not
+stay visible while scrolling. There is no favicon yet (`STORY-WEB-009`), no mobile navigation menu
+(four short destination links wrap instead), no footer and no artwork or icon set beyond item images.
+`docs/ROADMAP.md` Phase 5 owns what remains.
 
 **Local commands** (run in `frontend/`, after `npm ci`):
 
@@ -1745,12 +1807,20 @@ revalidated to 304, those same three entries were still the only files under `as
 re-served unchanged by a later backend process (persistent reuse across restart, observed rather than
 only fixture-proven), and the referenced-item refresh selection was only *dry-run* (13 965 items on
 this machine) — no live metadata synchronization was executed, so no claim is made about
-post-refresh coverage. **Not covered:** any
-real-browser rendering, any `TARGET_ARCHITECTURE.md` §33 full-page timing (cold/warm browser and
-application cache, restart and warm-cache upstream-unavailable runs), and legacy adoption against real
-legacy files — this machine's cache holds no `items/` directory at all. `STORY-WEB-010` retains the
-shared browser image component and that integrated cache/performance gate; until it lands the browser
-shows its neutral placeholder and requests no image.
+post-refresh coverage. Real-browser rendering of these URLs, the browser-side caching/revalidation
+observations and the §33 full-page timings across the cold/warm browser and application-cache
+combinations, the restart run and the warm-cache upstream-unavailable run are `STORY-WEB-010`'s and are
+recorded in §5.11 ("Measured browser behaviour") and that story's Result. **Still not covered:** legacy
+adoption against real legacy files — this machine's cache holds no `items/` directory at all — and any
+real upstream outage, redirect, oversized image or disk-full condition, all of which remain
+controlled-fixture evidence only.
+
+One production detail changed with `STORY-WEB-010`: `HttpIconImageFetcher`'s default client now routes
+through `ProxySelector.getDefault()` instead of the builder's no-proxy default, so the JVM's own
+`https.proxyHost`/`https.proxyPort`/`http.nonProxyHosts` configuration applies (§15 — egress becomes
+configuration rather than a code change). With nothing configured the selector chooses a direct
+connection, which is what every earlier run made; the observable consequence is that an upstream image
+fetch can be *counted* by a proxy instead of inferred from a rendered picture.
 
 ---
 

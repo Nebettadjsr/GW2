@@ -2,6 +2,7 @@ package infra.icons;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -27,10 +28,22 @@ public final class HttpIconImageFetcher implements IconImageFetcher {
 
     private final HttpClient client;
 
+    /**
+     * The production client. It routes through the JVM's own configured proxy selector
+     * ({@code https.proxyHost}/{@code https.proxyPort}/{@code http.nonProxyHosts}) rather than the
+     * builder's default of no proxy at all, so where egress is a deployment concern it is
+     * configuration and not a code change (§15). With nothing configured the selector chooses a direct
+     * connection, which is what every run so far has made.
+     *
+     * <p>It is also what makes an upstream image fetch externally observable: a check can route this
+     * client through a counting proxy and so <em>count</em> upstream requests instead of inferring
+     * their absence from a rendered picture (§12.1's verification list).
+     */
     public HttpIconImageFetcher() {
         this(HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .connectTimeout(IconCacheBounds.CONNECT_TIMEOUT)
+                .proxy(ProxySelector.getDefault())
                 .build());
     }
 

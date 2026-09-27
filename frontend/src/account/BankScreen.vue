@@ -67,8 +67,10 @@ function onReload(): void {
 
     <div class="stack">
       <p class="meta prose">
-        Items are shown by their id: no item name and no icon image is available for the bank, so
-        none is invented here. Empty slots keep their position in the bank grid.
+        Items are shown by their id: the backend supplies no item name for the bank, so none is
+        invented here. An item's icon is the image this application serves for it, and a neutral
+        placeholder stands in wherever there is none. Empty slots keep their position in the bank
+        grid.
       </p>
 
       <p

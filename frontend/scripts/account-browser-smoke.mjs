@@ -28,6 +28,9 @@ import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 const FRONTEND_URL = process.env.GW2_FRONTEND_URL ?? 'http://localhost:5173'
 const TIMEOUT_MS = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 60_000)
 
+/** The one route an item image may come from (TARGET_ARCHITECTURE.md 12.1). */
+const ICON_ROUTE = /^\/api\/items\/\d+\/icon\/[0-9a-f]{64}\.(png|jpg)$/
+
 const steps = []
 
 function record(name, detail) {
@@ -60,6 +63,12 @@ async function run() {
       apiCalls.push({ path: url.pathname, status: response.status() })
     }
   })
+
+  /** Every request the browser issued, whatever its origin — what proves where images came from. */
+  const browserRequests = []
+  page.on('request', (request) =>
+    browserRequests.push({ url: request.url(), type: request.resourceType() })
+  )
 
   const consoleErrors = []
   page.on('pageerror', (error) => consoleErrors.push(String(error)))
@@ -135,13 +144,20 @@ async function run() {
     await page.waitForSelector('[data-test="bank-slots"], [data-test="bank-no-slots"]', {
       timeout: TIMEOUT_MS
     })
+    // The reload re-reads the bank once. Images on the shared icon route may arrive alongside it —
+    // re-rendered rows can bring further icons into loading distance — so they are separated out and
+    // counted rather than treated as an unexpected call; anything else at all is a failure.
     const reloadCalls = apiCalls.slice(beforeReload).map((call) => call.path)
+    const reloadImages = reloadCalls.filter((path) => ICON_ROUTE.test(path))
     assertEqual(
-      reloadCalls,
+      reloadCalls.filter((path) => !ICON_ROUTE.test(path)),
       ['/api/account/bank'],
-      'Reloading the bank requested something other than that one read.'
+      'Reloading the bank requested something other than that one read and its item images.'
     )
-    record('bank reload repeats only that read', reloadCalls.join(', '))
+    record(
+      'bank reload repeats only that read',
+      `/api/account/bank, plus ${reloadImages.length} image request(s) on the shared icon route`
+    )
 
     // ----------------------------------------------------------- Materials
     await page.click('[data-test="nav-materials"]')
@@ -202,9 +218,31 @@ async function run() {
     )
 
     // ------------------------------------------------------------- Overall
-    const imageCount = await page.$$eval('img', (images) => images.length)
-    if (imageCount > 0) throw new Error(`${imageCount} <img> elements were rendered.`)
-    record('no icon image requested', 'every entry uses the neutral fallback')
+    // Images are this application's own delivery route and nothing else (STORY-WEB-010,
+    // TARGET_ARCHITECTURE.md 12.1). An entry without retained metadata renders the shared neutral
+    // fallback, which is inline and asks for nothing.
+    const images = await page.$$eval('img', (elements) =>
+      elements.map((image) => ({
+        src: image.getAttribute('src'),
+        referrer: image.getAttribute('referrerpolicy')
+      }))
+    )
+    const offRoute = images.filter((image) => !ICON_ROUTE.test(image.src ?? ''))
+    if (offRoute.length > 0) {
+      throw new Error(`An image was rendered off the icon route: ${JSON.stringify(offRoute)}`)
+    }
+    const withoutPolicy = images.filter((image) => image.referrer !== 'no-referrer')
+    if (withoutPolicy.length > 0) {
+      throw new Error(`An image was rendered without the no-referrer policy: ${withoutPolicy.length}`)
+    }
+    const fallbacks = await page.$$eval(
+      '[data-test="item-icon"][data-icon-state="no-url"]',
+      (elements) => elements.length
+    )
+    record(
+      'images come only from this application',
+      `${images.length} on /api/items/{id}/icon/…, all no-referrer; ${fallbacks} entries on the fallback`
+    )
 
     const syncCalls = apiCalls.filter(
       (call) => call.path.startsWith('/api/sync') || call.path.startsWith('/api/prices')
@@ -216,8 +254,22 @@ async function run() {
     if (foreignCalls.length > 0) {
       throw new Error(`Non-backend API calls observed: ${JSON.stringify(foreignCalls)}`)
     }
+    // Not one request to ArenaNet, for an image or for anything else: the browser talks to this
+    // application only, and an image it could not get here has no upstream fallback.
+    const upstream = browserRequests.filter((request) => /guildwars2\.com/i.test(request.url))
+    if (upstream.length > 0) {
+      throw new Error(`The browser requested ArenaNet: ${JSON.stringify(upstream)}`)
+    }
+    const pageOrigin = new URL(FRONTEND_URL).origin
+    const otherOrigins = browserRequests.filter((request) => !request.url.startsWith(pageOrigin))
+    if (otherOrigins.length > 0) {
+      throw new Error(`The browser left this origin: ${JSON.stringify(otherOrigins.slice(0, 5))}`)
+    }
     if (consoleErrors.length > 0) throw new Error(`Uncaught page errors: ${consoleErrors.join(' | ')}`)
-    record('no synchronization, no page error, no non-backend call')
+    record(
+      'no synchronization, no page error, no non-backend call',
+      `${browserRequests.length} browser requests, all to ${new URL(FRONTEND_URL).origin}`
+    )
 
     console.log(`\nAccount browser smoke PASSED (${steps.length} steps).`)
     console.log(`Backend calls observed: ${apiCalls.map((call) => `${call.path} ${call.status}`).join(', ')}`)

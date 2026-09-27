@@ -175,6 +175,46 @@ class HttpIconImageFetcherTest {
         assertInstanceOf(IconFetchResult.RejectedImage.class, fetcher.fetch(source("png")));
     }
 
+    /**
+     * The production constructor's client, unlike the injected one above, routes through the JVM's own
+     * proxy selector. Asserted through behaviour rather than through the field: a configured proxy has
+     * to be the host actually contacted, which is also what lets a live check count upstream image
+     * requests instead of inferring them (§12.1).
+     */
+    @Test
+    void theProductionClientHonoursTheJvmsConfiguredProxy() {
+        status = 200;
+        body = TestImages.png();
+        String previousHost = System.getProperty("http.proxyHost");
+        String previousPort = System.getProperty("http.proxyPort");
+        System.setProperty("http.proxyHost", "127.0.0.1");
+        System.setProperty("http.proxyPort", String.valueOf(server.getAddress().getPort()));
+        try {
+            // A host that cannot resolve: only the proxy can answer this, so the fixture receiving it
+            // is the proof. With no proxy the same fetch could not reach any server at all.
+            IconSource offMachine = new IconSource(
+                    "http://render.guildwars2.invalid/file/ABCD/1.png",
+                    "50dc20284b8e24f872bc768471d8ec57efa59bb49b012531b2293dc8c50e6472",
+                    "png");
+
+            IconFetchResult result = new HttpIconImageFetcher().fetch(offMachine);
+
+            assertArrayEquals(
+                    TestImages.png(), assertInstanceOf(IconFetchResult.Fetched.class, result).bytes());
+        } finally {
+            restore("http.proxyHost", previousHost);
+            restore("http.proxyPort", previousPort);
+        }
+    }
+
+    private static void restore(String key, String value) {
+        if (value == null) {
+            System.clearProperty(key);
+        } else {
+            System.setProperty(key, value);
+        }
+    }
+
     @Test
     void anUnreachableHostIsATemporaryFailureRatherThanAnException() {
         // A port nothing is listening on: the connect deadline decides, and the adapter reports rather

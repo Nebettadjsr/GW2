@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ResolutionNode } from '@/api/types'
+import ItemIcon from '@/items/ItemIcon.vue'
 import { formatCopper, NO_VALUE } from './formatCopper'
 import {
   blockedExplanation,
@@ -46,7 +47,15 @@ const childSummary = computed(() =>
 <template>
   <li class="node" :data-test="'tree-node'" :data-path="path">
     <div class="node__head">
-      <span class="node__name" data-test="node-name">{{ label }}</span>
+      <!--
+        This node's *own* item, which is the identity the backend gave it — not the requested
+        recipe's output, and not a picture of how the requirement was sourced. Two occurrences of the
+        same item in different branches are two nodes and each shows its own icon.
+      -->
+      <span class="node__identity">
+        <ItemIcon :icon-url="node.iconUrl" :item-id="node.itemId" loading="lazy" />
+        <span class="node__name" data-test="node-name">{{ label }}</span>
+      </span>
       <span class="node__needed numeric" data-test="node-requested">
         {{ node.requestedQuantity }} needed
       </span>
@@ -180,6 +189,14 @@ const childSummary = computed(() =>
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-1) var(--space-3);
+}
+
+/* Icon and name are one unit, so the "needed" quantity still sits at the far end of the line. */
+.node__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
 .node__name {

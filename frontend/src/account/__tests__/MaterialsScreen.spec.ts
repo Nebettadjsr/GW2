@@ -171,19 +171,23 @@ describe('MaterialsScreen', () => {
     expect(wrapper.find('[data-test="materials-empty"]').exists()).toBe(false)
   })
 
-  it('reportsWhetherAnIconUrlWasSuppliedAndStillRequestsNoImageBeforeWeb010', async () => {
+  it('rendersEachStacksOwnSuppliedImageIncludingTheSameItemTwice', async () => {
     const api = new FakeAccountApi()
 
     const wrapper = await openScreen(api)
 
-    expect(wrapper.findAll('img')).toHaveLength(0)
-    const fallbacks = wrapper.findAll('[data-test="item-icon-fallback"]')
-    expect(fallbacks).toHaveLength(4)
-    expect(fallbacks.map((icon) => icon.attributes('data-icon-supplied'))).toEqual([
-      'true',
-      'false',
-      'false',
-      'false'
+    // Item 12134 is stored in both categories, with a URL in one and none in the other. Each
+    // occurrence shows what was supplied for *it*; nothing is carried over from the other stack.
+    const icons = wrapper.findAll('[data-test="item-icon"]')
+    expect(icons).toHaveLength(4)
+    expect(icons.map((icon) => icon.attributes('data-icon-state'))).toEqual([
+      'image',
+      'no-url',
+      'no-url',
+      'no-url'
+    ])
+    expect(wrapper.findAll('img').map((image) => image.attributes('src'))).toEqual([
+      materialStorage.categories[0]?.materials[0]?.iconUrl
     ])
     expect(wrapper.html()).not.toContain('render.guildwars2.com')
   })

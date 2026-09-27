@@ -193,22 +193,32 @@ describe('BankScreen', () => {
     expect(wrapper.find('[data-test="bank-reload"]').attributes('disabled')).toBeUndefined()
   })
 
-  it('reportsWhetherAnIconUrlWasSuppliedAndStillRequestsNoImageBeforeWeb010', async () => {
+  it('rendersTheSuppliedApplicationImageForEachOccupiedSlotAndNothingForAnEmptyOne', async () => {
     const api = new FakeAccountApi()
 
     const wrapper = await openScreen(api)
 
-    expect(wrapper.findAll('img')).toHaveLength(0)
-    const fallbacks = wrapper.findAll('[data-test="item-icon-fallback"]')
-    // One per occupied slot; every one of them is the same neutral placeholder.
-    expect(fallbacks).toHaveLength(3)
-    expect(fallbacks.map((icon) => icon.attributes('data-icon-supplied'))).toEqual([
-      'true',
-      'false',
-      'true'
+    // One icon per *occupied* slot: an empty slot stays empty, without a placeholder standing in
+    // for an item it does not hold.
+    const icons = wrapper.findAll('[data-test="item-icon"]')
+    expect(icons).toHaveLength(3)
+    expect(icons.map((icon) => icon.attributes('data-icon-state'))).toEqual([
+      'image',
+      'no-url',
+      'image'
     ])
+    for (const emptySlot of wrapper.findAll('.slot--empty')) {
+      expect(emptySlot.find('[data-test="item-icon"]').exists()).toBe(false)
+    }
+
+    // The supplied URL is used verbatim — no cache-busting query, no rebuilt address.
+    expect(wrapper.findAll('img').map((image) => image.attributes('src'))).toEqual([
+      bankWithEmptySlots.slots[0]?.iconUrl,
+      bankWithEmptySlots.slots[4]?.iconUrl
+    ])
+
     // The contract carries an application-relative URL and nothing else: no upstream origin and no
-    // backend path can appear, and shared rendering of that URL is STORY-WEB-010's.
+    // backend path can appear, so the browser can only ever ask this application for an image.
     expect(wrapper.html()).not.toContain('render.guildwars2.com')
     expect(wrapper.html()).not.toContain('C:\\gw2\\icons')
   })

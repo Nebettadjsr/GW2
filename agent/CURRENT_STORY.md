@@ -1,1 +1,1 @@
-agent/stories/STORY-DOM-021-profit-non-tp-material-control.md
+agent/stories/STORY-WEB-010-shared-item-icon-presentation.md

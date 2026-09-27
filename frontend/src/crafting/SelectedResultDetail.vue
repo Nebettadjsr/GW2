@@ -6,6 +6,7 @@ import type {
   EffectiveSettings,
   MissingItem
 } from '@/api/types'
+import ItemIcon from '@/items/ItemIcon.vue'
 import CraftingResolution from './CraftingResolution.vue'
 import { formatCopper, formatCount, formatSignedCopper, moneyTone, NO_VALUE } from './formatCopper'
 import { materialLabel, recipeLabel, wikiUrl } from './recipeLabel'
@@ -108,7 +109,20 @@ function materialQuoteText(item: MissingItem): string {
 
     <template v-else>
       <div class="stack">
-        <h3 class="detail__name" data-test="detail-name">{{ recipeLabel(row) }}</h3>
+        <!--
+          The output item's own icon, beside the name rather than inside the heading, so the
+          heading's text stays the recipe label and nothing announces the item twice. One visible
+          image on an opened detail, so it loads eagerly.
+        -->
+        <div class="detail__heading">
+          <ItemIcon
+            :icon-url="row.iconUrl"
+            :item-id="row.outputItemId"
+            loading="eager"
+            :size="32"
+          />
+          <h3 class="detail__name" data-test="detail-name">{{ recipeLabel(row) }}</h3>
+        </div>
         <p class="meta" data-test="detail-identity">
           {{ row.disciplines }} · minimum rating {{ row.minRating }}
         </p>
@@ -233,7 +247,10 @@ function materialQuoteText(item: MissingItem): string {
         </p>
         <ul v-else class="material-list" data-test="missing-all">
           <li v-for="item in missingForAllCrafts" :key="item.itemId" data-test="missing-item">
-            <span class="material-name">{{ materialLabel(item) }}</span>
+            <span class="material-name">
+              <ItemIcon :icon-url="item.iconUrl" :item-id="item.itemId" loading="lazy" />
+              {{ materialLabel(item) }}
+            </span>
             <span class="material-quantity numeric">×{{ item.quantity }}</span>
             <span class="meta">{{ materialQuoteText(item) }}</span>
           </li>
@@ -248,7 +265,10 @@ function materialQuoteText(item: MissingItem): string {
         </p>
         <ul v-else class="material-list" data-test="missing-one">
           <li v-for="item in missingForOneCraft" :key="item.itemId" data-test="missing-one-item">
-            <span class="material-name">{{ materialLabel(item) }}</span>
+            <span class="material-name">
+              <ItemIcon :icon-url="item.iconUrl" :item-id="item.itemId" loading="lazy" />
+              {{ materialLabel(item) }}
+            </span>
             <span class="material-quantity numeric">×{{ item.quantity }}</span>
             <span class="meta">{{ materialQuoteText(item) }}</span>
           </li>
@@ -295,6 +315,13 @@ function materialQuoteText(item: MissingItem): string {
   margin-top: 0;
 }
 
+/* The icon holds its own reserved box beside the name; the name keeps the rest of the line. */
+.detail__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .detail__name {
   font-size: var(--text-lg);
   overflow-wrap: anywhere;
@@ -325,6 +352,9 @@ function materialQuoteText(item: MissingItem): string {
 }
 
 .material-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   overflow-wrap: anywhere;
 }
 

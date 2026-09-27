@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { CraftingRow } from '@/api/types'
+import ItemIcon from '@/items/ItemIcon.vue'
 import { formatCopper, formatCount, formatSignedCopper, moneyTone } from './formatCopper'
 import { recipeLabel } from './recipeLabel'
 import { rowDiagnostic } from './rowState'
@@ -41,6 +42,9 @@ const emit = defineEmits<{ sort: [key: SortKey]; select: [recipeId: number] }>()
 const displayRows = computed(() =>
   props.rows.map((row) => ({
     recipeId: row.recipeId,
+    // The recipe's *output item* — a recipe has no icon of its own, and no URL is built from an id.
+    outputItemId: row.outputItemId,
+    iconUrl: row.iconUrl,
     name: recipeLabel(row),
     disciplines: row.disciplines,
     craftable: formatCount(row.craftableCount),
@@ -152,6 +156,12 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
             <span class="recipe-marker" aria-hidden="true">{{
               row.recipeId === selectedRecipeId ? '▸' : ''
             }}</span>
+            <!--
+              Inside the button so it sits with the name it belongs to, and decorative, so the
+              control's accessible name stays the recipe alone. The list can be thousands of rows
+              long, so rows load their image lazily.
+            -->
+            <ItemIcon :icon-url="row.iconUrl" :item-id="row.outputItemId" loading="lazy" />
             <span class="recipe-text">
               <span class="recipe-name">{{ row.name }}</span>
               <span class="recipe-ids">recipe {{ row.recipeId }}</span>
