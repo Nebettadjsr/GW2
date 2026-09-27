@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { CraftingProfitResolutionResponse, CraftingRow, EffectiveSettings } from '@/api/types'
 import SelectedResultDetail from '../SelectedResultDetail.vue'
 import type { SelectionHiddenReason } from '../useProfitTableView'
-import type { ResolutionPhase } from '../useProfitResolution'
+import type { ResolutionPhase } from '../useResolutionDetail'
 import {
   DEFAULT_SETTINGS,
   budgetBlockedRow,

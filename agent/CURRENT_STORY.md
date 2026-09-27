@@ -1,1 +1,1 @@
-agent/stories/STORY-WEB-010-shared-item-icon-presentation.md
+agent/stories/STORY-WEB-012-crafting-discovery-page.md

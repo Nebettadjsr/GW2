@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { CraftingProfitResolutionResponse } from '@/api/types'
+import type { ResolutionDetailView } from '@/api/types'
 import { formatCopper, formatCount, formatSignedCopper, moneyTone } from './formatCopper'
 import { describeRootSourcing } from './resolutionPresentation'
 import ResolutionTreeNode from './ResolutionTreeNode.vue'
 import { describeRowState } from './rowState'
-import type { ResolutionPhase } from './useProfitResolution'
+import type { ResolutionPhase } from './useResolutionDetail'
 
 /**
  * The selected recipe's backend explanation: the freshly calculated row and the resolution tree,
@@ -26,10 +26,15 @@ import type { ResolutionPhase } from './useProfitResolution'
  * whose tree exists (blocked requirements included), an answer with no calculation result to
  * explain, a recipe the fresh calculation does not contain, and a request that failed. The last
  * three clear the tree instead of leaving an older one under the current selection.
+ *
+ * It takes the envelope both fresh-detail routes share (`ResolutionDetailView`), not one route's
+ * response, so Crafting Profit and Crafting Discovery present a resolution the same way. The echoed
+ * calculation is deliberately not part of that type: matching it against what was asked for is the
+ * calling feature's own association check, not this region's.
  */
 const props = defineProps<{
   phase: ResolutionPhase
-  detail: CraftingProfitResolutionResponse | null
+  detail: ResolutionDetailView | null
   failure: string | null
   /** The recipe the current phase is about, so no wording can attach to a different row. */
   requestedRecipeId: number | null

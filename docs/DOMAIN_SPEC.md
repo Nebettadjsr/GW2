@@ -71,6 +71,22 @@ Resolution detail follows TARGET_ARCHITECTURE section 13's decided basis and
 consistency contract: show actual sourcing, required quantities and produced
 quantities, not merely recipe relationships or an invented execution trace.
 
+For a valid selected result still present in the fresh calculation, display the
+actual backend resolution tree; a failed explanation request is not a substitute.
+Preserve the legitimate fresh-candidate absence and error behavior defined by
+that contract. When buying is enabled, show the materials still to buy for the
+already calculated craft count, with their quantities and supplied price
+information. Do not display a separate "FOR ONE FURTHER CRAFT" purchase section.
+
+Selected details must not repeat generic labels such as "Buying is off", "Over
+the buy limit" or "Not blocked" where surrounding content already explains the
+state. Retain useful causes, including the affected requirement and supplied
+purchase/budget information. A missing-price explanation must identify the
+affected item by name or item ID, not only say "Price missing". Preserve the
+distinction between limitations on further crafting and crafts already counted.
+Remove the introductory sentence "Crafting opportunities the backend calculated
+for the selected scope, with the profit it reported for each."
+
 Place result-display controls inside the Calculation controls panel, in a compact
 Displayed results subgroup distinct from the Calculation subgroup. Do not retain
 a separate top-level Result display section. Provide these display controls:
@@ -136,6 +152,11 @@ ingredients. Continue evaluating alternative valid sourcing/crafting paths that
 do not consume non-TP materials. Retain blocked/domain information for selected
 details; ordinary result-display filters determine visibility. This is the
 disabled behavior decided in UD-010, not a reclassification of missing quotes.
+
+The non-Trading-Post-material control must retain the user's selected value
+during recalculation and valid refreshes. Both table and fresh-detail calculations
+must use that setting; changing it triggers recalculation without silently
+reverting the selection.
 
 Profit, costs and important totals must be easy to scan with consistent application
 colors and emphasis; signs, wording or other non-color cues must carry meaning too.

@@ -2,7 +2,7 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import type { CraftingProfitResolutionResponse } from '@/api/types'
 import CraftingResolution from '../CraftingResolution.vue'
-import type { ResolutionPhase } from '../useProfitResolution'
+import type { ResolutionPhase } from '../useResolutionDetail'
 import {
   blockedTree,
   craftedTree,

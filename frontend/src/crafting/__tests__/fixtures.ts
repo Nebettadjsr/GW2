@@ -1,10 +1,16 @@
 import type { CraftingApi } from '@/api/craftingApi'
 import type {
+  CraftingDiscoveryRequest,
+  CraftingDiscoveryResolutionRequest,
+  CraftingDiscoveryResolutionResponse,
+  CraftingDiscoveryResponse,
   CraftingProfitRequest,
   CraftingProfitResolutionRequest,
   CraftingProfitResolutionResponse,
   CraftingProfitResponse,
   CraftingRow,
+  EffectiveDiscoveryScope,
+  EffectiveDiscoverySettings,
   EffectiveScope,
   EffectiveSettings,
   ResolutionNode,
@@ -577,6 +583,89 @@ export function resolutionResponse(
   }
 }
 
+/* -------------------------------------------------------------- Crafting Discovery ---------------- */
+
+/**
+ * The Discovery route's own effective settings, deliberately different from `DEFAULT_SETTINGS` in
+ * every field a test could confuse: buying is on, the budget is the route's own 200000, and the daily
+ * value is the one Discovery fixes rather than Profit's. A screen that fell back to Profit's defaults
+ * would disagree with this.
+ */
+export const DISCOVERY_SETTINGS: EffectiveDiscoverySettings = {
+  useOwnMats: true,
+  allowBuying: true,
+  maxBuyCopper: 200_000,
+  listingSell: false,
+  listingBuy: false,
+  dailyBuyInsteadOfCraft: false
+}
+
+/**
+ * The candidates a Discovery calculation returns. Five recipes with five different recipe levels — 75,
+ * 150, 225, 400 and 0 — so level sorting in both directions is observable, and covering a gain, a
+ * larger gain, a loss, a blocked row whose economics are null, and a recipe with no calculated result.
+ *
+ * The loss is in the list on purpose: a negative immediate profit is a valid discovery candidate
+ * (DOMAIN_SPEC 37), so any test that finds it missing has found a defect.
+ */
+export const discoveryRows: CraftingRow[] = [
+  profitableRow,
+  lessProfitableRow,
+  lossRow,
+  priceUnavailableRow,
+  noResultRow
+]
+
+/**
+ * The response the real backend produces for `request`: the same rows, echoing back the scope, the
+ * inventory character and the settings it calculated with after applying its own Discovery defaults
+ * (`CURRENT_ARCHITECTURE.md` 5.6). An omitted inventory character is echoed as null, which is the
+ * unfiltered owned pool.
+ */
+export function echoedDiscoveryResponse(
+  request: CraftingDiscoveryRequest,
+  rows: CraftingRow[] = discoveryRows
+): CraftingDiscoveryResponse {
+  const scope: EffectiveDiscoveryScope = {
+    discipline: request.scope.discipline,
+    characterName: request.scope.characterName,
+    rating: request.scope.rating
+  }
+  return {
+    scope,
+    inventoryCharacterName: request.inventoryCharacterName ?? null,
+    settings:
+      request.settings === undefined
+        ? DISCOVERY_SETTINGS
+        : { ...request.settings, dailyBuyInsteadOfCraft: DISCOVERY_SETTINGS.dailyBuyInsteadOfCraft },
+    rowCount: rows.length,
+    rows
+  }
+}
+
+/** The Discovery fresh-detail response, echoing the identity and inputs it was given. */
+export function discoveryResolutionResponse(
+  request: CraftingDiscoveryResolutionRequest,
+  overrides: Partial<CraftingDiscoveryResolutionResponse> = {}
+): CraftingDiscoveryResolutionResponse {
+  const echoed = echoedDiscoveryResponse(request.calculation)
+  return {
+    recipeId: request.recipeId,
+    calculation: {
+      scope: echoed.scope,
+      inventoryCharacterName: echoed.inventoryCharacterName,
+      settings: echoed.settings
+    },
+    consistency: 'FRESH_CALCULATION',
+    calculatedAt: '2026-09-26T11:22:33Z',
+    row: profitableRow,
+    treeStatus: 'AVAILABLE',
+    treeBasis: 'SINGLE_OUTPUT_REQUIREMENT',
+    tree: craftedTree,
+    ...overrides
+  }
+}
+
 /** A promise a test resolves by hand, for out-of-order and in-flight checks. */
 export interface Deferred<T> {
   promise: Promise<T>
@@ -598,6 +687,8 @@ export function deferred<T>(): Deferred<T> {
 export class FakeCraftingApi implements CraftingApi {
   readonly profitRequests: CraftingProfitRequest[] = []
   readonly resolutionRequests: CraftingProfitResolutionRequest[] = []
+  readonly discoveryRequests: CraftingDiscoveryRequest[] = []
+  readonly discoveryResolutionRequests: CraftingDiscoveryResolutionRequest[] = []
   selectorHandler: () => Promise<SelectorOptions> = () => Promise.resolve(selectorOptions)
   profitHandler: (request: CraftingProfitRequest, callIndex: number) => Promise<CraftingProfitResponse> = (
     request
@@ -626,5 +717,32 @@ export class FakeCraftingApi implements CraftingApi {
     const callIndex = this.resolutionRequests.length
     this.resolutionRequests.push(request)
     return this.resolutionHandler(request, callIndex)
+  }
+
+  /** Answers like the Discovery contract does by default: echoing the inputs it was given. */
+  discoveryHandler: (
+    request: CraftingDiscoveryRequest,
+    callIndex: number
+  ) => Promise<CraftingDiscoveryResponse> = (request) =>
+    Promise.resolve(echoedDiscoveryResponse(request))
+
+  discoveryResolutionHandler: (
+    request: CraftingDiscoveryResolutionRequest,
+    callIndex: number
+  ) => Promise<CraftingDiscoveryResolutionResponse> = (request) =>
+    Promise.resolve(discoveryResolutionResponse(request))
+
+  calculateDiscovery(request: CraftingDiscoveryRequest): Promise<CraftingDiscoveryResponse> {
+    const callIndex = this.discoveryRequests.length
+    this.discoveryRequests.push(request)
+    return this.discoveryHandler(request, callIndex)
+  }
+
+  resolveDiscoveryDetail(
+    request: CraftingDiscoveryResolutionRequest
+  ): Promise<CraftingDiscoveryResolutionResponse> {
+    const callIndex = this.discoveryResolutionRequests.length
+    this.discoveryResolutionRequests.push(request)
+    return this.discoveryResolutionHandler(request, callIndex)
   }
 }

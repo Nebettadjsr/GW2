@@ -8,7 +8,7 @@ Build the Crafting Discovery browser workflow over existing APIs
 
 ## Status
 
-TODO
+UNFINISHED
 
 ## Milestone
 

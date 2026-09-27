@@ -28,3 +28,11 @@ Plan (each item states how it is verified).
 - [ ] 7. Docs: `CURRENT_ARCHITECTURE.md` (boundaries, metadata invocation, chosen bounds,
       storage configuration, deployment requirement, evidence limits), story Result, BACKLOG
       entry, `CLAUDE_RESULT.md`. *Verify:* re-read against acceptance criterion 7.
+
+# STORY-WEB-014 — Profit live integration
+
+- [x] Trace all three reported symptoms through the running browser and API; compare source contracts.
+- [x] Add a strict live smoke check and a delayed-response control regression using existing fixtures.
+- [x] Verify current backend/browser together: strict live smoke passed after the user's restart.
+- [x] Attempt directly related regression suites; filesystem limitations and qualified results recorded in the story.
+- [x] Record verification evidence, runtime remedy and remaining limits in the story Result.

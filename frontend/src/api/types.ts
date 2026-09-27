@@ -168,15 +168,17 @@ export interface ResolutionCalculation {
 }
 
 /**
- * Response body of `POST /api/crafting/profit/resolution` (`TARGET_ARCHITECTURE.md` 13.3).
+ * Everything a completed fresh-detail response carries *apart from* its echoed calculation
+ * (`TARGET_ARCHITECTURE.md` 13.3).
  *
- * `recipeId` and `calculation` echo the *requested* identity and inputs, which is what the browser
- * associates the response with; they assert nothing about how the root requirement was sourced.
- * `row` and `tree` are one **fresh** calculation, not a retrieval of the table's earlier result.
+ * The Profit and Discovery routes share this envelope field for field — identical names, literals and
+ * meanings — and differ only in the shape of `calculation`, which is each route's own table request
+ * contract (`web.dto.CraftingDiscoveryResolutionResponse`). Presentation that renders the row and the
+ * tree therefore takes this type and works for either route, while the association rules of 13.4,
+ * which must compare the echoed inputs, stay with the route-specific response type below.
  */
-export interface CraftingProfitResolutionResponse {
+export interface ResolutionDetailView {
   recipeId: number
-  calculation: ResolutionCalculation
   /** Literal `FRESH_CALCULATION`; typed as a string because it is unvalidated transport data. */
   consistency: string
   calculatedAt: string
@@ -190,6 +192,17 @@ export interface CraftingProfitResolutionResponse {
 }
 
 /**
+ * Response body of `POST /api/crafting/profit/resolution` (`TARGET_ARCHITECTURE.md` 13.3).
+ *
+ * `recipeId` and `calculation` echo the *requested* identity and inputs, which is what the browser
+ * associates the response with; they assert nothing about how the root requirement was sourced.
+ * `row` and `tree` are one **fresh** calculation, not a retrieval of the table's earlier result.
+ */
+export interface CraftingProfitResolutionResponse extends ResolutionDetailView {
+  calculation: ResolutionCalculation
+}
+
+/**
  * Request body of `POST /api/crafting/profit/resolution` (`TARGET_ARCHITECTURE.md` 13.1).
  *
  * `calculation` is the existing table request contract, so the browser copies the effective scope
@@ -199,6 +212,114 @@ export interface CraftingProfitResolutionResponse {
 export interface CraftingProfitResolutionRequest {
   recipeId: number
   calculation: CraftingProfitRequest
+}
+
+/* ------------------------------------------------------------------ Crafting Discovery ----------- */
+
+/**
+ * Requested Discovery scope (`CURRENT_ARCHITECTURE.md` 5.6, `web.dto.CraftingDiscoveryRequest`).
+ *
+ * All three members are required and none of them is optional here: Discovery has no All reading and
+ * no default scope, and `rating` drives the `recipe.minRating <= rating` filter, so the backend
+ * refuses a request that omits it rather than answering with an emptier result. Every value is a fact
+ * the selector route supplied — this client neither invents a rating nor offers an All entry.
+ */
+export interface DiscoveryScopeRequest {
+  discipline: string
+  characterName: string
+  rating: number
+}
+
+/**
+ * Requested Discovery settings. Exactly the five fields the route accepts.
+ *
+ * `dailyBuyInsteadOfCraft` is deliberately absent: the Discovery flow fixes it, and the route maps
+ * that contract rather than accepting it as an input. `allowNonTradeableMaterials` is absent for the
+ * same reason — it is a Profit-only setting. Both are visible in the effective settings echo below;
+ * neither is ever sent.
+ */
+export interface DiscoverySettingsRequest {
+  useOwnMats: boolean
+  allowBuying: boolean
+  maxBuyCopper: number
+  listingSell: boolean
+  listingBuy: boolean
+}
+
+/** The Discovery scope the backend actually calculated with. */
+export interface EffectiveDiscoveryScope {
+  discipline: string
+  characterName: string
+  rating: number
+}
+
+/**
+ * The Discovery settings the backend actually calculated with, after it applied its own defaults —
+ * which are not Profit's (`CURRENT_ARCHITECTURE.md` 5.6).
+ *
+ * `dailyBuyInsteadOfCraft` is reported for completeness even though it is not a request field; it is
+ * the value Discovery fixed, not one this client chose or may change.
+ */
+export interface EffectiveDiscoverySettings {
+  useOwnMats: boolean
+  allowBuying: boolean
+  maxBuyCopper: number
+  listingSell: boolean
+  listingBuy: boolean
+  dailyBuyInsteadOfCraft: boolean
+}
+
+/**
+ * Request body of `POST /api/crafting/discovery`. Unlike Profit's, the body and its scope are
+ * required; omitted settings fields ask the backend for its own documented Discovery defaults.
+ *
+ * `inventoryCharacterName` is the separate, independent input for the character whose owned inventory
+ * the calculation may consume. Omitting it reaches the service as null, which keeps its own
+ * unfiltered-pool fallback; this client never substitutes a character for it.
+ */
+export interface CraftingDiscoveryRequest {
+  scope: DiscoveryScopeRequest
+  inventoryCharacterName?: string
+  settings?: DiscoverySettingsRequest
+}
+
+/** Response body of `POST /api/crafting/discovery`. Rows are the same shape as Profit's. */
+export interface CraftingDiscoveryResponse {
+  scope: EffectiveDiscoveryScope
+  /** The character whose owned inventory was used; null when the unfiltered pool was. */
+  inventoryCharacterName: string | null
+  settings: EffectiveDiscoverySettings
+  rowCount: number
+  rows: CraftingRow[]
+}
+
+/** The effective inputs a Discovery resolution echoes back, in the Discovery table's own shape. */
+export interface DiscoveryResolutionCalculation {
+  scope: EffectiveDiscoveryScope
+  inventoryCharacterName: string | null
+  settings: EffectiveDiscoverySettings
+}
+
+/**
+ * Response body of `POST /api/crafting/discovery/resolution` (`TARGET_ARCHITECTURE.md` 13.3).
+ *
+ * The same envelope as the Profit route's, differing only in the echoed `calculation` — Discovery's
+ * own, including its nullable inventory character.
+ */
+export interface CraftingDiscoveryResolutionResponse extends ResolutionDetailView {
+  calculation: DiscoveryResolutionCalculation
+}
+
+/**
+ * Request body of `POST /api/crafting/discovery/resolution` (`TARGET_ARCHITECTURE.md` 13.1).
+ *
+ * `calculation` is the Discovery table request contract, so the browser sends back the effective
+ * inputs that table response echoed — the nullable inventory character included — rather than relying
+ * on defaults a second time.
+ */
+export interface CraftingDiscoveryResolutionRequest {
+  recipeId: number
+  calculation: CraftingDiscoveryRequest
 }
 
 /** The backend error code for a recipe absent from the fresh visible candidate set (13.4). */

@@ -1,7 +1,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '@/api/http'
-import type { SelectorOptions } from '@/api/types'
+import type { CraftingProfitResponse, SelectorOptions } from '@/api/types'
 import CraftingProfitScreen from '../CraftingProfitScreen.vue'
 import CraftingProfitTable from '../CraftingProfitTable.vue'
 import {
@@ -10,6 +10,7 @@ import {
   allRows,
   cycleDetectedRow,
   deferred,
+  echoedProfitResponse,
   lessProfitableRow,
   lossRow,
   movedReasonRows,
@@ -868,6 +869,39 @@ describe('CraftingProfitScreen', () => {
       settings: { ...DEFAULT_SETTINGS, allowNonTradeableMaterials: false }
     })
     expect(isChecked(wrapper, 'setting-allowNonTradeableMaterials')).toBe(false)
+  })
+
+  it('keepsTheLatestMaterialRuleWhenToggledBothWaysDuringCalculationAndThenReloaded', async () => {
+    const api = new FakeCraftingApi()
+    const wrapper = await openScreen(api)
+    await selectRecipe(wrapper, 'Iron Ingot')
+    await flushPromises()
+    const older = deferred<CraftingProfitResponse>()
+    const latest = deferred<CraftingProfitResponse>()
+    api.profitHandler = (_, index) => index === 1 ? older.promise : latest.promise
+
+    const control = wrapper.find('[data-test="setting-allowNonTradeableMaterials"]')
+    await control.setValue(false)
+    expect(control.attributes('disabled')).toBeUndefined()
+    await control.setValue(true)
+    expect(api.profitRequests).toHaveLength(3)
+    expect(api.profitRequests[1]?.settings?.allowNonTradeableMaterials).toBe(false)
+    expect(api.profitRequests[2]?.settings?.allowNonTradeableMaterials).toBe(true)
+
+    latest.resolve(echoedProfitResponse(api.profitRequests[2]!))
+    await flushPromises()
+    older.resolve(echoedProfitResponse(api.profitRequests[1]!))
+    await flushPromises()
+    expect(isChecked(wrapper, 'setting-allowNonTradeableMaterials')).toBe(true)
+    expect(api.resolutionRequests.at(-1)?.calculation.settings?.allowNonTradeableMaterials).toBe(true)
+    expect(wrapper.find('[data-test="detail-name"]').text()).toBe('Iron Ingot')
+
+    api.profitHandler = (request) => Promise.resolve(echoedProfitResponse(request))
+    await wrapper.find('[data-test="reload"]').trigger('click')
+    await flushPromises()
+    expect(api.profitRequests.at(-1)?.settings?.allowNonTradeableMaterials).toBe(true)
+    expect(api.resolutionRequests.at(-1)?.calculation.settings?.allowNonTradeableMaterials).toBe(true)
+    expect(isChecked(wrapper, 'setting-allowNonTradeableMaterials')).toBe(true)
   })
 
   it('explainsAMaterialRestrictedRecipeInTheSelectedResultWithoutATableTag', async () => {

@@ -34,6 +34,7 @@ protect behavior with tests
   -> isolate persistence/API adapters
   -> introduce backend API
   -> introduce web frontend
+  -> introduce multi-user/account isolation
   -> containerize final runtime
 ```
 
@@ -57,9 +58,10 @@ Phase 3  Backend / Application-Service Extraction (in progress — current miles
 Phase 4  Backend HTTP API                       (implementation complete; bounded review run,
                                                  closure pending planner/user disposition — see §8)
 Phase 5  Frontend Migration                     (not started)
-Phase 6  PostgreSQL / Containerization           (not started)
-Phase 7  Deployment / Runtime Configuration      (not started)
-Phase 8  Final Cleanup / JavaFX Removal          (not started)
+Phase 6  Multi-User / Account Isolation         (not started)
+Phase 7  PostgreSQL / Containerization          (not started)
+Phase 8  Deployment / Runtime Configuration     (not started)
+Phase 9  Final Cleanup / JavaFX Removal         (not started)
 ```
 
 Every new or revised phase must retain the PROJECT HEALTH REVIEW exit requirement, with execution and findings governed by `TARGET_ARCHITECTURE.md` §34. Schedule the review near exit, after milestone implementation; planner/user disposition of blocking findings precedes closure. Phase 1 uses the existing `STORY-QUALITY-001` ("Review Phase 1 project health before milestone completion").
@@ -220,22 +222,22 @@ Phase 3. The API layer should be a thin translation over existing application se
 
 ### Exit Criteria
 
-- Preserve and reverify the accepted Crafting Profit performance requirement at the backend/API boundary (`TARGET_ARCHITECTURE.md` §33); API timing is only one part of the full page-load budget.
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
-- **Explicit decision made** on the backend web framework (`TARGET_ARCHITECTURE.md` §30 marks this `TBD` — must not be silently finalized).
-- HTTP endpoints exist for at least the crafting profit/discovery calculations and the sync/refresh operations sketched in `TARGET_ARCHITECTURE.md` §9.
-- Controllers/routes contain no business logic (thin translation only).
-- Transport DTOs are distinct from domain objects; GW2 API JSON shapes do not leak into HTTP responses.
-- Backend API tests exist per `TEST_STRATEGY.md` §11 (valid/invalid input, mapped domain failures).
-- The JavaFX UI continues to work unmodified (still calling application services in-process) — the API is additive at this point.
+- **(Done)** Preserve and reverify the accepted Crafting Profit performance requirement at the backend/API boundary (`TARGET_ARCHITECTURE.md` §33); API timing is only one part of the full page-load budget.
+- **(Done)** Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
+- **(Done)** **Explicit decision made** on the backend web framework (`TARGET_ARCHITECTURE.md` §30 marks this `TBD` — must not be silently finalized).
+- **(Done)** HTTP endpoints exist for at least the crafting profit/discovery calculations and the sync/refresh operations sketched in `TARGET_ARCHITECTURE.md` §9.
+- **(Done)** Controllers/routes contain no business logic (thin translation only).
+- **(Done)** Transport DTOs are distinct from domain objects; GW2 API JSON shapes do not leak into HTTP responses.
+- **(Done)** Backend API tests exist per `TEST_STRATEGY.md` §11 (valid/invalid input, mapped domain failures).
+- **(Done)** The JavaFX UI continues to work unmodified (still calling application services in-process) — the API is additive at this point.
 
 ### High-Level Stories
 
-- Decide and document the backend web framework.
-- Stand up crafting-profit and crafting-discovery HTTP endpoints.
-- Stand up sync/refresh trigger endpoints, with an explicit decision on the long-running-operation approach (`TARGET_ARCHITECTURE.md` §23 also marks this `TBD`).
-- Define request/response DTOs and their mapping to/from domain objects.
-- Add backend API contract tests.
+- **(Done)** Decide and document the backend web framework.
+- **(Done)** Stand up crafting-profit and crafting-discovery HTTP endpoints.
+- **(Done)** Stand up sync/refresh trigger endpoints, with an explicit decision on the long-running-operation approach (`TARGET_ARCHITECTURE.md` §23 also marks this `TBD`).
+- **(Done)** Define request/response DTOs and their mapping to/from domain objects.
+- **(Done)** Add backend API contract tests.
 
 ---
 
@@ -270,7 +272,46 @@ Phase 4. The frontend needs a stable API to build against; building it earlier w
 
 ---
 
-## 10. Phase 6 — PostgreSQL / Containerization
+## 10. Phase 6 — Multi-User / Account Isolation
+
+### Objective
+
+Convert the web application from the current single-account-per-instance assumption to a shared multi-user deployment model before containerization/deployment hardens the runtime around the old assumption. One application instance and one PostgreSQL database should support multiple GW2 accounts while preserving strict account-data isolation and sharing genuinely global GW2 data.
+
+### Dependencies
+
+Phase 5. The browser/backend contract and web frontend should exist before introducing browser-held per-user GW2 credentials and multi-user request scoping. This phase must complete before containerization/deployment so the production runtime is built around the intended public multi-user model rather than retrofitted afterward.
+
+### Exit Criteria
+
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
+- Replace the single configured GW2-account-per-instance assumption with an explicit multi-user/account model.
+- Use one shared PostgreSQL database; do not create one database per user. Global GW2 reference/economy data is shared, while account-specific data is scoped to a stable GW2 account identity.
+- Resolve a presented GW2 API key through the GW2 API to the stable account identity and use that identity to find/reuse the account's existing persisted data. Replacing/recreating a GW2 API key must not create a duplicate account dataset.
+- Keep the user's GW2 API key out of persistent server/database storage. The browser retains the key and supplies it to the backend only when required for account-specific GW2 API operations; the backend treats it as transient request/operation input. The exact browser storage mechanism must be explicitly decided during this phase.
+- Account-specific persistence (including characters, inventories/material storage, unlock/discovery state and other synchronized account data) cannot be read, modified, synchronized or used in calculations under another account's scope. Add persistence/API/integration tests proving this isolation.
+- Explicitly decide whether possession/validation of the GW2 API key and resolved stable GW2 account identity is sufficient for application identity, or whether separate application authentication is required. Do not add username/password infrastructure by default without that decision.
+- Classify synchronization/data ownership as either global or account-specific. Shared/global refreshes must not be independently triggered by every browser user when that would duplicate expensive work or external API traffic.
+- Trading Post prices are refreshed centrally on a backend-controlled schedule rather than by a per-user frontend refresh button. Initial target cadence: every 5 minutes, subject to verification against GW2 API behavior/rate limits and actual application needs. Concurrent users must consume the same refreshed price dataset rather than initiating duplicate price refreshes.
+- Apply the same multi-user concurrency review to other global refresh/synchronization operations: coalesce, schedule, cache or otherwise centralize work where many users could otherwise trigger the same global operation at once. Account-specific refreshes remain scoped to the requesting account.
+- Track account activity (for example `last_seen_at` and/or `last_successful_sync_at`) so inactive account-specific data can be identified. Define a retention/cleanup policy for stale account data, but only introduce automatic deletion/cleaner execution when measured storage/database impact makes cleanup worthwhile. The concrete inactivity period remains an explicit decision at that point; cleanup must never delete shared global data.
+- Define a migration path for the existing single-user database/account data into the new account-scoped model without discarding valid existing data.
+- Existing authoritative domain calculations remain account-agnostic where possible; user/account scoping belongs at the API/application/persistence boundaries and must not duplicate domain rules.
+
+### High-Level Stories
+
+- Decide and document the stable account identity, browser-side GW2 API-key handling, and whether separate application authentication is required.
+- Separate persistence into shared/global data and account-scoped data, adding stable account ownership keys/relations where required.
+- Migrate the existing single-user data into the account-scoped schema.
+- Make account sync resolve the supplied GW2 API key to the stable GW2 account identity and reuse existing data for replacement keys.
+- Add cross-account isolation tests covering repositories, application services and HTTP endpoints.
+- Replace per-user Trading Post refresh UI behavior with a backend-owned approximately five-minute refresh schedule and shared results.
+- Review other global refresh operations for duplicate multi-user triggering and centralize/coalesce them where appropriate.
+- Add account activity tracking and document the deferred evidence-based stale-account cleanup policy.
+
+---
+
+## 11. Phase 7 — PostgreSQL / Containerization
 
 ### Objective
 
@@ -278,7 +319,7 @@ Move from a manually-run local PostgreSQL instance and a manually-run desktop JV
 
 ### Dependencies
 
-Phase 4 at minimum (a backend process must exist to containerize). Phase 5 if the frontend container ships in the same milestone — the backend/database containers can be validated first while the frontend is still run locally, as a sequencing option, since the frontend does not have to wait on this phase's PostgreSQL specifics.
+Phase 6. Containerization should package the intended multi-user/account-isolated runtime rather than harden the superseded single-account-per-instance model. The backend and web frontend already exist from Phases 4–5.
 
 ### Exit Criteria
 
@@ -301,7 +342,7 @@ Phase 4 at minimum (a backend process must exist to containerize). Phase 5 if th
 
 ---
 
-## 11. Phase 7 — Deployment / Runtime Configuration
+## 12. Phase 8 — Deployment / Runtime Configuration
 
 ### Objective
 
@@ -309,25 +350,25 @@ Make the containerized system deployable outside the developer's own machine, pe
 
 ### Dependencies
 
-Phase 6. Deployment configuration only matters once there is something containerized to deploy.
+Phase 7. Deployment configuration only matters once there is something containerized to deploy.
 
 ### Exit Criteria
 
 - Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
-- All configuration (GW2 API key, database URL/user/password, and any future settings) is supplied via environment variables at the container level — continuing the pattern already established for the desktop app's `.env`/`EnvConfig` (see `CLAUDE.md` § Project-Specific Security Policy), carried into `docker-compose` environment configuration.
-- **Explicit decisions made, only when actually needed** (not speculatively) on: reverse proxy, hosting provider, and authentication (`TARGET_ARCHITECTURE.md` §20–21 explicitly warn against adding authentication or multi-tenancy merely because the app is now web-based).
-- The application remains scoped to one configured GW2 account per instance unless a future requirement explicitly changes that (`TARGET_ARCHITECTURE.md` §21).
+- Server-owned configuration (database URL/user/password and any future deployment settings) is supplied via environment variables or equivalent container/runtime configuration. Per-user GW2 API keys are not deployment environment variables in the multi-user model; they remain user/browser-held and are supplied transiently to the backend as defined in Phase 6.
+- **Explicit decisions made, only when actually needed** on reverse proxy and hosting provider. Authentication/account identity follows the Phase 6 decision rather than being deferred to deployment.
+- The deployed application supports the Phase 6 shared multi-user model: one application instance can serve multiple isolated GW2 accounts using shared global data and one PostgreSQL database.
 
 ### High-Level Stories
 
-- Carry `.env`-style configuration into container-level environment variables.
+- Carry server-owned `.env`-style configuration into container-level environment variables; do not move per-user GW2 API keys into deployment configuration.
 - Decide a reverse proxy approach, if the chosen hosting target needs one.
-- Decide a hosting provider, only at the point of actually deploying.
-- Explicitly decide authentication only if/when the deployment stops being strictly single-user/private; otherwise document "not required" and move on.
+- Decide a hosting provider only at the point of actually deploying. Oracle Cloud Free Tier / Always Free is a currently identified candidate for the initial small single-host deployment because it may fit the Docker-based architecture at zero cost; treat it as a candidate only, re-check its then-current availability/limits, and preserve provider portability.
+- Apply the authentication/account-identity decision already made in Phase 6; deployment must not silently replace it with provider-specific identity infrastructure.
 
 ---
 
-## 12. Phase 8 — Final Cleanup / JavaFX Removal
+## 13. Phase 9 — Final Cleanup / JavaFX Removal
 
 ### Objective
 
@@ -335,7 +376,7 @@ Once the web frontend has functional parity and a deployable backend exists, ret
 
 ### Dependencies
 
-Phase 5 (frontend functional parity) and Phase 7 (a deployable system users can actually switch to).
+Phase 5 (frontend functional parity) and Phase 8 (a deployable system users can actually switch to).
 
 ### Exit Criteria
 
@@ -357,7 +398,7 @@ Phase 5 (frontend functional parity) and Phase 7 (a deployable system users can 
 
 ---
 
-## 13. Status
+## 14. Status
 
 This roadmap reflects the repository as of the Java 25 / Maven migration and the craft-vs-buy domain fix (see `docs/KNOWN_PROBLEMS.md` and `docs/CURRENT_ARCHITECTURE.md` for the state it was derived from).
 

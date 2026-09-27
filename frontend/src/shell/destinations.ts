@@ -5,7 +5,7 @@
  * dead destination (`FRONTEND_UX_GUIDELINES.md` 2). The label is used both in the navigation and as
  * the page heading, so a destination and the page it opens are named the same way everywhere.
  */
-export type DestinationId = 'crafting' | 'synchronization' | 'bank' | 'materials'
+export type DestinationId = 'crafting' | 'discovery' | 'synchronization' | 'bank' | 'materials'
 
 export interface Destination {
   readonly id: DestinationId
@@ -18,6 +18,7 @@ export const SITE_NAME = 'GW2 Crafting Tool'
 
 export const DESTINATIONS: readonly Destination[] = [
   { id: 'crafting', path: '#/crafting', label: 'Crafting Profit' },
+  { id: 'discovery', path: '#/discovery', label: 'Crafting Discovery' },
   { id: 'synchronization', path: '#/synchronization', label: 'Synchronization' },
   { id: 'bank', path: '#/bank', label: 'Bank' },
   { id: 'materials', path: '#/materials', label: 'Materials' }

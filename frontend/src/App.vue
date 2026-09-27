@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import BankScreen from './account/BankScreen.vue'
 import MaterialsScreen from './account/MaterialsScreen.vue'
+import CraftingDiscoveryScreen from './crafting/CraftingDiscoveryScreen.vue'
 import CraftingProfitScreen from './crafting/CraftingProfitScreen.vue'
 import { DESTINATIONS, type DestinationId } from './shell/destinations'
 import SiteHeader from './shell/SiteHeader.vue'
@@ -68,13 +69,19 @@ watch(
 
   <main id="main-content" ref="main" class="page">
     <!--
-      Only the open screen is mounted. Crafting Profit is kept alive across navigation because its
-      results belong to a scope and settings the user chose: re-mounting it would both discard that
-      selection and post the calculation again, which navigation must never do. Bank and Materials
-      have no such input, so each keeps reading its own route when opened (STORY-WEB-003).
+      Only the open screen is mounted. The two crafting screens are kept alive across navigation
+      because their results belong to a scope and settings the user chose: re-mounting one would both
+      discard that selection and post the calculation again, which navigation must never do. They are
+      two independent `KeepAlive` boundaries, so each keeps its own scope, settings, search, sort and
+      selection and neither is re-created by opening the other. Bank and Materials have no such input,
+      so each keeps reading its own route when opened (STORY-WEB-003).
     -->
     <KeepAlive>
       <CraftingProfitScreen v-if="route.current.value.id === 'crafting'" />
+    </KeepAlive>
+
+    <KeepAlive>
+      <CraftingDiscoveryScreen v-if="route.current.value.id === 'discovery'" />
     </KeepAlive>
 
     <SyncScreen v-if="route.current.value.id === 'synchronization'" />

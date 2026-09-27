@@ -179,6 +179,15 @@ npm run dev
 
 Then open <http://localhost:5173>.
 
+After updating backend code, restart the backend as well as refreshing the browser. Vite updates
+the frontend without updating an already running Java process. A blank Profit total sell value,
+a generic 404 from `/api/crafting/profit/resolution`, and a non-Trading-Post checkbox that resets
+together indicate an incompatible backend: inspect the response for `totalSellValueCopper` and
+`settings.allowNonTradeableMaterials`, then rebuild/restart the backend serving that origin.
+`npm run smoke:profit:live` checks these contracts against the running application and fails if
+they are missing. It needs retained real data with an available multi-output, multi-craft recipe;
+it does not start synchronization.
+
 The dev server forwards `/api` to the backend, so the browser talks to one origin only. Point it at
 a different backend with `GW2_BACKEND_ORIGIN`, and change its own port with `GW2_FRONTEND_PORT`.
 The browser never receives your GW2 API key or database credentials — those stay with the backend,
@@ -192,6 +201,7 @@ Other commands, all run in `frontend/`:
 | `npm run type-check` | strict TypeScript check |
 | `npm test` | component and unit tests |
 | `npm run smoke:browser` | drive a real browser against a running backend (both processes above must already be up) |
+| `npm run smoke:profit:live` | strictly check gross totals, selected resolution, non-TP toggles and reloads against a running backend |
 | `npm run smoke:sync` | drive a real browser over the synchronization page against a stub backend the script runs itself — needs `npm run build` first, starts no real synchronization |
 | `npm run smoke:layout` | drive a real browser over all four pages at desktop, tablet and phone widths, checking navigation, zoom, keyboard focus and contrast against a stub backend — needs `npm run build` first |
 | `npm run smoke:profit` | drive a real browser over Crafting Profit, checking the results/detail split at desktop and phone widths and keyboard result selection against a stub backend — needs `npm run build` first |

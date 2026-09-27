@@ -31,6 +31,9 @@ The target architecture should achieve the following:
 6. Make external integrations replaceable through adapters.
 7. Allow domain logic to be tested without database, network, or UI dependencies.
 8. Avoid unnecessary architectural complexity.
+9. Support multiple Guild Wars 2 accounts in one hosted application instance and one shared PostgreSQL database.
+10. Share global Guild Wars 2/economy data across users while strictly isolating account-specific data.
+11. Avoid persisting users' Guild Wars 2 API keys on the server when the browser-held-key model can satisfy the required account identity and synchronization flows.
 
 The target is a small maintainable application, not a distributed microservice platform.
 
@@ -173,6 +176,19 @@ Responsibilities:
 - character data,
 - application persistence.
 
+### Global and account-scoped data
+
+The multi-user deployment uses one shared PostgreSQL database. A separate database per user/account is not part of the target architecture.
+
+Persistent data must distinguish between:
+
+- global/shared data, such as Guild Wars 2 item/recipe metadata and Trading Post prices,
+- account-scoped data, such as characters, inventories, material storage, recipe unlock/discovery state and other synchronized account information.
+
+Account-scoped records must be associated with the stable Guild Wars 2 account identity, not with a particular API key. Replacing or recreating an API key for the same Guild Wars 2 account must therefore resolve to and reuse the existing account data rather than creating a new logical user dataset.
+
+Account isolation must be enforced by backend/application/persistence boundaries. Domain calculations should remain account-agnostic where practical and receive already-scoped input data rather than owning tenancy concerns.
+
 The database is infrastructure.
 
 Domain logic must not directly depend on PostgreSQL-specific APIs or SQL.
@@ -198,6 +214,16 @@ Guild Wars 2 API
 The backend owns all GW2 API communication.
 
 The frontend must never call the GW2 API directly.
+
+### Per-user API credentials
+
+In the multi-user web deployment, a user's Guild Wars 2 API key is supplied by that user's browser to the backend when an account-specific Guild Wars 2 API operation requires it.
+
+The backend may use the key transiently to call the Guild Wars 2 API, including resolving the stable Guild Wars 2 account identity, but the target architecture does not persist per-user Guild Wars 2 API keys in PostgreSQL or other server-side durable storage.
+
+The exact browser persistence mechanism (for example browser storage or an appropriate cookie design) is a Phase 6 implementation/security decision and must be explicitly selected rather than assumed here.
+
+A replacement API key for the same Guild Wars 2 account must resolve to the same stable account identity and therefore the same persisted account-scoped dataset.
 
 Reasons include:
 
@@ -439,400 +465,37 @@ but must not independently recalculate crafting profit from raw materials and pr
 
 ## 12.1 Web presentation assets and product requirements
 
-Crafting Profit's requested result content and interactions are owned by
-DOMAIN_SPEC section 2.1.1; apply the frontend UX guidelines to their presentation.
-These are Phase 5 frontend migration requirements, covered incrementally by its
-normal stories, without changing its existing backend-authority or review gates.
-
-Provide standard browser favicon support using a replaceable asset file in the
-frontend project. Document the exact filename and path where the Product Owner
-should place the final icon; do not embed the final image into source code.
+Detailed Crafting Profit result content and interactions are owned by `DOMAIN_SPEC.md` §2.1.1. The frontend presents those results; it does not become the authority for their calculation.
 
 ### Item and recipe icon delivery
 
-**DECIDED (AR-005, Class C).** Use browser HTTP caching over a backend-owned
-persistent filesystem cache, with ArenaNet image retrieval only on local miss.
-This satisfies Request-005 and replaces the AR-004 direct-browser contract for
-Crafting Profit, Bank, Materials, recipe/detail trees and future item views.
-This is target intent, not implemented behavior.
-[ADR-005](architecture/decisions/ADR-005-persistent-web-icon-cache.md) records
-the rationale; ADR-004 is superseded. API-009 and WEB-010 still require planner
-rescoping before selection. Phase 5 performance and health-review gates remain.
+Item/recipe icons are presentation assets and must not alter domain behavior.
 
-**Metadata and boundaries.** Backend synchronization owns canonical upstream
-metadata in existing `items.icon_url`; do not create a parallel web metadata
-store. Synchronization must cover referenced account items, recipe outputs and
-ingredients, including nontradeable items, and refresh changed URLs during
-explicit metadata refresh. The existing null-only backfill does not establish
-coverage or refresh. Missing metadata is tolerable and repaired through backend
-synchronization, never navigation or an image request. Keep metadata acquisition
-usable without binary downloads or desktop setup; no new browser sync control
-is required.
+Target rules:
 
-Application reads batch-enrich presentation results from retained metadata,
-outside domain calculations. Item-bearing HTTP representations carry nullable
-`iconUrl`; recipes use their backend-known output item and detail nodes their
-actual item identity. Non-item/unsupported nodes and missing or rejected sources
-yield null. Page-data reads/calculations perform no per-row database lookup,
-live GW2 metadata request or image download. A local metadata read on an image
-cache miss is allowed; it must not trigger GW2 JSON acquisition. URL, disk and
-HTTP concerns stay outside the domain. A backend application icon-delivery
-boundary coordinates filesystem and upstream HTTP adapters behind thin HTTP
-controllers.
+- The browser obtains icons through the application/backend boundary rather than depending directly on ArenaNet asset URLs.
+- The backend owns icon resolution and may maintain a persistent filesystem cache so repeatedly requested icons do not require repeated external downloads.
+- Icon binaries do not belong in PostgreSQL.
+- Browser/HTTP caching should be used so unchanged icons are not transferred unnecessarily.
+- Missing or failed icon retrieval must degrade to a stable placeholder/fallback and must not break Crafting Profit/Discovery results.
+- Containerized/deployed environments that rely on the backend icon cache must provide suitable persistent storage for that cache.
+- Cache implementation details, HTTP cache headers, hashing/keying, concurrency behavior, migration mechanics and exact error/status handling belong in the relevant ADR/feature specification and tests, not in this architecture document.
 
-**Application URL and validation.** Emit application-relative
-`/api/items/{itemId}/icon/{sourceKey}.{ext}` as `iconUrl`, served by backend
-`GET`. The frontend consumes it verbatim through existing application API
-routing; development routing must also forward this path to the backend.
-Remove filesystem `iconPath` from browser contracts and migrate affected
-transport consumers together. Retain local paths for in-process JavaFX.
-Never emit or redirect to an upstream image URL; no direct-browser fallback.
-
-Accept only parsed absolute HTTPS sources on exactly
-`render.guildwars2.com`, with `/file/{signature}/{file_id}.{ext}` paths:
-hexadecimal signature, positive decimal file ID, and lowercase `png` or `jpg`.
-Reject userinfo, nondefault ports, queries, fragments, encoded separators,
-dot segments and other hosts/schemes/paths. Canonicalize scheme/host to lowercase,
-omit explicit port 443, and retain accepted path spelling. The source key is
-lowercase 64-hex SHA-256 of the canonical URL's UTF-8 bytes. Centralize this
-backend policy. Validate route item ID, key and extension before file access.
-
-On a miss, load the item's retained source and require its validated derived
-key/extension to match the route before fetching. Unknown items, missing metadata,
-obsolete or mismatched keys return 404 without upstream access. A cached old key
-may still serve its original image, never new-version bytes. Accept no
-caller-provided URL/path/host. Disable upstream redirects; forward no API key,
-cookies, application authorization or account data. This is an asset endpoint,
-not an arbitrary proxy. Browser GW2 API requests remain forbidden.
-
-**Persistent storage and hits.** Reuse `ICON_CACHE_DIR`, whose existing local
-default is `<user.home>/.nebet-gw2-tool/icons`. The backend infrastructure
-adapter owns `<ICON_CACHE_DIR>/assets-v1/{sourceKey}.{ext}`; items sharing a
-source share one binary. Only fully committed, validated images are entries.
-Partial, empty or corrupt files are misses. Constrain resolved paths to the
-configured root, including symlink handling; expose no directory listing or
-generic file-serving route.
-
-Serve valid hits without any upstream request/revalidation or live metadata
-dependency, including during upstream outage. Browser expiry does not expire
-the disk copy. No backend age-based expiry or routine redownload is selected.
-Changed retained metadata produces a new key and browser URL on the next read.
-
-**Misses and failures.** Fetch only the matched canonical image URL. Require
-HTTP 200 and a complete, nonempty, decodable PNG/JPEG matching the extension.
-Reject HTML/error bodies and unsupported images. Enforce finite connection and
-response deadlines, response-byte and decoded-pixel limits, bounded download
-concurrency and bounded waiting requests. Implementation must document chosen
-bounds; these are protective limits, not measured latency claims. Coalesce
-same-key concurrent misses within the backend process and recheck disk after
-acquiring the key's coordination slot; no distributed lock service.
-
-Write a unique temporary file beside the destination, validate, and atomically
-publish before success. All writers must use this protocol; readers must never
-see partial files. A concurrent publisher must not overwrite a valid committed
-entry. Persistence failure is an unavailable response, not a successful uncached
-image stream. Bulk warmup is not required.
-
-Malformed route values return 400; absent/rejected metadata or upstream 404
-returns 404; transient upstream failure, invalid images, exhausted capacity and
-disk failure return 503. All non-success responses use
-`Cache-Control: no-store`; 503 includes finite `Retry-After`.
-Never persist failures or placeholders at image keys. Use short-lived, bounded
-in-process failure suppression by key to avoid repeated outage requests; it
-must expire and never hide a valid disk hit. No persistent negative cache or
-automatic request retry loop. Log diagnosable failures without secrets or
-exposing local paths to the browser.
-
-**Browser caching and rendering.** Successful responses use
-`Cache-Control: public, max-age=86400`, verified `Content-Type`,
-`X-Content-Type-Options: nosniff`, and a strong ETag derived from stored bytes.
-Support `If-None-Match`/304 using the local copy, retaining Cache-Control and
-ETag on 304. This one-day freshness interval is an application choice, not an
-upstream guarantee. Do not use `immutable`: finite freshness allows repairs
-to become visible after revalidation. Browser eviction/reload can issue
-requests, which still use disk. Never substitute new-version bytes at an old
-key. No timestamp cache busting, base64 embedding, blob-fetch layer, service
-worker or IndexedDB image store is required.
-
-Use one shared frontend image component, reserved dimensions, prompt visible
-image loading and appropriate native offscreen lazy loading.
-Set `referrerpolicy="no-referrer"`; configured CSP needs no ArenaNet image
-origin exception. Null/rejected URLs and load/decode failures use one bundled
-neutral placeholder without upstream fallback or retry loops. Reset failure
-state on identity/URL change. Retain item text (backend name or item ID),
-quantities, rarity, domain states and keyboard interaction; avoid redundant
-accessible announcements. Empty bank slots stay empty. Image failure cannot
-affect crafting eligibility or result availability.
-
-**JavaFX coexistence and reuse.** Keep `ICON_CACHE_DIR` and `items.icon_path`
-compatibility, while routing future `IconSync` binary writes and web misses
-through the same adapter/key/publication policy. Existing explicit desktop
-bulk sync remains callable; web use does not depend on it. JavaFX consumes
-shared files through `icon_path`, updated only after publication and while the
-item's retained source still matches. A desktop-path database update failure
-does not invalidate a committed asset. Sharing across desktop/backend processes
-requires the same root at usable local paths; host-specific absolute database
-paths are not portable web inputs.
-
-Legacy `items/{itemId}.png` files are migration candidates. Observed
-`IconSync` records no source-version provenance and uses .png filenames even
-for .jpg sources. Validate actual bytes and require evidence associating them
-with the canonical source before adoption: recorded provenance, or byte
-equality with a successful on-demand fetch of that source. Current database
-URL plus filename alone cannot prove this. With evidence, adopt into the keyed
-cache through safe linking/copying and update the desktop path; without it,
-leave legacy files usable by JavaFX and populate the new entry on demand.
-No mass redownload or startup migration is required. Remove legacy copies
-only after successful adoption/path migration and confirmation that no
-retained desktop reference needs them. Temporary migration copies are acceptable;
-do not maintain independent web and desktop download stores going forward.
-
-**Retention and deployment.** Preserve committed files across backend restarts,
-upgrades and container replacement. Container deployment must mount a writable
-persistent volume or host directory at `ICON_CACHE_DIR`; an image layer,
-ephemeral writable layer or temporary directory is insufficient. The frontend
-needs no mount. Keep the configured root stable across restarts, diagnose
-missing/unwritable storage, and never silently downgrade to memory-only caching.
-This constrains existing deployment work; it does not commission a new service,
-container, deployment story or multi-replica requirement. No database binary
-store, distributed cache or external cache service is selected.
-
-Do not schedule age-based eviction, refresh or sweeping of valid images.
-Cleanup may remove abandoned temporary files, corrupt entries and safely
-unreferenced legacy duplicates, protecting active readers/writers. Old source
-keys may remain; no measured storage pressure justifies a garbage collector.
-Manual removal of a corrupt entry permits on-demand repair. Disk-full failures
-must preserve existing hits and surface bounded failure on misses. Any later
-retention policy needs evidence and must preserve normal persistent reuse.
-
-**Verification and planner follow-up.** Rescope API-009 and WEB-010 before
-selection; old direct-CDN/no-cache constraints are obsolete. Verify URL/null
-mapping, actual item identities, batch enrichment, source/route rejection, path
-confinement, no secrets/paths on the wire, and no external calls on page-data
-reads. Verify hits with upstream disabled; persistence before success; concurrent
-misses; interrupted writes and restart reuse; changed metadata; malformed,
-oversized and failed images; disk errors; bounded recovery; HTTP headers/304;
-safe legacy reuse and JavaFX compatibility. Use disposable cache roots and
-controlled HTTP fixtures, with no implicit live metadata sync. Verify shared
-rendering, layout stability and empty slots.
-
-Then record real-browser/real-database integration and section 33 full-page
-timings for cold browser/cold application cache, cold browser/warm application
-cache and warm browser/warm application cache, including restart and warm-cache
-upstream-unavailable checks. Record metadata coverage, cache conditions,
-first/repeat openings, settings, result counts, individual timings/maxima,
-browser/backend/upstream requests and image completion/failures. Warm application
-cache must demonstrate zero upstream image requests for cached entries.
-Fixtures do not establish live performance; this decision claims no timings or
-successful integration. Do not conceal pending images, truncate requested
-results, or use lazy loading/forced placeholders to claim the gate is met.
-Record fallback runs separately from successful delivery; report missing
-evidence or unmet gates for planner disposition. Request-005 closure and
-Phase 5 review remain planner-owned. Crafting calculations and the active
-resolution-endpoint story are unchanged.
+---
 
 # 13. Resolution Tree
 
-**Status: DECIDED (AR-002; root identity clarified by AR-003, Class C).** The contract below is target intent,
-not a claim that detail endpoints or semantic resolution traces exist today.
-[ADR-002](architecture/decisions/ADR-002-resolution-tree-http-contract.md)
-records the original alternatives and rationale;
-[ADR-003](architecture/decisions/ADR-003-resolution-root-identity.md) records the
-root-identity and explanation-basis clarification. This section owns the wire contract.
+The resolution tree is an authoritative backend/domain result used to explain how a crafting result is obtained and costed. The frontend renders the tree; it must not independently reconstruct or recalculate it.
 
-## 13.1 Detail operations and explicit inputs
+Architectural rules:
 
-Add `POST /api/crafting/profit/resolution` and
-`POST /api/crafting/discovery/resolution`. These paths are fixed by this decision,
-unlike the illustrative endpoints in section 9. Both are read-only calculations;
-neither consumes persisted inventory nor triggers GW2 synchronization.
-
-Each required JSON body contains `recipeId` (positive integer) and `calculation`
-(object). `calculation` uses the corresponding existing table request contract:
-
-- Profit: `scope` (`kind`: `ALL`, `DISCIPLINE`, `CHARACTER_DISCIPLINE`, plus
-  `discipline`, `characterName`, `rating` as applicable) and `settings`.
-- Discovery: `scope` (`discipline`, `characterName`, `rating`), independent nullable
-  `inventoryCharacterName`, and `settings`. Preserve the separate inventory
-  character and the existing null/unfiltered-pool semantics.
-- Settings retain `useOwnMats`, `allowBuying`, `maxBuyCopper`, `listingSell`,
-  `listingBuy`, and Profit's `dailyBuyInsteadOfCraft`. Discovery fixes the latter
-  to false and does not accept it as a selectable input. Existing validation,
-  defaults and rating semantics apply; this decision itself adds no new calculation
-  controls. Profit's settings additionally carry `allowNonTradeableMaterials`, the
-  control `DOMAIN_SPEC.md` section 2.1.1 decided separately: both routes take and
-  echo it with the same defaults and validation, so a detail is evaluated under the
-  table's own material rule. Discovery does not have it.
-
-The browser copies the table response's effective inputs into the appropriate
-request fields rather than relying on defaults again. It must not send row
-numbers, prices, material maps or a prior service/context identifier as inputs.
-Recipe identity is the recipe ID, never merely its output item ID.
-
-## 13.2 Calculation lifetime and consistency
-
-Validate first, then create one fresh application-service calculation context
-for the detail operation. Load data, check the recipe against the newly returned
-visible candidate set, evaluate and produce its explanation inside that operation.
-Initially reusing the existing reload use case is acceptable; selected-recipe
-optimization must preserve its eligibility and domain semantics. Never look up a
-previous request's service or share mutable last-result fields across requests.
-An empty Discovery reload cannot expose any previous result or lookup state.
-
-Capture the loaded inputs used by this operation and use them for both its row
-summary and tree evaluation. Do not reload prices, inventory or graph midway
-through explanation construction. Release request-local state after completion or
-failure; no retained calculation session, TTL, cache token, durable snapshot or
-new task store is required. Shared reference data must not carry mutable
-simulation/inventory state between operations.
-
-This is a **fresh calculation**, not retrieval of the table's historical result.
-Even identical input values may yield different results after synchronization or
-price changes. There is no cross-request snapshot guarantee and no claim of an
-atomic database-plus-graph snapshot during loading. Request-local reuse prevents
-explanation construction from introducing a second data read, but does not settle
-future synchronization consistency design (section 23 / UD-007).
-
-## 13.3 Successful response
-
-The completed response is JSON with these required fields:
-
-| Field | Type and meaning |
-| --- | --- |
-| `recipeId` | Requested recipe ID, used for selection and response association; does not assert that this recipe produced the root requirement. |
-| `calculation` | Effective scope and settings, shaped as the corresponding table response's scope/settings; Discovery also includes nullable `inventoryCharacterName`. All effective settings are explicit, including Discovery's fixed daily setting. |
-| `consistency` | Literal `FRESH_CALCULATION`. |
-| `calculatedAt` | UTC ISO-8601 completion timestamp; informational, not a data version or snapshot identifier. |
-| `row` | Existing shared crafting row DTO for this recipe, recalculated in this operation; retains its existing per-craft/total field meanings and nullability. |
-| `treeStatus` | `AVAILABLE` or `RESULT_UNAVAILABLE`. |
-| `treeBasis` | Literal `SINGLE_OUTPUT_REQUIREMENT`: resolution of one output batch of the requested recipe from this operation's initial inventory, budget and daily state, applying the existing simulation phase order, selected settings and authoritative resolver rules. It does not assert execution of the requested recipe. |
-| `tree` | Recursive node below, or null only when `treeStatus` is `RESULT_UNAVAILABLE`. |
-
-The explanation is a domain evaluation, not multiplication of a recipe skeleton
-and not a trace of all `row.craftableCount` crafts or the next craft after
-exhausting a simulation. Its root item and requested quantity are the requested
-recipe's output item and output count. The trace records how that requirement
-was actually sourced; it is not a guarantee of one execution of that recipe.
-The row remains the normal simulation summary. In particular, tree costs must
-not be presented as the row's multi-craft totals; the browser labels the basis.
-Both evaluations use the same captured inputs and authoritative resolver rules.
-A blocked first evaluation still returns an available explanation with reasons. If the
-backend has no calculation result, retain the row's existing unavailable/null
-semantics and return `RESULT_UNAVAILABLE`, not a fabricated empty tree.
-
-Each recursive requirement node has exactly this initial semantic shape:
-
-| Field | Type and meaning |
-| --- | --- |
-| `itemId` | Positive integer item identifier. |
-| `itemName` | String or null when metadata is unavailable; display may fall back to the ID. |
-| `requestedQuantity` | Nonnegative integer units required by this occurrence. |
-| `inventoryQuantity`, `craftedQuantity`, `boughtQuantity`, `missingQuantity` | Nonnegative integer contributions to that requirement, decided by the backend. Crafted quantity means units used here, not surplus output. Their sum equals requested quantity. |
-| `recipeId` | Actually selected producing recipe ID (including a selected blocked attempt), or null when no crafting path is selected. This applies equally to the root and descendants; the root ID may differ from the response-level requested `recipeId`. |
-| `craftCount`, `producedQuantity` | Nonnegative integers for the selected crafting contribution; zero when none completes. Production can exceed crafted quantity because of recipe batch size. |
-| `characterName` | Assigned crafting character or null when not applicable/not assigned; preserve backend character selection. |
-| `methods` | Array containing the actually used contributions from `INVENTORY`, `CRAFT`, `BUY`; multiple methods are allowed for split sourcing. Empty if no contribution succeeds. |
-| `states` | Array of backend flags from `BLOCKED`, `PRICE_UNAVAILABLE`, `DAILY_LIMIT`, `UNVALUED_NONTRADEABLE`; empty if none apply. These may coexist with methods. |
-| `blockedReasons` | Array of the explicit reasons in DOMAIN_SPEC section 42 (`NO_RECIPE`, `BUYING_DISABLED`, `DAILY_LIMIT`, `CYCLE_DETECTED`, `PRICE_UNAVAILABLE`, `RECIPE_NOT_ALLOWED`, `INSUFFICIENT_BUDGET`); empty for an unblocked node. |
-| `cashCostCopper`, `opportunityCostCopper`, `effectiveCostCopper` | Backend-provided numeric amounts in copper for this node's complete requirement, inclusive of descendants; null when a complete value cannot be established. Preserve domain precision; no UI rounding in transport. Known zero is distinct from null. |
-| `children` | Ordered array of ingredient requirement nodes for the selected crafting path (including a blocked attempted path); empty for leaves. |
-
-Requested identity belongs only to the response envelope and its row association;
-actual sourcing belongs to the tree. For an inventory-only root, node `recipeId`
-is null, `craftCount` and `producedQuantity` are zero, and no recipe ingredients
-are invented. If another recipe supplies the output, its actual ID, executions,
-production and ingredient children are retained. For a blocked selected crafting
-path, retain that attempted recipe's identity without claiming completed crafts.
-Never overwrite node identity with the requested ID, wrap the trace in a fabricated
-craft node, suppress an otherwise available trace because identities differ, or
-repair quantities/costs in an API mapper or browser. The browser identifies the
-requested recipe separately from the root's actual methods and producing recipe;
-it must not label output supplied from stock or another recipe as execution of
-the requested recipe. Response association still uses the envelope `recipeId`.
-
-Costs on ancestors include descendant costs; the frontend must not add them again.
-For a blocked requirement, a complete cost is null rather than a misleading
-partial total. A domain-established zero for an unvalued non-tradable item remains
-zero with its explicit state. Unknown purchase prices never become zero. Failed
-speculative paths must not leak committed quantities or costs. Cycle detection
-terminates with a finite blocked node; no object references or graph back-links
-are serialized. Repeated items in different branches remain separate occurrences;
-a presentation key may use the child-index path and is not a persistent node ID.
-Do not truncate a tree silently or infer states from raw quotes in a mapper.
-
-The domain produces resolution choices, quantities, valuation and failure facts;
-the application coordinates the captured context, and the API maps those facts
-into DTOs. Existing `Node.action` text and a first-recipe dependency expansion are
-not sufficient evidence of actual resolution. The implementation must obtain a
-semantic trace from authoritative resolution, not build a competing resolver in
-the controller, DTO mapper or browser. Domain types remain independent of JSON,
-HTTP and JavaFX. No color, widget, CSS class or expansion state belongs in this
-schema. Unknown future state/reason codes must remain visibly representable,
-never silently treated as success.
-
-## 13.4 Missing results, errors and browser association
-
-A valid recipe ID absent from the fresh visible candidate set returns HTTP 404
-with the existing error-body shape `{ "error": "RECIPE_NOT_IN_CALCULATION",
-"message": "..." }`. This includes a recipe that is no longer discoverable;
-it does not assert that the recipe is absent from the global database. Invalid
-input uses existing 400 validation/malformed-request errors; store failures use
-503 and unexpected calculation failures use 500 with existing safe error codes.
-Blocked domain paths and available rows with unavailable calculation results are
-completed HTTP 200 responses, not transport failures. Existing table endpoints
-retain their empty-list 200 behavior and do not eagerly attach trees.
-
-The browser associates a request with feature, recipe ID, effective calculation
-inputs and a local request generation. Changing selection or calculation inputs,
-starting a table reload, or leaving the view invalidates the previous detail.
-Cancellation is optional; ignoring late responses for invalid generations is
-required even for A-to-B-to-A selection. Accept a response only for the active
-generation and matching echoed identity/inputs. Sorting or formatting alone does
-not change calculation identity. Preserve valid user controls during refresh.
-
-Display the returned row and tree together as freshly calculated detail, with
-its single-output-requirement basis. Do not label it as the exact explanation of the earlier
-table row or silently overwrite the old table row with it. Errors/unavailable
-results clear the active tree; they must not leave an old tree under a new
-selection. Expansion and rendering remain frontend concerns.
-
-## 13.5 Migration, execution and verification constraints
-
-JavaFX continues to call application services in process. Keep the table routes
-and their response shapes compatible; adding detail does not force JavaFX through
-HTTP or attach tree-building work to every table row. Local class names and trace
-representation are implementation choices within these boundaries.
-
-AR-003 replaces the earlier `SINGLE_CRAFT` wire literal and requested-root
-identity assertion before detail HTTP/browser integration. Internal explainer
-names may remain unchanged. This is a truthful representation of the existing
-calculation, not a redefinition of DOMAIN_SPEC section 28: craftable count still
-normatively means executions of the requested recipe. KNOWN_PROBLEMS CH-15
-remains an unresolved domain defect. Correcting it is not an architectural
-prerequisite to shipping this explanation of current results; the detail contract
-neither fixes nor accepts it as intended domain behavior. A later correction must
-occur in the authoritative domain path shared by calculations and explanation,
-not exclusively in detail, transport or presentation. The separated identities
-remain valid after that correction. This decision grants no Phase 5 completion
-or waiver of existing correctness, review or performance gates.
-
-The schema above defines the completed response. Per section 23 and UD-007,
-measure the detail operation on representative real data before fixing its
-synchronous/asynchronous execution policy: prefer direct HTTP 200 completion when
-consistently short; if measurements require a task, retain these inputs and
-completed payload and document the task transport before shipping the consumer.
-This decision does not prescribe or assume a new task mechanism.
-
-Phase 5 must still verify section 33's complete browser-page timing, including
-any detail automatically loaded on navigation. Lazy selection does not excuse
-hiding required initial work or omitting results. No performance result is
-claimed by this contract. Verification must cover semantic split sourcing,
-blocked/unvalued nodes, null costs, cycles, requested identity versus actual root
-sourcing (owned finished stock only, an alternative producing recipe, the
-requested recipe, mixed sourcing and a blocked attempted path), fresh-input row/tree consistency,
-concurrent scope isolation, empty Discovery after populated calculation, and
-late browser responses. Test responsibilities remain owned by TEST_STRATEGY.md;
-the planner owns bounded implementation and verification work.
+- Resolution-tree calculation uses explicit request/use-case inputs and request-local calculation state.
+- The API exposes transport DTOs rather than domain or persistence objects directly.
+- The tree and the summary result shown to the user must be based on the same authoritative calculation rules and compatible data snapshot/context.
+- Tree generation must preserve special domain states and the selected craft-vs-buy decisions rather than inventing presentation-only alternatives.
+- Browser requests must associate returned detail data with the result/request that initiated them so stale asynchronous responses cannot overwrite a newer selection.
+- Missing/unavailable detail data must be represented explicitly and must not cause the frontend to fabricate a result.
+- Exact DTO fields, nullability, HTTP status mapping, request identifiers, migration sequencing and detailed verification cases belong in the API/feature specification and associated ADRs/tests.
 
 ---
 
@@ -866,24 +529,33 @@ That color is not part of the domain contract.
 
 ---
 
-# 15. Configuration and Secrets
+# 15. Configuration and Credentials
 
 Runtime configuration must not be hard-coded into source files.
 
-Configuration should be supplied through runtime configuration such as environment variables or equivalent deployment configuration.
+Server-owned configuration should be supplied through runtime configuration such as environment variables or equivalent deployment configuration.
 
 Examples include:
 
 ```text
-GW2_API_KEY
 DATABASE_URL
 DATABASE_USER
 DATABASE_PASSWORD
 ```
 
-Secrets must remain backend-only.
+Server-owned secrets and infrastructure credentials must remain backend-only and must never be exposed to the frontend.
 
-The frontend must not receive the GW2 API key or database credentials.
+## Guild Wars 2 API keys
+
+The current local/single-user application may continue using `GW2_API_KEY` from local environment configuration during migration.
+
+The target public multi-user deployment does not use one deployment-wide Guild Wars 2 API key for all users.
+
+Each user supplies their own Guild Wars 2 API key through the browser. The browser may retain that key for the user's convenience; the backend receives it transiently when required for account-specific Guild Wars 2 API operations and does not persist it in the application database or other durable server-side storage.
+
+The frontend must not expose one user's key to another user. Backend logs, errors and diagnostics must not unnecessarily record API keys.
+
+The exact browser-side storage mechanism is decided during the multi-user implementation phase.
 
 ---
 
@@ -969,31 +641,53 @@ Possible hosts may include:
 
 The hosting provider is not yet decided.
 
+Oracle Cloud Free Tier / Always Free is currently identified as a potential initial hosting candidate because a suitable Docker-capable VM may support the intended small single-host deployment without requiring provider-specific application architecture.
+
+This is not a hosting-provider decision. Availability, resource limits, pricing/free-tier conditions and suitability must be re-evaluated when deployment work is actually reached.
+
+The application must remain portable to a normal Docker-capable host and must not depend on Oracle-specific services merely to take advantage of a currently available free hosting option.
+
 The architecture should avoid relying on provider-specific services unless intentionally introduced later.
 
 ---
 
-# 20. Authentication
+# 20. Authentication and Account Identity
 
-Authentication is currently not a defined requirement.
+Public multi-user access is now an explicit target requirement.
 
-**Status:** TBD
+The application must establish which stable Guild Wars 2 account an account-scoped request belongs to and must prevent access to another account's persisted data.
 
-If the application remains a private single-user tool, full user-account infrastructure may not be necessary.
+The initial preferred direction is to investigate whether possession of a valid Guild Wars 2 API key, validated by the backend against the Guild Wars 2 API and resolved to the stable Guild Wars 2 account identity, is sufficient as the application's account identity mechanism.
 
-Authentication should not be added merely because the application is web-based.
+Whether this is sufficient or whether separate application authentication is required must be explicitly decided during the multi-user phase.
 
-If public or multi-user access becomes a requirement, authentication and account isolation must be designed separately.
+Do not introduce username/password accounts, email registration, password reset infrastructure or provider-specific authentication merely because the application is public. Add separate authentication only if the required account isolation or product requirements cannot be satisfied cleanly without it.
 
 ---
 
 # 21. User / Account Scope
 
-The current intended deployment should initially assume one configured Guild Wars 2 account per application instance unless a future requirement explicitly introduces multi-user or multi-account support.
+The target hosted application is multi-user.
 
-This keeps the initial architecture small.
+One application instance and one shared PostgreSQL database may serve multiple Guild Wars 2 accounts.
 
-Multi-tenancy must not be introduced speculatively.
+The stable Guild Wars 2 account identity returned by the Guild Wars 2 API is the durable identity for account-scoped persistence. An API key is a credential used to establish/access that identity; it is not itself the persistent account identity.
+
+Conceptually:
+
+```text
+API Key A1 ──┐
+             ├──> GW2 Account A ──> persisted Account A data
+API Key A2 ──┘
+
+API Key B  ─────> GW2 Account B ──> persisted Account B data
+```
+
+Creating a replacement API key must therefore not create duplicate persisted account data.
+
+Global application data is shared across accounts. Account-specific data must be explicitly scoped and isolated.
+
+The architecture must not require a separate PostgreSQL database, backend instance or container stack for each user.
 
 ---
 
@@ -1019,6 +713,20 @@ The backend controls:
 - persistence,
 - error handling,
 - synchronization state.
+
+## Global versus account-specific synchronization
+
+Synchronization must distinguish between global/shared work and account-specific work.
+
+Account-specific synchronization, such as characters, inventories, material storage and account recipe knowledge, runs in the scope of one resolved Guild Wars 2 account.
+
+Global data must not be redundantly refreshed because multiple users request the same operation.
+
+Trading Post price refresh is backend-owned global work. In the multi-user deployment it must run automatically on a backend-controlled schedule rather than exposing a per-user frontend refresh action. The initial target cadence is approximately five minutes, subject to verification against actual Guild Wars 2 API behavior, rate limits and application requirements.
+
+Other synchronization operations must be classified similarly during the multi-user migration. Where data is global, concurrent user activity should reuse, coalesce or schedule the shared work instead of causing equivalent external API operations once per user.
+
+The frontend may expose status/freshness information where useful, but ordinary users must not independently trigger redundant global refresh work.
 
 ---
 
@@ -1055,60 +763,39 @@ The target architecture should determine later whether the graph is:
 
 This is an implementation decision as long as domain results remain correct.
 
+## 24.1 Account Data Retention
+
+Account-scoped persisted data should record sufficient activity information to identify accounts that have not used or synchronized with the application for an extended period, for example through `last_seen_at` and/or `last_successful_sync_at`.
+
+A returning user who presents a new API key for the same stable Guild Wars 2 account must reuse the existing account dataset while it still exists.
+
+Inactive account data may eventually be removed to control PostgreSQL/storage growth. Automatic cleanup must not be introduced merely because inactive records exist. First establish that stale account data causes meaningful storage, database-performance or operational cost.
+
+When such evidence exists, explicitly decide:
+
+- the inactivity threshold,
+- which account-scoped records are removed,
+- whether any minimal account identity/tombstone is retained,
+- cleanup frequency,
+- and how concurrent/returning-user activity is protected from deletion.
+
+Cleanup must never delete global/shared Guild Wars 2 data merely because an individual account is inactive.
+
+If measured storage impact remains insignificant, retaining inactive account data is acceptable and no automatic cleaner is required.
+
 ---
 
 # 25. Testing Architecture
 
-The architecture must support multiple test levels.
+Testing follows `docs/TEST_STRATEGY.md`; this section records only architecture-level expectations.
 
-## Existing JavaFX UI Verification Capability
-
-The implementation workflow must support repeatable automated verification of the existing JavaFX application. This is intended capability, not a claim that tooling is already installed or verified. Its immediate scope is the Phase 1 crafting views and the verification gaps recorded in STORY-DOM-013 through STORY-DOM-015.
-
-The capability must launch the application, detect successful startup, interact with relevant controls (including ComboBox selection and button clicks), inspect TableView contents and displayed state, verify selection-driven result changes and important empty/error states, capture screenshots when useful, and shut down cleanly. Prefer control-based deterministic regression tests over ad-hoc desktop interaction; fixed screen coordinates are not an acceptable foundation.
-
-Evaluate TestFX or an equivalent maintained approach against the actual JavaFX version and existing Maven setup before adopting a substantial framework. Compatibility and reliability must be demonstrated rather than assumed. Keep reusable capability setup separate from the behavior coverage owned by the existing crafting stories: character-dependent results, All characters selection, refresh preservation of sorting/filtering, initial defaults, and zero-character/empty-data handling.
-
-Windows PowerShell may be used within the repository/development workflow for interim automation, including investigation of System.Windows.Automation where useful. This is not a requirement to broaden agent permissions and does not replace practical automated regression tests. Preserve application correctness and retain manual verification as a fallback when automation is genuinely impractical. Once tooling is established, document its permanent test methodology, invocation and limitations in TEST_STRATEGY.md; this section owns the intended capability, while that document owns how it is tested.
-
-## Domain Tests
-
-Run without:
-
-- database,
-- HTTP,
-- Docker,
-- GW2 API.
-
-These tests protect the rules in `DOMAIN_SPEC.md`.
-
-## Application Tests
-
-Test use-case orchestration using fake or in-memory adapters.
-
-## Persistence Integration Tests
-
-Verify PostgreSQL repository behavior.
-
-## External API Adapter Tests
-
-Verify conversion and handling of GW2 API responses.
-
-## API Tests
-
-Verify backend HTTP contracts.
-
-## End-to-End Tests
-
-A small number of tests may cover:
-
-```text
-browser/API
-→ backend
-→ database
-```
-
-The majority of business behavior should not require end-to-end tests.
+- Domain tests verify business rules without database, HTTP, JavaFX or GW2 API dependencies.
+- Application tests verify use-case orchestration across domain and ports.
+- Persistence integration tests use real PostgreSQL behavior where schema/query semantics matter.
+- External API adapter tests use controlled/captured GW2 payloads; optional live smoke tests remain outside the deterministic default suite.
+- API tests verify transport mapping, validation and mapped failures without duplicating domain-rule tests.
+- End-to-end tests cover selected critical user flows across the deployed boundaries.
+- During migration, JavaFX may remain a verification surface until web parity is established; detailed JavaFX verification procedures belong in `TEST_STRATEGY.md` and migration stories.
 
 ---
 
@@ -1170,6 +857,9 @@ introduce backend API
 introduce web frontend
       |
       v
+introduce multi-user / account isolation
+      |
+      v
 containerize final runtime
 ```
 
@@ -1209,69 +899,28 @@ Avoid adding abstractions solely because they are common in large enterprise app
 
 # 30. Technology Decisions
 
+This section is a decision index. Detailed rationale belongs in the referenced ADR/user-decision documents rather than being repeated here.
+
 ## Decided
 
-The following target decisions are currently established:
-
-Backend web framework: **Spring Boot**, per resolved `agent/user-decisions/UD-006-backend-web-framework.md`. Choose a supported version compatible with the project's actual Java and Maven versions at implementation time. Spring provides HTTP routing, validation, transport DTO handling and runtime infrastructure at the backend boundary; existing application/domain behavior must not become dependent on Spring APIs or be redesigned around the framework. Phase 4 remains additive: JavaFX continues calling application services in-process.
-
-Long-running HTTP operation policy is decided in section 23 (UD-007); concrete implementation choices follow that policy.
-
-Frontend framework and language are decided in section 4.1; that section owns the selection and implementation constraints.
-
-```text
-Application type:
-Web application
-
-Deployment:
-Containerized
-
-Primary containers:
-Frontend
-Backend
-PostgreSQL
-
-Database:
-PostgreSQL
-
-Business logic owner:
-Backend
-
-External GW2 API access:
-Backend only
-
-Communication:
-Frontend → Backend through HTTP API
-
-Domain:
-Independent from UI, database, HTTP, and external API formats
-
-Local/small deployment:
-Docker Compose preferred
-```
-
----
+- **Primary database:** PostgreSQL.
+- **Target runtime packaging:** separate frontend, backend and PostgreSQL containers, orchestrated locally with Docker Compose.
+- **Business-logic ownership:** backend/domain/application layers; the frontend is not an independent calculation engine.
+- **GW2 API ownership:** backend adapter boundary; browsers do not directly own synchronization logic.
+- **Multi-user persistence:** one shared PostgreSQL database with shared global data and account-scoped data keyed by stable GW2 account identity.
+- **Per-user GW2 API keys:** browser-held in the target multi-user model and supplied transiently to the backend when required; not persisted as durable server-side application data.
+- **Global Trading Post refresh:** backend-owned scheduled work rather than a per-user refresh action; initial target cadence approximately five minutes, subject to operational verification.
+- **Hosting portability:** provider-specific services must not become unnecessary architectural dependencies.
 
 ## To Be Decided
 
-The following decisions intentionally remain open:
-
-```text
-Database migration tool:
-TBD
-
-Reverse proxy:
-TBD
-
-Hosting provider:
-TBD
-
-Authentication:
-TBD, only if required
-
-```
-
-An implementation agent must not choose one of these technologies merely because it is familiar without an explicit project decision.
+- Frontend framework/language, if not already resolved by the active implementation milestone.
+- Database migration tool.
+- Reverse proxy, if required by the selected deployment target.
+- Browser-side GW2 API-key storage mechanism.
+- Whether validated GW2 API-key possession plus stable account identity is sufficient application identity or separate authentication is required.
+- Inactive-account retention threshold, only when measured storage/operational impact justifies automatic cleanup.
+- Hosting provider. Oracle Cloud Free Tier / Always Free is a current candidate, not a decision; availability and limits must be re-evaluated at deployment time.
 
 ---
 
@@ -1318,7 +967,7 @@ When modifying or creating code, Claude must preserve these principles:
 3. Controllers/API endpoints must remain thin.
 4. SQL/JDBC must not leak into domain logic.
 5. GW2 HTTP/JSON models must not leak into domain logic.
-6. The frontend must not receive secrets.
+6. Server-owned secrets must not reach the frontend; per-user GW2 API keys follow the browser-held credential model defined in sections 5 and 15.
 7. The frontend must not duplicate authoritative calculations.
 8. New dependencies must respect inward dependency direction.
 9. Technology choices marked `TBD` must not be silently finalized.
@@ -1326,52 +975,33 @@ When modifying or creating code, Claude must preserve these principles:
 
 ---
 
-# 33. Crafting calculation performance and Phase 3 acceptance gate
+# 33. Crafting Calculation Performance
 
-Crafting Profit load performance is required current Phase 3 work before proceeding to Phase 4/backend HTTP API work. The Product Owner reported approximately 20 seconds to populate CraftingProfitView (2026-09-22); that is a reported observation, not an independently measured baseline. Investigate and resolve it now, preserving intended calculation behavior. This supersedes the earlier deferral for Crafting Profit; Discovery performance remains future work unless separately authorized.
+Crafting Profit is performance-sensitive. The complete user-visible Crafting Profit page must remain within the accepted project performance budget on representative real data; the current accepted target is at most 7 seconds from navigation/request initiation to complete usable page content.
 
-**Required result:** opening Crafting Profit must take **at most 7 seconds from page-load initiation to the complete page being populated and interactive**, measured against the user's current real PostgreSQL database with its real account, recipe, inventory and price data. Faster is welcome but not required. Time starts with the navigation action, not after loading a service or starting the calculation. Completion includes initial scope/control loading, data acquisition, calculation, presentation preparation, table population and rendered usable UI for the complete requested result set. An empty shell, spinner, first rows, partial results, or only backend execution time does not satisfy this limit. Do not hide work before the timer, omit recipes, lower simulation limits or silently serve stale results to meet it.
+This budget spans backend calculation, persistence, transport and frontend rendering. Optimizing one boundary does not by itself satisfy the complete-page requirement.
 
-Use the actual user environment and database, not a mock, disposable tiny fixture, reduced dataset or synthetic benchmark as acceptance evidence. Cover the default All scope, repeat openings and the first opening after application startup; record selected settings, data scale, software/hardware environment and cache state. Report individual end-to-end timings and the maximum; an average below seven seconds does not excuse a measured opening above it. A separately initiated first-time setup/account synchronization is outside page navigation; any work triggered by opening the page remains inside the timer. The measurement procedure is owned by `TEST_STRATEGY.md` §34.
+Detailed measurement procedure, historical baselines, milestone acceptance evidence and regression-test mechanics belong in `TEST_STRATEGY.md`, performance stories and their recorded results rather than this target architecture.
 
-Begin with a reproducible baseline and attribute elapsed time to database access, recipe/graph/cache loading, calculation/simulation, presentation preparation and UI rendering. Optimize evidenced bottlenecks, not assumed ones. Before major optimization, compare materially different viable approaches and correctness, freshness, maintainability, memory and database-load trade-offs. Meaningful product/architecture trade-offs require a User Decision; the time budget does not authorize changing domain rules. Keep reusable calculation improvements behind the application/domain boundary so future REST callers benefit. Repeat the same real-data measurements and relevant correctness checks after changes.
+---
 
-**Blocking acceptance gate — satisfied 2026-09-23; the requirement below stands for all future work:** both recorded measurements meeting the limit and an explicit subsequent Product Owner confirmation that the issue is solved are required to close this requirement. Both were obtained for the current implementation; the measurements and the dated confirmation are recorded in `STORY-PERF-001`'s Result, which owns that evidence. Record the user's dated confirmation, tied to the tested revision/results, in `STORY-PERF-001`'s Result through the normal workflow. This instruction establishes the requirement; it is not that confirmation. Automated success, an agent/evaluator marking implementation complete, silence, or merely moving the work elsewhere cannot substitute for user acceptance. Until both conditions are met, Phase 3 remains open and Phase 4 or later work must not proceed. If measurement or user confirmation is unavailable, report the outstanding blocker rather than claiming success or relaxing the target.
+# 34. Repository Quality and Project-Health Reviews
 
-Future backend API and web frontend phases must preserve this performance requirement and reverify it at their respective boundaries; service/API timing alone never substitutes for the eventual browser-navigation-to-complete-page measurement. Later-phase checks do not defer the current Phase 3 gate.
+Architecture quality must be reviewed near milestone completion so implementation drift, obsolete paths and documentation mismatches do not accumulate across phases.
 
-# 34. Repository quality and recurring project-health review policy
+At architecture level, reviews should check:
 
-## Quality targets
+- dependency direction and boundary violations,
+- duplicate or obsolete implementations,
+- repository/documentation alignment,
+- test coverage appropriate to changed boundaries,
+- performance regressions where relevant,
+- security/configuration mistakes that conflict with this target architecture,
+- and whether temporary migration structures can now be removed.
 
-Aim for a maintainable, meaningfully tested, well-documented product with coherent architecture and low technical debt. Protect important behavior and persistence/integration semantics, keep build/test behavior reproducible, and reduce confirmed problems over time. Testing methodology remains owned by `docs/TEST_STRATEGY.md`; current defects and debt belong in `docs/KNOWN_PROBLEMS.md`. These are long-term quality targets, not instructions to remediate every dimension during a review or pursue numeric coverage/complexity goals.
+The exact review workflow, agent responsibilities, report format, story creation/disposition and milestone-closing procedure belong in the agent/planning documentation rather than this architecture document.
 
-## PROJECT HEALTH REVIEW execution
-
-A PROJECT HEALTH REVIEW is a bounded milestone-level assessment of whether the project remains coherent, healthy and aligned before milestone completion. Schedule it near milestone exit, after implementation work is substantially complete, not after every story. Every roadmap phase, including future phases, must include this exit requirement by reference to this section.
-
-Inspect and compare the following within the milestone's scope:
-
-- **Roadmap health:** actual completion of goals and exit criteria; mistakenly unchecked implemented criteria; skipped criteria and whether they are obsolete, inapplicable, or require transfer to a current/later milestone; and accidental scope drift. Check inherited prerequisite evidence only where relevant, without reopening obsolete implementation paths.
-- **Architecture health:** ROADMAP alignment with TARGET_ARCHITECTURE, whether the target still expresses the intended future direction, and CURRENT_ARCHITECTURE agreement with implementation. Distinguish intentional transitional complexity from evidenced current debt. Planned replacement or restructuring in a future milestone does not by itself make today's architecture defective or authorize implementing that future architecture now.
-- **Documentation health:** stale facts, contradictions, obsolete references (including renamed/deleted artifacts), duplicated authority, incorrect ownership, and disagreement with implementation or roadmap. Small, clearly evidenced corrections may be made directly at the authoritative owner.
-- **Known-problem/debt health:** resolved items still marked open, historical observations presented as current facts, missing important current problems, relevance of TODO/TBD/open decisions, and clearly obsolete/dead/superseded artifacts. Report concrete evidence rather than speculative cleanup opportunities.
-- **Verification health:** whether existing verification gives meaningful confidence for the completed milestone. Tests, saved results, story results and implementation evidence are inputs. Run a targeted check only when needed to answer a concrete review question; report any verification weakness or uncertainty honestly.
-
-Assessment comes before remediation:
-
-```text
-inspect -> compare -> assess -> correct small authoritative documentation errors
-        -> report concrete findings -> finish review
-```
-
-Explicit Non-Goals: no automatic bug hunt, broad regression run, test-strategy redesign, coverage-driven test expansion, refactoring/cleanup campaign, architecture implementation, or later-milestone work. A review does not automatically run every suite or create tests merely because it occurred. Substantial implementation, refactoring or test work belongs in a separate normal story decided by the user/planner during subsequent planning; the review itself must neither implement that work nor create stories for it. Do not create speculative cleanup work.
-
-## Review results and milestone completion
-
-Record review evidence, documentation corrections, concrete findings and the overall milestone-health assessment through the existing story Result and workflow reporting mechanisms. Preserve their established ownership and reporting flow. Findings should identify affected components, supporting evidence, impact and whether they block milestone completion, so subsequent normal planning can decide any separately scoped work or criterion transfers.
-
-Review completion is distinct from milestone completion. The planner/user subsequently decides disposition of findings and any transfers through normal planning. Blocking findings and unsatisfied criteria keep the milestone open until resolved or explicitly dispositioned with evidence; a proposed transfer alone does not satisfy an exit criterion. The sequence is milestone implementation, bounded review, findings/corrections, planner/user resolution of blockers, then milestone closure. This policy claims no review has run and does not retroactively reopen archived milestones; relevant inherited gaps are assessed within the current milestone.
+---
 
 # 35. Human-readable crafting documentation
 
@@ -1379,15 +1009,11 @@ Maintain a small Markdown guide for readers with little Guild Wars 2 knowledge. 
 
 This guide is an explicit exception to the normal prohibition on documentation duplication: a self-contained explanatory summary is permitted; authoritative documents remain the source of truth. Every change materially affecting user-visible crafting rules, character/binding handling, pricing, fees, profit, blocked states or limits must update the relevant guide alongside the authoritative owner. Development/implementation documentation must link this maintenance requirement. Add only concise links near the top of root `README.md` to `agent/agent_README_experimental.md` (AI-assisted development/orchestration) and the crafting guide. Do not rewrite `agent/agent_README_experimental.md` or duplicate it in the root README.
 
-# 36. Deferred independent model availability in development orchestration
+# 36. Development-Orchestration Boundary
 
-Future planned orchestration work, not executable Phase 1 domain-stabilization work: Python must manage Claude and Codex capacity independently while retaining deterministic story selection and a simple single-writer model for workflow state. No implementation state or current defect is asserted here.
+The repository's AI/agent orchestration is development infrastructure, not part of the deployed GW2 application architecture. Model availability, fallback behavior, planner/executor routing and similar concerns must be documented in the agent/runtime documentation and must not influence the application's runtime dependency structure.
 
-Priority is to resume an active Claude story when capacity permits, then execute selectable To Do work. At To Do <= 2, invoke Codex to replenish within existing phase/story rules if its capacity permits. Codex exhaustion must not stop Claude from draining already-planned work, even to zero. When Claude is unavailable, Codex may perform useful current-scope planning until no further useful work should be created. This does not authorize future-phase stories. If both lack capacity, wait locally; resume the appropriate flow when capacity returns.
-
-Usage exhaustion is neither story nor planning failure. Do not invoke an exhausted model repeatedly. Reuse the existing Claude usage-wait approach where practical and add equivalent Codex detection/wait handling; local checks should avoid consuming model tokens. Claude resumes the same unfinished active story; planning resumes only while its trigger remains applicable.
-
-Capacity checks and safe preparation may proceed independently. Python must serialize all commits to shared workflow state, including BACKLOG, CURRENT_STORY, story statuses, planner/evaluator/runtime result artifacts and milestone/planning state. Codex must not modify an active implementation story; Claude must not select its next story. Prefer understandable scheduling and single-writer state updates over concurrent file-locking complexity.
+---
 
 # 37. Status
 
