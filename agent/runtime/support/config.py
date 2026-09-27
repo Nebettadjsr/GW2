@@ -63,7 +63,6 @@ LOGS_DIR = AGENT_DIR / "logs"
 NEXT_PROMPT_FILE = ARTIFACTS_DIR / "NEXT_PROMPT.md"
 EVALUATOR_RESULT_FILE = ARTIFACTS_DIR / "EVALUATOR_RESULT.json"
 SELECTOR_RESULT_FILE = ARTIFACTS_DIR / "SELECTOR_RESULT.json"
-DISPATCH_RESULT_FILE = ARTIFACTS_DIR / "DISPATCH_RESULT.json"
 PLANNING_RESULT_FILE = ARTIFACTS_DIR / "PLANNING_RESULT.json"
 ARCHITECT_RESULT_FILE = ARTIFACTS_DIR / "ARCHITECT_RESULT.json"
 
@@ -86,7 +85,7 @@ SRC_DIR = REPO_ROOT / "src"
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 
-# Hermes remains responsible for dispatch/evaluation/selection.
+# Hermes remains responsible for post-implementation evaluation/selection.
 MODEL = "hermes3:8b"
 
 # Model the orchestrator launches Claude Code with (`claude --model`).
@@ -216,7 +215,7 @@ CI_VERIFICATION_ENABLED = _configured_ci_verification()
 #
 # Aider is used only as a repository-structure/context generator for
 # Claude's implementation prompt -- never as a coding agent, and never
-# added to the Codex planner, the Hermes evaluator/dispatcher, or the
+# added to the Codex planner, the Hermes evaluator, or the
 # deterministic selector. See agent/runtime/support/repo_map.py.
 # ============================================================
 

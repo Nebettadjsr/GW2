@@ -211,7 +211,7 @@ class BacklogIndexTest(unittest.TestCase):
     def test_milestone_coverage_is_derived_for_the_review(self):
         self.assertIn("- milestone-04: 1 DONE", self.index)
         self.assertIn(
-            "- milestone-05: 1 BLOCKED, 1 DONE, 2 TODO, 1 UNFINISHED",
+            "- milestone-05: 1 ACTIVE, 1 BLOCKED, 1 DONE, 2 TODO",
             self.index,
         )
 

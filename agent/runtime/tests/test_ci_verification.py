@@ -448,8 +448,6 @@ class StoryCompletionGateTest(OrchestratorInterventionTestCase):
                                 ("MAX_CI_FIX_ATTEMPTS", 2)]:
                 stack.enter_context(patch.object(orchestrator, name, value))
 
-            stack.enter_context(patch.object(orchestrator, "dispatch_story",
-                                             return_value={"status": "READY"}))
             stack.enter_context(patch.object(orchestrator, "build_claude_prompt",
                                              return_value="Implement it"))
             stack.enter_context(patch.object(orchestrator, "generate_repo_map",

@@ -181,8 +181,7 @@ class CooperativeResumeTest(OrchestratorInterventionTestCase):
             events.append("plan")
             return {"status": "NEEDS_USER", "user_decision_ids": ["UD-010"], "story_files_created": []}
 
-        with patch.object(orchestrator, "dispatch_story", return_value={"status":"READY"}), \
-             patch.object(orchestrator, "build_claude_prompt", return_value="Implement active"), \
+        with patch.object(orchestrator, "build_claude_prompt", return_value="Implement active"), \
              patch.object(orchestrator, "NEXT_PROMPT_FILE", self.stories_dir / "prompt.md"), \
              patch.object(orchestrator, "CLAUDE_RESULT_FILE", self.stories_dir / "result.md"), \
              patch.object(orchestrator, "generate_repo_map", return_value={
@@ -242,8 +241,7 @@ class RepoMapOrderingTest(OrchestratorInterventionTestCase):
             events.append("claude")
             return claude_runner.ClaudeAttempt(0, False)
 
-        with patch.object(orchestrator, "dispatch_story", return_value={"status": "READY"}), \
-             patch.object(orchestrator, "build_claude_prompt", return_value="Implement"), \
+        with patch.object(orchestrator, "build_claude_prompt", return_value="Implement"), \
              patch.object(orchestrator, "NEXT_PROMPT_FILE", self.stories_dir / "prompt.md"), \
              patch.object(orchestrator, "CLAUDE_RESULT_FILE", self.stories_dir / "result.md"), \
              patch.object(orchestrator, "generate_repo_map", side_effect=fake_generate_repo_map), \

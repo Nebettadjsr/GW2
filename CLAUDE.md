@@ -62,10 +62,16 @@ If the story is DONE or BLOCKED, report and stop.
 
 **During:** Work only to the story's Definition of Done. No unrelated refactoring, no scope
 creep. Preserve existing behavior unless the story/spec says otherwise. If something material
-is unspecified or ambiguous, stop and report — don't guess.
+is unspecified or ambiguous, stop and report — don't guess. Do not create or add stories to the
+backlog. If implementation reveals a concise, useful issue outside this story's scope, record
+it in `## Follow-up Findings` in both the completed story and `CLAUDE_RESULT.md` as
+`F001: <finding>`, incrementing the ID for each additional finding. Leave both sections as
+`None.` when there are no findings. Do not include work already covered by this story.
 
 **After:** Update the story file's status/result, `CLAUDE_RESULT.md`, and that story's single
-BACKLOG entry. Update another doc only if this story materially changed information that doc
+BACKLOG entry. Include the same `## Follow-up Findings` section in the story and result so the
+planner can disposition out-of-scope observations during its next normal pass. Update another
+doc only if this story materially changed information that doc
 owns (see Documentation Map) — e.g. an architecture change updates `CURRENT_ARCHITECTURE.md`,
 a domain change updates `DOMAIN_SPEC.md`, a user-visible crafting rule change updates
 `docs/crafting/` per §35. Never write completed-story history or live test counts into

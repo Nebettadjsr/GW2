@@ -46,6 +46,25 @@ describe('describeRowState', () => {
     expect(describeRowState(noneCraftableRow)).toMatchObject({ label: 'None craftable', tone: 'idle' })
   })
 
+  it('marksTheLabelsThatOnlyRepeatTheirOwnExplanation', () => {
+    // DOMAIN_SPEC 2.1.1's three examples, plus every other reason this client has wording for: the
+    // sentence states the cause, so the short label adds nothing to it.
+    for (const row of [...movedReasonRows, priceUnavailableRow, cycleDetectedRow, profitableRow, noneCraftableRow]) {
+      const state = describeRowState(row)
+      expect(state.labelAddsMeaning, `${state.label} must not be repeated as a label`).toBe(false)
+      // Removing the label is a display decision; the label itself is still produced for the search
+      // index and for Discovery's own detail.
+      expect(state.label).not.toBe('')
+    }
+
+    // Where the sentence is all there is, the label stays: none of these may read as success.
+    for (const row of [noResultRow, { ...profitableRow, blockedReason: null }, unknownStateRow]) {
+      const state = describeRowState(row)
+      expect(state.labelAddsMeaning, `${state.label} must keep its label`).toBe(true)
+      expect(state.tone).toBe('unknown')
+    }
+  })
+
   it('doesNotTreatAnUnreportedStateAsNotBlocked', () => {
     const state = describeRowState({ ...profitableRow, blockedReason: null })
 

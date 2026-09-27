@@ -138,6 +138,55 @@ class OrchestratorInterventionTestCase(unittest.TestCase):
             f"{filename}\n", encoding="utf-8"
         )
 
+    def _verify_active_story_runs_claude_before_unavailable_ollama_evaluation(self):
+        filename = "STORY-DOM-001-active.md"
+        story = self.write_story(
+            filename,
+            story_with_id("STORY-DOM-001", "## Status\n\nTODO\n"),
+        )
+        self.write_backlog(active=[filename])
+        self.set_active(filename)
+        events = []
+
+        def run_claude(_prompt):
+            events.append("claude")
+            return claude_runner.ClaudeAttempt(0, False)
+
+        def evaluate(*_args):
+            events.append("evaluate")
+            if events.count("evaluate") == 1:
+                raise OSError("Ollama unavailable")
+            return {"decision": "COMPLETE", "reason": "ok"}
+
+        with ExitStack() as stack:
+            for name, value in [
+                ("CLAUDE_RESULT_FILE", self.stories_dir / "result.md"),
+                ("NEXT_PROMPT_FILE", self.stories_dir / "prompt.md"),
+            ]:
+                stack.enter_context(patch.object(orchestrator, name, value))
+            stack.enter_context(patch.object(orchestrator, "build_claude_prompt",
+                                             return_value="Implement active story"))
+            stack.enter_context(patch.object(orchestrator, "generate_repo_map",
+                                             return_value={"enabled": False, "text": "",
+                                                           "token_budget": 0, "error": None}))
+            stack.enter_context(patch.object(orchestrator, "get_claude_session_usage_percent",
+                                             return_value=0))
+            stack.enter_context(patch.object(orchestrator, "run_claude_attempt",
+                                             side_effect=run_claude))
+            stack.enter_context(patch.object(orchestrator, "evaluate_story",
+                                             side_effect=evaluate))
+            stack.enter_context(patch.object(orchestrator.time, "sleep"))
+            result = orchestrator.execute_active_story()
+
+        self.assertEqual(result, "COMPLETE")
+        self.assertEqual(events, ["claude", "evaluate", "evaluate"])
+        self.assertTrue(story.exists())
+
+
+class DirectClaudeExecutionTest(OrchestratorInterventionTestCase):
+    def test_active_story_runs_claude_before_unavailable_ollama_evaluation(self):
+        self._verify_active_story_runs_claude_before_unavailable_ollama_evaluation()
+
 
 class InterruptedClaudeTest(OrchestratorInterventionTestCase):
 
@@ -198,8 +247,6 @@ class InterruptedClaudeTest(OrchestratorInterventionTestCase):
                                 ("NEXT_PROMPT_FILE", self.stories_dir / "prompt.md"),
                                 ("MAX_RETRIES_PER_STORY", 1)]:
                 stack.enter_context(patch.object(orchestrator, name, value))
-            stack.enter_context(patch.object(orchestrator, "dispatch_story",
-                                            return_value={"status": "READY"}))
             stack.enter_context(patch.object(orchestrator, "build_claude_prompt",
                                             return_value=f"Implement {filename}"))
             stack.enter_context(patch.object(orchestrator, "generate_repo_map",
@@ -269,8 +316,6 @@ class InterruptedClaudeTest(OrchestratorInterventionTestCase):
                 ("NEXT_PROMPT_FILE", self.stories_dir / "prompt.md"),
             ]:
                 stack.enter_context(patch.object(orchestrator, name, value))
-            stack.enter_context(patch.object(orchestrator, "dispatch_story",
-                                             return_value={"status": "READY"}))
             stack.enter_context(patch.object(orchestrator, "build_claude_prompt",
                                              return_value="Implement"))
             stack.enter_context(patch.object(orchestrator, "generate_repo_map",
@@ -598,14 +643,7 @@ class BlockedActiveStoryTest(OrchestratorInterventionTestCase):
         self.write_backlog(active=[blocked_filename], todo=[other_filename])
         self.set_active(blocked_filename)
 
-        with patch(
-            "agent.runtime.core.orchestrator.dispatch_story",
-            side_effect=AssertionError(
-                "dispatch_story() must never be called for an "
-                "already-BLOCKED active story"
-            ),
-        ):
-            result = orchestrator.execute_active_story()
+        result = orchestrator.execute_active_story()
 
         self.assertEqual(result, "BLOCKED")
 

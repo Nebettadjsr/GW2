@@ -15,7 +15,7 @@ run tests separately from live orchestration. Individual suites can be run as
 | --- | --- |
 | `core/` | Workflow orchestration, planning, architecture, story selection/state and archiving. |
 | `runners/` | Claude and Codex process execution, output and capacity handling. |
-| `evaluation/` | Dispatch/evaluation prompts and the Hermes/Ollama client. |
+| `evaluation/` | Claude prompt construction, post-implementation evaluation, and the Hermes/Ollama client. |
 | `human/` | Product Owner requests, architect requests, user decisions and intervention records. |
 | `support/` | Shared configuration, paths, file helpers, and the Git/GitHub CI verification integration. |
 | `tests/` | Runtime regression tests and temporary fixtures. |
@@ -26,10 +26,10 @@ imports; do not add module directories to `sys.path` or duplicate modules at
 the runtime root. All repository and artifact paths belong in
 `support/config.py` and are resolved independently of the working directory.
 
-`artifacts/` contains `CLAUDE_RESULT.md`, `DISPATCH_RESULT.json`,
-`EVALUATOR_RESULT.json`, `PLANNING_RESULT.json`, `ARCHITECT_RESULT.json`,
+`artifacts/` contains `CLAUDE_RESULT.md`, `EVALUATOR_RESULT.json`,
+`PLANNING_RESULT.json`, `ARCHITECT_RESULT.json`,
 `SELECTOR_RESULT.json`, and `NEXT_PROMPT.md`. Claude owns its implementation
-result; dispatch/evaluation, planning, architecture, selection and
+result; evaluation, planning, architecture, selection and
 orchestration own their respective generated outputs.
 These files are local runtime state, ignored by Git, and are not authoritative
 requirements or reusable test fixtures. The tracked `.gitkeep` preserves the
@@ -119,12 +119,12 @@ throwaway repository with a local bare remote and a scripted API.
 `support/repo_map.py` optionally calls the [Aider](https://aider.chat) CLI to
 generate a short repository-structure map, injected as orientation-only
 context into Claude's implementation prompt only (`build_claude_prompt()` in
-`evaluation/dispatcher.py`). It exists as an experiment to see whether giving
+`evaluation/claude_prompt.py`). It exists as an experiment to see whether giving
 Claude a cheap structural overview up front reduces the exploration/context
 tokens it otherwise spends re-discovering the repository layout on its own.
 
 What it is **not**: Aider is never a coding agent here, never involved in
-dispatch, evaluation, planning, or story selection, and never a replacement
+evaluation, planning, or story selection, and never a replacement
 for reading full source files. The map is explicitly labeled in the prompt as
 orientation-only, non-authoritative, and possibly stale/incomplete -- Claude
 is told to read a file in full whenever it actually needs its contents.

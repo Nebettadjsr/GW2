@@ -7,6 +7,7 @@ import {
   blockedTree,
   craftedTree,
   inventoryOnlyTree,
+  node,
   noResultRow,
   otherRecipeTree,
   profitableRow,
@@ -49,6 +50,15 @@ function nodeAt(wrapper: VueWrapper, path: string) {
 
 function fact(wrapper: VueWrapper, path: string, test: string): string {
   return nodeAt(wrapper, path).find(`[data-test="${test}"]`).text()
+}
+
+/**
+ * A node's *own* element, not one of its descendants': a parent `<li>` contains every child node's
+ * markup, so `find` inside it would report a child's explanation as the parent's.
+ */
+function ownFacts(wrapper: VueWrapper, path: string, test: string): string[] {
+  const own = nodeAt(wrapper, path).element.querySelectorAll(`:scope > [data-test="${test}"]`)
+  return [...own].map((element) => (element.textContent ?? '').replace(/\s+/g, ' ').trim())
 }
 
 describe('CraftingResolution', () => {
@@ -260,8 +270,50 @@ describe('CraftingResolution', () => {
           .map((reason) => reason.text())
       ).toEqual(['Price missing', 'No recipe'])
       const sentence = nodeAt(region, '0.0').find('[data-test="node-blocked-explanation"]').text()
-      expect(sentence).toContain('no price is available for it')
+      // DOMAIN_SPEC 2.1.1: the missing-price cause names the item it is about, which is this node's
+      // own item and not the root's.
+      expect(sentence).toContain('no price is available for Pile of Dust')
+      expect(sentence).not.toContain('Mystic Curio')
       expect(sentence).toContain('this item has no usable recipe')
+    })
+
+    it('namesTheItemWithNoPriceBesideItsOwnRequirementAtEveryDepth', () => {
+      // A nested requirement with no price, and a sibling with one, so the name cannot come from the
+      // tree as a whole. The unnamed node falls back to its item id, which is the identity it has.
+      const region = ready({
+        tree: node({
+          itemId: 500,
+          itemName: 'Deep Root',
+          children: [
+            node({
+              itemId: 501,
+              itemName: 'Mithril Ore',
+              children: [
+                node({
+                  itemId: 502,
+                  itemName: null,
+                  states: ['PRICE_UNAVAILABLE'],
+                  blockedReasons: ['PRICE_UNAVAILABLE'],
+                  cashCostCopper: null,
+                  opportunityCostCopper: null,
+                  effectiveCostCopper: null
+                })
+              ]
+            })
+          ]
+        })
+      })
+
+      expect(fact(region, '0.0.0', 'node-name')).toBe('Item #502')
+      expect(ownFacts(region, '0.0.0', 'node-state-explanation')).toEqual([
+        'No purchase price is available for Item #502. A cost shown as missing is unknown, not zero.'
+      ])
+      expect(ownFacts(region, '0.0.0', 'node-blocked-explanation')).toEqual([
+        'Blocked because no price is available for Item #502.'
+      ])
+      // And the requirement above it, which has a price, carries no restriction of its own.
+      expect(ownFacts(region, '0.0', 'node-blocked-explanation')).toEqual([])
+      expect(ownFacts(region, '0.0', 'node-state-explanation')).toEqual([])
     })
 
     it('wordsBuyingDisabledAsThisRequirementNotAsLostCrafts', () => {
@@ -293,6 +345,30 @@ describe('CraftingResolution', () => {
 
       expect(region.find('[data-test="resolution-total-sell-value"]').text()).toBe('—')
       expect(region.find('[data-test="resolution-total-profit"]').text()).toBe('—')
+    })
+
+    it('marksTheFreshRowsStateOnlyWhereTheChipIsTheOnlyStatementOfIt', () => {
+      // DOMAIN_SPEC 2.1.1: no repeated "Not blocked" beside the counted crafts and totals that
+      // already say so.
+      const unblocked = ready()
+      expect(unblocked.find('[data-test="resolution-row-status"]').exists()).toBe(false)
+      expect(unblocked.text()).not.toContain('Not blocked')
+      expect(unblocked.find('[data-test="resolution-craftable"]').text()).toBe('5')
+
+      // A chip standing alone is the only statement of these, so each keeps it: nothing here may
+      // read as success because a marker was removed.
+      for (const [row, label] of [
+        [noResultRow, 'No result'],
+        [{ ...profitableRow, blockedReason: 'INSUFFICIENT_BUDGET' }, 'Over the buy limit'],
+        [{ ...profitableRow, craftableCount: 0 }, 'None craftable'],
+        [{ ...profitableRow, blockedReason: 'SOME_STATE_ADDED_LATER' }, 'SOME_STATE_ADDED_LATER']
+      ] as const) {
+        const region = ready({ row })
+        expect(region.find('[data-test="resolution-row-status"]').text()).toBe(label)
+        expect(region.find('[data-test="resolution-row-status"]').classes()).not.toContain(
+          'status--success'
+        )
+      }
     })
 
     it('showsAnUnknownCodeAsItselfAndNeverAsSuccess', () => {

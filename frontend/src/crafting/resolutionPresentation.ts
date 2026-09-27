@@ -12,6 +12,11 @@ import type { ResolutionNode } from '@/api/types'
  * A row's reason names why the *next* craft could not complete, so it is worded as "further crafting
  * is blocked"; a node's reason names why *this requirement* could not be resolved, which is a
  * statement about that requirement and not about the crafts the row already counted.
+ *
+ * Each sentence takes the node's own item label, so a missing-price explanation names the item it is
+ * about rather than only saying "Price missing" (`DOMAIN_SPEC.md` 2.1.1). That label is `nodeLabel`'s
+ * — the backend's name for *this* node's item, or its ID when no name was supplied. No item is ever
+ * carried over from another node or from a row's own reason, which names none.
  */
 
 /** A code and the words shown for it; `known` is false when this client has no wording for it. */
@@ -28,24 +33,27 @@ const METHODS: Record<string, string> = {
   BUY: 'Bought'
 }
 
-/** `craft.ResolutionState` names, with the sentence the detail shows under the node. */
-const STATES: Record<string, { label: string; explanation: string }> = {
+/**
+ * `craft.ResolutionState` names, with the sentence the detail shows under the node. Each sentence
+ * receives the node's own item label so it can name the item it is about.
+ */
+const STATES: Record<string, { label: string; explanation: (item: string) => string }> = {
   BLOCKED: {
     label: 'Blocked',
-    explanation: 'The calculation could not fully resolve this requirement.'
+    explanation: () => 'The calculation could not fully resolve this requirement.'
   },
   PRICE_UNAVAILABLE: {
     label: 'Price missing',
-    explanation:
-      'No purchase price is available for this item. A cost shown as missing is unknown, not zero.'
+    explanation: (item) =>
+      `No purchase price is available for ${item}. A cost shown as missing is unknown, not zero.`
   },
   DAILY_LIMIT: {
     label: 'Daily limit',
-    explanation: 'This item is limited to a daily amount.'
+    explanation: () => 'This item is limited to a daily amount.'
   },
   UNVALUED_NONTRADEABLE: {
     label: 'Not tradable, valued at zero',
-    explanation:
+    explanation: () =>
       'This item cannot be traded, so the calculation established a value of 0 copper for it. ' +
       'That is a known zero rather than a missing price, and the item is still a real requirement ' +
       'of this craft.'
@@ -56,26 +64,30 @@ const STATES: Record<string, { label: string; explanation: string }> = {
  * `craft.BlockedReason` names as DOMAIN_SPEC 42 lists them, worded about the requirement this node
  * describes. `because` completes "Blocked because …".
  */
-const BLOCKED_REASONS: Record<string, { label: string; because: string }> = {
-  NO_RECIPE: { label: 'No recipe', because: 'this item has no usable recipe' },
+const BLOCKED_REASONS: Record<string, { label: string; because: (item: string) => string }> = {
+  NO_RECIPE: { label: 'No recipe', because: () => 'this item has no usable recipe' },
   BUYING_DISABLED: {
     label: 'Buying is off',
-    because: 'it would have to be bought to resolve this requirement, and buying is switched off'
+    because: () =>
+      'it would have to be bought to resolve this requirement, and buying is switched off'
   },
-  DAILY_LIMIT: { label: 'Daily limit', because: 'this item is limited to a daily amount' },
-  CYCLE_DETECTED: { label: 'Recipe loop', because: 'its recipe ends up depending on itself' },
-  PRICE_UNAVAILABLE: { label: 'Price missing', because: 'no price is available for it' },
+  DAILY_LIMIT: { label: 'Daily limit', because: () => 'this item is limited to a daily amount' },
+  CYCLE_DETECTED: { label: 'Recipe loop', because: () => 'its recipe ends up depending on itself' },
+  PRICE_UNAVAILABLE: {
+    label: 'Price missing',
+    because: (item) => `no price is available for ${item}`
+  },
   RECIPE_NOT_ALLOWED: {
     label: 'Recipe not allowed',
-    because: 'its recipe is not allowed by the current settings'
+    because: () => 'its recipe is not allowed by the current settings'
   },
   INSUFFICIENT_BUDGET: {
     label: 'Over the buy limit',
-    because: 'buying it costs more than the maximum buy setting allows'
+    because: () => 'buying it costs more than the maximum buy setting allows'
   },
   NON_TRADEABLE_MATERIAL: {
     label: 'Non-Trading-Post material',
-    because:
+    because: () =>
       'it cannot be traded on the Trading Post and “Allow non-Trading-Post materials” is switched ' +
       'off, so no path consuming it was used'
   }
@@ -100,11 +112,14 @@ export function stateLabels(states: string[]): CodeLabel[] {
   })
 }
 
-/** One sentence per supplied state, in the supplied order; unknown codes say so rather than vanish. */
-export function stateExplanations(states: string[]): string[] {
+/**
+ * One sentence per supplied state, in the supplied order; unknown codes say so rather than vanish.
+ * `itemLabel` is this node's own item, which the missing-price sentence names.
+ */
+export function stateExplanations(states: string[], itemLabel: string): string[] {
   return states.map((code) => {
     const known = STATES[code]
-    if (known !== undefined) return known.explanation
+    if (known !== undefined) return known.explanation(itemLabel)
     return `The backend reported a state this page does not recognize: ${code}.`
   })
 }
@@ -118,13 +133,16 @@ export function blockedReasonLabels(reasons: string[]): CodeLabel[] {
 
 /**
  * The blocked reasons as one sentence, or null when the node reported none. Every supplied reason is
- * named — none is dropped for brevity — and an unrecognized one is quoted as itself.
+ * named — none is dropped for brevity — and an unrecognized one is quoted as itself. `itemLabel` is
+ * this node's own item, which the missing-price cause names.
  */
-export function blockedExplanation(reasons: string[]): string | null {
+export function blockedExplanation(reasons: string[], itemLabel: string): string | null {
   if (reasons.length === 0) return null
   const causes = reasons.map((code) => {
     const known = BLOCKED_REASONS[code]
-    return known === undefined ? `the backend reported ${code}, which this page does not recognize` : known.because
+    return known === undefined
+      ? `the backend reported ${code}, which this page does not recognize`
+      : known.because(itemLabel)
   })
   return `Blocked because ${joinClauses(causes)}.`
 }

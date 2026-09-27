@@ -127,7 +127,7 @@ describe('item icons in Crafting Profit', () => {
     expect(detail.get('.detail__heading img').attributes('aria-hidden')).toBe('true')
   })
 
-  it('showsEachMaterialsOwnImageInBothStillToBuyLists', () => {
+  it('showsEachMaterialsOwnImageInTheStillToBuyList', () => {
     const row: CraftingRow = {
       ...lossRow,
       iconUrl: ICON.tarnishedRing,
@@ -136,7 +136,9 @@ describe('item icons in Crafting Profit', () => {
         // The second material has a name the backend did not supply and no icon either.
         { ...lossRow.missingToBuy![1]!, iconUrl: null }
       ],
-      missingToBuyOne: [{ ...lossRow.missingToBuyOne![0]!, iconUrl: ICON.silverOre }]
+      // Still supplied by the contract, and no longer displayed (DOMAIN_SPEC 2.1.1): an icon here
+      // must not reach the screen at all.
+      missingToBuyOne: [{ ...lossRow.missingToBuyOne![0]!, iconUrl: ICON.mithrilOre }]
     }
 
     const detail = mount(SelectedResultDetail, {
@@ -154,7 +156,8 @@ describe('item icons in Crafting Profit', () => {
 
     expect(iconStates(detail, '[data-test="missing-item"]')).toEqual(['image', 'no-url'])
     expect(iconSources(detail, '[data-test="missing-item"]')).toEqual([ICON.silverOre])
-    expect(iconSources(detail, '[data-test="missing-one-item"]')).toEqual([ICON.silverOre])
+    expect(detail.findAll('[data-test="missing-one-item"]')).toHaveLength(0)
+    expect(iconSources(detail, '[data-test="selected-detail"]')).not.toContain(ICON.mithrilOre)
     // The quantity and the name are still the readable part of the entry.
     expect(detail.findAll('[data-test="missing-item"]')[0]?.text()).toContain('Silver Ore')
     expect(detail.findAll('[data-test="missing-item"]')[0]?.text()).toContain('×8')

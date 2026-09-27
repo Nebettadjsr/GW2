@@ -46,6 +46,17 @@ const tree = computed(() => props.detail?.tree ?? null)
 const freshRow = computed(() => props.detail?.row ?? null)
 const freshState = computed(() => (freshRow.value === null ? null : describeRowState(freshRow.value)))
 
+/**
+ * Whether the fresh row's state is worth a chip of its own (`DOMAIN_SPEC.md` 2.1.1, which removes a
+ * repeated "Not blocked" from a selected result).
+ *
+ * Here the chip stands alone — there is no sentence under it — so a blocked, unavailable or
+ * unrecognized state keeps it: dropping that would delete the only statement of it, and a removed
+ * marker must never read as success. What it does drop is the success chip itself, which says nothing
+ * the counted crafts and totals printed right below it do not.
+ */
+const freshStatusWorthShowing = computed(() => freshState.value !== null && freshState.value.tone !== 'success')
+
 const rootSourcing = computed(() => {
   const root = tree.value
   const recipeId = props.requestedRecipeId
@@ -123,7 +134,7 @@ const freshTotalsLabel = computed(() => {
       </p>
 
       <h4 class="detail__basis">This recipe in that fresh calculation</h4>
-      <p v-if="freshState !== null" class="meta">
+      <p v-if="freshStatusWorthShowing && freshState !== null" class="meta">
         <span :class="`status status--${freshState.tone}`" data-test="resolution-row-status">
           {{ freshState.label }}
         </span>

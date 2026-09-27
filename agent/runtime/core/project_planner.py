@@ -28,6 +28,7 @@ from agent.runtime.support.config import (
 from agent.runtime.support.files import file_hash, write_json
 from agent.runtime.support.daily_log import print_status
 from agent.runtime.core import planning_context
+from agent.runtime.core.follow_up_findings import planner_block, unresolved_findings
 from agent.runtime.core.story_archive import (
     archive_milestone_stories,
     extract_milestone,
@@ -196,6 +197,23 @@ def build_planning_context() -> tuple[str, dict]:
         architect_requests.list_requests()
     )
 
+    implementation_follow_up_findings = []
+    for story_path in _existing_story_files():
+        try:
+            content = story_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if classify_story_status(extract_status_section(content)) != "DONE":
+            continue
+        implementation_follow_up_findings.extend(
+            unresolved_findings(
+                content, story_path.relative_to(REPO_ROOT).as_posix()
+            )
+        )
+    implementation_follow_up_findings_block = planner_block(
+        implementation_follow_up_findings
+    )
+
     roadmap = (
         ROADMAP_FILE.read_text(
             encoding="utf-8"
@@ -221,6 +239,7 @@ def build_planning_context() -> tuple[str, dict]:
         "resolved PO summary": resolved_request_coverage,
         "UD summary": decision_coverage_block,
         "architect requests": architect_requests_block,
+        "unresolved Claude follow-up findings": implementation_follow_up_findings_block,
         "current roadmap phase": phase_section,
         "project state": project_state,
         "role instructions": planner_instructions,
@@ -312,7 +331,29 @@ Targeted reads, only when a specific detail actually decides something:
 - the relevant section of docs/KNOWN_PROBLEMS.md, docs/CURRENT_ARCHITECTURE.md,
   docs/TARGET_ARCHITECTURE.md, docs/DOMAIN_SPEC.md or docs/TEST_STRATEGY.md
 - one named section of agent/stories/BACKLOG.md, when a completed entry's
-  narrative is the evidence you need
+narrative is the evidence you need
+
+UNRESOLVED CLAUDE IMPLEMENTATION FOLLOW-UP FINDINGS
+===================================================
+
+These concise observations came from completed stories and are outside their
+implementation scope. Process every supplied finding during this normal
+planning pass. Do not create a separate planning pass solely because findings
+exist. Check the supplied backlog/story index and relevant authoritative
+references to avoid duplicate work. For each finding, record exactly one
+disposition in its source story under `## Follow-up Findings Disposition`:
+
+- `F001: ALREADY COVERED — <story/reference>`
+- `F001: FOLLOW-UP STORY — <new story ID>`
+- `F001: DEFERRED — <known-problem/reference or later milestone and reason>`
+- `F001: DISMISSED — <reason and reference>`
+
+Create stories only through the normal story and backlog workflow. Never ask
+Claude to create stories. Update only the disposition section of a completed
+source story; leave its implementation finding and Result unchanged. Do not
+set independent_work_remaining solely because findings exist.
+
+{implementation_follow_up_findings_block}
 
 Read a section or line range rather than a whole large document, batch
 independent reads into one command, and never read the same thing twice. The

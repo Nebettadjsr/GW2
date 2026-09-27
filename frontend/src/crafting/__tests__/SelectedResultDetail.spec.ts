@@ -124,6 +124,46 @@ describe('SelectedResultDetail', () => {
     }
   })
 
+  it('dropsTheShortLabelThatOnlyRepeatsTheSentenceBesideIt', () => {
+    // DOMAIN_SPEC 2.1.1 names these three by their wording, so they are asserted by their wording.
+    const buyingOff = detailOf(movedReasonRows[0] as CraftingRow)
+    expect(buyingOff.find('[data-test="detail-status"]').exists()).toBe(false)
+    expect(buyingOff.text()).not.toContain('Buying is off')
+    expect(buyingOff.find('[data-test="detail-status-explanation"]').text()).toContain(
+      'buying is switched off'
+    )
+
+    const overTheLimit = detailOf(budgetBlockedRow, null, DEFAULT_SETTINGS)
+    expect(overTheLimit.find('[data-test="detail-status"]').exists()).toBe(false)
+    expect(overTheLimit.text()).not.toContain('Over the buy limit')
+    expect(overTheLimit.find('[data-test="detail-status-explanation"]').text()).toContain(
+      'costs more than the maximum buy setting allows'
+    )
+
+    const unblocked = detailOf(profitableRow)
+    expect(unblocked.find('[data-test="detail-status"]').exists()).toBe(false)
+    expect(unblocked.text()).not.toContain('Not blocked')
+    // The cause region is not emptied with the label: the state is still stated in words.
+    expect(unblocked.find('[data-test="detail-status-explanation"]').text()).toBe(
+      'Nothing blocked the calculation for this recipe.'
+    )
+    expect(detailOf(noneCraftableRow).find('[data-test="detail-status-explanation"]').text()).toContain(
+      'counted no craft that could be completed'
+    )
+  })
+
+  it('keepsTheLabelWhereTheSentenceIsAllThereIsAndMustNotReadAsSuccess', () => {
+    // Nothing was calculated, nothing was reported, and a code this page cannot word: each keeps a
+    // visible marker of its own rather than sitting in a paragraph alone.
+    expect(detailOf(noResultRow).find('[data-test="detail-status"]').text()).toBe('No result')
+    expect(detailOf({ ...profitableRow, blockedReason: null }).find('[data-test="detail-status"]').text()).toBe(
+      'State not reported'
+    )
+    const unknown = detailOf({ ...profitableRow, blockedReason: 'SOME_STATE_ADDED_LATER' })
+    expect(unknown.find('[data-test="detail-status"]').text()).toBe('SOME_STATE_ADDED_LATER')
+    expect(unknown.find('[data-test="detail-status"]').classes()).toContain('status--unknown')
+  })
+
   it('namesTheConfiguredMaximumBuyOnlyForABudgetRestrictionAndOnlyWhenSupplied', () => {
     const withSettings = detailOf(budgetBlockedRow, null, DEFAULT_SETTINGS)
 
@@ -133,10 +173,18 @@ describe('SelectedResultDetail', () => {
       '3 crafts already counted stay valid'
     )
 
-    // No echoed settings, so no figure is stated - the browser has no maximum of its own to offer.
-    expect(detailOf(budgetBlockedRow, null, null).find('[data-test="detail-budget-context"]').exists()).toBe(
-      false
-    )
+    // The affected purchase is not in the row contract, and is said to be missing rather than taken
+    // from the counted-craft list or the fresh tree.
+    const affected = withSettings.find('[data-test="detail-affected-item"]').text()
+    expect(affected).toContain('does not name the further purchase that went over the limit')
+    expect(affected).toContain('name each item the calculation reported')
+
+    // No echoed settings, so no maximum is stated - the browser has no maximum of its own to offer.
+    const withoutSettings = detailOf(budgetBlockedRow, null, null)
+    expect(withoutSettings.find('[data-test="detail-budget-context"]').exists()).toBe(false)
+    expect(withoutSettings.text()).not.toContain('maximum buy setting is')
+    // The supplied cost of the counted crafts' purchase is still there; only the budget is unknown.
+    expect(withoutSettings.find('[data-test="detail-buy-cost"]').text()).toBe('95s 0c')
     // And it is not repeated under a restriction the maximum buy has nothing to do with.
     expect(
       detailOf(priceUnavailableRow, null, DEFAULT_SETTINGS).find('[data-test="detail-budget-context"]').exists()
@@ -171,26 +219,45 @@ describe('SelectedResultDetail', () => {
     expect(detail.find('[data-test="detail-status-explanation"]').text()).not.toContain('PRICE_UNAVAILABLE')
     expect(detail.find('[data-test="detail-state-code"]').text()).toBe('PRICE_UNAVAILABLE')
     expect(detail.find('[data-test="detail-diagnostics"]').attributes('open')).toBeUndefined()
+
+    // The row's reason carries no item, so no item is read out of it — and the places that do carry
+    // one are named instead. "Charged Core" is the material the backend supplied no price for.
+    const affected = detail.find('[data-test="detail-affected-item"]').text()
+    expect(affected).toContain('does not name the item whose price was missing')
+    expect(detail.find('[data-test="missing-item"]').text()).toContain('Charged Core')
+    expect(detail.find('[data-test="missing-item"]').text()).toContain('No price supplied')
+
+    // It is worded for that one restriction and not attached to every blocked row.
+    expect(detailOf(movedReasonRows[1] as CraftingRow).find('[data-test="detail-affected-item"]').exists()).toBe(
+      false
+    )
+    expect(detailOf(profitableRow).find('[data-test="detail-affected-item"]').exists()).toBe(false)
   })
 
-  it('separatesTheTwoSuppliedMaterialListsByTheirBasis', () => {
+  it('showsTheCountedCraftPurchasesUnderTheirOwnBasisAndNoSecondList', () => {
     const detail = detailOf(lossRow)
 
     const forAll = detail.findAll('[data-test="missing-item"]').map((item) => item.text())
     expect(forAll).toHaveLength(2)
     expect(forAll[0]).toContain('Silver Ore')
     expect(forAll[0]).toContain('×8')
+    expect(forAll[0]).toContain('Instant buy 20c')
     // No name supplied for this material: its id identifies it, and nothing is invented.
     expect(forAll[1]).toContain('Item #56')
     expect(forAll[1]).toContain('No price supplied')
 
-    const forOne = detail.findAll('[data-test="missing-one-item"]').map((item) => item.text())
-    expect(forOne).toHaveLength(1)
-    expect(forOne[0]).toContain('×2')
-    // Each list is under its own basis heading, and no total is produced from either.
+    // The list is under the basis the contract gives it, and no total is produced from it.
     expect(detail.text()).toContain('For all 4 crafts counted')
-    expect(detail.text()).toContain('For one further craft')
     expect(detail.text()).not.toContain('no shopping total is worked out here')
+
+    // DOMAIN_SPEC 2.1.1 removes the separate one-further-craft section. The row still supplies
+    // `missingToBuyOne` (2 × Silver Ore here), and none of it reaches the screen.
+    expect(detail.find('[data-test="missing-one"]').exists()).toBe(false)
+    expect(detail.find('[data-test="missing-one-item"]').exists()).toBe(false)
+    expect(detail.find('[data-test="missing-one-none"]').exists()).toBe(false)
+    expect(detail.text()).not.toContain('For one further craft')
+    // The one-further-craft quantity of the same material was 2; only the counted-craft 8 is shown.
+    expect(forAll[0]).not.toContain('×2')
   })
 
   it('keepsAnEmptyMaterialListApartFromAnUnsuppliedOne', () => {
@@ -200,6 +267,18 @@ describe('SelectedResultDetail', () => {
     expect(detailOf(noResultRow).find('[data-test="missing-all-none"]').text()).toBe(
       'Not supplied for this recipe.'
     )
+    // A row the field is absent from altogether is that same third answer, not an empty list.
+    const withoutTheField = { ...lossRow } as Partial<CraftingRow>
+    delete withoutTheField.missingToBuy
+    expect(
+      detailOf(withoutTheField as CraftingRow).find('[data-test="missing-all-none"]').text()
+    ).toBe('Not supplied for this recipe.')
+
+    // A blocked row still lists the purchase the backend reported for the crafts it counted.
+    const blocked = detailOf(priceUnavailableRow)
+    expect(blocked.findAll('[data-test="missing-item"]')).toHaveLength(1)
+    expect(blocked.find('[data-test="missing-item"]').text()).toContain('Charged Core')
+    expect(blocked.find('[data-test="missing-item"]').text()).toContain('No price supplied')
   })
 
   it('identifiesARecipeWithNoSuppliedNameByItsItemId', () => {

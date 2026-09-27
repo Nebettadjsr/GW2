@@ -407,7 +407,31 @@ The planner must verify phase gating before completing every planning pass.
 
 ## Planning Rules
 
+### Claude Implementation Follow-up Findings
+
+The planning prompt may include concise findings recorded by Claude in completed
+stories. Process every supplied finding during that normal planning pass; findings
+alone never justify an extra planning pass.
+
+For each finding, check the backlog index and relevant existing stories or
+authoritative references to avoid duplicate work. Record exactly one disposition
+in the source story's `## Follow-up Findings Disposition` section:
+
+- `F001: ALREADY COVERED — <story/reference>`
+- `F001: FOLLOW-UP STORY — <new story ID>`
+- `F001: DEFERRED — <known-problem/reference or later milestone and reason>`
+- `F001: DISMISSED — <reason and reference>`
+
+Create justified implementation work only as a normal planner-owned story and
+backlog entry. Never ask Claude to create stories. Update only the disposition
+section of a completed source story; preserve its finding and implementation
+Result. A finding with a disposition is closed and must not be repeated as
+unresolved context. Do not set `independent_work_remaining` solely because a
+finding was supplied.
+
 The planner may:
+- update only `## Follow-up Findings Disposition` in a completed story supplied
+  with unresolved Claude implementation findings;
 - evaluate the supplied current phase;
 - inspect allowed planning documents when needed;
 - inspect current-phase stories and user decisions;

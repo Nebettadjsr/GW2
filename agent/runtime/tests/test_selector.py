@@ -23,6 +23,7 @@ from unittest.mock import patch
 from agent.runtime.core import selector
 from agent.runtime.core import story_archive
 from agent.runtime.core import story_state
+from agent.runtime.core import planning_context
 from agent.runtime.human import user_decisions
 
 
@@ -185,6 +186,73 @@ class FirstExecutableWinsTest(SelectorTestCase):
 
         self.assertEqual(result["decision"], "NEXT")
         self.assertEqual(result["story_path"], "STORY-A-001-a.md")
+
+
+class CompactBacklogSyntaxTest(SelectorTestCase):
+    def write_compact_backlog(self):
+        self.backlog_file.write_text(
+            "# Story Backlog Index\n\n"
+            "## Active\n\n"
+            "- STORY-A-001 | STORY-A-001-a.md | ACTIVE | milestone-01: current\n\n"
+            "## To Do\n\n"
+            "- STORY-B-001 | STORY-B-001-b.md | TODO | milestone-01: first\n\n"
+            "- STORY-C-001 | STORY-C-001-c.md | TODO | milestone-01: second\n\n"
+            "## Blocked\n\n"
+            "- STORY-D-001 | STORY-D-001-d.md | BLOCKED | milestone-01: wait\n\n"
+            "## Done\n\n"
+            "- STORY-E-001 | STORY-E-001-e.md | DONE | milestone-01: finished\n",
+            encoding="utf-8",
+        )
+
+    def test_compact_rows_are_parsed_by_all_canonical_sections(self):
+        self.write_compact_backlog()
+        backlog = self.backlog_file.read_text(encoding="utf-8")
+        self.assertEqual(story_state.parse_backlog_section(backlog, "Active"),
+                         ["STORY-A-001-a.md"])
+        self.assertEqual(story_state.parse_backlog_section(backlog, "To Do"),
+                         ["STORY-B-001-b.md", "STORY-C-001-c.md"])
+        self.assertEqual(story_state.parse_backlog_section(backlog, "Blocked"),
+                         ["STORY-D-001-d.md"])
+        self.assertEqual(story_state.parse_backlog_section(backlog, "Done"),
+                         ["STORY-E-001-e.md"])
+
+    def test_multiple_compact_todo_rows_allow_selector_to_choose_first(self):
+        self.write_compact_backlog()
+        self.write_story_with_id("STORY-B-001-b.md", "STORY-B-001", STATUS_TODO)
+        self.write_story_with_id("STORY-C-001-c.md", "STORY-C-001", STATUS_TODO)
+
+        result = selector.select_next_story()
+
+        self.assertEqual(result["decision"], "NEXT")
+        self.assertEqual(result["story_path"], "STORY-B-001-b.md")
+
+    def test_compact_blocked_row_is_not_selectable(self):
+        self.write_compact_backlog()
+        self.write_story_with_id("STORY-B-001-b.md", "STORY-B-001", STATUS_TODO)
+        self.write_story_with_id("STORY-C-001-c.md", "STORY-C-001", STATUS_TODO)
+        self.write_story_with_id("STORY-D-001-d.md", "STORY-D-001", STATUS_TODO)
+
+        self.assertEqual(story_state.get_ready_story_filenames_ordered(),
+                         ["STORY-B-001-b.md", "STORY-C-001-c.md"])
+        result = selector.select_next_story()
+        self.assertEqual(result.get("story_path"), "STORY-B-001-b.md")
+
+    def test_blank_lines_do_not_end_compact_todo_section(self):
+        self.write_compact_backlog()
+        self.assertEqual(story_state.get_ready_story_filenames_ordered(),
+                         ["STORY-B-001-b.md", "STORY-C-001-c.md"])
+
+    def test_compact_index_status_follows_backlog_section(self):
+        self.write_compact_backlog()
+        filenames = ["STORY-D-001-d.md"]
+        facts = {filenames[0]: {
+            "id": "STORY-D-001", "title": "Blocked story", "status": "TODO",
+            "milestone": "milestone-01", "prerequisites": [], "dependencies": "None.",
+        }}
+        result = planning_context.backlog_index(
+            self.backlog_file.read_text(encoding="utf-8"), facts
+        )
+        self.assertIn("STORY-D-001 | STORY-D-001-d.md | BLOCKED | milestone-01", result)
 
 
 class BlockedFirstEntryIsSkippedTest(SelectorTestCase):

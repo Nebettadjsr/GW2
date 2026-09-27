@@ -14,6 +14,12 @@
  * a reload keeps it for the table and its detail, and that the restricted result is kept and
  * explained beside the material it applies to.
  *
+ * Since STORY-WEB-015 it also covers 2.1.1's narrowed selected-result content: the purchase list is
+ * the counted crafts' only and the one-further-craft section is gone, the page's introductory sentence
+ * is gone, a status label that only repeats its own sentence is not shown while every cause stays, a
+ * missing price names the item it is about at the requirement it applies to, and a budget limit states
+ * the supplied purchase cost and the echoed budget without inventing the amount that went over.
+ *
  * Runs the built frontend against a *controlled* API boundary (`scripts/stubOrigin.mjs`): every
  * answer comes from this process, so no backend, database or GW2 API is involved and nothing can be
  * synchronized. It therefore evidences structure, layout and interaction — never real data, and never
@@ -121,7 +127,26 @@ function allRows() {
     }),
     row(5, 'Charged Quartz Crystal', { profitCopper: -3_400, totalProfitCopper: -40_800, craftableCount: 0 }),
     row(6, 'Mystic Clover Attempt', { blockedReason: 'RECIPE_NOT_ALLOWED' }),
-    row(7, 'Self-Referential Ingot', { blockedReason: 'CYCLE_DETECTED' })
+    row(7, 'Self-Referential Ingot', { blockedReason: 'CYCLE_DETECTED' }),
+    // A limit on *further* crafting reached after crafts were already counted, with the purchase
+    // those crafts needed: the budget case whose supplied cost and budget the detail has to show
+    // without inventing the amount that went over (DOMAIN_SPEC 2.1.1). Its supplied total profit is
+    // the same as the first row's on purpose, so it sorts after it and the default selection is
+    // unchanged by its presence.
+    row(9, 'Vision Crystal', {
+      blockedReason: 'INSUFFICIENT_BUDGET',
+      craftableCount: 4,
+      buyCostCopper: 240_000,
+      missingToBuy: [
+        {
+          itemId: 19_721,
+          itemName: 'Glob of Ectoplasm',
+          quantity: 20,
+          price: { buyUnitCopper: 2_400, sellUnitCopper: 2_600 },
+          iconUrl: null
+        }
+      ]
+    })
   ]
 }
 
@@ -130,7 +155,16 @@ function allRows() {
  * with, so the two zero-count rows and the not-allowed one are out while the rows whose count and
  * profit the backend did not supply stay.
  */
-const DEFAULT_LISTED = ['Deldrimor Steel Ingot', 'Self-Referential Ingot', 'Spiritwood', 'Bolt of Damask']
+const DEFAULT_LISTED = [
+  'Deldrimor Steel Ingot',
+  'Self-Referential Ingot',
+  'Vision Crystal',
+  'Spiritwood',
+  'Bolt of Damask'
+]
+
+/** The row blocked by the maximum buy, after four crafts had already been counted. */
+const BUDGET_ROW = 'Vision Crystal'
 
 /** The two rows whose supplied craftable count is exactly 0. */
 const ZERO_COUNT_ROWS = ['Elonian Leather Square', 'Charged Quartz Crystal']
@@ -693,7 +727,6 @@ async function run() {
       'Instant buy',
       'Crafting resolution',
       'Materials still to buy',
-      'For one further craft',
       'Mithril Ore',
       'Item #19701'
     ]) {
@@ -703,7 +736,58 @@ async function run() {
       !detailText.includes('shopping list total'),
       'The detail region claimed a total it must not calculate.'
     )
-    record('detail separates summary, resolution and materials', '12 expected labels present')
+    record('detail separates summary, resolution and materials', '11 expected labels present')
+
+    // 5a. The purchases are the ones for the crafts already counted, and there is no second list
+    // (DOMAIN_SPEC 2.1.1). This row supplies both bases — 60 Mithril Ore for the 12 crafts counted
+    // and 5 for one further craft — so a section that showed the wrong one would be visible here.
+    const purchases = await page.evaluate(() => {
+      const line = (element) => (element.textContent ?? '').replace(/\s+/g, ' ').trim()
+      return {
+        counted: [...document.querySelectorAll('[data-test="missing-item"]')].map(line),
+        furtherSection: document.querySelector('[data-test="missing-one"]') !== null,
+        furtherItems: document.querySelectorAll('[data-test="missing-one-item"]').length,
+        furtherEmptyState: document.querySelector('[data-test="missing-one-none"]') !== null
+      }
+    })
+    check(
+      purchases.counted.length === 2 &&
+        purchases.counted[0].includes('Mithril Ore') &&
+        purchases.counted[0].includes('×60') &&
+        purchases.counted[0].includes('Instant buy 1s 20c'),
+      `The counted-craft purchase list is not what the backend supplied: ${JSON.stringify(purchases.counted)}`
+    )
+    check(
+      // No name for this material, so its id identifies it and its absent quote says so.
+      purchases.counted[1].includes('Item #19701') && purchases.counted[1].includes('No price supplied'),
+      `A material with no supplied name or price was not reported as such: ${purchases.counted[1]}`
+    )
+    check(
+      !purchases.furtherSection && purchases.furtherItems === 0 && !purchases.furtherEmptyState,
+      `The removed one-further-craft purchase section is still rendered: ${JSON.stringify(purchases)}`
+    )
+    check(
+      !detailText.includes('For one further craft'),
+      'The one-further-craft basis heading is still on screen.'
+    )
+    record(
+      'purchases are the counted crafts’ only, with quantities and supplied quotes',
+      purchases.counted.join(' | ').slice(0, 96)
+    )
+
+    // 5a2. DOMAIN_SPEC 2.1.1 removes the page's introductory sentence; the heading stays.
+    const introduction = await page.evaluate(() => ({
+      intro: document.querySelector('[data-test="page-intro"]') !== null,
+      heading: document.querySelector('[data-page-heading]')?.textContent?.trim() ?? null,
+      body: (document.body.textContent ?? '').replace(/\s+/g, ' ')
+    }))
+    check(
+      !introduction.intro &&
+        !introduction.body.includes('Crafting opportunities the backend calculated for the selected scope'),
+      'The introductory sentence DOMAIN_SPEC 2.1.1 removes is still on the page.'
+    )
+    check(introduction.heading === 'Crafting Profit', `The page heading read "${introduction.heading}".`)
+    record('no introductory sentence under the heading', `heading "${introduction.heading}"`)
 
     // 5b. Buy cost is emphasized as a cost, and the quote is identified as a single-item price.
     const costPresentation = await page.evaluate(() => {
@@ -796,6 +880,70 @@ async function run() {
       'the backend tree is rendered whole, in order, with its own states',
       `${treeItems.length} nodes, one detail request carrying scope and settings only`
     )
+
+    // 5c2. A missing price names the item it is about, at the requirement it applies to
+    // (DOMAIN_SPEC 2.1.1), while the requirement above it — which has a price — carries neither the
+    // state nor the reason.
+    const missingPrice = await page.evaluate(() => {
+      const own = (node, test) =>
+        [...node.querySelectorAll(`:scope > [data-test="${test}"]`)].map(
+          (element) => (element.textContent ?? '').replace(/\s+/g, ' ').trim()
+        )
+      const nodes = [...document.querySelectorAll('[data-test="tree-node"]')]
+      const byName = (name) =>
+        nodes.find(
+          (node) => (node.querySelector('[data-test="node-name"]')?.textContent ?? '').trim() === name
+        )
+      const facts = (name) => {
+        const node = byName(name)
+        if (node === undefined) return null
+        return {
+          states: own(node, 'node-state-explanation'),
+          reasons: own(node, 'node-blocked-explanation')
+        }
+      }
+      return { affected: facts('Charged Core'), parent: facts('Lump of Mithril') }
+    })
+    check(
+      missingPrice.affected !== null &&
+        missingPrice.affected.states.some((sentence) =>
+          sentence.includes('No purchase price is available for Charged Core')
+        ) &&
+        missingPrice.affected.reasons.some((sentence) =>
+          sentence.includes('no price is available for Charged Core')
+        ),
+      `The missing price does not name the item it is about: ${JSON.stringify(missingPrice.affected)}`
+    )
+    check(
+      missingPrice.parent !== null &&
+        missingPrice.parent.states.length === 0 &&
+        missingPrice.parent.reasons.length === 0,
+      `A requirement with a price was marked as missing one: ${JSON.stringify(missingPrice.parent)}`
+    )
+    record(
+      'the item with no price is named beside its own requirement',
+      missingPrice.affected.reasons.join(' ').slice(0, 96)
+    )
+
+    // 5c3. The selected detail does not repeat a label its own sentence already carries (2.1.1).
+    // This row is unblocked, so "Not blocked" is exactly the label that must be gone while the
+    // sentence stays. The retained tree chips are a node's own codes, not this row's status.
+    const unblockedStatus = await page.evaluate(() => ({
+      badge: document.querySelector('[data-test="detail-status"]') !== null,
+      explanation:
+        document.querySelector('[data-test="detail-status-explanation"]')?.textContent?.trim() ?? null,
+      statusText: (document.querySelector('[data-test="selected-detail"]')?.textContent ?? '')
+        .replace(/\s+/g, ' ')
+    }))
+    check(
+      !unblockedStatus.badge && !unblockedStatus.statusText.includes('Not blocked'),
+      `The redundant "Not blocked" label is still in the detail: ${JSON.stringify(unblockedStatus)}`
+    )
+    check(
+      unblockedStatus.explanation === 'Nothing blocked the calculation for this recipe.',
+      `The state sentence went with the label: ${unblockedStatus.explanation}`
+    )
+    record('no redundant status label on an unblocked result', unblockedStatus.explanation)
 
     // 5d. Child groups expand and collapse from the keyboard alone.
     const groupSummary = '[data-test="node-children"] > summary'
@@ -1319,6 +1467,116 @@ async function run() {
         `${headers.length} columns, diagnostics: ${diagnostics.join(', ') || 'none'}`
       )
     }
+
+    // 15b. A limit on further crafting, at both widths: the crafts already counted stay valid, the
+    // supplied cost and the echoed budget are both stated, the purchase for those counted crafts is
+    // listed, and the label that only repeats the sentence is gone (DOMAIN_SPEC 2.1.1).
+    for (const viewport of [WIDE, NARROW]) {
+      await openProfit(page, stub.origin, viewport)
+      const listed = await listedRecipes(page)
+      const budgetIndex = listed.indexOf(BUDGET_ROW)
+      check(budgetIndex >= 0, `"${BUDGET_ROW}" is not listed by default: ${listed.join(', ')}`)
+      await (await page.$$('[data-test="select-row"]'))[budgetIndex].click()
+      await page.waitForFunction(
+        (name) => document.querySelector('[data-test="detail-name"]')?.textContent?.trim() === name,
+        BUDGET_ROW,
+        { timeout: TIMEOUT_MS }
+      )
+
+      const budget = await page.evaluate(() => {
+        const text = (test) =>
+          document.querySelector(`[data-test="${test}"]`)?.textContent?.replace(/\s+/g, ' ').trim() ?? null
+        return {
+          badge: document.querySelector('[data-test="detail-status"]') !== null,
+          explanation: text('detail-status-explanation'),
+          context: text('detail-budget-context'),
+          affected: text('detail-affected-item'),
+          buyCost: text('detail-buy-cost'),
+          purchases: [...document.querySelectorAll('[data-test="missing-item"]')].map((item) =>
+            (item.textContent ?? '').replace(/\s+/g, ' ').trim()
+          ),
+          basis: (document.querySelector('[data-test="selected-detail"]')?.textContent ?? '').replace(
+            /\s+/g,
+            ' '
+          )
+        }
+      })
+      check(
+        !budget.badge && !budget.basis.includes('Over the buy limit'),
+        `At ${viewport.width}px the redundant "Over the buy limit" label is still shown: ${JSON.stringify(budget)}`
+      )
+      check(
+        budget.explanation.includes('Further crafting is blocked') &&
+          budget.explanation.includes('4 crafts already counted stay valid'),
+        `At ${viewport.width}px the limit was not told apart from the counted crafts: ${budget.explanation}`
+      )
+      // Both amounts are the backend's: 250000 copper of budget echoed with the calculation, and
+      // 240000 copper of purchase supplied for the crafts counted.
+      check(
+        budget.context === "The calculation's maximum buy setting is 25g 0s 0c.",
+        `At ${viewport.width}px the echoed maximum buy was not stated: ${budget.context}`
+      )
+      check(
+        budget.buyCost === '24g 0s 0c' && budget.basis.includes('For all 4 crafts counted'),
+        `At ${viewport.width}px the counted-craft purchase cost is wrong: ${budget.buyCost}`
+      )
+      check(
+        budget.purchases.length === 1 &&
+          budget.purchases[0].includes('Glob of Ectoplasm') &&
+          budget.purchases[0].includes('×20'),
+        `At ${viewport.width}px the affected purchase was not listed: ${JSON.stringify(budget.purchases)}`
+      )
+      // The purchase that went over the limit is not in the row contract, and is not invented.
+      check(
+        budget.affected !== null &&
+          budget.affected.includes('does not name the further purchase that went over the limit'),
+        `At ${viewport.width}px the detail did not say what it has no fact for: ${budget.affected}`
+      )
+      const budgetOverflow = await pageOverflow(page)
+      check(
+        budgetOverflow.scrollWidth <= budgetOverflow.clientWidth + 1,
+        `At ${viewport.width}px the budget detail made the page scroll sideways ` +
+          `(${budgetOverflow.scrollWidth} > ${budgetOverflow.clientWidth}).`
+      )
+      record(
+        `budget limit explained from supplied facts at ${viewport.width}px`,
+        `${budget.context} ${budget.purchases[0].slice(0, 48)}`
+      )
+    }
+
+    // 15c. The same removal for a row blocked because buying is off, reached from the keyboard alone.
+    await openProfit(page, stub.origin, WIDE)
+    await showEveryRow(page)
+    const buyingOffIndex = (await listedRecipes(page)).indexOf('Elonian Leather Square')
+    check(buyingOffIndex >= 0, 'The row blocked because buying is off was not listed.')
+    const rowControls = await page.$$('[data-test="select-row"]')
+    await rowControls[buyingOffIndex].focus()
+    await page.keyboard.press('Enter')
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[data-test="detail-name"]')?.textContent?.trim() ===
+        'Elonian Leather Square',
+      undefined,
+      { timeout: TIMEOUT_MS }
+    )
+    const buyingOff = await page.evaluate(() => ({
+      badge: document.querySelector('[data-test="detail-status"]') !== null,
+      explanation:
+        document.querySelector('[data-test="detail-status-explanation"]')?.textContent?.replace(/\s+/g, ' ').trim() ??
+        null,
+      detail: (document.querySelector('[data-test="selected-detail"]')?.textContent ?? '').replace(/\s+/g, ' '),
+      focused: document.activeElement?.getAttribute('data-test') ?? null
+    }))
+    check(
+      !buyingOff.badge && !buyingOff.detail.includes('Buying is off'),
+      `The redundant "Buying is off" label is still in the detail: ${JSON.stringify(buyingOff)}`
+    )
+    check(
+      buyingOff.explanation.includes('buying is switched off'),
+      `The cause went with the label: ${buyingOff.explanation}`
+    )
+    check(buyingOff.focused === 'select-row', 'Selecting by keyboard moved focus off the row control.')
+    record('no redundant "Buying is off" label, cause kept', buyingOff.explanation.slice(0, 96))
 
     // 16. DOMAIN_SPEC 2.1.1's "Allow non-Trading-Post materials" calculation rule (UD-009/UD-010):
     // grouped with the calculation, open enabled, recalculated in the backend, preserved on reload,

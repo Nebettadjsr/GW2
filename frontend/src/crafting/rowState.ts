@@ -25,6 +25,21 @@ export interface RowState {
   tone: RowStateTone
   /** The backend's own code, for secondary disclosure; null when the row carried none. */
   code: string | null
+  /**
+   * Whether the short label says anything `explanation` does not (`DOMAIN_SPEC.md` 2.1.1, which names
+   * "Buying is off", "Over the buy limit" and "Not blocked" as labels a selected result must not
+   * repeat where its surrounding content already explains the state).
+   *
+   * False for every reason this client has wording for, because the sentence beside it states the
+   * same cause in full. True only where the sentence is all there is to go on and a visible marker
+   * has to say so as well: a result that was not calculated, a state the backend did not report and a
+   * code this client cannot word. Those must never read as success, so their label stays.
+   *
+   * It is a property of this description, not a rule of one screen: each view decides whether to act
+   * on it, and the label itself is still produced either way — the search index and the Discovery
+   * detail keep using it.
+   */
+  labelAddsMeaning: boolean
 }
 
 /** `craft.BlockedReason`'s not-blocked value. */
@@ -63,7 +78,8 @@ export function describeRowState(row: CraftingRow): RowState {
       explanation:
         'The backend reported this recipe but calculated no result for it, so none of its values exist.',
       tone: 'unknown',
-      code: null
+      code: null,
+      labelAddsMeaning: true
     }
   }
 
@@ -73,7 +89,8 @@ export function describeRowState(row: CraftingRow): RowState {
       label: 'State not reported',
       explanation: 'The calculation reported no state for this recipe, so nothing is established about it.',
       tone: 'unknown',
-      code: null
+      code: null,
+      labelAddsMeaning: true
     }
   }
 
@@ -83,13 +100,15 @@ export function describeRowState(row: CraftingRow): RowState {
           label: 'None craftable',
           explanation: 'Nothing blocked the calculation, and it counted no craft that could be completed.',
           tone: 'idle',
-          code
+          code,
+          labelAddsMeaning: false
         }
       : {
           label: 'Not blocked',
           explanation: 'Nothing blocked the calculation for this recipe.',
           tone: 'success',
-          code
+          code,
+          labelAddsMeaning: false
         }
   }
 
@@ -99,11 +118,18 @@ export function describeRowState(row: CraftingRow): RowState {
       label: code,
       explanation: `The backend reported a state this page does not recognize: ${code}.`,
       tone: 'unknown',
-      code
+      code,
+      labelAddsMeaning: true
     }
   }
 
-  return { label: known.label, explanation: blockedExplanation(known.because, row.craftableCount), tone: 'caution', code }
+  return {
+    label: known.label,
+    explanation: blockedExplanation(known.because, row.craftableCount),
+    tone: 'caution',
+    code,
+    labelAddsMeaning: false
+  }
 }
 
 function blockedExplanation(because: string, craftableCount: number | null): string {

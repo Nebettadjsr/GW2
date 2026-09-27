@@ -612,6 +612,19 @@ describe('CraftingProfitScreen', () => {
     expect(wrapper.find('[data-test="limit-note"]').exists()).toBe(false)
   })
 
+  it('opensWithNoIntroductorySentenceUnderTheHeading', async () => {
+    const wrapper = await openScreen(new FakeCraftingApi())
+
+    // The exact sentence DOMAIN_SPEC 2.1.1 removes, and the element that carried it.
+    expect(wrapper.find('[data-test="page-intro"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain(
+      'Crafting opportunities the backend calculated for the selected scope'
+    )
+    // The heading itself stays, and so does everything that names the page's content.
+    expect(wrapper.find('[data-test="page-heading"]').text()).toBe('Crafting Profit')
+    expect(wrapper.find('[data-test="profit-table"]').exists()).toBe(true)
+  })
+
   it('appliesEachDisplayFilterReversiblyWithoutAskingTheBackendAgain', async () => {
     const api = new FakeCraftingApi()
     api.profitHandler = () =>

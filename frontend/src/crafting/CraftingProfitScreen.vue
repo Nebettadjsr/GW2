@@ -187,10 +187,12 @@ function onReload(): void {
 
 <template>
   <div class="screen">
-    <PageHeader
-      heading="Crafting Profit"
-      intro="Crafting opportunities the backend calculated for the selected scope, with the profit it reported for each."
-    >
+    <!--
+      No introductory sentence: DOMAIN_SPEC 2.1.1 removes it, because the heading, the controls and
+      the table's own labelled columns already say what the page holds. `PageHeader`'s `intro` is
+      optional, and the other pages keep theirs.
+    -->
+    <PageHeader heading="Crafting Profit">
       <template #actions>
         <button
           type="button"

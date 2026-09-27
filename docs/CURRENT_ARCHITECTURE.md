@@ -1079,13 +1079,18 @@ below the comparison under that width; the table keeps its own `.table-region` s
   alone, and visibly distinct from the shared focus outline.
 - **The detail region renders the response and nothing else.** Labelled sub-regions for the table
   calculation's summary (per-craft group, totals group, the output item's raw trading-post quote),
-  for the crafting resolution (below, `STORY-WEB-007`) and for the two supplied material lists
-  (`missingToBuy` for every craft counted, `missingToBuyOne` for one further craft). Each material
-  line is its supplied quantity and its own quote; no shopping total is produced and no procurement
-  quantity is derived. An unsupplied list, an empty list and "nothing to buy" stay three distinct
-  messages. A GW2 Wiki link is offered only when the backend supplied a name to build an article
-  title from, percent-encoded into the path; with no name the link is omitted and said to be omitted,
-  because an item id is not a wiki address.
+  for the crafting resolution (below, `STORY-WEB-007`) and for the purchases still to be made. Since
+  `STORY-WEB-015` that last region is **one** list on **one** basis — `missingToBuy`, the crafts the
+  calculation already counted (`DOMAIN_SPEC.md` §2.1.1). `missingToBuyOne` remains in the row
+  contract and is no longer displayed; the resolution's single-batch tree is a different calculation
+  and is never substituted for the counted-craft list. Each material line is its supplied quantity
+  and its own quote; no shopping total is produced and no procurement quantity is derived. An
+  unsupplied list, an empty list and "nothing to buy" stay three distinct messages. A GW2 Wiki link is
+  offered only when the backend supplied a name to build an article title from, percent-encoded into
+  the path; with no name the link is omitted and said to be omitted, because an item id is not a wiki
+  address.
+- **The page carries no introductory sentence** (`STORY-WEB-015`, `DOMAIN_SPEC.md` §2.1.1).
+  `PageHeader`'s `intro` is optional and Crafting Profit passes none; every other page keeps its own.
 - **Domain states read as words, with the code kept secondary** (`rowState.ts`). The eight
   `craft.BlockedReason` names of `DOMAIN_SPEC.md` §42 each have their own wording; the reason is
   stated as *further* crafting being blocked when the backend still counted crafts, which is what
@@ -1098,7 +1103,17 @@ below the comparison under that width; the table keeps its own `.table-region` s
   `INSUFFICIENT_BUDGET` and — since `STORY-DOM-021` — `NON_TRADEABLE_MATERIAL` carry no row label at
   all; the detail states each in words, beside the
   supplied buy cost and — for a budget restriction only — the maximum buy the backend echoed, and no
-  missing acquisition amount is invented. `rowState.rowDiagnostic` keeps a few words beside the
+  missing acquisition amount is invented. Since `STORY-WEB-015` the detail also drops the **short
+  status label** wherever that sentence already carries it (`rowState.labelAddsMeaning`,
+  `DOMAIN_SPEC.md` §2.1.1's "Buying is off", "Over the buy limit" and "Not blocked"); the label is
+  still produced, for the search index and for Discovery's own detail, and is still shown for the
+  three states whose sentence is all there is — no calculated result, no reported state and a code
+  this client cannot word — because a removed marker must never read as success. The same rule drops
+  the fresh row's success chip in the shared resolution region while keeping every blocked,
+  unavailable and unrecognized one. For a missing price and a budget limit the detail also says that
+  the row's own reason names no item, and points at the purchase lines and requirements that do,
+  rather than reading an identity out of a reason code or out of the fresh tree.
+  `rowState.rowDiagnostic` keeps a few words beside the
   recipe name for the four situations a row's own numbers cannot express: `CYCLE_DETECTED`,
   `PRICE_UNAVAILABLE`, `resultAvailable: false` and an unreported or unrecognized code (worded, never
   the raw code). The `CYCLE_DETECTED` diagnostic is **temporary presentation technical debt**, kept
@@ -1223,7 +1238,11 @@ never one per table row — and completes as a plain HTTP 200, which is the exec
   with the one adjustment a node needs: a row's reason is about *further* crafting, while a node's
   reason is about *this requirement*. `BUYING_DISABLED` therefore reads as a requirement that would
   have to be bought while buying is off, never as invalidation of crafts already counted.
-  `PRICE_UNAVAILABLE` is stated as an unknown price that is not zero; `UNVALUED_NONTRADEABLE` as a
+  `PRICE_UNAVAILABLE` is stated as an unknown price that is not zero, and since `STORY-WEB-015` it
+  **names the item** it is about — that node's own backend name, or its item id when no name was
+  supplied (`DOMAIN_SPEC.md` §2.1.1). The item comes from `nodeLabel` for the node the code arrived
+  on, never from an ancestor and never from a row's own reason, which carries no item at all.
+  `UNVALUED_NONTRADEABLE` reads as a
   known zero for a non-tradable item that is still a real requirement. A code this client has no
   wording for is shown as itself, marked "(not recognized)", and is never toned as success. The
   envelope's `consistency`, `treeBasis`, `treeStatus` and `calculatedAt` appear verbatim in the

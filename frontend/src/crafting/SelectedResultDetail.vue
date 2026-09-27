@@ -31,9 +31,10 @@ import type { ResolutionPhase } from './useResolutionDetail'
  *
  * This region is also where the blocking reasons DOMAIN_SPEC 2.1.1 removed from the comparison table
  * are stated: the row's own state sentence explains the restriction in words, and the supplied buy
- * cost and the backend's echoed maximum-buy setting are shown beside it. No missing acquisition
- * amount is invented, no tree cost is summed in, and nothing about non-Trading-Post eligibility is
- * read out of a reason code.
+ * cost and the backend's echoed maximum-buy setting are shown beside it. The short status label is
+ * not repeated where that sentence already carries it (2.1.1). No missing acquisition amount is
+ * invented, no tree cost is summed in, and nothing about non-Trading-Post eligibility — or about
+ * which item a reason is aimed at — is read out of a reason code.
  *
  * `row` is read from the *current* result set. When a replacement calculation no longer contains
  * that recipe the screen passes null, so an earlier answer's numbers can never appear underneath a
@@ -67,13 +68,41 @@ const state = computed(() => (props.row === null ? null : describeRowState(props
 /**
  * The configured maximum buy, worded only for the one state it explains. A budget restriction is the
  * single reason the setting makes the difference between "blocked" and "not blocked", and saying so
- * changes nothing about the restriction itself — it is the backend's own echoed number.
+ * changes nothing about the restriction itself — it is the backend's own echoed number. With no
+ * echoed settings there is no figure to state: this client has no maximum of its own to offer.
  */
 const budgetContext = computed<string | null>(() => {
   if (state.value?.code !== 'INSUFFICIENT_BUDGET') return null
   const settings = props.settings
   if (settings === null) return null
   return `The calculation's maximum buy setting is ${formatCopper(settings.maxBuyCopper)}.`
+})
+
+/**
+ * Where the affected item can be read, for the two restrictions that are about one specific
+ * material (`DOMAIN_SPEC.md` 2.1.1: a missing-price explanation must identify the item, and a budget
+ * restriction must show the affected purchase).
+ *
+ * A row's reason is a single enum value and carries no item with it (`craft.CraftResult`), so this
+ * points at the places the backend *did* supply one — the purchase lines below, each naming its own
+ * material, and the resolution's requirements, each naming their own item — rather than reading an
+ * identity out of the reason or borrowing one from the fresh tree, which explains a different
+ * calculation. Nothing is stated about the restriction itself that the sentence above does not.
+ */
+const affectedItemSource = computed<string | null>(() => {
+  if (state.value?.code === 'INSUFFICIENT_BUDGET') {
+    return (
+      'This result does not name the further purchase that went over the limit. The materials and ' +
+      'requirements below name each item the calculation reported.'
+    )
+  }
+  if (state.value?.code === 'PRICE_UNAVAILABLE') {
+    return (
+      'This result does not name the item whose price was missing. The materials and requirements ' +
+      'below name each item the calculation reported, with the price information it supplied for it.'
+    )
+  }
+  return null
 })
 
 /** Omitted entirely when the backend supplied no name — an ID makes no reliable wiki target. */
@@ -87,11 +116,16 @@ const totalsLabel = computed(() => {
 })
 
 /**
+ * The materials still to buy for the craft count the calculation already reported — `missingToBuy`,
+ * the counted-craft list, and no other basis (`DOMAIN_SPEC.md` 2.1.1, which removes the separate
+ * one-further-craft section). `missingToBuyOne` stays in the backend contract and is simply not
+ * displayed; the fresh resolution's single-batch tree is a different calculation and is never
+ * substituted for this list.
+ *
  * A list the backend did not supply and an empty list are different answers, and a response that
  * omits the field altogether is a third; all three stay distinct from "nothing to buy".
  */
 const missingForAllCrafts = computed<MissingItem[] | null>(() => props.row?.missingToBuy ?? null)
-const missingForOneCraft = computed<MissingItem[] | null>(() => props.row?.missingToBuyOne ?? null)
 
 function materialQuoteText(item: MissingItem): string {
   if (item.price === null) return 'No price supplied'
@@ -149,11 +183,26 @@ function materialQuoteText(item: MissingItem): string {
         </template>
       </p>
 
+      <!--
+        The sentence is the state; the short label appears only where it says something the sentence
+        does not (`rowState.labelAddsMeaning`, DOMAIN_SPEC 2.1.1). "Buying is off", "Over the buy
+        limit" and "Not blocked" are exactly the labels that repeat their own explanation, so they are
+        gone from here while every cause stays.
+      -->
       <div class="stack">
-        <span :class="`status status--${state.tone}`" data-test="detail-status">{{ state.label }}</span>
+        <span
+          v-if="state.labelAddsMeaning"
+          :class="`status status--${state.tone}`"
+          data-test="detail-status"
+        >
+          {{ state.label }}
+        </span>
         <p data-test="detail-status-explanation">{{ state.explanation }}</p>
         <p v-if="budgetContext !== null" class="meta" data-test="detail-budget-context">
           {{ budgetContext }}
+        </p>
+        <p v-if="affectedItemSource !== null" class="meta" data-test="detail-affected-item">
+          {{ affectedItemSource }}
         </p>
       </div>
 
@@ -237,7 +286,11 @@ function materialQuoteText(item: MissingItem): string {
       <section class="detail__section" aria-labelledby="detail-materials-heading">
         <h3 id="detail-materials-heading">Materials still to buy</h3>
 
-        <!-- Each line is a supplied quantity under its own basis heading; no total is produced. -->
+        <!--
+          One list, under the basis the contract gives it: the crafts this calculation already
+          counted. Each line is a supplied quantity with the supplied quote for its own material, and
+          no total is produced from them.
+        -->
         <h4 class="detail__basis">{{ totalsLabel }}</h4>
         <p v-if="missingForAllCrafts === null" class="meta" data-test="missing-all-none">
           Not supplied for this recipe.
@@ -247,24 +300,6 @@ function materialQuoteText(item: MissingItem): string {
         </p>
         <ul v-else class="material-list" data-test="missing-all">
           <li v-for="item in missingForAllCrafts" :key="item.itemId" data-test="missing-item">
-            <span class="material-name">
-              <ItemIcon :icon-url="item.iconUrl" :item-id="item.itemId" loading="lazy" />
-              {{ materialLabel(item) }}
-            </span>
-            <span class="material-quantity numeric">×{{ item.quantity }}</span>
-            <span class="meta">{{ materialQuoteText(item) }}</span>
-          </li>
-        </ul>
-
-        <h4 class="detail__basis">For one further craft</h4>
-        <p v-if="missingForOneCraft === null" class="meta" data-test="missing-one-none">
-          Not supplied for this recipe.
-        </p>
-        <p v-else-if="missingForOneCraft.length === 0" class="meta" data-test="missing-one-none">
-          Nothing needs to be bought.
-        </p>
-        <ul v-else class="material-list" data-test="missing-one">
-          <li v-for="item in missingForOneCraft" :key="item.itemId" data-test="missing-one-item">
             <span class="material-name">
               <ItemIcon :icon-url="item.iconUrl" :item-id="item.itemId" loading="lazy" />
               {{ materialLabel(item) }}

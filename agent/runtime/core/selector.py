@@ -24,7 +24,7 @@ from agent.runtime.human.user_decisions import get_open_decisions
 # fully deterministic -- file exists, not archived, not DONE, not
 # blocked by its own Status/Dependencies) confirms is executable.
 #
-# Hermes is still used elsewhere (dispatcher.py, evaluator.py) -- this
+# Hermes is still used elsewhere (evaluator.py) -- this
 # module concerns story selection only.
 # ============================================================
 

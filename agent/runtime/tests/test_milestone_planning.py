@@ -240,6 +240,44 @@ class MilestonePlanningTest(unittest.TestCase):
         self.assertIn("AGENTS.md", prompt)
         self.assertIn("agent/stories/BACKLOG.md, when a completed entry's", prompt)
 
+    def test_unresolved_completed_story_findings_are_supplied_once_dispositioned(self):
+        finding_story = self.story(50, status="DONE")
+        path = planner.STORIES_DIR / finding_story
+        path.write_text(
+            path.read_text(encoding="utf-8")
+            + "\n## Follow-up Findings\n\nF001: The cache is not shared across replicas.\n"
+            + "\n## Result\n\nImplementation complete.\n",
+            encoding="utf-8",
+        )
+
+        prompt, sections = planner.build_planning_context()
+        self.assertIn("[F001]: The cache is not shared across replicas.", prompt)
+        self.assertIn(finding_story, sections["unresolved Claude follow-up findings"])
+
+        path.write_text(
+            path.read_text(encoding="utf-8")
+            + "\n## Follow-up Findings Disposition\n\n"
+            + "- F001: DEFERRED — docs/KNOWN_PROBLEMS.md; revisit in a later milestone.\n",
+            encoding="utf-8",
+        )
+        prompt, sections = planner.build_planning_context()
+        self.assertNotIn("[F001]: The cache is not shared across replicas.", prompt)
+        self.assertEqual(
+            sections["unresolved Claude follow-up findings"],
+            "(no unresolved Claude implementation follow-up findings)",
+        )
+
+    def test_unfinished_story_findings_are_not_supplied(self):
+        name = self.story(51, status="TODO")
+        path = planner.STORIES_DIR / name
+        path.write_text(
+            path.read_text(encoding="utf-8")
+            + "\n## Follow-up Findings\n\nF001: Unverified implementation observation.\n",
+            encoding="utf-8",
+        )
+        prompt = planner.build_planning_prompt()
+        self.assertNotIn("Unverified implementation observation", prompt)
+
     def test_prompt_reports_its_own_supplied_section_sizes(self):
         prompt, sections = planner.build_planning_context()
         report = planner.planning_context.context_report("Planner", sections, prompt)

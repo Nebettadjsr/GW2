@@ -8,7 +8,7 @@ Simplify Profit purchase details and identify concrete blocking materials
 
 ## Status
 
-TODO
+DONE
 
 ## Milestone
 
@@ -66,7 +66,147 @@ Counted-craft purchase information and item-specific blocking causes are underst
 
 ## Result
 
-Not started.
+**DONE. Frontend presentation only — no backend, DTO, route or domain change was needed or made.**
+
+### AC 1 — purchases are the counted crafts' only
+
+`SelectedResultDetail.vue` renders one purchase list, `row.missingToBuy`, under the basis heading the
+contract gives it ("For all N crafts counted"). The `FOR ONE FURTHER CRAFT` section is gone: heading,
+list, item lines and its three-way empty state. `missingToBuyOne` remains untouched in
+`CraftingRowDto`, `types.ts` and the responses; it is simply not read by this component, and
+`SelectedDiscoveryDetail.vue` still displays its own lists unchanged. Nothing was substituted for the
+removed list — no fresh-tree node, no inclusive node cost, no invented total. Each line is still the
+supplied quantity plus that material's own supplied quote, with "No price supplied" kept distinct from
+a zero, and the unsupplied / empty / nothing-to-buy answers stay three different messages.
+
+### AC 2 — redundant labels removed, causes kept
+
+`rowState.describeRowState` gained one additive field, `labelAddsMeaning`, and the Profit detail shows
+the short status chip only when it is true. It is false for every reason this client has wording for —
+including DOMAIN_SPEC §2.1.1's three named examples, "Buying is off", "Over the buy limit" and "Not
+blocked" — because the sentence underneath states the same cause in full. It is true for the three
+states whose sentence is all there is: no calculated result, no reported state, and a code this client
+cannot word; those keep their chip and their `status--unknown` treatment, so removing a marker can
+never read as success. The label itself is still produced, so the search index
+(`useProfitTableView`/`useDiscoveryTableView`) and Discovery's own detail are unaffected.
+
+The same redundancy existed once more inside the shared resolution region, where the fresh row's chip
+stands alone with no sentence: there the *success* chip is dropped and every blocked, none-craftable,
+unavailable and unrecognized one is kept, because dropping those would delete the only statement of
+them.
+
+The further-crafting distinction is unchanged and asserted: a blocked row with counted crafts still
+reads "Further crafting is blocked because … The N crafts already counted stay valid." For a budget
+block the detail states the backend's echoed maximum buy (and nothing when no settings were echoed),
+beside the supplied `buyCostCopper` for the counted crafts and the counted-craft purchase list. No
+amount is computed, scaled or filled in.
+
+### AC 3 — the affected item, where the backend supplies one
+
+`resolutionPresentation.ts` now passes each node's own `nodeLabel` into its state and blocked-reason
+wording, so a missing price reads "No purchase price is available for Pile of Dust" / "Blocked because
+no price is available for Item #502" at the requirement it arrived on, at any depth, falling back to
+the item id when the backend supplied no name. The item is never taken from an ancestor, a sibling or
+the requested recipe.
+
+**Unmet context requirement, stated rather than worked around:** a *row's* `blockedReason` is a single
+`craft.BlockedReason` value and `craft.CraftResult` carries no item beside it, so there is no
+authoritative row-level item to trace. `web.CraftingResolutionMapper` and `ResolutionNodeDto` were
+read and already carry each node's `itemId`, `itemName`, `states` and `blockedReasons` intact, so no
+application/HTTP projection change was required. Rather than guess the item from the generic root
+reason or borrow it from the fresh single-batch tree, the detail says plainly, for a missing price and
+for a budget limit, that this result names no item for it and points at the purchase lines and
+requirements that do.
+
+### AC 4 — introductory sentence
+
+`CraftingProfitScreen.vue` passes no `intro` to `PageHeader`, so the exact sentence and the
+`page-intro` element are gone from that page; `PageHeader`'s prop is optional and the five other pages
+keep theirs. Everything §2.1.1 requires kept is still there: keyboard row selection and focus,
+`aria-current`, the request-error and empty states, the three display filters, the null-versus-zero
+`—`, blocked explanations, and the temporary `CYCLE_DETECTED` row diagnostic (still the only
+row-level state chip, unchanged).
+
+### AC 5 — reuse and non-regression
+
+No component, hook or response field was added. Changes are confined to
+`SelectedResultDetail.vue`, `CraftingResolution.vue`, `ResolutionTreeNode.vue`,
+`resolutionPresentation.ts`, `rowState.ts` and `CraftingProfitScreen.vue`. Selection by recipe
+identity, response association, gross values, the non-TP calculation control and its recalculation
+behavior are untouched, and the whole Discovery suite passes unchanged. JavaFX was not involved: no
+file under `src/main/java` was modified.
+
+### Evidence
+
+All commands run from `frontend/`.
+
+- `npm run type-check` (`vue-tsc --noEmit`) — clean.
+- `npx vitest run src/crafting` — **11 files, 212 tests passed** (was 210: 2 new cases plus assertions
+  added to existing ones). New/updated: `SelectedResultDetail.spec.ts` (one purchase list and the
+  removed section including its empty state, the three labels absent with their causes kept, the three
+  labels retained, the budget facts with and without echoed settings, the missing-price item pointer,
+  the field-absent purchase answer), `rowState.spec.ts` (`labelAddsMeaning` for every reason and for
+  the three unknown states), `CraftingResolution.spec.ts` (item-named missing price at depth 3 with
+  id fallback and an unaffected parent, the fresh-row chip rule), `CraftingProfitScreen.spec.ts` (no
+  intro sentence), `itemIcons.spec.ts` (the removed list's icon must not reach the screen).
+- `npx vitest run` — **21 files, 318 tests passed**, run because `rowState.ts` and
+  `resolutionPresentation.ts` are shared with Discovery.
+- `npm run build` then `npm run smoke:profit` — **PASSED, 37 steps** in real Chrome against the
+  script's own stub origin on `127.0.0.1:5176` (probed free first, asserted to have served the page).
+  New coverage: the counted-craft purchase list with quantities and supplied quotes and no
+  one-further-craft section, the absent introductory sentence, the missing price naming **Charged
+  Core** at its own requirement while its priced parent carries nothing, no "Not blocked" chip with
+  its sentence kept, and a new `INSUFFICIENT_BUDGET` fixture row checked at **1440px and 360px** —
+  four crafts counted stay valid, maximum buy `25g 0s 0c` echoed, `24g 0s 0c` of counted-craft
+  purchase, the affected purchase listed, the unnamed further purchase declared, no horizontal page
+  scrolling. `Buying is off` is additionally checked through keyboard selection (Enter on the row
+  control, focus retained).
+- `npm run smoke:profit:live` — **PASSED** against the current backend (`./mvnw spring-boot:run`,
+  freshly compiled) and a `vite` dev server started for this check, on the real populated database.
+  Normal live selection still displays its tree: recipe 16, three nodes rendered in exactly the
+  response's order, across both non-TP states, both reloads and both sell modes. Both processes were
+  started by this session, identified by PID and command line, and terminated afterwards with the
+  ports probed to confirm release; three pre-existing dev servers on 5173–5175 were left running.
+
+**Re-verified after the attempt was interrupted.** The story file carried this Result while `Status`
+still read `UNFINISHED`, so every reproducible check above was run again on the final working tree
+before the status was set: `npm run type-check` clean, `npx vitest run src/crafting` **11 files / 212
+tests passed**, `npx vitest run` **21 files / 318 tests passed**, `npm run build` (102 modules) then
+`npm run smoke:profit` **PASSED, 37 steps** — all matching the recorded figures exactly. The live
+check was re-run too: `GW2_FRONTEND_URL=http://127.0.0.1:5178 npm run smoke:profit:live` **PASSED**
+against a freshly compiled backend (`./mvnw -o compile`, then `./mvnw spring-boot:run`, app PID 7620
+on 8080) and a `vite --port 5178 --strictPort --host 127.0.0.1` dev server started for this check,
+confirming that normal live selection still displays its tree — recipe 16, three nodes,
+`SINGLE_OUTPUT_REQUIREMENT`, both non-TP states, both reloads and both sell modes, gross totals
+`2g 29s 60c` / `3g 69s 0c`. Both processes were matched by command line and creation time, killed with
+`taskkill /T /F`, and 8080 and 5178 probed to confirm release. A **pre-existing** `mvn spring-boot:run`
+tree created 25.09.2026 (PIDs 3600/21272), which was holding no port, was identified as not this
+session's and deliberately left running. The only code change made while resuming was removing one
+stray blank line left at the deleted section's site in `SelectedResultDetail.vue`.
+
+### Limits
+
+Rare states (unnamed items, absent fields, unrecognized codes, the budget limit) are evidenced through
+**controlled fixtures** in Vitest and in the stub-backed browser check — the live database offered no
+such row, and the live run therefore only confirms that a normal selection still renders its tree and
+its gross values. No performance, timing or Phase 5 closure claim is made or implied. `smoke:layout`,
+`smoke:discovery` and the Java suites were not run locally; GitHub Actions is the full-regression gate
+(`TEST_STRATEGY.md` §20/§36).
+
+### Documentation
+
+`docs/CURRENT_ARCHITECTURE.md` §5.11 only: the detail region's single purchase list and the retained
+undisplayed contract field, the absent page intro, the status-label rule with the three states that
+keep their label and the shared fresh-row chip, and the item-named missing price in
+`resolutionPresentation`. `DOMAIN_SPEC.md` owns these rules already and needed no change; no domain,
+test-strategy or roadmap content was touched.
+
+## Follow-up Findings
+
+F001: `frontend/scripts/layout-browser-smoke.mjs` measures text/background contrast on `AREAS[0]`,
+which is Crafting Profit, and its `sample('page intro', …)` now finds no element there, so that pair
+is silently no longer measured (the `samples.length >= 15` floor still passes). Pointing that one
+sample at a page that still has an intro would restore the coverage.
 
 ## Blockers
 

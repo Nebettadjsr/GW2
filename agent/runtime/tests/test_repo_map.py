@@ -1,6 +1,6 @@
 """
 Deterministic tests for agent/runtime/support/repo_map.py and its
-injection point in evaluation/dispatcher.py's build_claude_prompt().
+injection point in evaluation/claude_prompt.py's build_claude_prompt().
 
 Never invokes a real Aider or Claude process. subprocess.run and
 shutil.which are patched in every case that would otherwise touch the
@@ -18,7 +18,7 @@ from unittest.mock import patch
 from agent.runtime.support import repo_map
 from agent.runtime.support import config
 from agent.runtime.support.config import REPO_ROOT
-from agent.runtime.evaluation import dispatcher
+from agent.runtime.evaluation import claude_prompt
 
 
 class RepoMapEnabledDefaultTest(unittest.TestCase):
@@ -186,20 +186,12 @@ class FormatRepoMapForPromptTest(unittest.TestCase):
 
 class BuildClaudePromptRepoMapInjectionTest(unittest.TestCase):
 
-    def _plan(self):
-        return {
-            "story_id": "STORY-X-001",
-            "goal": "Do the thing.",
-            "acceptance_criteria": ["It works."],
-            "references": ["docs/DOMAIN_SPEC.md"],
-        }
-
     def test_no_repo_map_context_is_byte_identical_to_before(self):
         story_path = REPO_ROOT / "agent" / "stories" / "STORY-X-001-thing.md"
 
-        with_default = dispatcher.build_claude_prompt(self._plan(), story_path)
-        with_explicit_empty = dispatcher.build_claude_prompt(
-            self._plan(), story_path, repo_map_context=""
+        with_default = claude_prompt.build_claude_prompt(story_path)
+        with_explicit_empty = claude_prompt.build_claude_prompt(
+            story_path, repo_map_context=""
         )
 
         self.assertEqual(with_default, with_explicit_empty)
@@ -208,8 +200,7 @@ class BuildClaudePromptRepoMapInjectionTest(unittest.TestCase):
     def test_repo_map_context_is_included_when_present(self):
         story_path = REPO_ROOT / "agent" / "stories" / "STORY-X-001-thing.md"
 
-        prompt = dispatcher.build_claude_prompt(
-            self._plan(),
+        prompt = claude_prompt.build_claude_prompt(
             story_path,
             repo_map_context="Repository map (orientation only): src/Foo.java",
         )
@@ -217,9 +208,9 @@ class BuildClaudePromptRepoMapInjectionTest(unittest.TestCase):
         self.assertIn("Repository map (orientation only)", prompt)
         self.assertIn("src/Foo.java", prompt)
         # Still contains the normal required sections.
-        self.assertIn("Execute STORY-X-001.", prompt)
-        self.assertIn("Active story:", prompt)
-        self.assertIn("Goal:", prompt)
+        self.assertIn("Implement the active story", prompt)
+        self.assertIn("STORY-X-001-thing.md", prompt)
+        self.assertIn("CLAUDE.md", prompt)
 
 
 if __name__ == "__main__":

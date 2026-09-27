@@ -352,12 +352,8 @@ def parse_backlog_section(
     heading: str
 ) -> list[str]:
     """
-    Return the canonical story filenames (STORY-*.md) listed as
-    backtick-quoted Markdown list items under a given '## <heading>'
-    section of BACKLOG.md. Other backtick-quoted Markdown references
-    that merely appear inline in a bullet's description (e.g. a
-    `docs/KNOWN_PROBLEMS.md` citation) are filtered out -- they are
-    not story filenames.
+    Return canonical story filenames from legacy backtick entries or
+    compact `STORY-ID | filename | STATUS | summary` rows in a section.
     """
 
     # [ \t]*, not \s*, before the mandatory newline -- see the
@@ -380,16 +376,22 @@ def parse_backlog_section(
 
     section = match.group(1)
 
-    all_md_references = re.findall(
-        r"`([^`]+\.md)`",
-        section
+    filenames = []
+    legacy_entry = re.compile(r"^\s*[-*]\s*`([^`]+\.md)`")
+    compact_entry = re.compile(
+        r"^\s*[-*]\s*(STORY-[A-Za-z0-9]+-\d+)\s*\|\s*"
+        r"([^|]+?\.md)\s*\|\s*([^|]+)\s*\|"
     )
 
-    return [
-        name
-        for name in all_md_references
-        if is_story_filename(name)
-    ]
+    for line in section.splitlines():
+        match = legacy_entry.match(line) or compact_entry.match(line)
+        if not match:
+            continue
+        name = match.group(1) if legacy_entry.match(line) else match.group(2).strip()
+        if is_story_filename(name):
+            filenames.append(name)
+
+    return filenames
 
 
 def get_ready_story_filenames() -> set[str]:

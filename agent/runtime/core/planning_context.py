@@ -79,6 +79,11 @@ PREREQUISITE_ID_PATTERN = re.compile(
 )
 
 BACKLOG_REFERENCE_PATTERN = re.compile(r"`([^`]+\.md)`")
+COMPACT_BACKLOG_ENTRY_PATTERN = re.compile(
+    r"^\s*[-*]\s*(STORY-[A-Za-z0-9]+-\d+)\s*\|\s*"
+    r"([^|]+?\.md)\s*\|\s*([^|]+)\s*\|\s*(.*)$",
+    re.I,
+)
 
 HEADING_PATTERN = re.compile(r"^(#{1,6})\s*(.+?)\s*$")
 
@@ -240,6 +245,14 @@ covers."""
 
 
 def _entry_filename(line: str) -> str | None:
+    compact = COMPACT_BACKLOG_ENTRY_PATTERN.match(line)
+    if compact and is_story_filename(compact.group(2).strip()):
+        return compact.group(2).strip()
+
+    legacy = re.match(r"^\s*[-*]\s*`([^`]+\.md)`", line)
+    if legacy and is_story_filename(legacy.group(1)):
+        return legacy.group(1)
+
     for name in BACKLOG_REFERENCE_PATTERN.findall(line):
         if is_story_filename(name):
             return name
@@ -248,6 +261,9 @@ def _entry_filename(line: str) -> str | None:
 
 
 def _entry_description(line: str) -> str:
+    compact = COMPACT_BACKLOG_ENTRY_PATTERN.match(line)
+    if compact:
+        return compact.group(4).strip()
     return re.sub(
         r"^\s*[-*]\s*`[^`]+`\s*(?:[—:-]\s*)?", "", line
     ).strip()
@@ -277,6 +293,16 @@ def _queue_entry(filename: str, facts: dict, description: str) -> str:
         detail.append(f"  backlog entry: {summary}")
 
     return "\n".join([f"- {head}"] + detail)
+
+
+def _section_status(section: str | None) -> str:
+    return {
+        "active": "ACTIVE",
+        "to do": "TODO",
+        "blocked": "BLOCKED",
+        "done": "DONE",
+        "archived": "DONE",
+    }.get((section or "").strip().lower(), "UNKNOWN")
 
 
 def _completed_entry(filename: str, facts: dict) -> str:
@@ -378,20 +404,28 @@ def backlog_index(backlog_text: str, facts: dict) -> str:
                 lines.append(_line(line, OTHER_SECTION_CHARS))
                 continue
 
+            if filename not in facts:
+                lines.append(
+                    f"- {_identifier(filename, {})} | {filename} | FILE MISSING"
+                )
+                continue
+
             fact = facts.get(filename) or {}
 
-            coverage.setdefault(_milestone(fact), {}).setdefault(
-                _status(fact, "DONE" if kind == "completed" else "TODO"), 0
-            )
-            coverage[_milestone(fact)][
-                _status(fact, "DONE" if kind == "completed" else "TODO")
-            ] += 1
+            section_status = _section_status(section)
+            coverage.setdefault(_milestone(fact), {}).setdefault(section_status, 0)
+            coverage[_milestone(fact)][section_status] += 1
 
-            lines.append(
-                _completed_entry(filename, facts)
-                if kind == "completed"
-                else _queue_entry(filename, facts, _entry_description(line))
-            )
+            if kind == "completed":
+                index_fact = dict(fact, status=section_status)
+                lines.append(_completed_entry(filename, {filename: index_fact}))
+            else:
+                # The backlog's section is authoritative for queue state;
+                # the story's own Status remains authoritative elsewhere.
+                index_fact = dict(fact, status=section_status)
+                lines.append(_queue_entry(
+                    filename, {filename: index_fact}, _entry_description(line)
+                ))
 
     lines.extend(_coverage_lines(coverage))
 

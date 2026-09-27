@@ -35,7 +35,7 @@ from agent.runtime.support.config import (
     REPO_ROOT,
     USER_DECISION_POLL_SECONDS,
 )
-from agent.runtime.evaluation.dispatcher import build_claude_prompt, dispatch_story
+from agent.runtime.evaluation.claude_prompt import build_claude_prompt
 from agent.runtime.evaluation.evaluator import evaluate_story
 from agent.runtime.runners.codex_capacity import read_codex_capacity, format_codex_capacity
 from agent.runtime.support.capacity import CapacityProbe, ModelCapacityUnavailable
@@ -548,44 +548,6 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
 
         return "BLOCKED"
 
-    plan = dispatch_story(
-        story_content
-    )
-
-    if plan.get(
-            "status"
-    ) == "NEEDS_MORE_CONTEXT":
-
-        print(
-            "\nHermes needs more context:"
-        )
-        dispatch_reason = plan.get(
-            "reason",
-            "No reason supplied."
-        )
-        print(
-            dispatch_reason
-        )
-
-        _create_intervention_and_block_story(
-            story_path,
-            story_content,
-            dispatch_reason,
-            "(Claude Code was not invoked this attempt -- the "
-            "dispatcher could not build a work order from the story "
-            f"file. Dispatcher reason: {dispatch_reason})",
-        )
-
-        return "NEEDS_USER"
-
-    if plan.get(
-            "status"
-    ) != "READY":
-
-        raise RuntimeError(
-            f"Unexpected dispatcher result: {plan}"
-        )
-
     # Confirm Claude actually has capacity BEFORE doing any
     # RepoMap/prompt work -- never generate the map speculatively for
     # an attempt that might not run yet. before_attempt (the
@@ -599,7 +561,7 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
 
     # RepoMap is an optional, experimental orientation aid for
     # Claude's implementation prompt only -- never for the planner,
-    # the Hermes dispatcher/evaluator, or the deterministic selector.
+    # Hermes evaluation, or the deterministic selector.
     # generate_repo_map() never raises and returns an empty map on any
     # failure (Aider missing, non-zero exit, timeout), so this can
     # never block story execution.
@@ -625,7 +587,6 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
     )
 
     prompt = build_claude_prompt(
-        plan,
         story_path,
         repo_map_context=format_repo_map_for_prompt(repo_map),
     )

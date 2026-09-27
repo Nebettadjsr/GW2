@@ -34,9 +34,11 @@ const props = defineProps<{
 const label = computed(() => nodeLabel(props.node))
 const methods = computed(() => methodLabels(props.node.methods))
 const states = computed(() => stateLabels(props.node.states))
-const stateSentences = computed(() => stateExplanations(props.node.states))
+// `label` is this node's own item, so a missing-price sentence says which item has no price
+// (`DOMAIN_SPEC.md` 2.1.1) instead of leaving that to the heading above it.
+const stateSentences = computed(() => stateExplanations(props.node.states, label.value))
 const reasons = computed(() => blockedReasonLabels(props.node.blockedReasons))
-const blockedSentence = computed(() => blockedExplanation(props.node.blockedReasons))
+const blockedSentence = computed(() => blockedExplanation(props.node.blockedReasons, label.value))
 
 const childCount = computed(() => props.node.children.length)
 const childSummary = computed(() =>
