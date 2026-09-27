@@ -1,0 +1,79 @@
+name: Bug report
+description: Report reproducible incorrect behavior in Nebet's GW2 Tool
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Please remove API keys, database credentials, tokens, or other credentials from logs and screenshots.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected instead.
+      placeholder: The Crafting Profit view shows...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Give the smallest sequence that reliably reproduces the problem.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Enable ...
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Relevant GW2 / calculation context
+      description: If relevant, include item/recipe IDs, crafting discipline, character scope, filters, settings, or other inputs. Do not include your API key.
+      placeholder: Recipe ID ..., discipline ..., setting ...
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did this happen?
+      options:
+        - Browser frontend
+        - JavaFX desktop UI
+        - Backend / HTTP API
+        - Synchronization
+        - Crafting calculation
+        - Database / persistence
+        - Setup / build / CI
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error output
+      description: Paste only the relevant part. Remove credentials and unrelated output.
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Java version, browser (if applicable), and commit/version if known.
+      placeholder: Windows 11, Java 25, Firefox ..., commit ...
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for the same problem.
+          required: true
+        - label: I removed API keys, passwords, tokens, and other credentials from this report.
+          required: true

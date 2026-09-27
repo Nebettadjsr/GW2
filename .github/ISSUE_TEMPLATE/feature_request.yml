@@ -1,0 +1,42 @@
+name: Feature request
+description: Suggest an improvement or new capability
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the user need or situation first.
+      placeholder: When I have ..., I currently cannot easily ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired behavior
+      description: What should the tool let you do or understand?
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Possible approach
+      description: Optional. Describe an implementation/UI idea if you have one, but the use case above is more important.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, GW2 examples, related tools, or other useful context.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for a similar request.
+          required: true
