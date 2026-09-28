@@ -96,9 +96,9 @@ No finding in this document by itself authorizes an implementation change. Norma
 ### KP-09 — Monetary presentation loses signs and mislabels total purchase cost (CH-14)
 
 
-**Observed fact:** `formatSigned` calls `format(Math.abs(copper))`, stripping the minus sign. Ecto profit cells have the same white styling for positive/negative values; crafting tables use color but also lose the textual sign. Profit's Buy Cost tooltip says “ONE craft” while the supplied `CraftResult.buyCostCopper` is total plan cost. Discovery likewise displays that total in its table but uses `missingToBuyOne` in the detail list. Profit's revenue tooltip also says “TradingFees will still be deducted -15%” although its domain result intentionally excludes that deduction.
+**Observed fact:** `formatSigned` calls `format(Math.abs(copper))`, stripping the minus sign. Ecto profit cells have the same white styling for positive/negative values; crafting tables use color but also lose the textual sign. Profit's Buy Cost tooltip says “ONE craft” while the supplied `CraftResult.buyCostCopper` is total plan cost. Discovery likewise displays that total in its table but uses `missingToBuyOne` in the detail list.
 
-**Inferred risk:** losses appear as positive Ecto profits, and readers cannot reconcile table cash costs with the single-craft explanation; stale fee wording misstates the accepted rule. **Recommendation:** correct presentation against existing domain values/units, without inventing a new economic model.
+**Inferred risk:** losses appear as positive Ecto profits, and readers cannot reconcile table cash costs with the single-craft explanation. **Recommendation:** correct presentation against existing domain values/units, without inventing a new economic model.
 
 
 ### KP-10 — Web Crafting Profit retains the temporary `CYCLE_DETECTED` row diagnostic

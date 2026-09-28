@@ -66,9 +66,10 @@ class CraftingBlockedRowsTest {
         var discovery = new CraftingDiscoveryController().prepareRows(RECIPES, RECIPES, results, Map.of(), tp, settings).getFirst();
         assertEquals(2, profit.craftableCount);
         assertEquals(40, profit.buyCostCopper);
-        assertEquals(100, profit.revenueCopper);
-        assertEquals(80, profit.profitCopper);
-        assertEquals(160, profit.totalProfitCopper);
+        assertEquals(100, profit.revenueCopper, "the displayed sell price stays gross");
+        // DOMAIN_SPEC.md section 25: 100c gross less the 15c fee and the 20c of bought materials.
+        assertEquals(65, profit.profitCopper);
+        assertEquals(130, profit.totalProfitCopper);
         assertEquals(profit.buyCostCopper, discovery.buyCostCopper);
         assertEquals(profit.profitCopper, discovery.profitCopper);
     }

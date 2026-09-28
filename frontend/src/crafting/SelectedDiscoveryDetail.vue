@@ -156,7 +156,17 @@ function materialQuoteText(item: MissingItem): string {
           <dt>Own materials given up</dt>
           <dd class="numeric">{{ formatCopper(row.matsSellValueCopper) }}</dd>
 
-          <dt>Profit</dt>
+          <!--
+            The same note Crafting Profit's detail carries (DOMAIN_SPEC 2.1.1 / 25): the backend's
+            profit already has the 15% Trading Post fee deducted. Output revenue keeps no note
+            because it is gross, and this page still calculates no fee of its own.
+          -->
+          <dt>
+            Profit
+            <span class="value-note" data-test="discovery-detail-profit-fee-note">
+              after 15% TP fees
+            </span>
+          </dt>
           <dd class="numeric">
             <span
               :class="`money money--${moneyTone(row.profitCopper)}`"
@@ -186,7 +196,12 @@ function materialQuoteText(item: MissingItem): string {
             </span>
           </dd>
 
-          <dt>Total profit</dt>
+          <dt>
+            Total profit
+            <span class="value-note" data-test="discovery-detail-total-profit-fee-note">
+              after 15% TP fees
+            </span>
+          </dt>
           <dd class="numeric">
             <span
               :class="`money money--${moneyTone(row.totalProfitCopper)}`"
@@ -199,12 +214,12 @@ function materialQuoteText(item: MissingItem): string {
 
         <!--
           DOMAIN_SPEC 25: displayed prices and the output sell value stay gross, and the 15% selling
-          fee belongs to the domain's profit rule. This page never deducts one, which is what the note
-          says; it is not a second fee model.
+          fee belongs to the domain's profit rule. The backend applies it; this page never deducts
+          one, which is what the note says. It is not a second fee model.
         -->
         <p class="meta" data-test="discovery-fee-note">
-          Profit is the backend's own figure; Trading Post selling fees are the 15% the domain's profit
-          rule deducts, and are never applied on this page. The prices and output sell value here stay
+          Profit is the backend's own figure, with the domain's 15% Trading Post selling fee already
+          deducted; this page applies no fee of its own. The prices and output sell value here stay
           gross.
         </p>
 
@@ -349,6 +364,14 @@ function materialQuoteText(item: MissingItem): string {
   gap: var(--space-2);
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-border);
+}
+
+/* As in `SelectedResultDetail`: the basis under the label, quieter than it and never the only cue. */
+.value-note {
+  display: block;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 400;
 }
 
 .material-list {

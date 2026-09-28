@@ -680,14 +680,18 @@ public class CraftingProfitView {
         installHeaderTooltip(table, colMatsSell,
                 "Own Mats Sell Value\nGold received from selling the mats for ONE craft");
 
+        // DOMAIN_SPEC.md §25 (resolved UD-011): the 15% Trading Post fee is deducted once, by the
+        // backend, from Profit and Total Profit alone. The sell price stays the gross Trading Post
+        // quote, so the old "fees will still be deducted" warning would now describe a second
+        // deduction that does not happen.
         installHeaderTooltip(table, colRevenue,
-                "Item Sell Price\nGold received from selling ONE crafted item\nGW2 TradingFees will still be deducted -15%!\nFor item like \"10x Potions of ...\" Price is per 10 Potions");
+                "Item Sell Price\nGross Trading Post price of ONE crafted item, before fees\nThe 15% TP fee is already deducted from Profit per Craft and Total Profit\nFor item like \"10x Potions of ...\" Price is per 10 Potions");
 
         installHeaderTooltip(table, colProfit,
-                "Profit per Craft = Item Sell Price - Own Mats Value - Buy Cost");
+                "Profit per Craft = Item Sell Price - 15% TP fees - Own Mats Value - Buy Cost");
 
         installHeaderTooltip(table, colTotalProfit,
-                "Total Profit = craftcount × Profit per craft\nTotal increase in gold value gained when crafting");
+                "Total Profit = craftcount × Profit per craft (after 15% TP fees)\nTotal increase in gold value gained when crafting");
 
         installHeaderTooltip(table, colLiquid,
                 "Total Sell Value = craftcount × Item Sell Price\nTotal gold gained by crafting and selling");

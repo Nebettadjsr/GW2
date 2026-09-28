@@ -11,9 +11,16 @@ public class CraftResult {
 
     public final int buyCostCopper;          // TOTAL for craftableCount
     public final int matsSellValueCopper;    // PER 1 craft
-    public final int revenueCopper;          // PER 1 craft
-    public final int profitCopper;           // PER 1 craft
-    public final int totalProfitCopper;      // TOTAL
+    public final int revenueCopper;          // PER 1 craft, GROSS (DOMAIN_SPEC.md §24)
+
+    /**
+     * PER 1 craft, after DOMAIN_SPEC.md §25's 15% Trading Post fee on {@link #revenueCopper}
+     * (§26): the gross revenue above is <em>not</em> the fee-adjusted value this was built from.
+     */
+    public final int profitCopper;
+
+    /** TOTAL, on the same basis as {@link #profitCopper} (DOMAIN_SPEC.md §27). */
+    public final int totalProfitCopper;
 
     /**
      * TOTAL applicable Trading Post sell value of everything {@code craftableCount} crafts produce

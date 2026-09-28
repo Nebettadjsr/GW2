@@ -68,13 +68,14 @@ class CraftingPlannerHeuristicSkipCharacterizationTest {
         CraftResult outputResult = results.get(1);
 
         // Current behavior: the recipe is treated as entirely un-craftable (craftableCount
-        // 0, zero total profit), even though profitCopper shows a per-craft profit of 500
-        // would exist if a single craft were simulated - the recursive Intermediate<-Base
-        // craft path that would make this genuinely profitable is never explored because
-        // shouldSimulateRecipe short-circuited on Intermediate's direct buy price alone.
+        // 0, zero total profit), even though profitCopper shows a per-craft profit of 425
+        // - the 500c gross sale less DOMAIN_SPEC.md section 25's 75c fee - would exist if a
+        // single craft were simulated. The recursive Intermediate<-Base craft path that would
+        // make this genuinely profitable is never explored because shouldSimulateRecipe
+        // short-circuited on Intermediate's direct buy price alone.
         assertEquals(0, outputResult.craftableCount);
         assertEquals(0, outputResult.totalProfitCopper);
-        assertEquals(500, outputResult.profitCopper);
+        assertEquals(425, outputResult.profitCopper);
         assertEquals(Map.of(), outputResult.missingToBuy);
     }
 }

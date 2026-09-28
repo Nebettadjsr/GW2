@@ -485,6 +485,7 @@ Conceptually:
 ```text
 profit_per_craft =
     crafted_item_value
+    - trading_post_fee
     - material_value
 ```
 
@@ -495,6 +496,10 @@ total_profit =
     craftable_count
     * profit_per_craft
 ```
+
+The Trading Post fee is 15% of the same gross crafted item value, deducted once, by the backend
+domain, and only from these two profit figures. Item sell price, total sell value and the displayed
+instant buy / instant sell quotes remain the gross Trading Post values.
 
 The implementation may involve additional acquisition and recursive crafting rules beyond this simplified formula.
 

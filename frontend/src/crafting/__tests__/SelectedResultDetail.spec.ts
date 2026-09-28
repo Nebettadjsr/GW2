@@ -102,6 +102,29 @@ describe('SelectedResultDetail', () => {
     expect(detail.find('[data-test="detail-totals"]').text()).toContain('Total sell value')
   })
 
+  it('marksOnlyTheProfitFiguresAsBeingAfterTradingPostFees', () => {
+    const detail = detailOf(profitableRow)
+
+    // UD-011 / DOMAIN_SPEC 2.1.1: the note belongs to Profit and Total profit, and to nothing else.
+    expect(detail.find('[data-test="detail-profit-fee-note"]').text()).toBe('after 15% TP fees')
+    expect(detail.find('[data-test="detail-total-profit-fee-note"]').text()).toBe('after 15% TP fees')
+    expect(detail.findAll('.value-note')).toHaveLength(2)
+
+    // The gross values keep their own labels with no note: output revenue, the total sell value and
+    // the market quotes are the backend's gross figures and are never described as net of a fee.
+    const perCraft = detail.find('[data-test="detail-per-craft"]').text()
+    expect(perCraft).toContain('Output revenue')
+    expect(perCraft).toContain('3s 80c')
+    expect(detail.find('[data-test="detail-total-sell-value"]').text()).toBe('22s 22c')
+    expect(detail.find('[data-test="detail-quote-heading"]').text()).toBe('Trading Post price / item')
+    expect(detail.find('[data-test="detail-output-quote"]').text()).not.toContain('TP fees')
+
+    // The profits themselves are still the supplied values; the note describes them, it does not
+    // license this component to deduct anything of its own.
+    expect(detail.find('[data-test="detail-profit-per-craft"]').text()).toBe('+1s 0c')
+    expect(detail.find('[data-test="detail-total-profit"]').text()).toBe('+9s 0c')
+  })
+
   it('keepsAZeroTotalSellValueApartFromAnUnsuppliedOne', () => {
     expect(detailOf(noneCraftableRow).find('[data-test="detail-total-sell-value"]').text()).toBe('0c')
     expect(detailOf(noResultRow).find('[data-test="detail-total-sell-value"]').text()).toBe('—')

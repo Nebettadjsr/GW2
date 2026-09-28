@@ -479,6 +479,8 @@ Target rules:
 - Browser/HTTP caching should be used so unchanged icons are not transferred unnecessarily.
 - Missing or failed icon retrieval must degrade to a stable placeholder/fallback and must not break Crafting Profit/Discovery results.
 - Containerized/deployed environments that rely on the backend icon cache must provide suitable persistent storage for that cache.
+- An explicit backend metadata-repair operation must discover item IDs from stored account and crafting references even when an item metadata row is absent, then retain available canonical metadata for later API responses. Repair must not require a full account synchronization or fetch image bytes.
+- Upstream image bytes belong only in the runtime filesystem cache; keep them out of source control, PostgreSQL and distributable project artifacts.
 - Cache implementation details, HTTP cache headers, hashing/keying, concurrency behavior, migration mechanics and exact error/status handling belong in the relevant ADR/feature specification and tests, not in this architecture document.
 
 ---

@@ -81,7 +81,8 @@ src/
 │   └── tp/                   TpPriceRepository, TpTradeableItemRepository (the Trading Post
 │                             tradeability classification as craft.MaterialTradeability,
 │                             STORY-DOM-021)
-├── tradingpost/              TradingPostSaleCalculator (shared Trading Post sale fee/net-proceeds
+├── tradingpost/              TradingPostFeePolicy (the decided 15% profitability fee, STORY-DOM-023),
+│                             TradingPostSaleCalculator (shared Trading Post sale fee/net-proceeds
 │                             calculation for one explicitly stated sale, STORY-DOM-022; no caller
 │                             yet - see §9)
 ├── sync/                     AccountSync, CharacterSync, IconSync, ItemSync,
@@ -156,7 +157,7 @@ The project is now built with Maven (`./mvnw`, Java 25 target), using the standa
 | `api` | Low-level HTTP client for the GW2 API (`Gw2ApiClient`), batching helper, HTTP status handling, `Gw2PriceFetch` — an ad-hoc price fetcher that has had no caller anywhere in the codebase since `Main` (its only caller) was deleted (see `docs/KNOWN_PROBLEMS.md` §7.8) — and `api.tp.EctoLivePriceGateway`, the live (unsynchronized) Ecto/Dust price lookup used by `application.EctoSalvageService` (`STORY-APP-003`) |
 | `craft` | Persistence-independent crafting domain: independent domain types (`Recipe`, `Ingredient`, `PriceQuote`), the recipe-known policy (`RecipeKnowledgePolicy`), recipe selection, inventory consumption, craft-vs-buy decisions, cost/profit math, and resolution tree construction. No JDBC/SQL/repository/transport dependency (`TARGET_ARCHITECTURE.md` §7). |
 | `ecto` | Persistence-independent Ectoplasm Salvage domain calculation (`EctoSalvageCalculator`): the fee-inclusive net cost/profit/Luck-cost math (DOMAIN_SPEC.md §45-47). No JDBC/SQL/repository/transport/JavaFX dependency. Moved out of the default package by `STORY-APP-003` so `application.EctoSalvageService` can import it. |
-| `tradingpost` | Persistence-independent shared Trading Post sale domain calculation (`TradingPostSaleCalculator`): gross sale value, separately rounded 5% listing and 10% exchange fees with their 1-copper minimums, total fees and net proceeds for one sale the caller states explicitly as unit price × quantity (DOMAIN_SPEC.md §25/§25.1, `STORY-DOM-022`). No JDBC/SQL/repository/transport/JavaFX dependency, and no dependency on `craft`/`ecto`. It selects no sale mode, price source or sale grouping of its own. Nothing calls it yet (§9). |
+| `tradingpost` | Two persistence-independent Trading Post domain calculations, each with its own model. `TradingPostFeePolicy` owns the decided **profitability** fee (DOMAIN_SPEC.md §25, resolved `UD-011`, `STORY-DOM-023`): 15% of whatever gross sell value the caller states, in exact integer copper rounded half away from zero, with no minimum. `craft.CraftingPlanner` is its caller. `TradingPostSaleCalculator` owns the **transaction** model: gross sale value, separately rounded 5% listing and 10% exchange fees with their 1-copper minimums, total fees and net proceeds for one sale the caller states explicitly as unit price × quantity (§25.1, `STORY-DOM-022`); §25.1 forbids substituting it for the policy above, and nothing calls it yet (§9). Neither has a JDBC/SQL/repository/transport/JavaFX dependency or a dependency on `craft`/`ecto`, and neither selects a sale mode, price source or sale grouping of its own. |
 | `model` | Plain data records used mainly during API-response parsing (bank slots, character rows, material stacks, price) |
 | `parser` | Converts raw GW2 API `JsonNode` responses into `model` records or repository-ready structures |
 | `repo` | PostgreSQL access via JDBC (`Db`) plus per-domain repositories (items, recipes, inventory, characters, TP prices), the persistence-to-domain mapping boundary for `craft.*` types (`TARGET_ARCHITECTURE.md` §10), the crafting-graph JSON cache (`CraftingGraphCache`/`CraftingGraphDto`), and hardcoded configuration (`AppConfig`) |
@@ -595,9 +596,10 @@ Observed properties of this flow:
 - **Response content.** One row per visible recipe, in repository order, carrying the domain's
   authoritative numbers (including `totalProfitCopper` and, since `STORY-WEB-008`,
   `totalSellValueCopper` — neither recomputed at this boundary from a count × a per-craft figure;
-  `craft.CraftingPlanner` carries the sell value onto `craft.CraftResult` from `DOMAIN_SPEC.md` §25's
-  per-execution output revenue and §28's craftable count, fee-free and with the recipe's output
-  quantity in it once), the `craft.BlockedReason` name, both missing-material maps (sorted by item id for a
+  `craft.CraftingPlanner` carries the sell value onto `craft.CraftResult` from `DOMAIN_SPEC.md` §24's
+  per-execution output revenue and §28's craftable count, gross and with the recipe's output
+  quantity in it once; §25's 15% fee is deducted only from the two profit figures), the
+  `craft.BlockedReason` name, both missing-material maps (sorted by item id for a
   stable wire order), the raw trading-post quotes and, since `STORY-API-009` (§5.14), a nullable
   `iconUrl` on the row (the recipe's **output item**) and on each missing material (its own item).
   Rows with no calculation result are reported
@@ -1078,7 +1080,12 @@ below the comparison under that width; the table keeps its own `.table-region` s
   raised surface, a highlight border, a marker glyph and a visually hidden "Selected" — never color
   alone, and visibly distinct from the shared focus outline.
 - **The detail region renders the response and nothing else.** Labelled sub-regions for the table
-  calculation's summary (per-craft group, totals group, the output item's raw trading-post quote),
+  calculation's summary (per-craft group, totals group, the output item's raw trading-post quote).
+  Since `STORY-DOM-023` the Profit and Total profit labels in that summary carry a small
+  "after 15% TP fees" note (`DOMAIN_SPEC.md` §2.1.1, resolved `UD-011`), and nothing else does:
+  Output revenue, Total sell value and the Instant buy / Instant sell quote are the backend's gross
+  figures. The note is wording only — no client-side fee arithmetic exists, here or in Discovery's
+  matching detail. There are also sub-regions
   for the crafting resolution (below, `STORY-WEB-007`) and for the purchases still to be made. Since
   `STORY-WEB-015` that last region is **one** list on **one** basis — `missingToBuy`, the crafts the
   calculation already counted (`DOMAIN_SPEC.md` §2.1.1). `missingToBuyOne` remains in the row
@@ -1483,8 +1490,10 @@ module (`ItemIcon`, `CraftingResolution`, `ResolutionTreeNode`, `rowState`, `res
   page has **no** profit filter: a zero or negative immediate profit is a legitimate discovery
   candidate (§37), so Profit's "hide profit ≤ 0" default is deliberately not imported here and no
   candidate the backend returned is removed. Per `DOMAIN_SPEC.md` §25 the displayed prices and output
-  sell value stay gross and the profit detail carries a concise note that the domain's 15% selling fee
-  is already in the backend's profit figure and is never applied again on this page.
+  sell value stay gross; since `STORY-DOM-023` the Profit and Total profit labels carry the same small
+  "after 15% TP fees" note Crafting Profit's detail uses, and the region's own paragraph states that
+  the domain's 15% selling fee is already in the backend's profit figure and is never applied again on
+  this page.
 - **Lazy fresh detail over the shared association rules.** Selecting a recipe by id — whole row by
   pointer, the row's own `<button>` by keyboard — issues one `POST /api/crafting/discovery/resolution`
   carrying the recipe id and the effective scope, **nullable inventory character** and settings the
@@ -2156,7 +2165,7 @@ Observed (not inferred) mixing of concerns, by file:
 4. **(Resolved by `STORY-APP-004`/`STORY-APP-005`/`STORY-APP-006`/`STORY-APP-007`)** ~~`Gw2App`'s "First-time DB Setup" button handler directly calls `InitialSetupService`/`sync.*`.~~ All three `Gw2App` sync buttons ("Sync Account", "Sync ALL tradeable Items...", "First-time DB Setup") now delegate to named application services (`application.AccountRefreshService`/`application.GlobalDataRefreshService`/`application.InitialSetupService`) instead of calling `sync.*`/`repo.*` directly from the button handler. `application.InitialSetupService.firstFill()` (`STORY-APP-007`) owns the setup orchestration that previously lived in a top-level `InitialSetupService` class outside the application layer; that class has been deleted.
 5. **(Resolved by `STORY-INFRA-003`)** ~~Two independent JDBC connection helpers (`repo.Db`, `sync.Db`) with different method names but identical behavior.~~ `sync.Db` was removed; all `repo.*` and `sync.*` callers now share `repo.Db.open()`.
 6. **(Resolved by `STORY-APP-009`)** ~~`BankView`/`MaterialsView` each declare their own literal `DB_URL`/`DB_USER`/`DB_PASS` constants and call `DriverManager.getConnection(...)` directly, bypassing `repo.AppConfig`/`repo.EnvConfig`/`repo.Db` entirely.~~ Both views now read through an application service (`application.BankContentsService`, `application.MaterialStorageService`) over a persistence adapter (`repo.BankRepository`, `repo.MaterialStorageRepository`) that opens its connection with the shared `repo.Db.open()` helper from item 5. The two extra connection-acquisition paths no longer exist (`docs/KNOWN_PROBLEMS.md` §2.2).
-7. **(Open, `STORY-DOM-022`)** Two Trading Post selling-fee calculations now exist. `tradingpost.TradingPostSaleCalculator` is the shared, exact-integer one required by `DOMAIN_SPEC.md` §25/§25.1, but nothing calls it yet. The sale-revenue paths still in use are unchanged and still wrong per §25: `craft.CostEvaluator.computeRevenue(...)` deducts no fee at all (so `CraftResult.revenueCopper`/`profitCopper`/`totalProfitCopper`/`totalSellValueCopper`, and everything that copies them — `application.CraftingProfitService`/`CraftingDiscoveryService`, both JavaFX controllers/views, `web.CraftingRowMapper`/`web.dto.CraftingRowDto` and the browser frontend — display gross-revenue profit), and `ecto.EctoSalvageCalculator.netSaleProceeds(...)` still applies a `Math.round(gross * 0.85)` combined multiplier. Wiring either one to the shared calculator needs the sale grouping in `agent/user-decisions/UD-011-trading-post-sale-quantity-basis.md`, which is still OPEN, so `STORY-DOM-022` deliberately left both in place.
+7. **(Crafting side resolved by `STORY-DOM-023`; Ectoplasm side open, `STORY-DOM-024`)** Three Trading Post fee calculations now exist, for two different models. Resolved `UD-011` chose a profitability model, so `tradingpost.TradingPostFeePolicy` is the owner for profit: `craft.CraftingPlanner.evaluateOneRecipeNew(...)` deducts its 15% once, from the gross per-craft revenue, when building `CraftResult.profitCopper`/`totalProfitCopper`. `revenueCopper` and `totalSellValueCopper` stay gross, and every consumer that copies them — `application.CraftingProfitService`/`CraftingDiscoveryService`, both JavaFX controllers/views, `web.CraftingRowMapper`/`web.dto.CraftingRowDto` and the browser frontend — carries the corrected profits and the unchanged gross values through unaltered. Still open: `tradingpost.TradingPostSaleCalculator`, the §25.1 transaction model, has no caller (§25.1 forbids substituting it for the profitability model); `craft.CostEvaluationResult.getProfitPerCraft()`/`getTotalProfit()` are pre-fee figures that no production code reads; and `ecto.EctoSalvageCalculator.netSaleProceeds(...)` still applies its own `Math.round(gross * 0.85)` multiplier rather than the shared policy, which `STORY-DOM-024` owns.
 
 ---
 

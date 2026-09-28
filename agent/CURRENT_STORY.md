@@ -1,1 +1,1 @@
-agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md
+agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md

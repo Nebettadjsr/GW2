@@ -258,6 +258,44 @@ class CraftingDiscoveryResolutionApiControllerTest {
                 .andExpect(jsonPath("$.tree.children[0].children.length()").value(0));
     }
 
+    /**
+     * STORY-DOM-023: the fresh-detail row carries the domain's own figures - DOMAIN_SPEC.md
+     * section 25's fee-corrected profits beside the untouched gross revenue and total sell value -
+     * and derives none of them. The supplied numbers are deliberately unrelated to one another, so a
+     * boundary that multiplied a count, netted a cost off or deducted a fee of its own would
+     * disagree with every one of them.
+     */
+    @Test
+    void theRowsProfitsAndGrossValuesAreTheDomainsOwnOnThisRouteToo() throws Exception {
+        factory.next(service -> service.canned = new CraftingResolutionDetail(
+                5, CraftingResolutionDetail.Status.AVAILABLE, REQUESTED,
+                new CraftResult(100, "Chef", 4, Map.of(), Map.of(), 1_234, 56, 7_890, 700, 2_800,
+                        9_999, null, BlockedReason.NONE),
+                new SingleCraftExplanation(5, 100, 1, true, craftedRoot()), ITEMS, QUOTES));
+
+        mockMvc.perform(resolution(validRequest(5)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.row.revenueCopper").value(7890))
+                .andExpect(jsonPath("$.row.totalSellValueCopper").value(9999))
+                .andExpect(jsonPath("$.row.profitCopper").value(700))
+                .andExpect(jsonPath("$.row.totalProfitCopper").value(2800))
+                .andExpect(jsonPath("$.row.matsSellValueCopper").value(56))
+                .andExpect(jsonPath("$.row.buyCostCopper").value(1234));
+
+        // A result the calculation could not produce keeps every money field absent rather than
+        // reporting a fee-adjusted zero.
+        factory.next(service -> service.canned = new CraftingResolutionDetail(
+                5, CraftingResolutionDetail.Status.RESULT_UNAVAILABLE, REQUESTED, null,
+                SingleCraftExplanation.unavailable(5, 100, 1), ITEMS, QUOTES));
+
+        mockMvc.perform(resolution(validRequest(5)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.row.revenueCopper").doesNotExist())
+                .andExpect(jsonPath("$.row.profitCopper").doesNotExist())
+                .andExpect(jsonPath("$.row.totalProfitCopper").doesNotExist())
+                .andExpect(jsonPath("$.row.totalSellValueCopper").doesNotExist());
+    }
+
     @Test
     void aBlockedTreeIsACompleted200AndAnUnavailableResultIsOneWithNoTree() throws Exception {
         CraftTraceNode blockedRoot = new CraftTraceNode(100, 1, 0, 0, 0, 1, 5, 0, 0, null,

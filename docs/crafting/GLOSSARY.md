@@ -110,10 +110,12 @@ It's an intentional, project-chosen limit to keep calculations bounded, not a ga
 count and total profit for a recipe never exceed what 250 crafts would produce, even if more
 materials are available. See [The 250-craft simulation cap](README.md#the-250-craft-simulation-cap).
 
-**Why doesn't Crafting Profit charge the Trading Post fee, but Ecto Salvage does?**
-Both are deliberate, independent project decisions recorded in `DOMAIN_SPEC.md` (§25 and §46). They
-are not meant to be numerically comparable to each other. See
-[Selling fees](README.md#selling-fees-why-profit-and-ecto-salvage-differ).
+**Why is Total Sell Value minus my costs more than the Total Profit shown?**
+Because the 15% Trading Post selling fee is deducted from profit only (`DOMAIN_SPEC.md` §25,
+decision UD-011). Every displayed price — item sell price, Output Revenue, Total Sell Value, Instant
+Buy / Instant Sell — stays gross, so the gap between them is the fee. The calculation details label
+Profit and Total Profit "after 15% TP fees" for that reason. See
+[Selling fees](README.md#selling-fees-the-15-deducted-from-profit).
 
 **Why is Crafting Discovery still per-character while Profit can span all characters?**
 Discovering a recipe is inherently something one specific character does (it affects that

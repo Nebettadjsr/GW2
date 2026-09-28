@@ -1,5 +1,7 @@
 package craft;
 
+import tradingpost.TradingPostFeePolicy;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -221,7 +223,24 @@ public class CraftingPlanner {
 
         int revenueOne = cost.getRevenuePerCraft();
         int matsSellOne = cost.getOpportunityCostPerCraft();
-        int profitOne = revenueOne - buyCostOne - matsSellOne;
+
+        // DOMAIN_SPEC.md §25/§26 (resolved UD-011): profit is the gross output sell value less the
+        // decided 15% Trading Post fee, purchased-material cost and owned-material opportunity cost.
+        // The fee is charged here, once, and only against the profit: revenueOne stays the gross
+        // figure §24 defines, which is what the totals, the market displays and the availability
+        // predicates below and downstream go on reading. The fee never exceeds the revenue it is
+        // taken from, so it still fits an int.
+        //
+        // A revenue of zero or less is not a sale and carries no fee: that is the value an
+        // unavailable or non-positive output quote already reports (DOMAIN_SPEC.md §21), and the
+        // downstream availability predicates still see exactly the figure they saw before.
+        int feeOne = revenueOne > 0 ? (int) TradingPostFeePolicy.feeOn(revenueOne) : 0;
+        int profitOne = revenueOne - feeOne - buyCostOne - matsSellOne;
+
+        // §27: the same rule on the total, through the per-craft profit times §28's craft count the
+        // existing cost aggregation already uses. The fee is a flat rate, so this charges 15% of the
+        // total gross sell value too; only the rounding remainder differs from charging it on the
+        // total in one go, and UD-011 waives exactly that difference.
         int totalProfit = profitOne * sim.getCraftCount();
 
         // DOMAIN_SPEC.md §2.1.1: §25's per-execution output revenue - which already carries the

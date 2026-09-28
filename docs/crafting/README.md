@@ -228,20 +228,27 @@ The Guild Wars 2 Trading Post exposes two prices, and which one applies depends 
 These terms are kept explicit throughout the tool (and this guide) because "buy price" and "sell
 price" are genuinely ambiguous without saying whose side of the trade you mean.
 
-## Selling fees: why Profit and Ecto Salvage differ
+## Selling fees: the 15% deducted from profit
 
-Guild Wars 2 charges a 15% Trading Post fee on sales. The two features intentionally treat this
-differently — both are documented **project decisions**, not an inconsistency:
+Guild Wars 2 charges a 15% Trading Post fee on sales, and the tool applies it as a flat 15% of the
+sale value (§25, decision UD-011). It is a **profitability** model, not a transaction model: the
+game's real fee is two separately rounded components each with a 1-copper minimum, and those
+copper-level differences are deliberately not modelled here.
 
-- **Crafting Profit** does **not** deduct the 15% selling fee from output revenue (§25, decision
-  DQ-001). `profit_per_craft = output_revenue - purchased_material_cost - opportunity_cost`, using
-  the raw selected Trading Post price as revenue.
-- **Ectoplasm Salvage** *does* deduct the fee from Crystalline Dust's sale proceeds before computing
+The fee is deducted **once**, in the backend, and **only from profit**:
+
+- **Crafting Profit** subtracts it from output revenue when computing profit:
+  `profit_per_craft = output_revenue - 15% of output_revenue - purchased_material_cost - opportunity_cost`.
+  Profit per craft and total profit are both after the fee.
+- Every **displayed price stays gross** — the item sell price, Output Revenue, Total Sell Value and
+  the Instant Buy / Instant Sell quotes are the raw Trading Post numbers, with nothing deducted. So
+  Total Sell Value minus costs will not equal Total Profit; the difference is the fee.
+- **Ectoplasm Salvage** deducts the same 15% from Crystalline Dust's sale proceeds before computing
   net cost per Ecto and cost per 1000 Luck (§46–§47): `dust_sale_price = selected gross price × 0.85`,
   applied only to the recovered-material sale side, never to the ecto acquisition cost.
 
-If you compare numbers between the two features, remember they are not using the same revenue
-convention.
+In the Crafting Profit and Discovery calculation details, Profit and Total Profit carry a small
+"after 15% TP fees" note for exactly this reason.
 
 ## Unavailable prices and blocked results
 
@@ -345,7 +352,8 @@ These are three related but distinct numbers, and the tool keeps them separate r
 collapsing them into one figure (§24–§27):
 
 ```text
-profit_per_craft = output_revenue - purchased_material_cost - owned_material_opportunity_cost
+trading_post_fee = 15% of output_revenue
+profit_per_craft = output_revenue - trading_post_fee - purchased_material_cost - owned_material_opportunity_cost
 total_profit      = profit_per_craft × craft_count
 ```
 
@@ -355,22 +363,23 @@ craft, which may cover more than one output item if the recipe has an output cou
 prevents material reuse — it is not a naive "multiply by however many you'd like."
 
 **Worked example** (illustrative, not a measured result): a recipe produces 2 Potions per craft.
-Each Potion sells (instant sell, no Trading-Post-fee deduction — see
-[Selling fees](#selling-fees-why-profit-and-ecto-salvage-differ)) for 20 copper, and each craft
+Each Potion sells (instant sell, at the gross price the tool displays — see
+[Selling fees](#selling-fees-the-15-deducted-from-profit)) for 20 copper, and each craft
 needs 2 Herbs bought at 10 copper each, with nothing owned:
 
 ```text
-output_revenue per craft = 2 Potions × 20 copper = 40 copper
+output_revenue per craft = 2 Potions × 20 copper = 40 copper   (gross, as displayed)
+trading_post_fee per craft = 15% of 40 copper = 6 copper
 purchased_material_cost per craft = 2 Herbs × 10 copper = 20 copper
 opportunity_cost per craft = 0 (nothing owned)
 
-profit_per_craft      = 40 - 20 - 0 = 20 copper
-profit per output item = 20 copper / 2 Potions = 10 copper per Potion
+profit_per_craft      = 40 - 6 - 20 - 0 = 14 copper
+profit per output item = 14 copper / 2 Potions = 7 copper per Potion
 ```
 
-If the simulation reaches the 250-craft cap for this recipe, `total_profit = 250 × 20 copper =
-5,000 copper` (50 silver) — again, capped at 250 crafts regardless of how many more might otherwise
-be possible.
+If the simulation reaches the 250-craft cap for this recipe, `total_profit = 250 × 14 copper =
+3,500 copper` (35 silver) — again, capped at 250 crafts regardless of how many more might otherwise
+be possible. Total Sell Value for those crafts stays gross at `250 × 40 = 10,000 copper`.
 
 ## Assumptions and data freshness
 

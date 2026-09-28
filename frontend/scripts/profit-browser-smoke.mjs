@@ -738,6 +738,48 @@ async function run() {
     )
     record('detail separates summary, resolution and materials', '11 expected labels present')
 
+    // 5z. DOMAIN_SPEC 2.1.1 / 25 (resolved UD-011): the fee note belongs to Profit and Total profit
+    // and to nothing else, and every money value on screen is still the one the stub supplied — a
+    // page that deducted 15% of its own would show 10s 49c rather than 1g 23s 45c here.
+    const fees = await page.evaluate(() => {
+      const text = (element) => (element?.textContent ?? '').replace(/\s+/g, ' ').trim()
+      return {
+        profitNote: text(document.querySelector('[data-test="detail-profit-fee-note"]')),
+        totalNote: text(document.querySelector('[data-test="detail-total-profit-fee-note"]')),
+        allNotes: [...document.querySelectorAll('.value-note')].map(text),
+        profit: text(document.querySelector('[data-test="detail-profit-per-craft"]')),
+        totalProfit: text(document.querySelector('[data-test="detail-total-profit"]')),
+        totalSellValue: text(document.querySelector('[data-test="detail-total-sell-value"]')),
+        quote: text(document.querySelector('[data-test="detail-output-quote"]'))
+      }
+    })
+    check(
+      fees.profitNote === 'after 15% TP fees' && fees.totalNote === 'after 15% TP fees',
+      `The profit figures do not carry the fee note: ${JSON.stringify(fees)}`
+    )
+    check(
+      fees.allNotes.length === 2,
+      `A value other than Profit and Total profit carries a note: ${JSON.stringify(fees.allNotes)}`
+    )
+    check(
+      fees.profit === '+1g 23s 45c' && fees.totalProfit === '+14g 81s 40c',
+      `The profits are not the supplied backend values: ${JSON.stringify(fees)}`
+    )
+    check(
+      fees.totalSellValue === '148g 14s 1c' &&
+        fees.quote.includes('12g 0s 0c') &&
+        fees.quote.includes('13g 0s 0c'),
+      `A gross value was altered by the page: ${JSON.stringify(fees)}`
+    )
+    check(
+      !fees.totalSellValue.includes('TP fees') && !fees.quote.includes('TP fees'),
+      'A gross value was labelled as being after fees.'
+    )
+    record(
+      'only Profit and Total profit are marked after 15% TP fees; gross values unchanged',
+      `${fees.profit} / ${fees.totalProfit}, sell value ${fees.totalSellValue}`
+    )
+
     // 5a. The purchases are the ones for the crafts already counted, and there is no second list
     // (DOMAIN_SPEC 2.1.1). This row supplies both bases — 60 Mithril Ore for the 12 crafts counted
     // and 5 for one further craft — so a section that showed the wrong one would be visible here.

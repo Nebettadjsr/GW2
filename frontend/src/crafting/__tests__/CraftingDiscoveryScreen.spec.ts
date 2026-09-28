@@ -484,11 +484,20 @@ describe('CraftingDiscoveryScreen', () => {
     expect(normalized(wrapper, '[data-test="discovery-detail-totals"]')).toContain(
       'Output sell value'
     )
-    // DOMAIN_SPEC 25: the output value stays the gross figure the backend supplied, and the fee is
-    // named as the domain's own 15% rather than applied a second time here.
+    // DOMAIN_SPEC 25 / UD-011: the two profit labels carry the fee note, as Crafting Profit's detail
+    // does, and no other value does — the output value stays the gross figure the backend supplied
+    // and the fee is named as the domain's own 15% rather than applied a second time here.
+    expect(normalized(wrapper, '[data-test="discovery-detail-profit-fee-note"]')).toBe(
+      'after 15% TP fees'
+    )
+    expect(normalized(wrapper, '[data-test="discovery-detail-total-profit-fee-note"]')).toBe(
+      'after 15% TP fees'
+    )
+    expect(wrapper.findAll('.value-note')).toHaveLength(2)
     const feeNote = normalized(wrapper, '[data-test="discovery-fee-note"]')
     expect(feeNote).toContain('15%')
-    expect(feeNote).toContain('never applied on this page')
+    expect(feeNote).toContain('already deducted')
+    expect(feeNote).toContain('applies no fee of its own')
     expect(feeNote).toContain('stay gross')
     // The quote is the supplied gross per-item pair, undeducted.
     const quote = wrapper.find('[data-test="discovery-detail-output-quote"]')

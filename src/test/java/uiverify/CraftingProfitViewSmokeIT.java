@@ -159,6 +159,71 @@ class CraftingProfitViewSmokeIT extends ApplicationTest {
         assertTrue(java.nio.file.Files.size(screenshot) > 0, "captured screenshot should not be empty");
     }
 
+    /**
+     * STORY-DOM-023 / DOMAIN_SPEC.md section 25 (resolved UD-011) in the real view: the fixture
+     * widget's instant-sell price is 400c and the owned Ore has no Trading Post quote, so nothing is
+     * given up and nothing is bought. The displayed sell price and total sell value therefore stay
+     * gross at 400c and 5 x 400c, while Profit per craft is 400c less the 60c fee and Total profit
+     * is five of those. The column tooltips state that rule instead of the superseded warning that
+     * fees still have to be deducted from what is shown.
+     */
+    @Test
+    void profitColumnsShowTheFeeAdjustedBackendFiguresBesideGrossPrices() throws Exception {
+        clickOn("Crafting Profit Calculator");
+        clickOn(lookup("Refresh").queryButton());
+
+        TableView<?> table = lookup(".table-view").queryAs(TableView.class);
+        JavaFxUiSupport.waitForRowCount(this, table, 1, Duration.ofSeconds(10));
+
+        assertEquals(400, onlyValue(table, "Item sell price"), "the displayed sell price stays gross");
+        assertEquals(2_000, onlyValue(table, "Total sell value"), "5 x the gross 400c, undeducted");
+        assertEquals(340, onlyValue(table, "Profit per craft"), "400c gross less the 60c fee");
+        assertEquals(1_700, onlyValue(table, "Total profit"), "5 crafts of the same 340c");
+
+        String sellPriceTip = headerTooltip(table, "Item sell price");
+        assertFalse(sellPriceTip.contains("will still be deducted"),
+                "the superseded fee warning is still on the sell-price column: " + sellPriceTip);
+        assertTrue(sellPriceTip.contains("Gross Trading Post price"),
+                "the sell-price tooltip does not say the price is gross: " + sellPriceTip);
+        assertTrue(sellPriceTip.contains("already deducted from Profit"),
+                "the sell-price tooltip does not say where the fee was taken: " + sellPriceTip);
+
+        String profitTip = headerTooltip(table, "Profit per craft");
+        assertTrue(profitTip.contains("15% TP fees"),
+                "the profit tooltip's formula omits the fee: " + profitTip);
+        assertTrue(headerTooltip(table, "Total profit").contains("after 15% TP fees"),
+                "the total-profit tooltip does not state the fee basis");
+    }
+
+    /** The single fixture row's displayed value in the column headed {@code columnHeader}. */
+    private int onlyValue(TableView<?> table, String columnHeader) throws Exception {
+        List<Object> values = computeOnFxThread(() -> JavaFxUiSupport.columnValues(table, columnHeader));
+        assertEquals(1, values.size(), columnHeader + " should hold exactly the one fixture row");
+        return ((Number) values.getFirst()).intValue();
+    }
+
+    /**
+     * The text of the tooltip {@code CraftingProfitView.installHeaderTooltip(...)} put on the column
+     * header, read back off the header node the way {@code Tooltip.install}/{@code uninstall} store
+     * it. Fails loudly rather than returning an empty string, so a column that lost its tooltip is
+     * not mistaken for one whose wording is merely different.
+     */
+    private String headerTooltip(TableView<?> table, String columnHeader) throws Exception {
+        return computeOnFxThread(() -> {
+            for (javafx.scene.Node header : table.lookupAll(".column-header")) {
+                if (header instanceof javafx.scene.control.skin.TableColumnHeader tch
+                        && tch.getTableColumn() != null
+                        && columnHeader.equals(tch.getTableColumn().getText())) {
+                    Object tip = header.getProperties().get("javafx.scene.control.Tooltip");
+                    assertTrue(tip instanceof javafx.scene.control.Tooltip,
+                            "No tooltip installed on the \"" + columnHeader + "\" header");
+                    return ((javafx.scene.control.Tooltip) tip).getText();
+                }
+            }
+            throw new AssertionError("No column header found for \"" + columnHeader + "\"");
+        });
+    }
+
     /** Runs {@code callable} on the FX Application Thread and returns its result, bounded. */
     private <T> T computeOnFxThread(Callable<T> callable) throws Exception {
         return WaitForAsyncUtils.waitFor(5, TimeUnit.SECONDS, WaitForAsyncUtils.asyncFx(callable));

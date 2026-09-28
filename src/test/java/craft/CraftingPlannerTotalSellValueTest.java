@@ -17,9 +17,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *
  * <p>The recipe deliberately produces three items per execution, so a test can tell the output
  * quantity being applied once apart from it being applied twice or not at all, and the quotes are
- * far enough apart that the two sell-price modes cannot be confused. Section 25's rule that Crafting
- * Profit deducts no Trading Post selling fee is asserted as an exact equality rather than as a
- * tolerance, so any fee at all would fail.
+ * far enough apart that the two sell-price modes cannot be confused. Section 25's rule that the
+ * displayed sell values stay gross is asserted as an exact equality rather than as a tolerance, so a
+ * selling fee reaching the revenue or the total sell value would fail; the fee it does deduct from
+ * profit is {@code CraftingPlannerProfitFeeTest}'s subject.
  */
 class CraftingPlannerTotalSellValueTest {
 
@@ -74,15 +75,16 @@ class CraftingPlannerTotalSellValueTest {
     }
 
     @Test
-    void theExistingProfitFiguresAreUnchangedBesideTheNewTotal() {
+    void theProfitFiguresKeepTheirOwnBasisBesideTheGrossTotal() {
         CraftResult result = evaluate(OWNED, TP, settings(false));
 
-        // Buying is off and every ingredient is owned, so the only per-craft deduction is the
-        // opportunity cost of the two owned units of item 200 (DOMAIN_SPEC.md section 11.2).
+        // Buying is off and every ingredient is owned, so the per-craft deductions are section 25's
+        // 15% fee on the 3_000c gross revenue and the opportunity cost of the two owned units of
+        // item 200 (DOMAIN_SPEC.md section 11.2).
         assertEquals(0, result.buyCostCopper);
         assertEquals(20, result.matsSellValueCopper);
-        assertEquals(2_980, result.profitCopper);
-        assertEquals(14_900, result.totalProfitCopper);
+        assertEquals(2_530, result.profitCopper);
+        assertEquals(12_650, result.totalProfitCopper);
         assertEquals(result.profitCopper * result.craftableCount, result.totalProfitCopper,
                 "section 27 is untouched by section 2.1.1's separate sell-value total");
     }

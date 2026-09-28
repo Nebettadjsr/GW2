@@ -266,6 +266,11 @@ exactly what remains open. No other document owns information this story changed
 `TARGET_ARCHITECTURE.md`, `TEST_STRATEGY.md` and `docs/crafting/` are untouched because no domain rule,
 intended architecture, testing method or user-visible crafting rule changed.
 
+## Follow-up Findings Disposition
+
+F001: ALREADY COVERED ? docs/TARGET_ARCHITECTURE.md ?12.1 now records complete referenced-item metadata repair and runtime-only upstream image storage requirements.
+F002: FOLLOW-UP STORY ? STORY-SYNC-005
+
 ## Follow-up Findings
 
 F001: `Request-009`'s Planner Resolution states that `docs/TARGET_ARCHITECTURE.md` §12.1 was extended

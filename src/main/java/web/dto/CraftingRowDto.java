@@ -25,8 +25,11 @@ import java.util.List;
  * @param craftableCount      completed crafts the domain determined were possible
  * @param buyCostCopper       total buy cost for {@code craftableCount} crafts
  * @param matsSellValueCopper material sell value per single craft
- * @param revenueCopper       revenue per single craft
- * @param profitCopper        profit per single craft
+ * @param revenueCopper       gross revenue per single craft, with no selling fee deducted
+ *                            (DOMAIN_SPEC.md 24/25)
+ * @param profitCopper        profit per single craft, after DOMAIN_SPEC.md 25's 15% Trading Post fee
+ *                            on that gross revenue. Copied from {@code craft.CraftResult}; no fee is
+ *                            applied, re-applied or reversed at this boundary
  * @param totalSellValueCopper the domain's authoritative total sell value for {@code craftableCount}
  *                            crafts (DOMAIN_SPEC.md 2.1.1): the applicable Trading Post sell value of
  *                            everything those crafts produce, with the recipe's output quantity
@@ -34,7 +37,8 @@ import java.util.List;
  *                            from {@code craft.CraftResult}; never recomputed here from revenue and
  *                            count, so a value that disagrees with that product is still reported as
  *                            the domain stated it
- * @param totalProfitCopper   the domain's authoritative total profit, never recomputed here
+ * @param totalProfitCopper   the domain's authoritative total profit, on the same after-fee basis as
+ *                            {@code profitCopper} (DOMAIN_SPEC.md 27), never recomputed here
  * @param blockedReason       {@code craft.BlockedReason} name; {@code NONE} when not blocked
  * @param outputPrice         the raw trading-post quote for the output item, null when unquoted
  * @param missingToBuy        still-missing materials for {@code craftableCount} crafts

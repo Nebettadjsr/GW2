@@ -220,7 +220,15 @@ function materialQuoteText(item: MissingItem): string {
           <dt>Own materials given up</dt>
           <dd class="numeric">{{ formatCopper(row.matsSellValueCopper) }}</dd>
 
-          <dt>Profit</dt>
+          <!--
+            DOMAIN_SPEC 2.1.1 / 25 (UD-011): the backend's profit already has the 15% Trading Post
+            fee deducted, and the note says so beside the figure it applies to. Output revenue above
+            keeps no note because it is gross. Nothing here calculates a fee.
+          -->
+          <dt>
+            Profit
+            <span class="value-note" data-test="detail-profit-fee-note">after 15% TP fees</span>
+          </dt>
           <dd class="numeric">
             <span :class="`money money--${moneyTone(row.profitCopper)}`" data-test="detail-profit-per-craft">
               {{ formatSignedCopper(row.profitCopper) }}
@@ -247,7 +255,10 @@ function materialQuoteText(item: MissingItem): string {
             </span>
           </dd>
 
-          <dt>Total profit</dt>
+          <dt>
+            Total profit
+            <span class="value-note" data-test="detail-total-profit-fee-note">after 15% TP fees</span>
+          </dt>
           <dd class="numeric">
             <span :class="`money money--${moneyTone(row.totalProfitCopper)}`" data-test="detail-total-profit">
               {{ formatSignedCopper(row.totalProfitCopper) }}
@@ -368,6 +379,17 @@ function materialQuoteText(item: MissingItem): string {
   gap: var(--space-2);
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-border);
+}
+
+/*
+ * The basis a money label carries with it, on its own line under the label so the value column is
+ * unaffected. Quieter than the label and never the only way the figure is identified.
+ */
+.value-note {
+  display: block;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 400;
 }
 
 .material-list {
