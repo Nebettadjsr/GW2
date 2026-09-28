@@ -32,6 +32,13 @@ public class CraftingProfitController {
         public final int revenueCopper;
         public final int profitCopper;
         public final int totalProfitCopper;
+
+        /**
+         * The domain's own {@code CraftResult.totalSellValueCopper}, carried unchanged
+         * (STORY-APP-013). Presentation displays this value and never re-derives it from
+         * {@link #revenueCopper} and {@link #craftableCount}.
+         */
+        public final int totalSellValueCopper;
         public final int matsSellValueCopper;
         public final String searchBlob;
         public final boolean calculationAvailable;
@@ -42,6 +49,7 @@ public class CraftingProfitController {
                      int craftableCount, String missingSummary,
                      int buyCostCopper, int matsSellValueCopper,
                      int revenueCopper, int profitCopper, int totalProfitCopper,
+                     int totalSellValueCopper,
                      String searchBlob, boolean calculationAvailable) {
             this.recipeId = recipeId;
             this.outputItemId = outputItemId;
@@ -54,6 +62,7 @@ public class CraftingProfitController {
             this.revenueCopper = revenueCopper;
             this.profitCopper = profitCopper;
             this.totalProfitCopper = totalProfitCopper;
+            this.totalSellValueCopper = totalSellValueCopper;
             this.searchBlob = searchBlob;
             this.calculationAvailable = calculationAvailable;
         }
@@ -118,6 +127,7 @@ public class CraftingProfitController {
                     cr.revenueCopper,
                     cr.profitCopper,
                     cr.totalProfitCopper,
+                    cr.totalSellValueCopper,
                     searchBlob,
                     presentation.calculationAvailable
             ));

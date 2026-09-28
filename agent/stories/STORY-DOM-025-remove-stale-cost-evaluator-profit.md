@@ -115,3 +115,7 @@ F001: `move_backlog_entry_to_active()` and `_pull_bullet_from_backlog_section()`
 `agent/runtime/core/story_state.py` move only an entry's first line, so a multi-line queue entry's
 indented `dependency note:`/`backlog entry:` continuation lines are left behind. This story's two
 were orphaned under `## To Do` with no row above them (removed by hand while updating the entry).
+
+## Follow-up Findings Disposition
+
+F001: DEFERRED ? outside milestone-05 scope; the supplied Phase 5 roadmap covers frontend migration, while this finding concerns planner-runtime backlog queue handling.

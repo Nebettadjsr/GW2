@@ -213,9 +213,9 @@ question the change actually raises ("why is Total Sell Value minus my costs mor
 
 
 ## Follow-up Findings Disposition
-
 F001: FOLLOW-UP STORY ? STORY-DOM-025
 F002: FOLLOW-UP STORY ? STORY-APP-013
+
 ## Follow-up Findings
 
 F001: `craft.CostEvaluator.evaluate(...)` still builds `CostEvaluationResult.profitPerCraft`/

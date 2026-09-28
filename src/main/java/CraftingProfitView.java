@@ -66,7 +66,7 @@ public class CraftingProfitView {
         public CraftRow(int recipeId, int outputItemId, String outputName, String discipline,
                         int craftableCount, String missingSummary,
                         int buyCostCopper, int revenueCopper, int profitCopper,
-                        int totalProfitCopper,
+                        int totalProfitCopper, int totalSellValueCopper,
                         int matsSellValueCopper, String searchBlob, boolean calculationAvailable) {
             this.calculationAvailable = calculationAvailable;
             this.recipeId.set(recipeId);
@@ -79,6 +79,7 @@ public class CraftingProfitView {
             this.revenueCopper.set(revenueCopper);
             this.profitCopper.set(profitCopper);
             this.totalProfitCopper.set(totalProfitCopper);
+            this.totalSellValueCopper.set(totalSellValueCopper);
             this.matsSellValueCopper.set(matsSellValueCopper);
             this.searchBlob.set(searchBlob);
         }
@@ -118,6 +119,15 @@ public class CraftingProfitView {
         private final IntegerProperty totalProfitCopper = new SimpleIntegerProperty();
         public int getTotalProfitCopper() { return totalProfitCopper.get(); }
         public IntegerProperty totalProfitCopperProperty() { return totalProfitCopper; }
+
+        /**
+         * The authoritative gross total sell value computed by the domain and carried through
+         * {@code CraftingProfitController.UiRow} (STORY-APP-013). Presentation displays and sorts
+         * by this value and never recomputes it from craftable count and item sell price.
+         */
+        private final IntegerProperty totalSellValueCopper = new SimpleIntegerProperty();
+        public int getTotalSellValueCopper() { return totalSellValueCopper.get(); }
+        public IntegerProperty totalSellValueCopperProperty() { return totalSellValueCopper; }
 
         public int getMatsSellValueCopper() { return matsSellValueCopper.get(); }
         public IntegerProperty matsSellValueCopperProperty() { return matsSellValueCopper; }
@@ -597,10 +607,7 @@ public class CraftingProfitView {
         table.getSortOrder().setAll(colTotalProfit);
 
         TableColumn<CraftRow, Number> colLiquid = new TableColumn<>("Total sell value");
-        colLiquid.setCellValueFactory(data -> {
-            CraftRow r = data.getValue();
-            return new SimpleIntegerProperty(r.getRevenueCopper() * r.getCraftableCount());
-        });
+        colLiquid.setCellValueFactory(data -> data.getValue().totalSellValueCopperProperty());
         colLiquid.setCellFactory(tc -> coinCell(false));
 
         TableColumn<CraftRow, Number> colMatsSell = new TableColumn<>("Own Mats Sell Value");
@@ -950,8 +957,8 @@ public class CraftingProfitView {
 
     /**
      * Maps one prepared application row onto its displayed row. Every displayed number - including
-     * the total profit - comes from the supplied {@code UiRow}; presentation derives none of them
-     * (STORY-APP-011).
+     * the total profit and the total sell value - comes from the supplied {@code UiRow};
+     * presentation derives none of them (STORY-APP-011, STORY-APP-013).
      */
     static CraftRow toCraftRow(CraftingProfitController.UiRow r) {
         return new CraftRow(
@@ -965,6 +972,7 @@ public class CraftingProfitView {
                 r.revenueCopper,
                 r.profitCopper,
                 r.totalProfitCopper,
+                r.totalSellValueCopper,
                 r.matsSellValueCopper,
                 r.searchBlob,
                 r.calculationAvailable
@@ -974,7 +982,9 @@ public class CraftingProfitView {
     /**
      * The sort-box comparator for {@code sortMode}. "Total profit" - and the default, which is the
      * same ordering - read the authoritative {@link CraftRow#getTotalProfitCopper()} rather than
-     * multiplying craftable count by per-craft profit (STORY-APP-011).
+     * multiplying craftable count by per-craft profit (STORY-APP-011). "Total sell value" likewise
+     * reads {@link CraftRow#getTotalSellValueCopper()}, the same value its column displays, rather
+     * than multiplying craftable count by item sell price (STORY-APP-013).
      */
     static Comparator<CraftRow> rowComparator(String sortMode) {
         return switch (sortMode) {
@@ -985,7 +995,7 @@ public class CraftingProfitView {
             case "Profit per item" ->
                     Comparator.comparingInt(CraftRow::getProfitCopper).reversed();
             case "Total sell value" ->
-                    Comparator.comparingInt((CraftRow r) -> r.getRevenueCopper() * r.getCraftableCount()).reversed();
+                    Comparator.comparingInt(CraftRow::getTotalSellValueCopper).reversed();
             default ->
                     Comparator.comparingInt(CraftRow::getTotalProfitCopper).reversed();
         };

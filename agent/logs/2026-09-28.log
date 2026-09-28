@@ -1361,3 +1361,252 @@
 [22:20:48] Evaluator decision: COMPLETE
 [22:20:48] Reason: The implementation removes the stale profit and mismatched buy-cost fields while preserving the revenue and opportunity-cost inputs the planner reads. The focused tests assert those outputs and the reduced result contract. GitHub CI was not independently verified in this read-only review.
 [22:20:48] ========================================
+[22:20:51] STORY-DOM-025-remove-stale-cost-evaluator-profit.md published for CI verification: 324d6dd on master (13 changed path(s), new commit, waiting for GitHub Actions.
+[22:22:53] GitHub CI PASSED for 324d6dd (STORY-DOM-025-remove-stale-cost-evaluator-profit.md): CI: success
+[22:23:03] Availability check: claude_available=True, codex_available=True
+[22:23:03] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[22:23:09] Planning resumed for changed inputs: agent/CURRENT_STORY.md, agent/runtime/artifacts/CLAUDE_RESULT.md, agent/stories/BACKLOG.md, agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md, docs/CURRENT_ARCHITECTURE.md
+[22:23:09] ========================================
+[22:23:09] Running project-planning pass
+[22:23:09] ========================================
+[22:23:09] ========================================
+[22:23:09] Starting hosted Codex planner
+[22:23:09] ========================================
+[22:23:09] [planner] session 01a0e9af-861a-7471-95de-ef67be0b9990
+[22:23:09] [planner] reasoning...
+[22:23:20] Planner last response:
+[22:23:20] I’ll review the six supplied follow-up findings against their source stories and the current Phase 5 queue, then record dispositions and the planning result. I’ll keep the pass within Phase 5 and won’t inspect the roadmap beyond the supplied excerpt.
+[22:23:24] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:23:24] from pathlib import Path
+[22:23:24] files = {
+[22:23:24] 'agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md':['## Result','## Follow-up Findings Disposition'],
+[22:23:24] 'agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md':['## Result','## Follow-up Findings Disposition'],
+[22:23:24] 'agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md':['## Result','## Follow-up Findings Disposition'],
+[22:23:24] 'agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md':['## Result','## Follow-up Findings Disposition'],
+[22:23:24] }
+[22:23:24] for name, headings in files.items():
+[22:23:24]     p=Path(name)
+[22:23:24]     text=p.read_text()
+[22:23:24]     lines=text.splitlines()
+[22:23:24]     print(f'--- {name} ---')
+[22:23:24]     for h in headings:
+[22:23:24]         try: i=lines.index(h)
+[22:23:24]         except ValueError: continue
+[22:23:24]         j=i+1
+[22:23:24]         while j<len(lines) and not lines[j].startswith('## '): j+=1
+[22:23:25]         print('\\n'.join(lines[i:j]))
+[22:23:25] '@ | python -"
+[22:23:25] [planner command done] exit 0
+[22:23:35] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:23:35] from pathlib import Path
+[22:23:35] for name in ['agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md','agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md','agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md','agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md']:
+[22:23:35]  t=Path(name).read_text().splitlines(); print('\\n---',name)
+[22:23:35]  for i,l in enumerate(t):
+[22:23:35]   if 'F001:' in l or 'F002:' in l or l.startswith('## Follow-up Findings Disposition'):
+[22:23:35]    print(i+1, l)
+[22:23:35]    if l.startswith('## Follow-up Findings Disposition'):
+[22:23:35]     for x in t[i+1:]:
+[22:23:35]      if x.startswith('## '): break
+[22:23:35]      print(x)
+[22:23:35] '@ | python -"
+[22:23:35] [planner command done] exit 0
+[22:23:41] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:23:41] from pathlib import Path
+[22:23:41] for n in ['agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md','agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md','agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md','agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md']:
+[22:23:41]  lines=Path(n).read_text().splitlines()
+[22:23:41]  print('\\n'+n)
+[22:23:41]  for i,l in enumerate(lines):
+[22:23:41]   if l.startswith('F00') or l.startswith('Finding'):
+[22:23:41]    print('\\n'.join(lines[i:min(i+6,len(lines))]))
+[22:23:41] '@ | python -"
+[22:23:41] [planner command done] exit 0
+[22:23:49] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:23:49] from pathlib import Path
+[22:23:49] p=Path('docs/TARGET_ARCHITECTURE.md'); lines=p.read_text().splitlines()
+[22:23:49] for i,l in enumerate(lines):
+[22:23:49]  if l.startswith('## 12.1') or l.startswith('### 12.1'):
+[22:23:49]   print('\\n'.join(f'{j+1}: {lines[j]}' for j in range(i,min(i+45,len(lines))))
+[22:23:49]   break
+[22:23:49] '@ | python -"
+[22:23:49] [planner command done] exit 1
+[22:23:53] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:23:53] from pathlib import Path
+[22:23:53] lines=Path('docs/TARGET_ARCHITECTURE.md').read_text().splitlines()
+[22:23:53] for i,l in enumerate(lines):
+[22:23:53]  if '12.1' in l and l.startswith('#'):
+[22:23:53]   print('\\n'.join(f'{j+1}: {lines[j]}' for j in range(i,min(i+45,len(lines)))))
+[22:23:53]   break
+[22:23:53] '@ | python -"
+[22:23:53] [planner command done] exit 1
+[22:23:57] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:23:57] from pathlib import Path
+[22:23:57] lines=Path('docs/TARGET_ARCHITECTURE.md').read_text(encoding='utf-8').splitlines()
+[22:23:57] for i,l in enumerate(lines):
+[22:23:57]  if '12.1' in l and l.startswith('#'):
+[22:23:57]   print('\\n'.join(f'{j+1}: {lines[j]}' for j in range(i,min(i+45,len(lines)))))
+[22:23:57]   break
+[22:23:57] '@ | python -"
+[22:23:57] [planner command done] exit 0
+[22:24:30] Planner last response:
+[22:24:30] The supplied findings mostly point to follow-up stories already in the Phase 5 queue. One finding about the icon metadata requirement is already covered by the current text of `TARGET_ARCHITECTURE.md` §12.1. The planner-runtime queue-entry finding is outside the supplied Phase 5 scope, so I’ll defer it with that scope stated explicitly.
+[22:24:32] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:24:32] from pathlib import Path
+[22:24:32] p=Path('agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md')
+[22:24:32] lines=p.read_text(encoding='utf-8').splitlines()
+[22:24:32] print('\\n'.join(lines[-22:]))
+[22:24:32] '@ | python -"
+[22:24:32] [planner command done] exit 0
+[22:25:01] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:25:01] import json
+[22:25:01] from pathlib import Path
+[22:25:01] updates = {
+[22:25:01]     'agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md': [
+[22:25:01]         'F001: FOLLOW-UP STORY — STORY-DOM-025',
+[22:25:01]         'F002: FOLLOW-UP STORY — STORY-APP-013',
+[22:25:01]     ],
+[22:25:01]     'agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md': [
+[22:25:01]         'F001: ALREADY COVERED — docs/TARGET_ARCHITECTURE.md §12.1',
+[22:25:01]         'F002: FOLLOW-UP STORY — STORY-SYNC-005',
+[22:25:01]     ],
+[22:25:01]     'agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md': [
+[22:25:01]         'F001: FOLLOW-UP STORY — STORY-WEB-017',
+[22:25:01]     ],
+[22:25:01] }
+[22:25:01] for filename, dispositions in updates.items():
+[22:25:01]     path = Path(filename)
+[22:25:01]     text = path.read_text(encoding='utf-8')
+[22:25:01]     marker = '## Follow-up Findings Disposition\\n'
+[22:25:01]     if marker not in text:
+[22:25:01]         raise SystemExit(f'Missing disposition section: {filename}')
+[22:25:01]     start = text.index(marker) + len(marker)
+[22:25:01]     end = text.find('\\n## ', start)
+[22:25:01]     if end < 0:
+[22:25:01]         end = len(text)
+[22:25:01]     replacement = '\\n'.join(dispositions) + '\\n'
+[22:25:01]     path.write_text(text[:start] + replacement + text[end:], encoding='utf-8', newline='')
+[22:25:01] path = Path('agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md')
+[22:25:01] text = path.read_text(encoding='utf-8')
+[22:25:01] if '## Follow-up Findings Disposition' in text:
+[22:25:01]     raise SystemExit('Unexpected existing disposition section in DOM-025')
+[22:25:01] text = text.rstrip() + '\\n\\n## Follow-up Findings Disposition\\n\\nF001: DEFERRED — outside milestone-05 scope; the supplied Phase 5 roadmap covers frontend migration, while this finding concerns planner-runtime backlog queue handling.\\n'
+[22:25:01] path.write_text(text, encoding='utf-8', newline='')
+[22:25:01] result = {
+[22:25:01]   'status': 'COMPLETE',
+[22:25:01]   'phase_considered': 'Phase 5',
+[22:25:01]   'independent_work_remaining': False,
+[22:25:01]   'phase_review': [
+[22:25:01]     {'area': 'Frontend framework and language decision', 'outcome': 'COVERED', 'references': ['AR-001', 'docs/architecture/decisions/ADR-001-frontend-framework-and-language.md', 'docs/TARGET_ARCHITECTURE.md']},
+[22:25:01]     {'area': 'Crafting Profit rendering, resolution tree, and special domain states', 'outcome': 'COVERED', 'references': ['STORY-WEB-001', 'STORY-WEB-007', 'STORY-WEB-015', 'STORY-WEB-016']},
+[22:25:01]     {'area': 'Crafting Discovery frontend', 'outcome': 'COVERED', 'references': ['STORY-WEB-012']},
+[22:25:01]     {'area': 'Bank/materials and Ectoplasm Salvage views', 'outcome': 'COVERED', 'references': ['STORY-WEB-003', 'STORY-WEB-013']},
+[22:25:01]     {'area': 'Sync-trigger UI and status display', 'outcome': 'COVERED', 'references': ['STORY-WEB-002']},
+[22:25:01]     {'area': 'JavaFX total sell value remains backend-authoritative', 'outcome': 'COVERED', 'references': ['STORY-APP-013']},
+[22:25:01]     {'area': 'Integrated browser-to-complete-Profit-page performance on the real user database', 'outcome': 'PREREQUISITE', 'references': ['STORY-PERF-002', 'STORY-WEB-015', 'STORY-SYNC-004', 'STORY-DOM-023', 'STORY-DOM-024', 'STORY-WEB-016']},
+[22:25:01]     {'area': 'Bounded Phase 5 project health review', 'outcome': 'PREREQUISITE', 'references': ['STORY-QUALITY-005']},
+[22:25:01]     {'area': 'Unresolved implementation follow-up findings', 'outcome': 'COVERED', 'references': ['STORY-DOM-025', 'STORY-APP-013', 'docs/TARGET_ARCHITECTURE.md §12.1', 'STORY-SYNC-005', 'STORY-WEB-017']}
+[22:25:01]   ],
+[22:25:01]   'phase_exit_criteria_satisfied': False,
+[22:25:01]   'story_files_created': [],
+[22:25:01]   'user_decision_ids': [],
+[22:25:01]   'product_owner_requests_processed': [],
+[22:25:01]   'architect_requests_created': [],
+[22:25:01]   'milestone_transition': False,
+[22:25:01]   'completed_milestone': None,
+[22:25:01]   'next_milestone': None,
+[22:25:01]   'backlog_updated': False,
+[22:25:01]   'roadmap_updated': False,
+[22:25:01]   'project_state_updated': False,
+[22:25:01]   'reason': 'Existing Phase 5 stories cover the remaining frontend areas. The real-database performance verification depends on unfinished integration stories, and the health review is queued after that work; no new Phase 5 planning artifact is needed.'
+[22:25:01] }
+[22:25:01] Path('agent/runtime/artifacts/PLANNING_RESULT.json').write_text(json.dumps(result, indent=2, ensure_ascii=False) + '\\n', encoding='utf-8', newline='')
+[22:25:01] '@ | python -"
+[22:25:01] [planner command done] exit 0
+[22:25:04] Planner last response:
+[22:25:04] Completed the Phase 5 planning pass. I recorded all six follow-up finding dispositions; existing queued stories cover the actionable work, and the out-of-scope planner-runtime finding is deferred.
+[22:25:04] Phase 5 remains open: real-database performance verification and the health review still depend on unfinished work. No stories or backlog entries were added.
+[22:25:04] [PLANNING_RESULT.json](/C:/Users/Administrator/IdeaProjects/GW2/agent/runtime/artifacts/PLANNING_RESULT.json)
+[22:25:04] [planner] turn completed | input tokens: 394667 | cached input tokens: 350976 | output tokens: 5017
+[22:25:05] ========================================
+[22:25:05] [planner] turn totals | model requests: 1 | gross input tokens: 394,667 | cached input tokens: 350,976 | uncached input tokens: 43,691 | output tokens: 5,017
+[22:25:05] Hosted codex planner exit code: 0
+[22:25:05] ========================================
+[22:25:05] ========================================
+[22:25:05] Planning result: COMPLETE
+[22:25:05] Reason: Existing Phase 5 stories cover the remaining frontend areas. The real-database performance verification depends on unfinished integration stories, and the health review is queued after that work; no new Phase 5 planning artifact is needed.
+[22:25:05] ========================================
+[22:25:11] Decision: code (select next story) -- reason: 5 selectable To Do candidate(s), Claude available
+[22:25:11] ========================================
+[22:25:11] Story selector: NEXT
+[22:25:11] Reason: Deterministic selection: first executable entry in BACKLOG.md's 'To Do' order (STORY-APP-013-carry-authoritative-total-sell-value.md).
+[22:25:11] ========================================
+[22:25:11] Next story activated:
+[22:25:11] agent/stories/STORY-APP-013-carry-authoritative-total-sell-value.md
+[22:25:20] Availability check: claude_available=True, codex_available=True
+[22:25:20] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[22:25:20] ========================================
+[22:25:20] Active story: agent/stories/STORY-APP-013-carry-authoritative-total-sell-value.md
+[22:25:20] ========================================
+[22:25:23] RepoMap: disabled, budget=1200 tokens
+[22:25:30] ========================================
+[22:25:30] Starting Claude Code
+[22:25:30] ========================================
+[22:32:21] Story complete.
+[22:32:21] ## What changed
+[22:32:21] **The duplication DOM-023 F002 recorded is gone.** The JavaFX Profit view no longer computes `revenue × craftableCount`; the domain's own `CraftResult.totalSellValueCopper` now flows through unbroken to the column and its sort path — the same treatment STORY-APP-011 gave Total profit.
+[22:32:21] Two production files:
+[22:32:21] - `src/main/java/CraftingProfitController.java:36` — `UiRow` gained a `totalSellValueCopper` field/constructor parameter, filled from `cr.totalSellValueCopper` in `prepareRows(...)` beside the `totalProfitCopper` it already passed.
+[22:32:21] - `src/main/java/CraftingProfitView.java` — `CraftRow` gained the matching property, `toCraftRow(...)` passes it through, the "Total sell value" cell value factory binds to `totalSellValueCopperProperty()`, and `rowComparator(...)`'s "Total sell value" case reads `getTotalSellValueCopper()` so the table sorts by exactly the value it displays.
+[22:32:21] The cell factory is still the shared `coinCell(false)` and `calculationAvailable` still comes from `CraftingResultPresentation`, so formatting and the blocked-row "Unavailable" text are untouched. No domain calculation, DTO, mapper, tooltip or HTTP contract changed — the displayed number is identical, since the domain's value *is* that product.
+[22:32:21] ## Tests
+[22:32:21] - `./mvnw test -Dtest='CraftingProfitTotalSellValuePresentationTest,CraftingProfitTotalProfitPresentationTest'` — **Tests run: 10, Failures: 0, Errors: 0, BUILD SUCCESS**. With `CraftingBlockedRowsTest`: **13/13 BUILD SUCCESS**.
+[22:32:21] - New `CraftingProfitTotalSellValuePresentationTest` (5 tests) supplies totals deliberately unequal to each fixture's own `revenue × count` — a planner-built fixture cannot distinguish the two formulas, so that construction is the only way to detect a recomputation.
+[22:32:21] - **Negative check:** temporarily reverting the comparator to the old product made the new class fail 2 of 5 (`[High, Low]` vs `[Low, High]`, and the tie ordering); reverted and re-run green.
+[22:32:21] - **TestFX, real desktop + disposable Postgres schema** — the existing JavaFX path does cover this column (`CraftingProfitViewSmokeIT` asserts the real table's 2 000c value): `CraftingProfitViewSmokeIT` **2/2**, `CraftingProfitViewBlockedRowIT` **1/1**, both BUILD SUCCESS.
+[22:32:21] `CraftingProfitTotalProfitPresentationTest`'s helper gained the new argument as `30 * craftableCount`, which its fixtures already implied, so its assertions keep their APP-011 meaning; nothing weakened or deleted.
+[22:32:21] ## Remaining uncertainty
+[22:32:21] The one-line column binding rests on reading plus the smoke IT's displayed-value assertion — no real-data fixture can tell the formulas apart. Suites outside those commands, frontend tests, smoke scripts and the other real-DB ITs were not run locally; GitHub Actions is the gate.
+[22:32:21] Docs: `CURRENT_ARCHITECTURE.md` §4's dependency bullet now records the total sell value beside the total profit. Story file, `CLAUDE_RESULT.md` and the BACKLOG entry are updated; **Follow-up Findings: None.**
+[22:32:21] ========================================
+[22:32:21] Claude Code exit code: 0
+[22:32:21] ========================================
+[22:32:25] Claude run measurement: repo_map=off, duration=411.6s, usage_before=59, usage_after=74
+[22:32:25] Evaluator started (Codex, read-only)
+[22:32:25] ========================================
+[22:32:25] Starting hosted Codex evaluator
+[22:32:25] ========================================
+[22:32:25] [evaluator] session 01a0e9b8-00bd-7c23-befc-406c825bad0e
+[22:32:25] [evaluator] reasoning...
+[22:32:28] Evaluator last response:
+[22:32:28] I’ll inspect the working-tree diff and the story’s relevant production and test code, then return the required JSON verdict without changing files or running tests.
+[22:32:31] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git status --porcelain; git diff --stat HEAD; git diff -- src/main/java/CraftingProfitController.java src/main/java/CraftingProfitView.java src/test/java/CraftingProfitTotalSellValuePresentationTest.java src/test/java/CraftingProfitTotalProfitPresentationTest.java docs/CURRENT_ARCHITECTURE.md'
+[22:32:31] [evaluator command done] exit 0
+[22:32:35] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content src/test/java/CraftingProfitTotalSellValuePresentationTest.java; Select-String -Path src/main/java/CraftingProfitView.java -Pattern 'coinCell|calculationAvailable|Total sell value|toCraftRow' -Context 3,5; git diff -- agent/stories/STORY-APP-013-carry-authoritative-total-sell-value.md"
+[22:32:35] [evaluator command done] exit 0
+[22:32:53] Evaluator last response:
+[22:32:53] ```json
+[22:32:53] {
+[22:32:53]   "decision": "COMPLETE",
+[22:32:53]   "reason": "The supplied total sell value flows from UiRow to the displayed row, and both the column and its sort path use it. The distinct-value tests exercise that behavior, and the unavailable flag remains attached to the row. I inspected the reported working-tree changes; GitHub CI results were not independently verified.",
+[22:32:53]   "intent_achieved": true,
+[22:32:53]   "evidence": [
+[22:32:53]     "git status --porcelain and git diff HEAD: production changes are in src/main/java/CraftingProfitController.java and src/main/java/CraftingProfitView.java; the new test is untracked at src/test/java/CraftingProfitTotalSellValuePresentationTest.java.",
+[22:32:53]     "src/main/java/CraftingProfitController.java: prepareRows passes cr.totalSellValueCopper into UiRow.",
+[22:32:53]     "src/main/java/CraftingProfitView.java: CraftRow stores the value; toCraftRow passes it through; the Total sell value column binds to totalSellValueCopperProperty(); rowComparator sorts by getTotalSellValueCopper(); the shared coinCell(false) still checks calculationAvailable.",
+[22:32:53]     "src/test/java/CraftingProfitTotalSellValuePresentationTest.java: controllerCarriesTheDomainTotalSellValueRatherThanRecomputingIt, rowMappingCarriesTheSuppliedTotalSellValueThroughToTheDisplayedRow, totalSellValueSortUsesSuppliedTotals, totalSellValueSortStaysDescendingAndKeepsInputOrderOnTies, and anUnavailableRowKeepsItsFlagBesideTheSuppliedTotal use values that distinguish the supplied total from revenue times count.",
+[22:32:53]     "docs/CURRENT_ARCHITECTURE.md: the crafting view dependency-direction bullet now records that the view carries and displays the supplied total sell value."
+[22:32:53]   ],
+[22:32:53]   "unmet_intent": [],
+[22:32:53]   "unmet_acceptance_criteria": [],
+[22:32:53]   "unmet_definition_of_done": [],
+[22:32:53]   "actionable_retry_items": []
+[22:32:53] }
+[22:32:53] ```
+[22:32:53] [evaluator] turn completed | input tokens: 75146 | cached input tokens: 53504 | output tokens: 1149
+[22:32:54] ========================================
+[22:32:54] [evaluator] turn totals | model requests: 1 | gross input tokens: 75,146 | cached input tokens: 53,504 | uncached input tokens: 21,642 | output tokens: 1,149
+[22:32:54] Hosted codex evaluator exit code: 0
+[22:32:54] ========================================
+[22:32:54] ========================================
+[22:32:54] Evaluator decision: COMPLETE
+[22:32:54] Reason: The supplied total sell value flows from UiRow to the displayed row, and both the column and its sort path use it. The distinct-value tests exercise that behavior, and the unavailable flag remains attached to the row. I inspected the reported working-tree changes; GitHub CI results were not independently verified.
+[22:32:54] ========================================

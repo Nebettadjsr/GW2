@@ -33,6 +33,7 @@ class CraftingProfitTotalProfitPresentationTest {
                 craftableCount, "",
                 /* buyCostCopper */ 10, /* matsSellValueCopper */ 20,
                 /* revenueCopper */ 30, profitCopper, totalProfitCopper,
+                /* totalSellValueCopper */ 30 * craftableCount,
                 name.toLowerCase(), true);
     }
 
@@ -113,7 +114,9 @@ class CraftingProfitTotalProfitPresentationTest {
 
         assertEquals(List.of("B", "A"), namesInOrder(rows, "Max craftable count"));
         assertEquals(List.of("A", "B"), namesInOrder(rows, "Profit per item"));
-        // Total sell value stays revenueCopper * craftableCount (both rows share revenue 30).
+        // Total sell value orders by the supplied total these fixtures carry, which is the item
+        // sell price times the craftable count (both rows share revenue 30). STORY-APP-013 owns
+        // that column; its own test supplies totals that differ from the product.
         assertEquals(List.of("B", "A"), namesInOrder(rows, "Total sell value"));
     }
 }
