@@ -3,7 +3,7 @@ Deterministic tests for orchestrator.py's evaluator-NEEDS_USER handling:
 creating a user-intervention record, blocking the affected story (file +
 BACKLOG.md), and re-checking eligibility once an intervention resolves.
 
-Never calls Claude/Hermes/Ollama/the planner. The actual timed polling
+Never calls Claude/the evaluator/the planner. The actual timed polling
 loop (wait_for_user_interventions' time.sleep cadence) is exercised
 separately, ad hoc, since a sleep-based loop doesn't belong in a fast
 unit suite -- see get_unresolved_user_interventions here for its
@@ -138,7 +138,7 @@ class OrchestratorInterventionTestCase(unittest.TestCase):
             f"{filename}\n", encoding="utf-8"
         )
 
-    def _verify_active_story_runs_claude_before_unavailable_ollama_evaluation(self):
+    def _verify_active_story_runs_claude_before_failing_evaluation(self):
         filename = "STORY-DOM-001-active.md"
         story = self.write_story(
             filename,
@@ -155,7 +155,7 @@ class OrchestratorInterventionTestCase(unittest.TestCase):
         def evaluate(*_args):
             events.append("evaluate")
             if events.count("evaluate") == 1:
-                raise OSError("Ollama unavailable")
+                raise OSError("evaluator unavailable")
             return {"decision": "COMPLETE", "reason": "ok"}
 
         with ExitStack() as stack:
@@ -184,8 +184,8 @@ class OrchestratorInterventionTestCase(unittest.TestCase):
 
 
 class DirectClaudeExecutionTest(OrchestratorInterventionTestCase):
-    def test_active_story_runs_claude_before_unavailable_ollama_evaluation(self):
-        self._verify_active_story_runs_claude_before_unavailable_ollama_evaluation()
+    def test_active_story_runs_claude_before_failing_evaluation(self):
+        self._verify_active_story_runs_claude_before_failing_evaluation()
 
 
 class InterruptedClaudeTest(OrchestratorInterventionTestCase):

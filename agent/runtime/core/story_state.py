@@ -194,7 +194,7 @@ def move_backlog_entry_to_active(
         remaining_lines = []
 
         for line in todo_body.splitlines(keepends=True):
-            if bullet is None and f"`{filename}`" in line:
+            if bullet is None and bullet_names_story(line, filename):
                 bullet = line.rstrip("\n")
             else:
                 remaining_lines.append(line)
@@ -237,11 +237,11 @@ def move_backlog_entry_to_active(
 
 
 # ============================================================
-# Story status (read from the story file itself, not Hermes)
+# Story status (read from the story file itself, not from a model)
 # ============================================================
 #
 # Whether a story is DONE or BLOCKED must be checked deterministically
-# in Python, before Claude Code (or Hermes) is ever invoked. Sending an
+# in Python, before Claude Code (or the evaluator) is ever invoked. Sending an
 # already-DONE story to Claude wastes a run; sending a BLOCKED story
 # risks Claude improvising around the blocker instead of stopping.
 
@@ -347,6 +347,40 @@ def is_story_filename(name: str) -> bool:
     )
 
 
+# The two bullet shapes a BACKLOG section may hold. Module level, not
+# local to parse_backlog_section(), because every bullet *mover* below
+# needs the same understanding of what a bullet refers to -- see
+# bullet_names_story().
+LEGACY_BACKLOG_ENTRY = re.compile(r"^\s*[-*]\s*`([^`]+\.md)`")
+COMPACT_BACKLOG_ENTRY = re.compile(
+    r"^\s*[-*]\s*(STORY-[A-Za-z0-9]+-\d+)\s*\|\s*"
+    r"([^|]+?\.md)\s*\|\s*([^|]+)\s*\|"
+)
+
+
+def bullet_names_story(line: str, filename: str) -> bool:
+    """
+    Whether one BACKLOG bullet refers to `filename`, in either supported
+    format.
+
+    parse_backlog_section() has understood both the legacy backtick form
+    and the compact `STORY-ID | filename | STATUS | summary` row for some
+    time, but every function that *moves* a bullet matched only the
+    backtick form. A compact row therefore could not be pulled out of a
+    section: activating such a story left its row under '## To Do' and
+    synthesized a second, bare bullet under '## Active', so one story was
+    listed in two sections at once (validate_backlog_consistency()
+    reports exactly that) and blocking one left a stale To Do row behind.
+    """
+
+    if f"`{filename}`" in line:
+        return True
+
+    match = COMPACT_BACKLOG_ENTRY.match(line)
+
+    return bool(match and match.group(2).strip() == filename)
+
+
 def parse_backlog_section(
     backlog_content: str,
     heading: str
@@ -377,17 +411,16 @@ def parse_backlog_section(
     section = match.group(1)
 
     filenames = []
-    legacy_entry = re.compile(r"^\s*[-*]\s*`([^`]+\.md)`")
-    compact_entry = re.compile(
-        r"^\s*[-*]\s*(STORY-[A-Za-z0-9]+-\d+)\s*\|\s*"
-        r"([^|]+?\.md)\s*\|\s*([^|]+)\s*\|"
-    )
 
     for line in section.splitlines():
-        match = legacy_entry.match(line) or compact_entry.match(line)
-        if not match:
+        legacy = LEGACY_BACKLOG_ENTRY.match(line)
+        compact = None if legacy else COMPACT_BACKLOG_ENTRY.match(line)
+
+        if not legacy and not compact:
             continue
-        name = match.group(1) if legacy_entry.match(line) else match.group(2).strip()
+
+        name = legacy.group(1) if legacy else compact.group(2).strip()
+
         if is_story_filename(name):
             filenames.append(name)
 
@@ -911,7 +944,7 @@ def _pull_bullet_from_backlog_section(
     remaining_lines = []
 
     for line in body.splitlines(keepends=True):
-        if bullet is None and f"`{filename}`" in line:
+        if bullet is None and bullet_names_story(line, filename):
             bullet = line.rstrip("\n")
         else:
             remaining_lines.append(line)

@@ -203,6 +203,125 @@ this leaves `await pending` still throwing the original error) and wrap the scri
 whichever promise rejected last. A script whose failure mode is "an error from a line that cannot
 fail" is unusable as evidence.
 
+## Patching one module's paths leaves its siblings reading the real repository
+
+A test that redirects `orchestrator.BACKLOG_FILE`/`STORIES_DIR` to a temp root does **not**
+redirect `story_state`'s copies of those names. Anything the code under test reaches through the
+sibling module still sees the live repo, so the test's verdict moves with the repository's own
+state — and a branch that is really dead code can look covered.
+
+**Why:** `PlanningHoldTest.setUp` patches `loop.*` only, so `plan_if_useful`'s
+`should_trigger_planning(len(get_selectable_story_candidates()))` read the actual backlog.
+`test_true_flag_continues_bounded_pass_then_false_holds` had been passing purely because the queue
+was short; the day the backlog held three ready stories against a threshold of 2 it failed in CI,
+on a commit that changed only frontend files. The genuine defect it had been hiding: the bounded
+follow-up branch for a held `independent_work_remaining: True` sat *after* the
+`queue_low or changed_since_hold` gate, so from a held state it was unreachable unless the queue
+happened to be low.
+
+**How to apply:** patch every module that binds the name (`for module in (planner, loop, uds, ars,
+story_state, …)`, as `test_milestone_planning` does), or patch the *function* the code calls
+(`patch.object(loop, "get_selectable_story_candidates", return_value=[…])`) so the input is stated
+by the test. Prefer the variant that keeps the assertion dependent on the behavior under test —
+a stocked queue here, not an empty one that would have passed with the bug still in place. When a
+test in a temp-root fixture fails only after an unrelated commit, look for the input it never
+actually controlled before suspecting the commit.
+
+## A model-written status field is not a record of the harness's own progress
+
+When a pipeline has steps after the model stops — evaluate, commit, push,
+verify — none of them may be inferred from a field the model writes. Record the
+harness's own position durably, next to the artifacts, and resume from that.
+
+**Why:** `execute_active_story()` returned `COMPLETE` for any active story whose
+own `## Status` said `DONE`, and `_active_is_executable()` classified the same
+story as not executable. On 27.09.2026 Claude fixed a CI failure for
+`STORY-WEB-015` and wrote `DONE`; Hermes was then unreachable and the evaluation
+loop — unbounded, unlike every other escalation in the orchestrator — spun from
+21:02 until the run was interrupted at 21:50. The next morning the restarted
+orchestrator read `DONE`, skipped the story, selected `STORY-SYNC-004`, and left
+the finished fix unevaluated, uncommitted and unpushed, where the next story's
+`git add --all` would have absorbed it.
+
+**How to apply:** `artifacts/ATTEMPT_STATE.json` names the outstanding step
+(`AWAITING_EVALUATION` / `AWAITING_CI`) and carries the retry budgets, so a
+restart resumes the missing step instead of re-invoking Claude or skipping the
+story; every terminal outcome and every new attempt clears it. Ask the
+repository, not a status label, whether work was published — a commit named
+`implemented <STORY-ID>` plus something still outstanding — and require both
+halves, since "tree is dirty" is true seconds after every commit
+(`agent/logs/<date>.log` is tracked and appended to continuously). When a
+retry loop exists because propagating the error "would re-invoke the expensive
+model", fix the state instead of making the loop infinite.
+
+## A verdict that changes nothing re-runs forever
+
+Every branch that ends an attempt must leave the workflow in a state the next
+cycle reads differently. A `return` that records nothing is an infinite loop
+with extra steps.
+
+**Why:** the evaluator's `BLOCKED` verdict just did `return "BLOCKED"` — no
+`set_story_blocked`, no backlog move, unlike the neighbouring `NEEDS_USER`
+path. The story kept whatever Status Claude wrote, its bullet stayed under
+`## Active`, `CURRENT_STORY.md` still pointed at it, so the next cycle
+re-invoked Claude on the same story with the same prompt, against no budget
+(`BLOCKED` consumes neither `MAX_RETRIES_PER_STORY` nor
+`MAX_CI_FIX_ATTEMPTS`) and with no escalation.
+
+**How to apply:** for each terminal branch, state which file the next cycle
+will read differently, and assert it in a test. The same rule caught the
+evaluator-`RETRY` path leaving `Status: DONE` in place after the verdict
+rejected that claim — which `normalize_evaluation()` would later have read as
+grounds to turn an empty RETRY into COMPLETE.
+
+## Two parsers for one format means the writers only learned one
+
+When a format grows a second shape, every reader *and every writer* has to
+learn it. Grep for the old shape's literal, not just for the parse function.
+
+**Why:** `parse_backlog_section()` understood both the legacy `` `file.md` ``
+bullet and the compact `STORY-ID | file.md | STATUS | summary` row, but
+`move_backlog_entry_to_active()` and `_pull_bullet_from_backlog_section()`
+matched only `f"`{filename}`" in line`. So activating a compact-row story could
+not pull its row out of `## To Do`: it synthesized a bare bullet under
+`## Active` and left the original in place. `STORY-SYNC-004` was listed under
+both headings at once, and blocking such a story left a stale To Do row behind.
+
+**How to apply:** one shared `bullet_names_story()` predicate, used by every
+mover. And note the detection existed the whole time —
+`validate_backlog_consistency()` reports exactly this — but no running code ever
+called it, only a test. A written-and-never-called consistency check is not a
+safety net; `_report_backlog_inconsistencies()` now logs each distinct problem
+once per process, loudly and without gating anything.
+
+## A test guard has to cover the committed files too, not only the models
+
+`tests/__init__.py` stopped tests spawning models, pushing and calling the
+GitHub API, but not writing to `agent/logs/` — a committed historical record.
+
+**Why:** only `start_console_logging()` was kept out of the tests' reach;
+`log_line()` was not. `agent/logs/2026-09-27.log` therefore carries a block of
+invented lines a test run wrote *in the middle of the real incident above*
+("Evaluator timeout … attempt 1/2" against `EVALUATION_ATTEMPTS = 3`, "Planning
+resumed for changed inputs", "Decision: wait"), which is exactly the noise that
+makes an incident log unusable as evidence.
+
+**How to apply:** guard the single writer both entry points share
+(`daily_log._write`), and drop writes only while `LOGS_DIR` still points at the
+committed directory — so `test_daily_log.py`, which redirects it to a temporary
+one, keeps exercising the real implementation.
+
+The same guard has to cover live runtime state, not only committed files. Adding
+`clear_attempt_state()` to every terminal path of `execute_active_story()` meant
+the existing suites — which drive those paths against a temp repository but
+resolve `ATTEMPT_STATE_FILE` through `support/config.py` — silently deleted the
+real `agent/runtime/artifacts/ATTEMPT_STATE.json`, i.e. the live position of an
+actual story attempt. "It lives in the gitignored artifacts directory" is not
+the test: the test is whether the file can be regenerated. Before adding a
+delete to a production path, ask which fixtures already reach it, and redirect
+the path at package level (`tests/__init__.py`) rather than trusting each
+fixture to patch it.
+
 ## The prompt outranks the contract it embeds — keep both in step
 
 When a role's behavior is set by a Markdown contract *and* by the harness

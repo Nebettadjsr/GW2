@@ -184,6 +184,52 @@ tree created 25.09.2026 (PIDs 3600/21272), which was holding no port, was identi
 session's and deliberately left running. The only code change made while resuming was removing one
 stray blank line left at the deleted section's site in `SelectedResultDetail.vue`.
 
+### CI fix after commit 3f9ed9c
+
+The authoritative CI run for this story's commit failed one agent-runtime test,
+`test_planning_holds.PlanningHoldTest.test_true_flag_continues_bounded_pass_then_false_holds`
+(line 145: the second `plan_if_useful(idle=True)` returned `False`). It is unrelated to this
+story's frontend change and was not caused by it — the trigger was the backlog reaching **three**
+ready stories while `PLANNING_TRIGGER_MAX_READY_STORIES` is 2. Reproduced locally with
+`python -m unittest agent.runtime.tests.test_planning_holds.PlanningHoldTest.test_true_flag_continues_bounded_pass_then_false_holds`
+(same assertion, same line).
+
+Two real defects, both fixed; no test was weakened.
+
+1. **Code (the cause).** In `CapacityScheduler.plan_if_useful`, the "bounded follow-up pass"
+   branch that honours a held `independent_work_remaining: True` sat *after* the trigger gate
+   `if not (force or queue_low or changed_since_hold or (idle and planning_hold is None))`.
+   From a held state nothing else can change, so that branch was unreachable unless the queue
+   happened to be low or the caller forced a pass — the planner's flag was silently ignored on a
+   stocked queue, contradicting the branch's own comment and the `_hold_planning` comment
+   ("independent_work_remaining=True still permits one follow-up pass"). The predicate is now
+   named once as `follow_up_requested` and is a trigger in its own right, reused by the three
+   places that already tested it. Bounding is unchanged: the follow-up pass rewrites the hold, so
+   a result reporting `False` holds again on the next idle cycle — asserted by the test's third
+   call and `plan.call_count == 2`.
+2. **Test isolation.** `PlanningHoldTest.setUp` patches the `orchestrator` module's paths but not
+   `story_state`'s, so `get_selectable_story_candidates()` read the **real repository's** backlog
+   and the queue-depth trigger flipped with it — the test had been passing only by accident of a
+   short queue. `setUp` now patches `loop.get_selectable_story_candidates` to a stocked
+   three-story queue, which is the condition these hold tests are about. This keeps the test
+   meaningful rather than masking the fix: with the stocked queue the assertion can only pass via
+   the code fix above, verified by restoring the pre-fix `orchestrator.py` and watching the same
+   test fail again, then restoring the fix.
+
+Evidence (repository root):
+
+- `python -m unittest agent.runtime.tests.test_planning_holds -v` — **Ran 15 tests, OK**
+  (the reported test and the rest of the module's holds).
+- `python -m unittest agent.runtime.tests.test_orchestration_flow
+  agent.runtime.tests.test_capacity_scheduler agent.runtime.tests.test_codex_capacity
+  agent.runtime.tests.test_milestone_planning` — **Ran 56 tests, OK**; these are every module
+  that exercises `plan_if_useful`, including
+  `IdlePlanningTriggerTests.test_independent_work_remaining_allows_bounded_followup` and
+  `test_stocked_queue_and_unchanged_inputs_do_not_idle_replan`.
+
+No frontend, backend or documentation content was touched by this fix; only
+`agent/runtime/core/orchestrator.py` and `agent/runtime/tests/test_planning_holds.py`.
+
 ### Limits
 
 Rare states (unnamed items, absent fields, unrecognized codes, the budget limit) are evidenced through

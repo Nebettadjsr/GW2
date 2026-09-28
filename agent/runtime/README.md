@@ -15,7 +15,7 @@ run tests separately from live orchestration. Individual suites can be run as
 | --- | --- |
 | `core/` | Workflow orchestration, planning, architecture, story selection/state and archiving. |
 | `runners/` | Claude and Codex process execution, output and capacity handling. |
-| `evaluation/` | Claude prompt construction, post-implementation evaluation, and the Hermes/Ollama client. |
+| `evaluation/` | Claude prompt construction, and post-implementation evaluation (Codex, read-only). |
 | `human/` | Product Owner requests, architect requests, user decisions and intervention records. |
 | `support/` | Shared configuration, paths, file helpers, and the Git/GitHub CI verification integration. |
 | `tests/` | Runtime regression tests and temporary fixtures. |
@@ -28,7 +28,7 @@ the runtime root. All repository and artifact paths belong in
 
 `artifacts/` contains `CLAUDE_RESULT.md`, `EVALUATOR_RESULT.json`,
 `PLANNING_RESULT.json`, `ARCHITECT_RESULT.json`,
-`SELECTOR_RESULT.json`, and `NEXT_PROMPT.md`. Claude owns its implementation
+`SELECTOR_RESULT.json`, `ATTEMPT_STATE.json`, and `NEXT_PROMPT.md`. Claude owns its implementation
 result; evaluation, planning, architecture, selection and
 orchestration own their respective generated outputs.
 These files are local runtime state, ignored by Git, and are not authoritative
@@ -51,6 +51,96 @@ log" below.
 Place new runtime files by responsibility, not in the root. Keep shared helpers
 small, tests separate from production code, and generated outputs separate from
 source. Avoid duplicate state, compatibility copies and redundant abstractions.
+
+## Evaluation (Codex, read-only)
+
+`evaluation/evaluator.py` judges one finished attempt. It was a local
+`hermes3:8b` through Ollama, judging the story text against Claude's own
+written report; it is now Codex, in a read-only sandbox, with the working tree
+in front of it.
+
+Two things were wrong with the old arrangement. The model was too weak for the
+judgment — it produced empty RETRY verdicts that `normalize_evaluation()` had
+to rescue deterministically. And its only evidence was the implementer's
+account of its own work: it could confirm that a report claimed every criterion
+was met, never whether the repository agreed.
+
+So the contract now asks **two** questions, and the second is the one that
+needed a stronger evaluator:
+
+1. were this story's own acceptance criteria and Definition of Done satisfied;
+2. does the change that was actually made achieve what the story set out to
+   achieve.
+
+A change can tick every criterion literally and still fail the story's purpose
+— the behaviour holds on one call path but not where a user reaches it, it is
+implemented but never wired up, the new test would pass with the feature
+removed, a general rule was special-cased to the examples the story named. The
+prompt names those patterns, and a shortfall goes into its own `unmet_intent`
+field. `build_retry_prompt()` gives it a dedicated section so the next attempt
+fixes the substance instead of restating the nearest criterion.
+
+The verdict is a JSON object in Codex's final message, not a file: a read-only
+role cannot write one. `parse_evaluator_verdict()` extracts it and raises on
+anything unusable — acting on an inferred verdict is worse than retrying. The
+model classifies; Python records. `normalize_evaluation()` still has the last
+word, and concrete evidence still beats the decision label: a COMPLETE that
+also reports unmet work (including an unachieved purpose) becomes a RETRY, and
+a self-contradicting verdict with nothing actionable becomes NEEDS_USER rather
+than a silent pass.
+
+**The read-only sandbox is the guarantee, not the prompt.** Evaluation runs
+while the story's implementation is still uncommitted in the working tree, so
+unlike the planner and the architect there is no safe "restore what it
+touched" for this role — it has to be structurally unable to touch anything.
+It also gets no file-editing guidance, since it has nothing to apply it to.
+
+**Cost and capacity.** An evaluation is now a real Codex run on the shared
+Codex budget, so the attempt counts are small:
+`EVALUATION_ATTEMPTS * MAX_EVALUATION_BATCHES` = 4 runs before the cycle fails
+and a human is involved. Usage exhaustion is **not** one of those attempts —
+`ModelCapacityUnavailable` is re-raised past the retry handler and waited out
+by `CapacityScheduler.wait_for_codex()`, because the work is already finished
+and waiting is free. That wait deliberately does no other Codex work (the
+planner and architect share the exhausted budget) and lets no other story
+start (see the next section).
+
+## Resuming an interrupted attempt (`ATTEMPT_STATE.json`)
+
+A story's own `## Status` is written by Claude. It states what Claude believes
+about the implementation, and it can never state whether the harness has
+finished its own remaining steps: evaluation, the commit, the push and the CI
+verdict. Reading `Status: DONE` as "story complete" equated those two
+different facts, so any interruption between them — an evaluator outage, a
+Ctrl+C, a crash — was indistinguishable from a finished story: the next run
+skipped the story, selected a fresh one, and left the completed work
+unevaluated and unpushed.
+
+`ATTEMPT_STATE.json` records the harness's own position instead, and exists
+only while a step is outstanding:
+
+| Phase | Meaning | What a resumed run does |
+| --- | --- | --- |
+| `AWAITING_EVALUATION` | Claude's attempt finished; no evaluator verdict yet. | Evaluates the story and result already on disk. Claude is not re-invoked and its capacity is not waited on. |
+| `AWAITING_CI` | The evaluator accepted the work; publication and the CI verdict are outstanding. | Commits, pushes and waits for CI. The evaluator's verdict is not bought a second time. |
+
+Every terminal outcome (COMPLETE, BLOCKED, NEEDS_USER) clears the file, and so
+does starting a new Claude attempt — what is on disk is about to change, so no
+later run may resume the previous attempt. `MAX_RETRIES_PER_STORY` and
+`MAX_CI_FIX_ATTEMPTS` counters travel with the record, so a restart cannot hand
+the same story a fresh allowance and loop past its escalation.
+
+Because `artifacts/` is disposable, a second and independent check covers a
+`DONE` story whose record was wiped with it: the repository is asked whether a
+commit named `implemented <STORY-ID>` exists **and** whether work is still
+outstanding (uncommitted changes outside `agent/logs/`, or commits not on
+`origin`). Both halves are required — "no commit" alone is also true of a
+story legitimately completed with the gate off, and the tree is dirty within
+seconds of every commit because `agent/logs/<date>.log` is tracked and
+appended to continuously. It reports nothing git cannot answer, because the
+caller resumes the story on it. A story that was published once and then
+re-opened by a CI fix is outside its reach by construction; that case is what
+the state file covers.
 
 ## Commit, push, and the GitHub CI verification gate
 
@@ -227,11 +317,17 @@ properties that guarantee it, each covered by `tests/test_orchestration_flow.py`
   `agent/CURRENT_STORY.md` counts as "no active story" so deterministic
   selection can proceed and overwrite it.
 - **One recoverable cycle failure is not fatal.** An unexpected exception (a
-  local Hermes/Ollama outage, a transient file error) is retried; evaluation
-  itself is retried locally first, so a finished Claude run is never thrown
-  away and Claude is never re-invoked to work around an evaluator outage. After
+  failed evaluation, a transient file error) is retried; evaluation itself is
+  retried first, so a finished Claude run is never thrown away and Claude is
+  never re-invoked to work around an evaluator failure. After
   `MAX_CONSECUTIVE_CYCLE_ERRORS` consecutive failures the orchestrator stops
   explicitly rather than looping.
+- **Evaluation retrying is bounded too.** `MAX_EVALUATION_BATCHES` batches of
+  `EVALUATION_ATTEMPTS` ride out a transient outage; a permanent one then
+  propagates to the handler above instead of holding the orchestrator in a
+  silent loop with a stocked queue. Giving up costs nothing, because
+  `ATTEMPT_STATE.json` makes each retried cycle resume at evaluation rather
+  than at another Claude run.
 
 ## Codex Architect
 

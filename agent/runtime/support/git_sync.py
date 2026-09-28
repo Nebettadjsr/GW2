@@ -102,6 +102,27 @@ def unpushed_commit_count(branch: str) -> int | None:
         return None
 
 
+def commit_exists_with_subject(prefix: str) -> bool | None:
+    """Whether this branch's history holds a commit whose subject starts with
+    `prefix`, or None when git cannot answer (no repository, no commits yet).
+
+    The orchestrator's one commit message per story ("implemented <STORY-ID>
+    ...", see core/orchestrator.py's _story_commit_message) makes this the
+    repository's own record of whether a story's completion was ever
+    published -- the one fact a model cannot overwrite by editing a
+    '## Status' line.
+    """
+
+    result = run_git("log", "--format=%s", check=False)
+
+    if result.returncode != 0:
+        return None
+
+    return any(
+        line.startswith(prefix) for line in result.stdout.splitlines()
+    )
+
+
 def ci_verification_available() -> tuple[bool, str]:
     """Whether a pushed commit can actually be verified by GitHub CI."""
 

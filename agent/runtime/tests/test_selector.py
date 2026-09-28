@@ -1,7 +1,7 @@
 """
 Deterministic tests for the AI-free story selector (selector.py).
 
-Story selection must never call Hermes/Ollama -- BACKLOG.md's '## To
+Story selection must never call a model -- BACKLOG.md's '## To
 Do' section is the canonical execution order, and Python walks it top
 to bottom picking the first entry get_selectable_story_candidates()
 confirms is executable. These tests exercise select_next_story()
@@ -512,21 +512,22 @@ class EmptyQueueProducesNoWorkTest(SelectorTestCase):
         self.assertEqual(result["decision"], "NO_WORK")
 
 
-class NoHermesCallTest(SelectorTestCase):
+class NoModelCallTest(SelectorTestCase):
 
-    def test_selector_module_has_no_hermes_reference(self):
+    def test_selector_module_has_no_model_reference(self):
         self.assertFalse(hasattr(selector, "call_ollama"))
+        self.assertFalse(hasattr(selector, "run_evaluator"))
         self.assertNotIn("SELECTOR_SCHEMA", dir(selector))
 
-    def test_selector_never_calls_ollama(self):
+    def test_selector_never_invokes_a_model(self):
         self.write_backlog(["STORY-A-001-a.md", "STORY-B-001-b.md"])
         self.write_story("STORY-A-001-a.md", STATUS_BLOCKED)
         self.write_story("STORY-B-001-b.md", STATUS_TODO)
 
         with patch(
-            "agent.runtime.evaluation.hermes_client.call_ollama",
+            "agent.runtime.runners.local_planner_runner.run_codex",
             side_effect=AssertionError(
-                "select_next_story() must never call Hermes/Ollama"
+                "select_next_story() must never invoke a model"
             ),
         ):
             result = selector.select_next_story()

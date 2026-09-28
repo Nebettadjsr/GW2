@@ -334,13 +334,26 @@ def _drain_stderr(
 # ============================================================
 # Hosted Codex
 #
-# One process runner for both Codex roles (PROJECT PLANNING MODE and
-# ARCHITECTURE MODE -- see AGENTS.md). The roles stay logically
-# separate: each supplies its own task header and its own role contract
-# inside `prompt`. Only the execution-environment guidance below, which
-# is about Windows and file editing rather than about either role, is
-# shared.
+# One process runner for every Codex role (PROJECT PLANNING MODE,
+# ARCHITECTURE MODE -- see AGENTS.md -- and story evaluation). The roles
+# stay logically separate: each supplies its own task header and its own
+# role contract inside `prompt`. Only the execution-environment guidance
+# below, which is about Windows and file editing rather than about any
+# role, is shared.
+#
+# Evaluation is the one role that must not write anything at all, so it
+# runs in Codex's own read-only sandbox and reports its verdict in its
+# final message instead of writing a result file. That is a guarantee
+# from the sandbox rather than from a rollback: evaluation happens while
+# the story's implementation is still uncommitted in the working tree,
+# so there is no safe "restore what it touched" for this role.
 # ============================================================
+
+ROLE_BY_TASK_HEADER = {
+    "PROJECT PLANNING TASK": "planner",
+    "ARCHITECTURE TASK": "architect",
+    "STORY EVALUATION TASK": "evaluator",
+}
 
 EXECUTION_ENVIRONMENT = """EXECUTION ENVIRONMENT
 
@@ -395,14 +408,49 @@ read, do not guess. Correctness first, then context economy.
 """
 
 
+def compose_codex_prompt(
+        prompt: str,
+        task_header: str,
+        sandbox: str = "workspace-write",
+) -> str:
+    """The task prompt plus the shared execution-environment guidance.
+
+    File-editing guidance is about writing, so a read-only role is not
+    given it: there is nothing for it to apply, and it only suggests the
+    run is expected to change something.
+    """
+
+    editing_guidance = (
+        "" if sandbox == "read-only" else SECTIONED_FILE_EDITING + "\n"
+    )
+
+    return f"""
+{task_header}
+
+{prompt}
+
+{EXECUTION_ENVIRONMENT}
+{editing_guidance}{CONTEXT_DISCIPLINE}"""
+
+
 def run_codex(
         prompt: str,
         task_header: str = "PROJECT PLANNING TASK",
         label: str = "hosted Codex planner",
+        sandbox: str = "workspace-write",
+        messages: list | None = None,
 ) -> int:
+    """Run one Codex role.
+
+    `sandbox` is passed straight to `codex exec --sandbox`; "read-only" is
+    what makes a role structurally incapable of changing the repository.
+    When `messages` is given, every completed agent message is appended to
+    it, which is how a read-only role returns a result it cannot write to
+    a file.
+    """
 
     codex = find_codex()
-    role = "architect" if task_header == "ARCHITECTURE TASK" else "planner"
+    role = ROLE_BY_TASK_HEADER.get(task_header, "planner")
 
     print(
         "\n========================================"
@@ -414,14 +462,7 @@ def run_codex(
         "========================================\n"
     )
 
-    planner_prompt = f"""
-{task_header}
-
-{prompt}
-
-{EXECUTION_ENVIRONMENT}
-{SECTIONED_FILE_EDITING}
-{CONTEXT_DISCIPLINE}"""
+    planner_prompt = compose_codex_prompt(prompt, task_header, sandbox)
 
     process = subprocess.Popen(
         [
@@ -431,9 +472,9 @@ def run_codex(
             # Stream structured progress events.
             "--json",
 
-            # Allow planning files to be edited.
+            # Planning/architecture edit files; evaluation may not.
             "--sandbox",
-            "workspace-write",
+            sandbox,
 
             # Prompt comes from stdin.
             "-",
@@ -484,6 +525,16 @@ def run_codex(
 
         capacity_exhausted = capacity_exhausted or is_capacity_error(event)
         usage.record(event)
+
+        if messages is not None and event.get("type") == "item.completed":
+            item = event.get("item") or {}
+
+            if item.get("type") == "agent_message":
+                text = (item.get("text") or "").strip()
+
+                if text:
+                    messages.append(text)
+
         _handle_json_event(
             event, role=role
         )
@@ -531,4 +582,19 @@ def run_architect(
         prompt,
         task_header="ARCHITECTURE TASK",
         label="hosted Codex architect",
+    )
+
+
+def run_evaluator(
+        prompt: str,
+        messages: list,
+) -> int:
+    """Judge one finished attempt. Read-only: it reports, it never records."""
+
+    return run_codex(
+        prompt,
+        task_header="STORY EVALUATION TASK",
+        label="hosted Codex evaluator",
+        sandbox="read-only",
+        messages=messages,
     )

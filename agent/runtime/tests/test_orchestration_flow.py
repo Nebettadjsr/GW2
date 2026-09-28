@@ -102,7 +102,7 @@ class MainFlowTestCase(unittest.TestCase):
 
     # -- scripted collaborators --------------------------------------
 
-    def execute(self, before_attempt, on_interruption):
+    def execute(self, before_attempt, on_interruption, wait_for_evaluator=None):
         before_attempt()
         self.events.append("claude")
         self.state["active"] = False
@@ -168,8 +168,7 @@ class EvaluatorRetryTests(unittest.TestCase):
              patch.object(orchestrator, "log_line") as log:
             actual = orchestrator._evaluate_with_local_retries("story", "result", 0, True)
         self.assertEqual(actual, result)
-        self.assertTrue(any("Evaluator timeout after" in c.args[0]
-                            and "attempt 1/2" in c.args[0]
+        self.assertTrue(any("Evaluation attempt 1/2 failed" in c.args[0]
                             for c in log.call_args_list))
 
     def test_retry_exhaustion_keeps_evaluation_local_without_reinvoking_claude(self):
@@ -520,10 +519,10 @@ class CycleErrorGuardTest(MainFlowTestCase):
     def test_transient_cycle_failure_is_retried_then_escalated(self):
         failures = []
 
-        def execute(before_attempt, on_interruption):
+        def execute(before_attempt, on_interruption, wait_for_evaluator=None):
             failures.append(1)
             self.state["candidates"] = ["STORY-A.md"]
-            raise OSError("Ollama unreachable")
+            raise OSError("evaluator unreachable")
 
         self.state["candidates"] = ["STORY-A.md"]
         self.state["active"] = True
@@ -554,7 +553,11 @@ class EvaluationRetryTest(unittest.TestCase):
 
             return {"decision": "COMPLETE", "reason": "ok"}
 
+        # The attempt count is stated here rather than inherited: the
+        # production value is tuned for real Codex runs, and this test is
+        # about "retried more than once, then succeeded".
         with patch.object(orchestrator, "evaluate_story", side_effect=evaluate), \
+             patch.object(orchestrator, "EVALUATION_ATTEMPTS", 3), \
              patch.object(orchestrator, "print_status"), \
              patch.object(orchestrator.time, "sleep") as sleep:
             result = orchestrator._evaluate_with_local_retries("story", "result", 0, True)

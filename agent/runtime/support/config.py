@@ -61,6 +61,18 @@ LOGS_DIR = AGENT_DIR / "logs"
 # is the sole authoritative source for story selection.
 
 NEXT_PROMPT_FILE = ARTIFACTS_DIR / "NEXT_PROMPT.md"
+
+# The harness's own position inside a story attempt -- which of ITS steps
+# (evaluation, publication, the CI verdict) still owes an answer for a
+# Claude run that has already finished. See core/orchestrator.py's
+# "Durable attempt state". A story's own '## Status' is Claude's statement
+# about the implementation and can never carry this; before this file
+# existed, any interruption between "Claude wrote DONE" and "CI passed"
+# was indistinguishable from a completed story, so the next run skipped
+# the story and selected a new one on top of unevaluated, unpushed work.
+# Generated, local and gitignored like every other artifact.
+ATTEMPT_STATE_FILE = ARTIFACTS_DIR / "ATTEMPT_STATE.json"
+
 EVALUATOR_RESULT_FILE = ARTIFACTS_DIR / "EVALUATOR_RESULT.json"
 SELECTOR_RESULT_FILE = ARTIFACTS_DIR / "SELECTOR_RESULT.json"
 PLANNING_RESULT_FILE = ARTIFACTS_DIR / "PLANNING_RESULT.json"
@@ -83,11 +95,15 @@ ADR_DIR = DOCS_DIR / "architecture" / "decisions"
 # is allowed to.
 SRC_DIR = REPO_ROOT / "src"
 
-OLLAMA_URL = "http://localhost:11434/api/chat"
-
-# Hermes remains responsible for post-implementation evaluation/selection.
-MODEL = "hermes3:8b"
-
+# Post-implementation evaluation runs on Codex (see
+# evaluation/evaluator.py's "Who evaluates, and why it changed"). It used
+# to be a local hermes3:8b through Ollama at
+# http://localhost:11434/api/chat, judging the story text against Claude's
+# own report; that model was too weak for the judgment and, having no
+# access to the repository, could only confirm what the implementer said
+# about itself. Codex shares the planner's and architect's capacity budget
+# and is invoked through the same runner, in a read-only sandbox.
+#
 # Model the orchestrator launches Claude Code with (`claude --model`).
 # Pinned here so unattended runs do not silently follow whatever the
 # interactive CLI default happens to be set to. Change this one value
@@ -119,12 +135,26 @@ CAPACITY_STATUS_INTERVAL_SECONDS = 300
 # intervention instead of re-invoking Claude forever.
 MAX_CLAUDE_FAILED_RUNS_PER_STORY = 2
 
-# Hermes/Ollama is local infrastructure. A transient outage must not
-# throw away a finished Claude run, so evaluation is retried locally
-# (never by re-invoking Claude) before the cycle is treated as failed.
-EVALUATION_ATTEMPTS = 3
+# A failed evaluation must not throw away a finished Claude run, so it is
+# retried (never by re-invoking Claude) before the cycle is treated as
+# failed. These two are deliberately small: every attempt is now a real
+# Codex run against the working tree, not a free local HTTP call, so the
+# ceiling is EVALUATION_ATTEMPTS * MAX_EVALUATION_BATCHES = 4 evaluation
+# runs before the cycle fails and a human is involved. Codex usage
+# exhaustion is NOT one of these attempts -- it is a scheduling event the
+# orchestrator waits out (CapacityScheduler.wait_for_codex).
+EVALUATION_ATTEMPTS = 2
 EVALUATION_RETRY_SECONDS = 60
-EVALUATOR_REQUEST_TIMEOUT_SECONDS = 120
+
+# How many bounded batches of EVALUATION_ATTEMPTS a single cycle rides out
+# before the failure propagates to main()'s recoverable-failure handler.
+# Evaluation used to be the one step that retried forever while every
+# other unrecoverable condition escalated, so an unavailable evaluator
+# pinned the orchestrator in a silent loop with a stocked queue and full
+# capacity. Giving up is safe now only because ATTEMPT_STATE_FILE records
+# that Claude's attempt is already finished: each retried cycle resumes at
+# evaluation, never at another Claude run.
+MAX_EVALUATION_BATCHES = 2
 
 # One unexpected failure in a single orchestration cycle is retried
 # locally rather than killing an unattended run; a failure that keeps
@@ -135,7 +165,7 @@ CYCLE_RETRY_SECONDS = 60
 # When a planning pass returns NEEDS_USER and no other current-milestone
 # story is independently selectable, the orchestrator waits locally and
 # re-checks agent/user-decisions/*.md at this interval -- a plain file
-# read, never a model call (Codex/Claude/Hermes/Ollama/the planner).
+# read, never a model call (Codex/Claude/the evaluator/the planner).
 USER_DECISION_POLL_SECONDS = 1800
 
 # Planning is triggered once the number of selectable "To Do" stories
@@ -215,7 +245,7 @@ CI_VERIFICATION_ENABLED = _configured_ci_verification()
 #
 # Aider is used only as a repository-structure/context generator for
 # Claude's implementation prompt -- never as a coding agent, and never
-# added to the Codex planner, the Hermes evaluator, or the
+# added to the Codex planner, the Codex evaluator, or the
 # deterministic selector. See agent/runtime/support/repo_map.py.
 # ============================================================
 

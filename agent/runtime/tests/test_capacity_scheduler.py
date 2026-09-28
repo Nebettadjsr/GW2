@@ -96,7 +96,7 @@ class MainLoopTest(unittest.TestCase):
         scheduler = orchestrator.CapacityScheduler(claude, codex, cache_file=None)
         writing = [False]
 
-        def execute(before, interrupted):
+        def execute(before, interrupted, wait_for_evaluator=None):
             self.assertFalse(writing[0])
             before()
             writing[0] = True

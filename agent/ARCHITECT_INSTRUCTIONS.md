@@ -42,7 +42,7 @@ HOW is one bounded story implemented?
         Claude Code
 
 DID the implementation satisfy the story?
-        Hermes evaluator
+        Codex evaluator (read-only)
 ```
 
 The same underlying model may be used for architect and planner work, but the roles must remain logically separate.

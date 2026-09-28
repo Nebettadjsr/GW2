@@ -99,7 +99,7 @@ Responsibilities are intentionally separated between:
 - Codex as project planner;
 - Codex as architect, in a separate invocation and a separate role;
 - Claude Code as implementation agent;
-- Hermes as implementation evaluator;
+- Codex as implementation evaluator, read-only and in a third separate role;
 - the human Product Owner for genuine product decisions.
 
 The models may reason inside their assigned role.
@@ -158,7 +158,7 @@ agent/product-owner-requests/    agent/user-decisions/
                   implementation
                          │
                          ▼
-                Hermes Evaluator
+                Codex Evaluator
                          │
                   ┌──────┴──────┐
                   │             │
@@ -209,7 +209,7 @@ Claude Code
 DID THE IMPLEMENTATION SATISFY THE STORY?
         │
         ▼
-Hermes evaluator
+Codex evaluator (read-only)
 ```
 
 This separation is intended to reduce:
@@ -294,7 +294,7 @@ When planning creates or references an unresolved User Decision:
 
 While waiting, Python checks only the relevant local User Decision files.
 
-It does not repeatedly call Codex, Claude, Hermes, or Ollama merely to ask whether the user has answered.
+It does not repeatedly call Codex or Claude merely to ask whether the user has answered.
 
 As soon as any blocking decision becomes `RESOLVED`, the wait ends and Python re-derives what is now permissible — it does not keep waiting for the remaining open decisions, since one answer can be enough to unblock planning or a dependent story.
 
@@ -496,36 +496,53 @@ Claude does not decide:
 Those decisions belong to the planning/orchestration/product layers.
 
 
-# 7. Hermes — Evaluator
+# 7. Codex — Evaluator
 
-Hermes runs locally through Ollama.
+Evaluation runs on Codex, in a read-only sandbox, through the same runner as
+PROJECT PLANNING MODE and ARCHITECTURE MODE and against the same capacity
+budget.
 
-Current model:
+It is a constrained evaluator, not the project planner and not the story
+selector. Its purpose is to inspect the completed implementation against the
+active story contract, and it answers two questions:
 
-`hermes3:8b`
+1. were this story's own acceptance criteria and Definition of Done satisfied;
+2. did the work actually achieve what the story set out to achieve.
 
-Hermes is used as a constrained evaluator rather than as the project planner or story selector.
-
-Its purpose is to inspect the completed implementation against the active story contract.
-
-Typical evaluation targets include:
+Evaluation targets include:
 
 - acceptance criteria;
-- required tests;
-- implementation result;
-- blockers;
-- relevant repository evidence.
+- the Definition of Done;
+- what the change actually does, read from the working tree (`git status`,
+  `git diff`, the changed files, the tests that are supposed to cover the
+  behaviour);
+- the implementation result Claude reported — treated as a claim to verify,
+  never as evidence;
+- blockers.
 
-Hermes can reject incomplete work and cause another implementation/correction cycle.
+The evaluator can reject incomplete work and cause another
+implementation/correction cycle. It cannot redefine the story, invent project
+requirements, or write anything at all.
 
-It should not redefine the story or invent new project requirements.
 
+## Why It Is No Longer a Local Model
 
-## Why Hermes Remains Local
+This was `hermes3:8b` running locally through Ollama, on the reasoning that
+evaluation is narrower than repository-wide planning and should stay
+inexpensive.
 
-Evaluation is a narrower task than repository-wide project planning.
+Two things were wrong with that. The model was too weak for the judgment — it
+produced empty RETRY verdicts that the normalization layer had to rescue
+deterministically. And its only evidence was the implementer's written account
+of its own work, so it could confirm that a report claimed every criterion was
+met but never whether the repository agreed. A change can satisfy every
+literal criterion and still miss the story's point; catching that needs both a
+stronger model and access to the diff.
 
-Using a local model for this stage allows routine verification work to remain inexpensive while stronger hosted models are reserved for planning and implementation.
+The read-only sandbox is what keeps the role honest. Evaluation runs while the
+story's implementation is still uncommitted in the working tree, so there is no
+safe "restore whatever it touched" for this role — it has to be structurally
+incapable of touching anything. The model classifies; Python records.
 
 
 # Documentation Ownership
@@ -573,7 +590,7 @@ Claude Code
 implementation
  │
  ▼
-Hermes evaluation
+Codex evaluation
  │
  ├─ incomplete
  │    └─ retry / correction
@@ -623,7 +640,7 @@ Python orchestrator
         │
         ├── Claude Code implementation agent
         │
-        └── local Hermes evaluator
+        └── Codex evaluator (read-only)
 ```
 
 This architecture has evolved through several experiments.
@@ -653,7 +670,7 @@ The current system is testing whether a mixed architecture performs better:
 - deterministic code for workflow decisions;
 - strong hosted reasoning where project-level reasoning is required;
 - bounded implementation by Claude;
-- inexpensive local evaluation by Hermes;
+- evaluation grounded in the working tree, not in the implementer's own report;
 - human intervention only for genuine product decisions.
 
 This split is itself part of the experiment and may change if measurements show a better structure.

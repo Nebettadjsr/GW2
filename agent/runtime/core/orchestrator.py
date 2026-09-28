@@ -11,6 +11,7 @@ from agent.runtime.runners.claude_runner import (
 )
 from agent.runtime.support.config import (
     ARCHITECT_REQUESTS_DIR,
+    ATTEMPT_STATE_FILE,
     BACKLOG_FILE,
     CAPACITY_STATUS_INTERVAL_SECONDS,
     CAPACITY_WAIT_POLL_SECONDS,
@@ -21,7 +22,7 @@ from agent.runtime.support.config import (
     MAX_CI_FIX_ATTEMPTS,
     EVALUATION_ATTEMPTS,
     EVALUATION_RETRY_SECONDS,
-    EVALUATOR_REQUEST_TIMEOUT_SECONDS,
+    MAX_EVALUATION_BATCHES,
     PROJECT_STATE_FILE,
     USER_DECISIONS_DIR,
     PRODUCT_OWNER_REQUESTS_DIR,
@@ -30,7 +31,6 @@ from agent.runtime.support.config import (
     MAX_CLAUDE_FAILED_RUNS_PER_STORY,
     MAX_CONSECUTIVE_CYCLE_ERRORS,
     MAX_RETRIES_PER_STORY,
-    MODEL,
     NEXT_PROMPT_FILE,
     REPO_ROOT,
     USER_DECISION_POLL_SECONDS,
@@ -67,6 +67,7 @@ from agent.runtime.core.story_state import (
     set_active_story,
     set_story_blocked,
     set_story_unfinished,
+    validate_backlog_consistency,
 )
 from agent.runtime.human.architect_requests import (
     get_actionable_requests as get_actionable_architect_requests,
@@ -151,13 +152,214 @@ def _seconds_until_recheck(probe) -> int | None:
 
 
 # ============================================================
-# Evaluation with local retries
+# Durable attempt state -- the harness's own pipeline position
 #
-# Hermes/Ollama is local infrastructure, not a model with a usage
-# budget. If it is briefly unreachable after Claude has already
-# finished, the finished implementation must not be thrown away and
-# Claude must not be re-invoked to "try again" -- retry the evaluation
-# itself instead.
+# A story's "## Status" is written by Claude. It states what Claude
+# believes about the implementation, and it can never state whether the
+# HARNESS has finished its own remaining steps: evaluation, the commit,
+# the push, and the CI verdict. Those are three more gates after Claude
+# stops, and the story file says nothing about them.
+#
+# Reading "Status: DONE" as "story complete" therefore silently equated
+# "Claude thinks it is finished" with "the work is accepted and
+# published". An interruption anywhere between the two -- an evaluator
+# outage, a Ctrl+C, a crash -- was indistinguishable from a completed
+# story: the next run skipped it (_active_is_executable() classified DONE
+# as not executable), selected a fresh story, and the finished work was
+# left unevaluated, uncommitted and unpushed, to be swept into some later
+# story's commit.
+#
+# So the position is recorded explicitly, beside the other runtime
+# artifacts (generated, local, gitignored -- never a source of truth
+# about the story itself, only about which of the harness's own steps
+# still owes an answer):
+#
+#   AWAITING_EVALUATION  Claude's attempt finished; no evaluator verdict.
+#   AWAITING_CI          the evaluator accepted it; publication and the
+#                        CI verdict are still outstanding.
+#
+# The file exists only between those points. Its absence means the
+# harness is not mid-attempt, and every terminal outcome clears it.
+# ============================================================
+
+ATTEMPT_PHASES = ("AWAITING_EVALUATION", "AWAITING_CI")
+
+
+def read_attempt_state() -> dict | None:
+    """The recorded pipeline position, or None when there is none.
+
+    Anything unreadable, unversioned or malformed is treated as "no
+    recorded attempt" rather than guessed at -- a resume must never be
+    driven by a state this code cannot fully understand.
+    """
+
+    try:
+        state = json.loads(
+            ATTEMPT_STATE_FILE.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return None
+
+    if not isinstance(state, dict) or state.get("version") != 1:
+        return None
+
+    if state.get("phase") not in ATTEMPT_PHASES or not state.get("story"):
+        return None
+
+    return state
+
+
+def record_attempt_state(
+        story_path: Path,
+        phase: str,
+        claude_exit_code: int = 0,
+        result_was_updated: bool = False,
+        retry_count: int = 0,
+        ci_fix_attempts: int = 0,
+) -> None:
+    """Record which step still owes an answer, atomically.
+
+    The retry budgets travel with it: they used to live only in
+    execute_active_story()'s local variables, so a restart handed every
+    story a fresh MAX_RETRIES_PER_STORY and MAX_CI_FIX_ATTEMPTS and a
+    crash-looping story could never reach its escalation.
+    """
+
+    state = {
+        "version": 1,
+        "story": story_path.relative_to(REPO_ROOT).as_posix(),
+        "phase": phase,
+        "claude_exit_code": claude_exit_code,
+        "result_was_updated": result_was_updated,
+        "retry_count": retry_count,
+        "ci_fix_attempts": ci_fix_attempts,
+    }
+
+    ATTEMPT_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    temporary = ATTEMPT_STATE_FILE.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(state, indent=2),
+        encoding="utf-8",
+    )
+    temporary.replace(ATTEMPT_STATE_FILE)
+
+
+def clear_attempt_state() -> None:
+    ATTEMPT_STATE_FILE.unlink(missing_ok=True)
+
+
+def pending_attempt_for(story_path: Path) -> dict | None:
+    """The recorded attempt, but only if it belongs to `story_path`.
+
+    A record naming a story that no longer resolves is stale workflow
+    state and is discarded here rather than left to strand execution.
+    """
+
+    state = read_attempt_state()
+
+    if state is None:
+        return None
+
+    try:
+        recorded = resolve_story_path(state["story"])
+    except (FileNotFoundError, RuntimeError):
+        clear_attempt_state()
+        return None
+
+    return state if recorded == story_path else None
+
+
+# ============================================================
+# Second, independent check: did git ever publish this completion?
+#
+# ATTEMPT_STATE.json is the authoritative resume signal, but it lives in
+# agent/runtime/artifacts/ -- generated, gitignored, and wiped along with
+# everything else there. A DONE story whose record is missing must not
+# fall straight back into the old silent-skip, so the repository itself is
+# asked a second question it cannot be lied to about: is there a commit
+# for this story, and is there still unpublished work?
+#
+# Both halves are required. "No commit for this story" alone would also
+# be true after a legitimately completed story whose gate was SKIPPED, and
+# "the tree is dirty" alone is true within seconds of every commit,
+# because agent/logs/<date>.log is a tracked file the orchestrator appends
+# to continuously. Requiring both keeps the check from ever re-running the
+# CI gate on a story that has nothing left to publish.
+# ============================================================
+
+def _publishable_changes() -> list[str]:
+    """Working-tree changes that are real work rather than log churn."""
+
+    return [
+        line for line in git_sync.working_tree_changes()
+        if not line[3:].strip().strip('"').startswith("agent/logs/")
+    ]
+
+
+def unpublished_completion(
+        story_path: Path,
+        story_content: str,
+) -> str | None:
+    """Why a DONE story's completion cannot have been published, or None.
+
+    None means "nothing here contradicts completion" -- including every
+    case git cannot answer. This never reports a doubt it cannot
+    substantiate, because the caller resumes the story on it.
+    """
+
+    available, _detail = git_sync.ci_verification_available()
+
+    if not available:
+        # With no CI gate a story completes on the evaluator's verdict
+        # alone and nothing is ever committed, so neither half of this
+        # check means anything.
+        return None
+
+    subject = "implemented " + (
+        extract_story_id(story_content) or story_path.stem
+    )
+
+    try:
+        published = git_sync.commit_exists_with_subject(subject)
+
+        if published is not False:
+            return None
+
+        outstanding = _publishable_changes()
+        branch = git_sync.current_branch()
+        ahead = git_sync.unpushed_commit_count(branch) if branch else None
+    except git_sync.GitCommandError:
+        return None
+
+    if outstanding:
+        return (
+            f"no commit named {subject!r} exists and {len(outstanding)} "
+            "changed path(s) are still uncommitted"
+        )
+
+    if ahead:
+        return (
+            f"no commit named {subject!r} exists and {ahead} commit(s) on "
+            "this branch are not on origin"
+        )
+
+    return None
+
+
+# ============================================================
+# Evaluation with retries
+#
+# A failed evaluation must never throw away a finished Claude run, and
+# Claude must never be re-invoked to "try again" at something that was
+# not its failure -- retry the evaluation itself instead.
+#
+# Evaluation runs on Codex now, so an attempt costs real capacity. Two
+# consequences: the attempt counts are small (see EVALUATION_ATTEMPTS),
+# and capacity exhaustion must be excluded from them entirely.
+# ModelCapacityUnavailable is a RuntimeError subclass, so it would
+# otherwise be caught here and spent as a retry -- it is re-raised
+# explicitly and handled as the scheduling event it is, one level up.
 # ============================================================
 
 def _evaluate_with_local_retries(
@@ -177,25 +379,19 @@ def _evaluate_with_local_retries(
                 claude_exit_code,
                 result_was_updated,
             )
+        except ModelCapacityUnavailable:
+            raise
         except (OSError, RuntimeError, ValueError, KeyError) as exc:
             last_error = exc
 
-            if isinstance(exc, TimeoutError):
-                log_line(
-                    f"Evaluator timeout after {EVALUATOR_REQUEST_TIMEOUT_SECONDS}s "
-                    f"(attempt {attempt}/{EVALUATION_ATTEMPTS})"
-                )
-            else:
-                log_line(
-                    f"Evaluator request failed after "
-                    f"{EVALUATOR_REQUEST_TIMEOUT_SECONDS}s timeout setting "
-                    f"(attempt {attempt}/{EVALUATION_ATTEMPTS}): "
-                    f"{type(exc).__name__}: {exc}"
-                )
+            log_line(
+                f"Evaluation attempt {attempt}/{EVALUATION_ATTEMPTS} failed: "
+                f"{type(exc).__name__}: {exc}"
+            )
 
             print_status(
-                f"Evaluator unavailable ({type(exc).__name__}: {exc}); "
-                f"local retry {attempt}/{EVALUATION_ATTEMPTS} "
+                f"Evaluation failed ({type(exc).__name__}: {exc}); "
+                f"retry {attempt}/{EVALUATION_ATTEMPTS} "
                 f"in {EVALUATION_RETRY_SECONDS}s "
                 "(Claude is not re-invoked)."
             )
@@ -206,7 +402,7 @@ def _evaluate_with_local_retries(
                 )
 
     log_line(
-        f"Evaluation failed after {EVALUATION_ATTEMPTS} local attempts "
+        f"Evaluation failed after {EVALUATION_ATTEMPTS} attempts "
         f"({type(last_error).__name__}: {last_error}). The completed "
         "Claude work is preserved; the cycle will be retried."
     )
@@ -219,20 +415,74 @@ def _evaluate_preserving_completed_attempt(
         result_content: str,
         claude_exit_code: int,
         result_was_updated: bool,
+        wait_for_evaluator=None,
 ) -> dict:
-    """Retry evaluation indefinitely in bounded batches, never rerunning Claude."""
+    """Retry evaluation in bounded batches, never rerunning Claude.
+
+    This loop used to be infinite, for a reason that no longer holds: the
+    comment said returning to main() "would see the story still active and
+    invoke Claude again", so an unreachable evaluator pinned the
+    orchestrator here forever -- silently as far as any transition went,
+    with a stocked queue and both models available, and losing its place
+    entirely if the run was interrupted.
+
+    ATTEMPT_STATE.json removes that constraint. The finished attempt is
+    recorded before this is ever called, so a failure can propagate: the
+    cycle fails, main()'s recoverable-failure handler retries it, and the
+    retried cycle resumes at evaluation rather than at another Claude run.
+    A genuinely transient failure is still ridden out locally; a permanent
+    one now reaches main()'s explicit "human action required" stop instead
+    of an unbounded wait.
+
+    `wait_for_evaluator` blocks until Codex has capacity again. Exhaustion
+    is not a failed evaluation and never consumes a batch: the work is
+    finished and waiting is free, so the only alternative -- escalating a
+    story because a quota reset is hours away -- would be wrong.
+    """
+
+    batch = 0
+
     while True:
         try:
             return _evaluate_with_local_retries(
                 story_content, result_content, claude_exit_code,
                 result_was_updated,
             )
+        except ModelCapacityUnavailable as exc:
+            log_line(
+                f"Codex capacity exhausted during evaluation ({exc}); the "
+                "finished Claude work is preserved and recorded in "
+                "ATTEMPT_STATE.json. Waiting locally for Codex capacity; "
+                "this does not consume an evaluation attempt."
+            )
+
+            if wait_for_evaluator is None:
+                raise
+
+            wait_for_evaluator()
+
+            continue
         except (OSError, RuntimeError, ValueError, KeyError) as exc:
-            # Keep the completed Claude output in this stack frame. Returning
-            # to main() would see the story still active and invoke Claude again.
+            batch += 1
+
+            if batch >= MAX_EVALUATION_BATCHES:
+                log_line(
+                    "Evaluation still unavailable after "
+                    f"{MAX_EVALUATION_BATCHES} batches of "
+                    f"{EVALUATION_ATTEMPTS} attempts "
+                    f"({type(exc).__name__}: {exc}). The finished Claude "
+                    "work is preserved and its pipeline position is "
+                    "recorded in ATTEMPT_STATE.json; this cycle fails and "
+                    "will resume at evaluation, never at another Claude "
+                    "run."
+                )
+
+                raise
+
             print_status(
-                "Evaluation retry batch exhausted; completed Claude work is "
-                f"preserved. Retrying evaluation in {CYCLE_RETRY_SECONDS}s."
+                f"Evaluation retry batch {batch}/{MAX_EVALUATION_BATCHES} "
+                "exhausted; completed Claude work is preserved. Retrying "
+                f"evaluation in {CYCLE_RETRY_SECONDS}s."
             )
             time.sleep(CYCLE_RETRY_SECONDS)
 
@@ -244,7 +494,8 @@ def _evaluate_preserving_completed_attempt(
 def build_retry_prompt(
         actionable_retry_items: list[str],
         reason: str,
-        story_path: Path
+        story_path: Path,
+        unmet_intent: list[str] | None = None,
 ) -> str:
 
     relative_story = story_path.relative_to(
@@ -255,6 +506,25 @@ def build_retry_prompt(
         f"- {item}" for item in actionable_retry_items
     )
 
+    # An unachieved purpose is a different kind of finding from a missed
+    # checklist item, and fixing it usually means changing where or how the
+    # work was done rather than adding to it. It is called out separately so
+    # a retry does not answer it by ticking the nearest criterion again.
+    intent_block = ""
+
+    if unmet_intent:
+        intent_block = (
+            "\nThe evaluator inspected the repository and found that the "
+            "change does not achieve what this story set out to achieve, "
+            "even where its individual criteria are satisfied:\n"
+            + "\n".join(f"- {item}" for item in unmet_intent)
+            + "\n\nTreat this as the primary deficiency. Fix the substance "
+              "rather than restating the criterion: make the behaviour hold "
+              "where the story requires it, reachable by the caller or user "
+              "the story is about, and covered by a test that would fail if "
+              "the behaviour were removed. Stay inside this story's scope.\n"
+        )
+
     return f"""Continue the active story.
 
 Active story:
@@ -264,6 +534,7 @@ The previous execution did not yet satisfy the Definition of Done.
 
 Concrete deficiencies to address, and only these:
 {items_block}
+{intent_block}
 
 Evaluator reason (context only -- does not add scope beyond the items above):
 {reason}
@@ -430,6 +701,10 @@ def _create_intervention_and_block_story(
         reason: str,
         claude_response: str,
 ) -> None:
+    # The attempt is over: it is a human's problem now, and no later run
+    # may resume a pipeline step on this story's behalf.
+    clear_attempt_state()
+
     story_id = extract_story_id(story_content) or story_path.stem
 
     intervention_path = create_intervention_file(
@@ -475,93 +750,41 @@ def _create_intervention_and_block_story(
 # Story execution loop
 # ============================================================
 
-def execute_active_story(before_attempt=None, on_interruption=None) -> str:
+def _blocked_bookkeeping(story_path: Path) -> None:
+    """Make BACKLOG.md agree that this story is blocked. Idempotent."""
 
-    story_path = get_active_story_path()
-
-    relative_story = story_path.relative_to(
-        REPO_ROOT
-    ).as_posix()
-
-    print(
-        "\n========================================"
-    )
-    print(
-        f"Active story: {relative_story}"
-    )
-    print(
-        "========================================"
+    backlog_content = read_file(
+        BACKLOG_FILE
     )
 
-    story_content = read_file(
-        story_path
+    updated_backlog = ensure_backlog_entry_blocked(
+        backlog_content,
+        story_path.name,
     )
 
-    status_text = extract_status_section(
-        story_content
-    )
-
-    classification = classify_story_status(
-        status_text
-    )
-
-    if classification == "DONE":
+    if updated_backlog != backlog_content:
+        BACKLOG_FILE.write_text(
+            updated_backlog,
+            encoding="utf-8"
+        )
         print(
-            "\nActive story status is DONE. "
-            "Skipping Claude Code and treating "
-            "the story as complete."
+            f"{story_path.name} moved to BACKLOG '## Blocked'."
         )
 
-        return "COMPLETE"
 
-    if classification == "BLOCKED":
-        print(
-            "\nActive story status is BLOCKED. "
-            "Skipping Claude Code for this story."
+def _current_result_content() -> str:
+    if CLAUDE_RESULT_FILE.exists():
+        return read_file(
+            CLAUDE_RESULT_FILE
         )
 
-        print(
-            f"Status: {status_text}"
-        )
+    return "CLAUDE_RESULT.md does not exist."
 
-        # Deterministic bookkeeping only, no model call: make sure
-        # BACKLOG.md reflects the block (idempotent -- a story Claude
-        # Code or a human already blocked may have updated this
-        # itself) before main() moves on to select other work.
-        backlog_content = read_file(
-            BACKLOG_FILE
-        )
 
-        updated_backlog = ensure_backlog_entry_blocked(
-            backlog_content,
-            story_path.name,
-        )
-
-        if updated_backlog != backlog_content:
-            BACKLOG_FILE.write_text(
-                updated_backlog,
-                encoding="utf-8"
-            )
-            print(
-                f"{story_path.name} moved to BACKLOG '## Blocked'."
-            )
-
-        return "BLOCKED"
-
-    # Confirm Claude actually has capacity BEFORE doing any
-    # RepoMap/prompt work -- never generate the map speculatively for
-    # an attempt that might not run yet. before_attempt (the
-    # scheduler's wait_for_claude) blocks here -- using idle time for
-    # Codex planning -- only when Claude is not currently available;
-    # it returns immediately (a no-op) when it already is, so calling
-    # it here in addition to its normal per-attempt call inside the
-    # retry loop below is safe and cheap.
-    if before_attempt is not None:
-        before_attempt()
-
+def _prepare_implementation_prompt(story_path: Path) -> tuple[str, bool]:
     # RepoMap is an optional, experimental orientation aid for
     # Claude's implementation prompt only -- never for the planner,
-    # Hermes evaluation, or the deterministic selector.
+    # the evaluator, or the deterministic selector.
     # generate_repo_map() never raises and returns an empty map on any
     # failure (Aider missing, non-zero exit, timeout), so this can
     # never block story execution.
@@ -596,148 +819,322 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
         encoding="utf-8"
     )
 
+    return prompt, repo_map["enabled"]
+
+
+def execute_active_story(
+        before_attempt=None,
+        on_interruption=None,
+        wait_for_evaluator=None,
+) -> str:
+
+    story_path = get_active_story_path()
+
+    relative_story = story_path.relative_to(
+        REPO_ROOT
+    ).as_posix()
+
+    print(
+        "\n========================================"
+    )
+    print(
+        f"Active story: {relative_story}"
+    )
+    print(
+        "========================================"
+    )
+
+    story_content = read_file(
+        story_path
+    )
+
+    status_text = extract_status_section(
+        story_content
+    )
+
+    classification = classify_story_status(
+        status_text
+    )
+
+    # The harness's own position, which the story file cannot express.
+    resume = pending_attempt_for(story_path)
+
+    if classification == "BLOCKED":
+        clear_attempt_state()
+
+        print(
+            "\nActive story status is BLOCKED. "
+            "Skipping Claude Code for this story."
+        )
+
+        print(
+            f"Status: {status_text}"
+        )
+
+        # Deterministic bookkeeping only, no model call: make sure
+        # BACKLOG.md reflects the block (idempotent -- a story Claude
+        # Code or a human already blocked may have updated this
+        # itself) before main() moves on to select other work.
+        _blocked_bookkeeping(story_path)
+
+        return "BLOCKED"
+
+    if classification == "DONE" and resume is None:
+        # No recorded attempt, so ask the repository whether this
+        # completion was ever actually published (see
+        # unpublished_completion above). Only a substantiated doubt
+        # resumes the story; anything git cannot answer completes it
+        # exactly as before.
+        unpublished = unpublished_completion(story_path, story_content)
+
+        if unpublished is None:
+            print(
+                "\nActive story status is DONE. "
+                "Skipping Claude Code and treating "
+                "the story as complete."
+            )
+
+            return "COMPLETE"
+
+        log_line(
+            f"{story_path.name} reports Status DONE, but {unpublished}. "
+            "Its evaluation and CI verification never finished, so the "
+            "harness resumes its own pipeline for this story instead of "
+            "completing it and selecting new work. Claude is not "
+            "re-invoked."
+        )
+
+        resume = {
+            "phase": "AWAITING_EVALUATION",
+            "claude_exit_code": 0,
+            "result_was_updated": False,
+            "retry_count": 0,
+            "ci_fix_attempts": 0,
+        }
+
     retry_count = 0
     failed_runs = 0
     ci_fix_attempts = 0
+    prompt = None
+    repo_map_enabled = False
 
-    while True:
+    if resume is not None:
+        # Budgets travel with the recorded attempt so a restart cannot
+        # hand the same story a fresh allowance forever.
+        retry_count = int(resume.get("retry_count") or 0)
+        ci_fix_attempts = int(resume.get("ci_fix_attempts") or 0)
 
+        log_line(
+            f"Resuming {story_path.name} at {resume['phase']}: the "
+            "previous run's Claude attempt is already finished on disk, "
+            f"so it is not repeated (retries {retry_count}/"
+            f"{MAX_RETRIES_PER_STORY}, CI fixes {ci_fix_attempts}/"
+            f"{MAX_CI_FIX_ATTEMPTS} carried over)."
+        )
+    else:
+        # Confirm Claude actually has capacity BEFORE doing any
+        # RepoMap/prompt work -- never generate the map speculatively for
+        # an attempt that might not run yet. before_attempt (the
+        # scheduler's wait_for_claude) blocks here -- using idle time for
+        # Codex planning -- only when Claude is not currently available;
+        # it returns immediately (a no-op) when it already is, so calling
+        # it here in addition to its normal per-attempt call inside the
+        # retry loop below is safe and cheap.
+        #
+        # A resumed attempt deliberately skips this: evaluating and
+        # publishing work Claude has already finished must not wait on
+        # Claude's capacity.
         if before_attempt is not None:
             before_attempt()
 
-        old_result_hash = file_hash(
-            CLAUDE_RESULT_FILE
-        )
+        prompt, repo_map_enabled = _prepare_implementation_prompt(story_path)
 
-        usage_before = _safe_claude_usage_percent()
-        claude_start = time.time()
+    while True:
 
-        attempt = run_claude_attempt(
-            prompt
-        )
+        evaluation = None
 
-        claude_exit_code = attempt.exit_code
+        if resume is not None:
+            story_content = read_file(story_path)
+            result_content = _current_result_content()
 
-        claude_duration = time.time() - claude_start
-        usage_after = _safe_claude_usage_percent()
+            if resume["phase"] == "AWAITING_CI":
+                # The evaluator already accepted this attempt; only
+                # publication and the CI verdict are outstanding, so its
+                # verdict is not paid for a second time.
+                evaluation = {
+                    "decision": "COMPLETE",
+                    "reason": (
+                        "Resumed attempt: the evaluator accepted this work "
+                        "before the previous run was interrupted, and only "
+                        "its CI verification was outstanding."
+                    ),
+                }
+            else:
+                evaluation = _evaluate_preserving_completed_attempt(
+                    story_content,
+                    result_content,
+                    int(resume.get("claude_exit_code") or 0),
+                    bool(resume.get("result_was_updated")),
+                    wait_for_evaluator=wait_for_evaluator,
+                )
 
-        print(
-            "Claude run measurement: "
-            f"repo_map={'on' if repo_map['enabled'] else 'off'}, "
-            f"duration={claude_duration:.1f}s, "
-            f"usage_before={usage_before}, "
-            f"usage_after={usage_after}"
-        )
+            resume = None
 
-        if claude_exit_code != 0:
-            # An interrupted attempt is not an evaluator retry or a
-            # story outcome. Keep the same story and work order.
-            capacity_limited = attempt.capacity_exhausted or (
-                usage_after is not None
-                and usage_after >= CLAUDE_USAGE_LIMIT_PERCENT
+        if evaluation is None:
+            # A new Claude attempt supersedes any recorded position: what
+            # is on disk is about to change, so no later run may resume
+            # the previous attempt's evaluation or publication.
+            clear_attempt_state()
+
+            if prompt is None:
+                prompt, repo_map_enabled = _prepare_implementation_prompt(
+                    story_path
+                )
+
+            if before_attempt is not None:
+                before_attempt()
+
+            old_result_hash = file_hash(
+                CLAUDE_RESULT_FILE
             )
 
-            set_story_unfinished(story_path)
+            usage_before = _safe_claude_usage_percent()
+            claude_start = time.time()
+
+            attempt = run_claude_attempt(
+                prompt
+            )
+
+            claude_exit_code = attempt.exit_code
+
+            claude_duration = time.time() - claude_start
+            usage_after = _safe_claude_usage_percent()
+
             print(
-                f"Claude exited with code {claude_exit_code} "
-                + (
-                    "after running out of capacity. Story remains active "
-                    "and UNFINISHED; waiting locally for capacity before "
-                    "continuing the same story."
-                    if capacity_limited
-                    else "with no capacity signal. Story remains active "
-                    "and UNFINISHED; retrying the same story."
-                )
+                "Claude run measurement: "
+                f"repo_map={'on' if repo_map_enabled else 'off'}, "
+                f"duration={claude_duration:.1f}s, "
+                f"usage_before={usage_before}, "
+                f"usage_after={usage_after}"
             )
-            continuation = (
-                "Continue the interrupted attempt on the SAME active story.\n"
-                "Inspect existing repository work and resume where it stopped; "
-                "do not restart completed work.\n\n"
-            )
-            if not prompt.startswith(continuation):
-                prompt = continuation + prompt
-            NEXT_PROMPT_FILE.write_text(prompt + "\n", encoding="utf-8")
 
-            if capacity_limited:
-                # Capacity exhaustion is a scheduling event: it never
-                # counts against the story's retry budget and never
-                # escalates to a human.
-                failed_runs = 0
+            if claude_exit_code != 0:
+                # An interrupted attempt is not an evaluator retry or a
+                # story outcome. Keep the same story and work order.
+                capacity_limited = attempt.capacity_exhausted or (
+                    usage_after is not None
+                    and usage_after >= CLAUDE_USAGE_LIMIT_PERCENT
+                )
+
+                set_story_unfinished(story_path)
+                print(
+                    f"Claude exited with code {claude_exit_code} "
+                    + (
+                        "after running out of capacity. Story remains active "
+                        "and UNFINISHED; waiting locally for capacity before "
+                        "continuing the same story."
+                        if capacity_limited
+                        else "with no capacity signal. Story remains active "
+                        "and UNFINISHED; retrying the same story."
+                    )
+                )
+                continuation = (
+                    "Continue the interrupted attempt on the SAME active story.\n"
+                    "Inspect existing repository work and resume where it stopped; "
+                    "do not restart completed work.\n\n"
+                )
+                if not prompt.startswith(continuation):
+                    prompt = continuation + prompt
+                NEXT_PROMPT_FILE.write_text(prompt + "\n", encoding="utf-8")
+
+                if capacity_limited:
+                    # Capacity exhaustion is a scheduling event: it never
+                    # counts against the story's retry budget and never
+                    # escalates to a human.
+                    failed_runs = 0
+                    log_line(
+                        f"Claude capacity exhausted during {story_path.name}; "
+                        "story preserved as UNFINISHED, waiting locally."
+                    )
+
+                    if on_interruption is not None:
+                        on_interruption()
+                    else:
+                        wait_for_claude_capacity()
+
+                    continue
+
+                # A non-zero exit with no capacity signal is a failed run,
+                # not a pause. Waiting an hour and re-invoking Claude
+                # forever would never resolve it, so escalate once it
+                # repeats instead of looping.
+                failed_runs += 1
+
                 log_line(
-                    f"Claude capacity exhausted during {story_path.name}; "
-                    "story preserved as UNFINISHED, waiting locally."
+                    f"Claude run on {story_path.name} exited "
+                    f"{claude_exit_code} with no capacity signal "
+                    f"({failed_runs}/{MAX_CLAUDE_FAILED_RUNS_PER_STORY})."
                 )
 
-                if on_interruption is not None:
-                    on_interruption()
-                else:
-                    wait_for_claude_capacity()
+                if failed_runs >= MAX_CLAUDE_FAILED_RUNS_PER_STORY:
+                    _create_intervention_and_block_story(
+                        story_path,
+                        read_file(story_path),
+                        f"Claude Code exited with code {claude_exit_code} on "
+                        f"{failed_runs} consecutive runs without any capacity "
+                        "signal, so this is a failing invocation rather than a "
+                        "usage pause. The orchestrator continues with other "
+                        "work; this story needs a human to inspect the run.",
+                        read_file(CLAUDE_RESULT_FILE)
+                        if CLAUDE_RESULT_FILE.exists()
+                        else "(CLAUDE_RESULT.md does not exist -- the Claude "
+                             "process exited non-zero without writing a "
+                             "result.)",
+                    )
+
+                    return "NEEDS_USER"
 
                 continue
 
-            # A non-zero exit with no capacity signal is a failed run,
-            # not a pause. Waiting an hour and re-invoking Claude
-            # forever would never resolve it, so escalate once it
-            # repeats instead of looping.
-            failed_runs += 1
-
-            log_line(
-                f"Claude run on {story_path.name} exited "
-                f"{claude_exit_code} with no capacity signal "
-                f"({failed_runs}/{MAX_CLAUDE_FAILED_RUNS_PER_STORY})."
-            )
-
-            if failed_runs >= MAX_CLAUDE_FAILED_RUNS_PER_STORY:
-                _create_intervention_and_block_story(
-                    story_path,
-                    read_file(story_path),
-                    f"Claude Code exited with code {claude_exit_code} on "
-                    f"{failed_runs} consecutive runs without any capacity "
-                    "signal, so this is a failing invocation rather than a "
-                    "usage pause. The orchestrator continues with other "
-                    "work; this story needs a human to inspect the run.",
-                    read_file(CLAUDE_RESULT_FILE)
-                    if CLAUDE_RESULT_FILE.exists()
-                    else "(CLAUDE_RESULT.md does not exist -- the Claude "
-                         "process exited non-zero without writing a "
-                         "result.)",
-                )
-
-                return "NEEDS_USER"
-
-            continue
-
-        new_result_hash = file_hash(
-            CLAUDE_RESULT_FILE
-        )
-
-        result_was_updated = (
-                new_result_hash is not None
-                and new_result_hash
-                != old_result_hash
-        )
-
-        if CLAUDE_RESULT_FILE.exists():
-            result_content = read_file(
+            new_result_hash = file_hash(
                 CLAUDE_RESULT_FILE
             )
-        else:
-            result_content = (
-                "CLAUDE_RESULT.md does not exist."
+
+            result_was_updated = (
+                    new_result_hash is not None
+                    and new_result_hash
+                    != old_result_hash
             )
 
-        story_content = read_file(
-            story_path
-        )
+            result_content = _current_result_content()
 
-        failed_runs = 0
+            story_content = read_file(
+                story_path
+            )
 
-        evaluation = _evaluate_preserving_completed_attempt(
-            story_content,
-            result_content,
-            claude_exit_code,
-            result_was_updated
-        )
+            failed_runs = 0
+
+            # Claude's attempt is finished and its output is on disk. From
+            # here until a terminal outcome, the outstanding step is the
+            # harness's own -- record that before the evaluator is called,
+            # so an outage or an interrupt during evaluation resumes here
+            # instead of being read as a completed story.
+            record_attempt_state(
+                story_path,
+                "AWAITING_EVALUATION",
+                claude_exit_code=claude_exit_code,
+                result_was_updated=result_was_updated,
+                retry_count=retry_count,
+                ci_fix_attempts=ci_fix_attempts,
+            )
+
+            evaluation = _evaluate_preserving_completed_attempt(
+                story_content,
+                result_content,
+                claude_exit_code,
+                result_was_updated,
+                wait_for_evaluator=wait_for_evaluator,
+            )
 
         decision = evaluation[
             "decision"
@@ -761,9 +1158,23 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
         )
 
         if decision == "COMPLETE":
+            # Accepted, but not yet published or verified. Recorded before
+            # the commit/push/CI wait so an interruption in there resumes
+            # at publication rather than paying the evaluator again -- and,
+            # crucially, never leaves finished work looking complete while
+            # it is still uncommitted.
+            record_attempt_state(
+                story_path,
+                "AWAITING_CI",
+                retry_count=retry_count,
+                ci_fix_attempts=ci_fix_attempts,
+            )
+
             verification = verify_with_github_ci(story_path, story_content)
 
             if verification["status"] in ("PASSED", "SKIPPED"):
+                clear_attempt_state()
+
                 return "COMPLETE"
 
             if verification["status"] != "FAILED":
@@ -813,6 +1224,28 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
             continue
 
         if decision == "BLOCKED":
+            # Deterministic side effect of the verdict, exactly like the
+            # NEEDS_USER path below -- the evaluator classifies, Python
+            # records. Without this the verdict changed nothing at all:
+            # the story kept whatever Status Claude wrote, its bullet
+            # stayed under '## Active', CURRENT_STORY.md still pointed at
+            # it, and the next cycle re-invoked Claude on the same story
+            # with the same prompt -- against no retry budget and with no
+            # escalation, because a BLOCKED verdict consumes neither.
+            clear_attempt_state()
+
+            set_story_blocked(
+                story_path,
+                f"Blocked per evaluator: {reason}",
+            )
+
+            _blocked_bookkeeping(story_path)
+
+            log_line(
+                f"{story_path.name} recorded BLOCKED per the evaluator's "
+                f"verdict: {reason}"
+            )
+
             return "BLOCKED"
 
         if decision == "NEEDS_USER":
@@ -877,10 +1310,19 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
             f"({retry_count}/{MAX_RETRIES_PER_STORY})..."
         )
 
+        # The evaluator has rejected the attempt, so the story file must
+        # stop claiming DONE -- the CI-failure branch above already does
+        # this for the same reason. Leaving DONE in place meant an
+        # interrupted retry looked like a finished story, and a later
+        # empty-RETRY verdict would have been normalized to COMPLETE on
+        # the strength of that stale label (see normalize_evaluation).
+        set_story_unfinished(story_path)
+
         prompt = build_retry_prompt(
             actionable_retry_items,
             reason,
-            story_path
+            story_path,
+            unmet_intent=evaluation.get("unmet_intent") or [],
         )
 
         NEXT_PROMPT_FILE.write_text(
@@ -896,8 +1338,8 @@ def execute_active_story(before_attempt=None, on_interruption=None) -> str:
 # depends on the unresolved decision(s) -- never the whole orchestrator.
 # These helpers are purely local/deterministic: they only read
 # agent/user-decisions/*.md (via the same parsing project_planner.py
-# already uses for validation) and never invoke Codex, Claude, Hermes,
-# Ollama, or the project planner themselves.
+# already uses for validation) and never invoke Codex, Claude, the
+# evaluator, or the project planner themselves.
 # ============================================================
 
 def get_unresolved_user_decisions(
@@ -1404,18 +1846,26 @@ class CapacityScheduler:
             and fingerprint != self.no_work_at
         )
         queue_low = should_trigger_planning(len(get_selectable_story_candidates()))
+        # A held result that reported independent work remaining is a trigger in its
+        # own right. Nothing else can change while planning is held, so without this
+        # the bounded follow-up pass below was only ever reached when the queue
+        # happened to be low -- i.e. the flag was silently ignored on a stocked queue.
+        follow_up_requested = bool(
+            self.planning_hold
+            and self.planning_hold.get("independent_work_remaining") is True
+        )
         if (idle and fingerprint == self.no_work_at and self.planning_hold
-                and self.planning_hold.get("independent_work_remaining") is not True):
+                and not follow_up_requested):
             log_line(
                 "Decision: wait -- no planning inputs changed and previous "
                 "planner result has no independent work remaining"
             )
             return False
-        if not (force or queue_low or changed_since_hold or
+        if not (force or queue_low or changed_since_hold or follow_up_requested or
                 (idle and self.planning_hold is None)):
             return False
         if fingerprint == self.no_work_at:
-            if self.planning_hold and self.planning_hold.get("independent_work_remaining") is True:
+            if follow_up_requested:
                 pass  # A bounded follow-up pass was explicitly requested by the planner result.
             else:
                 log_line(
@@ -1594,6 +2044,28 @@ class CapacityScheduler:
             log_line("Orchestration resumed: continuing the active story "
                      "after waiting locally for Claude capacity.")
 
+    def wait_for_codex(self):
+        """Wait out Codex exhaustion when evaluation needs it.
+
+        Unlike wait_for_claude() this never fills the wait with other Codex
+        work -- the planner and the architect run on the same exhausted
+        budget. Nor can Claude proceed meanwhile: the active story's
+        attempt is finished and unevaluated, and starting a second story
+        on top of it is exactly the failure ATTEMPT_STATE.json exists to
+        prevent.
+        """
+
+        self.codex.defer()
+        waited = False
+
+        while not self.codex_available():
+            waited = True
+            self.wait_locally(["Codex"])
+
+        if waited:
+            log_line("Orchestration resumed: evaluating the finished attempt "
+                     "after waiting locally for Codex capacity.")
+
 
 _reported_pointer_problem = None
 
@@ -1606,9 +2078,24 @@ def _active_is_executable():
 
     try:
         path = get_active_story_path()
-        executable = classify_story_status(
-            extract_status_section(read_file(path))
-        ) not in ("DONE", "BLOCKED")
+        content = read_file(path)
+        classification = classify_story_status(
+            extract_status_section(content)
+        )
+        executable = classification not in ("DONE", "BLOCKED")
+
+        if not executable:
+            # A story's own Status is Claude's statement about the
+            # implementation, never a statement about the harness's
+            # remaining steps (evaluation, commit, push, CI verdict). An
+            # attempt those steps never finished stays priority 1 instead
+            # of being skipped in favour of a brand-new story on top of
+            # unevaluated, unpushed work -- which is precisely what a
+            # DONE-and-skip did.
+            executable = pending_attempt_for(path) is not None or (
+                classification == "DONE"
+                and unpublished_completion(path, content) is not None
+            )
     except (FileNotFoundError, RuntimeError) as exc:
         # Stale workflow state must not strand execution: an
         # unresolvable/unreadable pointer means "no active story", so
@@ -1664,6 +2151,40 @@ def _report_undispatchable_architect_requests() -> list[str]:
         )
 
     return [request["file"] for request in stranded]
+
+
+_reported_backlog_problems = set()
+
+
+def _report_backlog_inconsistencies() -> None:
+    """
+    Name each distinct BACKLOG.md structural problem once -- not once per
+    polling cycle, and never as a gate.
+
+    validate_backlog_consistency() has existed, and been covered by a
+    test, without any running code ever calling it: the exact corruption
+    it detects (one story listed under two sections at once, an '## Active'
+    bullet that disagrees with CURRENT_STORY.md, a DONE story still listed
+    as Active) therefore accumulated in silence. A malformed index must be
+    visible, not fatal -- so this only reports, exactly like
+    _report_undispatchable_architect_requests() above.
+    """
+
+    try:
+        problems = validate_backlog_consistency()
+    except (FileNotFoundError, RuntimeError) as exc:
+        problems = [
+            "BACKLOG.md could not be validated "
+            f"({type(exc).__name__}: {exc})"
+        ]
+
+    for problem in problems:
+        if problem in _reported_backlog_problems:
+            continue
+
+        _reported_backlog_problems.add(problem)
+
+        log_line("BACKLOG.md inconsistency -- " + problem)
 
 
 class DecisionLog:
@@ -1722,6 +2243,8 @@ def _run_cycle(scheduler, replenish, decisions) -> tuple[str, bool]:
 
     requeue_resolved_interventions()
 
+    _report_backlog_inconsistencies()
+
     # Step 1 (per cycle): check both models' availability
     # independently, before any decision is made. A cheap, cached local
     # check (CapacityProbe) -- never a fresh model call once a probe is
@@ -1744,7 +2267,11 @@ def _run_cycle(scheduler, replenish, decisions) -> tuple[str, bool]:
             "code (resume active story) -- reason: an unfinished active "
             "story exists, which is always priority 1",
         )
-        result = execute_active_story(scheduler.wait_for_claude, scheduler.claude.defer)
+        result = execute_active_story(
+            scheduler.wait_for_claude,
+            scheduler.claude.defer,
+            scheduler.wait_for_codex,
+        )
         if result not in ("COMPLETE", "BLOCKED", "NEEDS_USER"):
             raise RuntimeError(f"Unexpected story result: {result}")
         return "CONTINUE", True
@@ -2067,7 +2594,7 @@ def _select_and_activate_next_story() -> str:
 
         # Loop back to the top (which calls requeue_resolved_interventions()
         # again before retrying selection) -- never call
-        # Claude/Hermes/Ollama/the planner merely because an
+        # Claude/the evaluator/the planner merely because an
         # implementation-time intervention resolved; the planner is
         # not needed to interpret a tool/permission/manual-step
         # resolution.

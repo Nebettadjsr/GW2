@@ -40,6 +40,11 @@ class PlanningHoldTest(unittest.TestCase):
         self.claude.available.return_value = False
         self.codex.available.return_value = True
         self.stack.enter_context(patch.object(loop, "log_line"))
+        # These holds are about changed inputs, not queue depth. story_state keeps its
+        # own STORIES_DIR/BACKLOG_FILE, so without this the queue-low trigger would be
+        # read from the real repository's backlog and flip with it.
+        self.stack.enter_context(patch.object(loop, "get_selectable_story_candidates",
+                                              return_value=["queued.md", "queued-2.md", "queued-3.md"]))
         self.plan = self.stack.enter_context(patch.object(loop, "run_planning_pass", return_value={
             "status": "NEEDS_USER", "user_decision_ids": ["UD-010"]}))
         self.scheduler = self.new_scheduler()

@@ -14,7 +14,8 @@ from agent.runtime.human.user_decisions import get_open_decisions
 # ============================================================
 # Deterministic story selection
 #
-# Story selection has no AI involvement. An LLM (Hermes) repeatedly
+# Story selection has no AI involvement. An LLM (the evaluator model of
+# the day) repeatedly
 # selected nonexistent/invalid stories here, and every such result was
 # already being overridden by Python -- so the model call added
 # unreliability without adding any real decision-making. BACKLOG.md's
@@ -24,7 +25,7 @@ from agent.runtime.human.user_decisions import get_open_decisions
 # fully deterministic -- file exists, not archived, not DONE, not
 # blocked by its own Status/Dependencies) confirms is executable.
 #
-# Hermes is still used elsewhere (evaluator.py) -- this
+# A model is still used elsewhere (evaluator.py, on Codex) -- this
 # module concerns story selection only.
 # ============================================================
 
