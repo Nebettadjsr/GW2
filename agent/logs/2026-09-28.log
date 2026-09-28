@@ -1005,3 +1005,359 @@
 [22:10:08] Evaluator decision: COMPLETE
 [22:10:08] Reason: The planner applies the shared 15% policy to gross per-craft revenue, keeps gross revenue and total sell value intact, and carries the corrected profits through the inspected client presentation paths. The inspected tests and documentation support the reported behavior. The unused CostEvaluator profit fields remain a follow-up finding; they do not feed the planner’s CraftResult or the user-facing paths covered by this story.
 [22:10:08] ========================================
+[22:10:12] STORY-DOM-023-crafting-profit-fee-integration.md published for CI verification: e1d34fb on master (29 changed path(s), new commit, waiting for GitHub Actions.
+[22:12:13] GitHub CI PASSED for e1d34fb (STORY-DOM-023-crafting-profit-fee-integration.md): CI: success
+[22:12:23] Availability check: claude_available=True, codex_available=True
+[22:12:23] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[22:12:28] Planning resumed for changed inputs: agent/runtime/artifacts/CLAUDE_RESULT.md, agent/stories/BACKLOG.md, agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md, docs/CURRENT_ARCHITECTURE.md, docs/CURRENT_STATE_SPEC.md, docs/KNOWN_PROBLEMS.md, docs/crafting/GLOSSARY.md, docs/crafting/README.md
+[22:12:28] ========================================
+[22:12:28] Running project-planning pass
+[22:12:28] ========================================
+[22:12:29] ========================================
+[22:12:29] Starting hosted Codex planner
+[22:12:29] ========================================
+[22:12:29] [planner] session 01a0e9a5-c077-75d0-aa2d-7ac03c618d71
+[22:12:29] [planner] reasoning...
+[22:12:33] Planner last response:
+[22:12:33] I’ll stay within the supplied Phase 5 scope. I’m checking the specific remaining story dependencies, review requirements, and the supplied follow-up findings, then I’ll record the bounded planning result.
+[22:12:36] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'Get-Content agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md; Get-Content agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md; Get-Content agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md; Get-Content agent/stories/STORY-PERF-002-phase-five-crafting-profit-page-budget.md; Get-Content agent/stories/STORY-WEB-016-compact-crafting-resolution-tree.md'
+[22:12:36] [planner command done] exit 0
+[22:12:47] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:12:47] from pathlib import Path
+[22:12:47] for fn in ['STORY-DOM-023-crafting-profit-fee-integration.md','STORY-SYNC-004-complete-referenced-item-metadata.md','STORY-WEB-015-profit-purchase-and-blocking-details.md']:
+[22:12:47]  p=Path('agent/stories')/fn
+[22:12:47]  s=p.read_text(encoding='utf-8')
+[22:12:47]  for h in ['## Follow-up Findings Disposition','## Follow-up Findings']:
+[22:12:47]   i=s.find(h)
+[22:12:47]   if i>=0:
+[22:12:47]    j=s.find('\\n## ',i+4)
+[22:12:47]    print(fn, s[i:j if j>=0 else None])
+[22:12:47] '@ | python -"
+[22:12:47] [planner command done] exit 0
+[22:12:55] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:12:55] from pathlib import Path
+[22:12:55] for f, term in [('docs/TARGET_ARCHITECTURE.md','## 34.'),('docs/DOMAIN_SPEC.md','## 26.')]:
+[22:12:55]  s=Path(f).read_text(encoding='utf-8'); i=s.find(term)
+[22:12:55]  print('\\n'+f+'\\n'+s[i:i+1800] if i>=0 else f+' section marker not found')
+[22:12:55] '@ | python -"
+[22:12:55] [planner command done] exit 0
+[22:12:59] Planner last response:
+[22:12:59] The supplied findings expose two remaining implementation follow-ups: a stale pre-fee profit calculation in `CostEvaluator`, and a JavaFX total-sell-value calculation in the view. The other findings already map to `STORY-SYNC-005`, `STORY-WEB-017`, or the recorded target-architecture coverage. I’m adding the two scoped follow-ups and the required Phase 5 health review, then recording each finding’s disposition.
+[22:13:39] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:13:39] from pathlib import Path
+[22:13:39] root=Path('.')
+[22:13:39] stories={
+[22:13:39] 'STORY-DOM-025-remove-stale-cost-evaluator-profit.md': '''## Story ID
+[22:13:39] STORY-DOM-025
+[22:13:39] ## Title
+[22:13:39] Remove the stale pre-fee profit calculation from CostEvaluator
+[22:13:39] ## Status
+[22:13:39] TODO
+[22:13:39] ## Milestone
+[22:13:39] milestone-05
+[22:13:39] ## Goal
+[22:13:39] Prevent CostEvaluator from publishing profit values that use the superseded pre-fee formula or a different buy-cost basis from the authoritative crafting result.
+[22:13:39] ## Authoritative Source Documents / Sections
+[22:13:39] - agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md, Follow-up Findings F001 and Result.
+[22:13:39] - docs/DOMAIN_SPEC.md section 26, as cited by STORY-DOM-023.
+[22:13:39] ## Context
+[22:13:39] DOM-023 records that CostEvaluator still populates CostEvaluationResult.profitPerCraft and totalProfit using a pre-fee formula, while the planner independently computes profit with a different buy-cost basis. No production caller currently reads those fields. The stale fields remain misleading if reused.
+[22:13:39] ## Acceptance Criteria
+[22:13:39] 1. CostEvaluator no longer publishes profit values that contradict the resolved fee policy or the authoritative crafting profit calculation.
+[22:13:39] 2. Retain only CostEvaluator responsibilities and fields needed by its callers; do not create a second authoritative profit formula.
+[22:13:39] 3. Focused tests establish the revised CostEvaluator result contract and preserve gross revenue and cost inputs used by the planner.
+[22:13:39] 4. Record any compatibility impact for existing tests/callers in the story Result.
+[22:13:39] ## Required Tests
+[22:13:39] - Focused CostEvaluator tests for revenue and cost outputs and the absence or revised contract of stale profit outputs.
+[22:13:39] - Directly affected tests must pass; the complete regression gate remains GitHub CI.
+[22:13:39] ## Constraints
+[22:13:39] - Do not change the resolved fee model, planner buy-cost basis, gross revenue, or unrelated crafting behavior.
+[22:13:39] - No broad monetary refactor or speculative cleanup.
+[22:13:40] ## Dependencies
+[22:13:40] Completed STORY-DOM-023.
+[22:13:40] ## Definition of Done
+[22:13:40] CostEvaluator no longer exposes the stale pre-fee profit result, focused tests and Result document the contract, and the revision passes the GitHub CI gate.
+[22:13:40] ## Result
+[22:13:40] Not started.
+[22:13:40] ## Blockers
+[22:13:40] None.
+[22:13:40] ''',
+[22:13:40] 'STORY-APP-013-carry-authoritative-total-sell-value.md': '''## Story ID
+[22:13:40] STORY-APP-013
+[22:13:40] ## Title
+[22:13:40] Carry authoritative total sell value into the JavaFX Profit view
+[22:13:40] ## Status
+[22:13:40] TODO
+[22:13:40] ## Milestone
+[22:13:40] milestone-05
+[22:13:40] ## Goal
+[22:13:40] Have the JavaFX Profit view display the backend-provided total sell value instead of deriving it from revenue and craftable count in the view.
+[22:13:40] ## Authoritative Source Documents / Sections
+[22:13:40] - agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md, Follow-up Findings F002.
+[22:13:40] - agent/stories/STORY-APP-011-display-authoritative-total-profit.md.
+[22:13:40] - Supplied docs/ROADMAP.md Phase 5 exit criterion: both JavaFX and web UIs are driven by the same backend.
+[22:13:40] ## Context
+[22:13:40] DOM-023 records that CraftingProfitView multiplies revenue by craftableCount despite CraftResult.totalSellValueCopper already being the authoritative field. Carrying the supplied value avoids a second derivation in the JavaFX presentation path.
+[22:13:40] ## Acceptance Criteria
+[22:13:40] 1. Carry CraftResult.totalSellValueCopper through CraftingProfitController.UiRow into CraftingProfitView.
+[22:13:40] 2. Display the supplied total sell value without recomputing revenue multiplied by craftable count in the view.
+[22:13:40] 3. Preserve the gross-value meaning and existing unavailable/null handling.
+[22:13:40] 4. Add focused verification that a distinctive supplied total is displayed unchanged.
+[22:13:40] ## Required Tests
+[22:13:40] - Focused controller/view tests verifying totalSellValueCopper is passed through and displayed unchanged, including applicable unavailable-value behavior.
+[22:13:40] - Explicit local TestFX verification if the changed presentation is covered by the existing JavaFX verification path; record any unavailable interactive check as a limitation.
+[22:13:40] ## Constraints
+[22:13:40] - Presentation/data-flow change only; do not change domain calculations, HTTP contracts, or JavaFX coexistence.
+[22:13:40] - No unrelated UI cleanup.
+[22:13:40] ## Dependencies
+[22:13:40] Completed STORY-DOM-023 and STORY-APP-011.
+[22:13:40] ## Definition of Done
+[22:13:40] JavaFX displays the authoritative supplied total sell value, targeted evidence and limitations are recorded, and the revision passes the GitHub CI gate.
+[22:13:40] ## Result
+[22:13:40] Not started.
+[22:13:40] ## Blockers
+[22:13:40] None.
+[22:13:40] ''',
+[22:13:40] 'STORY-QUALITY-005-phase-five-completion-review.md': '''## Story ID
+[22:13:40] STORY-QUALITY-005
+[22:13:40] ## Title
+[22:13:40] Review Phase 5 project health before milestone completion
+[22:13:40] ## Status
+[22:13:40] TODO
+[22:13:40] ## Milestone
+[22:13:40] milestone-05
+[22:13:40] ## Goal
+[22:13:40] Perform the bounded PROJECT HEALTH REVIEW required before Phase 5 closure and record concrete findings and their disposition for planner assessment.
+[22:13:40] ## Authoritative Source Documents / Sections
+[22:13:40] - Supplied docs/ROADMAP.md Phase 5 exit criteria.
+[22:13:40] - docs/TARGET_ARCHITECTURE.md section 34, PROJECT HEALTH REVIEW policy.
+[22:13:40] - docs/TEST_STRATEGY.md sections 12 and 36.
+[22:13:40] ## Context
+[22:13:40] The Phase 5 exit criteria require a bounded health review before milestone completion. The review should occur after the integrated frontend work and real-user performance assessment are substantially complete. It records findings; it does not itself close the milestone.
+[22:13:40] ## Acceptance Criteria
+[22:13:40] 1. Perform the bounded review under TARGET_ARCHITECTURE section 34 and record evidence, concrete findings, and limitations in this story Result.
+[22:13:40] 2. Assess findings against Phase 5 scope and identify explicit disposition or destination for each blocking finding and any proposed transfer.
+[22:13:40] 3. Keep review scope bounded; do not automatically create remediation work or claim milestone completion.
+[22:13:40] ## Required Tests
+[22:13:40] - Assess relevant existing verification evidence and run only targeted checks needed to resolve concrete review questions; report evidence and limitations.
+[22:13:40] ## Constraints
+[22:13:40] - Non-Goals: no broad bug hunting, automatic broad regression testing, arbitrary test expansion, speculative cleanup/refactoring, or later-milestone architecture implementation.
+[22:13:40] - Planned future replacement alone is not evidence of current debt.
+[22:13:40] - Preserve review first, remediation later; unresolved findings may remain for a subsequent planning pass.
+[22:13:40] ## Dependencies
+[22:13:40] STORY-PERF-002 and completion of the remaining Phase 5 implementation stories, including STORY-DOM-024 and STORY-WEB-016.
+[22:13:40] ## Definition of Done
+[22:13:40] The bounded health review, evidence, findings, limitations, and explicit disposition of blocking findings and proposed transfers are recorded in Result.
+[22:13:40] ## Result
+[22:13:40] Not started.
+[22:13:40] ## Blockers
+[22:13:40] Blocked until the integrated Phase 5 implementation and performance assessment are substantially complete.
+[22:13:40] '''
+[22:13:40] }
+[22:13:40] for name, body in stories.items():
+[22:13:40]  p=root/'agent/stories'/name
+[22:13:40]  if p.exists(): raise SystemExit(f'duplicate: {name}')
+[22:13:40]  p.write_text(body,encoding='utf-8')
+[22:13:40] # update only supplied finding disposition headings
+[22:13:40] updates={
+[22:13:40] 'STORY-DOM-023-crafting-profit-fee-integration.md': '''## Follow-up Findings Disposition
+[22:13:40] F001: FOLLOW-UP STORY — STORY-DOM-025
+[22:13:40] F002: FOLLOW-UP STORY — STORY-APP-013''',
+[22:13:40] 'STORY-SYNC-004-complete-referenced-item-metadata.md': '''## Follow-up Findings Disposition
+[22:13:40] F001: ALREADY COVERED — docs/TARGET_ARCHITECTURE.md §12.1
+[22:13:40] F002: FOLLOW-UP STORY — STORY-SYNC-005''',
+[22:13:40] 'STORY-WEB-015-profit-purchase-and-blocking-details.md': '''## Follow-up Findings Disposition
+[22:13:40] F001: FOLLOW-UP STORY — STORY-WEB-017'''
+[22:13:40] }
+[22:13:40] for name, block in updates.items():
+[22:13:40]  p=root/'agent/stories'/name; s=p.read_text(encoding='utf-8')
+[22:13:40]  start=s.find('## Follow-up Findings Disposition')
+[22:13:40]  if start<0: raise SystemExit(f'missing disposition heading: {name}')
+[22:13:40]  end=s.find('\\n## ',start+4)
+[22:13:40]  if end<0: end=len(s)
+[22:13:40]  p.write_text(s[:start]+block+s[end:],encoding='utf-8')
+[22:13:40] # insert three backlog entries at top of To Do in execution order, retaining all other sections
+[22:13:40] p=root/'agent/stories/BACKLOG.md'; s=p.read_text(encoding='utf-8')
+[22:13:40] marker='## To Do\\n'
+[22:13:40] i=s.find(marker)
+[22:13:40] if i<0: raise SystemExit('missing To Do')
+[22:13:40] insert='''## To Do
+[22:13:40] - STORY-DOM-025 | STORY-DOM-025-remove-stale-cost-evaluator-profit.md | TODO | milestone-05 | deps: STORY-DOM-023
+[22:13:40]   dependency note: Follow-up to DOM-023 F001; remove the stale pre-fee profit result after the fee integration is complete.
+[22:13:40]   backlog entry: milestone-05: Remove CostEvaluator's stale pre-fee profit output.
+[22:13:40] - STORY-APP-013 | STORY-APP-013-carry-authoritative-total-sell-value.md | TODO | milestone-05 | deps: STORY-DOM-023, STORY-APP-011
+[22:13:40]   dependency note: Follow-up to DOM-023 F002; carry the backend total sell value through the JavaFX controller instead of deriving it in the view.
+[22:13:40]   backlog entry: milestone-05: Carry authoritative total sell value into JavaFX Profit presentation.
+[22:13:40] - STORY-QUALITY-005 | STORY-QUALITY-005-phase-five-completion-review.md | TODO | milestone-05 | deps: STORY-PERF-002, STORY-DOM-024, STORY-WEB-016
+[22:13:40]   dependency note: Bounded Phase 5 health review after integrated work and the real-user performance assessment are substantially complete.
+[22:13:40]   backlog entry: milestone-05: Review Phase 5 project health before milestone completion.
+[22:13:40] '''
+[22:13:40] s=s[:i]+insert+s[i+len(marker):]
+[22:13:40] p.write_text(s,encoding='utf-8')
+[22:13:40] '@ | python -"
+[22:13:40] [planner command done] exit 1
+[22:13:56] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:13:56] from pathlib import Path
+[22:13:56] root=Path('agent/stories')
+[22:13:56] updates={
+[22:13:56] 'STORY-DOM-023-crafting-profit-fee-integration.md': '''## Follow-up Findings Disposition
+[22:13:56] F001: FOLLOW-UP STORY — STORY-DOM-025
+[22:13:56] F002: FOLLOW-UP STORY — STORY-APP-013''',
+[22:13:56] 'STORY-SYNC-004-complete-referenced-item-metadata.md': '''## Follow-up Findings Disposition
+[22:13:56] F001: ALREADY COVERED — docs/TARGET_ARCHITECTURE.md §12.1
+[22:13:56] F002: FOLLOW-UP STORY — STORY-SYNC-005''',
+[22:13:56] 'STORY-WEB-015-profit-purchase-and-blocking-details.md': '''## Follow-up Findings Disposition
+[22:13:56] F001: FOLLOW-UP STORY — STORY-WEB-017'''
+[22:13:56] }
+[22:13:56] for name, block in updates.items():
+[22:13:56]  p=root/name; s=p.read_text(encoding='utf-8')
+[22:13:56]  start=s.find('## Follow-up Findings Disposition')
+[22:13:56]  if start>=0:
+[22:13:56]   end=s.find('\\n## ',start+4); end=len(s) if end<0 else end
+[22:13:56]   s=s[:start]+block+s[end:]
+[22:13:56]  else:
+[22:13:56]   nxt=s.find('\\n## Follow-up Findings')
+[22:13:56]   if nxt<0: raise SystemExit(f'missing findings: {name}')
+[22:13:56]   s=s[:nxt]+'\\n\\n'+block+s[nxt:]
+[22:13:56]  p.write_text(s,encoding='utf-8')
+[22:13:56] p=root/'BACKLOG.md'; s=p.read_text(encoding='utf-8'); marker='## To Do\\n'; i=s.find(marker)
+[22:13:56] if i<0: raise SystemExit('missing To Do')
+[22:13:56] insert='''## To Do
+[22:13:56] - STORY-DOM-025 | STORY-DOM-025-remove-stale-cost-evaluator-profit.md | TODO | milestone-05 | deps: STORY-DOM-023
+[22:13:56]   dependency note: Follow-up to DOM-023 F001; remove the stale pre-fee profit result after the fee integration is complete.
+[22:13:56]   backlog entry: milestone-05: Remove CostEvaluator's stale pre-fee profit output.
+[22:13:56] - STORY-APP-013 | STORY-APP-013-carry-authoritative-total-sell-value.md | TODO | milestone-05 | deps: STORY-DOM-023, STORY-APP-011
+[22:13:56]   dependency note: Follow-up to DOM-023 F002; carry the backend total sell value through the JavaFX controller instead of deriving it in the view.
+[22:13:56]   backlog entry: milestone-05: Carry authoritative total sell value into JavaFX Profit presentation.
+[22:13:56] - STORY-QUALITY-005 | STORY-QUALITY-005-phase-five-completion-review.md | TODO | milestone-05 | deps: STORY-PERF-002, STORY-DOM-024, STORY-WEB-016
+[22:13:56]   dependency note: Bounded Phase 5 health review after integrated work and the real-user performance assessment are substantially complete.
+[22:13:56]   backlog entry: milestone-05: Review Phase 5 project health before milestone completion.
+[22:13:56] '''
+[22:13:56] s=s[:i]+insert+s[i+len(marker):]; p.write_text(s,encoding='utf-8')
+[22:13:56] '@ | python -"
+[22:13:56] [planner command done] exit 0
+[22:14:15] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:14:15] import json
+[22:14:15] from pathlib import Path
+[22:14:15] p=Path('agent/runtime/artifacts/PLANNING_RESULT.json')
+[22:14:15] data={
+[22:14:15]   'status':'COMPLETE',
+[22:14:15]   'phase_considered':'Phase 5',
+[22:14:15]   'independent_work_remaining':True,
+[22:14:15]   'phase_review':[
+[22:14:15]     {'area':'Frontend framework and language decision','outcome':'COVERED','references':['AR-001','docs/architecture/decisions/ADR-001-frontend-framework-and-language.md','agent/stories/STORY-WEB-001-crafting-profit-table.md']},
+[22:14:15]     {'area':'Crafting Profit and Discovery authoritative fee integration','outcome':'COVERED','references':['agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md']},
+[22:14:15]     {'area':'Stale CostEvaluator profit fields','outcome':'PLANNED','references':['agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md#F001','agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md']},
+[22:14:15]     {'area':'JavaFX total sell value pass-through','outcome':'PLANNED','references':['agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md#F002','agent/stories/STORY-APP-013-carry-authoritative-total-sell-value.md']},
+[22:14:15]     {'area':'Referenced item metadata and browser reload smoke follow-ups','outcome':'COVERED','references':['docs/TARGET_ARCHITECTURE.md §12.1','agent/stories/STORY-SYNC-005-stabilize-bank-reload-smoke-check.md']},
+[22:14:15]     {'area':'Profit layout contrast sampling follow-up','outcome':'COVERED','references':['agent/stories/STORY-WEB-017-layout-smoke-intro-contrast-sample.md']},
+[22:14:15]     {'area':'Remaining Phase 5 implementation queue','outcome':'PREREQUISITE','references':['agent/stories/STORY-DOM-024-ectoplasm-fee-policy-alignment.md','agent/stories/STORY-WEB-016-compact-crafting-resolution-tree.md','agent/stories/STORY-SYNC-005-stabilize-bank-reload-smoke-check.md','agent/stories/STORY-WEB-017-layout-smoke-intro-contrast-sample.md']},
+[22:14:15]     {'area':'Real user database complete-page performance','outcome':'PREREQUISITE','references':['agent/stories/STORY-PERF-002-phase-five-crafting-profit-page-budget.md']},
+[22:14:15]     {'area':'Phase 5 bounded project health review','outcome':'PLANNED','references':['docs/TARGET_ARCHITECTURE.md §34','agent/stories/STORY-QUALITY-005-phase-five-completion-review.md']},
+[22:14:15]     {'area':'PO requests and unresolved user/architecture decisions','outcome':'COVERED','references':['No open PO requests; UD-008 frontend choice resolved through AR-001; no unresolved architect request supplied']}
+[22:14:15]   ],
+[22:14:15]   'phase_exit_criteria_satisfied':False,
+[22:14:15]   'story_files_created':['STORY-DOM-025-remove-stale-cost-evaluator-profit.md','STORY-APP-013-carry-authoritative-total-sell-value.md','STORY-QUALITY-005-phase-five-completion-review.md'],
+[22:14:15]   'user_decision_ids':[],
+[22:14:15]   'product_owner_requests_processed':[],
+[22:14:15]   'architect_requests_created':[],
+[22:14:15]   'milestone_transition':False,
+[22:14:15]   'completed_milestone':None,
+[22:14:15]   'next_milestone':None,
+[22:14:15]   'backlog_updated':True,
+[22:14:15]   'roadmap_updated':False,
+[22:14:15]   'project_state_updated':False,
+[22:14:15]   'reason':'Phase 5 remains open: four TODO stories and the real-user performance gate remain, plus the Phase 5 health review is newly queued. Added bounded follow-ups for both DOM-023 findings and recorded dispositions for all supplied findings.'
+[22:14:15] }
+[22:14:15] p.write_text(json.dumps(data,indent=2)+'\\n',encoding='utf-8')
+[22:14:15] '@ | python -"
+[22:14:15] [planner command done] exit 0
+[22:14:20] Planner last response:
+[22:14:20] Phase 5 remains open. I created three stories and added them to `BACKLOG.md`: the two follow-ups from DOM-023 and the required bounded health review. I also recorded dispositions for all supplied findings; existing stories cover the other three.
+[22:14:20] The real-user performance gate and remaining Phase 5 work are still prerequisites, so no milestone transition was recorded. The planning result is in [PLANNING_RESULT.json](/C:/Users/Administrator/IdeaProjects/GW2/agent/runtime/artifacts/PLANNING_RESULT.json).
+[22:14:20] [planner] turn completed | input tokens: 285254 | cached input tokens: 248064 | output tokens: 5203
+[22:14:20] ========================================
+[22:14:20] [planner] turn totals | model requests: 1 | gross input tokens: 285,254 | cached input tokens: 248,064 | uncached input tokens: 37,190 | output tokens: 5,203
+[22:14:20] Hosted codex planner exit code: 0
+[22:14:20] ========================================
+[22:14:20] ========================================
+[22:14:20] Planning result: FAILED
+[22:14:20] Reason: Phase 5 remains open: four TODO stories and the real-user performance gate remain, plus the Phase 5 health review is newly queued. Added bounded follow-ups for both DOM-023 findings and recorded dispositions for all supplied findings.
+[22:14:20] Validation problems:
+[22:14:20] - STORY-QUALITY-005-phase-five-completion-review.md has unresolved prerequisites but is not BLOCKED: ['depends on STORY-DOM-024, which is not DONE (currently TODO)', 'depends on STORY-PERF-002, which is not DONE (currently BLOCKED)', 'depends on STORY-WEB-016, which is not DONE (currently TODO)']
+[22:14:20] - independent_work_remaining must agree with READY areas in phase_review.
+[22:14:20] ========================================
+[22:14:20] Project planning FAILED: Phase 5 remains open: four TODO stories and the real-user performance gate remain, plus the Phase 5 health review is newly queued. Added bounded follow-ups for both DOM-023 findings and recorded dispositions for all supplied findings.; validation: ["STORY-QUALITY-005-phase-five-completion-review.md has unresolved prerequisites but is not BLOCKED: ['depends on STORY-DOM-024, which is not DONE (currently TODO)', 'depends on STORY-PERF-002, which is not DONE (currently BLOCKED)', 'depends on STORY-WEB-016, which is not DONE (currently TODO)']", 'independent_work_remaining must agree with READY areas in phase_review.']. Held until planning inputs change; independent execution continues.
+[22:14:26] Decision: code (select next story) -- reason: 6 selectable To Do candidate(s), Claude available
+[22:14:27] ========================================
+[22:14:27] Story selector: NEXT
+[22:14:27] Reason: Deterministic selection: first executable entry in BACKLOG.md's 'To Do' order (STORY-DOM-025-remove-stale-cost-evaluator-profit.md).
+[22:14:27] ========================================
+[22:14:27] Next story activated:
+[22:14:27] agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md
+[22:14:36] Availability check: claude_available=True, codex_available=True
+[22:14:36] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[22:14:36] ========================================
+[22:14:36] Active story: agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md
+[22:14:36] ========================================
+[22:14:38] RepoMap: disabled, budget=1200 tokens
+[22:14:45] ========================================
+[22:14:45] Starting Claude Code
+[22:14:45] ========================================
+[22:20:20] STORY-DOM-025 is complete.
+[22:20:20] ## What changed
+[22:20:20] **A deletion, not a rewrite** — no profit formula was added, moved, or changed anywhere.
+[22:20:20] - `craft/CostEvaluator.java:14` — `evaluate(...)` no longer computes `revenue − buyCost − opportunityCost`.
+[22:20:20] - `craft/CostEvaluationResult.java` — `profitPerCraft`/`totalProfit` (the pre-fee pair DOM-023 F001 flagged as contradicting `DOMAIN_SPEC.md` §26) are gone, and so are `buyCostPerCraft`/`effectiveCostPerCraft`. None had a reader, and the buy-cost basis here (`sim.getFirstCraft().getBuyCostCopper()`) is not the planner's (`missingToBuyOne`) — the disagreement the story's goal names. Per AC 2 the result now retains exactly the two figures its one caller reads: gross `revenuePerCraft` and `opportunityCostPerCraft`.
+[22:20:20] - `CraftingPlanner.evaluateOneRecipeNew(...)` is untouched and remains the single authoritative, fee-inclusive profit site. `evaluate(...)`'s signature, the sell-mode revenue selection and §21's zero-revenue path are unchanged.
+[22:20:20] **Compatibility impact: none observed.** The removed members had no reader in production *or* test code, so no expectation was changed, weakened, or deleted.
+[22:20:20] ## Tests
+[22:20:20] - `./mvnw -Dtest=CostEvaluatorTest,CraftingPlannerProfitFeeTest -DfailIfNoTests=false test` — **Tests run: 14, Failures: 0, Errors: 0, BUILD SUCCESS**
+[22:20:20] - `./mvnw -Dtest='CraftingPlanner*Test' -DfailIfNoTests=false test` — **Tests run: 19, Failures: 0, Errors: 0, BUILD SUCCESS**
+[22:20:20] New `craft.CostEvaluatorTest` (6 cases) pins the revised contract, including a reflective assertion that the result declares exactly the two surviving getters — so a pre-fee profit cannot reappear unnoticed. Both runs compiled the whole test tree, which is the compile-time proof nothing else referenced the removed members.
+[22:20:20] Docs: `CURRENT_ARCHITECTURE.md` §9 item 7 owned the "pre-fee figures no production code reads" claim; that clause now records the removal.
+[22:20:20] **Follow-up finding (F001):** `move_backlog_entry_to_active()`/`_pull_bullet_from_backlog_section()` in `agent/runtime/core/story_state.py` move only an entry's first line, so a multi-line queue entry's indented `dependency note:`/`backlog entry:` lines are left behind — this story's two were orphaned under `## To Do` with no row above them. Removed by hand while updating the entry; recorded in the story and `CLAUDE_RESULT.md`.
+[22:20:20] Remaining uncertainty: only those two commands ran locally — frontend tests, smoke scripts and real-database `*IT` checks are the CI gate's job. Nothing user-visible changed, so no browser/JavaFX evidence applies.
+[22:20:20] ========================================
+[22:20:20] Claude Code exit code: 0
+[22:20:20] ========================================
+[22:20:23] Claude run measurement: repo_map=off, duration=335.0s, usage_before=47, usage_after=59
+[22:20:23] Evaluator started (Codex, read-only)
+[22:20:23] ========================================
+[22:20:23] Starting hosted Codex evaluator
+[22:20:23] ========================================
+[22:20:24] [evaluator] session 01a0e9ac-fec0-7651-9950-672131d60b73
+[22:20:24] [evaluator] reasoning...
+[22:20:27] Evaluator last response:
+[22:20:27] I’ll inspect the repository diff and the focused implementation/test hunks that determine whether this story’s contract is actually achieved.
+[22:20:30] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git status --porcelain; git diff --stat HEAD; git diff -- src/main/java/craft/CostEvaluator.java src/main/java/craft/CostEvaluationResult.java src/test/java/craft/CostEvaluatorTest.java docs/CURRENT_ARCHITECTURE.md agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md CLAUDE_RESULT.md'
+[22:20:30] [evaluator command done] exit 0
+[22:20:34] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content src/test/java/craft/CostEvaluatorTest.java; Select-String -Path src/main/java/craft/CraftingPlanner.java -Pattern 'CostEvaluator|CostEvaluationResult|getRevenuePerCraft|getOpportunityCostPerCraft' -Context 3,5; Get-Content agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md; git diff HEAD -- src/test/java/craft/CostEvaluatorTest.java"
+[22:20:34] [evaluator command done] exit 0
+[22:20:47] Evaluator last response:
+[22:20:47] ```json
+[22:20:47] {
+[22:20:47]   "decision": "COMPLETE",
+[22:20:47]   "reason": "The implementation removes the stale profit and mismatched buy-cost fields while preserving the revenue and opportunity-cost inputs the planner reads. The focused tests assert those outputs and the reduced result contract. GitHub CI was not independently verified in this read-only review.",
+[22:20:47]   "intent_achieved": true,
+[22:20:47]   "evidence": [
+[22:20:47]     "git status --porcelain and git diff HEAD showed changes to CostEvaluator, CostEvaluationResult, the focused test, and CURRENT_ARCHITECTURE; the relevant implementation diff removes profit and buy-cost calculations and result getters.",
+[22:20:47]     "src/test/java/craft/CostEvaluatorTest.java: inspected all six tests, including revenue and opportunity-cost assertions, per-craft behavior, and the declared-method assertion.",
+[22:20:47]     "src/main/java/craft/CraftingPlanner.java around evaluateOneRecipeNew: confirmed the caller reads getRevenuePerCraft() and getOpportunityCostPerCraft(), then computes profit in the planner.",
+[22:20:47]     "agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md: inspected its Acceptance Criteria, Definition of Done, and Result."
+[22:20:47]   ],
+[22:20:47]   "unmet_intent": [],
+[22:20:47]   "unmet_acceptance_criteria": [],
+[22:20:47]   "unmet_definition_of_done": [],
+[22:20:47]   "actionable_retry_items": []
+[22:20:47] }
+[22:20:47] ```
+[22:20:47] [evaluator] turn completed | input tokens: 67967 | cached input tokens: 51456 | output tokens: 957
+[22:20:48] ========================================
+[22:20:48] [evaluator] turn totals | model requests: 1 | gross input tokens: 67,967 | cached input tokens: 51,456 | uncached input tokens: 16,511 | output tokens: 957
+[22:20:48] Hosted codex evaluator exit code: 0
+[22:20:48] ========================================
+[22:20:48] ========================================
+[22:20:48] Evaluator decision: COMPLETE
+[22:20:48] Reason: The implementation removes the stale profit and mismatched buy-cost fields while preserving the revenue and opportunity-cost inputs the planner reads. The focused tests assert those outputs and the reduced result contract. GitHub CI was not independently verified in this read-only review.
+[22:20:48] ========================================

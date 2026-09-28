@@ -1,1 +1,1 @@
-agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md
+agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md

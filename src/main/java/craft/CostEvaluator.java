@@ -13,24 +13,15 @@ public class CostEvaluator {
 
         int revenuePerCraft = computeRevenue(recipe, tp, settings);
 
-        int buyCostPerCraft = 0;
         int oppCostPerCraft = 0;
 
         if (sim.getFirstCraft() != null) {
-            buyCostPerCraft = sim.getFirstCraft().getBuyCostCopper();
             oppCostPerCraft = sim.getFirstCraft().getOpportunityCostCopper();
         }
 
-        int profitPerCraft = revenuePerCraft - buyCostPerCraft - oppCostPerCraft;
-
-        int totalProfit = profitPerCraft * sim.getCraftCount();
-
         return new CostEvaluationResult(
                 revenuePerCraft,
-                buyCostPerCraft,
-                oppCostPerCraft,
-                profitPerCraft,
-                totalProfit
+                oppCostPerCraft
         );
     }
 

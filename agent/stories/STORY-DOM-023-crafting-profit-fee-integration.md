@@ -211,6 +211,11 @@ its profit formula and worked example recomputed (40c gross → 6c fee → **14c
 the 250-craft cap, 10 000c gross total sell value), and `GLOSSARY.md`'s FAQ entry replaced with the
 question the change actually raises ("why is Total Sell Value minus my costs more than Total Profit?").
 
+
+## Follow-up Findings Disposition
+
+F001: FOLLOW-UP STORY ? STORY-DOM-025
+F002: FOLLOW-UP STORY ? STORY-APP-013
 ## Follow-up Findings
 
 F001: `craft.CostEvaluator.evaluate(...)` still builds `CostEvaluationResult.profitPerCraft`/
