@@ -220,6 +220,8 @@ No finding in this document by itself authorizes an implementation change. Norma
 
 **Inferred risk:** real possessions look absent when metadata/downloads are missing, and rerunning icon sync cannot repair nonempty paths pointing at missing files. **Recommendation:** separate possession display from icon availability and make cache repair account for stale paths.
 
+**Status: partially resolved — the metadata half only.** `STORY-SYNC-004` closed "account sync does not populate metadata for newly seen account-only items": the explicit metadata refresh now discovers referenced ids from the reference families rather than from the `items` table and creates the missing rows, and it was executed against the real user database (see `CURRENT_ARCHITECTURE.md` §5.14 for the behavior and the measured before/after coverage). On the web clients possession display was already separate from icon availability — `STORY-WEB-010`'s `ItemIcon` renders count and identity beside a neutral fallback, and empty slots stay empty — so on that path the symptom this entry describes no longer occurs. **Still open, and deliberately not claimed resolved:** the JavaFX Bank/Materials rendering that treats a null `icon_path` as the empty-slot branch, and the stale-path problem — `syncItemIconsToDisk` still selects on `icon_path IS NULL OR = ''` and does not check whether a recorded file still exists, so a moved or deleted icon directory still leaves those rows out of repair. No evidence was gathered for either; `STORY-SYNC-004` changed neither.
+
 
 ### KP-23 — Optional Ecto icons can suppress a successful calculation (CH-11)
 

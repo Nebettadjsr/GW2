@@ -322,6 +322,25 @@ delete to a production path, ask which fixtures already reach it, and redirect
 the path at package level (`tests/__init__.py`) rather than trusting each
 fixture to patch it.
 
+## An upsert that creates a full row must also complete a half-empty one
+
+When a write creates rows with a full canonical field set but its `ON CONFLICT` branch touches one
+column, the conflicting row stays incomplete forever. Decide per field whether "existing" means
+"populated"; only a populated value is worth preserving, a NULL is a gap the same response can close.
+
+**Why:** `STORY-SYNC-004` made `IconSync`'s upsert create missing `items` rows with
+`name`/`type`/`rarity`/`vendor_value`/`icon_url`, but `DO UPDATE SET icon_url = …` only. A row that
+already existed with those fields NULL kept them NULL even though upstream had just returned them, so
+the story's goal — complete metadata coverage — was unmet for exactly the case the evaluator checked.
+Its test asserted the *preservation* half ("populated fields unchanged") and never the *completion*
+half, so nothing failed.
+
+**How to apply:** write the conflict branch as `COALESCE(<table>.<col>, EXCLUDED.<col>)` per field
+(stored side wins) and widen the statement's `WHERE` so the write also fires when a stored field is
+NULL and the response can fill it — otherwise the filled values are computed and then discarded. Pair
+every "this value survived" assertion with a "that missing value got filled" assertion on the same
+row, and confirm the new test fails against the old statement before believing it covers anything.
+
 ## The prompt outranks the contract it embeds — keep both in step
 
 When a role's behavior is set by a Markdown contract *and* by the harness

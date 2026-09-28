@@ -1860,7 +1860,7 @@ unchanged, as §5.12 records.
 
 ---
 
-### 5.14 Item icon metadata and image delivery (`STORY-API-009`)
+### 5.14 Item icon metadata and image delivery (`STORY-API-009`, `STORY-SYNC-004`)
 
 Implements `TARGET_ARCHITECTURE.md` §12.1 (AR-005): item-bearing HTTP reads carry an
 application-relative `iconUrl`, and one thin backend route serves those images from a persistent
@@ -1898,8 +1898,8 @@ the recipe's **output item** for a row and each missing material's own item;
 never the node's sourcing. `iconPath` is gone from the browser contracts (`BankSlotDto`,
 `MaterialStackDto`); JavaFX keeps consuming `items.icon_path` unchanged.
 
-**Metadata acquisition, and how it is invoked.** `sync.IconSync.syncItemIconUrls()` now refreshes the
-items an item-bearing view can reference — bank slots, material storage, character inventories, recipe
+**Metadata acquisition, and how it is invoked.** `sync.IconSync.syncItemIconUrls()` refreshes the items
+an item-bearing view can reference — bank slots, material storage, character inventories, recipe
 outputs and recipe ingredients, nontradeable items included — plus any item still missing metadata,
 and writes a URL that *changed*, not only a null one. It downloads no image and needs no local
 directory. Invocations:
@@ -1909,12 +1909,40 @@ directory. Invocations:
 
   ```
   ./mvnw -o -q compile dependency:build-classpath -Dmdep.outputFile=target/classpath.txt
-  java -cp "target/classes;$(cat target/classpath.txt)" sync.IconSync            # refresh metadata
+  java -cp "target/classes;$(cat target/classpath.txt)" sync.IconSync            # repair metadata
   java -cp "target/classes;$(cat target/classpath.txt)" sync.IconSync --dry-run  # report coverage only
   ```
 
 Missing metadata stays tolerable: it yields `iconUrl: null` and is repaired only by this explicit
 refresh — never by navigation, a page-data read or an image request.
+
+**Reaching an id that has no `items` row at all (`STORY-SYNC-004`).** Account synchronization stores
+the item id it found; nothing creates that item's metadata row, and until this story the refresh's
+selection read `FROM items`, so such an id was structurally unreachable — the gap `STORY-API-009`
+recorded. `referencedOrUnknownItemIds` is now a union of the reference families *themselves* (plus
+`items WHERE icon_url IS NULL`), so discovery no longer depends on a row existing, and the write is an
+upsert:
+
+| Row state | What the repair writes |
+|---|---|
+| no `items` row | the row is created with the canonical `name`, `type`, `rarity`, `vendor_value`, `icon_url` and `fetched_at` |
+| row exists | whichever of `name`, `type`, `rarity` and `vendor_value` the stored row is **missing**, plus `icon_url` when upstream supplied one *and* it differs |
+
+Every stored field wins over the response (`COALESCE(items.<col>, EXCLUDED.<col>)`), so a populated
+value is never overwritten while a half-populated row — a row that exists but holds no canonical
+metadata — is completed rather than left with an icon and nothing else. `icon_url` coalesces the other
+way round, so an upstream response reporting no icon never blanks a stored one. The statement's
+`WHERE` restricts the write to rows that actually gain something, so an unchanged run costs no row
+updates, and `items.icon_path` — the desktop column — is still never touched. Upstream is reached through the same public `/v2/items` adapter every other sync uses,
+behind a package-private `ItemMetadataSource` seam so a controlled fixture can stand in for it.
+
+A batch whose metadata request fails is **reported and skipped, not fatal**: nothing is fabricated for
+its ids, nothing retained is destroyed, and since the selection is recomputed from the references on
+every run those ids are picked up by the next explicit repair. `MetadataRepair` is the run's own
+report — selected, rows written, rows created, ids upstream did not return, items carrying no icon
+reference, items whose reference the canonical policy rejects, failed batches and the ids they
+covered — so remaining fallbacks are classified rather than merely counted. `--dry-run` additionally
+reports how many selected ids have no `items` row, using the same selection and no GW2 call.
 
 **Image route.** `GET /api/items/{itemId}/icon/{sourceKey}.{ext}`, in this order: validate the route's
 own values → read the cache → on a miss, load the item's retained source and require the key and
@@ -1970,23 +1998,37 @@ derivation, publication atomicity and non-replacement, path/key confinement and 
 reuse, coalescing, bounds, suppression expiry, storage failure, every status and header including
 local 304, the nullable URLs and actual item identities, and desktop/web sharing with proven versus
 unproven legacy reuse (`infra.icons.*Test`, `application.icons.*Test`, `web.ItemIconApiControllerTest`,
-`sync.DesktopIconAdoptionTest`). The metadata refresh's *coverage* and *changed-URL* behavior are
-covered against a disposable Postgres schema by `sync.IconSyncMetadataTest`, which calls no GW2 API
-and downloads nothing — which is also how its independence from the desktop icon download is shown.
-Real-database evidence is narrow and read-only
-(`web.ItemIconApiRealDbIT`, `web.AccountReadApiRealDbEquivalenceIT`, figures in `STORY-API-009`'s
-Result): metadata coverage is partial (74 of 180 bank slots carried an accepted source; 504 of 504
-material stacks did), three sampled real URLs were delivered with the documented headers and
-revalidated to 304, those same three entries were still the only files under `assets-v1` and were
-re-served unchanged by a later backend process (persistent reuse across restart, observed rather than
-only fixture-proven), and the referenced-item refresh selection was only *dry-run* (13 965 items on
-this machine) — no live metadata synchronization was executed, so no claim is made about
-post-refresh coverage. Real-browser rendering of these URLs, the browser-side caching/revalidation
+`sync.DesktopIconAdoptionTest`). The metadata refresh's *coverage*, *reachability without an `items`
+row*, *changed-URL* behavior, preservation of retained metadata and account quantities, safe repeat,
+per-batch failure tolerance and missing/rejected upstream classification are covered against a
+disposable Postgres schema by `sync.IconSyncMetadataTest`, whose upstream is a controlled fixture — it
+calls no GW2 API and downloads nothing, which is also how its independence from the desktop icon
+download is shown. Real-database evidence
+(`web.ItemIconApiRealDbIT`, `web.AccountReadApiRealDbEquivalenceIT`, figures in `STORY-API-009`'s and
+`STORY-SYNC-004`'s Results): `STORY-API-009` left coverage partial and *unrepaired* (74 of 180 bank
+slots carried an accepted source; 504 of 504 material stacks did; the referenced-item selection was
+only dry-run at 13 965 items), and three sampled real URLs were delivered with the documented headers,
+revalidated to 304, and re-served unchanged by a later backend process (persistent reuse across
+restart, observed rather than only fixture-proven). `STORY-SYNC-004` then executed that refresh
+against the same database: **163 of 180 bank slots now carry an accepted source — every occupied one**,
+505 of 505 material stacks, 2 873 of 2 873 recipe ingredients and 13 025 of 13 065 recipe outputs, with
+297 `items` rows created that no path had ever created. The 40 recipe outputs still without metadata
+are ids the GW2 items endpoint answers `no such id` for, so they are unresolvable rather than pending;
+they stay selected by every later run. A later run of the same invocation, after the upsert learned to
+fill a stored row's missing canonical fields, reported
+`selected=14302, rowsWritten=0, rowsCreated=0, notReturnedUpstream=40` and left every count above
+unchanged — this database currently holds no row that is missing `name`, `type`, `rarity` or
+`vendor_value`, so completing such a row is evidenced by `IconSyncMetadataTest` rather than by live
+data, while the live run evidences that the widened write causes no churn on already-complete rows. Real-browser rendering of these URLs, the browser-side caching/revalidation
 observations and the §33 full-page timings across the cold/warm browser and application-cache
 combinations, the restart run and the warm-cache upstream-unavailable run are `STORY-WEB-010`'s and are
-recorded in §5.11 ("Measured browser behaviour") and that story's Result. **Still not covered:** legacy
-adoption against real legacy files — this machine's cache holds no `items/` directory at all — and any
-real upstream outage, redirect, oversized image or disk-full condition, all of which remain
+recorded in §5.11 ("Measured browser behaviour") and that story's Result. `STORY-SYNC-004` extended
+`frontend/scripts/icon-live-check.mjs` from Bank to all three item-bearing views (its warm-storage
+phases still assert about the one opening they were written for) and reran it after the repair: Bank,
+Materials and the crafting Profit table rendered **0 entries without metadata and 0 failed images**
+across 336 image requests, all on this application's own origin and icon route. **Still not covered:**
+legacy adoption against real legacy files — this machine's cache holds no `items/` directory at all —
+and any real upstream outage, redirect, oversized image or disk-full condition, all of which remain
 controlled-fixture evidence only.
 
 One production detail changed with `STORY-WEB-010`: `HttpIconImageFetcher`'s default client now routes

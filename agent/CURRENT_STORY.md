@@ -1,1 +1,1 @@
-agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md
+agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md

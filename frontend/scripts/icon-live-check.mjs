@@ -108,9 +108,22 @@ async function iconStates(page) {
   })
 }
 
-async function openBank(page) {
-  await page.goto(`${PAGE_URL}/#/bank`, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS })
-  await page.waitForSelector('[data-test="bank-slots"]', { timeout: TIMEOUT_MS })
+/**
+ * The item-bearing views that share `ItemIcon`. Bank leads because the caching and revalidation
+ * phases below are written against it; the other two exist because `STORY-SYNC-004` repaired the
+ * metadata all three read, and Bank alone would not show that (Request-009).
+ */
+const VIEWS = [
+  { id: 'bank', label: 'Bank', hash: '#/bank', ready: '[data-test="bank-slots"]' },
+  { id: 'materials', label: 'Materials', hash: '#/materials', ready: '[data-test="material-stack"]' },
+  { id: 'crafting', label: 'Crafting Profit', hash: '#/crafting', ready: '[data-test="profit-row"]' }
+]
+
+const BANK = VIEWS[0]
+
+async function openView(page, view) {
+  await page.goto(`${PAGE_URL}/${view.hash}`, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS })
+  await page.waitForSelector(view.ready, { timeout: TIMEOUT_MS })
   await waitForVisibleIcons(page)
 }
 
@@ -147,7 +160,7 @@ async function run() {
   try {
     // ------------------------------------------------------------ first opening
     const firstMark = recorder.mark()
-    await openBank(page)
+    await openView(page, BANK)
 
     const backendFirst = recorder.since(firstMark)
     check(
@@ -164,18 +177,6 @@ async function run() {
     record(
       'development routing forwards image paths to the backend',
       `${imagesFirst.length} image requests arrived through the dev server's /api proxy`
-    )
-
-    const upstreamRequests = browserRequests.filter((request) => /guildwars2\.com/i.test(request.url))
-    check(upstreamRequests.length === 0, `The browser requested ArenaNet: ${JSON.stringify(upstreamRequests)}`)
-    const offOrigin = browserRequests.filter((request) => !request.url.startsWith(new URL(PAGE_URL).origin))
-    check(offOrigin.length === 0, `The browser left this origin: ${JSON.stringify(offOrigin.slice(0, 5))}`)
-    const browserImages = browserRequests.filter((request) => request.type === 'image')
-    const offRoute = browserImages.filter((request) => !ICON_ROUTE.test(new URL(request.url).pathname))
-    check(offRoute.length === 0, `An image was requested off the icon route: ${JSON.stringify(offRoute)}`)
-    record(
-      'the browser asked only this application for images',
-      `${browserImages.length} image requests, 0 to ArenaNet, 0 to any other origin`
     )
 
     const served = imagesFirst.filter((entry) => entry.status === 200)
@@ -199,11 +200,65 @@ async function run() {
         `${states.failed} failed`
     )
 
+    // Counted here, before any further view is opened, so the warm-storage claims below stay about
+    // the one opening they were written for.
     const tunnelsAfterFirst = upstreamTunnels()
     console.log(
       `  info upstream CONNECT tunnels: ${tunnelsAtStart} before this phase, ${tunnelsAfterFirst} after ` +
         'the first opening'
     )
+
+    // --------------------------------------------- the other item-bearing views
+    // Request-009's claim is about every view that shows an item, not about Bank. Each one is
+    // opened on its own and reported separately, so a view that renders nothing but fallbacks
+    // cannot hide behind another view's images. Only the cold phase does this: the warm phases
+    // assert about stored entries, and a view they never populated would legitimately miss.
+    const coverage = { [BANK.id]: { ...states, backendImages: imagesFirst.length } }
+
+    for (const view of (PHASE === 'pre-restart' ? VIEWS.slice(1) : [])) {
+      const viewMark = recorder.mark()
+      await openView(page, view)
+
+      const viewImages = recorder.imagesSince(viewMark)
+      const viewStates = await iconStates(page)
+
+      check(viewStates.pending === 0, `${view.label}: ${viewStates.pending} visible images never finished.`)
+      check(
+        viewStates.decoded > 0,
+        `${view.label}: not one image decoded — this view establishes nothing about real coverage.`
+      )
+      const viewRefused = viewImages.filter((entry) => entry.status !== 200 && entry.status !== 304)
+      check(
+        viewRefused.length === 0,
+        `${view.label}: the backend refused an image: ${JSON.stringify(viewRefused.slice(0, 3))}`
+      )
+
+      coverage[view.id] = { ...viewStates, backendImages: viewImages.length }
+      record(
+        `${view.label} renders real backend images`,
+        `${viewStates.decoded} decoded of ${viewStates.image} with a URL ` +
+          `(${viewStates.deferred} offscreen and still deferred), ${viewStates['no-url']} without ` +
+          `metadata, ${viewStates.failed} failed; ${viewImages.length} image requests reached the backend`
+      )
+    }
+    console.log(`  info per-view icon states: ${JSON.stringify(coverage)}`)
+
+    // Every view above shares one browser: these hold for all of them together.
+    const upstreamRequests = browserRequests.filter((request) => /guildwars2\.com/i.test(request.url))
+    check(upstreamRequests.length === 0, `The browser requested ArenaNet: ${JSON.stringify(upstreamRequests)}`)
+    const offOrigin = browserRequests.filter((request) => !request.url.startsWith(new URL(PAGE_URL).origin))
+    check(offOrigin.length === 0, `The browser left this origin: ${JSON.stringify(offOrigin.slice(0, 5))}`)
+    const browserImages = browserRequests.filter((request) => request.type === 'image')
+    const offRoute = browserImages.filter((request) => !ICON_ROUTE.test(new URL(request.url).pathname))
+    check(offRoute.length === 0, `An image was requested off the icon route: ${JSON.stringify(offRoute)}`)
+    record(
+      'the browser asked only this application for images',
+      `${browserImages.length} image requests across ${Object.keys(coverage).length} view(s), ` +
+        '0 to ArenaNet, 0 to any other origin'
+    )
+
+    // Bank is where the caching phases below continue, so the browser is returned to it.
+    if (Object.keys(coverage).length > 1) await openView(page, BANK)
 
     if (PHASE === 'pre-restart') {
       // ------------------------------------------------- warm browser cache

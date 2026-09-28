@@ -80,3 +80,296 @@
 [16:04:34] Evaluator decision: COMPLETE
 [16:04:34] Reason: The Profit detail changes achieve the story’s purpose: counted-craft purchases remain on their supplied basis, useful blocking causes and item identity are shown where the response provides them, and redundant labels and introductory prose are removed. The story records the row-level item-context limitation explicitly. The reported CI failure was in an unrelated runtime test; the story records a fix and focused local verification, while the prompt assigns the full regression run to GitHub Actions after acceptance.
 [16:04:34] ========================================
+[16:04:37] STORY-WEB-015-profit-purchase-and-blocking-details.md published for CI verification: 0b439ac on master (24 changed path(s), new commit, waiting for GitHub Actions.
+[16:06:39] GitHub CI PASSED for 0b439ac (STORY-WEB-015-profit-purchase-and-blocking-details.md): CI: success
+[16:06:48] Availability check: claude_available=True, codex_available=True
+[16:06:48] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[16:06:54] Planning resumed for changed inputs: agent/ARCHITECT_INSTRUCTIONS.md, agent/runtime/artifacts/CLAUDE_RESULT.md, agent/runtime/core/story_state.py, agent/runtime/support/config.py, agent/stories/BACKLOG.md, agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md
+[16:06:54] ========================================
+[16:06:54] Running project-planning pass
+[16:06:54] ========================================
+[16:06:54] ========================================
+[16:06:54] Starting hosted Codex planner
+[16:06:54] ========================================
+[16:06:55] [planner] session 01a0e857-104b-7480-b73f-db204cfe61a4
+[16:06:55] [planner] reasoning...
+[16:06:59] Planner last response:
+[16:06:59] I’ll use the supplied Phase 5 scope and backlog index, then inspect only details needed to disposition the follow-up finding and confirm the pending review/performance gates.
+[16:07:01] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content -LiteralPath 'agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md'; Get-Content -LiteralPath 'agent/stories/STORY-PERF-002-phase-five-crafting-profit-page-budget.md';"
+[16:07:01] [planner command done] exit 0
+[16:07:35] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[16:07:35] from pathlib import Path
+[16:07:35] p=Path('agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md')
+[16:07:35] s=p.read_text(encoding='utf-8')
+[16:07:35] old='## Follow-up Findings Disposition\\n'
+[16:07:35] assert old not in s
+[16:07:35] needle='## Follow-up Findings\\n'
+[16:07:35] assert s.count(needle)==1
+[16:07:35] replacement='## Follow-up Findings Disposition\\n\\nF001: FOLLOW-UP STORY — STORY-WEB-017\\n\\n'
+[16:07:35] s=s.replace(needle,replacement+needle,1)
+[16:07:35] p.write_text(s,encoding='utf-8')
+[16:07:35] story='''## Story ID
+[16:07:35] STORY-WEB-017
+[16:07:35] ## Title
+[16:07:35] Keep browser layout smoke contrast sampling valid after Profit intro removal
+[16:07:35] ## Status
+[16:07:35] TODO
+[16:07:35] ## Milestone
+[16:07:35] milestone-05
+[16:07:35] ## Goal
+[16:07:35] Restore the browser layout smoke script's page-intro contrast sample so the removal of the Crafting Profit introduction does not silently reduce its measured contrast coverage.
+[16:07:35] ## Authoritative Source Documents / Sections
+[16:07:35] - agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md, Follow-up Findings F001: the "'`page intro` sample on `AREAS[0]` no longer finds an element after the Profit intro was removed.
+[16:07:35] - Supplied docs/ROADMAP.md Phase 5: frontend tests focused on rendering, interaction and state.
+[16:07:35] - docs/TEST_STRATEGY.md section 12: frontend rendering and interaction test focus.
+[16:07:35] ## Context
+[16:07:35] The layout browser smoke currently samples contrast on Crafting Profit (`AREAS[0]`), whose introduction was removed under WEB-015. The finding states that this sample now silently contributes no measurement while the existing sample-count floor still passes. Preserve the intended sample by targeting an existing page that has an introduction, rather than changing product presentation or weakening the smoke check.
+[16:07:35] ## Acceptance Criteria
+[16:07:35] 1. The `page intro` contrast sample targets an existing rendered introduction on a page that retains one.
+[16:07:35] 2. The smoke check fails clearly if that target is absent or cannot be measured; it must not silently count a missing sample as successful coverage.
+[16:07:35] 3. The change preserves the existing contrast sampling behavior and does not reintroduce the removed Crafting Profit introduction.
+[16:07:35] 4. Record the focused verification and any limitations in the story Result.
+[16:07:35] ## Required Tests
+[16:07:35] - Run the layout browser smoke and confirm the page-intro sample is measured on its new target.
+[16:07:35] - Add or adjust a focused check proving a missing sample target is reported as a failure rather than silently omitted.
+[16:07:35] ## Constraints
+[16:07:35] - Keep this limited to the identified browser smoke coverage gap; do not broaden layout or contrast policy.
+[16:07:35] - Do not alter product-facing page content to satisfy the smoke script.
+[16:07:35] ## Dependencies
+[16:07:35] Completed STORY-WEB-015.
+[16:07:35] ## Definition of Done
+[16:07:35] The layout smoke measures a valid page-intro contrast pair, missing targets cannot silently pass, and the focused verification is recorded.
+[16:07:35] ## Result
+[16:07:35] Not started.
+[16:07:35] ## Blockers
+[16:07:35] None.
+[16:07:35] '"'''
+[16:07:35] Path('agent/stories/STORY-WEB-017-layout-smoke-intro-contrast-sample.md').write_text(story,encoding='utf-8')
+[16:07:35] bp=Path('agent/stories/BACKLOG.md')
+[16:07:35] b=bp.read_text(encoding='utf-8')
+[16:07:35] marker='## To Do\\n'
+[16:07:35] assert b.count(marker)==1
+[16:07:35] entry='- STORY-WEB-017 | STORY-WEB-017-layout-smoke-intro-contrast-sample.md | TODO | milestone-05 | deps: STORY-WEB-015\\n  dependency note: Follow-up to WEB-015 F001; restore the page-intro contrast sample on a page that retains an introduction.\\n  backlog entry: milestone-05: Keep layout smoke contrast sampling valid after the Profit intro removal.\\n'
+[16:07:35] # Queue this independent verification repair after existing higher-priority integration work.
+[16:07:35] next_section='\\n## Blocked\\n'
+[16:07:35] assert b.count(next_section)==1
+[16:07:35] b=b.replace(next_section,'\\n'+entry+next_section,1)
+[16:07:35] bp.write_text(b,encoding='utf-8')
+[16:07:35] '@ | python -"
+[16:07:35] [planner command done] exit 0
+[16:07:54] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[16:07:54] import json
+[16:07:54] from pathlib import Path
+[16:07:54] result={
+[16:07:54]   \"status\":\"COMPLETE\",
+[16:07:54]   \"phase_considered\":\"Phase 5\",
+[16:07:54]   \"independent_work_remaining\":True,
+[16:07:54]   \"phase_review\":[
+[16:07:54]     {\"area\":\"Frontend framework and language decision\",\"outcome\":\"COVERED\",\"references\":[\"AR-001 (RESOLVED)\",\"docs/TARGET_ARCHITECTURE.md §30\",\"agent/stories/STORY-WEB-001-crafting-profit-table.md\"]},
+[16:07:54]     {\"area\":\"Profit rendering, detail and special-state presentation\",\"outcome\":\"PREREQUISITE\",\"references\":[\"STORY-WEB-015\",\"STORY-WEB-016\"]},
+[16:07:54]     {\"area\":\"Referenced item metadata and icons\",\"outcome\":\"PREREQUISITE\",\"references\":[\"STORY-SYNC-004\"]},
+[16:07:54]     {\"area\":\"Shared Trading Post fee integration\",\"outcome\":\"PREREQUISITE\",\"references\":[\"STORY-DOM-023\",\"STORY-DOM-024\"]},
+[16:07:54]     {\"area\":\"Frontend layout smoke contrast coverage follow-up\",\"outcome\":\"PLANNED\",\"references\":[\"STORY-WEB-015 F001\",\"STORY-WEB-017\",\"agent/stories/BACKLOG.md\"]},
+[16:07:54]     {\"area\":\"Phase 5 complete-page performance against the real user database\",\"outcome\":\"PREREQUISITE\",\"references\":[\"STORY-PERF-002\",\"STORY-WEB-015\",\"STORY-SYNC-004\",\"STORY-DOM-023\",\"STORY-DOM-024\",\"STORY-WEB-016\"]},
+[16:07:54]     {\"area\":\"PROJECT HEALTH REVIEW before milestone closure\",\"outcome\":\"READY\",\"references\":[\"Supplied Phase 5 exit criteria\",\"docs/TARGET_ARCHITECTURE.md §34\",\"PROJECT_STATE continuity note\"]},
+[16:07:54]     {\"area\":\"Discovery, bank/material views, Ectoplasm screen and sync-trigger UI\",\"outcome\":\"COVERED\",\"references\":[\"STORY-WEB-012\",\"STORY-WEB-003\",\"STORY-WEB-013\",\"STORY-WEB-002\"]}
+[16:07:54]   ],
+[16:07:54]   \"phase_exit_criteria_satisfied\":False,
+[16:07:54]   \"story_files_created\":[\"STORY-WEB-017-layout-smoke-intro-contrast-sample.md\"],
+[16:07:54]   \"user_decision_ids\":[],
+[16:07:54]   \"product_owner_requests_processed\":[],
+[16:07:54]   \"architect_requests_created\":[],
+[16:07:54]   \"milestone_transition\":False,
+[16:07:54]   \"completed_milestone\":None,
+[16:07:54]   \"next_milestone\":None,
+[16:07:54]   \"backlog_updated\":True,
+[16:07:54]   \"roadmap_updated\":False,
+[16:07:54]   \"project_state_updated\":False,
+[16:07:54]   \"reason\":\"Phase 5 remains open: four implementation stories and the dependent real-database performance check remain. The WEB-015 smoke-coverage finding was queued as a small current-phase follow-up; the bounded health review belongs near milestone exit after implementation is substantially complete.\"
+[16:07:54] }
+[16:07:54] p=Path('agent/runtime/artifacts/PLANNING_RESULT.json')
+[16:07:54] p.parent.mkdir(parents=True,exist_ok=True)
+[16:07:54] p.write_text(json.dumps(result,indent=2)+\"\\n\",encoding='utf-8')
+[16:07:54] '@ | python -"
+[16:07:55] [planner command done] exit 0
+[16:08:03] Planner last response:
+[16:08:03] Queued [STORY-WEB-017](/C:/Users/Administrator/IdeaProjects/GW2/agent/stories/STORY-WEB-017-layout-smoke-intro-contrast-sample.md) for the WEB-015 contrast-sampling gap, added it to the Phase 5 backlog, and recorded F001’s disposition in WEB-015.
+[16:08:03] Phase 5 remains open: the integration stories and real-database performance check are unfinished. The health review is ready to schedule near milestone exit. Wrote the planning result to [PLANNING_RESULT.json](/C:/Users/Administrator/IdeaProjects/GW2/agent/runtime/artifacts/PLANNING_RESULT.json).
+[16:08:03] [planner] turn completed | input tokens: 152305 | cached input tokens: 120832 | output tokens: 2399
+[16:08:04] ========================================
+[16:08:04] [planner] turn totals | model requests: 1 | gross input tokens: 152,305 | cached input tokens: 120,832 | uncached input tokens: 31,473 | output tokens: 2,399
+[16:08:04] Hosted codex planner exit code: 0
+[16:08:04] ========================================
+[16:08:04] ========================================
+[16:08:04] Planning result: COMPLETE
+[16:08:04] Reason: Phase 5 remains open: four implementation stories and the dependent real-database performance check remain. The WEB-015 smoke-coverage finding was queued as a small current-phase follow-up; the bounded health review belongs near milestone exit after implementation is substantially complete.
+[16:08:04] ========================================
+[16:08:13] Availability check: claude_available=True, codex_available=True
+[16:08:13] Decision: code (select next story) -- reason: 5 selectable To Do candidate(s), Claude available
+[16:08:13] ========================================
+[16:08:13] Story selector: NEXT
+[16:08:13] Reason: Deterministic selection: first executable entry in BACKLOG.md's 'To Do' order (STORY-SYNC-004-complete-referenced-item-metadata.md).
+[16:08:13] ========================================
+[16:08:13] Next story activated:
+[16:08:13] agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md
+[16:08:22] Availability check: claude_available=True, codex_available=True
+[16:08:22] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[16:08:22] ========================================
+[16:08:22] Active story: agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md
+[16:08:22] ========================================
+[16:08:25] RepoMap: disabled, budget=1200 tokens
+[16:08:32] ========================================
+[16:08:32] Starting Claude Code
+[16:08:32] ========================================
+[16:30:16] The story is complete. Summary:
+[16:30:16] **The defect.** `IconSync.referencedOrUnknownItemIds` selected `FROM items`, so an item id account synchronization had stored but for which no metadata row was ever created was *structurally* unreachable — exactly the gap `STORY-API-009` recorded.
+[16:30:16] **What changed** (`src/main/java/sync/IconSync.java`, its test class, one live-check script):
+[16:30:16] - Selection is now a union of the reference families themselves (bank, materials, character inventories, recipe outputs, recipe ingredients) plus `items WHERE icon_url IS NULL` — no tradeability join, so nontradeables are covered.
+[16:30:16] - The write became an upsert: a missing row is **created** with canonical `name`/`type`/`rarity`/`vendor_value`/`icon_url`/`fetched_at`; an existing row keeps every value and has only `icon_url` updated, and only when upstream supplied one *and* it differs. `items.icon_path` is still never touched.
+[16:30:16] - A failed batch is reported and skipped, not fatal; a `MetadataRepair` report classifies unresolved ids (not returned / no icon / rejected source / failed batch).
+[16:30:16] **Real-database repair**, executed against the actual user data (metadata only, no account sync):
+[16:30:16] | | before | after |
+[16:30:16] |---|---|---|
+[16:30:16] | occupied bank slots with an icon source | 75 / 163 | **163 / 163** |
+[16:30:16] | material stacks | 678 / 680 | **680 / 680** |
+[16:30:16] | recipe ingredients | 2 870 / 2 873 | **2 873 / 2 873** |
+[16:30:16] | recipe outputs | 12 975 / 13 065 | **13 025 / 13 065** |
+[16:30:16] | character items with no `items` row | 216 | **0** |
+[16:30:16] 297 rows created. An immediate second run wrote **0 rows**. The 40 remaining are recipe outputs the GW2 API answers `no such id` for — unresolvable, not pending, and still selected next run.
+[16:30:16] **Tests run:** `IconSyncMetadataTest` 14/14 (disposable Postgres schema, controlled upstream fixture); `sync.*Test` 35/35; `ItemIconApiRealDbIT` 3/3 printing `163 with an accepted retained icon source` where API-009 printed 74. Live: `icon-live-check.mjs` extended to Bank/Materials/Profit — `pre-restart` PASSED 7 steps with **0 entries without metadata and 0 failed on all three views**, `post-restart` PASSED 4 steps with 0 upstream tunnels, `smoke:account` PASSED 8 steps with 505 images and 0 fallbacks. The isolated cache started empty and ended with 312 files built at runtime; the user's cache was never touched.
+[16:30:16] One honest note: my first `post-restart` run **failed** because the added navigations moved the upstream-tunnel count out of the window that phase asserts about — I fixed the script and reran both phases.
+[16:30:16] Two follow-up findings recorded (F001: §12.1 does not contain the metadata-coverage requirement Request-009's resolution claims it was given; F002: a timing race in `account-browser-smoke.mjs`'s bank-reload step). Docs updated at their owners: `CURRENT_ARCHITECTURE.md` §5.14 and `KNOWN_PROBLEMS.md` KP-22, the latter marked partially resolved — metadata half only, with the JavaFX rendering and stale-path halves left explicitly open.
+[16:30:17] ========================================
+[16:30:17] Claude Code exit code: 0
+[16:30:17] ========================================
+[16:30:20] Claude run measurement: repo_map=off, duration=1305.1s, usage_before=0, usage_after=62
+[16:30:20] Evaluator started (Codex, read-only)
+[16:30:20] ========================================
+[16:30:20] Starting hosted Codex evaluator
+[16:30:20] ========================================
+[16:30:20] [evaluator] session 01a0e86c-827b-7a93-b4e8-fe77d151ddf8
+[16:30:20] [evaluator] reasoning...
+[16:30:26] Evaluator last response:
+[16:30:26] I’ll inspect the repository diff and the changed implementation, test, live-check script, and documentation that determine whether this story’s criteria and purpose were met. I won’t run builds or tests.
+[16:30:28] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git status --porcelain; git diff --stat HEAD; git diff --name-only HEAD; git diff -- src/main/java/sync/IconSync.java'
+[16:30:28] [evaluator command done] exit 0
+[16:30:32] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git diff -- src/test/java/sync/IconSyncMetadataTest.java frontend/scripts/icon-live-check.mjs docs/CURRENT_ARCHITECTURE.md docs/KNOWN_PROBLEMS.md agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md'
+[16:30:32] [evaluator command done] exit 0
+[16:31:04] Evaluator last response:
+[16:31:04] ```json
+[16:31:04] {
+[16:31:04]   "decision": "RETRY",
+[16:31:04]   "reason": "Referenced IDs without metadata rows can now be discovered and repaired, but the upsert does not persist the full canonical metadata for existing rows that have missing fields.",
+[16:31:04]   "intent_achieved": false,
+[16:31:04]   "evidence": [
+[16:31:04]     "git status --porcelain and git diff --stat HEAD/name-only HEAD: inspected the changed-file set, including src/main/java/sync/IconSync.java, src/test/java/sync/IconSyncMetadataTest.java, frontend/scripts/icon-live-check.mjs, and docs/CURRENT_ARCHITECTURE.md.",
+[16:31:04]     "src/main/java/sync/IconSync.java diff: ITEM_METADATA_UPSERT_SQL inserts name, type, rarity, vendor_value, and icon_url for new rows, but ON CONFLICT updates only icon_url.",
+[16:31:04]     "src/main/java/sync/IconSync.java diff: referencedOrUnknownItemIds unions account_bank, account_materials, character_items, recipes, and recipe_ingredients directly, so discovery does not require an items row.",
+[16:31:04]     "src/test/java/sync/IconSyncMetadataTest.java diff: an existing row without icon_url is asserted to retain its already populated name, type, rarity, vendor_value, and icon_path; no test checks that missing canonical fields on an existing row are filled.",
+[16:31:04]     "agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md diff: inspected the recorded targeted tests, real-database before/after figures, live browser checks, limits, and Definition of Done."
+[16:31:04]   ],
+[16:31:04]   "unmet_intent": [
+[16:31:04]     "For an existing referenced items row with missing name, type, rarity, or vendor_value, the repair leaves those canonical metadata fields missing even when upstream returns them. The story's goal of completing metadata coverage is therefore incomplete for this case."
+[16:31:04]   ],
+[16:31:04]   "unmet_acceptance_criteria": [
+[16:31:04]     "AC 1: Existing rows are not updated with returned canonical name, rarity, and other applicable metadata; the conflict clause changes only icon_url."
+[16:31:04]   ],
+[16:31:04]   "unmet_definition_of_done": [
+[16:31:04]     "Acceptance criteria met: AC 1 is not fully satisfied for existing rows with missing canonical metadata fields."
+[16:31:04]   ],
+[16:31:04]   "actionable_retry_items": [
+[16:31:04]     "Update the metadata persistence path to fill missing canonical fields on existing rows from successful upstream responses while preserving already populated valid values; add a targeted test with an existing referenced row whose canonical fields are null."
+[16:31:04]   ]
+[16:31:04] }
+[16:31:04] ```
+[16:31:04] [evaluator] turn completed | input tokens: 91150 | cached input tokens: 64768 | output tokens: 1456
+[16:31:04] ========================================
+[16:31:04] [evaluator] turn totals | model requests: 1 | gross input tokens: 91,150 | cached input tokens: 64,768 | uncached input tokens: 26,382 | output tokens: 1,456
+[16:31:04] Hosted codex evaluator exit code: 0
+[16:31:04] ========================================
+[16:31:04] ========================================
+[16:31:04] Evaluator decision: RETRY
+[16:31:04] Reason: Referenced IDs without metadata rows can now be discovered and repaired, but the upsert does not persist the full canonical metadata for existing rows that have missing fields.
+[16:31:04] ========================================
+[16:31:04] Retrying story (1/2)...
+[16:31:11] ========================================
+[16:31:11] Starting Claude Code
+[16:31:11] ========================================
+[16:40:31] Done. The deficiency is fixed.
+[16:40:31] ## What changed
+[16:40:31] **`src/main/java/sync/IconSync.java`** — the metadata upsert's conflict branch. It previously wrote only `icon_url` on an existing row, so a row that existed but held no canonical metadata stayed empty even when upstream returned it:
+[16:40:31] ```sql
+[16:40:31] ON CONFLICT (item_id) DO UPDATE SET
+[16:40:31]   name         = COALESCE(items.name, EXCLUDED.name),
+[16:40:31]   type         = COALESCE(items.type, EXCLUDED.type),
+[16:40:31]   rarity       = COALESCE(items.rarity, EXCLUDED.rarity),
+[16:40:31]   vendor_value = COALESCE(items.vendor_value, EXCLUDED.vendor_value),
+[16:40:31]   icon_url     = COALESCE(EXCLUDED.icon_url, items.icon_url)
+[16:40:31] WHERE (EXCLUDED.icon_url IS NOT NULL AND items.icon_url IS DISTINCT FROM EXCLUDED.icon_url)
+[16:40:31]    OR (items.name IS NULL AND EXCLUDED.name IS NOT NULL)
+[16:40:31]    OR … (type, rarity, vendor_value)
+[16:40:31] ```
+[16:40:31] Each canonical field coalesces stored-side-first, so a populated value is never overwritten; `icon_url` coalesces the other way so a response without an icon still cannot blank a stored source. The widened `WHERE` is what makes the filled values actually persist while keeping an unchanged run at zero row updates.
+[16:40:31] ## Tests
+[16:40:31] `anExistingRowMissingCanonicalFieldsHasThemFilledWithoutOverwritingWhatItHolds` — an existing bank-referenced row with all four canonical fields NULL plus a second row with a populated name; asserts the NULLs are filled, the stored name/`icon_url`/`icon_path` survive, `rowsCreated=0`, and a repeat run writes 0 rows. I temporarily restored the old statement to confirm it fails there: `both half-populated rows were completed ==> expected: <2> but was: <0>`.
+[16:40:31] The pre-existing changed-source test seeded canonically incomplete rows, which would have made its "only the changed item is written" assertion vacuous; its two rows are now complete so the assertion still means what it says.
+[16:40:31] - `./mvnw -o test -Dtest=IconSyncMetadataTest -DfailIfNoTests=false` → `Tests run: 15, Failures: 0, Errors: 0, Skipped: 0`
+[16:40:31] - `./mvnw -o test -Dtest='sync.*Test'` → `Tests run: 36, Failures: 0, Errors: 0, Skipped: 0`
+[16:40:31] ## Real-database re-run
+[16:40:31] Ran the documented standalone invocation again against the real database: `--dry-run` reported 14 302 selected / 40 without a row, the run reported `rowsWritten=0, rowsCreated=0, notReturnedUpstream=40, batchesFailed=0`. A throwaway read-only reporter (deleted) showed 0 `items` rows missing any canonical field both before and after. So the widened write causes no churn, and — honestly stated — this database holds no half-populated row today, so the completion path itself is evidenced by the targeted test rather than by live data. That limit is recorded in the story, the result and §5.14.
+[16:40:31] Docs updated at their owner: `CURRENT_ARCHITECTURE.md` §5.14 (write table row + evidence paragraph), story Result/Status, `CLAUDE_RESULT.md`, the single BACKLOG entry, and a new `tasks/lessons.md` rule about conflict branches that create a full row but complete nothing. Follow-up findings F001/F002 are unchanged.
+[16:40:31] ========================================
+[16:40:31] Claude Code exit code: 0
+[16:40:31] ========================================
+[16:40:34] Claude run measurement: repo_map=off, duration=560.3s, usage_before=62, usage_after=83
+[16:40:34] Evaluator started (Codex, read-only)
+[16:40:34] ========================================
+[16:40:34] Starting hosted Codex evaluator
+[16:40:34] ========================================
+[16:40:35] [evaluator] session 01a0e875-e29d-7df0-aa0a-bbe2e20cde97
+[16:40:35] [evaluator] reasoning...
+[16:40:42] Evaluator last response:
+[16:40:42] I’ll inspect the repository diff and the story-owned implementation, tests, script, and documentation that determine the verdict. I’ll keep the review read-only and won’t run builds or tests.
+[16:40:44] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git status --porcelain; git diff --stat HEAD; git diff --name-only HEAD'
+[16:40:44] [evaluator command done] exit 0
+[16:40:50] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git diff HEAD -- src/main/java/sync/IconSync.java src/test/java/sync/IconSyncMetadataTest.java frontend/scripts/icon-live-check.mjs docs/CURRENT_ARCHITECTURE.md docs/KNOWN_PROBLEMS.md agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md'
+[16:40:50] [evaluator command done] exit 0
+[16:40:58] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path src/main/java/sync/IconSync.java -Pattern 'referencedOrUnknownItemIds|applyItemMetadata|repairItemIconMetadata|MetadataRepair|ItemMetadataSource|ON CONFLICT|idsLeftUnrequested|withoutIconSource' -Context 4,8; Select-String -Path src/test/java/sync/IconSyncMetadataTest.java -Pattern '"'^'"\\s*void ' -Context 0,0; Select-String -Path frontend/scripts/icon-live-check.mjs -Pattern 'Materials|Profit|pre-restart|post-restart|icon route|origin' -Context 2,3; Select-String -Path docs/CURRENT_ARCHITECTURE.md -Pattern 'Reaching an id|MetadataRepair|14,302|standalone|runtime' -Context 2,4; Select-String -Path docs/KNOWN_PROBLEMS.md -Pattern 'KP-22|metadata half|partially resolved' -Context 1,2"
+[16:40:58] [evaluator command done] exit 0
+[16:41:03] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'Get-Content src/main/java/sync/IconSync.java | Select-Object -Skip 185 -First 75; Get-Content src/main/java/sync/IconSync.java | Select-Object -Skip 270 -First 125; Get-Content src/test/java/sync/IconSyncMetadataTest.java | Select-Object -Skip 130 -First 90; Get-Content frontend/scripts/icon-live-check.mjs | Select-Object -Skip 160 -First 115'
+[16:41:03] [evaluator command done] exit 0
+[16:41:22] Evaluator last response:
+[16:41:22] The implementation diff supports the core behavior: reference-family selection reaches IDs without metadata rows, and the upsert preserves populated fields while refreshing changed icon sources. I’m checking the recorded test/live-check evidence and whether the required CI gate is actually documented as green before deciding whether the DoD is complete.
+[16:41:26] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "git diff HEAD -- agent/logs/2026-09-28.log | Select-String -Pattern 'CI|GitHub|Actions|STORY-SYNC-004|sync.*Test|IconSyncMetadataTest' -Context 2,3; git diff HEAD -- src/main/java/sync/IconSync.java | Select-String -Pattern '"'^@@|''^'"\\+.*(SELECT item_id|UNION|COALESCE|InterruptedException|catch|MetadataRepair|applyItemMetadata)' -Context 0,2; git diff HEAD -- docs/CURRENT_ARCHITECTURE.md | Select-String -Pattern '"'^@@|''^'"\\+.*(repair|metadata|runtime|cache|STORY-SYNC-004)' -Context 0,2"
+[16:41:26] [evaluator command done] exit 0
+[16:41:32] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "git diff HEAD -- agent/logs/2026-09-28.log | Select-String -Pattern 'CI PASSED|published for CI|STORY-SYNC-004.*CI|CI: success|exit code|Tests run:' -Context 0,1 | Select-Object -Last 25; Select-String -Path agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md -Pattern 'Definition of Done|CI|GitHub|PASSED|not run' -Context 0,4"
+[16:41:32] [evaluator command done] exit 0
+[16:41:48] Evaluator last response:
+[16:41:48] ```json
+[16:41:48] {
+[16:41:48]   "decision": "COMPLETE",
+[16:41:48]   "reason": "The metadata repair achieves the story’s purpose: it discovers referenced IDs even when no items row exists, persists canonical metadata safely, and the recorded real-database and browser checks demonstrate repaired icon coverage. The story records targeted tests and live-check results; the complete regression run is assigned to GitHub Actions after acceptance.",
+[16:41:48]   "intent_achieved": true,
+[16:41:48]   "evidence": [
+[16:41:48]     "git status --porcelain and git diff --stat HEAD: identified the changed implementation, test, live-check, and documentation files.",
+[16:41:48]     "src/main/java/sync/IconSync.java diff and methods referencedOrUnknownItemIds, repairItemIconMetadata, and applyItemMetadata: checked reference-family selection, failed-batch handling, and upsert preservation and refresh behavior.",
+[16:41:48]     "src/test/java/sync/IconSyncMetadataTest.java: inspected tests for missing-row reference families, nontradeable items, canonical-field completion, changed sources, repeat safety, partial upstream failure, and preservation of account quantities.",
+[16:41:48]     "frontend/scripts/icon-live-check.mjs: inspected the multi-view Bank, Materials, and crafting Profit browser checks, image route/origin assertions, and warm-cache phases.",
+[16:41:48]     "docs/CURRENT_ARCHITECTURE.md §5.14 and docs/KNOWN_PROBLEMS.md KP-22 diffs: checked the documented repair invocation, behavior, evidence, and metadata-only partial resolution.",
+[16:41:48]     "agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md Result: inspected recorded targeted test results, real-database before/after coverage, isolated-cache browser checks, remaining limits, and documentation updates."
+[16:41:48]   ],
+[16:41:48]   "unmet_intent": [],
+[16:41:48]   "unmet_acceptance_criteria": [],
+[16:41:48]   "unmet_definition_of_done": [],
+[16:41:48]   "actionable_retry_items": []
+[16:41:48] }
+[16:41:48] ```
+[16:41:48] [evaluator] turn completed | input tokens: 291709 | cached input tokens: 233728 | output tokens: 2264
+[16:41:49] ========================================
+[16:41:49] [evaluator] turn totals | model requests: 1 | gross input tokens: 291,709 | cached input tokens: 233,728 | uncached input tokens: 57,981 | output tokens: 2,264
+[16:41:49] Hosted codex evaluator exit code: 0
+[16:41:49] ========================================
+[16:41:49] ========================================
+[16:41:49] Evaluator decision: COMPLETE
+[16:41:49] Reason: The metadata repair achieves the story’s purpose: it discovers referenced IDs even when no items row exists, persists canonical metadata safely, and the recorded real-database and browser checks demonstrate repaired icon coverage. The story records targeted tests and live-check results; the complete regression run is assigned to GitHub Actions after acceptance.
+[16:41:49] ========================================
