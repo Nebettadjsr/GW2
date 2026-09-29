@@ -1,351 +1,189 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
-import { ApiRequestError } from '@/api/http'
-import type { EctoSalvage } from '@/api/types'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import EctoSalvageScreen from '../EctoSalvageScreen.vue'
 import {
-  FakeEctoApi,
-  deferred,
-  ectoSalvage,
-  reloadedEctoSalvage,
-  unavailableEctoSalvage
-} from './ectoFixtures'
+  accountLuck,
+  cappedAccountLuck,
+  DUST_ID,
+  ECTO_ID,
+  itemMetadata,
+  itemPrices,
+  METADATA_IDS
+} from './currentEctoFixtures'
 
-/**
- * Rendering, interaction and state checks for the Ectoplasm Salvage screen against controlled
- * responses (`CURRENT_ARCHITECTURE.md` 5.15, `TEST_STRATEGY.md` 12). Nothing here reaches a backend,
- * a browser or the GW2 API.
- *
- * The fixture's numbers do not add up to each other on purpose, so every assertion below is a check
- * that a *supplied* value reached the screen — a page that recalculated profit, net cost, the
- * recovered Dust value, the fee or the Luck cost would disagree with these expectations rather than
- * with itself.
- */
-async function openScreen(api: FakeEctoApi): Promise<VueWrapper> {
-  const wrapper = mount(EctoSalvageScreen, { props: { api } })
+interface RecordedRequest { method: string; url: string }
+const requests: RecordedRequest[] = []
+let luckAnswer: unknown = accountLuck
+let wrapper: VueWrapper | null = null
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  })
+}
+
+async function openScreen(): Promise<VueWrapper> {
+  wrapper = mount(EctoSalvageScreen)
   await flushPromises()
   return wrapper
 }
 
-function cellsOf(wrapper: VueWrapper, hook: string): string[] {
-  return wrapper.findAll(`[data-test="${hook}"]`).map((cell) => cell.text())
+function buttonIn(open: VueWrapper, selector: string, label: string) {
+  const button = open.findAll(selector).find((candidate) => candidate.text().includes(label))
+  if (!button) throw new Error(`Missing ${label} button in ${selector}`)
+  return button
 }
 
-function valueOf(wrapper: VueWrapper, hook: string): string {
-  return wrapper.find(`[data-test="${hook}"]`).text()
+function firstTargetEctos(open: VueWrapper): string {
+  return open.findAll('.target-row')[0]?.element.children[2]?.textContent?.trim() ?? ''
 }
+
+beforeEach(() => {
+  requests.length = 0
+  luckAnswer = accountLuck
+  vi.stubGlobal('fetch', vi.fn((input: string, init?: RequestInit) => {
+    requests.push({ method: init?.method ?? 'GET', url: input })
+    const url = new URL(input, 'http://test.local')
+    if (url.pathname === '/api/items/metadata') return Promise.resolve(jsonResponse(itemMetadata))
+    if (url.pathname === '/api/items/prices') return Promise.resolve(jsonResponse(itemPrices))
+    if (url.pathname === '/api/account/luck') return Promise.resolve(jsonResponse(luckAnswer))
+    throw new Error(`Obsolete or unexpected request: ${input}`)
+  }))
+})
+
+afterEach(() => {
+  wrapper?.unmount()
+  wrapper = null
+  vi.unstubAllGlobals()
+})
 
 describe('EctoSalvageScreen', () => {
-  it('calculatesOnceWhenOpenedAndAsksForNothingElse', async () => {
-    const api = new FakeEctoApi()
+  it('loads metadata for every displayed item, only two TP prices, and current account Luck', async () => {
+    await openScreen()
 
-    await openScreen(api)
-
-    expect(api.salvageCalls).toBe(1)
+    expect(requests).toHaveLength(3)
+    expect(requests.every((request) => request.method === 'GET')).toBe(true)
+    const metadataRequest = requests.find(({ url }) => url.startsWith('/api/items/metadata?'))
+    const priceRequest = requests.find(({ url }) => url.startsWith('/api/items/prices?'))
+    expect(metadataRequest).toBeDefined()
+    expect(priceRequest).toBeDefined()
+    expect(requests.map(({ url }) => url)).toContain('/api/account/luck')
+    expect(new URL(metadataRequest!.url, 'http://test.local').searchParams.get('ids')?.split(',').map(Number))
+      .toEqual(METADATA_IDS)
+    expect(new URL(priceRequest!.url, 'http://test.local').searchParams.get('ids')?.split(',').map(Number))
+      .toEqual([ECTO_ID, DUST_ID])
+    expect(requests.some(({ url }) => url.includes('/api/ecto/salvage'))).toBe(false)
   })
 
-  it('repeatsOnlyThatOneCalculationOnAnExplicitReload', async () => {
-    const api = new FakeEctoApi()
-    api.salvageHandler = (callIndex) =>
-      Promise.resolve(callIndex === 0 ? ectoSalvage : reloadedEctoSalvage)
-    const wrapper = await openScreen(api)
+  it('passes all seven backend icon URLs to the shared ItemIcon component', async () => {
+    const open = await openScreen()
+    const icons = open.findAll('[data-test="item-icon"]')
 
-    await wrapper.find('[data-test="ecto-reload"]').trigger('click')
-    await flushPromises()
-
-    expect(api.salvageCalls).toBe(2)
-    // The newly supplied figures replace the earlier ones rather than being merged with them.
-    expect(valueOf(wrapper, 'ecto-scenario-profit')).toContain('+96s 66c')
+    expect(icons).toHaveLength(METADATA_IDS.length)
+    expect(icons.every((icon) => icon.attributes('data-icon-state') === 'image')).toBe(true)
+    expect(icons.map((icon) => icon.find('img').attributes('src'))).toEqual([
+      44602, 23041, 89409, 67027, 19986, ECTO_ID, DUST_ID
+    ].map((id) => `/api/items/${id}/icon/source-${id}.png`))
+    expect(open.html()).not.toContain('render.guildwars2.com')
   })
 
-  it('rendersAllFourScenariosInTheBackendsOrderWithUnambiguousModeLabels', async () => {
-    const api = new FakeEctoApi()
+  it('starts with 100 Ectos, Master/Silver-Fed, instant buy, and instant sell', async () => {
+    const open = await openScreen()
 
-    const wrapper = await openScreen(api)
-
-    for (const key of [
-      'instant-buy-instant-sell',
-      'instant-buy-listing-sell',
-      'buy-order-instant-sell',
-      'buy-order-listing-sell'
-    ]) {
-      expect(wrapper.find(`[data-test="ecto-scenario-${key}"]`).exists()).toBe(true)
-    }
-    expect(cellsOf(wrapper, 'ecto-scenario-acquisition')).toEqual([
-      'Instant buy',
-      'Instant buy',
-      'Buy order',
-      'Buy order'
-    ])
-    expect(cellsOf(wrapper, 'ecto-scenario-sale')).toEqual([
-      'Instant sell',
-      'Listing sell',
-      'Instant sell',
-      'Listing sell'
-    ])
+    expect((open.find('#ecto-count').element as HTMLInputElement).value).toBe('100')
+    expect(open.find('.salvage-row.selected').text()).toContain("Master's / Mystic / Silver-Fed")
+    expect(open.find('.tool-choice__button--selected').text()).toBe('Silver-Fed')
+    expect(open.findAll('.tp-block')[0]?.find('.tp-option.selected').text()).toContain('Instant buy')
+    expect(open.findAll('.tp-block')[1]?.find('.tp-option.selected').text()).toContain('Instant sell')
+    expect(open.find('.result-lead').text()).toContain(`${(10_457).toLocaleString()} Luck`)
+    expect(open.find('.result-lead').text()).toContain('185 Crystalline Dust')
   })
 
-  it('showsEveryScenarioValueAsSuppliedWithoutDerivingOneFromAnother', async () => {
-    const api = new FakeEctoApi()
+  it('recalculates quantity and method locally from the Wiki yield assumptions', async () => {
+    const open = await openScreen()
+    await open.find('#ecto-count').setValue('10')
 
-    const wrapper = await openScreen(api)
+    expect(open.find('.result-lead').text()).toContain(`${(1_046).toLocaleString()} Luck`)
+    expect(open.find('.result-lead').text()).toContain('19 Crystalline Dust')
+    expect(open.find('.result-lead').text()).toContain('6s 0c') // 10 Silver-Fed uses
+    expect(open.find('.result-conclusion').text()).toContain('-13s 45c')
 
-    // Gross quotes, exactly as supplied.
-    expect(cellsOf(wrapper, 'ecto-scenario-ecto-cost')).toEqual([
-      '11s 11c',
-      '12s 12c',
-      '13s 13c',
-      '14s 14c'
-    ])
-    expect(cellsOf(wrapper, 'ecto-scenario-dust-gross')).toEqual([
-      '22s 22c',
-      '23s 23c',
-      '24s 24c',
-      '25s 25c'
-    ])
-
-    // The expected value of the recovered Dust, gross: supplied, not the Dust quote scaled here.
-    expect(cellsOf(wrapper, 'ecto-scenario-dust-recovered-gross')).toEqual([
-      '33s 33c',
-      '34s 34c',
-      // A supplied zero stays a zero beside a non-zero after-fee value on the same row.
-      '0c',
-      '36s 36c'
-    ])
-
-    // Fee-inclusive economic results. None of these is the arithmetic consequence of the columns
-    // above — not even the gross recovered value less the stated percentage — and none is
-    // recomputed here.
-    expect(cellsOf(wrapper, 'ecto-scenario-dust-recovered-net')).toEqual([
-      '44s 44c',
-      '45s 45c',
-      '46s 46c',
-      '47s 47c'
-    ])
-    expect(cellsOf(wrapper, 'ecto-scenario-net-cost')).toEqual([
-      '55s 55c',
-      '-56s 56c',
-      '57s 57c',
-      '58s 58c'
-    ])
-    expect(cellsOf(wrapper, 'ecto-scenario-luck-cost')).toEqual([
-      '77s 77c',
-      '-78s 78c',
-      '79s 79c',
-      '80s 80c'
-    ])
+    await buttonIn(open, '.salvage-row', 'Basic / Copper-Fed').trigger('click')
+    expect(open.find('.tool-choice__button--selected').text()).toBe('Copper-Fed')
+    expect(open.find('.result-lead').text()).toContain(`${(1_032).toLocaleString()} Luck`)
+    expect(open.find('.result-lead').text()).toContain('16 Crystalline Dust')
+    expect(open.find('.result-lead').text()).toContain('30c')
+    expect(open.find('.result-conclusion').text()).toContain('-15s 40c')
+    expect(requests).toHaveLength(3)
   })
 
-  it('writesTheSignAndTheOutcomeOfEveryProfitSoNeitherDependsOnColor', async () => {
-    const api = new FakeEctoApi()
+  it('charges the selected exact tool in coin rather than treating a method as one cost', async () => {
+    const open = await openScreen()
+    expect(open.find('.result-lead').text()).toContain('60s 0c') // Silver-Fed, 100 uses
+    expect(open.find('.result-conclusion').text()).toContain('-1g 34s 50c')
 
-    const wrapper = await openScreen(api)
-
-    const profits = wrapper.findAll('[data-test="ecto-scenario-profit"] .money')
-    expect(profits.map((profit) => profit.text())).toEqual([
-      '-66s 66c',
-      '+67s 67c',
-      // A supplied zero stays a zero rather than becoming the missing-value marker.
-      '0c',
-      '+69s 69c'
-    ])
-    expect(profits.map((profit) => profit.classes().join(' '))).toEqual([
-      'money money--loss',
-      'money money--gain',
-      'money money--none',
-      'money money--gain'
-    ])
-    expect(cellsOf(wrapper, 'ecto-scenario-outcome')).toEqual([
-      'loss',
-      'gain',
-      'break-even',
-      'gain'
-    ])
+    await buttonIn(open, '.tool-choice__button', 'Mystic').trigger('click')
+    expect(open.find('.result-lead').text()).toContain('10s 50c') // rounded 100 x 10.496c
+    expect(open.find('.result-conclusion').text()).toContain('-1g 84s 0c')
+    expect(open.find('.tool-cost-note').text()).toContain('Mystic Forge Stone')
+    expect(requests).toHaveLength(3)
   })
 
-  it('statesTheBackendsOwnAssumptionsAndFeePercentageRatherThanItsOwn', async () => {
-    const api = new FakeEctoApi()
+  it('keeps Black Lion Gem cost separate from the effective coin cost', async () => {
+    const open = await openScreen()
+    await buttonIn(open, '.salvage-row', 'Black Lion').trigger('click')
 
-    const wrapper = await openScreen(api)
-
-    // The fixture's fee is deliberately not the project's 15%: a screen holding its own copy of that
-    // number would print 15 here.
-    expect(valueOf(wrapper, 'ecto-assumption-fee')).toContain('12%')
-    expect(valueOf(wrapper, 'ecto-assumption-yield')).toContain('20 Luck')
-    expect(valueOf(wrapper, 'ecto-assumption-yield')).toContain('0.75 Crystalline Dust')
-    // Expected values, never presented as a guaranteed salvage outcome.
-    expect(valueOf(wrapper, 'ecto-assumption-yield')).toContain('not a guaranteed drop')
-    expect(valueOf(wrapper, 'ecto-assumption-luck')).toContain('50 Ectoplasm')
+    expect(open.find('.result-lead').text()).toContain(`${(1_200).toLocaleString()} Gems`)
+    expect(open.find('.result-conclusion').text()).toContain('-2g 26s 80c')
+    expect(open.find('.result-conclusion').text()).toContain(`+ ${(1_200).toLocaleString()} Gems`)
+    expect(open.find('.tool-cost-note').text()).toContain('not converted to gold')
+    expect(open.find('.target-row .target-cost small').text()).toContain('Gems')
+    expect(requests).toHaveLength(3)
   })
 
-  it('showsOnlyGrossMarketQuotesInThePricePanelAndNamesTheFeeOnTheResultColumns', async () => {
-    const api = new FakeEctoApi()
+  it('applies the 15% Dust sale fee and recalculates both TP modes locally', async () => {
+    const open = await openScreen()
+    expect(open.find('.result-story').text()).toContain('3g 14s 50c') // 185 x 200 x 0.85
+    expect(open.find('.result-conclusion').text()).toContain('-1g 34s 50c')
 
-    const wrapper = await openScreen(api)
+    await buttonIn(open, '.tp-block:nth-child(2) .tp-option', 'Listing sell').trigger('click')
+    expect(open.find('.result-story').text()).toContain('3g 77s 40c') // 185 x 240 x 0.85
+    expect(open.find('.result-conclusion').text()).toContain('-1g 97s 40c')
 
-    expect(valueOf(wrapper, 'ecto-quote-instant-buy')).toBe('11s 11c')
-    expect(valueOf(wrapper, 'ecto-quote-buy-order')).toBe('13s 13c')
-    expect(valueOf(wrapper, 'dust-quote-instant-sell')).toBe('22s 22c')
-    expect(valueOf(wrapper, 'dust-quote-listing-sell')).toBe('23s 23c')
-
-    // The superseded per-Dust-unit "after fee" quotes: a market price is never shown net of the fee
-    // (`DOMAIN_SPEC.md` 25, 46).
-    expect(wrapper.find('[data-test="dust-net-instant-sell"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="dust-net-listing-sell"]').exists()).toBe(false)
-    expect(valueOf(wrapper, 'ecto-prices')).not.toContain('after fee')
-
-    // Every fee-inclusive column says so, with the percentage the backend supplied; the two gross
-    // columns beside them do not.
-    const columnNotes = wrapper
-      .findAll('.column-note')
-      .map((note) => note.text().replace(/\s+/g, ' '))
-    expect(columnNotes).toEqual([
-      'gross, per ecto',
-      'gross, per dust',
-      'gross, per ecto',
-      'after 12% TP fees, per ecto',
-      'after 12% TP fees, per ecto',
-      'after 12% TP fees, per ecto',
-      'after 12% TP fees'
-    ])
-
-    expect(valueOf(wrapper, 'ecto-item-id')).toBe('#19721')
-    expect(valueOf(wrapper, 'dust-item-id')).toBe('#24277')
+    await buttonIn(open, '.tp-block:first-child .tp-option', 'Buy order').trigger('click')
+    expect(open.find('.result-conclusion').text()).toContain('-2g 17s 40c')
+    expect(requests).toHaveLength(3)
   })
 
-  it('rendersTheItemsThroughTheSharedIconComponentWithNoSuppliedSource', async () => {
-    const api = new FakeEctoApi()
+  it('prices Luck targets using the selected yield, exact tool, and TP modes', async () => {
+    const open = await openScreen()
+    expect(firstTargetEctos(open)).toBe('4') // ceil(416 / 104.57)
+    expect(open.find('.target-row .target-cost strong').text()).toBe('-5s 38c')
 
-    const wrapper = await openScreen(api)
-
-    const icons = wrapper.findAll('[data-test="item-icon"]')
-    expect(icons).toHaveLength(2)
-    // This route carries no item metadata, so both fall back to the established placeholder; no URL
-    // is built here and nothing is requested from ArenaNet.
-    expect(icons.map((icon) => icon.attributes('data-icon-state'))).toEqual(['no-url', 'no-url'])
-    expect(wrapper.findAll('img')).toHaveLength(0)
-    expect(wrapper.html()).not.toContain('render.guildwars2.com')
+    await buttonIn(open, '.salvage-row', 'Basic / Copper-Fed').trigger('click')
+    expect(firstTargetEctos(open)).toBe('5') // ceil(416 / 103.17)
+    expect(open.find('.target-row .target-cost strong').text()).toBe('-7s 70c')
+    await buttonIn(open, '.tool-choice__button', 'Basic').trigger('click')
+    expect(open.find('.target-row .target-cost strong').text()).toBe('-7s 67c')
+    await buttonIn(open, '.tp-block:first-child .tp-option', 'Buy order').trigger('click')
+    expect(open.find('.target-row .target-cost strong').text()).toBe('-8s 67c')
+    expect(requests).toHaveLength(3)
   })
 
-  it('showsALoadingStateWhileTheCalculationIsInFlight', async () => {
-    const api = new FakeEctoApi()
-    const pending = deferred<EctoSalvage>()
-    api.salvageHandler = () => pending.promise
-
-    const wrapper = mount(EctoSalvageScreen, { props: { api } })
-    await flushPromises()
-
-    expect(wrapper.find('[data-test="ecto-loading"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="ecto-scenario-table"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="ecto-error"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="ecto-unavailable"]').exists()).toBe(false)
-
-    pending.resolve(ectoSalvage)
-    await flushPromises()
-
-    expect(wrapper.find('[data-test="ecto-loading"]').exists()).toBe(false)
-    expect(wrapper.findAll('[data-test="ecto-scenario-acquisition"]')).toHaveLength(4)
+  it('uses the current and next cumulative Luck thresholds for level progress', async () => {
+    const open = await openScreen()
+    const bar = open.find('.luck-progress__bar')
+    const expectedPercent = ((14_134 - 13_790) / (14_550 - 13_790)) * 100
+    expect(parseFloat((bar.element as HTMLElement).style.width)).toBeCloseTo(expectedPercent, 8)
   })
 
-  it('disablesTheReloadControlWhileACalculationIsInFlightAndRestoresItAfterwards', async () => {
-    const api = new FakeEctoApi()
-    const wrapper = await openScreen(api)
-    expect(wrapper.find('[data-test="ecto-reload"]').attributes('disabled')).toBeUndefined()
+  it('renders a full progress bar at the 300% Luck-derived Magic Find cap', async () => {
+    luckAnswer = cappedAccountLuck
+    const open = await openScreen()
 
-    const pending = deferred<EctoSalvage>()
-    api.salvageHandler = () => pending.promise
-
-    await wrapper.find('[data-test="ecto-reload"]').trigger('click')
-    await flushPromises()
-
-    // Disabled, so a second click cannot even be delivered; the suppression behind it — which a
-    // repeat that *does* reach the state would hit — is covered by `useEctoSalvage.spec.ts`.
-    expect(wrapper.find('[data-test="ecto-reload"]').attributes('disabled')).toBeDefined()
-    expect(api.salvageCalls).toBe(2)
-
-    pending.resolve(reloadedEctoSalvage)
-    await flushPromises()
-
-    expect(wrapper.find('[data-test="ecto-reload"]').attributes('disabled')).toBeUndefined()
-    await wrapper.find('[data-test="ecto-reload"]').trigger('click')
-    await flushPromises()
-    expect(api.salvageCalls).toBe(3)
-  })
-
-  it('showsTheBackendsOwnSanitizedFailureAndRetriesOnlyOnRequest', async () => {
-    const api = new FakeEctoApi()
-    api.salvageHandler = (callIndex) =>
-      callIndex === 0
-        ? Promise.reject(
-            new ApiRequestError(
-              'Live Trading Post prices for the Ectoplasm calculation are currently unavailable',
-              'PRICE_SOURCE_UNAVAILABLE',
-              502
-            )
-          )
-        : Promise.resolve(ectoSalvage)
-
-    const wrapper = await openScreen(api)
-
-    const failure = wrapper.find('[data-test="ecto-error"]')
-    expect(failure.text()).toContain('PRICE_SOURCE_UNAVAILABLE')
-    expect(failure.text()).toContain('currently unavailable')
-    expect(wrapper.find('[data-test="ecto-scenario-table"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="ecto-unavailable"]').exists()).toBe(false)
-    expect(api.salvageCalls).toBe(1)
-
-    await wrapper.find('[data-test="ecto-retry"]').trigger('click')
-    await flushPromises()
-
-    expect(api.salvageCalls).toBe(2)
-    expect(wrapper.findAll('[data-test="ecto-scenario-acquisition"]')).toHaveLength(4)
-  })
-
-  it('doesNotPresentTheEarlierFiguresWhenAReloadFails', async () => {
-    const api = new FakeEctoApi()
-    const wrapper = await openScreen(api)
-    expect(wrapper.findAll('[data-test="ecto-scenario-acquisition"]')).toHaveLength(4)
-
-    api.salvageHandler = () =>
-      Promise.reject(new ApiRequestError('The backend could not be reached.', 'BACKEND_UNREACHABLE', null))
-    await wrapper.find('[data-test="ecto-reload"]').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.find('[data-test="ecto-error"]').text()).toContain('BACKEND_UNREACHABLE')
-    expect(wrapper.findAll('[data-test="ecto-scenario-acquisition"]')).toHaveLength(0)
-    expect(wrapper.find('[data-test="ecto-prices"]').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('11s 11c')
-  })
-
-  it('showsACompletedCalculationWithNoUsableQuotesAsAnAnswerAndNotAsZeroOrAFailure', async () => {
-    const api = new FakeEctoApi()
-    api.salvageHandler = () => Promise.resolve(unavailableEctoSalvage)
-
-    const wrapper = await openScreen(api)
-
-    expect(wrapper.find('[data-test="ecto-unavailable"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="ecto-error"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="ecto-scenario-table"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="ecto-prices"]').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('0c')
-  })
-
-  it('doesNotLetAnAnswerThatArrivesAfterTheScreenIsClosedChangeAnything', async () => {
-    const api = new FakeEctoApi()
-    const pending = deferred<EctoSalvage>()
-    api.salvageHandler = () => pending.promise
-
-    const wrapper = mount(EctoSalvageScreen, { props: { api } })
-    await flushPromises()
-    expect(wrapper.find('[data-test="ecto-loading"]').exists()).toBe(true)
-
-    wrapper.unmount()
-    pending.resolve(ectoSalvage)
-    await flushPromises()
-
-    // The late answer was refused rather than applied to a screen that is no longer open, and it
-    // provoked no further request.
-    expect(api.salvageCalls).toBe(1)
-    expect(wrapper.html()).not.toContain('11s 11c')
+    expect(open.find('.account-summary').text()).toContain('300%')
+    expect(open.find('.account-summary').text()).toContain('Maximum')
+    expect((open.find('.luck-progress__bar').element as HTMLElement).style.width).toBe('100%')
   })
 })

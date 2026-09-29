@@ -8,7 +8,7 @@ import {
   profitResponse,
   selectorOptions
 } from '@/crafting/__tests__/fixtures'
-import { ectoSalvage } from '@/ecto/__tests__/ectoFixtures'
+import { accountLuck, itemMetadata, itemPrices, METADATA_IDS } from '@/ecto/__tests__/currentEctoFixtures'
 
 /**
  * The application shell: navigation between the areas, what each navigation costs at the network
@@ -48,7 +48,9 @@ async function answer(path: string, init?: RequestInit): Promise<Response> {
   if (path === '/api/crafting/discovery/resolution') {
     return jsonResponse(discoveryResolutionResponse(JSON.parse(String(init?.body ?? '{}'))))
   }
-  if (path === '/api/ecto/salvage') return jsonResponse(ectoSalvage)
+  if (path.startsWith('/api/items/metadata?')) return jsonResponse(itemMetadata)
+  if (path.startsWith('/api/items/prices?')) return jsonResponse(itemPrices)
+  if (path === '/api/account/luck') return jsonResponse(accountLuck)
   if (path === '/api/account/bank') return jsonResponse(await bankAnswer)
   if (path === '/api/account/materials') return jsonResponse(materialStorage)
   if (path === '/api/sync/account') {
@@ -179,7 +181,7 @@ describe('App shell', () => {
     expect(pathsOf('/api/sync')).toEqual([])
   })
 
-  it('opensEctoplasmSalvageAsItsOwnAddressableDestinationAndCalculatesThere', async () => {
+  it('opensEctoplasmSalvageAsItsOwnAddressableDestinationAndLoadsItsThreeInputs', async () => {
     const open = await openApp()
 
     await navigateTo(open, 'ecto')
@@ -192,24 +194,28 @@ describe('App shell', () => {
     expect(heading.text()).toBe('Ectoplasm Salvage')
     expect(document.activeElement).toBe(heading.element)
 
-    // Opening it calls its own route once, and nothing else — no crafting calculation follows from
-    // navigating here, and the live price lookup stays entirely on the backend.
-    expect(pathsOf('/api/ecto')).toEqual(['/api/ecto/salvage'])
-    expect(open.find('[data-test="ecto-scenario-table"]').exists()).toBe(true)
-    expect(pathsOf('/api/account')).toEqual([])
+    expect(pathsOf('/api/ecto')).toEqual([])
+    expect(pathsOf('/api/items/metadata')).toHaveLength(1)
+    expect(pathsOf('/api/items/prices')).toEqual(['/api/items/prices?ids=19721,24277'])
+    expect(new URL(pathsOf('/api/items/metadata')[0]!, 'http://test.local').searchParams.get('ids')?.split(',').map(Number))
+      .toEqual(METADATA_IDS)
+    expect(pathsOf('/api/account')).toEqual(['/api/account/luck'])
+    expect(open.find('[data-test="ecto-screen"]').exists()).toBe(true)
+    expect(open.find('.result-conclusion').exists()).toBe(true)
     expect(pathsOf('/api/sync')).toEqual([])
   })
 
-  it('recalculatesEctoplasmOnReturnRatherThanRepresentingTheOlderPriceSnapshot', async () => {
+  it('reloadsEctoplasmInputsOnReturnWithoutCallingTheRemovedCalculationRoute', async () => {
     const open = await openApp()
 
     await navigateTo(open, 'ecto')
     await navigateTo(open, 'bank')
     await navigateTo(open, 'ecto')
 
-    // Unlike the two crafting screens, this one holds no scope or settings to preserve and its
-    // result is a live price snapshot, so reopening it asks the backend again.
-    expect(pathsOf('/api/ecto')).toEqual(['/api/ecto/salvage', '/api/ecto/salvage'])
+    expect(pathsOf('/api/ecto')).toEqual([])
+    expect(pathsOf('/api/items/metadata')).toHaveLength(2)
+    expect(pathsOf('/api/items/prices')).toHaveLength(2)
+    expect(pathsOf('/api/account/luck')).toHaveLength(2)
   })
 
   it('keepsTheTwoCraftingScreensSeparateAndPostsNoSecondCalculationOnReturn', async () => {

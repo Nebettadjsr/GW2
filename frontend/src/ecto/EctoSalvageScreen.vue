@@ -657,11 +657,11 @@ onMounted(loadPage)
             </div>
           </div>
 
-          <div v-if="accountLuck.nextMagicFindPercent != null" class="luck-progress">
+          <div class="luck-progress">
             <div class="luck-progress__labels">
               <strong>{{ accountLuck.currentLuckMagicFindPercent }}%</strong>
-              <span>{{ accountLuck.luckRemainingToNextPercent.toLocaleString() }} Luck remaining</span>
-              <strong>{{ accountLuck.nextMagicFindPercent }}%</strong>
+              <span>{{ accountLuck.nextMagicFindPercent == null ? 'Luck cap reached' : `${accountLuck.luckRemainingToNextPercent.toLocaleString()} Luck remaining` }}</span>
+              <strong>{{ accountLuck.nextMagicFindPercent == null ? 'Maximum' : `${accountLuck.nextMagicFindPercent}%` }}</strong>
             </div>
             <div class="luck-progress__track" aria-hidden="true">
               <div
