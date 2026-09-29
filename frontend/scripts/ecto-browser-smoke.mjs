@@ -115,7 +115,7 @@ async function run() {
     check(priceRequest !== undefined, 'Price request missing.')
     check(JSON.stringify(requestedIds(new URL(metadataRequest))) === JSON.stringify(METADATA_IDS), 'Metadata IDs differ.')
     check(JSON.stringify(requestedIds(new URL(priceRequest))) === JSON.stringify(PRICE_IDS), 'Prices requested more than Ecto and Dust.')
-    record('destination and three current input reads')
+    record('destination, the "Ecto Salvage" title and heading, and three current input reads')
 
     check((await figure(page, 'Ecto value consumed'))?.includes('-1g 20s 0c'), 'Default Ecto value is wrong.')
     check((await figure(page, 'Dust value after TP fees'))?.includes('+3g 14s 50c'), 'Default Dust proceeds are wrong.')

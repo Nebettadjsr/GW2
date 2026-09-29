@@ -249,6 +249,7 @@ test-strategy or roadmap content was touched.
 
 ## Follow-up Findings Disposition
 F001: ALREADY COVERED ? STORY-WEB-017 measures the required page-intro contrast pair on the Synchronization page.
+
 ## Follow-up Findings
 
 F001: `frontend/scripts/layout-browser-smoke.mjs` measures text/background contrast on `AREAS[0]`,

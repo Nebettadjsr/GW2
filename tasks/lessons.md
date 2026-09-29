@@ -467,3 +467,25 @@ broken diagnostic beside `netstat` and `WMIC`), so a "no match" result there
 proves nothing. Distinguish your own processes from the user's by parent PID and
 creation time instead — here all 45 `chrome.exe` descended from one browser
 started days earlier, which is what made it safe to leave them alone.
+
+## An assertion the run never reaches is not coverage, and a "workaround" is not evidence
+
+Correcting a check's expected value satisfies nothing while the script stops before
+that line. Fix the reachability in the file that ships, and make the run's own
+output name what it compared.
+
+**Why:** `STORY-WEB-022` updated the Ecto label in both browser smoke scripts and
+was rejected: `smoke:ecto` timed out at step 2 on a removed route's table and
+`smoke:layout` timed out on a stale readiness selector, so neither ever read the
+heading. The story had noticed this and worked around it by running a throwaway
+copy — evidence for a file the repository does not contain. Even once both
+scripts passed, the layout step line read only "areas reflow at …", from which no
+reader can tell whether the label assertion ran at all.
+
+**How to apply:** a criterion about an assertion is met only when a shipped
+command executes it — quote the step line that names it. Throwaway copies are for
+*controls* (prove the assertion fails when the behaviour is removed), never for
+the passing run. And before re-implementing a rejected story, diff the tree
+against its Result: here the maintainer's commits had already rewritten both
+scripts, so the whole remaining job was to verify and to make the verification
+legible, not to re-edit anything.

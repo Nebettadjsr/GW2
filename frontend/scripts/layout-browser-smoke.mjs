@@ -496,6 +496,9 @@ async function run() {
     // 2. Every area reachable by its own URL, named, marked and reflowing at three widths.
     for (const viewport of VIEWPORTS) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height })
+      // The headings this pass actually read, reported below: a step line that only claims "reflow"
+      // cannot show which labels were compared, which is what STORY-WEB-022 needs from this run.
+      const namedAreas = []
       for (const area of AREAS) {
         await openArea(page, stub.origin, area)
 
@@ -522,8 +525,12 @@ async function run() {
           `${area.id} at ${viewport.name}: the page itself scrolls horizontally ` +
             `(${overflow.scrollWidth} > ${overflow.clientWidth}).`
         )
+        namedAreas.push(`${area.id} "${area.heading}"`)
       }
-      record(`all ${AREAS.length} areas reflow at ${viewport.name}`, 'no page-level horizontal scrolling')
+      record(
+        `all ${AREAS.length} areas are named, marked and reflow at ${viewport.name}`,
+        `no page-level horizontal scrolling; heading and title verified for ${namedAreas.join(', ')}`
+      )
     }
 
     // 3. The wide comparison table keeps its scrolling local, and is reachable by keyboard.

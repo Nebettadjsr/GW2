@@ -252,3 +252,8 @@ Neither runs in CI.
 ## Blockers
 
 None.
+
+## Follow-up Findings Disposition
+
+F001: ALREADY COVERED — STORY-WEB-021 replaces the stale Ecto readiness selector with stable result hooks.
+F002: FOLLOW-UP STORY — STORY-WEB-022.

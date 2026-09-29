@@ -1,1 +1,1 @@
-agent/stories/STORY-PERF-002-phase-five-crafting-profit-page-budget.md
+agent/stories/STORY-WEB-022-align-ecto-page-label.md
