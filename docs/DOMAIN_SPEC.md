@@ -804,6 +804,13 @@ sell_unit_price
 
 These terms must remain explicit because `buy price` and `sell price` are ambiguous without specifying whose perspective is meant.
 
+The GW2 API price response supplies current buy/sell unit quotes but not enough market depth across
+price levels to establish the execution price for a requested quantity. Calculated Trading Post
+purchase costs and sale proceeds therefore extrapolate a unit quote across that quantity. The
+available quantity at the quoted price may be insufficient, and a large transaction may cross
+multiple price levels. Calculation pages must disclose this limitation and advise users to check
+current prices and available quantities in-game before committing significant gold.
+
 ---
 
 # 21. Missing Trading Post Price

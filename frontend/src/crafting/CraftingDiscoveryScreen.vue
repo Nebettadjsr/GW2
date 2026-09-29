@@ -2,6 +2,7 @@
 import { computed, onActivated, onDeactivated, onMounted, watch } from 'vue'
 import { craftingApi, type CraftingApi } from '@/api/craftingApi'
 import type { EffectiveDiscoverySettings } from '@/api/types'
+import TradingPostPriceDisclaimer from '@/items/TradingPostPriceDisclaimer.vue'
 import PageHeader from '@/shell/PageHeader.vue'
 import DiscoveryScopeSelector from './DiscoveryScopeSelector.vue'
 import DiscoverySettingsForm from './DiscoverySettingsForm.vue'
@@ -273,6 +274,7 @@ function onReload(): void {
         data-test="discovery-results-region"
       >
         <h2 id="discovery-results-heading">Discoverable recipes</h2>
+        <TradingPostPriceDisclaimer v-if="discovery.hasResult.value" />
 
         <!--
           Loading comes first on purpose: the selector read is part of it, and until that has answered

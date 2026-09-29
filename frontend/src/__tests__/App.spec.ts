@@ -188,11 +188,14 @@ describe('App shell', () => {
 
     // A real URL of its own, so Back, Forward, a bookmark and a reload all work (STORY-WEB-013).
     expect(window.location.hash).toBe('#/ecto')
-    expect(document.title).toBe('Ectoplasm Salvage · GW2 Crafting Tool')
+    expect(document.title).toBe('Ecto Salvage · GW2 Crafting Tool')
     expect(currentDestination(open)).toBe('nav-ecto')
     const heading = open.find('[data-test="page-heading"]')
     expect(heading.text()).toBe('Ecto Salvage')
     expect(document.activeElement).toBe(heading.element)
+    // The destination is named the same way in all three places (STORY-WEB-022): the navigation link,
+    // the page's own heading and the document title, so no one name can be renamed on its own.
+    expect(open.find('[data-test="nav-ecto"]').text()).toBe(heading.text())
 
     expect(pathsOf('/api/ecto')).toEqual([])
     expect(pathsOf('/api/items/metadata')).toHaveLength(1)

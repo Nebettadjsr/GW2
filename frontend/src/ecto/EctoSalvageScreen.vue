@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { getJson } from '@/api/http'
 import { formatCopper } from '@/crafting/formatCopper'
 import ItemIcon from '@/items/ItemIcon.vue'
+import TradingPostPriceDisclaimer from '@/items/TradingPostPriceDisclaimer.vue'
 import PageHeader from '@/shell/PageHeader.vue'
 
 type BuyMode = 'instant' | 'order'
@@ -187,6 +188,8 @@ const selectedToolId = ref(defaultMethod.defaultToolId)
 const ectoCount = ref(100)
 const ectoBuyMode = ref<BuyMode>('instant')
 const dustSellMode = ref<SellMode>('instant')
+const tpRefreshing = ref(false)
+const tpRefreshError = ref<string | null>(null)
 
 const selectedMethod = computed<SalvageMethod>(() =>
   salvageMethods.find(method => method.id === selectedMethodId.value) ?? defaultMethod
@@ -386,6 +389,24 @@ function formatToolCost(copper: number, gems: number): string {
   return parts.join(' + ')
 }
 
+async function refreshTradingPostPrices(): Promise<void> {
+  if (tpRefreshing.value) return
+
+  tpRefreshing.value = true
+  tpRefreshError.value = null
+
+  try {
+    const response = await getJson<ItemPricesResponse>(
+      `/items/prices?ids=${ECTO_ID},${DUST_ID}`
+    )
+    prices.value = new Map(response.prices.map(price => [price.itemId, price]))
+  } catch {
+    tpRefreshError.value = 'Trading Post prices could not be refreshed.'
+  } finally {
+    tpRefreshing.value = false
+  }
+}
+
 async function loadPage(): Promise<void> {
   loading.value = true
   loadError.value = null
@@ -433,19 +454,36 @@ onMounted(loadPage)
 
 <template>
   <div class="screen" data-test="ecto-screen">
-    <PageHeader
-      heading="Ecto Salvage"
-      intro="Calculate how much Luck really costs after selling the Crystalline Dust recovered from salvaging your Ectos."
-    />
+    <div class="page-heading-wrap">
+      <PageHeader
+        heading="Ecto Salvage"
+        intro="Calculate how much Luck really costs after selling the Crystalline Dust recovered from salvaging your Ectos."
+      />
+      <button
+        type="button"
+        class="tp-refresh-button"
+        :disabled="tpRefreshing"
+        @click="refreshTradingPostPrices"
+      >
+        {{ tpRefreshing ? 'Refreshing…' : 'Refresh TP prices' }}
+      </button>
+    </div>
+
+    <p v-if="tpRefreshError" class="notice notice--warning" role="alert">
+      {{ tpRefreshError }}
+    </p>
 
     <div v-if="loadError" class="notice notice--warning" role="alert">
       {{ loadError }}
     </div>
 
-    <section class="panel stack" aria-labelledby="ecto-calculator-heading">
-      <h2 id="ecto-calculator-heading" class="panel__title">Calculation controls</h2>
+    <section class="panel" aria-labelledby="ecto-calculator-heading">
+      <div class="calculation-controls-heading">
+        <h2 id="ecto-calculator-heading" class="panel__title">Calculation controls</h2>
+        <TradingPostPriceDisclaimer class="disclaimer-trigger" />
+      </div>
 
-      <div class="calculator-grid">
+    <div class="calculator-grid">
         <fieldset>
           <legend>Salvage tool</legend>
 
@@ -500,7 +538,7 @@ onMounted(loadPage)
                 <ItemIcon :icon-url="iconUrl(ECTO_ID)" :item-id="ECTO_ID" :size="32" loading="eager" />
                 <div>
                   <strong>{{ itemMetadata(ECTO_ID)?.name ?? 'Glob of Ectoplasm' }}</strong>
-                  <div class="meta">How do you want to buy them?</div>
+                  <div class="meta">How should the Ectos be valued?</div>
                 </div>
               </div>
 
@@ -526,7 +564,13 @@ onMounted(loadPage)
                   <span>Buy order</span>
                   <strong>{{ formatMoney(ectoBuyOrderCopper) }}</strong>
                 </button>
+
               </div>
+
+              <p class="meta ecto-value-note">
+                <strong>Already own the Ectos?</strong> They aren't free to salvage—the Ectos themselves have market value.
+                Choose Instant Buy or Buy Order above to decide how that consumed value should be calculated.
+              </p>
             </div>
 
             <div class="tp-block">
@@ -573,6 +617,7 @@ onMounted(loadPage)
       <h2 id="ecto-result-heading" class="panel__title">Ecto Salvage Result</h2>
 
         <div class="result-layout">
+          <div class="result-left">
           <!-- Left: human-readable explanation -->
           <div class="result-story">
             <p class="result-lead">
@@ -620,18 +665,6 @@ onMounted(loadPage)
                 {{ selectedTool.costNote }}
               </p>
 
-              <p v-if="ectoCostCopper != null">
-                {{ ectoBuyMode === 'instant' ? 'Instant buy' : 'Buy order' }} cost of
-                {{ normalizedEctoCount.toLocaleString() }} Ectos is:
-                <span class="result-value">{{ formatMoney(ectoCostCopper) }}</span>.
-              </p>
-
-              <p v-if="dustNetCopper != null">
-                {{ dustSellMode === 'instant' ? 'Instant sell' : 'Listing sell' }}
-                of the {{ formatNumber(expectedDust) }} Dust returns ~
-                <span class="result-value">{{ formatMoney(dustNetCopper) }}</span>
-                (after the Trading Post fees).
-              </p>
             </div>
           </div>
 
@@ -644,14 +677,14 @@ onMounted(loadPage)
 
             <div class="calculation-group">
               <div class="calculation-row">
-                <span>Expected Luck</span>
+                <span>Luck received</span>
                 <strong class="value-positive">
                   +{{ formatNumber(expectedLuck) }}
                 </strong>
               </div>
 
               <div class="calculation-row">
-                <span>Expected Dust</span>
+                <span>Dust received</span>
                 <strong class="value-positive">
                   +{{ formatNumber(expectedDust) }}
                 </strong>
@@ -660,11 +693,12 @@ onMounted(loadPage)
 
             <div class="calculation-group">
               <div class="calculation-row" v-if="ectoCostCopper != null">
-                <span>Ecto cost</span>
+                <span>Ecto value consumed</span>
                 <strong class="value-negative">
                   -{{ formatMoney(ectoCostCopper) }}
                 </strong>
               </div>
+
 
               <div class="calculation-row">
                 <span>Salvage tool cost</span>
@@ -740,9 +774,9 @@ onMounted(loadPage)
           <p v-else class="meta">
             The final cost will appear when Trading Post prices are available.
           </p>
-        </div>
+          </div>
 
-      <div class="magic-find-section">
+          <div class="magic-find-section">
         <div class="section-heading">
           <div class="stack heading-copy">
             <h2>Your Luck &amp; Magic Find</h2>
@@ -796,8 +830,14 @@ onMounted(loadPage)
                 <span>Target</span>
                 <span>Luck needed</span>
                 <span>Ectos to salvage</span>
-                <span>Ecto purchase</span>
-                <span>Effective cost</span>
+                <span class="target-header__stack">
+                  <span>Ecto value</span>
+                  <small>Value consumed</small>
+                </span>
+                <span class="target-header__stack">
+                  <span>Effective cost</span>
+                  <small>After Dust sale</small>
+                </span>
               </div>
 
               <div
@@ -825,7 +865,12 @@ onMounted(loadPage)
                 </span>
 
                 <span class="target-cost">
-                  <strong>
+                  <strong
+                    :class="{
+                      'value-negative': target.effectiveCostCopper != null && target.effectiveCostCopper > 0,
+                      'value-positive': target.effectiveCostCopper != null && target.effectiveCostCopper < 0
+                    }"
+                  >
                     {{ formatMoney(target.effectiveCostCopper) }}
                   </strong>
 
@@ -841,15 +886,15 @@ onMounted(loadPage)
           </div>
 
           <p class="meta">
-            Ecto counts are rounded up because you cannot salvage part of an Ectoplasm.
-            Effective coin costs include the selected salvage tool's coin cost, Ecto purchase price,
-            recovered Dust value and Trading Post selling fees. Gem costs are shown separately and are not converted to gold.
+            Ectos are rounded up. Effective cost includes the selected Ecto market value, salvage-tool cost,
+            recovered Dust value and TP fees. Gem costs are shown separately.
           </p>
         </div>
 
         <p v-else-if="loading" class="meta">Loading account Luck…</p>
         <p v-else class="meta">Account Luck is currently unavailable.</p>
-      </div>
+          </div>
+        </div>
 
       <footer class="source-footer">
         <span class="meta">Sources:</span>
@@ -885,8 +930,38 @@ onMounted(loadPage)
 /* Only page-specific layout lives here. Shared controls, panels, fieldsets,
    typography, colors, spacing and table-region styling come from styles.css. */
 
+.page-heading-wrap {
+  position: relative;
+}
+
+.tp-refresh-button {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.tp-disclaimer-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-2);
+}
+
+.tp-disclaimer-row :deep(button) {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.ecto-value-note {
+  margin-top: var(--space-2);
+}
+
 .result-details {
   margin-top: var(--space-3);
+}
+
+.disclaimer-trigger {
+  color: var(--color-negative);
+  border-color: var(--color-negative);
 }
 
 .result-details p + p {
@@ -910,19 +985,38 @@ onMounted(loadPage)
   align-items: start;
 }
 
-.result-story {
+.result-left {
   min-width: 0;
+  display: grid;
+  gap: var(--space-5);
+}
+
+.result-story,
+.salvage-calculation,
+.magic-find-section {
+  min-width: 0;
+}
+
+.result-story {
   line-height: 1.6;
 }
 
 .salvage-calculation {
-  min-width: 0;
-  padding-left: var(--space-5);
-  border-left: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+  padding-left: 0;
+  border-top: 1px solid var(--color-border);
+  border-left: 0;
 }
 
 .salvage-calculation h3 {
   margin: 0 0 var(--space-4);
+}
+
+.table-region {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  overflow-x: visible;
 }
 
 .calculation-group {
@@ -966,22 +1060,20 @@ onMounted(loadPage)
 }
 
 .magic-find-section {
-  width: 50%;
-  margin-inline: auto;
+  margin: 0;
+  padding-top: 0;
+  padding-left: var(--space-5);
+  border-top: 0;
+  border-left: 1px solid var(--color-border);
 }
 
-@media (max-width: 900px) {
-  .result-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .salvage-calculation {
-    padding-top: var(--space-4);
-    padding-left: 0;
-    border-top: 1px solid var(--color-border);
-    border-left: 0;
-  }
+.calculation-controls-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
+
 .calculator-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1137,12 +1229,6 @@ onMounted(loadPage)
   font-weight: 600;
 }
 
-.magic-find-section {
-  margin-top: var(--space-5);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-border);
-}
-
 .section-heading {
   display: flex;
   align-items: flex-start;
@@ -1174,8 +1260,8 @@ onMounted(loadPage)
 }
 
 .luck-progress {
-  width: min(50%, 48rem);
-  min-width: 36rem;
+  width: 100%;
+  min-width: 0;
   margin: var(--space-2) 0 var(--space-3);
 }
 
@@ -1210,16 +1296,27 @@ onMounted(loadPage)
 }
 
 .target-table {
-  min-width: 46rem;
+  width: 100%;
+  min-width: 0;
 }
 
 .target-header,
 .target-row {
   display: grid;
-  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 0.8fr) minmax(6rem, 0.6fr) minmax(8rem, 0.8fr) minmax(10rem, 0.9fr);
+  grid-template-columns:
+    minmax(5.5rem, 1.15fr)
+    minmax(5rem, 0.85fr)
+    minmax(4.5rem, 0.8fr)
+    minmax(5.75rem, 1fr)
+    minmax(5.75rem, 1fr);
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.target-header > span,
+.target-row > span {
+  min-width: 0;
 }
 
 .target-header {
@@ -1227,6 +1324,19 @@ onMounted(loadPage)
   background: var(--color-raised);
   font-size: var(--text-sm);
   font-weight: 600;
+}
+
+.target-header__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.target-header__stack small {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.15;
 }
 
 .target-row {
@@ -1255,6 +1365,17 @@ onMounted(loadPage)
 }
 
 @media (max-width: 64rem) {
+  .result-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .magic-find-section {
+    padding-top: var(--space-5);
+    padding-left: 0;
+    border-top: 1px solid var(--color-border);
+    border-left: 0;
+  }
+
   .calculator-grid {
     grid-template-columns: 1fr;
   }
@@ -1266,6 +1387,11 @@ onMounted(loadPage)
 }
 
 @media (max-width: 48rem) {
+  .tp-refresh-button {
+    position: static;
+    margin-bottom: var(--space-3);
+  }
+
   .salvage-header {
     display: none;
   }

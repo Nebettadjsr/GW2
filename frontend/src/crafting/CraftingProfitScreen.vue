@@ -2,6 +2,7 @@
 import { computed, onActivated, onDeactivated, onMounted, watch } from 'vue'
 import { craftingApi, type CraftingApi } from '@/api/craftingApi'
 import type { EffectiveSettings } from '@/api/types'
+import TradingPostPriceDisclaimer from '@/items/TradingPostPriceDisclaimer.vue'
 import PageHeader from '@/shell/PageHeader.vue'
 import CraftingProfitTable from './CraftingProfitTable.vue'
 import ProfitSettingsForm from './ProfitSettingsForm.vue'
@@ -275,6 +276,7 @@ function onReload(): void {
         data-test="results-region"
       >
         <h2 id="crafting-results-heading">Opportunities</h2>
+        <TradingPostPriceDisclaimer v-if="profit.hasResult.value" />
 
         <p v-if="profit.isLoading.value" class="notice notice--info" role="status" data-test="loading">
           Loading crafting opportunities…

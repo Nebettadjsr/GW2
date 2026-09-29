@@ -25,7 +25,7 @@ export const SITE_NAME = 'GW2 Crafting Tool'
 export const DESTINATIONS: readonly Destination[] = [
   { id: 'crafting', path: '#/crafting', label: 'Crafting Profit' },
   { id: 'discovery', path: '#/discovery', label: 'Crafting Discovery' },
-  { id: 'ecto', path: '#/ecto', label: 'Ectoplasm Salvage' },
+  { id: 'ecto', path: '#/ecto', label: 'Ecto Salvage' },
   { id: 'synchronization', path: '#/synchronization', label: 'Synchronization' },
   { id: 'bank', path: '#/bank', label: 'Bank' },
   { id: 'materials', path: '#/materials', label: 'Materials' }

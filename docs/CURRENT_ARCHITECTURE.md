@@ -930,6 +930,15 @@ are locked in `frontend/package-lock.json`. `vue` is the only runtime dependency
 a build- or test-time tool. `vite build` emits static assets only — there is no server-side
 JavaScript application runtime, matching `TARGET_ARCHITECTURE.md` §4.1.
 
+**Trading Post quote disclosure.** The GW2 prices API's unit quotes do not supply enough order-book
+depth to price an entire requested quantity; displayed costs and proceeds can extrapolate one quote
+across multiple units. `items/TradingPostPriceDisclaimer.vue` is the reusable frontend pattern for
+explaining that limit and advising users to verify current prices and available quantities in-game
+before a large transaction. Its compact trigger opens a native modal dialog. Crafting Profit and
+Crafting Discovery place it beside their calculated results when a result is present. It adds no
+market-depth request or calculation. For Ecto Salvage, the intended insertion point is the
+"Trading Post prices" controls; that concurrently edited page is left untouched here.
+
 **File layout.**
 
 ```text

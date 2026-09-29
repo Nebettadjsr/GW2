@@ -276,11 +276,11 @@ async function run() {
     await page.waitForSelector('[data-test="ecto-scenario-table"]', { timeout: TIMEOUT_MS })
     check(new URL(page.url()).hash === '#/ecto', `Not addressable at its own URL: ${page.url()}`)
     check(
-      (await page.title()) === 'Ectoplasm Salvage · GW2 Crafting Tool',
+      (await page.title()) === 'Ecto Salvage · GW2 Crafting Tool',
       `The document title does not name the page: ${await page.title()}`
     )
     check(
-      (await textOf(page, '[data-page-heading]')) === 'Ectoplasm Salvage',
+      (await textOf(page, '[data-page-heading]')) === 'Ecto Salvage',
       `The page heading is not the destination's own name: ${await textOf(page, '[data-page-heading]')}`
     )
     const navCurrent = await page.$eval('[aria-current="page"]', (element) =>

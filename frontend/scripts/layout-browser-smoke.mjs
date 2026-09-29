@@ -43,7 +43,7 @@ const AREAS = [
   { id: 'discovery', heading: 'Crafting Discovery', ready: '[data-test="discovery-table"]' },
   // Both halves of the Ectoplasm result panel: the cost summary needs the Trading Post quotes and the
   // Luck section needs the account answer, so a page that rendered only one of them is not ready.
-  { id: 'ecto', heading: 'Ectoplasm Salvage', ready: '.panel:has(.result-summary):has(.account-luck)' },
+  { id: 'ecto', heading: 'Ecto Salvage', ready: '.panel:has(.result-summary):has(.account-luck)' },
   { id: 'synchronization', heading: 'Synchronization', ready: '[data-test="sync-controls"]' },
   { id: 'bank', heading: 'Bank', ready: '[data-test="bank-slots"]' },
   { id: 'materials', heading: 'Materials', ready: '[data-test="material-category"]' }
