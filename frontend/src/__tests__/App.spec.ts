@@ -201,7 +201,7 @@ describe('App shell', () => {
       .toEqual(METADATA_IDS)
     expect(pathsOf('/api/account')).toEqual(['/api/account/luck'])
     expect(open.find('[data-test="ecto-screen"]').exists()).toBe(true)
-    expect(open.find('.result-conclusion').exists()).toBe(true)
+    expect(open.find('.result-summary').exists()).toBe(true)
     expect(pathsOf('/api/sync')).toEqual([])
   })
 

@@ -181,9 +181,66 @@ no performance claim (`TARGET_ARCHITECTURE.md` 33). The two added pages are exer
 structure only — nothing here verifies a Discovery or Ectoplasm domain value, which is what
 `smoke:discovery`, `smoke:ecto` and their live variants are for. The Ectoplasm readiness selector is
 matched on presentational class names because that screen exposes only one `data-test` hook
-(`ecto-screen`), which is its always-rendered root and so proves nothing — recorded as F002. No Vitest,
-Java or TestFX suite was run, because no source file changed and this script is not part of the
-automated gate; GitHub Actions remains the full-regression gate (`TEST_STRATEGY.md` §20/§36).
+(`ecto-screen`), which is its always-rendered root and so proves nothing — recorded as F002. This story's
+own changes are not part of the automated gate, so beyond the two Vitest files repaired for CI no Java or
+TestFX suite was run; GitHub Actions remains the full-regression gate (`TEST_STRATEGY.md` §20/§36).
+
+### CI fix for commit `41a7a6a`
+
+The authoritative GitHub run for this story's commit failed the **Frontend tests (Vitest)** job with six
+failures, all in the Ectoplasm screen's own suites and none in the file this story changed.
+
+**Cause.** The commit carries more than this story's one file: the harness's `git add --all` swept in the
+maintainer's *uncommitted* restructure of `frontend/src/ecto/EctoSalvageScreen.vue`, which
+`git show 41a7a6a --stat` shows as `+140/-…`. That restructure moved the computed figures out of
+`.result-lead` — which is now only the "If you salvage *N* Ectos using a *tool* Salvage Tool," sentence
+and its controls — into a new `.result-details` block, and replaced the single `.result-conclusion`
+paragraph with a `.result-summary` of labelled `.result-summary__item` figures (Expected Luck, Effective
+cost, Cost per 1,000 Luck, Additional Gem cost). Nothing in the component's `<script>` changed, so every
+value the tests assert is still rendered and still numerically identical; the tests were querying regions
+that no longer hold them. Per CLAUDE.md the maintainer's change stands, and the stale selectors are the
+defect.
+
+**Fix — two test files, no product code.**
+
+- `frontend/src/ecto/__tests__/EctoSalvageScreen.spec.ts`: the Luck / Dust / tool-cost assertions moved
+  from `.result-lead` to `.result-details`, and each effective-cost assertion now reads the figure filed
+  under its own label through a new `summaryItem(open, label)` helper, which fails loudly by name if that
+  label disappears. Two assertions got *stronger* rather than merely relocated: the Black Lion test's old
+  `'+ 1,200 Gems'` substring of the conclusion paragraph is now
+  `summaryItem(open, 'Additional Gem cost')` contains `1,200 Gems` **plus**
+  `summaryItem(open, 'Effective cost')` does *not* contain `Gems` — which is the claim that test's name
+  actually makes and which the old single substring did not establish.
+- `frontend/src/__tests__/App.spec.ts`: the shell test's "the Ectoplasm result rendered from the three
+  loaded inputs" probe moved from `.result-conclusion` to `.result-summary`. The intent survives exactly:
+  `.result-summary` is rendered under `v-if="effectiveLuckCostCopper != null"`, so it still appears only
+  once both Trading Post prices answered.
+
+No assertion was deleted, skipped or loosened, no expected value was changed, and no threshold was moved.
+
+**A second maintainer edit arrived mid-fix.** While the retargeted tests were being verified,
+`EctoSalvageScreen.vue` was edited again in the working tree — the two `.result-details` sentences were
+reworded, shortening "Crystalline Dust" to "Dust" and "Selling the recovered … after the Trading Post's
+15% selling fees" to "Instant sell of the … (after the Trading Post fees)". That edit was left untouched;
+the three assertions naming the quantity now read `185 Dust` / `19 Dust` / `16 Dust`, still the number
+together with its unit, and the reported figures are unchanged. The passing runs below are on the tree
+including it.
+
+**Verification** (run from `frontend/`, narrow commands only — CI owns the full regression):
+
+- before the fix, `npx vitest run src/ecto/__tests__/EctoSalvageScreen.spec.ts` →
+  `Tests  5 failed | 5 passed (10)`, and
+  `npx vitest run src/__tests__/App.spec.ts -t "opensEctoplasmSalvageAsItsOwnAddressableDestinationAndLoadsItsThreeInputs"`
+  → `Tests  1 failed | 14 skipped (15)` — the same six failures CI reported, reproduced locally.
+- after the fix, `npx vitest run src/ecto/__tests__/EctoSalvageScreen.spec.ts src/__tests__/App.spec.ts`
+  → **`Test Files  2 passed (2)` / `Tests  25 passed (25)`**, on the tree that includes the second
+  maintainer edit.
+- `npx vue-tsc --noEmit` → exit 0, no output, covering the type-check half of the CI job's `npm run build`.
+
+The layout browser smoke check was not re-run: neither test file it reads nor
+`layout-browser-smoke.mjs` changed, and its `ecto` readiness selector
+(`.panel:has(.result-summary):has(.account-luck)`) already targets the restructured `.result-summary`,
+because the AC 4 run above was made on the tree that includes this restructure.
 
 ### Documentation
 
@@ -207,7 +264,14 @@ screen's always-rendered root — it is present while the page is still loading 
 has failed, so no browser check can use it to mean "this page's content is on screen". This check
 therefore has to wait on presentational class names (`.result-summary`, `.account-luck`), which the
 maintainer's restructuring of that panel changed once during this story alone. A hook on each
-data-driven region would make every Ectoplasm browser check independent of that file's styling.
+data-driven region would make every Ectoplasm browser check independent of that file's styling. The CI
+fix above shows the same gap on the unit side: five Vitest assertions had to be re-pointed at
+`.result-details` and `.result-summary__item` labels purely because the styling moved.
+
+F003: the restructure that caused the CI failure removed the `.result-conclusion` element from
+`EctoSalvageScreen.vue`'s template but left its rule (`color`, `font-size`, `font-weight`) in the
+component's scoped `<style>` block, alongside `.tool-separator`, which no longer matches anything either.
+Both are dead rules in a file whose scoped styles are meant to be page-specific layout only.
 
 ## Blockers
 

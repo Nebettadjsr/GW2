@@ -590,10 +590,10 @@ onMounted(loadPage)
 
         <div class="result-details">
           <p>
-            You are expected to receive approximately
+            You approximately receive
             <span class="result-value">{{ formatNumber(expectedLuck) }} Luck</span>
             and
-            <span class="result-value">{{ formatNumber(expectedDust) }} Crystalline Dust</span>
+            <span class="result-value">{{ formatNumber(expectedDust) }} Dust</span>
             and pay
             <span class="result-value">{{ formatToolCost(salvageCostCopper, salvageGemCost) }}</span>
             for use of the salvage tool.
@@ -610,11 +610,11 @@ onMounted(loadPage)
           </p>
 
           <p v-if="dustNetCopper != null">
-            Selling the recovered {{ formatNumber(expectedDust) }} Crystalline Dust by
-            {{ dustSellMode === 'instant' ? 'instant sell' : 'listing sell' }}
-            returns approximately
+            {{ dustSellMode === 'instant' ? 'Instant sell' : 'Listing sell' }}
+            of the {{ formatNumber(expectedDust) }} Dust
+            returns ~
             <span class="result-value">{{ formatMoney(dustNetCopper) }}</span>
-            after the Trading Post's 15% selling fees.
+            (after the Trading Post fees).
           </p>
         </div>
 

@@ -379,6 +379,40 @@ a revert without a `git diff` in the same breath — and when re-verifying a sto
 whose Result already reads DONE, check the tree before the prose: a status field
 and a written-up result are claims, not evidence.
 
+## "My story changed no source file" is a claim about the story, not about the commit
+
+The harness commits the whole tree. Any maintainer edit sitting uncommitted when a
+story finishes ships *inside that story's commit* and is gated by CI as if the
+story had written it. Before deciding which local tests a story needs, ask
+`git status` what else is in the tree — not what the story touched.
+
+**Why:** `STORY-WEB-019` changed only `layout-browser-smoke.mjs` and concluded
+"no Vitest, Java or TestFX suite was run, because no source file changed". The
+maintainer's restructure of `EctoSalvageScreen.vue` was in the working tree at
+the time; commit `41a7a6a` carried both, and CI failed with six Vitest failures
+in files the story never opened. The story text even *named* that concurrent edit
+and still did not run the suite covering it.
+
+**How to apply:** when a `git status` at session start shows modified product
+files you did not write, run the narrow suites that cover them before declaring
+done, and say in the Result which of them the commit will carry. When a CI report
+names failures in files the story never touched, diff the commit first
+(`git show <sha> --stat`) — the cause is usually a swept-in edit, and it is
+maintainer work to integrate, never to revert.
+
+Retarget such tests, don't rewrite their claims: a restructure that moves a value
+from `.result-conclusion` into a labelled `.result-summary__item` leaves every
+asserted number identical, so the fix is which region is queried. Prefer the
+narrowest container that still names the value (a `summaryItem(open, 'Effective
+cost')` helper over the enclosing block), so the next restyling fails by name
+instead of passing on a substring found somewhere else.
+
+And re-run right before reporting, not only right after editing: on this same
+story the maintainer reworded those sentences again ("Crystalline Dust" → "Dust")
+*between* the green run and the write-up, turning two passing assertions red. A
+`git status` at the end that lists a product file you did not touch means the
+evidence above it is older than the tree.
+
 The second half of the same story: a fixture is only as current as the screen it
 answers. Its `ecto` entry waited on `[data-test="ecto-scenario-table"]` and
 stubbed `/api/ecto/salvage`, both of which the maintainer's rewrite had removed —

@@ -2142,3 +2142,93 @@
 [10:17:56] Evaluator decision: COMPLETE
 [10:17:56] Reason: The smoke check covers all six current destinations, derives keyboard focus order from the rendered navigation, and retains the layout and contrast checks. The Result records a passing Chrome run and its limitations.
 [10:17:56] ========================================
+[10:17:59] STORY-WEB-019-layout-smoke-navigation-coverage.md published for CI verification: 41a7a6a on master (7 changed path(s), new commit, waiting for GitHub Actions.
+[10:19:01] GitHub CI FAILED for 41a7a6a (STORY-WEB-019-layout-smoke-navigation-coverage.md): CI: failure
+[10:19:01] GitHub CI failed; returning the story to Claude (1/2).
+[10:19:06] ========================================
+[10:19:06] Starting Claude Code
+[10:19:06] ========================================
+[10:24:57] STORY-WEB-019 is DONE; the CI failure is fixed.
+[10:24:57] **What changed and why.** All six CI failures were in the Ectoplasm screen's suites — files this story never touched. `git show 41a7a6a --stat` explains it: the harness's `git add --all` swept the maintainer's *uncommitted* restructure of `frontend/src/ecto/EctoSalvageScreen.vue` into the story's commit. That restructure moved the computed figures out of `.result-lead` (now only the "If you salvage *N* Ectos using a *tool* Salvage Tool," sentence and its controls) into a new `.result-details` block, and replaced the `.result-conclusion` paragraph with a `.result-summary` of labelled items. The component's `<script>` is untouched, so every asserted number is still rendered and still identical — the tests were querying regions that no longer hold them. Per CLAUDE.md the maintainer's change stands; the stale selectors are the defect.
+[10:24:57] Two test files changed, no product code:
+[10:24:57] - `EctoSalvageScreen.spec.ts` — Luck/Dust/tool-cost assertions moved from `.result-lead` to `.result-details`; each effective-cost assertion now reads the figure filed under its own label via a new `summaryItem(open, label)` helper that throws by name if the label disappears. The Black Lion case got *stronger* rather than merely relocated: the old `'+ 1,200 Gems'` substring became `summaryItem(open, 'Additional Gem cost')` contains `1,200 Gems` **plus** `summaryItem(open, 'Effective cost')` does *not* contain `Gems` — which is the claim that test's name makes and the old substring never established.
+[10:24:57] - `App.spec.ts` — the "result rendered from the three loaded inputs" probe moved from `.result-conclusion` to `.result-summary`, which sits behind the same `v-if="effectiveLuckCostCopper != null"`, so the intent is unchanged.
+[10:24:57] Nothing was deleted, skipped or loosened, and no expected value or threshold moved.
+[10:24:57] **A second maintainer edit landed mid-fix**, rewording those sentences ("Crystalline Dust" → "Dust"). It turned two already-green assertions red; I left the edit alone and re-pointed them at `185 Dust` / `19 Dust` / `16 Dust`.
+[10:24:57] **Tests run** (from `frontend/`):
+[10:24:57] - Before: `npx vitest run src/ecto/__tests__/EctoSalvageScreen.spec.ts` → `Tests 5 failed | 5 passed (10)`; the App test by name → `Tests 1 failed | 14 skipped (15)`. Same six failures as CI.
+[10:24:57] - After: `npx vitest run src/ecto/__tests__/EctoSalvageScreen.spec.ts src/__tests__/App.spec.ts` → **`Test Files 2 passed (2)` / `Tests 25 passed (25)`**, on the tree including both maintainer edits.
+[10:24:57] - `npx vue-tsc --noEmit` → exit 0, no output (the type-check half of CI's `npm run build`).
+[10:24:57] Story Status set to DONE, Result and `CLAUDE_RESULT.md` updated (backlog already read DONE), and the pattern appended to `tasks/lessons.md`. New follow-up finding **F003**: the restructure left `.result-conclusion` and `.tool-separator` as dead rules in the component's scoped `<style>` — grep confirms neither matches anything.
+[10:24:57] **Remaining uncertainty:** the layout smoke check was not re-run; nothing it reads changed, and its `ecto` readiness selector already targets `.result-summary`. The maintainer is editing that component live, so a further reword can invalidate the copy-based assertions again — F002's missing `data-test` hooks are the durable fix.
+[10:24:58] ========================================
+[10:24:58] Claude Code exit code: 0
+[10:24:58] ========================================
+[10:25:01] Claude run measurement: repo_map=off, duration=351.7s, usage_before=23, usage_after=35
+[10:25:01] Evaluator started (Codex, read-only)
+[10:25:01] ========================================
+[10:25:01] Starting hosted Codex evaluator
+[10:25:01] ========================================
+[10:25:01] [evaluator] session 01a0ec44-690d-7f12-b7f8-b4c3d6f9f24b
+[10:25:01] [evaluator] reasoning...
+[10:25:07] Evaluator last response:
+[10:25:07] I’ll inspect the uncommitted diff, the smoke check’s assertions, and the navigation and screen code it exercises. I’ll use the story’s criteria as the scope for the verdict.
+[10:25:10] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git status --porcelain'
+[10:25:10] [evaluator command done] exit 0
+[10:25:10] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git diff HEAD --stat'
+[10:25:11] [evaluator command done] exit 0
+[10:25:11] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git diff HEAD -- frontend/scripts/layout-browser-smoke.mjs frontend/src/ecto/__tests__/EctoSalvageScreen.spec.ts frontend/src/__tests__/App.spec.ts'
+[10:25:11] [evaluator command done] exit 0
+[10:25:20] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'rg -n "''^(const AREAS|const PROFIT_AREA|const INTRO_AREA|function renderedDestinations|async function renderedDestinations|function answerApi|async function answerApi|async function focusWalk|function focusWalk|async function main|function main)|navStopNames|AREAS.length|measureContrast|required.*intro|api/crafting/discovery|api/items/metadata|api/account/luck|api/items/prices|all .*destinations|keyboard focus" frontend/scripts/layout-browser-smoke.mjs'
+[10:25:20] [evaluator command done] exit 0
+[10:25:21] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'rg -n "nav-(crafting|discovery|ecto|synchronization|bank|materials)|screen-nav|site-nav__link|result-summary|account-luck|result-details|result-conclusion" frontend/src/shell frontend/src/ecto/EctoSalvageScreen.vue frontend/src/__tests__/App.spec.ts frontend/src/ecto/__tests__/EctoSalvageScreen.spec.ts'
+[10:25:21] [evaluator command done] exit 0
+[10:25:21] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git diff HEAD -- agent/stories/STORY-WEB-019-layout-smoke-navigation-coverage.md'
+[10:25:21] [evaluator command done] exit 0
+[10:25:27] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$f=Get-Content frontend/scripts/layout-browser-smoke.mjs; $f[30..80]; $f[175..275]'
+[10:25:28] [evaluator command done] exit 0
+[10:25:28] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$f=Get-Content frontend/scripts/layout-browser-smoke.mjs; $f[415..675]'
+[10:25:28] [evaluator command done] exit 0
+[10:25:28] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'Get-Content frontend/src/shell/destinations.ts; $f=Get-Content frontend/src/shell/SiteHeader.vue; $f[35..65]; $e=Get-Content frontend/src/ecto/EctoSalvageScreen.vue; $e[615..685]'
+[10:25:28] [evaluator command done] exit 0
+[10:25:34] Evaluator last response:
+[10:25:34] The smoke script is already in `HEAD`; the current uncommitted diff contains the story Result update and two repaired Vitest files. I’m checking the committed script’s reachable flow against the six rendered destinations and the current Ectoplasm screen before deciding.
+[10:25:39] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$f=Get-Content frontend/src/ecto/__tests__/EctoSalvageScreen.spec.ts; $f[1..70]; $f[90..170]; $a=Get-Content frontend/src/__tests__/App.spec.ts; $a[175..210]'
+[10:25:39] [evaluator command done] exit 0
+[10:25:39] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "rg -n \"function openArea|async function openArea|function requestedIds|function itemMetadata|function itemPrices|function startStubOrigin|function assertMeasured|SELECTORS|selectors|apiCalls|browserCalls|servedCount|run\\(\\)\" frontend/scripts/layout-browser-smoke.mjs; git log -1 --oneline --stat"
+[10:25:39] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$f=Get-Content frontend/scripts/layout-browser-smoke.mjs; $f[80..180]; $f[300..415]; $f[675..730]'
+[10:25:39] [evaluator command done] exit 0
+[10:25:39] [evaluator command done] exit 0
+[10:25:43] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git diff HEAD''^ HEAD -- frontend/scripts/layout-browser-smoke.mjs'
+[10:25:43] [evaluator command done] exit 0
+[10:25:50] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git diff HEAD -- agent/logs/2026-09-29.log'
+[10:25:50] [evaluator command done] exit 0
+[10:25:57] Evaluator last response:
+[10:25:57] ```json
+[10:25:57] {
+[10:25:57]   "decision": "COMPLETE",
+[10:25:57]   "reason": "The reachable browser smoke check covers all six current destinations, derives its keyboard focus assertion from the rendered navigation, and retains the layout and contrast checks. The story Result records a passing Chrome run and its limitations.",
+[10:25:57]   "intent_achieved": true,
+[10:25:57]   "evidence": [
+[10:25:57]     "git status --porcelain, git diff HEAD --stat, and git diff HEAD^ HEAD -- frontend/scripts/layout-browser-smoke.mjs",
+[10:25:57]     "frontend/scripts/layout-browser-smoke.mjs: AREAS, API fixtures, openArea, renderedDestinations, coverage guard, focus walk, layout checks, and contrast assertions",
+[10:25:57]     "frontend/src/shell/destinations.ts and frontend/src/shell/SiteHeader.vue: six destinations and their rendered navigation links",
+[10:25:57]     "frontend/src/ecto/EctoSalvageScreen.vue: result-summary and account-luck regions used by the Ectoplasm readiness selector",
+[10:25:57]     "git diff HEAD -- agent/stories/STORY-WEB-019-layout-smoke-navigation-coverage.md: recorded verification and limitations",
+[10:25:57]     "git diff HEAD -- frontend/src/ecto/__tests__/EctoSalvageScreen.spec.ts and frontend/src/__tests__/App.spec.ts, plus the relevant test assertions"
+[10:25:57]   ],
+[10:25:57]   "unmet_intent": [],
+[10:25:57]   "unmet_acceptance_criteria": [],
+[10:25:57]   "unmet_definition_of_done": [],
+[10:25:57]   "actionable_retry_items": []
+[10:25:57] }
+[10:25:57] ```
+[10:25:57] [evaluator] turn completed | input tokens: 263934 | cached input tokens: 212352 | output tokens: 2045
+[10:25:58] ========================================
+[10:25:58] [evaluator] turn totals | model requests: 1 | gross input tokens: 263,934 | cached input tokens: 212,352 | uncached input tokens: 51,582 | output tokens: 2,045
+[10:25:58] Hosted codex evaluator exit code: 0
+[10:25:58] ========================================
+[10:25:58] ========================================
+[10:25:58] Evaluator decision: COMPLETE
+[10:25:58] Reason: The reachable browser smoke check covers all six current destinations, derives its keyboard focus assertion from the rendered navigation, and retains the layout and contrast checks. The story Result records a passing Chrome run and its limitations.
+[10:25:58] ========================================
