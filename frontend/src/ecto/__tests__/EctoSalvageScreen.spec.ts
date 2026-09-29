@@ -35,12 +35,13 @@ function buttonIn(open: VueWrapper, selector: string, label: string) {
   return button
 }
 
-/** One labelled figure of the result summary, addressed by the label it is filed under. */
-function summaryItem(open: VueWrapper, label: string) {
-  const item = open.findAll('.result-summary__item')
-    .find((candidate) => candidate.find('.meta').text() === label)
-  if (!item) throw new Error(`Missing "${label}" item in the result summary`)
-  return item
+/** One labelled figure of the salvage calculation, addressed by the label it is filed under. */
+function calculationFigure(open: VueWrapper, label: string) {
+  const row = open
+    .findAll('.salvage-calculation .calculation-row, .salvage-calculation .calculation-total')
+    .find((candidate) => candidate.find('span').text() === label)
+  if (!row) throw new Error(`Missing "${label}" row in the salvage calculation`)
+  return row
 }
 
 function firstTargetEctos(open: VueWrapper): string {
@@ -115,25 +116,25 @@ describe('EctoSalvageScreen', () => {
     expect(open.find('.result-details').text()).toContain(`${(1_046).toLocaleString()} Luck`)
     expect(open.find('.result-details').text()).toContain('19 Dust')
     expect(open.find('.result-details').text()).toContain('6s 0c') // 10 Silver-Fed uses
-    expect(summaryItem(open, 'Effective cost').text()).toContain('-13s 45c')
+    expect(calculationFigure(open, 'Effective cost').text()).toContain('-13s 45c')
 
     await buttonIn(open, '.salvage-row', 'Basic / Copper-Fed').trigger('click')
     expect(open.find('.tool-choice__button--selected').text()).toBe('Copper-Fed')
     expect(open.find('.result-details').text()).toContain(`${(1_032).toLocaleString()} Luck`)
     expect(open.find('.result-details').text()).toContain('16 Dust')
     expect(open.find('.result-details').text()).toContain('30c')
-    expect(summaryItem(open, 'Effective cost').text()).toContain('-15s 40c')
+    expect(calculationFigure(open, 'Effective cost').text()).toContain('-15s 40c')
     expect(requests).toHaveLength(3)
   })
 
   it('charges the selected exact tool in coin rather than treating a method as one cost', async () => {
     const open = await openScreen()
     expect(open.find('.result-details').text()).toContain('60s 0c') // Silver-Fed, 100 uses
-    expect(summaryItem(open, 'Effective cost').text()).toContain('-1g 34s 50c')
+    expect(calculationFigure(open, 'Effective cost').text()).toContain('-1g 34s 50c')
 
     await buttonIn(open, '.tool-choice__button', 'Mystic').trigger('click')
     expect(open.find('.result-details').text()).toContain('10s 50c') // rounded 100 x 10.496c
-    expect(summaryItem(open, 'Effective cost').text()).toContain('-1g 84s 0c')
+    expect(calculationFigure(open, 'Effective cost').text()).toContain('-1g 84s 0c')
     expect(open.find('.tool-cost-note').text()).toContain('Mystic Forge Stone')
     expect(requests).toHaveLength(3)
   })
@@ -143,9 +144,10 @@ describe('EctoSalvageScreen', () => {
     await buttonIn(open, '.salvage-row', 'Black Lion').trigger('click')
 
     expect(open.find('.result-details').text()).toContain(`${(1_200).toLocaleString()} Gems`)
-    expect(summaryItem(open, 'Effective cost').text()).toContain('-2g 26s 80c')
-    expect(summaryItem(open, 'Effective cost').text()).not.toContain('Gems')
-    expect(summaryItem(open, 'Additional Gem cost').text()).toContain(`${(1_200).toLocaleString()} Gems`)
+    // A gem-priced tool renames the coin total and files the gems in their own row.
+    expect(calculationFigure(open, 'Effective coin result').text()).toContain('-2g 26s 80c')
+    expect(calculationFigure(open, 'Effective coin result').text()).not.toContain('Gems')
+    expect(calculationFigure(open, 'Additional cost').text()).toContain(`${(1_200).toLocaleString()} Gems`)
     expect(open.find('.tool-cost-note').text()).toContain('not converted to gold')
     expect(open.find('.target-row .target-cost small').text()).toContain('Gems')
     expect(requests).toHaveLength(3)
@@ -154,14 +156,14 @@ describe('EctoSalvageScreen', () => {
   it('applies the 15% Dust sale fee and recalculates both TP modes locally', async () => {
     const open = await openScreen()
     expect(open.find('.result-story').text()).toContain('3g 14s 50c') // 185 x 200 x 0.85
-    expect(summaryItem(open, 'Effective cost').text()).toContain('-1g 34s 50c')
+    expect(calculationFigure(open, 'Effective cost').text()).toContain('-1g 34s 50c')
 
     await buttonIn(open, '.tp-block:nth-child(2) .tp-option', 'Listing sell').trigger('click')
     expect(open.find('.result-story').text()).toContain('3g 77s 40c') // 185 x 240 x 0.85
-    expect(summaryItem(open, 'Effective cost').text()).toContain('-1g 97s 40c')
+    expect(calculationFigure(open, 'Effective cost').text()).toContain('-1g 97s 40c')
 
     await buttonIn(open, '.tp-block:first-child .tp-option', 'Buy order').trigger('click')
-    expect(summaryItem(open, 'Effective cost').text()).toContain('-2g 17s 40c')
+    expect(calculationFigure(open, 'Effective cost').text()).toContain('-2g 17s 40c')
     expect(requests).toHaveLength(3)
   })
 

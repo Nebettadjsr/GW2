@@ -2584,3 +2584,99 @@
 [10:56:25] Evaluator decision: COMPLETE
 [10:56:25] Reason: The story records a real-database browser measurement with a 4,411 ms maximum, within the 7,000 ms budget. The inspected harness measures navigation through settled rendering and checks a displayed value before counting the page complete. Outstanding user acceptance is recorded.
 [10:56:25] ========================================
+[10:56:28] STORY-PERF-002-phase-five-crafting-profit-page-budget.md published for CI verification: e1620ad on master (10 changed path(s), new commit, waiting for GitHub Actions.
+[10:57:30] GitHub CI FAILED for e1620ad (STORY-PERF-002-phase-five-crafting-profit-page-budget.md): CI: failure
+[10:57:30] GitHub CI failed; returning the story to Claude (1/2).
+[10:57:35] ========================================
+[10:57:35] Starting Claude Code
+[10:57:35] ========================================
+[11:05:24] ## CI fix for STORY-PERF-002 — done
+[11:05:24] **Cause.** All five failures came from one thing: the maintainer's restructure of `frontend/src/ecto/EctoSalvageScreen.vue`, swept into commit `e1620ad` because the harness commits the whole tree (the measurement itself changed no product file). The `.result-summary` block is now a `.salvage-calculation` block of `.calculation-row` / `.calculation-total` / `.calculation-gem-total` rows, and two labels were renamed. Four `EctoSalvageScreen.spec.ts` tests looked up `.result-summary__item` by its `.meta` label; `App.spec.ts` asserted `.result-summary` exists. Each was reproduced locally before any edit.
+[11:05:24] **Fix — two test files; the component was not touched.**
+[11:05:24] - `frontend/src/ecto/__tests__/EctoSalvageScreen.spec.ts:38` — `summaryItem` → `calculationFigure`, addressing a row by its **own label span** rather than the removed class pair. Every asserted amount is unchanged; only the region queried changed. The gem case follows the labels now rendered (`Effective coin result`, `Additional cost`), and still requires the coin total to exclude `Gems` and the gems to occupy their own row.
+[11:05:24] - `frontend/src/__tests__/App.spec.ts:204` — reads `.salvage-calculation`, still absent during loading/failure, so the root `ecto-screen` hook alone can't satisfy it.
+[11:05:24] Nothing deleted, skipped or weakened; no test was wrong about its numbers.
+[11:05:24] **A second maintainer edit landed mid-pass.** Re-running before writing up (the `tasks/lessons.md` rule) caught an `Ectoplasm` → `Ecto` rename across the screen. Its heading rename fails the *same* `App.spec.ts` test CI reported, three lines above the reported line, so I integrated it (`heading.text()` now expects `Ecto Salvage`) instead of shipping a forecast of it. `document.title` still expects `Ectoplasm Salvage · GW2 Crafting Tool` and passes — that string comes from `shell/destinations.ts`, which the rename didn't reach.
+[11:05:24] **Commands and real output** (from `frontend/`):
+[11:05:24] - before: `Tests 4 failed | 6 passed (10)`, all `Missing "Effective cost" item in the result summary`; and `expected false to be true` at `App.spec.ts:204`
+[11:05:24] - mid-pass re-run: `Tests 1 failed | 24 passed (25)`, `expected 'Ecto Salvage' to be 'Ectoplasm Salvage'`
+[11:05:24] - final: `npx vitest run src/ecto/__tests__/EctoSalvageScreen.spec.ts src/__tests__/App.spec.ts` → **`Test Files 2 passed (2) | Tests 25 passed (25)`**
+[11:05:25] - `npm run type-check` (`vue-tsc --noEmit`) clean — CI runs this via `npm run build`
+[11:05:25] Story Status set back to `DONE`; Result, `CLAUDE_RESULT.md` and the single BACKLOG entry updated. The performance measurement is unaffected — it was taken on the `e2caa4a` production bundle.
+[11:05:25] **Follow-up findings recorded (not fixed — outside these failures, and CI runs neither script):** F001 `layout-browser-smoke.mjs:46` still waits on the removed `.result-summary`, which `STORY-WEB-021` AC1/AC2 already owns; F002 the rename reached the screen only, so the page heading and `destinations.ts`'s label/document title now disagree, and `ecto-browser-smoke.mjs:283` plus `layout-browser-smoke.mjs:46` still assert the old heading. Which name the product uses is the maintainer's call, so I left it.
+[11:05:25] One uncertainty: the maintainer is editing this screen live — the tree changed twice during this pass — so a further rename after my final 11:05 run would surface the same way.
+[11:05:25] ========================================
+[11:05:25] Claude Code exit code: 0
+[11:05:25] ========================================
+[11:05:28] Claude run measurement: repo_map=off, duration=469.6s, usage_before=68, usage_after=82
+[11:05:28] Evaluator started (Codex, read-only)
+[11:05:28] ========================================
+[11:05:28] Starting hosted Codex evaluator
+[11:05:28] ========================================
+[11:05:28] [evaluator] session 01a0ec69-70cb-7b22-85b0-b200939a4c9d
+[11:05:28] [evaluator] reasoning...
+[11:05:34] Evaluator last response:
+[11:05:34] I’ll inspect the uncommitted diff, the measurement harness, and the cited performance criteria, then return the JSON verdict.
+[11:05:39] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git status --porcelain'
+[11:05:39] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git diff HEAD --stat'
+[11:05:39] [evaluator command done] exit 0
+[11:05:39] [evaluator command done] exit 0
+[11:05:39] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git diff HEAD -- agent/stories/STORY-PERF-002-phase-five-crafting-profit-page-budget.md frontend/src/ecto/__tests__/EctoSalvageScreen.spec.ts frontend/src/__tests__/App.spec.ts'
+[11:05:39] [evaluator command done] exit 0
+[11:05:39] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "rg -n -C 5 'Real-user Crafting Profit|"'^## 34|''^### 34|7 000|7 seconds|performance budget'"' docs/TEST_STRATEGY.md docs/TARGET_ARCHITECTURE.md"
+[11:05:39] [evaluator command done] exit 0
+[11:05:48] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "rg -n 'total-profit|select-row|rowCount|quies|settle|elapsed|loading|calculate|navigation|goto|reload|show all|Show all|read' frontend/scripts/profit-page-perf.mjs"
+[11:05:48] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git diff HEAD -- frontend/src/ecto/EctoSalvageScreen.vue'
+[11:05:48] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'Get-Content docs/TEST_STRATEGY.md | Select-Object -Skip 1216 -First 16'
+[11:05:48] [evaluator command done] exit 0
+[11:05:48] [evaluator command done] exit 0
+[11:05:48] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'Get-Content docs/TARGET_ARCHITECTURE.md | Select-Object -Skip 979 -First 13'
+[11:05:48] [evaluator command done] exit 0
+[11:05:48] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "rg -n -C 3 'calculation-row|calculation-total|salvage-calculation|Effective coin result|Additional cost' frontend/src/ecto/EctoSalvageScreen.vue"
+[11:05:48] [evaluator command done] exit 0
+[11:05:49] [evaluator command done] exit 0
+[11:05:52] Evaluator last response:
+[11:05:52] The recorded maximum is below the stated budget, and the test edits match the Ecto component’s current markup. I’ll check the harness’s completion logic and confirm what supports the claim that it ran against the real database.
+[11:05:58] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'Get-Content frontend/scripts/profit-page-perf.mjs | Select-Object -Skip 95 -First 220'
+[11:05:58] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'Get-Content frontend/scripts/profit-page-perf.mjs | Select-Object -Skip 313 -First 235'
+[11:05:58] [evaluator command done] exit 0
+[11:05:58] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "rg -n -C 3 'real user|PostgreSQL|navigation|4 411|scope ALL|User acceptance|Maximum|CI fix' agent/stories/STORY-PERF-002-phase-five-crafting-profit-page-budget.md"
+[11:05:59] [evaluator command done] exit 0
+[11:05:59] [evaluator command done] exit 0
+[11:05:59] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "rg -n -C 2 'opensEctoplasmSalvageAsItsOwnAddressableDestinationAndLoadsItsThreeInputs|calculationFigure|Effective coin result|Additional cost' frontend/src/__tests__/App.spec.ts frontend/src/ecto/__tests__/EctoSalvageScreen.spec.ts"
+[11:05:59] [evaluator command done] exit 0
+[11:06:08] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git diff HEAD -- agent/logs/2026-09-29.log tasks/lessons.md'
+[11:06:08] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git log -3 --format="%h %s"'
+[11:06:08] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'Get-Content frontend/scripts/profit-page-perf.mjs | Select-Object -First 96'
+[11:06:08] [evaluator command done] exit 0
+[11:06:08] [evaluator command done] exit 0
+[11:06:08] [evaluator command done] exit 0
+[11:06:18] Evaluator last response:
+[11:06:18] ```json
+[11:06:18] {
+[11:06:18]   "decision": "COMPLETE",
+[11:06:18]   "reason": "The story records real-database browser measurements with a 4,411 ms maximum against the 7,000 ms budget. The inspected harness measures settled rendering, checks a displayed value and enabled control, and verifies the complete requested row count. Outstanding user acceptance is recorded.",
+[11:06:18]   "intent_achieved": true,
+[11:06:18]   "evidence": [
+[11:06:18]     "git status --porcelain, git diff HEAD --stat, and git log -3",
+[11:06:18]     "agent/stories/STORY-PERF-002-phase-five-crafting-profit-page-budget.md Result and CI-fix diff",
+[11:06:18]     "frontend/scripts/profit-page-perf.mjs pageSnapshot, measureOpening, phase navigation, and complete-set checks",
+[11:06:18]     "docs/TEST_STRATEGY.md §34 and docs/TARGET_ARCHITECTURE.md §33",
+[11:06:18]     "frontend/src/ecto/__tests__/EctoSalvageScreen.spec.ts calculationFigure assertions and frontend/src/__tests__/App.spec.ts Ecto destination assertion",
+[11:06:18]     "frontend/src/ecto/EctoSalvageScreen.vue diff and salvage-calculation markup"
+[11:06:18]   ],
+[11:06:18]   "unmet_intent": [],
+[11:06:18]   "unmet_acceptance_criteria": [],
+[11:06:18]   "unmet_definition_of_done": [],
+[11:06:18]   "actionable_retry_items": []
+[11:06:18] }
+[11:06:18] ```
+[11:06:18] [evaluator] turn completed | input tokens: 185635 | cached input tokens: 141440 | output tokens: 1970
+[11:06:19] ========================================
+[11:06:19] [evaluator] turn totals | model requests: 1 | gross input tokens: 185,635 | cached input tokens: 141,440 | uncached input tokens: 44,195 | output tokens: 1,970
+[11:06:19] Hosted codex evaluator exit code: 0
+[11:06:19] ========================================
+[11:06:19] ========================================
+[11:06:19] Evaluator decision: COMPLETE
+[11:06:19] Reason: The story records real-database browser measurements with a 4,411 ms maximum against the 7,000 ms budget. The inspected harness measures settled rendering, checks a displayed value and enabled control, and verifies the complete requested row count. Outstanding user acceptance is recorded.
+[11:06:19] ========================================

@@ -407,6 +407,13 @@ narrowest container that still names the value (a `summaryItem(open, 'Effective
 cost')` helper over the enclosing block), so the next restyling fails by name
 instead of passing on a substring found somewhere else.
 
+Predicting the failure is not integrating it. `STORY-PERF-002` ran those suites,
+saw `5 failed | 20 passed`, wrote the cause into F001 — and shipped anyway, so the
+gate failed on exactly the five failures the story had already named and the fix
+cost a second CI round trip. A swept-in maintainer edit is work to integrate: if
+the narrow suite covering it is red in your tree, retarget the tests in the same
+pass and record it, rather than forecasting the red build you are about to cause.
+
 And re-run right before reporting, not only right after editing: on this same
 story the maintainer reworded those sentences again ("Crystalline Dust" → "Dust")
 *between* the green run and the write-up, turning two passing assertions red. A

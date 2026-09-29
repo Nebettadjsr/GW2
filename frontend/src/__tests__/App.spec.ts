@@ -191,7 +191,7 @@ describe('App shell', () => {
     expect(document.title).toBe('Ectoplasm Salvage · GW2 Crafting Tool')
     expect(currentDestination(open)).toBe('nav-ecto')
     const heading = open.find('[data-test="page-heading"]')
-    expect(heading.text()).toBe('Ectoplasm Salvage')
+    expect(heading.text()).toBe('Ecto Salvage')
     expect(document.activeElement).toBe(heading.element)
 
     expect(pathsOf('/api/ecto')).toEqual([])
@@ -201,7 +201,7 @@ describe('App shell', () => {
       .toEqual(METADATA_IDS)
     expect(pathsOf('/api/account')).toEqual(['/api/account/luck'])
     expect(open.find('[data-test="ecto-screen"]').exists()).toBe(true)
-    expect(open.find('.result-summary').exists()).toBe(true)
+    expect(open.find('.salvage-calculation').exists()).toBe(true)
     expect(pathsOf('/api/sync')).toEqual([])
   })
 

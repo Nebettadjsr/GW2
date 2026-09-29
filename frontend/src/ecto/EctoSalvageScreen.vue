@@ -169,7 +169,7 @@ const salvageMethods: SalvageMethod[] = [
 ]
 
 const defaultMethod = salvageMethods.find(method => method.id === 'master')
-if (!defaultMethod) throw new Error('Default Ectoplasm salvage method is missing')
+if (!defaultMethod) throw new Error('Default Ecto salvage method is missing')
 
 const ECTO_ID = 19721
 const DUST_ID = 24277
@@ -434,8 +434,8 @@ onMounted(loadPage)
 <template>
   <div class="screen" data-test="ecto-screen">
     <PageHeader
-      heading="Ectoplasm Salvage"
-      intro="Calculate how much Luck really costs after selling the Crystalline Dust recovered from salvaging your Ectoplasm."
+      heading="Ecto Salvage"
+      intro="Calculate how much Luck really costs after selling the Crystalline Dust recovered from salvaging your Ectos."
     />
 
     <div v-if="loadError" class="notice notice--warning" role="alert">
@@ -570,7 +570,7 @@ onMounted(loadPage)
     </section>
 
     <section class="panel" aria-labelledby="ecto-result-heading">
-      <h2 id="ecto-result-heading" class="panel__title">Ectoplasm Salvage Result</h2>
+      <h2 id="ecto-result-heading" class="panel__title">Ecto Salvage Result</h2>
 
         <div class="result-layout">
           <!-- Left: human-readable explanation -->
@@ -585,7 +585,7 @@ onMounted(loadPage)
                 min="0"
                 step="1"
                 inputmode="numeric"
-                aria-label="Number of Ectoplasms"
+                aria-label="Number of Ectos"
               />
               <span>Ectos using a </span>
 
@@ -660,7 +660,7 @@ onMounted(loadPage)
 
             <div class="calculation-group">
               <div class="calculation-row" v-if="ectoCostCopper != null">
-                <span>Ectoplasm cost</span>
+                <span>Ecto cost</span>
                 <strong class="value-negative">
                   -{{ formatMoney(ectoCostCopper) }}
                 </strong>
@@ -963,6 +963,11 @@ onMounted(loadPage)
 .calculation-luck {
   margin-top: var(--space-5);
   margin-bottom: 0;
+}
+
+.magic-find-section {
+  width: 50%;
+  margin-inline: auto;
 }
 
 @media (max-width: 900px) {

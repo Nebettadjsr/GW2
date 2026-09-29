@@ -171,16 +171,83 @@ with the default settings echoed unchanged, so results were not reduced to make 
   pre-existing dev/preview servers on 5173 and 5183 were verified still answering at the end and were
   never touched.
 
+### CI fix on commit `e1620ad`
+
+The predicted F001 failures materialized: the CI gate on `e1620ad` reported **5 Vitest failures**, and
+they were fixed in a second pass. Cause, confirmed by reproducing each one locally before editing
+anything: the maintainer's restructure of `EctoSalvageScreen.vue` — swept into this story's commit,
+since no product file was changed by the measurement itself — replaced the `.result-summary` block with
+a `.salvage-calculation` block of `.calculation-row` / `.calculation-total` / `.calculation-gem-total`
+rows, and renamed two labels. Four `EctoSalvageScreen.spec.ts` tests read the removed
+`.result-summary__item` / `.meta` pair, and `App.spec.ts` asserted `.result-summary` exists.
+
+**Two test files changed; the component was not touched.** Per `tasks/lessons.md` the suites were re-run
+immediately before writing this up, and that caught a *second* maintainer edit made during the pass: an
+`Ectoplasm` → `Ecto` rename across the screen (`PageHeader` heading `Ecto Salvage`, its intro, the panel
+title, the `Number of Ectos` aria-label, the `Ecto cost` calculation row) plus a `.magic-find-section`
+width rule. The heading rename fails the *same* `App.spec.ts` test CI reported, three lines above the
+line that failed on the gate, so it is integrated here rather than forecast: `heading.text()` now
+expects `Ecto Salvage`. `document.title` still expects `Ectoplasm Salvage · GW2 Crafting Tool` and
+passes, because that string comes from `shell/destinations.ts`, which the maintainer did not rename (see
+F002). Nothing in the component was modified or reverted.
+
+- `frontend/src/ecto/__tests__/EctoSalvageScreen.spec.ts`: the `summaryItem` helper became
+  `calculationFigure`, addressing a row of `.salvage-calculation` by its **own label span**
+  (`.calculation-row, .calculation-total` whose first `span` text equals the label) rather than the
+  removed class pair — so a future restyling fails by name instead of matching an ancestor's substring.
+  **Every asserted amount is unchanged** (`-13s 45c`, `-15s 40c`, `-1g 34s 50c`, `-1g 84s 0c`,
+  `-2g 26s 80c`, `-1g 97s 40c`, `-2g 17s 40c`, `1,200 Gems`); only the region queried changed. Two
+  labels were retargeted to what the component now renders: with a gem-priced tool the coin total is
+  headed `Effective coin result` (not `Effective cost`) and the gem row is headed `Additional cost`
+  (not `Additional Gem cost`). The claim that test makes is intact — the coin total still must not
+  contain `Gems` and the gems must still appear in their own separate row.
+- `frontend/src/__tests__/App.spec.ts`: the Ecto destination's "the result region rendered" assertion
+  reads `.salvage-calculation` instead of the removed `.result-summary`. It still fails if the computed
+  region is absent, so the root `ecto-screen` hook alone cannot satisfy it. Its heading expectation
+  follows the rename above.
+
+No test was deleted, skipped or weakened, and no test was wrong about the numbers — each was reading a
+region the restructure renamed.
+
+**Commands run and their real output** (from `frontend/`):
+
+- `npx vitest run src/ecto/__tests__/EctoSalvageScreen.spec.ts` before the fix:
+  `Test Files 1 failed (1) | Tests 4 failed | 6 passed (10)`, all four
+  `Error: Missing "Effective cost" item in the result summary`.
+- `npx vitest run src/__tests__/App.spec.ts -t opensEctoplasmSalvageAsItsOwnAddressableDestinationAndLoadsItsThreeInputs`
+  before the fix: `Tests 1 failed | 14 skipped (15)`, `AssertionError: expected false to be true` at
+  `App.spec.ts:204`.
+- `npx vitest run src/ecto/__tests__/EctoSalvageScreen.spec.ts src/__tests__/App.spec.ts` after the fix:
+  **`Test Files 2 passed (2) | Tests 25 passed (25)`**.
+- The same command re-run before writing this up, which surfaced the concurrent rename:
+  `Tests 1 failed | 24 passed (25)`, `AssertionError: expected 'Ecto Salvage' to be 'Ectoplasm Salvage'`
+  at `App.spec.ts:194`. After integrating it: **`Test Files 2 passed (2) | Tests 25 passed (25)`** again.
+- `npm run type-check` (`vue-tsc --noEmit`): clean, no output — CI's second frontend step runs this
+  inside `npm run build`.
+
+No broader suite was run: the change is confined to two frontend test files, and GitHub Actions remains
+the full-regression gate (`TEST_STRATEGY.md` §20/§36). **The performance measurement above is
+unaffected** — it was taken on the production bundle of the `e2caa4a` component, which these test files
+do not enter.
+
 ## Follow-up Findings
 
-F001: `npx vitest run src/ecto src/__tests__/App.spec.ts` reports **5 failed | 20 passed** both at the
-measured revision `e2caa4a` and again on the working tree including the maintainer's further
-`EctoSalvageScreen.vue` edit of 10:53 — identical failures, all from the Ectoplasm result-summary
-restructure: the `.result-summary__item` labels the tests read (e.g. `Effective cost`) are no longer
-rendered under those names. This story changed no source file, but the commit that carries it will
-carry that uncommitted maintainer edit, so the CI gate on this commit will report these five. They are
-pre-existing and outside this story's scope; `STORY-WEB-021` (Ecto content test hooks) appears to be
-the queued story for that area.
+F001: `frontend/scripts/layout-browser-smoke.mjs:46` still waits for
+`.panel:has(.result-summary):has(.account-luck)` as the `ecto` area's readiness selector, and
+`.result-summary` no longer exists in the component, so that step can no longer become ready. CI does
+not run this script (`TEST_STRATEGY.md` §12.2 — local, real browser), so the gate is unaffected and it
+was left alone rather than edited here. `STORY-WEB-021` (Ecto content test hooks) already owns exactly
+this in its AC1/AC2: give the data-driven result regions stable `data-test` hooks and move the browser
+checks off style-only selectors.
+
+F002: the maintainer's `Ectoplasm` → `Ecto` rename covers the screen only, so the page's own heading now
+reads `Ecto Salvage` while `frontend/src/shell/destinations.ts:28` still labels the destination
+`Ectoplasm Salvage` — which is also the document title. Reported, not changed: which name the product
+uses is the maintainer's call. Two local browser checks still assert the old heading and would fail on
+that page until they follow it: `frontend/scripts/ecto-browser-smoke.mjs:283`
+(`[data-page-heading]` === `Ectoplasm Salvage`; its `page.title()` check on line 279 still matches) and
+`frontend/scripts/layout-browser-smoke.mjs:46` (`heading: 'Ectoplasm Salvage'`, the same entry as F001).
+Neither runs in CI.
 
 ## Blockers
 
