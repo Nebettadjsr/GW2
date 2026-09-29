@@ -358,15 +358,20 @@ describe('SelectedResultDetail', () => {
     })
     const detail = detailWithResolution(profitableRow, 'ready', fresh)
 
-    // The table's own values are untouched by the fresh answer, and both are on screen at once.
+    // The table's own values are what the detail shows, and the fresh answer does not replace them
+    // — nor does it print a second set beside them any more (`DOMAIN_SPEC.md` 2.1.1).
     expect(detail.find('[data-test="detail-total-profit"]').text()).toBe('+9s 0c')
     expect(detail.find('[data-test="detail-buy-cost"]').text()).toBe('2s 50c')
-    expect(detail.find('[data-test="resolution-total-profit"]').text()).toBe('+15s 0c')
-    expect(detail.find('[data-test="resolution-buy-cost"]').text()).toBe('40s 0c')
-    expect(detail.find('[data-test="resolution-row-basis"]').text()).toContain(
-      'has not been changed by this'
+    expect(detail.find('[data-test="resolution-total-profit"]').exists()).toBe(false)
+    expect(detail.find('[data-test="resolution-buy-cost"]').exists()).toBe(false)
+    expect(detail.text()).not.toContain('For all 7 crafts this fresh calculation counted')
+
+    // What the fresh answer is still for: its tree, under a basis that does not claim to be the
+    // table row's explanation.
+    expect(detail.find('[data-test="resolution-tree"]').exists()).toBe(true)
+    expect(detail.find('[data-test="resolution-basis"]').text()).toContain(
+      'not every craft the table counted'
     )
-    expect(detail.text()).toContain('For all 7 crafts this fresh calculation counted')
   })
 
   it('keepsTheBackendsResolutionLiteralsInTheTechnicalDisclosure', () => {

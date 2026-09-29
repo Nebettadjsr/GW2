@@ -61,6 +61,21 @@ function ownFacts(wrapper: VueWrapper, path: string, test: string): string[] {
   return [...own].map((element) => (element.textContent ?? '').replace(/\s+/g, ' ').trim())
 }
 
+/** The index paths of the child groups currently expanded, so "which one" is part of the assertion. */
+function expandedGroups(wrapper: VueWrapper): string[] {
+  return wrapper
+    .findAll('[data-test="node-children"]')
+    .filter((group) => (group.element as HTMLDetailsElement).open)
+    .map((group) => group.element.parentElement?.getAttribute('data-path') ?? '')
+}
+
+/** This node's own child group — not a descendant's, which its markup also contains. */
+function groupOf(wrapper: VueWrapper, path: string) {
+  const group = nodeAt(wrapper, path).element.querySelector(':scope > [data-test="node-children"]')
+  if (group === null) throw new Error(`The node at ${path} has no child group`)
+  return group as HTMLDetailsElement
+}
+
 describe('CraftingResolution', () => {
   describe('the five situations it tells apart', () => {
     it('showsLoadingInItsOwnRegionWithoutATree', () => {
@@ -121,17 +136,46 @@ describe('CraftingResolution', () => {
   })
 
   describe('the basis it states for what it shows', () => {
-    it('callsItAFreshCalculationOfOneOutputBatchAndNotTheTablesOwnExplanation', () => {
-      const basis = ready().find('[data-test="resolution-basis"]').text()
+    it('keepsTheOneOutputBatchBasisAsAConciseLineRatherThanAParagraph', () => {
+      const region = ready()
+      const basis = region.find('[data-test="resolution-basis"]').text().replace(/\s+/g, ' ')
 
-      expect(basis).toContain('A separate calculation')
-      expect(basis).toContain('one output batch')
-      expect(basis).toContain('not every craft the table counted')
-      expect(basis).toContain('neither replaces the other')
+      // DOMAIN_SPEC 2.1.1 removes the introductory paragraph but not the distinction it carried:
+      // the tree must still not read as a trace of every craft the table counted.
+      expect(basis).toBe('A separate calculation of one output batch — not every craft the table counted.')
+
+      // The paragraph's own wording is what went: the calculation's starting inventory, budget and
+      // daily state are not explained under the heading any more.
+      const text = region.text().replace(/\s+/g, ' ')
+      for (const removed of [
+        'starting inventory',
+        'budget and daily state',
+        'run when this recipe was selected',
+        'neither replaces the other'
+      ]) {
+        expect(text).not.toContain(removed)
+      }
     })
 
     it('doesNotDescribeTheTreeAsATraceOfEveryCountedCraft', () => {
       expect(ready().text()).not.toContain('every craft counted')
+    })
+
+    it('statesTheCostBasisAndTheMissingMarkerOnceForTheWholeTreeInsteadOfPerNode', () => {
+      const region = ready({ tree: craftedTree })
+      const note = region.find('[data-test="resolution-tree-note"]').text().replace(/\s+/g, ' ')
+
+      expect(note).toContain('Every requirement the backend returned is listed, in its order')
+      expect(note).toContain('Expand a group to see its ingredients')
+      expect(note).toContain('Each cost includes everything below its own requirement')
+      expect(note).toContain('— is a cost the backend could not establish, not zero')
+
+      // And it is stated once, not repeated under each of the four requirements.
+      const occurrences = region
+        .text()
+        .replace(/\s+/g, ' ')
+        .split('is a cost the backend could not establish').length - 1
+      expect(occurrences).toBe(1)
     })
   })
 
@@ -148,65 +192,101 @@ describe('CraftingResolution', () => {
       expect(region.find('[data-test="resolution-root-sourcing"]').text()).toContain(
         'No recipe was selected'
       )
-      expect(fact(region, '0', 'node-recipe')).toBe('None selected')
-      expect(fact(region, '0', 'node-craft-count')).toBe('0')
-      expect(fact(region, '0', 'node-produced')).toBe('0')
       expect(fact(region, '0', 'node-methods')).toBe('From stock')
-      // No recipe, so no ingredient is invented for it.
+      // No recipe, so no ingredient is invented for it — and no group to expand either.
       expect(nodePaths(region)).toEqual(['0'])
+      expect(region.find('[data-test="node-children"]').exists()).toBe(false)
     })
 
-    it('keepsAnotherProducingRecipesOwnIdentityExecutionsAndChildren', () => {
+    it('keepsAnotherProducingRecipesOwnIdentityAndChildren', () => {
       const region = ready({ tree: otherRecipeTree })
 
+      // The producing recipe's identity is the sourcing line's, now that the node's own recipe row
+      // has gone: removing the bookkeeping must not make the root read as the requested recipe.
       expect(region.find('[data-test="resolution-root-sourcing"]').text()).toBe(
         'Recipe 4242 was selected for this requirement, not the requested recipe 11.'
       )
-      expect(fact(region, '0', 'node-recipe')).toBe('4242')
-      expect(fact(region, '0', 'node-craft-count')).toBe('2')
       expect(nodePaths(region)).toEqual(['0', '0.0'])
     })
 
     it('keepsABlockedAttemptedRecipeWithoutClaimingACompletedCraft', () => {
       const region = ready({ tree: blockedTree }, blockedTree.recipeId ?? 13)
 
-      expect(fact(region, '0', 'node-recipe')).toBe('13')
-      expect(fact(region, '0', 'node-craft-count')).toBe('0')
       expect(fact(region, '0', 'node-methods')).toBe('Nothing supplied this requirement')
       expect(fact(region, '0', 'node-effective-cost')).toBe('—')
+      expect(ownFacts(region, '0', 'node-blocked-explanation')).toHaveLength(1)
     })
   })
 
-  describe('the facts on each node', () => {
-    it('showsEverySuppliedQuantityMethodRecipeAndCharacter', () => {
+  describe('the compact summary each node shows', () => {
+    it('showsIdentityRequiredQuantitySuppliedSourcingAndTheNamedCrafter', () => {
       const region = ready({ tree: craftedTree })
 
       expect(fact(region, '0', 'node-name')).toBe('Iron Ingot')
       expect(fact(region, '0', 'node-requested')).toBe('1 needed')
-      expect(fact(region, '0', 'node-character')).toBe('Nbt Anch')
-      // 1 unit used here out of a batch of 3 produced: both numbers are shown, neither is derived.
-      expect(fact(region, '0', 'node-crafted')).toBe('1')
-      expect(fact(region, '0', 'node-produced')).toBe('3')
+      expect(fact(region, '0', 'node-crafter')).toBe('Crafted by Nbt Anch')
 
-      // Split sourcing keeps every contributing method, in the supplied order.
+      // Split sourcing keeps every contributing method, in the supplied order: a mixed requirement
+      // is not forced into one label (`DOMAIN_SPEC.md` 2.1.1).
       const split = nodeAt(region, '0.0')
       expect(split.findAll('[data-test="node-method"]').map((chip) => chip.text())).toEqual([
         'From stock',
         'Bought'
       ])
-      expect(fact(region, '0.0', 'node-inventory')).toBe('2')
-      expect(fact(region, '0.0', 'node-bought')).toBe('4')
-      expect(fact(region, '0.1', 'node-character')).toBe('Not assigned')
+      expect(fact(region, '0.0', 'node-requested')).toBe('6 needed')
+
+      // A node the backend assigned no character to carries no crafter line at all, rather than a
+      // "Not assigned" row on every requirement.
+      expect(ownFacts(region, '0.1', 'node-crafter')).toEqual([])
+      expect(region.text()).not.toContain('Not assigned')
     })
 
-    it('printsInclusiveCostsAsSuppliedWithoutAddingChildrenIntoParents', () => {
+    it('omitsTheResolverBookkeepingRowsFromTheNormalNode', () => {
+      const region = ready({ tree: craftedTree })
+
+      // Request-012 / DOMAIN_SPEC 2.1.1: the stock/crafted/bought/missing split, the producing
+      // recipe and its id, the craft count and the produced batch total are gone from the normal
+      // view. The transport fields they came from are untouched.
+      for (const removed of [
+        'node-inventory',
+        'node-crafted',
+        'node-bought',
+        'node-missing',
+        'node-recipe',
+        'node-craft-count',
+        'node-produced',
+        'node-character'
+      ]) {
+        expect(region.find(`[data-test="${removed}"]`).exists()).toBe(false)
+      }
+      const text = region.text().replace(/\s+/g, ' ')
+      for (const label of [
+        'Crafted for this requirement',
+        'Producing recipe',
+        'Crafts run',
+        'Produced in total',
+        'None selected'
+      ]) {
+        expect(text).not.toContain(label)
+      }
+      // The supplied values themselves are still in the response the region was given.
+      expect(craftedTree.producedQuantity).toBe(3)
+      expect(craftedTree.recipeId).toBe(11)
+    })
+
+    it('printsAllThreeInclusiveCostsAsSuppliedWithoutAddingChildrenIntoParents', () => {
       const region = ready({ tree: craftedTree })
 
       // Children are 72 and (null) — a parent that summed anything could not print 832.
       expect(fact(region, '0', 'node-effective-cost')).toBe('8s 32c')
       expect(fact(region, '0', 'node-cash-cost')).toBe('7s 77c')
+      expect(fact(region, '0', 'node-opportunity-cost')).toBe('55c')
       expect(fact(region, '0.0', 'node-effective-cost')).toBe('72c')
-      expect(nodeAt(region, '0').text()).toContain('already includes everything below')
+      // Retained, but as one labelled line per node rather than the former three-row panel.
+      expect(ownFacts(region, '0', 'node-costs')).toEqual([
+        'Cash cost7s 77cOpportunity cost55cEffective cost8s 32c'
+      ])
+      expect(nodeAt(region, '0').text()).not.toContain('already includes everything below')
     })
 
     it('keepsAKnownZeroApartFromACostItCouldNotEstablish', () => {
@@ -221,9 +301,14 @@ describe('CraftingResolution', () => {
         'known zero rather than a missing price'
       )
 
-      // An unknown purchase price leaves no cost at all, and never becomes zero.
+      // An unknown purchase price leaves no cost at all, and never becomes zero. The node's own
+      // state sentence still says so for the item it is about; the marker is explained once for
+      // the tree rather than under every requirement.
       expect(fact(region, '0.0', 'node-cash-cost')).toBe('—')
-      expect(nodeAt(region, '0.0').text()).toContain('it is not zero')
+      expect(ownFacts(region, '0.0', 'node-state-explanation')).toContain(
+        'No purchase price is available for Pile of Dust. A cost shown as missing is unknown, not zero.'
+      )
+      expect(region.find('[data-test="resolution-tree-note"]').text()).toContain('not zero')
     })
 
     it('keepsRepeatedItemsAsSeparateOrderedOccurrences', () => {
@@ -245,18 +330,109 @@ describe('CraftingResolution', () => {
       expect(nodePaths(ready({ tree: blockedTree }))).toEqual(['0', '0.0', '0.1', '0.2'])
     })
 
-    it('opensEveryChildGroupSoNoBranchStartsHidden', () => {
+    it('fallsBackToTheItemIdWhenNoNameWasSupplied', () => {
+      expect(fact(ready({ tree: blockedTree }), '0.2', 'node-name')).toBe('Item #93')
+    })
+  })
+
+  describe('collapsed ingredient groups', () => {
+    it('startsEveryGroupCollapsedIncludingTheRootsOwn', () => {
       const region = ready({ tree: craftedTree })
 
       const groups = region.findAll('[data-test="node-children"]')
       expect(groups).toHaveLength(2)
-      for (const group of groups) expect(group.attributes('open')).toBeDefined()
+      expect(expandedGroups(region)).toEqual([])
       expect(groups[0]?.find('summary').text()).toBe('2 ingredient requirements')
       expect(groups[1]?.find('summary').text()).toBe('1 ingredient requirement')
     })
 
-    it('fallsBackToTheItemIdWhenNoNameWasSupplied', () => {
-      expect(fact(ready({ tree: blockedTree }), '0.2', 'node-name')).toBe('Item #93')
+    it('keepsEachNodesSummaryOutsideItsChildDisclosure', () => {
+      const region = ready({ tree: craftedTree })
+
+      // The root's own identity, quantity, sourcing, crafter and costs stay readable while its
+      // ingredients are collapsed — only the children sit inside the group.
+      const root = nodeAt(region, '0').element
+      const group = groupOf(region, '0')
+      for (const own of ['node-name', 'node-requested', 'node-methods', 'node-crafter', 'node-costs']) {
+        const element = root.querySelector(`[data-test="${own}"]`)
+        expect(element).not.toBeNull()
+        expect(group.contains(element)).toBe(false)
+      }
+      expect([...group.children].map((child) => child.tagName)).toEqual(['SUMMARY', 'UL'])
+      expect(group.querySelectorAll('[data-test="tree-node"]')).toHaveLength(3)
+    })
+
+    it('expandsOneGroupWithoutExpandingItsDescendants', async () => {
+      const region = ready({ tree: craftedTree })
+
+      // A native `<summary>` is the disclosure control: it is in the tab order and browsers
+      // activate it from Enter/Space. jsdom drives that activation from a click; real keyboard
+      // operation is checked by the browser smoke (`npm run smoke:profit`).
+      const summary = nodeAt(region, '0').find(':scope > [data-test="node-children"] > summary')
+      expect((summary.element as HTMLElement).tabIndex).toBe(0)
+
+      await summary.trigger('click')
+      expect(expandedGroups(region)).toEqual(['0'])
+
+      // The nested craft revealed by that click is still collapsed: nothing cascaded.
+      expect(groupOf(region, '0.1').open).toBe(false)
+      await nodeAt(region, '0.1').find(':scope > [data-test="node-children"] > summary').trigger('click')
+      expect(expandedGroups(region)).toEqual(['0', '0.1'])
+
+      // And each closes on its own.
+      await summary.trigger('click')
+      expect(expandedGroups(region)).toEqual(['0.1'])
+    })
+
+    it('startsCollapsedAgainWhenAReplacementAnswerArrives', async () => {
+      const region = render(
+        'ready',
+        resolutionResponse({ recipeId: profitableRow.recipeId, calculation: {} }),
+        null,
+        profitableRow.recipeId
+      )
+      await nodeAt(region, '0').find(':scope > [data-test="node-children"] > summary').trigger('click')
+      expect(expandedGroups(region)).toEqual(['0'])
+
+      await region.setProps({
+        detail: resolutionResponse(
+          { recipeId: profitableRow.recipeId, calculation: {} },
+          { tree: craftedTree }
+        )
+      })
+
+      expect(region.findAll('[data-test="node-children"]')).toHaveLength(2)
+      expect(expandedGroups(region)).toEqual([])
+    })
+
+    it('rendersEveryRequirementOfACollapsedTreeRatherThanWithholdingIt', () => {
+      // Collapsing is presentation: a five-deep chain is all present, in order, with no cap.
+      const deep = node({
+        itemId: 600,
+        itemName: 'Level 1',
+        children: [
+          node({
+            itemId: 601,
+            itemName: 'Level 2',
+            children: [
+              node({
+                itemId: 602,
+                itemName: 'Level 3',
+                children: [
+                  node({ itemId: 603, itemName: 'Level 4', children: [node({ itemId: 604, itemName: 'Level 5' })] })
+                ]
+              })
+            ]
+          })
+        ]
+      })
+      const region = ready({ tree: deep })
+
+      expect(nodePaths(region)).toEqual(['0', '0.0', '0.0.0', '0.0.0.0', '0.0.0.0.0'])
+      expect(expandedGroups(region)).toEqual([])
+      expect(
+        region.findAll('[data-test="node-name"]').map((name) => name.text())
+      ).toEqual(['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5'])
     })
   })
 
@@ -327,50 +503,6 @@ describe('CraftingResolution', () => {
       )
     })
 
-    it('keepsTheFreshRowsOwnTotalsIncludingItsSellValue', () => {
-      // A fresh calculation is its own answer, so its totals are whatever it supplied - not the
-      // table row's, and not a product of this row's revenue and count (5 x 380 = 19s 0c).
-      const region = ready({
-        row: { ...profitableRow, totalSellValueCopper: 3_333, totalProfitCopper: 1_111 }
-      })
-
-      expect(region.find('[data-test="resolution-total-sell-value"]').text()).toBe('33s 33c')
-      expect(region.find('[data-test="resolution-total-profit"]').text()).toBe('+11s 11c')
-      expect(region.find('[data-test="resolution-row"]').text()).toContain('Total sell value')
-      expect(region.find('[data-test="resolution-row-basis"]').text()).toContain('For all 5 crafts')
-    })
-
-    it('leavesAFreshRowWithNoSuppliedTotalsMarkedAsUnsupplied', () => {
-      const region = ready({ row: noResultRow })
-
-      expect(region.find('[data-test="resolution-total-sell-value"]').text()).toBe('—')
-      expect(region.find('[data-test="resolution-total-profit"]').text()).toBe('—')
-    })
-
-    it('marksTheFreshRowsStateOnlyWhereTheChipIsTheOnlyStatementOfIt', () => {
-      // DOMAIN_SPEC 2.1.1: no repeated "Not blocked" beside the counted crafts and totals that
-      // already say so.
-      const unblocked = ready()
-      expect(unblocked.find('[data-test="resolution-row-status"]').exists()).toBe(false)
-      expect(unblocked.text()).not.toContain('Not blocked')
-      expect(unblocked.find('[data-test="resolution-craftable"]').text()).toBe('5')
-
-      // A chip standing alone is the only statement of these, so each keeps it: nothing here may
-      // read as success because a marker was removed.
-      for (const [row, label] of [
-        [noResultRow, 'No result'],
-        [{ ...profitableRow, blockedReason: 'INSUFFICIENT_BUDGET' }, 'Over the buy limit'],
-        [{ ...profitableRow, craftableCount: 0 }, 'None craftable'],
-        [{ ...profitableRow, blockedReason: 'SOME_STATE_ADDED_LATER' }, 'SOME_STATE_ADDED_LATER']
-      ] as const) {
-        const region = ready({ row })
-        expect(region.find('[data-test="resolution-row-status"]').text()).toBe(label)
-        expect(region.find('[data-test="resolution-row-status"]').classes()).not.toContain(
-          'status--success'
-        )
-      }
-    })
-
     it('showsAnUnknownCodeAsItselfAndNeverAsSuccess', () => {
       const unknown = nodeAt(ready({ tree: blockedTree }), '0.2')
 
@@ -381,6 +513,74 @@ describe('CraftingResolution', () => {
       expect(unknown.find('[data-test="node-blocked-explanation"]').text()).toContain(
         'which this page does not recognize'
       )
+    })
+  })
+
+  describe('the removed fresh-row summary', () => {
+    it('showsNoneOfTheFreshRowsOwnFiguresInTheNormalView', () => {
+      // DOMAIN_SPEC 2.1.1 removes the "This recipe in that fresh calculation" block. The response
+      // still carries the row — nothing about the request or the contract changes — it is simply
+      // not a second set of numbers on screen beside the table's.
+      const region = ready({
+        row: { ...profitableRow, totalSellValueCopper: 3_333, totalProfitCopper: 1_111 }
+      })
+
+      for (const gone of [
+        'resolution-row',
+        'resolution-row-status',
+        'resolution-row-basis',
+        'resolution-profit',
+        'resolution-craftable',
+        'resolution-total-sell-value',
+        'resolution-total-profit',
+        'resolution-buy-cost'
+      ]) {
+        expect(region.find(`[data-test="${gone}"]`).exists()).toBe(false)
+      }
+      const text = region.text().replace(/\s+/g, ' ')
+      expect(text).not.toContain('This recipe in that fresh calculation')
+      expect(text).not.toContain('33s 33c')
+      expect(text).not.toContain('fresh calculation counted')
+
+      // The tree itself is untouched by the removal.
+      expect(region.find('[data-test="resolution-tree"]').exists()).toBe(true)
+    })
+
+    it('keepsAFreshRowWithNoResultFromReadingAsSuccessBecauseItsChipWentAway', () => {
+      // The removed chip was the *row's* state. Every unresolved fact the tree carries still has
+      // its own marker and sentence, so nothing reads as success for having lost a label.
+      const region = ready({ row: noResultRow, tree: blockedTree })
+
+      expect(region.find('[data-test="resolution-row-status"]').exists()).toBe(false)
+      expect(nodeAt(region, '0').find('[data-test="node-blocked-reason"]').text()).toBe(
+        'Buying is off'
+      )
+      expect(
+        nodeAt(region, '0.0')
+          .findAll('[data-test="node-state"]')
+          .map((state) => state.text())
+      ).toEqual(['Price missing', 'Blocked'])
+      expect(region.find('.status--success').exists()).toBe(false)
+    })
+
+    it('stillTellsTheFiveSituationsApartWithNoRowOnScreen', () => {
+      // Hiding the summary is presentation only: an answer with no tree is still the calculation's
+      // own answer, and a failed request is still a failed request.
+      const unavailable = render(
+        'unavailable',
+        resolutionResponse(
+          { recipeId: noResultRow.recipeId, calculation: {} },
+          { row: noResultRow, treeStatus: 'RESULT_UNAVAILABLE', tree: null }
+        ),
+        null,
+        noResultRow.recipeId
+      )
+      expect(unavailable.find('[data-test="resolution-unavailable"]').exists()).toBe(true)
+      expect(unavailable.find('[data-test="resolution-row"]').exists()).toBe(false)
+
+      const failed = render('failed', null, 'DATA_STORE_UNAVAILABLE: The data store is unavailable.')
+      expect(failed.find('[data-test="resolution-failed"]').exists()).toBe(true)
+      expect(failed.find('[data-test="resolution-row"]').exists()).toBe(false)
     })
   })
 })

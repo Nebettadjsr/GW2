@@ -225,3 +225,9 @@ Chrome against whatever bundle is there. The first run in this session therefore
 build of the screen. It failed loudly only because the change was a rename; an additive change would
 let a stale bundle produce a green run, which is the kind of evidence these checks exist to prevent.
 
+
+
+## Follow-up Findings Disposition
+
+F001: FOLLOW-UP STORY ? STORY-UI-003
+F002: FOLLOW-UP STORY ? STORY-WEB-018

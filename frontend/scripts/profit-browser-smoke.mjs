@@ -914,10 +914,46 @@ async function run() {
       'Price missing',
       'Not tradable, valued at zero',
       'SOME_STATE_ADDED_LATER (not recognized)',
-      'already includes everything below'
+      'Each cost includes everything below its own requirement'
     ]) {
       check(resolutionText.includes(expected), `The resolution region did not contain "${expected}".`)
     }
+    // DOMAIN_SPEC 2.1.1: the introductory paragraph, the per-node bookkeeping rows and the fresh
+    // row's own summary are gone from the normal view — and none of them leaves a gap that reads
+    // as success, which the retained states above are what prove.
+    for (const removed of [
+      'starting inventory',
+      'This recipe in that fresh calculation',
+      'Producing recipe',
+      'Crafts run',
+      'Produced in total',
+      'Crafted for this requirement'
+    ]) {
+      check(
+        !resolutionText.includes(removed),
+        `The compact resolution still shows "${removed}".`
+      )
+    }
+    const freshRowHooks = await page.evaluate(() =>
+      [
+        'resolution-row',
+        'resolution-row-status',
+        'resolution-row-basis',
+        'resolution-total-profit',
+        'node-inventory',
+        'node-crafted',
+        'node-bought',
+        'node-missing',
+        'node-recipe',
+        'node-craft-count',
+        'node-produced',
+        'node-character'
+      ].filter((test) => document.querySelector(`[data-test="${test}"]`) !== null)
+    )
+    check(
+      freshRowHooks.length === 0,
+      `Removed normal-view rows are still rendered: ${freshRowHooks.join(', ')}`
+    )
     record(
       'the backend tree is rendered whole, in order, with its own states',
       `${treeItems.length} nodes, one detail request carrying scope and settings only`
@@ -987,31 +1023,57 @@ async function run() {
     )
     record('no redundant status label on an unblocked result', unblockedStatus.explanation)
 
-    // 5d. Child groups expand and collapse from the keyboard alone.
+    // 5d. Child groups start collapsed and expand from the keyboard alone, one level at a time.
     const groupSummary = '[data-test="node-children"] > summary'
+    const openPaths = () =>
+      page.$$eval('[data-test="node-children"]', (groups) =>
+        groups
+          .filter((group) => group.open)
+          .map((group) => group.parentElement?.getAttribute('data-path') ?? '?')
+      )
+    const groupCount = await page.$$eval('[data-test="node-children"]', (groups) => groups.length)
+    check(groupCount > 1, `The fixture needs a nested tree to check disclosure; found ${groupCount}.`)
+    const openInitially = await openPaths()
+    check(
+      openInitially.length === 0,
+      `Ingredient groups did not start collapsed: ${openInitially.join(', ')}`
+    )
     await page.focus(groupSummary)
     const focusedSummary = await focusState(page)
     check(
       focusedSummary !== null && focusedSummary.text.includes('ingredient requirement'),
       `Focus did not reach a child group: ${JSON.stringify(focusedSummary)}`
     )
-    const openBefore = await page.$$eval('[data-test="node-children"]', (groups) =>
-      groups.filter((group) => group.open).length
-    )
     await page.keyboard.press('Enter')
-    const openAfter = await page.$$eval('[data-test="node-children"]', (groups) =>
-      groups.filter((group) => group.open).length
+    const afterExpand = await openPaths()
+    check(
+      afterExpand.length === 1,
+      `Enter expanded ${afterExpand.length} groups rather than the focused one: ${afterExpand.join(', ')}`
     )
-    check(openAfter < openBefore, `Enter did not collapse a child group (${openBefore} → ${openAfter}).`)
+    // Nothing below it opened with it: a deep tree stays short until each level is asked for.
+    const descendants = await page.$$eval(
+      '[data-test="node-children"]',
+      (groups, expanded) =>
+        groups
+          .map((group) => group.parentElement?.getAttribute('data-path') ?? '?')
+          .filter((path) => path !== expanded && path.startsWith(`${expanded}.`)),
+      afterExpand[0]
+    )
+    check(descendants.length > 0, 'The expanded group has no nested group to check cascading with.')
+    const openAfterExpand = await openPaths()
+    check(
+      openAfterExpand.join(',') === afterExpand.join(','),
+      `Expanding one group opened its descendants too: ${openAfterExpand.join(', ')}`
+    )
     await page.keyboard.press('Enter')
     check(
-      (await page.$$eval('[data-test="node-children"]', (groups) => groups.filter((g) => g.open).length)) ===
-        openBefore,
-      'Enter did not expand the child group again.'
+      (await openPaths()).length === 0,
+      'Enter did not collapse the child group again.'
     )
     record(
-      'child groups open by default and toggle from the keyboard',
-      `${openBefore} groups open initially, ${openAfter} after Enter`
+      'child groups start collapsed and toggle one level from the keyboard',
+      `${groupCount} groups, 0 open initially, "${afterExpand[0]}" after Enter, ` +
+        `${descendants.length} nested group(s) left collapsed`
     )
 
     // 5e. Wide: the detail panel carries the sticky treatment, and a detail taller than the viewport
@@ -1109,7 +1171,8 @@ async function run() {
       ['unrecognized code chip', '[data-test="node-method"].chip--unknown'],
       ['node state', '[data-test="node-state"].status--caution'],
       ['unrecognized node state', '[data-test="node-state"].status--unknown'],
-      ['node cost basis note', '.node__basis'],
+      ['node cost line', '.node__costs'],
+      ['node crafter line', '.node__crafter'],
       ['node explanation', '.node__note']
     ])
     check(treeContrast.length >= 5, `Too few tree samples measured: ${JSON.stringify(treeContrast)}`)

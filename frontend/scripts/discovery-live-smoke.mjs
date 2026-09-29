@@ -182,15 +182,19 @@ async function checkDetail(result, table, candidate) {
     names(body.tree),
     'The rendered tree does not match the response'
   )
-  // The fresh row is displayed as supplied and does not overwrite the table row beside it.
-  assert.equal(
-    (await locator('resolution-total-profit').textContent()).trim(),
-    signedMoney(body.row.totalProfitCopper)
-  )
+  // DOMAIN_SPEC 2.1.1: the fresh row's own figures are not printed beside the table row's, and the
+  // table row's own total is untouched by the fresh answer.
+  assert.equal(await locator('resolution-total-profit').count(), 0)
+  assert.equal(await locator('resolution-row').count(), 0)
   assert.equal(
     (await locator('discovery-detail-total-profit').textContent()).trim(),
     signedMoney(candidate.totalProfitCopper),
     'The fresh calculation overwrote the table row\'s own total'
+  )
+  assert.equal(
+    await page.locator('[data-test="node-children"][open]').count(),
+    0,
+    'Ingredient groups did not start collapsed'
   )
 
   console.log(

@@ -492,12 +492,21 @@ async function run() {
     )
     record('selected recipe marked visibly and for assistive technology')
 
-    // 8. The table row and the fresh detail are shown together, neither replacing the other.
+    // 8. The table row's own total is what the detail shows, and the fresh calculation's
+    //    disagreeing figures are not printed beside it (`DOMAIN_SPEC.md` 2.1.1). The fresh answer
+    //    is still requested and still supplies the tree below.
     const tableTotal = await textOf(page, '[data-test="discovery-detail-total-profit"]')
-    const freshTotal = await textOf(page, '[data-test="resolution-total-profit"]')
     check(
-      tableTotal === '+14g 81s 40c' && freshTotal === '+42g 42s 42c',
-      `The table's own total and the fresh calculation's were not kept apart: ${tableTotal} / ${freshTotal}`
+      tableTotal === '+14g 81s 40c',
+      `The fresh calculation overwrote the table row's own total: ${tableTotal}`
+    )
+    const detailText = await textOf(page, '[data-test="discovery-detail"]')
+    check(
+      (await page.$('[data-test="resolution-row"]')) === null &&
+        (await page.$('[data-test="resolution-total-profit"]')) === null &&
+        !detailText.includes('+42g 42s 42c') &&
+        !detailText.includes('This recipe in that fresh calculation'),
+      'The removed fresh-row summary is still rendered in the Discovery detail.'
     )
     const basis = await textOf(page, '[data-test="resolution-basis"]')
     check(
@@ -514,7 +523,10 @@ async function run() {
       feeNote.includes('15%') && feeNote.includes('stay gross'),
       `DOMAIN_SPEC 25's gross/after-fees note is missing or reworded: ${feeNote}`
     )
-    record('fresh row and tree shown beside the table row', 'truthful basis, root sourcing and fee note')
+    record(
+      'the fresh tree is shown beside the table row without repeating its figures',
+      'truthful basis, root sourcing and fee note; no fresh-row summary'
+    )
 
     // 9. The supplied requirements are rendered in order, through the shared tree.
     const nodeNames = await textsOf(page, '[data-test="node-name"]')
@@ -530,7 +542,19 @@ async function run() {
     )
     const unpricedCost = await textOf(page, '[data-path="0.1"] [data-test="node-effective-cost"]')
     check(unpricedCost === '—', `A cost the backend could not establish became a number: ${unpricedCost}`)
-    record('requirements rendered in order with supplied costs', `${nodeNames.length} nodes`)
+    // Discovery shares the tree component, so it inherits the collapsed presentation: every
+    // requirement is rendered, and none of the groups starts open.
+    const discoveryOpenGroups = await page.$$eval('[data-test="node-children"]', (groups) =>
+      groups.filter((group) => group.open).length
+    )
+    check(
+      discoveryOpenGroups === 0,
+      `Discovery's ingredient groups did not start collapsed: ${discoveryOpenGroups} open.`
+    )
+    record(
+      'requirements rendered in order with supplied costs, groups collapsed',
+      `${nodeNames.length} nodes, ${discoveryOpenGroups} groups open`
+    )
 
     // 10. Sorting and searching are view state: neither reaches the backend, and neither drops the
     //     valid detail on screen.

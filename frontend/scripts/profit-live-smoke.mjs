@@ -58,6 +58,80 @@ function names(node) {
   return [node.itemName ?? `Item #${node.itemId}`, ...node.children.flatMap(names)]
 }
 
+/** Every returned requirement in document order, so a displayed fact can be read back per node. */
+function flatten(node) {
+  return [node, ...node.children.flatMap(flatten)]
+}
+
+/**
+ * The compact summary of every requirement, compared against the body the backend really sent
+ * (`DOMAIN_SPEC.md` 2.1.1). Only supplied facts are compared — no quantity or cost is derived here —
+ * and the groups are collapsed at this point, which is exactly what must not withhold a requirement.
+ */
+async function checkCompactSummaries(body) {
+  const supplied = flatten(body.tree)
+  assert.deepEqual(
+    await locator('node-requested').allTextContents().then((texts) => texts.map((t) => t.trim())),
+    supplied.map((node) => `${node.requestedQuantity} needed`),
+    'A displayed required quantity is not the one the backend supplied'
+  )
+  assert.deepEqual(
+    await locator('node-effective-cost').allTextContents().then((texts) => texts.map((t) => t.trim())),
+    supplied.map((node) => money(node.effectiveCostCopper)),
+    'A displayed effective cost is not the one the backend supplied'
+  )
+  assert.deepEqual(
+    await locator('node-crafter').allTextContents().then((texts) => texts.map((t) => t.trim())),
+    supplied.filter((node) => node.characterName !== null).map((node) => `Crafted by ${node.characterName}`),
+    'The crafter lines are not the characters the backend named'
+  )
+}
+
+/**
+ * Keyboard disclosure against live data: the first group is reachable by focus, Enter expands that
+ * one group, and any group nested inside it stays collapsed until it is asked for itself.
+ */
+async function checkKeyboardDisclosure() {
+  const summaries = page.locator('[data-test="node-children"] > summary')
+  const groups = await summaries.count()
+  if (groups === 0) return { groups, expanded: null, nestedLeftCollapsed: 0 }
+
+  await summaries.first().focus()
+  assert.ok(
+    await page.evaluate(
+      () => document.activeElement?.parentElement?.getAttribute('data-test') === 'node-children'
+    ),
+    'Focus did not reach an ingredient group control'
+  )
+  await page.keyboard.press('Enter')
+  const openPaths = () =>
+    page.$$eval('[data-test="node-children"]', (elements) =>
+      elements
+        .filter((element) => element.open)
+        .map((element) => element.parentElement?.getAttribute('data-path') ?? '?')
+    )
+  const expanded = await openPaths()
+  assert.deepEqual(expanded.length, 1, `Enter expanded ${expanded.length} groups rather than one`)
+  const nested = await page.$$eval(
+    '[data-test="node-children"]',
+    (elements, parent) =>
+      elements
+        .map((element) => ({
+          path: element.parentElement?.getAttribute('data-path') ?? '?',
+          open: element.open
+        }))
+        .filter((group) => group.path.startsWith(`${parent}.`)),
+    expanded[0]
+  )
+  assert.ok(
+    nested.every((group) => !group.open),
+    `Expanding "${expanded[0]}" cascaded into ${JSON.stringify(nested)}`
+  )
+  await page.keyboard.press('Enter')
+  assert.equal((await openPaths()).length, 0, 'Enter did not collapse the group again')
+  return { groups, expanded: expanded[0], nestedLeftCollapsed: nested.length }
+}
+
 async function checkDetail(result, table, recipeId) {
   const { body, request } = await successful(result)
   assert.equal(request.recipeId, recipeId)
@@ -69,10 +143,21 @@ async function checkDetail(result, table, recipeId) {
   assert.ok(body.tree)
   await locator('resolution-tree').waitFor()
   assert.deepEqual(await locator('node-name').allTextContents(), names(body.tree))
-  assert.equal((await locator('resolution-total-sell-value').textContent()).trim(),
-    money(body.row.totalSellValueCopper))
+  // DOMAIN_SPEC 2.1.1: the fresh row's own figures are no longer printed beside the table's, and
+  // every ingredient group starts collapsed while still rendering every returned requirement.
+  assert.equal(await locator('resolution-total-sell-value').count(), 0)
+  assert.equal(await locator('resolution-row').count(), 0)
+  assert.equal(
+    await page.locator('[data-test="node-children"][open]').count(),
+    0,
+    'Ingredient groups did not start collapsed'
+  )
+  await checkCompactSummaries(body)
+  const disclosure = await checkKeyboardDisclosure()
   console.log(JSON.stringify({ route: detailPath, status: 200, recipeId,
     nodes: names(body.tree).length, treeBasis: body.treeBasis,
+    groups: disclosure.groups, expandedByKeyboard: disclosure.expanded,
+    nestedLeftCollapsed: disclosure.nestedLeftCollapsed,
     allowNonTradeableMaterials: body.calculation.settings.allowNonTradeableMaterials }))
 }
 

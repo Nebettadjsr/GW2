@@ -438,7 +438,7 @@ describe('Crafting Discovery resolution detail association', () => {
   })
 
   describe('what an accepted answer shows', () => {
-    it('showsTheFreshRowAndTreeTogetherWithoutReplacingTheTableRow', async () => {
+    it('showsTheFreshTreeWithoutReplacingOrRepeatingTheTableRow', async () => {
       const api = new FakeCraftingApi()
       // The fresh calculation legitimately disagrees with the table's own numbers.
       api.discoveryResolutionHandler = (request) =>
@@ -451,10 +451,12 @@ describe('Crafting Discovery resolution detail association', () => {
 
       await selectRecipe(wrapper, profitableRow.outputName as string)
 
-      // Both answers on screen at once, each under its own basis, neither written over the other.
+      // The Discovery row's own total is what is displayed, and the fresh row's disagreeing
+      // figures are neither written over it nor printed beside it (`DOMAIN_SPEC.md` 2.1.1).
       expect(wrapper.find('[data-test="discovery-detail-total-profit"]').text()).toBe('+9s 0c')
-      expect(wrapper.find('[data-test="resolution-total-profit"]').text()).toBe('+43s 21c')
-      expect(wrapper.find('[data-test="resolution-profit"]').text()).toBe('+7c')
+      expect(wrapper.find('[data-test="resolution-total-profit"]').exists()).toBe(false)
+      expect(wrapper.find('[data-test="resolution-profit"]').exists()).toBe(false)
+      expect(wrapper.text()).not.toContain('+43s 21c')
       expect(wrapper.find('[data-test="resolution-tree"]').exists()).toBe(true)
 
       // The tree's basis is stated truthfully: one output batch, not the table's counted crafts.
@@ -464,6 +466,19 @@ describe('Crafting Discovery resolution detail association', () => {
       expect(wrapper.find('[data-test="discovery-detail-tree-basis"]').text()).toBe(
         'SINGLE_OUTPUT_REQUIREMENT'
       )
+    })
+
+    it('startsTheSharedTreesGroupsCollapsedForDiscoveryToo', async () => {
+      const api = new FakeCraftingApi()
+      const wrapper = await openScreen(api)
+
+      await selectRecipe(wrapper, profitableRow.outputName as string)
+
+      const groups = wrapper.findAll('[data-test="node-children"]')
+      expect(groups).toHaveLength(2)
+      for (const group of groups) {
+        expect((group.element as HTMLDetailsElement).open).toBe(false)
+      }
     })
 
     it('labelsWhatActuallySuppliedTheRootRatherThanAssumingTheRequestedRecipe', async () => {

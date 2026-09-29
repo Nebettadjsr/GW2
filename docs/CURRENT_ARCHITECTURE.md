@@ -1004,8 +1004,8 @@ frontend/
     │   ├── CraftingProfitTable.vue   the seven comparison columns and the row-selection control
     │   ├── ResultDisplayControls.vue the Displayed results subgroup: search slot, three filters, maximum
     │   ├── SelectedResultDetail.vue  the selected row's supplied summary, quote and materials
-    │   ├── CraftingResolution.vue    the §5.13 answer: its five situations, basis and fresh row
-    │   ├── ResolutionTreeNode.vue    one requirement and, recursively, its ingredient occurrences
+    │   ├── CraftingResolution.vue    the §5.13 answer: its five situations, concise basis and tree
+    │   ├── ResolutionTreeNode.vue    one requirement's compact summary and its collapsed children
     │   ├── useResolutionDetail.ts    §13.4's association rules, shared by both features
     │   ├── useProfitResolution.ts    Profit's detail request body and its own identity check
     │   ├── resolutionPresentation.ts method/state/blocked-reason codes in user-oriented words
@@ -1212,28 +1212,43 @@ never one per table row — and completes as a plain HTTP 200, which is the exec
   that does not is reported as a mismatch and leaves no tree. The identity key is built from the
   echoed scope and settings **only**, so sorting, searching, the display filters and the display
   maximum do not invalidate a detail — re-ordering the table is not a new calculation.
-- **Fresh detail, stated as such, and never merged with the table row.** The region says in words that
-  it is a separate calculation run when the recipe was selected, resolving **one output batch** of the
-  requested recipe from that calculation's own starting inventory, budget and daily state — not a
-  trace of every craft the table counted and not a claim that the requested recipe was executed. The
-  returned `row` is displayed inside that region under its own heading; the comparison table's values
-  are left exactly as their own calculation reported them. Because the two are separate calculations,
+- **Fresh detail, stated as such, and never merged with the table row.** The region names its basis in
+  one line — "A separate calculation of one output batch — not every craft the table counted" — so the
+  tree is not read as a trace of every craft the table counted or as a claim that the requested recipe
+  was executed. `STORY-WEB-016` replaced the former introductory paragraph with that line and removed
+  the "This recipe in that fresh calculation" block entirely: the returned `row`'s own profit, count,
+  totals and buy cost are no longer displayed, because they were a second set of figures beside the
+  table's saying nothing the tree does not (`DOMAIN_SPEC.md` §2.1.1). The response still carries
+  `row`, the request and its association rules are unchanged, and the comparison table's values are
+  left exactly as their own calculation reported them. Because the two are separate calculations,
   either may legitimately differ, and neither is described as the other's explanation (§13.2).
 - **Requested identity and actual sourcing stay apart** (AR-003). The envelope's `recipeId` is the
   recipe that was *asked about*; each node's `recipeId` is the recipe actually selected or attempted.
   A sentence names which of the three the root is: the requested recipe, another producing recipe, or
   no recipe at all (an inventory-only root). Nothing relabels a root as an execution of the requested
   recipe, and no ingredient path is invented for a root that has none.
-- **Node facts are printed, not computed.** Each node shows its supplied requested/inventory/crafted/
-  bought/missing quantities, producing recipe or "None selected", craft count, produced quantity,
-  character or "Not assigned", the three inclusive costs, its methods, its states and its blocked
-  reasons, with children in the resolver's own order. The three costs already include everything below
-  the node, so no descendant cost is added into a parent; a null cost renders `—` with the statement
-  that it could not be established, a domain-established zero renders `0c`, and the two never merge.
-  Two occurrences of one item in different branches stay two nodes — the presentation key is the
-  child-index path, not a node id. Children sit in an open `<details>` group per node, so the whole
-  tree is present from the start, collapsing is the user's choice and nothing is paged, truncated or
-  hidden behind a "show more".
+- **A compact per-node summary, printed and not computed** (`STORY-WEB-016`). Each node shows its own
+  item identity, the supplied required quantity ("20 needed"), the sourcing labels for **every**
+  supplied method — a mixed requirement is not forced into one — the named character under
+  "Crafted by" where the backend supplied one, and the three inclusive costs on one labelled line.
+  Every supplied state and blocked reason keeps its own marker and sentence, so nothing unresolved is
+  dropped for brevity. The resolver's bookkeeping is **not** in the normal view: the
+  inventory/crafted/bought/missing split, the producing recipe and its id, the craft count and the
+  produced batch total are all still in `ResolutionNodeDto` and simply not rendered
+  (`DOMAIN_SPEC.md` §2.1.1). A node the backend assigned no character to prints no crafter line at
+  all rather than a "Not assigned" row. The three costs already include everything below the node, so
+  no descendant cost is added into a parent; a null cost renders `—`, a domain-established zero
+  renders `0c`, and the two never merge — the sentence saying the marker is not zero is stated once
+  under the tree instead of under every node. Two occurrences of one item in different branches stay
+  two nodes — the presentation key is the child-index path, not a node id.
+- **Children sit in a collapsed `<details>` group at every level, the root's included.** A native
+  `<summary>` is the disclosure control, so it is in the tab order and Enter/Space operate it; each
+  group opens on its own and opens nothing below it, which is what keeps a deep tree a short list
+  until the next level is asked for. Collapsing withholds nothing: every returned requirement is
+  rendered, in order, with no depth cap, no merged occurrence and no "show more". Because `open` is
+  the element's own state rather than this application's, `CraftingResolution` keys the tree on a
+  counter it bumps for each accepted answer, so a replacement resolution remounts and starts
+  collapsed rather than inheriting the previous selection's expansions.
 - **Five situations, kept apart** (`ResolutionPhase`). Loading; an answer with a tree, whose nodes may
   still report blocked requirements; an answer reporting `RESULT_UNAVAILABLE`, worded as the
   calculation's own answer with no tree; a 404 `RECIPE_NOT_IN_CALCULATION`, worded as the fresh
@@ -1605,7 +1620,7 @@ so `smoke:favicon` counts what the origin actually served rather than page reque
 | `npm run smoke:browser` | real-browser check of Crafting Profit **including the selected recipe's resolution detail**; needs the backend **and** `npm run dev` already running |
 | `npm run smoke:sync` | real-browser check of the synchronization area; needs `npm run build` only |
 | `npm run smoke:layout` | real-browser check of navigation, three viewports, zoom, keyboard focus and contrast; needs `npm run build` only |
-| `npm run smoke:profit` | real-browser check of the Crafting Profit comparison/detail split, the resolution tree, keyboard and whole-row selection, the sticky panel, the display controls and its reflow; needs `npm run build` only |
+| `npm run smoke:profit` | real-browser check of the Crafting Profit comparison/detail split, the compact resolution tree and its collapsed keyboard-operated ingredient groups, keyboard and whole-row selection, the sticky panel, the display controls and its reflow; needs `npm run build` only |
 | `npm run smoke:account` | real-browser check of Bank and Materials; needs the backend **and** `npm run dev` already running |
 | `npm run smoke:discovery` | real-browser check of the Crafting Discovery split at two viewports, keyboard selection and sorting, the grouped controls, the fresh detail and what the page sends; needs `npm run build` only |
 | `npm run smoke:discovery:live` | read-only comparison of the rendered Discovery rows and one selected tree against the responses a real backend returned; needs the backend **and** `npm run dev` already running |

@@ -1,1 +1,1 @@
-agent/stories/STORY-DOM-024-ectoplasm-fee-policy-alignment.md
+agent/stories/STORY-WEB-016-compact-crafting-resolution-tree.md

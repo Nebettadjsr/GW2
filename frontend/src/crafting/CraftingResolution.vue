@@ -1,21 +1,24 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { ResolutionDetailView } from '@/api/types'
-import { formatCopper, formatCount, formatSignedCopper, moneyTone } from './formatCopper'
+import { NO_VALUE } from './formatCopper'
 import { describeRootSourcing } from './resolutionPresentation'
 import ResolutionTreeNode from './ResolutionTreeNode.vue'
-import { describeRowState } from './rowState'
 import type { ResolutionPhase } from './useResolutionDetail'
 
 /**
- * The selected recipe's backend explanation: the freshly calculated row and the resolution tree,
- * shown together as one answer (`TARGET_ARCHITECTURE.md` 13.3/13.4, `DOMAIN_SPEC.md` 44).
+ * The selected recipe's backend explanation: the resolution tree the fresh calculation produced
+ * (`TARGET_ARCHITECTURE.md` 13.3/13.4, `DOMAIN_SPEC.md` 2.1.1, 44).
  *
  * The distinction this region exists to keep is the one the contract insists on. The comparison
- * table above holds the *earlier* calculation's numbers; everything here comes from a **separate,
+ * table above holds the *earlier* calculation's numbers; the tree here comes from a **separate,
  * fresh** calculation the backend ran when the recipe was selected. Identical inputs may produce
  * different values after a price change or a synchronization, so neither set is quietly written over
- * the other and this one is never described as the table row's own explanation.
+ * the other and this one is never described as the table row's own explanation. That is now said in
+ * one short line rather than a paragraph, and the fresh row's own totals — a second set of numbers
+ * beside the table's, saying nothing the tree does not — are no longer repeated here at all
+ * (2.1.1). The response still carries them; the request, its association rules and the five
+ * situations below are untouched.
  *
  * The tree's basis is one output batch of the requested recipe — not a trace of every craft the row
  * counted, and not a promise that the requested recipe was executed at all. What actually supplied
@@ -43,20 +46,6 @@ const props = defineProps<{
 /** Only ever read in the `ready` phase, where the contract guarantees a tree. */
 const tree = computed(() => props.detail?.tree ?? null)
 
-const freshRow = computed(() => props.detail?.row ?? null)
-const freshState = computed(() => (freshRow.value === null ? null : describeRowState(freshRow.value)))
-
-/**
- * Whether the fresh row's state is worth a chip of its own (`DOMAIN_SPEC.md` 2.1.1, which removes a
- * repeated "Not blocked" from a selected result).
- *
- * Here the chip stands alone — there is no sentence under it — so a blocked, unavailable or
- * unrecognized state keeps it: dropping that would delete the only statement of it, and a removed
- * marker must never read as success. What it does drop is the success chip itself, which says nothing
- * the counted crafts and totals printed right below it do not.
- */
-const freshStatusWorthShowing = computed(() => freshState.value !== null && freshState.value.tone !== 'success')
-
 const rootSourcing = computed(() => {
   const root = tree.value
   const recipeId = props.requestedRecipeId
@@ -64,14 +53,21 @@ const rootSourcing = computed(() => {
   return describeRootSourcing(root, recipeId)
 })
 
-/** Names the basis of the fresh row's totals in its own words, never the table row's count. */
-const freshTotalsLabel = computed(() => {
-  const count = freshRow.value?.craftableCount ?? null
-  if (count === null) return 'For every craft this fresh calculation counted'
-  return count === 1
-    ? 'For the 1 craft this fresh calculation counted'
-    : `For all ${count} crafts this fresh calculation counted`
-})
+/**
+ * Bumped for every answer this region is given, and used as the tree's key.
+ *
+ * Whether a group is open is the `<details>` element's own state, not this application's, so a
+ * replacement answer rendered into the same elements would inherit whatever the previous one had
+ * been expanded to. Remounting the tree is what makes "a newly selected or replaced resolution
+ * starts collapsed" true of the second answer as well as the first (`DOMAIN_SPEC.md` 2.1.1).
+ */
+const treeGeneration = ref(0)
+watch(
+  () => props.detail,
+  () => {
+    treeGeneration.value += 1
+  }
+)
 </script>
 
 <template>
@@ -112,12 +108,13 @@ const freshTotalsLabel = computed(() => {
     </p>
 
     <template v-else-if="phase === 'ready' && detail !== null && tree !== null">
+      <!--
+        The basis, kept but no longer a paragraph (`DOMAIN_SPEC.md` 2.1.1). One line is enough to
+        stop the tree reading as a trace of every craft the table counted; the envelope's own
+        literals stay in the detail's technical disclosure for anyone who needs more.
+      -->
       <p class="meta" data-test="resolution-basis">
-        A separate calculation, run when this recipe was selected. It resolves
-        <strong>one output batch</strong> of the requested recipe from that calculation's starting
-        inventory, budget and daily state — not every craft the table counted, and not a promise that
-        the requested recipe was the one executed. Because it is its own calculation, its numbers can
-        differ from the table's above; neither replaces the other.
+        A separate calculation of one output batch — not every craft the table counted.
       </p>
 
       <h4 class="detail__basis">What supplied the output</h4>
@@ -125,57 +122,13 @@ const freshTotalsLabel = computed(() => {
 
       <h4 class="detail__basis">Requirements</h4>
       <ul class="resolution__tree" data-test="resolution-tree">
-        <ResolutionTreeNode :node="tree" path="0" />
+        <ResolutionTreeNode :key="treeGeneration" :node="tree" path="0" />
       </ul>
       <p class="meta" data-test="resolution-tree-note">
-        Every requirement the backend returned is listed, in its order. A requirement that appears in
-        two branches is two entries, because each is its own occurrence. Collapse a group to shorten
-        the list; nothing is left out of it.
-      </p>
-
-      <h4 class="detail__basis">This recipe in that fresh calculation</h4>
-      <p v-if="freshStatusWorthShowing && freshState !== null" class="meta">
-        <span :class="`status status--${freshState.tone}`" data-test="resolution-row-status">
-          {{ freshState.label }}
-        </span>
-      </p>
-      <dl v-if="freshRow !== null" class="detail-values" data-test="resolution-row">
-        <dt>Profit per craft</dt>
-        <dd class="numeric">
-          <span :class="`money money--${moneyTone(freshRow.profitCopper)}`" data-test="resolution-profit">
-            {{ formatSignedCopper(freshRow.profitCopper) }}
-          </span>
-        </dd>
-
-        <dt>Crafts possible</dt>
-        <dd class="numeric" data-test="resolution-craftable">
-          {{ formatCount(freshRow.craftableCount) }}
-        </dd>
-
-        <dt>Total sell value</dt>
-        <dd class="numeric money" data-test="resolution-total-sell-value">
-          {{ formatCopper(freshRow.totalSellValueCopper) }}
-        </dd>
-
-        <dt>Total profit</dt>
-        <dd class="numeric">
-          <span
-            :class="`money money--${moneyTone(freshRow.totalProfitCopper)}`"
-            data-test="resolution-total-profit"
-          >
-            {{ formatSignedCopper(freshRow.totalProfitCopper) }}
-          </span>
-        </dd>
-
-        <dt>Cost of materials to buy</dt>
-        <dd class="numeric money money--cost" data-test="resolution-buy-cost">
-          {{ formatCopper(freshRow.buyCostCopper) }}
-        </dd>
-      </dl>
-      <p class="meta" data-test="resolution-row-basis">
-        {{ freshTotalsLabel }}; profit per craft is for one craft. Total sell value is what those
-        crafts' output is worth, before the cost of making it. The comparison table above still shows
-        what its own calculation reported and has not been changed by this.
+        Every requirement the backend returned is listed, in its order; an item needed in two
+        branches is two entries. Expand a group to see its ingredients — nothing is left out of a
+        collapsed one. Each cost includes everything below its own requirement, and {{ NO_VALUE }}
+        is a cost the backend could not establish, not zero.
       </p>
     </template>
   </div>
