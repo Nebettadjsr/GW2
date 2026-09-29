@@ -96,9 +96,9 @@ describe('CraftingProfitScreen', () => {
   it('offers the shared TP quantity warning beside calculated opportunities', async () => {
     const wrapper = await openScreen(new FakeCraftingApi())
 
-    expect(wrapper.findAll('[data-test="tp-price-disclaimer-trigger"]')).toHaveLength(1)
-    expect(wrapper.find('[data-test="tp-price-disclaimer-dialog"]').text())
-      .toContain('not guaranteed prices for the full quantity')
+    const trigger = wrapper.find('[data-test="tp-price-disclaimer-trigger"]')
+    expect(trigger.attributes('aria-label')).toBe('Trading Post price warning')
+    expect(wrapper.find('[data-test="tp-price-disclaimer-dialog"]').exists()).toBe(true)
   })
 
   it('asksTheBackendForItsOwnDefaultsWhenOpened', async () => {

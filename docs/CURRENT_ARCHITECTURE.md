@@ -439,9 +439,9 @@ runs its own fresh load and calculation for one selected recipe, keeping the sep
 inventory character with the same unfiltered-pool fallback. It shares this flow's loading steps
 but none of the reload-scoped `last*` state above, and the JavaFX path is unchanged.
 
-### 5.3 Ectoplasm Salvage flow (sole implementation, application-service boundary)
+### 5.3 JavaFX Ectoplasm Salvage flow (application-service boundary)
 
-The historical second implementation (`Main.java`) was deleted (§2, `docs/KNOWN_PROBLEMS.md` §3.6); `EctoView` is now the only Ectoplasm Salvage code path. `STORY-APP-003` routed it through an application service instead of the view acquiring prices and invoking the domain calculator directly (`docs/KNOWN_PROBLEMS.md` §4.4).
+The historical second JavaFX implementation (`Main.java`) was deleted (§2, `docs/KNOWN_PROBLEMS.md` §3.6); `EctoView` is the desktop Ectoplasm Salvage code path. The browser page is described in §5.11. `STORY-APP-003` routed the desktop flow through an application service instead of the view acquiring prices and invoking the domain calculator directly (`docs/KNOWN_PROBLEMS.md` §4.4).
 
 ```text
 EctoView
@@ -936,8 +936,8 @@ across multiple units. `items/TradingPostPriceDisclaimer.vue` is the reusable fr
 explaining that limit and advising users to verify current prices and available quantities in-game
 before a large transaction. Its compact trigger opens a native modal dialog. Crafting Profit and
 Crafting Discovery place it beside their calculated results when a result is present. It adds no
-market-depth request or calculation. For Ecto Salvage, the intended insertion point is the
-"Trading Post prices" controls; that concurrently edited page is left untouched here.
+market-depth request or calculation. Ecto Salvage includes the same warning beside its calculation
+controls.
 
 **File layout.**
 
@@ -958,8 +958,7 @@ frontend/
 │   ├── discovery-live-smoke.mjs      read-only Discovery comparison: listed rows and one selected
 │   │                                 tree against the responses a real backend returned
 │   ├── ecto-browser-smoke.mjs        real-browser check of the Ectoplasm page against a stub origin:
-│   │                                 four scenarios as supplied, reload, keyboard, narrow layout,
-│   │                                 loading/failure/no-result states and what the page requests
+│   │                                 local calculation, price-only refresh, warning and narrow layout
 │   ├── ecto-live-smoke.mjs           legacy check of the removed calculation route; pending replacement
 │   ├── account-browser-smoke.mjs     real-browser check of Bank/Materials against a running backend
 │   ├── icon-browser-smoke.mjs        real-browser item images against a controlled origin: 503/404/
@@ -986,7 +985,7 @@ frontend/
     │   ├── craftingApi.ts            the five crafting routes the two screens call, behind an interface
     │   ├── syncApi.ts                the three triggers and the shared status route
     │   ├── accountApi.ts             the two §5.12 account reads, behind an interface
-    │   └── ectoApi.ts                legacy client for the removed calculation route; replacement pending
+    │   └── ectoApi.ts                unused legacy client for the removed calculation route
     ├── account/
     │   ├── BankScreen.vue            the bank as §5.12 supplies it, empty slots kept in place
     │   ├── MaterialsScreen.vue       the backend's categories, labels and stack order, unchanged
@@ -1023,8 +1022,8 @@ frontend/
     │   ├── recipeLabel.ts            name, or the item id when the backend supplied none; wiki URL
     │   └── formatCopper.ts           copper → gold/silver/copper text, signed where it may be a loss
     ├── ecto/
-    │   ├── EctoSalvageScreen.vue      legacy page awaiting replacement; its backend route is gone
-    │   └── useEctoSalvage.ts          legacy request state awaiting replacement
+    │   ├── EctoSalvageScreen.vue      local Ecto/Dust calculator and Magic Find presentation
+    │   └── useEctoSalvage.ts          unused legacy request state
     └── sync/
         ├── SyncScreen.vue            the synchronization area: one trigger and task state each
         ├── useSyncOperations.ts      per-operation submission and status-polling state
@@ -1521,47 +1520,36 @@ module (`ItemIcon`, `CraftingResolution`, `ResolutionTreeNode`, `rowState`, `res
   the table row without replacing it, with the tree's one-output-batch basis and the actual root
   sourcing labelled truthfully.
 
-**Ectoplasm Salvage page (`STORY-WEB-013`).** This legacy browser page still requests the removed §5.15 route and awaits replacement. It remains at `#/ecto` — a
-destination of its own with its own document title and page heading. It is the one screen deliberately
-**not** kept alive across navigation: it has no scope, settings, search or selection to preserve, and
-its result is a snapshot of live Trading Post prices, so reopening it calculates again rather than
-re-presenting an older snapshot as current. `useEctoSalvage` is `useAccountRead`'s shape with one
-difference — a reload asked for while one is in flight is *suppressed* rather than superseded, because
-each one costs the backend a live upstream lookup — and the page's only control is that explicit reload;
-nothing here polls or retries by itself.
+**Ecto Salvage page.** The browser page at `#/ecto` loads `GET /api/items/metadata` for Ecto, Dust
+and the five displayed salvage tools, `GET /api/items/prices` for Ecto (19721) and Crystalline Dust
+(24277) only, and `GET /api/account/luck` for the configured account. It uses the shared
+`ItemIcon` with backend-supplied `iconUrl`; it does not call the GW2 API or the removed
+`/api/ecto/salvage` calculation route. Unlike the Crafting screens, this page is not kept alive
+across navigation; reopening it loads its inputs again.
 
-- **Legacy rendering.** The four scenarios are rendered in the order the removed contract named them,
-  through the shared `formatCopper`/`formatSignedCopper`/`moneyTone` helpers and nothing else. No fee
-  is applied, no expected yield is scaled, and profit, net cost and the cost of 1000 Luck are shown as
-  supplied rather than related to the quotes beside them. The quote panel reads each price out of the
-  scenario that used it (the Ecto instant-buy cost is the instant-buy scenarios' own acquisition cost),
-  so nothing is averaged or reconciled across scenarios, and the stated fee percentage and expected
-  yields come from the response's `assumptions` — labelled as expected values over many salvages, not a
-  guaranteed drop. Gross and fee-inclusive columns state their own basis in their headers: since
-  `STORY-DOM-024` the recovered Dust value appears twice, gross and after the fee, each from its own
-  backend field; every fee-inclusive header note names the backend's own percentage ("after 15% TP
-  fees"); and the quote panel carries **only** gross quotes — the earlier per-Dust-unit "after fee"
-  rows are gone, because a market price is never displayed with the fee taken off (`DOMAIN_SPEC.md`
-  §25/§46).
-- **Both modes written out.** Buying is "Instant buy" or "Buy order" and selling "Instant sell" or
-  "Listing sell" in every row, because "buy price"/"sell price" is ambiguous without whose perspective
-  is meant (`DOMAIN_SPEC.md` §20). Profit carries the word `gain`/`loss`/`break-even` beside the signed
-  figure, so the meaning survives a monochrome rendering; a supplied zero reads `break-even`, never
-  "missing".
-- **Three presentable situations, kept apart.** Loading (a `role="status"` notice), a result, and a
-  failure carrying the backend's own sanitized code with an explicit "Try again". A failed reload drops
-  the previous answer instead of presenting stale prices as fresh, and a completed calculation with
-  `resultAvailable: false` is its own warning — an answer, not a failure, with no figure shown as zero
-  in its place. A superseded answer, and any answer arriving after the screen is gone, is discarded.
-- **Shared shell and styles only.** `PageHeader`, the shared tokens, the `.table-region` scrolling
-  pattern and `ItemIcon` — the latter with no supplied source, since this route carries no item
-  metadata, so the established neutral placeholder stands in. No URL is built here, no upstream image
-  fallback exists and nothing on this page contacts the GW2 API. **Remaining shared-icon dependency:**
-  giving the two items their real images needs `iconUrl` on this response, which is `STORY-API-009`'s
-  metadata contract extended to this route and is not part of this story.
+- **Local calculator.** `EctoSalvageScreen.vue` keeps GW2 Wiki statistical salvage yields and tool
+  usage costs as frontend reference data. Amount, salvage method, exact tool and TP modes recalculate
+  locally without another HTTP request. The selected Instant Buy or Buy Order quote values every
+  consumed Ecto, including one already owned; the UI explains that owned Ectos are not free. The
+  selected Dust sale quote is scaled by expected yield, then its value includes the 15% TP selling
+  fee. Coin-priced tool use contributes to effective cost; Black Lion Gems stay separate from coin
+  and are never converted into gold.
+- **Results and Magic Find.** The structured salvage calculation shows Luck and Dust received, Ecto
+  value consumed, tool cost, Dust value after TP fees, effective cost and cost per 1,000 Luck. The
+  account read supplies cumulative Luck thresholds; the progress bar uses current and next thresholds
+  and fills at the 300% cap. Next, +5%, +10% and cap target costs use the same selected yield, tool
+  and TP valuation as the main result. The target table separates Ecto value consumed from effective
+  cost and shows Gem costs separately.
+- **Market refresh and limits.** The manual "Refresh TP prices" control rereads only the two price
+  quotes and updates the local calculation; it neither reloads metadata nor account Luck. The shared
+  `TradingPostPriceDisclaimer` opens a warning beside the calculation controls: the GW2 API has no
+  order-book depth sufficient to guarantee a unit quote for the whole quantity, so users should
+  check current price and available quantity in-game before large transactions. The page labels
+  salvage yields as statistical averages rather than guaranteed drops.
 
-**What the frontend does not do.** No profit, fee, valuation, crafting, inventory or eligibility
-calculation exists in `frontend/`. Every number rendered is a value the backend supplied;
+**Crafting calculation boundary.** The Crafting Profit and Discovery pages perform no profit, fee,
+valuation, crafting, inventory or eligibility calculation. Their economic numbers come from the
+backend; the Ecto Salvage page's local calculator is the separate exception described above.
 `totalProfitCopper` and `totalSellValueCopper` in particular are displayed and sorted exactly as
 received and are never derived from `craftableCount × profitCopper` or `craftableCount ×
 revenueCopper`. Rows the backend could not calculate are kept, not dropped:
@@ -1577,11 +1565,9 @@ is derived from the others, no state is inferred from a price, no two occurrence
 merged, and no shopping total is produced from any of it. The TypeScript types in `api/types.ts` describe transport shape; they do not
 validate received JSON and do not replace backend validation.
 
-**Not built yet.** Item names in a resolution node are whatever the backend supplied. The Ectoplasm
-page names its two items itself and shows the neutral icon placeholder, because its legacy response carries no item
-metadata. Missing: automatic refresh, task cancellation, any
-client-side progress mechanism, item names on the inventory screens (no contract supplies them,
-§5.12), any persistence across a browser reload, and every other screen. Neither crafting screen has
+**Not built yet.** Item names in a resolution node are whatever the backend supplied. Missing:
+automatic TP refresh, task cancellation, item names on the inventory screens (no contract supplies
+them, §5.12), and persistence across a browser reload. Neither crafting screen has
 virtualization or paging: every row left visible enters the DOM at once — Show all over the live
 default Profit scope means all 3176 of them, and Discovery has no display limit at all, so a live
 character discipline putting 672 candidates on screen puts 672 rows in the DOM. `STORY-WEB-006`'s
@@ -1622,7 +1608,7 @@ so `smoke:favicon` counts what the origin actually served rather than page reque
 | `npm run smoke:account` | real-browser check of Bank and Materials; needs the backend **and** `npm run dev` already running |
 | `npm run smoke:discovery` | real-browser check of the Crafting Discovery split at two viewports, keyboard selection and sorting, the grouped controls, the fresh detail and what the page sends; needs `npm run build` only |
 | `npm run smoke:discovery:live` | read-only comparison of the rendered Discovery rows and one selected tree against the responses a real backend returned; needs the backend **and** `npm run dev` already running |
-| `npm run smoke:ecto` | real-browser check of the Ectoplasm page: its destination, the four scenarios as supplied, the keyboard-operated reload, duplicate suppression, the narrow layout and the loading/failure/no-result states; needs `npm run build` only |
+| `npm run smoke:ecto` | real-browser check of the current Ecto page: its destination, initial data reads, local calculation, price-only refresh, shared warning and narrow layout; needs `npm run build` only |
 | `npm run smoke:ecto:live` | Legacy check for the removed calculation route; pending replacement and currently cannot pass against the backend |
 | `npm run smoke:favicon` | real-browser check of the tab icon: the built document's single icon link, and the bytes of `public/favicon.ico` loaded from it; answers every `/api/` call 404, so it evidences nothing about any screen's data; needs `npm run build` only |
 
@@ -2108,7 +2094,7 @@ The account Luck response contains consumed Luck, current and next Luck-derived 
 | `EctoView` | none | yes (`EctoSalvageService`, `STORY-APP-003`) | indirectly, via the application service (`ecto.EctoSalvageCalculator`) | no | indirectly, via the application service (`api.tp.EctoLivePriceGateway` → `api.guildwars2.com/v2/commerce/prices`); icon fetching remains a direct `HttpClient` call in the view |
 | `Gw2App` | none | "Sync Account" (`application.AccountRefreshService`, `STORY-APP-004`), "Sync ALL tradeable Items..." (`application.GlobalDataRefreshService`/`application.CraftingGraphRebuildService`, `STORY-APP-005`), and "First-time DB Setup" (`application.InitialSetupService`, `STORY-APP-007`) | indirectly, via the three application services for all three migrated buttons | indirectly, via the three application services for all three migrated buttons | indirectly via `sync.*` (`AccountRefreshService`'s `sync.AccountRefreshGateway` collaborator for Sync Account; `GlobalDataRefreshService`'s `sync.GlobalDataRefreshGateway` collaborator for Sync ALL tradeable Items; `InitialSetupService`'s `sync.AccountRefreshGateway`/`sync.GlobalDataRefreshGateway`/`sync.IconSyncGateway` collaborators, plus `application.TradingPostPriceRefreshService`, for First-time DB Setup) |
 
-The three crafting/Ecto features (Profit, Discovery, Ectoplasm Salvage) follow a View → Application → Domain(/Repository) separation; `EctoView` has no Controller layer, calling its application service directly. `Gw2App`'s "Sync Account", "Sync ALL tradeable Items..." and "First-time DB Setup" buttons now follow the same pattern; `STORY-APP-009` brought `BankView` and `MaterialsView` onto it too, so no view opens a database connection or runs SQL itself any more; `STORY-APP-010` removed the last direct repository construction from a view, so no view instantiates a `repo.*` repository either. Eleven named Application Layer boundaries now exist (`application.CraftingProfitService`/`STORY-APP-001`, `application.CraftingDiscoveryService`/`STORY-APP-002`, `application.EctoSalvageService`/`STORY-APP-003`, `application.AccountRefreshService`/`STORY-APP-004`, `application.GlobalDataRefreshService`/`application.CraftingGraphRebuildService`/`STORY-APP-005`, `application.TradingPostPriceRefreshService`/`STORY-APP-006`, `application.InitialSetupService`/`STORY-APP-007`, `application.BankContentsService`/`application.MaterialStorageService`/`STORY-APP-009`, `application.CharacterSelectionService`/`STORY-APP-010`); the other views' remaining direct API/HTTP use in this table is unaffected by those stories. `STORY-APP-008` added no boundary of its own — it routed both crafting views' auto-refresh timers through the existing `application.AccountRefreshService` (§5.4), after which no view calls `sync.*` directly any more.
+The three JavaFX crafting/Ecto features (Profit, Discovery, Ectoplasm Salvage) follow a View → Application → Domain(/Repository) separation; `EctoView` has no Controller layer, calling its application service directly. `Gw2App`'s "Sync Account", "Sync ALL tradeable Items..." and "First-time DB Setup" buttons now follow the same pattern; `STORY-APP-009` brought `BankView` and `MaterialsView` onto it too, so no view opens a database connection or runs SQL itself any more; `STORY-APP-010` removed the last direct repository construction from a view, so no view instantiates a `repo.*` repository either. Eleven named Application Layer boundaries now exist (`application.CraftingProfitService`/`STORY-APP-001`, `application.CraftingDiscoveryService`/`STORY-APP-002`, `application.EctoSalvageService`/`STORY-APP-003`, `application.AccountRefreshService`/`STORY-APP-004`, `application.GlobalDataRefreshService`/`application.CraftingGraphRebuildService`/`STORY-APP-005`, `application.TradingPostPriceRefreshService`/`STORY-APP-006`, `application.InitialSetupService`/`STORY-APP-007`, `application.BankContentsService`/`application.MaterialStorageService`/`STORY-APP-009`, `application.CharacterSelectionService`/`STORY-APP-010`); the other views' remaining direct API/HTTP use in this table is unaffected by those stories. `STORY-APP-008` added no boundary of its own — it routed both crafting views' auto-refresh timers through the existing `application.AccountRefreshService` (§5.4), after which no view calls `sync.*` directly any more.
 
 ---
 
@@ -2137,7 +2123,7 @@ Observed (not inferred) mixing of concerns, by file:
 
 1. **(Resolved by `STORY-DOM-017`)** ~~`craft/*` importing `repo/*` types directly.~~ The crafting engine's core data types are now independent domain types (`craft.Recipe`, `craft.Ingredient`, `craft.PriceQuote`); `repo.RecipeRepository`/`repo.tp.TpPriceRepository` map persistence rows into them, and `craft.*` no longer imports anything from `repo.*`.
 2. **(Resolved by `STORY-DOM-017`/`STORY-DOM-018`/`STORY-DOM-019`)** ~~`repo.RecipeRepository.loadRecipes(...)` embeds the "recipe is unlocked" business rule as a SQL `UNION` CTE.~~ The unlock decision is now `craft.RecipeKnowledgePolicy.isKnownAccountWide` (a single pure domain policy function, no JDBC/SQL dependency); `repo.RecipeRepository` fetches plain unlock facts and calls the policy in Java. `STORY-DOM-018` extracted the policy but left `loadRecipesForCharacter`/`loadMissingDiscoverableRecipeIdsForCharacter` checking only the selected character's own unlocks (tracked as a confirmed disagreement in `docs/KNOWN_PROBLEMS.md` §4.2); `STORY-DOM-019` corrected both to use the same account-wide (any-character) knowledge decision as `loadRecipes`, per `DOMAIN_SPEC.md` §34/35 and decided `DQ-010`.
-3. **(Resolved by `STORY-APP-003`)** ~~`EctoView` calls its own `EctoSalvageCalculator` directly, with no application-service boundary.~~ `EctoView` is the sole Ectoplasm Salvage implementation in the codebase. Its calculation (`DUST_PER_ECTO = 0.75`, `LUCK_PER_ECTO = 20.0`, `ECTOS_PER_1000_LUCK = 50`, and DOMAIN_SPEC.md §46-47's fee-inclusive net cost) lives in `ecto.EctoSalvageCalculator`, a plain domain class with no JavaFX/repo/controller/application dependency. `EctoView` calls one `application.EctoSalvageService`, which fetches Ecto/Dust quotes via `api.tp.EctoLivePriceGateway` and invokes the calculator across all four Ecto-buy/Dust-sell combinations; `EctoView`'s `fillProfitGrid`/`fillLuckGrid` only format and display the returned results. Like Profit/Discovery, it now has a named Application Layer boundary, though (unlike those two) with no Controller layer in between.
+3. **(Resolved by `STORY-APP-003`)** ~~`EctoView` calls its own `EctoSalvageCalculator` directly, with no application-service boundary.~~ `EctoView` is the JavaFX Ectoplasm Salvage implementation. Its calculation (`DUST_PER_ECTO = 0.75`, `LUCK_PER_ECTO = 20.0`, `ECTOS_PER_1000_LUCK = 50`, and DOMAIN_SPEC.md §46-47's fee-inclusive net cost) lives in `ecto.EctoSalvageCalculator`, a plain domain class with no JavaFX/repo/controller/application dependency. `EctoView` calls one `application.EctoSalvageService`, which fetches Ecto/Dust quotes via `api.tp.EctoLivePriceGateway` and invokes the calculator across all four Ecto-buy/Dust-sell combinations; `EctoView`'s `fillProfitGrid`/`fillLuckGrid` only format and display the returned results. Like Profit/Discovery, it now has a named Application Layer boundary, though (unlike those two) with no Controller layer in between.
 4. **(Resolved by `STORY-APP-004`/`STORY-APP-005`/`STORY-APP-006`/`STORY-APP-007`)** ~~`Gw2App`'s "First-time DB Setup" button handler directly calls `InitialSetupService`/`sync.*`.~~ All three `Gw2App` sync buttons ("Sync Account", "Sync ALL tradeable Items...", "First-time DB Setup") now delegate to named application services (`application.AccountRefreshService`/`application.GlobalDataRefreshService`/`application.InitialSetupService`) instead of calling `sync.*`/`repo.*` directly from the button handler. `application.InitialSetupService.firstFill()` (`STORY-APP-007`) owns the setup orchestration that previously lived in a top-level `InitialSetupService` class outside the application layer; that class has been deleted.
 5. **(Resolved by `STORY-INFRA-003`)** ~~Two independent JDBC connection helpers (`repo.Db`, `sync.Db`) with different method names but identical behavior.~~ `sync.Db` was removed; all `repo.*` and `sync.*` callers now share `repo.Db.open()`.
 6. **(Resolved by `STORY-APP-009`)** ~~`BankView`/`MaterialsView` each declare their own literal `DB_URL`/`DB_USER`/`DB_PASS` constants and call `DriverManager.getConnection(...)` directly, bypassing `repo.AppConfig`/`repo.EnvConfig`/`repo.Db` entirely.~~ Both views now read through an application service (`application.BankContentsService`, `application.MaterialStorageService`) over a persistence adapter (`repo.BankRepository`, `repo.MaterialStorageRepository`) that opens its connection with the shared `repo.Db.open()` helper from item 5. The two extra connection-acquisition paths no longer exist (`docs/KNOWN_PROBLEMS.md` §2.2).

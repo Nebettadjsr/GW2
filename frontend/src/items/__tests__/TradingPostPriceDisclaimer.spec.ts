@@ -39,7 +39,7 @@ describe('TradingPostPriceDisclaimer', () => {
     const dialog = wrapper.find('[data-test="tp-price-disclaimer-dialog"]')
 
     expect(trigger.attributes('aria-haspopup')).toBe('dialog')
-    expect(trigger.attributes('aria-label')).toBe('Trading Post price limits')
+    expect(trigger.attributes('aria-label')).toBe('Trading Post price warning')
     expect(trigger.attributes('aria-controls')).toBe(dialog.attributes('id'))
     expect((dialog.element as HTMLDialogElement).open).toBe(false)
 
@@ -47,10 +47,12 @@ describe('TradingPostPriceDisclaimer', () => {
 
     expect((dialog.element as HTMLDialogElement).open).toBe(true)
     expect(document.getElementById(dialog.attributes('aria-labelledby')!)?.textContent)
-      .toContain('Trading Post price and quantity limits')
+      .toContain('Trading Post price warning')
     expect(document.getElementById(dialog.attributes('aria-describedby')!)?.textContent)
-      .toContain('not guaranteed prices for the full quantity')
-    expect(dialog.text()).toContain('available quantities in-game')
+      .toContain('CHECK IN-GAME PRICE & QUANTITY')
+    expect(dialog.text()).toContain('does not provide Trading Post order-book depth')
+    expect(dialog.text()).toContain('not how many items are actually available at that price')
+    expect(dialog.text()).toContain('check the Trading Post in-game')
     wrapper.unmount()
   })
 

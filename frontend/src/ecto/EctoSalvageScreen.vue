@@ -1016,7 +1016,7 @@ onMounted(loadPage)
   width: 100%;
   min-width: 0;
   margin: 0;
-  overflow-x: visible;
+  overflow-x: auto;
 }
 
 .calculation-group {

@@ -258,6 +258,22 @@ Answer:
 
 This feature is separate from the general crafting planner.
 
+The web page calculates expected salvage economics locally after loading item metadata, Ecto and
+Crystalline Dust Trading Post quotes, and the account's Luck/Magic Find read model. Changing the
+Ecto amount, salvage method or exact tool, or either TP price mode updates the result without another
+calculation request. A manual TP refresh rereads only those two items' prices; it does not require
+reloading metadata or account Luck.
+
+Consumed Ectos retain their market value even when already owned. Instant Buy or Buy Order selects
+the unit price used for that consumed value, and the page explains this choice. Expected Dust value
+uses the selected Instant Sell or Listing Sell quote after the 15% TP selling fee. The selected tool's
+coin usage cost contributes to effective Luck cost; Black Lion Gem cost is displayed separately and
+is not converted to coin. The result separates Ecto value consumed, tool cost, net Dust value and
+effective cost. Magic Find targets use the same selected yields, tool and TP valuation, while the
+target table distinguishes Ecto value consumed from effective cost. Salvage yields are statistical
+averages, not guaranteed drops. The shared TP price warning describes the unit-quote quantity
+limitation in section 20.
+
 ---
 
 # 3. Monetary Unit
@@ -1650,7 +1666,7 @@ Normal recipe unlocks are account-wide. Character-specific information determine
 
 ## DQ-011 — Ectoplasm Salvage fee model
 
-`EctoView` remains the sole Ectoplasm Salvage implementation. The Product Owner request `ecto-salvage-profit-include-tp-fees.md` supersedes UD-002's no-fee decision: apply §46 to the four Ecto-buy/Dust-sell scenarios and the derived Luck costs. Replace the fee-exclusion warning with a short notice that displayed results include Trading Post selling fees. Raw price quotations remain distinguishable from net sale proceeds. This decision is scoped only to this view.
+`EctoView` remains the JavaFX Ectoplasm Salvage implementation; the browser page has its own local calculator described in §2.3. The Product Owner request `ecto-salvage-profit-include-tp-fees.md` supersedes UD-002's no-fee decision: apply §46 to the four Ecto-buy/Dust-sell scenarios and the derived Luck costs. Replace the fee-exclusion warning with a short notice that displayed results include Trading Post selling fees. Raw price quotations remain distinguishable from net sale proceeds. This decision is scoped only to this view.
 
 **Status:** DECIDED
 

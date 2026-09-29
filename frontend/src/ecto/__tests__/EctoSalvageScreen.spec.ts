@@ -14,6 +14,7 @@ import {
 interface RecordedRequest { method: string; url: string }
 const requests: RecordedRequest[] = []
 let luckAnswer: unknown = accountLuck
+let pricesAnswer: unknown = itemPrices
 let wrapper: VueWrapper | null = null
 
 function jsonResponse(body: unknown): Response {
@@ -51,11 +52,12 @@ function firstTargetEctos(open: VueWrapper): string {
 beforeEach(() => {
   requests.length = 0
   luckAnswer = accountLuck
+  pricesAnswer = itemPrices
   vi.stubGlobal('fetch', vi.fn((input: string, init?: RequestInit) => {
     requests.push({ method: init?.method ?? 'GET', url: input })
     const url = new URL(input, 'http://test.local')
     if (url.pathname === '/api/items/metadata') return Promise.resolve(jsonResponse(itemMetadata))
-    if (url.pathname === '/api/items/prices') return Promise.resolve(jsonResponse(itemPrices))
+    if (url.pathname === '/api/items/prices') return Promise.resolve(jsonResponse(pricesAnswer))
     if (url.pathname === '/api/account/luck') return Promise.resolve(jsonResponse(luckAnswer))
     throw new Error(`Obsolete or unexpected request: ${input}`)
   }))
@@ -109,6 +111,38 @@ describe('EctoSalvageScreen', () => {
     expect(open.find('.result-details').text()).toContain('185 Dust')
   })
 
+  it('explains owned-Ecto valuation, statistical yields, and TP quantity limits', async () => {
+    const open = await openScreen()
+
+    expect(open.find('.ecto-value-note').text()).toContain("They aren't free to salvage")
+    expect(open.find('.ecto-value-note').text()).toContain('Choose Instant Buy or Buy Order')
+    expect(open.find('.source-line').text()).toContain('statistical averages')
+    expect(open.find('[data-test="tp-price-disclaimer-trigger"]').attributes('aria-label'))
+      .toBe('Trading Post price warning')
+    expect(open.find('[data-test="tp-price-disclaimer-dialog"]').text())
+      .toContain('CHECK IN-GAME PRICE & QUANTITY')
+  })
+
+  it('refreshes only Ecto and Dust prices without reloading metadata or account Luck', async () => {
+    const open = await openScreen()
+    pricesAnswer = {
+      prices: [
+        { itemId: ECTO_ID, buyUnitCopper: 110, sellUnitCopper: 130 },
+        { itemId: DUST_ID, buyUnitCopper: 210, sellUnitCopper: 250 }
+      ]
+    }
+
+    await buttonIn(open, '.tp-refresh-button', 'Refresh TP prices').trigger('click')
+    await flushPromises()
+
+    expect(requests).toHaveLength(4)
+    expect(requests.filter(({ url }) => url.startsWith('/api/items/metadata?'))).toHaveLength(1)
+    expect(requests.filter(({ url }) => url === '/api/account/luck')).toHaveLength(1)
+    expect(requests.filter(({ url }) => url === '/api/items/prices?ids=19721,24277')).toHaveLength(2)
+    expect(calculationFigure(open, 'Ecto value consumed').text()).toContain('-1g 30s 0c')
+    expect(calculationFigure(open, 'Dust value after TP fees').text()).toContain('+3g 30s 22c')
+  })
+
   it('recalculates quantity and method locally from the Wiki yield assumptions', async () => {
     const open = await openScreen()
     await open.find('#ecto-count').setValue('10')
@@ -155,21 +189,25 @@ describe('EctoSalvageScreen', () => {
 
   it('applies the 15% Dust sale fee and recalculates both TP modes locally', async () => {
     const open = await openScreen()
-    expect(open.find('.result-story').text()).toContain('3g 14s 50c') // 185 x 200 x 0.85
+    expect(calculationFigure(open, 'Dust value after TP fees').text()).toContain('3g 14s 50c') // 185 x 200 x 0.85
     expect(calculationFigure(open, 'Effective cost').text()).toContain('-1g 34s 50c')
 
     await buttonIn(open, '.tp-block:nth-child(2) .tp-option', 'Listing sell').trigger('click')
-    expect(open.find('.result-story').text()).toContain('3g 77s 40c') // 185 x 240 x 0.85
+    expect(calculationFigure(open, 'Dust value after TP fees').text()).toContain('3g 77s 40c') // 185 x 240 x 0.85
     expect(calculationFigure(open, 'Effective cost').text()).toContain('-1g 97s 40c')
 
     await buttonIn(open, '.tp-block:first-child .tp-option', 'Buy order').trigger('click')
+    expect(calculationFigure(open, 'Ecto value consumed').text()).toContain('-1g 0s 0c')
     expect(calculationFigure(open, 'Effective cost').text()).toContain('-2g 17s 40c')
     expect(requests).toHaveLength(3)
   })
 
   it('prices Luck targets using the selected yield, exact tool, and TP modes', async () => {
     const open = await openScreen()
+    expect(open.find('.target-header').text()).toContain('Ecto value')
+    expect(open.find('.target-header').text()).toContain('Effective cost')
     expect(firstTargetEctos(open)).toBe('4') // ceil(416 / 104.57)
+    expect(open.findAll('.target-row')[0]?.element.children[3]?.textContent?.trim()).toBe('4s 80c')
     expect(open.find('.target-row .target-cost strong').text()).toBe('-5s 38c')
 
     await buttonIn(open, '.salvage-row', 'Basic / Copper-Fed').trigger('click')
