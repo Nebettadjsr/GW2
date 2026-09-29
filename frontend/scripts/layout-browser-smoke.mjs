@@ -39,6 +39,14 @@ const AREAS = [
   { id: 'materials', heading: 'Materials', ready: '[data-test="material-category"]' }
 ]
 
+const INTRO_SAMPLE = 'page intro'
+/**
+ * Where the introductory sentence is measured. Crafting Profit no longer has one (DOMAIN_SPEC 2.1.1
+ * removed it), so this pair is taken on an area that still renders an introduction instead of being
+ * skipped on a page where the element cannot exist — see `assertMeasured`.
+ */
+const INTRO_AREA = AREAS.find((area) => area.id === 'synchronization')
+
 const steps = []
 
 function record(name, detail) {
@@ -192,9 +200,13 @@ async function textOf(page, selector) {
 /**
  * Measures real text/background pairs from computed styles and returns WCAG contrast ratios. Token
  * values alone establish nothing; these are the combinations the browser actually rendered.
+ *
+ * `only` restricts the set to the named pairs, so a pair that belongs to another area can be measured
+ * where it is actually rendered without re-measuring this page's pairs. A pair whose element is absent
+ * is still skipped here — `assertMeasured` decides which names may not be missing.
  */
-async function measureContrast(page) {
-  return page.evaluate(() => {
+async function measureContrast(page, { only = null } = {}) {
+  return page.evaluate((onlyNames) => {
     const channel = (value) => {
       const srgb = value / 255
       return srgb <= 0.03928 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4
@@ -219,6 +231,7 @@ async function measureContrast(page) {
 
     const samples = []
     const sample = (name, element) => {
+      if (onlyNames !== null && !onlyNames.includes(name)) return
       if (element === null) return
       const style = getComputedStyle(element)
       const background = opaqueBackgroundOf(element)
@@ -233,6 +246,7 @@ async function measureContrast(page) {
     }
 
     sample('page heading', document.querySelector('[data-page-heading]'))
+    // Only rendered on the pages that keep an introduction, so this one is measured on `INTRO_AREA`.
     sample('page intro', document.querySelector('[data-test="page-intro"]'))
     sample('secondary text', document.querySelector('.meta'))
     sample('primary action', document.querySelector('.button--primary'))
@@ -261,7 +275,26 @@ async function measureContrast(page) {
     probe.remove()
 
     return samples
+  }, only)
+}
+
+/**
+ * Fails the run when a pair that must be measured was not. A `sample` whose element is absent is
+ * skipped silently, which is how the removal of the Crafting Profit introduction left the `page intro`
+ * pair unmeasured while the sample-count floor kept passing (STORY-WEB-015 F001). A missing name, a
+ * name no `sample` call produced, and an unusable ratio are all reported here instead of counting as
+ * coverage.
+ */
+function assertMeasured(samples, required, where) {
+  const unmeasured = required.filter((name) => {
+    const taken = samples.find((sample) => sample.name === name)
+    return taken === undefined || !Number.isFinite(taken.ratio)
   })
+  check(
+    unmeasured.length === 0,
+    `${where}: no measurable element for ${unmeasured.join(', ')}. That contrast pair was not ` +
+      'measured, so it cannot count as coverage — point the sample at a rendered element.'
+  )
 }
 
 async function focusWalk(page, stepCount) {
@@ -429,7 +462,12 @@ async function run() {
     for (const filter of ['filter-zero-craftable', 'filter-not-allowed', 'filter-non-positive-profit']) {
       await page.setChecked(`[data-test="${filter}"]`, false)
     }
-    const samples = await measureContrast(page)
+    const profitSamples = await measureContrast(page)
+    // The introductory sentence is measured where one is still rendered, and is required there: after
+    // DOMAIN_SPEC 2.1.1 removed it from Crafting Profit this pair silently measured nothing.
+    await openArea(page, stub.origin, INTRO_AREA)
+    const samples = [...profitSamples, ...(await measureContrast(page, { only: [INTRO_SAMPLE] }))]
+    assertMeasured(samples, [INTRO_SAMPLE], `contrast on ${AREAS[0].id} and ${INTRO_AREA.id}`)
     check(samples.length >= 15, `Too few contrast samples were taken: ${samples.length}`)
     const failures = samples.filter((sample) => {
       const isLargeText = sample.fontSize >= 24 || (sample.fontSize >= 18.66 && sample.bold)
@@ -442,12 +480,39 @@ async function run() {
         .join('; ')}`
     )
     const worst = samples.reduce((lowest, sample) => (sample.ratio < lowest.ratio ? sample : lowest))
+    const intro = samples.find((sample) => sample.name === INTRO_SAMPLE)
     record(
       `${samples.length} rendered text/background pairs meet WCAG AA`,
-      `lowest ${worst.name} at ${worst.ratio.toFixed(2)}:1`
+      `lowest ${worst.name} at ${worst.ratio.toFixed(2)}:1; ${INTRO_SAMPLE} measured on ` +
+        `${INTRO_AREA.id} at ${intro.ratio.toFixed(2)}:1`
     )
 
-    // 7. Reduced motion: the decorative transitions are actually switched off.
+    // 7. The required-pair guard is what turns a vanished target into a failure. With the rendered
+    // introduction taken out of the page, the same measurement must report the pair as unmeasured
+    // rather than return a smaller set that still satisfies the sample floor above.
+    const introRemoved = await page.evaluate(() => {
+      document.querySelector('[data-test="page-intro"]')?.remove()
+      return document.querySelector('[data-test="page-intro"]') === null
+    })
+    check(introRemoved, 'The control could not remove the introduction, so it proved nothing.')
+    const control = await measureContrast(page, { only: [INTRO_SAMPLE] })
+    check(
+      control.length === 0,
+      `The control still measured something without the introduction: ${JSON.stringify(control)}`
+    )
+    let reported = null
+    try {
+      assertMeasured(control, [INTRO_SAMPLE], 'control')
+    } catch (error) {
+      reported = error
+    }
+    check(
+      reported !== null && reported.message.includes(INTRO_SAMPLE),
+      `A missing contrast target did not fail the check: ${reported?.message ?? 'nothing was thrown'}`
+    )
+    record('a missing contrast target fails the check', reported.message)
+
+    // 8. Reduced motion: the decorative transitions are actually switched off.
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await openArea(page, stub.origin, AREAS[0])
     const durations = await page.evaluate(() =>
@@ -462,7 +527,7 @@ async function run() {
     await page.emulateMedia({ reducedMotion: null })
     record('reduced-motion preference respected', `${durations.length} controls at 0s`)
 
-    // 8. Nothing in any of the above submitted a synchronization or called another host.
+    // 9. Nothing in any of the above submitted a synchronization or called another host.
     check(
       stub.requestsTo('/api/sync').length === 0 && stub.requestsTo('/api/prices').length === 0,
       `Navigating submitted a synchronization request: ${JSON.stringify(stub.requestsTo('/api'))}`

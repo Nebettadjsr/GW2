@@ -228,6 +228,5 @@ let a stale bundle produce a green run, which is the kind of evidence these chec
 
 
 ## Follow-up Findings Disposition
-
-F001: FOLLOW-UP STORY ? STORY-UI-003
-F002: FOLLOW-UP STORY ? STORY-WEB-018
+F001: ALREADY COVERED ? STORY-UI-003
+F002: ALREADY COVERED ? STORY-WEB-018

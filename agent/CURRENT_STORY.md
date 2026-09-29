@@ -1,1 +1,1 @@
-agent/stories/STORY-WEB-016-compact-crafting-resolution-tree.md
+agent/stories/STORY-WEB-017-layout-smoke-intro-contrast-sample.md

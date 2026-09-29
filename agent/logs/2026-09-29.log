@@ -592,3 +592,191 @@
 [04:27:52] Evaluator decision: COMPLETE
 [04:27:52] Reason: The compact tree behavior is implemented in the shared resolution view, and the inspected component, association, and browser smoke checks cover the story’s required presentation and preserved request behavior. The story’s purpose is achieved.
 [04:27:52] ========================================
+[04:27:55] STORY-WEB-016-compact-crafting-resolution-tree.md published for CI verification: 448d24c on master (17 changed path(s), new commit, waiting for GitHub Actions.
+[04:29:56] GitHub CI PASSED for 448d24c (STORY-WEB-016-compact-crafting-resolution-tree.md): CI: success
+[04:30:05] Availability check: claude_available=True, codex_available=True
+[04:30:05] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[04:30:11] Planning resumed for changed inputs: agent/CURRENT_STORY.md, agent/runtime/artifacts/CLAUDE_RESULT.md, agent/stories/BACKLOG.md, agent/stories/STORY-WEB-016-compact-crafting-resolution-tree.md, docs/CURRENT_ARCHITECTURE.md
+[04:30:11] ========================================
+[04:30:11] Running project-planning pass
+[04:30:11] ========================================
+[04:30:11] ========================================
+[04:30:11] Starting hosted Codex planner
+[04:30:11] ========================================
+[04:30:11] [planner] session 01a0eaff-8c98-7722-a0f3-cabcc6598365
+[04:30:11] [planner] reasoning...
+[04:30:15] Planner last response:
+[04:30:15] I’ll review the supplied Phase 5 queue and exit criteria, then resolve the listed implementation findings against existing stories and authoritative references. I’ll only create a Phase 5 story if the evidence shows a concrete uncovered requirement, and I’ll write the planning result last.
+[04:30:17] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'Get-Location; Get-ChildItem agent/runtime/artifacts | Select-Object -ExpandProperty Name'
+[04:30:17] [planner command done] exit 0
+[04:30:40] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$files = @('"'agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md','agent/stories/STORY-DOM-024-ectoplasm-fee-policy-alignment.md','agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md','agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md','agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md','agent/stories/STORY-WEB-017-layout-smoke-intro-contrast-sample.md','agent/stories/STORY-SYNC-005-stabilize-bank-reload-smoke-check.md','agent/stories/STORY-WEB-018-fresh-build-browser-smoke-checks.md'); foreach ("'$f in $files) { if (Test-Path $f) { Write-Output "--- $f"; Select-String -Path $f -Pattern '"'"'^## (Result|Follow-up Findings Disposition|Goal|Acceptance Criteria|Dependencies|Blockers)'"' -Context 0,30 } }; Write-Output '--- TARGET ARCH §12.1'; Select-String -Path docs/TARGET_ARCHITECTURE.md -Pattern '"'^## 12'"\\.1' -Context 0,36; Write-Output '--- TEST STRATEGY §36'; Select-String -Path docs/TEST_STRATEGY.md -Pattern '"'^## 36'"\\.' -Context 0,20"
+[04:30:40] [planner command done] exit 0
+[04:30:48] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[04:30:48] from pathlib import Path
+[04:30:48] files=['STORY-DOM-023-crafting-profit-fee-integration.md','STORY-DOM-024-ectoplasm-fee-policy-alignment.md','STORY-DOM-025-remove-stale-cost-evaluator-profit.md','STORY-SYNC-004-complete-referenced-item-metadata.md','STORY-WEB-015-profit-purchase-and-blocking-details.md']
+[04:30:48] for name in files:
+[04:30:48]  p=Path('agent/stories')/name
+[04:30:48]  s=p.read_text()
+[04:30:48]  print('\\n---',name)
+[04:30:48]  for marker in ['## Follow-up Findings','## Result']:
+[04:30:48]   i=s.find(marker)
+[04:30:48]   if i>=0:
+[04:30:48]    j=s.find('\\n## ',i+4)
+[04:30:48]    print(s[i:j if j>=0 else None][:2600])
+[04:30:48] '@ | python -"
+[04:30:48] [planner command done] exit 0
+[04:31:06] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path docs/KNOWN_PROBLEMS.md -Pattern 'KP-09|story_state|multi-line|dependency note|backlog entry' -Context 2,3; @'
+[04:31:06] from pathlib import Path
+[04:31:06] for n in ['STORY-UI-003-signed-monetary-presentation.md','STORY-WEB-017-layout-smoke-intro-contrast-sample.md','STORY-WEB-018-fresh-build-browser-smoke-checks.md','STORY-SYNC-005-stabilize-bank-reload-smoke-check.md']:
+[04:31:06]  p=Path('agent/stories')/n
+[04:31:06]  print('\\n---',n)
+[04:31:06]  s=p.read_text()
+[04:31:06]  for sec in ['## Goal','## Acceptance Criteria','## Dependencies','## Blockers']:
+[04:31:06]   i=s.find(sec)
+[04:31:06]   if i>=0:
+[04:31:06]    j=s.find('\\n## ',i+4)
+[04:31:06]    print(s[i:j if j>=0 else None][:1000])
+[04:31:06] '@ | python -"
+[04:31:06] [planner command done] exit 0
+[04:31:37] Planner last response:
+[04:31:37] The remaining requirements are already represented by the current Phase 5 stories: framework choice is resolved in the architecture record, the screen and sync work is covered, and the integrated performance check and health review are explicitly queued behind their prerequisites. I found existing coverage for five findings; the backlog-parser issue is planner-runtime maintenance outside this phase, so I’ll record it as deferred without creating out-of-scope work.
+[04:31:57] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[04:31:57] from pathlib import Path
+[04:31:57] updates={
+[04:31:57] 'STORY-DOM-024-ectoplasm-fee-policy-alignment.md':[
+[04:31:57] 'F001: ALREADY COVERED — STORY-UI-003',
+[04:31:57] 'F002: ALREADY COVERED — STORY-WEB-018'],
+[04:31:57] 'STORY-DOM-025-remove-stale-cost-evaluator-profit.md':[
+[04:31:57] 'F001: DEFERRED — later milestone; planner runtime backlog parsing is outside the Phase 5 frontend migration scope, and no supplied Phase 5 requirement authorizes it.'],
+[04:31:57] }
+[04:31:57] for name, lines in updates.items():
+[04:31:57]  p=Path('agent/stories')/name
+[04:31:57]  s=p.read_text()
+[04:31:57]  marker='## Follow-up Findings Disposition'
+[04:31:57]  if marker in s:
+[04:31:57]   start=s.index(marker)
+[04:31:57]   end=s.find('\\n## ',start+len(marker))
+[04:31:57]   if end<0: end=len(s)
+[04:31:57]   s=s[:start]+marker+'\\n'+'\\n'.join(lines)+'\\n'+s[end:]
+[04:31:57]  else:
+[04:31:57]   marker='## Result'
+[04:31:57]   pos=s.index(marker)
+[04:31:57]   s=s[:pos]+'## Follow-up Findings Disposition\\n'+'\\n'.join(lines)+'\\n\\n'+s[pos:]
+[04:31:57]  p.write_text(s)
+[04:31:57] '@ | python -
+[04:31:57] @'
+[04:31:57] import json
+[04:31:57] from pathlib import Path
+[04:31:57] out={
+[04:31:57]   'status':'COMPLETE',
+[04:31:57]   'phase_considered':'Phase 5',
+[04:31:57]   'independent_work_remaining':False,
+[04:31:57]   'phase_review':[
+[04:31:57]     {'area':'Frontend framework and language choice','outcome':'COVERED','references':['AR-001','docs/architecture/decisions/ADR-001-frontend-framework-and-language.md','docs/TARGET_ARCHITECTURE.md §30']},
+[04:31:57]     {'area':'Crafting Profit rendering and authoritative values','outcome':'COVERED','references':['STORY-WEB-001','STORY-WEB-005','STORY-WEB-006','STORY-WEB-007','STORY-WEB-008','STORY-WEB-014','STORY-WEB-015','STORY-WEB-016','STORY-DOM-023','STORY-DOM-025']},
+[04:31:57]     {'area':'Discovery, bank/materials and Ectoplasm screens','outcome':'COVERED','references':['STORY-WEB-003','STORY-WEB-012','STORY-WEB-013','STORY-DOM-024']},
+[04:31:57]     {'area':'Sync triggers and status UI','outcome':'COVERED','references':['STORY-WEB-002','STORY-SYNC-004','STORY-SYNC-005']},
+[04:31:57]     {'area':'Browser smoke reliability and frontend presentation follow-ups','outcome':'PREREQUISITE','references':['STORY-WEB-017','STORY-WEB-018','STORY-UI-003']},
+[04:31:57]     {'area':'Integrated real-user-database page performance','outcome':'PREREQUISITE','references':['STORY-PERF-002','STORY-WEB-015','STORY-SYNC-004','STORY-DOM-023','STORY-DOM-024','STORY-WEB-016']},
+[04:31:57]     {'area':'Phase 5 project health review','outcome':'PREREQUISITE','references':['STORY-QUALITY-005','STORY-PERF-002','STORY-DOM-024','STORY-WEB-016']}
+[04:31:57]   ],
+[04:31:57]   'phase_exit_criteria_satisfied':False,
+[04:31:57]   'story_files_created':[],
+[04:31:57]   'user_decision_ids':[],
+[04:31:57]   'product_owner_requests_processed':[],
+[04:31:57]   'architect_requests_created':[],
+[04:31:57]   'milestone_transition':False,
+[04:31:57]   'completed_milestone':None,
+[04:31:57]   'next_milestone':None,
+[04:31:57]   'backlog_updated':False,
+[04:31:57]   'roadmap_updated':False,
+[04:31:57]   'project_state_updated':False,
+[04:31:57]   'reason':'Phase 5 work is covered by existing stories; performance and health-review exit criteria remain queued behind unfinished prerequisites. Supplied follow-up findings were dispositioned without adding out-of-scope work.'
+[04:31:57] }
+[04:31:57] Path('agent/runtime/artifacts/PLANNING_RESULT.json').write_text(json.dumps(out,indent=2)+'\\n')
+[04:31:57] '@ | python -"
+[04:31:58] [planner command done] exit 0
+[04:32:04] Planner last response:
+[04:32:04] Completed the Phase 5 planning review and wrote [PLANNING_RESULT.json](/C:/Users/Administrator/IdeaProjects/GW2/agent/runtime/artifacts/PLANNING_RESULT.json).
+[04:32:04] I recorded the follow-up finding dispositions in the relevant completed stories. No new stories were needed: the remaining performance check and health review are already queued behind their prerequisites. Phase 5 exit criteria remain unmet, so there is no milestone transition.
+[04:32:04] [planner] turn completed | input tokens: 259148 | cached input tokens: 213504 | output tokens: 3815
+[04:32:04] ========================================
+[04:32:04] [planner] turn totals | model requests: 1 | gross input tokens: 259,148 | cached input tokens: 213,504 | uncached input tokens: 45,644 | output tokens: 3,815
+[04:32:04] Hosted codex planner exit code: 0
+[04:32:04] ========================================
+[04:32:04] ========================================
+[04:32:04] Planning result: COMPLETE
+[04:32:04] Reason: Phase 5 work is covered by existing stories; performance and health-review exit criteria remain queued behind unfinished prerequisites. Supplied follow-up findings were dispositioned without adding out-of-scope work.
+[04:32:04] ========================================
+[04:32:10] Decision: code (select next story) -- reason: 4 selectable To Do candidate(s), Claude available
+[04:32:10] ========================================
+[04:32:10] Story selector: NEXT
+[04:32:10] Reason: Deterministic selection: first executable entry in BACKLOG.md's 'To Do' order (STORY-WEB-017-layout-smoke-intro-contrast-sample.md).
+[04:32:10] ========================================
+[04:32:10] Next story activated:
+[04:32:10] agent/stories/STORY-WEB-017-layout-smoke-intro-contrast-sample.md
+[04:32:18] Availability check: claude_available=True, codex_available=True
+[04:32:18] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[04:32:18] ========================================
+[04:32:18] Active story: agent/stories/STORY-WEB-017-layout-smoke-intro-contrast-sample.md
+[04:32:18] ========================================
+[04:32:21] RepoMap: disabled, budget=1200 tokens
+[04:32:26] ========================================
+[04:32:26] Starting Claude Code
+[04:32:26] ========================================
+[04:40:36] ## Implementation report — STORY-WEB-017 (DONE)
+[04:40:36] **What changed** — one file, `frontend/scripts/layout-browser-smoke.mjs`. No product code, component, style, page content, backend file or contract touched; the removed Crafting Profit introduction was not reintroduced.
+[04:40:36] - `measureContrast` gained one optional `{ only }` filter. Step 6 measures Crafting Profit exactly as before, then opens the new `INTRO_AREA` — `AREAS.find(area => area.id === 'synchronization')`, resolved by id so reordering `AREAS` can't silently retarget it — and takes the `page intro` pair on `SyncScreen.vue`'s own introduction. Both sets are concatenated, so the WCAG comparison, failure report and `worst` line still run over one set.
+[04:40:36] - New `assertMeasured(samples, required, where)` runs before the sample-count floor and fails when a required pair is absent, when no `sample` call produced that name (a rename the in-browser side can't detect), or when its ratio isn't finite.
+[04:40:36] - New step 7 is the negative control: it removes the rendered `[data-test="page-intro"]` (asserting the removal took effect first), re-measures, requires an empty set, and requires `assertMeasured` to throw naming the pair. Step 8 reloads Crafting Profit so the removal can't leak.
+[04:40:36] - Preserved unchanged: contrast math, all sixteen selectors, the probed status tones, thresholds, the `>= 15` floor, the display filters, steps 1–5. `only` defaults to `null`.
+[04:40:36] **Tests run** (from `frontend/`, `GW2_LAYOUT_SMOKE_PORT=5186`; 5175 and 5186 probed with `curl` first and free):
+[04:40:36] - `npm run build` — clean, 102 modules.
+[04:40:36] - `GW2_LAYOUT_SMOKE_PORT=5186 npm run smoke:layout` — **PASSED, 12 steps**, real Chrome: `20 rendered text/background pairs meet WCAG AA — lowest primary action at 4.92:1; page intro measured on synchronization at 9.86:1` (19 before) and `a missing contrast target fails the check — control: no measurable element for page intro …`.
+[04:40:36] No Vitest/Java/TestFX run — no source file changed; CI remains the full gate.
+[04:40:36] **Remaining uncertainty / disclosure:** that run needed a **temporary, reverted** edit to an unrelated step. Step 4 tabs six times and demands exactly four nav stops while `shell/destinations.ts` has six destinations, so on the current tree the script dies at step 4 (`Expected the four destinations…nav-crafting, nav-discovery, nav-ecto, nav-synchronization, nav-bank`) and nothing after it runs. I raised `6`/`4` to `7`/`6`, ran the script, then restored both literals — `git diff` shows no edit to `focusWalk`'s call or the `navStops` assertion. That defect is recorded as **F001** rather than fixed, with **F002** (`AREAS` covers four of six destinations) and **F003** (only the intro pair is required by name; the `>= 15` floor sits below the 19 pairs actually taken) in the story and `CLAUDE_RESULT.md`. Story status, Result, `CLAUDE_RESULT.md` and the single BACKLOG entry are updated; no doc owned another way needed changing.
+[04:40:37] ========================================
+[04:40:37] Claude Code exit code: 0
+[04:40:37] ========================================
+[04:40:39] Claude run measurement: repo_map=off, duration=491.2s, usage_before=72, usage_after=85
+[04:40:39] Evaluator started (Codex, read-only)
+[04:40:39] ========================================
+[04:40:39] Starting hosted Codex evaluator
+[04:40:39] ========================================
+[04:40:40] [evaluator] session 01a0eb09-2466-7140-a1ef-a7f4951556a7
+[04:40:40] [evaluator] reasoning...
+[04:40:43] Evaluator last response:
+[04:40:43] I’ll inspect the actual working tree diff and the changed smoke-script sections, then check the focused assertions against the story’s criteria. I won’t run the build or tests.
+[04:40:45] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git status --porcelain; git diff -- frontend/scripts/layout-browser-smoke.mjs; git diff -- CLAUDE_RESULT.md agent/stories/STORY-WEB-017-layout-smoke-intro-contrast-sample.md'
+[04:40:45] [evaluator command done] exit 0
+[04:40:53] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path frontend/scripts/layout-browser-smoke.mjs -Pattern 'function check|async function openArea|function measureContrast|function assertMeasured|INTRO_AREA|assertMeasured\\(samples|const control|navStops.length|focusWalk\\(page' -Context 2,4; Select-String -Path frontend/src/**/*.vue -Pattern 'page-intro|page-head__intro' -Context 1,2; git diff --check -- frontend/scripts/layout-browser-smoke.mjs"
+[04:40:53] [evaluator command done] exit 0
+[04:41:01] Evaluator last response:
+[04:41:01] ```json
+[04:41:01] {
+[04:41:01]   "decision": "COMPLETE",
+[04:41:01]   "reason": "The smoke script measures the required page-intro contrast pair on Synchronization, fails when that pair is missing or unusable, and includes a negative control that checks the failure path. The story records its focused verification and limitations. The reported pre-existing focus-order failure is outside this story’s scope.",
+[04:41:01]   "intent_achieved": true,
+[04:41:01]   "evidence": [
+[04:41:01]     "`git status --porcelain` and `git diff` show changes to `frontend/scripts/layout-browser-smoke.mjs` and the WEB-017 story file, among other files.",
+[04:41:01]     "`frontend/scripts/layout-browser-smoke.mjs`: `INTRO_AREA` resolves Synchronization by id; `openArea` navigates there and waits for its ready selector; step 6 measures and requires `page intro`.",
+[04:41:01]     "`frontend/scripts/layout-browser-smoke.mjs`: `assertMeasured` rejects an absent sample or non-finite ratio; step 7 removes the rendered intro and checks that the guard throws with the pair named.",
+[04:41:01]     "`frontend/scripts/layout-browser-smoke.mjs`: contrast thresholds, comparison logic, and existing sample-count floor remain in place; `only` defaults to `null`.",
+[04:41:01]     "`frontend/src/shell/PageHeader.vue`: the `page-intro` element is rendered when an intro is provided.",
+[04:41:01]     "`agent/stories/STORY-WEB-017-layout-smoke-intro-contrast-sample.md`: Result records the focused verification and its limitations."
+[04:41:01]   ],
+[04:41:01]   "unmet_intent": [],
+[04:41:01]   "unmet_acceptance_criteria": [],
+[04:41:01]   "unmet_definition_of_done": [],
+[04:41:01]   "actionable_retry_items": []
+[04:41:01] }
+[04:41:01] ```
+[04:41:01] [evaluator] turn completed | input tokens: 72657 | cached input tokens: 55552 | output tokens: 830
+[04:41:02] ========================================
+[04:41:02] [evaluator] turn totals | model requests: 1 | gross input tokens: 72,657 | cached input tokens: 55,552 | uncached input tokens: 17,105 | output tokens: 830
+[04:41:02] Hosted codex evaluator exit code: 0
+[04:41:02] ========================================
+[04:41:02] ========================================
+[04:41:02] Evaluator decision: COMPLETE
+[04:41:02] Reason: The smoke script measures the required page-intro contrast pair on Synchronization, fails when that pair is missing or unusable, and includes a negative control that checks the failure path. The story records its focused verification and limitations. The reported pre-existing focus-order failure is outside this story’s scope.
+[04:41:02] ========================================
