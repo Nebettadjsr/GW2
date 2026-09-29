@@ -9,15 +9,15 @@ import java.nio.file.Path;
 
 /**
  * Application-layer use case for the "First-time DB Setup" flow (TARGET_ARCHITECTURE.md §8,
- * STORY-APP-007): account bank/materials/recipes, then global recipes, then TP tradeable items,
- * then discovery/profit price refresh, then icon URLs and icon disk download - in that exact
- * order, unchanged from the pre-extraction top-level {@code InitialSetupService.firstFill()}.
+ * STORY-APP-007): account bank/materials/recipes/Luck, then global recipes, then TP tradeable items,
+ * then discovery/profit price refresh, then icon URLs and icon disk download. Luck extends the
+ * original setup sequence.
  * Holds no JavaFX dependency and performs no calculation itself; it only coordinates its
  * collaborators. A failure from any step propagates immediately and short-circuits the
  * remaining steps, matching the original straight-line call sequence (no partial-completion
  * handling existed before this extraction, so none is introduced here).
  *
- * <p>Reuses {@link AccountRefreshGateway} (bank/materials/recipes only - not the character
+ * <p>Reuses {@link AccountRefreshGateway} (bank/materials/recipes/Luck only - not the character
  * crafting/recipes step {@code application.AccountRefreshService} adds) and
  * {@link GlobalDataRefreshGateway} (global recipes and tradeable items only - not the graph
  * rebuild {@code application.GlobalDataRefreshService} adds), since setup's step selection and
@@ -55,6 +55,7 @@ public class InitialSetupService {
         accountGateway.syncAccountBank();
         accountGateway.syncAccountMaterials();
         accountGateway.syncAccountRecipes();
+        accountGateway.syncAccountLuck();
 
         globalDataGateway.syncAllRecipesGlobalSafe();
         globalDataGateway.syncTpTradeableItems();

@@ -249,6 +249,12 @@ Relevant values include:
 
 Stores recipes unlocked on the account.
 
+### 8.4 `account_luck`
+
+Stores cumulative consumed Luck by stable GW2 account GUID (`account_id`), with a fetch timestamp. The full account sync, initial setup, and first Luck read when the row is absent populate it through the authenticated `/v2/account` and `/v2/account/luck` API reads. Backend startup and the JavaFX Luck sync apply and verify the narrow `account_luck` schema resource idempotently; the application still has no general automatic migration system. The global Luck-to-Magic-Find progression is a single versioned CSV resource, not account data.
+
+The HTTP API exposes the server-configured key's synchronized Luck progression through `GET /api/account/luck`, including the cumulative threshold for the current Magic Find percentage and the nullable next threshold. Generic live price and item metadata batch reads are available at `GET /api/items/prices?ids=...` and `GET /api/items/metadata?ids=...`. Item metadata can be filled from the public GW2 item API through the existing icon metadata pipeline when requested rows are absent. The old backend Ectoplasm salvage calculation endpoint remains removed; the JavaFX implementation remains present.
+
 ---
 
 ## 9. Character Data

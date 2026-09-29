@@ -23,7 +23,7 @@ import java.util.Map;
  *
  * <p>Thin by construction: it validates the request, submits
  * {@link AccountRefreshService#refreshAll()} as the task body, and returns the identifier. The step
- * order (account bank, account materials, account recipes, then every character's crafting and
+ * order (account bank, account materials, account recipes, account Luck, then every character's crafting and
  * recipes), the persistence and the short-circuit on the first failing step all stay inside that
  * application service — no individual sync step is reachable from this route, and none of the
  * sequence is restated here.

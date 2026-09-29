@@ -8,8 +8,8 @@ import sync.AccountRefreshGateway;
  *
  * <ul>
  *   <li>{@link #refreshAll()} - the Sync Account flow (STORY-APP-004): account bank, account
- *       materials, account recipes, then every character's crafting ratings and recipes, in that
- *       exact order, unchanged from the pre-extraction {@code Gw2App} button handler. Also the
+ *       materials, account recipes, consumed account Luck, then every character's crafting ratings
+ *       and recipes. Luck extends the original {@code Gw2App} button sequence. Also the
  *       sequence {@code CraftingDiscoveryView}'s periodic auto-refresh already ran
  *       (STORY-APP-008).</li>
  *   <li>{@link #refreshMaterialsAndRecipes()} - the narrower sequence
@@ -43,6 +43,7 @@ public class AccountRefreshService {
         gateway.syncAccountBank();
         gateway.syncAccountMaterials();
         gateway.syncAccountRecipes();
+        gateway.syncAccountLuck();
         gateway.syncCharacterCraftingAndRecipes();
     }
 

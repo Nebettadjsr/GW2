@@ -43,7 +43,7 @@ class InitialSetupServiceTest {
         service.firstFill();
 
         assertEquals(
-                List.of("bank", "materials", "recipes", "globalRecipes", "tradeableItems",
+                List.of("bank", "materials", "recipes", "luck", "globalRecipes", "tradeableItems",
                          "discoveryPrices", "profitPrices", "iconUrls", "iconsToDisk"),
                 calls);
         assertEquals(Path.of(AppConfig.ICON_CACHE_DIR), iconGateway.receivedIconBaseDir);
@@ -76,7 +76,7 @@ class InitialSetupServiceTest {
         Exception thrown = assertThrows(RuntimeException.class, service::firstFill);
 
         assertSame(globalDataGateway.globalRecipesFailure, thrown);
-        assertEquals(List.of("bank", "materials", "recipes"), calls);
+        assertEquals(List.of("bank", "materials", "recipes", "luck"), calls);
     }
 
     @Test
@@ -90,7 +90,7 @@ class InitialSetupServiceTest {
         Exception thrown = assertThrows(IOException.class, service::firstFill);
 
         assertSame(priceGateway.discoveryFailure, thrown);
-        assertEquals(List.of("bank", "materials", "recipes", "globalRecipes", "tradeableItems"), calls);
+        assertEquals(List.of("bank", "materials", "recipes", "luck", "globalRecipes", "tradeableItems"), calls);
     }
 
     @Test
@@ -105,7 +105,7 @@ class InitialSetupServiceTest {
 
         assertSame(iconGateway.iconUrlsFailure, thrown);
         assertEquals(
-                List.of("bank", "materials", "recipes", "globalRecipes", "tradeableItems",
+                List.of("bank", "materials", "recipes", "luck", "globalRecipes", "tradeableItems",
                          "discoveryPrices", "profitPrices"),
                 calls);
     }
@@ -134,6 +134,11 @@ class InitialSetupServiceTest {
         public void syncAccountRecipes() throws Exception {
             if (recipesFailure != null) throw recipesFailure;
             calls.add("recipes");
+        }
+
+        @Override
+        public void syncAccountLuck() {
+            calls.add("luck");
         }
     }
 

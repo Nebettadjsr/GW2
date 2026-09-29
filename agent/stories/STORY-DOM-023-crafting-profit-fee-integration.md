@@ -213,8 +213,8 @@ question the change actually raises ("why is Total Sell Value minus my costs mor
 
 
 ## Follow-up Findings Disposition
-F001: ALREADY COVERED ? STORY-DOM-025
-F002: ALREADY COVERED ? STORY-APP-013
+F001: ALREADY COVERED ? STORY-DOM-025 removes the stale CostEvaluator profit calculation.
+F002: ALREADY COVERED ? STORY-APP-013 carries the authoritative total sell value into the JavaFX Profit view.
 ## Follow-up Findings
 
 F001: `craft.CostEvaluator.evaluate(...)` still builds `CostEvaluationResult.profitPerCraft`/

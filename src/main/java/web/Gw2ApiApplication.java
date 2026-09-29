@@ -5,9 +5,10 @@ import application.BankContentsService;
 import application.CharacterSelectionService;
 import application.CraftingDiscoveryService;
 import application.CraftingProfitService;
-import application.EctoSalvageService;
+import application.CurrentAccountLuckService;
 import application.GlobalDataRefreshService;
 import application.MaterialStorageService;
+import application.ItemReadService;
 import application.TradingPostPriceRefreshService;
 import application.icons.IconDelivery;
 import infra.icons.FilesystemIconStore;
@@ -15,12 +16,15 @@ import infra.icons.HttpIconImageFetcher;
 import infra.icons.IconAcquisition;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import repo.AppConfig;
+import repo.AccountLuckSchema;
 import repo.ItemIconMetadataRepository;
 import web.task.BackgroundTaskService;
 
 import java.nio.file.Path;
+import java.sql.SQLException;
 import java.util.function.Supplier;
 
 /**
@@ -148,19 +152,16 @@ public class Gw2ApiApplication {
         return new MaterialStorageService();
     }
 
-    /**
-     * The Ectoplasm Salvage use case (STORY-WEB-013), shared for the same reason as the reads above:
-     * it keeps no per-call state, holding only its {@code api.tp.EctoLivePriceGateway} collaborator
-     * and returning a fresh result object per call.
-     *
-     * <p>Constructing it opens nothing — the gateway's HTTP client connects only when a calculation
-     * runs — so this bean costs no database connection and no GW2 API request at startup. It reads
-     * no database at all: this use case sources its Ecto/Dust quotes live (CURRENT_ARCHITECTURE.md
-     * §5.3), which is why it needs no synchronization and no synced price rows.
-     */
     @Bean
-    public EctoSalvageService ectoSalvageService() {
-        return new EctoSalvageService();
+    public CurrentAccountLuckService currentAccountLuckService(
+            @Value("${gw2.account-luck.schema-init:true}") boolean initializeSchema) throws SQLException {
+        if (initializeSchema) AccountLuckSchema.ensure();
+        return new CurrentAccountLuckService();
+    }
+
+    @Bean
+    public ItemReadService itemReadService() {
+        return new ItemReadService();
     }
 
     /**

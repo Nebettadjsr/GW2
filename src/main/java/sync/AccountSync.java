@@ -4,19 +4,61 @@ import api.Gw2ApiClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import model.BankSlot;
 import model.MaterialStack;
+import model.AccountLuck;
 import parser.BankParser;
 import parser.MaterialParser;
 import parser.RecipeIdParser;
 import repo.Db;
+import repo.AccountLuckRepository;
+import repo.AccountLuckSchema;
 import util.DbBind;
 
 import java.io.IOException;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.time.Instant;
 
 public final class AccountSync {
     private AccountSync() {}
+
+    /**
+     * Fetches consumed Luck for the API key's stable account ID. The GW2 endpoint requires
+     * account, progression and unlocks permissions; getAuth applies the same status/error policy
+     * as the existing account sync steps. An empty Luck array means zero, not unavailable data.
+     */
+    public static void syncAccountLuck() throws Exception {
+        JsonNode account = Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account");
+        String accountId = parseAccountId(account);
+        JsonNode response = Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account/luck");
+        long consumedLuck = parseConsumedLuck(response);
+        try (Connection con = Db.open()) {
+            AccountLuckSchema.ensure(con);
+            new AccountLuckRepository().save(con, new AccountLuck(accountId, consumedLuck, Instant.now()));
+        }
+    }
+
+    static String parseAccountId(JsonNode account) {
+        if (account == null || !account.isObject() || !account.path("id").isTextual()
+                || account.path("id").asText().isBlank()) {
+            throw new IllegalArgumentException("Unexpected JSON (account): missing account id");
+        }
+        return account.path("id").asText();
+    }
+
+    static long parseConsumedLuck(JsonNode response) {
+        if (response == null || !response.isArray() || response.size() > 1) {
+            throw new IllegalArgumentException("Unexpected JSON (account/luck): expected zero or one entry");
+        }
+        if (response.isEmpty()) return 0;
+        JsonNode item = response.get(0);
+        if (item == null || !item.isObject() || !"luck".equals(item.path("id").asText())
+                || !item.path("value").isIntegralNumber() || !item.path("value").canConvertToLong()
+                || item.path("value").longValue() < 0) {
+            throw new IllegalArgumentException("Unexpected JSON (account/luck): invalid luck value");
+        }
+        return item.path("value").longValue();
+    }
 
     public static void syncAccountBank() throws IOException, InterruptedException, SQLException {
         String url = "https://api.guildwars2.com/v2/account/bank";

@@ -6,11 +6,14 @@ The currently active story's file is the one pointed to by `agent/CURRENT_STORY.
 
 ## Active
 
+- STORY-WEB-019 | STORY-WEB-019-layout-smoke-navigation-coverage.md | TODO | milestone-05 | deps: None
+
 ## To Do
 
-- STORY-QUALITY-005 | STORY-QUALITY-005-phase-five-completion-review.md | TODO | milestone-05 | deps: STORY-PERF-002, STORY-DOM-024, STORY-WEB-016
-  dependency note: Bounded Phase 5 health review after integrated work and the real-user performance assessment are substantially complete.
-  backlog entry: milestone-05: Review Phase 5 project health before milestone completion.
+- STORY-PERF-002 | STORY-PERF-002-phase-five-crafting-profit-page-budget.md | TODO | milestone-05 | deps: STORY-WEB-015, STORY-SYNC-004, STORY-DOM-023, STORY-DOM-024, STORY-WEB-016
+  backlog entry: milestone-05: Verify the integrated Crafting Profit page against the real-user-database performance budget.
+
+
 
 
 
@@ -27,7 +30,9 @@ The currently active story's file is the one pointed to by `agent/CURRENT_STORY.
 
 ## Blocked
 
-- STORY-PERF-002 | STORY-PERF-002-phase-five-crafting-profit-page-budget.md | TODO | milestone-05: Verify the integrated Crafting Profit page against the real-user-database performance budget after WEB-015, SYNC-004, DOM-023, DOM-024 and WEB-016 complete.
+- STORY-QUALITY-005 | STORY-QUALITY-005-phase-five-completion-review.md | BLOCKED | milestone-05 | deps: STORY-PERF-002, STORY-WEB-019, STORY-SYNC-005, STORY-UI-003, STORY-WEB-018
+  dependency note: Bounded Phase 5 health review after integrated work and the real-user performance assessment are substantially complete.
+  backlog entry: milestone-05: Review Phase 5 project health before milestone completion.
 
 ## Done
 

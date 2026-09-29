@@ -5,7 +5,8 @@ STORY-PERF-002
 Verify Phase 5 Crafting Profit page performance on the real user database
 
 ## Status
-BLOCKED
+
+TODO
 
 ## Milestone
 milestone-05
@@ -50,4 +51,5 @@ Phase 5 requires performance verification for the complete browser page, includi
 Not started.
 
 ## Blockers
-Blocked until the listed Phase 5 frontend and shared-calculation integration stories are complete, so measurement covers the final integrated Profit page.
+
+None. The listed integration dependencies are DONE; the real-user-database measurement remains to be performed.

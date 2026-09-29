@@ -1732,3 +1732,13 @@ This document should now serve as the primary domain reference for:
 - Claude coding-agent instructions.
 
 Future changes to business behavior should update this specification before or together with the corresponding implementation change.
+
+---
+
+# 55. Consumed Account Luck and Luck-Derived Magic Find
+
+Consumed Luck belongs to the GW2 account identified by `/v2/account`'s stable `id`. The authenticated `/v2/account/luck` response is the cumulative consumed amount; its empty array represents zero. A missing or malformed response is an error, not zero. Consumption can exceed the amount required for the 300% Luck-derived Magic Find cap; the cumulative consumed amount remains visible while the derived percentage and remaining-to-cap value stay capped.
+
+The canonical global progression is the exact [GW2 Wiki Luck progression table](https://wiki.guildwars2.com/wiki/Luck#Progression), represented by the cumulative Luck threshold for every integer Luck-derived Magic Find percentage from 0 to 300. The 0% threshold is zero and the 300% threshold is 4,295,450. This progression excludes Magic Find from achievements, equipment, guild bonuses and other sources.
+
+For nonnegative consumed Luck, the current Luck-derived percentage is the greatest percentage whose cumulative threshold has been reached, capped at 300. Before the cap, the next threshold is the threshold for current percentage +1; remaining Luck is that threshold minus consumed Luck. At the cap there is no next +1% threshold, and remaining Luck to the cap is zero. For any later target through 300%, its cumulative requirement comes from that target's table row, and remaining Luck is the nonnegative difference from the consumed amount.

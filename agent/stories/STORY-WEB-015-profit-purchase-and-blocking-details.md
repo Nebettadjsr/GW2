@@ -248,7 +248,7 @@ keep their label and the shared fresh-row chip, and the item-named missing price
 test-strategy or roadmap content was touched.
 
 ## Follow-up Findings Disposition
-F001: FOLLOW-UP STORY ? STORY-WEB-017
+F001: ALREADY COVERED ? STORY-WEB-017 measures the required page-intro contrast pair on the Synchronization page.
 ## Follow-up Findings
 
 F001: `frontend/scripts/layout-browser-smoke.mjs` measures text/background contrast on `AREAS[0]`,

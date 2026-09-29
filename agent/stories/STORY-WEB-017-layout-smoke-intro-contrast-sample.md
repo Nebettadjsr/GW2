@@ -159,3 +159,8 @@ out of scope.
 ## Blockers
 
 None.
+
+## Follow-up Findings Disposition
+F001: FOLLOW-UP STORY ? STORY-WEB-019.
+F002: FOLLOW-UP STORY ? STORY-WEB-019.
+F003: DEFERRED ? later milestone; requiring named coverage for every optional, page-dependent contrast selector would expand the current bounded layout-smoke requirement beyond the required page-intro pair.

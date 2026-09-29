@@ -8,7 +8,7 @@ Review Phase 5 project health before milestone completion
 
 ## Status
 
-TODO
+BLOCKED
 
 ## Milestone
 
@@ -46,7 +46,11 @@ The Phase 5 exit criteria require a bounded health review before milestone compl
 
 ## Dependencies
 
-STORY-PERF-002 and completion of the remaining Phase 5 implementation stories, including STORY-DOM-024 and STORY-WEB-016.
+- STORY-PERF-002
+- STORY-WEB-019
+- STORY-SYNC-005
+- STORY-UI-003
+- STORY-WEB-018
 
 ## Definition of Done
 
@@ -58,4 +62,4 @@ Not started.
 
 ## Blockers
 
-Blocked until the integrated Phase 5 implementation and performance assessment are substantially complete.
+STORY-PERF-002 must complete, and remaining Phase 5 implementation, including STORY-WEB-019, STORY-SYNC-005, STORY-UI-003 and STORY-WEB-018, must be substantially complete before this review.

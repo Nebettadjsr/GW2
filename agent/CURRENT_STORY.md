@@ -1,1 +1,1 @@
-agent/stories/STORY-WEB-017-layout-smoke-intro-contrast-sample.md
+agent/stories/STORY-WEB-019-layout-smoke-navigation-coverage.md

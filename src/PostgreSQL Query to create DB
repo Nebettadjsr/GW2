@@ -82,6 +82,14 @@ CREATE TABLE public.account_recipes (
   fetched_at  TIMESTAMPTZ
 );
 
+-- Account-scoped consumed Luck from /v2/account/luck. The ID is the stable
+-- /v2/account GUID; unlike the older account tables this supports multiple accounts.
+CREATE TABLE public.account_luck (
+  account_id    TEXT PRIMARY KEY,
+  consumed_luck BIGINT NOT NULL CHECK (consumed_luck >= 0),
+  fetched_at    TIMESTAMPTZ NOT NULL
+);
+
 -- ============================================
 -- 7) recipe_ingredients (Composite PK + GENAU 2 FKs)
 -- ============================================

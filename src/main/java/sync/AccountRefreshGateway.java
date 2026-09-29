@@ -22,6 +22,10 @@ public class AccountRefreshGateway {
         AccountSync.syncAccountRecipes();
     }
 
+    public void syncAccountLuck() throws Exception {
+        AccountSync.syncAccountLuck();
+    }
+
     public void syncCharacterCraftingAndRecipes() throws Exception {
         CharacterSync.syncCharactersCraftingAndRecipes();
     }

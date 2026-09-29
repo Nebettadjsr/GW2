@@ -267,8 +267,8 @@ exactly what remains open. No other document owns information this story changed
 intended architecture, testing method or user-visible crafting rule changed.
 
 ## Follow-up Findings Disposition
-F001: ALREADY COVERED ? docs/TARGET_ARCHITECTURE.md ?12.1
-F002: FOLLOW-UP STORY ? STORY-SYNC-005
+F001: ALREADY COVERED ? docs/TARGET_ARCHITECTURE.md ?12.1 and STORY-SYNC-004 represent the completed Request-009 architecture and metadata work.
+F002: ALREADY COVERED ? STORY-SYNC-005 isolates Bank reload requests from an outstanding initial Profit request.
 ## Follow-up Findings
 
 F001: `Request-009`'s Planner Resolution states that `docs/TARGET_ARCHITECTURE.md` §12.1 was extended

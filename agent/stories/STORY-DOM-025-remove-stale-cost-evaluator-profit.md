@@ -117,4 +117,4 @@ indented `dependency note:`/`backlog entry:` continuation lines are left behind.
 were orphaned under `## To Do` with no row above them (removed by hand while updating the entry).
 
 ## Follow-up Findings Disposition
-F001: DEFERRED ? later milestone; planner runtime backlog parsing is outside the Phase 5 frontend migration scope, and no supplied Phase 5 requirement authorizes it.
+F001: DEFERRED ? later milestone; the finding concerns planner backlog-mutation helpers and is outside the Phase 5 frontend migration exit criteria.

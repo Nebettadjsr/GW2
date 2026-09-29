@@ -162,6 +162,23 @@ public final class IconSync {
         }
     }
 
+    /** Fill metadata for explicitly requested item IDs using the same parser and upsert as the bulk refresh. */
+    public static void syncItemMetadataByIds(Set<Integer> itemIds) throws Exception {
+        for (List<Integer> batch : BatchUtils.chunk(new ArrayList<>(itemIds), SyncConstants.HTTP_IDS_BATCH)) {
+            JsonNode root = fetchItemMetadata(batch);
+            List<ItemParser.ItemRow> rows = new ArrayList<>();
+            Set<Integer> requested = new HashSet<>(batch);
+            Set<Integer> returned = new HashSet<>();
+            for (JsonNode item : root) {
+                ItemParser.ItemRow row = ItemParser.parse(item);
+                if (row != null && requested.contains(row.itemId()) && returned.add(row.itemId())) rows.add(row);
+            }
+            try (Connection con = Db.open()) {
+                applyItemMetadata(con, rows);
+            }
+        }
+    }
+
     /**
      * Resolves the selected items' metadata one batch at a time and persists it.
      *

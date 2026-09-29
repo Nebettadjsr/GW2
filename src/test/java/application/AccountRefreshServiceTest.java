@@ -34,7 +34,7 @@ class AccountRefreshServiceTest {
         service.refreshAll();
 
         assertEquals(
-                List.of("bank", "materials", "recipes", "characters"),
+                List.of("bank", "materials", "recipes", "luck", "characters"),
                 gateway.calls);
     }
 
@@ -71,6 +71,18 @@ class AccountRefreshServiceTest {
         Exception thrown = assertThrows(RuntimeException.class, service::refreshAll);
 
         assertSame(gateway.charactersFailure, thrown);
+        assertEquals(List.of("bank", "materials", "recipes", "luck"), gateway.calls);
+    }
+
+    @Test
+    void luckFailureStopsBeforeCharacterSync() {
+        var gateway = new RecordingGateway();
+        gateway.luckFailure = new IOException("missing progression permission");
+
+        Exception thrown = assertThrows(IOException.class,
+                () -> new AccountRefreshService(gateway).refreshAll());
+
+        assertSame(gateway.luckFailure, thrown);
         assertEquals(List.of("bank", "materials", "recipes"), gateway.calls);
     }
 
@@ -113,6 +125,7 @@ class AccountRefreshServiceTest {
         Exception bankFailure;
         Exception materialsFailure;
         Exception recipesFailure;
+        Exception luckFailure;
         Exception charactersFailure;
 
         @Override
@@ -131,6 +144,12 @@ class AccountRefreshServiceTest {
         public void syncAccountRecipes() throws Exception {
             if (recipesFailure != null) throw recipesFailure;
             calls.add("recipes");
+        }
+
+        @Override
+        public void syncAccountLuck() throws Exception {
+            if (luckFailure != null) throw luckFailure;
+            calls.add("luck");
         }
 
         @Override

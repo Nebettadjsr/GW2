@@ -5,7 +5,6 @@ import application.BankContentsService;
 import application.CharacterSelectionService;
 import application.CraftingDiscoveryService;
 import application.CraftingProfitService;
-import application.EctoSalvageService;
 import application.GlobalDataRefreshService;
 import application.MaterialStorageService;
 import application.TradingPostPriceRefreshService;
@@ -24,6 +23,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -34,7 +34,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>Deliberately does not call the endpoints - that would need the real database. Transport
  * behavior is covered by {@link CraftingProfitApiControllerTest} and
  * {@link CraftingDiscoveryApiControllerTest}, real-database timing by {@code *RealDbPerfIT}. The
- * service factories are never invoked here, so no connection is opened.
+ * service factories are never invoked here, so no connection is opened. The narrowly scoped
+ * account-Luck schema initialization is disabled for this wiring-only test; normal startup runs it.
  *
  * <p>STORY-API-003 added the account synchronization trigger, the shared task-status route and the task
  * facility they use, STORY-API-004 the global one and STORY-API-005 the price-refresh one; this test
@@ -42,7 +43,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * API call either. STORY-API-008 added the two resolution-detail operations to the existing crafting
  * controllers, so what this test adds for them is that their decided paths are really mapped.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "gw2.account-luck.schema-init=false")
 class Gw2ApiApplicationBootTest {
 
     @LocalServerPort
@@ -101,12 +103,6 @@ class Gw2ApiApplicationBootTest {
 
     @Autowired
     private MaterialStorageService materialStorageService;
-
-    @Autowired
-    private EctoSalvageApiController ectoSalvageController;
-
-    @Autowired
-    private EctoSalvageService ectoSalvageService;
 
     @Autowired
     private RequestMappingHandlerMapping handlerMapping;
@@ -170,16 +166,8 @@ class Gw2ApiApplicationBootTest {
                 "mapped POST paths: " + postPaths);
     }
 
-    /**
-     * STORY-WEB-013: the Ectoplasm route is wired to the existing use case and mapped at its path in
-     * the real context. Nothing is called, so no live Trading Post request follows from this test.
-     */
     @Test
-    void theEctoSalvageRouteIsWiredToTheExistingUseCaseAndMappedAtItsPath() {
-        assertNotNull(ectoSalvageController);
-        assertNotNull(ectoSalvageService,
-                "the route delegates to the existing use case, so it must be a bean");
-
+    void theRemovedEctoSalvageRouteIsNotMapped() {
         Set<String> getPaths = handlerMapping.getHandlerMethods().keySet().stream()
                 .filter(info -> info.getMethodsCondition().getMethods().contains(RequestMethod.GET))
                 .flatMap(info -> info.getPathPatternsCondition() == null
@@ -187,7 +175,7 @@ class Gw2ApiApplicationBootTest {
                         : info.getPathPatternsCondition().getPatternValues().stream())
                 .collect(Collectors.toSet());
 
-        assertTrue(getPaths.contains("/api/ecto/salvage"), "mapped GET paths: " + getPaths);
+        assertFalse(getPaths.contains("/api/ecto/salvage"), "mapped GET paths: " + getPaths);
     }
 
     @Test

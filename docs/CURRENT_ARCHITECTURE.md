@@ -117,9 +117,6 @@ src/
 │                             CraftingResolutionMapper, RecipeNotInCalculationException
 │                             (STORY-API-008 — the part of the resolution-detail contract
 │                             both crafting controllers share, and its one 404 outcome),
-│                             EctoSalvageApiController, EctoSalvageApiExceptionHandler
-│                             (STORY-WEB-013 — the parameterless Ectoplasm Salvage
-│                             calculation route and its own status mapping, §5.15)
 │   ├── task/                 BackgroundTaskService, TaskState, TaskSnapshot,
 │   │                         TaskAlreadyRunningException (STORY-API-003) — the in-process
 │   │                         background-task facility the sync triggers share; plain Java, no
@@ -158,13 +155,13 @@ The project is now built with Maven (`./mvnw`, Java 25 target), using the standa
 | `api` | Low-level HTTP client for the GW2 API (`Gw2ApiClient`), batching helper, HTTP status handling, `Gw2PriceFetch` — an ad-hoc price fetcher that has had no caller anywhere in the codebase since `Main` (its only caller) was deleted (see `docs/KNOWN_PROBLEMS.md` §7.8) — and `api.tp.EctoLivePriceGateway`, the live (unsynchronized) Ecto/Dust price lookup used by `application.EctoSalvageService` (`STORY-APP-003`) |
 | `craft` | Persistence-independent crafting domain: independent domain types (`Recipe`, `Ingredient`, `PriceQuote`), the recipe-known policy (`RecipeKnowledgePolicy`), recipe selection, inventory consumption, craft-vs-buy decisions, cost/profit math, and resolution tree construction. No JDBC/SQL/repository/transport dependency (`TARGET_ARCHITECTURE.md` §7). |
 | `ecto` | Persistence-independent Ectoplasm Salvage domain calculation (`EctoSalvageCalculator`): the fee-inclusive net cost/profit/Luck-cost math (DOMAIN_SPEC.md §45-47), with the selling fee itself taken from `tradingpost.TradingPostFeePolicy` rather than owned here (`STORY-DOM-024`). No JDBC/SQL/repository/transport/JavaFX dependency. Moved out of the default package by `STORY-APP-003` so `application.EctoSalvageService` can import it. |
-| `tradingpost` | Two persistence-independent Trading Post domain calculations, each with its own model. `TradingPostFeePolicy` owns the decided **profitability** fee (DOMAIN_SPEC.md §25, resolved `UD-011`, `STORY-DOM-023`): 15% of whatever gross sell value the caller states, in exact integer copper rounded half away from zero, with no minimum. `craft.CraftingPlanner` and `ecto.EctoSalvageCalculator` are its callers, and `web.EctoSalvageApiController` reads its percentage to state it at the HTTP boundary (`STORY-DOM-024`). `TradingPostSaleCalculator` owns the **transaction** model: gross sale value, separately rounded 5% listing and 10% exchange fees with their 1-copper minimums, total fees and net proceeds for one sale the caller states explicitly as unit price × quantity (§25.1, `STORY-DOM-022`); §25.1 forbids substituting it for the policy above, and nothing calls it yet (§9). Neither has a JDBC/SQL/repository/transport/JavaFX dependency or a dependency on `craft`/`ecto`, and neither selects a sale mode, price source or sale grouping of its own. |
+| `tradingpost` | Two persistence-independent Trading Post domain calculations, each with its own model. `TradingPostFeePolicy` owns the decided **profitability** fee (DOMAIN_SPEC.md §25, resolved `UD-011`, `STORY-DOM-023`): 15% of whatever gross sell value the caller states, in exact integer copper rounded half away from zero, with no minimum. `craft.CraftingPlanner` and `ecto.EctoSalvageCalculator` are its callers. `TradingPostSaleCalculator` owns the **transaction** model: gross sale value, separately rounded 5% listing and 10% exchange fees with their 1-copper minimums, total fees and net proceeds for one sale the caller states explicitly as unit price × quantity (§25.1, `STORY-DOM-022`); §25.1 forbids substituting it for the policy above, and nothing calls it yet (§9). Neither has a JDBC/SQL/repository/transport/JavaFX dependency or a dependency on `craft`/`ecto`, and neither selects a sale mode, price source or sale grouping of its own. |
 | `model` | Plain data records used mainly during API-response parsing (bank slots, character rows, material stacks, price) |
 | `parser` | Converts raw GW2 API `JsonNode` responses into `model` records or repository-ready structures |
 | `repo` | PostgreSQL access via JDBC (`Db`) plus per-domain repositories (items, recipes, inventory, characters, TP prices), the persistence-to-domain mapping boundary for `craft.*` types (`TARGET_ARCHITECTURE.md` §10), the crafting-graph JSON cache (`CraftingGraphCache`/`CraftingGraphDto`), and hardcoded configuration (`AppConfig`) |
 | `sync` | Orchestrates: call `api` → parse via `parser` → upsert via JDBC directly (not via `repo` repositories) into PostgreSQL, sharing `repo.Db.open()` with the `repo` package. |
 | `util` | Coin formatting, JDBC null-binding helpers, a `TpPrice` value type |
-| `web` | Inbound HTTP boundary (`TARGET_ARCHITECTURE.md` §9 and §13, `STORY-API-001`/`STORY-API-002`/`STORY-API-003`/`STORY-API-004`/`STORY-API-005`/`STORY-API-006`/`STORY-API-007`/`STORY-API-008`): Spring Boot entry point (`Gw2ApiApplication`), the Crafting Profit and Crafting Discovery routes (`CraftingProfitApiController`, `CraftingDiscoveryApiController`), their request defaulting/validation and DTO translation (`CraftingProfitApiMapper`, `CraftingDiscoveryApiMapper`, plus `CraftingRowMapper` for the row projection both share), the two resolution-detail operations on those same controllers with the input rules, envelope literals and recursive tree copy they share (`CraftingResolutionMapper`, `RecipeNotInCalculationException`), the read-only crafting selector-options route (`CraftingSelectorOptionsApiController`), the two read-only account-inventory routes (`BankContentsApiController`, `MaterialStorageApiController`), the parameterless Ectoplasm Salvage calculation route (`EctoSalvageApiController`, `STORY-WEB-013`, §5.15), the account- and global-synchronization triggers and the Trading Post price-refresh trigger with their shared task-status route and shared body-strictness rule (`AccountSyncApiController`, `GlobalSyncApiController`, `PriceRefreshApiController` with `PriceRefreshVariant`, `SyncTaskApiController`, `SyncTaskStatusMapper`, `SyncRequestValidation`), and the status mapping (`ApiExceptionHandler` for the calculation routes, `SyncApiExceptionHandler` for the synchronization routes, `CraftingSelectorOptionsApiExceptionHandler` for the selector read, `AccountReadApiExceptionHandler` for the two account reads, `EctoSalvageApiExceptionHandler` for the Ectoplasm calculation, each scoped to its own controllers). Contains no crafting rule, no synchronization step and no orchestration — each route calls its existing application service and copies what comes back. `web.dto` holds transport-only records. |
+| `web` | Inbound HTTP boundary (`TARGET_ARCHITECTURE.md` §9 and §13, `STORY-API-001`/`STORY-API-002`/`STORY-API-003`/`STORY-API-004`/`STORY-API-005`/`STORY-API-006`/`STORY-API-007`/`STORY-API-008`): Spring Boot entry point (`Gw2ApiApplication`), the Crafting Profit and Crafting Discovery routes (`CraftingProfitApiController`, `CraftingDiscoveryApiController`), their request defaulting/validation and DTO translation (`CraftingProfitApiMapper`, `CraftingDiscoveryApiMapper`, plus `CraftingRowMapper` for the row projection both share), the two resolution-detail operations on those same controllers with the input rules, envelope literals and recursive tree copy they share (`CraftingResolutionMapper`, `RecipeNotInCalculationException`), the read-only crafting selector-options route (`CraftingSelectorOptionsApiController`), the two read-only account-inventory routes (`BankContentsApiController`, `MaterialStorageApiController`), the account- and global-synchronization triggers and the Trading Post price-refresh trigger with their shared task-status route and shared body-strictness rule (`AccountSyncApiController`, `GlobalSyncApiController`, `PriceRefreshApiController` with `PriceRefreshVariant`, `SyncTaskApiController`, `SyncTaskStatusMapper`, `SyncRequestValidation`), and the status mapping (`ApiExceptionHandler` for the calculation routes, `SyncApiExceptionHandler` for the synchronization routes, `CraftingSelectorOptionsApiExceptionHandler` for the selector read, `AccountReadApiExceptionHandler` for the two account reads, each scoped to its own controllers). Contains no crafting rule, no synchronization step and no orchestration — each route calls its existing application service and copies what comes back. `web.dto` holds transport-only records. |
 | `web.task` | The in-process background-task facility the synchronization triggers share (`STORY-API-003`, `TARGET_ARCHITECTURE.md` §23): identifier issue, lifecycle state, one-unfinished-task-per-operation admission, virtual-thread execution and bounded in-memory retention (`BackgroundTaskService`, `TaskState`, `TaskSnapshot`, `TaskAlreadyRunningException`). Plain Java — no Spring, servlet, HTTP or domain import — so the asynchrony is testable without a server and reusable by later sync/refresh routes. |
 
 ---
@@ -236,13 +233,6 @@ web.dto.BankContentsResponse / web.dto.MaterialStorageResponse  (copy only; read
                                           repo.BankRepository.BankSlotRow and
                                           repo.MaterialStorageRepository.MaterialStorageRow,
                                           never hand them to a client)
-
-web.EctoSalvageApiController --> application.EctoSalvageService  (the same parameterless use case
-   |                                              EctoView calls in process, STORY-WEB-013)
-   |                         --> ecto.EctoSalvageCalculator  (its public constants only, to state
-   v                                                         the assumptions; no evaluate() call)
-web.dto.EctoSalvageResponse  (copy only; reads ecto.EctoSalvageCalculator.ScenarioResult,
-                              never hands it to a client)
 
 web.AccountSyncApiController --> web.task.BackgroundTaskService  (submits the task)
    |                         --> application.AccountRefreshService::refreshAll  (the task body, the
@@ -466,7 +456,7 @@ EctoView
 
 `EctoLivePriceGateway` is a live, unsynchronized lookup for exactly Ecto/Dust - distinct from the DB-backed `repo.tp.TpPriceRepository` the Crafting flows use; it is not part of the `sync.*`/`repo.*` synchronization machinery described in §5.4.
 
-`STORY-WEB-013` added an HTTP entry point over this same service (`web.EctoSalvageApiController`, §5.15) without touching the service, the gateway, the calculator or the view: the two paths call the identical `calculate()` method, the JavaFX one still runs in process, and the salvage economics still exist exactly once.
+The former HTTP entry point over this service has been removed (§5.15). The JavaFX view still calls the service in process; its gateway and calculator remain in use.
 
 ### 5.4 Synchronization / initialization flow
 
@@ -528,7 +518,7 @@ Each `sync.*` class talks to the GW2 API via `api.Gw2ApiClient`, parses the resp
 
 `STORY-APP-006` routed Trading Post price refresh through a named Application Layer use case, `application.TradingPostPriceRefreshService` (`TARGET_ARCHITECTURE.md` §8): it exposes the two pre-existing, distinctly scoped variants - `refreshForDiscovery()` and `refreshForProfit()` - each delegating to its own `sync.TradingPostPriceRefreshGateway` call (a thin instantiable wrapper over the non-instantiable `TpSync`, mirroring `AccountRefreshGateway`/`GlobalDataRefreshGateway`'s precedent). Item relevance selection (`sync.tp.relevance.DiscoveryItemCollector`/`CraftingProfitItemCollector`), quote fetching and `tp_prices` persistence are unchanged - the service only replaces the call sites, not `TpSync`'s own implementation. `CraftingDiscoveryView`'s and `CraftingProfitView`'s "Refresh Trade Post Prices" buttons now call the service instead of `TpSync` directly (each view keeps its own distinct variant; neither refreshes the other's scope), and `application.InitialSetupService.firstFill()` (`STORY-APP-007`) calls the same service directly as one of its own collaborators, preserving its exact position (after tradeable-item sync, before icon sync) and discovery-then-profit order. Tradeable-item synchronization (`TpSync.syncTpTradeableItems()`) remains outside this service in every caller, per `STORY-APP-005`'s constraint that it stay distinct from price refresh.
 
-`STORY-APP-004` routed the "Sync Account" button through a named Application Layer use case, `application.AccountRefreshService` (`TARGET_ARCHITECTURE.md` §8), instead of `Gw2App` calling `sync.*` directly: the service owns the exact pre-extraction call order (account bank, account materials, account recipes, then character crafting/recipes) and short-circuits on the first failure, unchanged from the original inline sequence. It has no JavaFX import and coordinates one collaborator, `sync.AccountRefreshGateway` — a thin instantiable wrapper needed only because `AccountSync`/`CharacterSync` are non-instantiable static utility classes with no seam of their own; a fake subclass of the gateway substitutes for it in application-layer tests. This replaces the previously unused top-level `AccountRefreshService` (`docs/KNOWN_PROBLEMS.md` §8), which duplicated a subset of this orchestration but had no `Gw2App` call site; that dead class has been deleted.
+`STORY-APP-004` routed the "Sync Account" button through a named Application Layer use case, `application.AccountRefreshService` (`TARGET_ARCHITECTURE.md` §8), instead of `Gw2App` calling `sync.*` directly: the service runs account bank, materials, recipes, Luck, then character crafting/recipes and short-circuits on the first failure. Luck was added after the original extraction (§5.16). It has no JavaFX import and coordinates one collaborator, `sync.AccountRefreshGateway` — a thin instantiable wrapper needed only because `AccountSync`/`CharacterSync` are non-instantiable static utility classes with no seam of their own; a fake subclass of the gateway substitutes for it in application-layer tests. This replaces the previously unused top-level `AccountRefreshService` (`docs/KNOWN_PROBLEMS.md` §8), which duplicated a subset of this orchestration but had no `Gw2App` call site; that dead class has been deleted.
 
 `STORY-APP-008` routed both crafting views' periodic auto-refresh timers through that same
 `application.AccountRefreshService` instead of them calling `sync.AccountSync`/`sync.CharacterSync`
@@ -549,7 +539,7 @@ production task without waiting out a real countdown interval.
 
 `STORY-APP-005` similarly routed the "Sync ALL tradeable Items..." button through two named Application Layer use cases instead of `Gw2App` calling `sync.*`/`repo.*` directly. `application.GlobalDataRefreshService.refreshAll()` owns the exact pre-extraction call order (tradeable-item sync, then global recipe sync, then one graph rebuild) and short-circuits on the first failure, unchanged from the original inline sequence; it coordinates two collaborators: `sync.GlobalDataRefreshGateway` (a thin instantiable wrapper over the non-instantiable `TpSync`/`RecipeSync` statics, mirroring `AccountRefreshGateway`) and `application.CraftingGraphRebuildService`, which owns invocation of the existing `repo.CraftingGraphCache.rebuild()` and introduces no competing graph-building algorithm. Neither service has a JavaFX import; `CraftingGraphCache` — already an instantiable, overridable class — is `CraftingGraphRebuildService`'s sole replaceable collaborator, substituted with a fake subclass in application-layer tests. Cache format/location (`crafting_graph_cache.json`, relative to the process working directory) and `CraftingGraphCache.load()`'s existing auto-rebuild-when-missing behavior (`STORY-INFRA-002`) are unchanged. `InitialSetupService.firstFill()` was not touched by this story — its own distinct account/global-recipe/TP/icon operation selection and order remain exactly as before, and it still does not call the graph rebuild at all.
 
-`STORY-APP-007` routed the "First-time DB Setup" button through a named Application Layer use case, `application.InitialSetupService` (`TARGET_ARCHITECTURE.md` §8), instead of `Gw2App` calling a top-level `InitialSetupService`/`sync.*` directly: `firstFill()` owns the exact pre-extraction call order (account bank/materials/recipes, global recipes, TP tradeable items, discovery price refresh, profit price refresh, icon URLs, icon disk download) and short-circuits on the first failure, unchanged from the original inline sequence. It has no JavaFX import and coordinates four collaborators: `sync.AccountRefreshGateway` (bank/materials/recipes methods only — not the character crafting/recipes step `application.AccountRefreshService` adds), `sync.GlobalDataRefreshGateway` (global-recipe/tradeable-item methods only — not the graph rebuild `application.GlobalDataRefreshService` adds, and in setup's own recipes-before-items order, the reverse of that service's items-before-recipes order), `application.TradingPostPriceRefreshService` (unchanged, `STORY-APP-006`), and a new `sync.IconSyncGateway` — a thin instantiable wrapper over the non-instantiable `IconSync` statics, mirroring `AccountRefreshGateway`/`GlobalDataRefreshGateway`/`TradingPostPriceRefreshGateway`'s precedent. Setup's step selection and order differ from both `AccountRefreshService`'s and `GlobalDataRefreshService`'s broader workflows, so this story reuses their gateways' individual methods directly rather than composing those two higher-level services, per the constraint against introducing character refresh or graph rebuild into setup. The icon-cache-directory path (`repo.AppConfig.ICON_CACHE_DIR`, env-var-configurable with a `<user.home>/...` default) is still read at `firstFill()` call time, not at construction time, matching the original's lazy-configuration-read timing. This replaces the previously separate top-level `InitialSetupService`, which duplicated this orchestration outside the application layer; that class (and its `syncTpPrices(...)` test seam and matching test) has been deleted so one authoritative setup workflow remains.
+`STORY-APP-007` routed the "First-time DB Setup" button through a named Application Layer use case, `application.InitialSetupService` (`TARGET_ARCHITECTURE.md` §8), instead of `Gw2App` calling a top-level `InitialSetupService`/`sync.*` directly: `firstFill()` runs account bank/materials/recipes/Luck, global recipes, TP tradeable items, discovery price refresh, profit price refresh, icon URLs and icon disk download, short-circuiting on the first failure. Luck was added after the original extraction (§5.16). It has no JavaFX import and coordinates four collaborators: `sync.AccountRefreshGateway` (bank/materials/recipes/Luck methods only — not the character crafting/recipes step `application.AccountRefreshService` adds), `sync.GlobalDataRefreshGateway` (global-recipe/tradeable-item methods only — not the graph rebuild `application.GlobalDataRefreshService` adds, and in setup's own recipes-before-items order, the reverse of that service's items-before-recipes order), `application.TradingPostPriceRefreshService` (unchanged, `STORY-APP-006`), and a new `sync.IconSyncGateway` — a thin instantiable wrapper over the non-instantiable `IconSync` statics, mirroring `AccountRefreshGateway`/`GlobalDataRefreshGateway`/`TradingPostPriceRefreshGateway`'s precedent. Setup's step selection and order differ from both `AccountRefreshService`'s and `GlobalDataRefreshService`'s broader workflows, so this story reuses their gateways' individual methods directly rather than composing those two higher-level services, per the constraint against introducing character refresh or graph rebuild into setup. The icon-cache-directory path (`repo.AppConfig.ICON_CACHE_DIR`, env-var-configurable with a `<user.home>/...` default) is still read at `firstFill()` call time, not at construction time, matching the original's lazy-configuration-read timing. This replaces the previously separate top-level `InitialSetupService`, which duplicated this orchestration outside the application layer; that class (and its `syncTpPrices(...)` test seam and matching test) has been deleted so one authoritative setup workflow remains.
 
 ### 5.5 Crafting Profit HTTP flow (`STORY-API-001`)
 
@@ -694,7 +684,7 @@ web.AccountSyncApiController               web.SyncTaskApiController
    |       accountRefreshService::refreshAll)
    v                                    (background virtual thread)
 202 SyncTaskAcceptedResponse            application.AccountRefreshService.refreshAll()
-    + Location header                        -> bank, materials, recipes, characters
+    + Location header                        -> bank, materials, recipes, Luck, characters
     | 400 | 409                                 (order, persistence and short-circuiting
                                                  unchanged, inside the service)
 ```
@@ -961,8 +951,7 @@ frontend/
 │   ├── ecto-browser-smoke.mjs        real-browser check of the Ectoplasm page against a stub origin:
 │   │                                 four scenarios as supplied, reload, keyboard, narrow layout,
 │   │                                 loading/failure/no-result states and what the page requests
-│   ├── ecto-live-smoke.mjs           real backend: §23 runtime samples of the calculation route, and
-│   │                                 the rendered scenarios against the live responses received
+│   ├── ecto-live-smoke.mjs           legacy check of the removed calculation route; pending replacement
 │   ├── account-browser-smoke.mjs     real-browser check of Bank/Materials against a running backend
 │   ├── icon-browser-smoke.mjs        real-browser item images against a controlled origin: 503/404/
 │   │                                 undecodable/slow images, fallback, layout, empty slots
@@ -982,13 +971,13 @@ frontend/
     │   ├── SiteHeader.vue            wordmark, destination links, compact synchronization activity
     │   └── PageHeader.vue            every page's h1, intro sentence and grouped page actions
     ├── api/
-    │   ├── types.ts                  TypeScript shapes of the §5.5/§5.7–§5.10/§5.12/§5.13/§5.15
+    │   ├── types.ts                  TypeScript shapes of the §5.5/§5.7–§5.10/§5.12/§5.13 and the obsolete Ecto contract
     │   │                             transport records
     │   ├── http.ts                   fetch wrapper; maps the uniform error body to ApiRequestError
     │   ├── craftingApi.ts            the five crafting routes the two screens call, behind an interface
     │   ├── syncApi.ts                the three triggers and the shared status route
     │   ├── accountApi.ts             the two §5.12 account reads, behind an interface
-    │   └── ectoApi.ts                the one §5.15 calculation route, behind an interface
+    │   └── ectoApi.ts                legacy client for the removed calculation route; replacement pending
     ├── account/
     │   ├── BankScreen.vue            the bank as §5.12 supplies it, empty slots kept in place
     │   ├── MaterialsScreen.vue       the backend's categories, labels and stack order, unchanged
@@ -1025,8 +1014,8 @@ frontend/
     │   ├── recipeLabel.ts            name, or the item id when the backend supplied none; wiki URL
     │   └── formatCopper.ts           copper → gold/silver/copper text, signed where it may be a loss
     ├── ecto/
-    │   ├── EctoSalvageScreen.vue      the §5.15 answer: assumptions, quotes and the four scenarios
-    │   └── useEctoSalvage.ts          that one calculation's phase, data, failure and explicit reload
+    │   ├── EctoSalvageScreen.vue      legacy page awaiting replacement; its backend route is gone
+    │   └── useEctoSalvage.ts          legacy request state awaiting replacement
     └── sync/
         ├── SyncScreen.vue            the synchronization area: one trigger and task state each
         ├── useSyncOperations.ts      per-operation submission and status-polling state
@@ -1523,7 +1512,7 @@ module (`ItemIcon`, `CraftingResolution`, `ResolutionTreeNode`, `rowState`, `res
   the table row without replacing it, with the tree's one-output-batch basis and the actual root
   sourcing labelled truthfully.
 
-**Ectoplasm Salvage page (`STORY-WEB-013`).** The browser consumer of §5.15, at `#/ecto` — a
+**Ectoplasm Salvage page (`STORY-WEB-013`).** This legacy browser page still requests the removed §5.15 route and awaits replacement. It remains at `#/ecto` — a
 destination of its own with its own document title and page heading. It is the one screen deliberately
 **not** kept alive across navigation: it has no scope, settings, search or selection to preserve, and
 its result is a snapshot of live Trading Post prices, so reopening it calculates again rather than
@@ -1532,7 +1521,7 @@ difference — a reload asked for while one is in flight is *suppressed* rather 
 each one costs the backend a live upstream lookup — and the page's only control is that explicit reload;
 nothing here polls or retries by itself.
 
-- **Every figure is a backend field.** The four scenarios are rendered in the order §5.15 names them,
+- **Legacy rendering.** The four scenarios are rendered in the order the removed contract named them,
   through the shared `formatCopper`/`formatSignedCopper`/`moneyTone` helpers and nothing else. No fee
   is applied, no expected yield is scaled, and profit, net cost and the cost of 1000 Luck are shown as
   supplied rather than related to the quotes beside them. The quote panel reads each price out of the
@@ -1580,7 +1569,7 @@ merged, and no shopping total is produced from any of it. The TypeScript types i
 validate received JSON and do not replace backend validation.
 
 **Not built yet.** Item names in a resolution node are whatever the backend supplied. The Ectoplasm
-page names its two items itself and shows the neutral icon placeholder, because §5.15 carries no item
+page names its two items itself and shows the neutral icon placeholder, because its legacy response carries no item
 metadata. Missing: automatic refresh, task cancellation, any
 client-side progress mechanism, item names on the inventory screens (no contract supplies them,
 §5.12), any persistence across a browser reload, and every other screen. Neither crafting screen has
@@ -1591,8 +1580,8 @@ maximum is a display control the user owns, not a performance mechanism, and Dis
 equivalent. Full-page timings exist for the Profit table only
 (see "Measured browser behaviour" above); the **detail a selection loads** is still untimed, and so is
 the Discovery page as a whole —
-`TARGET_ARCHITECTURE.md` §33 requires both as part of a complete page. The Ectoplasm page has backend
-route timings (§5.15) but no full-page timing either. Neither result table's header
+`TARGET_ARCHITECTURE.md` §33 requires both as part of a complete page. The removed Ectoplasm route
+has historical timings (§5.15), but no full-page timing exists. Neither result table's header
 stays visible while scrolling. The tab icon is a neutral placeholder awaiting the Product Owner's file
 (see "Browser tab icon" below); there is no mobile navigation menu
 (six short destination links wrap instead), no footer and no artwork or icon set beyond item images.
@@ -1625,7 +1614,7 @@ so `smoke:favicon` counts what the origin actually served rather than page reque
 | `npm run smoke:discovery` | real-browser check of the Crafting Discovery split at two viewports, keyboard selection and sorting, the grouped controls, the fresh detail and what the page sends; needs `npm run build` only |
 | `npm run smoke:discovery:live` | read-only comparison of the rendered Discovery rows and one selected tree against the responses a real backend returned; needs the backend **and** `npm run dev` already running |
 | `npm run smoke:ecto` | real-browser check of the Ectoplasm page: its destination, the four scenarios as supplied, the keyboard-operated reload, duplicate suppression, the narrow layout and the loading/failure/no-result states; needs `npm run build` only |
-| `npm run smoke:ecto:live` | §23 runtime samples of the calculation route (`GW2_ECTO_LIVE_SAMPLES`, default 5) plus the rendered scenarios against the live responses received; needs the backend **and** `npm run dev` already running |
+| `npm run smoke:ecto:live` | Legacy check for the removed calculation route; pending replacement and currently cannot pass against the backend |
 | `npm run smoke:favicon` | real-browser check of the tab icon: the built document's single icon link, and the bytes of `public/favicon.ico` loaded from it; answers every `/api/` call 404, so it evidences nothing about any screen's data; needs `npm run build` only |
 
 The backend is started separately with `./mvnw spring-boot:run` from the repository root (§8).
@@ -2071,78 +2060,31 @@ fetch can be *counted* by a proxy instead of inferred from a rendered picture.
 
 ---
 
-### 5.15 Ectoplasm Salvage HTTP flow (`STORY-WEB-013`)
+### 5.15 Ectoplasm Salvage HTTP flow (removed)
 
-An HTTP entry point over the §5.3 use case, added without touching it: `EctoView` still calls
-`application.EctoSalvageService.calculate()` in process, and the two paths call the identical method.
-Unlike every crafting route this one reads no database and needs no synchronization — its quotes are
-acquired live by the application's own gateway (§5.3).
+`GET /api/ecto/salvage` and its response model, controller, exception mapping, and Spring bean wiring have been removed. The JavaFX `EctoView` still calls `application.EctoSalvageService` in process (§5.3). The browser page has not yet been replaced. Its future read inputs are the generic item routes and current-account Luck route in §5.17; no backend salvage calculation route exists.
 
-```text
-GET /api/ecto/salvage
-   |
-   v
-web.EctoSalvageApiController
-   |  1. reject any query parameter (the use case accepts no input) — before delegating
-   |  2. ectoSalvageService.calculate()          one call per accepted request
-   |       -> api.tp.EctoLivePriceGateway.fetchQuotes(...)   (live, unsynchronized)
-   |       -> ecto.EctoSalvageCalculator.evaluate(...) x4
-   |  3. field-for-field copy into web.dto.EctoSalvageResponse
-   v
-200 EctoSalvageResponse | 400 UNSUPPORTED_REQUEST | 502 PRICE_SOURCE_UNAVAILABLE
-```
+---
 
-**Contract.** `GET /api/ecto/salvage`, `application/json`, no request body and **no** accepted
-parameter — there is no adjustable yield, fee, item, quantity or acquisition mode, so a request
-carrying any query parameter is rejected with 400 `UNSUPPORTED_REQUEST` *before* the service is
-called rather than answered with the unparameterised result. The response carries
-`resultAvailable`, the `ectoItemId`/`dustItemId` the quotes were taken for, an `assumptions` group
-(`expectedLuckPerEcto`, `expectedDustPerEcto`, `ectosPer1000Luck`, `tradingPostSellFeePercent`) read
-from the domain constants in `ecto.EctoSalvageCalculator`, and the four named scenarios
-`instantBuyInstantSell`, `instantBuyListingSell`, `listingBuyInstantSell`, `listingBuyListingSell`.
-Each scenario is seven integers in copper, per one Ectoplasm except the last:
-`ectoAcquisitionCostCopper`, `dustGrossUnitPriceCopper` and `expectedGrossRecoveredDustValueCopper`
-carry **no fee** and are the ones a client displays as prices, while
-`netValueOfRecoveredDustCopper`, `netCostPerEctoCopper`, `profitPerEctoCopper` and
-`costPer1000LuckCopper` are the domain's **fee-inclusive** results with `DOMAIN_SPEC.md` §25's selling
-fee applied once, on the Dust side only (§46–§47). Signs are preserved — a negative net cost or Luck
-cost means the recovered Dust is worth more than the Ectoplasm — and a supplied zero stays zero.
-`STORY-DOM-024` replaced the earlier per-Dust-unit `dustNetUnitPriceCopper` with the gross
-`expectedGrossRecoveredDustValueCopper`, because §46 scales the expected yield onto the gross quote
-*before* the fee rather than rounding each Dust unit into a modeled sale, and reads
-`tradingPostSellFeePercent` from `tradingpost.TradingPostFeePolicy` — the same owner the calculation
-deducts through — so the stated rate cannot drift from the deducted one.
+### 5.16 Account Luck and Magic Find progression
 
-**Nothing economic at the boundary.** The controller fetches no price, holds no quote-acquisition
-sequence, applies no fee, scales no yield and computes no profit, net cost or Luck cost: every number
-it returns came out of that one service call. The assumptions are reported as **expected values**, not
-guaranteed drops (`DOMAIN_SPEC.md` §45/§47), and no field is derivable from another by design — a
-client taking the stated percentage off the gross recovered Dust value would be running its own
-economics.
+The existing account sync sequences now include consumed Luck. `AccountRefreshService.refreshAll()` and `InitialSetupService.firstFill()` call `AccountRefreshGateway.syncAccountLuck()`, which delegates to `AccountSync`. The narrow materials-and-recipes refresh remains narrow. `AccountSync` uses the existing authenticated `Gw2ApiClient` to read `/v2/account` for the stable account GUID and `/v2/account/luck` for consumed Luck. The latter requires `account`, `progression`, and `unlocks` key permissions. An empty Luck array means zero; malformed values fail the sync before a write. HTTP/authentication failures propagate through the same account-sync task handling as the other account steps. Sync does not silently treat a missing permission as zero.
 
-**Statuses.** 200 with `resultAvailable: true` and four scenarios; 200 with `resultAvailable: false`
-and four **null** scenarios when the Trading Post returned no usable quote for both items — a
-completed calculation with no result, never zeros (`DOMAIN_SPEC.md` §21); 400 `UNSUPPORTED_REQUEST`
-with nothing calculated; 502 `PRICE_SOURCE_UNAVAILABLE` when the live lookup or the calculation failed.
-`web.EctoSalvageApiExceptionHandler` is scoped to this controller (`assignableTypes`), so framework
-404/405 routing answers are untouched, and it catches `Exception` because the use case declares the
-checked `IOException` of a failed live fetch. 502 rather than 500: the failing work is an upstream
-service the backend does not control. Only this application's own validation message is returned —
-upstream URLs, status text and stack traces are logged server-side and never sent.
+`AccountLuckRepository` upserts one `account_luck` row per GW2 account GUID, with a nonnegative `BIGINT` consumed value and fetch timestamp. This table is account-scoped even though the older bank/material/recipe tables remain single-account. `AccountLuckSchema` applies the idempotent SQL resource before normal backend startup completes and before the JavaFX account sync writes Luck. It also checks the required column types and nullability, failing startup or sync on an incompatible existing table. The resource remains available for manual application, but a normal backend startup no longer silently serves a database missing this table.
 
-**No shared request state.** One `EctoSalvageService` bean, for the reason §5.12's account reads
-record: it keeps no per-call state — only its price gateway — and returns a fresh result object per
-call, so no request can observe another's result.
+`luck.MagicFindProgression` loads one global CSV resource containing the exact cumulative thresholds from the [GW2 Wiki Luck progression table](https://wiki.guildwars2.com/wiki/Luck#Progression), from 0% through the 300% cap. It is not copied into account rows. `application.AccountLuckService` reads a named account's stored Luck and resolves its current percentage, current/next thresholds, remaining Luck, cap remainder, and +5%/+10%/cap targets. It can resolve arbitrary requested later targets without sending the whole table to a client. Luck-derived Magic Find is separate from achievement and other bonuses; consumed Luck above the 300% threshold is retained while progression stays capped.
 
-**Synchronous, by measurement.** Per §23 / `UD-007`, measured against the real backend and the real
-Trading Post before the policy was fixed (`frontend/scripts/ecto-live-smoke.mjs`; 15 sequential
-samples in two runs, figures in `STORY-WEB-013`'s Result): median 164–294 ms, minimum 62 ms, with a
-single 6.1 s outlier attributable to the upstream GW2 API. Comfortably inside a normal HTTP request, so
-this route answers synchronously with no background task and no status endpoint — and it is the
-browser's explicit reload, never a timer, that repeats it. The outlier is why the screen shows a
-loading state and suppresses a duplicate in-flight reload rather than assuming the answer is instant.
-No `TARGET_ARCHITECTURE.md` §33 claim follows from these figures: they are this route's backend
-request time, and §33 is about the Crafting pages.
+`GET /api/account/luck` binds the read to the server-configured GW2 API key: `CurrentAccountLuckService` calls authenticated `/v2/account` for its stable ID, then reads only that ID through `AccountLuckService`. The browser supplies no account ID or key; query parameters are rejected. When that account has no stored Luck row, the service invokes the existing `AccountRefreshGateway.syncAccountLuck()` step once and rereads it, so an otherwise initialized cold backend does not require a separate full account sync before the page can load. This is the current single-user deployment boundary, not a multi-user session implementation. An unavailable GW2 identity or Luck sync returns 502, and an unavailable database returns 503. The removed Ectoplasm calculation route remains absent.
+
+---
+
+### 5.17 Generic item reads for the future Ectoplasm page
+
+`GET /api/items/prices?ids=19721,24277` reads live `/v2/commerce/prices` quotes through the existing `EctoLivePriceGateway`. The response is `{ "prices": [{ "itemId": 19721, "buyUnitCopper": 0, "sellUnitCopper": 0 }] }`, with actual nonnegative copper values or nulls when a quote is unavailable. `buyUnitCopper` is the Trading Post's highest buy offer; `sellUnitCopper` is its lowest sell listing. This route does no salvage calculation and does not read the synchronized crafting price snapshot.
+
+`GET /api/items/metadata?ids=...` batch-reads `items` through `ItemRepository`. Missing rows or icon sources are filled on demand through the existing `IconSync` GW2 item parser and metadata upsert, then reread. Each requested ID returns `{ "itemId": 19721, "name": "Glob of Ectoplasm", "iconUrl": "/api/items/19721/icon/<sourceKey>.png" }`; unknown items have null name and iconUrl. `ItemIconUrls` derives the application-relative image URL from retained canonical metadata, and the existing `ItemIconApiController` serves the image bytes. Both generic reads accept 1–50 distinct positive decimal IDs in a comma-separated `ids` query parameter and preserve request order. Upstream failures return 502; metadata storage failures return 503. No image source URL is sent to the browser.
+
+The account Luck response contains consumed Luck, current and next Luck-derived Magic Find percentages, `cumulativeLuckForCurrentPercent`, the next and cap cumulative thresholds, remaining Luck to the next percentage and cap, the stored fetch timestamp, and labeled `PLUS_5`, `PLUS_10`, and `CAP` target records. The current threshold is the cumulative Luck at which the current percentage began; together with `cumulativeLuckForNextPercent`, it lets the browser display progress within that one level. At the 300% cap, the current threshold is the 300% threshold, the next percentage and threshold are null, next remainder is zero, and later target percentages clamp to 300. The browser displays a full progress bar at the cap. The controller only copies `AccountLuckService`'s resolved values.
 
 ---
 
@@ -2190,7 +2132,7 @@ Observed (not inferred) mixing of concerns, by file:
 4. **(Resolved by `STORY-APP-004`/`STORY-APP-005`/`STORY-APP-006`/`STORY-APP-007`)** ~~`Gw2App`'s "First-time DB Setup" button handler directly calls `InitialSetupService`/`sync.*`.~~ All three `Gw2App` sync buttons ("Sync Account", "Sync ALL tradeable Items...", "First-time DB Setup") now delegate to named application services (`application.AccountRefreshService`/`application.GlobalDataRefreshService`/`application.InitialSetupService`) instead of calling `sync.*`/`repo.*` directly from the button handler. `application.InitialSetupService.firstFill()` (`STORY-APP-007`) owns the setup orchestration that previously lived in a top-level `InitialSetupService` class outside the application layer; that class has been deleted.
 5. **(Resolved by `STORY-INFRA-003`)** ~~Two independent JDBC connection helpers (`repo.Db`, `sync.Db`) with different method names but identical behavior.~~ `sync.Db` was removed; all `repo.*` and `sync.*` callers now share `repo.Db.open()`.
 6. **(Resolved by `STORY-APP-009`)** ~~`BankView`/`MaterialsView` each declare their own literal `DB_URL`/`DB_USER`/`DB_PASS` constants and call `DriverManager.getConnection(...)` directly, bypassing `repo.AppConfig`/`repo.EnvConfig`/`repo.Db` entirely.~~ Both views now read through an application service (`application.BankContentsService`, `application.MaterialStorageService`) over a persistence adapter (`repo.BankRepository`, `repo.MaterialStorageRepository`) that opens its connection with the shared `repo.Db.open()` helper from item 5. The two extra connection-acquisition paths no longer exist (`docs/KNOWN_PROBLEMS.md` §2.2).
-7. **(Resolved by `STORY-DOM-023` and `STORY-DOM-024`; one uncalled primitive remains)** Two Trading Post fee calculations now exist, for two different models. Resolved `UD-011` chose a profitability model, so `tradingpost.TradingPostFeePolicy` is the owner for profit: `craft.CraftingPlanner.evaluateOneRecipeNew(...)` deducts its 15% once, from the gross per-craft revenue, when building `CraftResult.profitCopper`/`totalProfitCopper`. `revenueCopper` and `totalSellValueCopper` stay gross, and every consumer that copies them — `application.CraftingProfitService`/`CraftingDiscoveryService`, both JavaFX controllers/views, `web.CraftingRowMapper`/`web.dto.CraftingRowDto` and the browser frontend — carries the corrected profits and the unchanged gross values through unaltered. `craft.CostEvaluationResult` publishes no profit of its own since `STORY-DOM-025`: its pre-fee `profitPerCraft`/`totalProfit`, and the unread `buyCostPerCraft`/`effectiveCostPerCraft` whose purchased-material basis (`sim.getFirstCraft().getBuyCostCopper()`) differed from the planner's, are gone, leaving only the gross `revenuePerCraft` and `opportunityCostPerCraft` the planner actually reads. `STORY-DOM-024` brought the Ectoplasm side onto the same owner: `ecto.EctoSalvageCalculator` holds no fee rate, multiplier or rounding rule of its own any more — its `netSaleProceeds(...)`/`SELL_FEE_PERCENT`/`0.85` multiplier are gone — and `evaluate(...)` scales the expected Dust yield onto the gross quote first, then takes `TradingPostFeePolicy.netOfFee(...)` off that one aggregate (§46), so no Dust unit is rounded into a modeled sale and no fractional expected drop becomes an actual one. `web.EctoSalvageApiController` states the percentage from the same policy. Still open: `tradingpost.TradingPostSaleCalculator`, the §25.1 transaction model, has no caller (§25.1 forbids substituting it for the profitability model).
+7. **(Resolved by `STORY-DOM-023` and `STORY-DOM-024`; one uncalled primitive remains)** Two Trading Post fee calculations now exist, for two different models. Resolved `UD-011` chose a profitability model, so `tradingpost.TradingPostFeePolicy` is the owner for profit: `craft.CraftingPlanner.evaluateOneRecipeNew(...)` deducts its 15% once, from the gross per-craft revenue, when building `CraftResult.profitCopper`/`totalProfitCopper`. `revenueCopper` and `totalSellValueCopper` stay gross, and every consumer that copies them — `application.CraftingProfitService`/`CraftingDiscoveryService`, both JavaFX controllers/views, `web.CraftingRowMapper`/`web.dto.CraftingRowDto` and the browser frontend — carries the corrected profits and the unchanged gross values through unaltered. `craft.CostEvaluationResult` publishes no profit of its own since `STORY-DOM-025`: its pre-fee `profitPerCraft`/`totalProfit`, and the unread `buyCostPerCraft`/`effectiveCostPerCraft` whose purchased-material basis (`sim.getFirstCraft().getBuyCostCopper()`) differed from the planner's, are gone, leaving only the gross `revenuePerCraft` and `opportunityCostPerCraft` the planner actually reads. `STORY-DOM-024` brought the Ectoplasm side onto the same owner: `ecto.EctoSalvageCalculator` holds no fee rate, multiplier or rounding rule of its own any more — its `netSaleProceeds(...)`/`SELL_FEE_PERCENT`/`0.85` multiplier are gone — and `evaluate(...)` scales the expected Dust yield onto the gross quote first, then takes `TradingPostFeePolicy.netOfFee(...)` off that one aggregate (§46), so no Dust unit is rounded into a modeled sale and no fractional expected drop becomes an actual one. Still open: `tradingpost.TradingPostSaleCalculator`, the §25.1 transaction model, has no caller (§25.1 forbids substituting it for the profitability model).
 
 ---
 

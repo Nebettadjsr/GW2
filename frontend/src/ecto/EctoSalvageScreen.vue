@@ -1,511 +1,1057 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
-import { ectoApi, type EctoApi } from '@/api/ectoApi'
-import type { EctoSalvageScenario } from '@/api/types'
-import { formatCopper, formatSignedCopper, moneyTone } from '@/crafting/formatCopper'
+import { computed, onMounted, ref, watch } from 'vue'
+import { getJson } from '@/api/http'
+import { formatCopper } from '@/crafting/formatCopper'
 import ItemIcon from '@/items/ItemIcon.vue'
 import PageHeader from '@/shell/PageHeader.vue'
-import { useEctoSalvage } from './useEctoSalvage'
 
-/**
- * The Ectoplasm Salvage screen: the four Ecto-buy/Dust-sell scenarios exactly as
- * `GET /api/ecto/salvage` calculated them (`CURRENT_ARCHITECTURE.md` 5.15, `DOMAIN_SPEC.md` 2.3,
- * 45–47).
- *
- * Every number on this page is a backend field rendered through the shared money formatter. Nothing
- * is recomputed here: no fee is applied, no expected yield is scaled, and profit, net cost and the
- * cost of 1000 Luck are displayed as supplied rather than related to the quotes beside them. That is
- * the whole point of the route — a second economic implementation in the browser is exactly what it
- * exists to prevent.
- *
- * Gross and fee-inclusive values are labelled apart wherever they sit together (`DOMAIN_SPEC.md` 25):
- * the Trading Post quotes and the expected recovered Dust value are gross, and the economic results
- * already have the selling fee in them, deducted once, on the expected gross recovered Dust value
- * (`DOMAIN_SPEC.md` 46). Buying and selling modes are always written out — instant
- * buy versus buy order, instant sell versus listing sell — because "buy price" and "sell price" are
- * ambiguous without whose perspective is meant (`DOMAIN_SPEC.md` 20).
- *
- * The `api` prop exists so a test can supply controlled responses; the browser always gets the real
- * backend client.
- */
-const props = withDefaults(defineProps<{ api?: EctoApi }>(), { api: () => ectoApi })
+type BuyMode = 'instant' | 'order'
+type SellMode = 'instant' | 'listing'
+type LuckTargetKind = 'PLUS_5' | 'PLUS_10' | 'CAP'
 
-const salvage = useEctoSalvage(() => props.api.loadSalvage())
-
-onMounted(() => {
-  void salvage.load()
-})
-
-/** Only ever true for a completed calculation the Trading Post had no usable quotes for. */
-const hasNoResult = computed(
-  () => salvage.data.value !== null && !salvage.data.value.resultAvailable
-)
-
-interface ScenarioRow {
-  key: string
-  /** How the Ectoplasm is bought, in the spec's own terms. */
-  acquisition: string
-  /** How the recovered Dust is sold. */
-  sale: string
-  values: EctoSalvageScenario
+interface ItemMetadata {
+  itemId: number
+  name: string | null
+  iconUrl: string | null
 }
 
-/**
- * The four scenarios in the fixed order the backend names them. A scenario the backend did not
- * supply is not listed at all — an absent result is never filled in with zeros.
+interface ItemPrice {
+  itemId: number
+  buyUnitCopper: number | null
+  sellUnitCopper: number | null
+}
+
+interface ItemPricesResponse {
+  prices: ItemPrice[]
+}
+
+interface ItemMetadataResponse {
+  items: ItemMetadata[]
+}
+
+interface LuckTarget {
+  kind: LuckTargetKind
+  magicFindPercent: number
+  cumulativeLuck: number
+  luckRemaining: number
+}
+
+interface AccountLuckResponse {
+  consumedLuck: number
+  currentLuckMagicFindPercent: number
+  cumulativeLuckForCurrentPercent: number
+  nextMagicFindPercent: number | null
+  cumulativeLuckForNextPercent: number | null
+  luckRemainingToNextPercent: number
+  luckRemainingToCap: number
+  cumulativeLuckForCap: number
+  fetchedAt: string
+  targets: LuckTarget[]
+}
+
+interface SalvageTool {
+  id: string
+  name: string
+  costPerUseCopper: number
+  gemsPerUse?: number
+  costNote?: string
+}
+
+interface SalvageMethod {
+  id: string
+  name: string
+  itemId: number
+  rareMaterialsChance: number
+  dustPerEcto: number
+  luckPerEcto: number
+  tools: SalvageTool[]
+  defaultToolId: string
+}
+
+interface DisplayLuckTarget {
+  key: string
+  label: string
+  magicFindPercent: number
+  luckRemaining: number
+  ectosRequired: number
+  expectedDust: number
+  salvageCostCopper: number
+  gemCost: number
+  effectiveCostCopper: number | null
+}
+
+/*
+ * Yield data: GW2 Wiki Ectoplasm salvage research.
+ * Tool costs: GW2 Wiki Salvage kit table.
+ *
+ * Standard-kit values use the Wiki's first listed coin cost/use.
+ * Mystic's 10.496c/use excludes the acquisition value of Mystic Forge Stones,
+ * matching the Wiki's stated caveat.
+ * Black Lion's Gem Store basis is 300 Gems / 25 uses = 12 Gems/use.
+ * Gems are shown separately and are deliberately not converted to gold yet.
  */
-const scenarios = computed<ScenarioRow[]>(() => {
-  const result = salvage.data.value
-  if (result === null) return []
+const salvageMethods: SalvageMethod[] = [
+  {
+    id: 'basic',
+    name: 'Basic / Copper-Fed',
+    itemId: 44602,
+    rareMaterialsChance: 10,
+    dustPerEcto: 1.63,
+    luckPerEcto: 103.17,
+    defaultToolId: 'copper-fed',
+    tools: [
+      { id: 'basic-kit', name: 'Basic', costPerUseCopper: 3.52 },
+      { id: 'copper-fed', name: 'Copper-Fed', costPerUseCopper: 3 }
+    ]
+  },
+  {
+    id: 'fine',
+    name: 'Fine',
+    itemId: 23041,
+    rareMaterialsChance: 15,
+    dustPerEcto: 1.75,
+    luckPerEcto: 107.83,
+    defaultToolId: 'fine-kit',
+    tools: [
+      { id: 'fine-kit', name: 'Fine', costPerUseCopper: 11.52 }
+    ]
+  },
+  {
+    id: 'journeyman',
+    name: 'Journeyman / Runecrafter',
+    itemId: 89409,
+    rareMaterialsChance: 20,
+    dustPerEcto: 1.74,
+    luckPerEcto: 106.33,
+    defaultToolId: 'runecrafter',
+    tools: [
+      { id: 'journeyman-kit', name: 'Journeyman', costPerUseCopper: 32 },
+      { id: 'runecrafter', name: 'Runecrafter', costPerUseCopper: 30 }
+    ]
+  },
+  {
+    id: 'master',
+    name: "Master's / Mystic / Silver-Fed",
+    itemId: 67027,
+    rareMaterialsChance: 25,
+    dustPerEcto: 1.85,
+    luckPerEcto: 104.57,
+    defaultToolId: 'silver-fed',
+    tools: [
+      { id: 'masters-kit', name: "Master's", costPerUseCopper: 61.44 },
+      {
+        id: 'mystic-kit',
+        name: 'Mystic',
+        costPerUseCopper: 10.496,
+        costNote: 'Coin component only; Mystic Forge Stone acquisition value is not included.'
+      },
+      { id: 'silver-fed', name: 'Silver-Fed', costPerUseCopper: 60 }
+    ]
+  },
+  {
+    id: 'black-lion',
+    name: 'Black Lion',
+    itemId: 19986,
+    rareMaterialsChance: 50,
+    dustPerEcto: 2.04,
+    luckPerEcto: 104.75,
+    defaultToolId: 'black-lion-kit',
+    tools: [
+      {
+        id: 'black-lion-kit',
+        name: 'Black Lion',
+        costPerUseCopper: 0,
+        gemsPerUse: 12,
+        costNote: 'Gem cost is shown separately and is not converted to gold.'
+      }
+    ]
+  }
+]
 
-  const named: { key: string; acquisition: string; sale: string; values: EctoSalvageScenario | null }[] = [
-    {
-      key: 'instant-buy-instant-sell',
-      acquisition: 'Instant buy',
-      sale: 'Instant sell',
-      values: result.instantBuyInstantSell
-    },
-    {
-      key: 'instant-buy-listing-sell',
-      acquisition: 'Instant buy',
-      sale: 'Listing sell',
-      values: result.instantBuyListingSell
-    },
-    {
-      key: 'buy-order-instant-sell',
-      acquisition: 'Buy order',
-      sale: 'Instant sell',
-      values: result.listingBuyInstantSell
-    },
-    {
-      key: 'buy-order-listing-sell',
-      acquisition: 'Buy order',
-      sale: 'Listing sell',
-      values: result.listingBuyListingSell
-    }
-  ]
+const ECTO_ID = 19721
+const DUST_ID = 24277
+const ITEM_IDS = [ECTO_ID, DUST_ID, ...salvageMethods.map(method => method.itemId)]
+const TP_SELL_MULTIPLIER = 0.85
 
-  return named.filter((scenario): scenario is ScenarioRow => scenario.values !== null)
+const metadata = ref<Map<number, ItemMetadata>>(new Map())
+const prices = ref<Map<number, ItemPrice>>(new Map())
+const accountLuck = ref<AccountLuckResponse | null>(null)
+const loading = ref(true)
+const loadError = ref<string | null>(null)
+
+const selectedMethodId = ref('master')
+const selectedToolId = ref('silver-fed')
+const ectoCount = ref(100)
+const ectoBuyMode = ref<BuyMode>('instant')
+const dustSellMode = ref<SellMode>('instant')
+
+const selectedMethod = computed(() =>
+  salvageMethods.find(method => method.id === selectedMethodId.value) ?? salvageMethods[3]
+)
+
+const selectedTool = computed(() =>
+  selectedMethod.value.tools.find(tool => tool.id === selectedToolId.value) ??
+  selectedMethod.value.tools[0]
+)
+
+watch(selectedMethodId, () => {
+  selectedToolId.value = selectedMethod.value.defaultToolId
 })
 
-/**
- * The quotes behind the scenarios, read out of the scenarios that used them. Each value is one
- * backend field: the Ecto instant-buy cost is the instant-buy scenarios' own acquisition cost, and
- * the Dust instant-sell quote is the instant-sell scenarios' own quote. Nothing is averaged,
- * reconciled or computed across scenarios. All four are gross — this panel shows market prices, and
- * no fee-inclusive figure belongs in it.
- */
-const quotes = computed(() => {
-  const result = salvage.data.value
-  const instantSell = result?.instantBuyInstantSell ?? null
-  const listingSell = result?.instantBuyListingSell ?? null
-  const buyOrder = result?.listingBuyInstantSell ?? null
-  if (result === null || instantSell === null || listingSell === null || buyOrder === null) {
-    return null
+function itemMetadata(itemId: number): ItemMetadata | undefined {
+  return metadata.value.get(itemId)
+}
+
+function iconUrl(itemId: number): string | null {
+  return itemMetadata(itemId)?.iconUrl ?? null
+}
+
+function itemPrice(itemId: number): ItemPrice | undefined {
+  return prices.value.get(itemId)
+}
+
+const ectoInstantBuyCopper = computed(() => itemPrice(ECTO_ID)?.sellUnitCopper ?? null)
+const ectoBuyOrderCopper = computed(() => itemPrice(ECTO_ID)?.buyUnitCopper ?? null)
+const dustInstantSellCopper = computed(() => itemPrice(DUST_ID)?.buyUnitCopper ?? null)
+const dustListingSellCopper = computed(() => itemPrice(DUST_ID)?.sellUnitCopper ?? null)
+
+const selectedEctoPrice = computed(() =>
+  ectoBuyMode.value === 'instant' ? ectoInstantBuyCopper.value : ectoBuyOrderCopper.value
+)
+
+const selectedDustPrice = computed(() =>
+  dustSellMode.value === 'instant' ? dustInstantSellCopper.value : dustListingSellCopper.value
+)
+
+const normalizedEctoCount = computed(() => {
+  const value = Number(ectoCount.value)
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0
+})
+
+const expectedLuck = computed(() => normalizedEctoCount.value * selectedMethod.value.luckPerEcto)
+const expectedDust = computed(() => normalizedEctoCount.value * selectedMethod.value.dustPerEcto)
+
+const ectoCostCopper = computed<number | null>(() =>
+  selectedEctoPrice.value == null ? null : normalizedEctoCount.value * selectedEctoPrice.value
+)
+
+const salvageCostCopper = computed(() =>
+  Math.round(normalizedEctoCount.value * selectedTool.value.costPerUseCopper)
+)
+
+const salvageGemCost = computed(() =>
+  normalizedEctoCount.value * (selectedTool.value.gemsPerUse ?? 0)
+)
+
+const dustNetCopper = computed<number | null>(() => {
+  if (selectedDustPrice.value == null) return null
+  return Math.floor(expectedDust.value * selectedDustPrice.value * TP_SELL_MULTIPLIER)
+})
+
+const effectiveLuckCostCopper = computed<number | null>(() => {
+  if (ectoCostCopper.value == null || dustNetCopper.value == null) return null
+  return ectoCostCopper.value + salvageCostCopper.value - dustNetCopper.value
+})
+
+const costPer1000LuckCopper = computed<number | null>(() => {
+  if (effectiveLuckCostCopper.value == null || expectedLuck.value <= 0) return null
+  return Math.round((effectiveLuckCostCopper.value / expectedLuck.value) * 1000)
+})
+
+function buildTarget(
+  key: string,
+  label: string,
+  magicFindPercent: number,
+  luckRemaining: number
+): DisplayLuckTarget {
+  const ectosRequired = luckRemaining <= 0
+    ? 0
+    : Math.ceil(luckRemaining / selectedMethod.value.luckPerEcto)
+
+  const targetDust = ectosRequired * selectedMethod.value.dustPerEcto
+  const targetSalvageCost = Math.round(ectosRequired * selectedTool.value.costPerUseCopper)
+  const targetGemCost = ectosRequired * (selectedTool.value.gemsPerUse ?? 0)
+
+  let effectiveCostCopper: number | null = null
+
+  if (selectedEctoPrice.value != null && selectedDustPrice.value != null) {
+    const ectoCost = ectosRequired * selectedEctoPrice.value
+    const dustNet = Math.floor(targetDust * selectedDustPrice.value * TP_SELL_MULTIPLIER)
+    effectiveCostCopper = ectoCost + targetSalvageCost - dustNet
   }
 
   return {
-    ectoInstantBuy: instantSell.ectoAcquisitionCostCopper,
-    ectoBuyOrder: buyOrder.ectoAcquisitionCostCopper,
-    dustInstantSellGross: instantSell.dustGrossUnitPriceCopper,
-    dustListingSellGross: listingSell.dustGrossUnitPriceCopper
+    key,
+    label,
+    magicFindPercent,
+    luckRemaining,
+    ectosRequired,
+    expectedDust: targetDust,
+    salvageCostCopper: targetSalvageCost,
+    gemCost: targetGemCost,
+    effectiveCostCopper
   }
+}
+
+const luckTargets = computed<DisplayLuckTarget[]>(() => {
+  const luck = accountLuck.value
+  if (!luck) return []
+
+  const result: DisplayLuckTarget[] = []
+
+  if (luck.nextMagicFindPercent != null && luck.luckRemainingToNextPercent > 0) {
+    result.push(
+      buildTarget('next', 'Next +1%', luck.nextMagicFindPercent, luck.luckRemainingToNextPercent)
+    )
+  }
+
+  for (const target of luck.targets) {
+    const label = target.kind === 'PLUS_5'
+      ? '+5%'
+      : target.kind === 'PLUS_10'
+        ? '+10%'
+        : '300% cap'
+
+    result.push(
+      buildTarget(target.kind, label, target.magicFindPercent, target.luckRemaining)
+    )
+  }
+
+  return result
 })
 
-/**
- * The written outcome beside the profit figure, so gain and loss are distinguishable without color
- * (`FRONTEND_UX_GUIDELINES.md` 5). A supplied zero is break-even, not an absent value.
- */
-function outcomeOf(profitCopper: number): string {
-  if (profitCopper > 0) return 'gain'
-  return profitCopper < 0 ? 'loss' : 'break-even'
+const magicFindProgressPercent = computed(() => {
+  const luck = accountLuck.value
+
+  if (!luck) return 0
+
+  if (
+    luck.nextMagicFindPercent == null ||
+    luck.cumulativeLuckForNextPercent == null
+  ) {
+    return 100
+  }
+
+  const currentThreshold = luck.cumulativeLuckForCurrentPercent
+  const nextThreshold = luck.cumulativeLuckForNextPercent
+  const levelSize = nextThreshold - currentThreshold
+
+  if (levelSize <= 0) return 0
+
+  const progress =
+    ((luck.consumedLuck - currentThreshold) / levelSize) * 100
+
+  return Math.max(0, Math.min(100, progress))
+})
+
+function formatNumber(value: number): string {
+  return Math.round(value).toLocaleString()
 }
 
-function onReload(): void {
-  void salvage.load()
+function formatMoney(value: number | null): string {
+  return value == null ? 'Price unavailable' : formatCopper(value)
 }
+
+function formatToolCost(copper: number, gems: number): string {
+  const parts: string[] = []
+
+  if (copper > 0 || gems === 0) {
+    parts.push(formatCopper(copper))
+  }
+
+  if (gems > 0) {
+    parts.push(`${gems.toLocaleString()} Gems`)
+  }
+
+  return parts.join(' + ')
+}
+
+async function loadPage(): Promise<void> {
+  loading.value = true
+  loadError.value = null
+
+  const metadataPromise = getJson<ItemMetadataResponse>(
+    `/items/metadata?ids=${encodeURIComponent(ITEM_IDS.join(','))}`
+  )
+  const pricesPromise = getJson<ItemPricesResponse>(
+    `/items/prices?ids=${ECTO_ID},${DUST_ID}`
+  )
+  const luckPromise = getJson<AccountLuckResponse>('/account/luck')
+
+  const [metadataResult, pricesResult, luckResult] = await Promise.allSettled([
+    metadataPromise,
+    pricesPromise,
+    luckPromise
+  ])
+
+  const errors: string[] = []
+
+  if (metadataResult.status === 'fulfilled') {
+    metadata.value = new Map(metadataResult.value.items.map(item => [item.itemId, item]))
+  } else {
+    errors.push('Item metadata could not be read.')
+  }
+
+  if (pricesResult.status === 'fulfilled') {
+    prices.value = new Map(pricesResult.value.prices.map(price => [price.itemId, price]))
+  } else {
+    errors.push('Trading Post prices could not be read.')
+  }
+
+  if (luckResult.status === 'fulfilled') {
+    accountLuck.value = luckResult.value
+  } else {
+    errors.push('Account Luck could not be read.')
+  }
+
+  loadError.value = errors.length > 0 ? errors.join(' ') : null
+  loading.value = false
+}
+
+onMounted(loadPage)
 </script>
 
 <template>
   <div class="screen" data-test="ecto-screen">
     <PageHeader
       heading="Ectoplasm Salvage"
-      intro="What salvaging a Glob of Ectoplasm for Luck really costs, once the recovered Crystalline Dust has been sold. The backend calculates every figure from live Trading Post prices; this page only displays them."
-    >
-      <template #actions>
-        <button
-          type="button"
-          class="button--primary"
-          data-test="ecto-reload"
-          :disabled="salvage.phase.value === 'loading'"
-          @click="onReload"
-        >
-          Reload calculation
-        </button>
-      </template>
-    </PageHeader>
+      intro="Calculate how much Luck really costs after selling the Crystalline Dust recovered from salvaging your Ectoplasm."
+    />
 
-    <div class="stack">
-      <p class="meta prose">
-        Prices come from the Trading Post at the moment the calculation ran, not from the
-        synchronized database, so a reload is the only thing that refreshes them. This page changes
-        nothing on the account and starts no synchronization.
-      </p>
-
-      <p
-        v-if="salvage.phase.value === 'loading'"
-        class="notice notice--info"
-        role="status"
-        data-test="ecto-loading"
-      >
-        Calculating from live Trading Post prices…
-      </p>
-
-      <p
-        v-else-if="salvage.failure.value !== null"
-        class="notice notice--error"
-        data-test="ecto-error"
-      >
-        The Ectoplasm calculation could not be completed, so no figures are shown — this is a
-        failure, not a result of zero.
-        <span class="meta detail">
-          Backend answer: {{ salvage.failure.value.code }} — {{ salvage.failure.value.message }}
-        </span>
-        <span class="notice__actions">
-          <button type="button" data-test="ecto-retry" @click="onReload">Try again</button>
-        </span>
-      </p>
-
-      <p v-else-if="hasNoResult" class="notice notice--warning" data-test="ecto-unavailable">
-        The Trading Post returned no usable prices for both Glob of Ectoplasm and Crystalline Dust,
-        so this calculation has no result. That is an answer, not a failure, and no figure is shown
-        as zero in its place.
-      </p>
-
-      <template v-else-if="salvage.data.value !== null">
-        <section class="panel" aria-labelledby="ecto-basis-heading" data-test="ecto-basis">
-          <h2 id="ecto-basis-heading" class="panel__title">Basis of these figures</h2>
-
-          <ul class="basis">
-            <li data-test="ecto-assumption-yield">
-              One Ectoplasm is expected to yield about
-              {{ salvage.data.value.assumptions.expectedLuckPerEcto }} Luck and about
-              {{ salvage.data.value.assumptions.expectedDustPerEcto }} Crystalline Dust. These are
-              expected values over many salvages, not a guaranteed drop from one.
-            </li>
-            <li data-test="ecto-assumption-luck">
-              1000 Luck is costed as
-              {{ salvage.data.value.assumptions.ectosPer1000Luck }} Ectoplasm.
-            </li>
-            <li data-test="ecto-assumption-fee">
-              Profit, net cost and Luck cost already have the Trading Post's
-              {{ salvage.data.value.assumptions.tradingPostSellFeePercent }}% selling fee deducted
-              once, from the expected gross value of the Dust one Ectoplasm recovers. Values labelled
-              gross carry no fee — the Trading Post quotes and that recovered Dust value alike — and
-              buying an Ectoplasm carries no selling fee.
-            </li>
-          </ul>
-        </section>
-
-        <section
-          v-if="quotes !== null"
-          class="panel"
-          aria-labelledby="ecto-prices-heading"
-          data-test="ecto-prices"
-        >
-          <h2 id="ecto-prices-heading" class="panel__title">Live Trading Post prices</h2>
-
-          <div class="quotes">
-            <div class="quote-item">
-              <p class="quote-item__name">
-                <!--
-                  The shared icon component with no supplied source: this route carries no item
-                  metadata, so the established neutral placeholder stands in. No URL is built here
-                  and nothing is requested from ArenaNet.
-                -->
-                <ItemIcon :item-id="salvage.data.value.ectoItemId" :icon-url="null" loading="eager" />
-                <span>Glob of Ectoplasm</span>
-                <span class="meta" data-test="ecto-item-id">#{{ salvage.data.value.ectoItemId }}</span>
-              </p>
-              <dl class="quote-values">
-                <div>
-                  <dt>Instant buy (gross)</dt>
-                  <dd class="money" data-test="ecto-quote-instant-buy">
-                    {{ formatCopper(quotes.ectoInstantBuy) }}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Buy order (gross)</dt>
-                  <dd class="money" data-test="ecto-quote-buy-order">
-                    {{ formatCopper(quotes.ectoBuyOrder) }}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-
-            <div class="quote-item">
-              <p class="quote-item__name">
-                <ItemIcon :item-id="salvage.data.value.dustItemId" :icon-url="null" loading="eager" />
-                <span>Crystalline Dust</span>
-                <span class="meta" data-test="dust-item-id">#{{ salvage.data.value.dustItemId }}</span>
-              </p>
-              <dl class="quote-values">
-                <div>
-                  <dt>Instant sell (gross)</dt>
-                  <dd class="money" data-test="dust-quote-instant-sell">
-                    {{ formatCopper(quotes.dustInstantSellGross) }}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Listing sell (gross)</dt>
-                  <dd class="money" data-test="dust-quote-listing-sell">
-                    {{ formatCopper(quotes.dustListingSellGross) }}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-          </div>
-        </section>
-
-        <section aria-labelledby="ecto-scenarios-heading" class="stack">
-          <h2 id="ecto-scenarios-heading">All four buying and selling combinations</h2>
-
-          <div
-            class="table-region"
-            role="region"
-            aria-label="Ectoplasm salvage scenarios, scrollable"
-            tabindex="0"
-          >
-            <table class="scenario-table" data-test="ecto-scenario-table">
-              <caption class="visually-hidden">
-                One row per combination of how the Ectoplasm is bought and how the recovered Dust is
-                sold. Values marked gross carry no fee — the two Trading Post quotes and the
-                expected value of the recovered Dust; the columns marked after fees are the same
-                recovered Dust value less the selling fee, and the net cost, profit and Luck cost
-                that follow from it. Every figure is per one Ectoplasm except the last column.
-              </caption>
-
-              <thead>
-                <tr>
-                  <th scope="col">Buy Ectoplasm</th>
-                  <th scope="col">Sell Dust</th>
-                  <th scope="col" class="numeric">
-                    <span class="column-label">
-                      Ectoplasm cost
-                      <span class="column-note">gross, per ecto</span>
-                    </span>
-                  </th>
-                  <th scope="col" class="numeric">
-                    <span class="column-label">
-                      Dust quote
-                      <span class="column-note">gross, per dust</span>
-                    </span>
-                  </th>
-                  <th scope="col" class="numeric">
-                    <span class="column-label">
-                      Recovered Dust
-                      <span class="column-note">gross, per ecto</span>
-                    </span>
-                  </th>
-                  <th scope="col" class="numeric">
-                    <span class="column-label">
-                      Recovered Dust
-                      <span class="column-note">
-                        after {{ salvage.data.value.assumptions.tradingPostSellFeePercent }}% TP
-                        fees, per ecto
-                      </span>
-                    </span>
-                  </th>
-                  <th scope="col" class="numeric">
-                    <span class="column-label">
-                      Net cost
-                      <span class="column-note">
-                        after {{ salvage.data.value.assumptions.tradingPostSellFeePercent }}% TP
-                        fees, per ecto
-                      </span>
-                    </span>
-                  </th>
-                  <th scope="col" class="numeric">
-                    <span class="column-label">
-                      Profit
-                      <span class="column-note">
-                        after {{ salvage.data.value.assumptions.tradingPostSellFeePercent }}% TP
-                        fees, per ecto
-                      </span>
-                    </span>
-                  </th>
-                  <th scope="col" class="numeric">
-                    <span class="column-label">
-                      Cost per 1000 Luck
-                      <span class="column-note">
-                        after {{ salvage.data.value.assumptions.tradingPostSellFeePercent }}% TP fees
-                      </span>
-                    </span>
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                <tr
-                  v-for="scenario in scenarios"
-                  :key="scenario.key"
-                  :data-test="`ecto-scenario-${scenario.key}`"
-                  class="scenario-row"
-                >
-                  <th scope="row" data-test="ecto-scenario-acquisition">
-                    {{ scenario.acquisition }}
-                  </th>
-                  <td data-test="ecto-scenario-sale">{{ scenario.sale }}</td>
-                  <td class="numeric" data-test="ecto-scenario-ecto-cost">
-                    <span class="money money--cost">
-                      {{ formatCopper(scenario.values.ectoAcquisitionCostCopper) }}
-                    </span>
-                  </td>
-                  <td class="numeric" data-test="ecto-scenario-dust-gross">
-                    <span class="money">
-                      {{ formatCopper(scenario.values.dustGrossUnitPriceCopper) }}
-                    </span>
-                  </td>
-                  <td class="numeric" data-test="ecto-scenario-dust-recovered-gross">
-                    <span class="money">
-                      {{ formatCopper(scenario.values.expectedGrossRecoveredDustValueCopper) }}
-                    </span>
-                  </td>
-                  <td class="numeric" data-test="ecto-scenario-dust-recovered-net">
-                    <span class="money">
-                      {{ formatCopper(scenario.values.netValueOfRecoveredDustCopper) }}
-                    </span>
-                  </td>
-                  <td class="numeric" data-test="ecto-scenario-net-cost">
-                    <span class="money">
-                      {{ formatCopper(scenario.values.netCostPerEctoCopper) }}
-                    </span>
-                  </td>
-                  <td class="numeric" data-test="ecto-scenario-profit">
-                    <span :class="`money money--${moneyTone(scenario.values.profitPerEctoCopper)}`">
-                      {{ formatSignedCopper(scenario.values.profitPerEctoCopper) }}
-                    </span>
-                    <span class="meta outcome" data-test="ecto-scenario-outcome">
-                      {{ outcomeOf(scenario.values.profitPerEctoCopper) }}
-                    </span>
-                  </td>
-                  <td class="numeric" data-test="ecto-scenario-luck-cost">
-                    <span class="money">
-                      {{ formatCopper(scenario.values.costPer1000LuckCopper) }}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <p class="meta prose">
-            A negative net cost or Luck cost means the recovered Dust is worth more than the
-            Ectoplasm it came from; the sign is written out so the figure reads the same without
-            color.
-          </p>
-        </section>
-      </template>
+    <div v-if="loadError" class="notice notice--warning" role="alert">
+      {{ loadError }}
     </div>
+
+    <section class="panel stack" aria-labelledby="ecto-calculator-heading">
+      <h2 id="ecto-calculator-heading" class="panel__title">Calculation controls</h2>
+
+      <div class="calculator-grid">
+        <fieldset>
+          <legend>Salvage tool</legend>
+
+          <div class="salvage-table">
+            <div class="salvage-header" aria-hidden="true">
+              <span>Tool</span>
+              <span>Rare mats</span>
+              <span>Dust / Ecto</span>
+              <span>Luck / Ecto</span>
+            </div>
+
+            <button
+              v-for="method in salvageMethods"
+              :key="method.id"
+              type="button"
+              class="salvage-row"
+              :class="{ selected: selectedMethodId === method.id }"
+              :aria-pressed="selectedMethodId === method.id"
+              @click="selectedMethodId = method.id"
+            >
+              <span class="salvage-tool">
+                <ItemIcon
+                  :icon-url="iconUrl(method.itemId)"
+                  :item-id="method.itemId"
+                  :size="32"
+                  loading="lazy"
+                />
+                <strong>{{ method.name }}</strong>
+              </span>
+              <strong class="numeric">{{ method.rareMaterialsChance }}%</strong>
+              <strong class="numeric">{{ method.dustPerEcto.toFixed(2) }}</strong>
+              <strong class="numeric">{{ method.luckPerEcto.toFixed(2) }}</strong>
+            </button>
+          </div>
+
+          <p class="meta source-line">
+            Expected yields are statistical averages from
+            <a
+              href="https://wiki.guildwars2.com/wiki/Glob_of_Ectoplasm/salvage_research"
+              target="_blank"
+              rel="noopener noreferrer"
+            >GW2 Wiki salvage research</a>.
+          </p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Trading Post prices</legend>
+
+          <div class="stack tp-stack">
+            <div class="tp-block">
+              <div class="tp-heading">
+                <ItemIcon :icon-url="iconUrl(ECTO_ID)" :item-id="ECTO_ID" :size="32" loading="eager" />
+                <div>
+                  <strong>{{ itemMetadata(ECTO_ID)?.name ?? 'Glob of Ectoplasm' }}</strong>
+                  <div class="meta">How do you want to buy them?</div>
+                </div>
+              </div>
+
+              <div class="tp-options">
+                <button
+                  type="button"
+                  class="tp-option"
+                  :class="{ selected: ectoBuyMode === 'instant' }"
+                  :aria-pressed="ectoBuyMode === 'instant'"
+                  @click="ectoBuyMode = 'instant'"
+                >
+                  <span>Instant buy</span>
+                  <strong>{{ formatMoney(ectoInstantBuyCopper) }}</strong>
+                </button>
+
+                <button
+                  type="button"
+                  class="tp-option"
+                  :class="{ selected: ectoBuyMode === 'order' }"
+                  :aria-pressed="ectoBuyMode === 'order'"
+                  @click="ectoBuyMode = 'order'"
+                >
+                  <span>Buy order</span>
+                  <strong>{{ formatMoney(ectoBuyOrderCopper) }}</strong>
+                </button>
+              </div>
+            </div>
+
+            <div class="tp-block">
+              <div class="tp-heading">
+                <ItemIcon :icon-url="iconUrl(DUST_ID)" :item-id="DUST_ID" :size="32" loading="eager" />
+                <div>
+                  <strong>{{ itemMetadata(DUST_ID)?.name ?? 'Pile of Crystalline Dust' }}</strong>
+                  <div class="meta">How do you want to sell the recovered Dust?</div>
+                </div>
+              </div>
+
+              <div class="tp-options">
+                <button
+                  type="button"
+                  class="tp-option"
+                  :class="{ selected: dustSellMode === 'instant' }"
+                  :aria-pressed="dustSellMode === 'instant'"
+                  @click="dustSellMode = 'instant'"
+                >
+                  <span>Instant sell</span>
+                  <strong>{{ formatMoney(dustInstantSellCopper) }}</strong>
+                </button>
+
+                <button
+                  type="button"
+                  class="tp-option"
+                  :class="{ selected: dustSellMode === 'listing' }"
+                  :aria-pressed="dustSellMode === 'listing'"
+                  @click="dustSellMode = 'listing'"
+                >
+                  <span>Listing sell</span>
+                  <strong>{{ formatMoney(dustListingSellCopper) }}</strong>
+                </button>
+              </div>
+            </div>
+
+            <p class="meta">Dust value includes the Trading Post's 15% selling fees.</p>
+          </div>
+        </fieldset>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="ecto-result-heading">
+      <h2 id="ecto-result-heading" class="panel__title">Ectoplasm Salvage Result</h2>
+
+      <div class="result-story">
+        <p class="result-lead">
+          <span>If you salvage</span>
+          <input
+            id="ecto-count"
+            v-model.number="ectoCount"
+            class="ecto-count"
+            type="number"
+            min="0"
+            step="1"
+            inputmode="numeric"
+            aria-label="Number of Ectoplasms"
+          />
+          <span>Ectos using a </span>
+
+          <span class="tool-choice">
+            <button
+              v-for="tool in selectedMethod.tools"
+              :key="tool.id"
+              type="button"
+              class="tool-choice__button"
+              :class="{ 'tool-choice__button--selected': selectedToolId === tool.id }"
+              @click="selectedToolId = tool.id"
+            >
+              {{ tool.name }}
+            </button>
+          </span> Salvage Tool,
+            <br />
+          <span>
+            you are expected to receive approximately
+            <strong>{{ formatNumber(expectedLuck) }} Luck</strong> and
+            <strong>{{ formatNumber(expectedDust) }} Crystalline Dust</strong>
+            and pay
+            <strong>{{ formatToolCost(salvageCostCopper, salvageGemCost) }}</strong>
+            for use of the salvage tool.
+          </span>
+        </p>
+
+        <p v-if="selectedTool.costNote" class="meta tool-cost-note">
+          {{ selectedTool.costNote }}
+        </p>
+
+        <p v-if="ectoCostCopper != null">
+          Buying those <strong>{{ normalizedEctoCount.toLocaleString() }} Ectoplasms</strong> by
+          <strong>{{ ectoBuyMode === 'instant' ? 'instant buy' : 'buy order' }}</strong>
+          costs <strong>{{ formatMoney(ectoCostCopper) }}</strong>.
+        </p>
+
+        <p v-if="dustNetCopper != null">
+          Selling the recovered <strong>{{ formatNumber(expectedDust) }} Crystalline Dust</strong> by
+          <strong>{{ dustSellMode === 'instant' ? 'instant sell' : 'listing sell' }}</strong>
+          returns approximately <strong>{{ formatMoney(dustNetCopper) }}</strong>
+          after the Trading Post's 15% selling fees.
+        </p>
+
+        <p v-if="effectiveLuckCostCopper != null" class="result-conclusion">
+          {{ normalizedEctoCount.toLocaleString() }} Ectos therefore give you approximately
+          <strong>{{ formatNumber(expectedLuck) }} Luck</strong> for an effective coin cost of
+          <strong>{{ formatMoney(effectiveLuckCostCopper) }}</strong>
+          <span v-if="costPer1000LuckCopper != null">
+            — {{ formatMoney(costPer1000LuckCopper) }} per 1,000 Luck
+          </span>
+          <span v-if="salvageGemCost > 0">
+            + <strong>{{ salvageGemCost.toLocaleString() }} Gems</strong>
+            ({{ selectedTool.gemsPerUse }} Gems per salvage)
+          </span>.
+        </p>
+
+        <p v-else class="meta">The final cost will appear when Trading Post prices are available.</p>
+      </div>
+
+      <div class="magic-find-section">
+        <div class="section-heading">
+          <div class="stack heading-copy">
+            <h2>Your Luck &amp; Magic Find</h2>
+            <p class="meta">
+              See what your next permanent Luck-based Magic Find increases would cost using the calculator settings above.
+            </p>
+          </div>
+
+          <a
+            href="https://wiki.guildwars2.com/wiki/Magic_Find"
+            target="_blank"
+            rel="noopener noreferrer"
+          >What does Magic Find do?</a>
+        </div>
+
+        <div v-if="accountLuck" class="stack account-luck">
+          <div class="account-summary">
+            <div>
+              <span class="meta">Consumed Luck</span>
+              <strong>{{ accountLuck.consumedLuck.toLocaleString() }}</strong>
+            </div>
+            <div>
+              <span class="meta">Luck-based Magic Find</span>
+              <strong>{{ accountLuck.currentLuckMagicFindPercent }}%</strong>
+            </div>
+            <div>
+              <span class="meta">Next level</span>
+              <strong>
+                {{ accountLuck.nextMagicFindPercent == null ? 'Maximum' : `${accountLuck.nextMagicFindPercent}%` }}
+              </strong>
+            </div>
+          </div>
+
+          <div v-if="accountLuck.nextMagicFindPercent != null" class="luck-progress">
+            <div class="luck-progress__labels">
+              <strong>{{ accountLuck.currentLuckMagicFindPercent }}%</strong>
+              <span>{{ accountLuck.luckRemainingToNextPercent.toLocaleString() }} Luck remaining</span>
+              <strong>{{ accountLuck.nextMagicFindPercent }}%</strong>
+            </div>
+            <div class="luck-progress__track" aria-hidden="true">
+              <div
+                class="luck-progress__bar"
+                :style="{ width: `${magicFindProgressPercent}%` }"
+              />
+            </div>
+          </div>
+
+          <div class="table-region" tabindex="0" aria-label="Magic Find target costs">
+            <div class="target-table">
+              <div class="target-header">
+                <span>Target</span>
+                <span>Luck needed</span>
+                <span>Ectos</span>
+                <span>Expected Dust</span>
+                <span>Effective cost</span>
+              </div>
+
+              <div v-for="target in luckTargets" :key="target.key" class="target-row">
+                <span class="target-name">
+                  <strong>{{ target.label }}</strong>
+                  <span class="meta">→ {{ target.magicFindPercent }}% MF</span>
+                </span>
+                <span>{{ target.luckRemaining.toLocaleString() }}</span>
+                <span>{{ target.ectosRequired.toLocaleString() }}</span>
+                <span>~{{ formatNumber(target.expectedDust) }}</span>
+                <span class="target-cost">
+                  <strong>{{ formatMoney(target.effectiveCostCopper) }}</strong>
+                  <small v-if="target.gemCost > 0" class="meta">
+                    + {{ target.gemCost.toLocaleString() }} Gems
+                  </small>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <p class="meta">
+            Ecto counts are rounded up because you cannot salvage part of an Ectoplasm.
+            Effective coin costs include the selected salvage tool's coin cost, Ecto purchase price,
+            recovered Dust value and Trading Post selling fees. Gem costs are shown separately and are not converted to gold.
+          </p>
+        </div>
+
+        <p v-else-if="loading" class="meta">Loading account Luck…</p>
+        <p v-else class="meta">Account Luck is currently unavailable.</p>
+      </div>
+
+      <footer class="source-footer">
+        <span class="meta">Sources:</span>
+        <a
+          href="https://wiki.guildwars2.com/wiki/Glob_of_Ectoplasm/salvage_research"
+          target="_blank"
+          rel="noopener noreferrer"
+        >Ectoplasm salvage research</a>
+        <span aria-hidden="true">·</span>
+        <a
+          href="https://wiki.guildwars2.com/wiki/Salvage_kit"
+          target="_blank"
+          rel="noopener noreferrer"
+        >Salvage kit costs &amp; rates</a>
+        <span aria-hidden="true">·</span>
+        <a
+          href="https://wiki.guildwars2.com/wiki/Luck"
+          target="_blank"
+          rel="noopener noreferrer"
+        >Luck progression</a>
+        <span aria-hidden="true">·</span>
+        <a
+          href="https://wiki.guildwars2.com/wiki/Black_Lion_Salvage_Kit"
+          target="_blank"
+          rel="noopener noreferrer"
+        >Black Lion Salvage Kit</a>
+      </footer>
+    </section>
   </div>
 </template>
 
 <style scoped>
-.detail {
-  display: block;
-  margin-top: var(--space-2);
-}
+/* Only page-specific layout lives here. Shared controls, panels, fieldsets,
+   typography, colors, spacing and table-region styling come from styles.css. */
 
-.basis {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  max-width: var(--prose-max);
-  margin: 0;
-  padding-left: var(--space-4);
-  color: var(--color-muted);
-  font-size: var(--text-sm);
-}
-
-/* Two item blocks side by side once there is room, stacked before that. */
-.quotes {
+.calculator-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
-  gap: var(--space-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  align-items: stretch;
 }
 
-.quote-item__name {
+.calculator-grid > fieldset {
+  min-width: 0;
+}
+
+.salvage-table {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.salvage-header,
+.salvage-row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) 5.5rem 6.5rem 6.5rem;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.salvage-header {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+
+.salvage-header span:not(:first-child) {
+  text-align: right;
+}
+
+.salvage-row {
+  width: 100%;
+  min-height: 3rem;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.salvage-row:last-child {
+  border-bottom: 0;
+}
+
+.salvage-row:hover:not(:disabled),
+.salvage-row.selected {
+  background: var(--color-raised);
+}
+
+.salvage-row.selected {
+  position: relative;
+  z-index: 1;
+  box-shadow: inset 0 0 0 1px var(--color-highlight);
+}
+
+.salvage-tool,
+.tp-heading {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin: 0 0 var(--space-2);
-  font-weight: 600;
+  min-width: 0;
 }
 
-.quote-values {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin: 0;
+.source-line {
+  margin-top: var(--space-2);
 }
 
-.quote-values > div {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
+.tp-stack {
   gap: var(--space-3);
 }
 
-.quote-values dt {
-  color: var(--color-muted);
-  font-size: var(--text-sm);
+.tp-block + .tp-block {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
 }
 
-.quote-values dd {
-  margin: 0;
+.tp-heading {
+  margin-bottom: var(--space-2);
 }
 
-.scenario-table {
-  border-collapse: collapse;
-  /* Sized by its content, not stretched: the region around it owns the available width. */
-  min-width: 100%;
-  font-size: var(--text-sm);
+.tp-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
 }
 
-.scenario-table th,
-.scenario-table td {
-  border-bottom: 1px solid var(--color-border);
-  padding: var(--space-2) var(--space-3);
-  text-align: left;
-  vertical-align: top;
+.tp-option {
+  width: 100%;
+  justify-content: space-between;
+  background: transparent;
 }
 
-.scenario-table thead th {
+.tp-option.selected {
+  border-color: var(--color-highlight);
   background: var(--color-raised);
-  white-space: nowrap;
 }
 
-.column-label {
+.result-story {
+  max-width: 90rem;
+  line-height: 1.6;
+}
+
+.result-story p + p {
+  margin-top: var(--space-2);
+}
+
+.result-lead {
+  font-size: var(--text-lg);
+}
+
+.ecto-count {
+  width: 7rem;
+  margin: 0 var(--space-1);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.tool-choice {
   display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tool-choice__button {
+  min-height: 2.5rem;
+  padding: var(--space-2) var(--space-3);
+}
+
+.tool-choice__button--selected {
+  border-color: var(--color-highlight);
+  background: var(--color-raised);
+  font-weight: 600;
+}
+
+.tool-separator {
+  color: var(--color-muted);
+}
+
+.tool-cost-note {
+  margin-top: var(--space-1) !important;
+}
+
+.result-conclusion {
+  color: var(--color-success);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.magic-find-section {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.heading-copy {
+  gap: var(--space-1);
+}
+
+.account-luck {
+  margin-top: var(--space-3);
+}
+
+.account-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+
+.account-summary > div {
+  display: flex;
   flex-direction: column;
 }
 
-.numeric .column-label {
-  align-items: flex-end;
+.account-summary strong {
+  font-size: var(--text-lg);
 }
 
-/* The basis of the column, so a gross quote is never read as a fee-inclusive result. */
-.column-note {
-  color: var(--color-muted);
+.luck-progress {
+  width: min(50%, 48rem);
+  min-width: 36rem;
+  margin: var(--space-2) 0 var(--space-3);
+}
+
+.luck-progress__labels {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
   font-size: var(--text-sm);
-  font-weight: 400;
-  text-transform: lowercase;
 }
 
-/* The word beside the figure: the meaning survives a monochrome rendering. */
-.outcome {
-  display: block;
-  text-transform: lowercase;
+.luck-progress__labels span {
+  text-align: center;
+  color: var(--color-muted);
+}
+
+.luck-progress__track {
+  width: 100%;
+  height: 1rem;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg);
+}
+
+.luck-progress__bar {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-highlight);
+  transition: width var(--transition-fast);
+}
+
+.target-table {
+  min-width: 46rem;
+}
+
+.target-header,
+.target-row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 0.8fr) minmax(6rem, 0.6fr) minmax(8rem, 0.8fr) minmax(10rem, 0.9fr);
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.target-header {
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-raised);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.target-row {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.target-row:last-child {
+  border-bottom: 0;
+}
+
+.target-name,
+.target-cost {
+  display: flex;
+  flex-direction: column;
+}
+
+.source-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-5);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 64rem) {
+  .calculator-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .luck-progress {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 48rem) {
+  .salvage-header {
+    display: none;
+  }
+
+  .salvage-row {
+    grid-template-columns: 1fr auto auto auto;
+  }
+
+  .section-heading {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 34rem) {
+  .tp-options {
+    grid-template-columns: 1fr;
+  }
+
+  .salvage-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .salvage-tool {
+    grid-column: 1 / -1;
+  }
 }
 </style>

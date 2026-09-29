@@ -3,7 +3,7 @@
  * and text contrast (STORY-WEB-004, FRONTEND_UX_GUIDELINES 2, 3, 7, 8).
  *
  * Runs the built frontend against a *controlled* API boundary (`scripts/stubOrigin.mjs`): this script
- * answers every route the four areas read, so no real backend, no database and no GW2 API is involved
+ * answers every route the areas read, so no real backend, no database and no GW2 API is involved
  * and no synchronization can be started. It therefore evidences structure, layout and interaction —
  * never real data, and never page-load performance (TARGET_ARCHITECTURE 33).
  *
@@ -32,12 +32,31 @@ const VIEWPORTS = [
   { name: 'phone 360×800', width: 360, height: 800 }
 ]
 
+/**
+ * One entry per navigation destination `shell/destinations.ts` offers: the heading and document title
+ * it must name, and the element that says its content is on screen. The set is not a literal this
+ * script may fall behind on — step 1 requires it to match the destinations the shell actually rendered,
+ * so a destination added without an entry here fails instead of quietly going unchecked.
+ */
 const AREAS = [
   { id: 'crafting', heading: 'Crafting Profit', ready: '[data-test="profit-table"]' },
+  { id: 'discovery', heading: 'Crafting Discovery', ready: '[data-test="discovery-table"]' },
+  { id: 'ecto', heading: 'Ectoplasm Salvage', ready: '[data-test="ecto-scenario-table"]' },
   { id: 'synchronization', heading: 'Synchronization', ready: '[data-test="sync-controls"]' },
   { id: 'bank', heading: 'Bank', ready: '[data-test="bank-slots"]' },
-  { id: 'materials', heading: 'Materials', ready: '[data-test="material-category"]' }
+  { id: 'materials', heading: 'Materials', ready: '[data-test="material-category"]' },
+  { id: 'nowhere', heading: 'Nowhere', ready: '[data-test="nowhere"]' }
 ]
+
+/** Resolved by id, never by index, so reordering or extending `AREAS` cannot silently retarget a step. */
+function areaOf(id) {
+  const area = AREAS.find((candidate) => candidate.id === id)
+  if (area === undefined) throw new Error(`This check has no area entry for ${id}.`)
+  return area
+}
+
+/** The area the table, zoom, focus, contrast and reduced-motion steps are taken on. */
+const PROFIT_AREA = areaOf('crafting')
 
 const INTRO_SAMPLE = 'page intro'
 /**
@@ -45,7 +64,7 @@ const INTRO_SAMPLE = 'page intro'
  * removed it), so this pair is taken on an area that still renders an introduction instead of being
  * skipped on a page where the element cannot exist — see `assertMeasured`.
  */
-const INTRO_AREA = AREAS.find((area) => area.id === 'synchronization')
+const INTRO_AREA = areaOf('synchronization')
 
 const steps = []
 
@@ -119,6 +138,40 @@ function bankSlots() {
   })
 }
 
+/**
+ * A complete Ectoplasm salvage answer, so the page renders its basis, quotes and the full scenario
+ * table rather than the unavailable notice. The fee percentage is deliberately not the project's 15: a
+ * page stating it from its own knowledge rather than from this answer would print the wrong number.
+ */
+function ectoSalvage() {
+  const scenario = (offset, profitPerEctoCopper) => ({
+    ectoAcquisitionCostCopper: 23_456 + offset,
+    dustGrossUnitPriceCopper: 1_234 + offset,
+    expectedGrossRecoveredDustValueCopper: 3_456 + offset,
+    netValueOfRecoveredDustCopper: 2_938 + offset,
+    netCostPerEctoCopper: 20_518 + offset,
+    profitPerEctoCopper,
+    costPer1000LuckCopper: 410_360 + offset
+  })
+
+  return {
+    resultAvailable: true,
+    ectoItemId: 19_721,
+    dustItemId: 24_277,
+    assumptions: {
+      expectedLuckPerEcto: 20,
+      expectedDustPerEcto: 0.75,
+      ectosPer1000Luck: 50,
+      tradingPostSellFeePercent: 12
+    },
+    // A loss, a gain and a break-even, so this page puts all three money treatments on screen too.
+    instantBuyInstantSell: scenario(0, -20_518),
+    instantBuyListingSell: scenario(10, 6_767),
+    listingBuyInstantSell: scenario(20, 0),
+    listingBuyListingSell: scenario(30, 6_969)
+  }
+}
+
 function answerApi({ url, sendJson }) {
   if (url.pathname === '/api/crafting/selector-options') {
     return sendJson(200, {
@@ -146,6 +199,28 @@ function answerApi({ url, sendJson }) {
       rowCount: rows.length,
       rows
     })
+  }
+  // Discovery's rows are the same shape as Profit's, so the same fixture serves both tables; what this
+  // check needs from this route is a rendered comparison list, not a second set of candidates.
+  if (url.pathname === '/api/crafting/discovery') {
+    const rows = profitRows()
+    return sendJson(200, {
+      scope: { discipline: 'Chef', characterName: 'A Long Character Name', rating: 500 },
+      inventoryCharacterName: 'A Long Character Name',
+      settings: {
+        useOwnMats: true,
+        allowBuying: true,
+        maxBuyCopper: 200_000,
+        listingSell: false,
+        listingBuy: false,
+        dailyBuyInsteadOfCraft: false
+      },
+      rowCount: rows.length,
+      rows
+    })
+  }
+  if (url.pathname === '/api/ecto/salvage') {
+    return sendJson(200, ectoSalvage())
   }
   if (url.pathname === '/api/account/bank') {
     const slots = bankSlots()
@@ -297,6 +372,20 @@ function assertMeasured(samples, required, where) {
   )
 }
 
+/**
+ * The destinations the shell actually rendered, in document order, as their `data-test` names.
+ *
+ * Both the areas this check must cover and the navigation stops the focus order must contain are
+ * derived from this rather than from a literal count. A count written here goes stale the day a
+ * destination is added — which is exactly what happened to the four Crafting Discovery and Ectoplasm
+ * Salvage arrived with (STORY-WEB-017 F001/F002).
+ */
+async function renderedDestinations(page) {
+  return page.$$eval('[data-test="screen-nav"] .site-nav__link', (links) =>
+    links.map((link) => link.getAttribute('data-test'))
+  )
+}
+
 async function focusWalk(page, stepCount) {
   const focused = []
   for (let step = 0; step < stepCount; step += 1) {
@@ -343,7 +432,27 @@ async function run() {
     )
     record('page served by this script', `${stub.servedCount()} requests answered so far`)
 
-    // 1. Every area reachable by its own URL, named, marked and reflowing at three widths.
+    // 1. What follows has to cover what the shell offers. A destination in the navigation with no
+    // `AREAS` entry gets no heading, title, `aria-current` or reflow check at all, and an entry for a
+    // destination that no longer exists cannot open — both are reported here, by name, rather than
+    // leaving the per-viewport line claiming a coverage the list no longer has.
+    const navStopNames = await renderedDestinations(page)
+    const navIds = navStopNames.map((name) => String(name).replace(/^nav-/, ''))
+    check(navIds.length > 0, 'The shell rendered no navigation destination, so nothing could be covered.')
+    const uncovered = navIds.filter((id) => !AREAS.some((area) => area.id === id))
+    check(
+      uncovered.length === 0,
+      `The navigation offers ${uncovered.join(', ')}, which this check does not cover — add an AREAS ` +
+        'entry naming its heading and its ready selector, or that destination stays unchecked.'
+    )
+    const absent = AREAS.map((area) => area.id).filter((id) => !navIds.includes(id))
+    check(
+      absent.length === 0,
+      `This check covers ${absent.join(', ')}, which the navigation no longer offers: ${navIds.join(', ')}.`
+    )
+    record(`all ${navIds.length} rendered destinations are covered by this check`, navIds.join(', '))
+
+    // 2. Every area reachable by its own URL, named, marked and reflowing at three widths.
     for (const viewport of VIEWPORTS) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height })
       for (const area of AREAS) {
@@ -373,12 +482,12 @@ async function run() {
             `(${overflow.scrollWidth} > ${overflow.clientWidth}).`
         )
       }
-      record(`all four areas reflow at ${viewport.name}`, 'no page-level horizontal scrolling')
+      record(`all ${AREAS.length} areas reflow at ${viewport.name}`, 'no page-level horizontal scrolling')
     }
 
-    // 2. The wide comparison table keeps its scrolling local, and is reachable by keyboard.
+    // 3. The wide comparison table keeps its scrolling local, and is reachable by keyboard.
     await page.setViewportSize({ width: 360, height: 800 })
-    await openArea(page, stub.origin, AREAS[0])
+    await openArea(page, stub.origin, PROFIT_AREA)
     const region = await page.$eval('.table-region', (element) => ({
       scrollWidth: element.scrollWidth,
       clientWidth: element.clientWidth,
@@ -399,9 +508,9 @@ async function run() {
       `region ${region.clientWidth}px wide holds ${region.scrollWidth}px of columns`
     )
 
-    // 3. Browser zoom: doubling the text size must reflow, not overflow the page.
+    // 4. Browser zoom: doubling the text size must reflow, not overflow the page.
     await page.setViewportSize({ width: 1440, height: 900 })
-    await openArea(page, stub.origin, AREAS[0])
+    await openArea(page, stub.origin, PROFIT_AREA)
     await page.evaluate(() => {
       document.documentElement.style.fontSize = '200%'
     })
@@ -419,14 +528,18 @@ async function run() {
     })
     record('reflows at 200% text size', `${zoomed.scrollWidth}px content in ${zoomed.clientWidth}px`)
 
-    // 4. Keyboard: the skip link and every destination are focusable, visibly, in document order.
-    await openArea(page, stub.origin, AREAS[0])
-    const walk = await focusWalk(page, 6)
+    // 5. Keyboard: the skip link and every destination are focusable, visibly, in document order.
+    // The walk is as long as the shell's own navigation, and the stops after the skip link must be
+    // exactly that navigation, in its order — a count written here would only assert an older shell.
+    await openArea(page, stub.origin, PROFIT_AREA)
+    const walk = await focusWalk(page, navStopNames.length + 1)
     check(walk[0]?.test === null && walk[0]?.tag === 'A', `First stop was not the skip link: ${JSON.stringify(walk[0])}`)
-    const navStops = walk.filter((stop) => stop?.test?.startsWith('nav-'))
+    const navStops = walk.slice(1).map((stop) => stop?.test ?? null)
     check(
-      navStops.length === 4,
-      `Expected the four destinations in the focus order, saw ${navStops.map((stop) => stop.test).join(', ')}.`
+      navStops.length === navStopNames.length &&
+        navStops.every((stop, index) => stop === navStopNames[index]),
+      `Expected the ${navStopNames.length} rendered destinations in the focus order ` +
+        `(${navStopNames.join(', ')}), saw ${navStops.join(', ')}.`
     )
     const invisibleFocus = walk.filter(
       (stop) => stop === null || stop.outlineStyle === 'none' || stop.outlineWidth < 1
@@ -437,7 +550,7 @@ async function run() {
     )
     record('keyboard focus order and visible focus', walk.map((stop) => stop.test ?? 'skip link').join(' → '))
 
-    // 5. Enter on a focused destination opens it, and the new page's heading takes focus.
+    // 6. Enter on a focused destination opens it, and the new page's heading takes focus.
     await page.focus('[data-test="nav-bank"]')
     await page.keyboard.press('Enter')
     await page.waitForSelector('[data-test="bank-slots"]', { timeout: TIMEOUT_MS })
@@ -454,8 +567,8 @@ async function run() {
     )
     record('destinations are operable by keyboard', 'Enter opened Bank and focused its heading')
 
-    // 6. Contrast of the combinations actually rendered, not of the token values.
-    await openArea(page, stub.origin, AREAS[0])
+    // 7. Contrast of the combinations actually rendered, not of the token values.
+    await openArea(page, stub.origin, PROFIT_AREA)
     // DOMAIN_SPEC 2.1.1's three display filters open enabled, and two of them hide exactly the rows
     // whose treatments are measured here (a loss and a zero count). Switching them off puts those
     // treatments back on screen; it changes nothing about the styles being measured.
@@ -467,7 +580,7 @@ async function run() {
     // DOMAIN_SPEC 2.1.1 removed it from Crafting Profit this pair silently measured nothing.
     await openArea(page, stub.origin, INTRO_AREA)
     const samples = [...profitSamples, ...(await measureContrast(page, { only: [INTRO_SAMPLE] }))]
-    assertMeasured(samples, [INTRO_SAMPLE], `contrast on ${AREAS[0].id} and ${INTRO_AREA.id}`)
+    assertMeasured(samples, [INTRO_SAMPLE], `contrast on ${PROFIT_AREA.id} and ${INTRO_AREA.id}`)
     check(samples.length >= 15, `Too few contrast samples were taken: ${samples.length}`)
     const failures = samples.filter((sample) => {
       const isLargeText = sample.fontSize >= 24 || (sample.fontSize >= 18.66 && sample.bold)
@@ -487,7 +600,7 @@ async function run() {
         `${INTRO_AREA.id} at ${intro.ratio.toFixed(2)}:1`
     )
 
-    // 7. The required-pair guard is what turns a vanished target into a failure. With the rendered
+    // 8. The required-pair guard is what turns a vanished target into a failure. With the rendered
     // introduction taken out of the page, the same measurement must report the pair as unmeasured
     // rather than return a smaller set that still satisfies the sample floor above.
     const introRemoved = await page.evaluate(() => {
@@ -512,9 +625,9 @@ async function run() {
     )
     record('a missing contrast target fails the check', reported.message)
 
-    // 8. Reduced motion: the decorative transitions are actually switched off.
+    // 9. Reduced motion: the decorative transitions are actually switched off.
     await page.emulateMedia({ reducedMotion: 'reduce' })
-    await openArea(page, stub.origin, AREAS[0])
+    await openArea(page, stub.origin, PROFIT_AREA)
     const durations = await page.evaluate(() =>
       [...document.querySelectorAll('.site-nav__link, .button--primary')].map(
         (element) => getComputedStyle(element).transitionDuration
@@ -527,7 +640,7 @@ async function run() {
     await page.emulateMedia({ reducedMotion: null })
     record('reduced-motion preference respected', `${durations.length} controls at 0s`)
 
-    // 9. Nothing in any of the above submitted a synchronization or called another host.
+    // 10. Nothing in any of the above submitted a synchronization or called another host.
     check(
       stub.requestsTo('/api/sync').length === 0 && stub.requestsTo('/api/prices').length === 0,
       `Navigating submitted a synchronization request: ${JSON.stringify(stub.requestsTo('/api'))}`
