@@ -64,7 +64,7 @@ interface SalvageMethod {
   rareMaterialsChance: number
   dustPerEcto: number
   luckPerEcto: number
-  tools: SalvageTool[]
+  tools: [SalvageTool, ...SalvageTool[]]
   defaultToolId: string
 }
 
@@ -168,6 +168,9 @@ const salvageMethods: SalvageMethod[] = [
   }
 ]
 
+const defaultMethod = salvageMethods.find(method => method.id === 'master')
+if (!defaultMethod) throw new Error('Default Ectoplasm salvage method is missing')
+
 const ECTO_ID = 19721
 const DUST_ID = 24277
 const ITEM_IDS = [ECTO_ID, DUST_ID, ...salvageMethods.map(method => method.itemId)]
@@ -179,20 +182,22 @@ const accountLuck = ref<AccountLuckResponse | null>(null)
 const loading = ref(true)
 const loadError = ref<string | null>(null)
 
-const selectedMethodId = ref('master')
-const selectedToolId = ref('silver-fed')
+const selectedMethodId = ref(defaultMethod.id)
+const selectedToolId = ref(defaultMethod.defaultToolId)
 const ectoCount = ref(100)
 const ectoBuyMode = ref<BuyMode>('instant')
 const dustSellMode = ref<SellMode>('instant')
 
-const selectedMethod = computed(() =>
-  salvageMethods.find(method => method.id === selectedMethodId.value) ?? salvageMethods[3]
+const selectedMethod = computed<SalvageMethod>(() =>
+  salvageMethods.find(method => method.id === selectedMethodId.value) ?? defaultMethod
 )
 
-const selectedTool = computed(() =>
-  selectedMethod.value.tools.find(tool => tool.id === selectedToolId.value) ??
-  selectedMethod.value.tools[0]
-)
+const selectedTool = computed<SalvageTool>(() => {
+  const method = selectedMethod.value
+  return method.tools.find(tool => tool.id === selectedToolId.value) ??
+    method.tools.find(tool => tool.id === method.defaultToolId) ??
+    method.tools[0]
+})
 
 watch(selectedMethodId, () => {
   selectedToolId.value = selectedMethod.value.defaultToolId
