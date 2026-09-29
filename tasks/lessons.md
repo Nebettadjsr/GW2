@@ -420,3 +420,43 @@ the page's own unit test asserts that route is never called. Before writing a
 stub answer, grep the component for the hook and the route it actually loads, and
 prefer a ready selector that only appears once the data-driven region rendered,
 so a stale fixture fails the wait instead of measuring a degraded page.
+
+## Finishing the previous story is not doing the active one
+
+A CI fix, a follow-up repair or any work carried over from the last story is
+**not** the active story's deliverable. Re-read `CURRENT_STORY.md` at the start of
+every invocation and write the result into *that* story's file.
+
+**Why:** an execution of `STORY-PERF-002` (measure the Crafting Profit page on the
+real user database) reported `STORY-WEB-019` work instead. `STORY-PERF-002`'s
+Result still read "Not started", so the evaluator rejected an attempt in which
+nothing the story asked for had been attempted — and the page had never been
+measured at all.
+
+**How to apply:** before writing any result, check that the story ID in the
+artifact matches `CURRENT_STORY.md`, and that each acceptance criterion names
+evidence produced *in this invocation*. An acceptance criterion satisfied by an
+earlier story's evidence is unmet, not inherited.
+
+## A disposable browser profile may be undeletable — use a new one, never a warm one
+
+`chromium.launchPersistentContext` directories stay locked on Windows after the
+context closes: every `Default/*` file answers EPERM to `rm -rf` and to the
+harness's own `rmSync`, indefinitely and with no surviving Chrome process of this
+session to blame.
+
+**Why:** `STORY-PERF-002`'s cold-cache phases each have to start from an empty
+profile. The second phase failed at once — "`…/profile` could not be emptied
+(EPERM), so this phase cannot claim a cold browser cache" — and a previous
+attempt had left exactly such an undeletable directory behind.
+
+**How to apply:** point each cold phase at a **fresh, previously unused** directory
+(`profile`, `profile2`, …) — an absent directory is as cold as an emptied one,
+while reusing a partially deleted one would silently claim a cold cache it does
+not have. Only the warm phase reuses the directory the preceding phase left.
+Do not try to identify the holding process by command line: `Win32_Process`
+returns an **empty** `CommandLine` for every `chrome.exe` in this sandbox (a third
+broken diagnostic beside `netstat` and `WMIC`), so a "no match" result there
+proves nothing. Distinguish your own processes from the user's by parent PID and
+creation time instead — here all 45 `chrome.exe` descended from one browser
+started days earlier, which is what made it safe to leave them alone.

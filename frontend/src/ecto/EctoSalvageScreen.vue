@@ -74,7 +74,7 @@ interface DisplayLuckTarget {
   magicFindPercent: number
   luckRemaining: number
   ectosRequired: number
-  expectedDust: number
+  ectoCostCopper: number | null
   salvageCostCopper: number
   gemCost: number
   effectiveCostCopper: number | null
@@ -273,29 +273,44 @@ function buildTarget(
     ? 0
     : Math.ceil(luckRemaining / selectedMethod.value.luckPerEcto)
 
-  const targetDust = ectosRequired * selectedMethod.value.dustPerEcto
-  const targetSalvageCost = Math.round(ectosRequired * selectedTool.value.costPerUseCopper)
-  const targetGemCost = ectosRequired * (selectedTool.value.gemsPerUse ?? 0)
+    const targetDust = ectosRequired * selectedMethod.value.dustPerEcto
+    const targetSalvageCost = Math.round(
+      ectosRequired * selectedTool.value.costPerUseCopper
+    )
+    const targetGemCost =
+      ectosRequired * (selectedTool.value.gemsPerUse ?? 0)
 
-  let effectiveCostCopper: number | null = null
+    const ectoCostCopper =
+      selectedEctoPrice.value != null
+        ? ectosRequired * selectedEctoPrice.value
+        : null
 
-  if (selectedEctoPrice.value != null && selectedDustPrice.value != null) {
-    const ectoCost = ectosRequired * selectedEctoPrice.value
-    const dustNet = Math.floor(targetDust * selectedDustPrice.value * TP_SELL_MULTIPLIER)
-    effectiveCostCopper = ectoCost + targetSalvageCost - dustNet
-  }
+    let effectiveCostCopper: number | null = null
 
-  return {
-    key,
-    label,
-    magicFindPercent,
-    luckRemaining,
-    ectosRequired,
-    expectedDust: targetDust,
-    salvageCostCopper: targetSalvageCost,
-    gemCost: targetGemCost,
-    effectiveCostCopper
-  }
+    if (ectoCostCopper != null && selectedDustPrice.value != null) {
+      const dustNet = Math.floor(
+        targetDust *
+        selectedDustPrice.value *
+        TP_SELL_MULTIPLIER
+      )
+
+      effectiveCostCopper =
+        ectoCostCopper +
+        targetSalvageCost -
+        dustNet
+    }
+
+    return {
+      key,
+      label,
+      magicFindPercent,
+      luckRemaining,
+      ectosRequired,
+      ectoCostCopper,
+      salvageCostCopper: targetSalvageCost,
+      gemCost: targetGemCost,
+      effectiveCostCopper
+    }
 }
 
 const luckTargets = computed<DisplayLuckTarget[]>(() => {
@@ -780,22 +795,44 @@ onMounted(loadPage)
               <div class="target-header">
                 <span>Target</span>
                 <span>Luck needed</span>
-                <span>Ectos</span>
-                <span>Expected Dust</span>
+                <span>Ectos to salvage</span>
+                <span>Ecto purchase</span>
                 <span>Effective cost</span>
               </div>
 
-              <div v-for="target in luckTargets" :key="target.key" class="target-row">
+              <div
+                v-for="target in luckTargets"
+                :key="target.key"
+                class="target-row"
+              >
                 <span class="target-name">
                   <strong>{{ target.label }}</strong>
-                  <span class="meta">→ {{ target.magicFindPercent }}% MF</span>
+                  <span class="meta">
+                    → {{ target.magicFindPercent }}% MF
+                  </span>
                 </span>
-                <span>{{ target.luckRemaining.toLocaleString() }}</span>
-                <span>{{ target.ectosRequired.toLocaleString() }}</span>
-                <span>~{{ formatNumber(target.expectedDust) }}</span>
+
+                <span>
+                  {{ target.luckRemaining.toLocaleString() }}
+                </span>
+
+                <span>
+                  {{ target.ectosRequired.toLocaleString() }}
+                </span>
+
+                <span>
+                  {{ formatMoney(target.ectoCostCopper) }}
+                </span>
+
                 <span class="target-cost">
-                  <strong>{{ formatMoney(target.effectiveCostCopper) }}</strong>
-                  <small v-if="target.gemCost > 0" class="meta">
+                  <strong>
+                    {{ formatMoney(target.effectiveCostCopper) }}
+                  </strong>
+
+                  <small
+                    v-if="target.gemCost > 0"
+                    class="meta"
+                  >
                     + {{ target.gemCost.toLocaleString() }} Gems
                   </small>
                 </span>

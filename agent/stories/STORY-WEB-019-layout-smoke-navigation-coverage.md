@@ -273,6 +273,12 @@ F003: the restructure that caused the CI failure removed the `.result-conclusion
 component's scoped `<style>` block, alongside `.tool-separator`, which no longer matches anything either.
 Both are dead rules in a file whose scoped styles are meant to be page-specific layout only.
 
+## Follow-up Findings Disposition
+
+F001: FOLLOW-UP STORY — STORY-WEB-020.
+F002: FOLLOW-UP STORY — STORY-WEB-021.
+F003: FOLLOW-UP STORY — STORY-WEB-021.
+
 ## Blockers
 
 None.
