@@ -117,5 +117,4 @@ indented `dependency note:`/`backlog entry:` continuation lines are left behind.
 were orphaned under `## To Do` with no row above them (removed by hand while updating the entry).
 
 ## Follow-up Findings Disposition
-
-F001: DEFERRED ? outside milestone-05 scope; the supplied Phase 5 roadmap covers frontend migration, while this finding concerns planner-runtime backlog queue handling.
+F001: DEFERRED ? outside milestone-05; planner-runtime backlog queue handling is outside the supplied Phase 5 frontend-migration scope.

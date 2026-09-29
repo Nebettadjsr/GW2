@@ -7,9 +7,9 @@ package web.dto;
  *
  * <p>Every number here was produced by the domain and is copied field for field. Nothing is
  * recomputed, rounded, re-signed or defaulted at this boundary, and no caller is expected to derive
- * one field from another: a client that multiplied {@code dustNetUnitPriceCopper} by the expected
- * Dust yield would be running its own economics, which is exactly what this contract exists to
- * prevent (DOMAIN_SPEC.md §25, §46).
+ * one field from another: a client that took {@code tradingPostSellFeePercent} off
+ * {@code expectedGrossRecoveredDustValueCopper} would be running its own economics, which is exactly
+ * what this contract exists to prevent (DOMAIN_SPEC.md §25, §46).
  *
  * <p>This type exists only at the HTTP boundary: it is not a domain, persistence or GW2 API model.
  *
@@ -43,10 +43,10 @@ public record EctoSalvageResponse(
      * @param expectedDustPerEcto        expected Crystalline Dust recovered from one Ectoplasm; a
      *                                   fraction, and deliberately not rounded into whole drops
      * @param ectosPer1000Luck           the Ectoplasm count section 47's Luck cost is scaled by
-     * @param tradingPostSellFeePercent  the selling fee already deducted, once, from the recovered
-     *                                   Dust sale proceeds in every scenario below (DOMAIN_SPEC.md
-     *                                   §25). Reported so a caller can state it without holding a
-     *                                   second copy of a domain number
+     * @param tradingPostSellFeePercent  the selling fee already deducted, once, from the expected
+     *                                   gross recovered Dust value in every scenario below
+     *                                   (DOMAIN_SPEC.md §25). Reported so a caller can state it
+     *                                   without holding a second copy of a domain number
      */
     public record EctoSalvageAssumptionsDto(
             double expectedLuckPerEcto,
@@ -58,16 +58,19 @@ public record EctoSalvageResponse(
     /**
      * One Ecto-buy / Dust-sell scenario, per single Ectoplasm except where stated.
      *
-     * <p>Gross market quotes and fee-inclusive economic results are kept apart deliberately
-     * (DOMAIN_SPEC.md §25, §46): {@code ectoAcquisitionCostCopper} and
-     * {@code dustGrossUnitPriceCopper} are raw Trading Post quotes carrying no fee, while the
-     * remaining fields are economic results the domain produced with the selling fee applied exactly
-     * once, on the Dust side only.
+     * <p>Gross values and fee-inclusive economic results are kept apart deliberately (DOMAIN_SPEC.md
+     * §25, §46): {@code ectoAcquisitionCostCopper}, {@code dustGrossUnitPriceCopper} and
+     * {@code expectedGrossRecoveredDustValueCopper} carry no fee and are the ones to display as
+     * prices, while the remaining fields are economic results the domain produced with the selling
+     * fee applied exactly once, on the Dust side only.
      *
      * @param ectoAcquisitionCostCopper     gross quote paid per Ectoplasm; no fee applies to a purchase
      * @param dustGrossUnitPriceCopper      gross Dust quote for the scenario's sale mode
-     * @param dustNetUnitPriceCopper        that quote after the selling fee, per Dust unit
-     * @param netValueOfRecoveredDustCopper expected recovered Dust value per Ectoplasm, after the fee
+     * @param expectedGrossRecoveredDustValueCopper
+     *                                      what the expected Dust yield of one Ectoplasm is worth at
+     *                                      that gross quote, before any fee; a fractional expected
+     *                                      yield is never reported as a whole modeled sale
+     * @param netValueOfRecoveredDustCopper that same expected value after the fee
      * @param netCostPerEctoCopper          economic net cost per Ectoplasm; negative when the recovered
      *                                      Dust is worth more than the Ectoplasm cost
      * @param profitPerEctoCopper           economic profit per Ectoplasm, the sign carrying gain or loss
@@ -77,7 +80,7 @@ public record EctoSalvageResponse(
     public record EctoScenarioDto(
             int ectoAcquisitionCostCopper,
             int dustGrossUnitPriceCopper,
-            int dustNetUnitPriceCopper,
+            int expectedGrossRecoveredDustValueCopper,
             int netValueOfRecoveredDustCopper,
             int netCostPerEctoCopper,
             int profitPerEctoCopper,

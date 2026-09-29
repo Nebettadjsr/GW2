@@ -104,9 +104,19 @@ describe('EctoSalvageScreen', () => {
       '25s 25c'
     ])
 
-    // Fee-inclusive economic results. None of these is the arithmetic consequence of the two
-    // columns above, and none is recomputed here.
-    expect(cellsOf(wrapper, 'ecto-scenario-dust-recovered')).toEqual([
+    // The expected value of the recovered Dust, gross: supplied, not the Dust quote scaled here.
+    expect(cellsOf(wrapper, 'ecto-scenario-dust-recovered-gross')).toEqual([
+      '33s 33c',
+      '34s 34c',
+      // A supplied zero stays a zero beside a non-zero after-fee value on the same row.
+      '0c',
+      '36s 36c'
+    ])
+
+    // Fee-inclusive economic results. None of these is the arithmetic consequence of the columns
+    // above — not even the gross recovered value less the stated percentage — and none is
+    // recomputed here.
+    expect(cellsOf(wrapper, 'ecto-scenario-dust-recovered-net')).toEqual([
       '44s 44c',
       '45s 45c',
       '46s 46c',
@@ -168,7 +178,7 @@ describe('EctoSalvageScreen', () => {
     expect(valueOf(wrapper, 'ecto-assumption-luck')).toContain('50 Ectoplasm')
   })
 
-  it('showsTheQuotesOfTheScenariosTheyBelongToAndLabelsGrossApartFromNetOfFee', async () => {
+  it('showsOnlyGrossMarketQuotesInThePricePanelAndNamesTheFeeOnTheResultColumns', async () => {
     const api = new FakeEctoApi()
 
     const wrapper = await openScreen(api)
@@ -177,9 +187,27 @@ describe('EctoSalvageScreen', () => {
     expect(valueOf(wrapper, 'ecto-quote-buy-order')).toBe('13s 13c')
     expect(valueOf(wrapper, 'dust-quote-instant-sell')).toBe('22s 22c')
     expect(valueOf(wrapper, 'dust-quote-listing-sell')).toBe('23s 23c')
-    // The supplied net unit prices, which the fixture deliberately sets above their gross quotes.
-    expect(valueOf(wrapper, 'dust-net-instant-sell')).toBe('33s 33c')
-    expect(valueOf(wrapper, 'dust-net-listing-sell')).toBe('34s 34c')
+
+    // The superseded per-Dust-unit "after fee" quotes: a market price is never shown net of the fee
+    // (`DOMAIN_SPEC.md` 25, 46).
+    expect(wrapper.find('[data-test="dust-net-instant-sell"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="dust-net-listing-sell"]').exists()).toBe(false)
+    expect(valueOf(wrapper, 'ecto-prices')).not.toContain('after fee')
+
+    // Every fee-inclusive column says so, with the percentage the backend supplied; the two gross
+    // columns beside them do not.
+    const columnNotes = wrapper
+      .findAll('.column-note')
+      .map((note) => note.text().replace(/\s+/g, ' '))
+    expect(columnNotes).toEqual([
+      'gross, per ecto',
+      'gross, per dust',
+      'gross, per ecto',
+      'after 12% TP fees, per ecto',
+      'after 12% TP fees, per ecto',
+      'after 12% TP fees, per ecto',
+      'after 12% TP fees'
+    ])
 
     expect(valueOf(wrapper, 'ecto-item-id')).toBe('#19721')
     expect(valueOf(wrapper, 'dust-item-id')).toBe('#24277')

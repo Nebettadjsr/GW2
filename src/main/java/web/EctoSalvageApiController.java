@@ -7,6 +7,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import tradingpost.TradingPostFeePolicy;
 import web.dto.EctoSalvageResponse;
 
 /**
@@ -81,13 +82,18 @@ public class EctoSalvageApiController {
         }
     }
 
-    /** Domain constants, read from their owner; no value here is chosen or converted at this boundary. */
+    /**
+     * Domain constants, read from their owners; no value here is chosen or converted at this
+     * boundary. The fee percentage comes from {@link TradingPostFeePolicy} - the same owner the
+     * calculation itself charges the fee through (STORY-DOM-024) - so the stated rate cannot drift
+     * away from the deducted one.
+     */
     private static EctoSalvageResponse.EctoSalvageAssumptionsDto assumptions() {
         return new EctoSalvageResponse.EctoSalvageAssumptionsDto(
                 EctoSalvageCalculator.LUCK_PER_ECTO,
                 EctoSalvageCalculator.DUST_PER_ECTO,
                 EctoSalvageCalculator.ECTOS_PER_1000_LUCK,
-                EctoSalvageCalculator.SELL_FEE_PERCENT);
+                TradingPostFeePolicy.PROFIT_FEE_PERCENT);
     }
 
     /**
@@ -102,7 +108,7 @@ public class EctoSalvageApiController {
         return new EctoSalvageResponse.EctoScenarioDto(
                 result.ectoAcquisitionCost(),
                 result.dustGrossUnitPrice(),
-                result.dustNetUnitPrice(),
+                result.expectedGrossRecoveredDustValue(),
                 result.netValueOfRecoveredDust(),
                 result.netCostPerEcto(),
                 result.profitPerEcto(),

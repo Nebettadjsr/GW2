@@ -5,10 +5,11 @@ import type { EctoSalvage } from '@/api/types'
  * Controlled Ectoplasm responses (`TEST_STRATEGY.md` 12.1).
  *
  * The numbers are deliberately incoherent: no field is the arithmetic consequence of any other, in
- * any scenario. The recovered Dust value is not the net unit price scaled by the expected yield, the
- * profit is not the negated net cost, and the Luck cost is not the net cost times fifty. A screen
- * that recomputed any of them would therefore render something other than what was supplied and
- * fail, instead of agreeing with itself by coincidence.
+ * any scenario. The after-fee recovered Dust value is not the gross one less the stated percentage,
+ * the gross one is not the Dust quote scaled by the expected yield, the profit is not the negated
+ * net cost, and the Luck cost is not the net cost times fifty. A screen that recomputed any of them
+ * would therefore render something other than what was supplied and fail, instead of agreeing with
+ * itself by coincidence.
  */
 export const ectoSalvage: EctoSalvage = {
   resultAvailable: true,
@@ -25,7 +26,7 @@ export const ectoSalvage: EctoSalvage = {
   instantBuyInstantSell: {
     ectoAcquisitionCostCopper: 1111,
     dustGrossUnitPriceCopper: 2222,
-    dustNetUnitPriceCopper: 3333,
+    expectedGrossRecoveredDustValueCopper: 3333,
     netValueOfRecoveredDustCopper: 4444,
     netCostPerEctoCopper: 5555,
     profitPerEctoCopper: -6666,
@@ -34,7 +35,7 @@ export const ectoSalvage: EctoSalvage = {
   instantBuyListingSell: {
     ectoAcquisitionCostCopper: 1212,
     dustGrossUnitPriceCopper: 2323,
-    dustNetUnitPriceCopper: 3434,
+    expectedGrossRecoveredDustValueCopper: 3434,
     netValueOfRecoveredDustCopper: 4545,
     netCostPerEctoCopper: -5656,
     profitPerEctoCopper: 6767,
@@ -44,7 +45,8 @@ export const ectoSalvage: EctoSalvage = {
     ectoAcquisitionCostCopper: 1313,
     dustGrossUnitPriceCopper: 2424,
     // A supplied zero, which must stay a zero rather than becoming the missing-value marker.
-    dustNetUnitPriceCopper: 0,
+    expectedGrossRecoveredDustValueCopper: 0,
+    // Deliberately non-zero beside that zero: neither figure may be derived from the other.
     netValueOfRecoveredDustCopper: 4646,
     netCostPerEctoCopper: 5757,
     profitPerEctoCopper: 0,
@@ -53,7 +55,7 @@ export const ectoSalvage: EctoSalvage = {
   listingBuyListingSell: {
     ectoAcquisitionCostCopper: 1414,
     dustGrossUnitPriceCopper: 2525,
-    dustNetUnitPriceCopper: 3636,
+    expectedGrossRecoveredDustValueCopper: 3636,
     netValueOfRecoveredDustCopper: 4747,
     netCostPerEctoCopper: 5858,
     profitPerEctoCopper: 6969,
@@ -67,7 +69,7 @@ export const reloadedEctoSalvage: EctoSalvage = {
   instantBuyInstantSell: {
     ectoAcquisitionCostCopper: 9111,
     dustGrossUnitPriceCopper: 9222,
-    dustNetUnitPriceCopper: 9333,
+    expectedGrossRecoveredDustValueCopper: 9333,
     netValueOfRecoveredDustCopper: 9444,
     netCostPerEctoCopper: 9555,
     profitPerEctoCopper: 9666,

@@ -394,15 +394,16 @@ export interface MaterialStorage {
 /**
  * One Ecto-buy / Dust-sell scenario of `GET /api/ecto/salvage` (`CURRENT_ARCHITECTURE.md` 5.15).
  *
- * Gross quotes and fee-inclusive economic results are separate fields on purpose (DOMAIN_SPEC 25,
- * 46): the first two are raw Trading Post prices, the rest are results the domain produced with the
- * selling fee already applied once. Nothing here may be derived from anything else here — the
- * browser displays these, it does not relate them.
+ * Gross values and fee-inclusive economic results are separate fields on purpose (DOMAIN_SPEC 25,
+ * 46): the first three carry no fee and are the ones to show as prices — the third is what the
+ * expected Dust yield of one Ectoplasm is worth at that gross quote — while the rest are results the
+ * domain produced with the selling fee already applied once. Nothing here may be derived from
+ * anything else here — the browser displays these, it does not relate them.
  */
 export interface EctoSalvageScenario {
   ectoAcquisitionCostCopper: number
   dustGrossUnitPriceCopper: number
-  dustNetUnitPriceCopper: number
+  expectedGrossRecoveredDustValueCopper: number
   netValueOfRecoveredDustCopper: number
   netCostPerEctoCopper: number
   profitPerEctoCopper: number
@@ -417,7 +418,10 @@ export interface EctoSalvageAssumptions {
   expectedLuckPerEcto: number
   expectedDustPerEcto: number
   ectosPer1000Luck: number
-  /** The selling fee already deducted from the recovered Dust proceeds, stated by the backend. */
+  /**
+   * The selling fee already deducted, once, from the expected gross recovered Dust value, stated by
+   * the backend.
+   */
   tradingPostSellFeePercent: number
 }
 

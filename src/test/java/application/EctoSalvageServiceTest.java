@@ -50,6 +50,38 @@ class EctoSalvageServiceTest {
         assertEquals(EctoSalvageCalculator.evaluate(ECTO_LISTING_BUY, DUST_LISTING_SELL), scenarios.listingBuyListingSell());
     }
 
+    /**
+     * Which quote reached which scenario, stated without the calculator: the two quote fields of
+     * each result identify the combination it was evaluated for, so a service that swapped an
+     * acquisition mode, reused one Dust quote for both sale modes or reordered the four fields fails
+     * here rather than agreeing with whatever the domain would have produced for it.
+     */
+    @Test
+    void eachScenarioCarriesTheQuotePairOfItsOwnCombination() throws Exception {
+        var gateway = new FakeGateway();
+        gateway.canned = Map.of(
+                EctoSalvageService.ECTO_ID, new PriceQuote(ECTO_LISTING_BUY, ECTO_INSTANT_BUY),
+                EctoSalvageService.DUST_ID, new PriceQuote(DUST_INSTANT_SELL, DUST_LISTING_SELL));
+
+        EctoSalvageService.EctoScenarios scenarios = new EctoSalvageService(gateway).calculate();
+
+        assertEquals(1000, scenarios.instantBuyInstantSell().ectoAcquisitionCost());
+        assertEquals(200, scenarios.instantBuyInstantSell().dustGrossUnitPrice());
+        assertEquals(1000, scenarios.instantBuyListingSell().ectoAcquisitionCost());
+        assertEquals(240, scenarios.instantBuyListingSell().dustGrossUnitPrice());
+        assertEquals(900, scenarios.listingBuyInstantSell().ectoAcquisitionCost());
+        assertEquals(200, scenarios.listingBuyInstantSell().dustGrossUnitPrice());
+        assertEquals(900, scenarios.listingBuyListingSell().ectoAcquisitionCost());
+        assertEquals(240, scenarios.listingBuyListingSell().dustGrossUnitPrice());
+
+        // The economic results are the domain's, reported as produced: the service scales no yield,
+        // deducts no fee and re-signs nothing. 200c × 0.75 = 150c gross recovered, less 23c fee.
+        assertEquals(150, scenarios.instantBuyInstantSell().expectedGrossRecoveredDustValue());
+        assertEquals(127, scenarios.instantBuyInstantSell().netValueOfRecoveredDust());
+        assertEquals(-873, scenarios.instantBuyInstantSell().profitPerEcto());
+        assertEquals(43_650, scenarios.instantBuyInstantSell().costPer1000Luck());
+    }
+
     @Test
     void missingEctoQuoteReturnsUnavailableScenariosWithoutEvaluating() throws Exception {
         var gateway = new FakeGateway();

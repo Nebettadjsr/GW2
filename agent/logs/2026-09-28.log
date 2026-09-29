@@ -1610,3 +1610,311 @@
 [22:32:54] Evaluator decision: COMPLETE
 [22:32:54] Reason: The supplied total sell value flows from UiRow to the displayed row, and both the column and its sort path use it. The distinct-value tests exercise that behavior, and the unavailable flag remains attached to the row. I inspected the reported working-tree changes; GitHub CI results were not independently verified.
 [22:32:54] ========================================
+[22:32:57] STORY-APP-013-carry-authoritative-total-sell-value.md published for CI verification: 0e3011d on master (13 changed path(s), new commit, waiting for GitHub Actions.
+[22:33:58] GitHub CI PASSED for 0e3011d (STORY-APP-013-carry-authoritative-total-sell-value.md): CI: success
+[22:34:07] Availability check: claude_available=True, codex_available=True
+[22:34:07] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[22:34:13] Planning resumed for changed inputs: agent/CURRENT_STORY.md, agent/runtime/artifacts/CLAUDE_RESULT.md, agent/stories/BACKLOG.md, agent/stories/STORY-APP-013-carry-authoritative-total-sell-value.md, docs/CURRENT_ARCHITECTURE.md
+[22:34:13] ========================================
+[22:34:13] Running project-planning pass
+[22:34:13] ========================================
+[22:34:13] ========================================
+[22:34:13] Starting hosted Codex planner
+[22:34:13] ========================================
+[22:34:13] [planner] session 01a0e9b9-a802-77f3-bdf0-2ba296b723f0
+[22:34:13] [planner] reasoning...
+[22:34:17] Planner last response:
+[22:34:17] I’ll review the supplied Phase 5 queue and findings, then make only the justified planning-artifact updates and write the required result. I’ll stay within the Phase 5 read scope and stop immediately after the result file is written.
+[22:34:19] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Location; Get-ChildItem agent/stories -Filter 'STORY-*' | Select-Object -ExpandProperty Name; Get-ChildItem agent/runtime/artifacts -Force | Select-Object -ExpandProperty Name"
+[22:34:19] [planner command done] exit 0
+[22:34:34] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:34:34] from pathlib import Path
+[22:34:34] files = [
+[22:34:34] 'agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md',
+[22:34:34] 'agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md',
+[22:34:34] 'agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md',
+[22:34:34] 'agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md',
+[22:34:34] 'agent/stories/STORY-APP-013-carry-authoritative-total-sell-value.md',
+[22:34:34] 'agent/stories/STORY-WEB-008-profit-economic-columns.md',
+[22:34:34] 'agent/stories/STORY-WEB-017-layout-smoke-intro-contrast-sample.md',
+[22:34:34] 'agent/stories/STORY-PERF-002-phase-five-crafting-profit-page-budget.md',
+[22:34:34] 'agent/stories/STORY-QUALITY-005-phase-five-completion-review.md',
+[22:34:34] ]
+[22:34:34] for name in files:
+[22:34:34]     p=Path(name)
+[22:34:34]     s=p.read_text(encoding='utf-8')
+[22:34:34]     print(f'--- {name} ---')
+[22:34:34]     for i,line in enumerate(s.splitlines(),1):
+[22:34:34]         if line.startswith('#') or 'Follow-up Findings' in line or line.startswith('F00') or line.startswith('Result') or line.startswith('Dependencies') or line.startswith('Blockers') or line.startswith('Status'):
+[22:34:34]             print(f'{i}: {line}')
+[22:34:34] '@ | python -"
+[22:34:34] [planner command done] exit 0
+[22:34:53] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:34:53] from pathlib import Path
+[22:34:53] for name in ['agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md','agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md','agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md','agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md','docs/TARGET_ARCHITECTURE.md']:
+[22:34:53]  s=Path(name).read_text(encoding='utf-8')
+[22:34:53]  print('---',name,'---')
+[22:34:53]  lines=s.splitlines()
+[22:34:53]  if name.endswith('TARGET_ARCHITECTURE.md'):
+[22:34:53]   # print bounded sections 12.1, 33, 34 headers and lines only 12.1 scope
+[22:34:53]   start=next(i for i,l in enumerate(lines) if l.startswith('## 12.1'))
+[22:34:53]   end=next((i for i in range(start+1,len(lines)) if lines[i].startswith('## ')),len(lines))
+[22:34:53]   for i in range(start,end): print(f'{i+1}: {lines[i]}')
+[22:34:53]  else:
+[22:34:53]   for i,l in enumerate(lines):
+[22:34:53]    if l.startswith('## Follow-up Findings Disposition') or l.startswith('## Follow-up Findings'):
+[22:34:53]     for j in range(i,min(len(lines),i+14)): print(f'{j+1}: {lines[j]}')
+[22:34:53] '@ | python -"
+[22:34:53] [planner command done] exit 0
+[22:35:08] Planner last response:
+[22:35:08] The Phase 5 work is already represented in the queue, including the two smoke-test follow-ups and the final performance and health-review prerequisites. I checked the supplied follow-up dispositions: the six findings each already have a disposition, and the referenced architecture section confirms the metadata and image-storage requirement. No additional story is justified in this pass.
+[22:35:17] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:35:17] import json
+[22:35:17] from pathlib import Path
+[22:35:17] result = {
+[22:35:17]   \"status\": \"COMPLETE\",
+[22:35:17]   \"phase_considered\": \"Phase 5\",
+[22:35:17]   \"independent_work_remaining\": False,
+[22:35:17]   \"phase_review\": [
+[22:35:17]     {\"area\": \"Frontend framework and language decision\", \"outcome\": \"COVERED\", \"references\": [\"AR-001\", \"docs/architecture/decisions/ADR-001-frontend-framework-and-language.md\", \"docs/TARGET_ARCHITECTURE.md\"]},
+[22:35:17]     {\"area\": \"Crafting Profit and resolution presentation\", \"outcome\": \"PREREQUISITE\", \"references\": [\"STORY-WEB-016\", \"STORY-DOM-024\"]},
+[22:35:17]     {\"area\": \"Discovery, bank/materials, Ectoplasm and sync-trigger frontend\", \"outcome\": \"COVERED\", \"references\": [\"STORY-WEB-012\", \"STORY-WEB-003\", \"STORY-WEB-013\", \"STORY-WEB-002\"]},
+[22:35:17]     {\"area\": \"Phase 5 smoke-test follow-ups\", \"outcome\": \"PREREQUISITE\", \"references\": [\"STORY-WEB-017\", \"STORY-SYNC-005\"]},
+[22:35:17]     {\"area\": \"Integrated real-user-database Crafting Profit page performance\", \"outcome\": \"PREREQUISITE\", \"references\": [\"STORY-PERF-002\"]},
+[22:35:17]     {\"area\": \"Bounded Phase 5 project health review\", \"outcome\": \"PREREQUISITE\", \"references\": [\"STORY-QUALITY-005\"]}
+[22:35:17]   ],
+[22:35:17]   \"phase_exit_criteria_satisfied\": False,
+[22:35:17]   \"story_files_created\": [],
+[22:35:17]   \"user_decision_ids\": [],
+[22:35:17]   \"product_owner_requests_processed\": [],
+[22:35:17]   \"architect_requests_created\": [],
+[22:35:17]   \"milestone_transition\": False,
+[22:35:17]   \"completed_milestone\": None,
+[22:35:17]   \"next_milestone\": None,
+[22:35:17]   \"backlog_updated\": False,
+[22:35:17]   \"roadmap_updated\": False,
+[22:35:17]   \"project_state_updated\": False,
+[22:35:17]   \"reason\": \"Phase 5 still has queued implementation follow-ups and blocked integrated performance and health-review work; all supplied finding dispositions and applicable story coverage are already present, with no further independent story supported by the current-phase evidence.\"
+[22:35:17] }
+[22:35:17] Path('agent/runtime/artifacts/PLANNING_RESULT.json').write_text(json.dumps(result, indent=2) + '\\n', encoding='utf-8')
+[22:35:17] '@ | python -"
+[22:35:17] [planner command done] exit 0
+[22:35:19] Planner last response:
+[22:35:19] Phase 5 remains open. Its implementation follow-ups are queued, and the integrated performance check and health review are still prerequisites. The supplied findings already have dispositions, so I created no stories and made no backlog, roadmap, or project-state changes.
+[22:35:19] I wrote [PLANNING_RESULT.json](/C:/Users/Administrator/IdeaProjects/GW2/agent/runtime/artifacts/PLANNING_RESULT.json).
+[22:35:19] [planner] turn completed | input tokens: 193954 | cached input tokens: 159488 | output tokens: 3032
+[22:35:20] ========================================
+[22:35:20] [planner] turn totals | model requests: 1 | gross input tokens: 193,954 | cached input tokens: 159,488 | uncached input tokens: 34,466 | output tokens: 3,032
+[22:35:20] Hosted codex planner exit code: 0
+[22:35:20] ========================================
+[22:35:20] ========================================
+[22:35:20] Planning result: COMPLETE
+[22:35:20] Reason: Phase 5 still has queued implementation follow-ups and blocked integrated performance and health-review work; all supplied finding dispositions and applicable story coverage are already present, with no further independent story supported by the current-phase evidence.
+[22:35:20] ========================================
+[22:35:26] Decision: code (select next story) -- reason: 4 selectable To Do candidate(s), Claude available
+[22:35:26] ========================================
+[22:35:26] Story selector: NEXT
+[22:35:26] Reason: Deterministic selection: first executable entry in BACKLOG.md's 'To Do' order (STORY-DOM-024-ectoplasm-fee-policy-alignment.md).
+[22:35:26] ========================================
+[22:35:26] Next story activated:
+[22:35:26] agent/stories/STORY-DOM-024-ectoplasm-fee-policy-alignment.md
+[22:35:35] Availability check: claude_available=True, codex_available=True
+[22:35:35] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[22:35:35] ========================================
+[22:35:35] Active story: agent/stories/STORY-DOM-024-ectoplasm-fee-policy-alignment.md
+[22:35:35] ========================================
+[22:35:38] RepoMap: disabled, budget=1200 tokens
+[22:35:45] ========================================
+[22:35:45] Starting Claude Code
+[22:35:45] ========================================
+[22:45:25] You've hit your session limit · resets 2:50am (Europe/Berlin)
+[22:45:25] ========================================
+[22:45:25] Claude Code exit code: 1
+[22:45:25] ========================================
+[22:45:28] Claude run measurement: repo_map=off, duration=580.6s, usage_before=75, usage_after=100
+[22:45:28] Claude exited with code 1 after running out of capacity. Story remains active and UNFINISHED; waiting locally for capacity before continuing the same story.
+[22:45:28] Claude capacity exhausted during STORY-DOM-024-ectoplasm-fee-policy-alignment.md; story preserved as UNFINISHED, waiting locally.
+[22:45:28] Claude capacity exhausted (first detected).
+[22:45:34] Planning resumed for changed inputs: agent/CURRENT_STORY.md, agent/stories/BACKLOG.md, agent/stories/STORY-DOM-024-ectoplasm-fee-policy-alignment.md
+[22:45:34] ========================================
+[22:45:34] Running project-planning pass
+[22:45:34] ========================================
+[22:45:34] ========================================
+[22:45:34] Starting hosted Codex planner
+[22:45:34] ========================================
+[22:45:35] [planner] session 01a0e9c4-0e27-7db3-bd20-c31b53d8ddc2
+[22:45:35] [planner] reasoning...
+[22:45:39] Planner last response:
+[22:45:39] I’ll review the supplied Phase 5 scope against its existing queue and process the listed implementation findings. Then I’ll record only justified current-milestone planning changes and write the required planning result.
+[22:45:41] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'Get-Location; Get-ChildItem agent/runtime/artifacts -Force | Select-Object -ExpandProperty Name'
+[22:45:41] [planner command done] exit 0
+[22:45:58] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:45:58] from pathlib import Path
+[22:45:58] files=['agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md','agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md','agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md','agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md','agent/stories/STORY-APP-013-carry-authoritative-total-sell-value.md','agent/stories/STORY-WEB-008-profit-economic-columns.md']
+[22:45:58] for name in files:
+[22:45:58]  p=Path(name); s=p.read_text(encoding='utf-8')
+[22:45:58]  print(f'--- {name} ---')
+[22:45:58]  if 'Follow-up Findings Disposition' in s:
+[22:45:58]   i=s.index('## Follow-up Findings Disposition')
+[22:45:58]   print(s[i:i+900])
+[22:45:58]  else:
+[22:45:58]   for h in ['## Goal','## Acceptance Criteria','## Result']:
+[22:45:58]    if h in s:
+[22:45:58]     i=s.index(h); j=s.find('\\n## ',i+4); print(s[i:j if j"'!=-1 else len(s)][:700])
+[22:45:58] '"'@ | python -"
+[22:45:58] [planner command done] exit 1
+[22:46:12] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:46:12] from pathlib import Path
+[22:46:12] p=Path('docs/TARGET_ARCHITECTURE.md'); lines=p.read_text(encoding='utf-8').splitlines()
+[22:46:12] for i,l in enumerate(lines):
+[22:46:12]  if l.startswith('## 12.1') or l.startswith('### 12.1'):
+[22:46:12]   print('\\n'.join(f'{j+1}: {lines[j]}' for j in range(i,min(i+45,len(lines)))))
+[22:46:12] for name in ['agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md','agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md']:
+[22:46:12]  s=Path(name).read_text(encoding='utf-8'); i=s.index('## Follow-up Findings')
+[22:46:12]  j=s.find('\\n## ',i+4)
+[22:46:12]  print('\\n--- '+name+' findings ---\\n'+s[i:j if j"'!=-1 else len(s)])
+[22:46:12] '"'@ | python -X utf8 -"
+[22:46:12] [planner command done] exit 0
+[22:46:33] Planner last response:
+[22:46:33] The existing queue already covers the remaining Phase 5 work, including the integrated performance check and completion review. I found one supplied finding whose cited architecture requirement is present in §12.1, and the other implementation follow-ups already map to queued/completed stories. I’m updating only the completed source stories’ disposition sections and recording the review; no new story is justified by the supplied phase scope.
+[22:46:56] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:46:56] from pathlib import Path
+[22:46:56] updates={
+[22:46:56] 'agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md': '''## Follow-up Findings Disposition
+[22:46:56] F001: ALREADY COVERED — STORY-DOM-025
+[22:46:56] F002: ALREADY COVERED — STORY-APP-013
+[22:46:56] ''',
+[22:46:56] 'agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md': '''## Follow-up Findings Disposition
+[22:46:56] F001: DEFERRED — outside milestone-05; planner-runtime backlog queue handling is outside the supplied Phase 5 frontend-migration scope.
+[22:46:56] ''',
+[22:46:56] 'agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md': '''## Follow-up Findings Disposition
+[22:46:56] F001: ALREADY COVERED — docs/TARGET_ARCHITECTURE.md §12.1
+[22:46:56] F002: FOLLOW-UP STORY — STORY-SYNC-005
+[22:46:56] ''',
+[22:46:56] 'agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md': '''## Follow-up Findings Disposition
+[22:46:56] F001: FOLLOW-UP STORY — STORY-WEB-017
+[22:46:56] '''
+[22:46:56] }
+[22:46:56] for name, section in updates.items():
+[22:46:56]  p=Path(name); text=p.read_text(encoding='utf-8'); marker='## Follow-up Findings Disposition'
+[22:46:56]  if marker not in text:
+[22:46:56]   # Findings may have no disposition section yet; insert immediately before findings.
+[22:46:56]   at=text.index('## Follow-up Findings')
+[22:46:56]   text=text[:at]+section+'\\n'+text[at:]
+[22:46:56]  else:
+[22:46:56]   start=text.index(marker)
+[22:46:56]   end=text.find('\\n## ',start+len(marker))
+[22:46:56]   if end<0: end=len(text)
+[22:46:56]   text=text[:start]+section.rstrip()+text[end:]
+[22:46:56]  p.write_text(text,encoding='utf-8')
+[22:46:56] result={
+[22:46:56] 'status':'COMPLETE',
+[22:46:56] 'phase_considered':'Phase 5',
+[22:46:56] 'independent_work_remaining':False,
+[22:46:56] 'phase_review':[
+[22:46:56]  {'area':'Frontend framework and language decision','outcome':'COVERED','references':['AR-001','docs/architecture/decisions/ADR-001-frontend-framework-and-language.md','docs/TARGET_ARCHITECTURE.md']},
+[22:46:56]  {'area':'Crafting Profit, Discovery, bank/materials, Ectoplasm Salvage, sync controls, and rendering/interaction tests','outcome':'PREREQUISITE','references':['agent/stories/BACKLOG.md','STORY-DOM-024','STORY-WEB-016','STORY-WEB-017','STORY-SYNC-005']},
+[22:46:56]  {'area':'Integrated real-user-database Crafting Profit page performance verification','outcome':'PREREQUISITE','references':['STORY-PERF-002']},
+[22:46:56]  {'area':'Bounded Phase 5 PROJECT HEALTH REVIEW and findings disposition','outcome':'PREREQUISITE','references':['STORY-QUALITY-005','docs/TARGET_ARCHITECTURE.md §34']},
+[22:46:56]  {'area':'Claude implementation follow-up findings','outcome':'COVERED','references':['agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md','agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md','agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md','agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md','STORY-APP-013','STORY-SYNC-005','STORY-WEB-017','docs/TARGET_ARCHITECTURE.md §12.1']}
+[22:46:56] ],
+[22:46:56] 'phase_exit_criteria_satisfied':False,
+[22:46:56] 'story_files_created':[],
+[22:46:56] 'user_decision_ids':[],
+[22:46:56] 'product_owner_requests_processed':[],
+[22:46:56] 'architect_requests_created':[],
+[22:46:56] 'milestone_transition':False,
+[22:46:56] 'completed_milestone':None,
+[22:46:56] 'next_milestone':None,
+[22:46:56] 'backlog_updated':False,
+[22:46:56] 'roadmap_updated':False,
+[22:46:56] 'project_state_updated':False,
+[22:46:56] 'reason':'Phase 5 work remains in the current milestone queue: an active prerequisite, four TODO follow-ups, and blocked integrated performance verification precede the health review. Supplied findings were dispositioned against existing coverage or deferred outside this phase; no uncovered Phase 5 story was justified.'
+[22:46:56] }
+[22:46:56] Path('agent/runtime/artifacts/PLANNING_RESULT.json').write_text(__import__('json').dumps(result,ensure_ascii=False,indent=2)+'\\n',encoding='utf-8')
+[22:46:56] '@ | python -X utf8 -"
+[22:46:56] [planner command done] exit 0
+[22:47:00] Planner last response:
+[22:47:00] Completed the Phase 5 planning review. I updated follow-up dispositions in four completed stories and wrote [PLANNING_RESULT.json](/C:/Users/Administrator/IdeaProjects/GW2/agent/runtime/artifacts/PLANNING_RESULT.json).
+[22:47:00] No new stories were needed: remaining work is already queued or blocked behind its prerequisites. Phase 5 remains open; there is no milestone transition.
+[22:47:00] [planner] turn completed | input tokens: 185355 | cached input tokens: 154368 | output tokens: 2788
+[22:47:00] ========================================
+[22:47:00] [planner] turn totals | model requests: 1 | gross input tokens: 185,355 | cached input tokens: 154,368 | uncached input tokens: 30,987 | output tokens: 2,788
+[22:47:00] Hosted codex planner exit code: 0
+[22:47:00] ========================================
+[22:47:00] ========================================
+[22:47:00] Planning result: COMPLETE
+[22:47:00] Reason: Phase 5 work remains in the current milestone queue: an active prerequisite, four TODO follow-ups, and blocked integrated performance verification precede the health review. Supplied findings were dispositioned against existing coverage or deferred outside this phase; no uncovered Phase 5 story was justified.
+[22:47:00] ========================================
+[22:48:00] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[22:49:01] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[22:50:01] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[22:51:01] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[22:52:01] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[22:53:01] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[22:54:01] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[22:55:01] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[22:56:01] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[22:57:02] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[22:58:02] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[22:59:02] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:00:02] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:01:02] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:02:02] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:03:02] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:04:02] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:05:03] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:06:03] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:07:03] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:08:03] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:09:03] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:10:03] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:11:03] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:12:03] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:13:04] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:14:04] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:15:04] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:16:04] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:17:04] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:18:04] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:19:04] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:20:04] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:21:05] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:22:05] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:23:05] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:24:05] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:25:05] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:26:05] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:27:05] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:28:05] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:29:06] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:30:06] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:31:06] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:32:06] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:33:06] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:34:06] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:35:06] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:36:06] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:37:07] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:38:07] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:39:07] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:40:07] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:41:07] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:42:07] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:43:07] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:44:07] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:45:08] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:46:11] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:47:11] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:48:11] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:49:11] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:50:11] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:51:11] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:52:11] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:53:12] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:54:12] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:55:12] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:56:12] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:57:12] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:58:12] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[23:59:12] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining

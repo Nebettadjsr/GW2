@@ -100,6 +100,8 @@ No finding in this document by itself authorizes an implementation change. Norma
 
 **Inferred risk:** losses appear as positive Ecto profits, and readers cannot reconcile table cash costs with the single-craft explanation. **Recommendation:** correct presentation against existing domain values/units, without inventing a new economic model.
 
+**Partly resolved (`STORY-DOM-024`).** The Ectoplasm half is fixed at the call site, not in `CoinUtils`: `EctoView.fillProfitGrid` now formats its four cells with `CoinUtils.format`, which keeps the minus sign, so a salvage loss reads as a loss (`EctoSalvageViewIT` asserts the rendered `-0g 8s 73c`). `formatSigned` itself is unchanged and still strips the sign, and the crafting-table styling and the two Buy Cost labelling problems above are untouched.
+
 
 ### KP-10 — Web Crafting Profit retains the temporary `CYCLE_DETECTED` row diagnostic
 

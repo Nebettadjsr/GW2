@@ -114,7 +114,8 @@ async function renderedScenarios(page) {
         sale: cell('ecto-scenario-sale'),
         ectoCost: cell('ecto-scenario-ecto-cost'),
         dustGross: cell('ecto-scenario-dust-gross'),
-        dustRecovered: cell('ecto-scenario-dust-recovered'),
+        dustRecoveredGross: cell('ecto-scenario-dust-recovered-gross'),
+        dustRecoveredNet: cell('ecto-scenario-dust-recovered-net'),
         netCost: cell('ecto-scenario-net-cost'),
         profit: row
           .querySelector('[data-test="ecto-scenario-profit"] .money')
@@ -134,7 +135,8 @@ function expectedScenarios(body) {
     sale,
     ectoCost: money(values.ectoAcquisitionCostCopper),
     dustGross: money(values.dustGrossUnitPriceCopper),
-    dustRecovered: money(values.netValueOfRecoveredDustCopper),
+    dustRecoveredGross: money(values.expectedGrossRecoveredDustValueCopper),
+    dustRecoveredNet: money(values.netValueOfRecoveredDustCopper),
     netCost: money(values.netCostPerEctoCopper),
     profit: signedMoney(values.profitPerEctoCopper),
     outcome: outcome(values.profitPerEctoCopper),
@@ -185,19 +187,20 @@ async function compareRendered(page, body, what) {
       await textOf(page, '[data-test="ecto-quote-instant-buy"]'),
       await textOf(page, '[data-test="ecto-quote-buy-order"]'),
       await textOf(page, '[data-test="dust-quote-instant-sell"]'),
-      await textOf(page, '[data-test="dust-quote-listing-sell"]'),
-      await textOf(page, '[data-test="dust-net-instant-sell"]'),
-      await textOf(page, '[data-test="dust-net-listing-sell"]')
+      await textOf(page, '[data-test="dust-quote-listing-sell"]')
     ],
     [
       money(body.instantBuyInstantSell.ectoAcquisitionCostCopper),
       money(body.listingBuyInstantSell.ectoAcquisitionCostCopper),
       money(body.instantBuyInstantSell.dustGrossUnitPriceCopper),
-      money(body.instantBuyListingSell.dustGrossUnitPriceCopper),
-      money(body.instantBuyInstantSell.dustNetUnitPriceCopper),
-      money(body.instantBuyListingSell.dustNetUnitPriceCopper)
+      money(body.instantBuyListingSell.dustGrossUnitPriceCopper)
     ],
     `${what}: the quote panel does not show this response's quotes`)
+
+  // STORY-DOM-024: the price panel carries gross quotes only, never a price net of the selling fee.
+  const prices = await textOf(page, '[data-test="ecto-prices"]')
+  assert.ok(!prices.includes('after fee') && !prices.includes('after 15%'),
+    `${what}: a displayed market price is labelled net of the fee: ${prices}`)
 
   const fee = await textOf(page, '[data-test="ecto-assumption-fee"]')
   assert.ok(fee.includes(`${body.assumptions.tradingPostSellFeePercent}%`),

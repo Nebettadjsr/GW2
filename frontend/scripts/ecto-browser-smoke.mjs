@@ -72,7 +72,7 @@ function scenarios(offset) {
     instantBuyInstantSell: {
       ectoAcquisitionCostCopper: 1111 + offset,
       dustGrossUnitPriceCopper: 2222 + offset,
-      dustNetUnitPriceCopper: 3333 + offset,
+      expectedGrossRecoveredDustValueCopper: 3333 + offset,
       netValueOfRecoveredDustCopper: 4444 + offset,
       netCostPerEctoCopper: 5555 + offset,
       profitPerEctoCopper: -6666 - offset,
@@ -81,7 +81,7 @@ function scenarios(offset) {
     instantBuyListingSell: {
       ectoAcquisitionCostCopper: 1212 + offset,
       dustGrossUnitPriceCopper: 2323 + offset,
-      dustNetUnitPriceCopper: 3434 + offset,
+      expectedGrossRecoveredDustValueCopper: 3434 + offset,
       netValueOfRecoveredDustCopper: 4545 + offset,
       netCostPerEctoCopper: -5656 - offset,
       profitPerEctoCopper: 6767 + offset,
@@ -90,7 +90,7 @@ function scenarios(offset) {
     listingBuyInstantSell: {
       ectoAcquisitionCostCopper: 1313 + offset,
       dustGrossUnitPriceCopper: 2424 + offset,
-      dustNetUnitPriceCopper: 0,
+      expectedGrossRecoveredDustValueCopper: 0,
       netValueOfRecoveredDustCopper: 4646 + offset,
       netCostPerEctoCopper: 5757 + offset,
       profitPerEctoCopper: 0,
@@ -99,7 +99,7 @@ function scenarios(offset) {
     listingBuyListingSell: {
       ectoAcquisitionCostCopper: 1414 + offset,
       dustGrossUnitPriceCopper: 2525 + offset,
-      dustNetUnitPriceCopper: 3636 + offset,
+      expectedGrossRecoveredDustValueCopper: 3636 + offset,
       netValueOfRecoveredDustCopper: 4747 + offset,
       netCostPerEctoCopper: 5858 + offset,
       profitPerEctoCopper: 6969 + offset,
@@ -179,7 +179,8 @@ async function renderedScenarios(page) {
         sale: cell('ecto-scenario-sale'),
         ectoCost: cell('ecto-scenario-ecto-cost'),
         dustGross: cell('ecto-scenario-dust-gross'),
-        dustRecovered: cell('ecto-scenario-dust-recovered'),
+        dustRecoveredGross: cell('ecto-scenario-dust-recovered-gross'),
+        dustRecoveredNet: cell('ecto-scenario-dust-recovered-net'),
         netCost: cell('ecto-scenario-net-cost'),
         profit: row
           .querySelector('[data-test="ecto-scenario-profit"] .money')
@@ -198,7 +199,8 @@ function expectedScenarios(body) {
     sale,
     ectoCost: money(values.ectoAcquisitionCostCopper),
     dustGross: money(values.dustGrossUnitPriceCopper),
-    dustRecovered: money(values.netValueOfRecoveredDustCopper),
+    dustRecoveredGross: money(values.expectedGrossRecoveredDustValueCopper),
+    dustRecoveredNet: money(values.netValueOfRecoveredDustCopper),
     netCost: money(values.netCostPerEctoCopper),
     profit: signed(values.profitPerEctoCopper),
     outcome:
@@ -333,21 +335,24 @@ async function run() {
         await textOf(page, '[data-test="ecto-quote-instant-buy"]'),
         await textOf(page, '[data-test="ecto-quote-buy-order"]'),
         await textOf(page, '[data-test="dust-quote-instant-sell"]'),
-        await textOf(page, '[data-test="dust-quote-listing-sell"]'),
-        await textOf(page, '[data-test="dust-net-instant-sell"]'),
-        await textOf(page, '[data-test="dust-net-listing-sell"]')
+        await textOf(page, '[data-test="dust-quote-listing-sell"]')
       ],
       [
         money(firstAnswer.instantBuyInstantSell.ectoAcquisitionCostCopper),
         money(firstAnswer.listingBuyInstantSell.ectoAcquisitionCostCopper),
         money(firstAnswer.instantBuyInstantSell.dustGrossUnitPriceCopper),
-        money(firstAnswer.instantBuyListingSell.dustGrossUnitPriceCopper),
-        money(firstAnswer.instantBuyInstantSell.dustNetUnitPriceCopper),
-        money(firstAnswer.instantBuyListingSell.dustNetUnitPriceCopper)
+        money(firstAnswer.instantBuyListingSell.dustGrossUnitPriceCopper)
       ],
       'The quote panel does not show the supplied quotes.'
     )
-    record('assumptions and quotes stated by the backend', 'fee 12%, gross and after-fee kept apart')
+    // STORY-DOM-024: the price panel is gross only. The superseded per-Dust-unit "after fee" quotes
+    // must not be back — a market price is never shown net of the selling fee.
+    const prices = await textOf(page, '[data-test="ecto-prices"]')
+    check(
+      !prices.includes('after fee') && !prices.includes('after 12%'),
+      `A displayed market price is labelled net of the fee: ${prices}`
+    )
+    record('assumptions and quotes stated by the backend', 'fee 12%, price panel gross only')
 
     // 5. Keyboard: the reload control is reachable by Tab, shows visible focus, and Enter runs it.
     const tabbed = []

@@ -12,6 +12,7 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
+import tradingpost.TradingPostFeePolicy;
 import util.CoinUtils;
 
 import java.net.URI;
@@ -55,9 +56,11 @@ public class EctoView {
         statusLabel.setStyle("-fx-text-fill: white; -fx-opacity: 0.85;");
 
         Label feeNoticeLabel = new Label(
-                "Note: figures below already deduct the Trading Post's 15% selling fee from recovered " +
-                        "Dust's sale proceeds. Ecto acquisition costs and Luck amounts are unaffected. " +
-                        "\"Net\" prices are proceeds after that fee; other prices are raw Trading Post quotes.");
+                "Note: profit and cost per 1000 Luck already deduct the Trading Post's "
+                        + TradingPostFeePolicy.PROFIT_FEE_PERCENT + "% selling fee once, from the "
+                        + "expected gross value of the Dust one ecto recovers. Every price shown here "
+                        + "is gross - the Trading Post quotes and the recovered Dust value alike - and "
+                        + "ecto acquisition costs and Luck amounts carry no selling fee at all.");
         feeNoticeLabel.setWrapText(true);
         feeNoticeLabel.getStyleClass().add("ecto-fee-notice");
         feeNoticeLabel.setStyle(
@@ -108,19 +111,29 @@ public class EctoView {
         Label ectoListingBuyLabel = value("-");
         Label dustInstantSellLabel = value("-");
         Label dustListingSellLabel = value("-");
-        Label dustInstantSellNetLabel = value("-");
-        Label dustListingSellNetLabel = value("-");
+        // Per ecto, at the gross quote above: what the expected Dust yield is worth before any fee
+        // (DOMAIN_SPEC.md §46). Not a price after fees - the fee only ever reaches profit below.
+        Label dustInstantSellRecoveredLabel = value("-");
+        Label dustListingSellRecoveredLabel = value("-");
+        dustInstantSellLabel.setId("ectoDustInstantSellGross");
+        dustListingSellLabel.setId("ectoDustListingSellGross");
+        dustInstantSellRecoveredLabel.setId("ectoDustInstantSellRecoveredGross");
+        dustListingSellRecoveredLabel.setId("ectoDustListingSellRecoveredGross");
 
         VBox pricesCard = card(
                 pricesTitle,
                 priceRow(ectoIcon, ectoName, "Instant Buy:", ectoInstantBuyLabel, "Listing Buy:", ectoListingBuyLabel),
-                priceRow(dustIcon, dustName, "Instant Sell (raw):", dustInstantSellLabel, "Listing Sell (raw):", dustListingSellLabel),
-                priceRow(new ImageView(), new Label(""), "Instant Sell (net of TP fee):", dustInstantSellNetLabel, "Listing Sell (net of TP fee):", dustListingSellNetLabel)
+                priceRow(dustIcon, dustName, "Instant Sell (gross):", dustInstantSellLabel, "Listing Sell (gross):", dustListingSellLabel),
+                priceRow(new ImageView(), new Label(""),
+                         "Recovered Dust / ecto, Instant Sell (gross):", dustInstantSellRecoveredLabel,
+                         "Recovered Dust / ecto, Listing Sell (gross):", dustListingSellRecoveredLabel)
                               );
         pricesCard.setMaxWidth(760);
 
         // ---------------- Tables ----------------
-        Label t1Title = new Label("ECTO SALVAGE PROFIT");
+        Label t1Title = new Label("ECTO SALVAGE PROFIT (per ecto, after "
+                                          + TradingPostFeePolicy.PROFIT_FEE_PERCENT + "% TP fees)");
+        t1Title.setId("ectoProfitTitle");
         t1Title.setStyle("-fx-text-fill: white; -fx-font-size: 13px; -fx-font-weight: bold; -fx-opacity: 0.95;");
 
         GridPane profitGrid = build2x2Grid(
@@ -129,7 +142,9 @@ public class EctoView {
                                           );
         profitGrid.setId("ectoProfitGrid");
 
-        Label t2Title = new Label("Cost per 1000 Luck ~ 50 ectos");
+        Label t2Title = new Label("Cost per 1000 Luck ~ 50 ectos (after "
+                                          + TradingPostFeePolicy.PROFIT_FEE_PERCENT + "% TP fees)");
+        t2Title.setId("ectoLuckTitle");
         t2Title.setStyle("-fx-text-fill: white; -fx-font-size: 13px; -fx-font-weight: bold; -fx-opacity: 0.95;");
 
         GridPane luckGrid = build2x2Grid(
@@ -195,8 +210,8 @@ public class EctoView {
                     ectoListingBuyLabel.setText(CoinUtils.format(scenarios.listingBuyInstantSell().ectoAcquisitionCost()));
                     dustInstantSellLabel.setText(CoinUtils.format(scenarios.instantBuyInstantSell().dustGrossUnitPrice()));
                     dustListingSellLabel.setText(CoinUtils.format(scenarios.instantBuyListingSell().dustGrossUnitPrice()));
-                    dustInstantSellNetLabel.setText(CoinUtils.format(scenarios.instantBuyInstantSell().dustNetUnitPrice()));
-                    dustListingSellNetLabel.setText(CoinUtils.format(scenarios.instantBuyListingSell().dustNetUnitPrice()));
+                    dustInstantSellRecoveredLabel.setText(CoinUtils.format(scenarios.instantBuyInstantSell().expectedGrossRecoveredDustValue()));
+                    dustListingSellRecoveredLabel.setText(CoinUtils.format(scenarios.instantBuyListingSell().expectedGrossRecoveredDustValue()));
 
                     // fill tables
                     fillProfitGrid(profitGrid, scenarios);
@@ -221,11 +236,13 @@ public class EctoView {
     // =========================
 
     private static void fillProfitGrid(GridPane grid, EctoSalvageService.EctoScenarios scenarios) {
-        // Per 1 ecto, net of the Trading Post's 15% selling fee on recovered Dust (DOMAIN_SPEC.md §46).
-        setCell(grid, 1, 1, CoinUtils.formatSigned(scenarios.instantBuyInstantSell().profitPerEcto()));
-        setCell(grid, 2, 1, CoinUtils.formatSigned(scenarios.instantBuyListingSell().profitPerEcto()));
-        setCell(grid, 1, 2, CoinUtils.formatSigned(scenarios.listingBuyInstantSell().profitPerEcto()));
-        setCell(grid, 2, 2, CoinUtils.formatSigned(scenarios.listingBuyListingSell().profitPerEcto()));
+        // Per 1 ecto, after one deduction of the shared selling fee from the expected gross value of
+        // the recovered Dust (DOMAIN_SPEC.md §25, §46). CoinUtils.format, not formatSigned: a
+        // salvage profit is usually a loss, and formatSigned would print it without its minus sign.
+        setCell(grid, 1, 1, CoinUtils.format(scenarios.instantBuyInstantSell().profitPerEcto()));
+        setCell(grid, 2, 1, CoinUtils.format(scenarios.instantBuyListingSell().profitPerEcto()));
+        setCell(grid, 1, 2, CoinUtils.format(scenarios.listingBuyInstantSell().profitPerEcto()));
+        setCell(grid, 2, 2, CoinUtils.format(scenarios.listingBuyListingSell().profitPerEcto()));
     }
 
     private static void fillLuckGrid(GridPane grid, EctoSalvageService.EctoScenarios scenarios) {

@@ -249,7 +249,6 @@ test-strategy or roadmap content was touched.
 
 ## Follow-up Findings Disposition
 F001: FOLLOW-UP STORY ? STORY-WEB-017
-
 ## Follow-up Findings
 
 F001: `frontend/scripts/layout-browser-smoke.mjs` measures text/background contrast on `AREAS[0]`,

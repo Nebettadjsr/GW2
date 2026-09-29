@@ -7,6 +7,7 @@ import ecto.EctoSalvageCalculator;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import tradingpost.TradingPostFeePolicy;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -117,7 +118,7 @@ class EctoSalvageApiControllerTest {
         JsonNode brokeEven = JSON.readTree(body).get("listingBuyInstantSell");
         assertTrue(brokeEven.get("profitPerEctoCopper").isNumber(), "a supplied zero is a value");
         assertEquals(0, brokeEven.get("profitPerEctoCopper").asInt());
-        assertEquals(0, brokeEven.get("dustNetUnitPriceCopper").asInt());
+        assertEquals(0, brokeEven.get("expectedGrossRecoveredDustValueCopper").asInt());
     }
 
     @Test
@@ -133,7 +134,7 @@ class EctoSalvageApiControllerTest {
                 .andExpect(jsonPath("$.assumptions.ectosPer1000Luck")
                         .value(EctoSalvageCalculator.ECTOS_PER_1000_LUCK))
                 .andExpect(jsonPath("$.assumptions.tradingPostSellFeePercent")
-                        .value(EctoSalvageCalculator.SELL_FEE_PERCENT));
+                        .value(TradingPostFeePolicy.PROFIT_FEE_PERCENT));
     }
 
     @Test
@@ -158,7 +159,7 @@ class EctoSalvageApiControllerTest {
                     scenario + " must be null when no usable quotes were returned, never a zero scenario");
         }
         // The assumptions do not depend on a price snapshot, so they are still reported.
-        assertEquals(EctoSalvageCalculator.SELL_FEE_PERCENT,
+        assertEquals(TradingPostFeePolicy.PROFIT_FEE_PERCENT,
                 response.get("assumptions").get("tradingPostSellFeePercent").asInt());
         assertEquals(1, service.callCount.get());
     }
@@ -177,7 +178,7 @@ class EctoSalvageApiControllerTest {
         assertEquals(List.of(
                         "ectoAcquisitionCostCopper",
                         "dustGrossUnitPriceCopper",
-                        "dustNetUnitPriceCopper",
+                        "expectedGrossRecoveredDustValueCopper",
                         "netValueOfRecoveredDustCopper",
                         "netCostPerEctoCopper",
                         "profitPerEctoCopper",
@@ -311,7 +312,7 @@ class EctoSalvageApiControllerTest {
         assertNotNull(actual, "the scenario must be present");
         assertEquals(expected.ectoAcquisitionCost(), actual.get("ectoAcquisitionCostCopper").asInt());
         assertEquals(expected.dustGrossUnitPrice(), actual.get("dustGrossUnitPriceCopper").asInt());
-        assertEquals(expected.dustNetUnitPrice(), actual.get("dustNetUnitPriceCopper").asInt());
+        assertEquals(expected.expectedGrossRecoveredDustValue(), actual.get("expectedGrossRecoveredDustValueCopper").asInt());
         assertEquals(expected.netValueOfRecoveredDust(), actual.get("netValueOfRecoveredDustCopper").asInt());
         assertEquals(expected.netCostPerEcto(), actual.get("netCostPerEctoCopper").asInt());
         assertEquals(expected.profitPerEcto(), actual.get("profitPerEctoCopper").asInt());

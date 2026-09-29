@@ -19,8 +19,9 @@ import { useEctoSalvage } from './useEctoSalvage'
  * exists to prevent.
  *
  * Gross and fee-inclusive values are labelled apart wherever they sit together (`DOMAIN_SPEC.md` 25):
- * the Trading Post quotes are gross, and the economic results already have the selling fee in them,
- * deducted once, on the Dust side only. Buying and selling modes are always written out — instant
+ * the Trading Post quotes and the expected recovered Dust value are gross, and the economic results
+ * already have the selling fee in them, deducted once, on the expected gross recovered Dust value
+ * (`DOMAIN_SPEC.md` 46). Buying and selling modes are always written out — instant
  * buy versus buy order, instant sell versus listing sell — because "buy price" and "sell price" are
  * ambiguous without whose perspective is meant (`DOMAIN_SPEC.md` 20).
  *
@@ -91,7 +92,8 @@ const scenarios = computed<ScenarioRow[]>(() => {
  * The quotes behind the scenarios, read out of the scenarios that used them. Each value is one
  * backend field: the Ecto instant-buy cost is the instant-buy scenarios' own acquisition cost, and
  * the Dust instant-sell quote is the instant-sell scenarios' own quote. Nothing is averaged,
- * reconciled or computed across scenarios.
+ * reconciled or computed across scenarios. All four are gross — this panel shows market prices, and
+ * no fee-inclusive figure belongs in it.
  */
 const quotes = computed(() => {
   const result = salvage.data.value
@@ -106,9 +108,7 @@ const quotes = computed(() => {
     ectoInstantBuy: instantSell.ectoAcquisitionCostCopper,
     ectoBuyOrder: buyOrder.ectoAcquisitionCostCopper,
     dustInstantSellGross: instantSell.dustGrossUnitPriceCopper,
-    dustListingSellGross: listingSell.dustGrossUnitPriceCopper,
-    dustInstantSellNet: instantSell.dustNetUnitPriceCopper,
-    dustListingSellNet: listingSell.dustNetUnitPriceCopper
+    dustListingSellGross: listingSell.dustGrossUnitPriceCopper
   }
 })
 
@@ -200,8 +200,9 @@ function onReload(): void {
             <li data-test="ecto-assumption-fee">
               Profit, net cost and Luck cost already have the Trading Post's
               {{ salvage.data.value.assumptions.tradingPostSellFeePercent }}% selling fee deducted
-              from the recovered Dust, once. Prices labelled gross are raw Trading Post quotes with
-              no fee in them; buying an Ectoplasm carries no selling fee.
+              once, from the expected gross value of the Dust one Ectoplasm recovers. Values labelled
+              gross carry no fee — the Trading Post quotes and that recovered Dust value alike — and
+              buying an Ectoplasm carries no selling fee.
             </li>
           </ul>
         </section>
@@ -261,18 +262,6 @@ function onReload(): void {
                     {{ formatCopper(quotes.dustListingSellGross) }}
                   </dd>
                 </div>
-                <div>
-                  <dt>Instant sell (after fee)</dt>
-                  <dd class="money" data-test="dust-net-instant-sell">
-                    {{ formatCopper(quotes.dustInstantSellNet) }}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Listing sell (after fee)</dt>
-                  <dd class="money" data-test="dust-net-listing-sell">
-                    {{ formatCopper(quotes.dustListingSellNet) }}
-                  </dd>
-                </div>
               </dl>
             </div>
           </div>
@@ -290,9 +279,10 @@ function onReload(): void {
             <table class="scenario-table" data-test="ecto-scenario-table">
               <caption class="visually-hidden">
                 One row per combination of how the Ectoplasm is bought and how the recovered Dust is
-                sold. Prices marked gross are raw Trading Post quotes; the recovered Dust value, net
-                cost, profit and Luck cost already have the selling fee deducted once. Every figure
-                is per one Ectoplasm except the last column.
+                sold. Values marked gross carry no fee — the two Trading Post quotes and the
+                expected value of the recovered Dust; the columns marked after fees are the same
+                recovered Dust value less the selling fee, and the net cost, profit and Luck cost
+                that follow from it. Every figure is per one Ectoplasm except the last column.
               </caption>
 
               <thead>
@@ -314,25 +304,42 @@ function onReload(): void {
                   <th scope="col" class="numeric">
                     <span class="column-label">
                       Recovered Dust
-                      <span class="column-note">after fee, per ecto</span>
+                      <span class="column-note">gross, per ecto</span>
+                    </span>
+                  </th>
+                  <th scope="col" class="numeric">
+                    <span class="column-label">
+                      Recovered Dust
+                      <span class="column-note">
+                        after {{ salvage.data.value.assumptions.tradingPostSellFeePercent }}% TP
+                        fees, per ecto
+                      </span>
                     </span>
                   </th>
                   <th scope="col" class="numeric">
                     <span class="column-label">
                       Net cost
-                      <span class="column-note">after fee, per ecto</span>
+                      <span class="column-note">
+                        after {{ salvage.data.value.assumptions.tradingPostSellFeePercent }}% TP
+                        fees, per ecto
+                      </span>
                     </span>
                   </th>
                   <th scope="col" class="numeric">
                     <span class="column-label">
                       Profit
-                      <span class="column-note">after fee, per ecto</span>
+                      <span class="column-note">
+                        after {{ salvage.data.value.assumptions.tradingPostSellFeePercent }}% TP
+                        fees, per ecto
+                      </span>
                     </span>
                   </th>
                   <th scope="col" class="numeric">
                     <span class="column-label">
                       Cost per 1000 Luck
-                      <span class="column-note">after fee</span>
+                      <span class="column-note">
+                        after {{ salvage.data.value.assumptions.tradingPostSellFeePercent }}% TP fees
+                      </span>
                     </span>
                   </th>
                 </tr>
@@ -359,7 +366,12 @@ function onReload(): void {
                       {{ formatCopper(scenario.values.dustGrossUnitPriceCopper) }}
                     </span>
                   </td>
-                  <td class="numeric" data-test="ecto-scenario-dust-recovered">
+                  <td class="numeric" data-test="ecto-scenario-dust-recovered-gross">
+                    <span class="money">
+                      {{ formatCopper(scenario.values.expectedGrossRecoveredDustValueCopper) }}
+                    </span>
+                  </td>
+                  <td class="numeric" data-test="ecto-scenario-dust-recovered-net">
                     <span class="money">
                       {{ formatCopper(scenario.values.netValueOfRecoveredDustCopper) }}
                     </span>

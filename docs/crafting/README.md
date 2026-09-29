@@ -243,9 +243,18 @@ The fee is deducted **once**, in the backend, and **only from profit**:
 - Every **displayed price stays gross** — the item sell price, Output Revenue, Total Sell Value and
   the Instant Buy / Instant Sell quotes are the raw Trading Post numbers, with nothing deducted. So
   Total Sell Value minus costs will not equal Total Profit; the difference is the fee.
-- **Ectoplasm Salvage** deducts the same 15% from Crystalline Dust's sale proceeds before computing
-  net cost per Ecto and cost per 1000 Luck (§46–§47): `dust_sale_price = selected gross price × 0.85`,
-  applied only to the recovered-material sale side, never to the ecto acquisition cost.
+- **Ectoplasm Salvage** deducts the same 15% once, from the **expected gross value of the Crystalline
+  Dust one ecto recovers**, before computing net cost per ecto and cost per 1000 Luck (§46–§47):
+  `expected_gross_recovered = selected gross Dust price × expected Dust per ecto`, then
+  `15%` off that one amount. The expected yield is a fraction and is never rounded up into whole Dust
+  sales first, and the fee touches only the recovered-material sale side, never the ecto acquisition
+  cost or the Luck amount. The screen shows both figures side by side: the recovered Dust value gross,
+  and the same value after the fee.
+
+  The Dust quotes themselves stay gross like every other displayed price — the Ectoplasm screen no
+  longer shows a per-Dust-unit "net of TP fee" quote, because a market price is never displayed with
+  the fee taken off. Its two profitability tables ("profit per ecto" and "cost per 1000 Luck") are
+  labelled "after 15% TP fees" instead.
 
 In the Crafting Profit and Discovery calculation details, Profit and Total Profit carry a small
 "after 15% TP fees" note for exactly this reason.

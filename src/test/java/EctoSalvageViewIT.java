@@ -12,6 +12,8 @@ import uiverify.JavaFxUiSupport;
 import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * STORY-APP-003: deterministic real-view regression proving {@code EctoView} actually renders
@@ -48,25 +50,67 @@ class EctoSalvageViewIT extends ApplicationTest {
 
     @Test
     void ectoView_rendersControlledServiceResultsAndDelegatesCalculationToService() {
-        Label status = JavaFxUiSupport.find(this, "#ectoStatusLabel", Label.class);
-        JavaFxUiSupport.waitUntil("status label to report a completed fetch", Duration.ofSeconds(5),
-                () -> status.getText().startsWith("Prices fetched"));
+        awaitCompletedFetch();
 
         GridPane profitGrid = JavaFxUiSupport.find(this, "#ectoProfitGrid", GridPane.class);
         GridPane luckGrid = JavaFxUiSupport.find(this, "#ectoLuckGrid", GridPane.class);
 
-        assertEquals(util.CoinUtils.formatSigned(SCENARIOS.instantBuyInstantSell().profitPerEcto()), cellText(profitGrid, 1, 1));
-        assertEquals(util.CoinUtils.formatSigned(SCENARIOS.instantBuyListingSell().profitPerEcto()), cellText(profitGrid, 2, 1));
-        assertEquals(util.CoinUtils.formatSigned(SCENARIOS.listingBuyInstantSell().profitPerEcto()), cellText(profitGrid, 1, 2));
-        assertEquals(util.CoinUtils.formatSigned(SCENARIOS.listingBuyListingSell().profitPerEcto()), cellText(profitGrid, 2, 2));
+        // Hand-written amounts, not recomputed from the calculator: 200c × 0.75 = 150c expected
+        // gross recovered Dust, less 15% (23c) = 127c, so instant-buying at 1000c loses 873c per
+        // ecto and 1000 Luck (50 ectos) costs 43 650c. At 240c the Dust recovers 180c - 27c = 153c.
+        assertEquals("-0g 8s 73c", cellText(profitGrid, 1, 1));
+        assertEquals("-0g 8s 47c", cellText(profitGrid, 2, 1));
+        assertEquals("-0g 7s 73c", cellText(profitGrid, 1, 2));
+        assertEquals("-0g 7s 47c", cellText(profitGrid, 2, 2));
 
-        assertEquals(util.CoinUtils.format(SCENARIOS.instantBuyInstantSell().costPer1000Luck()), cellText(luckGrid, 1, 1));
-        assertEquals(util.CoinUtils.format(SCENARIOS.instantBuyListingSell().costPer1000Luck()), cellText(luckGrid, 2, 1));
-        assertEquals(util.CoinUtils.format(SCENARIOS.listingBuyInstantSell().costPer1000Luck()), cellText(luckGrid, 1, 2));
-        assertEquals(util.CoinUtils.format(SCENARIOS.listingBuyListingSell().costPer1000Luck()), cellText(luckGrid, 2, 2));
+        assertEquals("4g 36s 50c", cellText(luckGrid, 1, 1));
+        assertEquals("4g 23s 50c", cellText(luckGrid, 2, 1));
+        assertEquals("3g 86s 50c", cellText(luckGrid, 1, 2));
+        assertEquals("3g 73s 50c", cellText(luckGrid, 2, 2));
 
         // EctoView must delegate the load to the injected service - not perform its own HTTP call.
         assertEquals(1, fakeService.callCount);
+    }
+
+    /**
+     * STORY-DOM-024: the price card shows gross values only, and the two profitability tables say
+     * the fee is already in them. A quote labelled "net of TP fee" - the superseded per-unit modeled
+     * sale - must not be back, and no fee may be taken off a displayed price.
+     */
+    @Test
+    void ectoView_labelsEveryDisplayedPriceGrossAndNamesTheFeeOnTheProfitabilityTables() {
+        awaitCompletedFetch();
+
+        // The Dust quotes reach the screen untouched by the fee.
+        assertEquals("0g 2s 0c", labelText("#ectoDustInstantSellGross"));
+        assertEquals("0g 2s 40c", labelText("#ectoDustListingSellGross"));
+
+        // The recovered-Dust value is the expected yield at that same gross quote, before any fee:
+        // 200 × 0.75 = 150c and 240 × 0.75 = 180c, not the 127c/153c the profit figures use.
+        assertEquals("0g 1s 50c", labelText("#ectoDustInstantSellRecoveredGross"));
+        assertEquals("0g 1s 80c", labelText("#ectoDustListingSellRecoveredGross"));
+
+        assertTrue(labelText("#ectoProfitTitle").contains("after 15% TP fees"),
+                   "the profit table must state the fee is already deducted: " + labelText("#ectoProfitTitle"));
+        assertTrue(labelText("#ectoLuckTitle").contains("after 15% TP fees"),
+                   "the Luck cost table likewise: " + labelText("#ectoLuckTitle"));
+
+        String notice = JavaFxUiSupport.find(this, ".ecto-fee-notice", Label.class).getText();
+        assertTrue(notice.contains("already deduct") && notice.contains("15%"),
+                   "the notice must state the deducted fee: " + notice);
+        assertTrue(notice.contains("gross"), "the notice must say the displayed prices are gross: " + notice);
+        assertFalse(notice.contains("net of TP fee") || notice.contains("\"Net\""),
+                    "no displayed price is a net-of-fee price any more: " + notice);
+    }
+
+    private void awaitCompletedFetch() {
+        Label status = JavaFxUiSupport.find(this, "#ectoStatusLabel", Label.class);
+        JavaFxUiSupport.waitUntil("status label to report a completed fetch", Duration.ofSeconds(5),
+                () -> status.getText().startsWith("Prices fetched"));
+    }
+
+    private String labelText(String selector) {
+        return JavaFxUiSupport.find(this, selector, Label.class).getText();
     }
 
     private static String cellText(GridPane grid, int col, int row) {

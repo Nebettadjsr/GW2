@@ -64,7 +64,8 @@ src/
 ├── ecto/                     EctoSalvageCalculator (Ectoplasm Salvage domain calculation, no
 │                             JavaFX/repo/controller/application dependency; moved out of the
 │                             default package by STORY-APP-003 so application.EctoSalvageService
-│                             can import it)
+│                             can import it; charges its selling fee through tradingpost.
+│                             TradingPostFeePolicy since STORY-DOM-024)
 ├── model/                    BankSlot, CharacterCraftingRow, CharacterInfo,
 │                             CharacterRecipeRow, MaterialStack, Price
 ├── parser/                   BankParser, CharacterCraftingParser, CharacterNamesParser,
@@ -156,8 +157,8 @@ The project is now built with Maven (`./mvnw`, Java 25 target), using the standa
 | `application` | Application Layer use-case orchestration (`TARGET_ARCHITECTURE.md` §8): `CraftingProfitService`, coordinating `repo.*` loading, coordinated-roster construction and `craft.CraftingPlanner`/`RecipeTreeBuilder` invocation for the Crafting Profit flow (§5.1, `STORY-APP-001`); `CraftingDiscoveryService`, the same kind of boundary for the Crafting Discovery flow (§5.2, `STORY-APP-002`) - missing-discoverable-recipe/graph/inventory/price/item loading and single-character `craft.CraftingPlanner.evaluateAll`/`RecipeTreeBuilder` invocation; and `EctoSalvageService`, coordinating `api.tp.EctoLivePriceGateway` price acquisition and `ecto.EctoSalvageCalculator` invocation for the Ectoplasm Salvage flow (§5.3, `STORY-APP-003`). None of the three classes has a JavaFX dependency. |
 | `api` | Low-level HTTP client for the GW2 API (`Gw2ApiClient`), batching helper, HTTP status handling, `Gw2PriceFetch` — an ad-hoc price fetcher that has had no caller anywhere in the codebase since `Main` (its only caller) was deleted (see `docs/KNOWN_PROBLEMS.md` §7.8) — and `api.tp.EctoLivePriceGateway`, the live (unsynchronized) Ecto/Dust price lookup used by `application.EctoSalvageService` (`STORY-APP-003`) |
 | `craft` | Persistence-independent crafting domain: independent domain types (`Recipe`, `Ingredient`, `PriceQuote`), the recipe-known policy (`RecipeKnowledgePolicy`), recipe selection, inventory consumption, craft-vs-buy decisions, cost/profit math, and resolution tree construction. No JDBC/SQL/repository/transport dependency (`TARGET_ARCHITECTURE.md` §7). |
-| `ecto` | Persistence-independent Ectoplasm Salvage domain calculation (`EctoSalvageCalculator`): the fee-inclusive net cost/profit/Luck-cost math (DOMAIN_SPEC.md §45-47). No JDBC/SQL/repository/transport/JavaFX dependency. Moved out of the default package by `STORY-APP-003` so `application.EctoSalvageService` can import it. |
-| `tradingpost` | Two persistence-independent Trading Post domain calculations, each with its own model. `TradingPostFeePolicy` owns the decided **profitability** fee (DOMAIN_SPEC.md §25, resolved `UD-011`, `STORY-DOM-023`): 15% of whatever gross sell value the caller states, in exact integer copper rounded half away from zero, with no minimum. `craft.CraftingPlanner` is its caller. `TradingPostSaleCalculator` owns the **transaction** model: gross sale value, separately rounded 5% listing and 10% exchange fees with their 1-copper minimums, total fees and net proceeds for one sale the caller states explicitly as unit price × quantity (§25.1, `STORY-DOM-022`); §25.1 forbids substituting it for the policy above, and nothing calls it yet (§9). Neither has a JDBC/SQL/repository/transport/JavaFX dependency or a dependency on `craft`/`ecto`, and neither selects a sale mode, price source or sale grouping of its own. |
+| `ecto` | Persistence-independent Ectoplasm Salvage domain calculation (`EctoSalvageCalculator`): the fee-inclusive net cost/profit/Luck-cost math (DOMAIN_SPEC.md §45-47), with the selling fee itself taken from `tradingpost.TradingPostFeePolicy` rather than owned here (`STORY-DOM-024`). No JDBC/SQL/repository/transport/JavaFX dependency. Moved out of the default package by `STORY-APP-003` so `application.EctoSalvageService` can import it. |
+| `tradingpost` | Two persistence-independent Trading Post domain calculations, each with its own model. `TradingPostFeePolicy` owns the decided **profitability** fee (DOMAIN_SPEC.md §25, resolved `UD-011`, `STORY-DOM-023`): 15% of whatever gross sell value the caller states, in exact integer copper rounded half away from zero, with no minimum. `craft.CraftingPlanner` and `ecto.EctoSalvageCalculator` are its callers, and `web.EctoSalvageApiController` reads its percentage to state it at the HTTP boundary (`STORY-DOM-024`). `TradingPostSaleCalculator` owns the **transaction** model: gross sale value, separately rounded 5% listing and 10% exchange fees with their 1-copper minimums, total fees and net proceeds for one sale the caller states explicitly as unit price × quantity (§25.1, `STORY-DOM-022`); §25.1 forbids substituting it for the policy above, and nothing calls it yet (§9). Neither has a JDBC/SQL/repository/transport/JavaFX dependency or a dependency on `craft`/`ecto`, and neither selects a sale mode, price source or sale grouping of its own. |
 | `model` | Plain data records used mainly during API-response parsing (bank slots, character rows, material stacks, price) |
 | `parser` | Converts raw GW2 API `JsonNode` responses into `model` records or repository-ready structures |
 | `repo` | PostgreSQL access via JDBC (`Db`) plus per-domain repositories (items, recipes, inventory, characters, TP prices), the persistence-to-domain mapping boundary for `craft.*` types (`TARGET_ARCHITECTURE.md` §10), the crafting-graph JSON cache (`CraftingGraphCache`/`CraftingGraphDto`), and hardcoded configuration (`AppConfig`) |
@@ -457,7 +458,8 @@ EctoView
    -> application.EctoSalvageService.calculate()
         -> api.tp.EctoLivePriceGateway.fetchQuotes(...) (direct HttpClient call to GW2 commerce/prices API)
         -> ecto.EctoSalvageCalculator.evaluate(...) x4 (Ecto-buy/Dust-sell combinations)
-           (deducts the 15% TP selling fee from Dust sale proceeds, DOMAIN_SPEC.md §46/§47/DQ-011)
+           (scales the expected Dust yield onto the gross quote, then deducts tradingpost.
+            TradingPostFeePolicy's 15% once from that value, DOMAIN_SPEC.md §25/§46/§47/DQ-011)
    -> fillProfitGrid / fillLuckGrid render the returned EctoScenarios; icon fetching remains a
       direct view concern (presentation-only, not part of the price/calculation use case)
 ```
@@ -1522,7 +1524,12 @@ nothing here polls or retries by itself.
   scenario that used it (the Ecto instant-buy cost is the instant-buy scenarios' own acquisition cost),
   so nothing is averaged or reconciled across scenarios, and the stated fee percentage and expected
   yields come from the response's `assumptions` — labelled as expected values over many salvages, not a
-  guaranteed drop. Gross and fee-inclusive columns state their own basis in their headers.
+  guaranteed drop. Gross and fee-inclusive columns state their own basis in their headers: since
+  `STORY-DOM-024` the recovered Dust value appears twice, gross and after the fee, each from its own
+  backend field; every fee-inclusive header note names the backend's own percentage ("after 15% TP
+  fees"); and the quote panel carries **only** gross quotes — the earlier per-Dust-unit "after fee"
+  rows are gone, because a market price is never displayed with the fee taken off (`DOMAIN_SPEC.md`
+  §25/§46).
 - **Both modes written out.** Buying is "Instant buy" or "Buy order" and selling "Instant sell" or
   "Listing sell" in every row, because "buy price"/"sell price" is ambiguous without whose perspective
   is meant (`DOMAIN_SPEC.md` §20). Profit carries the word `gain`/`loss`/`break-even` beside the signed
@@ -2079,21 +2086,24 @@ called rather than answered with the unparameterised result. The response carrie
 from the domain constants in `ecto.EctoSalvageCalculator`, and the four named scenarios
 `instantBuyInstantSell`, `instantBuyListingSell`, `listingBuyInstantSell`, `listingBuyListingSell`.
 Each scenario is seven integers in copper, per one Ectoplasm except the last:
-`ectoAcquisitionCostCopper` and `dustGrossUnitPriceCopper` are **gross** Trading Post quotes carrying
-no fee, while `dustNetUnitPriceCopper`, `netValueOfRecoveredDustCopper`, `netCostPerEctoCopper`,
-`profitPerEctoCopper` and `costPer1000LuckCopper` are the domain's **fee-inclusive** results with
-`DOMAIN_SPEC.md` §25's selling fee applied once, on the Dust side only (§46–§47). Signs are
-preserved — a negative net cost or Luck cost means the recovered Dust is worth more than the
-Ectoplasm — and a supplied zero stays zero. `SELL_FEE_PERCENT` was added to
-`ecto.EctoSalvageCalculator` so the boundary states the fee from its domain owner instead of holding a
-second copy; `EctoSalvageCalculatorTest` pins it to the multiplier the calculation actually applies,
-and the existing `0.85` arithmetic is unchanged.
+`ectoAcquisitionCostCopper`, `dustGrossUnitPriceCopper` and `expectedGrossRecoveredDustValueCopper`
+carry **no fee** and are the ones a client displays as prices, while
+`netValueOfRecoveredDustCopper`, `netCostPerEctoCopper`, `profitPerEctoCopper` and
+`costPer1000LuckCopper` are the domain's **fee-inclusive** results with `DOMAIN_SPEC.md` §25's selling
+fee applied once, on the Dust side only (§46–§47). Signs are preserved — a negative net cost or Luck
+cost means the recovered Dust is worth more than the Ectoplasm — and a supplied zero stays zero.
+`STORY-DOM-024` replaced the earlier per-Dust-unit `dustNetUnitPriceCopper` with the gross
+`expectedGrossRecoveredDustValueCopper`, because §46 scales the expected yield onto the gross quote
+*before* the fee rather than rounding each Dust unit into a modeled sale, and reads
+`tradingPostSellFeePercent` from `tradingpost.TradingPostFeePolicy` — the same owner the calculation
+deducts through — so the stated rate cannot drift from the deducted one.
 
 **Nothing economic at the boundary.** The controller fetches no price, holds no quote-acquisition
 sequence, applies no fee, scales no yield and computes no profit, net cost or Luck cost: every number
 it returns came out of that one service call. The assumptions are reported as **expected values**, not
 guaranteed drops (`DOMAIN_SPEC.md` §45/§47), and no field is derivable from another by design — a
-client multiplying a net unit price by the expected yield would be running its own economics.
+client taking the stated percentage off the gross recovered Dust value would be running its own
+economics.
 
 **Statuses.** 200 with `resultAvailable: true` and four scenarios; 200 with `resultAvailable: false`
 and four **null** scenarios when the Trading Post returned no usable quote for both items — a
@@ -2165,7 +2175,7 @@ Observed (not inferred) mixing of concerns, by file:
 4. **(Resolved by `STORY-APP-004`/`STORY-APP-005`/`STORY-APP-006`/`STORY-APP-007`)** ~~`Gw2App`'s "First-time DB Setup" button handler directly calls `InitialSetupService`/`sync.*`.~~ All three `Gw2App` sync buttons ("Sync Account", "Sync ALL tradeable Items...", "First-time DB Setup") now delegate to named application services (`application.AccountRefreshService`/`application.GlobalDataRefreshService`/`application.InitialSetupService`) instead of calling `sync.*`/`repo.*` directly from the button handler. `application.InitialSetupService.firstFill()` (`STORY-APP-007`) owns the setup orchestration that previously lived in a top-level `InitialSetupService` class outside the application layer; that class has been deleted.
 5. **(Resolved by `STORY-INFRA-003`)** ~~Two independent JDBC connection helpers (`repo.Db`, `sync.Db`) with different method names but identical behavior.~~ `sync.Db` was removed; all `repo.*` and `sync.*` callers now share `repo.Db.open()`.
 6. **(Resolved by `STORY-APP-009`)** ~~`BankView`/`MaterialsView` each declare their own literal `DB_URL`/`DB_USER`/`DB_PASS` constants and call `DriverManager.getConnection(...)` directly, bypassing `repo.AppConfig`/`repo.EnvConfig`/`repo.Db` entirely.~~ Both views now read through an application service (`application.BankContentsService`, `application.MaterialStorageService`) over a persistence adapter (`repo.BankRepository`, `repo.MaterialStorageRepository`) that opens its connection with the shared `repo.Db.open()` helper from item 5. The two extra connection-acquisition paths no longer exist (`docs/KNOWN_PROBLEMS.md` §2.2).
-7. **(Crafting side resolved by `STORY-DOM-023`; Ectoplasm side open, `STORY-DOM-024`)** Three Trading Post fee calculations now exist, for two different models. Resolved `UD-011` chose a profitability model, so `tradingpost.TradingPostFeePolicy` is the owner for profit: `craft.CraftingPlanner.evaluateOneRecipeNew(...)` deducts its 15% once, from the gross per-craft revenue, when building `CraftResult.profitCopper`/`totalProfitCopper`. `revenueCopper` and `totalSellValueCopper` stay gross, and every consumer that copies them — `application.CraftingProfitService`/`CraftingDiscoveryService`, both JavaFX controllers/views, `web.CraftingRowMapper`/`web.dto.CraftingRowDto` and the browser frontend — carries the corrected profits and the unchanged gross values through unaltered. `craft.CostEvaluationResult` publishes no profit of its own since `STORY-DOM-025`: its pre-fee `profitPerCraft`/`totalProfit`, and the unread `buyCostPerCraft`/`effectiveCostPerCraft` whose purchased-material basis (`sim.getFirstCraft().getBuyCostCopper()`) differed from the planner's, are gone, leaving only the gross `revenuePerCraft` and `opportunityCostPerCraft` the planner actually reads. Still open: `tradingpost.TradingPostSaleCalculator`, the §25.1 transaction model, has no caller (§25.1 forbids substituting it for the profitability model); and `ecto.EctoSalvageCalculator.netSaleProceeds(...)` still applies its own `Math.round(gross * 0.85)` multiplier rather than the shared policy, which `STORY-DOM-024` owns.
+7. **(Resolved by `STORY-DOM-023` and `STORY-DOM-024`; one uncalled primitive remains)** Two Trading Post fee calculations now exist, for two different models. Resolved `UD-011` chose a profitability model, so `tradingpost.TradingPostFeePolicy` is the owner for profit: `craft.CraftingPlanner.evaluateOneRecipeNew(...)` deducts its 15% once, from the gross per-craft revenue, when building `CraftResult.profitCopper`/`totalProfitCopper`. `revenueCopper` and `totalSellValueCopper` stay gross, and every consumer that copies them — `application.CraftingProfitService`/`CraftingDiscoveryService`, both JavaFX controllers/views, `web.CraftingRowMapper`/`web.dto.CraftingRowDto` and the browser frontend — carries the corrected profits and the unchanged gross values through unaltered. `craft.CostEvaluationResult` publishes no profit of its own since `STORY-DOM-025`: its pre-fee `profitPerCraft`/`totalProfit`, and the unread `buyCostPerCraft`/`effectiveCostPerCraft` whose purchased-material basis (`sim.getFirstCraft().getBuyCostCopper()`) differed from the planner's, are gone, leaving only the gross `revenuePerCraft` and `opportunityCostPerCraft` the planner actually reads. `STORY-DOM-024` brought the Ectoplasm side onto the same owner: `ecto.EctoSalvageCalculator` holds no fee rate, multiplier or rounding rule of its own any more — its `netSaleProceeds(...)`/`SELL_FEE_PERCENT`/`0.85` multiplier are gone — and `evaluate(...)` scales the expected Dust yield onto the gross quote first, then takes `TradingPostFeePolicy.netOfFee(...)` off that one aggregate (§46), so no Dust unit is rounded into a modeled sale and no fractional expected drop becomes an actual one. `web.EctoSalvageApiController` states the percentage from the same policy. Still open: `tradingpost.TradingPostSaleCalculator`, the §25.1 transaction model, has no caller (§25.1 forbids substituting it for the profitability model).
 
 ---
 
