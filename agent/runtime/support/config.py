@@ -114,6 +114,9 @@ CLAUDE_MODEL = "claude-opus-5"
 MAX_RETRIES_PER_STORY = 2
 
 CLAUDE_USAGE_LIMIT_PERCENT = 90
+# Weekly capacity is independent of the five-hour session allowance.
+# A run may start only with more than 2% of the weekly allowance remaining.
+CLAUDE_WEEKLY_MIN_REMAINING_PERCENT = 2
 
 # Shared local-recheck cooldown for both models' capacity probes
 # (see support/capacity.py's CapacityProbe) -- deliberately not named

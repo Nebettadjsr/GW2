@@ -5,7 +5,7 @@ import hashlib
 import traceback
 
 from agent.runtime.runners.claude_runner import (
-    get_claude_session_usage_percent,
+    get_claude_usage,
     run_claude_attempt,
     wait_for_claude_capacity,
 )
@@ -17,6 +17,7 @@ from agent.runtime.support.config import (
     CAPACITY_WAIT_POLL_SECONDS,
     CLAUDE_RESULT_FILE,
     CLAUDE_USAGE_LIMIT_PERCENT,
+    CLAUDE_WEEKLY_MIN_REMAINING_PERCENT,
     CURRENT_STORY_FILE,
     CYCLE_RETRY_SECONDS,
     MAX_CI_FIX_ATTEMPTS,
@@ -89,9 +90,9 @@ from agent.runtime.support.repo_map import (
 # Claude usage measurement (best-effort, never blocks a Claude run)
 # ============================================================
 
-def _safe_claude_usage_percent() -> int | None:
+def _safe_claude_usage():
     try:
-        return get_claude_session_usage_percent()
+        return get_claude_usage()
     except Exception:  # noqa: BLE001 -- measurement must never block
         return None
 
@@ -998,7 +999,7 @@ def execute_active_story(
                 CLAUDE_RESULT_FILE
             )
 
-            usage_before = _safe_claude_usage_percent()
+            usage_before = _safe_claude_usage()
             claude_start = time.time()
 
             attempt = run_claude_attempt(
@@ -1008,7 +1009,7 @@ def execute_active_story(
             claude_exit_code = attempt.exit_code
 
             claude_duration = time.time() - claude_start
-            usage_after = _safe_claude_usage_percent()
+            usage_after = _safe_claude_usage()
 
             print(
                 "Claude run measurement: "
@@ -1022,8 +1023,7 @@ def execute_active_story(
                 # An interrupted attempt is not an evaluator retry or a
                 # story outcome. Keep the same story and work order.
                 capacity_limited = attempt.capacity_exhausted or (
-                    usage_after is not None
-                    and usage_after >= CLAUDE_USAGE_LIMIT_PERCENT
+                    usage_after is not None and not usage_after.available()
                 )
 
                 set_story_unfinished(story_path)
@@ -1766,6 +1766,7 @@ class CapacityScheduler:
             except (OSError, ValueError, KeyError, AttributeError):
                 pass
         self.claude_usage_percent = None
+        self.claude_weekly_used_percent = None
         self.codex_failure = None
         # Remembered purely so a transition is logged once, instead of
         # the same "unavailable" line every polling cycle.
@@ -1776,9 +1777,13 @@ class CapacityScheduler:
         # `claude -p /usage` runs a slash command, so this costs no
         # tokens and never invokes the exhausted model. The reading is
         # kept for the terminal status line.
-        self.claude_usage_percent = get_claude_session_usage_percent()
+        self.claude_usage_percent = None
+        self.claude_weekly_used_percent = None
+        usage = get_claude_usage()
+        self.claude_usage_percent = usage.session_used_percent
+        self.claude_weekly_used_percent = usage.weekly_used_percent
 
-        return self.claude_usage_percent < CLAUDE_USAGE_LIMIT_PERCENT
+        return usage.available()
 
     def _read_codex_capacity(self):
         self.codex_capacity = None  # Never present an old successful reading as fresh.
@@ -1993,13 +1998,16 @@ class CapacityScheduler:
         ]
 
         if "Claude" in unavailable:
-            lines.append(
-                f"Current usage: Claude session {self.claude_usage_percent}% "
-                f"(resumes below {CLAUDE_USAGE_LIMIT_PERCENT}%)"
-                if self.claude_usage_percent is not None
-                else "Current usage: Claude session usage unreadable "
-                     "(last local probe failed)"
-            )
+            if self.claude_usage_percent is not None and self.claude_weekly_used_percent is not None:
+                lines.append(
+                    f"Current usage: Claude session {self.claude_usage_percent}% "
+                    f"(resumes below {CLAUDE_USAGE_LIMIT_PERCENT}%), weekly "
+                    f"remaining {100 - self.claude_weekly_used_percent}% "
+                    f"(resumes above {CLAUDE_WEEKLY_MIN_REMAINING_PERCENT}%)"
+                )
+            else:
+                lines.append("Current usage: Claude usage unreadable "
+                             "(last local probe failed)")
 
         if "Codex" in unavailable:
             lines.append("Codex quota (last reading): " + (

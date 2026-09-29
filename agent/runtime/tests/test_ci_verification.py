@@ -457,8 +457,8 @@ class StoryCompletionGateTest(OrchestratorInterventionTestCase):
                                                  "char_count": 0, "approx_tokens": 0,
                                                  "duration_seconds": 0.0, "error": None,
                                              }))
-            stack.enter_context(patch.object(orchestrator, "_safe_claude_usage_percent",
-                                             return_value=10))
+            stack.enter_context(patch.object(orchestrator, "_safe_claude_usage",
+                                             return_value=claude_runner.ClaudeUsage(10, 0)))
             stack.enter_context(patch.object(orchestrator, "run_claude_attempt",
                                              side_effect=claude))
             stack.enter_context(patch.object(

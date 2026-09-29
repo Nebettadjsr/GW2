@@ -1,1 +1,1 @@
-agent/stories/STORY-WEB-022-align-ecto-page-label.md
+agent/stories/STORY-SYNC-005-stabilize-bank-reload-smoke-check.md

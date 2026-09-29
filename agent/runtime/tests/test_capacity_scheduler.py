@@ -47,6 +47,27 @@ class SchedulerTest(unittest.TestCase):
             self.scheduler.wait_for_claude()
             plan.assert_not_called()
 
+    def test_pre_run_gate_waits_for_session_and_weekly_capacity(self):
+        now = [0]
+        readings = iter([
+            claude_runner.ClaudeUsage(90, 20),
+            claude_runner.ClaudeUsage(50, 98),
+            claude_runner.ClaudeUsage(50, 97),
+        ])
+        scheduler = orchestrator.CapacityScheduler(codex=self.codex, cache_file=None)
+        scheduler.claude = CapacityProbe(scheduler._read_claude_capacity,
+                                          recheck_seconds=60, clock=lambda: now[0])
+        with patch.object(orchestrator, "get_claude_usage", side_effect=readings) as usage, \
+             patch.object(scheduler, "codex_work_if_useful", return_value=False), \
+             patch.object(scheduler, "wait_locally", side_effect=lambda _: now.__setitem__(0, now[0] + 60)) as wait:
+            scheduler.wait_for_claude()
+        self.assertEqual(usage.call_count, 3)
+        self.assertEqual(wait.call_count, 2)
+        self.assertEqual(scheduler.claude_usage_percent, 50)
+        self.assertEqual(scheduler.claude_weekly_used_percent, 97)
+        self.assertEqual(self.logged.count("Claude capacity exhausted (first detected)."), 1)
+        self.assertEqual(self.logged.count("Claude capacity available again."), 1)
+
     def test_idle_claude_plans_beyond_low_watermark_until_no_work(self):
         self.claude.available.side_effect = [False, False, False, True]
         with patch.object(orchestrator, "planning_fingerprint", side_effect=["a", "b", "c", "c", "c", "c"]), \
@@ -186,7 +207,7 @@ class CooperativeResumeTest(OrchestratorInterventionTestCase):
              patch.object(orchestrator, "CLAUDE_RESULT_FILE", self.stories_dir / "result.md"), \
              patch.object(orchestrator, "generate_repo_map", return_value={
                  "enabled":False,"text":"","token_budget":0,"error":None}), \
-             patch.object(orchestrator, "_safe_claude_usage_percent", return_value=0), \
+             patch.object(orchestrator, "_safe_claude_usage", return_value=claude_runner.ClaudeUsage(0, 0)), \
              patch.object(orchestrator, "run_claude_attempt", side_effect=run), \
              patch.object(orchestrator, "run_planning_pass", side_effect=plan), \
              patch.object(orchestrator, "planning_fingerprint", return_value="state"), \
@@ -245,7 +266,7 @@ class RepoMapOrderingTest(OrchestratorInterventionTestCase):
              patch.object(orchestrator, "NEXT_PROMPT_FILE", self.stories_dir / "prompt.md"), \
              patch.object(orchestrator, "CLAUDE_RESULT_FILE", self.stories_dir / "result.md"), \
              patch.object(orchestrator, "generate_repo_map", side_effect=fake_generate_repo_map), \
-             patch.object(orchestrator, "_safe_claude_usage_percent", return_value=0), \
+             patch.object(orchestrator, "_safe_claude_usage", return_value=claude_runner.ClaudeUsage(0, 0)), \
              patch.object(orchestrator, "run_claude_attempt", side_effect=fake_run), \
              patch.object(orchestrator, "run_planning_pass", side_effect=fake_plan), \
              patch.object(orchestrator, "planning_fingerprint", return_value="state"), \

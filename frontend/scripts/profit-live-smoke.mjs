@@ -45,8 +45,6 @@ async function settled() {
 }
 
 function checkContract(body) {
-  assert.equal(typeof body.settings.allowNonTradeableMaterials, 'boolean',
-    'Missing non-TP setting: rebuild/restart the backend serving this origin')
   for (const row of body.rows) {
     assert.ok(Object.hasOwn(row, 'totalSellValueCopper'),
       'Missing gross total: rebuild/restart the backend serving this origin')
@@ -157,8 +155,7 @@ async function checkDetail(result, table, recipeId) {
   console.log(JSON.stringify({ route: detailPath, status: 200, recipeId,
     nodes: names(body.tree).length, treeBasis: body.treeBasis,
     groups: disclosure.groups, expandedByKeyboard: disclosure.expanded,
-    nestedLeftCollapsed: disclosure.nestedLeftCollapsed,
-    allowNonTradeableMaterials: body.calculation.settings.allowNonTradeableMaterials }))
+    nestedLeftCollapsed: disclosure.nestedLeftCollapsed }))
 }
 
 async function checkGross(table, recipeId, rowLabel) {
@@ -172,7 +169,7 @@ async function checkGross(table, recipeId, rowLabel) {
     money(row.totalSellValueCopper))
   assert.equal((await locator('detail-total-sell-value').textContent()).trim(), money(row.totalSellValueCopper))
   console.log(JSON.stringify({ route: profitPath, status: 200, recipeId,
-    listingSell: table.settings.listingSell, allowNonTradeableMaterials: table.settings.allowNonTradeableMaterials,
+    listingSell: table.settings.listingSell,
     outputCount: row.outputCount, craftableCount: row.craftableCount,
     totalSellValueCopper: row.totalSellValueCopper, displayed: money(row.totalSellValueCopper) }))
 }
@@ -183,7 +180,6 @@ try {
   let table = (await successful(initial)).body
   checkContract(table)
   await settled()
-  assert.equal(table.settings.allowNonTradeableMaterials, true, 'Initial backend default must be enabled')
   await locator('settings-disclosure').click()
   // Keep the candidate visible even if changing calculation settings makes its count/profit zero.
   for (const name of ['filter-zero-craftable', 'filter-not-allowed', 'filter-non-positive-profit']) {
@@ -199,32 +195,13 @@ try {
   await checkDetail(detail, table, candidate.recipeId)
   await checkGross(table, candidate.recipeId, rowLabel)
 
-  const nonTp = locator('setting-allowNonTradeableMaterials')
-  for (const allowed of [false, true]) {
-    const calculation = nextResponse(profitPath)
-    const resolution = nextResponse(detailPath)
-    await nonTp.setChecked(allowed)
-    const result = await successful(calculation)
-    table = result.body
-    checkContract(table)
-    assert.equal(result.request.settings.allowNonTradeableMaterials, allowed)
-    assert.equal(table.settings.allowNonTradeableMaterials, allowed)
-    await settled()
-    assert.equal(await nonTp.isChecked(), allowed)
-    await checkDetail(resolution, table, candidate.recipeId)
-    await checkGross(table, candidate.recipeId, rowLabel)
-
-    const reload = nextResponse(profitPath)
-    const reloadedDetail = nextResponse(detailPath)
-    await locator('reload').click()
-    const reloaded = await successful(reload)
-    table = reloaded.body
-    assert.equal(reloaded.request.settings.allowNonTradeableMaterials, allowed)
-    assert.equal(table.settings.allowNonTradeableMaterials, allowed)
-    await settled()
-    assert.equal(await nonTp.isChecked(), allowed)
-    await checkDetail(reloadedDetail, table, candidate.recipeId)
-  }
+  const reload = nextResponse(profitPath)
+  const reloadedDetail = nextResponse(detailPath)
+  await locator('reload').click()
+  table = (await successful(reload)).body
+  checkContract(table)
+  await settled()
+  await checkDetail(reloadedDetail, table, candidate.recipeId)
 
   for (const mode of ['listing', 'instant']) {
     const calculation = nextResponse(profitPath)
@@ -236,7 +213,7 @@ try {
     await checkDetail(resolution, table, candidate.recipeId)
     await checkGross(table, candidate.recipeId, rowLabel)
   }
-  console.log('Profit live smoke PASSED: gross values, resolution, both non-TP states and reloads.')
+  console.log('Profit live smoke PASSED: gross values, resolution and reload.')
 } finally {
   await browser.close()
 }

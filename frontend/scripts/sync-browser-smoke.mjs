@@ -129,7 +129,6 @@ function answerApi({ request, response, url, body }) {
         listingSell: false,
         listingBuy: false,
         dailyBuyInsteadOfCraft: true,
-        allowNonTradeableMaterials: true
       },
       rowCount: 0,
       rows: []

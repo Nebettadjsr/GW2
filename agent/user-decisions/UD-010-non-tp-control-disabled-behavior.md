@@ -78,3 +78,6 @@ Possibly Required rather than a User Decision heading. Restored the heading
 without changing the answer or RESOLVED status. Applied the disabled behavior
 to docs/DOMAIN_SPEC.md section 2.1.1. Implementation is planned separately;
 this resolution does not claim delivery.
+## Supersession note (2026-09-29)
+
+The Product Owner explicitly removed the Crafting Profit non-Trading-Post checkbox and its restrictive behavior. The former enabled behavior is permanent: normal owned, crafting, and buying paths apply, and an unsatisfied requirement blocks naturally. The original decision above remains as historical context. Current behavior is defined in `docs/DOMAIN_SPEC.md` ?2.1.1.

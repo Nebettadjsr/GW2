@@ -17,7 +17,10 @@ from contextlib import redirect_stdout
 from unittest.mock import Mock, patch
 
 from agent.runtime.runners import claude_runner
-from agent.runtime.support.config import CLAUDE_MODEL
+from agent.runtime.support.config import (
+    CLAUDE_MODEL, CLAUDE_USAGE_LIMIT_PERCENT,
+    CLAUDE_WEEKLY_MIN_REMAINING_PERCENT,
+)
 
 
 def fake_process(output: str = "", returncode: int = 0):
@@ -29,6 +32,47 @@ def fake_process(output: str = "", returncode: int = 0):
 
 
 class ClaudeRunnerTest(unittest.TestCase):
+
+    def test_usage_probe_parses_session_and_weekly_from_one_response(self):
+        result = Mock(returncode=0, stdout=(
+            "Current session: 89% used\n"
+            "Current week (all models): 98% used\n"
+            "Current week (Opus): 97% used\n"
+        ))
+        with patch.object(claude_runner, "find_claude", return_value="claude.exe"), \
+             patch.object(claude_runner.subprocess, "run", return_value=result) as run:
+            usage = claude_runner.get_claude_usage()
+        self.assertEqual(usage, claude_runner.ClaudeUsage(89, 98))
+        run.assert_called_once()
+
+    def test_both_capacity_thresholds_are_independent(self):
+        self.assertFalse(claude_runner.ClaudeUsage(90, 0).available())
+        self.assertFalse(claude_runner.ClaudeUsage(0, 98).available())
+        self.assertTrue(claude_runner.ClaudeUsage(89, 97).available())
+        self.assertEqual(CLAUDE_USAGE_LIMIT_PERCENT, 90)
+        self.assertEqual(CLAUDE_WEEKLY_MIN_REMAINING_PERCENT, 2)
+
+    def test_wait_rechecks_both_allowances_until_both_recover(self):
+        readings = [
+            claude_runner.ClaudeUsage(90, 20),
+            claude_runner.ClaudeUsage(50, 98),
+            claude_runner.ClaudeUsage(50, 97),
+        ]
+        with patch.object(claude_runner, "get_claude_usage", side_effect=readings) as probe, \
+             patch.object(claude_runner.time, "sleep") as sleep, \
+             patch.object(claude_runner, "print_status") as status:
+            claude_runner.wait_for_claude_capacity()
+        self.assertEqual(probe.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
+        self.assertTrue(any("weekly remaining 2%" in call.args[0]
+                            for call in status.call_args_list))
+
+    def test_unreadable_weekly_usage_fails_closed(self):
+        result = Mock(returncode=0, stdout="Current session: 20% used\n")
+        with patch.object(claude_runner, "find_claude", return_value="claude.exe"), \
+             patch.object(claude_runner.subprocess, "run", return_value=result):
+            with self.assertRaisesRegex(RuntimeError, "session and weekly"):
+                claude_runner.get_claude_usage()
 
     def run_claude(self, call, output: str = "", returncode: int = 0):
         captured = {}
@@ -103,6 +147,14 @@ class ClaudeRunnerTest(unittest.TestCase):
         )
 
         self.assertEqual(captured["code"].exit_code, 1)
+        self.assertTrue(captured["code"].capacity_exhausted)
+
+    def test_weekly_limit_in_final_output_is_a_capacity_interruption(self):
+        captured = self.run_claude(
+            lambda: claude_runner.run_claude_attempt("Implement"),
+            output="You've hit your weekly limit · resets Oct 3, 7am (Europe/Berlin)\n",
+            returncode=1,
+        )
         self.assertTrue(captured["code"].capacity_exhausted)
 
     def test_failed_run_without_a_capacity_signal_is_not_capacity(self):

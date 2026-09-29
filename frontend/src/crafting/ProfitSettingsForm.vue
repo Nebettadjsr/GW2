@@ -2,17 +2,6 @@
 import type { EffectiveSettings } from '@/api/types'
 import { formatCopper } from './formatCopper'
 
-/**
- * Input controls for the settings the Profit contract supports (`CURRENT_ARCHITECTURE.md` 5.5).
- *
- * The control values are the settings the backend reported it calculated with, so no default is
- * repeated here; the form renders nothing until the backend has answered once. Each change emits
- * the complete settings object, which the screen submits as a fresh request. Validation stays with
- * the backend — an out-of-range value is rejected there and reported as a request failure.
- *
- * The controls stay usable while a calculation is in flight, for the reason given on
- * `ScopeSelector`: a later change simply supersedes the request already running.
- */
 const props = defineProps<{
   settings: EffectiveSettings | null
 }>()
@@ -49,11 +38,6 @@ function onDailyBuyChange(event: Event): void {
   if (dailyBuyInsteadOfCraft !== null) emitWith({ dailyBuyInsteadOfCraft })
 }
 
-function onAllowNonTradeableMaterialsChange(event: Event): void {
-  const allowNonTradeableMaterials = checkedValue(event)
-  if (allowNonTradeableMaterials !== null) emitWith({ allowNonTradeableMaterials })
-}
-
 function onListingSellChange(event: Event): void {
   const listingSell = isListingMode(event)
   if (listingSell !== null) emitWith({ listingSell })
@@ -67,127 +51,157 @@ function onListingBuyChange(event: Event): void {
 function onMaxBuyChange(event: Event): void {
   const target = event.target
   if (!(target instanceof HTMLInputElement)) return
+
   const parsed = Number(target.value)
   if (!Number.isFinite(parsed)) return
+
   emitWith({ maxBuyCopper: Math.trunc(parsed) })
 }
 </script>
 
 <template>
-  <fieldset v-if="settings !== null" class="settings" data-test="settings-form">
-    <legend>Profit settings</legend>
+  <div
+    v-if="settings !== null"
+    class="settings"
+    data-test="settings-form"
+  >
+    <div class="settings__checks">
+      <label>
+        <input
+          type="checkbox"
+          data-test="setting-useOwnMats"
+          :checked="settings.useOwnMats"
+          @change="onUseOwnMatsChange"
+        />
+        Use own materials
+      </label>
 
-    <label>
-      <input
-        type="checkbox"
-        data-test="setting-useOwnMats"
-        :checked="settings.useOwnMats"
-        @change="onUseOwnMatsChange"
-      />
-      Use own materials
-    </label>
+      <label>
+        <input
+          type="checkbox"
+          data-test="setting-allowBuying"
+          :checked="settings.allowBuying"
+          @change="onAllowBuyingChange"
+        />
+        Allow buying
+      </label>
 
-    <label>
-      <input
-        type="checkbox"
-        data-test="setting-allowBuying"
-        :checked="settings.allowBuying"
-        @change="onAllowBuyingChange"
-      />
-      Allow buying
-    </label>
+      <div class="daily-setting">
+        <label>
+          <input
+            type="checkbox"
+            data-test="setting-dailyBuyInsteadOfCraft"
+            :checked="settings.dailyBuyInsteadOfCraft"
+            @change="onDailyBuyChange"
+          />
+          Buy daily items instead of crafting
+        </label>
 
-    <label>
-      <input
-        type="checkbox"
-        data-test="setting-dailyBuyInsteadOfCraft"
-        :checked="settings.dailyBuyInsteadOfCraft"
-        @change="onDailyBuyChange"
-      />
-      Buy daily items instead of crafting
-    </label>
+        <span class="daily-setting__hint">
+          Off: only currently available daily materials are used. <br>
+          On: one additional daily craft is allowed; remaining requirements are bought.
+        </span>
+      </div>
+    </div>
 
-    <!--
-      A calculation rule, not one of the Displayed results filters: switching it asks the backend for a
-      new calculation (DOMAIN_SPEC 2.1.1, UD-009/UD-010). The help text states the decided rule for both
-      values, in the user's terms.
-    -->
-    <label class="wide">
-      <input
-        type="checkbox"
-        data-test="setting-allowNonTradeableMaterials"
-        aria-describedby="allow-non-tp-help"
-        :checked="settings.allowNonTradeableMaterials"
-        @change="onAllowNonTradeableMaterialsChange"
-      />
-      Allow non-Trading-Post materials
-      <span id="allow-non-tp-help" class="hint" data-test="setting-allowNonTradeableMaterials-help">
-        On: materials that cannot be traded on the Trading Post may be used when you own them or can
-        craft them; a required one you can neither own nor craft still makes the recipe unavailable.
-        Off: the backend calculates only paths that consume no such material, and evaluates the
-        alternatives that avoid them.
-      </span>
-    </label>
+    <div class="settings__values">
+      <label class="setting-row">
+        <span class="setting-row__label">Max buy</span>
 
-    <label>
-      Max buy (copper)
-      <input
-        type="number"
-        min="0"
-        step="1"
-        data-test="setting-maxBuyCopper"
-        :value="settings.maxBuyCopper"
-        @change="onMaxBuyChange"
-      />
-      <span class="hint">{{ formatCopper(settings.maxBuyCopper) }}</span>
-    </label>
+        <input
+          class="max-buy"
+          type="number"
+          min="0"
+          step="1"
+          data-test="setting-maxBuyCopper"
+          :value="settings.maxBuyCopper"
+          @change="onMaxBuyChange"
+        />
 
-    <label>
-      Sell price
-      <select
-        data-test="setting-listingSell"
-        :value="settings.listingSell ? 'listing' : 'instant'"
-        @change="onListingSellChange"
-      >
-        <option value="instant">Instant sell</option>
-        <option value="listing">Listing sell</option>
-      </select>
-    </label>
+        <span class="hint">{{ formatCopper(settings.maxBuyCopper) }}</span>
+      </label>
 
-    <label>
-      Buy price
-      <select
-        data-test="setting-listingBuy"
-        :value="settings.listingBuy ? 'listing' : 'instant'"
-        @change="onListingBuyChange"
-      >
-        <option value="instant">Instant buy</option>
-        <option value="listing">Listing buy</option>
-      </select>
-    </label>
-  </fieldset>
+      <label class="setting-row">
+        <span class="setting-row__label">Sell price</span>
+
+        <select
+          data-test="setting-listingSell"
+          :value="settings.listingSell ? 'listing' : 'instant'"
+          @change="onListingSellChange"
+        >
+          <option value="instant">Instant sell</option>
+          <option value="listing">Listing sell</option>
+        </select>
+      </label>
+
+      <label class="setting-row">
+        <span class="setting-row__label">Buy price</span>
+
+        <select
+          data-test="setting-listingBuy"
+          :value="settings.listingBuy ? 'listing' : 'instant'"
+          @change="onListingBuyChange"
+        >
+          <option value="instant">Instant buy</option>
+          <option value="listing">Listing buy</option>
+        </select>
+      </label>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-/* The settings group keeps the shared fieldset framing; only its internal flow is defined here. */
 .settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.settings__checks {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3) var(--space-5);
+  gap: var(--space-2) var(--space-4);
 }
 
-input[type='number'] {
-  width: 8rem;
+.settings__values {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
 }
 
-/* The one control with a help sentence takes the full row, so its wording stays readable. */
-.wide {
-  flex-basis: 100%;
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.setting-row__label {
+  white-space: nowrap;
+}
+
+.max-buy {
+  width: 7rem;
 }
 
 .hint {
   color: var(--color-muted);
   font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.daily-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.daily-setting__hint {
+  padding-left: 1.75rem;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  line-height: 1.25;
 }
 </style>

@@ -339,8 +339,6 @@ describe('CraftingDiscoveryScreen', () => {
     const wrapper = await openScreen(api)
 
     // Neither Profit-only setting is reachable, and the fixed daily value is not offered as a choice.
-    expect(wrapper.find('[data-test="discovery-setting-allowNonTradeableMaterials"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="setting-allowNonTradeableMaterials"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="discovery-setting-dailyBuyInsteadOfCraft"]').exists()).toBe(false)
     const controls = wrapper
       .find('[data-test="discovery-settings-form"]')

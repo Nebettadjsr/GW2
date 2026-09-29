@@ -6,7 +6,6 @@ import craft.CraftingGraph;
 import craft.CraftingPlanner;
 import craft.CraftingSettings;
 import craft.Ingredient;
-import craft.MaterialTradeability;
 import craft.PriceQuote;
 import craft.Recipe;
 import org.junit.jupiter.api.Test;
@@ -325,12 +324,6 @@ class CraftingProfitServiceTest {
         Map<Integer, PriceQuote> capturedTp;
         CraftingSettings capturedSettings;
         Set<Integer> capturedAllowedRecipeIds;
-        MaterialTradeability capturedTradeability;
-
-        /**
-         * The classification-aware entry point the service uses for every table calculation
-         * (STORY-DOM-021); the shorter overload remains for the JavaFX and Discovery callers.
-         */
         @Override
         public Map<Integer, CraftResult> evaluateAllCoordinated(
                 List<Recipe> recipes,
@@ -340,8 +333,7 @@ class CraftingProfitServiceTest {
                 List<CharacterCraftingProfile> roster,
                 Map<Integer, PriceQuote> tp,
                 CraftingSettings settings,
-                Set<Integer> allowedRecipeIds,
-                MaterialTradeability tradeability) {
+                Set<Integer> allowedRecipeIds) {
             this.capturedRecipes = recipes;
             this.capturedSellable = sellableInventory;
             this.capturedAccountBound = accountBoundInventory;
@@ -350,9 +342,8 @@ class CraftingProfitServiceTest {
             this.capturedTp = tp;
             this.capturedSettings = settings;
             this.capturedAllowedRecipeIds = allowedRecipeIds;
-            this.capturedTradeability = tradeability;
             return super.evaluateAllCoordinated(recipes, sellableInventory, accountBoundInventory,
-                    characterBoundInventory, roster, tp, settings, allowedRecipeIds, tradeability);
+                    characterBoundInventory, roster, tp, settings, allowedRecipeIds);
         }
     }
 }

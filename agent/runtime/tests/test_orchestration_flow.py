@@ -482,6 +482,7 @@ class CapacityStatusTest(unittest.TestCase):
                                             recheck_seconds=1800, clock=lambda: 0)
         scheduler = orchestrator.CapacityScheduler(claude, Mock(), cache_file=None)
         scheduler.claude_usage_percent = 97
+        scheduler.claude_weekly_used_percent = 20
         claude.defer()
 
         lines = scheduler.status_lines(["Claude"])

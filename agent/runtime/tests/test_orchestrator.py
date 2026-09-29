@@ -169,8 +169,8 @@ class OrchestratorInterventionTestCase(unittest.TestCase):
             stack.enter_context(patch.object(orchestrator, "generate_repo_map",
                                              return_value={"enabled": False, "text": "",
                                                            "token_budget": 0, "error": None}))
-            stack.enter_context(patch.object(orchestrator, "get_claude_session_usage_percent",
-                                             return_value=0))
+            stack.enter_context(patch.object(orchestrator, "get_claude_usage",
+                                             return_value=claude_runner.ClaudeUsage(0, 0)))
             stack.enter_context(patch.object(orchestrator, "run_claude_attempt",
                                              side_effect=run_claude))
             stack.enter_context(patch.object(orchestrator, "evaluate_story",
@@ -191,7 +191,7 @@ class DirectClaudeExecutionTest(OrchestratorInterventionTestCase):
 class InterruptedClaudeTest(OrchestratorInterventionTestCase):
 
     def run_attempts(self, exits, evaluations, initial_status="TODO",
-                     capacity_signal=True):
+                     capacity_signal=True, capacity_readings=None):
         filename = "STORY-UI-001-test.md"
         story = self.write_story(
             filename,
@@ -236,8 +236,11 @@ class InterruptedClaudeTest(OrchestratorInterventionTestCase):
         def capacity():
             events.append("capacity")
             # Exercise the existing wait loop without Claude or real sleeping.
-            with patch.object(claude_runner, "get_claude_session_usage_percent",
-                              side_effect=[100, 0]), \
+            with patch.object(claude_runner, "get_claude_usage",
+                              side_effect=capacity_readings or [
+                                  claude_runner.ClaudeUsage(100, 0),
+                                  claude_runner.ClaudeUsage(0, 0),
+                              ]), \
                  patch.object(claude_runner.time, "sleep") as sleep:
                 claude_runner.wait_for_claude_capacity()
                 sleep.assert_called_once()
@@ -256,8 +259,8 @@ class InterruptedClaudeTest(OrchestratorInterventionTestCase):
                                                 "char_count": 0, "approx_tokens": 0,
                                                 "duration_seconds": 0.0, "error": None,
                                             }))
-            stack.enter_context(patch.object(orchestrator, "get_claude_session_usage_percent",
-                                            return_value=50))
+            stack.enter_context(patch.object(orchestrator, "get_claude_usage",
+                                            return_value=claude_runner.ClaudeUsage(50, 0)))
             stack.enter_context(patch.object(orchestrator, "run_claude_attempt", side_effect=run))
             stack.enter_context(patch.object(orchestrator, "evaluate_story", side_effect=evaluate))
             stack.enter_context(patch.object(orchestrator, "wait_for_claude_capacity", side_effect=capacity))
@@ -276,6 +279,21 @@ class InterruptedClaudeTest(OrchestratorInterventionTestCase):
         self.assertEqual(
             self.run_attempts([1, 2, -1, 0], [{"decision": "COMPLETE", "reason": "ok"}]),
             [1, "capacity", 2, "capacity", -1, "capacity", 0, "evaluate"],
+        )
+
+    def test_weekly_limit_exit_waits_before_same_story_retries(self):
+        weekly_signal = claude_runner.output_indicates_capacity_exhaustion(
+            "You've hit your weekly limit · resets Oct 3, 7am (Europe/Berlin)"
+        )
+        self.assertTrue(weekly_signal)
+        self.assertEqual(
+            self.run_attempts([1, 0], [{"decision": "COMPLETE", "reason": "ok"}],
+                              capacity_signal=weekly_signal,
+                              capacity_readings=[
+                                  claude_runner.ClaudeUsage(50, 98),
+                                  claude_runner.ClaudeUsage(50, 97),
+                              ]),
+            [1, "capacity", 0, "evaluate"],
         )
 
     def test_interruption_preserves_evaluator_retry_budget(self):
@@ -325,8 +343,8 @@ class InterruptedClaudeTest(OrchestratorInterventionTestCase):
                                                  "char_count": 0, "approx_tokens": 0,
                                                  "duration_seconds": 0.0, "error": None,
                                              }))
-            stack.enter_context(patch.object(orchestrator, "_safe_claude_usage_percent",
-                                             return_value=10))
+            stack.enter_context(patch.object(orchestrator, "_safe_claude_usage",
+                                             return_value=claude_runner.ClaudeUsage(10, 0)))
             stack.enter_context(patch.object(orchestrator, "run_claude_attempt",
                                              side_effect=run))
             stack.enter_context(patch.object(

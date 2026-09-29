@@ -47,8 +47,8 @@ class CraftingProfitApiRealDbPerfIT {
      * figures are recorded beside the default so the option's cost is visible (DOMAIN_SPEC.md §2.1.1);
      * the default above issues no classification query at all.
      */
-    private static final String NON_TRADEABLE_EXCLUDED_REQUEST =
-            "{\"settings\": {\"allowNonTradeableMaterials\": false}}";
+    private static final String DEFAULT_REQUEST =
+            "{}";
 
     private static final int REPEAT_REQUESTS = 3;
 
@@ -81,14 +81,14 @@ class CraftingProfitApiRealDbPerfIT {
         URI endpoint = URI.create("http://localhost:" + port + "/api/crafting/profit");
 
         System.out.println("=== STORY-DOM-021 API request timing (real DB, All scope, "
-                + "allowNonTradeableMaterials=false) ===");
-        System.out.println("Endpoint: POST " + endpoint + "  body: " + NON_TRADEABLE_EXCLUDED_REQUEST);
+                + "default settings) ===");
+        System.out.println("Endpoint: POST " + endpoint + "  body: " + DEFAULT_REQUEST);
 
         List<Long> timings = new ArrayList<>();
-        timings.add(measure(client, endpoint, NON_TRADEABLE_EXCLUDED_REQUEST,
+        timings.add(measure(client, endpoint, DEFAULT_REQUEST,
                 "FIRST (cold JVM/JIT, cold caches)"));
         for (int i = 1; i <= REPEAT_REQUESTS; i++) {
-            timings.add(measure(client, endpoint, NON_TRADEABLE_EXCLUDED_REQUEST, "REPEAT " + i));
+            timings.add(measure(client, endpoint, DEFAULT_REQUEST, "REPEAT " + i));
         }
 
         long max = timings.stream().mapToLong(Long::longValue).max().orElse(0);

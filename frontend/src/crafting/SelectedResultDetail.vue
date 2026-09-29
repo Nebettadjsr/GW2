@@ -33,7 +33,7 @@ import type { ResolutionPhase } from './useResolutionDetail'
  * are stated: the row's own state sentence explains the restriction in words, and the supplied buy
  * cost and the backend's echoed maximum-buy setting are shown beside it. The short status label is
  * not repeated where that sentence already carries it (2.1.1). No missing acquisition amount is
- * invented, no tree cost is summed in, and nothing about non-Trading-Post eligibility — or about
+ * invented, no tree cost is summed in, and nothing about eligibility — or about
  * which item a reason is aimed at — is read out of a reason code.
  *
  * `row` is read from the *current* result set. When a replacement calculation no longer contains

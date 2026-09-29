@@ -20,18 +20,12 @@ public record CraftingProfitResponse(EffectiveScopeDto scope,
     public record EffectiveScopeDto(String kind, String discipline, String characterName, int rating) {
     }
 
-    /**
-     * The settings the calculation ran with, after defaults were applied. {@code
-     * allowNonTradeableMaterials} is echoed like every other setting, so a caller can see which
-     * non-Trading-Post material rule produced these rows and can send the same one back with a
-     * resolution request (DOMAIN_SPEC.md §2.1.1).
-     */
+    /** The settings the calculation ran with, after defaults were applied. */
     public record EffectiveSettingsDto(boolean useOwnMats,
                                        boolean allowBuying,
                                        int maxBuyCopper,
                                        boolean listingSell,
                                        boolean listingBuy,
-                                       boolean dailyBuyInsteadOfCraft,
-                                       boolean allowNonTradeableMaterials) {
+                                       boolean dailyBuyInsteadOfCraft) {
     }
 }

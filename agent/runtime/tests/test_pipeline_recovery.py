@@ -26,7 +26,7 @@ from unittest.mock import Mock, patch
 from agent.runtime.core import orchestrator
 from agent.runtime.core import story_state
 from agent.runtime.evaluation.evaluator import parse_evaluator_verdict
-from agent.runtime.runners import local_planner_runner
+from agent.runtime.runners import claude_runner, local_planner_runner
 from agent.runtime.support import git_sync
 from agent.runtime.support.capacity import ModelCapacityUnavailable
 from agent.runtime.tests import REAL_RUN_CODEX
@@ -103,8 +103,8 @@ class PipelineRecoveryTestCase(OrchestratorInterventionTestCase):
                                        "token_budget": 0, "error": None})
         )
         stack.enter_context(
-            patch.object(orchestrator, "get_claude_session_usage_percent",
-                         return_value=0)
+            patch.object(orchestrator, "get_claude_usage",
+                         return_value=claude_runner.ClaudeUsage(0, 0))
         )
         stack.enter_context(patch.object(orchestrator.time, "sleep"))
 

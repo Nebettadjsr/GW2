@@ -32,8 +32,7 @@ export const DEFAULT_SETTINGS: EffectiveSettings = {
   maxBuyCopper: 10_000,
   listingSell: false,
   listingBuy: false,
-  dailyBuyInsteadOfCraft: true,
-  allowNonTradeableMaterials: true
+  dailyBuyInsteadOfCraft: true
 }
 
 export const selectorOptions: SelectorOptions = {
@@ -267,66 +266,6 @@ export const budgetBlockedRow: CraftingRow = {
   buyCostCopper: 9_500,
   blockedReason: 'INSUFFICIENT_BUDGET'
 }
-
-/**
- * Blocked by the non-Trading-Post material rule with the option switched off (UD-010): the backend
- * still reports the recipe and its reason, and no path was found for it, so it counted no craft.
- */
-export const nonTradeableMaterialRow: CraftingRow = {
-  ...priceUnavailableRow,
-  recipeId: 43,
-  outputItemId: 4303,
-  outputName: 'Bound Blade',
-  blockedReason: 'NON_TRADEABLE_MATERIAL'
-}
-
-/**
- * The same restriction inside a tree, at the material it applies to: the attempted recipe stays, the
- * forbidden ingredient is blocked with nothing sourced for it, and its tradeable sibling is not.
- */
-export const nonTradeableMaterialTree: ResolutionNode = node({
-  itemId: 4303,
-  itemName: 'Bound Blade',
-  requestedQuantity: 1,
-  craftedQuantity: 0,
-  missingQuantity: 1,
-  recipeId: 43,
-  craftCount: 0,
-  producedQuantity: 0,
-  methods: [],
-  states: ['BLOCKED'],
-  blockedReasons: ['NON_TRADEABLE_MATERIAL'],
-  cashCostCopper: null,
-  opportunityCostCopper: null,
-  effectiveCostCopper: null,
-  children: [
-    node({
-      itemId: 94,
-      itemName: 'Account Bound Scrap',
-      requestedQuantity: 3,
-      inventoryQuantity: 0,
-      craftedQuantity: 0,
-      missingQuantity: 3,
-      methods: [],
-      states: ['BLOCKED'],
-      blockedReasons: ['NON_TRADEABLE_MATERIAL'],
-      cashCostCopper: null,
-      opportunityCostCopper: null,
-      effectiveCostCopper: null
-    }),
-    node({
-      itemId: 95,
-      itemName: 'Iron Ore',
-      requestedQuantity: 2,
-      boughtQuantity: 2,
-      craftedQuantity: 0,
-      methods: ['BUY'],
-      cashCostCopper: 40,
-      opportunityCostCopper: 0,
-      effectiveCostCopper: 40
-    })
-  ]
-})
 
 /**
  * The one reason DOMAIN_SPEC 2.1.1 keeps as a row-level diagnostic, until the Product Owner asks for

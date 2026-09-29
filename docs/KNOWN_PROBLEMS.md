@@ -175,21 +175,15 @@ No finding in this document by itself authorizes an implementation change. Norma
 **Inferred risk:** refresh can report success while an item that no longer has a quote retains an old price used by calculations; missing IDs can also be retried repeatedly without recording the absence. **Recommendation:** distinguish confirmed absence from transient failure and define its persisted quote state.
 
 
-### KP-18 — Non-Trading-Post classification is only as current as the last global sync
+### KP-18 — Former non-Trading-Post classification risk (resolved)
 
+The former Crafting Profit setting classified missing IDs in `tp_tradeable_items` as
+non-Trading-Post materials and could block normal paths after stale or absent global sync.
+The Product Owner removed that restriction on 2026-09-29. Crafting Profit no longer
+queries the classification, so this calculation risk is resolved. The table remains
+in use by Trading Post price-refresh relevance selection.
 
-**Inferred risk:** a Crafting Profit calculation with "Allow non-Trading-Post materials" switched off would then block nearly every path, with `NON_TRADEABLE_MATERIAL` reported for ordinary tradable materials. That is what the stored data says, and it surfaces as visibly blocked results rather than silently permitting a path (`DOMAIN_SPEC.md` §2.1.1), but the user is given no indication that the *classification itself* is stale or absent — only that the recipes are restricted. The enabled default is unaffected: nothing is classified and no query is issued.
-
-**Recommendation:** treat an empty or absent classification as its own reportable state rather than as "nothing is tradeable", and surface the classification's freshness the way other synchronized data's is. Related: `TRUNCATE`-then-reinsert has no atomic replacement, the same shape as CH-08's graph-cache finding.
-
-**Status: Open.** Recorded by `STORY-DOM-021`; not in that story's scope and not a defect introduced by it.
-
----
-
-
----
-
-## 5. UI, lifecycle, and asynchronous-work risks
+**Status: Resolved by removal of the setting and its classification path.**
 
 ### KP-19 — Overlapping crafting reloads race on shared result state (CH-01)
 

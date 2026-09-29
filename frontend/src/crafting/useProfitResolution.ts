@@ -72,10 +72,7 @@ export function calculationKey(inputs: CalculationInputs | null): string {
     settings.maxBuyCopper,
     settings.listingSell,
     settings.listingBuy,
-    settings.dailyBuyInsteadOfCraft,
-    // A different non-Trading-Post material rule is a different calculation, so a detail calculated
-    // under the previous value can neither stay on screen nor be accepted once it changes.
-    settings.allowNonTradeableMaterials
+    settings.dailyBuyInsteadOfCraft
   ])
 }
 

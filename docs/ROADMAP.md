@@ -245,30 +245,35 @@ Phase 3. The API layer should be a thin translation over existing application se
 
 ### Objective
 
-Build the web frontend against the backend HTTP API, per `TARGET_ARCHITECTURE.md` §4.1/§12, without duplicating authoritative calculations client-side.
+Complete the browser frontend over the backend HTTP API and retire the legacy JavaFX user interface. Authoritative crafting-profit/discovery and other backend-owned domain results remain backend-provided. The Ecto Salvage calculator is an explicit exception: its small feature-specific calculation is frontend-owned and operates from the required metadata, Trading Post prices, and account Luck data.
 
 ### Dependencies
 
-Phase 4. The frontend needs a stable API to build against; building it earlier would mean guessing the contract.
+Phase 4. The frontend needs stable backend APIs for backend-owned workflows. Small presentation-local calculations may remain in the frontend when explicitly decided, as with Ecto Salvage.
 
 ### Exit Criteria
 
 - Verify the full browser-navigation-to-complete-Crafting-Profit-page performance requirement against the real user database (`TARGET_ARCHITECTURE.md` §33), including backend, transport and rendering time.
 - Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
 - **Explicit decision made** on frontend framework and language (`TARGET_ARCHITECTURE.md` §30 marks both `TBD`).
-- The frontend renders crafting profit/discovery results, the resolution tree, and special domain states (e.g. `UNVALUED_NONTRADEABLE`, `PRICE_UNAVAILABLE`) using only backend-provided values (`TARGET_ARCHITECTURE.md` §13/§14).
+- The frontend renders crafting profit/discovery results, the resolution tree, and special domain states (e.g. `UNVALUED_NONTRADEABLE`, `PRICE_UNAVAILABLE`) using backend-provided authoritative values (`TARGET_ARCHITECTURE.md` §13/§14).
 - The frontend triggers sync operations via the API instead of reproducing them.
-- The frontend does not independently recalculate crafting profit or any other authoritative domain result (`TARGET_ARCHITECTURE.md` §12).
-- JavaFX UI and web UI coexist during this phase, both driven by the same backend.
+- Crafting profit/discovery and other backend-owned domain results are not independently recalculated in the browser.
+- Ecto Salvage remains frontend-owned and calculates locally from item metadata, Trading Post prices, account Luck, and user-selected inputs; no dedicated backend Ecto calculation route is required.
+- Obsolete code from the removed backend-owned Ecto flow is removed when no active consumer remains.
+- The browser frontend provides the application's user-facing screens and the obsolete JavaFX UI is removed, together with JavaFX-only presentation/support code that has no remaining browser/backend consumer.
+- Shared domain/application/backend functionality still used by the browser application is preserved during JavaFX cleanup.
 
 ### High-Level Stories
 
 - Decide and document the frontend framework/language.
 - Build the crafting profit screen (table + resolution tree view).
 - Build the crafting discovery screen.
-- Build bank/materials views and the Ectoplasm Salvage calculator screen.
+- Build bank/materials views and the frontend-owned Ecto Salvage calculator screen.
 - Build sync-trigger UI with status/progress display, matching the long-running-operation mechanism chosen in Phase 4.
-- Add frontend tests focused on rendering/interaction/state (`TEST_STRATEGY.md` §12), not on recalculating domain results.
+- Add frontend tests focused on rendering/interaction/state and the explicitly frontend-owned Ecto calculation.
+- Remove obsolete Ecto backend/client artifacts left by the superseded backend-calculation design.
+- Remove the legacy JavaFX interface and JavaFX-only orphaned code after browser screen coverage is complete.
 
 ---
 

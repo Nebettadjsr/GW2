@@ -89,14 +89,9 @@ function checkContract(body, request) {
     'Missing echoed inventoryCharacterName: rebuild/restart the backend serving this origin'
   )
   assert.equal(typeof body.settings.dailyBuyInsteadOfCraft, 'boolean', 'Missing echoed daily value')
-  // The route accepts neither of these, so the page must never have sent one.
+  // The route does not accept the fixed daily setting.
   if (request?.settings !== undefined) {
     assert.equal(request.settings.dailyBuyInsteadOfCraft, undefined, 'The page sent the fixed daily setting')
-    assert.equal(
-      request.settings.allowNonTradeableMaterials,
-      undefined,
-      "The page sent Crafting Profit's non-Trading-Post setting"
-    )
   }
   for (const row of body.rows) {
     assert.ok(Object.hasOwn(row, 'totalSellValueCopper'), 'Missing gross total on a row')

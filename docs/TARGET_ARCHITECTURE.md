@@ -2,40 +2,23 @@
 
 ## 1. Purpose
 
-This document defines the intended target architecture for the GW2 Tool.
+This document defines the intended structural boundaries of the GW2 Tool. Domain behavior belongs in `DOMAIN_SPEC.md`; detailed testing procedures belong in `TEST_STRATEGY.md`; migration sequencing belongs in `MIGRATION_PLAN.md` and the roadmap.
 
-It describes the structural boundaries the system should move toward while leaving implementation details open where no decision has yet been made.
-
-The goal is to make the application:
-
-- easier to understand,
-- easier to test,
-- safer to change,
-- deployable as a web application,
-- containerized,
-- suitable for controlled work by Claude Code or other coding agents.
-
-This document does not define domain behavior. Domain behavior is defined in `DOMAIN_SPEC.md`.
+The target is a small, maintainable web application that is easy to test, safe to change, containerized, multi-user capable, and suitable for bounded AI-assisted development. Prefer simple boundaries over enterprise-style complexity.
 
 ---
 
 # 2. Architectural Goals
 
-The target architecture should achieve the following:
-
-1. Separate business/domain logic from UI, database, and external APIs.
-2. Replace the current desktop-only UI with a web-based interface.
-3. Run the application as a small set of independent containers.
-4. Keep PostgreSQL as the persistent database.
-5. Make the backend the single owner of business logic.
-6. Make external integrations replaceable through adapters.
-7. Allow domain logic to be tested without database, network, or UI dependencies.
-8. Avoid unnecessary architectural complexity.
-9. Support multiple Guild Wars 2 accounts in one hosted application instance and one shared PostgreSQL database.
-10. Share global Guild Wars 2/economy data across users while strictly isolating account-specific data.
-11. Avoid persisting users' Guild Wars 2 API keys on the server when the browser-held-key model can satisfy the required account identity and synchronization flows.
-
-The target is a small maintainable application, not a distributed microservice platform.
+1. Separate shared domain/application logic from UI, persistence, and external APIs.
+2. Use the browser frontend as the canonical user interface; the legacy JavaFX UI is not part of the target architecture.
+3. Keep PostgreSQL as persistent storage and isolate it behind repository/adaptor boundaries.
+4. Keep Guild Wars 2 API communication in the backend.
+5. Keep authoritative shared calculations in the backend unless an explicit feature-local exception is documented.
+6. Support multiple Guild Wars 2 accounts in one hosted application instance and one shared PostgreSQL database while strictly isolating account-specific data.
+7. Share global Guild Wars 2/economy data across users.
+8. Avoid durable server-side storage of users' Guild Wars 2 API keys when the browser-held-key model satisfies identity and synchronization requirements.
+9. Preserve portability and avoid unnecessary infrastructure or provider-specific dependencies.
 
 ---
 
@@ -43,280 +26,127 @@ The target is a small maintainable application, not a distributed microservice p
 
 ```text
 User Browser
-     |
-     | HTTP
-     v
-+----------------------+
-| Frontend Container   |
-|                      |
-| Web UI               |
-| Technology: see 4.1  |
-+----------+-----------+
-           |
-           | HTTP / JSON
-           v
-+----------------------+
-| Backend Container    |
-|                      |
-| API                  |
-| Application Services |
-| Domain Logic         |
-| Adapters             |
-+----+-------------+---+
-     |             |
-     |             | HTTPS
-     |             v
-     |       Guild Wars 2 API
-     |
-     | SQL
-     v
-+----------------------+
-| PostgreSQL Container |
-+----------------------+
+    |
+    v
+Frontend Container
+    |
+    | HTTP / JSON
+    v
+Backend Container
+    |             \
+    | SQL          \ HTTPS
+    v               v
+PostgreSQL       Guild Wars 2 API
 ```
 
----
-
-# 4. Container Model
-
-The target deployment consists of three primary application containers.
-
-## 4.1 Frontend Container
-
-Responsibilities:
-
-- serve the web user interface,
-- display data received from the backend,
-- collect user input,
-- call backend API endpoints,
-- present calculation results and recipe trees.
-
-The frontend must not contain authoritative business logic.
-
-Examples of logic that must remain in the backend:
-
-- crafting profitability calculations,
-- recursive recipe resolution,
-- opportunity-cost calculation,
-- recipe eligibility,
-- material valuation,
-- daily-item rules.
-
-### Technology
-
-**Status:** DECIDED — Vue 3 with TypeScript, using strict type checking.
-
-Use Vue single-file components with the Composition API and `<script setup lang="ts">`
-as the default component convention. Build a browser-rendered client of the existing
-backend HTTP API; static frontend assets fit the existing frontend container without
-requiring a server-side JavaScript application runtime. Select compatible stable
-dependency versions when implementing, lock them reproducibly, and include component
-and TypeScript type checking in verification. Build tooling and optional UI libraries
-are separate decisions, not selected here.
-
-This is the simplest overall fit by architectural judgment for the small, single-maintainer
-UI: consistent component conventions for tables, recursive tree presentation and
-interaction state, with typed API contracts for bounded agent changes. React with
-TypeScript remains viable but offers no required capability that outweighs the additional
-application-convention choices here. Decision history, evidence and alternatives are in
-[ADR-001](architecture/decisions/ADR-001-frontend-framework-and-language.md).
-
-Framework dependencies stay inside the frontend. Backend/domain architecture and HTTP
-contracts must remain independent of Vue; TypeScript types describe transport and
-presentation data, not a second implementation of domain rules. Static types do not
-validate received JSON or replace backend validation. Existing frontend responsibilities,
-secret boundaries and the full-page performance requirement remain binding.
+The deployed application consists primarily of frontend, backend, and PostgreSQL containers. The Guild Wars 2 API remains an external dependency.
 
 ---
 
-## 4.2 Backend Container
+# 4. Frontend
 
-The backend is the core application runtime.
+## 4.1 Responsibilities
+
+The frontend:
+
+- serves and renders the web UI,
+- collects user input,
+- calls backend APIs,
+- presents backend-provided results and domain states,
+- owns presentation state such as filtering, sorting, selection, loading, and error display,
+- may own feature-local calculations only where this architecture explicitly defines an exception.
+
+The frontend must not duplicate authoritative backend/domain calculations. Crafting Profit, Crafting Discovery, recursive recipe resolution, material valuation, opportunity cost, recipe eligibility, daily-item rules, and resolution-tree construction remain backend-owned.
+
+Reusable UX/UI requirements are owned by `FRONTEND_UX_GUIDELINES.md`. Detailed user-visible Crafting Profit and Discovery semantics are owned by `DOMAIN_SPEC.md`.
+
+## 4.2 Ectoplasm Salvage exception
+
+Ectoplasm Salvage is the explicit frontend-owned calculation exception. The browser loads the required item metadata, Ecto and Crystalline Dust Trading Post quotes, and account Luck through backend read APIs, then performs the Ecto-specific calculation locally according to `DOMAIN_SPEC.md` sections 2.3 and 45–47.
+
+Changing Ecto amount, salvage method or exact tool, or Trading Post price modes recalculates locally. A Trading Post refresh rereads the required prices through the backend price boundary; it does not require a dedicated Ecto calculation request.
+
+The former backend-owned Ecto calculation flow, including the old parameterless `GET /api/ecto/salvage` operation and client/contracts used exclusively by it, is not part of the target architecture and may be removed when no active consumer remains. The browser implementation is the canonical Ecto Salvage UI; JavaFX compatibility is not required.
+
+This exception does not permit the frontend to recreate Crafting Profit, Discovery, recursive crafting, or other backend-owned domain logic.
+
+## 4.3 Technology
+
+**DECIDED:** Vue 3 with TypeScript and strict type checking.
+
+Use Vue single-file components with the Composition API and `<script setup lang="ts">` as the default convention. Static frontend assets fit the frontend container without requiring a server-side JavaScript runtime. Framework dependencies remain frontend-only; backend/domain architecture and HTTP contracts must remain independent of Vue.
+
+Decision rationale and alternatives belong in `architecture/decisions/ADR-001-frontend-framework-and-language.md`.
+
+## 4.4 Presentation assets
+
+Item/recipe icons are presentation assets, not domain behavior.
+
+- The browser obtains icons through the application/backend boundary rather than directly from ArenaNet asset URLs.
+- The backend may maintain a persistent filesystem cache; icon binaries do not belong in PostgreSQL or source control.
+- Browser/HTTP caching should avoid unnecessary transfers.
+- Missing or failed retrieval degrades to a stable fallback without invalidating calculation results.
+- Deployed environments that rely on the cache must provide suitable persistent storage.
+- Detailed cache mechanics and failure/status behavior belong in the relevant feature specification/tests.
+
+---
+
+# 5. Backend
+
+The backend is the core application runtime and authoritative owner of shared domain/application behavior.
 
 Responsibilities include:
 
-- exposing the application API,
-- executing use cases,
-- enforcing domain rules,
-- running crafting calculations,
-- synchronizing data with the GW2 API,
+- exposing the HTTP API,
+- executing application use cases,
+- enforcing shared domain rules,
+- running backend-owned calculations,
+- synchronizing with the Guild Wars 2 API,
 - loading and storing data,
-- coordinating repository access,
-- providing explainable calculation results to the frontend.
+- coordinating repositories/adapters,
+- returning explainable results to the frontend.
 
-The backend must be the single authoritative location for business behavior.
-
-### Technology
-
-A Java-based backend is currently preferred because the existing application and domain logic are already written in Java.
-
-The exact framework is not yet decided.
-
-Possible candidates may include:
-
-- Spring Boot,
-- Quarkus,
-- another suitable Java web framework.
-
-**Status:** TBD
-
-The architecture must not rely on framework-specific behavior inside the domain layer.
+A Java backend is retained because the existing application/domain implementation is Java-based. Framework-specific behavior must not leak into the domain layer. The exact web framework is decided separately when required by implementation work.
 
 ---
 
-## 4.3 PostgreSQL Container
-
-PostgreSQL remains the persistent application database.
-
-Responsibilities:
-
-- global Guild Wars 2 item and recipe data,
-- Trading Post data,
-- synchronized account data,
-- character data,
-- application persistence.
-
-### Global and account-scoped data
-
-The multi-user deployment uses one shared PostgreSQL database. A separate database per user/account is not part of the target architecture.
-
-Persistent data must distinguish between:
-
-- global/shared data, such as Guild Wars 2 item/recipe metadata and Trading Post prices,
-- account-scoped data, such as characters, inventories, material storage, recipe unlock/discovery state and other synchronized account information.
-
-Account-scoped records must be associated with the stable Guild Wars 2 account identity, not with a particular API key. Replacing or recreating an API key for the same Guild Wars 2 account must therefore resolve to and reuse the existing account data rather than creating a new logical user dataset.
-
-Account isolation must be enforced by backend/application/persistence boundaries. Domain calculations should remain account-agnostic where practical and receive already-scoped input data rather than owning tenancy concerns.
-
-The database is infrastructure.
-
-Domain logic must not directly depend on PostgreSQL-specific APIs or SQL.
-
-Database access must occur through repository interfaces / persistence adapters.
-
----
-
-# 5. External Guild Wars 2 API
-
-The official Guild Wars 2 API remains an external dependency.
-
-It is not part of the container stack.
-
-```text
-Backend
-   |
-   | HTTPS
-   v
-Guild Wars 2 API
-```
-
-The backend owns all GW2 API communication.
-
-The frontend must never call the GW2 API directly.
-
-### Per-user API credentials
-
-In the multi-user web deployment, a user's Guild Wars 2 API key is supplied by that user's browser to the backend when an account-specific Guild Wars 2 API operation requires it.
-
-The backend may use the key transiently to call the Guild Wars 2 API, including resolving the stable Guild Wars 2 account identity, but the target architecture does not persist per-user Guild Wars 2 API keys in PostgreSQL or other server-side durable storage.
-
-The exact browser persistence mechanism (for example browser storage or an appropriate cookie design) is a Phase 6 implementation/security decision and must be explicitly selected rather than assumed here.
-
-A replacement API key for the same Guild Wars 2 account must resolve to the same stable account identity and therefore the same persisted account-scoped dataset.
-
-Reasons include:
-
-- API-key handling,
-- consistent synchronization behavior,
-- caching,
-- rate-limit handling,
-- easier testing,
-- separation of external API models from the UI.
-
----
-
-# 6. Backend Internal Architecture
-
-The backend should be organized into clear layers.
+# 6. Backend Internal Boundaries
 
 ```text
 HTTP / API Layer
-       |
-       v
+      |
+      v
 Application Layer
-       |
-       v
+      |
+      v
 Domain Layer
-       |
-       v
+      |
+      v
 Ports / Interfaces
-       |
-       +------------------+
-       |                  |
-       v                  v
-Persistence Adapter   GW2 API Adapter
-       |                  |
-       v                  v
-PostgreSQL           Guild Wars 2 API
+   /          \
+  v            v
+Persistence   GW2 API
+Adapter        Adapter
+  |             |
+  v             v
+PostgreSQL    Guild Wars 2 API
 ```
 
-Dependencies should point inward toward the domain.
+Dependencies point inward toward application/domain abstractions.
 
----
+## 6.1 Domain Layer
 
-# 7. Domain Layer
+The domain layer contains shared business rules such as crafting resolution, graph traversal, material consumption, craft-vs-buy decisions, opportunity cost, non-tradable valuation, recipe selection, daily-item behavior, discovery eligibility, and backend-owned profit calculation.
 
-The Domain Layer contains the core business rules.
+Authoritative behavior is defined in `DOMAIN_SPEC.md`.
+
+The domain layer must not depend on UI frameworks, browsers, HTTP/REST/JSON transport types, PostgreSQL/JDBC/SQL, Docker, filesystem paths, or raw Guild Wars 2 API response models.
+
+## 6.2 Application Layer
+
+The application layer coordinates use cases and infrastructure without becoming a second home for complex domain calculations.
 
 Examples include:
-
-- crafting resolution,
-- crafting graph traversal,
-- material consumption,
-- craft-vs-buy decisions,
-- opportunity-cost calculation,
-- non-tradable item valuation,
-- recipe selection,
-- daily-item behavior,
-- discovery eligibility,
-- profit calculation.
-
-The authoritative rules are defined in:
-
-```text
-DOMAIN_SPEC.md
-```
-
-## Domain Independence Rule
-
-The Domain Layer must know nothing about:
-
-- JavaFX,
-- React,
-- Vue,
-- browsers,
-- HTTP,
-- REST,
-- JSON transport objects,
-- PostgreSQL,
-- JDBC,
-- SQL,
-- Docker,
-- GW2 API response JSON,
-- filesystem paths.
-
-Domain logic should operate on domain objects and interfaces.
-
-This is one of the most important rules of the target architecture.
-
----
-
-# 8. Application Layer
-
-The Application Layer coordinates use cases.
-
-Examples:
 
 ```text
 CalculateCraftingProfit
@@ -326,708 +156,253 @@ RefreshTradingPostPrices
 RebuildCraftingGraph
 GetBankContents
 GetMaterialStorage
-CalculateEctoLuckCost
 ```
 
-An application service may:
+An application service may load data through ports, construct domain input, execute domain behavior, persist required state, and return a result.
 
-1. request data from repositories,
-2. construct a domain request,
-3. execute domain logic,
-4. persist required state,
-5. return a result.
+## 6.3 HTTP / API Layer
 
-The Application Layer may coordinate infrastructure, but it should not contain complex domain calculations itself.
+The API layer owns routing, request validation, transport DTO mapping, authentication/account context when applicable, and HTTP response/error mapping. Controllers must remain thin and must not implement business rules.
+
+Endpoint names and DTO details belong to API/feature specifications rather than this architecture document.
+
+## 6.4 Persistence and external API adapters
+
+Application/domain code depends on repository and external-service interfaces, not concrete PostgreSQL or HTTP clients. Adapters implement those interfaces and translate infrastructure-specific models at the boundary.
+
+Guild Wars 2 JSON structures and SQL/JDBC concerns must not leak into domain logic.
 
 ---
 
-# 9. API / HTTP Layer
+# 7. PostgreSQL and Data Scope
 
-The API layer translates web requests into application use cases.
+One shared PostgreSQL database serves the hosted application. A separate database per user/account is not part of the target architecture.
 
-Responsibilities include:
+Persistent data distinguishes:
 
-- HTTP routing,
-- request validation,
-- authentication if introduced later,
-- converting transport DTOs,
-- returning HTTP responses.
+- global/shared data, including Guild Wars 2 item/recipe metadata and Trading Post data,
+- account-scoped data, including characters, inventories, material storage, recipe knowledge, and other synchronized account information.
 
-Example endpoints may eventually resemble:
+Account-scoped records are keyed by the stable Guild Wars 2 account identity, not by a particular API key. Replacing an API key for the same account must reuse the existing account dataset.
 
-```text
-GET  /api/account/materials
-GET  /api/account/bank
+Account isolation is enforced by backend/application/persistence boundaries. Domain calculations should remain account-agnostic where practical and receive already-scoped input data.
 
-POST /api/sync/account
-POST /api/sync/global
-POST /api/prices/refresh
+Schema creation and upgrades must eventually use a repeatable, versioned migration mechanism. The specific migration technology is selected with the backend framework.
 
-POST /api/crafting/profit
-POST /api/crafting/discovery
+## 7.1 Account data retention
 
-GET  /api/items/{id}
-GET  /api/recipes/{id}
-```
+Persist enough activity information to identify long-inactive account data. Do not introduce automatic deletion without evidence that stale data causes meaningful storage, performance, or operational cost.
 
-These endpoint names are examples, not yet a fixed API contract.
-
-Business rules must not be implemented in controllers.
+If cleanup becomes justified, explicitly decide the inactivity threshold, affected records, cleanup frequency, retained identity data, and concurrency protection. Cleanup must never remove global/shared data merely because one account is inactive.
 
 ---
 
-# 10. Persistence Boundary
+# 8. Guild Wars 2 API, Credentials, and Account Identity
 
-The domain/application layers should depend on repository interfaces rather than concrete PostgreSQL classes.
+All Guild Wars 2 API communication is backend-owned. The frontend does not call ArenaNet directly.
 
-Conceptually:
+For the target multi-user deployment:
 
-```text
-Application / Domain
-        |
-        v
-RecipeRepository interface
-        |
-        v
-PostgresRecipeRepository
-        |
-        v
-PostgreSQL
-```
+- each user supplies their own Guild Wars 2 API key through the browser,
+- the backend receives the key transiently when an account-specific API operation requires it,
+- the backend resolves the stable Guild Wars 2 account identity and uses that identity for persisted account scope,
+- API keys are not persisted in PostgreSQL or other durable server-side application storage,
+- replacing a key for the same account must not create duplicate account data,
+- logs/errors must not unnecessarily record API keys.
 
-This enables:
+The exact browser-side key-storage mechanism is a later security/implementation decision.
 
-- unit testing without PostgreSQL,
-- easier database migrations,
-- clearer ownership,
-- reduced coupling.
-
----
-
-# 11. External API Boundary
-
-GW2 API access should follow the same pattern.
-
-Conceptually:
-
-```text
-Application
-    |
-    v
-Gw2ApiPort
-    |
-    v
-Gw2HttpApiClient
-    |
-    v
-ArenaNet API
-```
-
-External GW2 API response models should be converted into internal application/domain models at this boundary.
-
-GW2 JSON structures must not leak into domain logic.
-
----
-
-# 12. Frontend Responsibilities
-
-The frontend is responsible for presentation and interaction.
-
-Reusable web UX/UI requirements are owned by
-[`FRONTEND_UX_GUIDELINES.md`](FRONTEND_UX_GUIDELINES.md). Frontend implementation
-stories must reference its relevant sections. Phase 5's initial frontend must
-be brought into compliance before extending its presentation patterns to
-additional pages; presentation correction preserves the backend contracts below.
-
-It may:
-
-- display tables,
-- provide filters,
-- display money values,
-- display recipe trees,
-- trigger sync operations,
-- show loading/error states,
-- submit crafting settings,
-- provide search and sorting,
-- visually flag special states.
-
-The frontend must not independently reproduce business calculations.
-
-For example, it may display:
-
-```text
-profitCopper = 12345
-```
-
-but must not independently recalculate crafting profit from raw materials and prices.
-
----
-
-## 12.1 Web presentation assets and product requirements
-
-Detailed Crafting Profit result content and interactions are owned by `DOMAIN_SPEC.md` §2.1.1. The frontend presents those results; it does not become the authority for their calculation.
-
-### Item and recipe icon delivery
-
-Item/recipe icons are presentation assets and must not alter domain behavior.
-
-Target rules:
-
-- The browser obtains icons through the application/backend boundary rather than depending directly on ArenaNet asset URLs.
-- The backend owns icon resolution and may maintain a persistent filesystem cache so repeatedly requested icons do not require repeated external downloads.
-- Icon binaries do not belong in PostgreSQL.
-- Browser/HTTP caching should be used so unchanged icons are not transferred unnecessarily.
-- Missing or failed icon retrieval must degrade to a stable placeholder/fallback and must not break Crafting Profit/Discovery results.
-- Containerized/deployed environments that rely on the backend icon cache must provide suitable persistent storage for that cache.
-- An explicit backend metadata-repair operation must discover item IDs from stored account and crafting references even when an item metadata row is absent, then retain available canonical metadata for later API responses. Repair must not require a full account synchronization or fetch image bytes.
-- Upstream image bytes belong only in the runtime filesystem cache; keep them out of source control, PostgreSQL and distributable project artifacts.
-- Cache implementation details, HTTP cache headers, hashing/keying, concurrency behavior, migration mechanics and exact error/status handling belong in the relevant ADR/feature specification and tests, not in this architecture document.
-
----
-
-# 13. Resolution Tree
-
-The resolution tree is an authoritative backend/domain result used to explain how a crafting result is obtained and costed. The frontend renders the tree; it must not independently reconstruct or recalculate it.
-
-Architectural rules:
-
-- Resolution-tree calculation uses explicit request/use-case inputs and request-local calculation state.
-- The API exposes transport DTOs rather than domain or persistence objects directly.
-- The tree and the summary result shown to the user must be based on the same authoritative calculation rules and compatible data snapshot/context.
-- Tree generation must preserve special domain states and the selected craft-vs-buy decisions rather than inventing presentation-only alternatives.
-- Browser requests must associate returned detail data with the result/request that initiated them so stale asynchronous responses cannot overwrite a newer selection.
-- Missing/unavailable detail data must be represented explicitly and must not cause the frontend to fabricate a result.
-- Exact DTO fields, nullability, HTTP status mapping, request identifiers, migration sequencing and detailed verification cases belong in the API/feature specification and associated ADRs/tests.
-
----
-
-# 14. Special Domain States
-
-The backend/domain may expose meaningful states such as:
-
-```text
-INVENTORY
-CRAFT
-BUY
-BLOCKED
-PRICE_UNAVAILABLE
-DAILY_LIMIT
-UNVALUED_NONTRADEABLE
-```
-
-These are domain meanings.
-
-The frontend decides how those states are visually represented.
-
-Example:
-
-```text
-UNVALUED_NONTRADEABLE
-```
-
-may eventually be shown in blue, yellow, or another visual style.
-
-That color is not part of the domain contract.
-
----
-
-# 15. Configuration and Credentials
-
-Runtime configuration must not be hard-coded into source files.
-
-Server-owned configuration should be supplied through runtime configuration such as environment variables or equivalent deployment configuration.
-
-Examples include:
-
-```text
-DATABASE_URL
-DATABASE_USER
-DATABASE_PASSWORD
-```
-
-Server-owned secrets and infrastructure credentials must remain backend-only and must never be exposed to the frontend.
-
-## Guild Wars 2 API keys
+The initial preferred identity direction is to determine whether possession of a valid Guild Wars 2 API key plus its resolved stable account identity is sufficient. Separate username/password or third-party authentication must not be added without a concrete requirement.
 
 The current local/single-user application may continue using `GW2_API_KEY` from local environment configuration during migration.
 
-The target public multi-user deployment does not use one deployment-wide Guild Wars 2 API key for all users.
+---
 
-Each user supplies their own Guild Wars 2 API key through the browser. The browser may retain that key for the user's convenience; the backend receives it transiently when required for account-specific Guild Wars 2 API operations and does not persist it in the application database or other durable server-side storage.
+# 9. Synchronization and Long-Running Operations
 
-The frontend must not expose one user's key to another user. Backend logs, errors and diagnostics must not unnecessarily record API keys.
+Synchronization is an application-level/backend responsibility. The frontend may trigger permitted operations and display status/freshness; the backend owns execution order, persistence, error handling, and synchronization state.
 
-The exact browser-side storage mechanism is decided during the multi-user implementation phase.
+Account-specific synchronization runs in the scope of one resolved Guild Wars 2 account. Global data must not be redundantly refreshed once per user.
+
+Trading Post refresh is global backend-owned work. In the multi-user deployment it should run automatically on a backend-controlled schedule; the initial target cadence is approximately five minutes, subject to verification against actual API behavior and rate limits.
+
+Per resolved `agent/user-decisions/UD-007-http-long-running-sync-approach.md`:
+
+- Guild Wars 2 API synchronization uses asynchronous backend tasks with status reporting.
+- Other endpoints should be measured with representative real data; keep consistently short operations synchronous and use backend tasks when runtime materially risks interruption or connection timeout.
+
+Do not introduce a distributed queue/job platform without a concrete need.
 
 ---
 
-# 16. Database Schema Management
+# 10. Authoritative Calculation and Result Boundaries
 
-The current manually executed SQL setup should eventually be replaced by a repeatable database migration mechanism.
+## 10.1 Crafting graph and calculations
 
-The exact migration technology is TBD.
+The crafting graph and Crafting Profit/Discovery calculations remain backend/domain concerns. The frontend must not construct the graph or independently recalculate their economic results.
 
-Possible solutions depend on the selected backend framework.
+Internal graph caching/rebuild strategy is an implementation decision as long as domain results remain correct.
 
-Required properties:
+## 10.2 Resolution tree
 
-- schema creation is reproducible,
-- migrations are versioned,
-- migrations are stored in the repository,
-- a fresh database can be created without manually copying SQL into PostgreSQL,
-- application upgrades can migrate existing databases safely.
+The resolution tree is an authoritative backend/domain result explaining how a crafting result was obtained and costed. The frontend renders it rather than reconstructing it.
 
----
+The tree and summary result must use compatible calculation context/snapshots, preserve domain states and selected sourcing decisions, and associate asynchronous detail responses with the request/result that initiated them so stale responses cannot overwrite newer selections.
 
-# 17. Container Orchestration
+Missing/unavailable detail data must remain explicit; the frontend must not fabricate a result. Exact DTO fields and transport mechanics belong in feature/API specifications.
 
-For local development and small-scale deployment, Docker Compose is the preferred initial orchestration mechanism.
+## 10.3 Domain states
 
-Conceptually:
-
-```text
-docker compose up
-```
-
-should start:
-
-```text
-frontend
-backend
-postgres
-```
-
-Possible future supporting services should only be added when clearly necessary.
-
-The project should not introduce Kubernetes or a microservice platform without a concrete requirement.
+Domain states such as `INVENTORY`, `CRAFT`, `BUY`, `BLOCKED`, `PRICE_UNAVAILABLE`, `DAILY_LIMIT`, and `UNVALUED_NONTRADEABLE` originate from backend/domain behavior. The frontend owns their visual representation, not their meaning.
 
 ---
 
-# 18. Container Networking
+# 11. Configuration and Secrets
 
-Containers communicate over an internal Docker network.
+Runtime configuration must not be hard-coded into source files. Server-owned configuration and secrets are supplied through environment variables or equivalent deployment configuration and must never be exposed to the frontend.
 
-Conceptually:
+Per-user Guild Wars 2 API keys follow section 8's browser-held/transient-backend model and are not server-owned persistent configuration.
+
+---
+
+# 12. Deployment and Containers
+
+The initial target is a small single-host Docker deployment using Docker Compose.
 
 ```text
 Browser
    |
    v
-Frontend : public
-
-Frontend
+Frontend (public)
    |
    v
-Backend : internal/API
-
-Backend
+Backend (application API)
    |
    v
-Postgres : internal only
+PostgreSQL (internal)
 ```
 
-PostgreSQL does not need to be publicly exposed in a production deployment.
+The backend also communicates with the external Guild Wars 2 API over HTTPS. PostgreSQL does not need public exposure.
+
+The application must remain portable to a normal Docker-capable host. A home server, VPS, NAS/container host, or suitable cloud VM may be used. Oracle Cloud Free Tier / Always Free is only a deployment candidate and must be re-evaluated when deployment work is reached; application architecture must not depend on Oracle-specific services.
+
+Do not introduce Kubernetes, microservices, or additional supporting services without a concrete requirement.
 
 ---
 
-# 19. Deployment Model
+# 13. Testing Architecture
 
-The initial target is a small single-host deployment.
+Detailed testing strategy belongs in `TEST_STRATEGY.md`. Architecture-level expectations are:
 
-Possible hosts may include:
+- domain tests verify shared business rules without database, HTTP, UI, or Guild Wars 2 API dependencies,
+- application tests verify use-case orchestration across domain and ports,
+- persistence integration tests use real PostgreSQL where schema/query semantics matter,
+- external API adapter tests use controlled/captured payloads; optional live smoke tests stay outside the deterministic default suite,
+- API tests verify transport mapping, validation, and mapped failures without duplicating domain-rule tests,
+- frontend/component/browser tests verify presentation, interaction, frontend-owned state, and the explicitly frontend-owned Ecto calculation,
+- end-to-end tests cover selected critical deployed flows.
 
-- a home server,
-- VPS,
-- NAS/container host,
-- another Docker-capable server.
-
-The hosting provider is not yet decided.
-
-Oracle Cloud Free Tier / Always Free is currently identified as a potential initial hosting candidate because a suitable Docker-capable VM may support the intended small single-host deployment without requiring provider-specific application architecture.
-
-This is not a hosting-provider decision. Availability, resource limits, pricing/free-tier conditions and suitability must be re-evaluated when deployment work is actually reached.
-
-The application must remain portable to a normal Docker-capable host and must not depend on Oracle-specific services merely to take advantage of a currently available free hosting option.
-
-The architecture should avoid relying on provider-specific services unless intentionally introduced later.
+The browser frontend is the canonical UI. JavaFX-specific tests may be removed with obsolete JavaFX production code they exclusively verify. Shared backend/domain behavior must retain appropriate non-JavaFX coverage.
 
 ---
 
-# 20. Authentication and Account Identity
+# 14. Migration and Code Reuse
 
-Public multi-user access is now an explicit target requirement.
+Migration should preserve working behavior while establishing the target boundaries incrementally. The detailed sequence belongs in `MIGRATION_PLAN.md` and the roadmap.
 
-The application must establish which stable Guild Wars 2 account an account-scoped request belongs to and must prevent access to another account's persisted data.
+Existing code should be:
 
-The initial preferred direction is to investigate whether possession of a valid Guild Wars 2 API key, validated by the backend against the Guild Wars 2 API and resolved to the stable Guild Wars 2 account identity, is sufficient as the application's account identity mechanism.
+- retained when it correctly implements required behavior and fits the target boundaries,
+- refactored when coupling prevents safe reuse,
+- replaced or removed when obsolete, incorrect, or more expensive to isolate than replace.
 
-Whether this is sufficient or whether separate application authentication is required must be explicitly decided during the multi-user phase.
+The browser frontend is now the canonical user interface. Obsolete JavaFX UI code, tests, resources, dependencies, and support code with no remaining consumer may be removed. Shared domain/application/backend functionality must not be removed merely because JavaFX also used it.
 
-Do not introduce username/password accounts, email registration, password reset infrastructure or provider-specific authentication merely because the application is public. Add separate authentication only if the required account isolation or product requirements cannot be satisfied cleanly without it.
-
----
-
-# 21. User / Account Scope
-
-The target hosted application is multi-user.
-
-One application instance and one shared PostgreSQL database may serve multiple Guild Wars 2 accounts.
-
-The stable Guild Wars 2 account identity returned by the Guild Wars 2 API is the durable identity for account-scoped persistence. An API key is a credential used to establish/access that identity; it is not itself the persistent account identity.
-
-Conceptually:
-
-```text
-API Key A1 ──┐
-             ├──> GW2 Account A ──> persisted Account A data
-API Key A2 ──┘
-
-API Key B  ─────> GW2 Account B ──> persisted Account B data
-```
-
-Creating a replacement API key must therefore not create duplicate persisted account data.
-
-Global application data is shared across accounts. Account-specific data must be explicitly scoped and isolated.
-
-The architecture must not require a separate PostgreSQL database, backend instance or container stack for each user.
+The obsolete backend-owned Ecto calculation path may likewise be removed while preserving the frontend-owned Ecto behavior defined in section 4.2.
 
 ---
 
-# 22. Synchronization
+# 15. Architecture Simplicity and Quality
 
-Synchronization should become an application-level use case rather than UI-owned behavior.
+When several designs satisfy the requirements, prefer the simplest design that preserves correctness, is testable, has clear ownership, is understandable by a small project team, and supports bounded AI-assisted development.
 
-Examples:
+Near milestone completion, project-health reviews should check for:
 
-```text
-Refresh account
-Refresh global item data
-Refresh recipes
-Refresh Trading Post prices
-Rebuild crafting graph
-```
+- dependency/boundary violations,
+- duplicate or obsolete implementations,
+- repository/documentation drift,
+- test coverage appropriate to changed boundaries,
+- relevant performance regressions,
+- security/configuration conflicts,
+- temporary migration structures that can now be removed.
 
-The frontend may trigger these operations.
-
-The backend controls:
-
-- execution order,
-- persistence,
-- error handling,
-- synchronization state.
-
-## Global versus account-specific synchronization
-
-Synchronization must distinguish between global/shared work and account-specific work.
-
-Account-specific synchronization, such as characters, inventories, material storage and account recipe knowledge, runs in the scope of one resolved Guild Wars 2 account.
-
-Global data must not be redundantly refreshed because multiple users request the same operation.
-
-Trading Post price refresh is backend-owned global work. In the multi-user deployment it must run automatically on a backend-controlled schedule rather than exposing a per-user frontend refresh action. The initial target cadence is approximately five minutes, subject to verification against actual Guild Wars 2 API behavior, rate limits and application requirements.
-
-Other synchronization operations must be classified similarly during the multi-user migration. Where data is global, concurrent user activity should reuse, coalesce or schedule the shared work instead of causing equivalent external API operations once per user.
-
-The frontend may expose status/freshness information where useful, but ordinary users must not independently trigger redundant global refresh work.
+Review workflow and story disposition belong in the agent/planning documentation.
 
 ---
 
-# 23. Long-Running Operations
-
-Some synchronization operations may take longer than a normal HTTP request.
-
-The first implementation should remain as simple as practical.
-
-Per resolved `agent/user-decisions/UD-007-http-long-running-sync-approach.md`, use a mixed approach:
-
-- GW2 API synchronization operations use asynchronous backend tasks with status reporting.
-- For other endpoints, obtain representative real-world runtime measurements during implementation. Prefer synchronous requests for consistently short operations; use backend tasks with a status endpoint when execution takes materially longer or risks interruption/connection timeout. Do not assume durations or assign the split speculatively.
-
-A full queue system or distributed job platform is not currently required.
-
-**Status:** approach decided in UD-007; per-endpoint choices outside GW2 synchronization follow measured behavior. Routine task implementation details remain implementation work.
-
----
-
-# 24. Crafting Graph
-
-The Crafting Graph remains an internal backend/domain concern.
-
-The frontend should not construct or maintain the crafting graph.
-
-The target architecture should determine later whether the graph is:
-
-- rebuilt in memory,
-- cached in the database,
-- cached in a file,
-- generated on startup,
-- generated after recipe synchronization.
-
-This is an implementation decision as long as domain results remain correct.
-
-## 24.1 Account Data Retention
-
-Account-scoped persisted data should record sufficient activity information to identify accounts that have not used or synchronized with the application for an extended period, for example through `last_seen_at` and/or `last_successful_sync_at`.
-
-A returning user who presents a new API key for the same stable Guild Wars 2 account must reuse the existing account dataset while it still exists.
-
-Inactive account data may eventually be removed to control PostgreSQL/storage growth. Automatic cleanup must not be introduced merely because inactive records exist. First establish that stale account data causes meaningful storage, database-performance or operational cost.
-
-When such evidence exists, explicitly decide:
-
-- the inactivity threshold,
-- which account-scoped records are removed,
-- whether any minimal account identity/tombstone is retained,
-- cleanup frequency,
-- and how concurrent/returning-user activity is protected from deletion.
-
-Cleanup must never delete global/shared Guild Wars 2 data merely because an individual account is inactive.
-
-If measured storage impact remains insignificant, retaining inactive account data is acceptable and no automatic cleaner is required.
-
----
-
-# 25. Testing Architecture
-
-Testing follows `docs/TEST_STRATEGY.md`; this section records only architecture-level expectations.
-
-- Domain tests verify business rules without database, HTTP, JavaFX or GW2 API dependencies.
-- Application tests verify use-case orchestration across domain and ports.
-- Persistence integration tests use real PostgreSQL behavior where schema/query semantics matter.
-- External API adapter tests use controlled/captured GW2 payloads; optional live smoke tests remain outside the deterministic default suite.
-- API tests verify transport mapping, validation and mapped failures without duplicating domain-rule tests.
-- End-to-end tests cover selected critical user flows across the deployed boundaries.
-- During migration, JavaFX may remain a verification surface until web parity is established; detailed JavaFX verification procedures belong in `TEST_STRATEGY.md` and migration stories.
-
----
-
-# 26. Dependency Direction
-
-The intended dependency direction is:
-
-```text
-Frontend
-    |
-    v
-Backend API
-    |
-    v
-Application
-    |
-    v
-Domain
-```
-
-Infrastructure implements interfaces required by the application/domain.
-
-The following dependency directions are forbidden:
-
-```text
-Domain → PostgreSQL
-Domain → HTTP
-Domain → Frontend
-Domain → JavaFX
-Domain → Docker
-```
-
----
-
-# 27. Migration Principle
-
-The current application should not be rewritten all at once.
-
-Migration should preserve working behavior while gradually establishing the target boundaries.
-
-Preferred strategy:
-
-```text
-existing application
-      |
-      v
-protect behavior with tests
-      |
-      v
-isolate domain logic
-      |
-      v
-isolate persistence/API adapters
-      |
-      v
-introduce backend API
-      |
-      v
-introduce web frontend
-      |
-      v
-introduce multi-user / account isolation
-      |
-      v
-containerize final runtime
-```
-
-The exact migration plan belongs in `MIGRATION_PLAN.md`.
-
----
-
-# 28. Reuse of Existing Code
-
-Existing Java code should be reused when it correctly implements defined domain behavior and can reasonably be isolated.
-
-A rewrite is not automatically preferred.
-
-Code should be:
-
-- retained when sound,
-- refactored when coupling prevents safe use,
-- replaced when behavior is incorrect or isolation would be more expensive than replacement.
-
-The target architecture describes boundaries, not a requirement to throw away the current implementation.
-
----
-
-# 29. Architecture Simplicity Rule
-
-When several designs can satisfy the requirements, prefer the simplest design that:
-
-- preserves domain correctness,
-- is testable,
-- has clear responsibility boundaries,
-- is understandable by a small project team,
-- can be maintained with Claude-assisted development.
-
-Avoid adding abstractions solely because they are common in large enterprise applications.
-
----
-
-# 30. Technology Decisions
-
-This section is a decision index. Detailed rationale belongs in the referenced ADR/user-decision documents rather than being repeated here.
+# 16. Technology and Architecture Decisions
 
 ## Decided
 
-- **Primary database:** PostgreSQL.
-- **Target runtime packaging:** separate frontend, backend and PostgreSQL containers, orchestrated locally with Docker Compose.
-- **Business-logic ownership:** backend/domain/application layers; the frontend is not an independent calculation engine.
-- **GW2 API ownership:** backend adapter boundary; browsers do not directly own synchronization logic.
-- **Multi-user persistence:** one shared PostgreSQL database with shared global data and account-scoped data keyed by stable GW2 account identity.
-- **Per-user GW2 API keys:** browser-held in the target multi-user model and supplied transiently to the backend when required; not persisted as durable server-side application data.
-- **Global Trading Post refresh:** backend-owned scheduled work rather than a per-user refresh action; initial target cadence approximately five minutes, subject to operational verification.
-- **Hosting portability:** provider-specific services must not become unnecessary architectural dependencies.
+- **Frontend:** Vue 3 + TypeScript, strict type checking; see ADR-001.
+- **Backend:** Java-based; exact web framework selected separately.
+- **Database:** PostgreSQL.
+- **Runtime packaging:** frontend, backend, and PostgreSQL containers; Docker Compose for the initial small deployment.
+- **Shared business-logic ownership:** backend/domain/application layers, with the explicit frontend-owned Ecto Salvage exception in section 4.2.
+- **Canonical UI:** browser frontend; JavaFX is obsolete and removable.
+- **GW2 API ownership:** backend adapter boundary; browsers do not call ArenaNet directly.
+- **Multi-user persistence:** one shared database with shared global data and account-scoped data keyed by stable Guild Wars 2 account identity.
+- **Per-user GW2 API keys:** browser-held and supplied transiently when required; not durable server-side application data.
+- **Global Trading Post refresh:** backend-owned scheduled work; initial target approximately five minutes, subject to operational verification.
+- **Hosting portability:** no unnecessary provider-specific dependency.
 
 ## To Be Decided
 
-- Frontend framework/language, if not already resolved by the active implementation milestone.
+- Backend web framework.
 - Database migration tool.
-- Reverse proxy, if required by the selected deployment target.
+- Reverse proxy, if required by deployment.
 - Browser-side GW2 API-key storage mechanism.
-- Whether validated GW2 API-key possession plus stable account identity is sufficient application identity or separate authentication is required.
-- Inactive-account retention threshold, only when measured storage/operational impact justifies automatic cleanup.
-- Hosting provider. Oracle Cloud Free Tier / Always Free is a current candidate, not a decision; availability and limits must be re-evaluated at deployment time.
+- Whether API-key possession plus stable GW2 account identity is sufficient application identity or separate authentication is required.
+- Inactive-account retention threshold, only if measured impact justifies automatic cleanup.
+- Hosting provider.
 
 ---
 
-# 31. Intended Repository Direction
+# 17. Performance Requirement
 
-A possible future repository structure may resemble:
+Crafting Profit is performance-sensitive. The complete usable browser page must remain within the accepted project budget on representative real data; the current target is at most 7 seconds from navigation/request initiation to complete usable page content.
 
-```text
-/
-├── docs/
-│   ├── DOMAIN_SPEC.md
-│   ├── CURRENT_STATE_SPEC.md
-│   ├── TARGET_ARCHITECTURE.md
-│   ├── MIGRATION_PLAN.md
-│   └── TEST_STRATEGY.md
-│
-├── backend/
-│   ├── domain/
-│   ├── application/
-│   ├── api/
-│   └── infrastructure/
-│
-├── frontend/
-│
-├── docker-compose.yml
-│
-└── ...
-```
-
-This is an architectural illustration, not yet a mandatory physical directory structure.
-
-The actual structure should be chosen when the migration begins.
+The budget spans backend calculation, persistence, transport, and frontend rendering. Detailed measurement procedure and historical evidence belong in `TEST_STRATEGY.md` and performance stories.
 
 ---
 
-# 32. Relationship to Claude Code
+# 18. Documentation Boundaries
 
-Claude should use this document to determine architectural boundaries.
-
-When modifying or creating code, Claude must preserve these principles:
-
-1. Domain logic belongs in the backend domain layer.
-2. UI code must not own business rules.
-3. Controllers/API endpoints must remain thin.
-4. SQL/JDBC must not leak into domain logic.
-5. GW2 HTTP/JSON models must not leak into domain logic.
-6. Server-owned secrets must not reach the frontend; per-user GW2 API keys follow the browser-held credential model defined in sections 5 and 15.
-7. The frontend must not duplicate authoritative calculations.
-8. New dependencies must respect inward dependency direction.
-9. Technology choices marked `TBD` must not be silently finalized.
-10. Major architecture changes should be explicit and documented.
+- `DOMAIN_SPEC.md` owns authoritative business/domain behavior.
+- `FRONTEND_UX_GUIDELINES.md` owns reusable browser UX/UI requirements.
+- `TEST_STRATEGY.md` owns detailed verification procedures.
+- `MIGRATION_PLAN.md` and `ROADMAP.md` own migration sequencing and milestones.
+- `docs/crafting/README.md` is the permitted human-readable explanation of crafting rules and must remain aligned with `DOMAIN_SPEC.md` when user-visible crafting behavior changes.
+- Agent/runtime orchestration is development infrastructure and belongs in agent/runtime documentation, not deployed application architecture.
 
 ---
 
-# 33. Crafting Calculation Performance
+# 19. Rules for AI-Assisted Implementation
 
-Crafting Profit is performance-sensitive. The complete user-visible Crafting Profit page must remain within the accepted project performance budget on representative real data; the current accepted target is at most 7 seconds from navigation/request initiation to complete usable page content.
+When modifying or creating code:
 
-This budget spans backend calculation, persistence, transport and frontend rendering. Optimizing one boundary does not by itself satisfy the complete-page requirement.
-
-Detailed measurement procedure, historical baselines, milestone acceptance evidence and regression-test mechanics belong in `TEST_STRATEGY.md`, performance stories and their recorded results rather than this target architecture.
-
----
-
-# 34. Repository Quality and Project-Health Reviews
-
-Architecture quality must be reviewed near milestone completion so implementation drift, obsolete paths and documentation mismatches do not accumulate across phases.
-
-At architecture level, reviews should check:
-
-- dependency direction and boundary violations,
-- duplicate or obsolete implementations,
-- repository/documentation alignment,
-- test coverage appropriate to changed boundaries,
-- performance regressions where relevant,
-- security/configuration mistakes that conflict with this target architecture,
-- and whether temporary migration structures can now be removed.
-
-The exact review workflow, agent responsibilities, report format, story creation/disposition and milestone-closing procedure belong in the agent/planning documentation rather than this architecture document.
+1. Follow the ownership/boundary rules in this document rather than recreating them in individual stories.
+2. Follow `DOMAIN_SPEC.md` for business behavior.
+3. Keep controllers/API endpoints thin and infrastructure concerns outside the domain.
+4. Do not duplicate backend-owned calculations in the frontend; respect the explicit Ecto exception in section 4.2.
+5. Keep server-owned secrets out of the frontend and follow section 8 for per-user Guild Wars 2 API keys.
+6. Do not silently finalize decisions listed as TBD.
+7. Document major architecture changes explicitly and remove obsolete paths when a migration decision makes them unnecessary.
 
 ---
 
-# 35. Human-readable crafting documentation
+# 20. Status
 
-Maintain a small Markdown guide for readers with little Guild Wars 2 knowledge. Its entry point is `docs/crafting/README.md`; split into a few files only when readability benefits. Explain the end-to-end Profit and Discovery calculation, inputs, assumptions and why rules matter, with compact glossary/FAQ and worked economic examples rather than class/method walkthroughs. Cover the applicable rules in `DOMAIN_SPEC.md`: recipe choice/unlocks, discipline/rating and character eligibility, coordinated crafting and transferable intermediates, binding, account/bank/character inventory, opportunity cost, buying and craft-versus-buy, price modes, feature-specific fees, unavailable prices and blocked results, daily restrictions, discovery, the intentional simulation cap, and total/per-output-item profit. Distinguish game mechanics, project choices and documented implementation gaps; do not invent rules.
+This document defines the current target architecture and is stable enough to guide migration planning, testing, repository restructuring, and AI-assisted implementation.
 
-This guide is an explicit exception to the normal prohibition on documentation duplication: a self-contained explanatory summary is permitted; authoritative documents remain the source of truth. Every change materially affecting user-visible crafting rules, character/binding handling, pricing, fees, profit, blocked states or limits must update the relevant guide alongside the authoritative owner. Development/implementation documentation must link this maintenance requirement. Add only concise links near the top of root `README.md` to `agent/agent_README_experimental.md` (AI-assisted development/orchestration) and the crafting guide. Do not rewrite `agent/agent_README_experimental.md` or duplicate it in the root README.
-
-# 36. Development-Orchestration Boundary
-
-The repository's AI/agent orchestration is development infrastructure, not part of the deployed GW2 application architecture. Model availability, fallback behavior, planner/executor routing and similar concerns must be documented in the agent/runtime documentation and must not influence the application's runtime dependency structure.
-
----
-
-# 37. Status
-
-This document defines the initial target architecture.
-
-It intentionally specifies architectural boundaries more strongly than implementation technology.
-
-The target architecture is considered stable enough to guide:
-
-- migration planning,
-- test strategy,
-- repository restructuring,
-- Claude Code instructions.
-
-Technology choices marked `TBD` remain open and should be resolved only when implementation work reaches the point where the decision is necessary.
+Implementation details not fixed here remain open until they are required. Domain behavior must not be inferred from this document when `DOMAIN_SPEC.md` is the authoritative owner.

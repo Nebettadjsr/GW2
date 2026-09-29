@@ -16,43 +16,55 @@ milestone-05
 
 ## Goal
 
-Let Ectoplasm browser and component checks identify loaded, data-driven result regions without relying on styling classes or the always-rendered screen root.
+Let Ectoplasm browser and component checks identify the current frontend-calculated result regions without relying on styling classes or the always-rendered screen root.
 
 ## Authoritative Source Documents / Sections
 
 - `agent/stories/STORY-WEB-019-layout-smoke-navigation-coverage.md`, Follow-up Findings F002–F003.
-- `agent/stories/STORY-WEB-013-ectoplasm-salvage-page.md`, result, loading and failure presentation criteria.
+- Product Owner resolution establishing the frontend-owned Ectoplasm calculation as the canonical implementation.
 - `docs/TEST_STRATEGY.md` §12.1–12.2, frontend state and browser verification.
 - Supplied `docs/ROADMAP.md` Phase 5, Ectoplasm screen and rendering/interaction/state tests.
 
 ## Context
 
-The screen's existing `ecto-screen` hook is present during loading and failure. Checks currently use presentational classes to locate populated result content. The same component also retains two scoped style rules for removed elements.
+The Ectoplasm screen now intentionally performs its simple salvage calculation in the browser using the required item metadata, Trading Post prices and account Luck data.
+
+The previous backend-calculated Ectoplasm screen is obsolete and must not be restored.
+
+The screen's existing `ecto-screen` hook is always present and checks currently use presentational classes to identify populated calculation content. Stable semantic `data-test` hooks should identify the current data-driven regions instead.
+
+The component also retains two scoped style rules for removed elements.
 
 ## Acceptance Criteria
 
-1. Add stable `data-test` hooks to the Ectoplasm screen's data-driven result regions so checks can distinguish rendered answer content from loading and failure states.
+1. Add stable `data-test` hooks to the current Ectoplasm screen's data-driven calculation/result regions so browser and component checks can identify when the required data has loaded and the frontend-owned result is available.
 2. Update relevant Ectoplasm browser and component assertions to use those hooks for content readiness and result checks instead of style-only selectors where a stable hook is appropriate.
-3. Preserve existing checks for the four result scenarios, loading, failure, and reload behavior; a root hook alone must not count as a loaded answer.
-4. Remove the unused `.result-conclusion` and `.tool-separator` scoped rules identified in the finding, without changing visible page behavior.
+3. Verify the current frontend-owned behavior, including populated calculation results, input-driven recalculation, Trading Post price refresh behavior, account Luck presentation, and relevant warning/error states already supported by the screen. Tests must not introduce or require a backend Ectoplasm calculation operation.
+4. A root hook alone must not count as evidence that the required data and calculated result are available.
+5. Remove the unused `.result-conclusion` and `.tool-separator` scoped rules identified in the original finding without changing visible page behavior.
 
 ## Required Tests
 
-- Run focused Ectoplasm component tests for loading, failure and populated results.
+- Run focused Ectoplasm component tests covering the current frontend-owned calculation and its relevant data/result states.
 - Run the Ectoplasm and layout browser smoke checks that consume the new result hooks in a controlled browser runtime.
+- Verify that the browser checks no longer depend on presentational style classes for result readiness where the new semantic hooks apply.
 
 ## Constraints
 
-- Keep changes within Ectoplasm presentation and its checks; do not change backend contracts or economic calculations.
-- Preserve existing visual and accessible meaning for result states.
+- Keep changes within Ectoplasm presentation, test hooks, and their checks.
+- Do not introduce or restore a backend Ectoplasm calculation operation.
+- Do not move the Ectoplasm economic calculation out of the browser.
+- Preserve the current frontend-owned calculation behavior and economic rules.
+- Preserve existing visual and accessible meaning.
+- Do not preserve obsolete backend-calculated states merely because older tests or stories referenced them.
 
 ## Dependencies
 
-- STORY-WEB-019 (source of the finding; finish its smoke restructure first).
+- STORY-WEB-019 (DONE).
 
 ## Definition of Done
 
-Acceptance criteria are met, named checks pass, and Result records the state and browser evidence.
+Stable semantic hooks identify the current frontend-calculated Ectoplasm result content, relevant component and browser checks use those hooks instead of presentation classes where appropriate, obsolete scoped styles are removed, and the named checks pass.
 
 ## Result
 
@@ -60,4 +72,4 @@ Not started.
 
 ## Blockers
 
-STORY-WEB-019 must complete first.
+None.

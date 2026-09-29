@@ -154,35 +154,17 @@ Retain a minimal row-level CYCLE_DETECTED diagnostic, explicitly temporary
 presentation technical debt, until the Product Owner requests its removal. It
 does not justify retaining a general State/Status column.
 
-Provide an explicit calculation/material control labelled "Allow
-non-Trading-Post materials", grouped with calculation rules rather than display
-filters. UD-009 establishes that it opens enabled and applies only to web Crafting
-Profit, without changing Discovery or JavaFX behavior. Non-Trading-Post means
-nontradeable by item/domain classification, not a missing selected quote for a
-normally tradeable item; PRICE_UNAVAILABLE remains unchanged.
-
-With the option enabled, owned non-TP materials and materials produced through
-allowed crafting paths, including recursive intermediates, remain usable under
-existing inventory/binding, buying, budget, daily and scope rules. Evaluate valid
-alternative sourcing paths normally. Under this rule a plan is unavailable only
-when a required non-TP material has neither usable owned inventory nor an allowed
-crafting acquisition path; do not pretend it can be acquired externally. Preserve
-blocked results in the backend/domain; normal display filters may hide them.
-Explain the restriction in selected-result details, preferably at the affected
-material/tree node, without a normal state column. Valuation under section 11.2
-is unchanged.
-
-With the option disabled, exclude calculation paths that consume a non-TP
-material, including owned, account-bound, recursively craftable and intermediate
-ingredients. Continue evaluating alternative valid sourcing/crafting paths that
-do not consume non-TP materials. Retain blocked/domain information for selected
-details; ordinary result-display filters determine visibility. This is the
-disabled behavior decided in UD-010, not a reclassification of missing quotes.
-
-The non-Trading-Post-material control must retain the user's selected value
-during recalculation and valid refreshes. Both table and fresh-detail calculations
-must use that setting; changing it triggers recalculation without silently
-reverting the selection.
+Crafting Profit always uses the normal acquisition rules for each required material.
+Usable owned inventory may be consumed under the binding rules; an allowed crafting
+path may produce the requirement; and a normal Trading Post purchase may supply it
+when buying is enabled and a usable quote exists. If none of these paths satisfies
+a requirement, the parent craft is unavailable. Absence from the synchronized
+`tp_tradeable_items` list or `/v2/commerce/prices` ID list is not itself a reason
+to reject an ingredient. A missing usable purchase quote still follows the normal
+`PRICE_UNAVAILABLE` behavior. This is the former non-Trading-Post control's enabled
+behavior, made permanent by the Product Owner's 2026-09-29 decision; the control and
+its restrictive blocked reason have been removed. Crafting Discovery and JavaFX
+continue to use the same normal resolver behavior.
 
 Profit, costs and important totals must be easy to scan with consistent application
 colors and emphasis; signs, wording or other non-color cues must carry meaning too.
@@ -953,7 +935,12 @@ profit = sell_value - (0.15 * sell_value) - own_material_value - buy_cost
 Apply this rule to both per-craft Profit and Total Profit, using each value's
 corresponding quantity basis. Apply it consistently to Crafting Profit, Discovery
 informational profit, profitability comparisons/ranking and Ectoplasm profit.
-Compute monetary results in the backend/domain and deduct fees exactly once.
+
+Crafting Profit and Discovery monetary results are calculated in the backend/domain
+and deduct fees exactly once. Ectoplasm Salvage is the explicit exception defined
+in sections 2.3 and 46: its fee-adjusted economics are calculated locally by the
+browser using the same domain fee policy.
+
 Existing monetary precision/formatting conventions may be retained; no separate
 transaction grouping model or rounding investigation is required.
 
@@ -1303,13 +1290,7 @@ CYCLE_DETECTED
 PRICE_UNAVAILABLE
 RECIPE_NOT_ALLOWED
 INSUFFICIENT_BUDGET
-NON_TRADEABLE_MATERIAL
 ```
-
-`NON_TRADEABLE_MATERIAL` is section 2.1.1's material restriction: the requirement could only be met
-by consuming a material that is not tradeable on the Trading Post while that calculation was asked
-not to use such a path. It is a chosen restriction, not a missing price and not a missing recipe, so
-it never replaces `PRICE_UNAVAILABLE` or `NO_RECIPE` and never appears while the option is enabled.
 
 All of these are represented explicitly in the implementation (`craft.BlockedReason`) and are assigned by the planner rather than only declared (`docs/KNOWN_PROBLEMS.md` §3.5).
 
@@ -1666,7 +1647,16 @@ Normal recipe unlocks are account-wide. Character-specific information determine
 
 ## DQ-011 — Ectoplasm Salvage fee model
 
-`EctoView` remains the JavaFX Ectoplasm Salvage implementation; the browser page has its own local calculator described in §2.3. The Product Owner request `ecto-salvage-profit-include-tp-fees.md` supersedes UD-002's no-fee decision: apply §46 to the four Ecto-buy/Dust-sell scenarios and the derived Luck costs. Replace the fee-exclusion warning with a short notice that displayed results include Trading Post selling fees. Raw price quotations remain distinguishable from net sale proceeds. This decision is scoped only to this view.
+The browser Ecto Salvage page is the canonical Ectoplasm Salvage implementation
+and uses the frontend-owned calculation defined in section 2.3. The Product Owner
+request `ecto-salvage-profit-include-tp-fees.md` supersedes UD-002's no-fee
+decision: apply section 46 to the four Ecto-buy/Dust-sell scenarios and the derived
+Luck costs. Displayed results include Trading Post selling fees while raw price
+quotations remain distinguishable from net sale proceeds.
+
+The obsolete JavaFX `EctoView` and the former backend-owned Ecto calculation flow
+are not architectural requirements and may be removed. This decision remains
+scoped to Ectoplasm Salvage.
 
 **Status:** DECIDED
 

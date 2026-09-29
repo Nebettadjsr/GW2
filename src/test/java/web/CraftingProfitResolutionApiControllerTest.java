@@ -110,8 +110,7 @@ class CraftingProfitResolutionApiControllerTest {
                                      "characterName": "Aria", "rating": 400},
                            "settings": {"useOwnMats": false, "allowBuying": true, "maxBuyCopper": 25000,
                                         "listingSell": true, "listingBuy": true,
-                                        "dailyBuyInsteadOfCraft": false,
-                                        "allowNonTradeableMaterials": false}}}"""))
+                                         "dailyBuyInsteadOfCraft": false}}} """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.recipeId").value(7))
                 .andExpect(jsonPath("$.calculation.scope.kind").value("CHARACTER_DISCIPLINE"))
@@ -123,10 +122,7 @@ class CraftingProfitResolutionApiControllerTest {
                 .andExpect(jsonPath("$.calculation.settings.maxBuyCopper").value(25000))
                 .andExpect(jsonPath("$.calculation.settings.listingSell").value(true))
                 .andExpect(jsonPath("$.calculation.settings.listingBuy").value(true))
-                .andExpect(jsonPath("$.calculation.settings.dailyBuyInsteadOfCraft").value(false))
-                // The material rule the detail was calculated under is echoed with the rest, so an
-                // answer produced under the previous value cannot pass for the current one (§13.4).
-                .andExpect(jsonPath("$.calculation.settings.allowNonTradeableMaterials").value(false));
+                .andExpect(jsonPath("$.calculation.settings.dailyBuyInsteadOfCraft").value(false));
 
         StubProfitService used = factory.only();
         assertEquals(1, used.detailCalls, "the controller must delegate exactly once");
@@ -144,7 +140,6 @@ class CraftingProfitResolutionApiControllerTest {
         assertTrue(settings.listingSell);
         assertTrue(settings.listingBuy);
         assertFalse(settings.dailyBuyInsteadOfCraft);
-        assertFalse(settings.allowNonTradeableMaterials);
     }
 
     @Test
@@ -159,15 +154,13 @@ class CraftingProfitResolutionApiControllerTest {
                 .andExpect(jsonPath("$.calculation.settings.maxBuyCopper").value(10000))
                 .andExpect(jsonPath("$.calculation.settings.listingSell").value(false))
                 .andExpect(jsonPath("$.calculation.settings.listingBuy").value(false))
-                .andExpect(jsonPath("$.calculation.settings.dailyBuyInsteadOfCraft").value(true))
-                .andExpect(jsonPath("$.calculation.settings.allowNonTradeableMaterials").value(true));
+                .andExpect(jsonPath("$.calculation.settings.dailyBuyInsteadOfCraft").value(true));
 
         StubProfitService used = factory.only();
         assertEquals(DiscChoice.Kind.ALL, used.capturedChoice.kind);
         assertTrue(used.capturedSettings.useOwnMats);
         assertEquals(10_000, used.capturedSettings.maxBuyCopper);
         assertTrue(used.capturedSettings.dailyBuyInsteadOfCraft);
-        assertTrue(used.capturedSettings.allowNonTradeableMaterials);
     }
 
     @Test

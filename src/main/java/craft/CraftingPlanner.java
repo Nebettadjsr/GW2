@@ -73,31 +73,9 @@ public class CraftingPlanner {
             CraftingSettings settings,
             Set<Integer> allowedRecipeIds) {
 
-        return evaluateAllCoordinated(recipes, sellableInventory, accountBoundInventory,
-                characterBoundInventory, roster, tp, settings, allowedRecipeIds,
-                MaterialTradeability.noneKnown());
-    }
-
-    /**
-     * As {@link #evaluateAllCoordinated(List, Map, Map, Map, List, Map, CraftingSettings, Set)},
-     * with the item classification the non-Trading-Post material option is evaluated against
-     * (DOMAIN_SPEC.md section 2.1.1). The overload above supplies
-     * {@link MaterialTradeability#noneKnown()}, which restricts nothing.
-     */
-    public Map<Integer, CraftResult> evaluateAllCoordinated(
-            List<Recipe> recipes,
-            Map<Integer, Integer> sellableInventory,
-            Map<Integer, Integer> accountBoundInventory,
-            Map<String, Map<Integer, Integer>> characterBoundInventory,
-            List<CharacterCraftingProfile> roster,
-            Map<Integer, PriceQuote> tp,
-            CraftingSettings settings,
-            Set<Integer> allowedRecipeIds,
-            MaterialTradeability tradeability) {
-
         Map<Integer, List<Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
         PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
-                roster, tradeability);
+                roster);
 
         // See evaluateAll(...)'s parallelization note: identical independence argument applies
         // here, including for the coordinated per-character trial paths, since each recipe still
@@ -151,30 +129,8 @@ public class CraftingPlanner {
             CraftingSettings settings,
             Set<Integer> allowedRecipeIds) {
 
-        return evaluateOneCoordinated(recipe, recipes, sellableInventory, accountBoundInventory,
-                characterBoundInventory, roster, tp, settings, allowedRecipeIds,
-                MaterialTradeability.noneKnown());
-    }
-
-    /**
-     * As {@link #evaluateOneCoordinated(Recipe, List, Map, Map, Map, List, Map, CraftingSettings,
-     * Set)}, with the item classification the non-Trading-Post material option is evaluated against,
-     * so one row's detail calculation applies the same rule as the table it belongs to.
-     */
-    public CraftResult evaluateOneCoordinated(
-            Recipe recipe,
-            List<Recipe> recipes,
-            Map<Integer, Integer> sellableInventory,
-            Map<Integer, Integer> accountBoundInventory,
-            Map<String, Map<Integer, Integer>> characterBoundInventory,
-            List<CharacterCraftingProfile> roster,
-            Map<Integer, PriceQuote> tp,
-            CraftingSettings settings,
-            Set<Integer> allowedRecipeIds,
-            MaterialTradeability tradeability) {
-
         PlannerContext ctx = new PlannerContext(
-                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster, tradeability);
+                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster);
 
         return evaluateOneRecipeNew(
                 recipe,

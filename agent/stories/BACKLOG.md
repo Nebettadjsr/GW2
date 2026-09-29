@@ -6,37 +6,42 @@ The currently active story's file is the one pointed to by `agent/CURRENT_STORY.
 
 ## Active
 
-- STORY-WEB-022 | STORY-WEB-022-align-ecto-page-label.md | DONE | milestone-05 | deps: None
+- STORY-SYNC-005 | STORY-SYNC-005-stabilize-bank-reload-smoke-check.md | TODO | milestone-05 | deps: STORY-SYNC-004 -- blocked on UI-002-STORY-SYNC-005.md
 
 ## To Do
 
-  Align the Ecto Salvage heading, navigation title and browser smoke expectations.
+Align the Ecto Salvage heading, navigation title and browser smoke expectations.
 
 
 
 
 
 
-- STORY-SYNC-005 | STORY-SYNC-005-stabilize-bank-reload-smoke-check.md | TODO | milestone-05 | deps: STORY-SYNC-004
-  dependency note: Follow-up to SYNC-004 F002; make the Bank reload browser smoke assertion independent of an outstanding initial Profit request.
-  backlog entry: milestone-05: Stabilize the Bank reload browser smoke check without weakening its API request assertion.
+dependency note: Follow-up to SYNC-004 F002; make the Bank reload browser smoke assertion independent of an outstanding initial Profit request.
+backlog entry: milestone-05: Stabilize the Bank reload browser smoke check without weakening its API request assertion.
 
 
-- STORY-UI-003 | STORY-UI-003-signed-monetary-presentation.md | TODO | milestone-05 | deps: None
-  backlog entry: milestone-05: Preserve signed monetary values and correct cost labels in JavaFX crafting views.
-- STORY-WEB-018 | STORY-WEB-018-fresh-build-browser-smoke-checks.md | TODO | milestone-05 | deps: None
-  backlog entry: milestone-05: Reject stale frontend bundles in browser smoke checks.
+backlog entry: milestone-05: Preserve signed monetary values and correct cost labels in JavaFX crafting views.
+backlog entry: milestone-05: Reject stale frontend bundles in browser smoke checks.
 
-- STORY-WEB-020 | STORY-WEB-020-layout-smoke-total-sell-value.md | TODO | milestone-05 | deps: STORY-WEB-019
-  backlog entry: milestone-05: Exercise backend total sell value in the shared layout smoke fixture.
-- STORY-WEB-021 | STORY-WEB-021-ecto-content-test-hooks.md | TODO | milestone-05 | deps: STORY-WEB-019
-  backlog entry: milestone-05: Give Ectoplasm results stable content hooks for browser checks.
+backlog entry: milestone-05: Exercise backend total sell value in the shared layout smoke fixture.
+- STORY-UI-003 | STORY-UI-003-signed-monetary-presentation.md | TODO | milestone-05 | deps: None -- blocked on UI-003-STORY-UI-003.md
+- STORY-WEB-018 | STORY-WEB-018-fresh-build-browser-smoke-checks.md | TODO | milestone-05 | deps: None -- blocked on UI-004-STORY-WEB-018.md
+- STORY-WEB-020 | STORY-WEB-020-layout-smoke-total-sell-value.md | TODO | milestone-05 | deps: STORY-WEB-019 -- blocked on UI-005-STORY-WEB-020.md
 
 ## Blocked
 
 - STORY-QUALITY-005 | STORY-QUALITY-005-phase-five-completion-review.md | BLOCKED | milestone-05 | deps: STORY-PERF-002, STORY-WEB-019, STORY-SYNC-005, STORY-UI-003, STORY-WEB-018, STORY-WEB-020, STORY-WEB-021, STORY-WEB-022
   dependency note: Bounded Phase 5 health review after integrated work and the real-user performance assessment are substantially complete.
   backlog entry: milestone-05: Review Phase 5 project health before milestone completion.
+
+- STORY-WEB-021 | STORY-WEB-021-ecto-content-test-hooks.md | TODO | milestone-05 | deps: STORY-WEB-019, STORY-WEB-022
+  backlog entry: milestone-05: Give Ectoplasm results stable content hooks for browser checks.
+
+## Superseded
+
+- STORY-WEB-023 | STORY-WEB-023-backend-ecto-calculation-screen.md | SUPERSEDED | milestone-05 | deps: None
+  disposition: Product Owner retained the simple Ecto Salvage calculation in the browser and retired the backend-calculation direction. This story must not be selected for implementation.
 
 ## Done
 

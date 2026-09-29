@@ -18,7 +18,7 @@ import type {
  *
  * The two features' calculation routes stay separate members because they are separate contracts:
  * Discovery requires an individual scope, has its own settings defaults, accepts neither the
- * Profit-only non-Trading-Post setting nor the fixed daily setting, and carries a separate inventory
+ * fixed daily setting, and carries a separate inventory
  * character. Nothing here merges or translates between them.
  *
  * An interface rather than bare functions so a test can supply controlled responses without

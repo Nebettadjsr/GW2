@@ -343,16 +343,8 @@ public class CraftingResolver {
             for (Ingredient ing : recipe.ingredients) {
                 int childQtyNeeded = ing.count * times;
 
-                // DOMAIN_SPEC.md section 2.1.1 / UD-010: with the non-Trading-Post material option
-                // off, this path consumes a material it may not consume. The requirement is blocked
-                // here, before any owned - including account-bound or soulbound - quantity is taken
-                // and before a crafting path for it is attempted, so the path is rejected rather
-                // than merely repriced. The parent craft therefore fails below, leaving a valid
-                // alternative (buying this parent, or another recipe for it) eligible as usual.
-                ResolvedNeed child = ctx.excludesNonTradeableMaterial(ing.itemId)
-                        ? blockedNeed(ing.itemId, childQtyNeeded, BlockedReason.NON_TRADEABLE_MATERIAL)
-                        : resolveNeed(ing.itemId, childQtyNeeded, ctx, state, true,
-                                recipe.disciplinesText, assignedCharacter);
+                ResolvedNeed child = resolveNeed(ing.itemId, childQtyNeeded, ctx, state, true,
+                        recipe.disciplinesText, assignedCharacter);
                 craftResult.addChild(child);
                 craftResult.addCostsFromChild(child);
 
@@ -569,31 +561,13 @@ public class CraftingResolver {
             return null;
         }
 
-        if (!ctx.excludesNonTradeableMaterials()) {
-            return chooseCandidate(list, ctx, parentDiscipline, false);
-        }
-
-        // DOMAIN_SPEC.md section 2.1.1 / UD-010: with the option off, a candidate that directly
-        // consumes a forbidden non-Trading-Post material is not a valid path, so an alternative that
-        // avoids one is evaluated normally instead of losing the cost comparison to it. When no such
-        // alternative exists the forbidden candidate is still chosen, so resolution blocks at the
-        // material it actually consumes and the explanation names that material rather than only the
-        // item above it. Deeper requirements need no pass here: they block where they are consumed.
-        Recipe avoidsNonTradeable = chooseCandidate(list, ctx, parentDiscipline, true);
-        return avoidsNonTradeable != null
-               ? avoidsNonTradeable
-               : chooseCandidate(list, ctx, parentDiscipline, false);
+        return chooseCandidate(list, ctx, parentDiscipline);
     }
 
-    /**
-     * The best allowed, eligible candidate in {@code list} by section 30's rule. With
-     * {@code avoidNonTradeableMaterials}, candidates directly consuming a forbidden
-     * non-Trading-Post material are left out of the comparison entirely.
-     */
+    /** The best allowed, eligible candidate in {@code list} by section 30's rule. */
     private Recipe chooseCandidate(List<Recipe> list,
                                    PlannerContext ctx,
-                                   String parentDiscipline,
-                                   boolean avoidNonTradeableMaterials) {
+                                   String parentDiscipline) {
         Recipe bestSameDiscipline = null;
         int bestSameDisciplineCost = Integer.MAX_VALUE;
         Recipe bestOverall = null;
@@ -602,10 +576,6 @@ public class CraftingResolver {
         for (Recipe recipe : list) {
             if (!ctx.allowedRecipeIds.contains(recipe.recipeId)
                     || (ctx.isCoordinated() && ctx.eligibleCharactersFor(recipe).isEmpty())) {
-                continue;
-            }
-
-            if (avoidNonTradeableMaterials && consumesNonTradeableMaterial(recipe, ctx)) {
                 continue;
             }
 
@@ -645,19 +615,6 @@ public class CraftingResolver {
         }
 
         return true;
-    }
-
-    /** True when {@code recipe} directly consumes an ingredient this calculation may not consume. */
-    private boolean consumesNonTradeableMaterial(Recipe recipe, PlannerContext ctx) {
-        if (!ctx.excludesNonTradeableMaterials()) return false;
-
-        for (Ingredient ing : recipe.ingredients) {
-            if (ctx.excludesNonTradeableMaterial(ing.itemId)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private boolean sharesDiscipline(String a, String b) {

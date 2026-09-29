@@ -86,3 +86,6 @@ For Crafting Profit, `Allow non-Trading-Post materials` uses the following seman
 The intent is to allow recipes using owned or craftable non-Trading-Post materials
 while preventing the calculation from pretending that an otherwise unobtainable
 non-Trading-Post requirement can be acquired externally.
+## Supersession note (2026-09-29)
+
+The Product Owner explicitly removed the Crafting Profit non-Trading-Post checkbox and its restrictive behavior. The former enabled behavior is permanent: normal owned, crafting, and buying paths apply, and an unsatisfied requirement blocks naturally. The original decision above remains as historical context. Current behavior is defined in `docs/DOMAIN_SPEC.md` ?2.1.1.

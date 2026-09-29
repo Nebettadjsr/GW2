@@ -256,7 +256,6 @@ function answerApi({ response, url, body, sendJson }) {
         listingSell: false,
         listingBuy: false,
         dailyBuyInsteadOfCraft: true,
-        allowNonTradeableMaterials: true
       },
       rowCount: ROWS.length,
       rows: ROWS

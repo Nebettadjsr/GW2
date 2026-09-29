@@ -8,9 +8,7 @@ import { formatCopper } from './formatCopper'
  *
  * Exactly those five, and no more. `dailyBuyInsteadOfCraft` is not offered because the route does not
  * accept it — Discovery fixes it, and the fixed value is reported below as the backend's own fact
- * rather than as a control. Crafting Profit's "Allow non-Trading-Post materials" is not offered either:
- * it is not part of this contract, and adding it here would send the route a setting it has no field
- * for.
+  * rather than as a control.
  *
  * The control values are the settings the backend reported it calculated with, so no default is
  * repeated here; the form renders nothing until the backend has answered once. Each change emits the

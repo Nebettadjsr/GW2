@@ -8,6 +8,7 @@ import time
 from agent.runtime.support.config import (
     CLAUDE_MODEL,
     CLAUDE_USAGE_LIMIT_PERCENT,
+    CLAUDE_WEEKLY_MIN_REMAINING_PERCENT,
     MODEL_CAPACITY_RECHECK_SECONDS,
     REPO_ROOT,
 )
@@ -43,7 +44,17 @@ def find_claude() -> str:
     )
 
 
-def get_claude_session_usage_percent() -> int:
+class ClaudeUsage(NamedTuple):
+    session_used_percent: int
+    weekly_used_percent: int
+
+    def available(self, session_threshold=CLAUDE_USAGE_LIMIT_PERCENT,
+                  weekly_min_remaining=CLAUDE_WEEKLY_MIN_REMAINING_PERCENT) -> bool:
+        return (self.session_used_percent < session_threshold
+                and 100 - self.weekly_used_percent > weekly_min_remaining)
+
+
+def get_claude_usage() -> ClaudeUsage:
     claude = find_claude()
 
     result = subprocess.run(
@@ -65,28 +76,39 @@ def get_claude_session_usage_percent() -> int:
             + result.stderr
         )
 
-    match = re.search(
+    session = re.search(
         r"Current session:\s*(\d+)% used",
         result.stdout,
         re.IGNORECASE,
     )
 
-    if not match:
+    weekly = re.findall(
+        r"^Current week(?:\s*\([^\n)]*\))?:\s*(\d+)% used",
+        result.stdout,
+        re.IGNORECASE | re.MULTILINE,
+    )
+
+    if not session or not weekly:
         raise RuntimeError(
-            "Could not parse Claude session usage from:\n"
+            "Could not parse Claude session and weekly usage from:\n"
             + result.stdout
         )
 
-    return int(
-        match.group(1)
-    )
+    # If /usage reports more than one weekly allowance, the most-used
+    # one is the safe gate for the pinned model.
+    return ClaudeUsage(int(session.group(1)), max(map(int, weekly)))
+
+
+def get_claude_session_usage_percent() -> int:
+    return get_claude_usage().session_used_percent
 
 
 def wait_for_claude_capacity(
-    threshold: int = CLAUDE_USAGE_LIMIT_PERCENT
+    threshold: int = CLAUDE_USAGE_LIMIT_PERCENT,
+    weekly_min_remaining: int = CLAUDE_WEEKLY_MIN_REMAINING_PERCENT,
 ) -> None:
     """
-    Wait locally until the Claude session is back under `threshold`.
+    Wait locally until both Claude allowances permit a run.
 
     `claude -p /usage` runs a slash command and performs no inference,
     so re-checking costs no tokens and never invokes the exhausted
@@ -95,11 +117,13 @@ def wait_for_claude_capacity(
     """
 
     while True:
-        usage = get_claude_session_usage_percent()
+        usage = get_claude_usage()
 
-        if usage < threshold:
+        if usage.available(threshold, weekly_min_remaining):
             print_status(
-                f"Claude capacity available again (session usage {usage}%)."
+                "Claude capacity available again "
+                f"(session usage {usage.session_used_percent}%, "
+                f"weekly remaining {100 - usage.weekly_used_percent}%)."
             )
             return
 
@@ -108,8 +132,10 @@ def wait_for_claude_capacity(
         )
 
         print_status(
-            f"Current usage: Claude session {usage}% "
-            f"(resumes below {threshold}%)"
+            f"Current usage: Claude session {usage.session_used_percent}% "
+            f"(resumes below {threshold}%), weekly remaining "
+            f"{100 - usage.weekly_used_percent}% "
+            f"(resumes above {weekly_min_remaining}%)"
         )
 
         print_status(
@@ -143,6 +169,7 @@ CAPACITY_OUTPUT_TAIL_CHARS = 2000
 
 CAPACITY_OUTPUT_PATTERN = re.compile(
     r"usage limit"
+    r"|weekly limit"
     r"|rate limit"
     r"|limit reached"
     r"|quota (?:exceeded|exhausted)"

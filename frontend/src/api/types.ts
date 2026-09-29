@@ -81,13 +81,6 @@ export interface EffectiveSettings {
   listingSell: boolean
   listingBuy: boolean
   dailyBuyInsteadOfCraft: boolean
-  /**
-   * Whether the backend allowed calculation paths that consume materials which cannot be traded on
-   * the Trading Post (`DOMAIN_SPEC.md` 2.1.1, UD-009/UD-010). A **calculation** rule the backend
-   * applies, not one of the three display filters: switching it sends a new request, and with it off
-   * the backend returns different results rather than the browser hiding rows.
-   */
-  allowNonTradeableMaterials: boolean
 }
 
 /** Response body of `POST /api/crafting/profit`. */
@@ -234,9 +227,7 @@ export interface DiscoveryScopeRequest {
  * Requested Discovery settings. Exactly the five fields the route accepts.
  *
  * `dailyBuyInsteadOfCraft` is deliberately absent: the Discovery flow fixes it, and the route maps
- * that contract rather than accepting it as an input. `allowNonTradeableMaterials` is absent for the
- * same reason — it is a Profit-only setting. Both are visible in the effective settings echo below;
- * neither is ever sent.
+ * that contract rather than accepting it as an input.
  */
 export interface DiscoverySettingsRequest {
   useOwnMats: boolean

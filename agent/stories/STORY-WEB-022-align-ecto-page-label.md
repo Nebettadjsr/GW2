@@ -159,18 +159,14 @@ browser scripts, which no doc describes.
 
 None.
 
-## Follow-up Findings
+## Follow-up Findings Disposition
 
-F001: `STORY-WEB-021` is still TODO and its AC 3 — "preserve existing checks for the four result
-scenarios, loading, failure, and reload behavior" — describes the backend-calculated screen that
-`4c2fe50` replaced. `ecto-browser-smoke.mjs` no longer has four backend scenarios, an `ecto-reload`
-control or `ecto-loading`/`ecto-error`/`ecto-unavailable` states to preserve; it has a local
-recalculation, a TP-price refresh and a shared warning dialog. That acceptance criterion needs
-restating against what the page now does before the story is executed, or it will be read as requiring
-checks that no longer have a subject.
+F001: ALREADY COVERED — STORY-WEB-021 has been revised to test the current frontend-owned Ectoplasm calculation and its relevant data/result states. It must not depend on or recreate the obsolete backend-calculated result states.
 
-F002: nothing imports `frontend/src/api/ectoApi.ts` or `frontend/src/ecto/useEctoSalvage.ts` — the
-screen computes from `/api/items/metadata`, `/api/items/prices` and `/api/account/luck` instead, and
-`useEctoSalvage`'s own spec file is gone. Both modules, and the `EctoSalvage*` interfaces in
-`frontend/src/api/types.ts` they use, are dead code that still documents a removed route. Left in
-place: deciding whether the backend route returns is a product/architecture call, not a label fix.
+F002: FOLLOW-UP CLEANUP — The Product Owner confirmed that the frontend-owned Ectoplasm calculation is intentional and canonical. The former backend Ectoplasm calculation route must not be restored. Unused `frontend/src/api/ectoApi.ts`, `frontend/src/ecto/useEctoSalvage.ts`, obsolete `EctoSalvage*` API interfaces, and equivalent orphaned code belonging exclusively to the removed backend flow may be removed as cleanup.
+
+STORY-WEB-023 does not represent the current architecture and must not be used to replace the local Ectoplasm calculator or reintroduce a backend-owned Ectoplasm calculation.
+## Follow-up Findings Disposition
+
+F001: ALREADY COVERED ? STORY-WEB-021 AC 3 now checks the backend-calculated states after STORY-WEB-023.
+F002: FOLLOW-UP STORY ? STORY-WEB-023 replaces the local calculator and reconciles unused Ectoplasm API client modules and types.

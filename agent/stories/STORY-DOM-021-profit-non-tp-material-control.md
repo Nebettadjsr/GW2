@@ -197,3 +197,11 @@ differing response size on identical rows is the restriction actually applying t
 ## Blockers
 
 None.
+
+## Supersession (2026-09-29)
+
+The former non-Trading-Post material control was intentionally removed. Its enabled behavior is now
+the permanent Crafting Profit behavior: ordinary owned-material, crafting, and buying paths apply
+without a separate rejection based on absence from `tp_tradeable_items` or `/v2/commerce/prices`.
+The historical acceptance criteria and result above describe the implementation as it existed
+before this superseding decision; they are retained as history, not current requirements.

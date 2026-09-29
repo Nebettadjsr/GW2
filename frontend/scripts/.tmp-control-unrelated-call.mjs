@@ -169,6 +169,7 @@ async function run() {
       { timeout: TIMEOUT_MS }
     )
     await page.click('[data-test="bank-reload"]')
+    await page.evaluate(() => fetch('/api/account/materials').then(() => undefined))
     await reloadAnswered
     await page.waitForSelector('[data-test="bank-slots"], [data-test="bank-no-slots"]', {
       timeout: TIMEOUT_MS

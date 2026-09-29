@@ -59,8 +59,6 @@ src/
 │                             SingleCraftExplainer, SingleCraftExplanation,
 │                             CraftTraceNode, AcquisitionMethod, ResolutionState
 │                             (single-craft explanation, §5.12),
-│                             MaterialTradeability (which items a calculation's inputs classify as
-│                             not tradeable on the Trading Post, §5.1 / STORY-DOM-021)
 ├── ecto/                     EctoSalvageCalculator (Ectoplasm Salvage domain calculation, no
 │                             JavaFX/repo/controller/application dependency; moved out of the
 │                             default package by STORY-APP-003 so application.EctoSalvageService
@@ -79,9 +77,7 @@ src/
 │                             display reads for the Bank and Materials views, STORY-APP-009),
 │                             ItemIconMetadataRepository (one item's retained icon source, read
 │                             only on an image-cache miss, STORY-API-009)
-│   └── tp/                   TpPriceRepository, TpTradeableItemRepository (the Trading Post
-│                             tradeability classification as craft.MaterialTradeability,
-│                             STORY-DOM-021)
+│   └── tp/                   TpPriceRepository
 ├── tradingpost/              TradingPostFeePolicy (the decided 15% profitability fee, STORY-DOM-023),
 │                             TradingPostSaleCalculator (shared Trading Post sale fee/net-proceeds
 │                             calculation for one explicitly stated sale, STORY-DOM-022; no caller
@@ -181,7 +177,6 @@ Controllers (default pkg)
                                                                          v
 repo.RecipeRepository  --maps rows into-->  craft.Recipe / craft.Ingredient
 repo.tp.TpPriceRepository  --maps rows into-->  craft.PriceQuote
-repo.tp.TpTradeableItemRepository  --maps rows into-->  craft.MaterialTradeability
    |
    v
 repo.* (JDBC/PostgreSQL, repo.AppConfig)
@@ -325,12 +320,8 @@ CraftingProfitView (Discipline selector ComboBox only; DiscChoice.Kind.ALL / DIS
                   11.1 / DQ-007]
              -> TpPriceRepository.loadTpQuotes(itemIds)
              -> ItemRepository.loadItems(itemIds)
-             -> if !settings.allowNonTradeableMaterials:
-                  TpTradeableItemRepository.loadTradeability(itemIds) -> craft.MaterialTradeability
-                  [STORY-DOM-021; with the option at its enabled default nothing is classified and
-                  no query is issued]
              -> CraftingPlanner.evaluateAllCoordinated(allRecipes, sellableInv, accountBoundInv,
-                  characterBoundInv, roster, tp, settings, allowedRecipeIds, tradeability)
+                  characterBoundInv, roster, tp, settings, allowedRecipeIds)
                   -> per recipe: RecipeSimulator assigns an eligible roster character per step
                        (recipe discipline/rating restrictions) and resolves transferable
                        intermediates between eligible characters, consuming shared/bound inventory
@@ -353,30 +344,10 @@ CraftingProfitView (Discipline selector ComboBox only; DiscChoice.Kind.ALL / DIS
 and calculation for one selected recipe. It shares this flow's loading steps but none of the
 reload-scoped `last*` state above, and the JavaFX path is unchanged.
 
-**The non-Trading-Post material rule (`STORY-DOM-021`, `DOMAIN_SPEC.md` §2.1.1 / UD-009 / UD-010).**
-`craft.CraftingSettings.allowNonTradeableMaterials` carries the decided option into the authoritative
-resolver; which items it applies to is the separate classification fact `craft.MaterialTradeability`,
-read by `repo.tp.TpTradeableItemRepository` from `tp_tradeable_items` — the Trading Post's own
-tradeable-item listing, never from a quote, an icon or any display metadata, so a normally tradeable
-item with no usable quote still blocks as `PRICE_UNAVAILABLE`. Observed behavior:
-
-- The option defaults to **enabled** in every constructor that predates it, so JavaFX Profit
-  (`CraftingProfitView`), JavaFX/HTTP Discovery and any caller that supplies no classification are
-  unchanged: `MaterialTradeability.noneKnown()` names no item, so no path is restricted.
-- With it enabled, an owned or craftable non-Trading-Post material is used under the ordinary
-  inventory/binding, buying, budget, daily and scope rules, and an unsatisfiable one stays
-  unavailable — no external acquisition is invented for it.
-- With it disabled, `CraftingResolver` blocks such a requirement *before* any owned (including
-  account-bound and soulbound) quantity is taken and before a crafting path for it is attempted, so
-  the consuming path is rejected and rolled back rather than repriced, and the new
-  `craft.BlockedReason.NON_TRADEABLE_MATERIAL` is reported at the material it applies to. Recipe
-  selection (`DOMAIN_SPEC.md` §30) first compares only the candidates that consume no such material,
-  so an alternative that avoids one is chosen instead of losing on cost; when no alternative exists
-  the consuming candidate is still attempted, so the explanation names the material rather than only
-  the item above it.
-- Both entry points take the classification from the *same* captured inputs — `reload(...)` keeps it
-  in `lastTradeability` for the lazy tree build, and `resolveDetail(...)` captures its own — so a
-  table row and its fresh detail cannot apply different rules to different facts.
+**Material acquisition.** Crafting Profit uses the normal resolver for owned inventory,
+recursive crafting and purchases. There is no item-ID tradeability classification in the
+crafting path and no non-Trading-Post exclusion setting. `tp_tradeable_items` remains part
+of Trading Post price-refresh relevance selection for Profit and Discovery.
 
 ### 5.2 Crafting Discovery flow
 
@@ -564,16 +535,8 @@ Observed properties of this flow:
 
 - **Optional body, documented defaults.** An absent or empty body runs the default All scope with the
   same settings the JavaFX Profit view opens with (`useOwnMats` true, `allowBuying` false,
-  `maxBuyCopper` 10000, instant sell, instant buy, daily items bought) plus
-  `allowNonTradeableMaterials` true (`DOMAIN_SPEC.md` §2.1.1 / UD-009, `STORY-DOM-021`). The response
-  echoes the effective scope and settings.
-- **`allowNonTradeableMaterials` is a calculation setting, not a display filter.** It travels the same
-  way as every other member of `SettingsDto` — omitted means the enabled default, and the value used
-  is echoed in `EffectiveSettingsDto` — and reaches `craft.CraftingSettings` unchanged. Sent as
-  `false` it produces *different rows* under §5.1's rule, including rows blocked with
-  `NON_TRADEABLE_MATERIAL`; nothing is removed at this boundary or in the browser. The resolution
-  route of §5.13 takes and echoes the same field, so a detail belongs to the calculation that asked
-  for it (`TARGET_ARCHITECTURE.md` §13.4).
+  `maxBuyCopper` 10000, instant sell, instant buy, daily items bought). The response echoes
+  the effective scope and settings.
 - **Scope kinds** `ALL`, `DISCIPLINE`, `CHARACTER_DISCIPLINE` map onto `repo.DiscChoice`'s three
   factory methods. A scope that matches no recipes is an empty 200, not a 404.
 - **Status mapping** (`web.ApiExceptionHandler`, scoped to this controller so framework 404/405
@@ -1097,7 +1060,7 @@ below the comparison under that width; the table keeps its own `.table-region` s
   address.
 - **The page carries no introductory sentence** (`STORY-WEB-015`, `DOMAIN_SPEC.md` §2.1.1).
   `PageHeader`'s `intro` is optional and Crafting Profit passes none; every other page keeps its own.
-- **Domain states read as words, with the code kept secondary** (`rowState.ts`). The eight
+ - **Domain states read as words, with the code kept secondary** (`rowState.ts`). The seven
   `craft.BlockedReason` names of `DOMAIN_SPEC.md` §42 each have their own wording; the reason is
   stated as *further* crafting being blocked when the backend still counted crafts, which is what
   the field means (`craft.CraftResult`). `NONE` with no craftable count reads "None craftable",
@@ -1106,8 +1069,7 @@ below the comparison under that width; the table keeps its own `.table-region` s
   only in the detail's closed "Technical details" disclosure.
 - **The state lives in the selected result, not in a column** (`STORY-WEB-008`, `DOMAIN_SPEC.md`
   §2.1.1). `BUYING_DISABLED`, `NO_RECIPE`, `DAILY_LIMIT`, `RECIPE_NOT_ALLOWED`,
-  `INSUFFICIENT_BUDGET` and — since `STORY-DOM-021` — `NON_TRADEABLE_MATERIAL` carry no row label at
-  all; the detail states each in words, beside the
+  `INSUFFICIENT_BUDGET` carry no row label; the detail states each in words, beside the
   supplied buy cost and — for a budget restriction only — the maximum buy the backend echoed, and no
   missing acquisition amount is invented. Since `STORY-WEB-015` the detail also drops the **short
   status label** wherever that sentence already carries it (`rowState.labelAddsMeaning`,
@@ -1129,17 +1091,9 @@ below the comparison under that width; the table keeps its own `.table-region` s
 - **Money that may go either way carries its sign.** `formatSignedCopper` writes `+`/`-` and
   `moneyTone` adds the shared `.money--gain`/`.money--loss` treatment, so the distinction survives
   without color; a supplied `0c` and an unsupplied `—` both stay neutral and stay distinct.
-- **The settings are one collapsed group with their effect on show.** The seven controls sit behind a
+- **The settings are one collapsed group with their effect on show.** The remaining controls sit behind a
   "Price and material settings" disclosure whose summary line words the settings the backend echoed;
   no default is repeated in the browser. Scope and Reload results stay in the open.
-- **"Allow non-Trading-Post materials" is one of those settings, not a fourth filter**
-  (`STORY-DOM-021`, `DOMAIN_SPEC.md` §2.1.1). It sits in the *Calculation* fieldset with a short help
-  sentence bound to it by `aria-describedby`, stating the decided rule for both values. Switching it
-  emits the whole echoed settings object like every other control, so one calculation request is sent
-  and the returned rows are what is listed — the browser hides, drops and classifies nothing, and the
-  three display filters are untouched by it. `calculationKey` includes it, so a detail calculated
-  under the previous value is refused rather than shown under the current one; a restricted result is
-  explained in the detail and, where the backend supplied it, at the affected tree node.
 
 **Result-display controls and whole-row selection (`STORY-WEB-006`, regrouped by `STORY-WEB-011`).**
 `DOMAIN_SPEC.md` §2.1.1's display controls are a "Displayed results" fieldset
@@ -1492,7 +1446,6 @@ module (`ItemIcon`, `CraftingResolution`, `ResolutionTreeNode`, `rowState`, `res
   only; the five settings controls (`useOwnMats`, `allowBuying`, `maxBuyCopper`, `listingSell`,
   `listingBuy`) are populated from that response's `settings` echo, so Discovery's defaults are the
   backend's and never Profit's. `dailyBuyInsteadOfCraft` is *reported* as the value the flow fixes and
-  is never sent; Profit's `allowNonTradeableMaterials` is not reachable from this page at all.
 - **Six comparison columns, each stating its basis.** Recipe (row header), Level *recipe minimum*,
   Craftable *crafts*, Materials to buy *cost, all crafts*, Output sell value *all crafts* and Profit
   *per craft*. Sorting is offered on those six keys, level sorting works in both directions and opens

@@ -58,4 +58,4 @@ Not started.
 
 ## Blockers
 
-STORY-WEB-019 must complete first.
+None.

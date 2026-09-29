@@ -62,12 +62,6 @@ const BLOCKED_REASONS: Record<string, { label: string; because: string }> = {
   INSUFFICIENT_BUDGET: {
     label: 'Over the buy limit',
     because: 'a required purchase costs more than the maximum buy setting allows'
-  },
-  NON_TRADEABLE_MATERIAL: {
-    label: 'Non-Trading-Post material',
-    because:
-      'the path needs a material that cannot be traded on the Trading Post, and “Allow ' +
-      'non-Trading-Post materials” is switched off'
   }
 }
 
@@ -150,10 +144,7 @@ const DETAIL_ONLY_REASONS: ReadonlySet<string> = new Set([
   'NO_RECIPE',
   'DAILY_LIMIT',
   'RECIPE_NOT_ALLOWED',
-  'INSUFFICIENT_BUDGET',
-  // UD-009 places the non-Trading-Post material restriction in the selected result too — preferably
-  // at the affected material — and explicitly not as a comparison-table tag.
-  'NON_TRADEABLE_MATERIAL'
+  'INSUFFICIENT_BUDGET'
 ])
 
 /** A few words beside one row, with the shared status treatment its tone names. */

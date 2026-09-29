@@ -641,11 +641,6 @@ async function run() {
         sent.settings === undefined || sent.settings.dailyBuyInsteadOfCraft === undefined,
         `A calculation sent the fixed daily setting the route does not accept: ${request.body}`
       )
-      check(
-        sent.settings === undefined ||
-          sent.settings.allowNonTradeableMaterials === undefined,
-        `A calculation sent Crafting Profit's non-Trading-Post setting: ${request.body}`
-      )
     }
     for (const request of detailCalls) {
       const sent = JSON.parse(request.body)

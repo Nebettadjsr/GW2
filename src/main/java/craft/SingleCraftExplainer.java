@@ -72,33 +72,8 @@ public final class SingleCraftExplainer {
             Set<Integer> allowedRecipeIds
                                                     ) {
 
-        return explainCoordinated(recipe, recipes, sellableInventory, accountBoundInventory,
-                characterBoundInventory, roster, tp, settings, allowedRecipeIds,
-                MaterialTradeability.noneKnown());
-    }
-
-    /**
-     * As {@link #explainCoordinated(Recipe, List, Map, Map, Map, List, Map, CraftingSettings, Set)},
-     * with the item classification the non-Trading-Post material option is evaluated against
-     * (DOMAIN_SPEC.md section 2.1.1), so an explanation is produced under exactly the rule the row
-     * beside it was calculated with.
-     */
-    public SingleCraftExplanation explainCoordinated(
-            Recipe recipe,
-            List<Recipe> recipes,
-            Map<Integer, Integer> sellableInventory,
-            Map<Integer, Integer> accountBoundInventory,
-            Map<String, Map<Integer, Integer>> characterBoundInventory,
-            List<CharacterCraftingProfile> roster,
-            Map<Integer, PriceQuote> tp,
-            CraftingSettings settings,
-            Set<Integer> allowedRecipeIds,
-            MaterialTradeability tradeability
-                                                    ) {
-
         PlannerContext ctx = new PlannerContext(
-                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster,
-                tradeability);
+                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster);
 
         return explain(recipe, ctx,
                 new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory));
