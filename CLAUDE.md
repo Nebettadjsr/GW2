@@ -161,3 +161,18 @@ implementation work (3+ steps or an architectural decision).
 If the path is clear, proceed without unnecessary clarification. If the work requires
 deciding an undecided domain/architecture rule, stop and ask. Keep changes small, reviewable,
 and testable.
+
+### Human maintainer changes
+
+The repository is also actively modified by the human maintainer outside the agent workflow.
+
+Treat any code or working-tree changes that were not created by you in the current invocation as intentional maintainer work and as part of the current repository state.
+
+* Do not revert, restore, overwrite, or "correct" such changes merely because they differ from an earlier implementation, an expected repository state, or how you would have implemented them.
+* Integrate the active story with the code as it currently exists. Preserve unrelated maintainer changes.
+* If a maintainer change overlaps with your story, modify only what is necessary to satisfy the story while preserving the apparent intent of the existing change.
+* If a maintainer change appears buggy, inconsistent, or architecturally questionable, you may report it, but do not undo it unless the active story or an authoritative project requirement explicitly requires that change.
+* Never use `git restore`, `git checkout`, `git reset`, or broad file replacement to remove changes you did not create.
+* If a file changes after you previously inspected it, re-read it before editing and merge with the new state rather than writing from a stale copy.
+
+The human maintainer is an authoritative collaborator, not repository drift that needs to be cleaned up.

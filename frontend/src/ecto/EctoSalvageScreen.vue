@@ -559,7 +559,7 @@ onMounted(loadPage)
 
       <div class="result-story">
         <p class="result-lead">
-          <span>If you salvage</span>
+          <span>If you salvage </span>
           <input
             id="ecto-count"
             v-model.number="ectoCount"
@@ -583,47 +583,72 @@ onMounted(loadPage)
             >
               {{ tool.name }}
             </button>
-          </span> Salvage Tool,
-            <br />
-          <span>
-            you are expected to receive approximately
-            <strong>{{ formatNumber(expectedLuck) }} Luck</strong> and
-            <strong>{{ formatNumber(expectedDust) }} Crystalline Dust</strong>
+          </span>
+
+          <span> Salvage Tool,</span>
+        </p>
+
+        <div class="result-details">
+          <p>
+            You are expected to receive approximately
+            <span class="result-value">{{ formatNumber(expectedLuck) }} Luck</span>
+            and
+            <span class="result-value">{{ formatNumber(expectedDust) }} Crystalline Dust</span>
             and pay
-            <strong>{{ formatToolCost(salvageCostCopper, salvageGemCost) }}</strong>
+            <span class="result-value">{{ formatToolCost(salvageCostCopper, salvageGemCost) }}</span>
             for use of the salvage tool.
-          </span>
-        </p>
+          </p>
 
-        <p v-if="selectedTool.costNote" class="meta tool-cost-note">
-          {{ selectedTool.costNote }}
-        </p>
+          <p v-if="selectedTool.costNote" class="meta tool-cost-note">
+            {{ selectedTool.costNote }}
+          </p>
 
-        <p v-if="ectoCostCopper != null">
-          Buying those <strong>{{ normalizedEctoCount.toLocaleString() }} Ectoplasms</strong> by
-          <strong>{{ ectoBuyMode === 'instant' ? 'instant buy' : 'buy order' }}</strong>
-          costs <strong>{{ formatMoney(ectoCostCopper) }}</strong>.
-        </p>
+          <p v-if="ectoCostCopper != null">
+            {{ ectoBuyMode === 'instant' ? 'Instant buy' : 'Buy order' }} cost of
+            {{ normalizedEctoCount.toLocaleString() }} Ectos is:
+            <span class="result-value">{{ formatMoney(ectoCostCopper) }}</span>.
+          </p>
 
-        <p v-if="dustNetCopper != null">
-          Selling the recovered <strong>{{ formatNumber(expectedDust) }} Crystalline Dust</strong> by
-          <strong>{{ dustSellMode === 'instant' ? 'instant sell' : 'listing sell' }}</strong>
-          returns approximately <strong>{{ formatMoney(dustNetCopper) }}</strong>
-          after the Trading Post's 15% selling fees.
-        </p>
+          <p v-if="dustNetCopper != null">
+            Selling the recovered {{ formatNumber(expectedDust) }} Crystalline Dust by
+            {{ dustSellMode === 'instant' ? 'instant sell' : 'listing sell' }}
+            returns approximately
+            <span class="result-value">{{ formatMoney(dustNetCopper) }}</span>
+            after the Trading Post's 15% selling fees.
+          </p>
+        </div>
 
-        <p v-if="effectiveLuckCostCopper != null" class="result-conclusion">
-          {{ normalizedEctoCount.toLocaleString() }} Ectos therefore give you approximately
-          <strong>{{ formatNumber(expectedLuck) }} Luck</strong> for an effective coin cost of
-          <strong>{{ formatMoney(effectiveLuckCostCopper) }}</strong>
-          <span v-if="costPer1000LuckCopper != null">
-            — {{ formatMoney(costPer1000LuckCopper) }} per 1,000 Luck
-          </span>
-          <span v-if="salvageGemCost > 0">
-            + <strong>{{ salvageGemCost.toLocaleString() }} Gems</strong>
-            ({{ selectedTool.gemsPerUse }} Gems per salvage)
-          </span>.
-        </p>
+        <div
+          v-if="effectiveLuckCostCopper != null"
+          class="result-summary"
+        >
+          <div class="result-summary__item">
+            <span class="meta">Expected Luck</span>
+            <strong>{{ formatNumber(expectedLuck) }}</strong>
+          </div>
+
+          <div class="result-summary__item">
+            <span class="meta">Effective cost</span>
+            <strong>{{ formatMoney(effectiveLuckCostCopper) }}</strong>
+          </div>
+
+          <div
+            v-if="costPer1000LuckCopper != null"
+            class="result-summary__item"
+          >
+            <span class="meta">Cost per 1,000 Luck</span>
+            <strong>{{ formatMoney(costPer1000LuckCopper) }}</strong>
+          </div>
+
+          <div
+            v-if="salvageGemCost > 0"
+            class="result-summary__item"
+          >
+            <span class="meta">Additional Gem cost</span>
+            <strong>{{ salvageGemCost.toLocaleString() }} Gems</strong>
+            <span class="meta">{{ selectedTool.gemsPerUse }} Gems per salvage</span>
+          </div>
+        </div>
 
         <p v-else class="meta">The final cost will appear when Trading Post prices are available.</p>
       </div>
@@ -749,6 +774,47 @@ onMounted(loadPage)
 /* Only page-specific layout lives here. Shared controls, panels, fieldsets,
    typography, colors, spacing and table-region styling come from styles.css. */
 
+.result-details {
+  margin-top: var(--space-3);
+}
+
+.result-details p + p {
+  margin-top: var(--space-3);
+}
+
+.result-value {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-raised);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.result-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-raised);
+}
+
+.result-summary__item {
+  display: flex;
+  flex-direction: column;
+  min-width: 10rem;
+  padding-right: var(--space-4);
+}
+
+.result-summary__item strong {
+  margin-top: var(--space-1);
+  font-size: var(--text-lg);
+  color: var(--color-success);
+}
 .calculator-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

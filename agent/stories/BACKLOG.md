@@ -6,7 +6,7 @@ The currently active story's file is the one pointed to by `agent/CURRENT_STORY.
 
 ## Active
 
-- STORY-WEB-019 | STORY-WEB-019-layout-smoke-navigation-coverage.md | TODO | milestone-05 | deps: None
+- STORY-WEB-019 | STORY-WEB-019-layout-smoke-navigation-coverage.md | DONE | milestone-05 | deps: None
 
 ## To Do
 

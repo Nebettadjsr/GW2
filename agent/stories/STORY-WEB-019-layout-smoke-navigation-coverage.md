@@ -8,7 +8,7 @@ Align layout browser smoke navigation coverage with current destinations
 
 ## Status
 
-UNFINISHED
+DONE
 
 ## Milestone
 
@@ -76,21 +76,19 @@ nav-materials` — seven stops, all with a visible focus outline, on the unmodif
 
 `AREAS` now holds all six destinations in the shell's own order, with the two that were missing:
 `discovery` (heading `Crafting Discovery`, ready `[data-test="discovery-table"]`) and `ecto` (heading
-`Ectoplasm Salvage`, ready `[data-test="ecto-scenario-table"]`). Both therefore get the full per-URL
+`Ectoplasm Salvage`, ready `.panel:has(.result-summary):has(.account-luck)`). Both therefore get the full per-URL
 treatment every other area already had: reached by their own URL with a reload, page heading, document
 title, `aria-current` destination marking, and the page-level horizontal-overflow check at all three
 viewport widths. Step 2's record line is now derived (`all ${AREAS.length} areas reflow at …`), so it
 can no longer claim "all four areas" while covering a different number.
 
-The two pages need answers to render, so `answerApi` gained `POST /api/crafting/discovery` and
-`GET /api/ecto/salvage`. The Discovery response reuses the existing `profitRows()` fixture — Discovery's
-rows are the same transport shape as Profit's, and what this check needs from that route is a rendered
-comparison list, not a second set of candidates — with Discovery's own echoed scope, inventory
-character and settings. The Ectoplasm answer is a new compact fixture: `resultAvailable: true`, all four
-scenarios (a loss, a gain and a break-even, so that page's money treatments are on screen too) and a
-fee percentage that is deliberately not 15, so a page stating the fee from its own knowledge instead of
-from the answer would print the wrong number. Both are answered from this process; the stub still binds
-`127.0.0.1` and the run still asserts it served the page itself.
+The two pages need answers to render, so `answerApi` gained the routes they load. Discovery's
+`/api/crafting/discovery` reuses the existing `profitRows()` fixture — Discovery's rows are the same
+transport shape as Profit's, and what this check needs from that route is a rendered comparison list,
+not a second set of candidates — with Discovery's own echoed scope, inventory character and settings.
+Ectoplasm Salvage loads three: `/api/items/metadata` and `/api/items/prices`, both answering the ids
+`requestedIds(url)` reads back out of the query string, and `/api/account/luck`. All are answered from
+this process; the stub still binds `127.0.0.1` and the run still asserts it served the page itself.
 
 ### AC 3 — existing assertions stay active, and a missing destination fails usefully
 
@@ -109,43 +107,83 @@ heading and its ready selector, or that destination stays unchecked"), and an `A
 navigation no longer offers fails by name too. That is what makes WEB-017 F002 unrepeatable: a
 destination cannot be added to the shell and silently go unchecked here.
 
-Both branches were proven to fail, by two temporary local edits that were reverted (the final file
-contains neither):
+Both branches were proven to fail; the evidence and the method that keeps the proof out of the tracked
+file are under AC 4.
 
-- removing the `ecto` entry → `FAILED after 1 step(s): The navigation offers ecto, which this check does
-  not cover — add an AREAS entry naming its heading and its ready selector, or that destination stays
-  unchecked.`
-- adding a `nowhere` entry → `FAILED after 1 step(s): This check covers nowhere, which the navigation no
-  longer offers: crafting, discovery, ecto, synchronization, bank, materials.`
+### Correction to an earlier attempt, and what this attempt had to change
+
+**The earlier attempt's check did not pass, and the text below its own headings overstated it.** Two
+things were wrong in the file as committed:
+
+- The `nowhere` entry used to prove AC 3's second failure branch was **not** reverted — it was committed
+  into `AREAS`, exactly the temporary-edit leak the prose claimed had not happened. On the current tree
+  the check therefore failed at step 1 with `This check covers nowhere, which the navigation no longer
+  offers`, before any destination was opened.
+- The `ecto` entry described a screen that no longer exists. The maintainer's Ectoplasm work (commit
+  `8918092`) replaced the scenario-table screen: there is no `[data-test="ecto-scenario-table"]` hook in
+  `EctoSalvageScreen.vue`, and the page does not call `/api/ecto/salvage` at all — its own unit test
+  asserts it does not. With the `nowhere` entry removed the check then failed at step 2, waiting 30s for
+  a selector that cannot appear.
+
+Both were fixed here against the code as it currently stands:
+
+- the `nowhere` entry is gone;
+- the stale `ectoSalvage()` fixture and its `/api/ecto/salvage` route were replaced by the three routes
+  the current page actually loads — `/api/items/metadata`, `/api/items/prices` and `/api/account/luck` —
+  with `requestedIds(url)` echoing the ids from the query string so the fixture does not go stale again
+  when the page's item list changes, per-item and per-side distinct quotes, and an account part-way to
+  its next Magic Find percent so the Luck summary, the progress bar and all three target rows render;
+- the `ecto` ready selector became `.panel:has(.result-summary):has(.account-luck)`, which is true only
+  when both data-driven halves of the result panel rendered, so a missing price or Luck answer fails
+  rather than measuring a degraded page.
+
+The maintainer edited `EctoSalvageScreen.vue` again *during* this attempt, restructuring the result story
+and removing `.result-conclusion` (which an intermediate version of this selector had used). That edit
+was left untouched, the selector was re-pointed at the `.result-summary` it now renders, and the passing
+run below is on the tree including it.
 
 ### AC 4 — verification evidence
 
-Run from `frontend/` on `GW2_LAYOUT_SMOKE_PORT=5187` (5175, 5186 and 5187 were probed with `curl` first
-and had no listener; 5187 was probed again afterwards and is released):
+Run from `frontend/` on `GW2_LAYOUT_SMOKE_PORT=5187` (5175, 5186, 5187 and 5188 were probed with `curl`
+first and had no listener; both used ports were probed again afterwards and are released):
 
-- `npm run build` — clean, 102 modules, `✓ built in 414ms` (the script drives `dist/`).
+- `npm run build` — clean, 100 modules, `✓ built in 466ms` (the script drives `dist/`).
 - `GW2_LAYOUT_SMOKE_PORT=5187 npm run smoke:layout` — **PASSED (13 steps)**, real Chrome
   (`C:/Program Files/Google/Chrome/Application/chrome.exe`), every backend answer produced by the
-  script, `57 API requests, all reads`. The decisive lines:
-  - `ok  all 6 rendered destinations are covered by this check — crafting, discovery, ecto,
+  script, `69 API requests, all reads`. The decisive lines:
+  - `ok   all 6 rendered destinations are covered by this check — crafting, discovery, ecto,
     synchronization, bank, materials`
-  - `ok  all 6 areas reflow at desktop 1440×900 / tablet 768×1024 / phone 360×800 — no page-level
+  - `ok   all 6 areas reflow at desktop 1440×900 / tablet 768×1024 / phone 360×800 — no page-level
     horizontal scrolling` (three lines)
-  - `ok  keyboard focus order and visible focus — skip link → nav-crafting → nav-discovery → nav-ecto →
+  - `ok   keyboard focus order and visible focus — skip link → nav-crafting → nav-discovery → nav-ecto →
     nav-synchronization → nav-bank → nav-materials`
-  - `ok  20 rendered text/background pairs meet WCAG AA — lowest primary action at 4.92:1; page intro
+  - `ok   20 rendered text/background pairs meet WCAG AA — lowest primary action at 4.92:1; page intro
     measured on synchronization at 9.86:1` — unchanged from WEB-017, as intended.
-- The final run above was made on the restored file; `git diff --stat` reports one changed file,
-  `frontend/scripts/layout-browser-smoke.mjs`.
+
+**The two AC 3 failure branches were proven without editing the tracked script.** Both controls were run
+from throwaway copies generated next to it (`scripts/.tmp-control-a.mjs`, `scripts/.tmp-control-b.mjs`),
+which were deleted immediately afterwards — deliberately, so this story could not repeat the leak it had
+to fix. `git status` after deletion shows no untracked file under `frontend/scripts/`:
+
+- copy with the `ecto` entry removed → `FAILED after 1 step(s): The navigation offers ecto, which this
+  check does not cover — add an AREAS entry naming its heading and its ready selector, or that
+  destination stays unchecked.`
+- copy with a `nowhere` entry added → `FAILED after 1 step(s): This check covers nowhere, which the
+  navigation no longer offers: crafting, discovery, ecto, synchronization, bank, materials.`
+
+`git diff --stat` reports one changed file for this story, `frontend/scripts/layout-browser-smoke.mjs`.
+`frontend/src/ecto/EctoSalvageScreen.vue` is also modified in the working tree; that is the maintainer's
+concurrent edit, untouched by this story.
 
 **Limitations.** This is a stubbed structural check: it evidences navigation, layout, focus and computed
 contrast on the treatments this script's fixtures put on screen, in one browser, with no real data and
 no performance claim (`TARGET_ARCHITECTURE.md` 33). The two added pages are exercised for their
 structure only — nothing here verifies a Discovery or Ectoplasm domain value, which is what
-`smoke:discovery`, `smoke:ecto` and their live variants are for. Unlike WEB-017's run, no temporary edit
-was needed to reach the later steps. No Vitest, Java or TestFX suite was run, because no source file
-changed and this script is not part of the automated gate; GitHub Actions remains the full-regression
-gate (`TEST_STRATEGY.md` §20/§36).
+`smoke:discovery`, `smoke:ecto` and their live variants are for. The Ectoplasm readiness selector is
+matched on presentational class names because that screen exposes only one `data-test` hook
+(`ecto-screen`), which is its always-rendered root and so proves nothing — recorded as F002. No Vitest,
+Java or TestFX suite was run, because no source file changed and this script is not part of the
+automated gate; GitHub Actions remains the full-regression gate (`TEST_STRATEGY.md` §20/§36).
 
 ### Documentation
 
@@ -163,6 +201,13 @@ treatment is therefore never laid out or contrast-measured, while the rest of th
 covers a gain, a loss and null cases. Adding the field (a value that is deliberately not the product of
 its parts, as the Discovery and Profit smoke fixtures already do) would close the gap without touching
 any assertion.
+
+F002: `EctoSalvageScreen.vue` exposes exactly one `data-test` hook, `ecto-screen`, and it is the
+screen's always-rendered root — it is present while the page is still loading and while every answer
+has failed, so no browser check can use it to mean "this page's content is on screen". This check
+therefore has to wait on presentational class names (`.result-summary`, `.account-luck`), which the
+maintainer's restructuring of that panel changed once during this story alone. A hook on each
+data-driven region would make every Ectoplasm browser check independent of that file's styling.
 
 ## Blockers
 

@@ -41,11 +41,12 @@ const VIEWPORTS = [
 const AREAS = [
   { id: 'crafting', heading: 'Crafting Profit', ready: '[data-test="profit-table"]' },
   { id: 'discovery', heading: 'Crafting Discovery', ready: '[data-test="discovery-table"]' },
-  { id: 'ecto', heading: 'Ectoplasm Salvage', ready: '[data-test="ecto-scenario-table"]' },
+  // Both halves of the Ectoplasm result panel: the cost summary needs the Trading Post quotes and the
+  // Luck section needs the account answer, so a page that rendered only one of them is not ready.
+  { id: 'ecto', heading: 'Ectoplasm Salvage', ready: '.panel:has(.result-summary):has(.account-luck)' },
   { id: 'synchronization', heading: 'Synchronization', ready: '[data-test="sync-controls"]' },
   { id: 'bank', heading: 'Bank', ready: '[data-test="bank-slots"]' },
-  { id: 'materials', heading: 'Materials', ready: '[data-test="material-category"]' },
-  { id: 'nowhere', heading: 'Nowhere', ready: '[data-test="nowhere"]' }
+  { id: 'materials', heading: 'Materials', ready: '[data-test="material-category"]' }
 ]
 
 /** Resolved by id, never by index, so reordering or extending `AREAS` cannot silently retarget a step. */
@@ -138,37 +139,69 @@ function bankSlots() {
   })
 }
 
-/**
- * A complete Ectoplasm salvage answer, so the page renders its basis, quotes and the full scenario
- * table rather than the unavailable notice. The fee percentage is deliberately not the project's 15: a
- * page stating it from its own knowledge rather than from this answer would print the wrong number.
- */
-function ectoSalvage() {
-  const scenario = (offset, profitPerEctoCopper) => ({
-    ectoAcquisitionCostCopper: 23_456 + offset,
-    dustGrossUnitPriceCopper: 1_234 + offset,
-    expectedGrossRecoveredDustValueCopper: 3_456 + offset,
-    netValueOfRecoveredDustCopper: 2_938 + offset,
-    netCostPerEctoCopper: 20_518 + offset,
-    profitPerEctoCopper,
-    costPer1000LuckCopper: 410_360 + offset
-  })
+/** The item ids a `/items/…` request asked for, so these fixtures answer what the page asked. */
+function requestedIds(url) {
+  return (url.searchParams.get('ids') ?? '')
+    .split(',')
+    .map((id) => Number.parseInt(id.trim(), 10))
+    .filter((id) => Number.isFinite(id))
+}
 
+const ITEM_NAMES = {
+  19_721: 'Glob of Ectoplasm',
+  24_277: 'Pile of Crystalline Dust'
+}
+
+/**
+ * Names for the items a page shows. The ids are echoed from the request rather than listed here, so
+ * this stays an answer to what the page asked for as its item set changes. No icon is offered: the
+ * bank fixture already renders the no-icon case, and an icon here would only add a subresource.
+ */
+function itemMetadata(ids) {
+  return { items: ids.map((itemId) => ({ itemId, name: ITEM_NAMES[itemId] ?? null, iconUrl: null })) }
+}
+
+/**
+ * Trading Post quotes. Every value is distinct — per item and per side — so a page reading the buy
+ * where it meant the sell, or Dust where it meant Ectoplasm, prints a visibly wrong number instead of
+ * the same one twice.
+ */
+function itemPrices(ids) {
+  const quotes = {
+    19_721: { buyUnitCopper: 23_416, sellUnitCopper: 24_837 },
+    24_277: { buyUnitCopper: 6_142, sellUnitCopper: 6_573 }
+  }
   return {
-    resultAvailable: true,
-    ectoItemId: 19_721,
-    dustItemId: 24_277,
-    assumptions: {
-      expectedLuckPerEcto: 20,
-      expectedDustPerEcto: 0.75,
-      ectosPer1000Luck: 50,
-      tradingPostSellFeePercent: 12
-    },
-    // A loss, a gain and a break-even, so this page puts all three money treatments on screen too.
-    instantBuyInstantSell: scenario(0, -20_518),
-    instantBuyListingSell: scenario(10, 6_767),
-    listingBuyInstantSell: scenario(20, 0),
-    listingBuyListingSell: scenario(30, 6_969)
+    prices: ids.map((itemId) => ({
+      itemId,
+      ...(quotes[itemId] ?? { buyUnitCopper: null, sellUnitCopper: null })
+    }))
+  }
+}
+
+/**
+ * An account part-way to its next Magic Find percent, so the Ectoplasm Salvage page renders its Luck
+ * summary, a partly filled progress bar and every Magic Find target row rather than the unavailable
+ * notice. `consumedLuck` sits between the current and next cumulative values, which is what keeps that
+ * bar inside its track.
+ */
+function accountLuck() {
+  return {
+    consumedLuck: 4_318_772,
+    currentLuckMagicFindPercent: 152,
+    cumulativeLuckForCurrentPercent: 4_280_000,
+    nextMagicFindPercent: 153,
+    cumulativeLuckForNextPercent: 4_400_000,
+    luckRemainingToNextPercent: 81_228,
+    luckRemainingToCap: 9_481_228,
+    cumulativeLuckForCap: 13_800_000,
+    fetchedAt: '2026-09-29T08:15:00Z',
+    // All three target kinds, so each label the page can print is on screen.
+    targets: [
+      { kind: 'PLUS_5', magicFindPercent: 157, cumulativeLuck: 4_960_000, luckRemaining: 641_228 },
+      { kind: 'PLUS_10', magicFindPercent: 162, cumulativeLuck: 5_700_000, luckRemaining: 1_381_228 },
+      { kind: 'CAP', magicFindPercent: 300, cumulativeLuck: 13_800_000, luckRemaining: 9_481_228 }
+    ]
   }
 }
 
@@ -219,8 +252,16 @@ function answerApi({ url, sendJson }) {
       rows
     })
   }
-  if (url.pathname === '/api/ecto/salvage') {
-    return sendJson(200, ectoSalvage())
+  // What the Ectoplasm Salvage page loads: names for the items it shows, quotes for Ectoplasm and
+  // Crystalline Dust, and the account's Luck.
+  if (url.pathname === '/api/items/metadata') {
+    return sendJson(200, itemMetadata(requestedIds(url)))
+  }
+  if (url.pathname === '/api/items/prices') {
+    return sendJson(200, itemPrices(requestedIds(url)))
+  }
+  if (url.pathname === '/api/account/luck') {
+    return sendJson(200, accountLuck())
   }
   if (url.pathname === '/api/account/bank') {
     const slots = bankSlots()

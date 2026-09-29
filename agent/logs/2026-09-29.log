@@ -2044,3 +2044,101 @@
 [08:54:35] Starting Claude Code
 [08:54:35] ========================================
 [08:59:24] Interrupted by user. Exiting.
+[10:07:44] GW2 AI Orchestrator started. Repository: C:\Users\Administrator\IdeaProjects\GW2
+[10:07:53] Availability check: claude_available=True, codex_available=True
+[10:07:53] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[10:07:53] ========================================
+[10:07:53] Active story: agent/stories/STORY-WEB-019-layout-smoke-navigation-coverage.md
+[10:07:53] ========================================
+[10:07:55] RepoMap: disabled, budget=1200 tokens
+[10:08:00] ========================================
+[10:08:00] Starting Claude Code
+[10:08:00] ========================================
+[10:16:42] STORY-WEB-019 is complete. One code file changed: `frontend/scripts/layout-browser-smoke.mjs`.
+[10:16:42] ## What I found
+[10:16:42] The story was marked UNFINISHED but its Result section was already written up as DONE — and that write-up was wrong on two counts. The check did **not** pass on the committed tree:
+[10:16:42] 1. **A temporary test edit had been committed.** The `{ id: 'nowhere', … }` entry used to prove the coverage guard's second failure branch was left in `AREAS`, while the story text claimed "the final file contains neither". The check failed at step 1.
+[10:16:42] 2. **The `ecto` entry described a screen that no longer exists.** The maintainer's Ectoplasm rewrite (commit `8918092`) removed the scenario table — there is no `[data-test="ecto-scenario-table"]` hook, and the page never calls `/api/ecto/salvage` (its own unit test asserts this). With the `nowhere` entry gone, the check then failed at step 2 on a 30s selector timeout.
+[10:16:42] ## What I changed
+[10:16:42] - Removed the leaked `nowhere` entry.
+[10:16:42] - Replaced the stale `ectoSalvage()` fixture and its dead route with the three the current page actually loads — `/api/items/metadata`, `/api/items/prices`, `/api/account/luck` — echoing the requested item ids out of the query string so the fixture doesn't go stale again, plus an account part-way to its next Magic Find percent so the Luck summary, progress bar and all three target rows render.
+[10:16:42] - Pointed the ecto ready selector at `.panel:has(.result-summary):has(.account-luck)`, true only when both data-driven halves rendered.
+[10:16:42] The maintainer edited `EctoSalvageScreen.vue` again *during* this work, removing the `.result-conclusion` an intermediate selector used. I left that edit alone and re-pointed the selector; the passing run is on the tree including it.
+[10:16:42] ## Verification
+[10:16:42] `npm run build` clean, then `GW2_LAYOUT_SMOKE_PORT=5187 npm run smoke:layout` — **PASSED (13 steps)** in real Chrome, `69 API requests, all reads`:
+[10:16:42] - `all 6 rendered destinations are covered by this check — crafting, discovery, ecto, synchronization, bank, materials`
+[10:16:42] - `skip link → nav-crafting → nav-discovery → nav-ecto → nav-synchronization → nav-bank → nav-materials`
+[10:16:42] - contrast unchanged at 20 pairs, `page intro` at 9.86:1
+[10:16:42] Both failure branches of the coverage guard were proven from **throwaway copies** (`scripts/.tmp-control-*.mjs`, deleted; `git status` confirms nothing untracked remains) rather than by editing the tracked script — deliberately, since that leak is what this story had to fix. I appended that pattern to `tasks/lessons.md`.
+[10:16:42] **Follow-up findings:** F001 (unchanged, `profitRows()` has no `totalSellValueCopper`); F002 (new) — `EctoSalvageScreen.vue`'s only `data-test` hook is its always-rendered root, so browser checks must wait on presentational class names, which changed once during this story alone.
+[10:16:42] ========================================
+[10:16:42] Claude Code exit code: 0
+[10:16:42] ========================================
+[10:16:45] Claude run measurement: repo_map=off, duration=521.9s, usage_before=9, usage_after=23
+[10:16:45] Evaluator started (Codex, read-only)
+[10:16:45] ========================================
+[10:16:45] Starting hosted Codex evaluator
+[10:16:45] ========================================
+[10:16:45] [evaluator] session 01a0ec3c-d8a1-7fd2-b3ea-2c556bc03800
+[10:16:46] [evaluator] reasoning...
+[10:16:51] Evaluator last response:
+[10:16:51] I’ll inspect the uncommitted diff and the smoke check’s assertions, then return the required JSON verdict.
+[10:16:56] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git status --porcelain'
+[10:16:56] [evaluator command done] exit 0
+[10:16:56] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git diff HEAD -- frontend/scripts/layout-browser-smoke.mjs agent/stories/STORY-WEB-019-layout-smoke-navigation-coverage.md'
+[10:16:56] [evaluator command done] exit 0
+[10:16:56] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "rg -n '\"smoke:layout\"|renderedDestinations|focusWalk|AREAS|answerApi|measureContrast|page intro|async function main|function main|run\\(' frontend/package.json frontend/scripts/layout-browser-smoke.mjs frontend/src/shell/destinations.ts frontend/src/ecto/EctoSalvageScreen.vue"
+[10:16:56] [evaluator command done] exit 0
+[10:17:06] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$p='"'frontend/scripts/layout-browser-smoke.mjs'; "'$c=Get-Content $p; for($i=420;$i -le [Math]::Min(710,$c.Length);$i++){ '"'{0,4}: {1}' -f "'$i,$c[$i-1] }'
+[10:17:06] [evaluator command done] exit 1
+[10:17:06] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$p='"'frontend/scripts/layout-browser-smoke.mjs'; "'$c=Get-Content $p; for($i=1;$i -le 70;$i++){ '"'{0,4}: {1}' -f "'$i,$c[$i-1] }; for($i=208;$i -le 323;$i++){ '"'{0,4}: {1}' -f "'$i,$c[$i-1] }'
+[10:17:06] [evaluator command done] exit 0
+[10:17:06] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "rg -n 'site-nav__link|screen-nav|nav-crafting|nav-discovery|nav-ecto|nav-synchronization|nav-bank|nav-materials|result-summary|account-luck|/api/items/metadata|/api/items/prices|/api/account/luck|discovery-table' frontend/src"
+[10:17:06] [evaluator command done] exit 0
+[10:17:10] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$p='"'frontend/scripts/layout-browser-smoke.mjs'; "'$c=Get-Content $p; for($i=420;$i -le 710;$i++){ '"'{0,4}: {1}' -f "'$i,$c[$i-1] }'
+[10:17:10] [evaluator command done] exit 0
+[10:17:15] Evaluator last response:
+[10:17:15] The script now compares its area list with the rendered navigation and walks keyboard focus using that rendered list. I’m checking the destination wiring and the Ectoplasm readiness condition against the current components before deciding.
+[10:17:26] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'Get-Content frontend/src/shell/destinations.ts; $c=Get-Content frontend/src/shell/SiteHeader.vue; for($i=35;$i -le 65;$i++){ '"'{0,4}: {1}' -f "'$i,$c[$i-1] }'
+[10:17:26] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$c=Get-Content frontend/src/ecto/EctoSalvageScreen.vue; for($i=600;$i -le 690;$i++){ '"'{0,4}: {1}' -f "'$i,$c[$i-1] }; rg -n '"'fetch|load|api/items|api/account|quote|metadata|resultAvailable|result-summary|accountLuck' frontend/src/ecto/EctoSalvageScreen.vue"
+[10:17:26] [evaluator command done] exit 0
+[10:17:26] [evaluator command done] exit 0
+[10:17:26] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$c=Get-Content frontend/scripts/layout-browser-smoke.mjs; for($i=324;$i -le 417;$i++){ '"'{0,4}: {1}' -f "'$i,$c[$i-1] }; rg -n '"'layout-browser-smoke|smoke:layout|69 API requests|all 6 rendered destinations' agent/logs/2026-09-29.log CLAUDE_RESULT.md frontend/package.json"
+[10:17:26] [evaluator command done] exit 1
+[10:17:26] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git diff HEAD -- frontend/src/ecto/EctoSalvageScreen.vue; git diff HEAD --stat'
+[10:17:26] [evaluator command done] exit 0
+[10:17:39] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$c=Get-Content frontend/src/ecto/EctoSalvageScreen.vue; for($i=416;$i -le 440;$i++){ '"'{0,4}: {1}' -f "'$i,$c[$i-1] }; for($i=540;$i -le 566;$i++){ '"'{0,4}: {1}' -f "'$i,$c[$i-1] }; for($i=370;$i -le 415;$i++){ '"'{0,4}: {1}' -f "'$i,$c[$i-1] }'
+[10:17:39] [evaluator command done] exit 0
+[10:17:40] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$c=Get-Content agent/logs/2026-09-29.log; for($i=2048;$i -le 2078;$i++){ '"'{0,4}: {1}' -f "'$i,$c[$i-1] }'
+[10:17:40] [evaluator command done] exit 0
+[10:17:47] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$c=Get-Content frontend/src/ecto/EctoSalvageScreen.vue; for($i=648;$i -le 755;$i++){ '"'{0,4}: {1}' -f "'$i,$c[$i-1] }'
+[10:17:47] [evaluator command done] exit 0
+[10:17:56] Evaluator last response:
+[10:17:56] ```json
+[10:17:56] {
+[10:17:56]   "decision": "COMPLETE",
+[10:17:56]   "reason": "The smoke check covers all six current destinations, derives keyboard focus order from the rendered navigation, and retains the layout and contrast checks. The Result records a passing Chrome run and its limitations.",
+[10:17:56]   "intent_achieved": true,
+[10:17:56]   "evidence": [
+[10:17:56]     "git status --porcelain and git diff HEAD for the smoke script, story Result, and Ectoplasm component",
+[10:17:56]     "frontend/scripts/layout-browser-smoke.mjs: AREAS, API fixtures, renderedDestinations, coverage guard, per-destination checks, focus walk, and contrast assertions",
+[10:17:56]     "frontend/src/shell/destinations.ts and SiteHeader.vue: six destinations and rendered navigation links",
+[10:17:56]     "frontend/src/ecto/EctoSalvageScreen.vue: requested API routes and data-dependent readiness elements",
+[10:17:56]     "frontend/package.json: smoke:layout invokes the inspected script",
+[10:17:56]     "agent/stories/STORY-WEB-019-layout-smoke-navigation-coverage.md Result and agent/logs/2026-09-29.log: recorded Chrome verification"
+[10:17:56]   ],
+[10:17:56]   "unmet_intent": [],
+[10:17:56]   "unmet_acceptance_criteria": [],
+[10:17:56]   "unmet_definition_of_done": [],
+[10:17:56]   "actionable_retry_items": []
+[10:17:56] }
+[10:17:56] ```
+[10:17:56] [evaluator] turn completed | input tokens: 270401 | cached input tokens: 229632 | output tokens: 2322
+[10:17:56] ========================================
+[10:17:56] [evaluator] turn totals | model requests: 1 | gross input tokens: 270,401 | cached input tokens: 229,632 | uncached input tokens: 40,769 | output tokens: 2,322
+[10:17:56] Hosted codex evaluator exit code: 0
+[10:17:56] ========================================
+[10:17:56] ========================================
+[10:17:56] Evaluator decision: COMPLETE
+[10:17:56] Reason: The smoke check covers all six current destinations, derives keyboard focus order from the rendered navigation, and retains the layout and contrast checks. The Result records a passing Chrome run and its limitations.
+[10:17:56] ========================================

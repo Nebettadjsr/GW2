@@ -358,3 +358,31 @@ require escalation".
 builder that embeds it (`core/architect.py`, `core/project_planner.py`) and
 reconcile the outcome rules, then assert the key wording in a test so the two
 cannot drift apart silently.
+
+## Prove a negative branch from a throwaway copy, never by editing the file you ship
+
+A control that works by temporarily breaking the checked-in script depends on a
+revert that nothing verifies. Run the control from a copy instead, and state in
+the result which file the passing run was made on.
+
+**Why:** `STORY-WEB-019`'s first attempt proved both halves of its new coverage
+guard by editing `AREAS` in `frontend/scripts/layout-browser-smoke.mjs` — and the
+`{ id: 'nowhere' }` entry was committed, while the story text asserted "the final
+file contains neither". `npm run smoke:layout` then failed at step 1 on the very
+tree the story claimed a 13-step pass for, so the leak also destroyed the
+evidence for every criterion after it.
+
+**How to apply:** generate the broken variants next to the script
+(`scripts/.tmp-control-*.mjs`), run those, delete them, and confirm with
+`git status` that nothing untracked remains. Never write a result sentence about
+a revert without a `git diff` in the same breath — and when re-verifying a story
+whose Result already reads DONE, check the tree before the prose: a status field
+and a written-up result are claims, not evidence.
+
+The second half of the same story: a fixture is only as current as the screen it
+answers. Its `ecto` entry waited on `[data-test="ecto-scenario-table"]` and
+stubbed `/api/ecto/salvage`, both of which the maintainer's rewrite had removed —
+the page's own unit test asserts that route is never called. Before writing a
+stub answer, grep the component for the hook and the route it actually loads, and
+prefer a ready selector that only appears once the data-driven region rendered,
+so a stale fixture fails the wait instead of measuring a degraded page.
