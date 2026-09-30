@@ -1,6 +1,7 @@
 package application;
 
 import sync.AccountRefreshGateway;
+import java.time.Instant;
 
 /**
  * Application-layer use case for account synchronization (TARGET_ARCHITECTURE.md §8), owning the
@@ -29,6 +30,8 @@ import sync.AccountRefreshGateway;
 public class AccountRefreshService {
 
     private final AccountRefreshGateway gateway;
+    private volatile Instant lastRefreshedAt;
+    private volatile String lastRefreshScope;
 
     public AccountRefreshService() {
         this(new AccountRefreshGateway());
@@ -45,10 +48,29 @@ public class AccountRefreshService {
         gateway.syncAccountRecipes();
         gateway.syncAccountLuck();
         gateway.syncCharacterCraftingAndRecipes();
+        markRefreshed("full account");
     }
 
     public void refreshMaterialsAndRecipes() throws Exception {
         gateway.syncAccountMaterials();
         gateway.syncAccountRecipes();
+        markRefreshed("materials and recipes");
     }
+
+    /** Refreshes the account datasets consumed by Crafting Profit without the unrelated Luck API call. */
+    public void refreshCraftingProfitData() throws Exception {
+        gateway.syncAccountBank();
+        gateway.syncAccountMaterials();
+        gateway.syncAccountRecipes();
+        gateway.syncCharacterCraftingAndRecipes();
+        markRefreshed("Crafting Profit inputs");
+    }
+
+    private void markRefreshed(String scope) {
+        lastRefreshScope = scope;
+        lastRefreshedAt = Instant.now();
+    }
+
+    public Instant lastRefreshedAt() { return lastRefreshedAt; }
+    public String lastRefreshScope() { return lastRefreshScope; }
 }

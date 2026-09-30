@@ -6,6 +6,9 @@ import sync.TradingPostPriceRefreshGateway;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -61,6 +64,33 @@ class TradingPostPriceRefreshServiceTest {
         Exception thrown = assertThrows(RuntimeException.class, service::refreshForProfit);
 
         assertSame(gateway.profitFailure, thrown);
+    }
+
+    @Test
+    void profitAndDiscoveryRefreshesAreSerializedThroughTheSharedService() throws Exception {
+        var enteredProfit = new CountDownLatch(1);
+        var releaseProfit = new CountDownLatch(1);
+        var discoveryEntered = new CountDownLatch(1);
+        var gateway = new TradingPostPriceRefreshGateway() {
+            @Override public void syncTpPricesForProfit() throws Exception {
+                enteredProfit.countDown();
+                if (!releaseProfit.await(5, TimeUnit.SECONDS)) throw new AssertionError("profit refresh not released");
+            }
+            @Override public void syncTpPricesForDiscovery() { discoveryEntered.countDown(); }
+        };
+        var service = new TradingPostPriceRefreshService(gateway);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var profit = executor.submit(() -> { service.refreshForProfit(); return null; });
+            assertEquals(true, enteredProfit.await(5, TimeUnit.SECONDS));
+            var discovery = executor.submit(() -> { service.refreshForDiscovery(); return null; });
+            assertEquals(false, discoveryEntered.await(100, TimeUnit.MILLISECONDS));
+            releaseProfit.countDown();
+            profit.get(5, TimeUnit.SECONDS);
+            discovery.get(5, TimeUnit.SECONDS);
+            assertEquals(0, discoveryEntered.getCount());
+        } finally {
+            releaseProfit.countDown();
+        }
     }
 
     private static class RecordingGateway extends TradingPostPriceRefreshGateway {

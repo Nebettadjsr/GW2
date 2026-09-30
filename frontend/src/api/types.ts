@@ -19,6 +19,10 @@ export interface MissingItem {
   itemName: string | null
   quantity: number
   price: TradingPostQuote | null
+  /** Acquisition price selected by the calculation's settings; null when unavailable. */
+  purchaseUnitPriceCopper: number | null
+  /** Authoritative quantity times selected acquisition price; null when unavailable. */
+  totalPurchaseCostCopper: number | null
   /** This application's image URL for the material, or null when there is no accepted source. */
   iconUrl: string | null
 }
@@ -41,6 +45,8 @@ export interface CraftingRow {
   craftableCount: number | null
   buyCostCopper: number | null
   matsSellValueCopper: number | null
+  /** Total opportunity value of owned materials consumed across the counted crafts. */
+  totalMatsSellValueCopper: number | null
   revenueCopper: number | null
   profitCopper: number | null
   /**

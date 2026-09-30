@@ -1,8 +1,10 @@
 package web;
 
 import application.CraftingProfitService;
+import application.TradingPostPriceRefreshService;
 import application.CraftingResolutionDetail;
 import craft.CraftingSettings;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -38,9 +40,17 @@ import java.util.function.Supplier;
 public class CraftingProfitApiController {
 
     private final Supplier<CraftingProfitService> profitServiceFactory;
+    private final TradingPostPriceRefreshService priceRefreshService;
 
     public CraftingProfitApiController(Supplier<CraftingProfitService> profitServiceFactory) {
+        this(profitServiceFactory, null);
+    }
+
+    @Autowired
+    public CraftingProfitApiController(Supplier<CraftingProfitService> profitServiceFactory,
+                                       TradingPostPriceRefreshService priceRefreshService) {
         this.profitServiceFactory = profitServiceFactory;
+        this.priceRefreshService = priceRefreshService;
     }
 
     /**
@@ -56,9 +66,10 @@ public class CraftingProfitApiController {
      */
     @PostMapping(path = "/profit", produces = MediaType.APPLICATION_JSON_VALUE)
     public CraftingProfitResponse profit(@RequestBody(required = false) CraftingProfitRequest request)
-            throws SQLException {
+            throws Exception {
 
         CraftingProfitApiMapper.Effective effective = CraftingProfitApiMapper.toEffective(request);
+        if (priceRefreshService != null) priceRefreshService.refreshForProfit();
 
         CraftingProfitService.ProfitData data = profitServiceFactory.get()
                 .reload(effective.toDiscChoice(), effective.toCraftingSettings());
@@ -86,12 +97,13 @@ public class CraftingProfitApiController {
      */
     @PostMapping(path = "/profit/resolution", produces = MediaType.APPLICATION_JSON_VALUE)
     public CraftingProfitResolutionResponse profitResolution(
-            @RequestBody(required = false) CraftingProfitResolutionRequest request) throws SQLException {
+            @RequestBody(required = false) CraftingProfitResolutionRequest request) throws Exception {
 
         CraftingProfitResolutionRequest body = CraftingResolutionMapper.requireBody(request);
         int recipeId = CraftingResolutionMapper.requireRecipeId(body.recipeId());
         CraftingProfitApiMapper.Effective effective = CraftingProfitApiMapper.toEffective(
                 CraftingResolutionMapper.requireCalculation(body.calculation()));
+        if (priceRefreshService != null) priceRefreshService.refreshForProfit();
 
         CraftingResolutionDetail detail = CraftingResolutionMapper.requireInCalculation(
                 profitServiceFactory.get().resolveDetail(

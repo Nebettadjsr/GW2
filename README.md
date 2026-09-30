@@ -64,6 +64,8 @@ The application synchronizes account-specific data used by the crafting calculat
 
 Bank and Materials views are already available in the browser frontend.
 
+Crafting Profit's **Refresh data & results** action refreshes the account data used by the calculation, refreshes missing or older-than-ten-minute Trading Post quotes it needs, and then recalculates. Global game data is checked automatically in the background. **System Status** summarizes account data, global game data, and the shared Trading Post cache, with manual account and global refresh actions; normal crafting workflows do not require visiting it.
+
 ### Ectoplasm salvage analysis
 
 The project also contains an Ectoplasm Salvage calculator for estimating the effective gold cost of gaining Luck/Magic Find while accounting for the value recovered from salvage results.

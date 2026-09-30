@@ -10,7 +10,6 @@ import { SYNC_FAILURE, statusOf } from './syncFixtures'
 const IDLE: SyncOperationView = {
   key: 'ACCOUNT_SYNC',
   label: 'Synchronize account',
-  description: 'irrelevant here',
   isSubmitting: false,
   isTracking: false,
   isBusy: false,

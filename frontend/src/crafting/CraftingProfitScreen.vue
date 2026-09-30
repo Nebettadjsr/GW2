@@ -12,12 +12,21 @@ import SelectedResultDetail from './SelectedResultDetail.vue'
 import { useCraftingProfit } from './useCraftingProfit'
 import { calculationKey, useProfitResolution, type CalculationInputs } from './useProfitResolution'
 import { useProfitTableView, type SortKey } from './useProfitTableView'
+import { syncApi } from '@/api/syncApi'
+import type { SyncApi } from '@/api/syncApi'
+import type { SyncTaskAccepted, SyncTaskStatus } from '@/api/types'
 
-const props = withDefaults(defineProps<{ api?: CraftingApi }>(), { api: () => craftingApi })
+const props = withDefaults(defineProps<{ api?: CraftingApi; refreshApi?: SyncApi }>(), {
+  api: () => craftingApi,
+  refreshApi: () => syncApi
+})
 
 const profit = useCraftingProfit(props.api)
 const table = useProfitTableView(profit.rows)
 const resolution = useProfitResolution(props.api)
+const isRefreshing = ref(false)
+const refreshPhase = ref<string | null>(null)
+const refreshError = ref<string | null>(null)
 
 onMounted(() => {
   void profit.open()
@@ -122,6 +131,36 @@ function onReload(): void {
   void profit.reload()
 }
 
+async function onRefreshDataAndResults(): Promise<void> {
+  if (isRefreshing.value) return
+  isRefreshing.value = true
+  refreshError.value = null
+  try {
+    refreshPhase.value = 'Refreshing account data…'
+    await waitForTask(await props.refreshApi.startProfitDataRefresh())
+    refreshPhase.value = 'Refreshing stale Trading Post prices…'
+    await waitForTask(await props.refreshApi.startPriceRefresh('PROFIT'))
+    refreshPhase.value = 'Refreshing prices and recalculating Crafting Profit…'
+    await profit.reload()
+    if (profit.requestError.value !== null) throw new Error(profit.requestError.value)
+  } catch (cause) {
+    refreshError.value = cause instanceof Error ? cause.message : String(cause)
+  } finally {
+    refreshPhase.value = null
+    isRefreshing.value = false
+  }
+}
+
+async function waitForTask(task: SyncTaskAccepted): Promise<void> {
+  for (let attempt = 0; attempt < 600; attempt++) {
+    const status: SyncTaskStatus = await props.refreshApi.readTaskStatus(task.statusUrl)
+    if (status.state === 'SUCCEEDED') return
+    if (status.state === 'FAILED') throw new Error(status.failure?.message ?? 'Refresh task failed.')
+    await new Promise((resolve) => window.setTimeout(resolve, 3000))
+  }
+  throw new Error('Refresh is still running; reopen System Status to check its task.')
+}
+
 function onMaximumDisplayedChange(event: Event): void {
   const target = event.target
   if (!(target instanceof HTMLInputElement)) return
@@ -136,14 +175,17 @@ function onMaximumDisplayedChange(event: Event): void {
         <button
           type="button"
           class="button--primary"
-          data-test="reload"
-          :disabled="profit.isLoading.value"
-          @click="onReload"
+          data-test="refresh-data-and-results"
+          :disabled="profit.isLoading.value || isRefreshing"
+          @click="onRefreshDataAndResults"
         >
-          Reload results
+          Refresh data &amp; results
         </button>
       </template>
     </PageHeader>
+
+    <p v-if="refreshPhase !== null" class="notice" role="status" data-test="refresh-progress">{{ refreshPhase }}</p>
+    <p v-if="refreshError !== null" class="error" role="alert" data-test="refresh-error">{{ refreshError }}</p>
 
     <section class="controls-panel" aria-label="Crafting profit controls">
       <div class="controls-grid">
@@ -199,39 +241,6 @@ function onMaximumDisplayedChange(event: Event): void {
               </label>
             </template>
 
-            <template #limit>
-              <label class="results-limit">
-                <span>Show at most</span>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  data-test="max-displayed"
-                  :value="table.maxDisplayed.value"
-                  :disabled="table.showAll.value"
-                  @change="onMaximumDisplayedChange"
-                />
-              </label>
-
-              <label class="show-all">
-                <input
-                  type="checkbox"
-                  data-test="show-all"
-                  :checked="table.showAll.value"
-                  @change="table.showAll.value = ($event.target as HTMLInputElement).checked"
-                />
-                <span>Show all</span>
-              </label>
-
-              <p
-                v-if="maximumRejected"
-                class="notice notice--warning"
-                role="alert"
-                data-test="max-displayed-rejected"
-              >
-                Enter a maximum of at least 1.
-              </p>
-            </template>
           </ResultDisplayControls>
         </section>
       </div>
@@ -254,6 +263,40 @@ function onMaximumDisplayedChange(event: Event): void {
       >
         <div class="opportunities-toolbar">
           <h2 id="crafting-results-heading">Opportunities</h2>
+
+          <div class="opportunities-toolbar__limit" data-test="opportunities-limit">
+            <label class="results-limit">
+              <span>Show at most</span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                data-test="max-displayed"
+                :value="table.maxDisplayed.value"
+                :disabled="table.showAll.value"
+                @change="onMaximumDisplayedChange"
+              />
+            </label>
+
+            <label class="show-all">
+              <input
+                type="checkbox"
+                data-test="show-all"
+                :checked="table.showAll.value"
+                @change="table.showAll.value = ($event.target as HTMLInputElement).checked"
+              />
+              <span>Show all</span>
+            </label>
+
+            <p
+              v-if="maximumRejected"
+              class="notice notice--warning opportunities-toolbar__limit-error"
+              role="alert"
+              data-test="max-displayed-rejected"
+            >
+              Enter a maximum of at least 1.
+            </p>
+          </div>
 
           <div class="opportunities-toolbar__warning">
             <TradingPostPriceDisclaimer v-if="profit.hasResult.value" />
@@ -385,7 +428,7 @@ function onMaximumDisplayedChange(event: Event): void {
 
 .opportunities-toolbar {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: var(--space-4);
 }
@@ -406,10 +449,25 @@ function onMaximumDisplayedChange(event: Event): void {
   width: 5rem;
 }
 
+.opportunities-toolbar__limit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+}
+
+.opportunities-toolbar__limit-error {
+  flex-basis: 100%;
+  margin: 0;
+  text-align: center;
+}
+
 .opportunities-toolbar__warning {
   display: flex;
   justify-content: flex-end;
   min-width: 0;
+  justify-self: end;
 }
 
 .controls-panel {
@@ -472,8 +530,17 @@ function onMaximumDisplayedChange(event: Event): void {
     align-items: start;
   }
 
+  .opportunities-toolbar__limit {
+    justify-content: flex-start;
+  }
+
+  .opportunities-toolbar__limit-error {
+    text-align: left;
+  }
+
   .opportunities-toolbar__warning {
     justify-content: flex-start;
+    justify-self: start;
   }
 }
 </style>

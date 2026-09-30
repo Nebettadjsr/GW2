@@ -1,6 +1,7 @@
 package repo.tp;
 
 import craft.PriceQuote;
+import sync.tp.TpPriceFreshness;
 
 import java.sql.*;
 import java.util.HashMap;
@@ -13,6 +14,18 @@ import java.util.Set;
  * mapping boundary, so callers - including {@code craft.*} - never see JDBC-shaped types.
  */
 public class TpPriceRepository {
+
+    public record CacheStatus(long cachedItems, long staleItems, Timestamp newestFetchedAt) { }
+
+    public CacheStatus cacheStatus() throws SQLException {
+        String sql = "SELECT COUNT(*), COUNT(*) FILTER (WHERE " + TpPriceFreshness.STALE_SQL_PREDICATE
+                + "), MAX(tp.fetched_at) FROM tp_prices tp";
+        try (Connection con = repo.Db.open(); PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            if (!rs.next()) throw new SQLException("Trading Post cache status query returned no row");
+            return new CacheStatus(rs.getLong(1), rs.getLong(2), rs.getTimestamp(3));
+        }
+    }
 
     public Map<Integer, PriceQuote> loadTpQuotes(Set<Integer> itemIds) throws SQLException {
         try (Connection con = repo.Db.open()) {

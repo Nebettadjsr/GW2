@@ -1,7 +1,9 @@
 package web;
 
 import application.CraftingDiscoveryService;
+import application.TradingPostPriceRefreshService;
 import application.CraftingResolutionDetail;
+import org.springframework.beans.factory.annotation.Autowired;
 import craft.CraftingSettings;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -42,9 +44,17 @@ import java.util.function.Supplier;
 public class CraftingDiscoveryApiController {
 
     private final Supplier<CraftingDiscoveryService> discoveryServiceFactory;
+    private final TradingPostPriceRefreshService priceRefreshService;
 
     public CraftingDiscoveryApiController(Supplier<CraftingDiscoveryService> discoveryServiceFactory) {
+        this(discoveryServiceFactory, null);
+    }
+
+    @Autowired
+    public CraftingDiscoveryApiController(Supplier<CraftingDiscoveryService> discoveryServiceFactory,
+                                          TradingPostPriceRefreshService priceRefreshService) {
         this.discoveryServiceFactory = discoveryServiceFactory;
+        this.priceRefreshService = priceRefreshService;
     }
 
     /**
@@ -61,9 +71,10 @@ public class CraftingDiscoveryApiController {
      */
     @PostMapping(path = "/discovery", produces = MediaType.APPLICATION_JSON_VALUE)
     public CraftingDiscoveryResponse discovery(
-            @RequestBody(required = false) CraftingDiscoveryRequest request) throws SQLException {
+            @RequestBody(required = false) CraftingDiscoveryRequest request) throws Exception {
 
         CraftingDiscoveryApiMapper.Effective effective = CraftingDiscoveryApiMapper.toEffective(request);
+        if (priceRefreshService != null) priceRefreshService.refreshForDiscovery();
 
         CraftingDiscoveryService.DiscoveryData data = discoveryServiceFactory.get()
                 .reload(effective.toDiscChoice(), effective.toCraftingSettings(),
@@ -94,12 +105,13 @@ public class CraftingDiscoveryApiController {
      */
     @PostMapping(path = "/discovery/resolution", produces = MediaType.APPLICATION_JSON_VALUE)
     public CraftingDiscoveryResolutionResponse discoveryResolution(
-            @RequestBody(required = false) CraftingDiscoveryResolutionRequest request) throws SQLException {
+            @RequestBody(required = false) CraftingDiscoveryResolutionRequest request) throws Exception {
 
         CraftingDiscoveryResolutionRequest body = CraftingResolutionMapper.requireBody(request);
         int recipeId = CraftingResolutionMapper.requireRecipeId(body.recipeId());
         CraftingDiscoveryApiMapper.Effective effective = CraftingDiscoveryApiMapper.toEffective(
                 CraftingResolutionMapper.requireCalculation(body.calculation()));
+        if (priceRefreshService != null) priceRefreshService.refreshForDiscovery();
 
         CraftingResolutionDetail detail = CraftingResolutionMapper.requireInCalculation(
                 discoveryServiceFactory.get().resolveDetail(

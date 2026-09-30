@@ -73,13 +73,19 @@ export class FakeSyncApi implements SyncApi {
     return this.record('ACCOUNT_SYNC')
   }
 
+  startProfitDataRefresh(): Promise<SyncTaskAccepted> {
+    return this.record('ACCOUNT_SYNC')
+  }
+
   startGlobalSync(): Promise<SyncTaskAccepted> {
     return this.record('GLOBAL_SYNC')
   }
 
   /** The variant selects the operation key exactly as the backend's own mapping does. */
   startPriceRefresh(variant: PriceRefreshVariant): Promise<SyncTaskAccepted> {
-    return this.record(variant === 'PROFIT' ? 'PRICE_REFRESH_PROFIT' : 'PRICE_REFRESH_DISCOVERY')
+    const operation = variant === 'PROFIT' ? 'PRICE_REFRESH_PROFIT' : 'PRICE_REFRESH_DISCOVERY'
+    const taskId = `${TASK_ID_PREFIX}${operation}`
+    return Promise.resolve({ taskId, operation, statusUrl: `/api/sync/tasks/${taskId}` })
   }
 
   readTaskStatus(statusUrl: string): Promise<SyncTaskStatus> {

@@ -195,10 +195,19 @@ public final class TpSync {
         syncTpPrices(itemIds);
     }
 
-    public static void syncTpTradeableItems() throws Exception {
+    public static boolean syncTpTradeableItems() throws Exception {
         System.out.println("Fetching TP tradeable id list...");
         Set<Integer> ids = TpPriceApi.fetchAllTradeableItemIds();
         System.out.println("Tradeable TP ids: " + ids.size());
+
+        Set<Integer> local = new HashSet<>();
+        try (Connection con = Db.open(); PreparedStatement ps = con.prepareStatement("SELECT item_id FROM tp_tradeable_items"); ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) local.add(rs.getInt(1));
+        }
+        IdListDiff difference = IdListDiff.between(local, ids);
+        if (!difference.changed()) return false;
+        Set<Integer> addedIds = difference.added();
+        ItemSync.syncItemsByIds(addedIds);
 
         String insertSql = """
         INSERT INTO tp_tradeable_items (item_id, fetched_at)
@@ -229,5 +238,6 @@ public final class TpSync {
         }
 
         System.out.println("✅ tp_tradeable_items refreshed.");
+        return true;
     }
 }

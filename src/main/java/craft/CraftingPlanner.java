@@ -169,8 +169,10 @@ public class CraftingPlanner {
             collectBoughtItems(firstCraft, missingToBuyOne);
         }
 
-        int totalBuyCost = computeBuyCostFromMissing(sim.getTotalMissingToBuy(), ctx.tp, ctx.settings);
-        int buyCostOne = computeBuyCostFromMissing(missingToBuyOne, ctx.tp, ctx.settings);
+        Map<Integer, MaterialPurchaseCost> purchaseCosts = purchaseCosts(
+                sim.getTotalMissingToBuy(), ctx.tp, ctx.settings);
+        int totalBuyCost = sumPurchaseCosts(purchaseCosts);
+        int buyCostOne = sumPurchaseCosts(purchaseCosts(missingToBuyOne, ctx.tp, ctx.settings));
 
         int revenueOne = cost.getRevenuePerCraft();
         int matsSellOne = cost.getOpportunityCostPerCraft();
@@ -188,16 +190,16 @@ public class CraftingPlanner {
         int feeOne = revenueOne > 0 ? (int) TradingPostFeePolicy.feeOn(revenueOne) : 0;
         int profitOne = revenueOne - feeOne - buyCostOne - matsSellOne;
 
-        // §27: the same rule on the total, through the per-craft profit times §28's craft count the
-        // existing cost aggregation already uses. The fee is a flat rate, so this charges 15% of the
-        // total gross sell value too; only the rounding remainder differs from charging it on the
-        // total in one go, and UD-011 waives exactly that difference.
-        int totalProfit = profitOne * sim.getCraftCount();
+        // Owned-material use can vary by execution, so the total uses full-plan aggregates below.
 
         // DOMAIN_SPEC.md §2.1.1: §25's per-execution output revenue - which already carries the
         // recipe's output quantity and deducts no selling fee - for §28's craftable count. Built
         // from the two figures above rather than from a second resolver or price read.
         int totalSellValue = revenueOne * sim.getCraftCount();
+        // Inventory consumed can vary between executions, so total profit uses costs from the
+        // accepted full plan instead of scaling the first craft's opportunity cost.
+        int totalProfit = totalSellValue - feeOne * sim.getCraftCount()
+                - sim.getBuyCostTotal() - sim.getOpportunityCostTotal();
 
         return new CraftResult(
                 recipe.outputItemId,
@@ -212,7 +214,9 @@ public class CraftingPlanner {
                 totalProfit,
                 totalSellValue,
                 tree,
-                sim.getBlockedReason()
+                sim.getBlockedReason(),
+                sim.getOpportunityCostTotal(),
+                purchaseCosts
         );
     }
 
@@ -228,28 +232,25 @@ public class CraftingPlanner {
         }
     }
 
-    private int computeBuyCostFromMissing(Map<Integer, Integer> missing,
-                                          Map<Integer, PriceQuote> tp,
-                                          CraftingSettings settings) {
-        if (missing == null || missing.isEmpty()) return 0;
-
-        int sum = 0;
-
-        for (var e : missing.entrySet()) {
-            int itemId = e.getKey();
-            int qty = e.getValue();
-            if (qty <= 0) continue;
-
-            PriceQuote q = tp.get(itemId);
-            if (q == null) continue;
-
-            Integer unit = settings.listingBuy ? q.buyUnit : q.sellUnit;
-            if (unit == null) continue;
-
-            sum += unit * qty;
+    private Map<Integer, MaterialPurchaseCost> purchaseCosts(Map<Integer, Integer> missing,
+                                                              Map<Integer, PriceQuote> tp,
+                                                              CraftingSettings settings) {
+        Map<Integer, MaterialPurchaseCost> costs = new HashMap<>();
+        for (Map.Entry<Integer, Integer> entry : missing.entrySet()) {
+            PriceQuote quote = tp.get(entry.getKey());
+            Integer unit = quote == null ? null : settings.listingBuy ? quote.buyUnit : quote.sellUnit;
+            Integer total = unit == null ? null : unit * entry.getValue();
+            costs.put(entry.getKey(), new MaterialPurchaseCost(unit, total));
         }
+        return Map.copyOf(costs);
+    }
 
-        return sum;
+    private int sumPurchaseCosts(Map<Integer, MaterialPurchaseCost> costs) {
+        return costs.values().stream()
+                .map(MaterialPurchaseCost::totalPriceCopper)
+                .filter(Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .sum();
     }
 
 }

@@ -60,6 +60,7 @@ export const profitableRow: CraftingRow = {
   craftableCount: 5,
   buyCostCopper: 250,
   matsSellValueCopper: 120,
+  totalMatsSellValueCopper: 600,
   revenueCopper: 380,
   profitCopper: 100,
   totalSellValueCopper: 2_222,
@@ -83,13 +84,14 @@ export const lessProfitableRow: CraftingRow = {
   craftableCount: 3,
   buyCostCopper: 90,
   matsSellValueCopper: 40,
+  totalMatsSellValueCopper: 120,
   revenueCopper: 500,
   profitCopper: 400,
   totalSellValueCopper: 1_777,
   totalProfitCopper: 600,
   blockedReason: 'NONE',
   outputPrice: { buyUnitCopper: 470, sellUnitCopper: 520 },
-  missingToBuy: [{ itemId: 77, itemName: 'Copper Ore', quantity: 4, price: { buyUnitCopper: 12, sellUnitCopper: 15 }, iconUrl: null }],
+  missingToBuy: [{ itemId: 77, itemName: 'Copper Ore', quantity: 4, price: { buyUnitCopper: 12, sellUnitCopper: 15 }, iconUrl: null, purchaseUnitPriceCopper: 15, totalPurchaseCostCopper: 60 }],
   missingToBuyOne: [],
   iconUrl: null
 }
@@ -106,13 +108,14 @@ export const priceUnavailableRow: CraftingRow = {
   craftableCount: 0,
   buyCostCopper: null,
   matsSellValueCopper: null,
+  totalMatsSellValueCopper: null,
   revenueCopper: null,
   profitCopper: null,
   totalSellValueCopper: null,
   totalProfitCopper: null,
   blockedReason: 'PRICE_UNAVAILABLE',
   outputPrice: { buyUnitCopper: null, sellUnitCopper: null },
-  missingToBuy: [{ itemId: 99, itemName: 'Charged Core', quantity: 1, price: null, iconUrl: null }],
+  missingToBuy: [{ itemId: 99, itemName: 'Charged Core', quantity: 1, price: null, iconUrl: null, purchaseUnitPriceCopper: null, totalPurchaseCostCopper: null }],
   missingToBuyOne: [],
   iconUrl: null
 }
@@ -129,6 +132,7 @@ export const noResultRow: CraftingRow = {
   craftableCount: null,
   buyCostCopper: null,
   matsSellValueCopper: null,
+  totalMatsSellValueCopper: null,
   revenueCopper: null,
   profitCopper: null,
   totalSellValueCopper: null,
@@ -159,6 +163,7 @@ export const lossRow: CraftingRow = {
   craftableCount: 4,
   buyCostCopper: 8_000,
   matsSellValueCopper: 700,
+  totalMatsSellValueCopper: 2_800,
   revenueCopper: 450,
   profitCopper: -250,
   totalSellValueCopper: 1_650,
@@ -166,11 +171,11 @@ export const lossRow: CraftingRow = {
   blockedReason: 'NONE',
   outputPrice: { buyUnitCopper: 400, sellUnitCopper: null },
   missingToBuy: [
-    { itemId: 55, itemName: 'Silver Ore', quantity: 8, price: { buyUnitCopper: 20, sellUnitCopper: 24 }, iconUrl: null },
-    { itemId: 56, itemName: null, quantity: 2, price: null, iconUrl: null }
+    { itemId: 55, itemName: 'Silver Ore', quantity: 8, price: { buyUnitCopper: 20, sellUnitCopper: 24 }, iconUrl: null, purchaseUnitPriceCopper: 24, totalPurchaseCostCopper: 192 },
+    { itemId: 56, itemName: null, quantity: 2, price: null, iconUrl: null, purchaseUnitPriceCopper: null, totalPurchaseCostCopper: null }
   ],
   missingToBuyOne: [
-    { itemId: 55, itemName: 'Silver Ore', quantity: 2, price: { buyUnitCopper: 20, sellUnitCopper: 24 }, iconUrl: null }
+    { itemId: 55, itemName: 'Silver Ore', quantity: 2, price: { buyUnitCopper: 20, sellUnitCopper: 24 }, iconUrl: null, purchaseUnitPriceCopper: 24, totalPurchaseCostCopper: 48 }
   ],
   iconUrl: null
 }

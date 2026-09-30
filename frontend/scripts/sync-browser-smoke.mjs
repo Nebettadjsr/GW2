@@ -2,7 +2,7 @@
  * Real-browser check for the synchronization area (STORY-WEB-002 semantics, STORY-WEB-004 structure).
  *
  * Runs the built frontend against a *controlled* API boundary: `scripts/stubOrigin.mjs` serves
- * `dist/` and this script answers the four trigger routes and the shared status route itself, with
+ * `dist/` and this script answers the two admin trigger routes and the shared status route itself, with
  * scripted task lifecycles. Nothing real is synchronized — no GW2 API call, no database write and no
  * user data is touched — so this establishes browser interaction and task-state presentation, and
  * nothing about a real synchronization or about performance (TEST_STRATEGY / TARGET_ARCHITECTURE 33).
@@ -30,14 +30,10 @@ const DIST_DIR = fileURLToPath(new URL('../dist/', import.meta.url))
 
 /**
  * The state each operation's task reports, one entry per status lookup; the last entry repeats.
- * `PRICE_REFRESH_DISCOVERY` is answered 404 instead, standing in for an identifier the backend
- * cannot resolve.
  */
 const TASK_SCRIPTS = {
   ACCOUNT_SYNC: ['PENDING', 'RUNNING', 'SUCCEEDED'],
-  GLOBAL_SYNC: ['PENDING', 'FAILED'],
-  PRICE_REFRESH_PROFIT: ['RUNNING', 'SUCCEEDED'],
-  PRICE_REFRESH_DISCOVERY: null
+  GLOBAL_SYNC: ['PENDING', 'FAILED']
 }
 
 const TASK_FAILURE = {
@@ -98,13 +94,20 @@ function answerStatus(response, taskId) {
 function answerApi({ request, response, url, body }) {
   if (request.method === 'POST' && url.pathname === '/api/sync/account') return acceptTask(response, 'ACCOUNT_SYNC')
   if (request.method === 'POST' && url.pathname === '/api/sync/global') return acceptTask(response, 'GLOBAL_SYNC')
-  if (request.method === 'POST' && url.pathname === '/api/prices/refresh') {
-    const variant = JSON.parse(body === '' ? '{}' : body).variant
-    if (variant !== 'PROFIT' && variant !== 'DISCOVERY') {
-      return sendJson(response, 400, { error: 'INVALID_REQUEST', message: 'variant must be PROFIT or DISCOVERY' })
-    }
-    return acceptTask(response, `PRICE_REFRESH_${variant}`)
-  }
+  if (request.method === 'GET' && url.pathname === '/api/system/status') return sendJson(response, 200, {
+    running: false,
+    lastCheckedAt: null,
+    lastChangedAt: null,
+    lastRecipeSyncAt: null,
+    lastGraphRebuildAt: null,
+    lastFailure: null,
+    accountLastRefreshedAt: null,
+    accountRefreshScope: null,
+    cachedPriceItems: 0,
+    stalePriceItems: 0,
+    newestPriceFetchedAt: null,
+    priceCacheError: null
+  })
   if (request.method === 'GET' && url.pathname.startsWith('/api/sync/tasks/')) {
     return answerStatus(response, url.pathname.slice('/api/sync/tasks/'.length))
   }
@@ -184,23 +187,26 @@ async function run() {
       `The page at ${stub.origin} was not served by this script. Nothing was checked, and the ` +
         'browser may have been pointed at a real backend — stop whatever else is listening there.'
     )
-    await page.waitForSelector('[data-test="sync-controls"]', { timeout: TIMEOUT_MS })
+    await page.waitForSelector('[data-test="account-status"]', { timeout: TIMEOUT_MS })
+    check((await page.$('[data-test="price-cache-status"]')) !== null, 'The shared price-cache card was missing.')
+    check((await page.$('[data-test="sync-trigger-PRICE_REFRESH_PROFIT"]')) === null, 'A Profit-only price refresh action remained.')
+    check((await page.$('[data-test="sync-trigger-PRICE_REFRESH_DISCOVERY"]')) === null, 'A Discovery-only price refresh action remained.')
     check(
       apiRequestsTo('/api/sync').length === 0 && apiRequestsTo('/api/prices').length === 0,
       'Loading the page issued a synchronization request.'
     )
     check(
-      (await page.title()) === 'Synchronization · GW2 Crafting Tool',
+      (await page.title()) === 'System Status · GW2 Crafting Tool',
       `The document title did not name the open area: ${await page.title()}`
     )
-    record('synchronization area opened by its own URL, nothing triggered on load')
+    record('System Status opened with health cards and no price-refresh buttons')
 
-    for (const operation of ['ACCOUNT_SYNC', 'GLOBAL_SYNC', 'PRICE_REFRESH_PROFIT', 'PRICE_REFRESH_DISCOVERY']) {
+    for (const operation of ['ACCOUNT_SYNC', 'GLOBAL_SYNC']) {
       await page.click(`[data-test="sync-trigger-${operation}"]`)
     }
     const disabled = await page.$eval('[data-test="sync-trigger-ACCOUNT_SYNC"]', (button) => button.disabled)
     check(disabled, 'The account trigger stayed enabled while its task was unfinished.')
-    record('four triggers submitted, each button disabled while unfinished')
+    record('two useful admin actions submitted, each button disabled while unfinished')
 
     // While the account task is still unfinished: leaving the area and returning must keep it.
     await page.click('[data-test="nav-crafting"]')
@@ -208,14 +214,14 @@ async function run() {
       timeout: TIMEOUT_MS
     })
     check(
-      (await page.$('[data-test="sync-controls"]')) === null,
-      'The synchronization controls are still on the Crafting Profit page.'
+      (await page.$('[data-test="account-status"]')) === null,
+      'The System Status cards are still on the Crafting Profit page.'
     )
     const triggersBeforeReturn = apiRequestsTo('/api/sync/account').length
     const activity = await textOf(page, '[data-test="nav-sync-activity"]')
     check(/task[s]? running/.test(activity), `The activity indication was missing: ${activity}`)
     await page.click('[data-test="nav-synchronization"]')
-    await page.waitForSelector('[data-test="sync-controls"]', { timeout: TIMEOUT_MS })
+    await page.waitForSelector('[data-test="account-status"]', { timeout: TIMEOUT_MS })
     check(
       apiRequestsTo('/api/sync/account').length === triggersBeforeReturn,
       'Returning to the synchronization area submitted the operation again.'
@@ -240,15 +246,6 @@ async function run() {
     )
     record('failed task reported from an HTTP 200 status', failureText)
 
-    await waitForState(page, 'PRICE_REFRESH_PROFIT', 'Completed')
-    const lookupFailure = await textOf(page, '[data-test="sync-lookup-error-PRICE_REFRESH_DISCOVERY"]')
-    check(lookupFailure.includes('TASK_NOT_FOUND'), `Lookup failure lacks the backend code: ${lookupFailure}`)
-    check(
-      (await page.$('[data-test="sync-status-retry-PRICE_REFRESH_DISCOVERY"]')) === null,
-      'A status retry was offered for an identifier the backend cannot resolve.'
-    )
-    record('price variants kept apart', 'PROFIT completed, DISCOVERY reported as unresolvable')
-
     const lookupsWhenTerminal = apiRequestsTo('/api/sync/tasks/').length
     await page.waitForTimeout(6_000)
     check(
@@ -260,15 +257,13 @@ async function run() {
     const triggers = requests.filter(
       (request) =>
         request.method === 'POST' &&
-        (request.path.startsWith('/api/sync/') || request.path.startsWith('/api/prices/'))
+        request.path.startsWith('/api/sync/')
     )
-    check(triggers.length === 4, `Expected exactly four triggers, saw ${triggers.length}.`)
+    check(triggers.length === 2, `Expected exactly two admin triggers, saw ${triggers.length}.`)
     const asText = triggers.map((trigger) => `${trigger.path} ${trigger.body}`).join(' | ')
     check(asText.includes('/api/sync/account {}'), `Account trigger body was not empty: ${asText}`)
     check(asText.includes('/api/sync/global {}'), `Global trigger body was not empty: ${asText}`)
-    check(asText.includes('{"variant":"PROFIT"}'), `Profit variant not sent: ${asText}`)
-    check(asText.includes('{"variant":"DISCOVERY"}'), `Discovery variant not sent: ${asText}`)
-    record('each trigger sent exactly once, with the documented body', asText)
+    record('each admin action sent exactly once, with the documented body', asText)
 
     const foreignCalls = browserCalls.filter((path) => path !== '/' && !path.startsWith('/api/') && !path.startsWith('/assets/'))
     check(foreignCalls.length === 0, `Calls outside the backend API and page assets: ${foreignCalls.join(', ')}`)

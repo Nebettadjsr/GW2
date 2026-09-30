@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { defineComponent, h, KeepAlive, ref } from 'vue'
 import { ApiRequestError } from '@/api/http'
 import { RECIPE_NOT_IN_CALCULATION, type CraftingProfitResolutionResponse } from '@/api/types'
+import type { SyncApi } from '@/api/syncApi'
 import CraftingProfitScreen from '../CraftingProfitScreen.vue'
 import {
   DEFAULT_SETTINGS,
@@ -18,6 +19,17 @@ import {
   resolutionResponse
 } from './fixtures'
 
+const completedSyncApi: SyncApi = {
+  async startAccountSync() { return { taskId: 'account', operation: 'ACCOUNT_SYNC', statusUrl: '/api/sync/tasks/account' } },
+  async startProfitDataRefresh() { return { taskId: 'profit-data', operation: 'ACCOUNT_SYNC', statusUrl: '/api/sync/tasks/profit-data' } },
+  async startGlobalSync() { return { taskId: 'global', operation: 'GLOBAL_SYNC', statusUrl: '/api/sync/tasks/global' } },
+  async startPriceRefresh(variant) { return { taskId: variant, operation: `PRICE_REFRESH_${variant}`, statusUrl: `/api/sync/tasks/${variant}` } },
+  async readTaskStatus(statusUrl) {
+    const taskId = statusUrl.split('/').at(-1) ?? 'task'
+    return { taskId, operation: taskId, state: 'SUCCEEDED', submittedAt: '', startedAt: '', finishedAt: '', failure: null }
+  }
+}
+
 /**
  * The association rules of `TARGET_ARCHITECTURE.md` 13.4, driven through the real screen.
  *
@@ -27,7 +39,7 @@ import {
  */
 
 async function openScreen(api: FakeCraftingApi): Promise<VueWrapper> {
-  const wrapper = mount(CraftingProfitScreen, { props: { api } })
+  const wrapper = mount(CraftingProfitScreen, { props: { api, refreshApi: completedSyncApi } })
   await flushPromises()
   return wrapper
 }
@@ -129,7 +141,7 @@ describe('Crafting Profit resolution detail association', () => {
       const tableReload = deferred<ReturnType<typeof profitResponse>>()
       api.resolutionHandler = () => reloaded.promise
       api.profitHandler = () => tableReload.promise
-      await wrapper.find('[data-test="reload"]').trigger('click')
+      await wrapper.find('[data-test="refresh-data-and-results"]').trigger('click')
       await flushPromises()
 
       // The old tree is gone the moment the reload starts; it is not left under a pending answer.
@@ -224,7 +236,7 @@ describe('Crafting Profit resolution detail association', () => {
       expect(rootItem(wrapper)).toBe('Iron Ingot')
 
       api.profitHandler = () => Promise.resolve(profitResponse([lessProfitableRow]))
-      await wrapper.find('[data-test="reload"]').trigger('click')
+      await wrapper.find('[data-test="refresh-data-and-results"]').trigger('click')
       await flushPromises()
 
       expect(wrapper.find('[data-test="selected-detail"]').text()).toContain('Choose a recipe')
@@ -287,7 +299,7 @@ describe('Crafting Profit resolution detail association', () => {
         return () => [
           h('button', { 'data-test': 'toggle', onClick: () => (open.value = !open.value) }, 'toggle'),
           h(KeepAlive, null, {
-            default: () => (open.value ? h(CraftingProfitScreen, { api: props.api }) : null)
+            default: () => (open.value ? h(CraftingProfitScreen, { api: props.api, refreshApi: completedSyncApi }) : null)
           })
         ]
       }

@@ -335,7 +335,9 @@ The application can synchronize:
 - tradeable Trading Post items,
 - recipe information.
 
-After a global recipe/item refresh, the Crafting Graph can be rebuilt.
+The backend automatically checks recipe and TP-tradeable ID lists every six hours by default (one-minute initial delay). Unchanged lists stop without full detail downloads. Changed recipe IDs trigger detail synchronization and, after persistence, a crafting-graph rebuild. Manual execution is available from the System Status page. The interval is configurable with `GW2_GLOBAL_REFRESH_INTERVAL_MS` and `GW2_GLOBAL_REFRESH_INITIAL_DELAY_MS`.
+
+Crafting Profit's **Refresh data & results** action runs only the account sync steps its current calculation consumes (bank, materials, account recipe knowledge, character crafting, recipes, and inventories; no account Luck request), refreshes missing/stale Profit TP quotes using the shared ten-minute freshness cache, and then recalculates. Profit and Discovery calculation endpoints both call the same price-cache pipeline before the calculation; their item-ID selectors differ, while storage, freshness rules and API batching are shared. The compact System Status page groups in-process account refresh scope/time, global check/change/recipe/graph timestamps, and TP cached/stale counts/newest fetched time into health cards; manual actions are account refresh and global-data check. It also shows the last global failure and refresh task state. Refresh timestamps reset on backend restart. Regular crafting use does not depend on the page. Account-scoped records are still single-user today.
 
 ---
 
@@ -559,7 +561,7 @@ Different views may therefore request different Trading Post datasets.
 
 Price refresh behavior is feature-dependent.
 
-The application currently uses manual price refresh operations rather than a centralized continuously updated price service.
+Trading Post prices use one shared persisted cache for Profit and Discovery. Each feature contributes its own relevant item IDs to the same batched fetch/upsert path. Missing or older-than-ten-minute quotes are fetched; fresh quotes are reused. There is no full-catalog price timer.
 
 ---
 

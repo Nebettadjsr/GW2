@@ -54,21 +54,6 @@ const missingForAllCrafts = computed<MissingItem[] | null>(
 )
 
 /*
- * The current API supplies matsSellValueCopper per craft, while the other
- * values used in the calculation below are totals for all counted crafts.
- *
- * This is therefore only a presentation-derived total. Ideally the backend
- * should expose this total directly in the CraftingRow contract.
- */
-const totalOwnMaterialsCopper = computed<number | null>(() => {
-  const row = props.row
-
-  if (row === null || row.craftableCount === null || row.matsSellValueCopper === null) return null
-
-  return row.matsSellValueCopper * row.craftableCount
-})
-
-/*
  * Name the price basis used for the calculation.
  *
  * EffectiveSettings currently supplies the configured sell-price mode.
@@ -89,12 +74,9 @@ const calculationSellPriceLabel = computed(() => {
 })
 
 function materialQuoteText(item: MissingItem): string {
-  if (item.price === null) return 'No price supplied'
-
-  return (
-    `Instant buy ${formatCopper(item.price.buyUnitCopper)} · ` +
-    `Instant sell ${formatCopper(item.price.sellUnitCopper)}`
-  )
+  const unit = item.purchaseUnitPriceCopper === null ? 'Unavailable' : formatCopper(item.purchaseUnitPriceCopper)
+  const total = item.totalPurchaseCostCopper === null ? 'Unavailable' : formatCopper(item.totalPurchaseCostCopper)
+  return `Price / item: ${unit} · Total: ${total}`
 }
 </script>
 
@@ -189,14 +171,14 @@ function materialQuoteText(item: MissingItem): string {
         <dl class="calculation" data-test="detail-calculation">
           <!-- Informational -->
           <dt class="calculation__info">
-            {{ calculationSellPriceLabel }}
+            Price {{ calculationSellPriceLabel }}
           </dt>
           <dd class="numeric calculation__info">
             {{ formatCopper(row.revenueCopper) }}
           </dd>
 
           <dt class="calculation__info">
-            Items
+            No. craftable Items
           </dt>
           <dd class="numeric calculation__info">
             {{ formatCount(outputItemCount) }}
@@ -221,11 +203,11 @@ function materialQuoteText(item: MissingItem): string {
           </dt>
           <dd class="numeric">
             <span
-              v-if="totalOwnMaterialsCopper !== null"
+              v-if="row.totalMatsSellValueCopper !== null"
               class="calc-negative"
               data-test="detail-own-material-cost"
             >
-              {{ formatCopper(totalOwnMaterialsCopper) }}
+              {{ formatCopper(row.totalMatsSellValueCopper) }}
             </span>
 
             <span v-else class="meta">
@@ -283,12 +265,12 @@ function materialQuoteText(item: MissingItem): string {
           </p>
 
           <dl v-else class="tp-prices__values">
-            <dt>Instant buy</dt>
+            <dt>Instant sell</dt>
             <dd class="numeric">
               {{ formatCopper(row.outputPrice.buyUnitCopper) }}
             </dd>
 
-            <dt>Instant sell</dt>
+            <dt>Listing sell</dt>
             <dd class="numeric">
               {{ formatCopper(row.outputPrice.sellUnitCopper) }}
             </dd>

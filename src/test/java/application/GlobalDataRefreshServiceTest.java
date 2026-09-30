@@ -37,6 +37,20 @@ class GlobalDataRefreshServiceTest {
     }
 
     @Test
+    void unchangedRecipeDataDoesNotRebuildTheGraph() throws Exception {
+        var gateway = new RecordingGateway();
+        gateway.recipesChanged = false;
+        var graphCache = new RecordingCache();
+        var service = new GlobalDataRefreshService(gateway, new CraftingGraphRebuildService(graphCache));
+
+        var result = service.refreshAll();
+
+        assertEquals(List.of("tradeableItems", "globalRecipes"), gateway.calls);
+        assertEquals(0, graphCache.rebuildCount);
+        assertEquals(false, result.graphRebuilt());
+    }
+
+    @Test
     void tradeableItemsFailureShortCircuitsRecipesAndGraphRebuild() {
         var gateway = new RecordingGateway();
         gateway.tradeableItemsFailure = new IOException("simulated tradeable-item fetch failure");
@@ -81,17 +95,20 @@ class GlobalDataRefreshServiceTest {
         final List<String> calls = new ArrayList<>();
         Exception tradeableItemsFailure;
         Exception globalRecipesFailure;
+        boolean recipesChanged = true;
 
         @Override
-        public void syncTpTradeableItems() throws Exception {
+        public boolean syncTpTradeableItems() throws Exception {
             if (tradeableItemsFailure != null) throw tradeableItemsFailure;
             calls.add("tradeableItems");
+            return true;
         }
 
         @Override
-        public void syncAllRecipesGlobalSafe() throws Exception {
+        public boolean syncAllRecipesGlobalSafe() throws Exception {
             if (globalRecipesFailure != null) throw globalRecipesFailure;
             calls.add("globalRecipes");
+            return recipesChanged;
         }
     }
 

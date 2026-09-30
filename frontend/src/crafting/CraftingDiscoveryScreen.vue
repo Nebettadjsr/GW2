@@ -203,7 +203,7 @@ function onReload(): void {
           :disabled="discovery.isLoading.value"
           @click="onReload"
         >
-          Reload results
+          Refresh prices &amp; results
         </button>
       </template>
     </PageHeader>

@@ -199,11 +199,6 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
   vertical-align: top;
 }
 
-/*
- * Not `position: sticky`: the enclosing region is the horizontal scroll container, so a sticky header
- * inside it would have nothing to stick to while the page scrolls vertically. Keeping the page's own
- * scrolling was the deliberate trade (STORY-WEB-004).
- */
 .profit-table thead th {
   background: var(--color-raised);
   white-space: nowrap;
@@ -233,7 +228,6 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
   align-items: inherit;
 }
 
-/* The basis of the column, so "Profit" and "Total profit" can never be confused for each other. */
 .column-note {
   color: var(--color-muted);
   font-size: var(--text-sm);
@@ -245,15 +239,10 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
   align-items: flex-end;
 }
 
-/*
- * The two totals carry the weight, in the header and in the cell, so "all crafts" and "per craft"
- * are told apart by type as well as by the note under the heading — never by color.
- */
 .profit-table .is-total {
   font-weight: 600;
 }
 
-/* The whole row selects, so the whole row says so to a pointer. The keyboard route is the button. */
 .profit-table tbody tr {
   cursor: pointer;
 }
@@ -262,7 +251,6 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
   background: var(--color-raised);
 }
 
-/* The row header is the recipe, so every value in the row has a name as well as a column. */
 .recipe {
   font-weight: 400;
 }
@@ -276,10 +264,6 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
   border-color: transparent;
   background: none;
   text-align: left;
-}
-
-.recipe-select:hover {
-  background: var(--color-raised);
 }
 
 .recipe-marker {
@@ -301,8 +285,6 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
   font-size: var(--text-sm);
 }
 
-/* Selection is a surface, a border, a marker glyph and `aria-current` — never color alone, and
-   visibly different from the shared focus outline. */
 tr.selected {
   background: var(--color-raised);
 }
@@ -312,7 +294,4 @@ tr.selected td {
   border-bottom-color: var(--color-highlight);
 }
 
-tr.selected .recipe-select {
-  border-color: var(--color-highlight);
-}
 </style>

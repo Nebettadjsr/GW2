@@ -25,6 +25,7 @@ import java.util.List;
  * @param craftableCount      completed crafts the domain determined were possible
  * @param buyCostCopper       total buy cost for {@code craftableCount} crafts
  * @param matsSellValueCopper material sell value per single craft
+ * @param totalMatsSellValueCopper authoritative total opportunity value of owned materials consumed
  * @param revenueCopper       gross revenue per single craft, with no selling fee deducted
  *                            (DOMAIN_SPEC.md 24/25)
  * @param profitCopper        profit per single craft, after DOMAIN_SPEC.md 25's 15% Trading Post fee
@@ -59,6 +60,7 @@ public record CraftingRowDto(int recipeId,
                              Integer craftableCount,
                              Integer buyCostCopper,
                              Integer matsSellValueCopper,
+                             Integer totalMatsSellValueCopper,
                              Integer revenueCopper,
                              Integer profitCopper,
                              Integer totalSellValueCopper,

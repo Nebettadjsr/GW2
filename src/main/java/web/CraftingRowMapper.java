@@ -4,6 +4,7 @@ import application.icons.ItemIconUrls;
 import craft.CraftResult;
 import craft.PriceQuote;
 import craft.Recipe;
+import craft.MaterialPurchaseCost;
 import repo.ItemRepository;
 import web.dto.CraftingRowDto;
 import web.dto.MissingItemDto;
@@ -59,7 +60,7 @@ final class CraftingRowMapper {
             return new CraftingRowDto(
                     recipe.recipeId, recipe.outputItemId, itemName(recipe.outputItemId, items),
                     recipe.outputCount, recipe.disciplinesText, recipe.minRating,
-                    false, null, null, null, null, null, null, null, null,
+                    false, null, null, null, null, null, null, null, null, null,
                     toQuote(tp.get(recipe.outputItemId)), List.of(), List.of(),
                     iconUrl(recipe.outputItemId, items));
         }
@@ -75,19 +76,21 @@ final class CraftingRowMapper {
                 result.craftableCount,
                 result.buyCostCopper,
                 result.matsSellValueCopper,
+                result.totalMatsSellValueCopper,
                 result.revenueCopper,
                 result.profitCopper,
                 result.totalSellValueCopper,
                 result.totalProfitCopper,
                 result.blockedReason == null ? null : result.blockedReason.name(),
                 toQuote(tp.get(recipe.outputItemId)),
-                toMissing(result.missingToBuy, items, tp),
-                toMissing(result.missingToBuyOne, items, tp),
+                toMissing(result.missingToBuy, result.materialPurchaseCosts, items, tp),
+                toMissing(result.missingToBuyOne, Map.of(), items, tp),
                 iconUrl(recipe.outputItemId, items));
     }
 
     /** Sorted by item id purely so the response is stable; the domain's maps are unordered. */
     private static List<MissingItemDto> toMissing(Map<Integer, Integer> missing,
+                                                  Map<Integer, MaterialPurchaseCost> purchaseCosts,
                                                   Map<Integer, ItemRepository.ItemInfo> items,
                                                   Map<Integer, PriceQuote> tp) {
 
@@ -95,9 +98,11 @@ final class CraftingRowMapper {
 
         List<MissingItemDto> out = new ArrayList<>(missing.size());
         for (Map.Entry<Integer, Integer> e : missing.entrySet()) {
-            out.add(new MissingItemDto(
-                    e.getKey(), itemName(e.getKey(), items), e.getValue(), toQuote(tp.get(e.getKey())),
-                    iconUrl(e.getKey(), items)));
+            MaterialPurchaseCost purchase = purchaseCosts.get(e.getKey());
+            out.add(new MissingItemDto(e.getKey(), itemName(e.getKey(), items), e.getValue(),
+                    toQuote(tp.get(e.getKey())), iconUrl(e.getKey(), items),
+                    purchase == null ? null : purchase.unitPriceCopper(),
+                    purchase == null ? null : purchase.totalPriceCopper()));
         }
         out.sort(Comparator.comparingInt(MissingItemDto::itemId));
         return out;

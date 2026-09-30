@@ -41,6 +41,7 @@ public class AccountSyncApiController {
      * duplicate the same work against the same rows.
      */
     static final String ACCOUNT_SYNC_OPERATION = "ACCOUNT_SYNC";
+    static final String PROFIT_ACCOUNT_SYNC_OPERATION = ACCOUNT_SYNC_OPERATION;
 
     /** This route's path, also used in its validation message. */
     static final String ACCOUNT_SYNC_PATH = "/api/sync/account";
@@ -81,5 +82,15 @@ public class AccountSyncApiController {
         return ResponseEntity.accepted()
                 .location(URI.create(statusPath))
                 .body(new SyncTaskAcceptedResponse(taskId, ACCOUNT_SYNC_OPERATION, statusPath));
+    }
+
+    @PostMapping(path = "/account/crafting-profit", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<SyncTaskAcceptedResponse> syncCraftingProfitData(
+            @RequestBody(required = false) Map<String, Object> request) {
+        SyncRequestValidation.rejectAnyRequestField("/api/sync/account/crafting-profit", request);
+        String taskId = taskService.submit(PROFIT_ACCOUNT_SYNC_OPERATION, accountRefreshService::refreshCraftingProfitData);
+        String statusPath = SyncTaskApiController.statusPath(taskId);
+        return ResponseEntity.accepted().location(URI.create(statusPath))
+                .body(new SyncTaskAcceptedResponse(taskId, PROFIT_ACCOUNT_SYNC_OPERATION, statusPath));
     }
 }

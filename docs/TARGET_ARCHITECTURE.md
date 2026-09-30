@@ -56,7 +56,7 @@ The frontend:
 - owns presentation state such as filtering, sorting, selection, loading, and error display,
 - may own feature-local calculations only where this architecture explicitly defines an exception.
 
-The frontend must not duplicate authoritative backend/domain calculations. Crafting Profit, Crafting Discovery, recursive recipe resolution, material valuation, opportunity cost, recipe eligibility, daily-item rules, and resolution-tree construction remain backend-owned.
+The frontend must not duplicate authoritative backend/domain calculations. Crafting Profit, Crafting Discovery, recursive recipe resolution, material valuation, opportunity cost, recipe eligibility, daily-item rules, and resolution-tree construction remain backend-owned. Crafting results supply total owned-material opportunity value and, for each required purchase, the selected acquisition unit price and purchase total; the frontend displays these values without scaling quantities or choosing between raw Trading Post quotes.
 
 Reusable UX/UI requirements are owned by `FRONTEND_UX_GUIDELINES.md`. Detailed user-visible Crafting Profit and Discovery semantics are owned by `DOMAIN_SPEC.md`.
 
@@ -222,9 +222,15 @@ The current local/single-user application may continue using `GW2_API_KEY` from 
 
 Synchronization is an application-level/backend responsibility. The frontend may trigger permitted operations and display status/freshness; the backend owns execution order, persistence, error handling, and synchronization state.
 
-Account-specific synchronization runs in the scope of one resolved Guild Wars 2 account. Global data must not be redundantly refreshed once per user.
+Account refreshes run for the account in the current single-user installation. Crafting Profit's explicit **Refresh data & results** workflow refreshes account bank, materials, recipe knowledge, Luck, character crafting ratings, and character recipes before recalculating; these are the datasets the current account-aware calculation can consume. Account state is intended to become user/account scoped. Account API state is not yet multi-tenant.
 
-Trading Post refresh is global backend-owned work. In the multi-user deployment it should run automatically on a backend-controlled schedule; the initial target cadence is approximately five minutes, subject to verification against actual API behavior and rate limits.
+Trading Post prices are a globally shared cache. A calculation supplies its feature's relevant item set to the shared refresh/cache pipeline; stored quotes younger than ten minutes are reused, and only missing/stale required IDs are fetched in existing GW2 API batches. Profit and Discovery may select different required IDs, but do not own separate price caches or fetch mechanisms. Prices are refreshed on demand rather than by a full-catalog timer.
+
+Global GW2 metadata and the crafting graph are shared. The backend checks cheap recipe and TP-tradeable ID lists every six hours by default (initial delay one minute), compares them with stored IDs, and downloads detailed recipe/item data only when those IDs changed. Recipe additions/removals trigger the necessary detail persistence; the graph is rebuilt only after changed recipe data has been persisted. The interval is configurable using `GW2_GLOBAL_REFRESH_INTERVAL_MS` and `GW2_GLOBAL_REFRESH_INITIAL_DELAY_MS`. Manual System Status execution and the scheduler submit the same application service and share in-process duplicate-task protection.
+
+The System Status page is an administrative diagnostics/maintenance area, not a prerequisite for normal feature use. It groups account refresh time/scope, global check/change/recipe/graph timestamps, and shared TP cache counts/fetch time into health cards with clear OK, Problem, Running, or not-run states. Manual actions are limited to account refresh and global-data check; TP prices refresh on demand through feature workflows. It shows currently tracked task states and last global failure. Refresh timestamps/task history are not durable telemetry. This is not a general monitoring platform.
+
+The current runtime is single-user and single-backend-instance. In-process duplicate-job prevention is sufficient. Future account data will be scoped/refreshed per account/user; GW2 global metadata, TP prices, and the crafting graph remain shared. If multiple backend replicas are introduced, global scheduled work and refresh deduplication will then require shared coordination, for example PostgreSQL-backed leases or advisory locks. That coordination is explicitly future work; do not introduce Redis, distributed locks, or a job queue for the current deployment.
 
 Per resolved `agent/user-decisions/UD-007-http-long-running-sync-approach.md`:
 
@@ -366,7 +372,8 @@ Review workflow and story disposition belong in the agent/planning documentation
 - **GW2 API ownership:** backend adapter boundary; browsers do not call ArenaNet directly.
 - **Multi-user persistence:** one shared database with shared global data and account-scoped data keyed by stable Guild Wars 2 account identity.
 - **Per-user GW2 API keys:** browser-held and supplied transiently when required; not durable server-side application data.
-- **Global Trading Post refresh:** backend-owned scheduled work; initial target approximately five minutes, subject to operational verification.
+- **Global metadata checks:** backend-owned scheduled ID-list checks; implementation default six hours, configurable by environment.
+- **Trading Post prices:** globally shared on-demand freshness cache, ten-minute TTL; no full-catalog timer.
 - **Hosting portability:** no unnecessary provider-specific dependency.
 
 ## To Be Decided

@@ -53,6 +53,20 @@ async function answer(path: string, init?: RequestInit): Promise<Response> {
   if (path === '/api/account/luck') return jsonResponse(accountLuck)
   if (path === '/api/account/bank') return jsonResponse(await bankAnswer)
   if (path === '/api/account/materials') return jsonResponse(materialStorage)
+  if (path === '/api/system/status') return jsonResponse({
+    running: false,
+    lastCheckedAt: null,
+    lastChangedAt: null,
+    lastRecipeSyncAt: null,
+    lastGraphRebuildAt: null,
+    lastFailure: null,
+    accountLastRefreshedAt: null,
+    accountRefreshScope: null,
+    cachedPriceItems: 0,
+    stalePriceItems: 0,
+    newestPriceFetchedAt: null,
+    priceCacheError: null
+  })
   if (path === '/api/sync/account') {
     return jsonResponse(
       {
@@ -153,10 +167,10 @@ describe('App shell', () => {
     await navigateTo(open, 'synchronization')
 
     expect(window.location.hash).toBe('#/synchronization')
-    expect(document.title).toBe('Synchronization · GW2 Crafting Tool')
+    expect(document.title).toBe('System Status · GW2 Crafting Tool')
     expect(currentDestination(open)).toBe('nav-synchronization')
     const heading = open.find('[data-test="page-heading"]')
-    expect(heading.text()).toBe('Synchronization')
+    expect(heading.text()).toBe('System Status')
     expect(document.activeElement).toBe(heading.element)
   })
 

@@ -2,8 +2,20 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '@/api/http'
 import type { SelectorOptions } from '@/api/types'
+import type { SyncApi } from '@/api/syncApi'
 import CraftingProfitScreen from '../CraftingProfitScreen.vue'
 import CraftingProfitTable from '../CraftingProfitTable.vue'
+
+const completedSyncApi: SyncApi = {
+  async startAccountSync() { return { taskId: 'account', operation: 'ACCOUNT_SYNC', statusUrl: '/api/sync/tasks/account' } },
+  async startProfitDataRefresh() { return { taskId: 'profit-data', operation: 'ACCOUNT_SYNC', statusUrl: '/api/sync/tasks/profit-data' } },
+  async startGlobalSync() { return { taskId: 'global', operation: 'GLOBAL_SYNC', statusUrl: '/api/sync/tasks/global' } },
+  async startPriceRefresh(variant) { return { taskId: variant, operation: `PRICE_REFRESH_${variant}`, statusUrl: `/api/sync/tasks/${variant}` } },
+  async readTaskStatus(statusUrl) {
+    const taskId = statusUrl.split('/').at(-1) ?? 'task'
+    return { taskId, operation: taskId, state: 'SUCCEEDED', submittedAt: '', startedAt: '', finishedAt: '', failure: null }
+  }
+}
 import {
   DEFAULT_SETTINGS,
   FakeCraftingApi,
@@ -23,7 +35,7 @@ import {
 } from './fixtures'
 
 async function openScreen(api: FakeCraftingApi): Promise<VueWrapper> {
-  const wrapper = mount(CraftingProfitScreen, { props: { api } })
+  const wrapper = mount(CraftingProfitScreen, { props: { api, refreshApi: completedSyncApi } })
   await flushPromises()
   return wrapper
 }
@@ -175,7 +187,7 @@ describe('CraftingProfitScreen', () => {
     await wrapper.find('[data-test="sort-outputName"]').trigger('click')
     const sortedBeforeReload = wrapper.findAll('[data-test="profit-row"]').map((row) => row.text())
 
-    await wrapper.find('[data-test="reload"]').trigger('click')
+    await wrapper.find('[data-test="refresh-data-and-results"]').trigger('click')
     await flushPromises()
 
     expect(api.profitRequests.at(3)).toEqual({
@@ -199,7 +211,7 @@ describe('CraftingProfitScreen', () => {
       characterOptions: selectorOptions.characterOptions.slice(0, 1)
     }
     api.selectorHandler = () => Promise.resolve(withoutThatCharacter)
-    await wrapper.find('[data-test="reload"]').trigger('click')
+    await wrapper.find('[data-test="refresh-data-and-results"]').trigger('click')
     await flushPromises()
 
     expect((wrapper.find('[data-test="scope-selector"]').element as HTMLSelectElement).value).toBe('ALL')
@@ -467,7 +479,7 @@ describe('CraftingProfitScreen', () => {
     await selectRecipe(wrapper, lessProfitableRow.outputName as string)
 
     api.profitHandler = () => Promise.resolve(profitResponse([profitableRow]))
-    await wrapper.find('[data-test="reload"]').trigger('click')
+    await wrapper.find('[data-test="refresh-data-and-results"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.find('[data-test="detail-name"]').exists()).toBe(false)
@@ -506,7 +518,7 @@ describe('CraftingProfitScreen', () => {
     await wrapper.find('[data-test="sort-outputName"]').trigger('click')
     await selectRecipe(wrapper, lessProfitableRow.outputName as string)
 
-    await wrapper.find('[data-test="reload"]').trigger('click')
+    await wrapper.find('[data-test="refresh-data-and-results"]').trigger('click')
     await flushPromises()
 
     expect((wrapper.find('[data-test="search"]').element as HTMLInputElement).value).toBe('o')
@@ -603,7 +615,7 @@ describe('CraftingProfitScreen', () => {
     expect(api.profitRequests).toEqual([{}])
   })
 
-  it('groupsTheDisplayControlsInsideTheCalculationControlsPanel', async () => {
+  it('keepsSearchAndFiltersInDisplayedResultsAndPlacesTheLimitInTheOpportunitiesToolbar', async () => {
     const api = new FakeCraftingApi()
 
     const wrapper = await openScreen(api)
@@ -617,8 +629,18 @@ describe('CraftingProfitScreen', () => {
     expect(controls.find('legend').text()).toBe('Displayed results')
     expect(wrapper.find('[data-test="calculation-controls"]').find('.control-column__title').text())
       .toBe('Calculation')
-    // The search narrows the listed rows, so it belongs to that subgroup too.
+    // Search and filters remain in Displayed results. The maximum and checkbox sit in the
+    // center toolbar cell between the Opportunities heading and TP price warning.
     expect(controls.element.contains(wrapper.find('[data-test="search"]').element)).toBe(true)
+    expect(controls.element.contains(wrapper.find('[data-test="max-displayed"]').element)).toBe(false)
+    expect(controls.element.contains(wrapper.find('[data-test="show-all"]').element)).toBe(false)
+    const toolbar = wrapper.find('.opportunities-toolbar')
+    const toolbarChildren = Array.from(toolbar.element.children)
+    expect(toolbarChildren[0]?.textContent).toContain('Opportunities')
+    expect(toolbarChildren[1]?.getAttribute('data-test')).toBe('opportunities-limit')
+    expect(toolbarChildren[1]?.contains(wrapper.find('[data-test="max-displayed"]').element)).toBe(true)
+    expect(toolbarChildren[1]?.contains(wrapper.find('[data-test="show-all"]').element)).toBe(true)
+    expect(toolbarChildren[2]?.classList.contains('opportunities-toolbar__warning')).toBe(true)
 
     // The prose the correction removes: the group's own note, the row-selection/keyboard
     // instructions and the paragraph explaining the display limit.
@@ -804,7 +826,7 @@ describe('CraftingProfitScreen', () => {
 
     // But a replacement result set without that recipe still clears it, as WEB-005 requires.
     api.profitHandler = () => Promise.resolve(profitResponse([profitableRow]))
-    await wrapper.find('[data-test="reload"]').trigger('click')
+    await wrapper.find('[data-test="refresh-data-and-results"]').trigger('click')
     await flushPromises()
     expect(wrapper.find('[data-test="detail-name"]').exists()).toBe(false)
   })
@@ -818,7 +840,7 @@ describe('CraftingProfitScreen', () => {
     await typeMaximum(wrapper, '3')
     await wrapper.find('[data-test="show-all"]').setValue(true)
 
-    await wrapper.find('[data-test="reload"]').trigger('click')
+    await wrapper.find('[data-test="refresh-data-and-results"]').trigger('click')
     await flushPromises()
 
     expect(isChecked(wrapper, 'filter-zero-craftable')).toBe(false)

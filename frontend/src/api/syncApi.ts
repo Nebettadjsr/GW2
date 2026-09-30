@@ -11,6 +11,7 @@ import type { PriceRefreshVariant, SyncTaskAccepted, SyncTaskStatus } from './ty
  */
 export interface SyncApi {
   startAccountSync(): Promise<SyncTaskAccepted>
+  startProfitDataRefresh(): Promise<SyncTaskAccepted>
   startGlobalSync(): Promise<SyncTaskAccepted>
   startPriceRefresh(variant: PriceRefreshVariant): Promise<SyncTaskAccepted>
   /** Reads one task's state from the location the acceptance advertised. */
@@ -24,6 +25,10 @@ export const syncApi: SyncApi = {
   /** The two sync triggers take no parameters; the backend rejects a body carrying any field. */
   startAccountSync(): Promise<SyncTaskAccepted> {
     return postJson<SyncTaskAccepted>('/sync/account', {})
+  },
+
+  startProfitDataRefresh(): Promise<SyncTaskAccepted> {
+    return postJson<SyncTaskAccepted>('/sync/account/crafting-profit', {})
   },
 
   startGlobalSync(): Promise<SyncTaskAccepted> {

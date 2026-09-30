@@ -71,9 +71,10 @@ class Gw2AppSyncGlobalDataIT extends ApplicationTest {
         }
 
         @Override
-        public void refreshAll() {
+        public RefreshResult refreshAll() {
             callCount++;
             ranOffFxThread = !javafx.application.Platform.isFxApplicationThread();
+            return new RefreshResult(false, false, false);
         }
     }
 }

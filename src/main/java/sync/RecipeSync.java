@@ -14,7 +14,7 @@ public final class RecipeSync {
 
     private RecipeSync() {}
 
-    public static void syncAllRecipesGlobalSafe() throws Exception {
+    public static boolean syncAllRecipesGlobalSafe() throws Exception {
 
         JsonNode idsRoot = Gw2ApiClient.getPublicArray(
                 "https://api.guildwars2.com/v2/recipes");
@@ -23,7 +23,12 @@ public final class RecipeSync {
 
         System.out.println("Global recipes to sync (SAFE): " + ids.size());
 
-        if (ids.isEmpty()) return;
+        Set<Integer> remoteIds = new HashSet<>(ids);
+        Set<Integer> localIds = new HashSet<>();
+        try (Connection con = Db.open(); PreparedStatement ps = con.prepareStatement("SELECT recipe_id FROM recipes"); ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) localIds.add(rs.getInt(1));
+        }
+        if (!IdListDiff.between(localIds, remoteIds).changed()) return false;
 
         Set<Integer> neededItemIds = new HashSet<>();
 
@@ -92,6 +97,25 @@ public final class RecipeSync {
         ItemSync.syncItemsByIds(neededItemIds);
 
         syncRecipeIngredients(ids);
+        removeDeletedRecipes(remoteIds);
+        return true;
+    }
+
+    private static void removeDeletedRecipes(Set<Integer> remoteIds) throws SQLException {
+        try (Connection con = Db.open()) {
+            con.setAutoCommit(false);
+            try (PreparedStatement ps = con.prepareStatement("DELETE FROM recipe_ingredients WHERE NOT (recipe_id = ANY (?))")) {
+                Integer[] ids = remoteIds.toArray(Integer[]::new);
+                ps.setArray(1, con.createArrayOf("int4", ids));
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = con.prepareStatement("DELETE FROM recipes WHERE NOT (recipe_id = ANY (?))")) {
+                Integer[] ids = remoteIds.toArray(Integer[]::new);
+                ps.setArray(1, con.createArrayOf("int4", ids));
+                ps.executeUpdate();
+            }
+            con.commit();
+        }
     }
 
     /**
@@ -165,6 +189,11 @@ public final class RecipeSync {
                 con.setAutoCommit(false);
 
                 try {
+                    try (PreparedStatement delete = con.prepareStatement(
+                            "DELETE FROM recipe_ingredients WHERE recipe_id = ANY (?)")) {
+                        delete.setArray(1, con.createArrayOf("int4", batch.toArray(Integer[]::new)));
+                        delete.executeUpdate();
+                    }
                     upsertRecipeIngredients(con, ingRows);
                     con.commit();
                 } catch (Exception ex) {

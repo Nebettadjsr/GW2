@@ -44,7 +44,7 @@ const AREAS = [
   // The structured salvage calculation needs the TP quotes and the Luck section needs the account
   // answer, so a page that rendered only one of them is not ready.
   { id: 'ecto', heading: 'Ecto Salvage', ready: '.panel:has(.salvage-calculation):has(.account-luck)' },
-  { id: 'synchronization', heading: 'Synchronization', ready: '[data-test="sync-controls"]' },
+  { id: 'synchronization', heading: 'System Status', ready: '[data-test="sync-controls"]' },
   { id: 'bank', heading: 'Bank', ready: '[data-test="bank-slots"]' },
   { id: 'materials', heading: 'Materials', ready: '[data-test="material-category"]' }
 ]

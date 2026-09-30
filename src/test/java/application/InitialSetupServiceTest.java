@@ -150,15 +150,17 @@ class InitialSetupServiceTest {
         RecordingGlobalDataGateway(List<String> calls) { this.calls = calls; }
 
         @Override
-        public void syncAllRecipesGlobalSafe() throws Exception {
+        public boolean syncAllRecipesGlobalSafe() throws Exception {
             if (globalRecipesFailure != null) throw globalRecipesFailure;
             calls.add("globalRecipes");
+            return true;
         }
 
         @Override
-        public void syncTpTradeableItems() throws Exception {
+        public boolean syncTpTradeableItems() throws Exception {
             if (tradeableItemsFailure != null) throw tradeableItemsFailure;
             calls.add("tradeableItems");
+            return true;
         }
     }
 

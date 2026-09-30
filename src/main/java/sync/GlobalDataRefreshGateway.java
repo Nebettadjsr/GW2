@@ -10,11 +10,11 @@ package sync;
  */
 public class GlobalDataRefreshGateway {
 
-    public void syncTpTradeableItems() throws Exception {
-        TpSync.syncTpTradeableItems();
+    public boolean syncTpTradeableItems() throws Exception {
+        return TpSync.syncTpTradeableItems();
     }
 
-    public void syncAllRecipesGlobalSafe() throws Exception {
-        RecipeSync.syncAllRecipesGlobalSafe();
+    public boolean syncAllRecipesGlobalSafe() throws Exception {
+        return RecipeSync.syncAllRecipesGlobalSafe();
     }
 }

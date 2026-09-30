@@ -93,11 +93,15 @@ Normal nodes omit bookkeeping rows for stock/crafted/bought/missing quantities,
 producing recipe and recipe ID, crafts run and produced total. This does not hide
 meaningful blocked/unavailable explanations. Internal values may remain in optional
 technical details without removing data from the backend contract. The normal
-Profit tree shows one `Value` from the backend's `effectiveCostCopper` field; it
-represents inclusive cash plus opportunity cost for that requirement. Do not add
-a per-node technical disclosure for the cash, opportunity and effective values;
-those remain available in the backend/API contract, with missing distinct from
-known zero.
+Profit tree shows one `Value` from the backend's `effectiveCostCopper` field. It is the
+economic cost of everything consumed by that requirement: the opportunity value of owned sellable
+materials plus the actual acquisition cost of materials that must be bought. It is inclusive of
+descendants exactly once, so a parent includes a crafted child's cost without adding the child's
+materials again. Owned bound/non-tradeable materials retain their established zero-opportunity-value
+rules; unavailable valuations remain unknown. The selected root covers the full counted quantity
+and reconciles with Calculation's total Own materials plus Bought materials. Do not add a per-node
+technical disclosure for the cash, opportunity and effective values; those remain available in the
+backend/API contract, with missing distinct from known zero.
 
 The normal selected detail should omit the redundant "THIS RECIPE IN THAT FRESH
 CALCULATION" summary. Preserve the backend-owned fresh resolution and its
@@ -110,8 +114,10 @@ For a valid selected result still present in the fresh calculation, display the
 actual backend resolution tree; a failed explanation request is not a substitute.
 Preserve the legitimate fresh-candidate absence and error behavior defined by
 that contract. When buying is enabled, show the materials still to buy for the
-already calculated craft count, with their quantities and supplied price
-information. Do not display a separate "FOR ONE FURTHER CRAFT" purchase section.
+already calculated craft count, with their quantities, the selected acquisition price per item
+actually used by the calculation, and the authoritative total purchase cost. Do not show both raw
+Trading Post quote alternatives in this shopping list. Do not display a separate "FOR ONE FURTHER
+CRAFT" purchase section.
 
 Selected details must not repeat generic labels such as "Buying is off", "Over
 the buy limit" or "Not blocked" where surrounding content already explains the
@@ -979,8 +985,10 @@ Revenue remains gross, not the fee-adjusted intermediate used for profit.
 
 Apply section 25's 15% fee to the corresponding total gross Sell Value,
 subtracting the existing total purchased-material and owned-material costs.
-The existing conceptual relationship of per-craft profit times craft count
-remains applicable under the same cost aggregation; UD-011 requires no separate
+Use the total costs of the accepted resource simulation: owned-material use can
+vary across executions as inventory is consumed, so the first execution's
+opportunity cost is not multiplied to form the total. Apply the fee per
+execution on the same basis as per-craft profit; UD-011 requires no separate
 transaction-rounding or sale-grouping adjustment. Craft count must still come
 from a resource simulation that prevents material reuse.
 

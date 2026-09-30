@@ -11,6 +11,8 @@ public class CraftResult {
 
     public final int buyCostCopper;          // TOTAL for craftableCount
     public final int matsSellValueCopper;    // PER 1 craft
+    public final int totalMatsSellValueCopper; // TOTAL opportunity value of consumed owned materials
+    public final Map<Integer, MaterialPurchaseCost> materialPurchaseCosts;
     public final int revenueCopper;          // PER 1 craft, GROSS (DOMAIN_SPEC.md §24)
 
     /**
@@ -62,7 +64,8 @@ public class CraftResult {
                        BlockedReason blockedReason) {
         this(outputItemId, discipline, craftableCount, missingToBuy, missingToBuyOne,
                 buyCostCopper, matsSellValueCopper, revenueCopper, profitCopper,
-                totalProfitCopper, revenueCopper * craftableCount, tree, blockedReason);
+                totalProfitCopper, revenueCopper * craftableCount, tree, blockedReason,
+                matsSellValueCopper * craftableCount, Map.of());
     }
 
     public CraftResult(int outputItemId, String discipline, int craftableCount,
@@ -71,6 +74,17 @@ public class CraftResult {
                        int buyCostCopper, int matsSellValueCopper, int revenueCopper,
                        int profitCopper, int totalProfitCopper, int totalSellValueCopper,
                        Node tree, BlockedReason blockedReason) {
+        this(outputItemId, discipline, craftableCount, missingToBuy, missingToBuyOne,
+                buyCostCopper, matsSellValueCopper, revenueCopper, profitCopper, totalProfitCopper,
+                totalSellValueCopper, tree, blockedReason, matsSellValueCopper * craftableCount, Map.of());
+    }
+
+    public CraftResult(int outputItemId, String discipline, int craftableCount,
+                       Map<Integer, Integer> missingToBuy, Map<Integer, Integer> missingToBuyOne,
+                       int buyCostCopper, int matsSellValueCopper, int revenueCopper, int profitCopper,
+                       int totalProfitCopper, int totalSellValueCopper, Node tree, BlockedReason blockedReason,
+                       int totalMatsSellValueCopper,
+                       Map<Integer, MaterialPurchaseCost> materialPurchaseCosts) {
         this.blockedReason = blockedReason;
         this.outputItemId = outputItemId;
         this.discipline = discipline;
@@ -79,6 +93,8 @@ public class CraftResult {
         this.missingToBuyOne = missingToBuyOne;
         this.buyCostCopper = buyCostCopper;
         this.matsSellValueCopper = matsSellValueCopper;
+        this.totalMatsSellValueCopper = totalMatsSellValueCopper;
+        this.materialPurchaseCosts = Map.copyOf(materialPurchaseCosts);
         this.revenueCopper = revenueCopper;
         this.profitCopper = profitCopper;
         this.totalProfitCopper = totalProfitCopper;

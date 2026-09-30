@@ -3,6 +3,7 @@ package application;
 import repo.CraftingGraphCache;
 import repo.RecipeRepository;
 import sync.GlobalDataRefreshGateway;
+import java.time.Instant;
 
 /**
  * Application-layer use case for the "Sync ALL tradeable Items, Recipes and (re)build Crafting
@@ -18,6 +19,12 @@ public class GlobalDataRefreshService {
 
     private final GlobalDataRefreshGateway gateway;
     private final CraftingGraphRebuildService graphRebuildService;
+    private volatile Instant lastCheckedAt;
+    private volatile Instant lastChangedAt;
+    private volatile Instant lastRecipeSyncAt;
+    private volatile Instant lastGraphRebuildAt;
+    private volatile String lastFailure;
+    private volatile boolean running;
 
     public GlobalDataRefreshService() {
         this(new GlobalDataRefreshGateway(),
@@ -30,9 +37,35 @@ public class GlobalDataRefreshService {
         this.graphRebuildService = graphRebuildService;
     }
 
-    public void refreshAll() throws Exception {
-        gateway.syncTpTradeableItems();
-        gateway.syncAllRecipesGlobalSafe();
-        graphRebuildService.rebuild();
+    public RefreshResult refreshAll() throws Exception {
+        running = true;
+        try {
+            boolean tradeableItemsChanged = gateway.syncTpTradeableItems();
+            boolean recipesChanged = gateway.syncAllRecipesGlobalSafe();
+            if (recipesChanged) {
+                lastRecipeSyncAt = Instant.now();
+                lastChangedAt = lastRecipeSyncAt;
+                graphRebuildService.rebuild();
+                lastGraphRebuildAt = Instant.now();
+            }
+            if (tradeableItemsChanged || recipesChanged) lastChangedAt = Instant.now();
+            lastCheckedAt = Instant.now();
+            lastFailure = null;
+            return new RefreshResult(tradeableItemsChanged, recipesChanged, recipesChanged);
+        } catch (Exception failure) {
+            lastCheckedAt = Instant.now();
+            lastFailure = failure.getClass().getSimpleName();
+            throw failure;
+        } finally {
+            running = false;
+        }
+    }
+
+    public record RefreshResult(boolean tradeableItemsChanged, boolean recipesChanged, boolean graphRebuilt) {}
+    public record Status(boolean running, Instant lastCheckedAt, Instant lastChangedAt,
+                         Instant lastRecipeSyncAt, Instant lastGraphRebuildAt, String lastFailure) {}
+
+    public Status status() {
+        return new Status(running, lastCheckedAt, lastChangedAt, lastRecipeSyncAt, lastGraphRebuildAt, lastFailure);
     }
 }

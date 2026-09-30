@@ -310,7 +310,7 @@ Phase 5. The browser/backend contract and web frontend should exist before intro
 - Migrate the existing single-user data into the account-scoped schema.
 - Make account sync resolve the supplied GW2 API key to the stable GW2 account identity and reuse existing data for replacement keys.
 - Add cross-account isolation tests covering repositories, application services and HTTP endpoints.
-- Replace per-user Trading Post refresh UI behavior with a backend-owned approximately five-minute refresh schedule and shared results.
+- Keep Trading Post prices in a shared on-demand cache, refreshing only missing/stale required IDs; no full-catalog timer is planned while this remains a single backend instance.
 - Review other global refresh operations for duplicate multi-user triggering and centralize/coalesce them where appropriate.
 - Add account activity tracking and document the deferred evidence-based stale-account cleanup policy.
 

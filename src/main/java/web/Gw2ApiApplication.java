@@ -10,6 +10,7 @@ import application.GlobalDataRefreshService;
 import application.MaterialStorageService;
 import application.ItemReadService;
 import application.TradingPostPriceRefreshService;
+import application.TradingPostPriceCacheStatusService;
 import application.icons.IconDelivery;
 import infra.icons.FilesystemIconStore;
 import infra.icons.HttpIconImageFetcher;
@@ -18,6 +19,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import repo.AppConfig;
 import repo.AccountLuckSchema;
 import repo.ItemIconMetadataRepository;
@@ -37,6 +39,7 @@ import java.util.function.Supplier;
  * ({@code GW2_API_PORT}, see {@code application.properties}), never from a hard-coded value.
  */
 @SpringBootApplication
+@EnableScheduling
 public class Gw2ApiApplication {
 
     public static void main(String[] args) {
@@ -118,6 +121,11 @@ public class Gw2ApiApplication {
     @Bean
     public TradingPostPriceRefreshService tradingPostPriceRefreshService() {
         return new TradingPostPriceRefreshService();
+    }
+
+    @Bean
+    public TradingPostPriceCacheStatusService tradingPostPriceCacheStatusService() {
+        return new TradingPostPriceCacheStatusService();
     }
 
     /**

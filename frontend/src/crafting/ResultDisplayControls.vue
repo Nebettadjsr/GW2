@@ -70,9 +70,6 @@ function onNonPositiveProfitChange(event: Event): void {
         Hide profit per craft ≤ 0
       </label>
     </div>
-    <div class="display-controls__limit">
-      <slot name="limit" />
-    </div>
   </fieldset>
 </template>
 
@@ -114,10 +111,4 @@ function onNonPositiveProfitChange(event: Event): void {
   gap: var(--space-2);
 }
 
-.display-controls__limit {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-}
 </style>

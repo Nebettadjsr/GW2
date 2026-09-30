@@ -36,6 +36,20 @@ function detailOf(
   })
 }
 
+function withPurchaseDetails(
+  row: CraftingRow,
+  prices: Record<number, { unit: number | null; total: number | null }>
+): CraftingRow {
+  return {
+    ...row,
+    missingToBuy: row.missingToBuy?.map((item) => ({
+      ...item,
+      purchaseUnitPriceCopper: prices[item.itemId]?.unit ?? null,
+      totalPurchaseCostCopper: prices[item.itemId]?.total ?? null
+    })) as CraftingRow['missingToBuy']
+  } as CraftingRow
+}
+
 function selectedResultNormalText(detail: ReturnType<typeof detailOf>): string {
   const copy = detail.find('[data-test="selected-detail"]').element.cloneNode(true) as HTMLElement
   copy.querySelector('[data-test="detail-diagnostics"]')?.remove()
@@ -196,24 +210,31 @@ describe('SelectedResultDetail', () => {
     expect(detail.find('[data-test="detail-diagnostics"]').attributes('open')).toBeUndefined()
 
     expect(detail.find('[data-test="missing-item"]').text()).toContain('Charged Core')
-    expect(detail.find('[data-test="missing-item"]').text()).toContain('No price supplied')
+    expect(detail.find('[data-test="missing-item"]').text()).toContain('Price / item: Unavailable')
   })
 
-  it('showsTheCountedCraftPurchasesUnderTheirOwnBasisAndNoSecondList', () => {
-    const detail = detailOf(lossRow)
+  it('showsOnlyTheSelectedPurchasePriceAndAuthoritativePurchaseTotal', () => {
+    const detail = detailOf(withPurchaseDetails(lossRow, {
+      55: { unit: 24, total: 192 },
+      56: { unit: null, total: null }
+    }))
 
     const forAll = detail.findAll('[data-test="missing-item"]').map((item) => item.text())
     expect(forAll).toHaveLength(2)
     expect(forAll[0]).toContain('Silver Ore')
     expect(forAll[0]).toContain('×8')
-    expect(forAll[0]).toContain('Instant buy 20c')
+    expect(forAll[0]).toContain('Price / item: 24c')
+    expect(forAll[0]).toContain('Total: 1s 92c')
+    expect(forAll[0]).not.toContain('20c')
+    expect(forAll[0]).not.toContain('Instant buy')
+    expect(forAll[0]).not.toContain('Instant sell')
     // No name supplied for this material: its id identifies it, and nothing is invented.
     expect(forAll[1]).toContain('Item #56')
-    expect(forAll[1]).toContain('No price supplied')
+    expect(forAll[1]).toContain('Price / item: Unavailable')
+    expect(forAll[1]).toContain('Total: Unavailable')
 
-    // The list is under the basis the contract gives it, and no total is produced from it.
+    // The list is under the basis the contract gives it; purchase totals come from the backend.
     expect(detail.text()).toContain('For all 4 crafts counted')
-    expect(detail.text()).not.toContain('no shopping total is worked out here')
 
     // DOMAIN_SPEC 2.1.1 removes the separate one-further-craft section. The row still supplies
     // `missingToBuyOne` (2 × Silver Ore here), and none of it reaches the screen.
@@ -223,6 +244,38 @@ describe('SelectedResultDetail', () => {
     expect(detail.text()).not.toContain('For one further craft')
     // The one-further-craft quantity of the same material was 2; only the counted-craft 8 is shown.
     expect(forAll[0]).not.toContain('×2')
+  })
+
+  it('rendersTheBackendSelectedPriceForInstantAndListingAcquisitionModes', () => {
+    const instant = detailOf(withPurchaseDetails(lossRow, {
+      55: { unit: 24, total: 192 }
+    }), null, { ...DEFAULT_SETTINGS, listingBuy: false })
+    const listing = detailOf(withPurchaseDetails(lossRow, {
+      55: { unit: 20, total: 160 }
+    }), null, { ...DEFAULT_SETTINGS, listingBuy: true })
+
+    expect(instant.find('[data-test="missing-item"]').text()).toContain('Price / item: 24c')
+    expect(instant.find('[data-test="missing-item"]').text()).toContain('Total: 1s 92c')
+    expect(listing.find('[data-test="missing-item"]').text()).toContain('Price / item: 20c')
+    expect(listing.find('[data-test="missing-item"]').text()).toContain('Total: 1s 60c')
+  })
+
+  it('keepsZeroPurchasePriceDistinctFromMissingPrice', () => {
+    const zeroPriceRow = withPurchaseDetails(lossRow, {
+      55: { unit: 0, total: 0 }
+    })
+    const unknownPriceRow = withPurchaseDetails(lossRow, {
+      55: { unit: null, total: null }
+    })
+
+    expect(detailOf(zeroPriceRow).find('[data-test="missing-item"]').text())
+      .toContain('Price / item: 0c')
+    expect(detailOf(zeroPriceRow).find('[data-test="missing-item"]').text())
+      .toContain('Total: 0c')
+    expect(detailOf(unknownPriceRow).find('[data-test="missing-item"]').text())
+      .toContain('Price / item: Unavailable')
+    expect(detailOf(unknownPriceRow).find('[data-test="missing-item"]').text())
+      .toContain('Total: Unavailable')
   })
 
   it('keepsAnEmptyMaterialListApartFromAnUnsuppliedOne', () => {
@@ -243,7 +296,7 @@ describe('SelectedResultDetail', () => {
     const blocked = detailOf(priceUnavailableRow)
     expect(blocked.findAll('[data-test="missing-item"]')).toHaveLength(1)
     expect(blocked.find('[data-test="missing-item"]').text()).toContain('Charged Core')
-    expect(blocked.find('[data-test="missing-item"]').text()).toContain('No price supplied')
+    expect(blocked.find('[data-test="missing-item"]').text()).toContain('Price / item: Unavailable')
   })
 
   it('identifiesARecipeWithNoSuppliedNameByItsItemId', () => {
@@ -272,7 +325,7 @@ describe('SelectedResultDetail', () => {
 
     expect(detail.find('[data-test="detail-quote-heading"]').text()).toBe('Trading Post price / item')
     const quote = detail.find('[data-test="detail-output-quote"]').text()
-    expect(quote).toContain('Instant buy')
+      expect(quote).not.toContain('Instant buy')
     expect(quote).toContain('4s 70c')
     expect(quote).toContain('Instant sell')
     expect(detail.find('[data-test="detail-quote-basis"]').exists()).toBe(false)

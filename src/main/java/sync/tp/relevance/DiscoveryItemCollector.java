@@ -5,6 +5,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.HashSet;
 import java.util.Set;
+import sync.tp.TpPriceFreshness;
 
 public final class DiscoveryItemCollector {
 
@@ -37,10 +38,8 @@ public final class DiscoveryItemCollector {
         FROM relevant_items i
         JOIN tp_tradeable_items t ON t.item_id = i.item_id
         LEFT JOIN tp_prices tp ON tp.item_id = i.item_id
-        WHERE tp.item_id IS NULL
-           OR tp.fetched_at IS NULL
-           OR tp.fetched_at < (now() - interval '10 minutes')
-        """;
+        WHERE
+        """ + TpPriceFreshness.STALE_SQL_PREDICATE;
 
     public Set<Integer> collect(Connection con) throws Exception {
         Set<Integer> itemIds = new HashSet<>();

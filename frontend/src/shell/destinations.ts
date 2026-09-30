@@ -26,7 +26,7 @@ export const DESTINATIONS: readonly Destination[] = [
   { id: 'crafting', path: '#/crafting', label: 'Crafting Profit' },
   { id: 'discovery', path: '#/discovery', label: 'Crafting Discovery' },
   { id: 'ecto', path: '#/ecto', label: 'Ecto Salvage' },
-  { id: 'synchronization', path: '#/synchronization', label: 'Synchronization' },
+  { id: 'synchronization', path: '#/synchronization', label: 'System Status' },
   { id: 'bank', path: '#/bank', label: 'Bank' },
   { id: 'materials', path: '#/materials', label: 'Materials' }
 ]

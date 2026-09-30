@@ -24,11 +24,11 @@ public class TradingPostPriceRefreshService {
         this.gateway = gateway;
     }
 
-    public void refreshForDiscovery() throws Exception {
+    public synchronized void refreshForDiscovery() throws Exception {
         gateway.syncTpPricesForDiscovery();
     }
 
-    public void refreshForProfit() throws Exception {
+    public synchronized void refreshForProfit() throws Exception {
         gateway.syncTpPricesForProfit();
     }
 }

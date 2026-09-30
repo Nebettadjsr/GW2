@@ -168,6 +168,18 @@ class AccountSyncApiControllerTest {
     }
 
     @Test
+    void profitWorkflowUsesTheExistingAccountTaskKeyAndNarrowRefreshUseCase() throws Exception {
+        String statusUrl = mockMvc.perform(post("/api/sync/account/crafting-profit"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.operation").value("ACCOUNT_SYNC"))
+                .andReturn().getResponse().getHeader("Location");
+
+        assertEquals("SUCCEEDED", awaitTerminalState(statusUrl));
+        assertEquals(1, refreshService.profitRefreshCalls());
+        assertEquals(0, refreshService.refreshAllCalls());
+    }
+
+    @Test
     void aSecondTriggerWhileTheFirstIsUnfinishedIsRefusedWithoutDelegatingAgain() throws Exception {
         refreshService.blockUntilReleased();
         String statusUrl = accept();
@@ -235,6 +247,7 @@ class AccountSyncApiControllerTest {
     private static final class ControlledAccountRefreshService extends AccountRefreshService {
 
         private final AtomicInteger refreshAllCalls = new AtomicInteger();
+        private final AtomicInteger profitRefreshCalls = new AtomicInteger();
         private final CountDownLatch entered = new CountDownLatch(1);
         private final CountDownLatch released = new CountDownLatch(1);
         private volatile boolean blocking;
@@ -246,6 +259,11 @@ class AccountSyncApiControllerTest {
             if (blocking && !released.await(TIMEOUT.toSeconds(), TimeUnit.SECONDS)) {
                 throw new AssertionError("blocked refreshAll() was never released");
             }
+        }
+
+        @Override
+        public void refreshCraftingProfitData() {
+            profitRefreshCalls.incrementAndGet();
         }
 
         void blockUntilReleased() {
@@ -262,6 +280,10 @@ class AccountSyncApiControllerTest {
 
         int refreshAllCalls() {
             return refreshAllCalls.get();
+        }
+
+        int profitRefreshCalls() {
+            return profitRefreshCalls.get();
         }
     }
 }

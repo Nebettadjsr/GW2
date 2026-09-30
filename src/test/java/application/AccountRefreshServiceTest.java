@@ -97,6 +97,15 @@ class AccountRefreshServiceTest {
     }
 
     @Test
+    void refreshCraftingProfitDataSyncsInputsWithoutUnrelatedLuckRequest() throws Exception {
+        var gateway = new RecordingGateway();
+
+        new AccountRefreshService(gateway).refreshCraftingProfitData();
+
+        assertEquals(List.of("bank", "materials", "recipes", "characters"), gateway.calls);
+    }
+
+    @Test
     void refreshMaterialsAndRecipesShortCircuitsRecipesWhenMaterialsFail() {
         var gateway = new RecordingGateway();
         gateway.materialsFailure = new RuntimeException("simulated materials fetch failure");

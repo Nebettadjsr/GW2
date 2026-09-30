@@ -34,7 +34,6 @@ const TERMINAL_STATES: readonly string[] = ['SUCCEEDED', 'FAILED']
 export interface SyncOperationView {
   readonly key: SyncOperationKey
   readonly label: string
-  readonly description: string
   /** The trigger request is in flight; the backend has not accepted or refused it yet. */
   isSubmitting: boolean
   /** A task of this operation is tracked and has not reached a terminal state here. */
@@ -206,7 +205,6 @@ function createView(operation: SyncOperation): SyncOperationView {
   return reactive({
     key: operation.key,
     label: operation.label,
-    description: operation.description,
     isSubmitting: false,
     isTracking: false,
     taskId: null as string | null,

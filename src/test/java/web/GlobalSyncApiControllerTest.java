@@ -335,7 +335,7 @@ class GlobalSyncApiControllerTest {
         private volatile Exception failure;
 
         @Override
-        public void refreshAll() throws Exception {
+        public RefreshResult refreshAll() throws Exception {
             refreshAllCalls.incrementAndGet();
             entered.countDown();
             if (blocking && !released.await(TIMEOUT.toSeconds(), TimeUnit.SECONDS)) {
@@ -344,6 +344,7 @@ class GlobalSyncApiControllerTest {
             if (failure != null) {
                 throw failure;
             }
+            return new RefreshResult(false, false, false);
         }
 
         void blockUntilReleased() {

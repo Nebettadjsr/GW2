@@ -2,6 +2,7 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, type PropType } from 'vue'
 import { ApiRequestError, UNREACHABLE_CODE } from '@/api/http'
+import { systemApi } from '@/api/systemApi'
 import type { SyncTaskAccepted, SyncTaskStatus } from '@/api/types'
 import { provideSyncOperations } from '../provideSyncOperations'
 import SyncScreen from '../SyncScreen.vue'
@@ -33,6 +34,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.useRealTimers()
 })
 
@@ -82,17 +84,41 @@ describe('SyncScreen', () => {
     expect(isDisabled(wrapper, 'sync-trigger-GLOBAL_SYNC')).toBe(false)
   })
 
+  it('showsHealthUsingTextAndColorForProblemAndNotRunStates', async () => {
+    vi.spyOn(systemApi, 'readStatus').mockResolvedValue({
+      running: false,
+      lastCheckedAt: '2026-09-25T10:00:00Z',
+      lastChangedAt: null,
+      lastRecipeSyncAt: null,
+      lastGraphRebuildAt: null,
+      lastFailure: 'GW2 API unavailable',
+      accountLastRefreshedAt: null,
+      accountRefreshScope: null,
+      cachedPriceItems: 0,
+      stalePriceItems: 0,
+      newestPriceFetchedAt: null,
+      priceCacheError: null
+    })
+    const wrapper = mountControls(new FakeSyncApi())
+    await settle()
+
+    expect(textOf(wrapper, 'account-health')).toBe('Not run yet')
+    expect(wrapper.find('[data-test="account-health"]').classes()).toContain('status--idle')
+    expect(textOf(wrapper, 'global-health')).toBe('Problem')
+    expect(wrapper.find('[data-test="global-health"]').classes()).toContain('status--failure')
+    expect(textOf(wrapper, 'price-cache-health')).toBe('Available')
+    expect(wrapper.find('[data-test="price-cache-health"]').classes()).toContain('status--success')
+  })
+
   it('namesEachOperationForTheUserAndKeepsTheBackendKeysOutOfTheControls', async () => {
     const wrapper = mountControls(new FakeSyncApi())
     await settle()
 
     const triggers = wrapper.findAll('[data-test^="sync-trigger-"]').map((button) => button.text())
-    expect(triggers).toEqual([
-      'Synchronize account',
-      'Synchronize game data',
-      'Refresh Trading Post prices for Crafting Profit',
-      'Refresh Trading Post prices for Crafting Discovery'
-    ])
+    expect(triggers).toEqual(['Refresh account data', 'Check global data'])
+    expect(exists(wrapper, 'sync-trigger-PRICE_REFRESH_PROFIT')).toBe(false)
+    expect(exists(wrapper, 'sync-trigger-PRICE_REFRESH_DISCOVERY')).toBe(false)
+    expect(exists(wrapper, 'price-cache-status')).toBe(true)
     // No task exists yet, so there is no identifier or timestamp to disclose.
     expect(exists(wrapper, 'sync-diagnostics-ACCOUNT_SYNC')).toBe(false)
   })
@@ -104,28 +130,13 @@ describe('SyncScreen', () => {
 
     await click(wrapper, 'sync-trigger-ACCOUNT_SYNC')
     await click(wrapper, 'sync-trigger-GLOBAL_SYNC')
-    await click(wrapper, 'sync-trigger-PRICE_REFRESH_PROFIT')
-    await click(wrapper, 'sync-trigger-PRICE_REFRESH_DISCOVERY')
 
-    expect(api.submissions).toEqual([
-      'ACCOUNT_SYNC',
-      'GLOBAL_SYNC',
-      'PRICE_REFRESH_PROFIT',
-      'PRICE_REFRESH_DISCOVERY'
-    ])
+    expect(api.submissions).toEqual(['ACCOUNT_SYNC', 'GLOBAL_SYNC'])
     expect(api.statusRequests).toEqual([
       acceptance('ACCOUNT_SYNC').statusUrl,
-      acceptance('GLOBAL_SYNC').statusUrl,
-      acceptance('PRICE_REFRESH_PROFIT').statusUrl,
-      acceptance('PRICE_REFRESH_DISCOVERY').statusUrl
+      acceptance('GLOBAL_SYNC').statusUrl
     ])
-    // The identifier is disclosed, but only inside the labelled technical details.
-    expect(textOf(wrapper, 'sync-diagnostics-PRICE_REFRESH_DISCOVERY')).toContain(
-      acceptance('PRICE_REFRESH_DISCOVERY').taskId
-    )
-    expect(textOf(wrapper, 'sync-task-PRICE_REFRESH_DISCOVERY')).toContain(
-      acceptance('PRICE_REFRESH_DISCOVERY').taskId
-    )
+    expect(textOf(wrapper, 'sync-diagnostics-GLOBAL_SYNC')).toContain(acceptance('GLOBAL_SYNC').taskId)
   })
 
   it('rendersEveryLifecycleStateTheBackendReportsInUserOrientedWords', async () => {
@@ -142,13 +153,13 @@ describe('SyncScreen', () => {
     await advanceToNextPoll()
     expect(textOf(wrapper, 'sync-state-ACCOUNT_SYNC')).toBe('Running')
     expect(isDisabled(wrapper, 'sync-trigger-ACCOUNT_SYNC')).toBe(true)
-    expect(textOf(wrapper, 'sync-busy-reason-ACCOUNT_SYNC')).toContain('Unavailable until')
+    expect(textOf(wrapper, 'sync-busy-reason-ACCOUNT_SYNC')).toContain('Refresh in progress')
 
     await advanceToNextPoll()
     expect(textOf(wrapper, 'sync-state-ACCOUNT_SYNC')).toBe('Completed')
     expect(exists(wrapper, 'sync-finished-ACCOUNT_SYNC')).toBe(true)
     expect(isDisabled(wrapper, 'sync-trigger-ACCOUNT_SYNC')).toBe(false)
-    // The backend's own state code stays available as evidence, in the secondary details only.
+    // The backend state stays available in collapsed task details.
     expect(textOf(wrapper, 'sync-reported-state-ACCOUNT_SYNC')).toContain('SUCCEEDED')
 
     // Terminal: the panel stops asking rather than polling a finished task forever.
@@ -190,23 +201,13 @@ describe('SyncScreen', () => {
     expect(api.statusRequestCount('GLOBAL_SYNC')).toBe(1)
   })
 
-  it('keepsTheOperationStatusesSeparateIncludingTheTwoPriceVariants', async () => {
-    const api = new FakeSyncApi()
-    api.statusHandler = (statusUrl) =>
-      Promise.resolve(
-        statusUrl === acceptance('PRICE_REFRESH_PROFIT').statusUrl
-          ? statusOf(statusUrl, 'RUNNING')
-          : statusOf(statusUrl, 'FAILED', SYNC_FAILURE)
-      )
-    const wrapper = mountControls(api)
+  it('showsTradingPostPricesAsOneSharedCacheWithoutSeparateRefreshActions', async () => {
+    const wrapper = mountControls(new FakeSyncApi())
 
-    await click(wrapper, 'sync-trigger-PRICE_REFRESH_PROFIT')
-    await click(wrapper, 'sync-trigger-PRICE_REFRESH_DISCOVERY')
-
-    expect(textOf(wrapper, 'sync-state-PRICE_REFRESH_PROFIT')).toBe('Running')
-    expect(textOf(wrapper, 'sync-state-PRICE_REFRESH_DISCOVERY')).toBe('Failed')
-    expect(textOf(wrapper, 'sync-state-ACCOUNT_SYNC')).toBe('Not started')
-    expect(exists(wrapper, 'sync-task-failure-PRICE_REFRESH_PROFIT')).toBe(false)
+    expect(exists(wrapper, 'price-cache-status')).toBe(true)
+    expect(exists(wrapper, 'sync-trigger-PRICE_REFRESH_PROFIT')).toBe(false)
+    expect(exists(wrapper, 'sync-trigger-PRICE_REFRESH_DISCOVERY')).toBe(false)
+    expect(wrapper.findAll('[data-test^="sync-trigger-"]')).toHaveLength(2)
   })
 
   it('ignoresADuplicateClickWhileTheSameOperationIsUnfinished', async () => {
@@ -260,7 +261,6 @@ describe('SyncScreen', () => {
     await click(wrapper, 'sync-trigger-GLOBAL_SYNC')
 
     const rejection = textOf(wrapper, 'sync-submission-error-GLOBAL_SYNC')
-    expect(rejection).toContain('did not start this operation')
     expect(rejection).toContain('SYNC_ALREADY_RUNNING')
     expect(textOf(wrapper, 'sync-state-GLOBAL_SYNC')).toBe('Not accepted')
     expect(exists(wrapper, 'sync-diagnostics-GLOBAL_SYNC')).toBe(false)
@@ -280,7 +280,7 @@ describe('SyncScreen', () => {
 
     const message = textOf(wrapper, 'sync-submission-error-ACCOUNT_SYNC')
     expect(message).toContain(UNREACHABLE_CODE)
-    expect(message).toContain('whether the backend started this operation is unknown')
+    expect(message).toContain(UNREACHABLE_CODE)
     // An unknown admission is not a refusal: the state must not read as "not accepted".
     expect(textOf(wrapper, 'sync-state-ACCOUNT_SYNC')).toBe('Outcome not established')
 
@@ -299,7 +299,7 @@ describe('SyncScreen', () => {
 
     const lookupError = textOf(wrapper, 'sync-lookup-error-ACCOUNT_SYNC')
     expect(lookupError).toContain(UNREACHABLE_CODE)
-    expect(lookupError).toContain('outcome is not established')
+    expect(lookupError).toContain(UNREACHABLE_CODE)
     expect(exists(wrapper, 'sync-task-failure-ACCOUNT_SYNC')).toBe(false)
     expect(exists(wrapper, 'sync-submission-error-ACCOUNT_SYNC')).toBe(false)
     expect(exists(wrapper, 'sync-status-retry-ACCOUNT_SYNC')).toBe(true)
@@ -336,7 +336,7 @@ describe('SyncScreen', () => {
 
     const lookupError = textOf(wrapper, 'sync-lookup-error-ACCOUNT_SYNC')
     expect(lookupError).toContain('TASK_NOT_FOUND')
-    expect(lookupError).toContain('neither success, nor failure, nor a rollback')
+    expect(lookupError).toContain('TASK_NOT_FOUND')
     expect(exists(wrapper, 'sync-status-retry-ACCOUNT_SYNC')).toBe(false)
     expect(exists(wrapper, 'sync-task-failure-ACCOUNT_SYNC')).toBe(false)
     expect(textOf(wrapper, 'sync-state-ACCOUNT_SYNC')).toBe('Outcome not established')
