@@ -33,7 +33,8 @@ function onNonPositiveProfitChange(event: Event): void {
 </script>
 
 <template>
-  <div class="display-controls" data-test="display-controls">
+  <fieldset class="display-controls" data-test="display-controls">
+    <legend>Displayed results</legend>
     <div class="display-controls__search">
       <slot name="search" />
     </div>
@@ -69,14 +70,30 @@ function onNonPositiveProfitChange(event: Event): void {
         Hide profit per craft ≤ 0
       </label>
     </div>
-  </div>
+    <div class="display-controls__limit">
+      <slot name="limit" />
+    </div>
+  </fieldset>
 </template>
 
 <style scoped>
 .display-controls {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+.display-controls > legend {
+  margin-bottom: var(--space-3);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .display-controls__search {
@@ -95,5 +112,12 @@ function onNonPositiveProfitChange(event: Event): void {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+.display-controls__limit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
 }
 </style>

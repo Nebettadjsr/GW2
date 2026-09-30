@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onActivated, onDeactivated, onMounted, watch } from 'vue'
+import { computed, onActivated, onDeactivated, onMounted, ref, watch } from 'vue'
 import { craftingApi, type CraftingApi } from '@/api/craftingApi'
 import type { EffectiveSettings } from '@/api/types'
 import TradingPostPriceDisclaimer from '@/items/TradingPostPriceDisclaimer.vue'
@@ -69,6 +69,7 @@ const isFilteredEmpty = computed(
 const displayedCount = computed(() => table.visibleRows.value.length)
 const matchingCount = computed(() => table.matchingRows.value.length)
 const calculatedCount = computed(() => profit.rows.value.length)
+const maximumRejected = ref(false)
 
 const activeRestrictions = computed<string[]>(() => {
   const active: string[] = []
@@ -120,6 +121,12 @@ function onSelect(recipeId: number): void {
 function onReload(): void {
   void profit.reload()
 }
+
+function onMaximumDisplayedChange(event: Event): void {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
+  maximumRejected.value = !table.setMaxDisplayed(Number(target.value))
+}
 </script>
 
 <template>
@@ -170,12 +177,7 @@ function onReload(): void {
           </div>
         </section>
 
-        <section
-          class="control-column control-column--display"
-          aria-labelledby="display-options-heading"
-        >
-          <h3 id="display-options-heading" class="control-column__title">Display options</h3>
-
+        <section class="control-column control-column--display">
           <ResultDisplayControls
             :hide-zero-craftable="table.hideZeroCraftable.value"
             :hide-not-allowed="table.hideNotAllowed.value"
@@ -195,6 +197,40 @@ function onReload(): void {
                   @input="onSearchInput"
                 />
               </label>
+            </template>
+
+            <template #limit>
+              <label class="results-limit">
+                <span>Show at most</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  data-test="max-displayed"
+                  :value="table.maxDisplayed.value"
+                  :disabled="table.showAll.value"
+                  @change="onMaximumDisplayedChange"
+                />
+              </label>
+
+              <label class="show-all">
+                <input
+                  type="checkbox"
+                  data-test="show-all"
+                  :checked="table.showAll.value"
+                  @change="table.showAll.value = ($event.target as HTMLInputElement).checked"
+                />
+                <span>Show all</span>
+              </label>
+
+              <p
+                v-if="maximumRejected"
+                class="notice notice--warning"
+                role="alert"
+                data-test="max-displayed-rejected"
+              >
+                Enter a maximum of at least 1.
+              </p>
             </template>
           </ResultDisplayControls>
         </section>
@@ -218,38 +254,6 @@ function onReload(): void {
       >
         <div class="opportunities-toolbar">
           <h2 id="crafting-results-heading">Opportunities</h2>
-
-          <div class="opportunities-toolbar__limit">
-            <label class="results-limit">
-              <span>Show at most</span>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                data-test="max-displayed"
-                :value="table.maxDisplayed.value"
-                :disabled="table.showAll.value"
-                @change="
-                  table.setMaxDisplayed(
-                    Number(($event.target as HTMLInputElement).value)
-                  )
-                "
-              />
-            </label>
-
-            <label class="show-all">
-              <input
-                type="checkbox"
-                data-test="show-all"
-                :checked="table.showAll.value"
-                @change="
-                  table.showAll.value =
-                    ($event.target as HTMLInputElement).checked
-                "
-              />
-              <span>Show all</span>
-            </label>
-          </div>
 
           <div class="opportunities-toolbar__warning">
             <TradingPostPriceDisclaimer v-if="profit.hasResult.value" />
@@ -381,19 +385,13 @@ function onReload(): void {
 
 .opportunities-toolbar {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: var(--space-4);
 }
 
 .opportunities-toolbar h2 {
   margin: 0;
-}
-
-.opportunities-toolbar__limit {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
 }
 
 .results-limit,
@@ -435,7 +433,8 @@ function onReload(): void {
 }
 
 .control-column--display {
-  border-left: 1px solid var(--color-border);
+  display: flex;
+  align-items: flex-start;
 }
 
 .control-column__title {

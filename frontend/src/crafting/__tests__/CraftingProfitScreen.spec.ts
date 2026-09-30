@@ -111,7 +111,9 @@ describe('CraftingProfitScreen', () => {
     const wrapper = await openScreen(api)
 
     expect((wrapper.find('[data-test="setting-allowBuying"]').element as HTMLInputElement).checked).toBe(true)
-    expect((wrapper.find('[data-test="setting-maxBuyCopper"]').element as HTMLInputElement).value).toBe('250')
+    expect((wrapper.find('[data-test="setting-maxBuyGold"]').element as HTMLInputElement).value).toBe('0')
+    expect((wrapper.find('[data-test="setting-maxBuySilver"]').element as HTMLInputElement).value).toBe('2')
+    expect((wrapper.find('[data-test="setting-maxBuyCopper"]').element as HTMLInputElement).value).toBe('50')
   })
 
   it('requestsFreshResultsForAChangedScope', async () => {
@@ -524,19 +526,18 @@ describe('CraftingProfitScreen', () => {
     expect(wrapper.find('[data-test="detail-hidden"]').text()).toContain('search or display filters')
   })
 
-  it('keepsTheEffectiveSettingsReadableWhileTheirGroupIsClosed', async () => {
+  it('rendersSettingsFromTheEffectiveResponse', async () => {
     const api = new FakeCraftingApi()
     api.profitHandler = () =>
       Promise.resolve(profitResponse(allRows, 'ALL', { ...DEFAULT_SETTINGS, allowBuying: true, maxBuyCopper: 250 }))
 
     const wrapper = await openScreen(api)
 
-    // Grouped behind one labelled control, with what is actually in effect still on screen.
-    expect(wrapper.find('[data-test="settings-disclosure"]').attributes('open')).toBeUndefined()
-    const summary = wrapper.find('[data-test="effective-settings"]').text()
-    expect(summary).toContain('buying allowed')
-    expect(summary).toContain('max buy 2s 50c')
-    expect(summary).toContain('own materials used')
+    // Values are reflected by the actual input controls; copper is split into coin units.
+    expect(isChecked(wrapper, 'setting-useOwnMats')).toBe(true)
+    expect(isChecked(wrapper, 'setting-allowBuying')).toBe(true)
+    expect((wrapper.find('[data-test="setting-maxBuySilver"]').element as HTMLInputElement).value).toBe('2')
+    expect((wrapper.find('[data-test="setting-maxBuyCopper"]').element as HTMLInputElement).value).toBe('50')
   })
 
   it('tellsTheDetailRegionsOwnStatesApart', async () => {
@@ -614,7 +615,8 @@ describe('CraftingProfitScreen', () => {
     expect(panel?.contains(controls.element)).toBe(true)
     expect(wrapper.find('[data-test="results-region"]').element.contains(controls.element)).toBe(false)
     expect(controls.find('legend').text()).toBe('Displayed results')
-    expect(wrapper.find('[data-test="calculation-controls"]').find('legend').text()).toBe('Calculation')
+    expect(wrapper.find('[data-test="calculation-controls"]').find('.control-column__title').text())
+      .toBe('Calculation')
     // The search narrows the listed rows, so it belongs to that subgroup too.
     expect(controls.element.contains(wrapper.find('[data-test="search"]').element)).toBe(true)
 

@@ -271,8 +271,8 @@ function materialQuoteText(item: MissingItem): string {
           class="tp-prices"
           data-test="detail-output-quote"
         >
-          <h4 class="tp-prices__heading">
-            Trading Post prices / item
+          <h4 class="tp-prices__heading" data-test="detail-quote-heading">
+            Trading Post price / item
           </h4>
 
           <p

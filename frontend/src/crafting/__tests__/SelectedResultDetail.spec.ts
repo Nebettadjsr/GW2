@@ -75,20 +75,19 @@ describe('SelectedResultDetail', () => {
     expect(detail.find('[data-test="detail-per-craft"]').exists()).toBe(false)
   })
 
-  it('statesTheBasisOfEachMoneyValueTheContractDefines', () => {
+  it('labelsTheCalculatedItemsAndSuppliedEconomicTotals', () => {
     const detail = detailOf(profitableRow)
 
-    const perCraft = detail.find('[data-test="detail-per-craft"]').text()
-    expect(perCraft).toContain('Output revenue')
-    expect(perCraft).toContain('3s 80c')
-    expect(detail.find('[data-test="detail-profit-per-craft"]').text()).toBe('+1s 0c')
-
-    // buyCostCopper is a total for every craft counted, so it belongs under the totals heading.
-    const totals = detail.find('[data-test="detail-totals"]').text()
-    expect(totals).toContain('2s 50c')
+    const calculation = detail.find('[data-test="detail-calculation"]').text()
+    expect(calculation).toContain('1 item sell price')
+    expect(calculation).toContain('3s 80c')
+    expect(calculation).toContain('Items')
+    expect(calculation).toContain('5')
+    expect(calculation).toContain('Bought materials')
+    expect(detail.find('[data-test="detail-buy-cost"]').text()).toBe('2s 50c')
     expect(detail.find('[data-test="detail-total-profit"]').text()).toBe('+9s 0c')
     expect(detail.text()).toContain('For all 5 crafts counted')
-    expect(detail.text()).toContain('For one craft')
+    expect(detail.text()).not.toContain('For one craft')
   })
 
   it('rendersTheSuppliedTotalRatherThanCountTimesPerCraftProfit', () => {
@@ -105,29 +104,24 @@ describe('SelectedResultDetail', () => {
 
     expect(detail.find('[data-test="detail-total-sell-value"]').text()).toBe('22s 22c')
     expect(detail.find('[data-test="detail-total-sell-value"]').text()).not.toBe('19s 0c')
-    expect(detail.find('[data-test="detail-totals"]').text()).toContain('Total sell value')
+    expect(detail.find('[data-test="detail-calculation"]').text()).toContain('Total sell value')
   })
 
   it('marksOnlyTheProfitFiguresAsBeingAfterTradingPostFees', () => {
     const detail = detailOf(profitableRow)
 
-    // UD-011 / DOMAIN_SPEC 2.1.1: the note belongs to Profit and Total profit, and to nothing else.
-    expect(detail.find('[data-test="detail-profit-fee-note"]').text()).toBe('after 15% TP fees')
+    // Total profit carries the fee note; this compact view does not repeat per-craft profit.
     expect(detail.find('[data-test="detail-total-profit-fee-note"]').text()).toBe('after 15% TP fees')
-    expect(detail.findAll('.value-note')).toHaveLength(2)
+    expect(detail.findAll('.value-note')).toHaveLength(1)
 
     // The gross values keep their own labels with no note: output revenue, the total sell value and
     // the market quotes are the backend's gross figures and are never described as net of a fee.
-    const perCraft = detail.find('[data-test="detail-per-craft"]').text()
-    expect(perCraft).toContain('Output revenue')
-    expect(perCraft).toContain('3s 80c')
     expect(detail.find('[data-test="detail-total-sell-value"]').text()).toBe('22s 22c')
     expect(detail.find('[data-test="detail-quote-heading"]').text()).toBe('Trading Post price / item')
     expect(detail.find('[data-test="detail-output-quote"]').text()).not.toContain('TP fees')
 
     // The profits themselves are still the supplied values; the note describes them, it does not
     // license this component to deduct anything of its own.
-    expect(detail.find('[data-test="detail-profit-per-craft"]').text()).toBe('+1s 0c')
     expect(detail.find('[data-test="detail-total-profit"]').text()).toBe('+9s 0c')
   })
 
@@ -183,7 +177,6 @@ describe('SelectedResultDetail', () => {
     const total = detail.find('[data-test="detail-total-profit"]')
     expect(total.text()).toBe('-10s 0c')
     expect(total.classes()).toContain('money--loss')
-    expect(detail.find('[data-test="detail-profit-per-craft"]').classes()).toContain('money--loss')
   })
 
   it('keepsNullApartFromZeroOnAnUnavailableResult', () => {
@@ -261,12 +254,13 @@ describe('SelectedResultDetail', () => {
     const buyCost = detailOf(profitableRow).find('[data-test="detail-buy-cost"]')
 
     // The word "cost" is on the label, so the treatment is never the only thing saying so.
-    expect(detailOf(profitableRow).find('[data-test="detail-totals"]').text()).toContain(
-      'Cost of materials to buy'
+    expect(detailOf(profitableRow).find('[data-test="detail-calculation"]').text()).toContain(
+      'Bought materials'
     )
-    expect(buyCost.classes()).toContain('money--cost')
-    // A cost is not a gain or a loss: it must not borrow the signed profit treatment.
+    expect(buyCost.classes()).toContain('calc-negative')
+    // A cost is not a gain or a loss: it uses the expense treatment, not profit's money tone.
     expect(buyCost.classes()).not.toContain('money--gain')
+    expect(buyCost.classes()).not.toContain('money--loss')
     expect(buyCost.text()).toBe('2s 50c')
   })
 
@@ -283,9 +277,8 @@ describe('SelectedResultDetail', () => {
     expect(quote).toContain('Instant sell')
     expect(detail.find('[data-test="detail-quote-basis"]').exists()).toBe(false)
 
-    const perCraft = detail.find('[data-test="detail-per-craft"]').text()
-    expect(perCraft).toContain('Output quantity')
-    expect(perCraft).toContain('2')
+    expect(detail.find('[data-test="detail-calculation"]').text()).toContain('Items')
+    expect(detail.find('[data-test="detail-calculation"]').text()).toContain('6')
   })
 
   it('linksToTheWikiOnlyWhenTheBackendNamedTheItem', () => {
