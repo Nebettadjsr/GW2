@@ -32,12 +32,16 @@ public record CraftingProfitRequest(ScopeDto scope, SettingsDto settings) {
      * field defaults to the value the JavaFX Crafting Profit view opens with, so an empty request
      * body reproduces the default page load.
      *
+     * <p>{@code useOwnMats}, {@code allowBuying} and {@code allowDailyCrafts} are independent:
+     * owned inventory, Trading Post purchases and daily craft operations are controlled only by
+     * their corresponding field. {@code allowDailyCrafts} defaults to false.
+     *
      */
     public record SettingsDto(Boolean useOwnMats,
                               Boolean allowBuying,
                               Integer maxBuyCopper,
                               Boolean listingSell,
                               Boolean listingBuy,
-                              Boolean dailyBuyInsteadOfCraft) {
+                              Boolean allowDailyCrafts) {
     }
 }

@@ -86,7 +86,7 @@ class CraftingProfitApiControllerTest {
                 .andExpect(jsonPath("$.settings.maxBuyCopper").value(10000))
                 .andExpect(jsonPath("$.settings.listingSell").value(false))
                 .andExpect(jsonPath("$.settings.listingBuy").value(false))
-                .andExpect(jsonPath("$.settings.dailyBuyInsteadOfCraft").value(true));
+                .andExpect(jsonPath("$.settings.allowDailyCrafts").value(false));
 
         StubProfitService used = factory.only();
         assertEquals(DiscChoice.Kind.ALL, used.capturedChoice.kind);
@@ -96,7 +96,7 @@ class CraftingProfitApiControllerTest {
         assertEquals(10_000, settings.maxBuyCopper);
         assertFalse(settings.listingSell);
         assertFalse(settings.listingBuy);
-        assertTrue(settings.dailyBuyInsteadOfCraft);
+        assertFalse(settings.allowDailyCrafts);
     }
 
     @Test
@@ -123,14 +123,15 @@ class CraftingProfitApiControllerTest {
                                             "characterName": "Aria", "rating": 400},
                                   "settings": {"useOwnMats": false, "allowBuying": true, "maxBuyCopper": 25000,
                                                "listingSell": true, "listingBuy": true,
-                                               "dailyBuyInsteadOfCraft": false}
+                                               "allowDailyCrafts": true}
                                 }"""))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.scope.kind").value("CHARACTER_DISCIPLINE"))
                 .andExpect(jsonPath("$.scope.discipline").value("Chef"))
                 .andExpect(jsonPath("$.scope.characterName").value("Aria"))
                 .andExpect(jsonPath("$.scope.rating").value(400))
-                .andExpect(jsonPath("$.settings.maxBuyCopper").value(25000));
+                .andExpect(jsonPath("$.settings.maxBuyCopper").value(25000))
+                .andExpect(jsonPath("$.settings.allowDailyCrafts").value(true));
 
         StubProfitService used = factory.only();
         assertEquals(DiscChoice.Kind.CHAR_DISCIPLINE, used.capturedChoice.kind);
@@ -144,7 +145,22 @@ class CraftingProfitApiControllerTest {
         assertEquals(25_000, settings.maxBuyCopper);
         assertTrue(settings.listingSell);
         assertTrue(settings.listingBuy);
-        assertFalse(settings.dailyBuyInsteadOfCraft);
+        assertTrue(settings.allowDailyCrafts);
+    }
+
+    @Test
+    void explicitDailyCraftFalseReachesRuntimeAndIsEchoedWithoutApplyingTheDefault() throws Exception {
+        factory.next(service -> service.canned = profitData(List.of(), Map.of(), Map.of(), Map.of()));
+
+        mockMvc.perform(post("/api/crafting/profit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"settings": {"allowDailyCrafts": false}}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.settings.allowDailyCrafts").value(false));
+
+        assertFalse(factory.only().capturedSettings.allowDailyCrafts);
     }
 
     @Test

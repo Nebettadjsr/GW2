@@ -6,20 +6,20 @@ public class CraftingSettings {
     public final int maxBuyCopper;
     public final boolean listingSell;   // false=instant sell, true=listing sell
     public final boolean listingBuy;
-    public final boolean dailyBuyInsteadOfCraft; // true = treat daily items as "buy", not "craft"
+    public final boolean allowDailyCrafts;
 
     public CraftingSettings(boolean useOwnMats,
                             boolean allowBuy,
                             int maxBuyCopper,
                             boolean listingSell,
                             boolean listingBuy,
-                            boolean dailyBuyInsteadOfCraft) {
+                            boolean allowDailyCrafts) {
         this.useOwnMats = useOwnMats;
         this.allowBuying = allowBuy;
         this.maxBuyCopper = maxBuyCopper;
         this.listingSell = listingSell;
         this.listingBuy = listingBuy;
-        this.dailyBuyInsteadOfCraft = dailyBuyInsteadOfCraft;
+        this.allowDailyCrafts = allowDailyCrafts;
     }
 
 }

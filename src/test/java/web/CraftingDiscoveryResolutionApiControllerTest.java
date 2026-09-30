@@ -112,7 +112,7 @@ class CraftingDiscoveryResolutionApiControllerTest {
                 .andExpect(jsonPath("$.calculation.settings.listingSell").value(true))
                 .andExpect(jsonPath("$.calculation.settings.listingBuy").value(true))
                 // Fixed by the Discovery flow, reported explicitly, never a selectable input.
-                .andExpect(jsonPath("$.calculation.settings.dailyBuyInsteadOfCraft").value(false))
+                .andExpect(jsonPath("$.calculation.settings.allowDailyCrafts").value(true))
                 .andExpect(jsonPath("$.consistency").value("FRESH_CALCULATION"))
                 .andExpect(jsonPath("$.treeBasis").value("SINGLE_OUTPUT_REQUIREMENT"))
                 .andExpect(jsonPath("$.treeStatus").value("AVAILABLE"))
@@ -131,7 +131,7 @@ class CraftingDiscoveryResolutionApiControllerTest {
         assertEquals("Aria", used.capturedChoice.charName);
         assertEquals(400, used.capturedChoice.rating);
         assertEquals("Bern", used.capturedInventoryCharacter);
-        assertFalse(used.capturedSettings.dailyBuyInsteadOfCraft);
+        assertTrue(used.capturedSettings.allowDailyCrafts);
         assertEquals(1_500, used.capturedSettings.maxBuyCopper);
     }
 
@@ -166,12 +166,12 @@ class CraftingDiscoveryResolutionApiControllerTest {
                 .andExpect(jsonPath("$.calculation.settings.maxBuyCopper").value(200000))
                 .andExpect(jsonPath("$.calculation.settings.listingSell").value(false))
                 .andExpect(jsonPath("$.calculation.settings.listingBuy").value(false))
-                .andExpect(jsonPath("$.calculation.settings.dailyBuyInsteadOfCraft").value(false));
+                .andExpect(jsonPath("$.calculation.settings.allowDailyCrafts").value(true));
 
         CraftingSettings settings = factory.only().capturedSettings;
         assertTrue(settings.allowBuying);
         assertEquals(200_000, settings.maxBuyCopper);
-        assertFalse(settings.dailyBuyInsteadOfCraft);
+        assertTrue(settings.allowDailyCrafts);
     }
 
     @Test

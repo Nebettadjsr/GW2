@@ -52,9 +52,9 @@ public record CraftingDiscoveryRequest(ScopeDto scope,
      * field defaults to the value the JavaFX Crafting Discovery view opens with - which differs
      * from the Profit view's defaults, notably in buying being on by default.
      *
-     * <p>{@code craft.CraftingSettings#dailyBuyInsteadOfCraft} is deliberately not an input here:
-     * the Discovery flow has always fixed it to false ("not relevant for discovery"), and this
-     * route maps the existing contract rather than widening it. The value actually used is still
+     * <p>{@code craft.CraftingSettings#allowDailyCrafts} is deliberately not an input here:
+     * the Discovery flow fixes it to true to preserve its existing daily crafting behavior, and
+     * this route maps the existing contract rather than widening it. The value actually used is still
      * echoed in the response's effective settings.
      */
     public record SettingsDto(Boolean useOwnMats,

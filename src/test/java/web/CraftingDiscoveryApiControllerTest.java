@@ -132,7 +132,7 @@ class CraftingDiscoveryApiControllerTest {
                 .andExpect(jsonPath("$.settings.listingSell").value(false))
                 .andExpect(jsonPath("$.settings.listingBuy").value(false))
                 // Not a request field: Discovery has always fixed it to false.
-                .andExpect(jsonPath("$.settings.dailyBuyInsteadOfCraft").value(false));
+                .andExpect(jsonPath("$.settings.allowDailyCrafts").value(true));
 
         CraftingSettings settings = factory.only().capturedSettings;
         assertTrue(settings.useOwnMats);
@@ -140,7 +140,7 @@ class CraftingDiscoveryApiControllerTest {
         assertEquals(200_000, settings.maxBuyCopper);
         assertFalse(settings.listingSell);
         assertFalse(settings.listingBuy);
-        assertFalse(settings.dailyBuyInsteadOfCraft);
+        assertTrue(settings.allowDailyCrafts);
     }
 
     @Test

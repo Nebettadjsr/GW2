@@ -249,6 +249,19 @@ The resolution tree is an authoritative backend/domain result explaining how a c
 
 The tree and summary result must use compatible calculation context/snapshots, preserve domain states and selected sourcing decisions, and associate asynchronous detail responses with the request/result that initiated them so stale responses cannot overwrite newer selections.
 
+For Crafting Profit, the tree explains the full output quantity represented by
+the fresh detail response's selected row. `craftableCount` is recipe executions;
+`outputCount` is output items per execution, so the requested root quantity is
+the row's counted executions multiplied by the recipe output count. The backend
+must resolve those executions through the ordinary resolver so inventory,
+storage, buying limits, daily operations, recipe eligibility and recursive
+requirements are applied normally. It must stop at the counted execution
+quantity rather than making an additional speculative craft. A zero-count row
+may return the first blocked attempt, explicitly identified as such. Discovery
+may retain its one-output-batch basis. The response's row, tree and `treeBasis`
+must make these distinctions explicit. No tree quantity or cost may be derived
+or scaled in the frontend.
+
 Missing/unavailable detail data must remain explicit; the frontend must not fabricate a result. Exact DTO fields and transport mechanics belong in feature/API specifications.
 
 ## 10.3 Domain states

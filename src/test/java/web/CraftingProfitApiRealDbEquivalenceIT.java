@@ -59,7 +59,7 @@ class CraftingProfitApiRealDbEquivalenceIT {
                 """
                         {"settings": {"useOwnMats": true, "allowBuying": true, "maxBuyCopper": 100000,
                                       "listingSell": true, "listingBuy": true,
-                                      "dailyBuyInsteadOfCraft": false}}""",
+                                      "allowDailyCrafts": false}}""",
                 DiscChoice.all(),
                 new CraftingSettings(true, true, CoinUtils.parseToCopper("10g"), true, true, false));
     }

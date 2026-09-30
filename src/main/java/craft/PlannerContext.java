@@ -95,7 +95,7 @@ public class PlannerContext {
                 0,
                 settings.listingSell,
                 settings.listingBuy,
-                settings.dailyBuyInsteadOfCraft);
+                settings.allowDailyCrafts);
 
         return new PlannerContext(recipesByOutput, tp, noBuySettings, allowedRecipeIds,
                 coordinatedRoster, eligibleCharactersByRecipeId, firstRecipeByKey);

@@ -31,7 +31,8 @@ final class CraftingProfitApiMapper {
     static final int DEFAULT_MAX_BUY_COPPER = 10_000; // the view's "1g" budget field default
     static final boolean DEFAULT_LISTING_SELL = false; // instant sell
     static final boolean DEFAULT_LISTING_BUY = false;  // instant buy
-    static final boolean DEFAULT_DAILY_BUY_INSTEAD_OF_CRAFT = true;
+    // Preserve the former Profit default: daily outputs were not crafted automatically.
+    static final boolean DEFAULT_ALLOW_DAILY_CRAFTS = false;
 
     private static final String SCOPE_ALL = "ALL";
     private static final String SCOPE_DISCIPLINE = "DISCIPLINE";
@@ -99,8 +100,8 @@ final class CraftingProfitApiMapper {
                 maxBuyCopper,
                 orDefault(settings == null ? null : settings.listingSell(), DEFAULT_LISTING_SELL),
                 orDefault(settings == null ? null : settings.listingBuy(), DEFAULT_LISTING_BUY),
-                orDefault(settings == null ? null : settings.dailyBuyInsteadOfCraft(),
-                        DEFAULT_DAILY_BUY_INSTEAD_OF_CRAFT));
+                orDefault(settings == null ? null : settings.allowDailyCrafts(),
+                        DEFAULT_ALLOW_DAILY_CRAFTS));
     }
 
     /** A validated request, in both its transport form (echoed back) and its application form. */
@@ -123,7 +124,7 @@ final class CraftingProfitApiMapper {
                     settings.maxBuyCopper(),
                     settings.listingSell(),
                     settings.listingBuy(),
-                    settings.dailyBuyInsteadOfCraft());
+                    settings.allowDailyCrafts());
         }
     }
 

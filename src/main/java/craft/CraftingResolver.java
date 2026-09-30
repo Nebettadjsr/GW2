@@ -128,7 +128,9 @@ public class CraftingResolver {
 
         boolean shouldTryCraft = true;
 
-        if (buyEval != null && firstRecipe != null) {
+        boolean allowedDailyCraft = DailyCrafts.isDailyOutput(itemId)
+                && ctx.settings.allowDailyCrafts;
+        if (buyEval != null && firstRecipe != null && !allowedDailyCraft) {
             int estimatedCraftFloor = estimateDirectCraftFloor(firstRecipe, ctx);
 
             // normalize to requested quantity
@@ -237,8 +239,8 @@ public class CraftingResolver {
 
         boolean isDaily = DailyCrafts.isDailyOutput(itemId);
 
-        // Daily mode = BUY -> this node may not be crafted directly
-        if (isDaily && ctx.settings.dailyBuyInsteadOfCraft) {
+        // Daily outputs may be crafted only when the independent daily-crafts setting permits it.
+        if (isDaily && !ctx.settings.allowDailyCrafts) {
             return blockedNeed(itemId, qtyRequested, BlockedReason.DAILY_LIMIT, recipe, null);
         }
 
@@ -319,7 +321,7 @@ public class CraftingResolver {
             int timesNeeded = ceilDiv(qtyRequested, recipe.outputCount);
             int times = timesNeeded;
 
-            // Daily mode = CRAFT -> at most one craft operation
+            // At most one daily craft operation is available in this planning state.
             if (isDaily) {
                 int left = state.dailyLeft(itemId, 1);
                 times = Math.min(timesNeeded, left);
@@ -354,13 +356,6 @@ public class CraftingResolver {
                         unsatisfiedChildReason = child.getBlockedReason();
                     }
                 }
-            }
-
-            if (ctx.settings.dailyBuyInsteadOfCraft && containsAnyDailyItem(craftResult)) {
-                craftResult.setQtyBlocked(qtyRequested);
-                craftResult.setBlockedReason(BlockedReason.DAILY_LIMIT);
-                craftResult.determineMode();
-                return craftResult;
             }
 
             if (!allChildrenSatisfied) {
@@ -512,22 +507,6 @@ public class CraftingResolver {
 
         directSellUnitCache.put(itemId, result);
         return result;
-    }
-
-    private boolean containsAnyDailyItem(ResolvedNeed need) {
-        if (need == null) return false;
-
-        if (DailyCrafts.isDailyOutput(need.getItemId())) {
-            return true;
-        }
-
-        for (ResolvedNeed child : need.getChildren()) {
-            if (containsAnyDailyItem(child)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

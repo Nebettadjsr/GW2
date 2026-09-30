@@ -4,7 +4,6 @@ import type { CraftingRow } from '@/api/types'
 import ItemIcon from '@/items/ItemIcon.vue'
 import { formatCopper, formatCount, formatSignedCopper, moneyTone } from './formatCopper'
 import { recipeLabel } from './recipeLabel'
-import { rowDiagnostic } from './rowState'
 import type { SortDirection, SortKey } from './useProfitTableView'
 
 /**
@@ -13,11 +12,8 @@ import type { SortDirection, SortKey } from './useProfitTableView'
  * materials value, profit per craft, total sell value and total profit
  * (`FRONTEND_UX_GUIDELINES.md` 4).
  *
- * Everything else the response carries — the trading-post quote, the buy cost, the material lists,
- * the ordinary blocking reasons and every raw state code — is in the selected-result detail instead
- * of in every row. Nothing is dropped from the client; it is moved out of the scanning view. There
- * is no general State column: the few situations a row's own numbers cannot express keep a minimal
- * diagnostic beside the recipe name (`rowState.rowDiagnostic`).
+ * The trading-post quote, buy cost and material lists are in the selected-result detail. Generic
+ * row-state labels and diagnostics are not part of this comparison table.
  *
  * Every cell shows a supplied value or the explicit "not supplied" marker; nothing is derived,
  * defaulted to zero, or recomputed here. `totalSellValueCopper` and `totalProfitCopper` in
@@ -53,8 +49,7 @@ const displayRows = computed(() =>
     profitTone: moneyTone(row.profitCopper),
     sellValue: formatCopper(row.totalSellValueCopper),
     total: formatSignedCopper(row.totalProfitCopper),
-    totalTone: moneyTone(row.totalProfitCopper),
-    diagnostic: rowDiagnostic(row)
+    totalTone: moneyTone(row.totalProfitCopper)
   }))
 )
 
@@ -168,18 +163,6 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
             </span>
             <span v-if="row.recipeId === selectedRecipeId" class="visually-hidden">Selected</span>
           </button>
-          <!--
-            The minimal diagnostic of `rowState.rowDiagnostic`, outside the selection button so it is
-            read as information about the recipe rather than as part of the control's name. Most rows
-            have none; this is not the removed State column.
-          -->
-          <span
-            v-if="row.diagnostic !== null"
-            :class="`status status--${row.diagnostic.tone} row-diagnostic`"
-            data-test="row-diagnostic"
-          >
-            {{ row.diagnostic.label }}
-          </span>
         </th>
         <td>{{ row.disciplines }}</td>
         <td class="numeric" data-test="craftable-count">{{ row.craftable }}</td>
@@ -268,11 +251,6 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
  */
 .profit-table .is-total {
   font-weight: 600;
-}
-
-/* Sits under the recipe name rather than in a column of its own; absent on an ordinary row. */
-.row-diagnostic {
-  margin-left: 1.5rem;
 }
 
 /* The whole row selects, so the whole row says so to a pointer. The keyboard route is the button. */

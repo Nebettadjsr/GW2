@@ -34,7 +34,7 @@ The completed domain trace and queued application prerequisite do not provide HT
 
 1. Add both POST resolution operations specified in section 13.1. Validate the required recipe identity and nested calculation before invoking application work, reusing each table operation's established defaults and validation. Preserve Profit scope and Discovery's separate nullable inventory character and fixed daily setting.
 2. Delegate each valid operation to APP-012 with fresh request-local state. Map its selected row and explanation from their shared captured inputs; do not access a previous table request, reload inputs in the mapper, or create an alternative resolver.
-3. Implement the complete response envelope and recursive node shape of section 13.3 with transport-only DTOs. Preserve ordered repeated occurrences, nullable names/costs, known zero, precision, special states, blocked reasons and actual sourcing facts. Use SINGLE_OUTPUT_REQUIREMENT and FRESH_CALCULATION as specified; keep requested identity separate from every node's actual recipe identity. Never invent a requested-recipe root or ingredient path.
+3. Implement the complete response envelope and recursive node shape of section 13.3 with transport-only DTOs. Preserve ordered repeated occurrences, nullable names/costs, known zero, precision, special states, blocked reasons and actual sourcing facts. The original `SINGLE_OUTPUT_REQUIREMENT` basis was superseded for Crafting Profit by the full selected-result output quantity (see the Result addendum); Discovery retains the original basis. Preserve `FRESH_CALCULATION`, keep requested identity separate from every node's actual recipe identity, and never invent a requested-recipe root or ingredient path.
 4. Implement section 13.4 outcomes: absent fresh candidate is 404 RECIPE_NOT_IN_CALCULATION; blocked explanations and unavailable calculation results are completed 200 outcomes with distinct tree status/nullability. Preserve existing safe 400/503/500 error handling without leaking database, credential or exception details.
 5. Measure both detail operations on representative real database inputs before fixing the execution policy, following sections 13.5 and 23. Record scopes/settings, data scale, first/repeat timings and limitations. Use synchronous completion only when measurements support it. If task transport needs an unsettled architecture decision, report the concrete evidence and blocker for architect routing before shipping an assumed transport. Do not claim browser performance from these measurements.
 6. Preserve existing table contracts and their lack of eager per-row semantic traces, and JavaFX's in-process access. Domain/application logic must not acquire transport dependencies. No synchronization or persistent inventory mutation is triggered by detail.
@@ -116,7 +116,7 @@ statements in §5.5 and §5.11) and wrote the records. Nothing was re-implemente
    boundary.
 3. **The envelope and node shape.** `recipeId`, `calculation`, `consistency: FRESH_CALCULATION`,
    `calculatedAt` (UTC ISO-8601 completion instant), `row` (the *shared* `CraftingRowDto` via the
-   *shared* `CraftingRowMapper`), `treeStatus`, `treeBasis: SINGLE_OUTPUT_REQUIREMENT`, `tree`.
+   *shared* `CraftingRowMapper`), `treeStatus`, route-specific `treeBasis`, `tree`.
    `ResolutionNodeDto` is a plain copy of `craft.CraftTraceNode`: ordered children with repeated
    occurrences kept separate, nullable `itemName`, nullable `recipeId`, enum facts as their own names
    (so an unknown future state stays visible), and the three inclusive costs as nullable integers with
@@ -231,3 +231,21 @@ transport. **These are backend request timings only** and prove nothing about a 
 ## Blockers
 
 None.
+
+## Supersession (2026-09-30)
+
+The recorded Discovery daily value above describes the earlier contract. UD-012 renames the domain
+setting to `allowDailyCrafts` and fixes Discovery's effective value to true, preserving its prior
+ability to craft daily outputs under the clarified independent-setting semantics. The Profit API
+accepts `allowDailyCrafts` directly.
+
+The Profit tree quantity basis was also superseded after implementation: it now
+resolves the fresh detail row's complete counted result. The row's
+`craftableCount` is recipe executions and `outputCount` is units per execution;
+accepted executions are replayed through the domain resolver and their actual
+trace quantities and inclusive costs are aggregated. Profit responses report
+`SELECTED_RESULT_OUTPUT_QUANTITY` when crafts were counted, or
+`FIRST_BLOCKED_ATTEMPT` for a zero-count row. Discovery retains
+`SINGLE_OUTPUT_REQUIREMENT`. See `DOMAIN_SPEC.md` section 2.1.1,
+`TARGET_ARCHITECTURE.md` section 10.2 and the current-architecture resolution
+contract for active behavior.

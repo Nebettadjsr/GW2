@@ -33,11 +33,8 @@ final class CraftingDiscoveryApiMapper {
     static final boolean DEFAULT_LISTING_SELL = false;         // instant sell
     static final boolean DEFAULT_LISTING_BUY = false;          // instant buy
 
-    /**
-     * Not a request field: the Discovery flow has always passed false ("dailyBuyMode not relevant
-     * for discovery"), and this route maps that contract rather than widening it.
-     */
-    static final boolean FIXED_DAILY_BUY_INSTEAD_OF_CRAFT = false;
+    /** Not a request field: Discovery preserves its existing behavior of allowing daily crafts. */
+    static final boolean FIXED_ALLOW_DAILY_CRAFTS = true;
 
     private CraftingDiscoveryApiMapper() {}
 
@@ -93,7 +90,7 @@ final class CraftingDiscoveryApiMapper {
                 maxBuyCopper,
                 orDefault(settings == null ? null : settings.listingSell(), DEFAULT_LISTING_SELL),
                 orDefault(settings == null ? null : settings.listingBuy(), DEFAULT_LISTING_BUY),
-                FIXED_DAILY_BUY_INSTEAD_OF_CRAFT);
+                FIXED_ALLOW_DAILY_CRAFTS);
     }
 
     /** A validated request, in both its transport form (echoed back) and its application form. */
@@ -116,7 +113,7 @@ final class CraftingDiscoveryApiMapper {
                     settings.maxBuyCopper(),
                     settings.listingSell(),
                     settings.listingBuy(),
-                    settings.dailyBuyInsteadOfCraft());
+                    settings.allowDailyCrafts());
         }
     }
 

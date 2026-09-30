@@ -61,7 +61,7 @@ export function useDiscoveryResolution(api: CraftingApi): DiscoveryResolutionSta
 /**
  * A stable key for the *calculation* a Discovery detail belongs to. Built from the backend's echoed
  * scope, inventory character and settings only: sorting and searching are not part of it, so
- * re-ordering the list does not invalidate a detail (13.4). `dailyBuyInsteadOfCraft` is included
+ * re-ordering the list does not invalidate a detail (13.4). `allowDailyCrafts` is included
  * because the echo reports it, and a route that changed the value it fixes would be calculating
  * something else.
  */
@@ -78,6 +78,6 @@ export function discoveryCalculationKey(inputs: DiscoveryCalculationInputs | nul
     settings.maxBuyCopper,
     settings.listingSell,
     settings.listingBuy,
-    settings.dailyBuyInsteadOfCraft
+    settings.allowDailyCrafts
   ])
 }

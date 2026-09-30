@@ -459,10 +459,10 @@ describe('Crafting Discovery resolution detail association', () => {
       expect(wrapper.text()).not.toContain('+43s 21c')
       expect(wrapper.find('[data-test="resolution-tree"]').exists()).toBe(true)
 
-      // The tree's basis is stated truthfully: one output batch, not the table's counted crafts.
+      // Discovery retains its one-output-batch basis.
       const basis = wrapper.find('[data-test="resolution-basis"]').text().replace(/\s+/g, ' ')
       expect(basis).toContain('one output batch')
-      expect(basis).toContain('not every craft the table counted')
+      expect(basis).not.toContain('every craft the table counted')
       expect(wrapper.find('[data-test="discovery-detail-tree-basis"]').text()).toBe(
         'SINGLE_OUTPUT_REQUIREMENT'
       )

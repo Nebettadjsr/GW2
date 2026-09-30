@@ -1,6 +1,5 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 import type { CraftingRow } from '@/api/types'
-import { describeRowState } from './rowState'
 
 /**
  * Search, display filters, sort, display limit and selection over the rows the backend returned.
@@ -198,9 +197,6 @@ function matchesSearch(row: CraftingRow, searchText: string): boolean {
     row.outputName ?? '',
     row.disciplines,
     row.blockedReason ?? '',
-    // The words the selected-result detail states for this row, so a search for what a state is
-    // called finds it even though the comparison table no longer carries a State column.
-    describeRowState(row).label,
     String(row.recipeId),
     String(row.outputItemId)
   ]

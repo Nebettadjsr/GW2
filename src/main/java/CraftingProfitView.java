@@ -259,15 +259,7 @@ public class CraftingProfitView {
         styleRadio(rbInstantBuy);
         styleRadio(rbListingBuy);
 
-        // toggle for daily craftables
-        ToggleGroup dailyBuyTogGroup = new ToggleGroup();
-        RadioButton dailyCraft = new RadioButton("craft");
-        RadioButton dailyBuy = new RadioButton("buy");
-        dailyCraft.setToggleGroup(dailyBuyTogGroup);
-        dailyBuy.setToggleGroup(dailyBuyTogGroup);
-        dailyBuy.setSelected(true);
-        styleRadio(dailyCraft);
-        styleRadio(dailyBuy);
+        CheckBox allowDailyCraftsCheck = new CheckBox("Allow daily craft");
 
 
         ComboBox<String> sortBox = new ComboBox<>();
@@ -301,7 +293,7 @@ public class CraftingProfitView {
         Button btnRefresh = new Button("Refresh");
 
         HBox filterRow2 = new HBox(12,
-                                   new LabelStyled("Daily craftabls:"), dailyCraft, dailyBuy,
+                                   allowDailyCraftsCheck,
                                     new Separator(Orientation.VERTICAL),
                                    new LabelStyled("BUY:"), rbInstantBuy, rbListingBuy,
                                    new Separator(Orientation.VERTICAL),
@@ -368,10 +360,10 @@ public class CraftingProfitView {
                     boolean allowBuy = allowBuyCheck.isSelected();
                     boolean listingSell = rbListingSell.isSelected();
                     boolean listingBuy  = rbListingBuy.isSelected();
-                    boolean dailyBuyMode = dailyBuy.isSelected(); // true = buy daily items, false = craft daily items
+                    boolean allowDailyCrafts = allowDailyCraftsCheck.isSelected();
                     DiscChoice choice = disciplineBox.getValue();
 
-                    CraftingSettings settings = new CraftingSettings(useOwnMats, allowBuy, maxBuyCopper, listingSell, listingBuy, dailyBuyMode);
+                    CraftingSettings settings = new CraftingSettings(useOwnMats, allowBuy, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts);
 
                     var data = controller.reload(choice, settings);
 
@@ -492,8 +484,7 @@ public class CraftingProfitView {
 
         allowBuyCheck.selectedProperty().addListener((obs, o, n) -> reloadTable.run());
 
-        dailyCraft.selectedProperty().addListener((obs,o,n) -> { if (n) reloadTable.run(); });
-        dailyBuy.selectedProperty().addListener((obs,o,n) -> { if (n) reloadTable.run(); });
+        allowDailyCraftsCheck.selectedProperty().addListener((obs,o,n) -> reloadTable.run());
 
         rbInstantBuy.selectedProperty().addListener((obs,o,n) -> { if(n) reloadTable.run(); });
         rbListingBuy.selectedProperty().addListener((obs,o,n) -> { if(n) reloadTable.run(); });

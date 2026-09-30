@@ -80,7 +80,7 @@ export interface EffectiveSettings {
   maxBuyCopper: number
   listingSell: boolean
   listingBuy: boolean
-  dailyBuyInsteadOfCraft: boolean
+  allowDailyCrafts: boolean
 }
 
 /** Response body of `POST /api/crafting/profit`. */
@@ -178,7 +178,7 @@ export interface ResolutionDetailView {
   row: CraftingRow
   /** `AVAILABLE` or `RESULT_UNAVAILABLE`. */
   treeStatus: string
-  /** Literal `SINGLE_OUTPUT_REQUIREMENT`: one output batch, not every counted craft. */
+  /** Profit reports the selected result output quantity; Discovery may report one output batch. */
   treeBasis: string
   /** Null only when `treeStatus` is `RESULT_UNAVAILABLE`; never a fabricated empty tree. */
   tree: ResolutionNode | null
@@ -226,7 +226,7 @@ export interface DiscoveryScopeRequest {
 /**
  * Requested Discovery settings. Exactly the five fields the route accepts.
  *
- * `dailyBuyInsteadOfCraft` is deliberately absent: the Discovery flow fixes it, and the route maps
+ * `allowDailyCrafts` is deliberately absent: the Discovery flow fixes it, and the route maps
  * that contract rather than accepting it as an input.
  */
 export interface DiscoverySettingsRequest {
@@ -248,7 +248,7 @@ export interface EffectiveDiscoveryScope {
  * The Discovery settings the backend actually calculated with, after it applied its own defaults —
  * which are not Profit's (`CURRENT_ARCHITECTURE.md` 5.6).
  *
- * `dailyBuyInsteadOfCraft` is reported for completeness even though it is not a request field; it is
+ * `allowDailyCrafts` is reported for completeness even though it is not a request field; it is
  * the value Discovery fixed, not one this client chose or may change.
  */
 export interface EffectiveDiscoverySettings {
@@ -257,7 +257,7 @@ export interface EffectiveDiscoverySettings {
   maxBuyCopper: number
   listingSell: boolean
   listingBuy: boolean
-  dailyBuyInsteadOfCraft: boolean
+  allowDailyCrafts: boolean
 }
 
 /**

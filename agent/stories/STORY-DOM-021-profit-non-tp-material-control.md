@@ -205,3 +205,6 @@ the permanent Crafting Profit behavior: ordinary owned-material, crafting, and b
 without a separate rejection based on absence from `tp_tradeable_items` or `/v2/commerce/prices`.
 The historical acceptance criteria and result above describe the implementation as it existed
 before this superseding decision; they are retained as history, not current requirements.
+
+UD-012 separately supersedes the daily-setting terminology in the historical result: current
+Crafting Profit callers send `allowDailyCrafts`, independent from buying and owned-material use.

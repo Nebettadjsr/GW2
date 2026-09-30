@@ -72,7 +72,7 @@ export function calculationKey(inputs: CalculationInputs | null): string {
     settings.maxBuyCopper,
     settings.listingSell,
     settings.listingBuy,
-    settings.dailyBuyInsteadOfCraft
+    settings.allowDailyCrafts
   ])
 }
 

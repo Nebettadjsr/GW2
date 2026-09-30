@@ -79,7 +79,7 @@ public class CraftingDiscoveryApiController {
      * <p>The body is required and carries both members: {@code recipeId} and the {@code calculation}
      * it is resolved in, the latter being this route's own table request contract - so the required
      * individual scope, the separate nullable inventory character with its unfiltered-pool fallback,
-     * Discovery's own settings defaults and its fixed {@code dailyBuyInsteadOfCraft} all apply
+     * Discovery's own settings defaults and its fixed {@code allowDailyCrafts=true} all apply
      * unchanged. Both members are validated before a service exists.
      *
      * <p>The service call is one <em>fresh</em> calculation with request-local state - never a lookup

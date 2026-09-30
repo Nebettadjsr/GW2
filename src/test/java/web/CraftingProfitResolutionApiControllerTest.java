@@ -110,7 +110,7 @@ class CraftingProfitResolutionApiControllerTest {
                                      "characterName": "Aria", "rating": 400},
                            "settings": {"useOwnMats": false, "allowBuying": true, "maxBuyCopper": 25000,
                                         "listingSell": true, "listingBuy": true,
-                                         "dailyBuyInsteadOfCraft": false}}} """))
+                                         "allowDailyCrafts": false}}} """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.recipeId").value(7))
                 .andExpect(jsonPath("$.calculation.scope.kind").value("CHARACTER_DISCIPLINE"))
@@ -122,7 +122,7 @@ class CraftingProfitResolutionApiControllerTest {
                 .andExpect(jsonPath("$.calculation.settings.maxBuyCopper").value(25000))
                 .andExpect(jsonPath("$.calculation.settings.listingSell").value(true))
                 .andExpect(jsonPath("$.calculation.settings.listingBuy").value(true))
-                .andExpect(jsonPath("$.calculation.settings.dailyBuyInsteadOfCraft").value(false));
+                .andExpect(jsonPath("$.calculation.settings.allowDailyCrafts").value(false));
 
         StubProfitService used = factory.only();
         assertEquals(1, used.detailCalls, "the controller must delegate exactly once");
@@ -139,7 +139,7 @@ class CraftingProfitResolutionApiControllerTest {
         assertEquals(25_000, settings.maxBuyCopper);
         assertTrue(settings.listingSell);
         assertTrue(settings.listingBuy);
-        assertFalse(settings.dailyBuyInsteadOfCraft);
+        assertFalse(settings.allowDailyCrafts);
     }
 
     @Test
@@ -154,13 +154,13 @@ class CraftingProfitResolutionApiControllerTest {
                 .andExpect(jsonPath("$.calculation.settings.maxBuyCopper").value(10000))
                 .andExpect(jsonPath("$.calculation.settings.listingSell").value(false))
                 .andExpect(jsonPath("$.calculation.settings.listingBuy").value(false))
-                .andExpect(jsonPath("$.calculation.settings.dailyBuyInsteadOfCraft").value(true));
+                .andExpect(jsonPath("$.calculation.settings.allowDailyCrafts").value(false));
 
         StubProfitService used = factory.only();
         assertEquals(DiscChoice.Kind.ALL, used.capturedChoice.kind);
         assertTrue(used.capturedSettings.useOwnMats);
         assertEquals(10_000, used.capturedSettings.maxBuyCopper);
-        assertTrue(used.capturedSettings.dailyBuyInsteadOfCraft);
+        assertFalse(used.capturedSettings.allowDailyCrafts);
     }
 
     @Test
@@ -171,7 +171,7 @@ class CraftingProfitResolutionApiControllerTest {
         String body = mockMvc.perform(resolution("{\"recipeId\": 7, \"calculation\": {}}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.consistency").value("FRESH_CALCULATION"))
-                .andExpect(jsonPath("$.treeBasis").value("SINGLE_OUTPUT_REQUIREMENT"))
+                .andExpect(jsonPath("$.treeBasis").value("SELECTED_RESULT_OUTPUT_QUANTITY"))
                 .andExpect(jsonPath("$.treeStatus").value("AVAILABLE"))
                 .andReturn().getResponse().getContentAsString();
 
@@ -385,12 +385,14 @@ class CraftingProfitResolutionApiControllerTest {
                         .blocked(BlockedReason.BUYING_DISABLED, BlockedReason.NO_RECIPE)
                         .build())
                 .build();
-        factory.next(service -> service.canned = available(root));
+        factory.next(service -> service.canned = available(root, 0));
 
         mockMvc.perform(resolution("{\"recipeId\": 7, \"calculation\": {}}"))
                 .andExpect(status().isOk())
                 // A blocked explanation is an available tree carrying its reasons, not a failure.
                 .andExpect(jsonPath("$.treeStatus").value("AVAILABLE"))
+                .andExpect(jsonPath("$.treeBasis").value("FIRST_BLOCKED_ATTEMPT"))
+                .andExpect(jsonPath("$.row.craftableCount").value(0))
                 .andExpect(jsonPath("$.tree.recipeId").value(7))
                 .andExpect(jsonPath("$.tree.craftCount").value(0))
                 .andExpect(jsonPath("$.tree.producedQuantity").value(0))
@@ -548,7 +550,7 @@ class CraftingProfitResolutionApiControllerTest {
                 .andExpect(jsonPath("$.treeStatus").value("RESULT_UNAVAILABLE"))
                 // Not a fabricated empty tree, and the row is still reported.
                 .andExpect(jsonPath("$.tree").doesNotExist())
-                .andExpect(jsonPath("$.treeBasis").value("SINGLE_OUTPUT_REQUIREMENT"))
+                .andExpect(jsonPath("$.treeBasis").value("SELECTED_RESULT_OUTPUT_QUANTITY"))
                 .andExpect(jsonPath("$.row.recipeId").value(7))
                 .andExpect(jsonPath("$.row.blockedReason").value("PRICE_UNAVAILABLE"));
     }
@@ -764,7 +766,11 @@ class CraftingProfitResolutionApiControllerTest {
     }
 
     private static CraftingResolutionDetail available(CraftTraceNode root) {
-        CraftResult row = new CraftResult(100, "Artificer", 1,
+        return available(root, 1);
+    }
+
+    private static CraftingResolutionDetail available(CraftTraceNode root, int craftableCount) {
+        CraftResult row = new CraftResult(100, "Artificer", craftableCount,
                 Map.of(), Map.of(), 36, 0, 100, 64, 64, null);
         return new CraftingResolutionDetail(
                 7, CraftingResolutionDetail.Status.AVAILABLE, REQUESTED, row,

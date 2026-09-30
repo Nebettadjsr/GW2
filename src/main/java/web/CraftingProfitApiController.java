@@ -104,7 +104,7 @@ public class CraftingProfitApiController {
                 CraftingResolutionMapper.calculatedAt(),
                 CraftingResolutionMapper.toRow(detail),
                 CraftingResolutionMapper.treeStatus(detail),
-                CraftingResolutionMapper.TREE_BASIS_SINGLE_OUTPUT_REQUIREMENT,
+                CraftingResolutionMapper.profitTreeBasis(detail),
                 CraftingResolutionMapper.toTree(detail));
     }
 }

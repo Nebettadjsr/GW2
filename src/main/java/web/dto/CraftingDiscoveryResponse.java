@@ -31,14 +31,15 @@ public record CraftingDiscoveryResponse(EffectiveScopeDto scope,
     /**
      * The settings the calculation ran with, after defaults were applied.
      *
-     * <p>{@code dailyBuyInsteadOfCraft} is reported for completeness even though it is not a
-     * request field on this route: Discovery fixes it to false, and the caller can see that.
+     * <p>{@code allowDailyCrafts} is reported for completeness even though it is not a
+     * request field on this route: Discovery fixes it to true to preserve its existing daily
+     * crafting behavior, and the caller can see that.
      */
     public record EffectiveSettingsDto(boolean useOwnMats,
                                        boolean allowBuying,
                                        int maxBuyCopper,
                                        boolean listingSell,
                                        boolean listingBuy,
-                                       boolean dailyBuyInsteadOfCraft) {
+                                       boolean allowDailyCrafts) {
     }
 }

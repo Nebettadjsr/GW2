@@ -340,11 +340,11 @@ public class CraftingDiscoveryView {
                     boolean listingSell = rbListingSell.isSelected();
                     boolean listingBuy  = rbListingBuy.isSelected();
 
-                    // dailyBuyMode not relevant for discovery; keep false
-                    boolean dailyBuyMode = false;
+                    // Discovery keeps its established behavior: daily crafts are allowed.
+                    boolean allowDailyCrafts = true;
 
                     CraftingSettings settings = new CraftingSettings(
-                            includeBank, allowBuy, maxBuyCopper, listingSell, listingBuy, dailyBuyMode
+                            includeBank, allowBuy, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts
                     );
 
                     String selectedCharacter = characterBox.getValue();

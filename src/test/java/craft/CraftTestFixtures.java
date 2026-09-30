@@ -35,9 +35,9 @@ final class CraftTestFixtures {
         return new PriceQuote(null, null);
     }
 
-    /** useOwnMats=true, allowBuying=true, unlimited maxBuyCopper, instant sell/buy, daily craft. */
+    /** useOwnMats=true, allowBuying=true, unlimited maxBuyCopper, instant sell/buy, daily crafts allowed. */
     static CraftingSettings defaultSettings() {
-        return new CraftingSettings(true, true, 0, false, false, false);
+        return new CraftingSettings(true, true, 0, false, false, true);
     }
 
     static PlannerContext context(Map<Integer, List<Recipe>> recipesByOutput,

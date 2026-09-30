@@ -256,7 +256,7 @@ silently-completed calculation. The same principle extends to every reason a cra
 |---|---|
 | `NO_RECIPE` | No valid recipe is available for this item under the current settings. |
 | `BUYING_DISABLED` | A shortfall exists and buying is turned off, so it can't be filled. |
-| `DAILY_LIMIT` | This item is daily-limited and the "buy instead of craft" behavior applies. |
+| `DAILY_LIMIT` | This daily/time-gated craft is disabled or its one available operation has been used. |
 | `CYCLE_DETECTED` | Resolving this item's ingredients looped back on itself; that path stops rather than recursing forever (§15). |
 | `PRICE_UNAVAILABLE` | A required purchase has no usable Trading Post price. |
 | `RECIPE_NOT_ALLOWED` | The only recipe(s) found aren't allowed in this analysis (wrong discipline/character/context, §29). |
@@ -275,17 +275,12 @@ mechanic. The tool intentionally does **not** track whether you've already used 
 on a given item (§31, decision DQ-005): daily craft state simply isn't part of what gets
 synchronized from the account.
 
-If you turn on the "buy instead of craft" option for daily items (`dailyBuyInsteadOfCraft`), the
-tool never plans to craft a daily-limited item at all — it only ever consumes what you already own
-and/or buys the rest (§32–§33):
-
-- **With "use own materials" on**: use existing owned copies first, then buy any remaining amount
-  if buying is allowed; never craft more.
-- **With "use own materials" off**: ignore any owned copies, buy the required amount if allowed;
-  never craft.
-
-If the remaining amount can't be bought under current settings, the requirement is blocked
-(`DAILY_LIMIT`).
+The `allowDailyCrafts` setting controls only daily crafting. When on, the planner may execute one
+daily/time-gated craft operation per output item in a planning state, then continue crafting its
+parents. A recipe's output batch may contain more than one item. When off, those recipes are not
+executed. Owned daily items remain usable when `useOwnMats` is on, and Trading Post purchases
+remain controlled solely by `allowBuying`; daily-craft selection never turns buying on. See
+[`DOMAIN_SPEC.md` §32–§33](../DOMAIN_SPEC.md#32-daily-craft-strategy).
 
 ## Recipe discovery
 

@@ -1,6 +1,8 @@
 package craft;
 
 import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 public class RecipeSimulationResult {
@@ -12,6 +14,7 @@ public class RecipeSimulationResult {
 
     private ResolvedNeed firstCraft;
     private ResolvedNeed lastCraft;
+    private List<ResolvedNeed> acceptedCrafts;
 
     private int buyCostTotal;
     private int opportunityCostTotal;
@@ -62,6 +65,16 @@ public class RecipeSimulationResult {
 
     public void setLastCraft(ResolvedNeed lastCraft) {
         this.lastCraft = lastCraft;
+    }
+
+    /** Accepted traced root attempts, populated only by an explanation simulation. */
+    public List<ResolvedNeed> getAcceptedCrafts() {
+        return acceptedCrafts == null ? List.of() : List.copyOf(acceptedCrafts);
+    }
+
+    void addAcceptedCraft(ResolvedNeed craft) {
+        if (acceptedCrafts == null) acceptedCrafts = new ArrayList<>();
+        acceptedCrafts.add(craft);
     }
 
     public int getBuyCostTotal() {

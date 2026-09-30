@@ -16,9 +16,9 @@ import {
  * One requirement of the resolution tree, and — recursively — the ingredient requirements of the
  * craft that was selected or attempted for it (`TARGET_ARCHITECTURE.md` 13.3).
  *
- * The normal presentation is a **compact summary** (`DOMAIN_SPEC.md` 2.1.1): what the item is, how
- * many are needed, how the requirement was supplied, who crafted it where the backend said so, and
- * the three inclusive costs on one line. The resolver's own bookkeeping — the stock/crafted/bought/
+ * Profit's compact presentation is a **summary** (`DOMAIN_SPEC.md` 2.1.1): what the item is,
+ * how many are needed, how the requirement was supplied, who crafted it where the backend said so,
+ * and its effective economic value. The resolver's own bookkeeping — the stock/crafted/bought/
  * missing split, the producing recipe and its id, the craft count and the produced batch total — is
  * not shown here; it stays in the backend contract and is simply not part of the normal view.
  *
@@ -26,9 +26,9 @@ import {
  * supplied state and blocked reason keeps its own marker and its own sentence, so no missing price,
  * daily limit or restriction can read as success.
  *
- * Everything on screen is still a value the backend supplied for *this* node. Nothing is added up:
- * the three costs already include this requirement's descendants, so a parent's cost is printed as
- * it arrived and a child's is never folded into it. No quantity is derived from the others, no state
+ * Everything on screen is still a value the backend supplied for *this* node. `effectiveCostCopper`
+ * is the cash plus opportunity cost for this requirement, including its descendants. No quantity is
+ * derived from the others, no state
  * is read out of a price, no identity is replaced by the requested recipe's, and two occurrences of
  * the same item in different branches stay two nodes.
  *
@@ -40,6 +40,8 @@ const props = defineProps<{
   node: ResolutionNode
   /** Index path from the root, the presentation key 13.3 permits — not a persistent node ID. */
   path: string
+  /** Profit shows effective value; Discovery retains the separate cost figures. */
+  compactValue?: boolean
 }>()
 
 const label = computed(() => nodeLabel(props.node))
@@ -97,12 +99,11 @@ const childSummary = computed(() =>
       Crafted by {{ node.characterName }}
     </p>
 
-    <!--
-      The three supplied costs on one line. None of them is derivable from the other two, each is
-      inclusive of everything below this requirement, and a null one stays the missing marker; the
-      sentence that says so is stated once for the whole tree rather than repeated under every node.
-    -->
-    <p class="node__costs" data-test="node-costs">
+    <p v-if="compactValue" class="node__value" data-test="node-value">
+      Value: {{ formatCopper(node.effectiveCostCopper) }}
+    </p>
+
+    <p v-else class="node__costs" data-test="node-costs">
       <span class="node__cost">
         <span class="node__cost-label">Cash cost</span>
         <span class="numeric" data-test="node-cash-cost">{{ formatCopper(node.cashCostCopper) }}</span>
@@ -162,6 +163,7 @@ const childSummary = computed(() =>
           :key="`${path}.${index}`"
           :node="child"
           :path="`${path}.${index}`"
+          :compact-value="compactValue"
         />
       </ul>
     </details>
@@ -260,6 +262,14 @@ const childSummary = computed(() =>
   display: flex;
   flex-wrap: wrap;
   gap: 0 var(--space-3);
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.node__value {
+  display: flex;
+  gap: var(--space-2);
   margin: 0;
   color: var(--color-muted);
   font-size: var(--text-sm);

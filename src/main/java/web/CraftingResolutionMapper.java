@@ -17,7 +17,8 @@ import java.util.Map;
 
 /**
  * The part of the resolution-detail contract both routes share (STORY-API-008,
- * TARGET_ARCHITECTURE.md §13.3/§13.4): the required-input rules, the envelope literals, the row
+ * TARGET_ARCHITECTURE.md §10.2 and STORY-API-008): the required-input rules, the envelope literals,
+ * the row
  * projection and the recursive tree copy. What differs between Profit and Discovery - their scope,
  * settings, defaults and validation - stays in {@link CraftingProfitApiMapper} and
  * {@link CraftingDiscoveryApiMapper}, which this class does not duplicate.
@@ -36,11 +37,13 @@ final class CraftingResolutionMapper {
      */
     static final String CONSISTENCY_FRESH_CALCULATION = "FRESH_CALCULATION";
 
-    /**
-     * §13.3: the tree resolves <em>one output batch of the requested recipe</em> from this
-     * operation's initial state - not the row's multi-craft simulation, and not a claim that the
-     * requested recipe was executed.
-     */
+    /** Profit tree root quantity when the selected row has counted output. */
+    static final String TREE_BASIS_SELECTED_RESULT_OUTPUT_QUANTITY = "SELECTED_RESULT_OUTPUT_QUANTITY";
+
+    /** Zero-count rows retain one rejected attempt so its item-specific blocker remains visible. */
+    static final String TREE_BASIS_FIRST_BLOCKED_ATTEMPT = "FIRST_BLOCKED_ATTEMPT";
+
+    /** Discovery still explains one output batch because it has no selected Profit craft count. */
     static final String TREE_BASIS_SINGLE_OUTPUT_REQUIREMENT = "SINGLE_OUTPUT_REQUIREMENT";
 
     static final String TREE_STATUS_AVAILABLE = "AVAILABLE";
@@ -123,6 +126,13 @@ final class CraftingResolutionMapper {
                 : TREE_STATUS_AVAILABLE;
     }
 
+    static String profitTreeBasis(CraftingResolutionDetail detail) {
+        return detail.status() == CraftingResolutionDetail.Status.AVAILABLE
+                && detail.row() != null && detail.row().craftableCount == 0
+                ? TREE_BASIS_FIRST_BLOCKED_ATTEMPT
+                : TREE_BASIS_SELECTED_RESULT_OUTPUT_QUANTITY;
+    }
+
     /**
      * This operation's row for the selected recipe, projected by the same {@link CraftingRowMapper}
      * the table routes use, from the recipe, quotes and item metadata <em>this</em> operation
@@ -136,7 +146,7 @@ final class CraftingResolutionMapper {
      * The resolution tree, or null when there is no result to explain - never a fabricated empty
      * tree. Item names and icon sources come only from the metadata this operation captured, and each
      * node carries its <em>own</em> item's icon: a requirement satisfied from stock, bought or crafted
-     * is still that item (TARGET_ARCHITECTURE.md §13/§12.1), so nothing here reads the node's sourcing
+     * is still that item (TARGET_ARCHITECTURE.md §10.2), so nothing here reads the node's sourcing
      * or the requested recipe to decide an image.
      */
     static ResolutionNodeDto toTree(CraftingResolutionDetail detail) {

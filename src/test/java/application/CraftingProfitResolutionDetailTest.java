@@ -92,8 +92,8 @@ class CraftingProfitResolutionDetailTest {
 
         CraftTraceNode root = detail.explanation().root();
         assertEquals(100, root.itemId());
-        assertEquals(1, root.requestedQuantity());
-        assertEquals(1, root.craftCount(), "the explanation is one craft, never the row's two");
+        assertEquals(2, root.requestedQuantity(), "the root covers the row's two output units");
+        assertEquals(2, root.craftCount(), "the explanation covers both crafts represented by the row");
         assertEquals("Aria", root.characterName(), "the coordinated assignment is part of the explanation");
 
         assertEquals(1, fakes.recipeLoads.get());
@@ -102,6 +102,83 @@ class CraftingProfitResolutionDetailTest {
         assertEquals(1, fakes.inventoryLoads.get());
         assertEquals(1, fakes.quoteLoads.get());
         assertEquals(1, fakes.itemLoads.get());
+    }
+
+    @Test
+    void explainsEveryCountedCraftWithRealOutputAndRecursiveInputQuantitiesAndCosts() throws SQLException {
+        Recipe target = new Recipe(31, 301, 2, 0, "Artificer", List.of(new Ingredient(401, 1)));
+        Recipe intermediate = new Recipe(41, 401, 1, 0, "Artificer", List.of(new Ingredient(501, 5)));
+        var fakes = new Fakes();
+        fakes.visible = List.of(target, intermediate);
+        fakes.graph = List.of(target, intermediate);
+        fakes.characters = List.of(new CharacterRepository.DiscRow("Aria", "Artificer", 400, true));
+        fakes.sellable = Map.of(501, 10);
+        fakes.quotes = Map.of(301, new PriceQuote(100, 120), 501, new PriceQuote(10, 12));
+
+        CraftingResolutionDetail detail = fakes.service().resolveDetail(
+                target.recipeId, DiscChoice.all(), settings(true, false));
+
+        assertEquals(2, detail.row().craftableCount, "two executions consume all ten owned raw materials");
+        CraftTraceNode root = detail.explanation().root();
+        assertEquals(4, root.requestedQuantity(), "two executions produce four output items");
+        assertEquals(2, root.craftCount());
+        CraftTraceNode craftedIntermediate = onlyChild(root);
+        assertEquals(2, craftedIntermediate.requestedQuantity());
+        assertEquals(2, craftedIntermediate.craftedQuantity());
+        CraftTraceNode raw = onlyChild(craftedIntermediate);
+        assertEquals(10, raw.requestedQuantity());
+        assertEquals(10, raw.inventoryQuantity());
+        assertEquals(100, raw.effectiveCostCopper());
+        assertEquals(100, craftedIntermediate.effectiveCostCopper());
+        assertEquals(100, root.effectiveCostCopper());
+    }
+
+    @Test
+    void buysInputsForTheCompleteSelectedOutputQuantityWithinTheConfiguredLimit() throws SQLException {
+        Recipe target = new Recipe(32, 302, 2, 0, "Artificer", List.of(new Ingredient(502, 1)));
+        var fakes = new Fakes();
+        fakes.visible = List.of(target);
+        fakes.graph = List.of(target);
+        fakes.characters = List.of(new CharacterRepository.DiscRow("Aria", "Artificer", 400, true));
+        fakes.quotes = Map.of(302, new PriceQuote(100, 120), 502, new PriceQuote(10, 12));
+
+        CraftingSettings buying = new CraftingSettings(true, true, 20, false, true, false);
+        CraftingResolutionDetail detail = fakes.service().resolveDetail(target.recipeId, DiscChoice.all(), buying);
+
+        assertEquals(2, detail.row().craftableCount);
+        assertEquals(craft.BlockedReason.INSUFFICIENT_BUDGET, detail.row().blockedReason,
+                "the tree must explain the two counted crafts, not the blocked third craft");
+        assertEquals(4, detail.explanation().root().requestedQuantity());
+        CraftTraceNode raw = onlyChild(detail.explanation().root());
+        assertEquals(2, raw.requestedQuantity());
+        assertEquals(2, raw.boughtQuantity());
+        assertEquals(20, raw.cashCostCopper());
+    }
+
+    @Test
+    void dailyInputsAreUsedOnlyWhenAllowedAndOnlyWithinTheirAvailableOperationCount() throws SQLException {
+        Recipe target = new Recipe(33, 303, 1, 0, "Artificer", List.of(new Ingredient(70762, 1)));
+        Recipe daily = new Recipe(43, 70762, 1, 0, "Artificer", List.of(new Ingredient(503, 1)));
+        var fakes = new Fakes();
+        fakes.visible = List.of(target, daily);
+        fakes.graph = List.of(target, daily);
+        fakes.characters = List.of(new CharacterRepository.DiscRow("Aria", "Artificer", 400, true));
+        fakes.sellable = Map.of(503, 1);
+        fakes.quotes = Map.of(303, new PriceQuote(100, 120), 503, new PriceQuote(10, 12));
+
+        CraftingSettings dailyAllowed = new CraftingSettings(true, false, 0, false, false, true);
+        CraftingResolutionDetail allowed = fakes.service().resolveDetail(target.recipeId, DiscChoice.all(), dailyAllowed);
+
+        assertEquals(1, allowed.row().craftableCount);
+        CraftTraceNode dailyNode = onlyChild(allowed.explanation().root());
+        assertEquals(1, dailyNode.requestedQuantity());
+        assertEquals(1, dailyNode.craftCount());
+        assertEquals(1, dailyNode.producedQuantity());
+
+        CraftingSettings dailyDisabled = new CraftingSettings(true, false, 0, false, false, false);
+        CraftingResolutionDetail disabled = fakes.service().resolveDetail(target.recipeId, DiscChoice.all(), dailyDisabled);
+        assertEquals(0, disabled.row().craftableCount);
+        assertTrue(onlyChild(disabled.explanation().root()).blockedReasons().contains(craft.BlockedReason.DAILY_LIMIT));
     }
 
     @Test
@@ -117,7 +194,7 @@ class CraftingProfitResolutionDetailTest {
 
         assertEquals(2, detail.row().craftableCount, "the row's simulation consumed 4 of the 5 owned units");
         CraftTraceNode ingredient = onlyChild(detail.explanation().root());
-        assertEquals(2, ingredient.inventoryQuantity(),
+        assertEquals(4, ingredient.inventoryQuantity(),
                 "the explanation must see the initial pool, not the single unit the row left");
         assertEquals(0, ingredient.missingQuantity());
     }
@@ -197,7 +274,7 @@ class CraftingProfitResolutionDetailTest {
         CraftTraceNode root = detail.explanation().root();
         assertEquals("Bran", root.characterName(),
                 "only the owner of the soulbound materials can perform the craft");
-        assertEquals(2, onlyChild(root).inventoryQuantity());
+        assertEquals(4, onlyChild(root).inventoryQuantity());
     }
 
     @Test
@@ -384,6 +461,7 @@ class CraftingProfitResolutionDetailTest {
 
     private static class Fakes {
         List<Recipe> visible = List.of();
+        List<Recipe> graph = GRAPH;
         List<CharacterRepository.DiscRow> characters = List.of();
         Map<Integer, PriceQuote> quotes = QUOTES;
         Map<Integer, PriceQuote> laterQuotes;
@@ -424,7 +502,7 @@ class CraftingProfitResolutionDetailTest {
         @Override
         public CraftingGraph load() {
             fakes.graphLoads.incrementAndGet();
-            return new CraftingGraph(GRAPH);
+            return new CraftingGraph(fakes.graph);
         }
     }
 

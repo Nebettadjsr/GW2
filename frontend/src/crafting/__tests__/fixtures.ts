@@ -32,7 +32,7 @@ export const DEFAULT_SETTINGS: EffectiveSettings = {
   maxBuyCopper: 10_000,
   listingSell: false,
   listingBuy: false,
-  dailyBuyInsteadOfCraft: true
+  allowDailyCrafts: false
 }
 
 export const selectorOptions: SelectorOptions = {
@@ -516,7 +516,7 @@ export function resolutionResponse(
     calculatedAt: '2026-09-25T10:20:30Z',
     row: profitableRow,
     treeStatus: 'AVAILABLE',
-    treeBasis: 'SINGLE_OUTPUT_REQUIREMENT',
+    treeBasis: 'SELECTED_RESULT_OUTPUT_QUANTITY',
     tree: craftedTree,
     ...overrides
   }
@@ -536,7 +536,7 @@ export const DISCOVERY_SETTINGS: EffectiveDiscoverySettings = {
   maxBuyCopper: 200_000,
   listingSell: false,
   listingBuy: false,
-  dailyBuyInsteadOfCraft: false
+  allowDailyCrafts: true
 }
 
 /**
@@ -576,7 +576,7 @@ export function echoedDiscoveryResponse(
     settings:
       request.settings === undefined
         ? DISCOVERY_SETTINGS
-        : { ...request.settings, dailyBuyInsteadOfCraft: DISCOVERY_SETTINGS.dailyBuyInsteadOfCraft },
+        : { ...request.settings, allowDailyCrafts: DISCOVERY_SETTINGS.allowDailyCrafts },
     rowCount: rows.length,
     rows
   }

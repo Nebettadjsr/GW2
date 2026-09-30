@@ -36,6 +36,12 @@ function detailOf(
   })
 }
 
+function selectedResultNormalText(detail: ReturnType<typeof detailOf>): string {
+  const copy = detail.find('[data-test="selected-detail"]').element.cloneNode(true) as HTMLElement
+  copy.querySelector('[data-test="detail-diagnostics"]')?.remove()
+  return copy.textContent ?? ''
+}
+
 function detailWithResolution(
   row: CraftingRow,
   resolutionPhase: ResolutionPhase,
@@ -131,87 +137,44 @@ describe('SelectedResultDetail', () => {
     expect(detailOf(priceUnavailableRow).find('[data-test="detail-total-sell-value"]').text()).toBe('—')
   })
 
-  it('explainsEveryReasonMovedOutOfTheTableRightHereInsteadOfDroppingIt', () => {
-    for (const row of movedReasonRows) {
-      const detail = detailOf(row)
-      const explanation = detail.find('[data-test="detail-status-explanation"]').text()
+  it('displaysOutputItemsRatherThanRecipeExecutionsForMultiOutputRecipes', () => {
+    const detail = detailOf({ ...profitableRow, craftableCount: 41, outputCount: 2 })
 
-      // The crafts already counted are not negated by the reason the next one could not run.
-      expect(explanation).toContain('Further crafting is blocked')
-      expect(explanation).toContain('5 crafts already counted stay valid')
-      expect(explanation).not.toContain(row.blockedReason as string)
-      // The raw code is still there, as secondary technical information only.
-      expect(detail.find('[data-test="detail-state-code"]').text()).toBe(row.blockedReason)
-      // The supplied cost of buying materials is beside it; nothing missing is filled in.
-      expect(detail.find('[data-test="detail-buy-cost"]').text()).toBe('2s 50c')
+    expect(detail.find('[data-test="detail-calculation"]').text()).toContain('Items 82')
+  })
+
+  it('keepsGenericRowStateExplanationsOutOfTheNormalSelectedResult', () => {
+    const rows = [
+      ...movedReasonRows,
+      profitableRow,
+      noneCraftableRow,
+      budgetBlockedRow,
+      priceUnavailableRow,
+      noResultRow,
+      { ...profitableRow, blockedReason: null },
+      { ...profitableRow, blockedReason: 'SOME_STATE_ADDED_LATER' }
+    ]
+
+    for (const row of rows) {
+      const detail = detailOf(row, null, DEFAULT_SETTINGS)
+      expect(detail.find('[data-test="detail-status"]').exists()).toBe(false)
+      expect(detail.find('[data-test="detail-status-explanation"]').exists()).toBe(false)
+      expect(detail.find('[data-test="detail-budget-context"]').exists()).toBe(false)
+      expect(detail.find('[data-test="detail-affected-item"]').exists()).toBe(false)
     }
   })
 
-  it('dropsTheShortLabelThatOnlyRepeatsTheSentenceBesideIt', () => {
-    // DOMAIN_SPEC 2.1.1 names these three by their wording, so they are asserted by their wording.
-    const buyingOff = detailOf(movedReasonRows[0] as CraftingRow)
-    expect(buyingOff.find('[data-test="detail-status"]').exists()).toBe(false)
-    expect(buyingOff.text()).not.toContain('Buying is off')
-    expect(buyingOff.find('[data-test="detail-status-explanation"]').text()).toContain(
-      'buying is switched off'
-    )
-
-    const overTheLimit = detailOf(budgetBlockedRow, null, DEFAULT_SETTINGS)
-    expect(overTheLimit.find('[data-test="detail-status"]').exists()).toBe(false)
-    expect(overTheLimit.text()).not.toContain('Over the buy limit')
-    expect(overTheLimit.find('[data-test="detail-status-explanation"]').text()).toContain(
-      'costs more than the maximum buy setting allows'
-    )
-
-    const unblocked = detailOf(profitableRow)
-    expect(unblocked.find('[data-test="detail-status"]').exists()).toBe(false)
-    expect(unblocked.text()).not.toContain('Not blocked')
-    // The cause region is not emptied with the label: the state is still stated in words.
-    expect(unblocked.find('[data-test="detail-status-explanation"]').text()).toBe(
-      'Nothing blocked the calculation for this recipe.'
-    )
-    expect(detailOf(noneCraftableRow).find('[data-test="detail-status-explanation"]').text()).toContain(
-      'counted no craft that could be completed'
-    )
-  })
-
-  it('keepsTheLabelWhereTheSentenceIsAllThereIsAndMustNotReadAsSuccess', () => {
-    // Nothing was calculated, nothing was reported, and a code this page cannot word: each keeps a
-    // visible marker of its own rather than sitting in a paragraph alone.
-    expect(detailOf(noResultRow).find('[data-test="detail-status"]').text()).toBe('No result')
-    expect(detailOf({ ...profitableRow, blockedReason: null }).find('[data-test="detail-status"]').text()).toBe(
-      'State not reported'
-    )
-    const unknown = detailOf({ ...profitableRow, blockedReason: 'SOME_STATE_ADDED_LATER' })
-    expect(unknown.find('[data-test="detail-status"]').text()).toBe('SOME_STATE_ADDED_LATER')
-    expect(unknown.find('[data-test="detail-status"]').classes()).toContain('status--unknown')
-  })
-
-  it('namesTheConfiguredMaximumBuyOnlyForABudgetRestrictionAndOnlyWhenSupplied', () => {
-    const withSettings = detailOf(budgetBlockedRow, null, DEFAULT_SETTINGS)
-
-    expect(withSettings.find('[data-test="detail-budget-context"]').text()).toContain('1g 0s 0c')
-    expect(withSettings.find('[data-test="detail-buy-cost"]').text()).toBe('95s 0c')
-    expect(withSettings.find('[data-test="detail-status-explanation"]').text()).toContain(
-      '3 crafts already counted stay valid'
-    )
-
-    // The affected purchase is not in the row contract, and is said to be missing rather than taken
-    // from the counted-craft list or the fresh tree.
-    const affected = withSettings.find('[data-test="detail-affected-item"]').text()
-    expect(affected).toContain('does not name the further purchase that went over the limit')
-    expect(affected).toContain('name each item the calculation reported')
-
-    // No echoed settings, so no maximum is stated - the browser has no maximum of its own to offer.
-    const withoutSettings = detailOf(budgetBlockedRow, null, null)
-    expect(withoutSettings.find('[data-test="detail-budget-context"]').exists()).toBe(false)
-    expect(withoutSettings.text()).not.toContain('maximum buy setting is')
-    // The supplied cost of the counted crafts' purchase is still there; only the budget is unknown.
-    expect(withoutSettings.find('[data-test="detail-buy-cost"]').text()).toBe('95s 0c')
-    // And it is not repeated under a restriction the maximum buy has nothing to do with.
-    expect(
-      detailOf(priceUnavailableRow, null, DEFAULT_SETTINGS).find('[data-test="detail-budget-context"]').exists()
-    ).toBe(false)
+  it('keepsRawKnownUnknownAndMissingRowStatesOnlyInCollapsedTechnicalDetails', () => {
+    for (const [row, raw] of [
+      [priceUnavailableRow, 'PRICE_UNAVAILABLE'],
+      [{ ...profitableRow, blockedReason: 'SOME_STATE_ADDED_LATER' }, 'SOME_STATE_ADDED_LATER'],
+      [{ ...profitableRow, blockedReason: null }, '—']
+    ] as const) {
+      const detail = detailOf(row as CraftingRow)
+      expect(detail.find('[data-test="detail-state-code"]').text()).toBe(raw)
+      expect(detail.find('[data-test="detail-diagnostics"]').attributes('open')).toBeUndefined()
+      expect(selectedResultNormalText(detail)).not.toContain(raw)
+    }
   })
 
   it('marksALossBySignAndToneTogether', () => {
@@ -229,32 +192,18 @@ describe('SelectedResultDetail', () => {
     expect(detail.find('[data-test="detail-total-profit"]').text()).toBe('—')
     expect(detail.find('[data-test="detail-buy-cost"]').text()).toBe('—')
     expect(detail.find('[data-test="detail-total-profit"]').classes()).toContain('money--none')
-    expect(detail.find('[data-test="detail-status"]').text()).toBe('No result')
-    expect(detail.find('[data-test="detail-output-quote"]').text()).toBe('No quote supplied')
+    expect(detail.find('[data-test="detail-state-code"]').text()).toBe('—')
+    expect(detail.find('[data-test="detail-output-quote"]').text()).toContain('No quote supplied')
   })
 
-  it('explainsABlockedStateInWordsAndKeepsTheCodeInTheDisclosure', () => {
+  it('keepsMaterialPriceInformationWhileRowStateIsTechnicalOnly', () => {
     const detail = detailOf(priceUnavailableRow)
 
-    expect(detail.find('[data-test="detail-status-explanation"]').text()).toContain(
-      'a required price is not available'
-    )
-    expect(detail.find('[data-test="detail-status-explanation"]').text()).not.toContain('PRICE_UNAVAILABLE')
     expect(detail.find('[data-test="detail-state-code"]').text()).toBe('PRICE_UNAVAILABLE')
     expect(detail.find('[data-test="detail-diagnostics"]').attributes('open')).toBeUndefined()
 
-    // The row's reason carries no item, so no item is read out of it — and the places that do carry
-    // one are named instead. "Charged Core" is the material the backend supplied no price for.
-    const affected = detail.find('[data-test="detail-affected-item"]').text()
-    expect(affected).toContain('does not name the item whose price was missing')
     expect(detail.find('[data-test="missing-item"]').text()).toContain('Charged Core')
     expect(detail.find('[data-test="missing-item"]').text()).toContain('No price supplied')
-
-    // It is worded for that one restriction and not attached to every blocked row.
-    expect(detailOf(movedReasonRows[1] as CraftingRow).find('[data-test="detail-affected-item"]').exists()).toBe(
-      false
-    )
-    expect(detailOf(profitableRow).find('[data-test="detail-affected-item"]').exists()).toBe(false)
   })
 
   it('showsTheCountedCraftPurchasesUnderTheirOwnBasisAndNoSecondList', () => {
@@ -366,19 +315,16 @@ describe('SelectedResultDetail', () => {
     expect(detail.find('[data-test="resolution-buy-cost"]').exists()).toBe(false)
     expect(detail.text()).not.toContain('For all 7 crafts this fresh calculation counted')
 
-    // What the fresh answer is still for: its tree, under a basis that does not claim to be the
-    // table row's explanation.
+    // Its resolution represents the full selected-result quantity, without repeating a basis note.
     expect(detail.find('[data-test="resolution-tree"]').exists()).toBe(true)
-    expect(detail.find('[data-test="resolution-basis"]').text()).toContain(
-      'not every craft the table counted'
-    )
+    expect(detail.find('[data-test="resolution-basis"]').exists()).toBe(false)
   })
 
   it('keepsTheBackendsResolutionLiteralsInTheTechnicalDisclosure', () => {
     const detail = detailWithResolution(profitableRow, 'ready', responseFor(profitableRow.recipeId))
 
     expect(detail.find('[data-test="detail-consistency"]').text()).toBe('FRESH_CALCULATION')
-    expect(detail.find('[data-test="detail-tree-basis"]').text()).toBe('SINGLE_OUTPUT_REQUIREMENT')
+    expect(detail.find('[data-test="detail-tree-basis"]').text()).toBe('SELECTED_RESULT_OUTPUT_QUANTITY')
     expect(detail.find('[data-test="detail-tree-status"]').text()).toBe('AVAILABLE')
     expect(detail.find('[data-test="detail-calculated-at"]').text()).toBe('2026-09-25T10:20:30Z')
     // Still secondary: the disclosure is closed, so none of it is in the primary workflow.

@@ -155,15 +155,10 @@ public class CraftingPlanner {
     ) {
         RecipeSimulationResult sim;
 
-        boolean maySkipCheap =
-                !ctx.settings.useOwnMats &&
-                        !ctx.settings.allowBuying;
-
-        if (maySkipCheap && !shouldSimulateRecipe(recipe, ctx)) {
-            sim = new RecipeSimulationResult(recipe.recipeId, recipe.outputItemId);
-        } else {
-            sim = recipeSimulator.simulateRecipe(recipe, ctx, baseState);
-        }
+        // A disabled inventory or buying source does not disable recursive crafting. In
+        // particular, direct-price profitability estimates cannot safely prove a recipe
+        // uncraftable when its ingredients may themselves be crafted.
+        sim = recipeSimulator.simulateRecipe(recipe, ctx, baseState);
         CostEvaluationResult cost = costEvaluator.evaluate(recipe, sim, ctx.tp, ctx.settings);
 
         ResolvedNeed firstCraft = sim.getFirstCraft();
@@ -257,37 +252,4 @@ public class CraftingPlanner {
         return sum;
     }
 
-    private boolean shouldSimulateRecipe(
-            Recipe recipe,
-            PlannerContext ctx
-                                        ) {
-
-
-        CraftingResolver resolver = new CraftingResolver();
-        int sellUnit = resolver.resolveDirectSellUnit(recipe.outputItemId, ctx.tp, ctx.settings);
-        if (sellUnit <= 0) return false;
-
-        int revenue = sellUnit * recipe.outputCount;
-
-        int minCost = 0;
-
-        for (Ingredient ing : recipe.ingredients) {
-
-            int buyUnit = resolver.resolveDirectBuyUnit(ing.itemId, ctx.tp, ctx.settings);
-            int sellUnitMat = resolver.resolveDirectSellUnit(ing.itemId, ctx.tp, ctx.settings);
-
-            int cheapest = Math.min(
-                    buyUnit > 0 ? buyUnit : Integer.MAX_VALUE,
-                    sellUnitMat > 0 ? sellUnitMat : Integer.MAX_VALUE
-                                   );
-
-            if (cheapest == Integer.MAX_VALUE) {
-                return true; // unknown cost → simulate
-            }
-
-            minCost += cheapest * ing.count;
-        }
-
-        return minCost < revenue;
-    }
 }

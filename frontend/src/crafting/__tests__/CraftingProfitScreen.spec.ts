@@ -1,7 +1,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '@/api/http'
-import type { CraftingProfitResponse, SelectorOptions } from '@/api/types'
+import type { SelectorOptions } from '@/api/types'
 import CraftingProfitScreen from '../CraftingProfitScreen.vue'
 import CraftingProfitTable from '../CraftingProfitTable.vue'
 import {
@@ -10,7 +10,6 @@ import {
   allRows,
   cycleDetectedRow,
   deferred,
-  echoedProfitResponse,
   lessProfitableRow,
   lossRow,
   movedReasonRows,
@@ -19,7 +18,6 @@ import {
   priceUnavailableRow,
   profitResponse,
   profitableRow,
-  resolutionResponse,
   selectorOptions,
   zeroProfitRow
 } from './fixtures'
@@ -41,11 +39,6 @@ async function openScreenListingEveryRow(api: FakeCraftingApi): Promise<VueWrapp
   await wrapper.find('[data-test="filter-not-allowed"]').setValue(false)
   await wrapper.find('[data-test="filter-non-positive-profit"]').setValue(false)
   return wrapper
-}
-
-/** The minimal per-row diagnostics on screen. Most rows have none, so this is usually short. */
-function rowDiagnostics(wrapper: VueWrapper): string[] {
-  return wrapper.findAll('[data-test="row-diagnostic"]').map((element) => element.text())
 }
 
 function totalProfits(wrapper: VueWrapper): string[] {
@@ -147,6 +140,25 @@ describe('CraftingProfitScreen', () => {
       scope: { kind: 'DISCIPLINE', discipline: 'Chef' },
       settings: { ...DEFAULT_SETTINGS, allowBuying: true }
     })
+  })
+
+  it('keepsAnExplicitDailyCraftChoiceThroughTheRequestAndEffectiveSettingsEcho', async () => {
+    const api = new FakeCraftingApi()
+    const wrapper = await openScreen(api)
+
+    await wrapper.find('[data-test="setting-allowDailyCrafts"]').setValue(true)
+    await flushPromises()
+
+    expect(api.profitRequests.at(1)?.settings?.allowDailyCrafts).toBe(true)
+    expect((wrapper.find('[data-test="setting-allowDailyCrafts"]').element as HTMLInputElement).checked)
+      .toBe(true)
+
+    await wrapper.find('[data-test="setting-allowDailyCrafts"]').setValue(false)
+    await flushPromises()
+
+    expect(api.profitRequests.at(2)?.settings?.allowDailyCrafts).toBe(false)
+    expect((wrapper.find('[data-test="setting-allowDailyCrafts"]').element as HTMLInputElement).checked)
+      .toBe(false)
   })
 
   it('keepsScopeSettingsSearchAndSortAcrossAManualReload', async () => {
@@ -298,7 +310,7 @@ describe('CraftingProfitScreen', () => {
     ])
   })
 
-  it('movesTheOrdinaryRestrictionsOutOfTheRowsAndIntoTheSelectedResult', async () => {
+  it('keepsGenericRowStatesOutOfTheComparisonTableAndSelectedResult', async () => {
     const api = new FakeCraftingApi()
     api.profitHandler = () => Promise.resolve(profitResponse(movedReasonRows))
 
@@ -306,7 +318,7 @@ describe('CraftingProfitScreen', () => {
 
     // Every one of the five is on screen as an ordinary row, with no label of its own anywhere.
     expect(recipeNames(wrapper)).toHaveLength(movedReasonRows.length)
-    expect(rowDiagnostics(wrapper)).toEqual([])
+    expect(wrapper.findAll('[data-test="row-diagnostic"]')).toHaveLength(0)
     const tableText = wrapper.find('[data-test="profit-table"]').text()
     for (const row of movedReasonRows) {
       expect(tableText).not.toContain(row.blockedReason as string)
@@ -314,26 +326,23 @@ describe('CraftingProfitScreen', () => {
     expect(tableText).not.toContain('Buying is off')
     expect(tableText).not.toContain('Recipe not allowed')
 
-    // Choosing one states the reason in words, with its craftable count left standing.
+    // Selecting one preserves its economics and keeps the raw code in Technical details only.
     await selectRecipe(wrapper, 'Restricted Recipe 5')
-    expect(wrapper.find('[data-test="detail-status-explanation"]').text()).toContain(
-      'costs more than the maximum buy setting allows'
-    )
-    expect(wrapper.find('[data-test="detail-status-explanation"]').text()).toContain(
-      '5 crafts already counted stay valid'
-    )
-    // The backend's echoed maximum buy, not a number this screen decided on.
-    expect(wrapper.find('[data-test="detail-budget-context"]').text()).toContain('1g 0s 0c')
+    expect(wrapper.find('[data-test="detail-state-code"]').text()).toBe('INSUFFICIENT_BUDGET')
+    const selectedCopy = wrapper.find('[data-test="selected-detail"]').element.cloneNode(true) as HTMLElement
+    selectedCopy.querySelector('[data-test="detail-diagnostics"]')?.remove()
+    expect(selectedCopy.textContent).not.toContain('INSUFFICIENT_BUDGET')
+    expect(wrapper.find('[data-test="detail-buy-cost"]').text()).toBe('2s 50c')
   })
 
-  it('keepsTheTemporaryCycleDiagnosticOnItsRowAndTheRawCodeOutOfIt', async () => {
+  it('keepsRawCycleCodeInTechnicalDetailsWithoutARowBadge', async () => {
     const api = new FakeCraftingApi()
     api.profitHandler = () =>
       Promise.resolve(profitResponse([profitableRow, cycleDetectedRow, ...movedReasonRows]))
 
     const wrapper = await openScreen(api)
 
-    expect(rowDiagnostics(wrapper)).toEqual(['Recipe loop'])
+    expect(wrapper.findAll('[data-test="row-diagnostic"]')).toHaveLength(0)
     expect(wrapper.find('[data-test="profit-table"]').text()).not.toContain('CYCLE_DETECTED')
 
     await selectRecipe(wrapper, cycleDetectedRow.outputName as string)
@@ -345,9 +354,8 @@ describe('CraftingProfitScreen', () => {
 
     const wrapper = await openScreenListingEveryRow(api)
 
-    // No general State column: the two ordinary rows carry no diagnostic at all, and the two whose
-    // own numbers could not say what happened keep a minimal one (DOMAIN_SPEC 2.1.1).
-    expect(rowDiagnostics(wrapper)).toEqual(['Price missing', 'No result'])
+    // No generic state badge appears; missing economics remain `—`, never zero.
+    expect(wrapper.findAll('[data-test="row-diagnostic"]')).toHaveLength(0)
     expect(totalProfits(wrapper).slice(2)).toEqual(['—', '—'])
     expect(totalSellValues(wrapper).slice(2)).toEqual(['—', '—'])
 

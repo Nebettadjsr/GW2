@@ -39,7 +39,7 @@ const DISCOVERY_ROUTE = '/api/crafting/discovery'
 const RESOLUTION_ROUTE = '/api/crafting/discovery/resolution'
 
 /** The value the Discovery flow fixes; it is reported, never accepted as an input. */
-const DAILY_FIXED = false
+const DAILY_FIXED = true
 
 /** Discovery's own echoed defaults — deliberately not Crafting Profit's. */
 const DEFAULT_SETTINGS = {
@@ -48,7 +48,7 @@ const DEFAULT_SETTINGS = {
   maxBuyCopper: 200_000,
   listingSell: false,
   listingBuy: false,
-  dailyBuyInsteadOfCraft: DAILY_FIXED
+  allowDailyCrafts: DAILY_FIXED
 }
 
 const CHARACTER_OPTIONS = [
@@ -235,7 +235,7 @@ function answerApi({ url, body, sendJson }) {
       settings:
         request.settings === undefined
           ? DEFAULT_SETTINGS
-          : { ...request.settings, dailyBuyInsteadOfCraft: DAILY_FIXED },
+          : { ...request.settings, allowDailyCrafts: DAILY_FIXED },
       rowCount: ROWS.length,
       rows: ROWS
     })
@@ -258,7 +258,7 @@ function answerApi({ url, body, sendJson }) {
       calculation: {
         scope: { discipline: scope.discipline, characterName: scope.characterName, rating: scope.rating },
         inventoryCharacterName: calculation.inventoryCharacterName ?? null,
-        settings: { ...calculation.settings, dailyBuyInsteadOfCraft: DAILY_FIXED }
+        settings: { ...calculation.settings, allowDailyCrafts: DAILY_FIXED }
       },
       consistency: 'FRESH_CALCULATION',
       calculatedAt: '2026-09-27T09:00:00Z',
@@ -638,7 +638,7 @@ async function run() {
         `A calculation was sent without the selector's own character and rating: ${request.body}`
       )
       check(
-        sent.settings === undefined || sent.settings.dailyBuyInsteadOfCraft === undefined,
+        sent.settings === undefined || sent.settings.allowDailyCrafts === undefined,
         `A calculation sent the fixed daily setting the route does not accept: ${request.body}`
       )
     }

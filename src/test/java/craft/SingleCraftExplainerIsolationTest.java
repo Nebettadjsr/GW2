@@ -28,7 +28,7 @@ class SingleCraftExplainerIsolationTest {
     private final SingleCraftExplainer explainer = new SingleCraftExplainer();
 
     private static CraftingSettings settings(boolean useOwnMats, boolean allowBuying, int maxBuyCopper) {
-        return new CraftingSettings(useOwnMats, allowBuying, maxBuyCopper, false, false, false);
+        return new CraftingSettings(useOwnMats, allowBuying, maxBuyCopper, false, false, true);
     }
 
     @Test

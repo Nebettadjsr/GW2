@@ -8,20 +8,25 @@ public class RecipeSimulator {
     private final CraftingResolver resolver;
 
     /**
-     * Stops each phase once one craft has been accepted (STORY-DOM-020). The single-craft
-     * explanation needs exactly the simulation's first craft, including the phase order that
-     * decides it, but none of the batches after it. Always false for table calculations, whose
-     * loop is therefore unchanged.
+     * Optional accepted-craft limit used by resolution explanations. Table calculations keep the
+     * existing 250-craft behavior; explanation runs can stop at the selected result's counted craft
+     * quantity without attempting an additional craft.
      */
-    private final boolean stopAfterFirstCraft;
+    private final int acceptedCraftLimit;
+    private final boolean captureAcceptedCrafts;
 
     public RecipeSimulator() {
-        this(new CraftingResolver(), false);
+        this(new CraftingResolver(), 0, false);
     }
 
     RecipeSimulator(CraftingResolver resolver, boolean stopAfterFirstCraft) {
+        this(resolver, stopAfterFirstCraft ? 1 : 0, stopAfterFirstCraft);
+    }
+
+    RecipeSimulator(CraftingResolver resolver, int acceptedCraftLimit, boolean captureAcceptedCrafts) {
         this.resolver = resolver;
-        this.stopAfterFirstCraft = stopAfterFirstCraft;
+        this.acceptedCraftLimit = acceptedCraftLimit;
+        this.captureAcceptedCrafts = captureAcceptedCrafts;
     }
 
     public RecipeSimulationResult simulateRecipe(
@@ -34,20 +39,16 @@ public class RecipeSimulator {
 
         PlanState state = new PlanState(baseState);
 
-        // Phase 1: consume zero-cash / own-mats crafts first
+        // Phase 1: when inventory use and buying are both enabled, prefer fully-owned paths first.
         if (ctx.settings.useOwnMats && ctx.settings.allowBuying) {
             // Same no-buy settings this phase has always used; withBuyingDisabled() additionally
             // shares ctx's memo tables instead of giving every recipe's phase 1 an empty one.
             simulatePhase(recipe, ctx.withBuyingDisabled(), state, result);
         }
 
-        // Phase 2: continue with buying enabled if originally requested
-        if (ctx.settings.allowBuying) {
-            simulatePhase(recipe, ctx, state, result);
-        } else if (!(ctx.settings.useOwnMats && ctx.settings.allowBuying)) {
-            // Normal no-buy mode when buying is disabled from the start
-            simulatePhase(recipe, ctx, state, result);
-        }
+        // Continue with the requested buying policy. With buying disabled, every recursive
+        // resolver call sees buying disabled too; daily crafting remains independently controlled.
+        simulatePhase(recipe, ctx, state, result);
 
         return result;
     }
@@ -59,7 +60,7 @@ public class RecipeSimulator {
             RecipeSimulationResult result
                               ) {
         while (true) {
-            if (stopAfterFirstCraft && result.getCraftCount() > 0) {
+            if (acceptedCraftLimit > 0 && result.getCraftCount() >= acceptedCraftLimit) {
                 break;
             }
 
@@ -97,6 +98,8 @@ public class RecipeSimulator {
             if (result.getCraftCount() == 0) {
                 result.setFirstCraft(root);
             }
+
+            if (captureAcceptedCrafts) result.addAcceptedCraft(root);
 
             result.setLastCraft(root);
             result.incrementCraftCount();

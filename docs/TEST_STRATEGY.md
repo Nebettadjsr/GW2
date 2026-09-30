@@ -330,7 +330,7 @@ otherwise lowest effective cost across remaining recipes
 
 ## 6.9 Daily Items
 
-Test the configured buy-instead-of-craft behavior.
+Test daily crafting independently from inventory use and buying.
 
 ### useOwnMats = true
 
@@ -338,8 +338,8 @@ Expected:
 
 ```text
 use owned daily items first
-buy missing quantity
-never craft
+do not perform a daily craft
+buy a shortfall only when buying is enabled
 ```
 
 ### useOwnMats = false
@@ -348,11 +348,15 @@ Expected:
 
 ```text
 ignore owned daily items
-buy required quantity
-never craft
+allow at most one daily craft operation when enabled
+buy any additional requirement only when buying is enabled
 ```
 
 Also test blocked behavior when the required item cannot be purchased.
+
+Exercise the `useOwnMats` × `allowBuying` × `allowDailyCrafts` combinations, including recursive
+daily ingredient → craftable intermediate → parent paths. Assert that a disabled purchase cannot
+appear in nested missing-to-buy totals, and that speculative failure restores the daily allowance.
 
 The system does not track whether today's daily craft has already been used.
 

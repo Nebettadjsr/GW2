@@ -1,13 +1,15 @@
 package craft;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
  * Domain entry point for explaining one execution of a selected recipe
- * (TARGET_ARCHITECTURE.md section 13.3, DOMAIN_SPEC.md section 44).
+ * (TARGET_ARCHITECTURE.md section 10.2, DOMAIN_SPEC.md section 44).
  *
  * <p>It runs the authoritative resolver - the same {@link RecipeSimulator}/{@link CraftingResolver}
  * that produces the economic results, with the same eligibility, binding, valuation and
@@ -50,7 +52,7 @@ public final class SingleCraftExplainer {
         PlannerContext ctx = new PlannerContext(
                 CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds);
 
-        return explain(recipe, ctx, new PlanState(sellableInventory, boundInventory));
+        return explain(recipe, ctx, new PlanState(sellableInventory, boundInventory), 1);
     }
 
     /**
@@ -76,32 +78,121 @@ public final class SingleCraftExplainer {
                 CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster);
 
         return explain(recipe, ctx,
-                new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory));
+                new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory), 1);
     }
 
-    private SingleCraftExplanation explain(Recipe recipe, PlannerContext ctx, PlanState initialState) {
-        RecipeSimulator simulator = new RecipeSimulator(new CraftingResolver(true), true);
+    /**
+     * Explains the complete output represented by a coordinated Profit row. The simulator replays
+     * the selected recipe from the same initial pools and settings, stopping exactly after the
+     * table's accepted craft count; it never attempts a further craft just to add a warning.
+     * A zero-count row retains one rejected attempt so the item-specific reason remains available.
+     */
+    public SingleCraftExplanation explainCoordinatedResult(
+            Recipe recipe,
+            List<Recipe> recipes,
+            Map<Integer, Integer> sellableInventory,
+            Map<Integer, Integer> accountBoundInventory,
+            Map<String, Map<Integer, Integer>> characterBoundInventory,
+            List<CharacterCraftingProfile> roster,
+            Map<Integer, PriceQuote> tp,
+            CraftingSettings settings,
+            Set<Integer> allowedRecipeIds,
+            int countedCrafts
+    ) {
+        PlannerContext ctx = new PlannerContext(
+                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster);
+        return explain(recipe, ctx,
+                new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory),
+                Math.max(1, countedCrafts));
+    }
+
+    private SingleCraftExplanation explain(Recipe recipe, PlannerContext ctx, PlanState initialState,
+                                           int acceptedCraftLimit) {
+        RecipeSimulator simulator = new RecipeSimulator(
+                new CraftingResolver(true), acceptedCraftLimit, true);
         RecipeSimulationResult simulation = simulator.simulateRecipe(recipe, ctx, initialState);
 
-        ResolvedNeed accepted = simulation.getFirstCraft();
-        if (accepted != null) {
-            return explanationOf(recipe, toNode(accepted, BlockedReason.NONE));
+        List<ResolvedNeed> accepted = simulation.getAcceptedCrafts();
+        if (!accepted.isEmpty()) {
+            List<CraftTraceNode> roots = accepted.stream()
+                    .map(craft -> toNode(craft, BlockedReason.NONE))
+                    .toList();
+            return explanationOf(recipe, combineNodes(roots),
+                    Math.multiplyExact(recipe.outputCount, simulation.getCraftCount()));
         }
 
         // The first craft was attempted and rejected: its reasons are still an explanation
-        // (TARGET_ARCHITECTURE.md section 13.3), unlike the absence of a result.
+        // (TARGET_ARCHITECTURE.md section 10.2), unlike the absence of a result.
         ResolvedNeed rejected = simulation.getBlockedAttempt();
         if (rejected != null) {
-            return explanationOf(recipe, toNode(rejected, simulation.getBlockedReason()));
+            return explanationOf(recipe, toNode(rejected, simulation.getBlockedReason()), recipe.outputCount);
         }
 
         return SingleCraftExplanation.unavailable(
                 recipe.recipeId, recipe.outputItemId, recipe.outputCount);
     }
 
-    private SingleCraftExplanation explanationOf(Recipe recipe, CraftTraceNode root) {
+    private SingleCraftExplanation explanationOf(Recipe recipe, CraftTraceNode root, int outputQuantity) {
         return new SingleCraftExplanation(
-                recipe.recipeId, recipe.outputItemId, recipe.outputCount, true, root);
+                recipe.recipeId, recipe.outputItemId, outputQuantity, true, root);
+    }
+
+    private CraftTraceNode combineNodes(List<CraftTraceNode> nodes) {
+        CraftTraceNode first = nodes.get(0);
+        int requested = nodes.stream().mapToInt(CraftTraceNode::requestedQuantity).sum();
+        int inventory = nodes.stream().mapToInt(CraftTraceNode::inventoryQuantity).sum();
+        int crafted = nodes.stream().mapToInt(CraftTraceNode::craftedQuantity).sum();
+        int bought = nodes.stream().mapToInt(CraftTraceNode::boughtQuantity).sum();
+        int missing = nodes.stream().mapToInt(CraftTraceNode::missingQuantity).sum();
+        int craftCount = nodes.stream().mapToInt(CraftTraceNode::craftCount).sum();
+        int produced = nodes.stream().mapToInt(CraftTraceNode::producedQuantity).sum();
+
+        LinkedHashSet<String> characters = new LinkedHashSet<>();
+        for (CraftTraceNode node : nodes) {
+            if (node.characterName() != null) characters.add(node.characterName());
+        }
+        LinkedHashSet<AcquisitionMethod> methods = new LinkedHashSet<>();
+        LinkedHashSet<ResolutionState> states = new LinkedHashSet<>();
+        LinkedHashSet<BlockedReason> reasons = new LinkedHashSet<>();
+        nodes.forEach(node -> {
+            methods.addAll(node.methods());
+            states.addAll(node.states());
+            reasons.addAll(node.blockedReasons());
+        });
+
+        List<CraftTraceNode> children = new ArrayList<>();
+        int childCount = nodes.stream().mapToInt(node -> node.children().size()).max().orElse(0);
+        for (int index = 0; index < childCount; index++) {
+            Map<String, List<CraftTraceNode>> variants = new LinkedHashMap<>();
+            for (CraftTraceNode parent : nodes) {
+                if (parent.children().size() <= index) continue;
+                CraftTraceNode child = parent.children().get(index);
+                String key = child.itemId() + ":" + child.recipeId() + ":" + child.characterName();
+                variants.computeIfAbsent(key, ignored -> new ArrayList<>()).add(child);
+            }
+            variants.values().forEach(variant -> children.add(combineNodes(variant)));
+        }
+
+        return new CraftTraceNode(
+                first.itemId(), requested, inventory, crafted, bought, missing,
+                first.recipeId(), craftCount, produced,
+                characters.isEmpty() ? null : String.join(", ", characters),
+                List.copyOf(methods), List.copyOf(states), List.copyOf(reasons),
+                sumIfAllKnown(nodes, CraftTraceNode::cashCostCopper),
+                sumIfAllKnown(nodes, CraftTraceNode::opportunityCostCopper),
+                sumIfAllKnown(nodes, CraftTraceNode::effectiveCostCopper),
+                children);
+    }
+
+    private Integer sumIfAllKnown(List<CraftTraceNode> nodes,
+                                  java.util.function.Function<CraftTraceNode, Integer> value) {
+        int total = 0;
+        for (CraftTraceNode node : nodes) {
+            Integer amount = value.apply(node);
+            if (amount == null) return null;
+            total = Math.addExact(total, amount);
+        }
+        return total;
     }
 
     /**

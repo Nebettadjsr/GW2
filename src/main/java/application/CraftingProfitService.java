@@ -146,10 +146,10 @@ public class CraftingProfitService {
                 inputs.accountBoundInventory(), inputs.characterBoundInventory(), inputs.roster(),
                 inputs.tp(), settings, candidates.allowedRecipeIds());
 
-        SingleCraftExplanation explanation = new SingleCraftExplainer().explainCoordinated(
+        SingleCraftExplanation explanation = new SingleCraftExplainer().explainCoordinatedResult(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
                 inputs.accountBoundInventory(), inputs.characterBoundInventory(), inputs.roster(),
-                inputs.tp(), settings, candidates.allowedRecipeIds());
+                inputs.tp(), settings, candidates.allowedRecipeIds(), row.craftableCount);
 
         return CraftingResolutionDetail.of(
                 recipeId, selected, row, explanation, inputs.items(), inputs.tp());

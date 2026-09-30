@@ -66,7 +66,7 @@ class CraftingResolutionApiRealDbIT {
     private static final CraftingSettings PROFIT_DEFAULTS =
             new CraftingSettings(true, false, 10_000, false, false, true);
 
-    /** The Discovery view's opening settings; its daily flag is fixed to false. */
+    /** The Discovery view's opening settings; daily crafts remain fixed to allowed. */
     private static final CraftingSettings DISCOVERY_DEFAULTS =
             new CraftingSettings(true, true, 200_000, false, false, false);
 
@@ -89,12 +89,12 @@ class CraftingResolutionApiRealDbIT {
                  "calculation": {"scope": {"kind": "ALL"},
                                  "settings": {"useOwnMats": true, "allowBuying": false,
                                               "maxBuyCopper": 10000, "listingSell": false,
-                                              "listingBuy": false, "dailyBuyInsteadOfCraft": true}}}"""
+                                              "listingBuy": false, "allowDailyCrafts": true}}}"""
                 .formatted(recipeId);
 
         System.out.println("=== STORY-API-008 Profit resolution detail (real DB) ===");
         System.out.println("Scope: ALL, settings: Profit view defaults (useOwnMats, no buying, 1g budget,"
-                + " instant sell/buy, daily bought)");
+                + " instant sell/buy, daily crafts allowed)");
         System.out.println("Data scale: visibleRecipes=" + table.visibleRecipes().size()
                 + " graphRecipes=" + table.allRecipes().size()
                 + " selected recipe=" + recipeId);
@@ -150,12 +150,12 @@ class CraftingResolutionApiRealDbIT {
                  "calculation": {"scope": {"kind": "ALL"},
                                  "settings": {"useOwnMats": true, "allowBuying": true,
                                               "maxBuyCopper": 10000000, "listingSell": false,
-                                              "listingBuy": false, "dailyBuyInsteadOfCraft": true}}}"""
+                                              "listingBuy": false, "allowDailyCrafts": true}}}"""
                 .formatted(recipeId);
 
         System.out.println("=== STORY-API-008 Profit resolution detail, deep recipe (real DB) ===");
         System.out.println("Scope: ALL, settings: useOwnMats, buying ENABLED, 1000g budget,"
-                + " instant sell/buy, daily bought");
+                + " instant sell/buy, daily crafts allowed");
         System.out.println("Data scale: visibleRecipes=" + table.visibleRecipes().size()
                 + " graphRecipes=" + table.allRecipes().size()
                 + " selected recipe=" + recipeId);
@@ -201,7 +201,7 @@ class CraftingResolutionApiRealDbIT {
         System.out.println("=== STORY-API-008 Discovery resolution detail (real DB) ===");
         System.out.println("Scope: " + scope.discipline + " lvl " + scope.rating + " - " + scope.charName
                 + ", inventory character " + scope.charName
-                + ", settings: Discovery view defaults (buying on, 20g budget, daily fixed false)");
+                + ", settings: Discovery view defaults (buying on, 20g budget, daily crafts fixed on)");
         System.out.println("Data scale: visibleRecipes=" + table.visibleRecipes().size()
                 + " graphRecipes=" + table.allRecipes().size()
                 + " selected recipe=" + recipeId);

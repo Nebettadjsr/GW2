@@ -67,10 +67,17 @@ cost wording and the negative/cost visual treatment, a clearly labelled Trading
 Post price for one output item, useful recipe and shopping/material information,
 and a GW2 Wiki link when a reliable URL can be constructed. Remove a redundant
 Result summary and explanatory text when the same information is already clear.
-Resolution detail follows TARGET_ARCHITECTURE section 13's decided basis and
-consistency contract: show actual sourcing and required quantities, not merely
-recipe relationships or an invented execution trace. Produced quantities remain
-available in the backend contract but need not appear in the normal tree.
+Crafting Profit resolution explains the complete output quantity represented by
+the selected result. Its requested quantity is based on the selected row's
+`craftableCount` (completed recipe executions) multiplied by the recipe's
+`outputCount` (items produced per execution). The backend resolver must resolve
+those executions against the real inventory, settings, eligibility, prices and
+recursive recipes; the frontend renders the resulting quantities without
+reconstructing them. Crafting Discovery may continue to explain one output
+batch because it has no selected Profit result quantity. See
+`TARGET_ARCHITECTURE.md` section 10.2 for the transport and resolution contract.
+For a Profit row with zero counted crafts, the tree may show its first blocked
+attempt and must identify that basis rather than implying a counted output.
 
 Crafting Resolution uses compact summaries and progressive disclosure. Each
 requirement shows item identity, required quantity (for example, "20 needed"),
@@ -85,17 +92,19 @@ Remove the permanent introductory explanation beneath "Crafting resolution".
 Normal nodes omit bookkeeping rows for stock/crafted/bought/missing quantities,
 producing recipe and recipe ID, crafts run and produced total. This does not hide
 meaningful blocked/unavailable explanations. Internal values may remain in optional
-technical details without removing data from the backend contract. Review cash,
-opportunity and effective cost rows for usefulness and compactness; retain useful
-backend-supplied economic information without repeating verbose per-node panels.
+technical details without removing data from the backend contract. The normal
+Profit tree shows one `Value` from the backend's `effectiveCostCopper` field; it
+represents inclusive cash plus opportunity cost for that requirement. Do not add
+a per-node technical disclosure for the cash, opportunity and effective values;
+those remain available in the backend/API contract, with missing distinct from
+known zero.
 
 The normal selected detail should omit the redundant "THIS RECIPE IN THAT FRESH
-CALCULATION" summary. Preserve the existing backend-owned fresh resolution and
-its response association; do not replace table results with fresh values or claim
-the tree traces all counted crafts. A concise basis label or optional explanation
-may retain that distinction without the permanent technical paragraph. Removing
-the summary is presentation work, not permission to remove the calculation or
-change its API contract.
+CALCULATION" summary. Preserve the backend-owned fresh resolution and its
+response association. For Profit, resolve the selected detail row's full
+counted output quantity, while keeping the table's earlier values intact; the
+detail response remains a fresh calculation and can differ when captured inputs
+change between requests. Do not imply that a zero-count row has counted output.
 
 For a valid selected result still present in the fresh calculation, display the
 actual backend resolution tree; a failed explanation request is not a substitute.
@@ -134,25 +143,21 @@ explaining the display limit. A compact displayed/matching count may remain.
 Column headings must communicate per-craft versus total values. Use a concise
 "Trading Post price / item" label instead of generic unit-price explanatory prose;
 keep output quantity with recipe/crafting information. Preserve keyboard selection,
-accessibility semantics, errors, blocked explanations and necessary recipe-specific
-domain information.
+accessibility semantics, errors and necessary recipe-specific domain information.
 
-Blocked/unavailable information remains meaningful even where further crafting
-is blocked after some crafts succeed. Preserve all backend reasons, but remove
-the general State/Status comparison column. BUYING_DISABLED, NO_RECIPE,
-DAILY_LIMIT, RECIPE_NOT_ALLOWED and INSUFFICIENT_BUDGET belong in selected-result
-details as concise contextual explanations, not repeated ordinary row labels.
-Explain downstream requirements beside the affected material/tree node when the
-backend supplies that context. Describe buying disabled, missing usable recipes,
-scope restrictions, daily restrictions and budget limits in user-facing language;
-show useful supplied purchase costs and budget where available without inventing
-missing amounts or recomputing economics. Raw enums may remain in secondary
-technical information. Preserve unavailable-versus-zero distinctions and meaningful
-price/unavailable-result information; do not imply success by removing a column.
+The normal comparison table and Selected Result panel present actionable crafting
+and economic information. They do not display generic row/domain state labels,
+codes, explanations or context derived from those states, including unknown states
+and unavailable-result markers. The raw supplied row state remains available in the
+collapsed Technical details disclosure. Preserve the semantic meaning of all row
+states in section 42. Keep item-specific sourcing and blocking information in the
+Crafting Resolution tree, attached to the affected requirement or item.
 
-Retain a minimal row-level CYCLE_DETECTED diagnostic, explicitly temporary
-presentation technical debt, until the Product Owner requests its removal. It
-does not justify retaining a general State/Status column.
+Keep UI/request/data-state messages: loading, API/request errors, empty-result
+messages, missing/null-data representation, and notices explaining why a selected
+row is hidden by search, filters or the display limit. Unknown or missing values
+must remain distinct from zero and success. Preserve all backend reasons and their
+domain meaning without requiring generic row-state prose in the normal view.
 
 Crafting Profit always uses the normal acquisition rules for each required material.
 Usable owned inventory may be consumed under the binding rules; an allowed crafting
@@ -1059,43 +1064,19 @@ Daily crafting state is therefore not part of the account model.
 
 # 32. Daily Craft Strategy
 
-When the user selects the behavior currently represented by `dailyBuyInsteadOfCraft`, daily-limited items must never be crafted by the planner.
+`allowDailyCrafts` controls only whether the planner may execute an available daily/time-gated
+craft. It does not enable buying. An enabled daily craft may be performed at most once per output
+item in one planning state; the recipe's full output batch is produced. Normal parent and higher-
+level crafting then continues. Any further required tradable materials can be bought only when
+`allowBuying` is enabled.
 
-The rule depends on whether owned materials are enabled.
+When `allowDailyCrafts` is false, the planner does not execute a daily/time-gated recipe. It may
+still consume an already-owned daily item when `useOwnMats` is true, or buy the requirement when
+`allowBuying` is true. With both unavailable, the parent craft is blocked naturally.
 
-## Use Own Materials = true
-
-For a required daily-limited item:
-
-1. use existing owned copies first,
-2. buy any remaining required quantity if buying is allowed and the item is purchasable,
-3. do not craft additional copies.
-
-Conceptually:
-
-```text
-owned first
-→ buy missing quantity
-→ never craft
-```
-
-## Use Own Materials = false
-
-For a required daily-limited item:
-
-1. ignore owned copies,
-2. buy the required quantity if buying is allowed and the item is purchasable,
-3. do not craft any copies.
-
-Conceptually:
-
-```text
-do not use owned
-→ buy required quantity
-→ never craft
-```
-
-If the required quantity cannot be purchased under the selected settings, the requirement becomes blocked.
+The settings remain independent: disabling owned materials prevents owned inventory from
+satisfying any ingredient; disabling buying prevents Trading Post purchases at every level; and
+neither changes whether recursive non-daily crafting is available.
 
 
 # 33. Owned Daily Materials
@@ -1104,7 +1085,8 @@ Owned daily-limited items are ordinary owned inventory for the purpose of consum
 
 When `useOwnMats` is enabled, existing owned copies may be used before purchases.
 
-When `useOwnMats` is disabled, existing owned copies are ignored.
+When `useOwnMats` is disabled, existing owned copies are ignored, regardless of daily-craft or
+buying settings.
 
 The application does not attempt to infer or track whether additional copies could still be crafted today.
 
@@ -1294,7 +1276,31 @@ INSUFFICIENT_BUDGET
 
 All of these are represented explicitly in the implementation (`craft.BlockedReason`) and are assigned by the planner rather than only declared (`docs/KNOWN_PROBLEMS.md` §3.5).
 
-The domain should ultimately preserve the reason rather than returning only:
+For Crafting Profit rows, `resultAvailable` and `blockedReason` are separate
+contract fields. Their meanings are:
+
+| Value | Meaning |
+| --- | --- |
+| `resultAvailable = false` | The backend supplied no calculated result. Numeric nulls remain unavailable; this is not a zero result or a successful unblocked result. |
+| Available result with null/unreported `blockedReason` | A result exists, but no state was supplied. No conclusion about blocking or success may be inferred from the missing state. |
+| `NONE` | No blocking reason was reported. It does not itself promise that any craft was counted; `craftableCount` carries that information. |
+| `NO_RECIPE` | A required item had no usable recipe path. |
+| `BUYING_DISABLED` | A required item could not be bought because buying was disabled. Other allowed acquisition paths are independent. |
+| `DAILY_LIMIT` | A required daily/time-gated craft or amount could not be performed under the applicable daily allowance. Already available daily materials and successful crafts remain valid. |
+| `CYCLE_DETECTED` | The attempted recipe dependency path depends on an item/recipe already active in that path. |
+| `PRICE_UNAVAILABLE` | A required purchase quote was missing or unusable. A missing price is not a zero price. |
+| `RECIPE_NOT_ALLOWED` | A recipe was rejected by recipe/allowed-set restrictions or coordinated character eligibility. |
+| `INSUFFICIENT_BUDGET` | The next required purchase exceeded the configured maximum-buy constraint. The constraint applies to the purchase path, not to the value of already counted crafts. |
+| Unknown/future code | Preserve the supplied code as an unknown state. Do not map it to `NONE`, zero, success or a known reason. |
+
+A non-`NONE` reason may explain why further crafting stopped after a positive
+`craftableCount`; those already-counted crafts remain valid. When the count is zero,
+the same reason describes why no craft could be completed. A null count remains
+unknown rather than zero. These meanings are domain semantics and do not require
+the normal Crafting Profit table or Selected Result panel to print explanatory copy;
+see section 2.1.1 for the display contract.
+
+The domain should preserve the reason rather than returning only:
 
 ```text
 cannot craft
@@ -1588,10 +1594,10 @@ Prefer a valid recipe from the same crafting discipline as the parent recipe. If
 
 ## DQ-004 — Daily crafts
 
-When daily items are configured as buy-instead-of-craft, never craft them.
-
-- With owned materials enabled: consume owned copies first, then buy missing quantities.
-- With owned materials disabled: ignore owned copies and buy the required quantity.
+`allowDailyCrafts` independently controls whether one available daily craft operation may be
+performed per output item in a planning state. When disabled, daily outputs are not crafted.
+Owned stock remains governed only by `useOwnMats`, and Trading Post purchases remain governed only
+by `allowBuying`.
 
 **Status:** DECIDED
 

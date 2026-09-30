@@ -1,12 +1,41 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { EffectiveSettings } from '@/api/types'
-import { formatCopper } from './formatCopper'
 
-const props = defineProps<{
-  settings: EffectiveSettings | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    settings: EffectiveSettings | null
+    layoutPart?: 'values' | 'checks' | 'all'
+  }>(),
+  {
+    layoutPart: 'all'
+  }
+)
 
 const emit = defineEmits<{ apply: [settings: EffectiveSettings] }>()
+
+const showValues = computed(
+  () => props.layoutPart === 'values' || props.layoutPart === 'all'
+)
+
+const showChecks = computed(
+  () => props.layoutPart === 'checks' || props.layoutPart === 'all'
+)
+
+const maxBuyGold = computed(() => {
+  if (props.settings === null) return 0
+  return Math.floor(props.settings.maxBuyCopper / 10000)
+})
+
+const maxBuySilver = computed(() => {
+  if (props.settings === null) return 0
+  return Math.floor((props.settings.maxBuyCopper % 10000) / 100)
+})
+
+const maxBuyCopperPart = computed(() => {
+  if (props.settings === null) return 0
+  return props.settings.maxBuyCopper % 100
+})
 
 function emitWith(changed: Partial<EffectiveSettings>): void {
   if (props.settings === null) return
@@ -20,42 +49,100 @@ function checkedValue(event: Event): boolean | null {
 
 function isListingMode(event: Event): boolean | null {
   const target = event.target
-  return target instanceof HTMLSelectElement ? target.value === 'listing' : null
+  return target instanceof HTMLSelectElement
+    ? target.value === 'listing'
+    : null
+}
+
+function numberValue(event: Event): number | null {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return null
+
+  const value = Number(target.value)
+  if (!Number.isFinite(value)) return null
+
+  return value
 }
 
 function onUseOwnMatsChange(event: Event): void {
   const useOwnMats = checkedValue(event)
-  if (useOwnMats !== null) emitWith({ useOwnMats })
+  if (useOwnMats !== null) {
+    emitWith({ useOwnMats })
+  }
 }
 
 function onAllowBuyingChange(event: Event): void {
   const allowBuying = checkedValue(event)
-  if (allowBuying !== null) emitWith({ allowBuying })
+  if (allowBuying !== null) {
+    emitWith({ allowBuying })
+  }
 }
 
-function onDailyBuyChange(event: Event): void {
-  const dailyBuyInsteadOfCraft = checkedValue(event)
-  if (dailyBuyInsteadOfCraft !== null) emitWith({ dailyBuyInsteadOfCraft })
+function onAllowDailyCraftsChange(event: Event): void {
+  const allowDailyCrafts = checkedValue(event)
+  if (allowDailyCrafts !== null) {
+    emitWith({ allowDailyCrafts })
+  }
 }
 
 function onListingSellChange(event: Event): void {
   const listingSell = isListingMode(event)
-  if (listingSell !== null) emitWith({ listingSell })
+  if (listingSell !== null) {
+    emitWith({ listingSell })
+  }
 }
 
 function onListingBuyChange(event: Event): void {
   const listingBuy = isListingMode(event)
-  if (listingBuy !== null) emitWith({ listingBuy })
+  if (listingBuy !== null) {
+    emitWith({ listingBuy })
+  }
 }
 
-function onMaxBuyChange(event: Event): void {
-  const target = event.target
-  if (!(target instanceof HTMLInputElement)) return
+function emitMaxBuy(gold: number, silver: number, copper: number): void {
+  const normalizedGold = Math.max(0, Math.trunc(gold))
+  const normalizedSilver = Math.max(0, Math.min(99, Math.trunc(silver)))
+  const normalizedCopper = Math.max(0, Math.min(99, Math.trunc(copper)))
 
-  const parsed = Number(target.value)
-  if (!Number.isFinite(parsed)) return
+  emitWith({
+    maxBuyCopper:
+      normalizedGold * 10000 +
+      normalizedSilver * 100 +
+      normalizedCopper
+  })
+}
 
-  emitWith({ maxBuyCopper: Math.trunc(parsed) })
+function onMaxBuyGoldChange(event: Event): void {
+  const value = numberValue(event)
+  if (value === null) return
+
+  emitMaxBuy(
+    value,
+    maxBuySilver.value,
+    maxBuyCopperPart.value
+  )
+}
+
+function onMaxBuySilverChange(event: Event): void {
+  const value = numberValue(event)
+  if (value === null) return
+
+  emitMaxBuy(
+    maxBuyGold.value,
+    value,
+    maxBuyCopperPart.value
+  )
+}
+
+function onMaxBuyCopperChange(event: Event): void {
+  const value = numberValue(event)
+  if (value === null) return
+
+  emitMaxBuy(
+    maxBuyGold.value,
+    maxBuySilver.value,
+    value
+  )
 }
 </script>
 
@@ -65,86 +152,114 @@ function onMaxBuyChange(event: Event): void {
     class="settings"
     data-test="settings-form"
   >
-    <div class="settings__checks">
-      <label>
+    <!-- LEFT SIDE -->
+    <div v-if="showValues" class="settings__values">
+      <div class="setting-row setting-row--max-buy">
+        <span class="setting-row__label">Max buy</span>
+
+        <label class="coin-input">
+          <input
+            type="number"
+            min="0"
+            step="1"
+            data-test="setting-maxBuyGold"
+            :value="maxBuyGold"
+            aria-label="Maximum buy price in gold"
+            @change="onMaxBuyGoldChange"
+          />
+          <span>g</span>
+        </label>
+
+        <label class="coin-input">
+          <input
+            type="number"
+            min="0"
+            max="99"
+            step="1"
+            data-test="setting-maxBuySilver"
+            :value="maxBuySilver"
+            aria-label="Maximum buy price in silver"
+            @change="onMaxBuySilverChange"
+          />
+          <span>s</span>
+        </label>
+
+        <label class="coin-input">
+          <input
+            type="number"
+            min="0"
+            max="99"
+            step="1"
+            data-test="setting-maxBuyCopper"
+            :value="maxBuyCopperPart"
+            aria-label="Maximum buy price in copper"
+            @change="onMaxBuyCopperChange"
+          />
+          <span>c</span>
+        </label>
+      </div>
+
+      <div class="price-settings">
+        <div class="price-setting">
+          <label for="sell-price">Sell price</label>
+
+          <select
+            id="sell-price"
+            data-test="setting-listingSell"
+            :value="settings.listingSell ? 'listing' : 'instant'"
+            @change="onListingSellChange"
+          >
+            <option value="instant">Instant sell</option>
+            <option value="listing">Listing sell</option>
+          </select>
+        </div>
+
+        <div class="price-setting">
+          <label for="buy-price">Buy price</label>
+
+          <select
+            id="buy-price"
+            data-test="setting-listingBuy"
+            :value="settings.listingBuy ? 'listing' : 'instant'"
+            @change="onListingBuyChange"
+          >
+            <option value="instant">Instant buy</option>
+            <option value="listing">Listing buy</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT SIDE -->
+    <div v-if="showChecks" class="settings__checks">
+      <label class="check-row">
         <input
           type="checkbox"
           data-test="setting-useOwnMats"
           :checked="settings.useOwnMats"
           @change="onUseOwnMatsChange"
         />
-        Use own materials
+        <span>Use own materials</span>
       </label>
 
-      <label>
+      <label class="check-row">
         <input
           type="checkbox"
           data-test="setting-allowBuying"
           :checked="settings.allowBuying"
           @change="onAllowBuyingChange"
         />
-        Allow buying
+        <span>Allow buying</span>
       </label>
 
-      <div class="daily-setting">
-        <label>
-          <input
-            type="checkbox"
-            data-test="setting-dailyBuyInsteadOfCraft"
-            :checked="settings.dailyBuyInsteadOfCraft"
-            @change="onDailyBuyChange"
-          />
-          Buy daily items instead of crafting
-        </label>
-
-        <span class="daily-setting__hint">
-          Off: only currently available daily materials are used. <br>
-          On: one additional daily craft is allowed; remaining requirements are bought.
-        </span>
-      </div>
-    </div>
-
-    <div class="settings__values">
-      <label class="setting-row">
-        <span class="setting-row__label">Max buy</span>
-
+      <label class="check-row">
         <input
-          class="max-buy"
-          type="number"
-          min="0"
-          step="1"
-          data-test="setting-maxBuyCopper"
-          :value="settings.maxBuyCopper"
-          @change="onMaxBuyChange"
+          type="checkbox"
+          data-test="setting-allowDailyCrafts"
+          :checked="settings.allowDailyCrafts"
+          @change="onAllowDailyCraftsChange"
         />
-
-        <span class="hint">{{ formatCopper(settings.maxBuyCopper) }}</span>
-      </label>
-
-      <label class="setting-row">
-        <span class="setting-row__label">Sell price</span>
-
-        <select
-          data-test="setting-listingSell"
-          :value="settings.listingSell ? 'listing' : 'instant'"
-          @change="onListingSellChange"
-        >
-          <option value="instant">Instant sell</option>
-          <option value="listing">Listing sell</option>
-        </select>
-      </label>
-
-      <label class="setting-row">
-        <span class="setting-row__label">Buy price</span>
-
-        <select
-          data-test="setting-listingBuy"
-          :value="settings.listingBuy ? 'listing' : 'instant'"
-          @change="onListingBuyChange"
-        >
-          <option value="instant">Instant buy</option>
-          <option value="listing">Listing buy</option>
-        </select>
+        <span>Allow daily craft</span>
       </label>
     </div>
   </div>
@@ -152,56 +267,86 @@ function onMaxBuyChange(event: Event): void {
 
 <style scoped>
 .settings {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  margin-top: var(--space-3);
+  min-width: 0;
 }
 
 .settings__checks {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-4);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 
-.settings__values {
+.settings__values{
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-4);
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 .setting-row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-height: 2.5rem;
 }
 
 .setting-row__label {
   white-space: nowrap;
 }
 
-.max-buy {
-  width: 7rem;
+.setting-row--max-buy .setting-row__label {
+  margin-right: 0.25rem;
 }
 
-.hint {
-  color: var(--color-muted);
-  font-size: var(--text-sm);
+.coin-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.coin-input input {
+  width: 3.25rem;
+}
+
+.coin-input:first-of-type input {
+  width: 4rem;
+}
+
+.price-settings {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.price-setting {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
   white-space: nowrap;
 }
 
-.daily-setting {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
+.price-setting label {
+  display: inline;
+  margin: 0;
 }
 
-.daily-setting__hint {
-  padding-left: 1.75rem;
-  color: var(--color-muted);
-  font-size: var(--text-sm);
-  line-height: 1.25;
+.price-setting select {
+  width: 9rem;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 0;
+}
+
+@media (max-width: 700px) {
+  .price-settings {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>

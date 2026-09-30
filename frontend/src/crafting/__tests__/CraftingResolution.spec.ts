@@ -26,10 +26,11 @@ function render(
   phase: ResolutionPhase,
   detail: CraftingProfitResolutionResponse | null = null,
   failure: string | null = null,
-  requestedRecipeId: number | null = profitableRow.recipeId
+  requestedRecipeId: number | null = profitableRow.recipeId,
+  selectedResultMode = true
 ) {
   return mount(CraftingResolution, {
-    props: { phase, detail, failure, requestedRecipeId }
+    props: { phase, detail, failure, requestedRecipeId, selectedResultMode }
   })
 }
 
@@ -136,54 +137,47 @@ describe('CraftingResolution', () => {
   })
 
   describe('the basis it states for what it shows', () => {
-    it('keepsTheOneOutputBatchBasisAsAConciseLineRatherThanAParagraph', () => {
+    it('doesNotDescribeASeparateOneBatchCalculationOrRepeatTheExpectedRootRecipe', () => {
       const region = ready()
-      const basis = region.find('[data-test="resolution-basis"]').text().replace(/\s+/g, ' ')
-
-      // DOMAIN_SPEC 2.1.1 removes the introductory paragraph but not the distinction it carried:
-      // the tree must still not read as a trace of every craft the table counted.
-      expect(basis).toBe('A separate calculation of one output batch — not every craft the table counted.')
-
-      // The paragraph's own wording is what went: the calculation's starting inventory, budget and
-      // daily state are not explained under the heading any more.
-      const text = region.text().replace(/\s+/g, ' ')
-      for (const removed of [
-        'starting inventory',
-        'budget and daily state',
-        'run when this recipe was selected',
-        'neither replaces the other'
-      ]) {
-        expect(text).not.toContain(removed)
-      }
+      expect(region.find('[data-test="resolution-basis"]').exists()).toBe(false)
+      expect(region.find('[data-test="resolution-root-sourcing"]').exists()).toBe(false)
+      expect(region.text()).not.toContain('What supplied the output')
     })
 
-    it('doesNotDescribeTheTreeAsATraceOfEveryCountedCraft', () => {
-      expect(ready().text()).not.toContain('every craft counted')
-    })
-
-    it('statesTheCostBasisAndTheMissingMarkerOnceForTheWholeTreeInsteadOfPerNode', () => {
+    it('omitsTheGenericTreeHelpParagraph', () => {
       const region = ready({ tree: craftedTree })
-      const note = region.find('[data-test="resolution-tree-note"]').text().replace(/\s+/g, ' ')
+      expect(region.find('[data-test="resolution-tree-note"]').exists()).toBe(false)
+    })
 
-      expect(note).toContain('Every requirement the backend returned is listed, in its order')
-      expect(note).toContain('Expand a group to see its ingredients')
-      expect(note).toContain('Each cost includes everything below its own requirement')
-      expect(note).toContain('— is a cost the backend could not establish, not zero')
+    it('rendersBackendSuppliedFullQuantitiesAndEffectiveValueWithoutRecomputingThem', () => {
+      const root = node({
+        ...craftedTree,
+        requestedQuantity: 41,
+        cashCostCopper: 900,
+        opportunityCostCopper: 334,
+        effectiveCostCopper: 1234,
+        children: [node({
+          itemId: 200,
+          itemName: 'Cured Thin Leather Square',
+          requestedQuantity: 205,
+          craftedQuantity: 205,
+          methods: ['CRAFT'],
+          cashCostCopper: 700,
+          opportunityCostCopper: 534,
+          effectiveCostCopper: 1234
+        })]
+      })
+      const region = ready({ tree: root })
 
-      // And it is stated once, not repeated under each of the four requirements.
-      const occurrences = region
-        .text()
-        .replace(/\s+/g, ' ')
-        .split('is a cost the backend could not establish').length - 1
-      expect(occurrences).toBe(1)
+      expect(nodeAt(region, '0').find('[data-test="node-requested"]').text()).toBe('41 needed')
+      expect(nodeAt(region, '0.0').find('[data-test="node-requested"]').text()).toBe('205 needed')
+      expect(nodeAt(region, '0').find('[data-test="node-value"]').text()).toBe('Value: 12s 34c')
     })
   })
 
   describe('requested identity versus actual root sourcing', () => {
-    it('saysTheRequestedRecipeIsTheOneSelectedWhenItIs', () => {
-      expect(ready({ tree: craftedTree }).find('[data-test="resolution-root-sourcing"]').text()).toBe(
-        'The requested recipe 11 is the recipe selected for this requirement.'
-      )
+    it('omitsRootSourcingThatOnlyRestatesTheSelectedRecipe', () => {
+      expect(ready({ tree: craftedTree }).find('[data-test="resolution-root-sourcing"]').exists()).toBe(false)
     })
 
     it('doesNotCallAnInventoryOnlyRootAnExecutionOfTheRequestedRecipe', () => {
@@ -213,12 +207,19 @@ describe('CraftingResolution', () => {
       const region = ready({ tree: blockedTree }, blockedTree.recipeId ?? 13)
 
       expect(fact(region, '0', 'node-methods')).toBe('Nothing supplied this requirement')
-      expect(fact(region, '0', 'node-effective-cost')).toBe('—')
+      expect(fact(region, '0', 'node-value')).toBe('Value: —')
       expect(ownFacts(region, '0', 'node-blocked-explanation')).toHaveLength(1)
     })
   })
 
   describe('the compact summary each node shows', () => {
+    it('doesNotRenderPerNodeTechnicalDetails', () => {
+      const region = ready({ tree: craftedTree })
+
+      expect(region.findAll('[data-test="tree-node"]')).toHaveLength(4)
+      expect(region.findAll('[data-test="node-technical-details"]')).toHaveLength(0)
+    })
+
     it('showsIdentityRequiredQuantitySuppliedSourcingAndTheNamedCrafter', () => {
       const region = ready({ tree: craftedTree })
 
@@ -274,26 +275,11 @@ describe('CraftingResolution', () => {
       expect(craftedTree.recipeId).toBe(11)
     })
 
-    it('printsAllThreeInclusiveCostsAsSuppliedWithoutAddingChildrenIntoParents', () => {
-      const region = ready({ tree: craftedTree })
-
-      // Children are 72 and (null) — a parent that summed anything could not print 832.
-      expect(fact(region, '0', 'node-effective-cost')).toBe('8s 32c')
-      expect(fact(region, '0', 'node-cash-cost')).toBe('7s 77c')
-      expect(fact(region, '0', 'node-opportunity-cost')).toBe('55c')
-      expect(fact(region, '0.0', 'node-effective-cost')).toBe('72c')
-      // Retained, but as one labelled line per node rather than the former three-row panel.
-      expect(ownFacts(region, '0', 'node-costs')).toEqual([
-        'Cash cost7s 77cOpportunity cost55cEffective cost8s 32c'
-      ])
-      expect(nodeAt(region, '0').text()).not.toContain('already includes everything below')
-    })
-
     it('keepsAKnownZeroApartFromACostItCouldNotEstablish', () => {
       const region = ready({ tree: blockedTree })
 
       // An unvalued non-tradable item is a domain zero and stays 0c with its own state.
-      expect(fact(region, '0.1', 'node-effective-cost')).toBe('0c')
+      expect(fact(region, '0.1', 'node-value')).toBe('Value: 0c')
       expect(nodeAt(region, '0.1').find('[data-test="node-state"]').text()).toBe(
         'Not tradable, valued at zero'
       )
@@ -304,11 +290,11 @@ describe('CraftingResolution', () => {
       // An unknown purchase price leaves no cost at all, and never becomes zero. The node's own
       // state sentence still says so for the item it is about; the marker is explained once for
       // the tree rather than under every requirement.
-      expect(fact(region, '0.0', 'node-cash-cost')).toBe('—')
+      expect(fact(region, '0.0', 'node-value')).toBe('Value: —')
       expect(ownFacts(region, '0.0', 'node-state-explanation')).toContain(
         'No purchase price is available for Pile of Dust. A cost shown as missing is unknown, not zero.'
       )
-      expect(region.find('[data-test="resolution-tree-note"]').text()).toContain('not zero')
+      expect(region.find('[data-test="resolution-tree-note"]').exists()).toBe(false)
     })
 
     it('keepsRepeatedItemsAsSeparateOrderedOccurrences', () => {
@@ -349,11 +335,11 @@ describe('CraftingResolution', () => {
     it('keepsEachNodesSummaryOutsideItsChildDisclosure', () => {
       const region = ready({ tree: craftedTree })
 
-      // The root's own identity, quantity, sourcing, crafter and costs stay readable while its
+      // The root's own identity, quantity, sourcing, crafter and value stay readable while its
       // ingredients are collapsed — only the children sit inside the group.
       const root = nodeAt(region, '0').element
       const group = groupOf(region, '0')
-      for (const own of ['node-name', 'node-requested', 'node-methods', 'node-crafter', 'node-costs']) {
+      for (const own of ['node-name', 'node-requested', 'node-methods', 'node-crafter', 'node-value']) {
         const element = root.querySelector(`[data-test="${own}"]`)
         expect(element).not.toBeNull()
         expect(group.contains(element)).toBe(false)

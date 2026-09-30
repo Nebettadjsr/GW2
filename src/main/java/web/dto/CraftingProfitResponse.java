@@ -26,6 +26,6 @@ public record CraftingProfitResponse(EffectiveScopeDto scope,
                                        int maxBuyCopper,
                                        boolean listingSell,
                                        boolean listingBuy,
-                                       boolean dailyBuyInsteadOfCraft) {
+                                       boolean allowDailyCrafts) {
     }
 }

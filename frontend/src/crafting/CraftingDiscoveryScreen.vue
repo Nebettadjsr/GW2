@@ -141,7 +141,7 @@ const effectiveSettingsSummary = computed(() => {
     `max buy ${formatCopper(settings.maxBuyCopper)}`,
     settings.listingSell ? 'listing sell' : 'instant sell',
     settings.listingBuy ? 'listing buy' : 'instant buy',
-    settings.dailyBuyInsteadOfCraft ? 'daily items bought (fixed)' : 'daily items crafted (fixed)'
+    settings.allowDailyCrafts ? 'daily crafts allowed (fixed)' : 'daily crafts disabled (fixed)'
   ].join(' · ')
 })
 

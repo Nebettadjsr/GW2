@@ -56,7 +56,7 @@ class CraftingResolverCraftVsBuyTest {
                 0,      // maxBuyCopper (0 = unlimited)
                 false,  // listingSell (instant sell)
                 false,  // listingBuy (instant buy)
-                false   // dailyBuyInsteadOfCraft
+                false   // allowDailyCrafts
         );
 
         PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, Set.of(1, 2));

@@ -23,7 +23,7 @@ public record CraftingDiscoveryResolutionResponse(int recipeId,
      * The effective inputs this calculation ran with, in the shape the Discovery table response
      * echoes them ({@link CraftingDiscoveryResponse}): the individual discipline+character scope, the
      * separate inventory character (null when none was supplied and the unfiltered owned pool was
-     * used) and the effective settings, including the {@code dailyBuyInsteadOfCraft} value Discovery
+     * used) and the effective settings, including the {@code allowDailyCrafts} value Discovery
      * fixes rather than accepts.
      */
     public record CalculationDto(CraftingDiscoveryResponse.EffectiveScopeDto scope,

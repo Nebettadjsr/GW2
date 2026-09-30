@@ -2,7 +2,7 @@ package web.dto;
 
 /**
  * Transport response body for {@code POST /api/crafting/profit/resolution} (STORY-API-008,
- * TARGET_ARCHITECTURE.md §13.3's completed response envelope).
+ * TARGET_ARCHITECTURE.md §10.2 and STORY-API-008's response envelope).
  *
  * <p>{@code recipeId} and {@code calculation} echo the <em>requested</em> identity and the effective
  * inputs, which is what a caller associates the response with. They say nothing about how the root
@@ -20,11 +20,12 @@ package web.dto;
  *                     {@link CraftingRowDto} the table route reports, with the same per-craft and
  *                     total meanings
  * @param treeStatus   {@code AVAILABLE} or {@code RESULT_UNAVAILABLE}
- * @param treeBasis    always {@code SINGLE_OUTPUT_REQUIREMENT}: the tree resolves one output batch
- *                     of the requested recipe from this operation's initial inventory, budget and
- *                     daily state. It is not a trace of the row's {@code craftableCount} crafts, and
- *                     it does not assert that the requested recipe was executed - so its costs must
- *                     not be presented as the row's multi-craft totals
+ * @param treeBasis    {@code SELECTED_RESULT_OUTPUT_QUANTITY} when the row counted output: the root
+ *                     and its costs represent all output units from {@code row.craftableCount}
+ *                     completed executions of the requested recipe, including its output batch
+ *                     size. {@code FIRST_BLOCKED_ATTEMPT} when the row counted no craft: the tree
+ *                     preserves one rejected attempt and its concrete blockers. When no result
+ *                     tree exists, the selected-result basis remains the contract value.
  * @param tree         the root requirement, or null only when {@code treeStatus} is
  *                     {@code RESULT_UNAVAILABLE}; an unavailable result is never a fabricated empty
  *                     tree

@@ -6,7 +6,7 @@ import { formatCopper } from './formatCopper'
  * Input controls for the settings the Discovery contract supports: owned materials, buying, the buying
  * budget and the two Trading Post price modes (`CURRENT_ARCHITECTURE.md` 5.6).
  *
- * Exactly those five, and no more. `dailyBuyInsteadOfCraft` is not offered because the route does not
+ * Exactly those five, and no more. `allowDailyCrafts` is not offered because the route does not
  * accept it — Discovery fixes it, and the fixed value is reported below as the backend's own fact
   * rather than as a control.
  *
@@ -132,7 +132,7 @@ function onMaxBuyChange(event: Event): void {
     -->
     <p class="meta fixed-note" data-test="discovery-fixed-daily">
       Daily-limited materials are
-      {{ settings.dailyBuyInsteadOfCraft ? 'bought instead of crafted' : 'crafted rather than bought' }}
+      {{ settings.allowDailyCrafts ? 'daily crafts allowed (fixed)' : 'daily crafts disabled (fixed)' }}
       — the Discovery calculation fixes this and does not take it as a setting.
     </p>
   </fieldset>

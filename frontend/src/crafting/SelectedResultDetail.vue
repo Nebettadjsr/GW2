@@ -8,146 +8,117 @@ import type {
 } from '@/api/types'
 import ItemIcon from '@/items/ItemIcon.vue'
 import CraftingResolution from './CraftingResolution.vue'
-import { formatCopper, formatCount, formatSignedCopper, moneyTone, NO_VALUE } from './formatCopper'
+import {
+  formatCopper,
+  formatCount,
+  formatSignedCopper,
+  moneyTone,
+  NO_VALUE
+} from './formatCopper'
 import { materialLabel, recipeLabel, wikiUrl } from './recipeLabel'
-import { describeRowState } from './rowState'
 import type { SelectionHiddenReason } from './useProfitTableView'
 import type { ResolutionPhase } from './useResolutionDetail'
 
-/**
- * The selected recipe's details, next to (or below) the comparison table rather than inside it
- * (`FRONTEND_UX_GUIDELINES.md` 4, `DOMAIN_SPEC.md` 2.1.1).
- *
- * It renders **only** what the backend supplied, from two separate answers that are kept separate on
- * screen. `row` is the selected recipe as the *results table's* calculation reported it; the
- * resolution region below holds the recipe's own freshly calculated detail, which is a different
- * calculation and may legitimately disagree. Neither is written over the other, and neither is
- * described as the other's explanation (`TARGET_ARCHITECTURE.md` 13.2/13.4).
- *
- * Nothing is added up, no procurement quantity is derived, and each money value is shown under the
- * basis the contract gives it — `buyCostCopper`, `totalSellValueCopper` and `totalProfitCopper` are
- * totals for every craft counted, while revenue, material sell value and profit are per single
- * craft (`web.dto.CraftingRowDto`).
- *
- * This region is also where the blocking reasons DOMAIN_SPEC 2.1.1 removed from the comparison table
- * are stated: the row's own state sentence explains the restriction in words, and the supplied buy
- * cost and the backend's echoed maximum-buy setting are shown beside it. The short status label is
- * not repeated where that sentence already carries it (2.1.1). No missing acquisition amount is
- * invented, no tree cost is summed in, and nothing about eligibility — or about
- * which item a reason is aimed at — is read out of a reason code.
- *
- * `row` is read from the *current* result set. When a replacement calculation no longer contains
- * that recipe the screen passes null, so an earlier answer's numbers can never appear underneath a
- * newer result.
- */
 const props = defineProps<{
   row: CraftingRow | null
-  /**
-   * Why the selected recipe is not among the displayed rows, or null when it is. The detail stays
-   * on screen either way — the recipe is still in the loaded result set — and says which display
-   * control is holding its row back rather than letting the detail look unrelated to the list.
-   */
   hiddenReason: SelectionHiddenReason
-  /**
-   * The settings the backend echoed for the result set this row came from, or null while there is
-   * none. Read only to name the configured maximum buy beside a budget restriction; no default of
-   * this client's own is ever substituted for it.
-   */
   settings: EffectiveSettings | null
-  /** Why nothing is selected, in the words that fit the results region's own state. */
   placeholder: string
-  /** The resolution request's situation, and its answer once one has been accepted. */
   resolutionPhase: ResolutionPhase
   resolutionDetail: CraftingProfitResolutionResponse | null
   resolutionFailure: string | null
   resolutionRecipeId: number | null
 }>()
 
-const state = computed(() => (props.row === null ? null : describeRowState(props.row)))
+const wikiHref = computed(() =>
+  props.row === null ? null : wikiUrl(props.row.outputName)
+)
 
-/**
- * The configured maximum buy, worded only for the one state it explains. A budget restriction is the
- * single reason the setting makes the difference between "blocked" and "not blocked", and saying so
- * changes nothing about the restriction itself — it is the backend's own echoed number. With no
- * echoed settings there is no figure to state: this client has no maximum of its own to offer.
- */
-const budgetContext = computed<string | null>(() => {
-  if (state.value?.code !== 'INSUFFICIENT_BUDGET') return null
-  const settings = props.settings
-  if (settings === null) return null
-  return `The calculation's maximum buy setting is ${formatCopper(settings.maxBuyCopper)}.`
-})
-
-/**
- * Where the affected item can be read, for the two restrictions that are about one specific
- * material (`DOMAIN_SPEC.md` 2.1.1: a missing-price explanation must identify the item, and a budget
- * restriction must show the affected purchase).
- *
- * A row's reason is a single enum value and carries no item with it (`craft.CraftResult`), so this
- * points at the places the backend *did* supply one — the purchase lines below, each naming its own
- * material, and the resolution's requirements, each naming their own item — rather than reading an
- * identity out of the reason or borrowing one from the fresh tree, which explains a different
- * calculation. Nothing is stated about the restriction itself that the sentence above does not.
- */
-const affectedItemSource = computed<string | null>(() => {
-  if (state.value?.code === 'INSUFFICIENT_BUDGET') {
-    return (
-      'This result does not name the further purchase that went over the limit. The materials and ' +
-      'requirements below name each item the calculation reported.'
-    )
-  }
-  if (state.value?.code === 'PRICE_UNAVAILABLE') {
-    return (
-      'This result does not name the item whose price was missing. The materials and requirements ' +
-      'below name each item the calculation reported, with the price information it supplied for it.'
-    )
-  }
-  return null
-})
-
-/** Omitted entirely when the backend supplied no name — an ID makes no reliable wiki target. */
-const wikiHref = computed(() => (props.row === null ? null : wikiUrl(props.row.outputName)))
-
-/** Names the basis of the totals group honestly when the backend supplied no craftable count. */
 const totalsLabel = computed(() => {
   const count = props.row?.craftableCount ?? null
+
   if (count === null) return 'For every craft the calculation counted'
-  return count === 1 ? 'For the 1 craft counted' : `For all ${count} crafts counted`
+  return count === 1
+    ? 'For the 1 craft counted'
+    : `For all ${count} crafts counted`
 })
 
-/**
- * The materials still to buy for the craft count the calculation already reported — `missingToBuy`,
- * the counted-craft list, and no other basis (`DOMAIN_SPEC.md` 2.1.1, which removes the separate
- * one-further-craft section). `missingToBuyOne` stays in the backend contract and is simply not
- * displayed; the fresh resolution's single-batch tree is a different calculation and is never
- * substituted for this list.
+const outputItemCount = computed(() => {
+  const row = props.row
+  if (row === null || row.craftableCount === null) return null
+  return row.craftableCount * row.outputCount
+})
+
+const missingForAllCrafts = computed<MissingItem[] | null>(
+  () => props.row?.missingToBuy ?? null
+)
+
+/*
+ * The current API supplies matsSellValueCopper per craft, while the other
+ * values used in the calculation below are totals for all counted crafts.
  *
- * A list the backend did not supply and an empty list are different answers, and a response that
- * omits the field altogether is a third; all three stay distinct from "nothing to buy".
+ * This is therefore only a presentation-derived total. Ideally the backend
+ * should expose this total directly in the CraftingRow contract.
  */
-const missingForAllCrafts = computed<MissingItem[] | null>(() => props.row?.missingToBuy ?? null)
+const totalOwnMaterialsCopper = computed<number | null>(() => {
+  const row = props.row
+
+  if (row === null || row.craftableCount === null || row.matsSellValueCopper === null) return null
+
+  return row.matsSellValueCopper * row.craftableCount
+})
+
+/*
+ * Name the price basis used for the calculation.
+ *
+ * EffectiveSettings currently supplies the configured sell-price mode.
+ * Keep the fallback deliberately generic in case there is no accepted
+ * settings response yet.
+ */
+const calculationSellPriceLabel = computed(() => {
+  const settings = props.settings
+
+  if (settings === null) return '1 item sell price'
+
+  /*
+   * Keep this tolerant of the API's actual enum/string naming.
+   * If your type uses different values, TypeScript will point directly
+   * at this switch and it can be adjusted to the exact contract.
+   */
+  return settings.listingSell ? '1 item (Listing sell)' : '1 item (Instant sell)'
+})
 
 function materialQuoteText(item: MissingItem): string {
   if (item.price === null) return 'No price supplied'
-  return `Instant buy ${formatCopper(item.price.buyUnitCopper)} · Instant sell ${formatCopper(item.price.sellUnitCopper)}`
+
+  return (
+    `Instant buy ${formatCopper(item.price.buyUnitCopper)} · ` +
+    `Instant sell ${formatCopper(item.price.sellUnitCopper)}`
+  )
 }
 </script>
 
 <template>
-  <section class="panel detail" aria-labelledby="crafting-detail-heading" data-test="selected-detail">
-    <h2 id="crafting-detail-heading" class="panel__title">Selected result</h2>
+  <section
+    class="panel detail"
+    aria-labelledby="crafting-detail-heading"
+    data-test="selected-detail"
+  >
+    <h2 id="crafting-detail-heading" class="panel__title">
+      Selected result
+    </h2>
 
-    <p v-if="row === null || state === null" class="meta" data-test="detail-placeholder">
+    <p
+      v-if="row === null"
+      class="meta"
+      data-test="detail-placeholder"
+    >
       {{ placeholder }}
     </p>
 
     <template v-else>
+      <!-- Item header -->
       <div class="stack">
-        <!--
-          The output item's own icon, beside the name rather than inside the heading, so the
-          heading's text stays the recipe label and nothing announces the item twice. One visible
-          image on an opened detail, so it loads eagerly.
-        -->
         <div class="detail__heading">
           <ItemIcon
             :icon-url="row.iconUrl"
@@ -155,193 +126,298 @@ function materialQuoteText(item: MissingItem): string {
             loading="eager"
             :size="32"
           />
-          <h3 class="detail__name" data-test="detail-name">{{ recipeLabel(row) }}</h3>
+
+          <h3 class="detail__name" data-test="detail-name">
+            {{ recipeLabel(row) }}
+          </h3>
         </div>
+
         <p class="meta" data-test="detail-identity">
           {{ row.disciplines }} · minimum rating {{ row.minRating }}
         </p>
+
         <p v-if="wikiHref !== null" class="meta">
-          <a :href="wikiHref" target="_blank" rel="noopener noreferrer" data-test="detail-wiki">
-            Look up {{ recipeLabel(row) }} on the Guild Wars 2 Wiki
+          <a
+            :href="wikiHref"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-test="detail-wiki"
+          >
+            GW2 Wiki: {{ recipeLabel(row) }}
             <span class="visually-hidden">(opens in a new tab)</span>
           </a>
         </p>
-        <p v-else class="meta" data-test="detail-wiki-absent">
-          No wiki link: the backend supplied no name for this item, and its ID is not a reliable
-          wiki address.
+
+        <p
+          v-else
+          class="meta"
+          data-test="detail-wiki-absent"
+        >
+          No wiki link: the backend supplied no name for this item, and its ID is
+          not a reliable wiki address.
         </p>
       </div>
 
-      <p v-if="hiddenReason !== null" class="notice notice--info" data-test="detail-hidden">
+      <!-- A selected row can remain available while hidden by the current display controls. -->
+      <p
+        v-if="hiddenReason !== null"
+        class="notice notice--info"
+        data-test="detail-hidden"
+      >
         This recipe is not in the displayed list:
+
         <template v-if="hiddenReason === 'limited'">
-          it is further down the matching results than the display maximum reaches. Switch on Show all
-          to list it.
+          it is further down the matching results than the display maximum reaches.
+          Switch on Show all to list it.
         </template>
+
         <template v-else>
-          the current search or display filters hide its row. Change them to list it again.
+          the current search or display filters hide its row. Change them to list it
+          again.
         </template>
       </p>
 
-      <!--
-        The sentence is the state; the short label appears only where it says something the sentence
-        does not (`rowState.labelAddsMeaning`, DOMAIN_SPEC 2.1.1). "Buying is off", "Over the buy
-        limit" and "Not blocked" are exactly the labels that repeat their own explanation, so they are
-        gone from here while every cause stays.
-      -->
-      <div class="stack">
-        <span
-          v-if="state.labelAddsMeaning"
-          :class="`status status--${state.tone}`"
-          data-test="detail-status"
-        >
-          {{ state.label }}
-        </span>
-        <p data-test="detail-status-explanation">{{ state.explanation }}</p>
-        <p v-if="budgetContext !== null" class="meta" data-test="detail-budget-context">
-          {{ budgetContext }}
-        </p>
-        <p v-if="affectedItemSource !== null" class="meta" data-test="detail-affected-item">
-          {{ affectedItemSource }}
-        </p>
-      </div>
+      <!-- Calculation -->
+      <section
+        class="detail__section"
+        aria-labelledby="detail-summary-heading"
+      >
+        <h3 id="detail-summary-heading">
+          Calculation
+        </h3>
 
-      <section class="detail__section" aria-labelledby="detail-summary-heading">
-        <h3 id="detail-summary-heading">Table calculation</h3>
-
-        <h4 class="detail__basis">For one craft</h4>
-        <dl class="detail-values" data-test="detail-per-craft">
-          <dt>Output quantity</dt>
-          <dd class="numeric">{{ row.outputCount }}</dd>
-
-          <dt>Output revenue</dt>
-          <dd class="numeric">{{ formatCopper(row.revenueCopper) }}</dd>
-
-          <dt>Own materials given up</dt>
-          <dd class="numeric">{{ formatCopper(row.matsSellValueCopper) }}</dd>
-
-          <!--
-            DOMAIN_SPEC 2.1.1 / 25 (UD-011): the backend's profit already has the 15% Trading Post
-            fee deducted, and the note says so beside the figure it applies to. Output revenue above
-            keeps no note because it is gross. Nothing here calculates a fee.
-          -->
-          <dt>
-            Profit
-            <span class="value-note" data-test="detail-profit-fee-note">after 15% TP fees</span>
+        <dl class="calculation" data-test="detail-calculation">
+          <!-- Informational -->
+          <dt class="calculation__info">
+            {{ calculationSellPriceLabel }}
           </dt>
-          <dd class="numeric">
-            <span :class="`money money--${moneyTone(row.profitCopper)}`" data-test="detail-profit-per-craft">
-              {{ formatSignedCopper(row.profitCopper) }}
-            </span>
-          </dd>
-        </dl>
-
-        <h4 class="detail__basis">{{ totalsLabel }}</h4>
-        <dl class="detail-values" data-test="detail-totals">
-          <dt>Crafts possible</dt>
-          <dd class="numeric">{{ formatCount(row.craftableCount) }}</dd>
-
-          <dt class="detail-values__lead">Cost of materials to buy</dt>
-          <dd class="numeric detail-values__lead">
-            <span class="money money--cost" data-test="detail-buy-cost">
-              {{ formatCopper(row.buyCostCopper) }}
-            </span>
+          <dd class="numeric calculation__info">
+            {{ formatCopper(row.revenueCopper) }}
           </dd>
 
-          <dt>Total sell value</dt>
-          <dd class="numeric">
-            <span class="money" data-test="detail-total-sell-value">
+          <dt class="calculation__info">
+            Items
+          </dt>
+          <dd class="numeric calculation__info">
+            {{ formatCount(outputItemCount) }}
+          </dd>
+
+          <!-- Revenue -->
+          <dt class="calculation__subtotal">
+            Total sell value
+          </dt>
+          <dd class="numeric calculation__subtotal">
+            <span
+              class="calc-positive"
+              data-test="detail-total-sell-value"
+            >
               {{ formatCopper(row.totalSellValueCopper) }}
             </span>
           </dd>
 
+          <!-- Costs -->
           <dt>
-            Total profit
-            <span class="value-note" data-test="detail-total-profit-fee-note">after 15% TP fees</span>
+            Own materials
           </dt>
           <dd class="numeric">
-            <span :class="`money money--${moneyTone(row.totalProfitCopper)}`" data-test="detail-total-profit">
+            <span
+              v-if="totalOwnMaterialsCopper !== null"
+              class="calc-negative"
+              data-test="detail-own-material-cost"
+            >
+              {{ formatCopper(totalOwnMaterialsCopper) }}
+            </span>
+
+            <span v-else class="meta">
+              {{ NO_VALUE }}
+            </span>
+          </dd>
+
+          <dt>
+            Bought materials
+          </dt>
+          <dd class="numeric">
+            <span
+              class="calc-negative"
+              data-test="detail-buy-cost"
+            >
+              {{ formatCopper(row.buyCostCopper) }}
+            </span>
+          </dd>
+
+          <!-- Result -->
+          <dt class="calculation__result">
+            Profit
+            <span
+              class="value-note"
+              data-test="detail-total-profit-fee-note"
+            >
+              after 15% TP fees
+            </span>
+          </dt>
+
+          <dd class="numeric calculation__result">
+            <span
+              :class="`money money--${moneyTone(row.totalProfitCopper)}`"
+              data-test="detail-total-profit"
+            >
               {{ formatSignedCopper(row.totalProfitCopper) }}
             </span>
           </dd>
         </dl>
 
-        <!--
-          The quote is per single item, which is not per craft: the output quantity above says how
-          many one craft produces, so the basis needs the label and not a paragraph (DOMAIN_SPEC
-          2.1.1).
-        -->
-        <h4 class="detail__basis" data-test="detail-quote-heading">Trading Post price / item</h4>
-        <p v-if="row.outputPrice === null" class="meta" data-test="detail-output-quote">
-          No quote supplied
-        </p>
-        <dl v-else class="detail-values" data-test="detail-output-quote">
-          <dt>Instant buy</dt>
-          <dd class="numeric">{{ formatCopper(row.outputPrice.buyUnitCopper) }}</dd>
+        <!-- TP prices -->
+        <div
+          class="tp-prices"
+          data-test="detail-output-quote"
+        >
+          <h4 class="tp-prices__heading">
+            Trading Post prices / item
+          </h4>
 
-          <dt>Instant sell</dt>
-          <dd class="numeric">{{ formatCopper(row.outputPrice.sellUnitCopper) }}</dd>
-        </dl>
+          <p
+            v-if="row.outputPrice === null"
+            class="meta"
+          >
+            No quote supplied
+          </p>
+
+          <dl v-else class="tp-prices__values">
+            <dt>Instant buy</dt>
+            <dd class="numeric">
+              {{ formatCopper(row.outputPrice.buyUnitCopper) }}
+            </dd>
+
+            <dt>Instant sell</dt>
+            <dd class="numeric">
+              {{ formatCopper(row.outputPrice.sellUnitCopper) }}
+            </dd>
+          </dl>
+        </div>
       </section>
 
-      <section class="detail__section" aria-labelledby="detail-tree-heading">
-        <h3 id="detail-tree-heading">Crafting resolution</h3>
+      <!-- Crafting resolution -->
+      <section
+        class="detail__section"
+        aria-labelledby="detail-tree-heading"
+      >
+        <h3 id="detail-tree-heading">
+          Crafting resolution
+        </h3>
+
         <CraftingResolution
           :phase="resolutionPhase"
           :detail="resolutionDetail"
           :failure="resolutionFailure"
           :requested-recipe-id="resolutionRecipeId"
+          selected-result-mode
         />
       </section>
 
-      <section class="detail__section" aria-labelledby="detail-materials-heading">
-        <h3 id="detail-materials-heading">Materials still to buy</h3>
+      <!-- Shopping list -->
+      <section
+        class="detail__section"
+        aria-labelledby="detail-materials-heading"
+      >
+        <h3 id="detail-materials-heading">
+          Materials still to buy
+        </h3>
 
-        <!--
-          One list, under the basis the contract gives it: the crafts this calculation already
-          counted. Each line is a supplied quantity with the supplied quote for its own material, and
-          no total is produced from them.
-        -->
-        <h4 class="detail__basis">{{ totalsLabel }}</h4>
-        <p v-if="missingForAllCrafts === null" class="meta" data-test="missing-all-none">
+        <h4 class="detail__basis">
+          {{ totalsLabel }}
+        </h4>
+
+        <p
+          v-if="missingForAllCrafts === null"
+          class="meta"
+          data-test="missing-all-none"
+        >
           Not supplied for this recipe.
         </p>
-        <p v-else-if="missingForAllCrafts.length === 0" class="meta" data-test="missing-all-none">
+
+        <p
+          v-else-if="missingForAllCrafts.length === 0"
+          class="meta"
+          data-test="missing-all-none"
+        >
           Nothing needs to be bought.
         </p>
-        <ul v-else class="material-list" data-test="missing-all">
-          <li v-for="item in missingForAllCrafts" :key="item.itemId" data-test="missing-item">
+
+        <ul
+          v-else
+          class="material-list"
+          data-test="missing-all"
+        >
+          <li
+            v-for="item in missingForAllCrafts"
+            :key="item.itemId"
+            data-test="missing-item"
+          >
             <span class="material-name">
-              <ItemIcon :icon-url="item.iconUrl" :item-id="item.itemId" loading="lazy" />
+              <ItemIcon
+                :icon-url="item.iconUrl"
+                :item-id="item.itemId"
+                loading="lazy"
+              />
+
               {{ materialLabel(item) }}
             </span>
-            <span class="material-quantity numeric">×{{ item.quantity }}</span>
-            <span class="meta">{{ materialQuoteText(item) }}</span>
+
+            <span class="material-quantity numeric">
+              ×{{ item.quantity }}
+            </span>
+
+            <span class="meta">
+              {{ materialQuoteText(item) }}
+            </span>
           </li>
         </ul>
       </section>
 
-      <details class="diagnostics" data-test="detail-diagnostics">
-        <summary>Technical details</summary>
+      <!-- Technical information -->
+      <details
+        class="diagnostics"
+        data-test="detail-diagnostics"
+      >
+        <summary>
+          Technical details
+        </summary>
+
         <dl class="diagnostics__body">
           <dt>Recipe id</dt>
           <dd>{{ row.recipeId }}</dd>
+
           <dt>Output item id</dt>
           <dd>{{ row.outputItemId }}</dd>
+
           <dt>Result supplied</dt>
           <dd>{{ row.resultAvailable ? 'yes' : 'no' }}</dd>
-          <dt>Reported state code</dt>
-          <dd data-test="detail-state-code">{{ state.code ?? NO_VALUE }}</dd>
+
+          <dt>Result state</dt>
+          <dd data-test="detail-state-code">
+            {{ row.blockedReason ?? NO_VALUE }}
+          </dd>
 
           <template v-if="resolutionDetail !== null">
             <dt>Resolution consistency</dt>
-            <dd data-test="detail-consistency">{{ resolutionDetail.consistency }}</dd>
+            <dd data-test="detail-consistency">
+              {{ resolutionDetail.consistency }}
+            </dd>
+
             <dt>Resolution basis</dt>
-            <dd data-test="detail-tree-basis">{{ resolutionDetail.treeBasis }}</dd>
+            <dd data-test="detail-tree-basis">
+              {{ resolutionDetail.treeBasis }}
+            </dd>
+
             <dt>Resolution tree status</dt>
-            <dd data-test="detail-tree-status">{{ resolutionDetail.treeStatus }}</dd>
+            <dd data-test="detail-tree-status">
+              {{ resolutionDetail.treeStatus }}
+            </dd>
+
             <dt>Resolution calculated at</dt>
-            <dd data-test="detail-calculated-at">{{ resolutionDetail.calculatedAt }}</dd>
+            <dd data-test="detail-calculated-at">
+              {{ resolutionDetail.calculatedAt }}
+            </dd>
           </template>
         </dl>
       </details>
@@ -356,12 +432,12 @@ function materialQuoteText(item: MissingItem): string {
   gap: var(--space-4);
 }
 
-/* `.panel`'s own top margin between children would fight the flex gap above. */
 .detail > * + * {
   margin-top: 0;
 }
 
-/* The icon holds its own reserved box beside the name; the name keeps the rest of the line. */
+/* Item */
+
 .detail__heading {
   display: flex;
   align-items: center;
@@ -373,6 +449,8 @@ function materialQuoteText(item: MissingItem): string {
   overflow-wrap: anywhere;
 }
 
+/* Sections */
+
 .detail__section {
   display: flex;
   flex-direction: column;
@@ -381,16 +459,107 @@ function materialQuoteText(item: MissingItem): string {
   border-top: 1px solid var(--color-border);
 }
 
+.detail__basis {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+/* Calculation */
+
+.calculation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  align-items: baseline;
+}
+
+.calculation dt,
+.calculation dd {
+  margin: 0;
+}
+
+.calculation dd {
+  white-space: nowrap;
+}
+
 /*
- * The basis a money label carries with it, on its own line under the label so the value column is
- * unaffected. Quieter than the label and never the only way the figure is identified.
+ * Price per item and item count are inputs/context rather than
+ * profit/cost results, so keep them visually quiet.
  */
+.calculation__info {
+  color: var(--color-muted);
+}
+
+/* First accounting result. */
+.calculation__subtotal {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+/* Final accounting result. */
+.calculation__result {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+  font-weight: 600;
+}
+
 .value-note {
   display: block;
   color: var(--color-muted);
   font-size: var(--text-sm);
   font-weight: 400;
 }
+
+/*
+ * Explicit colors for this accounting view.
+ * These use the same semantic CSS variables as the application.
+ */
+.calc-positive {
+  color: var(--color-success, #6fdc9a);
+}
+
+.calc-negative {
+  color: var(--color-danger, #ff7b72);
+}
+
+/* TP prices */
+
+.tp-prices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.tp-prices__heading {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tp-prices__values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+}
+
+.tp-prices__values dt,
+.tp-prices__values dd {
+  margin: 0;
+}
+
+.tp-prices__values dd {
+  white-space: nowrap;
+}
+
+/* Shopping list */
 
 .material-list {
   display: flex;
@@ -404,7 +573,7 @@ function materialQuoteText(item: MissingItem): string {
 
 .material-list li {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0 var(--space-3);
 }
 
@@ -412,7 +581,12 @@ function materialQuoteText(item: MissingItem): string {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.material-quantity {
+  white-space: nowrap;
 }
 
 .material-list .meta {

@@ -138,9 +138,7 @@ function onReload(): void {
       </template>
     </PageHeader>
 
-    <section class="panel controls-panel" aria-labelledby="crafting-controls-heading">
-      <h2 id="crafting-controls-heading" class="panel__title">Calculation controls</h2>
-
+    <section class="controls-panel" aria-label="Crafting profit controls">
       <div class="controls-grid">
         <section
           class="control-column"
@@ -149,16 +147,27 @@ function onReload(): void {
         >
           <h3 id="calculation-heading" class="control-column__title">Calculation</h3>
 
-          <ScopeSelector
-            :options="profit.scopeOptions.value"
-            :selected-id="profit.selectedScopeId.value"
-            @select="onScopeSelected"
-          />
+          <div class="calculation-layout">
+            <div class="calculation-layout__main">
+              <ScopeSelector
+                :options="profit.scopeOptions.value"
+                :selected-id="profit.selectedScopeId.value"
+                @select="onScopeSelected"
+              />
 
-          <ProfitSettingsForm
-            :settings="profit.settings.value"
-            @apply="onSettingsApplied"
-          />
+              <ProfitSettingsForm
+                :settings="profit.settings.value"
+                layout-part="values"
+                @apply="onSettingsApplied"
+              />
+            </div>
+
+            <ProfitSettingsForm
+              :settings="profit.settings.value"
+              layout-part="checks"
+              @apply="onSettingsApplied"
+            />
+          </div>
         </section>
 
         <section
@@ -171,13 +180,9 @@ function onReload(): void {
             :hide-zero-craftable="table.hideZeroCraftable.value"
             :hide-not-allowed="table.hideNotAllowed.value"
             :hide-non-positive-profit="table.hideNonPositiveProfit.value"
-            :max-displayed="table.maxDisplayed.value"
-            :show-all="table.showAll.value"
             @update:hide-zero-craftable="table.hideZeroCraftable.value = $event"
             @update:hide-not-allowed="table.hideNotAllowed.value = $event"
             @update:hide-non-positive-profit="table.hideNonPositiveProfit.value = $event"
-            @update:max-displayed="table.setMaxDisplayed($event)"
-            @update:show-all="table.showAll.value = $event"
           >
             <template #search>
               <label class="search">
@@ -211,10 +216,45 @@ function onReload(): void {
         aria-labelledby="crafting-results-heading"
         data-test="results-region"
       >
-        <h2 id="crafting-results-heading">Opportunities</h2>
+        <div class="opportunities-toolbar">
+          <h2 id="crafting-results-heading">Opportunities</h2>
 
-        <TradingPostPriceDisclaimer v-if="profit.hasResult.value" />
+          <div class="opportunities-toolbar__limit">
+            <label class="results-limit">
+              <span>Show at most</span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                data-test="max-displayed"
+                :value="table.maxDisplayed.value"
+                :disabled="table.showAll.value"
+                @change="
+                  table.setMaxDisplayed(
+                    Number(($event.target as HTMLInputElement).value)
+                  )
+                "
+              />
+            </label>
 
+            <label class="show-all">
+              <input
+                type="checkbox"
+                data-test="show-all"
+                :checked="table.showAll.value"
+                @change="
+                  table.showAll.value =
+                    ($event.target as HTMLInputElement).checked
+                "
+              />
+              <span>Show all</span>
+            </label>
+          </div>
+
+          <div class="opportunities-toolbar__warning">
+            <TradingPostPriceDisclaimer v-if="profit.hasResult.value" />
+          </div>
+        </div>
         <p
           v-if="profit.isLoading.value"
           class="notice notice--info"
@@ -319,6 +359,61 @@ function onReload(): void {
 </template>
 
 <style scoped>
+
+.calculation-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 55fr) minmax(0, 45fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.calculation-layout__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+@media (max-width: 1100px) {
+  .calculation-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.opportunities-toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.opportunities-toolbar h2 {
+  margin: 0;
+}
+
+.opportunities-toolbar__limit {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.results-limit,
+.show-all {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+.results-limit input {
+  width: 5rem;
+}
+
+.opportunities-toolbar__warning {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
 .controls-panel {
   display: flex;
   flex-direction: column;
@@ -328,13 +423,15 @@ function onReload(): void {
 .controls-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  gap: var(--space-3);
 }
 
 .control-column {
   min-width: 0;
   padding: var(--space-3) var(--space-4);
+
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
 }
 
 .control-column--display {
@@ -371,9 +468,13 @@ function onReload(): void {
     grid-template-columns: 1fr;
   }
 
-  .control-column--display {
-    border-left: 0;
-    border-top: 1px solid var(--color-border);
+  .opportunities-toolbar {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .opportunities-toolbar__warning {
+    justify-content: flex-start;
   }
 }
 </style>

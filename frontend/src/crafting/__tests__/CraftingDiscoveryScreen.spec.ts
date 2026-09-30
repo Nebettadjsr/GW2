@@ -339,7 +339,7 @@ describe('CraftingDiscoveryScreen', () => {
     const wrapper = await openScreen(api)
 
     // Neither Profit-only setting is reachable, and the fixed daily value is not offered as a choice.
-    expect(wrapper.find('[data-test="discovery-setting-dailyBuyInsteadOfCraft"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="discovery-setting-allowDailyCrafts"]').exists()).toBe(false)
     const controls = wrapper
       .find('[data-test="discovery-settings-form"]')
       .findAll('input, select')
@@ -370,7 +370,7 @@ describe('CraftingDiscoveryScreen', () => {
     })
     // The fixed daily value is not echoed back as an input the route has no field for.
     expect(Object.keys(api.discoveryRequests[1]?.settings ?? {})).not.toContain(
-      'dailyBuyInsteadOfCraft'
+      'allowDailyCrafts'
     )
     expect(isChecked(wrapper, 'discovery-setting-useOwnMats')).toBe(false)
 

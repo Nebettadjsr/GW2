@@ -128,12 +128,15 @@ describe('useProfitTableView', () => {
     expect(view.visibleRows.value).toHaveLength(allRows.length)
   })
 
-  it('searchesTheStateWordsShownAsWellAsTheBackendCode', () => {
+  it('searchesTheSuppliedBackendStateCodeWithoutAddingGenericStateLabels', () => {
     const view = viewOf()
 
-    view.searchText.value = 'price missing'
+    view.searchText.value = 'PRICE_UNAVAILABLE'
 
     expect(view.visibleRows.value.map((row) => row.recipeId)).toEqual([priceUnavailableRow.recipeId])
+
+    view.searchText.value = 'price missing'
+    expect(view.visibleRows.value).toHaveLength(0)
   })
 
   it('keepsTheSelectionThroughSortingAndFiltering', () => {

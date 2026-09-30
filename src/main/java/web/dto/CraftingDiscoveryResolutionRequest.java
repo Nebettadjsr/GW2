@@ -9,7 +9,7 @@ package web.dto;
  * ({@link CraftingDiscoveryRequest}). That keeps Discovery's own inputs intact on this route - a
  * required individual discipline+character scope, the separate nullable
  * {@code inventoryCharacterName} with its unfiltered-pool fallback, and Discovery's own settings
- * defaults with {@code dailyBuyInsteadOfCraft} fixed to false rather than accepted as an input.
+ * defaults with {@code allowDailyCrafts} fixed to true rather than accepted as an input.
  *
  * <p>This type exists only at the HTTP boundary: it is not a domain, persistence or GW2 API model.
  *

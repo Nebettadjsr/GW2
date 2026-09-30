@@ -535,7 +535,7 @@ Observed properties of this flow:
 
 - **Optional body, documented defaults.** An absent or empty body runs the default All scope with the
   same settings the JavaFX Profit view opens with (`useOwnMats` true, `allowBuying` false,
-  `maxBuyCopper` 10000, instant sell, instant buy, daily items bought). The response echoes
+  `maxBuyCopper` 10000, instant sell, instant buy, daily crafts disabled). The response echoes
   the effective scope and settings.
 - **Scope kinds** `ALL`, `DISCIPLINE`, `CHARACTER_DISCIPLINE` map onto `repo.DiscChoice`'s three
   factory methods. A scope that matches no recipes is an empty 200, not a 404.
@@ -605,9 +605,9 @@ Observed properties of this flow:
   API inventing a substitute.
 - **Discovery's own defaults**, taken from the JavaFX Discovery view's opening control state and
   deliberately *not* Profit's: `useOwnMats` true, `allowBuying` **true**, `maxBuyCopper` **200000**
-  (its "20g" field), instant sell, instant buy. `dailyBuyInsteadOfCraft` is not a request field at
-  all — the Discovery flow has always fixed it to false — but the value used is echoed in the
-  response's effective settings.
+  (its "20g" field), instant sell, instant buy. `allowDailyCrafts` is not a request field at
+  all — Discovery fixes it to true to preserve its prior daily-crafting behavior — but the value
+  used is echoed in the response's effective settings.
 - **Empty result is a 200.** A character+discipline with nothing left to discover returns
   `rowCount: 0`, which is the transport form of the service's own "no missing recipes" short-circuit.
   No missing-resource (404) case exists on this route and none was invented; 404 remains the
@@ -981,7 +981,7 @@ frontend/
     │   ├── useDiscoveryTableView.ts     search, sort (no profit filter) and identity selection
     │   ├── useDiscoveryResolution.ts    Discovery's detail request body and identity check
     │   ├── discoveryScopeOptions.ts     individual character-discipline entries from §5.10
-    │   ├── rowState.ts               supplied state in words, plus the minimal row diagnostic
+    │   ├── rowState.ts               shared row-state wording for Discovery
     │   ├── recipeLabel.ts            name, or the item id when the backend supplied none; wiki URL
     │   └── formatCopper.ts           copper → gold/silver/copper text, signed where it may be a loss
     ├── ecto/
@@ -1060,34 +1060,13 @@ below the comparison under that width; the table keeps its own `.table-region` s
   address.
 - **The page carries no introductory sentence** (`STORY-WEB-015`, `DOMAIN_SPEC.md` §2.1.1).
   `PageHeader`'s `intro` is optional and Crafting Profit passes none; every other page keeps its own.
- - **Domain states read as words, with the code kept secondary** (`rowState.ts`). The seven
-  `craft.BlockedReason` names of `DOMAIN_SPEC.md` §42 each have their own wording; the reason is
-  stated as *further* crafting being blocked when the backend still counted crafts, which is what
-  the field means (`craft.CraftResult`). `NONE` with no craftable count reads "None craftable",
-  `resultAvailable: false` reads "No result", an absent state reads "State not reported", and a code
-  this client does not know is shown as itself and is never toned as success. The raw code appears
-  only in the detail's closed "Technical details" disclosure.
-- **The state lives in the selected result, not in a column** (`STORY-WEB-008`, `DOMAIN_SPEC.md`
-  §2.1.1). `BUYING_DISABLED`, `NO_RECIPE`, `DAILY_LIMIT`, `RECIPE_NOT_ALLOWED`,
-  `INSUFFICIENT_BUDGET` carry no row label; the detail states each in words, beside the
-  supplied buy cost and — for a budget restriction only — the maximum buy the backend echoed, and no
-  missing acquisition amount is invented. Since `STORY-WEB-015` the detail also drops the **short
-  status label** wherever that sentence already carries it (`rowState.labelAddsMeaning`,
-  `DOMAIN_SPEC.md` §2.1.1's "Buying is off", "Over the buy limit" and "Not blocked"); the label is
-  still produced, for the search index and for Discovery's own detail, and is still shown for the
-  three states whose sentence is all there is — no calculated result, no reported state and a code
-  this client cannot word — because a removed marker must never read as success. The same rule drops
-  the fresh row's success chip in the shared resolution region while keeping every blocked,
-  unavailable and unrecognized one. For a missing price and a budget limit the detail also says that
-  the row's own reason names no item, and points at the purchase lines and requirements that do,
-  rather than reading an identity out of a reason code or out of the fresh tree.
-  `rowState.rowDiagnostic` keeps a few words beside the
-  recipe name for the four situations a row's own numbers cannot express: `CYCLE_DETECTED`,
-  `PRICE_UNAVAILABLE`, `resultAvailable: false` and an unreported or unrecognized code (worded, never
-  the raw code). The `CYCLE_DETECTED` diagnostic is **temporary presentation technical debt**, kept
-  until the Product Owner asks for its removal, and is recorded in `KNOWN_PROBLEMS.md` as such.
-  Of these reasons only `RECIPE_NOT_ALLOWED` has a display filter of its own (§2.1.1, on initially);
-  the others are hidden by no filter, and none of them is dropped from the loaded result set.
+ - **Profit row-state semantics are technical detail, not normal-view copy** (`DOMAIN_SPEC.md`
+  §§2.1.1 and 42). The comparison table and Selected Result panel show no generic row-state labels,
+  explanations or diagnostic badges. The selected row's raw `blockedReason` is shown in the closed
+  "Technical details" disclosure alongside `resultAvailable` and identifiers. `rowState.ts` remains
+  shared with Discovery and continues to provide its presentation mapping there. The Profit
+  `RECIPE_NOT_ALLOWED` display filter still reads the backend code and availability flag; removing
+  the badge does not remove or alter the filter or any row data. Missing numeric values remain `—`.
 - **Money that may go either way carries its sign.** `formatSignedCopper` writes `+`/`-` and
   `moneyTone` adds the shared `.money--gain`/`.money--loss` treatment, so the distinction survives
   without color; a supplied `0c` and an unsupplied `—` both stay neutral and stay distinct.
@@ -1163,16 +1142,16 @@ never one per table row — and completes as a plain HTTP 200, which is the exec
   that does not is reported as a mismatch and leaves no tree. The identity key is built from the
   echoed scope and settings **only**, so sorting, searching, the display filters and the display
   maximum do not invalidate a detail — re-ordering the table is not a new calculation.
-- **Fresh detail, stated as such, and never merged with the table row.** The region names its basis in
-  one line — "A separate calculation of one output batch — not every craft the table counted" — so the
-  tree is not read as a trace of every craft the table counted or as a claim that the requested recipe
-  was executed. `STORY-WEB-016` replaced the former introductory paragraph with that line and removed
-  the "This recipe in that fresh calculation" block entirely: the returned `row`'s own profit, count,
-  totals and buy cost are no longer displayed, because they were a second set of figures beside the
-  table's saying nothing the tree does not (`DOMAIN_SPEC.md` §2.1.1). The response still carries
-  `row`, the request and its association rules are unchanged, and the comparison table's values are
-  left exactly as their own calculation reported them. Because the two are separate calculations,
-  either may legitimately differ, and neither is described as the other's explanation (§13.2).
+- **Fresh detail explains the selected result's full quantity.** The Profit service uses the fresh
+  detail row's `craftableCount` as the accepted execution limit and runs the normal resolver for each
+  accepted craft. Each craft consumes the same inventory/settings/eligibility/price inputs captured
+  for that detail request; recursive nodes and their inclusive costs are aggregated from those actual
+  traces. The root's requested output quantity is accepted crafts multiplied by recipe `outputCount`.
+  A zero-count row retains one first blocked attempt and reports `FIRST_BLOCKED_ATTEMPT`, so it does
+  not imply counted output. The fresh response remains separate from the earlier table response and
+  its association/generation checks are unchanged; the comparison table is never replaced with the
+  detail row. Profit reports `SELECTED_RESULT_OUTPUT_QUANTITY`; Discovery retains
+  `SINGLE_OUTPUT_REQUIREMENT`.
 - **Requested identity and actual sourcing stay apart** (AR-003). The envelope's `recipeId` is the
   recipe that was *asked about*; each node's `recipeId` is the recipe actually selected or attempted.
   A sentence names which of the three the root is: the requested recipe, another producing recipe, or
@@ -1181,7 +1160,9 @@ never one per table row — and completes as a plain HTTP 200, which is the exec
 - **A compact per-node summary, printed and not computed** (`STORY-WEB-016`). Each node shows its own
   item identity, the supplied required quantity ("20 needed"), the sourcing labels for **every**
   supplied method — a mixed requirement is not forced into one — the named character under
-  "Crafted by" where the backend supplied one, and the three inclusive costs on one labelled line.
+  "Crafted by" where the backend supplied one. Profit shows one `Value` from the node's inclusive
+  `effectiveCostCopper`; it has no per-node Technical details disclosure. Discovery continues to show
+  its three supplied cost values.
   Every supplied state and blocked reason keeps its own marker and sentence, so nothing unresolved is
   dropped for brevity. The resolver's bookkeeping is **not** in the normal view: the
   inventory/crafted/bought/missing split, the producing recipe and its id, the craft count and the
@@ -1445,7 +1426,7 @@ module (`ItemIcon`, `CraftingResolution`, `ResolutionTreeNode`, `rowState`, `res
 - **Discovery's own defaults and echo.** The first request carries the scope and inventory character
   only; the five settings controls (`useOwnMats`, `allowBuying`, `maxBuyCopper`, `listingSell`,
   `listingBuy`) are populated from that response's `settings` echo, so Discovery's defaults are the
-  backend's and never Profit's. `dailyBuyInsteadOfCraft` is *reported* as the value the flow fixes and
+  backend's and never Profit's. `allowDailyCrafts` is *reported* as true, the value the flow fixes and
 - **Six comparison columns, each stating its basis.** Recipe (row header), Level *recipe minimum*,
   Craftable *crafts*, Materials to buy *cost, all crafts*, Output sell value *all crafts* and Profit
   *per craft*. Sorting is offered on those six keys, level sorting works in both directions and opens
@@ -1470,8 +1451,9 @@ module (`ItemIcon`, `CraftingResolution`, `ResolutionTreeNode`, `rowState`, `res
   recipe against another character's materials is a different calculation, so an answer echoing the
   previous one is refused. Selection, reload, any input change and leaving the page invalidate the
   detail, including A → B → A; sorting and searching do not. The fresh row and tree are shown beside
-  the table row without replacing it, with the tree's one-output-batch basis and the actual root
-  sourcing labelled truthfully.
+  the table row without replacing it, with Discovery's one-output-batch basis and the actual root
+  sourcing labelled truthfully. Profit uses the complete selected-result quantity as described
+  above.
 
 **Ecto Salvage page.** The browser page at `#/ecto` loads `GET /api/items/metadata` for Ecto, Dust
 and the five displayed salvage tools, `GET /api/items/prices` for Ecto (19721) and Crystalline Dust
@@ -1506,9 +1488,9 @@ backend; the Ecto Salvage page's local calculator is the separate exception desc
 `totalProfitCopper` and `totalSellValueCopper` in particular are displayed and sorted exactly as
 received and are never derived from `craftableCount × profitCopper` or `craftableCount ×
 revenueCopper`. Rows the backend could not calculate are kept, not dropped:
-`resultAvailable: false` renders as "No result", a `blockedReason` renders as its own wording in the
-selected-result detail with the code kept in that detail's disclosure, and a null numeric field
-renders as `—` rather than `0`.
+`resultAvailable: false` remains available as raw data in the selected result's collapsed Technical
+details disclosure, and a null numeric field renders as `—` rather than `0`. Generic row-state
+labels and explanations are not rendered in the normal Profit table or selected result.
 `formatCopper`/`formatCount`/`formatSignedCopper` are the only transformations, and all three are
 presentation-only. The Profit screen's display filters and maximum only decide which of the loaded
 rows are listed: no row is dropped from the result set, no unsupplied value is read as zero, and no
@@ -1786,7 +1768,7 @@ Observed properties of this flow:
   kinds, validation messages and semantics — Profit's `ALL`/`DISCIPLINE`/`CHARACTER_DISCIPLINE` and its
   view defaults, Discovery's required individual scope, its separate nullable
   `inventoryCharacterName` with the service's unfiltered-pool fallback, its own defaults and its
-  daily setting fixed to false and reported rather than accepted. Nothing else is an input: no row
+  daily setting fixed to true (daily crafts allowed) and reported rather than accepted. Nothing else is an input: no row
   number, price, material map or prior-context identifier.
 - **One fresh request-local calculation.** The controller holds the same
   `Supplier<...Service>` seam as the table route, so each request resolves on its own service
@@ -1794,10 +1776,12 @@ Observed properties of this flow:
   the single `CraftingResolutionDetail` that one call returned, and the mapper reads no repository,
   graph or clock-dependent domain state — it cannot introduce a second data read.
 - **Envelope.** `recipeId` and `calculation` echo the *requested* identity and effective inputs;
-  `consistency` is the literal `FRESH_CALCULATION`, `treeBasis` the literal
-  `SINGLE_OUTPUT_REQUIREMENT`, and `calculatedAt` a UTC ISO-8601 completion instant that is
-  informational only. `row` is the same shared `web.dto.CraftingRowDto` the tables report, produced by
-  the same `web.CraftingRowMapper`, so a caller reads it identically on either route.
+  `consistency` is the literal `FRESH_CALCULATION`; Profit uses
+  `SELECTED_RESULT_OUTPUT_QUANTITY` for counted output and `FIRST_BLOCKED_ATTEMPT` for a zero-count
+  selected row, while Discovery retains `SINGLE_OUTPUT_REQUIREMENT`. `calculatedAt` is a UTC ISO-8601
+  completion instant that is informational only. `row` is the same shared `web.dto.CraftingRowDto`
+  the tables report, produced by the same `web.CraftingRowMapper`, so a caller reads it identically on
+  either route.
 - **Tree.** `web.dto.ResolutionNodeDto` is a transport copy of `craft.CraftTraceNode`: quantities,
   the actually selected (or attempted) recipe id, craft count and production, assigned character,
   method/state/blocked-reason names, the three inclusive costs, ordered children, and — since

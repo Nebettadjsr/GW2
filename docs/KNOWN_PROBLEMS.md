@@ -32,15 +32,6 @@ No finding in this document by itself authorizes an implementation change. Norma
 
 **Recommendation:** assess candidate pruning and multi-recipe ranking together. Any correction should compare valid candidates using the authoritative effective-cost semantics rather than treating direct ingredient purchase cost as a safe lower bound.
 
-### KP-02 — Heuristic skip can bypass profitable recursive crafting
-
-**Observed fact:** `CraftingPlanner.evaluateOneRecipeNew` skips simulation entirely (`maySkipCheap`) when `!useOwnMats && !allowBuying`, based on `shouldSimulateRecipe(...)`, which estimates recipe worth using only **direct, non-recursive** ingredient buy/sell prices (`CraftingResolver.resolveDirectBuyUnit`/`resolveDirectSellUnit`), not the full recursive crafting cost.
-
-**Inferred risk:** A recipe whose direct ingredients look unprofitable by immediate TP price, but whose ingredients are themselves cheaper to craft recursively, could be incorrectly skipped (treated as `craftableCount = 0`) under this narrow settings combination, understating results without any visible indication to the user that a shortcut was taken.
-
-**Recommendation:** Worth a targeted test once domain tests exist (`TEST_STRATEGY.md` §6.4) for the `useOwnMats=false, allowBuying=false` combination specifically; not urgent since it's scoped to one settings combination.
-
-
 ### KP-03 — Two-phase simulation can exceed the agreed 250-craft maximum (CH-E3)
 
 **Observed fact:** UD-003 / `DOMAIN_SPEC.md` §28 defines the 250-craft maximum as intentional, but `src/main/java/craft/RecipeSimulator.java#simulateRecipe` can exceed it. With own materials and buying enabled, phase 1 can finish at 250 crafts; phase 2 still enters `simulatePhase`. Its limit check occurs after resolving, committing, and incrementing another craft, so an affordable next craft can produce 251.
@@ -103,15 +94,12 @@ No finding in this document by itself authorizes an implementation change. Norma
 **Partly resolved (`STORY-DOM-024`).** The Ectoplasm half is fixed at the call site, not in `CoinUtils`: `EctoView.fillProfitGrid` now formats its four cells with `CoinUtils.format`, which keeps the minus sign, so a salvage loss reads as a loss (`EctoSalvageViewIT` asserts the rendered `-0g 8s 73c`). `formatSigned` itself is unchanged and still strips the sign, and the crafting-table styling and the two Buy Cost labelling problems above are untouched.
 
 
-### KP-10 — Web Crafting Profit retains the temporary `CYCLE_DETECTED` row diagnostic
+### KP-10 — Web Crafting Profit row-state badges
 
-**Observed fact:** `STORY-WEB-008` removed the web comparison table's general State column but intentionally retained a minimal row-level `CYCLE_DETECTED` diagnostic beside the recipe name in `frontend/src/crafting/rowState.ts` / `CraftingProfitTable.vue`, because `DOMAIN_SPEC.md` §2.1.1 explicitly leaves its later removal to the Product Owner.
-
-**Inferred risk:** a single domain reason keeps a presentation affordance the information hierarchy otherwise rejects, which invites the column's gradual return if further reasons are added to the same slot. The three other cases that slot carries — a missing price, an absent calculation result, and an unreported or unrecognized code — are not this debt: `DOMAIN_SPEC.md` §2.1.1 requires those distinctions to survive the column's removal, so they stay regardless of what happens to the cycle diagnostic.
-
-**Recommendation:** remove the `CYCLE_DETECTED` branch of `rowDiagnostic` when the Product Owner asks for it, leaving the other three branches in place. Do not extend the slot with additional reason codes in the meantime.
-
-**Status: Open, by instruction.** Recorded by `STORY-WEB-008`; removal is the Product Owner's decision, not a defect to fix unprompted.
+**Resolved:** The Crafting Profit comparison table no longer renders generic row-state diagnostics,
+including `CYCLE_DETECTED`. `DOMAIN_SPEC.md` §2.1.1 now defines the normal-view presentation
+contract; raw row states remain in Selected Result's collapsed Technical details. The shared
+`rowDiagnostic` helper remains in use by Crafting Discovery.
 
 
 ### KP-11 — `MaxBuy UI=...` debug text still appears transiently

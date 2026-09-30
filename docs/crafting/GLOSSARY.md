@@ -112,6 +112,7 @@ characters" mode the way profit-seeking crafting does. See
 [Who can craft what](README.md#who-can-craft-what-profit-scope-vs-discovery-character).
 
 **Does the tool know if I've already used today's daily craft on an item?**
-No — this is an intentional simplification. Daily-crafting state isn't tracked at all; the "buy
-instead of craft" option exists specifically so daily-limited items are never planned to be crafted
-in the first place. See [Daily-limited crafting](README.md#daily-limited-crafting).
+No — this is an intentional simplification. Daily-crafting state isn't tracked at all. When
+`allowDailyCrafts` is enabled, the planner models one daily craft operation per output item in a
+planning state; buying and owned stock remain controlled by their own settings. See
+[Daily-limited crafting](README.md#daily-limited-crafting).

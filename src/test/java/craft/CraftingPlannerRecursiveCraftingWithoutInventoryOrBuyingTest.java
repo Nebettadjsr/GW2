@@ -9,30 +9,19 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Characterization test for KNOWN_PROBLEMS.md section 7.4: under
- * useOwnMats=false/allowBuying=false, CraftingPlanner.evaluateOneRecipeNew may skip
- * simulating a recipe entirely (shouldSimulateRecipe(...), gated by maySkipCheap) based
- * only on each ingredient's DIRECT, non-recursive buy/sell price - never considering
- * that an ingredient might itself be cheaper to craft recursively.
- * <p>
- * This does NOT assert that the skip is correct behavior - it pins down what the planner
- * currently returns for a recipe engineered to trigger that skip, so a future change to
- * the heuristic (e.g. making it recursive) is a deliberate, visible change.
+ * When both inventory and buying are disabled, recursive crafting remains a valid acquisition
+ * path and must not be skipped based on direct Trading Post prices.
  */
-class CraftingPlannerHeuristicSkipCharacterizationTest {
+class CraftingPlannerRecursiveCraftingWithoutInventoryOrBuyingTest {
 
     private static final int OUTPUT_ITEM_ID = 900_001;
     private static final int INTERMEDIATE_ITEM_ID = 900_002;
     private static final int BASE_ITEM_ID = 900_003;
 
     @Test
-    void shouldCurrentlySkipSimulationBasedOnDirectPricesEvenWhenRecursiveCraftingWouldBeCheaper() {
-        // Output: sells directly for 500/unit -> shouldSimulateRecipe's "revenue".
-        // Intermediate: 1000 to buy directly, but its OWN recipe below crafts it from
-        // Base at effectively zero direct cost - i.e. recursively, Intermediate is far
-        // cheaper than its direct TP price suggests. shouldSimulateRecipe only ever looks
-        // at Intermediate's direct price (1000), never at its recipe, so
-        // minCost(1000) >= revenue(500) and the whole Output recipe is skipped outright.
+    void shouldRecursivelyCraftEvenWhenDirectIngredientPricesMakeTheRecipeLookUnprofitable() {
+        // Output: sells directly for 500/unit. Intermediate appears to cost 1000 directly,
+        // but its recipe below makes it recursively craftable from a free Base.
         Recipe outputRecipe = CraftTestFixtures.recipe(
                 1, OUTPUT_ITEM_ID, List.of(CraftTestFixtures.ingredient(INTERMEDIATE_ITEM_ID, 1)));
 
@@ -59,7 +48,7 @@ class CraftingPlannerHeuristicSkipCharacterizationTest {
                 0,      // maxBuyCopper (0 = unlimited)
                 false,  // listingSell (instant sell)
                 false,  // listingBuy (instant buy)
-                false   // dailyBuyInsteadOfCraft
+                false   // allowDailyCrafts
         );
 
         Map<Integer, CraftResult> results = new CraftingPlanner().evaluateAll(
@@ -67,14 +56,8 @@ class CraftingPlannerHeuristicSkipCharacterizationTest {
 
         CraftResult outputResult = results.get(1);
 
-        // Current behavior: the recipe is treated as entirely un-craftable (craftableCount
-        // 0, zero total profit), even though profitCopper shows a per-craft profit of 425
-        // - the 500c gross sale less DOMAIN_SPEC.md section 25's 75c fee - would exist if a
-        // single craft were simulated. The recursive Intermediate<-Base craft path that would
-        // make this genuinely profitable is never explored because shouldSimulateRecipe
-        // short-circuited on Intermediate's direct buy price alone.
-        assertEquals(0, outputResult.craftableCount);
-        assertEquals(0, outputResult.totalProfitCopper);
+        assertEquals(250, outputResult.craftableCount);
+        assertEquals(425 * 250, outputResult.totalProfitCopper);
         assertEquals(425, outputResult.profitCopper);
         assertEquals(Map.of(), outputResult.missingToBuy);
     }
