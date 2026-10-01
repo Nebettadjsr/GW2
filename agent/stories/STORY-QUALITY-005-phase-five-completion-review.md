@@ -54,7 +54,6 @@ The Phase 5 exit criteria require a bounded health review before milestone compl
 - STORY-WEB-020
 - STORY-WEB-021
 - STORY-WEB-022
-- STORY-WEB-023
 
 ## Definition of Done
 
@@ -66,4 +65,4 @@ Not started.
 
 ## Blockers
 
-STORY-PERF-002 must complete, and remaining Phase 5 implementation, including STORY-WEB-019, STORY-SYNC-005, STORY-UI-003, STORY-WEB-018, STORY-WEB-020, STORY-WEB-021, STORY-WEB-022 and STORY-WEB-023, must be substantially complete before this review.
+STORY-PERF-002 must complete, and remaining Phase 5 implementation, including STORY-WEB-019, STORY-SYNC-005, STORY-UI-003, STORY-WEB-018, STORY-WEB-020, STORY-WEB-021, STORY-WEB-022, must be substantially complete before this review.

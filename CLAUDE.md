@@ -9,10 +9,10 @@ reads, don't reopen files that haven't changed.
 
 ## Project
 
-GW2 crafting/economy tool. Current stack: Java 25, Maven, JavaFX, PostgreSQL, GW2 API.
-Target direction: containerized web app, separate frontend/backend/PostgreSQL — **not yet
-implemented**. Frontend and backend frameworks are undecided; do not introduce either unless
-explicitly requested.
+GW2 crafting/economy tool. Current stack: Java 25, Maven, Spring Boot 4.1.1, Vue 3/TypeScript,
+PostgreSQL and the GW2 API. The browser UI is active; the JavaFX UI remains as legacy code.
+The hosted, containerized multi-user platform is not implemented. Chosen target technologies and
+remaining TBDs are in `docs/TARGET_ARCHITECTURE.md`.
 
 ## Documentation Map
 
@@ -23,14 +23,15 @@ one file's facts into another.
 | File | Owns |
 | --- | --- |
 | `docs/DOMAIN_SPEC.md` | Authoritative domain rules |
+| `docs/crafting/GLOSSARY.md` | Canonical player-facing crafting/Trading Post terms and UI-label mapping |
 | `docs/CURRENT_STATE_SPEC.md` | Descriptive current behavior |
 | `docs/CURRENT_ARCHITECTURE.md` | Current structure/runtime architecture |
-| `docs/TARGET_ARCHITECTURE.md` | Intended architecture, TBD technologies |
+| `docs/TARGET_ARCHITECTURE.md` | Chosen target architecture and remaining decisions |
 | `docs/TEST_STRATEGY.md` | Testing methodology/layers (never live test counts) |
 | `docs/ROADMAP.md` | Phases, dependencies, exit criteria |
 | `docs/KNOWN_PROBLEMS.md` | Defects, conflicts, risks, technical debt |
 | `docs/CODING_GUIDELINES.md` | Behavioral/coding standards — read before non-trivial work |
-| `docs/crafting/` | Human-readable crafting guide; policy owned by `TARGET_ARCHITECTURE.md` §35 |
+| `docs/crafting/README.md` | Human-readable crafting guide, aligned with `DOMAIN_SPEC.md` |
 | `agent/stories/BACKLOG.md` | Executable queue, priority, status (index only, not story content) |
 | `agent/stories/STORY-*.md` | Scope, acceptance criteria, result, blockers (one canonical file per story) |
 | `agent/user-decisions/UD-*.md` | Human decisions, OPEN/RESOLVED status |
@@ -42,7 +43,7 @@ If information is derivable from its owner, don't store a second copy anywhere e
 
 - **IMPLEMENTATION MODE** — default, defined below.
 - **PROJECT PLANNING MODE** — `agent/PLANNER_INSTRUCTIONS.md`, only when explicitly requested.
-- **PROJECT HEALTH REVIEW** — bounded assessment, scope/rules in `TARGET_ARCHITECTURE.md` §34.
+- **PROJECT HEALTH REVIEW** — bounded assessment, scope/rules in `TARGET_ARCHITECTURE.md` §21.
   Report findings via the normal story/result mechanisms; don't treat it as license to fix
   things or expand tests beyond that scope.
 
@@ -74,7 +75,7 @@ planner can disposition out-of-scope observations during its next normal pass. U
 doc only if this story materially changed information that doc
 owns (see Documentation Map) — e.g. an architecture change updates `CURRENT_ARCHITECTURE.md`,
 a domain change updates `DOMAIN_SPEC.md`, a user-visible crafting rule change updates
-`docs/crafting/` per §35. Never write completed-story history or live test counts into
+`docs/crafting/` per §18. Never write completed-story history or live test counts into
 `PROJECT_STATE.md` or `TEST_STRATEGY.md`.
 
 ## Source Priority
@@ -119,7 +120,7 @@ repository-wide rename) is worth a broad local run before it is pushed.
 
 Layers the gate cannot run stay local and explicit when a story touches them: TestFX UI
 verification (§32, needs a real desktop), browser smoke scripts (§12.2), real-database `*IT`
-checks (§34, §35.2) and live GW2 API smoke (§31.4).
+checks (§34, §18.2) and live GW2 API smoke (§31.4).
 
 ## Version Control and CI
 

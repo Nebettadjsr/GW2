@@ -58,6 +58,18 @@ class CraftingDiscoveryServiceTest {
     }
 
     @Test
+    void rejectsScopesWithoutOneSelectedCharacterAndDiscipline() {
+        var service = serviceWith(new FakeRecipeRepository(), new FakeInventoryRepository(),
+                new FakeTpPriceRepository(), new FakeItemRepository(), List.of(RECIPE),
+                new RecordingCraftingPlanner());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.reload(DiscChoice.all(), settings(true, true)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.reload(DiscChoice.disciplineOnly("Chef"), settings(true, true)));
+    }
+
+    @Test
     void missingRecipesAreFilteredToTheGraphAndTheCharacterLevelCeiling() throws SQLException {
         var recipeRepo = new FakeRecipeRepository();
         recipeRepo.missingIds = List.of(1, 2);
@@ -68,7 +80,7 @@ class CraftingDiscoveryServiceTest {
                 new FakeItemRepository(), List.of(RECIPE, tooHigh), planner);
 
         CraftingDiscoveryService.DiscoveryData data =
-                service.reload(DiscChoice.charDiscipline("Chef", 100, "Aria"), settings(false, false), "Aria");
+                service.reload(DiscChoice.charDiscipline("Chef", 100, "Aria"), settings(false, false));
 
         assertEquals("Aria", recipeRepo.capturedCharName);
         assertEquals("Chef", recipeRepo.capturedDiscipline);
@@ -88,7 +100,7 @@ class CraftingDiscoveryServiceTest {
         var service = serviceWith(recipeRepo, invRepo, tpRepo, itemRepo, List.of(RECIPE), planner);
 
         CraftingDiscoveryService.DiscoveryData data =
-                service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true), "Aria");
+                service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true));
 
         assertTrue(data.visibleRecipes().isEmpty());
         assertFalse(invRepo.calledForCharacter, "no missing recipes must skip the inventory load entirely");
@@ -107,7 +119,7 @@ class CraftingDiscoveryServiceTest {
         var service = serviceWith(recipeRepo, invRepo, new FakeTpPriceRepository(),
                 new FakeItemRepository(), List.of(RECIPE), planner);
 
-        service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true), "Aria");
+        service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true));
 
         assertTrue(invRepo.calledForCharacter);
         assertEquals("Aria", invRepo.capturedCharacterName);
@@ -116,19 +128,20 @@ class CraftingDiscoveryServiceTest {
     }
 
     @Test
-    void noSelectedCharacterFallsBackToUnfilteredOwnedInventory() throws SQLException {
+    void selectedScopeCharacterAlwaysScopesOwnedInventory() throws SQLException {
         var recipeRepo = new FakeRecipeRepository();
         recipeRepo.missingIds = List.of(1);
         var invRepo = new FakeInventoryRepository();
-        invRepo.unfiltered = Map.of(200, 9);
+        invRepo.perCharacter = Map.of(200, new InventoryRepository.OwnedQuantity(9, 0));
         var planner = new RecordingCraftingPlanner();
         var service = serviceWith(recipeRepo, invRepo, new FakeTpPriceRepository(),
                 new FakeItemRepository(), List.of(RECIPE), planner);
 
-        service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true), null);
+        service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true));
 
-        assertTrue(invRepo.calledUnfiltered);
-        assertFalse(invRepo.calledForCharacter);
+        assertFalse(invRepo.calledUnfiltered);
+        assertTrue(invRepo.calledForCharacter);
+        assertEquals("Aria", invRepo.capturedCharacterName);
         assertEquals(Map.of(200, 9), planner.capturedSellable);
         assertTrue(planner.capturedBound.isEmpty());
     }
@@ -142,7 +155,7 @@ class CraftingDiscoveryServiceTest {
         var service = serviceWith(recipeRepo, invRepo, new FakeTpPriceRepository(),
                 new FakeItemRepository(), List.of(RECIPE), planner);
 
-        service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(false, true), "Aria");
+        service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(false, true));
 
         assertFalse(invRepo.calledForCharacter);
         assertFalse(invRepo.calledUnfiltered);
@@ -161,11 +174,34 @@ class CraftingDiscoveryServiceTest {
                 new FakeItemRepository(), List.of(RECIPE), planner);
 
         CraftingDiscoveryService.DiscoveryData data =
-                service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true), "Aria");
+                service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true));
 
         CraftResult result = data.resultsByRecipeId().get(1);
         assertNotNull(result);
         assertEquals(craft.BlockedReason.PRICE_UNAVAILABLE, result.blockedReason);
+    }
+
+    @Test
+    void discoveryEvaluatesOneAttemptWithoutTheProfitBudgetAndIncludesRecipeOutputQuantity() throws SQLException {
+        var recipeRepo = new FakeRecipeRepository();
+        recipeRepo.missingIds = List.of(1);
+        Recipe batchRecipe = new Recipe(1, 100, 3, 0, "Chef", List.of(new Ingredient(200, 2)));
+        var tpRepo = new FakeTpPriceRepository();
+        tpRepo.canned = Map.of(100, new PriceQuote(20, 25), 200, new PriceQuote(2, 3));
+        var service = new CraftingDiscoveryService(recipeRepo, new FakeInventoryRepository(), tpRepo,
+                new FakeItemRepository(), new FakeCraftingGraphCache(List.of(batchRecipe)), new CraftingPlanner());
+
+        CraftResult result = service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"),
+                        new CraftingSettings(false, true, 1, false, false, true))
+                .resultsByRecipeId().get(1);
+
+        assertNotNull(result);
+        assertEquals(1, result.craftableCount, "Discovery considers one attempt even with abundant purchasable inputs");
+        assertEquals(3, batchRecipe.outputCount);
+        assertEquals(60, result.revenueCopper, "the one craft sells all three output items");
+        assertEquals(60, result.totalSellValueCopper);
+        assertEquals(6, result.buyCostCopper, "one attempt consumes two units at 3 copper each");
+        assertEquals(45, result.totalProfitCopper, "one-craft profit includes the fee on all output units");
     }
 
     @Test
@@ -179,7 +215,7 @@ class CraftingDiscoveryServiceTest {
         var service = new CraftingDiscoveryService(recipeRepo, new FakeInventoryRepository(), tpRepo,
                 new FakeItemRepository(), graphCache, planner);
 
-        service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true), "Aria");
+        service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true));
 
         CraftResult first = service.getResultByRecipeId(1);
         assertNotNull(first);
@@ -192,7 +228,7 @@ class CraftingDiscoveryServiceTest {
         // previous reload's cached result (mirrors STORY-APP-001 acceptance criterion 3).
         recipeRepo.missingIds = List.of(2);
         graphCache.recipes = List.of(OTHER_RECIPE);
-        service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true), "Aria");
+        service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true));
 
         assertNull(service.getResultByRecipeId(1));
     }
@@ -209,7 +245,7 @@ class CraftingDiscoveryServiceTest {
         var service = serviceWith(recipeRepo, new FakeInventoryRepository(), tpRepo, itemRepo,
                 List.of(RECIPE), planner);
 
-        service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true), "Aria");
+        service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true));
 
         assertEquals("Ore", service.itemName(200));
         assertEquals(60, service.itemSellUnit(200, true));
@@ -217,7 +253,7 @@ class CraftingDiscoveryServiceTest {
 
         // A subsequent reload with no missing recipes must not clear the previous lookup data.
         recipeRepo.missingIds = List.of();
-        service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true), "Aria");
+        service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true));
 
         assertEquals("Ore", service.itemName(200), "stale lookup data must survive a short-circuited reload");
         assertEquals(60, service.itemSellUnit(200, true));
@@ -232,7 +268,7 @@ class CraftingDiscoveryServiceTest {
                 new FakeItemRepository(), List.of(RECIPE), planner);
 
         assertThrows(SQLException.class, () ->
-                service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(false, false), "Aria"));
+                service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(false, false)));
     }
 
     // ---------- Fake/in-memory adapters (TARGET_ARCHITECTURE.md §25) ----------
@@ -319,7 +355,7 @@ class CraftingDiscoveryServiceTest {
         Set<Integer> capturedAllowedRecipeIds;
 
         @Override
-        public Map<Integer, CraftResult> evaluateAll(List<Recipe> recipes,
+        public Map<Integer, CraftResult> evaluateAllSingleCraft(List<Recipe> recipes,
                                                       Map<Integer, Integer> sellableInventory,
                                                       Map<Integer, Integer> boundInventory,
                                                       Map<Integer, PriceQuote> tp,
@@ -331,7 +367,7 @@ class CraftingDiscoveryServiceTest {
             this.capturedTp = tp;
             this.capturedSettings = settings;
             this.capturedAllowedRecipeIds = allowedRecipeIds;
-            return super.evaluateAll(recipes, sellableInventory, boundInventory, tp, settings, allowedRecipeIds);
+            return super.evaluateAllSingleCraft(recipes, sellableInventory, boundInventory, tp, settings, allowedRecipeIds);
         }
     }
 }

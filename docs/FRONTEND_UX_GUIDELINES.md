@@ -8,6 +8,8 @@ The Product Owner's visual-design direction of 2026-09-25 extends that foundatio
 
 `TARGET_ARCHITECTURE.md` owns frontend/backend responsibilities and API contracts; `DOMAIN_SPEC.md` owns calculation behavior; `TEST_STRATEGY.md` owns testing methodology. These guidelines do not introduce domain rules or change those boundaries. JavaFX is a functional and interaction reference, not a visual specification. Preserve useful workflows and information separation while adapting them to the browser.
 
+When reviewing visible crafting or Trading Post wording, use [`crafting/GLOSSARY.md`](crafting/GLOSSARY.md) as the canonical mapping between interface labels and game/economic terms. Keep detailed definitions there; this document governs presentation and `DOMAIN_SPEC.md` governs normative calculation semantics.
+
 ## 2. Application structure and navigation
 
 Provide recognizable application navigation, an identifiable current destination, and a page title. Implemented workflows must be reachable without scanning unrelated controls. Do not offer dead navigation entries for unfinished features.
@@ -64,7 +66,7 @@ Before changing a screen, compare the implemented structure with the relevant ru
 
 Verify representative wide and narrow layouts, keyboard navigation, visible focus, meaningful status/error states, and selected-detail interaction. Use frontend tests for rendering, interaction and state with controlled backend values, including values chosen to reveal accidental recalculation. Record browser/viewport evidence and limitations. Follow `TEST_STRATEGY.md` for test-layer choices; do not duplicate domain tests in the frontend.
 
-Existing functionality and backend contracts must survive presentation changes. Navigation/layout changes do not relax `TARGET_ARCHITECTURE.md` section 33's complete-page performance requirement. Full Phase 5 performance evidence and the bounded project-health review remain distinct milestone work; visual improvement alone does not close the milestone.
+Existing functionality and backend contracts must survive presentation changes. Navigation/layout changes do not relax `TARGET_ARCHITECTURE.md` section 17's complete-page performance requirement. Full Phase 5 performance evidence and the bounded project-health review remain distinct milestone work; visual improvement alone does not close the milestone.
 
 ## 9. Visual identity and shared color system
 

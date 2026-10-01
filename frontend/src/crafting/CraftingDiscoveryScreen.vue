@@ -8,7 +8,6 @@ import DiscoveryScopeSelector from './DiscoveryScopeSelector.vue'
 import DiscoverySettingsForm from './DiscoverySettingsForm.vue'
 import DiscoveryTable from './DiscoveryTable.vue'
 import SelectedDiscoveryDetail from './SelectedDiscoveryDetail.vue'
-import { formatCopper } from './formatCopper'
 import { useCraftingDiscovery } from './useCraftingDiscovery'
 import {
   discoveryCalculationKey,
@@ -17,33 +16,7 @@ import {
 } from './useDiscoveryResolution'
 import { useDiscoveryTableView, type DiscoverySortKey } from './useDiscoveryTableView'
 
-/**
- * The Crafting Discovery Helper page (`DOMAIN_SPEC.md` 2.2.2), in the three groups
- * `FRONTEND_UX_GUIDELINES.md` 4 asks for: what is calculated, the candidates to compare, and the
- * details of the one candidate that is selected.
- *
- * The controls panel follows the pattern STORY-WEB-011 settled on Crafting Profit: one panel with a
- * *Calculation* subgroup — the character/discipline scope, the separate inventory character and the
- * settings behind a labelled disclosure whose summary keeps the effective ones readable — and a
- * *Displayed results* subgroup, which here is the search alone. Discovery deliberately has no display
- * filters: hiding candidates by profit is a Profit control, and a negative profit is not a discovery
- * exclusion rule (`DOMAIN_SPEC.md` 37).
- *
- * The screen decides nothing about discovery. Which recipes exist as candidates, the account-wide
- * knowledge rule, the rating filter and normal-discovery eligibility are all the backend's
- * (`DOMAIN_SPEC.md` 34/35); search and sort are pure view state, so changing either cannot issue a
- * request. `api.calculateDiscovery` is called for an opened screen, a changed scope, a changed
- * inventory character, changed settings and an explicit reload only.
- *
- * With no character discipline to select — nothing synced, or a selector read that failed — the page
- * says so and sends **no** calculation, because this route has no default scope to fall back on.
- *
- * The screen is kept alive while another application area is open, so returning to it neither loses
- * the chosen scope, settings, search, sort and selection nor posts the calculation again.
- *
- * The `api` prop exists so a test can supply controlled responses; the browser always gets the real
- * backend client.
- */
+/** Crafting Discovery evaluates one attempt per missing recipe for the selected character. Eligibility and all calculation inputs remain backend-owned; search and sort are view state. */
 const props = withDefaults(defineProps<{ api?: CraftingApi }>(), { api: () => craftingApi })
 
 const discovery = useCraftingDiscovery(props.api)
@@ -54,12 +27,7 @@ onMounted(() => {
   void discovery.open()
 })
 
-/**
- * The effective inputs the backend reported for the result set on screen, or null while there is no
- * settled result to attach a detail to. The detail request carries exactly these
- * (`TARGET_ARCHITECTURE.md` 13.1) — the nullable inventory character included, never the browser's own
- * defaults, and never anything derived from a row.
- */
+/** Effective inputs echoed by the backend; detail is never calculated from browser defaults or row values. */
 const calculationInputs = computed<DiscoveryCalculationInputs | null>(() => {
   if (discovery.isLoading.value || !discovery.hasResult.value) return null
   const scope = discovery.effectiveScope.value
@@ -67,7 +35,6 @@ const calculationInputs = computed<DiscoveryCalculationInputs | null>(() => {
   if (scope === null || settings === null) return null
   return {
     scope,
-    inventoryCharacterName: discovery.effectiveInventoryCharacter.value,
     settings
   }
 })
@@ -95,7 +62,7 @@ function syncResolution(): void {
 
 /**
  * The events 13.4 requires a detail to be invalidated by, and nothing else. The key deliberately
- * contains the selected recipe and the backend's echoed scope, inventory character and settings only —
+ * contains the selected recipe and the backend's echoed scope and settings only —
  * sorting and searching are absent from it, so re-ordering the list leaves a valid detail alone. A
  * started reload empties `calculationInputs` while it is in flight, which clears the tree immediately
  * and asks again against the answer that replaces it.
@@ -127,24 +94,6 @@ const isSearchEmpty = computed(
 const matchingCount = computed(() => table.matchingRows.value.length)
 const calculatedCount = computed(() => discovery.rows.value.length)
 
-/**
- * The settings the backend reported it calculated with, worded for the disclosure's summary line so
- * closing the group never hides what is in effect. Every part comes from that echo; no default is
- * repeated here, and the fixed daily value is reported as the calculation's, not as a choice.
- */
-const effectiveSettingsSummary = computed(() => {
-  const settings = discovery.settings.value
-  if (settings === null) return 'not reported yet'
-  return [
-    settings.useOwnMats ? 'own materials used' : 'own materials kept',
-    settings.allowBuying ? 'buying allowed' : 'buying off',
-    `max buy ${formatCopper(settings.maxBuyCopper)}`,
-    settings.listingSell ? 'listing sell' : 'instant sell',
-    settings.listingBuy ? 'listing buy' : 'instant buy',
-    settings.allowDailyCrafts ? 'daily crafts allowed (fixed)' : 'daily crafts disabled (fixed)'
-  ].join(' · ')
-})
-
 /** What the detail region says when nothing is selected, in the results region's own situation. */
 const detailPlaceholder = computed(() => {
   // Loading first, for the same reason the results region orders its states that way: while the
@@ -166,10 +115,6 @@ function onSearchInput(event: Event): void {
 
 function onScopeSelected(scopeOptionId: string): void {
   void discovery.selectScope(scopeOptionId)
-}
-
-function onInventoryCharacterSelected(characterName: string | null): void {
-  void discovery.selectInventoryCharacter(characterName)
 }
 
 function onSettingsApplied(settings: EffectiveDiscoverySettings): void {
@@ -214,7 +159,7 @@ function onReload(): void {
       backend.
     -->
     <section class="panel" aria-labelledby="discovery-controls-heading">
-      <h2 id="discovery-controls-heading" class="panel__title">Calculation controls</h2>
+      <h2 id="discovery-controls-heading" class="panel__title">Calculation</h2>
 
       <fieldset class="calculation-controls" data-test="discovery-calculation-controls">
         <legend>Calculation</legend>
@@ -222,21 +167,9 @@ function onReload(): void {
         <DiscoveryScopeSelector
           :options="discovery.scopeOptions.value"
           :selected-id="discovery.selectedScopeId.value"
-          :inventory-character-names="discovery.inventoryCharacterNames.value"
-          :selected-inventory-character="discovery.selectedInventoryCharacter.value"
           @select="onScopeSelected"
-          @select-inventory-character="onInventoryCharacterSelected"
         />
-
-        <details class="settings-disclosure" data-test="discovery-settings-disclosure">
-          <summary>
-            Price and material settings
-            <span class="meta" data-test="discovery-effective-settings">
-              {{ effectiveSettingsSummary }}
-            </span>
-          </summary>
-          <DiscoverySettingsForm :settings="discovery.settings.value" @apply="onSettingsApplied" />
-        </details>
+        <DiscoverySettingsForm :settings="discovery.settings.value" @apply="onSettingsApplied" />
       </fieldset>
 
       <fieldset class="display-controls" data-test="discovery-display-controls">
@@ -297,7 +230,7 @@ function onReload(): void {
         >
           No character with a crafting discipline is available, so there is nothing to calculate.
           Discovery always applies to one character and one discipline, and this page will not guess
-          either. Synchronize the account, then reload.
+          either. Refresh account data, then try again.
         </p>
 
         <p
@@ -328,13 +261,6 @@ function onReload(): void {
               · {{ discovery.effectiveScope.value.discipline }} lvl
               {{ discovery.effectiveScope.value.rating }} —
               {{ discovery.effectiveScope.value.characterName }}
-            </span>
-            <span data-test="discovery-effective-inventory">
-              · materials
-              <template v-if="discovery.effectiveInventoryCharacter.value !== null">
-                from {{ discovery.effectiveInventoryCharacter.value }}
-              </template>
-              <template v-else>from every owned stack</template>
             </span>
           </p>
 
@@ -372,7 +298,6 @@ function onReload(): void {
         tabindex="0"
         :row="table.selectedRow.value"
         :hidden-by-search="table.selectionHiddenBySearch.value"
-        :settings="discovery.settings.value"
         :placeholder="detailPlaceholder"
         :resolution-phase="resolution.phase.value"
         :resolution-detail="resolution.detail.value"
@@ -384,13 +309,10 @@ function onReload(): void {
 </template>
 
 <style scoped>
-/* The two subgroups of the controls panel are told apart by their own boundary and legend. */
 .calculation-controls,
-.display-controls {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
+.display-controls { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.calculation-controls { border: 0; padding: 0; margin: 0; }
 
 .search {
   display: flex;
@@ -404,22 +326,4 @@ function onReload(): void {
   max-width: 100%;
 }
 
-/* The settings stay one group and one control, and their effect stays readable while closed. */
-.settings-disclosure > summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-1) var(--space-3);
-  padding: var(--space-2) 0;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.settings-disclosure > summary > .meta {
-  font-weight: 400;
-}
-
-.settings-disclosure[open] > summary {
-  margin-bottom: var(--space-3);
-}
 </style>

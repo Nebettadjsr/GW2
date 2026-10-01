@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-This document defines the intended structural boundaries of the GW2 Tool. Domain behavior belongs in `DOMAIN_SPEC.md`; detailed testing procedures belong in `TEST_STRATEGY.md`; migration sequencing belongs in `MIGRATION_PLAN.md` and the roadmap.
+This document defines the intended structural boundaries of the GW2 Tool. Domain behavior belongs in `DOMAIN_SPEC.md`; detailed testing procedures belong in `TEST_STRATEGY.md`; migration sequencing belongs in `ROADMAP.md`.
 
 The target is a small, maintainable web application that is easy to test, safe to change, containerized, multi-user capable, and suitable for bounded AI-assisted development. Prefer simple boundaries over enterprise-style complexity.
 
@@ -58,7 +58,7 @@ The frontend:
 
 The frontend must not duplicate authoritative backend/domain calculations. Crafting Profit, Crafting Discovery, recursive recipe resolution, material valuation, opportunity cost, recipe eligibility, daily-item rules, and resolution-tree construction remain backend-owned. Crafting results supply total owned-material opportunity value and, for each required purchase, the selected acquisition unit price and purchase total; the frontend displays these values without scaling quantities or choosing between raw Trading Post quotes.
 
-Reusable UX/UI requirements are owned by `FRONTEND_UX_GUIDELINES.md`. Detailed user-visible Crafting Profit and Discovery semantics are owned by `DOMAIN_SPEC.md`.
+Reusable UX/UI requirements are owned by `FRONTEND_UX_GUIDELINES.md`. Detailed user-visible Crafting Profit and Discovery semantics are owned by `DOMAIN_SPEC.md`. For the mapping between player-facing labels and Trading Post/domain terms, consult the canonical [Crafting glossary](crafting/GLOSSARY.md); do not duplicate its label definitions here.
 
 ## 4.2 Ectoplasm Salvage exception
 
@@ -222,11 +222,11 @@ The current local/single-user application may continue using `GW2_API_KEY` from 
 
 Synchronization is an application-level/backend responsibility. The frontend may trigger permitted operations and display status/freshness; the backend owns execution order, persistence, error handling, and synchronization state.
 
-Account refreshes run for the account in the current single-user installation. Crafting Profit's explicit **Refresh data & results** workflow refreshes account bank, materials, recipe knowledge, Luck, character crafting ratings, and character recipes before recalculating; these are the datasets the current account-aware calculation can consume. Account state is intended to become user/account scoped. Account API state is not yet multi-tenant.
+Account refreshes run for the account in the current single-user installation. Crafting Profit's explicit **Refresh data & results** workflow refreshes bank, material storage, account recipe knowledge, and character crafting/recipes/inventory before recalculating. It deliberately does not fetch account Luck, which the Crafting Profit calculation does not need. The full account refresh remains available in System Status. Account state is intended to become user/account scoped; current account data is not yet multi-tenant.
 
 Trading Post prices are a globally shared cache. A calculation supplies its feature's relevant item set to the shared refresh/cache pipeline; stored quotes younger than ten minutes are reused, and only missing/stale required IDs are fetched in existing GW2 API batches. Profit and Discovery may select different required IDs, but do not own separate price caches or fetch mechanisms. Prices are refreshed on demand rather than by a full-catalog timer.
 
-Global GW2 metadata and the crafting graph are shared. The backend checks cheap recipe and TP-tradeable ID lists every six hours by default (initial delay one minute), compares them with stored IDs, and downloads detailed recipe/item data only when those IDs changed. Recipe additions/removals trigger the necessary detail persistence; the graph is rebuilt only after changed recipe data has been persisted. The interval is configurable using `GW2_GLOBAL_REFRESH_INTERVAL_MS` and `GW2_GLOBAL_REFRESH_INITIAL_DELAY_MS`. Manual System Status execution and the scheduler submit the same application service and share in-process duplicate-task protection.
+Global GW2 metadata and the crafting graph are shared. The backend checks cheap recipe and TP-tradeable ID lists every six hours by default (initial delay one minute), compares them with stored IDs, and downloads detailed recipe/item data only when those IDs changed. This detects additions/removals; it does not detect an in-place recipe edit when the recipe ID set is unchanged. Recipe additions/removals trigger the necessary detail persistence; the graph cache is initialized on first use if absent and is rebuilt during refresh only after changed recipe data has been persisted. The interval is configurable using `GW2_GLOBAL_REFRESH_INTERVAL_MS` and `GW2_GLOBAL_REFRESH_INITIAL_DELAY_MS`. Manual System Status execution and the scheduler submit the same application service and share in-process duplicate-task protection.
 
 The System Status page is an administrative diagnostics/maintenance area, not a prerequisite for normal feature use. It groups account refresh time/scope, global check/change/recipe/graph timestamps, and shared TP cache counts/fetch time into health cards with clear OK, Problem, Running, or not-run states. Manual actions are limited to account refresh and global-data check; TP prices refresh on demand through feature workflows. It shows currently tracked task states and last global failure. Refresh timestamps/task history are not durable telemetry. This is not a general monitoring platform.
 
@@ -264,7 +264,8 @@ storage, buying limits, daily operations, recipe eligibility and recursive
 requirements are applied normally. It must stop at the counted execution
 quantity rather than making an additional speculative craft. A zero-count row
 may return the first blocked attempt, explicitly identified as such. Discovery
-may retain its one-output-batch basis. The response's row, tree and `treeBasis`
+resolves one attempt for the selected character; its output quantity still
+determines root output quantity and revenue. The response's row, tree and `treeBasis`
 must make these distinctions explicit. No tree quantity or cost may be derived
 or scaled in the frontend.
 
@@ -305,6 +306,8 @@ The backend also communicates with the external Guild Wars 2 API over HTTPS. Pos
 
 The application must remain portable to a normal Docker-capable host. A home server, VPS, NAS/container host, or suitable cloud VM may be used. Oracle Cloud Free Tier / Always Free is only a deployment candidate and must be re-evaluated when deployment work is reached; application architecture must not depend on Oracle-specific services.
 
+Cloudflare-related hosting is another possible future option to evaluate; neither Cloudflare nor any specific Cloudflare product is selected. Hosting remains undecided until the deployment phase.
+
 Do not introduce Kubernetes, microservices, or additional supporting services without a concrete requirement.
 
 ---
@@ -327,7 +330,7 @@ The browser frontend is the canonical UI. JavaFX-specific tests may be removed w
 
 # 14. Migration and Code Reuse
 
-Migration should preserve working behavior while establishing the target boundaries incrementally. The detailed sequence belongs in `MIGRATION_PLAN.md` and the roadmap.
+Migration should preserve working behavior while establishing the target boundaries incrementally. The detailed sequence belongs in `ROADMAP.md`.
 
 Existing code should be:
 
@@ -364,7 +367,7 @@ Review workflow and story disposition belong in the agent/planning documentation
 ## Decided
 
 - **Frontend:** Vue 3 + TypeScript, strict type checking; see ADR-001.
-- **Backend:** Java-based; exact web framework selected separately.
+- **Backend:** Java 25 and Spring Boot; see resolved `UD-006`.
 - **Database:** PostgreSQL.
 - **Runtime packaging:** frontend, backend, and PostgreSQL containers; Docker Compose for the initial small deployment.
 - **Shared business-logic ownership:** backend/domain/application layers, with the explicit frontend-owned Ecto Salvage exception in section 4.2.
@@ -375,10 +378,10 @@ Review workflow and story disposition belong in the agent/planning documentation
 - **Global metadata checks:** backend-owned scheduled ID-list checks; implementation default six hours, configurable by environment.
 - **Trading Post prices:** globally shared on-demand freshness cache, ten-minute TTL; no full-catalog timer.
 - **Hosting portability:** no unnecessary provider-specific dependency.
+- **Potential hosting options:** Cloudflare-related infrastructure may be evaluated with portable hosts; no provider or product is selected.
 
 ## To Be Decided
 
-- Backend web framework.
 - Database migration tool.
 - Reverse proxy, if required by deployment.
 - Browser-side GW2 API-key storage mechanism.
@@ -401,8 +404,9 @@ The budget spans backend calculation, persistence, transport, and frontend rende
 - `DOMAIN_SPEC.md` owns authoritative business/domain behavior.
 - `FRONTEND_UX_GUIDELINES.md` owns reusable browser UX/UI requirements.
 - `TEST_STRATEGY.md` owns detailed verification procedures.
-- `MIGRATION_PLAN.md` and `ROADMAP.md` own migration sequencing and milestones.
+- `ROADMAP.md` owns migration sequencing and milestones.
 - `docs/crafting/README.md` is the permitted human-readable explanation of crafting rules and must remain aligned with `DOMAIN_SPEC.md` when user-visible crafting behavior changes.
+- `docs/crafting/GLOSSARY.md` is the canonical player-facing terminology and label mapping; reference it from feature documentation rather than copying its definitions.
 - Agent/runtime orchestration is development infrastructure and belongs in agent/runtime documentation, not deployed application architecture.
 
 ---
@@ -426,3 +430,9 @@ When modifying or creating code:
 This document defines the current target architecture and is stable enough to guide migration planning, testing, repository restructuring, and AI-assisted implementation.
 
 Implementation details not fixed here remain open until they are required. Domain behavior must not be inferred from this document when `DOMAIN_SPEC.md` is the authoritative owner.
+
+---
+
+# 21. Project Health Review
+
+Before a phase is closed, perform a bounded review against that phase's exit criteria. Check the actual implementation and its evidence for architecture/boundary drift, duplicate or obsolete paths, documentation consistency, appropriate tests, relevant performance and security/configuration risks, and temporary migration code that is now removable. Record concrete findings, evidence, impact, and whether each finding blocks closure in the phase review story. A review does not itself close a phase: blocking findings and proposed criterion transfers require explicit planner disposition. Detailed test procedures remain in `TEST_STRATEGY.md`; planning workflow remains in `agent/PLANNER_INSTRUCTIONS.md`.

@@ -180,7 +180,7 @@ class CraftingResolutionApiRealDbIT {
         DiscChoice choice = DiscChoice.charDiscipline(scope.discipline, scope.rating, scope.charName);
 
         CraftingDiscoveryService.DiscoveryData table = new CraftingDiscoveryService()
-                .reload(choice, DISCOVERY_DEFAULTS, scope.charName);
+                .reload(choice, DISCOVERY_DEFAULTS);
 
         Integer recipeId = richestVisibleRecipe(table.visibleRecipes(), table.allRecipes());
         if (recipeId == null) {
@@ -192,16 +192,15 @@ class CraftingResolutionApiRealDbIT {
         String body = """
                 {"recipeId": %d,
                  "calculation": {"scope": {"discipline": "%s", "characterName": "%s", "rating": %d},
-                                 "inventoryCharacterName": "%s",
                                  "settings": {"useOwnMats": true, "allowBuying": true,
-                                              "maxBuyCopper": 200000, "listingSell": false,
+                                              "listingSell": false,
                                               "listingBuy": false}}}"""
-                .formatted(recipeId, scope.discipline, scope.charName, scope.rating, scope.charName);
+                .formatted(recipeId, scope.discipline, scope.charName, scope.rating);
 
         System.out.println("=== STORY-API-008 Discovery resolution detail (real DB) ===");
         System.out.println("Scope: " + scope.discipline + " lvl " + scope.rating + " - " + scope.charName
-                + ", inventory character " + scope.charName
-                + ", settings: Discovery view defaults (buying on, 20g budget, daily crafts fixed on)");
+                + ", inventory context: selected character"
+                + ", settings: Discovery defaults (buying on, daily crafts fixed on)");
         System.out.println("Data scale: visibleRecipes=" + table.visibleRecipes().size()
                 + " graphRecipes=" + table.allRecipes().size()
                 + " selected recipe=" + recipeId);
@@ -209,7 +208,7 @@ class CraftingResolutionApiRealDbIT {
         JsonNode response = measureAndReport("/api/crafting/discovery/resolution", body);
 
         CraftingResolutionDetail expected = new CraftingDiscoveryService()
-                .resolveDetail(recipeId, choice, DISCOVERY_DEFAULTS, scope.charName);
+                .resolveDetail(recipeId, choice, DISCOVERY_DEFAULTS);
         assertEquivalent("Discovery recipe " + recipeId, expected, response);
     }
 

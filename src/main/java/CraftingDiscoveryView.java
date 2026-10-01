@@ -174,35 +174,6 @@ public class CraftingDiscoveryView {
             t.start();
         };
 
-        // Selected-character control (UD-001 / STORY-DOM-012): feeds the binding-aware
-        // owned-inventory lookup so soulbound materials are only usable by this character
-        // (DOMAIN_SPEC.md section 11.1 / DQ-007). Independent of disciplineBox above (that
-        // box picks the discipline+character combo used to filter missing recipes).
-        ComboBox<String> characterBox = new ComboBox<>();
-        characterBox.setPrefWidth(170);
-        characterBox.setPromptText("Character");
-
-        Runnable reloadCharacterChoices = () -> {
-            Thread t = new Thread(() -> {
-                try {
-                    var names = characterSelectionService.getCharacterNames();
-                    Platform.runLater(() -> {
-                        String previous = characterBox.getValue();
-                        characterBox.getItems().setAll(names);
-                        if (previous != null && names.contains(previous)) {
-                            characterBox.getSelectionModel().select(previous);
-                        } else if (!names.isEmpty()) {
-                            characterBox.getSelectionModel().selectFirst();
-                        }
-                    });
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                }
-            });
-            t.setDaemon(true);
-            t.start();
-        };
-
         CheckBox bankOnlyCheck = new CheckBox("use mats from Bank ");
         bankOnlyCheck.setSelected(true);
         bankOnlyCheck.setStyle("-fx-text-fill: white;");
@@ -211,13 +182,6 @@ public class CraftingDiscoveryView {
         allowBuyCheck.setSelected(true); // discovery usually needs buying
         allowBuyCheck.setStyle("-fx-text-fill: white;");
 
-        TextField maxBudgetField = new TextField("20g");
-        maxBudgetField.setPrefWidth(80);
-        maxBudgetField.setDisable(false);
-
-        allowBuyCheck.selectedProperty().addListener((obs, oldV, newV) -> {
-            maxBudgetField.setDisable(!newV);
-        });
 
         // Sell mode toggle (only affects displayed sell prices, not discovery)
         ToggleGroup sellMode = new ToggleGroup();
@@ -257,11 +221,8 @@ public class CraftingDiscoveryView {
         HBox filterRow1 = new HBox(12,
                 new LabelStyled("Discipline+Char:"),
                 disciplineBox,
-                new LabelStyled("Character:"),
-                characterBox,
                 bankOnlyCheck,
                 allowBuyCheck,
-                new LabelStyled("Max buy:"), maxBudgetField,
                 new Separator(Orientation.VERTICAL)
         );
         filterRow1.setAlignment(Pos.CENTER);
@@ -331,7 +292,6 @@ public class CraftingDiscoveryView {
             }
 
             statusLabel.setText("Loading missing discoverable recipes...");
-            int maxBuyCopper = CoinUtils.parseToCopper(maxBudgetField.getText());
 
             Thread t = new Thread(() -> {
                 try {
@@ -344,11 +304,10 @@ public class CraftingDiscoveryView {
                     boolean allowDailyCrafts = true;
 
                     CraftingSettings settings = new CraftingSettings(
-                            includeBank, allowBuy, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts
+                            includeBank, allowBuy, 0, listingSell, listingBuy, allowDailyCrafts
                     );
 
-                    String selectedCharacter = characterBox.getValue();
-                    var data = controller.reload(choice, settings, selectedCharacter);
+                    var data = controller.reload(choice, settings);
 
                     Platform.runLater(() -> {
                         masterRows.clear();
@@ -431,7 +390,6 @@ public class CraftingDiscoveryView {
 
         // --- listeners ---
         disciplineBox.valueProperty().addListener((obs, o, n) -> reloadTable.run());
-        characterBox.valueProperty().addListener((obs, o, n) -> reloadTable.run());
         bankOnlyCheck.selectedProperty().addListener((obs, o, n) -> reloadTable.run());
         allowBuyCheck.selectedProperty().addListener((obs, o, n) -> reloadTable.run());
         rbInstantBuy.selectedProperty().addListener((obs, o, n) -> { if (n) reloadTable.run(); });
@@ -439,9 +397,6 @@ public class CraftingDiscoveryView {
         rbInstantSell.selectedProperty().addListener((obs, o, n) -> { if (n) reloadTable.run(); });
         rbListingSell.selectedProperty().addListener((obs, o, n) -> { if (n) reloadTable.run(); });
 
-        maxBudgetField.textProperty().addListener((obs, o, n) -> {
-            if (allowBuyCheck.isSelected()) reloadTable.run();
-        });
 
         searchField.textProperty().addListener((obs, o, n) ->
                                                        applyClientFilterAndSort(masterRows, visibleRows, n, sortBox.getValue(), table));
@@ -618,7 +573,6 @@ public class CraftingDiscoveryView {
         stage.setScene(new Scene(root, 1280, 720));
 
         reloadDisciplineChoices.run();
-        reloadCharacterChoices.run();
         // after choice lists load, their selection listeners trigger reloadTable()
 
         Platform.runLater(() -> {

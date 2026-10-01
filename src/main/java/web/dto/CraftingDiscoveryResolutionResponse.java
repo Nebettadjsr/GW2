@@ -27,7 +27,6 @@ public record CraftingDiscoveryResolutionResponse(int recipeId,
      * fixes rather than accepts.
      */
     public record CalculationDto(CraftingDiscoveryResponse.EffectiveScopeDto scope,
-                                 String inventoryCharacterName,
                                  CraftingDiscoveryResponse.EffectiveSettingsDto settings) {
     }
 }

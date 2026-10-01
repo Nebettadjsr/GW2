@@ -77,8 +77,7 @@ public class CraftingDiscoveryApiController {
         if (priceRefreshService != null) priceRefreshService.refreshForDiscovery();
 
         CraftingDiscoveryService.DiscoveryData data = discoveryServiceFactory.get()
-                .reload(effective.toDiscChoice(), effective.toCraftingSettings(),
-                        effective.inventoryCharacterName());
+                .reload(effective.toDiscChoice(), effective.toCraftingSettings());
 
         return CraftingDiscoveryApiMapper.toResponse(effective, data);
     }
@@ -89,8 +88,8 @@ public class CraftingDiscoveryApiController {
      *
      * <p>The body is required and carries both members: {@code recipeId} and the {@code calculation}
      * it is resolved in, the latter being this route's own table request contract - so the required
-     * individual scope, the separate nullable inventory character with its unfiltered-pool fallback,
-     * Discovery's own settings defaults and its fixed {@code allowDailyCrafts=true} all apply
+     * individual character/discipline scope (also the inventory scope), Discovery's own settings
+     * defaults and its fixed {@code allowDailyCrafts=true} all apply
      * unchanged. Both members are validated before a service exists.
      *
      * <p>The service call is one <em>fresh</em> calculation with request-local state - never a lookup
@@ -115,13 +114,12 @@ public class CraftingDiscoveryApiController {
 
         CraftingResolutionDetail detail = CraftingResolutionMapper.requireInCalculation(
                 discoveryServiceFactory.get().resolveDetail(
-                        recipeId, effective.toDiscChoice(), effective.toCraftingSettings(),
-                        effective.inventoryCharacterName()));
+                        recipeId, effective.toDiscChoice(), effective.toCraftingSettings()));
 
         return new CraftingDiscoveryResolutionResponse(
                 detail.recipeId(),
                 new CraftingDiscoveryResolutionResponse.CalculationDto(
-                        effective.scope(), effective.inventoryCharacterName(), effective.settings()),
+                        effective.scope(), effective.settings()),
                 CraftingResolutionMapper.CONSISTENCY_FRESH_CALCULATION,
                 CraftingResolutionMapper.calculatedAt(),
                 CraftingResolutionMapper.toRow(detail),

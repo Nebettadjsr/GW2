@@ -113,7 +113,7 @@ Current implementation direction:
 
 - Java 25;
 - Maven;
-- JavaFX desktop UI;
+- JavaFX legacy desktop UI (still present; the active browser UI is Vue/TypeScript);
 - PostgreSQL;
 - Guild Wars 2 API.
 
@@ -137,6 +137,9 @@ Use the correct owner for each kind of information.
 - `docs/DOMAIN_SPEC.md`
   - normative product/domain behavior
 
+- `docs/crafting/GLOSSARY.md`
+  - canonical player-facing crafting terminology and UI-label mapping; do not copy its definitions into feature docs
+
 - `docs/CURRENT_STATE_SPEC.md`
   - current technologies, runtime behavior, external systems, build/runtime state
 
@@ -144,7 +147,7 @@ Use the correct owner for each kind of information.
   - architecture that exists now
 
 - `docs/TARGET_ARCHITECTURE.md`
-  - intended architecture, constraints, and technology choices still marked TBD
+  - intentionally selected target architecture, constraints, and unresolved technology/identity choices
 
 - `docs/ROADMAP.md`
   - phases, dependencies, migration sequencing, exit criteria

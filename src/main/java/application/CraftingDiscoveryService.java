@@ -94,10 +94,13 @@ public class CraftingDiscoveryService {
 
     /**
      * Loads DISCOVERABLE recipes still missing for {@code choice}'s char+discipline
-     * (DOMAIN_SPEC.md section 34), scoped to owned inventory for {@code selectedCharacterName}
+     * (DOMAIN_SPEC.md section 34), using that same character's owned inventory
      * (binding-aware, DOMAIN_SPEC.md section 11.1 / DQ-007).
      */
-    public DiscoveryData reload(DiscChoice choice, CraftingSettings settings, String selectedCharacterName) throws SQLException {
+    public DiscoveryData reload(DiscChoice choice, CraftingSettings settings) throws SQLException {
+        requireCharacterScope(choice);
+
+        CraftingSettings oneCraftSettings = withoutBudget(settings);
 
         Candidates candidates = loadCandidates(choice);
 
@@ -109,14 +112,14 @@ public class CraftingDiscoveryService {
         this.lastAllowedRecipeIds = candidates.allowedRecipeIds();
 
         CalculationInputs inputs =
-                loadCalculationInputs(settings, selectedCharacterName, candidates.allRecipes());
+                loadCalculationInputs(oneCraftSettings, characterName(choice), candidates.allRecipes());
 
-        Map<Integer, CraftResult> results = planner.evaluateAll(
+        Map<Integer, CraftResult> results = planner.evaluateAllSingleCraft(
                 candidates.allRecipes(), inputs.sellableInventory(), inputs.boundInventory(),
-                inputs.tp(), settings, candidates.allowedRecipeIds());
+                inputs.tp(), oneCraftSettings, candidates.allowedRecipeIds());
 
         this.lastAllRecipes = candidates.allRecipes();
-        this.lastSettings = settings;
+        this.lastSettings = oneCraftSettings;
         this.lastTp = inputs.tp();
         this.lastItems = inputs.items();
         this.lastResultsByRecipeId = results;
@@ -131,9 +134,7 @@ public class CraftingDiscoveryService {
      * inputs just produced, and derives both the row summary and the semantic explanation from
      * them. This is a fresh calculation, not retrieval of an earlier reload()'s result.
      *
-     * <p>{@code inventoryCharacterName} keeps Discovery's separate, nullable inventory character
-     * with its existing semantics: null falls back to the unfiltered owned pool exactly as
-     * reload(...) does, and it is independent of {@code choice}'s crafting character.
+     * <p>The character in {@code choice} is also the sole inventory source for the calculation.
      *
      * <p>Nothing here reads or writes the {@code last*} fields above, so an operation that finds
      * nothing discoverable reports exactly that instead of an earlier operation's row, metadata or
@@ -144,8 +145,10 @@ public class CraftingDiscoveryService {
      */
     public CraftingResolutionDetail resolveDetail(int recipeId,
                                                   DiscChoice choice,
-                                                  CraftingSettings settings,
-                                                  String inventoryCharacterName) throws SQLException {
+                                                  CraftingSettings settings) throws SQLException {
+        requireCharacterScope(choice);
+
+        CraftingSettings oneCraftSettings = withoutBudget(settings);
 
         Candidates candidates = loadCandidates(choice);
 
@@ -155,18 +158,35 @@ public class CraftingDiscoveryService {
         }
 
         CalculationInputs inputs =
-                loadCalculationInputs(settings, inventoryCharacterName, candidates.allRecipes());
+                loadCalculationInputs(oneCraftSettings, characterName(choice), candidates.allRecipes());
 
-        CraftResult row = planner.evaluateOne(
+        CraftResult row = planner.evaluateSingleCraft(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
-                inputs.boundInventory(), inputs.tp(), settings, candidates.allowedRecipeIds());
+                inputs.boundInventory(), inputs.tp(), oneCraftSettings, candidates.allowedRecipeIds());
 
         SingleCraftExplanation explanation = new SingleCraftExplainer().explainIndividual(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
-                inputs.boundInventory(), inputs.tp(), settings, candidates.allowedRecipeIds());
+                inputs.boundInventory(), inputs.tp(), oneCraftSettings, candidates.allowedRecipeIds());
 
         return CraftingResolutionDetail.of(
                 recipeId, selected, row, explanation, inputs.items(), inputs.tp());
+    }
+
+    private String characterName(DiscChoice choice) {
+        return choice.charName;
+    }
+
+    private void requireCharacterScope(DiscChoice choice) {
+        if (choice == null || choice.kind != DiscChoice.Kind.CHAR_DISCIPLINE
+                || choice.charName == null || choice.charName.isBlank()
+                || choice.discipline == null || choice.discipline.isBlank()) {
+            throw new IllegalArgumentException("Crafting Discovery requires one character and discipline");
+        }
+    }
+
+    private CraftingSettings withoutBudget(CraftingSettings settings) {
+        return new CraftingSettings(settings.useOwnMats, settings.allowBuying, 0,
+                settings.listingSell, settings.listingBuy, settings.allowDailyCrafts);
     }
 
     /**
@@ -251,23 +271,17 @@ public class CraftingDiscoveryService {
         Map<Integer, Integer> boundInv = Map.of();
 
         if (settings.useOwnMats) {
-            if (selectedCharacterName == null) {
-                // No synced character available: degrade to today's unfiltered pool
-                // (per STORY-DOM-012's "smaller in scope" fallback) instead of throwing.
-                sellableInv = invRepo.loadOwnedInventory();
-            } else {
-                Map<Integer, InventoryRepository.OwnedQuantity> owned =
-                        invRepo.loadOwnedInventoryForCharacter(selectedCharacterName);
+            Map<Integer, InventoryRepository.OwnedQuantity> owned =
+                    invRepo.loadOwnedInventoryForCharacter(selectedCharacterName);
 
-                Map<Integer, Integer> sellable = new HashMap<>();
-                Map<Integer, Integer> bound = new HashMap<>();
-                for (var e : owned.entrySet()) {
-                    if (e.getValue().sellableQty() > 0) sellable.put(e.getKey(), e.getValue().sellableQty());
-                    if (e.getValue().boundQty() > 0) bound.put(e.getKey(), e.getValue().boundQty());
-                }
-                sellableInv = sellable;
-                boundInv = bound;
+            Map<Integer, Integer> sellable = new HashMap<>();
+            Map<Integer, Integer> bound = new HashMap<>();
+            for (var e : owned.entrySet()) {
+                if (e.getValue().sellableQty() > 0) sellable.put(e.getKey(), e.getValue().sellableQty());
+                if (e.getValue().boundQty() > 0) bound.put(e.getKey(), e.getValue().boundQty());
             }
+            sellableInv = sellable;
+            boundInv = bound;
         }
 
         Set<Integer> itemIds = new HashSet<>();

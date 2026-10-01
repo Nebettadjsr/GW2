@@ -531,14 +531,13 @@ export function resolutionResponse(
 
 /**
  * The Discovery route's own effective settings, deliberately different from `DEFAULT_SETTINGS` in
- * every field a test could confuse: buying is on, the budget is the route's own 200000, and the daily
+ * every field a test could confuse: buying is on, no cumulative budget, and the daily
  * value is the one Discovery fixes rather than Profit's. A screen that fell back to Profit's defaults
  * would disagree with this.
  */
 export const DISCOVERY_SETTINGS: EffectiveDiscoverySettings = {
   useOwnMats: true,
   allowBuying: true,
-  maxBuyCopper: 200_000,
   listingSell: false,
   listingBuy: false,
   allowDailyCrafts: true
@@ -577,7 +576,6 @@ export function echoedDiscoveryResponse(
   }
   return {
     scope,
-    inventoryCharacterName: request.inventoryCharacterName ?? null,
     settings:
       request.settings === undefined
         ? DISCOVERY_SETTINGS
@@ -597,7 +595,6 @@ export function discoveryResolutionResponse(
     recipeId: request.recipeId,
     calculation: {
       scope: echoed.scope,
-      inventoryCharacterName: echoed.inventoryCharacterName,
       settings: echoed.settings
     },
     consistency: 'FRESH_CALCULATION',

@@ -10,7 +10,7 @@ Choose the Java backend web framework for Phase 4: Spring Boot, Quarkus, or anot
 
 ## Why This Is Needed
 
-The supplied Phase 4 roadmap requires an explicit framework decision before completion. `docs/TARGET_ARCHITECTURE.md` section 30 intentionally marks the backend web framework TBD, prefers Java, and lists Spring Boot / Quarkus / other as possibilities. The planner must not silently finalize this technology choice.
+At the time of this request, the Phase 4 roadmap required an explicit framework decision and `docs/TARGET_ARCHITECTURE.md` section 16 (then section 30) marked the backend framework TBD. This request is resolved: Spring Boot was selected and is the current target decision. The resolution below records the authorized selection.
 
 ## Context
 
@@ -18,7 +18,7 @@ The supplied Phase 4 roadmap requires an explicit framework decision before comp
 - `docs/TARGET_ARCHITECTURE.md` sections 9 and 30: HTTP routing, validation, DTO translation and responses wrap application use cases; controllers must not implement business rules.
 - Phase 4 is additive: the JavaFX UI must continue calling application services in-process.
 - Existing UD-001 through UD-005 do not decide the backend framework. No framework compatibility, dependency version, or implementation verification is claimed by this planning pass.
-- Once answered, record the intended technology in its authoritative owner, `docs/TARGET_ARCHITECTURE.md` section 30, and plan a small milestone-04 batch.
+- Once answered, record the intended technology in its authoritative owner, `docs/TARGET_ARCHITECTURE.md` section 16, and plan a small milestone-04 batch.
 
 ## Blocks
 
@@ -47,3 +47,5 @@ The existing JavaFX application must continue to call the application services i
 RESOLVED.
 
 Spring Boot is the selected Phase 4 backend web framework. Framework integration is limited to the backend/API boundary; existing application and domain boundaries remain authoritative.
+
+Current target record: `docs/TARGET_ARCHITECTURE.md` section 16 lists Java 25 / Spring Boot as decided.

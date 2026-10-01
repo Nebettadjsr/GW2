@@ -60,11 +60,9 @@ class CraftingDiscoveryApiRealDbPerfIT {
         }
 
         CharacterRepository.DiscRow scope = options.get(0);
-        String inventoryCharacter = scope.charName;
         String requestBody = """
-                {"scope": {"discipline": "%s", "characterName": "%s", "rating": %d},
-                 "inventoryCharacterName": "%s"}"""
-                .formatted(scope.discipline, scope.charName, scope.rating, inventoryCharacter);
+                {"scope": {"discipline": "%s", "characterName": "%s", "rating": %d}}"""
+                .formatted(scope.discipline, scope.charName, scope.rating);
 
         HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
         URI endpoint = URI.create("http://localhost:" + port + "/api/crafting/discovery");
@@ -86,9 +84,8 @@ class CraftingDiscoveryApiRealDbPerfIT {
         for (int i = 1; i < options.size(); i++) {
             CharacterRepository.DiscRow other = options.get(i);
             String otherBody = """
-                    {"scope": {"discipline": "%s", "characterName": "%s", "rating": %d},
-                     "inventoryCharacterName": "%s"}"""
-                    .formatted(other.discipline, other.charName, other.rating, other.charName);
+                    {"scope": {"discipline": "%s", "characterName": "%s", "rating": %d}}"""
+                    .formatted(other.discipline, other.charName, other.rating);
             timings.add(measure(client, endpoint, otherBody,
                     other.discipline + " lvl " + other.rating + " - " + other.charName));
         }

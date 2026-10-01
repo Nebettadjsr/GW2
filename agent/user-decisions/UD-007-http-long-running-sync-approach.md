@@ -10,7 +10,7 @@ Choose how Phase 4 HTTP sync/refresh triggers handle long-running operations: sy
 
 ## Why This Is Needed
 
-The supplied Phase 4 high-level stories require an explicit long-running-operation decision. `docs/TARGET_ARCHITECTURE.md` section 23 marks the implementation approach TBD and offers these alternatives. They define materially different HTTP completion and status behavior; the planner cannot choose on the user's behalf.
+The supplied Phase 4 high-level stories require an explicit long-running-operation decision. At request time, `docs/TARGET_ARCHITECTURE.md` section 23 (now section 9) marked the implementation approach TBD and offers these alternatives. They define materially different HTTP completion and status behavior; the planner cannot choose on the user's behalf.
 
 ## Context
 
@@ -18,7 +18,7 @@ The supplied Phase 4 high-level stories require an explicit long-running-operati
 - `docs/TARGET_ARCHITECTURE.md` section 9 sketches account sync, global sync, and price refresh endpoints; the names remain examples rather than a fixed contract.
 - Sections 22 and 23 require backend-owned orchestration and the simplest practical initial approach; a full queue system or distributed job platform is not required.
 - Existing UD-001 through UD-005 do not settle this choice. No operation duration or timeout behavior was measured during this planning pass.
-- Once answered, record the intended approach in its authoritative owner, `docs/TARGET_ARCHITECTURE.md` section 23, before planning the corresponding milestone-04 implementation stories.
+- Once answered, record the intended approach in its authoritative owner, `docs/TARGET_ARCHITECTURE.md` section 9, before planning the corresponding milestone-04 implementation stories.
 
 ## Blocks
 
@@ -52,3 +52,5 @@ The exact per-endpoint split therefore remains an implementation-time decision b
 Future backend-owned scheduled refreshes are allowed as a separate design concern. In particular, Trading Post price refresh and account synchronization may later run automatically on a backend schedule instead of relying exclusively on user-triggered frontend actions. Such scheduling must coordinate safely with crafting calculations so calculations do not observe an inconsistent partially-updated state. The scheduling mechanism and consistency strategy are not decided by this UD and should be designed when that work is reached.
 
 The future web frontend is not required to reproduce the JavaFX UI interaction model one-to-one. It should preserve the application's functionality and authoritative backend behavior while using appropriate modern web interaction patterns, including asynchronous status/progress presentation where applicable.
+
+Current implementation: Guild Wars 2 sync uses asynchronous tasks; measured short endpoints remain synchronous. The global metadata scheduler and on-demand ten-minute Trading Post cache are documented in `docs/TARGET_ARCHITECTURE.md` section 9. No distributed job system is included.

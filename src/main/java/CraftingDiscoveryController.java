@@ -46,9 +46,9 @@ public class CraftingDiscoveryController {
      * Loads DISCOVERABLE recipes you still miss for this char+discipline.
      * Discipline can be "All" or a concrete one.
      */
-    public List<UiRow> reload(DiscChoice choice, CraftingSettings settings, String selectedCharacterName) throws SQLException {
+    public List<UiRow> reload(DiscChoice choice, CraftingSettings settings) throws SQLException {
 
-        CraftingDiscoveryService.DiscoveryData data = discoveryService.reload(choice, settings, selectedCharacterName);
+        CraftingDiscoveryService.DiscoveryData data = discoveryService.reload(choice, settings);
 
         this.lastAllowedRecipeIds = data.visibleRecipes().stream()
                 .map(r -> r.recipeId)

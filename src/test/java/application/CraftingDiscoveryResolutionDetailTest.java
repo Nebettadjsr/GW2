@@ -93,7 +93,7 @@ class CraftingDiscoveryResolutionDetailTest {
         var service = fakes.service();
 
         CraftingResolutionDetail detail =
-                service.resolveDetail(1, SCOPE, settings(true, false), "Aria");
+                service.resolveDetail(1, SCOPE, settings(true, false));
 
         assertEquals(CraftingResolutionDetail.Status.AVAILABLE, detail.status());
         assertEquals(1, detail.recipeId());
@@ -101,7 +101,7 @@ class CraftingDiscoveryResolutionDetailTest {
         CraftResult row = detail.row();
         assertNotNull(row);
         assertEquals(100, row.outputItemId);
-        assertEquals(2, row.craftableCount, "5 owned units of a 2-per-craft ingredient is 2 crafts");
+        assertEquals(1, row.craftableCount, "Discovery evaluates one attempt even when inventory could support more");
 
         CraftTraceNode root = detail.explanation().root();
         assertEquals(100, root.itemId());
@@ -128,7 +128,7 @@ class CraftingDiscoveryResolutionDetailTest {
         var service = fakes.service();
 
         CraftingResolutionDetail detail =
-                service.resolveDetail(1, SCOPE, settings(true, true), "Aria");
+                service.resolveDetail(1, SCOPE, settings(true, true));
 
         assertEquals(CraftingResolutionDetail.Status.AVAILABLE, detail.status());
         Map<Integer, Integer> bought = boughtQuantities(detail.explanation().root());
@@ -144,12 +144,12 @@ class CraftingDiscoveryResolutionDetailTest {
         var service = fakes.service();
 
         CraftingResolutionDetail detail =
-                service.resolveDetail(1, SCOPE, settings(true, false), "Aria");
+                service.resolveDetail(1, SCOPE, settings(true, false));
 
         // The row's simulation crafted twice and left 1 of the 5 owned units. The explanation must
         // still see the full initial pool: from a single leftover unit it could only have sourced
         // 1 and reported 1 missing.
-        assertEquals(2, detail.row().craftableCount);
+        assertEquals(1, detail.row().craftableCount);
         CraftTraceNode ingredient = onlyChild(detail.explanation().root());
         assertEquals(200, ingredient.itemId());
         assertEquals(2, ingredient.requestedQuantity());
@@ -177,17 +177,17 @@ class CraftingDiscoveryResolutionDetailTest {
         drained.perCharacter = Map.of(200, owned(1, 0));
 
         CraftingResolutionDetail actual =
-                changing.service().resolveDetail(1, SCOPE, settings(true, true), "Aria");
+                changing.service().resolveDetail(1, SCOPE, settings(true, true));
 
         assertEquals(1, changing.quoteLoads.get(), "prices must be read exactly once per operation");
         assertEquals(1, changing.inventoryLoads.get(), "inventory must be read exactly once per operation");
         assertEquals(1, changing.graphLoads.get(), "the graph must be read exactly once per operation");
 
-        assertEquals(fixed.service().resolveDetail(1, SCOPE, settings(true, true), "Aria").explanation(),
+        assertEquals(fixed.service().resolveDetail(1, SCOPE, settings(true, true)).explanation(),
                 actual.explanation(),
                 "the explanation must be the one the first (and only) read supports");
 
-        assertNotEquals(drained.service().resolveDetail(1, SCOPE, settings(true, true), "Aria").explanation(),
+        assertNotEquals(drained.service().resolveDetail(1, SCOPE, settings(true, true)).explanation(),
                 actual.explanation(),
                 "the assertion above has teeth only if the later answers would have differed");
     }
@@ -200,11 +200,11 @@ class CraftingDiscoveryResolutionDetailTest {
         var service = fakes.service();
 
         CraftingResolutionDetail first =
-                service.resolveDetail(1, SCOPE, settings(true, true), "Aria");
+                service.resolveDetail(1, SCOPE, settings(true, true));
 
         fakes.quotes = OTHER_QUOTES;
         CraftingResolutionDetail second =
-                service.resolveDetail(1, SCOPE, settings(true, true), "Aria");
+                service.resolveDetail(1, SCOPE, settings(true, true));
 
         assertNotEquals(first.explanation(), second.explanation(),
                 "a detail operation is a fresh calculation, not a cached earlier result");
@@ -219,7 +219,7 @@ class CraftingDiscoveryResolutionDetailTest {
         var service = fakes.service();
 
         CraftingResolutionDetail detail =
-                service.resolveDetail(2, SCOPE, settings(true, true), "Aria");
+                service.resolveDetail(2, SCOPE, settings(true, true));
 
         assertEquals(CraftingResolutionDetail.Status.RECIPE_NOT_IN_CALCULATION, detail.status());
         assertEquals(2, detail.recipeId());
@@ -238,9 +238,9 @@ class CraftingDiscoveryResolutionDetailTest {
         var service = fakes.service();
 
         assertEquals(CraftingResolutionDetail.Status.RECIPE_NOT_IN_CALCULATION,
-                service.resolveDetail(3, SCOPE, settings(true, true), "Aria").status());
+                service.resolveDetail(3, SCOPE, settings(true, true)).status());
         assertEquals(CraftingResolutionDetail.Status.AVAILABLE,
-                service.resolveDetail(1, SCOPE, settings(true, true), "Aria").status());
+                service.resolveDetail(1, SCOPE, settings(true, true)).status());
     }
 
     @Test
@@ -251,14 +251,14 @@ class CraftingDiscoveryResolutionDetailTest {
         var service = fakes.service();
 
         // A populated table reload first, so every lookup cache the JavaFX views use is full.
-        service.reload(SCOPE, settings(true, true), "Aria");
+        service.reload(SCOPE, settings(true, true));
         assertNotNull(service.getResultByRecipeId(1));
         assertEquals(CraftingResolutionDetail.Status.AVAILABLE,
-                service.resolveDetail(1, SCOPE, settings(true, true), "Aria").status());
+                service.resolveDetail(1, SCOPE, settings(true, true)).status());
 
         fakes.missingIds = List.of();
         CraftingResolutionDetail detail =
-                service.resolveDetail(1, SCOPE, settings(true, true), "Aria");
+                service.resolveDetail(1, SCOPE, settings(true, true));
 
         assertEquals(CraftingResolutionDetail.Status.RECIPE_NOT_IN_CALCULATION, detail.status());
         assertNull(detail.row());
@@ -276,7 +276,7 @@ class CraftingDiscoveryResolutionDetailTest {
 
         // Own materials allowed but none owned, and buying disabled: nothing can be sourced.
         CraftingResolutionDetail detail =
-                service.resolveDetail(1, SCOPE, settings(true, false), "Aria");
+                service.resolveDetail(1, SCOPE, settings(true, false));
 
         assertEquals(CraftingResolutionDetail.Status.AVAILABLE, detail.status(),
                 "a blocked explanation still exists and must not be reported as absent");
@@ -317,32 +317,15 @@ class CraftingDiscoveryResolutionDetailTest {
         var service = fakes.service();
 
         CraftingResolutionDetail detail =
-                service.resolveDetail(1, SCOPE, settings(true, false), "Aria");
+                service.resolveDetail(1, SCOPE, settings(true, false));
 
         assertEquals(Map.of(100, "Bowl of Soup"), detail.itemNames());
         assertFalse(detail.itemNames().containsKey(200),
                 "a traced item with no usable name must stay absent, not gain a fabricated one");
     }
 
-    // ------------------------------------------- the separate, nullable inventory character
-
     @Test
-    void aNullInventoryCharacterFallsBackToTheUnfilteredOwnedPool() throws SQLException {
-        var fakes = new Fakes();
-        fakes.missingIds = List.of(1);
-        fakes.unfiltered = Map.of(200, 5);
-        var service = fakes.service();
-
-        CraftingResolutionDetail detail =
-                service.resolveDetail(1, SCOPE, settings(true, false), null);
-
-        assertTrue(fakes.calledUnfiltered);
-        assertFalse(fakes.calledForCharacter);
-        assertEquals(2, onlyChild(detail.explanation().root()).inventoryQuantity());
-    }
-
-    @Test
-    void theInventoryCharacterIsIndependentOfTheScopesCraftingCharacter() throws SQLException {
+    void theSelectedCraftingCharacterIsAlsoTheInventoryCharacter() throws SQLException {
         var fakes = new Fakes();
         fakes.missingIds = List.of(1);
         fakes.perCharacter = Map.of(200, owned(1, 4));
@@ -350,10 +333,10 @@ class CraftingDiscoveryResolutionDetailTest {
         var service = fakes.service();
 
         CraftingResolutionDetail detail = service.resolveDetail(
-                1, DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, false), "Bran");
+                1, DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, false));
 
         assertEquals("Aria", fakes.capturedMissingCharName, "the scope's crafting character");
-        assertEquals("Bran", fakes.capturedInventoryCharacterName, "the separate inventory character");
+        assertEquals("Aria", fakes.capturedInventoryCharacterName, "Discovery derives inventory scope from the selected character");
         assertTrue(fakes.calledForCharacter);
         assertFalse(fakes.calledUnfiltered, "a named inventory character must not use the unfiltered pool");
         // The character-scoped sellable/bound split reached the domain: neither pool alone covers
@@ -371,10 +354,10 @@ class CraftingDiscoveryResolutionDetailTest {
         var service = fakes.service();
 
         CraftingResolutionDetail first =
-                service.resolveDetail(1, SCOPE, settings(true, false), "Aria");
-        service.resolveDetail(2, DiscChoice.charDiscipline("Chef", 400, "Bran"), settings(false, true), null);
+                service.resolveDetail(1, SCOPE, settings(true, false));
+        service.resolveDetail(2, DiscChoice.charDiscipline("Chef", 400, "Bran"), settings(false, true));
         CraftingResolutionDetail repeated =
-                service.resolveDetail(1, SCOPE, settings(true, false), "Aria");
+                service.resolveDetail(1, SCOPE, settings(true, false));
 
         assertEquals(first.explanation(), repeated.explanation());
         assertEquals(first.itemNames(), repeated.itemNames());
@@ -391,9 +374,9 @@ class CraftingDiscoveryResolutionDetailTest {
         var service = fakes.service();
 
         SingleCraftExplanation expectedA =
-                service.resolveDetail(1, SCOPE, settings(true, false), "Aria").explanation();
+                service.resolveDetail(1, SCOPE, settings(true, false)).explanation();
         SingleCraftExplanation expectedB =
-                service.resolveDetail(2, SCOPE, settings(true, true), null).explanation();
+                service.resolveDetail(2, SCOPE, settings(true, true)).explanation();
         assertNotEquals(expectedA, expectedB, "the two operations must genuinely differ");
 
         ExecutorService pool = Executors.newFixedThreadPool(8);
@@ -401,9 +384,9 @@ class CraftingDiscoveryResolutionDetailTest {
             List<Callable<Boolean>> work = new ArrayList<>();
             for (int i = 0; i < 24; i++) {
                 work.add(() -> expectedA.equals(
-                        service.resolveDetail(1, SCOPE, settings(true, false), "Aria").explanation()));
+                        service.resolveDetail(1, SCOPE, settings(true, false)).explanation()));
                 work.add(() -> expectedB.equals(
-                        service.resolveDetail(2, SCOPE, settings(true, true), null).explanation()));
+                        service.resolveDetail(2, SCOPE, settings(true, true)).explanation()));
             }
 
             for (Future<Boolean> f : pool.invokeAll(work)) {
@@ -422,13 +405,13 @@ class CraftingDiscoveryResolutionDetailTest {
         fakes.perCharacter = Map.of(200, owned(5, 0));
         var service = fakes.service();
 
-        service.reload(SCOPE, settings(true, false), "Aria");
+        service.reload(SCOPE, settings(true, false));
         CraftResult tableResult = service.getResultByRecipeId(1);
         assertNotNull(tableResult);
 
         fakes.inventoryFailure = new SQLException("simulated inventory failure");
         assertThrows(SQLException.class,
-                () -> service.resolveDetail(1, SCOPE, settings(true, false), "Aria"));
+                () -> service.resolveDetail(1, SCOPE, settings(true, false)));
 
         // The failed operation held everything locally, so the table's lookup state is untouched
         // and the next operation succeeds normally.
@@ -437,7 +420,7 @@ class CraftingDiscoveryResolutionDetailTest {
 
         fakes.inventoryFailure = null;
         assertEquals(CraftingResolutionDetail.Status.AVAILABLE,
-                service.resolveDetail(1, SCOPE, settings(true, false), "Aria").status());
+                service.resolveDetail(1, SCOPE, settings(true, false)).status());
     }
 
     @Test
@@ -449,7 +432,7 @@ class CraftingDiscoveryResolutionDetailTest {
         var service = fakes.service();
 
         CraftingResolutionDetail detail =
-                service.resolveDetail(1, SCOPE, settings(true, false), "Aria");
+                service.resolveDetail(1, SCOPE, settings(true, false));
 
         assertEquals(CraftingResolutionDetail.Status.AVAILABLE, detail.status());
         assertNull(detail.row().tree, "no legacy JavaFX resolution tree is built for a detail row");

@@ -436,6 +436,10 @@ Test:
 
 Test:
 
+- the selected character/discipline is also the sole owned-inventory scope at the application and API boundaries;
+- the Discovery contract cannot select another inventory character or specify a max-buy budget;
+- one candidate is simulated as one recipe attempt, including output quantities greater than one;
+- Discovery controls/details/table show no craft-count or duplicate total/per-attempt figures, while pricing modes, owned materials, buying, filtering/sorting and blocked states remain functional;
 - recipe unlocked account-wide -> not a discovery candidate,
 - recipe unknown account-wide -> candidate when valid,
 - insufficient crafting rating,
@@ -641,13 +645,13 @@ silent:
 | Type check | `npm run type-check` | strict typing across `.ts` and `.vue` | that received JSON matches those types |
 | Component/unit | `npm test` | rendering, interaction, request construction, state transitions | that the real backend connection works |
 | Production build | `npm run build` | the locked dependency set builds to static assets | runtime behavior |
-| Browser smoke | `npm run smoke:browser`, `npm run smoke:account` | a real browser retrieves and renders real backend results, compared against the very response it received | performance (§33), any state the live data did not contain, and whether a compared value is domain-correct |
+| Browser smoke | `npm run smoke:browser`, `npm run smoke:account` | a real browser retrieves and renders real backend results, compared against the very response it received | performance (§34), any state the live data did not contain, and whether a compared value is domain-correct |
 | Browser smoke, controlled boundary | `npm run smoke:sync` | a real browser drives controls whose live counterpart would mutate data, and presents the answers | that a real operation ran, or anything about the backend's own behavior |
 | Browser layout and accessibility | `npm run smoke:layout`, `npm run smoke:profit` | measured reflow at several viewport widths and at increased text size, keyboard focus order and visible focus, computed text/background contrast, per-destination URLs and titles, measured side-by-side versus stacked result/detail placement with keyboard-operated selection, and a measured sticky offset against a taller sibling column | conformance beyond the combinations it measured, and anything about real data or performance |
 
 The browser smoke check needs the backend and the dev server already running; it drives an
 installed Chrome/Edge and asserts on what the page actually rendered and which backend routes the
-browser actually called. Mocked levels cannot substitute for it, and it cannot substitute for §33:
+browser actually called. Mocked levels cannot substitute for it, and it cannot substitute for §34:
 a smoke run records that results arrived and were displayed, not that a full page met a timing
 budget. Record the database/environment a smoke run used, without exposing secrets.
 
@@ -1204,7 +1208,7 @@ No check from STORY-DOM-013/014/015's own behavior matrix (All characters select
 
 # 33. Test Effort Proportionality
 
-For PROJECT HEALTH REVIEW tasks, verification is an evidence source under `docs/TARGET_ARCHITECTURE.md` §34, not an automatic requirement to run broad suites or add tests. Use that policy to bound review checks; the implementation-change rules below remain unchanged.
+For PROJECT HEALTH REVIEW tasks, verification is an evidence source under `docs/TARGET_ARCHITECTURE.md` §21, not an automatic requirement to run broad suites or add tests. Use that policy to bound review checks; the implementation-change rules below remain unchanged.
 
 Broad, layered coverage (§3's pyramid, Layers 1–5) is the project's goal, not a checklist every change must exhaust. Test effort — which layers are touched, how many tests are written, how heavy each one is — must stay proportional to the size and risk of the actual change, never padded out for thoroughness alone.
 
@@ -1220,7 +1224,7 @@ Concretely:
 
 # 34. Real-user Crafting Profit performance acceptance
 
-The acceptance threshold, scope and user-confirmation gate belong to `TARGET_ARCHITECTURE.md` §33. Measure the real application's navigation event through completed calculation and table/control rendering on the user's current real PostgreSQL database. Include UI-thread completion/rendering, not just background-worker return or the first row appearing. Existing miniature/disposable-schema UI fixtures and mocked application adapters remain useful for correctness but cannot supply performance acceptance evidence.
+The acceptance threshold, scope and user-confirmation gate belong to `TARGET_ARCHITECTURE.md` §17. Measure the real application's navigation event through completed calculation and table/control rendering on the user's current real PostgreSQL database. Include UI-thread completion/rendering, not just background-worker return or the first row appearing. Existing miniature/disposable-schema UI fixtures and mocked application adapters remain useful for correctness but cannot supply performance acceptance evidence.
 
 Record reproducible baseline and post-change runs: revision, hardware/JVM/database environment, selected scope/settings, relevant data counts, cache state, individual elapsed times and maximum. Include the default All scope, the first opening after startup and repeat openings; do not select only favorable warm-cache runs. Attribute major pipeline stages without excluding them from the end-to-end total. Preserve full requested results and verify relevant calculations/ownership/limits have not changed. Keep any correctness tests that mutate fixtures isolated; do not point their setup/teardown at the user's database or reduce/replace real data for a faster benchmark. Measurement must not disclose credentials or private account contents.
 
@@ -1252,7 +1256,7 @@ The methodology below applies unchanged to every route added afterwards — `STO
 
 Name these `*IT` so Surefire's default patterns exclude them (§32.4), and run them explicitly. They boot the real application on a random port with the real application service and no schema override, so they read the developer's real database exactly as the running application does.
 
-- **Timing** (§34, and `TARGET_ARCHITECTURE.md` §33 at this boundary): measure wall-clock from issuing the HTTP request to holding the *complete* response body, so routing, calculation and full JSON serialization are all inside the timer. Report the first request after startup separately from repeats, report the maximum, and record row count, response size, settings, data scale and environment. Context/server startup sits outside the per-request timer and must be stated as such. Backend request time is one part of the §33 navigation-to-complete-page budget and is never reported as proof of it.
+- **Timing** (§34, and `TARGET_ARCHITECTURE.md` §17 at this boundary): measure wall-clock from issuing the HTTP request to holding the *complete* response body, so routing, calculation and full JSON serialization are all inside the timer. Report the first request after startup separately from repeats, report the maximum, and record row count, response size, settings, data scale and environment. Context/server startup sits outside the per-request timer and must be stated as such. Backend request time is one part of the §17 navigation-to-complete-page budget and is never reported as proof of it.
 - **Result equivalence**: for each settings combination, call the endpoint over HTTP and call the same application-service method in process with identical inputs, then compare every row field by field — count, order, each authoritative value, blocked state and both missing-material maps. This is what proves a mapping preserves results on real data; fixture-based contract tests cannot. Both runs must be read-only, with no synchronization in between.
 - **Compare a nullable field's JSON null against the source null explicitly.** Jackson's `asInt()`/`asText()` on a JSON null return `0`/`""`, so a naive comparison agrees with a mapping that substituted a zero for an absent value — which is precisely the distinction a response carrying absent items, quantities or display metadata exists to preserve. Read such fields through a null-returning helper, and print how many rows actually carried a null, so a run's output says whether the real data exercised that path at all.
 - These print evidence and, for timing, assert nothing — matching `application.CraftingProfitServiceRealDbPerfIT`'s precedent. The equivalence check does assert, since a mismatch is a defect rather than a measurement.

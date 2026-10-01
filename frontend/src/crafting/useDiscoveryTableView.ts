@@ -20,10 +20,9 @@ export type DiscoverySortKey =
   | 'outputName'
   /** The recipe's own required level, which `web.dto.CraftingRowDto` carries as `minRating`. */
   | 'minRating'
-  | 'craftableCount'
   | 'buyCostCopper'
   | 'totalSellValueCopper'
-  | 'profitCopper'
+  | 'totalProfitCopper'
 
 export type SortDirection = 'asc' | 'desc'
 

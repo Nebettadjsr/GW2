@@ -22,14 +22,11 @@ import java.util.List;
 final class CraftingDiscoveryApiMapper {
 
     /**
-     * Defaults for omitted settings fields: the values the JavaFX Crafting Discovery view opens
-     * with (its initial control state), so the two entry points stay comparable. These are not the
-     * Profit route's defaults - Discovery opens with buying enabled and a 20g budget, because
-     * discovery normally requires buying missing materials.
+     * Defaults for settings omitted by the browser. Discovery has no cumulative purchase budget;
+     * the internal planner setting is zero, which means unlimited for this single attempt.
      */
     static final boolean DEFAULT_USE_OWN_MATS = true;          // "use mats from Bank" checked
     static final boolean DEFAULT_ALLOW_BUYING = true;          // "buy missing mats" checked
-    static final int DEFAULT_MAX_BUY_COPPER = 200_000;         // the view's "20g" budget field default
     static final boolean DEFAULT_LISTING_SELL = false;         // instant sell
     static final boolean DEFAULT_LISTING_BUY = false;          // instant buy
 
@@ -53,7 +50,6 @@ final class CraftingDiscoveryApiMapper {
 
         return new Effective(
                 toEffectiveScope(request.scope()),
-                trimToNull(request.inventoryCharacterName()),
                 toEffectiveSettings(request.settings()));
     }
 
@@ -77,17 +73,9 @@ final class CraftingDiscoveryApiMapper {
     private static CraftingDiscoveryResponse.EffectiveSettingsDto toEffectiveSettings(
             CraftingDiscoveryRequest.SettingsDto settings) {
 
-        int maxBuyCopper = settings == null || settings.maxBuyCopper() == null
-                ? DEFAULT_MAX_BUY_COPPER
-                : settings.maxBuyCopper();
-        if (maxBuyCopper < 0) {
-            throw new ApiValidationException("settings.maxBuyCopper must not be negative");
-        }
-
         return new CraftingDiscoveryResponse.EffectiveSettingsDto(
                 orDefault(settings == null ? null : settings.useOwnMats(), DEFAULT_USE_OWN_MATS),
                 orDefault(settings == null ? null : settings.allowBuying(), DEFAULT_ALLOW_BUYING),
-                maxBuyCopper,
                 orDefault(settings == null ? null : settings.listingSell(), DEFAULT_LISTING_SELL),
                 orDefault(settings == null ? null : settings.listingBuy(), DEFAULT_LISTING_BUY),
                 FIXED_ALLOW_DAILY_CRAFTS);
@@ -95,7 +83,6 @@ final class CraftingDiscoveryApiMapper {
 
     /** A validated request, in both its transport form (echoed back) and its application form. */
     record Effective(CraftingDiscoveryResponse.EffectiveScopeDto scope,
-                     String inventoryCharacterName,
                      CraftingDiscoveryResponse.EffectiveSettingsDto settings) {
 
         /**
@@ -110,7 +97,7 @@ final class CraftingDiscoveryApiMapper {
             return new CraftingSettings(
                     settings.useOwnMats(),
                     settings.allowBuying(),
-                    settings.maxBuyCopper(),
+                    0,
                     settings.listingSell(),
                     settings.listingBuy(),
                     settings.allowDailyCrafts());
@@ -128,8 +115,7 @@ final class CraftingDiscoveryApiMapper {
         List<CraftingRowDto> rows = CraftingRowMapper.toRows(
                 data.visibleRecipes(), data.resultsByRecipeId(), data.items(), data.tp());
 
-        return new CraftingDiscoveryResponse(effective.scope(), effective.inventoryCharacterName(),
-                effective.settings(), rows.size(), rows);
+        return new CraftingDiscoveryResponse(effective.scope(), effective.settings(), rows.size(), rows);
     }
 
     private static String requirePresent(String value, String field) {

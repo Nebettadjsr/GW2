@@ -62,7 +62,7 @@ Authoritative owners:
 - `docs/TARGET_ARCHITECTURE.md`
     - intended architecture
     - TBD technology choices
-    - repository quality targets and PROJECT HEALTH REVIEW policy (§34)
+    - repository quality targets and PROJECT HEALTH REVIEW policy (§21)
 
 - `docs/DOMAIN_SPEC.md`
     - normative domain behavior
@@ -546,7 +546,7 @@ inputs change; do not repeatedly ask a model to rediscover unchanged blockers.
 
 ## Planning PROJECT HEALTH REVIEW tasks
 
-Treat PROJECT HEALTH REVIEW as a special assessment task governed by `docs/TARGET_ARCHITECTURE.md` §34, not an implementation or cleanup batch. Near current-milestone exit, after implementation work is substantially complete, ensure its review is scheduled before closure. Reuse an existing review task when present (Phase 1: `STORY-QUALITY-001`, "Review Phase 1 project health before milestone completion"); do not duplicate it or schedule reviews after every story. Newly added roadmap phases must inherit the review exit requirement by reference to §34.
+Treat PROJECT HEALTH REVIEW as a special assessment task governed by `docs/TARGET_ARCHITECTURE.md` §21, not an implementation or cleanup batch. Near current-milestone exit, after implementation work is substantially complete, ensure its review is scheduled before closure. Reuse an existing review task when present (Phase 1: `STORY-QUALITY-001`, "Review Phase 1 project health before milestone completion"); do not duplicate it or schedule reviews after every story. Newly added roadmap phases must inherit the review exit requirement by reference to §21.
 
 When planning such a task, keep explicit **Non-Goals** within its Constraints: no broad bug hunting, automatic broad regression testing, arbitrary test expansion, speculative cleanup/refactoring, or later-milestone architecture implementation. Planned future replacement alone is not evidence of current debt. Its Required Tests should describe evidence assessment and targeted checks for concrete questions, not mandate every suite. Preserve review first, remediation later.
 
@@ -678,9 +678,9 @@ with zero-padding.
 
 A planning run handles exactly one milestone.
 
-Only report a milestone transition when the supplied current phase's exit criteria are fully and confidently satisfied, including its PROJECT HEALTH REVIEW under `docs/TARGET_ARCHITECTURE.md` §34. Review completion alone is insufficient: assess its recorded findings and confirm explicit disposition of blocking findings and criteria proposed for transfer before reporting the phase complete. Otherwise keep `phase_exit_criteria_satisfied` and `milestone_transition` false.
+Only report a milestone transition when the supplied current phase's exit criteria are fully and confidently satisfied, including its PROJECT HEALTH REVIEW under `docs/TARGET_ARCHITECTURE.md` §21. Review completion alone is insufficient: assess its recorded findings and confirm explicit disposition of blocking findings and criteria proposed for transfer before reporting the phase complete. Otherwise keep `phase_exit_criteria_satisfied` and `milestone_transition` false.
 
-For Phase 3, the explicit Product Owner performance gate in `docs/ROADMAP.md` / `docs/TARGET_ARCHITECTURE.md` §33 overrides ordinary completion inference. Require the real-user-database measurements and explicit subsequent, dated user confirmation tied to the tested revision/results in `STORY-PERF-001`'s Result. Until both exist, keep Phase 3 open, `phase_exit_criteria_satisfied = false` and `milestone_transition = false`; do not plan/activate Phase 4 or later work, silently defer the requirement, or treat automated/evaluator success as user acceptance. Schedule the existing performance story as current-phase work; do not create a duplicate. If only user acceptance remains, use the existing human-input workflow rather than generating filler work or another implementation retry.
+The historical Phase 3 performance gate is satisfied and Phase 3 is closed; do not apply its former hold to later phases. For any future performance acceptance gate, follow the current phase criteria and the project-owner acceptance recorded in its canonical story.
 
 The planner never moves story files and never edits BACKLOG `## Archived`.
 

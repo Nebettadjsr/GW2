@@ -45,3 +45,6 @@ the choice genuinely remains open afterwards, the architect raises a new OPEN
 `UD-*` here with real alternatives and trade-offs, and AR-001 records it as its
 blocking decision. Nothing about the Phase 5 exit criterion changes; only which
 role poses the question first.
+
+
+Current outcome: AR-001 was resolved with Vue 3 and TypeScript, recorded in ADR-001 and `docs/TARGET_ARCHITECTURE.md` section 4.3. This user-decision file records the earlier routing history only.

@@ -571,7 +571,7 @@ The architect may not independently authorize:
 
 A technology the documents mark `TBD` is **not** in that list. Finalizing one is
 inside architect authority whenever the choice turns on technical merit;
-`docs/TARGET_ARCHITECTURE.md` §30 restricts an *implementation agent* from
+`docs/TARGET_ARCHITECTURE.md` §19 restricts an *implementation agent* from
 picking such a technology out of familiarity without an explicit project
 decision, and an architect decision recorded in the owning document plus an ADR
 is that explicit project decision. What remains forbidden is finalizing one

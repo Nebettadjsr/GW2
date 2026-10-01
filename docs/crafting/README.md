@@ -10,14 +10,14 @@ For glossary terms and short answers to common questions, see [GLOSSARY.md](GLOS
 
 This is a maintained, human-readable **summary** of the project's authoritative rules. It is
 allowed to repeat information that also lives in the documents below — that duplication is an
-explicit, intentional exception (`docs/TARGET_ARCHITECTURE.md` §35), made specifically so a reader
+explicit, intentional exception (`docs/TARGET_ARCHITECTURE.md` §18), made specifically so a reader
 does not have to open several technical documents to understand one calculation.
 
 The authoritative sources remain:
 
 - [`docs/DOMAIN_SPEC.md`](../DOMAIN_SPEC.md) — the normative rules this guide explains. Section
   numbers below (e.g. "§22") refer to this document.
-- [`docs/TARGET_ARCHITECTURE.md`](../TARGET_ARCHITECTURE.md) §35 — why this guide exists and the
+- [`docs/TARGET_ARCHITECTURE.md`](../TARGET_ARCHITECTURE.md) §18 — why this guide exists and the
   policy for keeping it up to date.
 
 If anything here ever disagrees with `DOMAIN_SPEC.md`, the spec wins — treat the disagreement as a
@@ -32,8 +32,7 @@ contrast a rule (for example, Trading Post fees); it is not covered end-to-end h
 - **Crafting Profit** — "Of everything I could craft right now, what's actually worth crafting?"
   Scans recipes you (or your account) could use and reports how many times you could craft each
   one and what profit that would produce.
-- **Crafting Discovery** — "Which recipes could this specific character discover next, and what
-  would that cost?" Discovery is about *learning* new recipes, not about maximizing profit.
+- **Crafting Discovery** � "Which recipes could this character discover, and what would one discovery attempt cost and return?" Discovery evaluates one attempt per recipe; it is about *learning* recipes, not maximizing craft count or applying a cumulative buy budget.
 - **Ectoplasm Salvage** — a separate, small calculator for the economics of salvaging Globs of
   Ectoplasm for Luck. Not part of the shared crafting engine described here.
 
@@ -85,9 +84,7 @@ project decision recorded in `DOMAIN_SPEC.md` §2.2.1, so it applies consistentl
     has that discipline.
   - **A specific character + discipline** (e.g. "Armorsmith lvl 500 — Nbt Anch") — restrict the
     plan to exactly that one character and discipline.
-- **Crafting Discovery** keeps its own, separate **character** selector and **discipline**
-  selector — it always analyzes one specific character, because discovering a recipe is inherently
-  something one character does.
+- **Crafting Discovery** uses one **Character / discipline** selector. That character determines eligibility and supplies the inventory context; another character cannot supply materials for the selected character discovery attempt.
 
 ### Coordinated crafting and transferable intermediates
 
@@ -286,7 +283,7 @@ remain controlled solely by `allowBuying`; daily-craft selection never turns buy
 
 Crafting Discovery answers a different question from Crafting Profit: not "what's profitable" but
 "what can this character discover next." A recipe qualifies as a discovery candidate only when all
-of the following hold at once (§35):
+of the following hold at once (§18):
 
 ```text
 recipe is discoverable through normal ingredient discovery
@@ -404,6 +401,6 @@ If you notice a result that seems to disagree with the rules in this guide, chec
 
 - [GLOSSARY.md](GLOSSARY.md) — terms and frequently asked questions.
 - [`docs/DOMAIN_SPEC.md`](../DOMAIN_SPEC.md) — the full authoritative rule set this guide summarizes.
-- [`docs/TARGET_ARCHITECTURE.md`](../TARGET_ARCHITECTURE.md) §35 — why this guide exists and how it
+- [`docs/TARGET_ARCHITECTURE.md`](../TARGET_ARCHITECTURE.md) §18 — why this guide exists and how it
   is meant to be kept up to date.
 - [`docs/KNOWN_PROBLEMS.md`](../KNOWN_PROBLEMS.md) — current defects, risks and technical debt.

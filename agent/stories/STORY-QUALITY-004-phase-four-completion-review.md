@@ -55,7 +55,7 @@ The bounded assessment covers all supplied Phase 4 exit criteria and section 34 
 
 ## Result
 
-**Review executed; Phase 4 / milestone-04 is NOT declared closed** (`TARGET_ARCHITECTURE.md` §34:
+**Review executed; Phase 4 / milestone-04 is NOT declared closed** (`TARGET_ARCHITECTURE.md` §21:
 review completion is distinct from milestone completion). No production code was changed. Five small
 documentation corrections were made at their authoritative owners (§4 below). Eight findings are
 recorded for planner/user disposition (§5); none of them falsifies a Phase 4 exit criterion.
@@ -368,3 +368,8 @@ The supplied backlog has no Active, To Do or Blocked entries, so no selectable w
 ## Blockers
 
 None.
+
+
+## Subsequent milestone disposition
+
+The Result above records the review-time assessment and does not itself close Phase 4. The later planner disposition closed milestone-04; the current phase is Phase 5 (`docs/ROADMAP.md`, `agent/PROJECT_STATE.md`). This note records that later lifecycle state without changing the review-time findings.

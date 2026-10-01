@@ -50,8 +50,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p>The envelope, node shape and shared validation rules are the same as Profit's and are covered in
  * depth by {@link CraftingProfitResolutionApiControllerTest}; what is asserted here is what is
- * genuinely Discovery's own - its required individual scope, its separate nullable inventory
- * character, its own settings defaults and fixed daily setting, and its empty-calculation behavior -
+ * genuinely Discovery's own - its required individual scope (also the inventory scope), its own
+ * settings defaults and fixed daily setting, and its empty-calculation behavior -
  * plus that the shared envelope and outcomes really are produced on this route too.
  *
  * <p>The application service is replaced by a stub, so no database, calculation or resolver runs
@@ -87,7 +87,7 @@ class CraftingDiscoveryResolutionApiControllerTest {
     // ---------- Discovery's own inputs ----------
 
     @Test
-    void theScopeInventoryCharacterAndSettingsReachTheServiceUnchangedAndAreEchoedBack()
+    void theSelectedCharacterAndSettingsReachTheServiceAndAreEchoedBack()
             throws Exception {
         factory.next(service -> service.canned = available(craftedRoot()));
 
@@ -96,19 +96,15 @@ class CraftingDiscoveryResolutionApiControllerTest {
                         {"recipeId": 5,
                          "calculation": {
                            "scope": {"discipline": "Chef", "characterName": "Aria", "rating": 400},
-                           "inventoryCharacterName": "Bern",
-                           "settings": {"useOwnMats": false, "allowBuying": false, "maxBuyCopper": 1500,
+                           "settings": {"useOwnMats": false, "allowBuying": false,
                                         "listingSell": true, "listingBuy": true}}}"""))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.recipeId").value(5))
                 .andExpect(jsonPath("$.calculation.scope.discipline").value("Chef"))
                 .andExpect(jsonPath("$.calculation.scope.characterName").value("Aria"))
                 .andExpect(jsonPath("$.calculation.scope.rating").value(400))
-                // The inventory character is separate from the scope's crafting character.
-                .andExpect(jsonPath("$.calculation.inventoryCharacterName").value("Bern"))
                 .andExpect(jsonPath("$.calculation.settings.useOwnMats").value(false))
                 .andExpect(jsonPath("$.calculation.settings.allowBuying").value(false))
-                .andExpect(jsonPath("$.calculation.settings.maxBuyCopper").value(1500))
                 .andExpect(jsonPath("$.calculation.settings.listingSell").value(true))
                 .andExpect(jsonPath("$.calculation.settings.listingBuy").value(true))
                 // Fixed by the Discovery flow, reported explicitly, never a selectable input.
@@ -130,26 +126,11 @@ class CraftingDiscoveryResolutionApiControllerTest {
         assertEquals("Chef", used.capturedChoice.discipline);
         assertEquals("Aria", used.capturedChoice.charName);
         assertEquals(400, used.capturedChoice.rating);
-        assertEquals("Bern", used.capturedInventoryCharacter);
+        assertEquals("Aria", used.capturedInventoryCharacter);
         assertTrue(used.capturedSettings.allowDailyCrafts);
-        assertEquals(1_500, used.capturedSettings.maxBuyCopper);
+        assertEquals(0, used.capturedSettings.maxBuyCopper);
     }
 
-    @Test
-    void anOmittedInventoryCharacterReachesTheServiceAsNullAndIsEchoedAsNull() throws Exception {
-        factory.next(service -> service.canned = available(craftedRoot()));
-
-        mockMvc.perform(resolution("""
-                        {"recipeId": 5,
-                         "calculation": {"scope": {"discipline": "Chef", "characterName": "Aria",
-                                                   "rating": 400},
-                                         "inventoryCharacterName": "   "}}"""))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.calculation.inventoryCharacterName").doesNotExist());
-
-        assertNull(factory.only().capturedInventoryCharacter,
-                "the service's own unfiltered-pool fallback must be reached, not an API substitute");
-    }
 
     @Test
     void omittedSettingsFallBackToDiscoverysOwnDefaultsNotProfits() throws Exception {
@@ -161,16 +142,15 @@ class CraftingDiscoveryResolutionApiControllerTest {
                                                    "rating": 400}}}"""))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.calculation.settings.useOwnMats").value(true))
-                // Discovery opens with buying on and a 20g budget; Profit does not.
+                // Discovery defaults to buying on; it has no cumulative budget.
                 .andExpect(jsonPath("$.calculation.settings.allowBuying").value(true))
-                .andExpect(jsonPath("$.calculation.settings.maxBuyCopper").value(200000))
                 .andExpect(jsonPath("$.calculation.settings.listingSell").value(false))
                 .andExpect(jsonPath("$.calculation.settings.listingBuy").value(false))
                 .andExpect(jsonPath("$.calculation.settings.allowDailyCrafts").value(true));
 
         CraftingSettings settings = factory.only().capturedSettings;
         assertTrue(settings.allowBuying);
-        assertEquals(200_000, settings.maxBuyCopper);
+        assertEquals(0, settings.maxBuyCopper);
         assertTrue(settings.allowDailyCrafts);
     }
 
@@ -428,7 +408,7 @@ class CraftingDiscoveryResolutionApiControllerTest {
         return """
                 {"recipeId": %d,
                  "calculation": {"scope": {"discipline": "Chef", "characterName": "Aria", "rating": 400},
-                                 "inventoryCharacterName": "Aria"}}""".formatted(recipeId);
+                                 "settings": {"useOwnMats": true}}}""".formatted(recipeId);
     }
 
     /** One execution of the requested recipe, its single ingredient bought. */
@@ -474,21 +454,19 @@ class CraftingDiscoveryResolutionApiControllerTest {
         }
 
         @Override
-        public DiscoveryData reload(DiscChoice choice, CraftingSettings settings,
-                                    String selectedCharacterName) {
+        public DiscoveryData reload(DiscChoice choice, CraftingSettings settings) {
             reloadCalls++;
             return new DiscoveryData(List.of(), List.of(), Map.of(), Map.of(), Map.of());
         }
 
         @Override
         public CraftingResolutionDetail resolveDetail(int recipeId, DiscChoice choice,
-                                                     CraftingSettings settings,
-                                                     String inventoryCharacterName) throws SQLException {
+                                                     CraftingSettings settings) throws SQLException {
             detailCalls++;
             this.capturedRecipeId = recipeId;
             this.capturedChoice = choice;
             this.capturedSettings = settings;
-            this.capturedInventoryCharacter = inventoryCharacterName;
+            this.capturedInventoryCharacter = choice.charName;
 
             if (failure instanceof SQLException sqlException) throw sqlException;
             if (failure instanceof RuntimeException runtimeException) throw runtimeException;

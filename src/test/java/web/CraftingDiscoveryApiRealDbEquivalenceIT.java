@@ -55,18 +55,16 @@ class CraftingDiscoveryApiRealDbEquivalenceIT {
 
         CharacterRepository.DiscRow scope = options.get(0);
 
-        // Discovery's own opening settings, with the scope's character also selected as the
-        // inventory owner - the binding-aware path the JavaFX page uses.
-        assertEquivalent(scope, scope.charName,
+        // Discovery's one selected character supplies both crafting and inventory context.
+        assertEquivalent(scope,
                 """
-                        {"scope": {"discipline": "%s", "characterName": "%s", "rating": %d},
-                         "inventoryCharacterName": "%s"}"""
-                        .formatted(scope.discipline, scope.charName, scope.rating, scope.charName),
-                new CraftingSettings(true, true, 200_000, false, false, false));
+                        {"scope": {"discipline": "%s", "characterName": "%s", "rating": %d}}"""
+                        .formatted(scope.discipline, scope.charName, scope.rating),
+                new CraftingSettings(true, true, 0, false, false, true));
     }
 
     @Test
-    void httpResponseMatchesTheInProcessCalculationWithNoInventoryCharacterSelected() throws Exception {
+    void httpResponseMatchesTheInProcessCalculationWithTheSameCharacterAndAlternatePriceModes() throws Exception {
         List<CharacterRepository.DiscRow> options = new CharacterSelectionService().getCraftingCharacterOptions();
         if (options.isEmpty()) {
             System.out.println("SKIPPED - no synced crafting character in the real database");
@@ -75,23 +73,19 @@ class CraftingDiscoveryApiRealDbEquivalenceIT {
 
         CharacterRepository.DiscRow scope = options.get(0);
 
-        // No inventory character: the service's unfiltered owned-inventory fallback
-        // (STORY-DOM-012) must survive the boundary too, listing prices this time.
-        assertEquivalent(scope, null,
+        assertEquivalent(scope,
                 """
                         {"scope": {"discipline": "%s", "characterName": "%s", "rating": %d},
                          "settings": {"listingSell": true, "listingBuy": true}}"""
                         .formatted(scope.discipline, scope.charName, scope.rating),
-                new CraftingSettings(true, true, 200_000, true, true, false));
+                new CraftingSettings(true, true, 0, true, true, true));
     }
 
     private void assertEquivalent(CharacterRepository.DiscRow scope,
-                                  String inventoryCharacter,
                                   String requestBody,
                                   CraftingSettings settings) throws Exception {
 
-        String label = scope.discipline + " lvl " + scope.rating + " - " + scope.charName
-                + ", inventory character " + inventoryCharacter;
+        String label = scope.discipline + " lvl " + scope.rating + " - " + scope.charName;
 
         HttpResponse<String> response = HttpClient.newHttpClient().send(
                 HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/crafting/discovery"))
@@ -105,8 +99,7 @@ class CraftingDiscoveryApiRealDbEquivalenceIT {
 
         CraftingDiscoveryService.DiscoveryData data = new CraftingDiscoveryService().reload(
                 DiscChoice.charDiscipline(scope.discipline, scope.rating, scope.charName),
-                settings,
-                inventoryCharacter);
+                settings);
 
         List<Recipe> visible = data.visibleRecipes();
         Map<Integer, CraftResult> results = data.resultsByRecipeId();

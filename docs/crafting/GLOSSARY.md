@@ -14,7 +14,10 @@ Companion to [README.md](README.md), which explains the full calculation flow. S
   §34).
 - **Recipe discovery** — the Guild Wars 2 system for learning a recipe you don't know yet by
   combining ingredients, as opposed to buying/finding a recipe scroll. Crafting Discovery only
-  covers recipes eligible for this system (§34–§35).
+  covers recipes eligible for this system (§34–§35), evaluates one attempt per candidate, and uses
+  one selected character for both eligibility and owned materials.
+- **Discovery attempt** — one execution of a candidate recipe to learn it. It has no cumulative
+  craft-count or max-buy budget; its output valuation still uses the recipe's actual output quantity.
 - **Owned-material pool** — the combined total of account material storage, account bank, and all
   character inventories, used only for economic analysis (§9).
 - **Account-bound** — an item usable by any character on the account, but not sellable on the
@@ -105,10 +108,10 @@ Buy / Instant Sell — stays gross, so the gap between them is the fee. The calc
 Profit and Total Profit "after 15% TP fees" for that reason. See
 [Selling fees](README.md#selling-fees-the-15-deducted-from-profit).
 
-**Why is Crafting Discovery still per-character while Profit can span all characters?**
-Discovering a recipe is inherently something one specific character does (it affects that
-character's known-recipe list and crafting progress), so it doesn't have a meaningful "all
-characters" mode the way profit-seeking crafting does. See
+**Why does Crafting Discovery use one character for both eligibility and inventory?**
+A discovery attempt is performed by one character, so that character's discipline/rating and
+character-bound materials must be evaluated together. Discovery also considers one attempt per
+recipe, rather than a cumulative craft count or max-buy budget. See
 [Who can craft what](README.md#who-can-craft-what-profit-scope-vs-discovery-character).
 
 **Does the tool know if I've already used today's daily craft on an item?**

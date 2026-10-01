@@ -2,14 +2,21 @@
 
 ## Status
 
-ACCEPTED
+SUPERSEDED
+
+This decision was superseded by the Product Owner confirmation recorded in
+`STORY-WEB-022`'s Follow-up Findings: the Ectoplasm Salvage calculation remains
+frontend-owned, and the former backend calculation route must not be restored.
+The current exception is documented in `TARGET_ARCHITECTURE.md` section 4.2 and
+`DOMAIN_SPEC.md` section 2.3. The proposal below is retained as history and is
+not current architecture.
 
 ## Context
 
-`DOMAIN_SPEC.md` §2.3 describes a browser-local Ectoplasm calculator that
-updates after input changes without a calculation request. The Phase 5 objective
-and exit criteria and `TARGET_ARCHITECTURE.md` §§4.1 and 12 require backend
-ownership of every authoritative domain result. `STORY-WEB-013` delivered a
+At the time this proposal was written, the Phase 5 objective and target
+architecture were interpreted as requiring backend ownership of every
+authoritative domain result. The Product Owner later confirmed the browser-local
+calculation in `DOMAIN_SPEC.md` section 2.3 as an intentional exception. `STORY-WEB-013` delivered a
 parameterless backend calculation route and browser consumer; the current
 architecture records that route as removed and a browser-local calculator in
 use. That old route cannot calculate the newer amount, tool, price-mode and
@@ -88,7 +95,7 @@ until that implementation changes.
 ## References
 
 - `docs/DOMAIN_SPEC.md` §§2.3, 45–47
-- `docs/TARGET_ARCHITECTURE.md` §§4.1, 12, 23
+- `docs/TARGET_ARCHITECTURE.md` section 4.2 (current Ectoplasm exception)
 - `docs/ROADMAP.md` §9
 - `docs/CURRENT_ARCHITECTURE.md` §§5.3, 5.11, 5.15
 - `agent/stories/STORY-WEB-013-ectoplasm-salvage-page.md`

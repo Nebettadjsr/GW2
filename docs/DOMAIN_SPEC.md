@@ -45,6 +45,8 @@ The analysis may consider:
 
 ## 2.1.1 Crafting Profit result presentation
 
+For the human-facing names used for Trading Post quote sides and crafting values, see the canonical [Crafting Glossary](crafting/GLOSSARY.md). This specification remains authoritative for their domain meaning; the glossary explains how those concepts appear in the interface.
+
 The web view must preserve useful information hierarchy and interactions without
 visually copying JavaFX. The comparison table must include recipe/item, craftable
 count, own materials value, profit per craft, total sell value and total profit.
@@ -223,16 +225,23 @@ rating, already-known recipes under account-wide ownership semantics, and recipe
 that cannot be learned through normal ingredient-combination discovery, including
 vendor/scroll-only recipes. The browser must not reimplement these rules.
 
-Show item/recipe name, recipe level, missing-material cost, crafted-output Trading
-Post sell value and profit per craft from authoritative backend values, with
-clear monetary bases. Offer sorting by recipe level (including highest first),
-output sell value and profit per craft, plus search/filtering to narrow the list.
+Discovery evaluates exactly one discovery attempt for each candidate using the
+selected character for discipline, eligibility and owned inventory. There is no
+independent inventory-character selection, cumulative purchase budget, or
+craftable-count concept. One attempt may produce multiple output items; use the
+recipe's output quantity when valuing its result.
+
+Show item/recipe name, recipe level, materials-to-buy cost, output sell value and
+profit for the one attempt from authoritative backend values. Offer sorting by
+recipe level, materials-to-buy cost, output sell value and profit, plus
+search/filtering to narrow the list.
 Keep leveling relevance separate from profitability per sections 37-38; do not
 invent an XP/profit score or make negative profit a discovery exclusion rule.
 Preserve valid scope, search and sort selections on refresh under section 2.2.1.
 
-Reuse applicable owned-material, buying, budget and Trading Post price-mode
-controls with existing Discovery semantics. Do not change Profit behavior.
+Reuse applicable owned-material, buying and Trading Post price-mode controls.
+There is no Discovery budget control; this does not change Crafting Profit's
+max-buy behavior. Use the selected character as the sole inventory context.
 Selection uses recipe identity, not table position. Where supported by supplied
 data, details show recipe information, material requirements, owned/missing
 quantities, buy requirements/costs, the resolution tree, shopping/material lists

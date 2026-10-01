@@ -2,7 +2,7 @@
 
 ## 1. Purpose and maintenance rule
 
-This document is the **current open-problem register** for defects, architectural risks, ambiguities, technical debt, and incomplete functionality that still apply to the repository.
+This document is the **current open-problem register**. Findings explicitly limited to JavaFX refer to the legacy desktop interface and should not be read as browser behavior. for defects, architectural risks, ambiguities, technical debt, and incomplete functionality that still apply to the repository.
 
 Use it as current-state input, not as a historical changelog:
 
@@ -68,43 +68,27 @@ No finding in this document by itself authorizes an implementation change. Norma
 
 ## 3. Crafting presentation and explanation risks
 
-### KP-07 — Displayed resolution trees use a different algorithm from the planner (CH-12)
+### KP-08 — Legacy JavaFX shopping-list prices follow the sell toggle (CH-13)
 
 
-**Observed fact:** the planner discards the simulation tree (`Node tree = null`). Selecting a row builds a new dependency tree from global recipes; `RecipeTreeBuilder` chooses `producing.get(0)` and labels it `craft`, without checking allowed recipes, character eligibility, inventory, prices or the actual craft-versus-buy choice. The `ResolvedNeedMapper` capable of representing inventory/buy/blocked choices has no production caller (CH-E4). The lazy accessor also rebuilds the full recipe index on the FX selection thread.
-
-**Inferred risk:** the explanation can prescribe an unavailable or unchosen recipe and claim crafting where the calculation bought/consumed inventory. This conflicts with DOMAIN_SPEC §44 and TARGET_ARCHITECTURE §13; it is not merely a slower getter. **Recommendation:** preserve/expose the actual resolution explanation, including its snapshot ownership (CH-01), instead of a competing recipe-selection path.
-
-
-### KP-08 — Shopping-list purchase prices follow the sell toggle (CH-13)
-
-
-**Observed fact:** both shopping lists read `rbListingSell` and call `itemSellUnit` when pricing items to buy. The engine uses `settings.listingBuy` instead. With both modes set to instant, the list displays the buy-order bid while the planner purchases at the sell-offer ask; changing the output sell mode changes displayed acquisition prices.
+**Observed fact (legacy JavaFX):** both JavaFX shopping lists read `rbListingSell` and call `itemSellUnit` when pricing items to buy. The browser shopping list displays the selected acquisition price and backend purchase total. The engine uses `settings.listingBuy` instead. With both modes set to instant, the list displays the buy-order bid while the planner purchases at the sell-offer ask; changing the output sell mode changes displayed acquisition prices.
 
 **Inferred risk:** the purchase breakdown disagrees with required cash/budget despite identical quantities (DOMAIN_SPEC §20). **Recommendation:** render purchase-side quotes from the same calculation snapshot/mode as the plan.
 
 
-### KP-09 — Monetary presentation loses signs and mislabels total purchase cost (CH-14)
+### KP-09 — Legacy JavaFX monetary presentation loses signs and mislabels total purchase cost (CH-14)
 
 
-**Observed fact:** `formatSigned` calls `format(Math.abs(copper))`, stripping the minus sign. Ecto profit cells have the same white styling for positive/negative values; crafting tables use color but also lose the textual sign. Profit's Buy Cost tooltip says “ONE craft” while the supplied `CraftResult.buyCostCopper` is total plan cost. Discovery likewise displays that total in its table but uses `missingToBuyOne` in the detail list.
+**Observed fact (legacy JavaFX):** `formatSigned` calls `format(Math.abs(copper))`, stripping the minus sign. Ecto profit cells have the same white styling for positive/negative values; crafting tables use color but also lose the textual sign. Profit's Buy Cost tooltip says “ONE craft” while the supplied `CraftResult.buyCostCopper` is total plan cost. Discovery likewise displays that total in its table but uses `missingToBuyOne` in the detail list.
 
 **Inferred risk:** losses appear as positive Ecto profits, and readers cannot reconcile table cash costs with the single-craft explanation. **Recommendation:** correct presentation against existing domain values/units, without inventing a new economic model.
 
 **Partly resolved (`STORY-DOM-024`).** The Ectoplasm half is fixed at the call site, not in `CoinUtils`: `EctoView.fillProfitGrid` now formats its four cells with `CoinUtils.format`, which keeps the minus sign, so a salvage loss reads as a loss (`EctoSalvageViewIT` asserts the rendered `-0g 8s 73c`). `formatSigned` itself is unchanged and still strips the sign, and the crafting-table styling and the two Buy Cost labelling problems above are untouched.
 
 
-### KP-10 — Web Crafting Profit row-state badges
+### KP-11 — Legacy JavaFX `MaxBuy UI=...` debug text still appears transiently
 
-**Resolved:** The Crafting Profit comparison table no longer renders generic row-state diagnostics,
-including `CYCLE_DETECTED`. `DOMAIN_SPEC.md` §2.1.1 now defines the normal-view presentation
-contract; raw row states remain in Selected Result's collapsed Technical details. The shared
-`rowDiagnostic` helper remains in use by Crafting Discovery.
-
-
-### KP-11 — `MaxBuy UI=...` debug text still appears transiently
-
-**Observed fact:** `CraftingProfitView.reloadTable` still writes a transient `"MaxBuy UI=..."` developer/debug string to the shared status label at the start of reload. The separate loaded-row/counter diagnostic previously tracked here was removed by `STORY-UI-002`; this remaining text was explicitly outside that story's scope.
+**Observed fact (legacy JavaFX):** `CraftingProfitView.reloadTable` still writes a transient `"MaxBuy UI=..."` developer/debug string to the shared status label at the start of reload. The separate loaded-row/counter diagnostic previously tracked here was removed by `STORY-UI-002`; this remaining text was explicitly outside that story's scope.
 
 **Inferred risk:** implementation/debug state leaks into normal user-facing presentation.
 
@@ -115,10 +99,10 @@ contract; raw row states remain in Selected Result's collapsed Technical details
 
 ## 4. Synchronization, persistence, cache, and data-freshness risks
 
-### KP-12 — Account refresh can publish inconsistent inventory snapshots (CH-04)
+### KP-12 — Legacy JavaFX account refresh can publish inconsistent inventory snapshots (CH-04)
 
 
-**Observed fact:** bank/material/character steps fetch and commit independently; inventory reads use separate statements without a common snapshot transaction. Each home sync button disables only itself, so setup/global/account jobs can overlap, including with a navigated view's auto-refresh. Profit's timer refreshes materials and recipes only but reports “Auto-refreshed Bank + Materials”; the calculation still reads stored bank and character inventory.
+**Observed fact:** bank/material/character steps fetch and commit independently; inventory reads use separate statements without a common snapshot transaction. Each home sync button disables only itself, so setup/global/account jobs can overlap, including with a navigated view's auto-refresh. The legacy JavaFX Profit timer refreshes materials and recipes only but reports “Auto-refreshed Bank + Materials”; the calculation still reads stored bank and character inventory.
 
 **Inferred risk:** moving a stack from bank to material storage can leave its old bank quantity alongside its refreshed storage quantity in Profit indefinitely until a full account refresh; even full refresh has intermediate mixed snapshots. Concurrent runs can publish older fetches after newer ones. This is an application-created consistency problem, distinct from accepted GW2 API lag (DOMAIN_SPEC §39). **Recommendation:** define coherent account snapshot publication/refresh ownership and accurate freshness reporting; preserve or explicitly decide refresh scope.
 
@@ -139,14 +123,6 @@ contract; raw row states remain in Selected Result's collapsed Technical details
 **Inferred risk:** an extra complete recipe-detail pass and, on fresh setup, an extra item-detail pass, with additional network latency/rate-limit exposure and repeated parsing. The FK-required recipe→item→ingredient write order does not require re-fetching the payloads. **Recommendation:** retain/reuse the fetched facts while preserving that ordering. No duration was measured.
 
 
-### KP-15 — Global recipe synchronization does not replace obsolete ingredient facts (CH-07)
-
-
-**Observed fact:** recipe and ingredient writes are upserts only. An ingredient absent from a subsequently fetched recipe is never deleted; nor are removed recipe IDs reconciled. Recipe headers commit before ingredients, and `upsertRecipeIngredients` itself commits every `DB_FLUSH_BATCH`, inside its caller's nominal transaction. A later failure can therefore leave a partially published catalog; a rebuild reads whatever persisted facts remain.
-
-**Inferred risk:** a changed recipe can permanently retain old requirements, and interrupted synchronization can mix new headers with old/partial ingredients. **Recommendation:** establish replacement semantics for successfully fetched recipes and explicit publication/transaction ownership. Actual upstream recipe changes were not fetched in this audit.
-
-
 ### KP-16 — Graph cache has neither freshness validation nor atomic replacement (CH-08)
 
 
@@ -163,25 +139,15 @@ contract; raw row states remain in Selected Result's collapsed Technical details
 **Inferred risk:** refresh can report success while an item that no longer has a quote retains an old price used by calculations; missing IDs can also be retried repeatedly without recording the absence. **Recommendation:** distinguish confirmed absence from transient failure and define its persisted quote state.
 
 
-### KP-18 — Former non-Trading-Post classification risk (resolved)
-
-The former Crafting Profit setting classified missing IDs in `tp_tradeable_items` as
-non-Trading-Post materials and could block normal paths after stale or absent global sync.
-The Product Owner removed that restriction on 2026-09-29. Crafting Profit no longer
-queries the classification, so this calculation risk is resolved. The table remains
-in use by Trading Post price-refresh relevance selection.
-
-**Status: Resolved by removal of the setting and its classification path.**
-
-### KP-19 — Overlapping crafting reloads race on shared result state (CH-01)
+### KP-19 — Legacy JavaFX crafting reloads race on shared result state (CH-01)
 
 
-**Observed fact:** every trigger starts a new thread against the same controller/service. There is no cancellation, generation check or serialized publication. Settings controls are read from those workers, rather than captured together on the JavaFX thread. Budget typing can launch a job for each edit. In Discovery, the independent discipline and character startup loads each call `selectFirst`; if discipline finishes first, both listeners launch reloads. Service caches are assigned field by field, while the FX row-selection handler also reads them and replaces the result map during lazy enrichment.
+**Observed fact:** every trigger starts a new thread against the same controller/service. There is no cancellation, generation check or serialized publication. Settings controls are read from those workers, rather than captured together on the JavaFX thread. Budget typing can launch a job for each edit. Discovery now uses one combined character/discipline scope; settings and refresh controls can still launch overlapping JavaFX reloads. Service caches are assigned field by field, while the FX row-selection handler also reads them and replaces the result map during lazy enrichment.
 
 **Inferred risk:** redundant database/parallel-planner work, older results overwriting newer selections, mixed settings/caches, and row details belonging to a different reload. This remains after the specific Profit initial-load fix. **Recommendation:** address request ownership, FX input snapshots and coherent result publication together.
 
 
-### KP-20 — Crafting schedulers outlive window closure (CH-02)
+### KP-20 — Legacy JavaFX crafting schedulers outlive window closure (CH-02)
 
 
 **Observed fact:** both views create `Executors.newSingleThreadScheduledExecutor()` with the default non-daemon thread factory. Shutdown occurs only on Back or reopening that same view; `Gw2App` has no `stop()`/window-close cleanup. Reload and TP threads are not tracked or cancelled on departure, and their queued `runLater` success callbacks can still reload the detached view. The static `autoRefreshTask` retains its captured view/controller even after Back.
@@ -189,7 +155,7 @@ in use by Trading Post price-refresh relevance selection.
 **Inferred risk:** closing the application from a crafting page can leave the JVM and periodic account synchronization running; leaving a page does not reliably end its work. **Recommendation:** tie scheduler/jobs/callback validity to the view/application lifecycle. No shutdown experiment was run.
 
 
-### KP-21 — Bank/Materials navigation blocks the UI; Materials conceals load failure (CH-03)
+### KP-21 — Legacy JavaFX Bank/Materials navigation blocks the UI; Materials conceals load failure (CH-03)
 
 
 **Observed fact:** navigation calls the view synchronously; before setting the new scene, the view calls its application service through to JDBC connection/query/result loading on the JavaFX Application Thread. The extraction changed ownership, not execution timing. Materials catches the load exception, prints it, and returns `List.of()`, presenting the same empty page as genuinely empty storage.
@@ -207,7 +173,7 @@ in use by Trading Post price-refresh relevance selection.
 **Status: partially resolved — the metadata half only.** `STORY-SYNC-004` closed "account sync does not populate metadata for newly seen account-only items": the explicit metadata refresh now discovers referenced ids from the reference families rather than from the `items` table and creates the missing rows, and it was executed against the real user database (see `CURRENT_ARCHITECTURE.md` §5.14 for the behavior and the measured before/after coverage). On the web clients possession display was already separate from icon availability — `STORY-WEB-010`'s `ItemIcon` renders count and identity beside a neutral fallback, and empty slots stay empty — so on that path the symptom this entry describes no longer occurs. **Still open, and deliberately not claimed resolved:** the JavaFX Bank/Materials rendering that treats a null `icon_path` as the empty-slot branch, and the stale-path problem — `syncItemIconsToDisk` still selects on `icon_path IS NULL OR = ''` and does not check whether a recorded file still exists, so a moved or deleted icon directory still leaves those rows out of repair. No evidence was gathered for either; `STORY-SYNC-004` changed neither.
 
 
-### KP-23 — Optional Ecto icons can suppress a successful calculation (CH-11)
+### KP-23 — Legacy JavaFX optional Ecto icons can suppress a successful calculation (CH-11)
 
 
 **Observed fact:** the worker calculates price scenarios first, then synchronously requests icon metadata before publishing any values. Non-200 icon responses are tolerated, but an IOException, interrupted send or malformed icon response escapes to the shared catch, which reports “Failed to load prices.” The already successful scenarios are discarded. The metadata request has no configured timeout.
@@ -237,13 +203,13 @@ in use by Trading Post price-refresh relevance selection.
 
 ### KP-25 — Orphaned production code remains (CH-E4)
 
-**Observed fact:** `api/Gw2PriceFetch.java` has no production callers since its former caller `Main.java` was deleted. `model/Price.java` is used only by that orphaned helper. `CraftingDiscoveryView#buildSearchBlob` has no production entry call; the live workflow uses `CraftingDiscoveryController.prepareRows -> buildSearchBlob`. `craft.ResolvedNeedMapper#toNode` likewise has no production entry call; the live detail chain uses `RecipeTreeBuilder` instead. The 2026-09-23 production-code audit found no FXML/controller binding, reflective lookup, or service registration for these symbols.
+**Observed fact:** `api/Gw2PriceFetch.java` has no production callers since its former caller `Main.java` was deleted. `model/Price.java` is used only by that orphaned helper. `CraftingDiscoveryView#buildSearchBlob` has no production entry call; the live workflow uses `CraftingDiscoveryController.prepareRows -> buildSearchBlob`. `craft.ResolvedNeedMapper#toNode` likewise has no production entry call; the live detail chain uses `RecipeTreeBuilder` instead. The browser-owned Ectoplasm screen also leaves `frontend/src/api/ectoApi.ts` and `frontend/src/ecto/useEctoSalvage.ts` unreferenced after the backend calculation route was removed. The 2026-09-23 production-code audit found no FXML/controller binding, reflective lookup, or service registration for these symbols.
 
 **Inferred risk:** obsolete competing implementations remain available to be mistaken for live behavior or modified without effect.
 
 **Recommendation:** reassess production reachability when this area is next touched and retire confirmed-dead paths, or intentionally reuse the mapper through normal planned work if that is the chosen design.
 
-### KP-26 — API-key Save control is a placeholder
+### KP-26 — Legacy JavaFX API-key Save control is a placeholder
 
 **Observed fact:** the API-key `TextField` / `Save` button in `Gw2App.createHomeScene()` only updates a status label; it does not persist the entered key. `AppConfig.API_KEY` remains the actual source of the key.
 
@@ -296,10 +262,14 @@ These findings concern the repository's agent/runtime implementation. They remai
 
 ## 10. Open domain/UX clarification
 
-### KP-31 — Discovery has two independent character authorities (CH-22; follow-up required)
+### KP-31 - Discovery had two independent character authorities (resolved)
 
+**Resolved:** the Discovery API now accepts only its character/discipline scope and settings. The selected character supplies both candidate eligibility and binding-aware inventory; the page has one selector and no inventory-character fallback. The regression is covered by application, API and frontend tests.
 
-**Observed fact:** the discipline entry supplies one character/rating for candidate eligibility; a separate independently selected character supplies soulbound inventory. Their defaults use different sort orders (discipline/rating versus character name), and no code keeps them aligned. If the character control is still null during the first reload, the service falls back to the unfiltered owned pool. Thus the actual computation can combine A's eligibility with B's bound items, or briefly use all bindings.
+### KP-32 — Global recipe change detection misses edits under unchanged IDs
 
-**Inferred risk requiring domain/UX confirmation:** the displayed discovery can appear feasible without a single eligible character owning the required bound materials. UD-001 explicitly introduced the material selector; UD-004 kept Discovery individual-only but did not settle how these two controls should interact. **Recommendation:** establish the intended single-character contract before changing selection behavior; distinguish it from the confirmed asynchronous reload race in CH-01.
+**Observed fact:** `RecipeSync.syncAllRecipesGlobalSafe()` compares the remote recipe ID set with the local `recipes.recipe_id` set and returns without detail requests when the sets match. Recipe detail fields and ingredients are therefore not checked for in-place changes unless some recipe ID is also added or removed.
 
+**Inferred risk:** an ArenaNet edit to an existing recipe's output, discipline, or ingredients can remain stale locally, and the crafting graph will not rebuild for that edit. The current six-hour job detects catalog membership changes, not full recipe freshness.
+
+**Recommendation:** retain the cheap ID-list gate while a future decision defines an affordable way to detect in-place detail changes; do not describe the current check as detecting every upstream recipe-data edit.

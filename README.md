@@ -12,7 +12,7 @@ A Guild Wars 2 crafting and economy tool that combines account data, recipe know
 
 > **Active development:** The project is moving quickly, with updates currently landing almost daily. The browser frontend is actively replacing the original JavaFX interface while both continue to use the same backend/domain logic.
 
-![Current Crafting Profit web interface](docs/images/craftingProfit.jpg)
+![Current Crafting Profit web interface](docs/images/craftingProfit-01-10-2026.jpg)
 
 ## Agentic Software Development Experiment
 
@@ -22,7 +22,7 @@ A Guild Wars 2 crafting and economy tool that combines account data, recipe know
 >
 > **[Read about the agentic development experiment and workflow →](agent/agent_README_experimental.md)**
 
-For a player-focused explanation of the crafting calculations, see the **[Crafting Guide](docs/crafting/README.md)**.
+For a player-focused explanation of the crafting calculations, see the **[Crafting Guide](docs/crafting/README.md)**. The canonical mapping of visible crafting and Trading Post labels is in the [Crafting Glossary](docs/crafting/GLOSSARY.md).
 
 ---
 
@@ -54,9 +54,9 @@ The calculation does more than subtract ingredient prices from output prices. It
 
 ### Crafting Discovery
 
-Helps find discoverable recipes appropriate for a character and crafting discipline, including their costs and economic result.
+Helps find recipes a selected character can discover and shows the cost and economic result of one attempt. The selected character also supplies the owned-material context; recipes that output multiple items retain that output quantity in the calculation.
 
-![Crafting Discovery](docs/images/crafting-discovery.png)
+![Crafting Discovery](docs/images/craftingDiscovery-30-09-2026.jpg)
 
 ### Account data
 
@@ -66,11 +66,11 @@ Bank and Materials views are already available in the browser frontend.
 
 Crafting Profit's **Refresh data & results** action refreshes the account data used by the calculation, refreshes missing or older-than-ten-minute Trading Post quotes it needs, and then recalculates. Global game data is checked automatically in the background. **System Status** summarizes account data, global game data, and the shared Trading Post cache, with manual account and global refresh actions; normal crafting workflows do not require visiting it.
 
-### Ectoplasm salvage analysis
+### Ecto Salvage (Ectoplasm)
 
 The project also contains an Ectoplasm Salvage calculator for estimating the effective gold cost of gaining Luck/Magic Find while accounting for the value recovered from salvage results.
 
-![Ectoplasm Salvage calculator](docs/images/ecto-calculator.png)
+![Ectoplasm Salvage calculator](docs/images/ecto-after.png)
 
 ---
 
@@ -290,10 +290,14 @@ Useful starting points:
 - **[Crafting Guide](docs/crafting/README.md)** — plain-language explanation of Crafting Profit / Discovery behavior
 - **[Roadmap](docs/ROADMAP.md)** — current development phases and sequencing
 - **[Domain Specification](docs/DOMAIN_SPEC.md)** — authoritative crafting/economy rules
+- **[Crafting Glossary](docs/crafting/GLOSSARY.md)** — canonical player-facing terminology and UI-label mapping
+- **[Current State](docs/CURRENT_STATE_SPEC.md)** — what currently runs and its limits
+- **[Current Architecture](docs/CURRENT_ARCHITECTURE.md)** — observed implementation structure and flows
 - **[Target Architecture](docs/TARGET_ARCHITECTURE.md)** — intended system architecture
 - **[Known Problems](docs/KNOWN_PROBLEMS.md)** — currently known unresolved problems and technical debt
 - **[Test Strategy](docs/TEST_STRATEGY.md)** — test layers and verification approach
 - **[Coding Guidelines](docs/CODING_GUIDELINES.md)** — implementation conventions
+- **[Contributing](CONTRIBUTING.md)** — contributor workflow and documentation entry points
 - **[Agentic Development Experiment](agent/agent_README_experimental.md)** — AI-agent/orchestrator workflow used to develop the project
 
 ---

@@ -75,7 +75,27 @@ class CraftingDiscoveryApiControllerTest {
     // ---------- valid requests ----------
 
     @Test
-    void scopeInventoryCharacterAndExplicitSettingsReachTheApplicationServiceUnchanged() throws Exception {
+    void discoveryUsesItsScopeCharacterForInventoryAndHasNoBudgetSetting() throws Exception {
+        factory.next(service -> service.canned = discoveryData(List.of(), Map.of(), Map.of(), Map.of()));
+
+        mockMvc.perform(post("/api/crafting/discovery")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{" + FULL_SCOPE + ", \"inventoryCharacterName\": \"Borin\", " +
+                                "\"settings\": {\"useOwnMats\": true, \"allowBuying\": true}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.scope.characterName").value("Aria"))
+                .andExpect(jsonPath("$.inventoryCharacterName").doesNotExist())
+                .andExpect(jsonPath("$.settings.maxBuyCopper").doesNotExist());
+
+        StubDiscoveryService used = factory.only();
+        assertEquals("Aria", used.capturedInventoryCharacter,
+                "the selected crafting character must also scope owned materials");
+        assertEquals(0, used.capturedSettings.maxBuyCopper,
+                "zero means no cumulative budget in the shared planner settings");
+    }
+
+    @Test
+    void oneCharacterAndExplicitSettingsReachTheApplicationService() throws Exception {
         factory.next(service -> service.canned = discoveryData(List.of(), Map.of(), Map.of(), Map.of()));
 
         mockMvc.perform(post("/api/crafting/discovery")
@@ -83,18 +103,15 @@ class CraftingDiscoveryApiControllerTest {
                         .content("""
                                 {
                                   "scope": {"discipline": "Chef", "characterName": "Aria", "rating": 400},
-                                  "inventoryCharacterName": "Borin",
-                                  "settings": {"useOwnMats": false, "allowBuying": false, "maxBuyCopper": 25000,
+                                  "settings": {"useOwnMats": false, "allowBuying": false,
                                                "listingSell": true, "listingBuy": true}
                                 }"""))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.scope.discipline").value("Chef"))
                 .andExpect(jsonPath("$.scope.characterName").value("Aria"))
                 .andExpect(jsonPath("$.scope.rating").value(400))
-                .andExpect(jsonPath("$.inventoryCharacterName").value("Borin"))
                 .andExpect(jsonPath("$.settings.useOwnMats").value(false))
                 .andExpect(jsonPath("$.settings.allowBuying").value(false))
-                .andExpect(jsonPath("$.settings.maxBuyCopper").value(25000))
                 .andExpect(jsonPath("$.settings.listingSell").value(true))
                 .andExpect(jsonPath("$.settings.listingBuy").value(true));
 
@@ -106,13 +123,13 @@ class CraftingDiscoveryApiControllerTest {
         assertEquals("Aria", used.capturedChoice.charName);
         assertEquals(400, used.capturedChoice.rating);
 
-        // The inventory character is independent of the scope's character (DOMAIN_SPEC.md §11.1).
-        assertEquals("Borin", used.capturedInventoryCharacter);
+        // Owned materials use the same character that defines the crafting scope.
+        assertEquals("Aria", used.capturedInventoryCharacter);
 
         CraftingSettings settings = used.capturedSettings;
         assertFalse(settings.useOwnMats);
         assertFalse(settings.allowBuying);
-        assertEquals(25_000, settings.maxBuyCopper);
+        assertEquals(0, settings.maxBuyCopper);
         assertTrue(settings.listingSell);
         assertTrue(settings.listingBuy);
     }
@@ -126,9 +143,8 @@ class CraftingDiscoveryApiControllerTest {
                         .content("{" + FULL_SCOPE + "}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.settings.useOwnMats").value(true))
-                // Discovery opens with buying enabled at 20g, unlike Profit's off/1g.
+                // Discovery defaults to buying enabled; Profit has separate defaults.
                 .andExpect(jsonPath("$.settings.allowBuying").value(true))
-                .andExpect(jsonPath("$.settings.maxBuyCopper").value(200000))
                 .andExpect(jsonPath("$.settings.listingSell").value(false))
                 .andExpect(jsonPath("$.settings.listingBuy").value(false))
                 // Not a request field: Discovery has always fixed it to false.
@@ -137,25 +153,12 @@ class CraftingDiscoveryApiControllerTest {
         CraftingSettings settings = factory.only().capturedSettings;
         assertTrue(settings.useOwnMats);
         assertTrue(settings.allowBuying);
-        assertEquals(200_000, settings.maxBuyCopper);
+        assertEquals(0, settings.maxBuyCopper);
         assertFalse(settings.listingSell);
         assertFalse(settings.listingBuy);
         assertTrue(settings.allowDailyCrafts);
     }
 
-    @Test
-    void omittedInventoryCharacterReachesTheServiceAsNullSoItKeepsItsUnfilteredFallback() throws Exception {
-        factory.next(service -> service.canned = discoveryData(List.of(), Map.of(), Map.of(), Map.of()));
-
-        mockMvc.perform(post("/api/crafting/discovery")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{" + FULL_SCOPE + ", \"inventoryCharacterName\": \"  \"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.inventoryCharacterName").doesNotExist());
-
-        assertNull(factory.only().capturedInventoryCharacter,
-                "a blank inventory character must reach the service as absent, not as a blank name");
-    }
 
     @Test
     void completeResultIsMappedIncludingAuthoritativeTotalsAndMissingMaterials() throws Exception {
@@ -323,16 +326,6 @@ class CraftingDiscoveryApiControllerTest {
         assertEquals(0, factory.created.size());
     }
 
-    @Test
-    void negativeMaxBuyCopperIsRejectedWithoutStartingACalculation() throws Exception {
-        mockMvc.perform(post("/api/crafting/discovery")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{" + FULL_SCOPE + ", \"settings\": {\"maxBuyCopper\": -1}}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("settings.maxBuyCopper must not be negative"));
-
-        assertEquals(0, factory.created.size());
-    }
 
     @Test
     void malformedJsonIsRejectedWithoutStartingACalculation() throws Exception {
@@ -501,11 +494,10 @@ class CraftingDiscoveryApiControllerTest {
         }
 
         @Override
-        public DiscoveryData reload(DiscChoice choice, CraftingSettings settings,
-                                    String selectedCharacterName) throws SQLException {
+        public DiscoveryData reload(DiscChoice choice, CraftingSettings settings) throws SQLException {
             this.capturedChoice = choice;
             this.capturedSettings = settings;
-            this.capturedInventoryCharacter = selectedCharacterName;
+            this.capturedInventoryCharacter = choice.charName;
 
             if (failure instanceof SQLException sqlException) throw sqlException;
             if (failure instanceof RuntimeException runtimeException) throw runtimeException;

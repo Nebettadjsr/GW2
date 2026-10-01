@@ -23,6 +23,22 @@ public class CraftingPlanner {
         return evaluateAll(recipes, inventory, Map.of(), tp, settings, allowedRecipeIds);
     }
 
+    /** Evaluates exactly one discovery attempt for each recipe, with no cumulative buy budget. */
+    public Map<Integer, CraftResult> evaluateAllSingleCraft(List<Recipe> recipes,
+                                                            Map<Integer, Integer> sellableInventory,
+                                                            Map<Integer, Integer> boundInventory,
+                                                            Map<Integer, PriceQuote> tp,
+                                                            CraftingSettings settings,
+                                                            Set<Integer> allowedRecipeIds) {
+        Map<Integer, List<Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
+        PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds);
+        return recipes.parallelStream().collect(Collectors.toConcurrentMap(
+                r -> r.recipeId,
+                r -> evaluateOneRecipeNew(r, new PlanState(sellableInventory, boundInventory), ctx,
+                        new RecipeSimulator(new CraftingResolver(), 1, true)),
+                (a, b) -> b));
+    }
+
     /**
      * @param sellableInventory ordinary unbound/tradable owned quantity, priced exactly as
      *                          {@link #evaluateAll(List, Map, Map, CraftingSettings, Set)} always has.
@@ -111,6 +127,20 @@ public class CraftingPlanner {
 
         return evaluateOneRecipeNew(
                 recipe, new PlanState(sellableInventory, boundInventory), ctx, new RecipeSimulator());
+    }
+
+    /** Resolves the row values for one Discovery craft, regardless of available inventory. */
+    public CraftResult evaluateSingleCraft(Recipe recipe,
+                                           List<Recipe> recipes,
+                                           Map<Integer, Integer> sellableInventory,
+                                           Map<Integer, Integer> boundInventory,
+                                           Map<Integer, PriceQuote> tp,
+                                           CraftingSettings settings,
+                                           Set<Integer> allowedRecipeIds) {
+        PlannerContext ctx = new PlannerContext(
+                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds);
+        return evaluateOneRecipeNew(recipe, new PlanState(sellableInventory, boundInventory), ctx,
+                new RecipeSimulator(new CraftingResolver(), 1, true));
     }
 
     /**

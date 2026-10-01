@@ -10,14 +10,14 @@ Choose the approach for continuing STORY-PERF-001's reported material simulation
 
 ## Why This Is Needed
 
-STORY-PERF-001's Result explicitly pauses for this architectural choice after bounded optimizations. docs/TARGET_ARCHITECTURE.md §33 requires a User Decision for meaningful architecture/product trade-offs. The recorded alternatives have different state-isolation, algorithm-equivalence and maintainability risks; no existing user decision settles this choice.
+STORY-PERF-001's Result explicitly pauses for this architectural choice after bounded optimizations. docs/TARGET_ARCHITECTURE.md §17 requires a User Decision for meaningful architecture/product trade-offs. The recorded alternatives have different state-isolation, algorithm-equivalence and maintainability risks; no existing user decision settles this choice.
 
 ## Context
 
 - agent/stories/STORY-PERF-001-crafting-profit-page-load-budget.md, Result: recorded real-database backend measurements after optimization are 22434 ms and 21987 ms, not complete-page acceptance measurements. The story attributes the remaining cost to repeated state copying and recursive simulation.
 - Its Result describes copy-on-write/layered state as addressing the measured copy overhead, and batch-count binary search as requiring an unproven monotonicity/equivalence assumption. Neither proposed change is reported implemented.
 - The story already references agent/user-interventions/UI-001-STORY-PERF-001.md. This decision formalizes the same question for planner handling; it does not initiate a separate implementation effort. The intervention file was not inspected during this scope-limited pass.
-- The supplied Phase 3 exit criteria and docs/TARGET_ARCHITECTURE.md §33 retain the seven-second complete, interactive page requirement on the current real user database, followed by explicit dated user acceptance tied to the tested revision/results. This decision is not that acceptance and does not relax the requirement.
+- The supplied Phase 3 exit criteria and docs/TARGET_ARCHITECTURE.md §17 retain the seven-second complete, interactive page requirement on the current real user database, followed by explicit dated user acceptance tied to the tested revision/results. This decision is not that acceptance and does not relax the requirement.
 - Existing UD-003 preserves the intentional 250-craft limit; UD-004's coordinated crafting semantics remain binding. Routine behavior-preserving implementation details do not require separate decisions.
 
 ## Blocks

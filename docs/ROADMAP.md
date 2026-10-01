@@ -15,7 +15,7 @@ Grounding sources (do not duplicate their content here — read them when a phas
 
 ```text
 docs/DOMAIN_SPEC.md            authoritative domain rules
-docs/TARGET_ARCHITECTURE.md    target structure, dependency direction, TBD technology decisions
+docs/TARGET_ARCHITECTURE.md    target structure, dependency direction, decided and open architecture choices
 docs/CURRENT_ARCHITECTURE.md   current structure, as observed in source
 docs/KNOWN_PROBLEMS.md         confirmed conflicts, coupling, tech debt (numbered, referenced below)
 docs/TEST_STRATEGY.md          testing approach and priorities
@@ -26,7 +26,7 @@ docs/CODING_GUIDELINES.md      code-level rules for changes made from here on
 
 ## 2. Guiding Principles for Sequencing
 
-This roadmap follows the migration principle already stated in `TARGET_ARCHITECTURE.md` §27:
+This roadmap follows the migration principle already stated in `TARGET_ARCHITECTURE.md` §14:
 
 ```text
 protect behavior with tests
@@ -43,8 +43,8 @@ Applied here as: **fix behavior before refactoring, refactor before extracting, 
 - Domain conflicts (`KNOWN_PROBLEMS.md` §3) are fixed **before** the domain is decoupled from `repo.*`, so the decoupling step is a mechanical, behavior-preserving refactor (`TEST_STRATEGY.md` §18), not a place where bugs and restructuring get tangled together (`CLAUDE.md` "Working Rules" forbids combining unrelated refactoring with a fix).
 - The domain is decoupled from persistence **before** an application-service layer is introduced, so the application layer orchestrates a clean domain instead of relocating the same coupling one level up.
 - A backend HTTP API exists **before** frontend work starts, so the frontend has a real contract to build against instead of a guessed one.
-- JavaFX is only removed **after** the web frontend has functional parity and a deployable backend exists — per `TARGET_ARCHITECTURE.md` §28 ("Reuse of Existing Code"), the current implementation is not thrown away by default.
-- Any technology `TARGET_ARCHITECTURE.md` §30 marks `TBD` (frontend framework/language, backend web framework, DB migration tool, reverse proxy, hosting provider, authentication, long-running-job mechanism) is called out explicitly at the phase where it first becomes a blocking decision. None of these should be silently finalized by whoever executes a story.
+- JavaFX is only removed **after** the web frontend has functional parity and a deployable backend exists — per `TARGET_ARCHITECTURE.md` §14 ("Reuse of Existing Code"), the current implementation is not thrown away by default.
+- Any technology or product decision still listed under `TARGET_ARCHITECTURE.md` §16 “To Be Decided” is called out at the phase where it first becomes a blocking decision. None should be silently finalized by whoever executes a story.
 
 ---
 
@@ -54,17 +54,16 @@ Applied here as: **fix behavior before refactoring, refactor before extracting, 
 Phase 0  Build & Test Foundation                (complete, 2026-09-19 — see §4)
 Phase 1  Domain Stabilization                   (complete — milestone-01 archived)
 Phase 2  Domain Isolation / Decoupling          (complete, 2026-09-21 — see §6)
-Phase 3  Backend / Application-Service Extraction (in progress — current milestone)
-Phase 4  Backend HTTP API                       (implementation complete; bounded review run,
-                                                 closure pending planner/user disposition — see §8)
-Phase 5  Frontend Migration                     (not started)
+Phase 3  Backend / Application-Service Extraction (complete; milestone-03 archived)
+Phase 4  Backend HTTP API                       (complete; milestone-04 archived)
+Phase 5  Browser Frontend Completion             (current; browser implementation and acceptance work in progress)
 Phase 6  Multi-User / Account Isolation         (not started)
-Phase 7  PostgreSQL / Containerization          (not started)
+Phase 7  Containerized Runtime and Database Migration (not started; PostgreSQL is already used locally)
 Phase 8  Deployment / Runtime Configuration     (not started)
 Phase 9  Final Cleanup / JavaFX Removal         (not started)
 ```
 
-Every new or revised phase must retain the PROJECT HEALTH REVIEW exit requirement, with execution and findings governed by `TARGET_ARCHITECTURE.md` §34. Schedule the review near exit, after milestone implementation; planner/user disposition of blocking findings precedes closure. Phase 1 uses the existing `STORY-QUALITY-001` ("Review Phase 1 project health before milestone completion").
+Every new or revised phase must retain the PROJECT HEALTH REVIEW exit requirement, with execution and findings governed by `TARGET_ARCHITECTURE.md` §21. Schedule the review near exit, after milestone implementation; planner/user disposition of blocking findings precedes closure. Phase 1 uses the existing `STORY-QUALITY-001` ("Review Phase 1 project health before milestone completion").
 
 Phases are listed in dependency order. A later phase should not be started while an earlier phase has open blocking exit criteria, unless a story explicitly documents why it's safe to jump ahead.
 
@@ -74,7 +73,7 @@ Phases are listed in dependency order. A later phase should not be started while
 
 **Status:** complete (confirmed 2026-09-19 from completed Phase 0 stories).
 
-This historical closure predates the recurring review requirement below; no retrospective review is claimed and the archived milestone is not reopened. Relevant inherited gaps are assessed in the current milestone under `TARGET_ARCHITECTURE.md` §34.
+This historical closure predates the recurring review requirement below; no retrospective review is claimed and the archived milestone is not reopened. Relevant inherited gaps are assessed in the current milestone under `TARGET_ARCHITECTURE.md` §21.
 
 ### Objective
 
@@ -86,7 +85,7 @@ None. This is the foundation everything else assumes.
 
 ### Exit Criteria
 
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
 - [x] A standard build system exists (Maven, via `./mvnw`), replacing the manual JAR/`lib/` setup.
 - [x] A test framework is wired in (JUnit 5 via Maven/Surefire) and at least one regression test runs (`craft.CraftingResolverCraftVsBuyTest`).
 - [x] The highest-priority domain conflicts already identified in `KNOWN_PROBLEMS.md` §3 each have at least one test expressing the *intended* (spec-correct) behavior, per `TEST_STRATEGY.md` §24's priority order. §3.1/§3.2/§3.3/§3.5 are fixed-and-tested; §3.4 gained an intended-behavior test at the repo+domain layer (`STORY-DOM-011`, not yet wired into production — see Phase 1's `STORY-DOM-012`); §3.6 was explicitly decided to need no new automated test (`STORY-DOM-010`, no test seam exists for its live-HTTP-calling JavaFX view) — an accepted decision of that story, not a gap.
@@ -125,7 +124,7 @@ Phase 0 (each fix needs a failing test first, per `TEST_STRATEGY.md` §17's bug-
 
 ### Exit Criteria
 
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
 - All confirmed conflicts in `KNOWN_PROBLEMS.md` §3 are either resolved and covered by a passing test, or converted into an explicit, answered domain question (`DOMAIN_SPEC.md` §51/§53) if resolution requires a decision only the project owner can make. For a conflict whose correct behavior depends on real database/API semantics rather than pure in-memory domain logic (e.g. §3.3's owned-material pool), "covered by a passing test" means the PostgreSQL integration-test coverage Phase 0 already requires (`TEST_STRATEGY.md` Layer 2) — a unit test alone does not close that item.
 - `craft.BlockedReason` carries the full set of reasons `DOMAIN_SPEC.md` §42 expects, and nothing in the crafting-profit/discovery flow silently drops a row instead of exposing a blocked/unavailable state.
 - The dead legacy craft-vs-buy code path is removed once confirmed unreachable.
@@ -137,7 +136,7 @@ Phase 0 (each fix needs a failing test first, per `TEST_STRATEGY.md` §17's bug-
 - **(Done)** Extend the owned-material pool to include character inventories (`KNOWN_PROBLEMS.md` §3.3, `DOMAIN_SPEC.md` §9 / DQ-006) — `STORY-DOM-004` extended `InventoryRepository.loadOwnedInventory()` to sum `character_items`, and `STORY-SYNC-001` made `sync.CharacterSync` actually populate that table from the GW2 API's `bags`/`equipment` data, so the fix now has a real effect.
 - **(Done)** Implement account-bound/soulbound material handling (`KNOWN_PROBLEMS.md` §3.4, `DOMAIN_SPEC.md` §11.1 / DQ-007). `UD-001` resolved the "selected character" design; `STORY-DOM-011` implemented the repo + domain layers; `STORY-DOM-012` added the character-selector UI to `CraftingProfitView`/`CraftingDiscoveryView` and wired their controllers to call the binding-aware repository method, giving this rule real-user effect.
 - **(Done)** Add the missing `BlockedReason` values (`PRICE_UNAVAILABLE`, `RECIPE_NOT_ALLOWED`, `INSUFFICIENT_BUDGET`) and stop silently filtering unresolvable rows at the controller layer (`KNOWN_PROBLEMS.md` §3.5, `DOMAIN_SPEC.md` §21 / §42) (`STORY-DOM-008`, `STORY-DOM-013`); documentation correction made during `STORY-QUALITY-001` — this bullet was left unchecked despite the underlying work being complete.
-- **(Done)** Resolve the Ectoplasm Salvage fee-model ambiguity as a new, explicitly answered domain question (`KNOWN_PROBLEMS.md` §3.6 — proposed "DQ-011"), then make `EctoView` and `Main.java` agree (`STORY-DOM-010`; full convergence into one implementation happens in Phase 3, once an application-service layer exists to hold it).
+- **(Done)** Resolve the Ectoplasm Salvage fee-model ambiguity as a new, explicitly answered domain question (`UD-002` and `DOMAIN_SPEC.md` sections 45–47), then make `EctoView` and `Main.java` agree (`STORY-DOM-010`; full convergence into one implementation happens in Phase 3, once an application-service layer exists to hold it).
 - **(Done)** Remove the dead legacy code path in `CraftingPlanner` (`canCraft`/`simulateCraft`/`obtain`/`PlanRun`) once confirmed unused (`KNOWN_PROBLEMS.md` §7.1).
 - **(Done)** Remove leftover debug instrumentation (`KNOWN_PROBLEMS.md` §7.2) (`STORY-DOM-006`).
 - **(Done)** Decide whether the 250-craft simulation cap is intentional and document it in `DOMAIN_SPEC.md`, or expose a "capped" indicator (`KNOWN_PROBLEMS.md` §7.6) — resolved by `agent/user-decisions/UD-003-craft-simulation-cap.md`, recorded in `DOMAIN_SPEC.md` §28; documentation correction made during `STORY-QUALITY-001` — this bullet was left unchecked despite the underlying decision being resolved.
@@ -158,7 +157,7 @@ Phase 1. This must be a behavior-preserving refactor (`TEST_STRATEGY.md` §18) �
 
 ### Exit Criteria
 
-- **(Done — `STORY-QUALITY-002`; planner disposition 2026-09-21)** Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
+- **(Done — `STORY-QUALITY-002`; planner disposition 2026-09-21)** Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
 - **(Done — `STORY-DOM-017`)** `craft.*` no longer imports anything from `repo.*` (`KNOWN_PROBLEMS.md` §4.1).
 - **(Done — `STORY-DOM-017`)** Independent domain types exist (e.g. `Recipe`, `Ingredient`, `PriceQuote`) with a mapping boundary living in `repo.*`, per `TARGET_ARCHITECTURE.md` §10.
 - **(Done — `STORY-DOM-018`/`STORY-DOM-019`)** The "recipe is unlocked" rule is no longer expressed as a SQL CTE (`KNOWN_PROBLEMS.md` §4.2): `craft.RecipeKnowledgePolicy.isKnownAccountWide` is the single pure domain policy shared by `RecipeRepository.loadRecipes`, `loadRecipesForCharacter`, and `loadMissingDiscoverableRecipeIdsForCharacter`. `STORY-DOM-018` extracted the policy but left the character-scoped entry points checking only the selected character's own unlocks; `STORY-DOM-019` corrected them to agree with `loadRecipes`'s account-wide (any-character) knowledge decision, matching `DOMAIN_SPEC.md` §34/35 and decided `DQ-010`.
@@ -179,7 +178,7 @@ Phase 1. This must be a behavior-preserving refactor (`TEST_STRATEGY.md` §18) �
 
 **Status: Complete — 2026-09-23.** All exit criteria are satisfied. Review findings are explicitly dispositioned in `STORY-QUALITY-003`'s Result; `STORY-APP-010` and `STORY-APP-011` complete its two scoped follow-ups. The documented current phase advances through `agent/PROJECT_STATE.md`; no next-phase stories are planned in this pass.
 
-**Blocking performance gate (PO requirement, 2026-09-22) — satisfied 2026-09-23:** this phase could not close or advance to Phase 4 until the Crafting Profit performance requirement in `TARGET_ARCHITECTURE.md` §33 passed real-user-database measurement and received explicit subsequent user acceptance. Both happened: the measurements and the Product Owner's dated acceptance are recorded in `STORY-PERF-001`'s Result. This gate no longer blocks the phase; the remaining exit criteria below still govern whether Phase 3 closes.
+**Blocking performance gate (PO requirement, 2026-09-22) — satisfied 2026-09-23:** this phase could not close or advance to Phase 4 until the Crafting Profit performance requirement in `TARGET_ARCHITECTURE.md` §17 passed real-user-database measurement and received explicit subsequent user acceptance. Both happened: the measurements and the Product Owner's dated acceptance are recorded in `STORY-PERF-001`'s Result. This gate no longer blocks the phase; the remaining exit criteria below still govern whether Phase 3 closes.
 
 ### Objective
 
@@ -191,11 +190,11 @@ Phase 2. Building an application layer on top of a still-coupled domain would ju
 
 ### Exit Criteria
 
-- **(Done)** Crafting Profit meets the complete-page, at-most-7-second real-user-database requirement in `TARGET_ARCHITECTURE.md` §33, with measurement evidence and explicit dated user acceptance recorded in `STORY-PERF-001`.
-- **(Done)** Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
+- **(Done)** Crafting Profit meets the complete-page, at-most-7-second real-user-database requirement in `TARGET_ARCHITECTURE.md` §17, with measurement evidence and explicit dated user acceptance recorded in `STORY-PERF-001`.
+- **(Done)** Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
 - **(Done)** Application services exist for at least: crafting profit calculation, crafting discovery candidates, account refresh, global data refresh, Trading Post price refresh, crafting graph rebuild — matching the example use-case list in `TARGET_ARCHITECTURE.md` §8.
 - **(Done)** `Gw2App` button handlers, `EctoView`, and `Main.java` no longer call `sync.*`/`repo.*`/`craft.*` directly; they call application services.
-- **(Done)** The two disagreeing Ectoplasm Salvage implementations (`KNOWN_PROBLEMS.md` §3.6/§4.4) converge into one application service with one calculation.
+- **(Done)** The two disagreeing Ectoplasm Salvage implementations (`STORY-DOM-010` and `STORY-APP-003`) converge into one application service with one calculation.
 - **(Done)** `AccountRefreshService`'s current dead-call situation (`KNOWN_PROBLEMS.md` §8) is resolved — either wired up as the account-refresh use case or removed.
 
 ### High-Level Stories
@@ -222,9 +221,9 @@ Phase 3. The API layer should be a thin translation over existing application se
 
 ### Exit Criteria
 
-- **(Done)** Preserve and reverify the accepted Crafting Profit performance requirement at the backend/API boundary (`TARGET_ARCHITECTURE.md` §33); API timing is only one part of the full page-load budget.
-- **(Done)** Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
-- **(Done)** **Explicit decision made** on the backend web framework (`TARGET_ARCHITECTURE.md` §30 marks this `TBD` — must not be silently finalized).
+- **(Done)** Preserve and reverify the accepted Crafting Profit performance requirement at the backend/API boundary (`TARGET_ARCHITECTURE.md` §17); API timing is only one part of the full page-load budget.
+- **(Done)** Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
+- **(Done)** **Spring Boot is the selected backend framework (resolved `UD-006`).
 - **(Done)** HTTP endpoints exist for at least the crafting profit/discovery calculations and the sync/refresh operations sketched in `TARGET_ARCHITECTURE.md` §9.
 - **(Done)** Controllers/routes contain no business logic (thin translation only).
 - **(Done)** Transport DTOs are distinct from domain objects; GW2 API JSON shapes do not leak into HTTP responses.
@@ -235,17 +234,17 @@ Phase 3. The API layer should be a thin translation over existing application se
 
 - **(Done)** Decide and document the backend web framework.
 - **(Done)** Stand up crafting-profit and crafting-discovery HTTP endpoints.
-- **(Done)** Stand up sync/refresh trigger endpoints, with an explicit decision on the long-running-operation approach (`TARGET_ARCHITECTURE.md` §23 also marks this `TBD`).
+- **(Done)** Stand up sync/refresh trigger endpoints, using the resolved mixed synchronous/asynchronous approach in `UD-007`.
 - **(Done)** Define request/response DTOs and their mapping to/from domain objects.
 - **(Done)** Add backend API contract tests.
 
 ---
 
-## 9. Phase 5 — Frontend Migration
+## 9. Phase 5 — Browser Frontend Completion
 
 ### Objective
 
-Complete the browser frontend over the backend HTTP API and retire the legacy JavaFX user interface. Authoritative crafting-profit/discovery and other backend-owned domain results remain backend-provided. The Ecto Salvage calculator is an explicit exception: its small feature-specific calculation is frontend-owned and operates from the required metadata, Trading Post prices, and account Luck data.
+Complete and verify browser feature workflows over the backend HTTP API. JavaFX removal is sequenced for Phase 9 after browser parity and a deployable runtime. Authoritative crafting-profit/discovery and other backend-owned domain results remain backend-provided. The Ecto Salvage calculator is an explicit exception: its small feature-specific calculation is frontend-owned and operates from the required metadata, Trading Post prices, and account Luck data.
 
 ### Dependencies
 
@@ -253,27 +252,25 @@ Phase 4. The frontend needs stable backend APIs for backend-owned workflows. Sma
 
 ### Exit Criteria
 
-- Verify the full browser-navigation-to-complete-Crafting-Profit-page performance requirement against the real user database (`TARGET_ARCHITECTURE.md` §33), including backend, transport and rendering time.
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
-- **Explicit decision made** on frontend framework and language (`TARGET_ARCHITECTURE.md` §30 marks both `TBD`).
-- The frontend renders crafting profit/discovery results, the resolution tree, and special domain states (e.g. `UNVALUED_NONTRADEABLE`, `PRICE_UNAVAILABLE`) using backend-provided authoritative values (`TARGET_ARCHITECTURE.md` §13/§14).
-- The frontend triggers sync operations via the API instead of reproducing them.
-- Crafting profit/discovery and other backend-owned domain results are not independently recalculated in the browser.
-- Ecto Salvage remains frontend-owned and calculates locally from item metadata, Trading Post prices, account Luck, and user-selected inputs; no dedicated backend Ecto calculation route is required.
-- Obsolete code from the removed backend-owned Ecto flow is removed when no active consumer remains.
-- The browser frontend provides the application's user-facing screens and the obsolete JavaFX UI is removed, together with JavaFX-only presentation/support code that has no remaining browser/backend consumer.
-- Shared domain/application/backend functionality still used by the browser application is preserved during JavaFX cleanup.
+- **(Done)** Verify the full browser-navigation-to-complete-Crafting-Profit-page performance requirement against the real user database; see `STORY-PERF-002` and `TEST_STRATEGY.md` §34.
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
+- **(Done)** Vue 3 and TypeScript are selected for the browser frontend (ADR-001).
+- **(Done)** The browser renders Crafting Profit, Discovery, resolution details and domain states using backend-provided authoritative values (`TARGET_ARCHITECTURE.md` §10.2–10.3).
+- **(Done)** Normal feature workflows refresh their needed account and price data; System Status is reserved for diagnostics and explicit maintenance refreshes.
+- **(Done)** Crafting Profit, Discovery, and other backend-owned domain results are not independently recalculated in the browser.
+- **(Done)** Ecto Salvage is frontend-owned and calculates locally from item metadata, Trading Post prices, account Luck, and user-selected inputs; the former backend calculation route is absent.
+- **(Done)** The former backend-owned Ecto calculation route is absent. Unreferenced legacy browser API types/hooks are recorded in `KNOWN_PROBLEMS.md` KP-25; their cleanup is not required for feature behavior.
 
 ### High-Level Stories
 
-- Decide and document the frontend framework/language.
-- Build the crafting profit screen (table + resolution tree view).
-- Build the crafting discovery screen.
-- Build bank/materials views and the frontend-owned Ecto Salvage calculator screen.
-- Build sync-trigger UI with status/progress display, matching the long-running-operation mechanism chosen in Phase 4.
-- Add frontend tests focused on rendering/interaction/state and the explicitly frontend-owned Ecto calculation.
-- Remove obsolete Ecto backend/client artifacts left by the superseded backend-calculation design.
-- Remove the legacy JavaFX interface and JavaFX-only orphaned code after browser screen coverage is complete.
+- (Done) Vue 3 and TypeScript are selected; see ADR-001.
+- (Done) Crafting Profit and backend-authoritative resolution details are available in the browser.
+- (Done) Crafting Discovery is available in the browser.
+- (Done) Bank, Materials, and frontend-owned Ectoplasm Salvage workflows are available in the browser.
+- (Done) The shared refresh workflow and System Status page are implemented; remaining Phase 5 stories are listed in `agent/stories/BACKLOG.md`.
+- (Done and continuing) Frontend component and browser smoke coverage is tracked in the canonical stories and `TEST_STRATEGY.md`.
+- (Done) The obsolete backend-owned Ectoplasm calculation route was removed; the browser calculation is canonical.
+- Finish browser coverage and acceptance; JavaFX removal is a later Phase 9 deliverable.
 
 ---
 
@@ -289,7 +286,7 @@ Phase 5. The browser/backend contract and web frontend should exist before intro
 
 ### Exit Criteria
 
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
 - Replace the single configured GW2-account-per-instance assumption with an explicit multi-user/account model.
 - Use one shared PostgreSQL database; do not create one database per user. Global GW2 reference/economy data is shared, while account-specific data is scoped to a stable GW2 account identity.
 - Resolve a presented GW2 API key through the GW2 API to the stable account identity and use that identity to find/reuse the account's existing persisted data. Replacing/recreating a GW2 API key must not create a duplicate account dataset.
@@ -297,7 +294,7 @@ Phase 5. The browser/backend contract and web frontend should exist before intro
 - Account-specific persistence (including characters, inventories/material storage, unlock/discovery state and other synchronized account data) cannot be read, modified, synchronized or used in calculations under another account's scope. Add persistence/API/integration tests proving this isolation.
 - Explicitly decide whether possession/validation of the GW2 API key and resolved stable GW2 account identity is sufficient for application identity, or whether separate application authentication is required. Do not add username/password infrastructure by default without that decision.
 - Classify synchronization/data ownership as either global or account-specific. Shared/global refreshes must not be independently triggered by every browser user when that would duplicate expensive work or external API traffic.
-- Trading Post prices are refreshed centrally on a backend-controlled schedule rather than by a per-user frontend refresh button. Initial target cadence: every 5 minutes, subject to verification against GW2 API behavior/rate limits and actual application needs. Concurrent users must consume the same refreshed price dataset rather than initiating duplicate price refreshes.
+- Profit and Discovery use one globally shared Trading Post cache. Feature calculations refresh only their required missing or stale IDs on demand; fresh quotes are reused for ten minutes. No full-catalog timer runs. Multi-user requests must continue to share this cache.
 - Apply the same multi-user concurrency review to other global refresh/synchronization operations: coalesce, schedule, cache or otherwise centralize work where many users could otherwise trigger the same global operation at once. Account-specific refreshes remain scoped to the requesting account.
 - Track account activity (for example `last_seen_at` and/or `last_successful_sync_at`) so inactive account-specific data can be identified. Define a retention/cleanup policy for stale account data, but only introduce automatic deletion/cleaner execution when measured storage/database impact makes cleanup worthwhile. The concrete inactivity period remains an explicit decision at that point; cleanup must never delete shared global data.
 - Define a migration path for the existing single-user database/account data into the new account-scoped model without discarding valid existing data.
@@ -316,11 +313,11 @@ Phase 5. The browser/backend contract and web frontend should exist before intro
 
 ---
 
-## 11. Phase 7 — PostgreSQL / Containerization
+## 11. Phase 7 — Containerized Runtime and Database Migration
 
 ### Objective
 
-Move from a manually-run local PostgreSQL instance and a manually-run desktop JVM to the target three-container model (frontend, backend, PostgreSQL) with reproducible schema management, per `TARGET_ARCHITECTURE.md` §3–4 and §16–18.
+Move from manually-run local services to the target three-container model (frontend, backend, PostgreSQL) with reproducible schema management, per `TARGET_ARCHITECTURE.md` §3, §7, and §12.
 
 ### Dependencies
 
@@ -328,12 +325,12 @@ Phase 6. Containerization should package the intended multi-user/account-isolate
 
 ### Exit Criteria
 
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
-- **Explicit decision made** on the database migration tool (`TARGET_ARCHITECTURE.md` §30 marks this `TBD`).
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
+- **Explicit decision made** on the database migration tool (`TARGET_ARCHITECTURE.md` §16 lists it as to be decided).
 - The manually-executed `src/PostgreSQL Query to create DB` script is replaced by versioned, repeatable migrations (`TARGET_ARCHITECTURE.md` §16).
 - Backend, frontend, and PostgreSQL each run in their own container.
-- `docker compose up` starts all three (`TARGET_ARCHITECTURE.md` §17).
-- PostgreSQL is not required to be exposed outside the internal Docker network (`TARGET_ARCHITECTURE.md` §18).
+- `docker compose up` starts all three (`TARGET_ARCHITECTURE.md` §12).
+- PostgreSQL is not required to be exposed outside the internal Docker network (`TARGET_ARCHITECTURE.md` §12).
 - A fresh environment can create the schema and run the application end-to-end without manually pasting SQL into `psql`.
 
 ### High-Level Stories
@@ -351,7 +348,7 @@ Phase 6. Containerization should package the intended multi-user/account-isolate
 
 ### Objective
 
-Make the containerized system deployable outside the developer's own machine, per `TARGET_ARCHITECTURE.md` §15 and §19–21.
+Make the containerized system deployable outside the developer's own machine, per `TARGET_ARCHITECTURE.md` §11–12 and §16.
 
 ### Dependencies
 
@@ -359,7 +356,7 @@ Phase 7. Deployment configuration only matters once there is something container
 
 ### Exit Criteria
 
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
 - Server-owned configuration (database URL/user/password and any future deployment settings) is supplied via environment variables or equivalent container/runtime configuration. Per-user GW2 API keys are not deployment environment variables in the multi-user model; they remain user/browser-held and are supplied transiently to the backend as defined in Phase 6.
 - **Explicit decisions made, only when actually needed** on reverse proxy and hosting provider. Authentication/account identity follows the Phase 6 decision rather than being deferred to deployment.
 - The deployed application supports the Phase 6 shared multi-user model: one application instance can serve multiple isolated GW2 accounts using shared global data and one PostgreSQL database.
@@ -368,7 +365,7 @@ Phase 7. Deployment configuration only matters once there is something container
 
 - Carry server-owned `.env`-style configuration into container-level environment variables; do not move per-user GW2 API keys into deployment configuration.
 - Decide a reverse proxy approach, if the chosen hosting target needs one.
-- Decide a hosting provider only at the point of actually deploying. Oracle Cloud Free Tier / Always Free is a currently identified candidate for the initial small single-host deployment because it may fit the Docker-based architecture at zero cost; treat it as a candidate only, re-check its then-current availability/limits, and preserve provider portability.
+- Decide a hosting provider only at the point of actually deploying. Oracle Cloud and Cloudflare-related hosting are possible candidates only. Evaluate current capabilities and limits when deployment is reached; neither is selected, and provider portability remains a constraint.
 - Apply the authentication/account-identity decision already made in Phase 6; deployment must not silently replace it with provider-specific identity infrastructure.
 
 ---
@@ -377,7 +374,7 @@ Phase 7. Deployment configuration only matters once there is something container
 
 ### Objective
 
-Once the web frontend has functional parity and a deployable backend exists, retire the JavaFX desktop UI and any code it alone still uses — consistent with `TARGET_ARCHITECTURE.md` §28 (existing code is reused when sound, replaced when superseded, not thrown away speculatively).
+Once the web frontend has functional parity and a deployable backend exists, retire the JavaFX desktop UI and any code it alone still uses — consistent with `TARGET_ARCHITECTURE.md` §14 (existing code is reused when sound, replaced when superseded, not thrown away speculatively).
 
 ### Dependencies
 
@@ -385,7 +382,7 @@ Phase 5 (frontend functional parity) and Phase 8 (a deployable system users can 
 
 ### Exit Criteria
 
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §34).
+- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
 - Every JavaFX view's functionality is confirmed present in the web frontend (explicit parity checklist, not an assumption).
 - JavaFX views, controllers in the default package, and the `Gw2App` entry point are removed.
 - `Main.java` (superseded by the unified Ecto application service from Phase 3) is removed.
@@ -395,7 +392,7 @@ Phase 5 (frontend functional parity) and Phase 8 (a deployable system users can 
 
 ### High-Level Stories
 
-- Build and confirm a feature-parity checklist between JavaFX views and the web frontend (Bank, Materials, Ecto, Crafting Profit, Crafting Discovery, sync triggers).
+- Build and confirm a feature-parity checklist between JavaFX views and the web frontend (Bank, Materials, Ecto, Crafting Profit, Crafting Discovery, System Status and workflow-driven refresh).
 - Remove JavaFX views/controllers and the `Gw2App` entry point.
 - Remove `Main.java` and any other now-fully-superseded legacy code.
 - Remove JavaFX dependencies and the `javafx-maven-plugin` from `pom.xml`.
@@ -405,6 +402,6 @@ Phase 5 (frontend functional parity) and Phase 8 (a deployable system users can 
 
 ## 14. Status
 
-This roadmap reflects the repository as of the Java 25 / Maven migration and the craft-vs-buy domain fix (see `docs/KNOWN_PROBLEMS.md` and `docs/CURRENT_ARCHITECTURE.md` for the state it was derived from).
+This roadmap reflects the repository state inspected on 2026-09-30. Phase 5 is current; Phases 0–4 are complete. `agent/PROJECT_STATE.md` is the continuity pointer for planning runs.
 
 It should be revisited whenever a phase's exit criteria are fully met, or when a new domain/architecture decision materially changes what a later phase requires.

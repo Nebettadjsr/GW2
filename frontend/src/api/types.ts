@@ -238,7 +238,6 @@ export interface DiscoveryScopeRequest {
 export interface DiscoverySettingsRequest {
   useOwnMats: boolean
   allowBuying: boolean
-  maxBuyCopper: number
   listingSell: boolean
   listingBuy: boolean
 }
@@ -260,7 +259,6 @@ export interface EffectiveDiscoveryScope {
 export interface EffectiveDiscoverySettings {
   useOwnMats: boolean
   allowBuying: boolean
-  maxBuyCopper: number
   listingSell: boolean
   listingBuy: boolean
   allowDailyCrafts: boolean
@@ -270,21 +268,16 @@ export interface EffectiveDiscoverySettings {
  * Request body of `POST /api/crafting/discovery`. Unlike Profit's, the body and its scope are
  * required; omitted settings fields ask the backend for its own documented Discovery defaults.
  *
- * `inventoryCharacterName` is the separate, independent input for the character whose owned inventory
- * the calculation may consume. Omitting it reaches the service as null, which keeps its own
- * unfiltered-pool fallback; this client never substitutes a character for it.
+ * The scope's character is used for both crafting eligibility and owned-material inventory.
  */
 export interface CraftingDiscoveryRequest {
   scope: DiscoveryScopeRequest
-  inventoryCharacterName?: string
   settings?: DiscoverySettingsRequest
 }
 
 /** Response body of `POST /api/crafting/discovery`. Rows are the same shape as Profit's. */
 export interface CraftingDiscoveryResponse {
   scope: EffectiveDiscoveryScope
-  /** The character whose owned inventory was used; null when the unfiltered pool was. */
-  inventoryCharacterName: string | null
   settings: EffectiveDiscoverySettings
   rowCount: number
   rows: CraftingRow[]
@@ -293,7 +286,6 @@ export interface CraftingDiscoveryResponse {
 /** The effective inputs a Discovery resolution echoes back, in the Discovery table's own shape. */
 export interface DiscoveryResolutionCalculation {
   scope: EffectiveDiscoveryScope
-  inventoryCharacterName: string | null
   settings: EffectiveDiscoverySettings
 }
 
@@ -301,7 +293,7 @@ export interface DiscoveryResolutionCalculation {
  * Response body of `POST /api/crafting/discovery/resolution` (`TARGET_ARCHITECTURE.md` 13.3).
  *
  * The same envelope as the Profit route's, differing only in the echoed `calculation` — Discovery's
- * own, including its nullable inventory character.
+ * own one-character scope.
  */
 export interface CraftingDiscoveryResolutionResponse extends ResolutionDetailView {
   calculation: DiscoveryResolutionCalculation
@@ -311,8 +303,7 @@ export interface CraftingDiscoveryResolutionResponse extends ResolutionDetailVie
  * Request body of `POST /api/crafting/discovery/resolution` (`TARGET_ARCHITECTURE.md` 13.1).
  *
  * `calculation` is the Discovery table request contract, so the browser sends back the effective
- * inputs that table response echoed — the nullable inventory character included — rather than relying
- * on defaults a second time.
+ * inputs that table response echoed rather than relying on defaults a second time.
  */
 export interface CraftingDiscoveryResolutionRequest {
   recipeId: number
