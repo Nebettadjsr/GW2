@@ -630,6 +630,8 @@ export class FakeCraftingApi implements CraftingApi {
   readonly resolutionRequests: CraftingProfitResolutionRequest[] = []
   readonly discoveryRequests: CraftingDiscoveryRequest[] = []
   readonly discoveryResolutionRequests: CraftingDiscoveryResolutionRequest[] = []
+  readonly ingredientSearchRequests: string[] = []
+  ingredientSearchHandler: (query: string) => Promise<number[]> = () => Promise.resolve([])
   selectorHandler: () => Promise<SelectorOptions> = () => Promise.resolve(selectorOptions)
   profitHandler: (request: CraftingProfitRequest, callIndex: number) => Promise<CraftingProfitResponse> = (
     request
@@ -644,6 +646,11 @@ export class FakeCraftingApi implements CraftingApi {
 
   loadSelectorOptions(): Promise<SelectorOptions> {
     return this.selectorHandler()
+  }
+
+  searchIngredientRecipes(query: string): Promise<number[]> {
+    this.ingredientSearchRequests.push(query)
+    return this.ingredientSearchHandler(query)
   }
 
   calculateProfit(request: CraftingProfitRequest): Promise<CraftingProfitResponse> {

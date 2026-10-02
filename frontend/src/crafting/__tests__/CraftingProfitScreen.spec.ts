@@ -593,6 +593,36 @@ describe('CraftingProfitScreen', () => {
     expect(wrapper.find('[data-test="no-matches"]').exists()).toBe(true)
   })
 
+  it('matchesDirectIngredientNamesAndKeepsTheCalculatedRowsUnique', async () => {
+    const api = new FakeCraftingApi()
+    const rows = [
+      { ...profitableRow, ingredientNames: ['Fresh Cabbage', 'Onion'] },
+      lessProfitableRow,
+      { ...lossRow, outputName: 'Cabbage Tart' }
+    ]
+    api.profitHandler = (request) => Promise.resolve(profitResponse(rows, request.scope?.kind ?? 'ALL'))
+    const wrapper = await openScreenListingEveryRow(api)
+
+    await wrapper.find('[data-test="search"]').setValue('cAbBaGe')
+    expect(recipeNames(wrapper)).toEqual(['Iron Ingot', 'Cabbage Tart'])
+    expect(api.profitRequests).toHaveLength(1)
+  })
+
+  it('showsIndirectIngredientMatchesFromTheCachedSearchWithoutRecalculating', async () => {
+    const api = new FakeCraftingApi()
+    api.ingredientSearchHandler = () => Promise.resolve([profitableRow.recipeId, 999999])
+    const wrapper = await openScreenListingEveryRow(api)
+
+    await wrapper.find('[data-test="search"]').setValue('cab')
+    await wrapper.find('[data-test="search"]').setValue('cabb')
+    await wrapper.find('[data-test="search"]').setValue('cabbage')
+    await new Promise((resolve) => setTimeout(resolve, 300))
+
+    expect(recipeNames(wrapper)).toEqual([profitableRow.outputName])
+    expect(api.ingredientSearchRequests).toEqual(['cabbage'])
+    expect(api.profitRequests).toHaveLength(1)
+  })
+
   it('opensTheThreeDisplayFiltersEnabledWithA250Maximum', async () => {
     const api = new FakeCraftingApi()
     api.profitHandler = () =>

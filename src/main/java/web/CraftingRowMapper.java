@@ -62,6 +62,7 @@ final class CraftingRowMapper {
                     recipe.outputCount, recipe.disciplinesText, recipe.minRating,
                     false, null, null, null, null, null, null, null, null, null,
                     toQuote(tp.get(recipe.outputItemId)), List.of(), List.of(),
+                    ingredientNames(recipe, items),
                     iconUrl(recipe.outputItemId, items));
         }
 
@@ -85,6 +86,7 @@ final class CraftingRowMapper {
                 toQuote(tp.get(recipe.outputItemId)),
                 toMissing(result.missingToBuy, result.materialPurchaseCosts, items, tp),
                 toMissing(result.missingToBuyOne, Map.of(), items, tp),
+                ingredientNames(recipe, items),
                 iconUrl(recipe.outputItemId, items));
     }
 
@@ -116,6 +118,15 @@ final class CraftingRowMapper {
     private static String itemName(int itemId, Map<Integer, ItemRepository.ItemInfo> items) {
         ItemRepository.ItemInfo info = items.get(itemId);
         return info == null ? null : info.name;
+    }
+
+    /** Flat direct-ingredient display/search metadata; no recursive tree or additional lookup. */
+    private static List<String> ingredientNames(Recipe recipe, Map<Integer, ItemRepository.ItemInfo> items) {
+        return recipe.ingredients.stream()
+                .map(ingredient -> itemName(ingredient.itemId, items))
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
     }
 
     /**

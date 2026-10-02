@@ -429,6 +429,35 @@ describe('CraftingDiscoveryScreen', () => {
     expect(api.discoveryRequests).toHaveLength(1)
   })
 
+  it('matchesDirectIngredientNamesWithoutRepeatingRowsOrRecalculating', async () => {
+    const api = new FakeCraftingApi()
+    withRows(api, [
+      { ...profitableRow, ingredientNames: ['Fresh Cabbage', 'Onion'] },
+      lessProfitableRow,
+      { ...lossRow, outputName: 'Cabbage Tart', ingredientNames: ['Cabbage'] }
+    ])
+    const wrapper = await openScreen(api)
+
+    await wrapper.find('[data-test="discovery-search"]').setValue('cAbBaGe')
+
+    expect(recipeNames(wrapper)).toEqual(['Cabbage Tart', profitableRow.outputName])
+    expect(api.discoveryRequests).toHaveLength(1)
+  })
+
+  it('showsIndirectIngredientMatchesFromTheCachedSearchWithoutRecalculating', async () => {
+    const api = new FakeCraftingApi()
+    api.ingredientSearchHandler = () => Promise.resolve([profitableRow.recipeId])
+    withRows(api, [profitableRow, lessProfitableRow])
+    const wrapper = await openScreen(api)
+
+    await wrapper.find('[data-test="discovery-search"]').setValue('cabbage')
+    await new Promise((resolve) => setTimeout(resolve, 300))
+
+    expect(recipeNames(wrapper)).toEqual([profitableRow.outputName])
+    expect(api.ingredientSearchRequests).toEqual(['cabbage'])
+    expect(api.discoveryRequests).toHaveLength(1)
+  })
+
   // ------------------------------------------------------- selection (criterion 5)
 
   it('selectsByRecipeFromAWholeRowAndFromAKeyboardOperableControl', async () => {

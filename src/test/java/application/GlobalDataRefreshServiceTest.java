@@ -33,6 +33,7 @@ class GlobalDataRefreshServiceTest {
         service.refreshAll();
 
         assertEquals(List.of("tradeableItems", "globalRecipes"), gateway.calls);
+        assertEquals(List.of("invalidate", "rebuild"), graphCache.graphCalls);
         assertEquals(1, graphCache.rebuildCount);
     }
 
@@ -47,6 +48,7 @@ class GlobalDataRefreshServiceTest {
 
         assertEquals(List.of("tradeableItems", "globalRecipes"), gateway.calls);
         assertEquals(0, graphCache.rebuildCount);
+        assertEquals(List.of(), graphCache.graphCalls);
         assertEquals(false, result.graphRebuilt());
     }
 
@@ -114,6 +116,7 @@ class GlobalDataRefreshServiceTest {
 
     private static class RecordingCache extends CraftingGraphCache {
         int rebuildCount = 0;
+        final List<String> graphCalls = new ArrayList<>();
         IOException failure;
 
         RecordingCache() {
@@ -124,7 +127,13 @@ class GlobalDataRefreshServiceTest {
         public craft.CraftingGraph rebuild() throws IOException {
             if (failure != null) throw failure;
             rebuildCount++;
+            graphCalls.add("rebuild");
             return new craft.CraftingGraph(List.of());
+        }
+
+        @Override public synchronized void invalidate() {
+            graphCalls.add("invalidate");
+            super.invalidate();
         }
     }
 }

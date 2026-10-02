@@ -11,6 +11,9 @@ import { describeRowState } from './rowState'
  * not an eligibility rule (`DOMAIN_SPEC.md` 37) — Crafting Profit's own "hide profit ≤ 0" default is
  * that feature's, and importing it here would silently delete candidates the backend offered.
  *
+ * Direct ingredient names are supplied on each row; recursive match IDs arrive separately from the
+ * debounced cached-graph search and do not affect Discovery eligibility/acquisition calculations.
+ *
  * The sortable keys are the columns the comparison list offers. Level sorting is one of them in both
  * directions and opens on highest first, because a recipe near the current rating is the one likely to
  * be useful for progression (`DOMAIN_SPEC.md` 38) — that is an ordering of one supplied value, not a
@@ -45,14 +48,19 @@ export interface DiscoveryTableView {
   select(recipeId: number): void
 }
 
-export function useDiscoveryTableView(rows: Ref<readonly CraftingRow[]>): DiscoveryTableView {
+export function useDiscoveryTableView(
+  rows: Ref<readonly CraftingRow[]>,
+  recursiveMatchIds: Ref<ReadonlySet<number>> = ref(new Set())
+): DiscoveryTableView {
   const searchText = ref('')
   const sortKey = ref<DiscoverySortKey>('minRating')
   const sortDirection = ref<SortDirection>('desc')
   const selectedRecipeId = ref<number | null>(null)
 
   const matchingRows = computed<CraftingRow[]>(() => {
-    const matching = rows.value.filter((row) => matchesSearch(row, searchText.value))
+    const matching = rows.value.filter((row) =>
+      matchesSearch(row, searchText.value) || recursiveMatchIds.value.has(row.recipeId)
+    )
     return matching.sort((left, right) => compareRows(left, right, sortKey.value, sortDirection.value))
   })
 
@@ -110,6 +118,7 @@ function matchesSearch(row: CraftingRow, searchText: string): boolean {
 
   return [
     row.outputName ?? '',
+    ...(row.ingredientNames ?? []),
     row.disciplines,
     row.blockedReason ?? '',
     // The words the selected-result detail states for this row, so a search for what a state is

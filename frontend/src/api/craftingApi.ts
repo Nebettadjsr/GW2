@@ -4,6 +4,7 @@ import type {
   CraftingDiscoveryResolutionRequest,
   CraftingDiscoveryResolutionResponse,
   CraftingDiscoveryResponse,
+  CraftingIngredientSearchResponse,
   CraftingProfitRequest,
   CraftingProfitResolutionRequest,
   CraftingProfitResolutionResponse,
@@ -31,6 +32,7 @@ export interface CraftingApi {
     request: CraftingProfitResolutionRequest
   ): Promise<CraftingProfitResolutionResponse>
   calculateDiscovery(request: CraftingDiscoveryRequest): Promise<CraftingDiscoveryResponse>
+  searchIngredientRecipes(query: string): Promise<number[]>
   resolveDiscoveryDetail(
     request: CraftingDiscoveryResolutionRequest
   ): Promise<CraftingDiscoveryResolutionResponse>
@@ -64,6 +66,14 @@ export const craftingApi: CraftingApi = {
    */
   calculateDiscovery(request: CraftingDiscoveryRequest): Promise<CraftingDiscoveryResponse> {
     return postJson<CraftingDiscoveryResponse>('/crafting/discovery', request)
+  },
+
+  /** Cached static parent-recipe lookup; this route performs no crafting calculation. */
+  async searchIngredientRecipes(query: string): Promise<number[]> {
+    const response = await getJson<CraftingIngredientSearchResponse>(
+      `/crafting/ingredient-search?query=${encodeURIComponent(query)}`
+    )
+    return response.recipeIds
   },
 
   /** Detail for one selected Discovery recipe; synchronous and complete, exactly like Profit's. */

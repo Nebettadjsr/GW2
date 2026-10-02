@@ -61,6 +61,12 @@ public class CraftingDiscoveryService {
         this(new RecipeRepository(), new InventoryRepository(), new TpPriceRepository(), new ItemRepository());
     }
 
+    /** Request-local calculation state backed by the application's shared immutable graph snapshot. */
+    public CraftingDiscoveryService(CraftingGraphCache graphCache) {
+        this(new RecipeRepository(), new InventoryRepository(), new TpPriceRepository(),
+                new ItemRepository(), graphCache, new CraftingPlanner());
+    }
+
     public CraftingDiscoveryService(RecipeRepository recipeRepo,
                                     InventoryRepository invRepo,
                                     TpPriceRepository tpRepo,

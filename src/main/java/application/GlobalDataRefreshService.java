@@ -31,6 +31,11 @@ public class GlobalDataRefreshService {
              new CraftingGraphRebuildService(new CraftingGraphCache(new RecipeRepository())));
     }
 
+    /** Refresh path sharing the same graph cache used by the web crafting calculation factories. */
+    public GlobalDataRefreshService(CraftingGraphCache graphCache) {
+        this(new GlobalDataRefreshGateway(), new CraftingGraphRebuildService(graphCache));
+    }
+
     /** Seam used by application-layer tests to substitute fake collaborators (TARGET_ARCHITECTURE.md §25). */
     public GlobalDataRefreshService(GlobalDataRefreshGateway gateway, CraftingGraphRebuildService graphRebuildService) {
         this.gateway = gateway;
@@ -45,6 +50,7 @@ public class GlobalDataRefreshService {
             if (recipesChanged) {
                 lastRecipeSyncAt = Instant.now();
                 lastChangedAt = lastRecipeSyncAt;
+                graphRebuildService.invalidate();
                 graphRebuildService.rebuild();
                 lastGraphRebuildAt = Instant.now();
             }

@@ -81,6 +81,15 @@ batch because it has no selected Profit result quantity. See
 For a Profit row with zero counted crafts, the tree may show its first blocked
 attempt and must identify that basis rather than implying a counted output.
 
+Crafting Profit and Discovery search match output names, direct ingredient names,
+and possible indirect ingredient dependencies through any number of static recipe
+relationships. Search only filters recipes already returned in the current
+calculation result; it does not request additional calculations. A possible
+dependency match does not mean the resolver actually crafted or consumed that
+intermediate: search ignores inventory, character eligibility, buying settings,
+resolver path selection and profitability. This search behavior does not alter
+either feature's calculation rules.
+
 Crafting Resolution uses compact summaries and progressive disclosure. Each
 requirement shows item identity, required quantity (for example, "20 needed"),
 backend-provided sourcing labels such as "From stock", "Crafted" and "Bought",

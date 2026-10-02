@@ -22,4 +22,8 @@ public class CraftingGraphRebuildService {
     public void rebuild() throws Exception {
         cache.rebuild();
     }
+
+    public void invalidate() {
+        cache.invalidate();
+    }
 }

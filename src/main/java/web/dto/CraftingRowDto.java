@@ -69,5 +69,6 @@ public record CraftingRowDto(int recipeId,
                              TradingPostQuoteDto outputPrice,
                              List<MissingItemDto> missingToBuy,
                              List<MissingItemDto> missingToBuyOne,
+                             List<String> ingredientNames,
                              String iconUrl) {
 }

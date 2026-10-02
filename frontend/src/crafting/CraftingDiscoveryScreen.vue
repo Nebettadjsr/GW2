@@ -15,12 +15,16 @@ import {
   type DiscoveryCalculationInputs
 } from './useDiscoveryResolution'
 import { useDiscoveryTableView, type DiscoverySortKey } from './useDiscoveryTableView'
+import { useIngredientSearch } from './useIngredientSearch'
+import { ref } from 'vue'
 
 /** Crafting Discovery evaluates one attempt per missing recipe for the selected character. Eligibility and all calculation inputs remain backend-owned; search and sort are view state. */
 const props = withDefaults(defineProps<{ api?: CraftingApi }>(), { api: () => craftingApi })
 
 const discovery = useCraftingDiscovery(props.api)
-const table = useDiscoveryTableView(discovery.rows)
+const ingredientRecipeIds = ref<ReadonlySet<number>>(new Set())
+const table = useDiscoveryTableView(discovery.rows, ingredientRecipeIds)
+useIngredientSearch(props.api, table.searchText, ingredientRecipeIds)
 const resolution = useDiscoveryResolution(props.api)
 
 onMounted(() => {

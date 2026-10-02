@@ -63,6 +63,8 @@ export interface CraftingRow {
   outputPrice: TradingPostQuote | null
   missingToBuy: MissingItem[] | null
   missingToBuyOne: MissingItem[] | null
+  /** Names of this recipe's direct ingredients; flat search metadata, not a resolution tree. */
+  ingredientNames?: string[]
   /**
    * This application's image URL for the recipe's *output item* (a recipe has no icon of its own), or
    * null when the backend has no accepted source for it. Display metadata only: a missing icon says
@@ -281,6 +283,11 @@ export interface CraftingDiscoveryResponse {
   settings: EffectiveDiscoverySettings
   rowCount: number
   rows: CraftingRow[]
+}
+
+/** Compact response from the cached static ingredient-dependency search. */
+export interface CraftingIngredientSearchResponse {
+  recipeIds: number[]
 }
 
 /** The effective inputs a Discovery resolution echoes back, in the Discovery table's own shape. */

@@ -9,6 +9,9 @@ import type { CraftingRow } from '@/api/types'
  * supplied, never by a product of a count and a per-craft figure. A row the backend could not
  * calculate sorts last in either direction rather than being treated as zero (DOMAIN_SPEC 21).
  *
+ * Direct ingredient names are supplied on each row; recursive match IDs arrive separately from the
+ * debounced cached-graph search and are intersected with these calculated rows.
+ *
  * Nothing here reaches the backend. Changing any of these values cannot issue a calculation, cannot
  * change what was asked for, and cannot change DOMAIN_SPEC 28's per-recipe simulation cap — the
  * whole result set stays loaded, and a hidden row is hidden, never dropped or reinterpreted
@@ -75,7 +78,10 @@ export interface ProfitTableView {
   setMaxDisplayed(value: number): boolean
 }
 
-export function useProfitTableView(rows: Ref<readonly CraftingRow[]>): ProfitTableView {
+export function useProfitTableView(
+  rows: Ref<readonly CraftingRow[]>,
+  recursiveMatchIds: Ref<ReadonlySet<number>> = ref(new Set())
+): ProfitTableView {
   const searchText = ref('')
   const sortKey = ref<SortKey>('totalProfitCopper')
   const sortDirection = ref<SortDirection>('desc')
@@ -93,7 +99,7 @@ export function useProfitTableView(rows: Ref<readonly CraftingRow[]>): ProfitTab
    */
   const matchingRows = computed<CraftingRow[]>(() => {
     const matching = rows.value.filter(
-      (row) => matchesSearch(row, searchText.value) && matchesDisplayFilters(row)
+      (row) => (matchesSearch(row, searchText.value) || recursiveMatchIds.value.has(row.recipeId)) && matchesDisplayFilters(row)
     )
     return matching.sort((left, right) => compareRows(left, right, sortKey.value, sortDirection.value))
   })
@@ -195,6 +201,7 @@ function matchesSearch(row: CraftingRow, searchText: string): boolean {
 
   return [
     row.outputName ?? '',
+    ...(row.ingredientNames ?? []),
     row.disciplines,
     row.blockedReason ?? '',
     String(row.recipeId),

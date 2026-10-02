@@ -42,12 +42,30 @@ class CraftingGraphRebuildServiceTest {
         assertSame(cache.failure, thrown);
     }
 
+    @Test
+    void invalidationDelegatesToTheSharedCache() throws Exception {
+        var cache = new RecordingCache();
+        var service = new CraftingGraphRebuildService(cache);
+
+        service.invalidate();
+        service.rebuild();
+
+        assertEquals(1, cache.invalidateCount);
+        assertEquals(1, cache.rebuildCount);
+    }
+
     private static class RecordingCache extends CraftingGraphCache {
         int rebuildCount = 0;
+        int invalidateCount = 0;
         IOException failure;
 
         RecordingCache() {
             super(new RecipeRepository());
+        }
+
+        @Override public synchronized void invalidate() {
+            invalidateCount++;
+            super.invalidate();
         }
 
         @Override

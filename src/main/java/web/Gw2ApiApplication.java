@@ -22,7 +22,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import repo.AppConfig;
 import repo.AccountLuckSchema;
+import repo.CraftingGraphCache;
 import repo.ItemIconMetadataRepository;
+import repo.ItemRepository;
+import repo.RecipeRepository;
 import web.task.BackgroundTaskService;
 
 import java.nio.file.Path;
@@ -55,8 +58,8 @@ public class Gw2ApiApplication {
      * concurrent calculations from observing each other.
      */
     @Bean
-    public Supplier<CraftingProfitService> craftingProfitServiceFactory() {
-        return CraftingProfitService::new;
+    public Supplier<CraftingProfitService> craftingProfitServiceFactory(CraftingGraphCache graphCache) {
+        return () -> new CraftingProfitService(graphCache);
     }
 
     /**
@@ -66,8 +69,14 @@ public class Gw2ApiApplication {
      * earlier one's data.
      */
     @Bean
-    public Supplier<CraftingDiscoveryService> craftingDiscoveryServiceFactory() {
-        return CraftingDiscoveryService::new;
+    public Supplier<CraftingDiscoveryService> craftingDiscoveryServiceFactory(CraftingGraphCache graphCache) {
+        return () -> new CraftingDiscoveryService(graphCache);
+    }
+
+    /** Shared immutable catalog snapshot for calculations, ingredient search and refresh invalidation. */
+    @Bean
+    public CraftingGraphCache craftingGraphCache() {
+        return new CraftingGraphCache(new RecipeRepository(), new ItemRepository());
     }
 
     /**
@@ -105,8 +114,8 @@ public class Gw2ApiApplication {
      * costs no database connection at startup.
      */
     @Bean
-    public GlobalDataRefreshService globalDataRefreshService() {
-        return new GlobalDataRefreshService();
+    public GlobalDataRefreshService globalDataRefreshService(CraftingGraphCache graphCache) {
+        return new GlobalDataRefreshService(graphCache);
     }
 
     /**

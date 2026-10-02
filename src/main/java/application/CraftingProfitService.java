@@ -61,6 +61,12 @@ public class CraftingProfitService {
                 new ItemRepository(), new CharacterRepository());
     }
 
+    /** Request-local calculation state backed by the application's shared immutable graph snapshot. */
+    public CraftingProfitService(CraftingGraphCache graphCache) {
+        this(new RecipeRepository(), new InventoryRepository(), new TpPriceRepository(),
+                new ItemRepository(), new CharacterRepository(), graphCache, new CraftingPlanner());
+    }
+
     public CraftingProfitService(RecipeRepository recipeRepo,
                                  InventoryRepository invRepo,
                                  TpPriceRepository tpRepo,

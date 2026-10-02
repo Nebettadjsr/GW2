@@ -12,6 +12,7 @@ import SelectedResultDetail from './SelectedResultDetail.vue'
 import { useCraftingProfit } from './useCraftingProfit'
 import { calculationKey, useProfitResolution, type CalculationInputs } from './useProfitResolution'
 import { useProfitTableView, type SortKey } from './useProfitTableView'
+import { useIngredientSearch } from './useIngredientSearch'
 import { syncApi } from '@/api/syncApi'
 import type { SyncApi } from '@/api/syncApi'
 import type { SyncTaskAccepted, SyncTaskStatus } from '@/api/types'
@@ -22,7 +23,9 @@ const props = withDefaults(defineProps<{ api?: CraftingApi; refreshApi?: SyncApi
 })
 
 const profit = useCraftingProfit(props.api)
-const table = useProfitTableView(profit.rows)
+const ingredientRecipeIds = ref<ReadonlySet<number>>(new Set())
+const table = useProfitTableView(profit.rows, ingredientRecipeIds)
+useIngredientSearch(props.api, table.searchText, ingredientRecipeIds)
 const resolution = useProfitResolution(props.api)
 const isRefreshing = ref(false)
 const refreshPhase = ref<string | null>(null)
