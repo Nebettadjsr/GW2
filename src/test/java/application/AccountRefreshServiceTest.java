@@ -6,6 +6,7 @@ import sync.AccountRefreshGateway;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -103,6 +104,13 @@ class AccountRefreshServiceTest {
         new AccountRefreshService(gateway).refreshCraftingProfitData();
 
         assertEquals(List.of("bank", "materials", "recipes", "characters"), gateway.calls);
+    }
+
+    @Test
+    void refreshSourcesOnlyCallsRequiredSources() throws Exception {
+        var gateway = new RecordingGateway();
+        new AccountRefreshService(gateway).refreshSources(Set.of("LUCK", "MATERIALS"));
+        assertEquals(List.of("materials", "luck"), gateway.calls);
     }
 
     @Test

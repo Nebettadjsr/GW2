@@ -20,10 +20,6 @@ async function openScreen(api: FakeAccountApi): Promise<VueWrapper> {
   return wrapper
 }
 
-function slotTexts(wrapper: VueWrapper): string[] {
-  return wrapper.findAll('[data-test="bank-slot"]').map((slot) => slot.text().replace(/\s+/g, ' '))
-}
-
 describe('BankScreen', () => {
   it('readsTheBankRouteOnceWhenOpenedAndNothingElse', async () => {
     const api = new FakeAccountApi()
@@ -46,17 +42,10 @@ describe('BankScreen', () => {
   })
 
   it('rendersEverySuppliedSlotInOrderWithEmptyOnesLeftInPlace', async () => {
-    const api = new FakeAccountApi()
-
-    const wrapper = await openScreen(api)
-
-    const numbers = wrapper
-      .findAll('[data-test="bank-slot-number"]')
-      .map((element) => element.text())
-    expect(numbers).toEqual(['#0', '#1', '#2', '#3', '#4'])
-
-    const emptyPositions = wrapper
-      .findAll('[data-test="bank-slot"]')
+    const wrapper = await openScreen(new FakeAccountApi())
+    expect(wrapper.findAll('[data-test="bank-slot"]').map((slot) => slot.attributes('data-slot')))
+      .toEqual(['0', '1', '2', '3', '4'])
+    const emptyPositions = wrapper.findAll('[data-test="bank-slot"]')
       .map((slot, index) => (slot.find('[data-test="bank-empty-slot"]').exists() ? index : -1))
       .filter((index) => index >= 0)
     expect(emptyPositions).toEqual([1, 3])
@@ -75,20 +64,15 @@ describe('BankScreen', () => {
     expect(empty?.text()).not.toContain('0')
   })
 
-  it('showsTheSuppliedItemIdentityCountAndRarityOfAnOccupiedSlot', async () => {
-    const api = new FakeAccountApi()
-
-    const wrapper = await openScreen(api)
-
-    expect(slotTexts(wrapper).at(0)).toContain('#19697')
-    expect(slotTexts(wrapper).at(0)).toContain('× 42')
-    expect(slotTexts(wrapper).at(0)).toContain('Basic')
-    expect(slotTexts(wrapper).at(4)).toContain('#12134')
-    expect(slotTexts(wrapper).at(4)).toContain('× 250')
-    expect(slotTexts(wrapper).at(4)).toContain('Fine')
-    // The slot with no display metadata is still a usable entry.
-    expect(slotTexts(wrapper).at(2)).toContain('#24295')
-    expect(slotTexts(wrapper).at(2)).toContain('× 1')
+  it('showsTheSuppliedQuantityAndItemIdentityInTheSlotTooltip', async () => {
+    const wrapper = await openScreen(new FakeAccountApi())
+    const slots = wrapper.findAll('[data-test="bank-slot"]')
+    expect(slots[0]?.attributes('title')).toContain('Item #19697')
+    expect(slots[0]?.find('[data-test="item-count"]').text()).toBe('42')
+    expect(slots[4]?.attributes('title')).toContain('Item #12134')
+    expect(slots[4]?.find('[data-test="item-count"]').text()).toBe('250')
+    expect(slots[2]?.attributes('title')).toContain('Item #24295')
+    expect(slots[2]?.find('[data-test="item-count"]').exists()).toBe(false)
   })
 
   it('distinguishesAZeroSlotResponseFromABankThatContainsEmptySlots', async () => {

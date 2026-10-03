@@ -9,8 +9,10 @@ import parser.BankParser;
 import parser.MaterialParser;
 import parser.RecipeIdParser;
 import repo.Db;
+import repo.MaterialStorageSchema;
 import repo.AccountLuckRepository;
 import repo.AccountLuckSchema;
+import repo.AccountSyncStateRepository;
 import util.DbBind;
 
 import java.io.IOException;
@@ -34,7 +36,13 @@ public final class AccountSync {
         long consumedLuck = parseConsumedLuck(response);
         try (Connection con = Db.open()) {
             AccountLuckSchema.ensure(con);
-            new AccountLuckRepository().save(con, new AccountLuck(accountId, consumedLuck, Instant.now()));
+            con.setAutoCommit(false);
+            try {
+                Instant fetchedAt = Instant.now();
+                new AccountLuckRepository().save(con, new AccountLuck(accountId, consumedLuck, fetchedAt));
+                AccountSyncStateRepository.mark(con, AccountSyncStateRepository.LUCK, fetchedAt);
+                con.commit();
+            } catch (Exception e) { con.rollback(); throw e; }
         }
     }
 
@@ -77,6 +85,7 @@ public final class AccountSync {
         try (Connection con = Db.open()) {
             con.setAutoCommit(false);
             try {
+                AccountSyncStateRepository.ensure(con);
                 Timestamp runTs;
                 try (PreparedStatement psNow = con.prepareStatement("SELECT now()");
                      ResultSet rs = psNow.executeQuery()) {
@@ -85,6 +94,7 @@ public final class AccountSync {
                 }
 
                 upsertAccountBank(con, rows, runTs);
+                AccountSyncStateRepository.mark(con, AccountSyncStateRepository.BANK, runTs.toInstant());
 
                 con.commit();
             } catch (Exception ex) {
@@ -155,6 +165,7 @@ public final class AccountSync {
         }
 
         try (Connection con = Db.open()) {
+            MaterialStorageSchema.ensure(con);
             con.setAutoCommit(false);
             try {
                 Timestamp runTs;
@@ -165,6 +176,14 @@ public final class AccountSync {
                 }
 
                 upsertAccountMaterials(con, rows, runTs);
+                try (PreparedStatement marker = con.prepareStatement("""
+                        INSERT INTO account_materials_sync (id, fetched_at) VALUES (1, ?)
+                        ON CONFLICT (id) DO UPDATE SET fetched_at = EXCLUDED.fetched_at
+                        """)) {
+                    marker.setTimestamp(1, runTs);
+                    marker.executeUpdate();
+                }
+                AccountSyncStateRepository.mark(con, AccountSyncStateRepository.MATERIALS, runTs.toInstant());
 
                 con.commit();
             } catch (Exception ex) {
@@ -228,6 +247,7 @@ public final class AccountSync {
         try (Connection con = Db.open()) {
             con.setAutoCommit(false);
             try {
+                AccountSyncStateRepository.ensure(con);
                 Timestamp runTs;
                 try (PreparedStatement psNow = con.prepareStatement("SELECT now()");
                      ResultSet rs = psNow.executeQuery()) {
@@ -236,6 +256,7 @@ public final class AccountSync {
                 }
 
                 upsertAccountRecipes(con, ids, runTs);
+                AccountSyncStateRepository.mark(con, AccountSyncStateRepository.RECIPES, runTs.toInstant());
 
                 con.commit();
             } catch (Exception ex) {

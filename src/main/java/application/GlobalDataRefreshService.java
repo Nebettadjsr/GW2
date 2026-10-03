@@ -45,6 +45,8 @@ public class GlobalDataRefreshService {
     public RefreshResult refreshAll() throws Exception {
         running = true;
         try {
+            gateway.syncMaterialCategories();
+            gateway.syncMaterialItemMetadata();
             boolean tradeableItemsChanged = gateway.syncTpTradeableItems();
             boolean recipesChanged = gateway.syncAllRecipesGlobalSafe();
             if (recipesChanged) {

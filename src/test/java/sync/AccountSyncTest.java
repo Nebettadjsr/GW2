@@ -75,6 +75,7 @@ class AccountSyncTest {
                     fetched_at  TIMESTAMPTZ
                 )
                 """);
+            st.execute("CREATE TABLE account_materials_sync (id INTEGER PRIMARY KEY, fetched_at TIMESTAMPTZ NOT NULL)");
             st.execute("""
                 CREATE TABLE account_recipes (
                     recipe_id   INTEGER PRIMARY KEY,

@@ -13,12 +13,14 @@ export const API_BASE_PATH: string = import.meta.env.VITE_API_BASE_PATH ?? '/api
 export class ApiRequestError extends Error {
   readonly code: string
   readonly status: number | null
+  readonly taskStatusUrl: string | null
 
-  constructor(message: string, code: string, status: number | null) {
+  constructor(message: string, code: string, status: number | null, taskStatusUrl: string | null = null) {
     super(message)
     this.name = 'ApiRequestError'
     this.code = code
     this.status = status
+    this.taskStatusUrl = taskStatusUrl
   }
 }
 
@@ -40,6 +42,10 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function sendJson<T>(path: string, init: RequestInit): Promise<T> {
+  return sendJsonAttempt<T>(path, init, true)
+}
+
+async function sendJsonAttempt<T>(path: string, init: RequestInit, mayRecover: boolean): Promise<T> {
   let response: Response
   try {
     response = await fetch(`${API_BASE_PATH}${path}`, init)
@@ -52,7 +58,12 @@ async function sendJson<T>(path: string, init: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
-    throw await toRequestError(response)
+    const error = await toRequestError(response)
+    if (mayRecover && error.code === 'ACCOUNT_DATA_STALE' && error.taskStatusUrl) {
+      await waitForAccountRefresh(error.taskStatusUrl)
+      return sendJsonAttempt<T>(path, init, false)
+    }
+    throw error
   }
   return (await response.json()) as T
 }
@@ -66,7 +77,21 @@ async function toRequestError(response: Response): Promise<ApiRequestError> {
       response.status
     )
   }
-  return new ApiRequestError(body.message, body.error, response.status)
+  return new ApiRequestError(body.message, body.error, response.status, body.taskStatusUrl ?? null)
+}
+
+async function waitForAccountRefresh(statusPath: string): Promise<void> {
+  if (!statusPath.startsWith(`${API_BASE_PATH}/sync/tasks/`)) throw new Error('Invalid account sync status URL')
+  const deadline = Date.now() + 5 * 60_000
+  while (Date.now() < deadline) {
+    const response = await fetch(statusPath, { headers: { Accept: 'application/json' } })
+    if (!response.ok) throw await toRequestError(response)
+    const status = await response.json() as { state?: string; failure?: { message?: string } | null }
+    if (status.state === 'SUCCEEDED') return
+    if (status.state === 'FAILED') throw new ApiRequestError(status.failure?.message ?? 'Account data refresh failed.', 'ACCOUNT_SYNC_FAILED', 503)
+    await new Promise(resolve => window.setTimeout(resolve, 500))
+  }
+  throw new ApiRequestError('Account data refresh is taking longer than expected.', 'ACCOUNT_SYNC_TIMEOUT', 503)
 }
 
 async function readErrorBody(response: Response): Promise<ApiErrorBody | null> {

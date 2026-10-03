@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import repo.MaterialStorageRepository.MaterialStorageRow;
+import application.icons.ItemIconUrls;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -58,11 +59,11 @@ class MaterialStorageApiControllerTest {
     @Test
     void returnsEveryCategoryAndStackInServiceOrderWithQuantitiesAndDisplayMetadata() throws Exception {
         StubMaterialStorageService service = new StubMaterialStorageService(List.of(
-                new MaterialStorageService.MaterialCategory("Basic Crafting Materials", List.of(
-                        new MaterialStorageRow(1, 19718, 250, LOCAL_ICON_PATH, LOG_SOURCE, "Basic"),
-                        new MaterialStorageRow(1, 19723, 41, null, null, null))),
-                new MaterialStorageService.MaterialCategory("Ascended Materials", List.of(
-                        new MaterialStorageRow(4, 46731, 3, null, REJECTED_SOURCE, "Ascended")))));
+                new MaterialStorageService.MaterialCategory(1, "Basic Crafting Materials", 0, List.of(
+                        new MaterialStorageRow(1, "Category 1", 1, 0, 19718, 250, LOG_SOURCE, "Basic"),
+                        new MaterialStorageRow(1, "Category 1", 1, 0, 19723, 41, null, null))),
+                new MaterialStorageService.MaterialCategory(4, "Ascended Materials", 3, List.of(
+                        new MaterialStorageRow(4, "Category 4", 4, 0, 46731, 3, REJECTED_SOURCE, "Ascended")))));
 
         mockMvcFor(service).perform(get("/api/account/materials"))
                 .andExpect(status().isOk())
@@ -71,7 +72,7 @@ class MaterialStorageApiControllerTest {
                 .andExpect(jsonPath("$.categories.length()").value(2))
                 .andExpect(jsonPath("$.categories[0].name").value("Basic Crafting Materials"))
                 .andExpect(jsonPath("$.categories[0].materials.length()").value(2))
-                .andExpect(jsonPath("$.categories[0].materials[0].category").value(1))
+                .andExpect(jsonPath("$.categories[0].materials[0].position").value(0))
                 .andExpect(jsonPath("$.categories[0].materials[0].itemId").value(19718))
                 .andExpect(jsonPath("$.categories[0].materials[0].count").value(250))
                 .andExpect(jsonPath("$.categories[0].materials[0].iconUrl").value(LOG_ICON_URL))
@@ -82,7 +83,7 @@ class MaterialStorageApiControllerTest {
                 .andExpect(jsonPath("$.categories[0].materials[1].iconUrl").doesNotExist())
                 .andExpect(jsonPath("$.categories[0].materials[1].rarity").doesNotExist())
                 .andExpect(jsonPath("$.categories[1].name").value("Ascended Materials"))
-                .andExpect(jsonPath("$.categories[1].materials[0].category").value(4))
+                .andExpect(jsonPath("$.categories[1].materials[0].position").value(0))
                 .andExpect(jsonPath("$.categories[1].materials[0].itemId").value(46731))
                 .andExpect(jsonPath("$.categories[1].materials[0].count").value(3))
                 // a retained source the canonical policy rejects is a null URL, not a guess
@@ -96,23 +97,23 @@ class MaterialStorageApiControllerTest {
         // The service reports unknown categories last, under its "Category <id>" fallback label;
         // the controller must not re-sort, rename or drop that group.
         StubMaterialStorageService service = new StubMaterialStorageService(List.of(
-                new MaterialStorageService.MaterialCategory("Cooking Materials", List.of(
-                        new MaterialStorageRow(5, 12134, 12, null, null, null))),
-                new MaterialStorageService.MaterialCategory("Category 77", List.of(
-                        new MaterialStorageRow(77, 99999, 5, null, null, null)))));
+                new MaterialStorageService.MaterialCategory(5, "Cooking Materials", 4, List.of(
+                        new MaterialStorageRow(5, "Category 5", 5, 0, 12134, 12, null, null))),
+                new MaterialStorageService.MaterialCategory(77, "Category 77", 8, List.of(
+                        new MaterialStorageRow(77, "Category 77", 77, 0, 99999, 5, null, null)))));
 
         mockMvcFor(service).perform(get("/api/account/materials"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.categories[0].name").value("Cooking Materials"))
                 .andExpect(jsonPath("$.categories[1].name").value("Category 77"))
-                .andExpect(jsonPath("$.categories[1].materials[0].category").value(77));
+                .andExpect(jsonPath("$.categories[1].materials[0].position").value(0));
     }
 
     @Test
     void aStackCarriesOnlyTheDocumentedTransportFields() throws Exception {
         StubMaterialStorageService service = new StubMaterialStorageService(List.of(
-                new MaterialStorageService.MaterialCategory("Basic Crafting Materials", List.of(
-                        new MaterialStorageRow(1, 19718, 250, LOCAL_ICON_PATH, LOG_SOURCE, "Basic")))));
+                new MaterialStorageService.MaterialCategory(1, "Basic Crafting Materials", 0, List.of(
+                        new MaterialStorageRow(1, "Category 1", 1, 0, 19718, 250, LOG_SOURCE, "Basic")))));
 
         String body = mockMvcFor(service).perform(get("/api/account/materials"))
                 .andExpect(status().isOk())
@@ -121,12 +122,12 @@ class MaterialStorageApiControllerTest {
         JsonNode category = JSON.readTree(body).get("categories").get(0);
         List<String> categoryFields = new ArrayList<>();
         category.fieldNames().forEachRemaining(categoryFields::add);
-        assertEquals(List.of("name", "materials"), categoryFields,
+        assertEquals(List.of("category", "name", "order", "materials"), categoryFields,
                 "the category must be a transport record, not the application service's own type");
 
         List<String> stackFields = new ArrayList<>();
         category.get("materials").get(0).fieldNames().forEachRemaining(stackFields::add);
-        assertEquals(List.of("category", "itemId", "count", "iconUrl", "rarity"), stackFields,
+        assertEquals(List.of("position", "itemId", "count", "iconUrl", "rarity"), stackFields,
                 "the stack must be a transport record, not a serialized repository row");
         assertFalse(body.contains(LOCAL_ICON_PATH.replace("\\", "\\\\")),
                 "the backend filesystem path must not reach the browser: " + body);
@@ -135,10 +136,10 @@ class MaterialStorageApiControllerTest {
     }
 
     @Test
-    void aStackWithNoItemIdReportsNullRatherThanASubstitute() throws Exception {
+    void officialPositionKeepsItsItemIdAndApplicationIconUrl() throws Exception {
         StubMaterialStorageService service = new StubMaterialStorageService(List.of(
-                new MaterialStorageService.MaterialCategory("Other", List.of(
-                        new MaterialStorageRow(10, null, 4, null, LOG_SOURCE, "Basic")))));
+                new MaterialStorageService.MaterialCategory(10, "Other", 9, List.of(
+                        new MaterialStorageRow(10, "Other", 9, 0, 999, 4, LOG_SOURCE, "Basic")))));
 
         String body = mockMvcFor(service).perform(get("/api/account/materials"))
                 .andExpect(status().isOk())
@@ -146,9 +147,8 @@ class MaterialStorageApiControllerTest {
                 .andReturn().getResponse().getContentAsString();
 
         JsonNode stack = JSON.readTree(body).get("categories").get(0).get("materials").get(0);
-        assertTrue(stack.get("itemId").isNull(), "a missing item id must stay null, not become 0");
-        assertTrue(stack.get("iconUrl").isNull(),
-                "an entry with no item has no item image, even when a source string is present");
+        assertEquals(999, stack.get("itemId").asInt());
+        assertEquals(ItemIconUrls.iconUrlFor(999, LOG_SOURCE), stack.get("iconUrl").asText());
     }
 
     @Test

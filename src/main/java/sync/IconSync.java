@@ -387,6 +387,7 @@ public final class IconSync {
             SELECT item_id FROM items WHERE icon_url IS NULL
             UNION SELECT item_id FROM account_bank WHERE item_id IS NOT NULL
             UNION SELECT item_id FROM account_materials WHERE item_id IS NOT NULL
+            UNION SELECT item_id FROM material_category_items
             UNION SELECT item_id FROM character_items WHERE item_id IS NOT NULL
             UNION SELECT output_item_id FROM recipes WHERE output_item_id IS NOT NULL
             UNION SELECT item_id FROM recipe_ingredients WHERE item_id IS NOT NULL

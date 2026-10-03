@@ -24,13 +24,6 @@ function categoryNames(wrapper: VueWrapper): string[] {
   return wrapper.findAll('[data-test="material-category-name"]').map((name) => name.text())
 }
 
-function identitiesOfCategory(wrapper: VueWrapper, index: number): string[] {
-  const category = wrapper.findAll('[data-test="material-category"]').at(index)
-  return category === undefined
-    ? []
-    : category.findAll('[data-test="item-identity"]').map((identity) => identity.text())
-}
-
 describe('MaterialsScreen', () => {
   it('readsTheMaterialsRouteOnceWhenOpenedAndNothingElse', async () => {
     const api = new FakeAccountApi()
@@ -61,45 +54,20 @@ describe('MaterialsScreen', () => {
     expect(categoryNames(wrapper)).toEqual(['Zephyrite Supplies', 'Category 77'])
   })
 
-  it('keepsTheSuppliedStackOrderAndNeitherRegroupsNorDeduplicates', async () => {
-    const api = new FakeAccountApi()
-
-    const wrapper = await openScreen(api)
-
-    expect(identitiesOfCategory(wrapper, 0)).toEqual(['#12134', '#19697'])
-    // The same item id is supplied in both categories and stays in both.
-    expect(identitiesOfCategory(wrapper, 1).at(0)).toBe('#12134')
+  it('keepsEveryOfficialPositionInItsSuppliedOrderIncludingUnownedMaterials', async () => {
+    const wrapper = await openScreen(new FakeAccountApi())
+    const firstCategory = wrapper.findAll('.material-category').at(0)
+    expect(firstCategory?.findAll('.inventory-tile').map((tile) => tile.attributes('title')))
+      .toEqual(['Item #12134', 'Item #19697', 'Item #19698'])
     expect(wrapper.findAll('[data-test="material-stack"]')).toHaveLength(4)
   })
 
-  it('showsEachSuppliedStacksCountAndTheCategoryIdItWasGroupedBy', async () => {
-    const api = new FakeAccountApi()
-
-    const wrapper = await openScreen(api)
-
-    const counts = wrapper.findAll('[data-test="item-count"]').map((count) => count.text())
-    expect(counts).toEqual(['× 3', '× 250', '× 11', '× 7'])
-
-    const categoryIds = wrapper
-      .findAll('[data-test="material-stack-category"]')
-      .map((element) => element.text())
-    expect(categoryIds).toEqual([
-      'category id 30',
-      'category id 30',
-      'category id 77',
-      'category id 77'
-    ])
-  })
-
-  it('rendersAStackWithoutAnItemIdWithoutInventingOneAndKeepsItsCount', async () => {
-    const api = new FakeAccountApi()
-
-    const wrapper = await openScreen(api)
-
-    const lastStack = wrapper.findAll('[data-test="material-stack"]').at(3)
-    expect(lastStack?.find('[data-test="item-identity"]').text()).toContain('no item id supplied')
-    expect(lastStack?.text()).not.toContain('#0')
-    expect(lastStack?.find('[data-test="item-count"]').text()).toBe('× 7')
+  it('showsQuantitiesOnlyOnOwnedPositionsAndGreysUnownedIcons', async () => {
+    const wrapper = await openScreen(new FakeAccountApi())
+    expect(wrapper.findAll('[data-test="item-count"]').map((count) => count.text())).toEqual(['3', '250', '11'])
+    const unowned = wrapper.findAll('[data-test="material-stack"]').at(1)
+    expect(unowned?.find('[data-test="item-count"]').exists()).toBe(false)
+    expect(unowned?.find('.inventory-tile--empty').exists()).toBe(true)
   })
 
   it('showsALoadingStateWhileTheReadIsInFlight', async () => {

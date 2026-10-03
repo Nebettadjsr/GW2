@@ -12,6 +12,18 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class AccountLuckServiceTest {
     @Test
+    void resolvesThePreviouslyDisplayedStaleValueAndCurrentApiValueAgainstCanonicalThresholds() {
+        var service = new AccountLuckService(null, MagicFindProgression.canonical());
+        var stale = service.resolve(new AccountLuck("acct", 1_454_790, Instant.EPOCH));
+        assertEquals(204, stale.progress().magicFindPercent());
+        assertEquals(18_490, stale.progress().remainingToNext());
+
+        var current = service.resolve(new AccountLuck("acct", 1_473_850, Instant.EPOCH));
+        assertEquals(205, current.progress().magicFindPercent());
+        assertEquals(25_270, current.progress().remainingToNext());
+    }
+
+    @Test
     void keepsAllThreeLabeledTargetSlotsAtTheCap() {
         var service = new AccountLuckService(null, MagicFindProgression.canonical());
         var status = service.resolve(new AccountLuck("account-guid-a", 4_295_450,

@@ -364,22 +364,21 @@ export interface BankContents {
 }
 
 /**
- * One non-empty material stack of `GET /api/account/materials` (`CURRENT_ARCHITECTURE.md` 5.12).
- *
- * `category` is the numeric id the backend grouped the stack by — the only way to see which id
- * produced a fallback category label. `iconUrl` is again this application's own image URL, or null.
+ * One official material-storage position, including unowned positions.
  */
 export interface MaterialStack {
-  category: number
-  itemId: number | null
+  position: number
+  itemId: number
   count: number
   iconUrl: string | null
   rarity: string | null
 }
 
-/** One material category as the backend grouped and labelled it; `name` may be its fallback label. */
+/** One official material category in game display order. */
 export interface MaterialCategory {
+  category: number
   name: string
+  order: number
   materials: MaterialStack[]
 }
 
@@ -444,6 +443,8 @@ export interface EctoSalvage {
 export interface ApiErrorBody {
   error: string
   message: string
+  taskStatusUrl?: string | null
+  staleSources?: string[] | null
 }
 
 /**

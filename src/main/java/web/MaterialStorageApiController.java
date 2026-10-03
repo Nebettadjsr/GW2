@@ -14,13 +14,12 @@ import java.util.List;
 
 /**
  * HTTP boundary for the account material-storage read (STORY-API-007, TARGET_ARCHITECTURE.md §9):
- * the grouped stacks a browser needs to render the categories the JavaFX Materials view already
- * shows.
+ * ordered official material positions joined with the most recently synchronized account quantities.
  *
  * <p>Thin by construction: it calls the existing {@link MaterialStorageService} read
  * {@code MaterialsView} uses (§5.12/§6 of CURRENT_ARCHITECTURE.md) and copies the grouped result
- * into transport records. The category order, the category labels, the unknown-category fallback
- * label and the "non-empty stacks only" rule are the service's and are not reproduced here; the
+ * into transport records. The category order and official item positions come from persisted
+ * catalog data and are not reproduced here; the
  * controller queries no repository, aggregates nothing and synchronizes nothing.
  *
  * <p>Like the selector-options route it holds a single shared service instance: the service keeps no
@@ -37,12 +36,12 @@ public class MaterialStorageApiController {
     }
 
     /**
-     * Returns the material categories that have stacks, in the service's order.
+     * Returns every synchronized official material category and catalog position.
      *
      * <p>Status contract: 200 with the categories; 503 when the database is unavailable; 500 when
      * the read fails for any other reason. See {@link AccountReadApiExceptionHandler}. Empty
-     * material storage is a 200 with {@code categoryCount: 0} and an empty {@code categories} list -
-     * no category is invented as a placeholder, and there is no 404 case.
+     * material storage is a 200 with all catalog positions at count zero. Before the first
+     * successful account-material sync the read fails instead of presenting an empty inventory.
      */
     @GetMapping(path = "/materials", produces = MediaType.APPLICATION_JSON_VALUE)
     public MaterialStorageResponse materialStorage() throws SQLException {
@@ -58,7 +57,7 @@ public class MaterialStorageApiController {
 
         return categories.stream()
                 .map(category -> new MaterialStorageResponse.MaterialCategoryDto(
-                        category.name(), toStacks(category.materials())))
+                        category.id(), category.name(), category.order(), toStacks(category.materials())))
                 .toList();
     }
 
@@ -71,7 +70,7 @@ public class MaterialStorageApiController {
     private static List<MaterialStorageResponse.MaterialStackDto> toStacks(List<MaterialStorageRow> rows) {
         return rows.stream()
                 .map(row -> new MaterialStorageResponse.MaterialStackDto(
-                        row.category(),
+                        row.position(),
                         row.itemId(),
                         row.count(),
                         ItemIconUrls.iconUrlFor(row.itemId(), row.iconUrl()),

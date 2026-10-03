@@ -2,133 +2,42 @@
 import { computed, onMounted } from 'vue'
 import { accountApi, type AccountApi } from '@/api/accountApi'
 import type { MaterialStorage } from '@/api/types'
-import PageHeader from '@/shell/PageHeader.vue'
-import InventoryItem from './InventoryItem.vue'
+import InventoryTile from './InventoryTile.vue'
 import { useAccountRead } from './useAccountRead'
 
-/**
- * The Materials screen: account material storage exactly as `GET /api/account/materials` grouped it
- * (`CURRENT_ARCHITECTURE.md` 5.12).
- *
- * The categories, their order, their labels — the backend's `"Category <id>"` fallback included —
- * and the stack order within each are the backend's and are rendered unchanged. Nothing is
- * regrouped, deduplicated, sorted, aggregated or filtered here, and no category map or inclusion
- * rule exists in this screen.
- *
- * The `api` prop exists so a test can supply controlled responses; the browser always gets the real
- * backend client.
- */
 const props = withDefaults(defineProps<{ api?: AccountApi }>(), { api: () => accountApi })
-
 const materials = useAccountRead<MaterialStorage>(() => props.api.loadMaterials())
-
-onMounted(() => {
-  void materials.load()
-})
-
-/** Only ever true for a successful read: a failure leaves no data at all. */
-const hasNoCategories = computed(
-  () => materials.data.value !== null && materials.data.value.categories.length === 0
-)
-
-function onReload(): void {
-  void materials.load()
-}
+onMounted(() => { void materials.load() })
+const hasNoCategories = computed(() => materials.data.value !== null && materials.data.value.categories.length === 0)
+function onReload(): void { void materials.load() }
 </script>
 
 <template>
   <div class="screen" data-test="materials-screen">
-    <PageHeader
-      heading="Materials"
-      intro="Account material storage as the last synchronization stored it, in the groups the backend supplies. Nothing on this page changes the account or starts a synchronization."
-    >
-      <template #actions>
-        <button
-          type="button"
-          class="button--primary"
-          data-test="materials-reload"
-          :disabled="materials.phase.value === 'loading'"
-          @click="onReload"
-        >
-          Reload materials
-        </button>
-      </template>
-    </PageHeader>
-
+    <header class="materials-page-header">
+      <h1>Materials</h1>
+      <button type="button" class="button--primary" data-test="materials-reload"
+        :disabled="materials.phase.value === 'loading'" @click="onReload">Reload materials</button>
+    </header>
     <div class="stack">
-      <p class="meta prose">
-        The grouping, the order and the group names are the backend's and are shown unchanged. Items
-        are shown by their id: the backend supplies no item name for material storage, so none is
-        invented here. An item's icon is the image this application serves for it, and a neutral
-        placeholder stands in wherever there is none.
+      <p v-if="materials.phase.value === 'loading'" class="notice notice--info" role="status" data-test="materials-loading">Loading material storage…</p>
+      <p v-else-if="materials.failure.value !== null" class="notice notice--error" data-test="materials-error">
+        Material storage could not be read, so nothing is shown for it — this is a failure, not empty material storage.
+        <span class="meta detail">Backend answer: {{ materials.failure.value.code }} — {{ materials.failure.value.message }}</span>
+        <span class="notice__actions"><button type="button" data-test="materials-retry" @click="onReload">Try again</button></span>
       </p>
-
-      <p
-        v-if="materials.phase.value === 'loading'"
-        class="notice notice--info"
-        role="status"
-        data-test="materials-loading"
-      >
-        Loading material storage…
-      </p>
-
-      <p
-        v-else-if="materials.failure.value !== null"
-        class="notice notice--error"
-        data-test="materials-error"
-      >
-        Material storage could not be read, so nothing is shown for it — this is a failure, not empty
-        material storage.
-        <span class="meta detail">
-          Backend answer: {{ materials.failure.value.code }} — {{ materials.failure.value.message }}
-        </span>
-        <span class="notice__actions">
-          <button type="button" data-test="materials-retry" @click="onReload">Try again</button>
-        </span>
-      </p>
-
-      <p v-else-if="hasNoCategories" class="notice" data-test="materials-empty">
-        The backend returned no material categories
-        (<code>categoryCount {{ materials.data.value?.categoryCount }}</code>). This is a successful
-        read of an empty result, not a failed one.
-      </p>
-
+      <p v-else-if="hasNoCategories" class="notice" data-test="materials-empty">No material categories are available.</p>
       <template v-else-if="materials.data.value !== null">
-        <p class="meta" data-test="materials-summary">
-          {{ materials.data.value.categoryCount }} categories supplied, in the backend's order
-        </p>
-
-        <section
-          v-for="(category, categoryIndex) in materials.data.value.categories"
-          :key="`${categoryIndex}-${category.name}`"
-          class="category"
-          data-test="material-category"
-        >
-          <div class="category__head">
-            <h2 data-test="material-category-name">{{ category.name }}</h2>
-            <p class="meta" data-test="material-stack-count">
-              {{ category.materials.length }} stacks
-            </p>
+        <section v-for="category in materials.data.value.categories" :key="category.category" class="material-category" data-test="material-category">
+          <h2 data-test="material-category-name">{{ category.name }}</h2>
+          <div class="material-scroll">
+            <ol class="material-grid" data-test="material-grid">
+              <li v-for="material in category.materials" :key="material.position" data-test="material-stack">
+                <InventoryTile :item-id="material.itemId" :count="material.count" :icon-url="material.iconUrl"
+                  :show-one="true" :title="`Item #${material.itemId}`" />
+              </li>
+            </ol>
           </div>
-
-          <ol class="stacks">
-            <li
-              v-for="(stack, stackIndex) in category.materials"
-              :key="`${stackIndex}-${stack.itemId}`"
-              class="stack-entry"
-              data-test="material-stack"
-            >
-              <InventoryItem
-                :item-id="stack.itemId"
-                :count="stack.count"
-                :rarity="stack.rarity"
-                :icon-url="stack.iconUrl"
-              />
-              <span class="category-id" data-test="material-stack-category">
-                category id {{ stack.category }}
-              </span>
-            </li>
-          </ol>
         </section>
       </template>
     </div>
@@ -136,53 +45,12 @@ function onReload(): void {
 </template>
 
 <style scoped>
-.detail {
-  display: block;
-  margin-top: var(--space-2);
-}
-
-.category {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.category__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-3);
-}
-
-.category h2 {
-  font-size: var(--text-lg);
-}
-
-/* Fluid, so one supplied stack order reflows from one column to many without changing sequence. */
-.stacks {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
-  gap: var(--space-2);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.stack-entry {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
-}
-
-/* Supplied per stack, and shown per stack: which id produced a label is not inferred from siblings. */
-.category-id {
-  color: var(--color-muted);
-  font-size: var(--text-sm);
-  white-space: nowrap;
-}
+.screen { width: min(100%, 636px); margin-inline: auto; }
+.materials-page-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
+.materials-page-header h1 { margin: 0; }
+.detail { display: block; margin-top: var(--space-2); }
+.material-category { margin-block: var(--space-4); }
+.material-category h2 { margin: 0 0 var(--space-2); font-size: var(--text-base); }
+.material-scroll { max-width: 100%; overflow-x: auto; }
+.material-grid { display: grid; grid-template-columns: repeat(10, 60px); grid-auto-rows: 60px; gap: 4px; width: max-content; list-style: none; margin: 0; padding: 0 0 var(--space-2); }
 </style>

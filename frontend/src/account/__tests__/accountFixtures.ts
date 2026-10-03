@@ -44,18 +44,21 @@ export const materialStorage: MaterialStorage = {
   categoryCount: 2,
   categories: [
     {
+      category: 30,
       name: 'Zephyrite Supplies',
+      order: 6,
       materials: [
-        { category: 30, itemId: 12134, count: 3, iconUrl: GARLIC_ICON_URL, rarity: 'Fine' },
-        { category: 30, itemId: 19697, count: 250, iconUrl: null, rarity: null }
+        { position: 0, itemId: 12134, count: 3, iconUrl: GARLIC_ICON_URL, rarity: 'Fine' },
+        { position: 1, itemId: 19697, count: 0, iconUrl: null, rarity: null },
+        { position: 2, itemId: 19698, count: 250, iconUrl: null, rarity: null }
       ]
     },
     {
+      category: 77,
       name: 'Category 77',
+      order: 11,
       materials: [
-        { category: 77, itemId: 12134, count: 11, iconUrl: null, rarity: 'Rare' },
-        // A stored row the backend reported without an item id; its count is still supplied.
-        { category: 77, itemId: null, count: 7, iconUrl: null, rarity: null }
+        { position: 0, itemId: 12134, count: 11, iconUrl: null, rarity: 'Rare' }
       ]
     }
   ]

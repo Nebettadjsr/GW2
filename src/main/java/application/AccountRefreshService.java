@@ -1,6 +1,8 @@
 package application;
 
 import sync.AccountRefreshGateway;
+import repo.AccountSyncStateRepository;
+import java.util.Set;
 import java.time.Instant;
 
 /**
@@ -64,6 +66,15 @@ public class AccountRefreshService {
         gateway.syncAccountRecipes();
         gateway.syncCharacterCraftingAndRecipes();
         markRefreshed("Crafting Profit inputs");
+    }
+
+    /** Refreshes just the stale sources required by the requesting use case. */
+    public void refreshSources(Set<String> sources) throws Exception {
+        if (sources.contains(AccountSyncStateRepository.BANK)) gateway.syncAccountBank();
+        if (sources.contains(AccountSyncStateRepository.MATERIALS)) gateway.syncAccountMaterials();
+        if (sources.contains(AccountSyncStateRepository.RECIPES)) gateway.syncAccountRecipes();
+        if (sources.contains(AccountSyncStateRepository.LUCK)) gateway.syncAccountLuck();
+        if (sources.contains(AccountSyncStateRepository.CHARACTERS)) gateway.syncCharacterCraftingAndRecipes();
     }
 
     private void markRefreshed(String scope) {

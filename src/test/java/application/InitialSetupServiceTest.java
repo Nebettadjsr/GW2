@@ -44,7 +44,7 @@ class InitialSetupServiceTest {
 
         assertEquals(
                 List.of("bank", "materials", "recipes", "luck", "globalRecipes", "tradeableItems",
-                         "discoveryPrices", "profitPrices", "iconUrls", "iconsToDisk"),
+                         "materialCategories", "discoveryPrices", "profitPrices", "iconUrls", "iconsToDisk"),
                 calls);
         assertEquals(Path.of(AppConfig.ICON_CACHE_DIR), iconGateway.receivedIconBaseDir);
     }
@@ -90,7 +90,7 @@ class InitialSetupServiceTest {
         Exception thrown = assertThrows(IOException.class, service::firstFill);
 
         assertSame(priceGateway.discoveryFailure, thrown);
-        assertEquals(List.of("bank", "materials", "recipes", "luck", "globalRecipes", "tradeableItems"), calls);
+        assertEquals(List.of("bank", "materials", "recipes", "luck", "globalRecipes", "tradeableItems", "materialCategories"), calls);
     }
 
     @Test
@@ -105,7 +105,7 @@ class InitialSetupServiceTest {
 
         assertSame(iconGateway.iconUrlsFailure, thrown);
         assertEquals(
-                List.of("bank", "materials", "recipes", "luck", "globalRecipes", "tradeableItems",
+                List.of("bank", "materials", "recipes", "luck", "globalRecipes", "tradeableItems", "materialCategories",
                          "discoveryPrices", "profitPrices"),
                 calls);
     }
@@ -148,6 +148,8 @@ class InitialSetupServiceTest {
         Exception tradeableItemsFailure;
 
         RecordingGlobalDataGateway(List<String> calls) { this.calls = calls; }
+
+        @Override public void syncMaterialCategories() { calls.add("materialCategories"); }
 
         @Override
         public boolean syncAllRecipesGlobalSafe() throws Exception {

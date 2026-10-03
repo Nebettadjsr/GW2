@@ -8,5 +8,6 @@ package web.dto;
  * @param message human-readable explanation; carries caller-supplied detail only for request
  *                validation, never internal failure detail
  */
-public record ApiErrorResponse(String error, String message) {
+public record ApiErrorResponse(String error, String message, String taskStatusUrl, java.util.Set<String> staleSources) {
+    public ApiErrorResponse(String error, String message) { this(error, message, null, null); }
 }

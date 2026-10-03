@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import model.CharacterInfo;
 import parser.*;
 import repo.Db;
+import repo.AccountSyncStateRepository;
 
 import util.DbBind;
 
@@ -51,6 +52,7 @@ public final class CharacterSync {
 
         try (Connection con = Db.open()) {
             con.setAutoCommit(false);
+            AccountSyncStateRepository.ensure(con);
 
             for (CharPayload p : payloads) {
                 try {
@@ -74,6 +76,9 @@ public final class CharacterSync {
                     throw ex;
                 }
             }
+            AccountSyncStateRepository.mark(con, AccountSyncStateRepository.CHARACTERS,
+                    java.time.Instant.now());
+            con.commit();
         }
     }
 

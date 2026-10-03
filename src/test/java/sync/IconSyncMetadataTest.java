@@ -94,6 +94,7 @@ class IconSyncMetadataTest {
                 """);
             st.execute("CREATE TABLE account_bank (slot INTEGER PRIMARY KEY, item_id INTEGER, count INTEGER)");
             st.execute("CREATE TABLE account_materials (item_id INTEGER PRIMARY KEY, category INTEGER, count INTEGER)");
+            st.execute("CREATE TABLE material_category_items (category_id INTEGER, position INTEGER, item_id INTEGER)");
             st.execute("CREATE TABLE character_items (character_name TEXT, item_id INTEGER, count INTEGER)");
             st.execute("CREATE TABLE recipes (recipe_id INTEGER PRIMARY KEY, output_item_id INTEGER)");
             st.execute("CREATE TABLE recipe_ingredients (recipe_id INTEGER, item_id INTEGER, count INTEGER)");

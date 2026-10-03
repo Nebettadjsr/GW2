@@ -48,14 +48,15 @@ The current PostgreSQL schema has shared item and recipe facts, TP tradeable IDs
 | Current account | `account_bank`, `account_materials`, `account_recipes` | Bank slots, material storage, and account recipe unlocks. |
 | Current characters | `characters`, `character_crafting`, `character_recipes`, `character_items` | Character identity and crafting levels, recipe knowledge, bags/equipment. |
 | Identity-aware account data | `account_luck` | Consumed Luck keyed by stable GW2 account GUID; this is an exception to older single-account tables. |
+| Account source freshness | `account_sync_state` | Successful completion time for each synchronized account source, including sources with empty API results. |
 
-Database creation and most schema upkeep still use a manually applied SQL script; the Luck table has a narrow idempotent schema check. There is no general versioned migration system. Exact persistence mappings and query flows are maintained in [Current Architecture](CURRENT_ARCHITECTURE.md); domain meaning is in [Domain Specification](DOMAIN_SPEC.md).
+Database creation and most schema upkeep still use manually applied SQL scripts; the Luck and account freshness tables have narrow idempotent schema checks. Material Storage tables are also created idempotently by the material sync and read paths. `src/main/resources/db/manual/account_sync_state.sql` and `material_storage.sql` are available for operators applying changes directly. There is no general versioned migration system. Account browser reads use a configurable 15-minute default max age and schedule stale-source refreshes asynchronously; ordinary reads never advance freshness.
 
 The crafting graph is derived from recipe data and shared across the current installation. If its cache is missing, first use creates the baseline graph; scheduled/manual global refresh rebuilds it only after successfully persisted recipe changes. System Status does not currently expose a standalone graph-rebuild action. TP prices and global game metadata are shared data; account records are not yet tenant-scoped.
 
 ## Error handling and background work
 
-Long-running web synchronization uses Spring-managed application task submission and task status APIs. Duplicate identical work is prevented within the running backend process. The global scheduler catches/reports failures so a failed execution does not prevent later scheduled runs. This is single-process coordination, not a distributed job system; multi-replica coordination is intentionally future work.
+Long-running web synchronization uses Spring-managed application task submission and task status APIs. Duplicate identical work is prevented within the running backend process. Account freshness checks share the `ACCOUNT_SYNC` operation and reuse an active task. The global scheduler catches/reports failures so a failed execution does not prevent later scheduled runs. This is single-process coordination, not a distributed job system; multi-replica coordination is intentionally future work.
 
 Frontend pages present operation loading, completion, and failure states. Backend task history and refresh timestamps are in memory rather than durable operational telemetry. The legacy JavaFX UI retains its own compatibility workflows and is not the model for web scheduling.
 

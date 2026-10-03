@@ -32,7 +32,7 @@ class GlobalDataRefreshServiceTest {
 
         service.refreshAll();
 
-        assertEquals(List.of("tradeableItems", "globalRecipes"), gateway.calls);
+        assertEquals(List.of("materialCategories", "materialIcons", "tradeableItems", "globalRecipes"), gateway.calls);
         assertEquals(List.of("invalidate", "rebuild"), graphCache.graphCalls);
         assertEquals(1, graphCache.rebuildCount);
     }
@@ -46,7 +46,7 @@ class GlobalDataRefreshServiceTest {
 
         var result = service.refreshAll();
 
-        assertEquals(List.of("tradeableItems", "globalRecipes"), gateway.calls);
+        assertEquals(List.of("materialCategories", "materialIcons", "tradeableItems", "globalRecipes"), gateway.calls);
         assertEquals(0, graphCache.rebuildCount);
         assertEquals(List.of(), graphCache.graphCalls);
         assertEquals(false, result.graphRebuilt());
@@ -62,7 +62,7 @@ class GlobalDataRefreshServiceTest {
         Exception thrown = assertThrows(IOException.class, service::refreshAll);
 
         assertSame(gateway.tradeableItemsFailure, thrown);
-        assertEquals(List.of(), gateway.calls);
+        assertEquals(List.of("materialCategories", "materialIcons"), gateway.calls);
         assertEquals(0, graphCache.rebuildCount);
     }
 
@@ -76,7 +76,7 @@ class GlobalDataRefreshServiceTest {
         Exception thrown = assertThrows(RuntimeException.class, service::refreshAll);
 
         assertSame(gateway.globalRecipesFailure, thrown);
-        assertEquals(List.of("tradeableItems"), gateway.calls);
+        assertEquals(List.of("materialCategories", "materialIcons", "tradeableItems"), gateway.calls);
         assertEquals(0, graphCache.rebuildCount);
     }
 
@@ -90,7 +90,7 @@ class GlobalDataRefreshServiceTest {
         Exception thrown = assertThrows(IOException.class, service::refreshAll);
 
         assertSame(graphCache.failure, thrown);
-        assertEquals(List.of("tradeableItems", "globalRecipes"), gateway.calls);
+        assertEquals(List.of("materialCategories", "materialIcons", "tradeableItems", "globalRecipes"), gateway.calls);
     }
 
     private static class RecordingGateway extends GlobalDataRefreshGateway {
@@ -98,6 +98,9 @@ class GlobalDataRefreshServiceTest {
         Exception tradeableItemsFailure;
         Exception globalRecipesFailure;
         boolean recipesChanged = true;
+
+        @Override public void syncMaterialCategories() { calls.add("materialCategories"); }
+        @Override public void syncMaterialItemMetadata() { calls.add("materialIcons"); }
 
         @Override
         public boolean syncTpTradeableItems() throws Exception {

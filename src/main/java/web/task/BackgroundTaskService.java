@@ -82,6 +82,16 @@ public class BackgroundTaskService implements AutoCloseable {
         return task.id;
     }
 
+    /** Starts work unless an unfinished task for this operation already exists, returning its ID. */
+    public String submitOrExisting(String operation, TaskBody body) {
+        synchronized (this) {
+            Optional<String> existing = unfinishedTaskId(operation);
+            if (existing.isPresent()) return existing.get();
+        }
+        try { return submit(operation, body); }
+        catch (TaskAlreadyRunningException raced) { return raced.existingTaskId(); }
+    }
+
     /** @return the task's current state, or empty if this process knows no such identifier */
     public synchronized Optional<TaskSnapshot> find(String taskId) {
         MutableTask task = tasks.get(taskId);

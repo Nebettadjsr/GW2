@@ -59,6 +59,7 @@ public class InitialSetupService {
 
         globalDataGateway.syncAllRecipesGlobalSafe();
         globalDataGateway.syncTpTradeableItems();
+        globalDataGateway.syncMaterialCategories();
 
         priceRefreshService.refreshForDiscovery();
         priceRefreshService.refreshForProfit();

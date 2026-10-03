@@ -28,39 +28,16 @@ class MaterialStorageServiceTest {
         // Deliberately not in category order: the presented order must come from the category list,
         // not from the row order.
         repo.canned = List.of(
-                row(5, 12142, 3),
-                row(1, 19697, 100),
-                row(1, 19719, 40));
+                row(5, "Cooking", 8, 0, 12142, 0),
+                row(1, "Basic", 2, 0, 19719, 40),
+                row(1, "Basic", 2, 1, 19697, 100));
 
         List<MaterialCategory> categories = new MaterialStorageService(repo).getMaterialStorage();
 
-        assertEquals(List.of("Basic Crafting Materials", "Cooking Materials"), names(categories));
-        assertEquals(List.of(19697, 19719), itemIds(categories.get(0)));
-        assertEquals(List.of(12142), itemIds(categories.get(1)));
+        assertEquals(List.of("Cooking", "Basic"), names(categories));
+        assertEquals(List.of(12142), itemIds(categories.get(0)));
+        assertEquals(List.of(19719, 19697), itemIds(categories.get(1)));
         assertEquals(1, repo.callCount);
-    }
-
-    @Test
-    void categoriesWithNoStacksAreOmitted() throws Exception {
-        var repo = new FakeMaterialStorageRepository();
-        repo.canned = List.of(row(4, 46731, 2));
-
-        List<MaterialCategory> categories = new MaterialStorageService(repo).getMaterialStorage();
-
-        assertEquals(List.of("Ascended Materials"), names(categories));
-    }
-
-    @Test
-    void unknownCategoryIdIsGroupedUnderItsNumberAfterTheKnownCategories() throws Exception {
-        var repo = new FakeMaterialStorageRepository();
-        repo.canned = List.of(
-                row(12, 99999, 1),
-                row(10, 24272, 7));
-
-        List<MaterialCategory> categories = new MaterialStorageService(repo).getMaterialStorage();
-
-        assertEquals(List.of("Other", "Category 12"), names(categories));
-        assertEquals(List.of(99999), itemIds(categories.get(1)));
     }
 
     @Test
@@ -82,8 +59,8 @@ class MaterialStorageServiceTest {
         assertSame(repo.failure, thrown);
     }
 
-    private static MaterialStorageRow row(int category, int itemId, int count) {
-        return new MaterialStorageRow(category, itemId, count, "C:\\icons\\" + itemId + ".png", null, "Basic");
+    private static MaterialStorageRow row(int category, String name, int order, int position, int itemId, int count) {
+        return new MaterialStorageRow(category, name, order, position, itemId, count, null, "Basic");
     }
 
     private static List<String> names(List<MaterialCategory> categories) {

@@ -785,11 +785,16 @@ onMounted(loadPage)
             </p>
           </div>
 
-          <a
-            href="https://wiki.guildwars2.com/wiki/Magic_Find"
-            target="_blank"
-            rel="noopener noreferrer"
-          >What does Magic Find do?</a>
+          <div class="magic-find-help">
+            <a
+              href="https://wiki.guildwars2.com/wiki/Magic_Find"
+              target="_blank"
+              rel="noopener noreferrer"
+            >What does Magic Find do?</a>
+            <p class="magic-find-note">
+              In-game Magic Find includes other bonuses. Only Magic Find from consumed Luck is shown here.
+            </p>
+          </div>
         </div>
 
         <div v-if="accountLuck" class="stack account-luck">
@@ -1238,6 +1243,21 @@ onMounted(loadPage)
 
 .heading-copy {
   gap: var(--space-1);
+}
+
+.magic-find-help {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  max-width: 15rem;
+}
+
+.magic-find-note {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+  line-height: 1.4;
 }
 
 .account-luck {

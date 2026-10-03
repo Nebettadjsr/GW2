@@ -10,6 +10,14 @@ package sync;
  */
 public class GlobalDataRefreshGateway {
 
+    public void syncMaterialCategories() throws Exception {
+        MaterialCategorySync.syncMaterialCategories();
+    }
+
+    public void syncMaterialItemMetadata() throws Exception {
+        IconSync.syncItemIconUrls();
+    }
+
     public boolean syncTpTradeableItems() throws Exception {
         return TpSync.syncTpTradeableItems();
     }

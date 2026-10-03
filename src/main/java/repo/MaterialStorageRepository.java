@@ -7,73 +7,55 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Stack-level read of account material storage for the Materials view's display (STORY-APP-009).
- * Holds the query and connection lifecycle that {@code MaterialsView} previously ran itself against
- * a hardcoded inline {@code DriverManager} connection (docs/KNOWN_PROBLEMS.md §2.2); the SQL, its
- * {@code items} join, its {@code count IS NOT NULL AND count > 0} filter and its
- * {@code category, item_id} ordering are unchanged from that pre-extraction version.
- *
- * <p>Separate from {@link InventoryRepository} for the same reason as {@link BankRepository}: that
- * repository sums {@code account_materials} into an account-wide owned pool and drops the category
- * and icon/rarity columns this view groups and renders by.
- */
+/** Ordered material-catalog positions combined with the last synchronized account snapshot. */
 public class MaterialStorageRepository {
-
-    /**
-     * One non-empty {@code account_materials} stack exactly as the query returns it.
-     * {@code iconPath}/{@code iconUrl}/{@code rarity} are null when the stack's item has no matching
-     * {@code items} row (LEFT JOIN). {@code itemId} carries the query's secondary ordering key; the
-     * Materials view does not display it.
-     *
-     * <p>{@code iconPath} is the local desktop file JavaFX renders; {@code iconUrl} is the retained
-     * upstream icon source ({@code items.icon_url}) a browser-facing read derives its image URL from
-     * (TARGET_ARCHITECTURE.md §12.1). Both come from this one batch read.
-     */
-    public record MaterialStorageRow(int category,
-                                     Integer itemId,
-                                     int count,
-                                     String iconPath,
-                                     String iconUrl,
-                                     String rarity) {}
-
-    /** Reads every non-empty material stack using the shared {@link Db#open()} connection configuration. */
-    public List<MaterialStorageRow> loadMaterialStorage() throws SQLException {
-        try (Connection con = Db.open()) {
-            return loadMaterialStorage(con);
+    public record MaterialStorageRow(int category, String categoryName, int categoryOrder,
+                                     Integer position, Integer itemId, int count,
+                                     String iconPath, String iconUrl, String rarity) {
+        public MaterialStorageRow(int category, String categoryName, int categoryOrder,
+                                  Integer position, Integer itemId, int count, String iconUrl, String rarity) {
+            this(category, categoryName, categoryOrder, position, itemId, count, null, iconUrl, rarity);
+        }
+        public MaterialStorageRow(int category, Integer itemId, int count, String iconPath,
+                                  String iconUrl, String rarity) {
+            this(category, "Category " + category, category, 0, itemId, count, iconPath, iconUrl, rarity);
         }
     }
 
-    /**
-     * Same query as {@link #loadMaterialStorage()}, but runs against a caller-supplied connection so
-     * a repository integration test can point it at a disposable test schema
-     * (docs/TEST_STRATEGY.md §31.2), mirroring {@link InventoryRepository}'s existing pattern.
-     */
+    public List<MaterialStorageRow> loadMaterialStorage() throws SQLException {
+        try (Connection con = Db.open()) { return loadMaterialStorage(con); }
+    }
+
     public List<MaterialStorageRow> loadMaterialStorage(Connection con) throws SQLException {
+        MaterialStorageSchema.ensure(con);
+        try (PreparedStatement sync = con.prepareStatement("SELECT fetched_at FROM account_materials_sync WHERE id = 1");
+             ResultSet synced = sync.executeQuery()) {
+            if (!synced.next()) throw new SQLException("Account material storage has not been synchronized");
+        }
         String sql = """
-            SELECT am.category, am.item_id, am.count,
-                   i.icon_path, i.icon_url, i.rarity
-            FROM account_materials am
-            LEFT JOIN items i ON i.item_id = am.item_id
-            WHERE am.count IS NOT NULL AND am.count > 0
-            ORDER BY am.category, am.item_id
-        """;
-
-        List<MaterialStorageRow> out = new ArrayList<>();
-        try (PreparedStatement ps = con.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-
+                SELECT c.category_id, c.name, c.display_order, ci.position, ci.item_id,
+                       CASE WHEN am.item_id IS NULL THEN 0 ELSE am.count END AS count,
+                       i.icon_path, i.icon_url, i.rarity
+                FROM material_categories c
+                LEFT JOIN material_category_items ci ON ci.category_id = c.category_id
+                LEFT JOIN account_materials am ON am.item_id = ci.item_id
+                LEFT JOIN items i ON i.item_id = ci.item_id
+                ORDER BY c.display_order, c.category_id, ci.position
+                """;
+        List<MaterialStorageRow> rows = new ArrayList<>();
+        try (PreparedStatement statement = con.prepareStatement(sql); ResultSet rs = statement.executeQuery()) {
             while (rs.next()) {
-                int category = rs.getInt("category");
-                Integer itemId = (Integer) rs.getObject("item_id");
                 int count = rs.getInt("count");
-                String iconPath = rs.getString("icon_path");
-                String iconUrl = rs.getString("icon_url");
-                String rarity = rs.getString("rarity");
-
-                out.add(new MaterialStorageRow(category, itemId, count, iconPath, iconUrl, rarity));
+                if (rs.wasNull()) throw new SQLException("Synchronized material count is unavailable");
+                int positionValue = rs.getInt("position");
+                Integer position = rs.wasNull() ? null : positionValue;
+                int itemValue = rs.getInt("item_id");
+                Integer itemId = rs.wasNull() ? null : itemValue;
+                rows.add(new MaterialStorageRow(rs.getInt("category_id"), rs.getString("name"),
+                        rs.getInt("display_order"), position, itemId, count, rs.getString("icon_path"),
+                        rs.getString("icon_url"), rs.getString("rarity")));
             }
         }
-        return out;
+        return rows;
     }
 }

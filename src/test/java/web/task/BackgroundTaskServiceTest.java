@@ -119,6 +119,17 @@ class BackgroundTaskServiceTest {
     }
 
     @Test
+    void submitOrExistingReusesAnActiveRefreshInsteadOfStartingDuplicateWork() throws Exception {
+        BlockingBody body = blockingBody();
+        String first = service.submitOrExisting("ACCOUNT_SYNC", body);
+        assertTrue(body.awaitEntered());
+        AtomicInteger duplicateRuns = new AtomicInteger();
+        String reused = service.submitOrExisting("ACCOUNT_SYNC", duplicateRuns::incrementAndGet);
+        assertEquals(first, reused);
+        assertEquals(0, duplicateRuns.get());
+    }
+
+    @Test
     void theSameOperationIsAdmittedAgainOnceThePreviousTaskFinished() throws Exception {
         String first = service.submit("OP", () -> {
         });
