@@ -8,166 +8,108 @@
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Status](https://img.shields.io/badge/status-active%20development-yellow)
 
-A Guild Wars 2 crafting and economy tool that combines account data, recipe knowledge, owned materials, and Trading Post prices to find useful and profitable crafting opportunities.
+**Turn the materials and recipes you already have into useful crafting opportunities.** Nebet's GW2 Crafting Tool combines your Guild Wars 2 account data, recipe knowledge, inventory and Trading Post prices to help you discover recipes, evaluate crafting profit and plan which materials to use, craft or buy.
 
-> **Active development:** The project is moving quickly, with updates currently landing almost daily. The browser frontend is actively replacing the original JavaFX interface while both continue to use the same backend/domain logic.
+> **Development note:** This project is also an experiment in AI-assisted, agentic software development. An orchestrated agent workflow helps plan, implement, review and verify changes. The development process is documented separately in the [Agentic Development Experiment](agent/agent_README_experimental.md); the rest of this README is about the application.
 
-![Current Crafting Profit web interface](docs/images/craftingProfit-01-10-2026.jpg)
+![Crafting Profit web interface](docs/images/craftingProfit-01-10-2026.jpg)
 
-## Agentic Software Development Experiment
-
-> **This repository is also a practical experiment in agentic software development.**
->
-> Much of the development workflow is driven by an orchestrated AI-agent system that plans work, implements changes, runs targeted verification, uses GitHub CI as the full regression gate, reviews project health, and maintains project documentation.
->
-> **[Read about the agentic development experiment and workflow →](agent/agent_README_experimental.md)**
-
-For a player-focused explanation of the crafting calculations, see the **[Crafting Guide](docs/crafting/README.md)**. The canonical mapping of visible crafting and Trading Post labels is in the [Crafting Glossary](docs/crafting/GLOSSARY.md).
-
----
-
-## What does it do?
-
-The tool is built around a simple question:
-
-> **What can I actually craft for profit with the materials, recipes, and crafting levels my account has?**
-
-It synchronizes Guild Wars 2 data through the official ArenaNet API, stores the relevant state in PostgreSQL, and performs the authoritative calculations in the Java backend.
+## Features
 
 ### Crafting Profit
 
-Find recipes that are useful for the selected account/character scope and compare the value of crafting against the value of the materials involved.
+Find profitable crafting opportunities based on your account's materials, known recipes and available crafting disciplines. The calculator evaluates materials you own at their economic value, considers buying versus recursively crafting ingredients and accounts for Trading Post selling fees.
 
-The current web view includes:
+- Choose a crafting discipline or character-specific scope.
+- Configure owned-material usage, buying, price modes and applicable crafting restrictions.
+- Search, filter and sort by profit per craft, total profit, craftable quantity and other useful values.
+- Compare the value of selling raw materials with the result of crafting them into finished items.
+- Inspect a selected recipe's costs, Trading Post prices, ingredient-resolution tree and shopping list, including quantities and purchase costs.
+- Follow item-specific GW2 Wiki links for ingredients that need further investigation.
 
-- crafting-discipline filtering;
-- account/character-aware crafting constraints;
-- owned-material and buying settings;
-- recipe search and result filtering;
-- craftable counts;
-- profit per craft and total profit;
-- Trading Post values;
-- blocked/limited crafting states;
-- detailed information for the selected result.
+**Profit per craft** helps identify an efficient recipe; **total profit** highlights opportunities to turn larger quantities of materials into gold. Less obvious recipes can be worthwhile when you already have enough materials for many crafts.
 
-The calculation does more than subtract ingredient prices from output prices. It can recursively evaluate craft-vs-buy decisions and account for owned materials, recipe knowledge, crafting disciplines, character levels, bindings, Trading Post availability, and other domain rules.
+![Crafting Profit](docs/images/craftingProfit-01-10-2026.jpg)
 
 ### Crafting Discovery
 
-Helps find recipes a selected character can discover and shows the cost and economic result of one attempt. The selected character also supplies the owned-material context; recipes that output multiple items retain that output quantity in the calculation.
+Find recipes your selected character can learn through normal crafting discovery, taking their discipline, current crafting level and the account's existing recipe knowledge into account. **Each result evaluates one discovery attempt**, including recipes that produce more than one output item.
 
-![Crafting Discovery](docs/images/craftingDiscovery-30-09-2026.jpg)
+- Compare the material cost, potential output value and profit or loss of a single discovery.
+- Use owned ingredients, known crafting recipes, discoverable intermediate recipes and permitted Trading Post purchases when planning the required materials.
+- See which sub-recipes are already known and which need to be discovered first.
+- Inspect the recursive ingredient tree and the materials still needed or to buy.
+- Open item-specific Wiki links when a material needs an alternative acquisition method.
 
-### Account data
+Discovery stays focused on recipes learned through normal discovery; it is not a catalogue of every recipe or acquisition method in Guild Wars 2.
 
-The application synchronizes account-specific data used by the crafting calculations, including character crafting disciplines, recipe knowledge, bank/material storage, and character inventories.
+![Crafting Discovery](docs/images/craftingDiscovery-03-10-2026.jpg)
 
-Bank and Materials views are already available in the browser frontend.
+### Ectoplasm Salvage & Luck
 
-Crafting Profit's **Refresh data & results** action refreshes the account data used by the calculation, refreshes missing or older-than-ten-minute Trading Post quotes it needs, and then recalculates. Global game data is checked automatically in the background. **System Status** summarizes account data, global game data, and the shared Trading Post cache, with manual account and global refresh actions; normal crafting workflows do not require visiting it.
+Estimate the cost of salvaging Globs of Ectoplasm for Luck, accounting for the expected value of recovered Crystalline Dust and Trading Post fees.
 
-### Ecto Salvage (Ectoplasm)
+- View your account's current Luck and Magic Find information.
+- Choose the salvage tool and compare its cost against the expected salvage outcome.
+- Configure the relevant Trading Post buy and sell prices.
+- Calculate expected effective gold costs and explore Luck targets.
 
-The project also contains an Ectoplasm Salvage calculator for estimating the effective gold cost of gaining Luck/Magic Find while accounting for the value recovered from salvage results.
+Salvage results are modeled using expected yields, rather than guaranteed drops.
 
 ![Ectoplasm Salvage calculator](docs/images/ecto-after.png)
 
----
+### Account, Bank & Materials
 
-## Current project status
+The application synchronizes account data from the official Guild Wars 2 API, including character crafting disciplines and levels, known recipes, character inventories, bank contents and material storage. Dedicated Bank and Materials views make those resources accessible in the browser.
 
-The project is in an active migration from its original JavaFX desktop interface to a browser-based application.
+### System Status
 
-The major architecture work completed so far includes:
+A dedicated System Status page shows the state of account synchronization, global game data and the shared Trading Post price cache. It also provides manual account and global-data refresh actions. The page is intended to grow into an administration interface as the project expands.
 
-- Maven/JUnit build and test foundation;
-- stabilization and isolation of the crafting domain;
-- application-service extraction;
-- a Spring Boot HTTP API;
-- the current Vue/TypeScript browser frontend.
+Crafting Profit's **Refresh data & results** action refreshes the relevant account data, updates missing or older Trading Post quotes as needed, and recalculates the results. Global game data is also checked automatically in the background.
 
-The browser migration is the current major development phase. JavaFX remains in the repository during the migration so functionality can be preserved until web parity is reached.
+## How the calculations work
 
-Planned later phases include:
+Crafting calculations run in the Java backend. Depending on the selected view and settings, they account for:
 
-1. completing browser/frontend parity;
-2. multi-user and GW2-account isolation;
-3. containerizing the frontend, backend, and PostgreSQL runtime;
-4. deployment/runtime configuration;
-5. final removal of the superseded JavaFX interface.
+- owned materials and their opportunity cost;
+- known and eligible recipes, crafting disciplines and character restrictions;
+- recursive ingredient crafting and craft-versus-buy decisions;
+- Trading Post quotes and the selected buy/sell price modes;
+- output quantities, purchase costs and Trading Post selling fees;
+- binding rules and applicable daily-crafting restrictions.
 
-See **[ROADMAP.md](docs/ROADMAP.md)** for the detailed sequencing and exit criteria.
+The crafting-resolution tree explains how each requirement is supplied: from inventory, by crafting, through a Trading Post purchase or through a combination of methods. Missing or otherwise unobtainable ingredients remain visible with their quantities and Wiki links.
 
----
+For more detail, see the [Crafting Guide](docs/crafting/README.md), [Crafting Glossary](docs/crafting/GLOSSARY.md) and [Domain Specification](docs/DOMAIN_SPEC.md).
+
+## Project status and roadmap
+
+**The Vue/TypeScript web frontend has replaced JavaFX as the application's interface.** Crafting Profit, Crafting Discovery, Ectoplasm Salvage, account views and System Status are available in the browser. The project remains under active development and is not yet a packaged public multi-user service.
+
+Planned work includes multi-user and GW2-account isolation, containerized deployment of the application and PostgreSQL, deployment configuration and further improvements to the existing views. System Status is planned to evolve into an admin page.
+
+See the [Roadmap](docs/ROADMAP.md) for detailed priorities and progress.
 
 ## Technology stack
 
-### Backend
+| Layer | Technology |
+| --- | --- |
+| Frontend | Vue 3, TypeScript, Vite |
+| Backend | Java 25, Spring Boot 4.1.1, Maven |
+| Database | PostgreSQL |
+| Game and account data | Official Guild Wars 2 API |
+| Testing | JUnit 5, Vitest, Playwright Core browser smoke tests |
 
-- **Java 25**
-- **Maven**
-- **Spring Boot 4.1.1**
-- **PostgreSQL**
-- **JUnit 5**
-- Guild Wars 2 official API
-
-### Frontend
-
-- **Vue 3**
-- **TypeScript**
-- **Vite**
-- **Vitest**
-- browser smoke tests using Playwright Core
-
-### Legacy UI during migration
-
-- **JavaFX 25**
-
-JavaFX is intentionally still present while the browser frontend reaches functional parity. It is not the target final UI.
-
----
-
-## Architecture at a glance
-
-```text
-Browser / Vue frontend
-        |
-        | HTTP
-        v
-Spring Boot API
-        |
-        v
-Application services
-        |
-        v
-Crafting / economy domain
-       / \
-      /   \
-PostgreSQL  Guild Wars 2 API
-```
-
-The backend owns authoritative crafting and economy calculations. The frontend presents backend results rather than independently reimplementing those rules.
-
-The repository contains more detailed architecture and domain documentation under [`docs/`](docs/).
-
----
+The frontend communicates with the Spring Boot API over HTTP. Application services coordinate data access and calculations, while the crafting and economy domain owns the calculation rules. PostgreSQL stores synchronized data and the price cache.
 
 ## Running locally
 
-The project is still a development build rather than a packaged end-user release.
+The project currently uses a development-oriented, single-user setup rather than a packaged release.
 
-### Requirements
+**Requirements:** Java 25, PostgreSQL, Node.js/npm and a Guild Wars 2 API key with the permissions required for account synchronization. The PostgreSQL schema and runtime configuration must be set up for your environment; consult the repository configuration and development documentation.
 
-- Java 25
-- PostgreSQL
-- Node.js / npm
-- a Guild Wars 2 API key for account-specific synchronization
-
-The current local setup still expects the PostgreSQL schema and runtime configuration used by the development environment. See the project documentation and configuration in the repository before running synchronization against a new database.
-
-### 1. Run the backend
-
-From the repository root:
+**1. Start the backend** from the repository root:
 
 ```bash
 ./mvnw spring-boot:run
@@ -179,11 +121,9 @@ On Windows PowerShell:
 .\mvnw.cmd spring-boot:run
 ```
 
-The backend API is served locally on port `8080` by default.
+The backend API runs on port `8080` by default.
 
-### 2. Run the frontend
-
-In another terminal:
+**2. Start the frontend** in a second terminal:
 
 ```bash
 cd frontend
@@ -191,83 +131,17 @@ npm ci
 npm run dev
 ```
 
-Vite serves the development frontend on port `5173` by default.
-
-Open:
-
-```text
-http://localhost:5173
-```
-
-During development, the Vite server forwards `/api` requests to the backend.
-
-### Browser favicon
-
-The icon the browser shows in the tab, the bookmark list and the history is one static file:
-
-```text
-frontend/public/favicon.ico
-```
-
-The file currently in the repository is a **neutral placeholder** — a plain grey rounded square — put
-there so the integration is complete and testable. It is not artwork, and it is not intended as the
-project's final icon.
-
-To supply the final icon, replace that file:
-
-1. Save the icon as a Windows icon file (`.ico`). A single 32×32 image works; a multi-size `.ico`
-   containing 16×16, 32×32 and 48×48 is the usual choice, because the browser then picks the size it
-   needs instead of scaling one down.
-2. Overwrite `frontend/public/favicon.ico`, keeping that exact path, filename and extension. Nothing
-   else has to change: the document's icon link in `frontend/index.html` refers to the file by name
-   and never to its contents, and the file is served byte-for-byte — the build does not convert,
-   rename or re-encode it.
-3. For the development server (`npm run dev`), reload the page. For a production build, run
-   `npm run build` in `frontend/`; everything in `frontend/public/` is copied into `frontend/dist/`,
-   and the served URL follows the build's configured base path.
-
-Browsers cache favicons far more stubbornly than pages, so a normal reload usually keeps showing the
-old icon even though the new file is being served. To see the replacement:
-
-- hard-reload the page (`Ctrl`+`Shift`+`R`, or `Cmd`+`Shift`+`R` on macOS), or
-- open `http://localhost:5173/favicon.ico` directly and reload *that* — this also shows exactly which
-  file is being served — or
-- open the application in a private/incognito window, or clear the browser's cached images.
-
-An unchanged tab icon is therefore not by itself evidence that the replacement failed.
-
-To verify a replacement, run the following in `frontend/` — it builds, then drives a real browser and
-checks that the page requests the icon and receives exactly the bytes of
-`frontend/public/favicon.ico`:
-
-```bash
-npm run build
-npm run smoke:favicon
-```
-
----
+Open **http://localhost:5173**. During development, Vite forwards `/api` requests to the backend.
 
 ## Testing
 
-### Backend
-
-Run the standard Maven test suite from the repository root:
+Run backend tests from the repository root:
 
 ```bash
 ./mvnw test
 ```
 
-Windows PowerShell:
-
-```powershell
-.\mvnw.cmd test
-```
-
-The project also contains PostgreSQL integration tests and selected optional/live verification paths. See [`docs/TEST_STRATEGY.md`](docs/TEST_STRATEGY.md) for the testing model.
-
-### Frontend
-
-From `frontend/`:
+Run frontend checks from `frontend/`:
 
 ```bash
 npm test
@@ -275,96 +149,31 @@ npm run type-check
 npm run build
 ```
 
-The frontend also contains browser smoke checks for important flows, layouts, account views, icons, synchronization, and Crafting Profit behavior.
+The repository also includes integration tests and browser smoke checks. See the [Test Strategy](docs/TEST_STRATEGY.md) for coverage and verification details.
 
-Full pushed changes are verified by the repository's GitHub Actions CI pipeline.
+## Documentation
 
----
-
-## Project documentation
-
-The repository intentionally keeps detailed rules out of this README.
-
-Useful starting points:
-
-- **[Crafting Guide](docs/crafting/README.md)** — plain-language explanation of Crafting Profit / Discovery behavior
-- **[Roadmap](docs/ROADMAP.md)** — current development phases and sequencing
-- **[Domain Specification](docs/DOMAIN_SPEC.md)** — authoritative crafting/economy rules
-- **[Crafting Glossary](docs/crafting/GLOSSARY.md)** — canonical player-facing terminology and UI-label mapping
-- **[Current State](docs/CURRENT_STATE_SPEC.md)** — what currently runs and its limits
-- **[Current Architecture](docs/CURRENT_ARCHITECTURE.md)** — observed implementation structure and flows
-- **[Target Architecture](docs/TARGET_ARCHITECTURE.md)** — intended system architecture
-- **[Known Problems](docs/KNOWN_PROBLEMS.md)** — currently known unresolved problems and technical debt
-- **[Test Strategy](docs/TEST_STRATEGY.md)** — test layers and verification approach
-- **[Coding Guidelines](docs/CODING_GUIDELINES.md)** — implementation conventions
-- **[Contributing](CONTRIBUTING.md)** — contributor workflow and documentation entry points
-- **[Agentic Development Experiment](agent/agent_README_experimental.md)** — AI-agent/orchestrator workflow used to develop the project
-
----
+- [Crafting Guide](docs/crafting/README.md) — player-focused explanation of crafting calculations and views.
+- [Crafting Glossary](docs/crafting/GLOSSARY.md) — terminology and UI labels.
+- [Crafting Status Reference](docs/CRAFTING_STATUS_REFERENCE.md) — developer reference for crafting states and blocking reasons.
+- [Roadmap](docs/ROADMAP.md) — planned application work.
+- [Domain Specification](docs/DOMAIN_SPEC.md) — authoritative crafting and economy rules.
+- [Current State](docs/CURRENT_STATE_SPEC.md) — implemented behavior and limitations.
+- [Architecture](docs/CURRENT_ARCHITECTURE.md) — current application structure.
+- [Known Problems](docs/KNOWN_PROBLEMS.md) — open defects and limitations.
 
 ## Contributing and community
 
-Bug reports, feature ideas, questions, and contributions are welcome.
-
-- Use **GitHub Issues** for reproducible bugs and concrete feature requests.
-- Use **GitHub Discussions** for questions, ideas, crafting/economy discussion, and general project feedback.
-- Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before submitting code.
-- Security-sensitive reports should follow [`SECURITY.md`](SECURITY.md).
-- Community participation is covered by [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
-
-The project is changing quickly, so checking the current roadmap and documentation before starting a larger contribution is recommended.
-
----
+Bug reports, feature requests and contributions are welcome. Use [GitHub Issues](https://github.com/Nebettadjsr/GW2/issues) for bugs and concrete requests, and [GitHub Discussions](https://github.com/Nebettadjsr/GW2/discussions) for questions and ideas. See [Contributing](CONTRIBUTING.md), [Security](SECURITY.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Guild Wars 2 API keys
 
-The current local/single-user development setup can use a locally configured GW2 API key.
-
-The target public multi-user design is different: each user will provide their own key through the browser when account-specific GW2 API access is required. The backend is planned to use it transiently rather than persist the key in the application database.
-
-Guild Wars 2 API keys provide read access according to their granted permissions; they should still not be committed to the repository or posted publicly in issues and logs.
-
----
-
-## Roadmap highlights
-
-The current intended sequence is:
-
-```text
-Build & test foundation              COMPLETE
-Domain stabilization                 COMPLETE
-Domain isolation                     COMPLETE
-Application-service extraction       COMPLETE
-Backend HTTP API                     COMPLETE
-            |
-            v
-Frontend migration                   CURRENT
-            |
-            v
-Multi-user / account isolation
-            |
-            v
-PostgreSQL + containerization
-            |
-            v
-Deployment
-            |
-            v
-Final JavaFX removal
-```
-
-The roadmap deliberately introduces multi-user/account isolation **before** containerization so deployment is built around the intended shared application model rather than hardening the earlier single-account assumption.
-
----
+The current local setup uses a locally configured API key. The planned multi-user application will accept each user's key for account-specific access and use it transiently rather than storing it in the application database. Do not commit API keys to the repository or include them in public bug reports.
 
 ## Disclaimer
 
-This is an unofficial community project.
-
-It is **not affiliated with, endorsed by, or sponsored by ArenaNet or NCSOFT**. Guild Wars 2 and related names and assets belong to their respective owners.
-
-The project uses the official Guild Wars 2 API for game/account data where applicable.
+This is an unofficial community project, **not affiliated with, endorsed by or sponsored by ArenaNet or NCSOFT**. Guild Wars 2 and related names and assets belong to their respective owners. The application uses the official Guild Wars 2 API where applicable.
 
 ## License
 
-This project is licensed under the **MIT License**. See [`LICENSE`](LICENSE).
+Licensed under the [MIT License](LICENSE).
