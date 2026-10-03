@@ -1,6 +1,7 @@
 """Tests for QA plan validation, persistence, write guards, and role configuration."""
 
 import json
+import io
 import subprocess
 import tempfile
 import unittest
@@ -13,6 +14,7 @@ from agent.runtime.support import config
 from agent.runtime.support.capacity import ModelCapacityUnavailable
 from agent.runtime.tests import REAL_QA_PREPARATION, REAL_RUN_QA
 from agent.runtime.human import user_decisions
+from agent.runtime.support import daily_log
 
 
 def raw_plan(status="READY", **overrides):
@@ -81,6 +83,20 @@ class QAPlanValidationTest(unittest.TestCase):
             self.assertEqual(source.read_text(encoding="utf-8"), "safe")
             self.assertTrue(test.exists())
 
+    def test_test_only_guard_preserves_a_concurrent_change_instead_of_overwriting_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "src/main/java/App.java"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"concurrent user change")
+            with patch.object(config, "REPO_ROOT", root):
+                _, violations = qa_agent.enforce_test_only_changes(
+                    {"src/main/java/App.java": b"before QA"},
+                    {"src/main/java/App.java": b"QA version"},
+                )
+            self.assertTrue(any("preserved newer concurrent change; not restored" in item for item in violations))
+            self.assertEqual(source.read_bytes(), b"concurrent user change")
+
     def test_qa_model_and_effort_are_explicit_without_changing_other_codex_roles(self):
         with patch.object(local_planner_runner, "run_qa", REAL_RUN_QA), \
                 patch.object(local_planner_runner, "run_codex", return_value=0) as run:
@@ -115,6 +131,7 @@ class QAPreparationPersistenceTest(unittest.TestCase):
             "QA_RESULT_FILE": self.root / "agent/runtime/artifacts/QA_RESULT.json",
             "QA_STATE_FILE": self.root / "agent/runtime/artifacts/QA_STATE.json",
             "ARTIFACTS_DIR": self.root / "agent/runtime/artifacts",
+            "QA_FAILURES_DIR": self.root / "agent/runtime/artifacts/qa-failures",
             "QA_INSTRUCTIONS_FILE": config.REPO_ROOT / "agent/QA_INSTRUCTIONS.md",
             "USER_DECISIONS_DIR": self.root / "agent/user-decisions",
         }.items():
@@ -142,6 +159,61 @@ class QAPreparationPersistenceTest(unittest.TestCase):
         self.assertIn(self.test_file, plan["protected_test_hashes"])
         self.assertTrue((self.root / "agent/qa-plans/QA-STORY-QA-001.json").is_file())
         self.assertTrue((self.root / "agent/runtime/artifacts/qa-tests" / self.test_file).is_file())
+
+    def test_orchestrator_log_appends_during_qa_are_not_misclassified_as_agent_writes(self):
+        logs = self.root / "agent/logs"
+        logs.mkdir(parents=True)
+        log = logs / "2026-10-03.log"
+        log.write_text("pre-existing history\n", encoding="utf-8")
+
+        def prepare(_prompt, output):
+            tee = daily_log.ConsoleTee(io.StringIO())
+            print("QA runner transcript line", file=tee)
+            output.append("""```json
+{"status":"READY","story_id":"STORY-QA-001","rationale":"Story-specific checks.","acceptance_checks":[],"invariants":[],"test_levels":["unit"],"existing_tests_reviewed":[],"prepared_test_paths":[],"test_specifications":["Check the required observable result."],"pre_implementation_verification":{"status":"NOT_RUN"},"coverage_review":"Reviewed.","external_sources":[],"clarifications":[],"post_implementation_review_required":false}
+```""")
+            return 0
+
+        with patch.object(daily_log, "LOGS_DIR", logs), \
+                patch.object(qa_agent, "execute_preparation", REAL_QA_PREPARATION), \
+                patch.object(qa_agent, "run_qa", side_effect=prepare):
+            plan = qa_agent.execute_preparation(self.story)
+        self.assertEqual(plan["status"], "READY")
+        content = log.read_text(encoding="utf-8")
+        self.assertIn("pre-existing history", content)
+        self.assertIn("QA runner transcript line", content)
+
+    def test_direct_qa_log_edit_is_rejected_and_restored_without_losing_buffered_logs(self):
+        logs = self.root / "agent/logs"
+        logs.mkdir(parents=True)
+        log = logs / "2026-10-03.log"
+        log.write_text("pre-existing history\n", encoding="utf-8")
+
+        def prepare(_prompt, _output):
+            daily_log.log_line("legitimate orchestrator output")
+            log.write_text("QA replacement", encoding="utf-8")
+            return 0
+
+        with patch.object(daily_log, "LOGS_DIR", logs), \
+                patch.object(qa_agent, "execute_preparation", REAL_QA_PREPARATION), \
+                patch.object(qa_agent, "run_qa", side_effect=prepare):
+            with self.assertRaisesRegex(qa_agent.QAFileProtectionError, "agent/logs/2026-10-03.log"):
+                qa_agent.execute_preparation(self.story)
+        content = log.read_text(encoding="utf-8")
+        self.assertIn("pre-existing history", content)
+        self.assertIn("legitimate orchestrator output", content)
+        self.assertNotIn("QA replacement", content)
+
+    def test_technical_failure_report_is_actionable_and_not_a_product_decision(self):
+        failure = qa_agent.record_failure(
+            self.story, "file_protection_violation", "QAFileProtectionError: log changed",
+            model_retries=0,
+        )
+        report = json.loads(failure.read_text(encoding="utf-8"))
+        self.assertEqual(report["status"], "TECHNICAL_FAILURE")
+        self.assertEqual(report["story_id"], "STORY-QA-001")
+        self.assertIn("manually requeue", report["recovery_action"])
+        self.assertFalse((self.root / "agent/user-decisions").exists())
 
     def test_interrupted_qa_keeps_generated_tests_for_resume_without_duplicates(self):
         messages = []

@@ -583,3 +583,472 @@
 [20:54:11] Evaluator decision: COMPLETE
 [20:54:11] Reason: The smoke scripts now check the rendered workflow contracts described by the story, and the story records focused passing runs for all three scripts. I inspected the implementation and recorded evidence; I did not independently rerun the browser checks.
 [20:54:11] ========================================
+[20:54:14] STORY-WEB-024-repair-fresh-build-smoke-contracts.md published for CI verification: f2c3670 on master (2 changed path(s), new commit, waiting for GitHub Actions.
+[20:56:15] GitHub CI PASSED for f2c3670 (STORY-WEB-024-repair-fresh-build-smoke-contracts.md): CI: success
+[20:56:15] STORY-WEB-024-repair-fresh-build-smoke-contracts.md moved to BACKLOG '## Done'.
+[20:56:15] STORY-WEB-024-repair-fresh-build-smoke-contracts.md completed and finalized (PASSED f2c3670): Status DONE, entry moved to '## Done', CURRENT_STORY.md cleared, queue consistent.
+[20:56:23] Availability check: claude_available=True, codex_available=True
+[20:56:23] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[20:56:29] Planning resumed for changed inputs: AGENTS.md, agent/ARCHITECT_INSTRUCTIONS.md, agent/CURRENT_STORY.md, agent/PLANNER_INSTRUCTIONS.md, agent/QA_INSTRUCTIONS.md, agent/runtime/artifacts/CLAUDE_RESULT.md, agent/runtime/core/project_planner.py, agent/runtime/human/user_decisions.py, agent/runtime/support/config.py, agent/stories/BACKLOG.md, agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md, docs/CODING_GUIDELINES.md, docs/CURRENT_ARCHITECTURE.md, docs/CURRENT_STATE_SPEC.md, docs/QUALITY_METRICS.md, docs/TEST_STRATEGY.md, docs/bugs/BUG-REPORT-TEMPLATE.md, docs/bugs/README.md, docs/bugs/fixtures/README.md
+[20:56:29] ========================================
+[20:56:29] Running project-planning pass
+[20:56:29] ========================================
+[20:56:30] ========================================
+[20:56:30] Starting hosted Codex planner
+[20:56:30] ========================================
+[20:56:30] [planner] session 01a1031f-fccd-79f2-ad46-854ba57fc60e
+[20:56:30] [planner] reasoning...
+[20:56:36] Planner last response:
+[20:56:36] I’ll review the three queued Phase 5 stories and their prerequisite links, then process the four supplied WEB-024 follow-up findings against those contracts and the relevant authoritative docs. I’ll record the dispositions and only create a next batch if the evidence shows uncovered Phase 5 work.
+[20:56:37] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'Get-Content agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md; Get-Content agent/stories/STORY-WEB-020-layout-smoke-total-sell-value.md; Get-Content agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md; Get-Content agent/stories/STORY-WEB-021-ecto-content-test-hooks.md'
+[20:56:38] [planner command done] exit 0
+[20:56:49] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path docs/DOMAIN_SPEC.md -Pattern '"'^###? 2'"\\.1\\.1|"'^## 2'"\\.1\\.1|maximum displayed recipe|Show all' -Context 2,5; Select-String -Path docs/TEST_STRATEGY.md -Pattern '"'^###? 12'"\\.1|"'^###? 12'"\\.2' -Context 0,12; Get-Content agent/stories/STORY-WEB-006-profit-result-display-controls.md; Get-Content agent/stories/STORY-WEB-016-compact-crafting-resolution-tree.md;"
+[20:56:49] [planner command done] exit 0
+[20:56:57] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md -Pattern '"'^## Follow-up Findings|''^F00[1-4]|''^## Result'"' -Context 0,3; Select-String -Path agent/stories/STORY-WEB-006-profit-result-display-controls.md -Pattern '"'^## Acceptance Criteria|''^[0-9]+'"\\.|maximum|Show all|"'^## Result'"' -Context 0,2; Select-String -Path agent/stories/STORY-WEB-016-compact-crafting-resolution-tree.md -Pattern '"'^## Acceptance Criteria|''^[0-9]+'"\\.|browser|resolution|"'^## Result'"' -Context 0,2;"
+[20:56:57] [planner command done] exit 0
+[20:57:06] Planner last response:
+[20:57:06] The completed smoke-repair record confirms the F001 and F002 observations in its own result, and the existing display-controls story names the required limit/Show all behavior. I’m checking whether that placement issue is already represented by a current queued contract, and whether F004 has any existing browser-coverage story, before recording dispositions.
+[20:57:10] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path docs/KNOWN_PROBLEMS.md -Pattern 'PageHeader|page header|compact-value|describeRootSourcing|root sourcing|displayed results' -Context 1,2; Select-String -Path agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md -Pattern '"'^F00[1-4]'"' -Context 0,8; Select-String -Path agent/stories/STORY-WEB-016-compact-crafting-resolution-tree.md -Pattern '"'^## Goal|''^## Acceptance Criteria|''^## Dependencies|''^## Blockers|''^## Follow-up Findings'"' -Context 0,12;"
+[20:57:10] [planner command done] exit 0
+[20:57:16] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command ''
+[20:57:16] [planner command done] exit 0
+[20:57:25] [planner file change] completed
+[20:57:31] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "python -c \"import sys; sys.path.insert(0,'.'); from agent.runtime.core.backlog_writer import add_to_do_entries; add_to_do_entries([('STORY-WEB-028','STORY-WEB-028-place-profit-display-limit-in-controls.md','milestone-05',[]),('STORY-WEB-029','STORY-WEB-029-cover-root-sourcing-explanations-in-browser.md','milestone-05',['STORY-WEB-028'])])\""
+[20:57:31] [planner command done] exit 0
+[20:57:35] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'Get-Content agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md | Select-Object -Skip 172 -First 45'
+[20:57:35] [planner command done] exit 0
+[20:57:47] [planner file change] completed
+[20:58:10] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[20:58:10] from pathlib import Path
+[20:58:10] stories = {
+[20:58:10] 'STORY-WEB-028-place-profit-display-limit-in-controls.md': '''## Story ID
+[20:58:10] STORY-WEB-028
+[20:58:10] ## Title
+[20:58:10] Place Crafting Profit result limits in the Displayed results controls
+[20:58:10] ## Status
+[20:58:10] TODO
+[20:58:10] ## Milestone
+[20:58:10] milestone-05
+[20:58:10] ## Goal
+[20:58:10] Place the adjustable maximum displayed recipe count and Show all control in the Calculation controls panel's Displayed results subgroup, as required by the Crafting Profit presentation specification.
+[20:58:10] ## Authoritative Source Documents / Sections
+[20:58:10] - "'`docs/DOMAIN_SPEC.md` §2.1.1, Displayed results controls.
+[20:58:10] - `docs/TEST_STRATEGY.md` §§12.1–12.2, frontend and browser verification.
+[20:58:10] - `agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md`, Follow-up Finding F002.
+[20:58:10] - Supplied Phase 5 roadmap excerpt, browser coverage and acceptance.
+[20:58:10] ## Context
+[20:58:10] The existing requirement specifies that the adjustable maximum displayed recipe count and Show all belong inside the Calculation controls panel'"'s Displayed results subgroup. The completed smoke-repair story records that those controls currently render in the results toolbar, while filters and search are in the panel. This work concerns presentation placement; it must retain the existing display-only behavior and backend-authoritative result values.
+[20:58:10] ## Acceptance Criteria
+[20:58:10] 1. Render the editable maximum and Show all control within the Calculation controls panel's Displayed results subgroup.
+[20:58:10] 2. Preserve the existing limit, Show all behavior, result filtering, selection and accessibility.
+[20:58:10] 3. Update component and browser layout checks to assert the required grouping and continued behavior.
+[20:58:10] 4. Review affected frontend coverage and record focused verification.
+[20:58:10] ## Required Tests
+[20:58:10] - Component tests cover limit editing, Show all, and subgroup placement.
+[20:58:10] - Browser layout smoke verifies the controls remain usable and do not break responsive layout or keyboard navigation.
+[20:58:10] ## Constraints
+[20:58:10] - Follow the presentation grouping in "'`docs/DOMAIN_SPEC.md` §2.1.1.
+[20:58:10] - Do not change backend calculations, result data, filtering semantics, or the initial maximum.
+[20:58:10] - Keep the change within Crafting Profit presentation and its checks.
+[20:58:10] ## Dependencies
+[20:58:10] None.
+[20:58:10] ## Definition of Done
+[20:58:10] The specified controls are grouped in the Calculation controls panel, their behavior remains covered by component and browser checks, affected coverage is reviewed, and the story Result records verification and any remaining quality gaps.
+[20:58:10] ## Result
+[20:58:10] Not started.
+[20:58:10] ## Blockers
+[20:58:10] None.
+[20:58:10] '"''',
+[20:58:10] 'STORY-WEB-029-cover-root-sourcing-explanations-in-browser.md': '''## Story ID
+[20:58:10] STORY-WEB-029
+[20:58:10] ## Title
+[20:58:10] Cover root sourcing explanations in browser checks
+[20:58:10] ## Status
+[20:58:10] TODO
+[20:58:10] ## Milestone
+[20:58:10] milestone-05
+[20:58:10] ## Goal
+[20:58:10] Restore browser coverage for the root sourcing explanations produced by the shared crafting resolution presentation logic when the requested recipe is sourced through a different root.
+[20:58:10] ## Authoritative Source Documents / Sections
+[20:58:10] - "'`docs/TEST_STRATEGY.md` §§12.1–12.2, frontend component and browser verification.
+[20:58:10] - `agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md`, Follow-up Finding F004.
+[20:58:10] - `agent/stories/STORY-WEB-016-compact-crafting-resolution-tree.md`, shared Profit and Discovery resolution presentation.
+[20:58:10] - Supplied Phase 5 roadmap excerpt, resolution details and browser coverage/acceptance.
+[20:58:10] ## Context
+[20:58:10] The completed smoke-repair story reports that both crafting browser smoke fixtures use a root whose recipe ID matches the request, causing `describeRootSourcing` explanations not to render in either smoke path. The helper has no browser coverage according to that finding. This story adds a controlled case that exercises the existing alternate-root behavior without changing domain calculations or presentation rules.
+[20:58:10] ## Acceptance Criteria
+[20:58:10] 1. Add a controlled browser fixture in which the requested recipe is sourced through a different root, so the root sourcing explanation is rendered.
+[20:58:10] 2. Assert the expected explanation content for the supported sourcing cases produced by `describeRootSourcing`.
+[20:58:10] 3. Keep existing requested-root fixture behavior and current Profit and Discovery workflows covered.
+[20:58:10] 4. Review the helper'"'s component coverage and affected browser coverage; record focused verification and any limitations.
+[20:58:10] ## Required Tests
+[20:58:10] - Focused component tests cover supported root sourcing description cases and the no-description case for a directly matching root.
+[20:58:10] - At least one controlled browser smoke check renders and asserts the alternate-root explanation.
+[20:58:10] ## Constraints
+[20:58:10] - Do not alter backend resolution values, recipe identity semantics, or domain behavior.
+[20:58:10] - Keep the added scenario limited to browser coverage of the existing presentation behavior.
+[20:58:10] - Use deterministic fixtures; do not depend on live account data containing a particular alternate root.
+[20:58:10] ## Dependencies
+[20:58:10] STORY-WEB-028.
+[20:58:10] ## Definition of Done
+[20:58:10] Root sourcing explanations are exercised by deterministic browser coverage, related helper/component coverage is reviewed, and the story Result records the focused verification and limitations.
+[20:58:10] ## Blockers
+[20:58:10] None.
+[20:58:10] '''
+[20:58:10] }
+[20:58:10] for name, body in stories.items():
+[20:58:10]     Path('agent/stories', name).write_text(body, encoding='utf-8')
+[20:58:10] '@ | python -"
+[20:58:10] [planner command done] exit 0
+[20:58:17] Planner last response:
+[20:58:17] Two justified follow-ups emerged: the documented placement of the result limit/Show all controls, and browser coverage for alternate root-sourcing explanations. I’ve drafted both contracts and recorded the four source-finding dispositions; I’m correcting queue dependencies and then running the mandated planning validator.
+[20:58:20] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "python -c \"import sys; sys.path.insert(0,'.'); import agent.runtime.core.backlog_writer as b; print([n for n in dir(b) if 'entry' in n])\""
+[20:58:20] [planner command done] exit 0
+[20:58:32] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "python -c \"import json; from pathlib import Path; p=Path('agent/runtime/artifacts/PLANNING_RESULT.json'); p.write_text(json.dumps({'status':'COMPLETE','phase_considered':'Phase 5','independent_work_remaining':False,'phase_review':[{'area':'Crafting Profit controls grouping','outcome':'PLANNED','references':['STORY-WEB-028','docs/DOMAIN_SPEC.md §2.1.1']},{'area':'Root sourcing browser coverage','outcome':'PLANNED','references':['STORY-WEB-029','STORY-WEB-024']},{'area':'Other Phase 5 browser workflow coverage and acceptance','outcome':'PREREQUISITE','references':['STORY-WEB-020','STORY-WEB-027','STORY-WEB-021','STORY-QUALITY-005']}],'phase_exit_criteria_satisfied':False,'story_files_created':['STORY-WEB-028-place-profit-display-limit-in-controls.md','STORY-WEB-029-cover-root-sourcing-explanations-in-browser.md'],'user_decision_ids':[],'product_owner_requests_processed':[],'architect_requests_created':[],'milestone_transition':False,'completed_milestone':None,'next_milestone':None,'backlog_updated':True,'roadmap_updated':False,'project_state_updated':False,'reason':'Created the next bounded Phase 5 batch for a documented control-grouping mismatch and uncovered root-sourcing browser coverage; remaining queued browser stories and the health review remain prerequisites.'},indent=2)+'\\n',encoding='utf-8')\"; python -c \"import sys; sys.path.insert(0,'.'); from agent.runtime.core.planning_check import main; sys.exit(main())\""
+[20:58:32] [planner command done] exit 0
+[20:58:37] Planner last response:
+[20:58:37] Planning completed for Phase 5. Created [STORY-WEB-028](C:/Users/Administrator/IdeaProjects/GW2/agent/stories/STORY-WEB-028-place-profit-display-limit-in-controls.md) and [STORY-WEB-029](C:/Users/Administrator/IdeaProjects/GW2/agent/stories/STORY-WEB-029-cover-root-sourcing-explanations-in-browser.md), and recorded all four follow-up finding dispositions in [STORY-WEB-024](C:/Users/Administrator/IdeaProjects/GW2/agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md).
+[20:58:37] The Phase 5 exit criteria remain incomplete; the queued browser stories and completion review are still prerequisites. The planning validator reported `PLANNING OUTPUT OK`.
+[20:58:37] [planner] turn completed | input tokens: 652700 | cached input tokens: 600832 | output tokens: 5088
+[20:58:38] ========================================
+[20:58:38] [planner] turn totals | model requests: 1 | gross input tokens: 652,700 | cached input tokens: 600,832 | uncached input tokens: 51,868 | output tokens: 5,088
+[20:58:38] Hosted codex planner exit code: 0
+[20:58:38] ========================================
+[20:58:38] ========================================
+[20:58:38] Planning result: FAILED (all changes rolled back)
+[20:58:38] Reason: Created the next bounded Phase 5 batch for a documented control-grouping mismatch and uncovered root-sourcing browser coverage; remaining queued browser stories and the health review remain prerequisites.
+[20:58:38] - STORY-WEB-029-cover-root-sourcing-explanations-in-browser.md has unresolved prerequisites but is not BLOCKED: ['depends on STORY-WEB-028, which is not DONE (currently TODO)']
+[20:58:38] - STORY-WEB-029-cover-root-sourcing-explanations-in-browser.md is missing required sections: Result
+[20:58:38] ========================================
+[20:58:38] Project planning FAILED: Created the next bounded Phase 5 batch for a documented control-grouping mismatch and uncovered root-sourcing browser coverage; remaining queued browser stories and the health review remain prerequisites.; validation: ["STORY-WEB-029-cover-root-sourcing-explanations-in-browser.md has unresolved prerequisites but is not BLOCKED: ['depends on STORY-WEB-028, which is not DONE (currently TODO)']", 'STORY-WEB-029-cover-root-sourcing-explanations-in-browser.md is missing required sections: Result']. Held until planning inputs change; independent execution continues.
+[20:58:44] Decision: code (select next story) -- reason: 3 selectable To Do candidate(s), Claude available
+[20:58:44] ========================================
+[20:58:44] Story selector: NEXT
+[20:58:44] Reason: Deterministic selection: first executable entry in BACKLOG.md's 'To Do' order (STORY-WEB-020-layout-smoke-total-sell-value.md).
+[20:58:44] ========================================
+[20:58:44] Next story activated:
+[20:58:44] agent/stories/STORY-WEB-020-layout-smoke-total-sell-value.md
+[20:58:53] Availability check: claude_available=True, codex_available=True
+[20:58:53] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[20:58:53] ========================================
+[20:58:53] Active story: agent/stories/STORY-WEB-020-layout-smoke-total-sell-value.md
+[20:58:53] ========================================
+[21:00:00] QA preparation failed (1/2): QAPlanError: QA modified forbidden files; changes were restored: agent/logs/2026-10-03.log
+[21:01:02] QA preparation failed (2/2): QAPlanError: QA modified forbidden files; changes were restored: agent/logs/2026-10-03.log
+[21:01:02] Created user-intervention record: agent/user-interventions/UI-006-STORY-WEB-020.md
+[21:01:02] STORY-WEB-020-layout-smoke-total-sell-value.md moved to BACKLOG '## Blocked'.
+[21:01:11] Availability check: claude_available=True, codex_available=True
+[21:01:11] Decision: plan (attempt) -- reason: just finished a story (replenish check)
+[21:01:17] Planning resumed for changed inputs: agent/CURRENT_STORY.md, agent/stories/BACKLOG.md, agent/stories/STORY-WEB-020-layout-smoke-total-sell-value.md
+[21:01:17] ========================================
+[21:01:17] Running project-planning pass
+[21:01:17] ========================================
+[21:01:17] ========================================
+[21:01:17] Starting hosted Codex planner
+[21:01:17] ========================================
+[21:01:17] [planner] session 01a10324-5eca-7a41-a225-fc6e50fd8008
+[21:01:18] [planner] reasoning...
+[21:01:22] Planner last response:
+[21:01:22] I’ll review the remaining Phase 5 coverage and the four supplied follow-up findings, then create only justified milestone-05 planning artifacts and validate the result.
+[21:01:25] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'Get-Content agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md; Get-Content agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md; Get-Content agent/stories/STORY-WEB-021-ecto-content-test-hooks.md; Get-Content agent/stories/STORY-QUALITY-005-phase-five-completion-review.md; Get-Content agent/stories/STORY-WEB-020-layout-smoke-total-sell-value.md'
+[21:01:25] [planner command done] exit 0
+[21:01:33] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md -Pattern '"'^## Follow-up|''^F00[1-4]|''^## Result'"' -Context 0,2; Select-String -Path docs/DOMAIN_SPEC.md -Pattern 'maximum|Show all|displayed recipe|recipe count' -Context 2,3; Select-String -Path docs/TEST_STRATEGY.md -Pattern '"'^## 12|browser|component'"' -Context 0,2;"
+[21:01:33] [planner command done] exit 0
+[21:01:37] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$p=Get-Content agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md; $p[177..210];'
+[21:01:37] [planner command done] exit 0
+[21:01:52] Planner last response:
+[21:01:52] The remaining executable queue already has focused smoke and Ectoplasm coverage work, plus the required health review. The completed smoke-contract story also records four uncovered follow-ups; I’m consolidating those into one bounded browser consistency story so they can be verified together without expanding the milestone into unrelated frontend cleanup.
+[21:02:11] [planner file change] completed
+[21:02:19] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[21:02:19] from pathlib import Path
+[21:02:19] p=Path('agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md')
+[21:02:19] s=p.read_text(encoding='utf-8')
+[21:02:19] s += '\\n## Follow-up Findings Disposition\\n\\nF001: FOLLOW-UP STORY — STORY-WEB-028\\nF002: FOLLOW-UP STORY — STORY-WEB-028\\nF003: FOLLOW-UP STORY — STORY-WEB-028\\nF004: FOLLOW-UP STORY — STORY-WEB-028\\n'
+[21:02:19] p.write_text(s, encoding='utf-8')
+[21:02:19] '@ | python -; python -c \"import sys; sys.path.insert(0,'.'); from agent.runtime.core.backlog_writer import add_to_do_entries; add_to_do_entries([('STORY-WEB-028','STORY-WEB-028-align-browser-workflow-contracts.md','milestone-05',['STORY-WEB-024'])])\";"
+[21:02:19] [planner command done] exit 0
+[21:02:37] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[21:02:37] import json
+[21:02:37] from pathlib import Path
+[21:02:37] result = {
+[21:02:37]   \"status\": \"COMPLETE\",
+[21:02:37]   \"phase_considered\": \"Phase 5\",
+[21:02:37]   \"independent_work_remaining\": True,
+[21:02:37]   \"phase_review\": [
+[21:02:37]     {\"area\": \"Browser smoke and layout contracts recorded by STORY-WEB-024\", \"outcome\": \"PLANNED\", \"references\": [\"STORY-WEB-028\", \"agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md\"]},
+[21:02:37]     {\"area\": \"Tracked temporary account smoke control copy\", \"outcome\": \"READY\", \"references\": [\"STORY-WEB-027\"]},
+[21:02:37]     {\"area\": \"Ectoplasm stable content hooks and browser checks\", \"outcome\": \"READY\", \"references\": [\"STORY-WEB-021\", \"STORY-WEB-019\"]},
+[21:02:37]     {\"area\": \"Layout smoke total sell value fixture\", \"outcome\": \"PREREQUISITE\", \"references\": [\"STORY-WEB-020\", \"UI-006-STORY-WEB-020\"]},
+[21:02:37]     {\"area\": \"Phase 5 project health review\", \"outcome\": \"PREREQUISITE\", \"references\": [\"STORY-QUALITY-005\", \"STORY-WEB-018\", \"STORY-WEB-020\", \"STORY-WEB-021\"]}
+[21:02:37]   ],
+[21:02:37]   \"phase_exit_criteria_satisfied\": False,
+[21:02:37]   \"story_files_created\": [\"STORY-WEB-028-align-browser-workflow-contracts.md\"],
+[21:02:37]   \"user_decision_ids\": [],
+[21:02:37]   \"product_owner_requests_processed\": [],
+[21:02:37]   \"architect_requests_created\": [],
+[21:02:37]   \"milestone_transition\": False,
+[21:02:37]   \"completed_milestone\": None,
+[21:02:37]   \"next_milestone\": None,
+[21:02:37]   \"backlog_updated\": True,
+[21:02:37]   \"roadmap_updated\": False,
+[21:02:37]   \"project_state_updated\": False,
+[21:02:37]   \"reason\": \"Phase 5 remains open: existing smoke and Ectoplasm work and the bounded health review are unfinished. Added one bounded story for the four recorded browser-contract findings; other queued work remains for subsequent passes or prerequisites.\"
+[21:02:37] }
+[21:02:37] Path('agent/runtime/artifacts/PLANNING_RESULT.json').write_text(json.dumps(result, indent=2) + '\\n', encoding='utf-8')
+[21:02:37] '@ | python -; python -c \"import sys; sys.path.insert(0,'.'); from agent.runtime.core.planning_check import main; sys.exit(main())\""
+[21:02:38] [planner command done] exit 0
+[21:02:41] Planner last response:
+[21:02:41] Created [STORY-WEB-028-align-browser-workflow-contracts.md](/C:/Users/Administrator/IdeaProjects/GW2/agent/stories/STORY-WEB-028-align-browser-workflow-contracts.md), recorded all four follow-up finding dispositions in STORY-WEB-024, and added the new story to the backlog.
+[21:02:41] Phase 5 remains open. The planning result is [PLANNING_RESULT.json](/C:/Users/Administrator/IdeaProjects/GW2/agent/runtime/artifacts/PLANNING_RESULT.json); validation passed with `PLANNING OUTPUT OK`.
+[21:02:41] [planner] turn completed | input tokens: 329057 | cached input tokens: 288000 | output tokens: 3065
+[21:02:42] ========================================
+[21:02:42] [planner] turn totals | model requests: 1 | gross input tokens: 329,057 | cached input tokens: 288,000 | uncached input tokens: 41,057 | output tokens: 3,065
+[21:02:42] Hosted codex planner exit code: 0
+[21:02:42] ========================================
+[21:02:42] ========================================
+[21:02:42] Planning result: COMPLETE
+[21:02:42] Reason: Phase 5 remains open: existing smoke and Ectoplasm work and the bounded health review are unfinished. Added one bounded story for the four recorded browser-contract findings; other queued work remains for subsequent passes or prerequisites.
+[21:02:42] ========================================
+[21:02:50] Availability check: claude_available=True, codex_available=True
+[21:02:50] Decision: code (select next story) -- reason: 3 selectable To Do candidate(s), Claude available
+[21:02:51] ========================================
+[21:02:51] Story selector: NEXT
+[21:02:51] Reason: Deterministic selection: first executable entry in BACKLOG.md's 'To Do' order (STORY-WEB-027-remove-tracked-smoke-control-copy.md).
+[21:02:51] ========================================
+[21:02:51] Next story activated:
+[21:02:51] agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md
+[21:02:56] Interrupted by user. Exiting.
+[21:57:42] GW2 AI Orchestrator started. Repository: C:\Users\Administrator\IdeaProjects\GW2
+[21:57:51] Availability check: claude_available=True, codex_available=True
+[21:57:51] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[21:57:51] ========================================
+[21:57:51] Active story: agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md
+[21:57:51] ========================================
+[21:58:33] ========================================
+[21:58:33] Starting Codex QA agent
+[21:58:33] ========================================
+[21:58:33] [qa] session 01a10358-2833-7fc3-a659-868ef3c978e2
+[21:58:33] [qa] reasoning...
+[21:58:33] Qa last response:
+[21:58:33] I’ll check the story’s relevant source documents, the smoke script and its references, then inspect existing tests and available coverage evidence. This looks like a narrow tracked-file removal, so I’ll only prepare tests if existing verification does not already give precise, executable coverage.
+[21:58:33] [qa command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content agent/stories/STORY-WEB-018-fresh-build-browser-smoke-checks.md | Select-String -Pattern 'F001' -Context 3,5; Get-Content docs/TEST_STRATEGY.md | Select-Object -First 180; Get-Content docs/QUALITY_METRICS.md | Select-Object -First 160; Get-Content docs/CURRENT_ARCHITECTURE.md | Select-String -Pattern 'frontend|browser|smoke' -Context 1,2; Get-Content docs/CURRENT_STATE_SPEC.md | Select-String -Pattern 'frontend|browser|smoke|npm' -Context 1,2; Get-Content docs/ROADMAP.md | Select-String -Pattern 'Phase 5|browser smoke' -Context 2,5"
+[21:58:33] [qa command done] exit 0
+[21:58:33] [qa command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-ChildItem frontend/scripts; Get-ChildItem frontend -Force | Select-Object Name; Get-ChildItem frontend -Recurse -File -Include *.test.*,*.spec.*,package.json,playwright.config.*,vitest.config.* | Select-Object -ExpandProperty FullName; Select-String -Path frontend/package.json,frontend/scripts/*.mjs -Pattern 'account-browser-smoke|tmp-control-unrelated-call|smoke:account|account' -Context 1,2; git ls-files frontend/scripts/.tmp-control-unrelated-call.mjs frontend/scripts/account-browser-smoke.mjs; Test-Path frontend/scripts/.tmp-control-unrelated-call.mjs;"
+[21:58:33] [qa command done] exit 0
+[21:58:33] [qa command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path frontend/package.json -Pattern 'smoke:account|scripts' -Context 1,8; Get-ChildItem frontend/scripts/__tests__ -File | Select-Object -ExpandProperty Name; Select-String -Path docs/TEST_STRATEGY.md -Pattern 'account-browser-smoke|smoke:account|Browser Smoke|browser smoke' -Context 2,4; Select-String -Path frontend/scripts/account-browser-smoke.mjs -Pattern '"'^#!/|''^import|''^const|''^async function|''^function main|process'"\\.exit' | Select-Object -First 32; Select-String -Path frontend/package.json -Pattern 'smoke:account|browser-smoke|test' -SimpleMatch;"
+[21:58:33] [qa command done] exit 0
+[21:58:33] Qa last response:
+[21:58:33] ```json
+[21:58:33] {
+[21:58:33]   "status": "NO_TESTS_NEEDED",
+[21:58:33]   "story_id": "STORY-WEB-027",
+[21:58:33]   "rationale": "This is a narrow removal of an unused tracked script. Existing configuration directly establishes that the maintained account smoke command invokes account-browser-smoke.mjs, while Follow-up Finding F001 says the temporary copy has no npm script reference. A new automated test would duplicate this repository wiring check; focused post-removal checks are specified below.",
+[21:58:33]   "acceptance_checks": [
+[21:58:33]     {
+[21:58:33]       "criterion": "Remove the tracked temporary control copy.",
+[21:58:33]       "expected": "frontend/scripts/.tmp-control-unrelated-call.mjs is absent from the working tree and no longer tracked.",
+[21:58:33]       "verification": "After removal, run Test-Path frontend/scripts/.tmp-control-unrelated-call.mjs and git ls-files frontend/scripts/.tmp-control-unrelated-call.mjs; expect False and no tracked path."
+[21:58:33]     },
+[21:58:33]     {
+[21:58:33]       "criterion": "Confirm no maintained smoke command depends on that temporary file.",
+[21:58:33]       "expected": "No npm script or maintained smoke script references .tmp-control-unrelated-call.mjs; smoke:account still directly invokes scripts/account-browser-smoke.mjs.",
+[21:58:33]       "verification": "Inspect frontend/package.json and search frontend/scripts for the temporary filename; confirm smoke:account remains mapped to node scripts/account-browser-smoke.mjs."
+[21:58:33]     },
+[21:58:33]     {
+[21:58:33]       "criterion": "Record the repository change and focused verification.",
+[21:58:33]       "expected": "The change records removal and the focused checks, including the maintained smoke command result or any environmental limitation.",
+[21:58:33]       "verification": "Review the resulting change and run the focused checks above plus npm run smoke:account in frontend when its required backend, dev server, and Chrome/Edge are available."
+[21:58:33]     }
+[21:58:33]   ],
+[21:58:33]   "invariants": [
+[21:58:33]     "The maintained account smoke script remains present and unchanged.",
+[21:58:33]     "No npm smoke command depends on the temporary control copy.",
+[21:58:33]     "The account smoke command continues to target scripts/account-browser-smoke.mjs."
+[21:58:33]   ],
+[21:58:33]   "test_levels": [
+[21:58:33]     "end_to_end"
+[21:58:33]   ],
+[21:58:33]   "existing_tests_reviewed": [
+[21:58:33]     "frontend/package.json: smoke:account directly invokes scripts/account-browser-smoke.mjs.",
+[21:58:33]     "frontend/scripts/account-browser-smoke.mjs: maintained Playwright browser smoke script; its imports do not reference the temporary copy.",
+[21:58:33]     "docs/TEST_STRATEGY.md §12.2: identifies npm run smoke:account as a real-browser smoke check and documents its running backend/dev-server and browser prerequisites.",
+[21:58:33]     "agent/stories/STORY-WEB-018-fresh-build-browser-smoke-checks.md, Follow-up Finding F001: identifies the temporary file as tracked and reports that no npm script references it."
+[21:58:33]   ],
+[21:58:33]   "prepared_test_paths": [],
+[21:58:33]   "test_specifications": [
+[21:58:33]     "After removal, assert the temporary path is absent with Test-Path and absent from git ls-files.",
+[21:58:33]     "Search frontend/package.json and frontend/scripts for references to .tmp-control-unrelated-call.mjs; expect none, while smoke:account remains mapped to node scripts/account-browser-smoke.mjs.",
+[21:58:33]     "When the documented prerequisites are available, run npm run smoke:account from frontend and expect the maintained browser smoke to complete successfully."
+[21:58:33]   ],
+[21:58:33]   "pre_implementation_verification": {
+[21:58:33]     "status": "NOT_RUN",
+[21:58:33]     "command": "npm run smoke:account (from frontend; requires the backend, frontend dev server, and installed Chrome/Edge)",
+[21:58:33]     "failure_evidence": "Not run before implementation: this live-browser smoke requires a configured running application environment. No automated tests were prepared for this removal-only change."
+[21:58:33]   },
+[21:58:33]   "coverage_review": "docs/QUALITY_METRICS.md provides frontend-wide coverage figures, but no script-level coverage measure was available or relevant. This change removes a standalone script and adds no behavior.",
+[21:58:33]   "external_sources": [],
+[21:58:33]   "clarifications": [],
+[21:58:33]   "post_implementation_review_required": false,
+[21:58:33]   "post_implementation_review_reason": ""
+[21:58:33] }
+[21:58:33] ```
+[21:58:33] [qa] turn completed | input tokens: 96669 | cached input tokens: 78848 | output tokens: 1711
+[21:58:33] ========================================
+[21:58:33] [qa] turn totals | model requests: 1 | gross input tokens: 96,669 | cached input tokens: 78,848 | uncached input tokens: 17,821 | output tokens: 1,711
+[21:58:33] Codex qa agent exit code: 0
+[21:58:33] ========================================
+[21:58:33] QA returned an invalid plan (1/2): QA plan references a different story.
+[21:59:20] ========================================
+[21:59:20] Starting Codex QA agent
+[21:59:20] ========================================
+[21:59:20] [qa] session 01a10358-ccd7-76c2-9fa4-a3dcdeedf722
+[21:59:20] [qa] reasoning...
+[21:59:20] Qa last response:
+[21:59:20] I’ll inspect the story’s referenced finding, the supplied Phase 5 roadmap section, the frontend smoke scripts and package references, and existing test/quality guidance. Given the requested change removes an unreferenced temporary script, I’ll determine whether focused executable tests are appropriate or whether precise repository checks suffice.
+[21:59:20] [qa command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$paths = @('"'agent/stories/STORY-WEB-018-fresh-build-browser-smoke-checks.md','docs/ROADMAP.md','docs/TEST_STRATEGY.md','docs/QUALITY_METRICS.md','docs/CODING_GUIDELINES.md','docs/CURRENT_ARCHITECTURE.md','docs/TARGET_ARCHITECTURE.md'); foreach ("'$p in $paths) { if (Test-Path $p) { Select-String -Path $p -Pattern '"'F001|Phase 5|browser smoke|smoke check|test|coverage|frontend|account' -Context 2,3 | ForEach-Object { \""'$p`:$($_.LineNumber): $($_.Line)`n$($_.Context.PreContext -join "`n")`n$($_.Context.PostContext -join "`n")" } } }; Get-ChildItem frontend -Recurse -File | Where-Object { $_.FullName -match '"'(test|spec|smoke|package\\.json)' } | Select-Object -ExpandProperty FullName"
+[21:59:20] [qa command done] exit 0
+[21:59:20] [qa command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$story='"'agent/stories/STORY-WEB-018-fresh-build-browser-smoke-checks.md'; Select-String -Path "'$story -Pattern '"'F001' -Context 0,8; Select-String -Path docs/ROADMAP.md -Pattern 'Phase 5' -Context 0,14; Get-Content docs/TEST_STRATEGY.md -TotalCount 80; Get-Content docs/QUALITY_METRICS.md -TotalCount 80; Get-Content docs/CODING_GUIDELINES.md -TotalCount 55; Get-Content frontend/package.json; git ls-files frontend/scripts/.tmp-control-unrelated-call.mjs; rg -n --glob '"'!node_modules/**'"' '\\.tmp-control-unrelated-call\\.mjs|smoke:account|account-browser-smoke' frontend/package.json frontend/scripts agent/stories/STORY-WEB-018-fresh-build-browser-smoke-checks.md; Get-ChildItem frontend -Directory | Where-Object Name -match 'coverage' | Select-Object -ExpandProperty FullName"
+[21:59:20] [qa command done] exit 0
+[21:59:20] Qa last response:
+[21:59:20] The source finding and package manifest confirm the intended boundary: the temporary file is tracked, while `smoke:account` invokes the maintained `account-browser-smoke.mjs` directly. I’m checking the maintained script’s prerequisites and available frontend coverage report to make the verification plan executable and properly scoped.
+[21:59:20] [qa command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content frontend/scripts/account-browser-smoke.mjs -TotalCount 55; Get-ChildItem frontend/coverage -File -Recurse | Select-Object -First 12 -ExpandProperty FullName; if (Test-Path frontend/coverage/coverage-summary.json) { Select-String -Path frontend/coverage/coverage-summary.json -Pattern 'account|total' -Context 0,1 }; Select-String -Path docs/TEST_STRATEGY.md -Pattern '"'^##|smoke|browser|Vitest|frontend'"' | Select-Object -First 22; Select-String -Path docs/CURRENT_ARCHITECTURE.md -Pattern 'frontend|browser|Vue' | Select-Object -First 8; Select-String -Path docs/TARGET_ARCHITECTURE.md -Pattern 'frontend|browser|Vue' | Select-Object -First 8"
+[21:59:20] [qa command done] exit 0
+[21:59:20] Qa last response:
+[21:59:20] ```json
+[21:59:20] {
+[21:59:20]   "status": "NO_TESTS_NEEDED",
+[21:59:20]   "story_id": "STORY-WEB-027-remove-tracked-smoke-control-copy",
+[21:59:20]   "rationale": "This is a narrowly scoped removal of a tracked, unreferenced temporary script. Adding automated tests would not improve confidence; repository reference checks and the maintained account smoke command directly verify the acceptance criteria.",
+[21:59:20]   "acceptance_checks": [
+[21:59:20]     {
+[21:59:20]       "criterion": "Remove the tracked temporary control copy.",
+[21:59:20]       "expected": "The file is absent from the working tree and no longer listed by git ls-files.",
+[21:59:20]       "verification": "From the repository root, run Test-Path frontend/scripts/.tmp-control-unrelated-call.mjs and git ls-files frontend/scripts/.tmp-control-unrelated-call.mjs; expect False and no tracked path."
+[21:59:20]     },
+[21:59:20]     {
+[21:59:20]       "criterion": "Confirm no maintained smoke command depends on that temporary file.",
+[21:59:20]       "expected": "No maintained script or npm command references the temporary filename; smoke:account still invokes scripts/account-browser-smoke.mjs.",
+[21:59:20]       "verification": "Search frontend/package.json and frontend/scripts, excluding node_modules, for .tmp-control-unrelated-call.mjs; expect no matches. Inspect the smoke:account entry in frontend/package.json."
+[21:59:20]     },
+[21:59:20]     {
+[21:59:20]       "criterion": "Record the repository change and focused verification.",
+[21:59:20]       "expected": "The story result records the removal and the outcomes of the absence/reference checks and maintained smoke run.",
+[21:59:20]       "verification": "Review the implementation result for those command outcomes."
+[21:59:20]     }
+[21:59:20]   ],
+[21:59:20]   "invariants": [
+[21:59:20]     "The maintained account browser smoke script remains present and unchanged.",
+[21:59:20]     "The smoke:account npm command continues to target scripts/account-browser-smoke.mjs.",
+[21:59:20]     "No maintained smoke command references the removed temporary copy."
+[21:59:20]   ],
+[21:59:20]   "test_levels": [
+[21:59:20]     "ui"
+[21:59:20]   ],
+[21:59:20]   "existing_tests_reviewed": [
+[21:59:20]     "frontend/scripts/account-browser-smoke.mjs — maintained real-browser check for Bank and Materials screens; requires a running backend, Vite dev server, and Chromium-family browser.",
+[21:59:20]     "frontend/package.json — smoke:account maps directly to node scripts/account-browser-smoke.mjs; no temporary-copy reference is present in the scripts map.",
+[21:59:20]     "frontend/src/account/__tests__/BankScreen.spec.ts and frontend/src/account/__tests__/MaterialsScreen.spec.ts — existing account-screen component coverage; neither tests script tracking or npm command wiring.",
+[21:59:20]     "frontend/coverage/coverage-summary.json — available frontend report records overall coverage, but the removal concerns script tracking and invocation, not covered frontend source behavior."
+[21:59:20]   ],
+[21:59:20]   "prepared_test_paths": [],
+[21:59:20]   "test_specifications": [
+[21:59:20]     "After removal, verify Test-Path frontend/scripts/.tmp-control-unrelated-call.mjs returns False and git ls-files frontend/scripts/.tmp-control-unrelated-call.mjs returns no path.",
+[21:59:20]     "Search frontend/package.json and frontend/scripts, excluding node_modules, for .tmp-control-unrelated-call.mjs and expect no matches; confirm frontend/package.json retains \"smoke:account\": \"node scripts/account-browser-smoke.mjs\".",
+[21:59:20]     "With the documented backend, Vite dev server, and Chromium-family browser running, execute npm run smoke:account from frontend/ and require exit code 0."
+[21:59:20]   ],
+[21:59:20]   "pre_implementation_verification": {
+[21:59:20]     "status": "NOT_RUN",
+[21:59:20]     "command": "Post-removal checks: from repository root, Test-Path frontend/scripts/.tmp-control-unrelated-call.mjs; git ls-files frontend/scripts/.tmp-control-unrelated-call.mjs; rg -n --glob '!node_modules/**' '\\.tmp-control-unrelated-call\\.mjs' frontend/package.json frontend/scripts; then, with its documented prerequisites running, execute npm run smoke:account from frontend/.",
+[21:59:20]     "failure_evidence": "Not applicable: these checks establish the post-removal state and require the implementation first. No expected-red test is appropriate for a file removal."
+[21:59:20]   },
+[21:59:20]   "coverage_review": "An available frontend coverage summary exists, but this change concerns a standalone script file and repository wiring rather than frontend source modules; coverage is not a meaningful correctness measure for this removal. No script-specific coverage report was identified.",
+[21:59:20]   "external_sources": [],
+[21:59:20]   "clarifications": [],
+[21:59:20]   "post_implementation_review_required": true,
+[21:59:20]   "post_implementation_review_reason": "The acceptance criteria explicitly require confirming that the maintained account smoke check remains runnable. Review the removal/reference checks and the smoke:account run after implementation; that run needs the documented backend, dev server, and browser prerequisites."
+[21:59:20] }
+[21:59:20] ```
+[21:59:20] [qa] turn completed | input tokens: 102599 | cached input tokens: 79872 | output tokens: 2067
+[21:59:20] ========================================
+[21:59:20] [qa] turn totals | model requests: 1 | gross input tokens: 102,599 | cached input tokens: 79,872 | uncached input tokens: 22,727 | output tokens: 2,067
+[21:59:20] Codex qa agent exit code: 0
+[21:59:20] ========================================
+[21:59:20] QA preparation complete for STORY-WEB-027-remove-tracked-smoke-control-copy: NO_TESTS_NEEDED.
+[21:59:31] RepoMap: enabled, budget=1200 tokens, available=True, generated=8515 chars (~2128 tokens) in 9.25s
+[21:59:36] ========================================
+[21:59:36] Starting Claude Code
+[21:59:36] ========================================
+[22:12:59] STORY-WEB-027 is complete. Status set to `DONE` in the story file, with the result and findings recorded there and in `CLAUDE_RESULT.md`.
+[22:12:59] **What changed:** one deletion, nothing else — `git rm frontend/scripts/.tmp-control-unrelated-call.mjs`. Before removing it I confirmed what it was: `git diff --no-index` against the maintained script reported `1 file changed, 1 insertion(+)` — a single added `fetch('/api/account/materials')` inside the bank-reload window, i.e. the throwaway control for the "reload repeats only that one read" assertion.
+[22:12:59] **Verification run**
+[22:12:59] - Absence: `test -e …` → `False`; `git ls-files …` → no output; `git status` shows `D  frontend/scripts/.tmp-control-unrelated-call.mjs`.
+[22:12:59] - Independence: `rg '\.tmp-control-unrelated-call\.mjs'` over `frontend/` → no matches; `package.json:24` still `"smoke:account": "node scripts/account-browser-smoke.mjs"`; `git show HEAD:…/account-browser-smoke.mjs | diff -` → identical to HEAD.
+[22:12:59] - Account smoke, against the running backend (`127.0.0.1:8080`, real status body) and a dev server started for the run (`127.0.0.1:5173`, `/api` proxy confirmed 200): the script loads, drives real Chrome, passes two steps and then **exits 1** at step 3 — `The rendered item identities or counts do not match the response` (`"null null"`, `"null 3"` vs `#48233 × 1`).
+[22:12:59] - Harness suite, because the commit will carry the maintainer's `agent/runtime/**` edits: `python -m pytest agent/runtime/tests -q …` → `404 passed, 52 subtests passed`.
+[22:12:59] **The smoke failure is pre-existing, not caused by the removal.** Step 3 asserts the `InventoryItem.vue` contract (`[data-test="item-identity"]`, `× <count>`), while `BankScreen` now renders `BankSlotTile` → `InventoryTile.vue` (maintainer commit `c05080f`), which has no identity hook, prints a bare localized count, and hides the quantity at `count === 1`. The maintained script is byte-identical to HEAD and this story touched only a different unreferenced file. Repairing it would mean editing the maintained script and broadening into script cleanup, both of which the story forbids — so it is F001, not a change here.
+[22:12:59] **QA plan deviation, left intact:** the plan requires `npm run smoke:account` to exit 0. I did not alter that expectation; it is unmet (exit 1) for the drift above, documented for the required post-implementation review. The plan's other two acceptance checks and all three invariants are satisfied.
+[22:12:59] Findings recorded: **F001** the account smoke asserts superseded Bank/Materials DOM hooks; **F002** `.tmp-control-*.mjs` is not gitignored (`git check-ignore` exits 1), so the same accidental tracking can recur. The dev server I started was stopped and `127.0.0.1:5173` probed as refusing connections — stopping the wrapper left `vite` listening, so its process tree was killed by PID first.
+[22:12:59] ========================================
+[22:12:59] Claude Code exit code: 0
+[22:12:59] ========================================
+[22:13:01] Claude run measurement: repo_map=on, duration=803.4s, usage_before=ClaudeUsage(session_used_percent=64, weekly_used_percent=17), usage_after=ClaudeUsage(session_used_percent=76, weekly_used_percent=18)
+[22:13:01] Evaluator started (Codex, read-only)
+[22:13:01] ========================================
+[22:13:01] Starting hosted Codex evaluator
+[22:13:01] ========================================
+[22:13:02] [evaluator] session 01a10366-0cfb-7f90-bdb9-2536f8e90c90
+[22:13:02] [evaluator] reasoning...
+[22:13:05] Evaluator last response:
+[22:13:05] I’ll verify the current diff and the story/QA artifacts against the checkout, then return only the required JSON verdict.
+[22:13:09] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "git status --porcelain; git diff HEAD -- frontend/scripts/.tmp-control-unrelated-call.mjs frontend/package.json frontend/scripts/account-browser-smoke.mjs; git ls-files frontend/scripts/.tmp-control-unrelated-call.mjs; rg -n --glob '"'!node_modules/**'"' '\\.tmp-control-unrelated-call\\.mjs|smoke:account' frontend/package.json frontend/scripts; Test-Path frontend/scripts/.tmp-control-unrelated-call.mjs; Get-Content agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md | Select-String -Pattern '"'^## (Acceptance Criteria|Definition of Done|Result)'"' -Context 0,12"
+[22:13:10] [evaluator command done] exit 0
+[22:13:16] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'Get-Content agent/qa-plans/QA-STORY-WEB-027-remove-tracked-smoke-control-copy.json | ConvertFrom-Json | Select-Object status, rationale, acceptance_checks, invariants, test_specifications, post_implementation_review_required; git diff --numstat HEAD -- frontend/scripts/.tmp-control-unrelated-call.mjs; git diff HEAD -- frontend/package.json frontend/scripts/account-browser-smoke.mjs; git diff -- agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md | Select-Object -First 120'
+[22:13:17] [evaluator command done] exit 0
+[22:13:25] Evaluator last response:
+[22:13:25] ```json
+[22:13:25] {
+[22:13:25]   "decision": "COMPLETE",
+[22:13:25]   "reason": "The tracked temporary copy is deleted, no maintained command references it, and the maintained smoke script and npm mapping are unchanged. The smoke run failed on an existing screen/script contract mismatch, which is documented and outside this story’s constraints. The QA plan’s required exit-code-0 check was not satisfied, so independent QA review is required.",
+[22:13:25]   "intent_achieved": true,
+[22:13:25]   "evidence": [
+[22:13:25]     "The checkout’s `git status --porcelain` and `git diff HEAD` show `frontend/scripts/.tmp-control-unrelated-call.mjs` as a deletion (321 lines) and no diff to `frontend/package.json` or `frontend/scripts/account-browser-smoke.mjs`.",
+[22:13:25]     "`Test-Path frontend/scripts/.tmp-control-unrelated-call.mjs` returned False; `git ls-files` returned no tracked path; `rg` found no filename references in `frontend/package.json` or `frontend/scripts`.",
+[22:13:25]     "`frontend/package.json` maps `smoke:account` to `node scripts/account-browser-smoke.mjs`.",
+[22:13:25]     "The story’s Result records the real-browser smoke reaching the backend and failing at step 3 while comparing rendered bank items to the response; it identifies the existing UI/script contract mismatch.",
+[22:13:25]     "The QA plan `agent/qa-plans/QA-STORY-WEB-027-remove-tracked-smoke-control-copy.json` requires the smoke command to exit 0 and marks post-implementation review as required."
+[22:13:25]   ],
+[22:13:25]   "unmet_intent": [],
+[22:13:25]   "unmet_acceptance_criteria": [],
+[22:13:25]   "unmet_definition_of_done": [],
+[22:13:25]   "actionable_retry_items": [],
+[22:13:25]   "qa_review_required": true,
+[22:13:25]   "qa_review_reason": "The QA plan requires `smoke:account` to exit 0, but the recorded run exited 1 due to the existing bank-screen/smoke-script contract mismatch. The removal and reference checks pass; independent QA review should assess the documented deviation."
+[22:13:25] }
+[22:13:25] ```
+[22:13:25] [evaluator] turn completed | input tokens: 79006 | cached input tokens: 60672 | output tokens: 946
+[22:13:26] ========================================
+[22:13:26] [evaluator] turn totals | model requests: 1 | gross input tokens: 79,006 | cached input tokens: 60,672 | uncached input tokens: 18,334 | output tokens: 946
+[22:13:26] Hosted codex evaluator exit code: 0
+[22:13:26] ========================================
+[22:13:26] ========================================
+[22:13:26] Starting Codex QA agent
+[22:13:26] ========================================
+[22:13:26] [qa] session 01a10366-6c9a-7420-95f9-b1b7fe5d86ae
+[22:13:27] [qa] reasoning...
+[22:13:30] Qa last response:
+[22:13:30] I’ll verify the checked-out story result and current repository state against the supplied QA plan, focusing on the failed smoke run and whether its deviation is supported and appropriately scoped.
+[22:13:34] [qa command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md | Select-String -Pattern 'Result|smoke:account|exit|step 3|mismatch|temporary|removed|verification' -Context 2,3; git status --porcelain; git diff --stat HEAD; git diff -- frontend/package.json frontend/scripts/account-browser-smoke.mjs; Test-Path frontend/scripts/.tmp-control-unrelated-call.mjs; git ls-files frontend/scripts/.tmp-control-unrelated-call.mjs; rg -n --glob '"'!node_modules/**'"' '\\.tmp-control-unrelated-call\\.mjs' frontend/package.json frontend/scripts"
+[22:13:34] [qa command done] exit 1
+[22:13:41] [qa command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path frontend/scripts/account-browser-smoke.mjs -Pattern 'item-identity|step 3|data-test|bank' -Context 1,2; Select-String -Path frontend/src/account/InventoryTile.vue,frontend/src/account/BankSlotTile.vue,frontend/src/account/BankScreen.vue,frontend/src/account/MaterialsScreen.vue -Pattern 'item-identity|count|data-test' -Context 1,2; Select-String -Path frontend/package.json -Pattern 'smoke:account'"
+[22:13:41] [qa command done] exit 0
+[22:13:46] Qa last response:
+[22:13:46] {"decision":"APPROVE","reason":"The removal and command-wiring criteria are met. The smoke command exited 1, so the QA plan’s exit-code-0 check is unmet; however, the failure is documented at the bank-screen comparison, and the supplied evidence supports a pre-existing screen/script contract mismatch unrelated to this file-only removal. The deviation is sufficiently justified for this story, while the smoke check itself remains a follow-up defect.","evidence":["The temporary copy is absent and `git ls-files` returns no tracked path; the search found no references in `frontend/package.json` or `frontend/scripts`.","`smoke:account` still maps to `node scripts/account-browser-smoke.mjs`; the maintained smoke script has no diff.","The story result records a real-browser run reaching the backend and failing at step 3; its asserted hooks/label differ from the current screen contract.","The QA plan prepared no automated tests; its repository checks are supported by the current state, but its required passing smoke run was not achieved."],"actionable_items":[]}
+[22:13:46] [qa] turn completed | input tokens: 61481 | cached input tokens: 50432 | output tokens: 767
+[22:13:47] ========================================
+[22:13:47] [qa] turn totals | model requests: 1 | gross input tokens: 61,481 | cached input tokens: 50,432 | uncached input tokens: 11,049 | output tokens: 767
+[22:13:47] Codex qa agent exit code: 0
+[22:13:47] ========================================
+[22:13:47] ========================================
+[22:13:47] Evaluator decision: COMPLETE
+[22:13:47] Reason: The tracked temporary copy is deleted, no maintained command references it, and the maintained smoke script and npm mapping are unchanged. The smoke run failed on an existing screen/script contract mismatch, which is documented and outside this story’s constraints. The QA plan’s required exit-code-0 check was not satisfied, so independent QA review is required.
+[22:13:47] ========================================

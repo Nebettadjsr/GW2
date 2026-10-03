@@ -58,6 +58,11 @@ The requested grouping, defaults and concise wording are implemented with focuse
 
 ## Result
 
+The placement acceptance criterion above records the original delivery. A later
+confirmed Product Owner decision supersedes that placement: the current contract
+in `docs/DOMAIN_SPEC.md` §2.1.1 keeps the maximum and Show all beside the results
+title, while search and filters remain in the Calculation controls panel.
+
 Presentation-only, and **frontend-only**: every change is under `frontend/src/` and
 `frontend/scripts/`, plus `docs/CURRENT_ARCHITECTURE.md`. No file under `src/`, no `pom.xml`, no
 resource and no HTTP contract was touched, so no domain rule, backend behavior or JavaFX screen
@@ -71,7 +76,9 @@ disclosure:
 - **Calculation** (`data-test="calculation-controls"`) — the Discipline scope selector and the
   "Price and material settings" disclosure, whose summary still words the backend's echoed settings.
 - **Displayed results** (`ResultDisplayControls.vue`, legend renamed from "Result display") — the
-  search, the three filters, the maximum and Show all.
+  search and the three filters. The maximum and Show all are adjacent to the Opportunities title,
+  outside this panel; the later confirmed Product Owner decision and current `DOMAIN_SPEC.md`
+  §2.1.1 supersede the original placement acceptance criterion above.
 
 The separate top-level section inside *Opportunities* is gone; the fieldset's own legend and border
 carry the separation that its explanatory paragraph used to assert. The **search moved with them**:

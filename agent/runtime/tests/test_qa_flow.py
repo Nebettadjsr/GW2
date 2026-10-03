@@ -96,15 +96,34 @@ class QAGateTest(unittest.TestCase):
         self.assertIsNone(result)
         block.assert_called_once_with(self.story, plan)
 
-    def test_qa_execution_failures_are_bounded_and_escalated(self):
+    def test_invalid_qa_output_gets_actionable_feedback_before_bounded_retry(self):
+        plan = ready_plan()
         with patch.object(qa_agent, "load_plan", return_value=None), \
-                patch.object(qa_agent, "execute_preparation", side_effect=RuntimeError("invalid output")) as run, \
-                patch.object(qa_agent, "record_attempt", side_effect=[1, 2]), \
-                patch.object(orchestrator, "MAX_QA_ATTEMPTS_PER_STORY", 2), \
+                patch.object(qa_agent, "execute_preparation", side_effect=[qa_agent.QAPlanError("bad status"), plan]) as run, \
+                patch.object(qa_agent, "record_attempt", return_value=1), \
+                patch.object(qa_agent, "clear_state"), \
+                patch.object(orchestrator, "log_line"), \
                 patch.object(orchestrator, "_create_intervention_and_block_story") as escalate:
-            self.assertIsNone(orchestrator._ensure_preimplementation_qa(self.story))
+            result = orchestrator._ensure_preimplementation_qa(self.story)
+        self.assertEqual(result["status"], "NO_TESTS_NEEDED")
         self.assertEqual(run.call_count, 2)
-        escalate.assert_called_once()
+        self.assertEqual(run.call_args.kwargs["correction_feedback"], "bad status")
+        escalate.assert_not_called()
+
+    def test_file_protection_failure_is_technical_and_does_not_retry_or_escalate_to_product_owner(self):
+        failure = qa_agent.QAFileProtectionError("agent/logs/2026-10-03.log")
+        with patch.object(qa_agent, "load_plan", return_value=None), \
+                patch.object(qa_agent, "execute_preparation", side_effect=failure) as run, \
+                patch.object(qa_agent, "record_attempt") as record_attempt, \
+                patch.object(orchestrator, "_block_story_for_qa_failure") as technical_block, \
+                patch.object(orchestrator, "_create_intervention_and_block_story") as intervention:
+            self.assertIsNone(orchestrator._ensure_preimplementation_qa(self.story))
+        run.assert_called_once()
+        record_attempt.assert_not_called()
+        technical_block.assert_called_once_with(
+            self.story, "file_protection_violation", failure, model_retries=0
+        )
+        intervention.assert_not_called()
 
     def test_codex_capacity_does_not_consume_qa_failure_retry(self):
         plan = ready_plan()

@@ -147,15 +147,21 @@ between limitations on further crafting and crafts already counted.
 Remove the introductory sentence "Crafting opportunities the backend calculated
 for the selected scope, with the profit it reported for each."
 
-Place result-display controls inside the Calculation controls panel, in a compact
-Displayed results subgroup distinct from the Calculation subgroup. Do not retain
-a separate top-level Result display section. Provide these display controls:
+Place the three result filters and the search control inside the Calculation
+controls panel, in a compact Displayed results subgroup distinct from the
+Calculation subgroup. Do not retain a separate top-level Result display
+section. Provide these filters:
 
 - Hide items with craftable count 0, enabled by default.
 - Hide recipes not allowed, enabled by default.
 - Hide recipes with profit per craft <= 0, enabled by default.
-- A changeable maximum displayed recipe count, initially 250, and Show all to
-  remove that display limit for the full matching set.
+
+Place the changeable maximum displayed recipe count, initially 250, and Show all
+beside the results table title, because they directly govern how many matching
+rows that table displays. Show all removes the display limit for the full
+matching set. This placement is the confirmed Product Owner decision and
+supersedes earlier placement requirements that put these two controls inside
+the Calculation controls panel.
 
 These controls do not change the underlying calculation or section 28's separate
 simulation cap. Preserve valid controls on refresh under section 2.2.1. Unknown

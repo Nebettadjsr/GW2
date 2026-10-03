@@ -356,6 +356,9 @@ re-implemented.
   `smoke:layout`'s 21; `forced-colors`, `prefers-contrast`, true browser page zoom and the
   selected/disabled combinations were not measured. Keyboard coverage is the focus walk, Enter on a
   child group and the panel's focusable scroll container.
+- The placement note below records the specification state observed during this story. The later
+  confirmed Product Owner decision supersedes moving the maximum and Show all into the controls
+  panel; current placement is beside the results title per `docs/DOMAIN_SPEC.md` §2.1.1.
 - **The rest of `DOMAIN_SPEC.md` §2.1.1 is untouched and now partly ahead of the implementation.**
   Its current text also asks for total sell value and the remaining columns (`STORY-WEB-008`), for the
   display controls to move into the Calculation controls panel as a "Displayed results" subgroup, for

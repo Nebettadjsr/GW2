@@ -1510,5 +1510,5 @@ def move_backlog_entry_to_todo(
         bullet = f"- `{filename}`"
 
     return _append_bullet_to_backlog_section(
-        content, "To Do", bullet
+        content, "To Do", rewrite_backlog_entry_status(bullet, "TODO")
     )

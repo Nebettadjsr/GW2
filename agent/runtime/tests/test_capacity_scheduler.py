@@ -68,10 +68,10 @@ class SchedulerTest(unittest.TestCase):
         self.assertEqual(self.logged.count("Claude capacity exhausted (first detected)."), 1)
         self.assertEqual(self.logged.count("Claude capacity available again."), 1)
 
-    def test_idle_claude_plans_beyond_low_watermark_until_no_work(self):
+    def test_idle_claude_plans_only_for_exhausted_queue_and_bounded_followup(self):
         self.claude.available.side_effect = [False, False, False, True]
         with patch.object(orchestrator, "planning_fingerprint", side_effect=["a", "b", "c", "c", "c", "c"]), \
-             patch.object(orchestrator, "get_selectable_story_candidates", return_value=list(range(6))), \
+             patch.object(orchestrator, "get_selectable_story_candidates", return_value=[]), \
              patch.object(orchestrator, "run_planning_pass", side_effect=[
                  {"status": "COMPLETE", "story_files_created": ["new.md"],
                   "independent_work_remaining": True},
@@ -81,12 +81,12 @@ class SchedulerTest(unittest.TestCase):
             self.scheduler.wait_for_claude()
             self.assertEqual(plan.call_count, 2)
 
-    def test_both_available_replenishes_at_two(self):
+    def test_two_ready_stories_do_not_trigger_replenishment(self):
         with patch.object(orchestrator, "get_selectable_story_candidates", return_value=[1, 2]), \
              patch.object(orchestrator, "planning_fingerprint", return_value="a"), \
              patch.object(orchestrator, "run_planning_pass", return_value={"status": "COMPLETE"}) as plan:
             self.scheduler.plan_if_useful()
-            plan.assert_called_once()
+            plan.assert_not_called()
 
     def test_both_unavailable_only_waits_locally(self):
         self.claude.available.side_effect = [False, False, True]
@@ -279,10 +279,9 @@ class RepoMapOrderingTest(OrchestratorInterventionTestCase):
             )
 
         self.assertEqual(result, "COMPLETE")
-        # "plan" (idle Codex work while Claude was down) must happen
-        # before "repo_map" is ever generated, which must happen
-        # before Claude is actually invoked.
-        self.assertEqual(events, ["plan", "repo_map", "claude"])
+        # Eligible work means there is no reason to run a planning pass while
+        # Claude's capacity recovers; repo-map preparation follows the wait.
+        self.assertEqual(events, ["repo_map", "claude"])
 
 
 class MainCycleLoggingTest(unittest.TestCase):

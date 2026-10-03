@@ -228,9 +228,9 @@ class IdlePlanningTriggerTests(unittest.TestCase):
                                      {"po": "a"}, "same")
             self.assertFalse(scheduler.plan_if_useful(idle=True))
 
-    def test_changed_po_ud_ar_or_story_completion_input_triggers_with_stocked_queue(self):
+    def test_requirement_and_architecture_changes_trigger_but_story_completion_does_not(self):
         for key in ("product_owner_request", "user_decision", "architect_request",
-                    "claude_result_story_completion"):
+                    "story_contract"):
             with self.subTest(input=key):
                 scheduler = self.make_scheduler({key: "new"},
                                                 {"status": "COMPLETE", "independent_work_remaining": False})
@@ -245,6 +245,18 @@ class IdlePlanningTriggerTests(unittest.TestCase):
                          "story_files_created": []}) as run:
                     scheduler.plan_if_useful(idle=False)
                 run.assert_called_once()
+
+        scheduler = self.make_scheduler({"stable": "same"},
+                                        {"status": "COMPLETE", "independent_work_remaining": False})
+        scheduler._hold_planning({"status": "COMPLETE", "independent_work_remaining": False},
+                                 {"stable": "same"}, "same")
+        with patch.object(orchestrator, "planning_input_snapshot", return_value={"stable": "same"}), \
+             patch.object(orchestrator, "planning_fingerprint", return_value="same"), \
+             patch.object(orchestrator, "get_selectable_story_candidates", return_value=["queued"]), \
+             patch.object(orchestrator, "should_trigger_planning", return_value=False), \
+             patch.object(orchestrator, "run_planning_pass") as run:
+            self.assertFalse(scheduler.plan_if_useful(idle=True))
+        run.assert_not_called()
 
     def test_planner_self_changes_are_snapshotted_after_pass(self):
         scheduler = orchestrator.CapacityScheduler(Mock(), Mock(), cache_file=None)
@@ -277,19 +289,27 @@ class IdlePlanningTriggerTests(unittest.TestCase):
 class ClaudeWithWorkTest(MainFlowTestCase):
 
     def test_available_claude_selects_executes_and_continues_automatically(self):
-        # A completed story must lead straight to the next operation --
-        # replenishment check, then selection -- with no restart.
+        # A completed story leads directly to the next eligible story.
         self.state["candidates"] = ["STORY-A.md", "STORY-B.md"]
 
         self.run_main(expect_stop=True)
 
         self.assertEqual(
             self.events,
-            # The second replenishment attempt is suppressed because no
-            # local planning input changed since the first one found
-            # nothing useful to add.
-            ["select", "claude", "plan", "select", "claude", "select"],
+            ["select", "claude", "select", "claude", "plan", "select"],
         )
+
+    def test_blocked_story_result_does_not_force_planning_over_ready_work(self):
+        scheduler = orchestrator.CapacityScheduler(Mock(), Mock(), cache_file=None)
+        scheduler.claude_available = Mock(return_value=True)
+        scheduler.codex_available = Mock(return_value=True)
+        decisions = Mock()
+        with patch.object(orchestrator, "_active_is_executable", return_value=True), \
+             patch.object(orchestrator, "execute_active_story", return_value="BLOCKED"), \
+             patch.object(orchestrator, "run_planning_pass") as plan:
+            outcome, replenish = orchestrator._run_cycle(scheduler, True, decisions)
+        self.assertEqual((outcome, replenish), ("CONTINUE", False))
+        plan.assert_not_called()
 
 
 class ClaudeExhaustedTest(MainFlowTestCase):

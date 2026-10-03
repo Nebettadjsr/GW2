@@ -82,6 +82,7 @@ class CodexRoleVisibilityTest(unittest.TestCase):
         with patch.object(loop, "read_codex_capacity", side_effect=read) as rpc, \
              patch.object(loop, "print_status", side_effect=show), \
              patch.object(loop, "planning_input_snapshot", return_value={}), \
+             patch.object(loop, "get_selectable_story_candidates", return_value=[]), \
              patch.object(loop, "run_planning_pass", side_effect=plan), \
              patch.object(loop, "run_architect_pass", side_effect=architect), patch.object(loop, "log_line"):
             scheduler = loop.CapacityScheduler(claude=Mock(), cache_file=None)

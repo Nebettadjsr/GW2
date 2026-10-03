@@ -80,8 +80,10 @@ pinned by this repository.
 
 QA writes new tests or permanent fixtures only in approved test roots. Python
 compares the complete tracked and visible-untracked file snapshot around each
-QA run, restores forbidden writes, and rejects the plan if QA changes anything
-outside its test boundary. Plans store acceptance checks, invariants, test
+QA run, buffers the orchestrator's own append-only console transcript until the
+snapshot is checked, restores forbidden writes without overwriting a newer
+concurrent change, and rejects the plan if QA changes anything outside its
+test boundary. Plans store acceptance checks, invariants, test
 levels, existing tests reviewed, test files/specifications, pre-code results,
 coverage notes, external source facts, clarifications and conditional-review
 requirements. The harness persists a validated plan only after QA finishes.
@@ -93,8 +95,14 @@ whether the plan was implemented, not merely whether tests pass. Evaluator
 rejection, a stated plan deviation, a test-integrity finding, insufficient
 verification, or a QA plan marked critical triggers a read-only QA review.
 
-QA preparation failures retry at most `MAX_QA_ATTEMPTS_PER_STORY` times before
-creating a user intervention. Model capacity exhaustion is a scheduling wait,
+An invalid QA plan may be retried up to `MAX_QA_ATTEMPTS_PER_STORY` times, with
+the validation error supplied as corrective feedback. File-protection,
+repository snapshot/restoration, and model-runner failures are technical
+failures: they do not consume repeated no-op retries or create Product Owner
+decisions. The story is blocked with an actionable report under ignored
+`agent/runtime/artifacts/qa-failures/`; after fixing the technical cause, a
+developer manually requeues it. Only a validated `NEEDS_USER` plan uses the
+Product Owner decision flow. Model capacity exhaustion is a scheduling wait,
 not a failed attempt. A completed QA plan survives interruption, so the next
 run skips QA; generated tests from an interrupted QA run are recorded and reused.
 For legacy attempts already in evaluation/publication when this gate was
@@ -171,8 +179,10 @@ only while a step is outstanding:
 | Phase | Meaning | What a resumed run does |
 | --- | --- | --- |
 | `AWAITING_EVALUATION` | Claude's attempt finished; no evaluator verdict yet. | Evaluates the story and result already on disk. Claude is not re-invoked and its capacity is not waited on. |
+| `AWAITING_QA_REVIEW` | A saved evaluator verdict requires independent QA review before it can be acted on. | Resumes the review/evaluation gate against the completed implementation; Claude is not re-invoked. |
 | `AWAITING_CI` | The evaluator accepted the work; publication and the CI verdict are outstanding. | Commits, pushes and waits for CI. The evaluator's verdict is not bought a second time. |
 | `AWAITING_CI_FIX` | CI failed and the bounded repair prompt is saved. | Resumes the saved repair prompt without repeating QA or prematurely publishing partial work. |
+| `FINALIZING` | Evaluation and CI passed; only deterministic story/backlog bookkeeping remains. | Replays the idempotent completion transition without rerunning coding, QA, evaluation, or CI. |
 
 Every terminal outcome (COMPLETE, BLOCKED, NEEDS_USER) clears the file, and so
 does starting a new Claude attempt — what is on disk is about to change, so no
@@ -343,9 +353,13 @@ both the five-hour session allowance (usage below 90%) and weekly allowance
 calls `codex_available()` (`runners/codex_capacity.py`, a genuinely
 token-free `app-server` JSON-RPC quota read) -- and applies the scheduling
 priority order: resume an unfinished active story first, then execute other
-selectable To Do work, then use Codex to replenish the queue while Claude is
-busy or the queue is empty, then fall back to local waiting (never a busy
-loop) if neither model can currently make progress.
+selectable To Do work. Codex planning runs when the executable queue is empty,
+meaningful planning inputs have changed, or a bounded independent follow-up
+was explicitly requested by the previous Planner result. Ordinary story
+completion and low queue depth do not trigger planning. If Claude is unavailable,
+Codex plans only when one of those conditions applies; otherwise the scheduler
+waits locally. This prevents repeated full planning passes while eligible work
+remains.
 
 Once started, the loop keeps going while any permissible work exists. The
 properties that guarantee it, each covered by `tests/test_orchestration_flow.py`:
@@ -545,13 +559,17 @@ while Codex plans during Claude capacity waits.
 `agent/user-decisions/UD-010-*.md` (or `UD-010.md`). Markdown titles are optional;
 filenames/paths in this result field and duplicate filename IDs are rejected.
 
-The scheduler atomically persists `artifacts/PLANNING_CACHE.json` after NEEDS_USER,
-no-work results, or planner execution/validation failure. It fingerprints the
-post-pass inputs, including UDs, PO/architect requests, stories/backlog, current
-story, continuity, authoritative docs, and runtime contracts/code. Changes,
-additions and deletions trigger another pass; logs, result JSON, timestamps and
-capacity cooldowns do not. Holds survive restarts. COMPLETE passes that report
-further independent work and demonstrate concrete progress continue replenishment; a validated milestone transition can plan the
+The scheduler atomically persists `artifacts/PLANNING_CACHE.json` after
+NEEDS_USER, no-work results, or planner execution/validation failure. Its
+fingerprint includes UDs, PO/architect requests, authoritative docs, planner
+contracts, continuity and story requirements. Story status/result/follow-up
+sections, active-story pointers, backlog section moves, Claude run artifacts,
+logs, result JSON, timestamps and capacity cooldowns are excluded because they
+record execution progress, not new planning inputs. Relevant input changes
+trigger another pass even with eligible stories waiting. Holds survive
+restarts. A validated Planner result may request one bounded follow-up pass
+when independent work remains and progress was made; finding presence alone
+does not request another pass. A validated milestone transition can plan the
 next phase. Model capacity interruption is not a planning failure and resumes
 after capacity returns.
 

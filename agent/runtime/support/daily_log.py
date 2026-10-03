@@ -19,9 +19,14 @@ everything it showed before; the log is an addition, never a
 replacement.
 """
 import sys
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 
 from agent.runtime.support.config import LOGS_DIR
+
+
+_DEFERRED_WRITES = ContextVar("deferred_daily_log_writes", default=None)
 
 
 def _today_log_path(now: datetime):
@@ -30,6 +35,14 @@ def _today_log_path(now: datetime):
 
 
 def _write(message: str) -> None:
+    deferred = _DEFERRED_WRITES.get()
+    if deferred is not None:
+        deferred.append(message)
+        return
+    _write_now(message)
+
+
+def _write_now(message: str) -> None:
     now = datetime.now()
     path = _today_log_path(now)
 
@@ -37,6 +50,23 @@ def _write(message: str) -> None:
 
     with path.open("a", encoding="utf-8") as handle:
         handle.write(f"[{timestamp}] {message}\n")
+
+
+@contextmanager
+def defer_log_writes():
+    """Buffer this context's log appends until a guarded workspace check ends."""
+    buffered = []
+    token = _DEFERRED_WRITES.set(buffered)
+    try:
+        yield
+    finally:
+        _DEFERRED_WRITES.reset(token)
+        parent = _DEFERRED_WRITES.get()
+        if parent is not None:
+            parent.extend(buffered)
+        else:
+            for message in buffered:
+                _write_now(message)
 
 
 def log_line(message: str) -> None:

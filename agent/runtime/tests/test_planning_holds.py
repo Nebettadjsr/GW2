@@ -44,7 +44,7 @@ class PlanningHoldTest(unittest.TestCase):
         # own STORIES_DIR/BACKLOG_FILE, so without this the queue-low trigger would be
         # read from the real repository's backlog and flip with it.
         self.stack.enter_context(patch.object(loop, "get_selectable_story_candidates",
-                                              return_value=["queued.md", "queued-2.md", "queued-3.md"]))
+                                              return_value=[]))
         self.plan = self.stack.enter_context(patch.object(loop, "run_planning_pass", return_value={
             "status": "NEEDS_USER", "user_decision_ids": ["UD-010"]}))
         self.scheduler = self.new_scheduler()
@@ -64,7 +64,7 @@ class PlanningHoldTest(unittest.TestCase):
         self.scheduler.plan_if_useful(idle=True)
         paths = [self.ud, loop.PRODUCT_OWNER_REQUESTS_DIR / "new.md",
                  loop.ARCHITECT_REQUESTS_DIR / "AR-001-question.md",
-                 loop.BACKLOG_FILE, loop.BACKLOG_FILE.parent / "STORY-X-001.md",
+                 loop.BACKLOG_FILE.parent / "STORY-X-001.md",
                  loop.PROJECT_STATE_FILE, loop.ROADMAP_FILE,
                  self.root / "docs/DOMAIN_SPEC.md"]
         for index, path in enumerate(paths):
@@ -77,6 +77,13 @@ class PlanningHoldTest(unittest.TestCase):
         self.scheduler.plan_if_useful(idle=True)
         self.assertEqual(self.plan.call_count, len(paths) + 2)
 
+    def test_backlog_moves_and_active_pointer_changes_do_not_trigger_planning(self):
+        self.scheduler.plan_if_useful(idle=True)
+        loop.BACKLOG_FILE.write_text("moved between sections")
+        loop.CURRENT_STORY_FILE.write_text("STORY-X-001.md")
+        self.assertFalse(self.scheduler.plan_if_useful(idle=True))
+        self.plan.assert_called_once()
+
     def test_open_ud_content_change_and_new_unrelated_request_wake_wait(self):
         for path in (self.ud, loop.PRODUCT_OWNER_REQUESTS_DIR / "unrelated.md"):
             with self.subTest(path=path), patch.object(loop, "get_unresolved_user_decisions",
@@ -87,6 +94,8 @@ class PlanningHoldTest(unittest.TestCase):
 
     def test_needs_user_with_independent_stories_caches_post_pass_state(self):
         def plan():
+            (loop.BACKLOG_FILE.parent / "STORY-X-001.md").write_text(
+                "## Story ID\n\nSTORY-X-001\n\n## Acceptance Criteria\n\n- Independent.\n")
             loop.BACKLOG_FILE.write_text("independent story added")
             return {"status": "NEEDS_USER", "user_decision_ids": ["UD-010"],
                     "story_files_created": ["STORY-X-001.md"]}
@@ -141,6 +150,8 @@ class PlanningHoldTest(unittest.TestCase):
     def test_true_flag_continues_bounded_pass_then_false_holds(self):
         def plan():
             count = self.plan.call_count
+            (loop.BACKLOG_FILE.parent / f"STORY-X-{count:03d}.md").write_text(
+                f"## Story ID\n\nSTORY-X-{count:03d}\n\n## Acceptance Criteria\n\n- Batch {count}.\n")
             loop.BACKLOG_FILE.write_text(f"Batch {count}")
             return {"status": "COMPLETE" if count == 1 else "NEEDS_USER",
                     "independent_work_remaining": count == 1,
@@ -165,7 +176,7 @@ class PlanningHoldTest(unittest.TestCase):
         self.scheduler.plan_if_useful(idle=True)
         self.assertEqual(self.plan.call_count, 3)
 
-    def test_implementation_result_and_actual_architect_changes_are_triggers(self):
+    def test_implementation_result_is_ignored_but_architect_changes_trigger(self):
         self.scheduler.plan_if_useful(idle=True)
         with patch.object(loop, "run_architect_pass", return_value={"status": "COMPLETE"}):
             self.scheduler.answer_architect_request({"file": "AR-001.md"})
@@ -176,7 +187,7 @@ class PlanningHoldTest(unittest.TestCase):
         result.parent.mkdir(parents=True, exist_ok=True)
         result.write_text("New implementation evidence")
         self.scheduler.plan_if_useful(idle=True)
-        self.assertEqual(self.plan.call_count, 3)
+        self.assertEqual(self.plan.call_count, 2)
 
     def test_validation_failure_is_held_without_capacity_retry(self):
         self.plan.return_value = {"status": "FAILED", "validation_problems": ["bad JSON shape"]}
@@ -204,6 +215,40 @@ class PlanningHoldTest(unittest.TestCase):
         self.scheduler.plan_if_useful(idle=True)
         self.plan.assert_called_once()
         self.assertEqual(self.scheduler.planning_hold["status"], "FAILED")
+
+
+class PlanningInputNormalizationTest(unittest.TestCase):
+    def test_story_status_results_and_findings_do_not_change_contract_fingerprint(self):
+        original = """## Story ID
+
+STORY-WEB-001
+
+## Acceptance Criteria
+
+- The page displays the requested result.
+
+## Status
+
+TODO
+
+## Result
+
+Initial result.
+
+## Follow-up Findings
+
+F001: Possible issue.
+"""
+        completed = original.replace("TODO", "DONE").replace(
+            "Initial result.", "Implementation complete.").replace(
+            "Possible issue.", "Already investigated.")
+        self.assertEqual(loop._stable_story_planning_content(original),
+                         loop._stable_story_planning_content(completed))
+        changed_requirement = completed.replace(
+            "The page displays the requested result.",
+            "The page displays the requested result and its source.")
+        self.assertNotEqual(loop._stable_story_planning_content(original),
+                            loop._stable_story_planning_content(changed_requirement))
 
 
 class PlanningValidationTest(unittest.TestCase):

@@ -372,6 +372,15 @@ Claude to create stories. Update only the disposition section of a completed
 source story; leave its implementation finding and Result unchanged. Do not
 set independent_work_remaining solely because findings exist.
 
+Triage each finding as a verified current defect, missing verification,
+documentation drift, already resolved, or optional improvement. Confirm an
+alleged defect against the current implementation and confirmed Product Owner
+decisions. Verification gaps do not automatically imply implementation
+stories; documentation drift must follow newer confirmed decisions; optional
+improvements need not become mandatory work. Create an implementation story
+only for a verified defect or unmet requirement not already covered by
+existing work.
+
 {implementation_follow_up_findings_block}
 
 Read a section or line range rather than a whole large document, batch

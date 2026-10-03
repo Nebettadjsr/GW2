@@ -1040,8 +1040,34 @@ def _block_story_for_qa_decision(story_path: Path, plan: dict) -> None:
         CURRENT_STORY_FILE.write_text("", encoding="utf-8")
 
 
+def _block_story_for_qa_failure(
+        story_path: Path, category: str, error: Exception, *, model_retries: int
+) -> Path:
+    """Hold a story on technical QA failure without misusing the PO intervention flow."""
+    report = qa_agent.record_failure(
+        story_path, category, f"{type(error).__name__}: {error}",
+        model_retries=model_retries,
+    )
+    try:
+        relative_report = report.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        relative_report = report.as_posix()
+    reason = f"QA technical failure ({category}); see {relative_report}."
+    set_story_blocked(story_path, reason)
+    backlog = read_file(BACKLOG_FILE)
+    updated = move_backlog_entry_to_blocked(backlog, story_path.name, f"QA failure: {category}")
+    if updated != backlog:
+        BACKLOG_FILE.write_text(updated, encoding="utf-8")
+    if CURRENT_STORY_FILE.exists() and CURRENT_STORY_FILE.read_text(encoding="utf-8").strip().endswith(story_path.name):
+        CURRENT_STORY_FILE.write_text("", encoding="utf-8")
+    qa_agent.clear_state()
+    log_line(f"{story_path.name} blocked on technical QA failure ({category}): {error}. Report: {relative_report}")
+    print(f"\n{story_path.name} blocked on technical QA failure; see {relative_report}.")
+    return report
+
+
 def _ensure_preimplementation_qa(story_path: Path, wait_for_qa=None) -> dict | None:
-    """Run QA once before coding; persist successful plans and bound failures."""
+    """Run QA before coding; correct invalid plans and hold technical failures."""
     plan = qa_agent.load_plan(story_path)
     if plan and plan.get("status") in ("READY", "NO_TESTS_NEEDED"):
         changed = qa_agent.restore_protected_tests(plan)
@@ -1054,24 +1080,46 @@ def _ensure_preimplementation_qa(story_path: Path, wait_for_qa=None) -> dict | N
             _block_story_for_qa_decision(story_path, plan)
             return None
 
+    correction_feedback = ""
+    model_retries = 0
     while True:
         try:
-            plan = qa_agent.execute_preparation(story_path)
+            if correction_feedback:
+                plan = qa_agent.execute_preparation(
+                    story_path, correction_feedback=correction_feedback
+                )
+            else:
+                plan = qa_agent.execute_preparation(story_path)
         except ModelCapacityUnavailable:
             if wait_for_qa is None:
                 raise
             wait_for_qa()
             continue
-        except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+        except qa_agent.QAPlanError as exc:
             attempts = qa_agent.record_attempt(story_path)
-            log_line(f"QA preparation failed ({attempts}/{MAX_QA_ATTEMPTS_PER_STORY}): {type(exc).__name__}: {exc}")
+            model_retries += 1
+            log_line(f"QA returned an invalid plan ({attempts}/{MAX_QA_ATTEMPTS_PER_STORY}): {exc}")
             if attempts < MAX_QA_ATTEMPTS_PER_STORY:
+                correction_feedback = str(exc)
                 continue
-            _create_intervention_and_block_story(
-                story_path,
-                read_file(story_path),
-                f"QA preparation failed {attempts} times; no coding was started. {type(exc).__name__}: {exc}",
-                "QA could not produce a validated plan. Inspect the QA artifacts and resume this story after resolving the cause.",
+            _block_story_for_qa_failure(
+                story_path, "invalid_qa_output", exc, model_retries=model_retries
+            )
+            return None
+        except qa_agent.QAFileProtectionError as exc:
+            _block_story_for_qa_failure(
+                story_path, "file_protection_violation", exc, model_retries=model_retries
+            )
+            return None
+        except qa_agent.QARunnerError as exc:
+            _block_story_for_qa_failure(
+                story_path, "qa_runner_failure", exc, model_retries=model_retries
+            )
+            return None
+        except (qa_agent.QAInfrastructureError, OSError, RuntimeError, ValueError,
+                KeyError, TypeError) as exc:
+            _block_story_for_qa_failure(
+                story_path, "qa_infrastructure_failure", exc, model_retries=model_retries
             )
             return None
 
@@ -2123,13 +2171,16 @@ def requeue_resolved_interventions() -> None:
 # ============================================================
 
 def planning_input_snapshot():
-    # No-work/NEEDS_USER suppression lasts only while relevant local inputs stay unchanged.
+    # Fingerprint planning inputs, not execution progress. Story status/result
+    # sections, active-story pointers, backlog section moves and Claude's run
+    # artifact change during ordinary execution and must not trigger planning.
     # An answered architect request is one of those inputs: resolving it is
     # exactly what makes a previously unplannable question plannable.
-    paths = {BACKLOG_FILE, CURRENT_STORY_FILE, PROJECT_STATE_FILE, ROADMAP_FILE, TARGET_ARCHITECTURE_FILE}
-    for directory in (BACKLOG_FILE.parent, USER_DECISIONS_DIR, PRODUCT_OWNER_REQUESTS_DIR,
+    paths = {PROJECT_STATE_FILE, ROADMAP_FILE, TARGET_ARCHITECTURE_FILE}
+    for directory in (USER_DECISIONS_DIR, PRODUCT_OWNER_REQUESTS_DIR,
                       ARCHITECT_REQUESTS_DIR):
         paths.update(directory.glob("*.md"))
+    paths.update(path for path in BACKLOG_FILE.parent.glob("STORY-*.md"))
     paths.update((REPO_ROOT / "docs").rglob("*.md"))
     paths.update((REPO_ROOT / "agent").glob("*INSTRUCTIONS.md"))
     paths.add(REPO_ROOT / "AGENTS.md")
@@ -2143,9 +2194,6 @@ def planning_input_snapshot():
         "human/user_decisions.py", "human/product_owner_requests.py",
         "human/architect_requests.py",
     ))
-    # An implementation result is external planning evidence, unlike the
-    # planner's own JSON result/cache or terminal logs.
-    paths.add(REPO_ROOT / "agent/runtime/artifacts/CLAUDE_RESULT.md")
     snapshot = {}
     for path in sorted(paths):
         try:
@@ -2157,10 +2205,29 @@ def planning_input_snapshot():
             # not a changed requirement. Preserve all other whitespace/content.
             content = path.read_bytes().decode("utf-8-sig")
             content = content.replace("\r\n", "\n").replace("\r", "\n")
+            if path.parent == BACKLOG_FILE.parent and path.name.startswith("STORY-"):
+                content = _stable_story_planning_content(content)
             snapshot[key] = hashlib.sha256(content.encode("utf-8")).hexdigest()
         else:
             snapshot[key] = None
     return snapshot
+
+
+_EXECUTION_ONLY_STORY_SECTIONS = {
+    "status", "result", "follow-up findings", "follow-up findings disposition",
+}
+
+
+def _stable_story_planning_content(content: str) -> str:
+    """Exclude mutable execution evidence while retaining story requirements."""
+    kept = []
+    skipping = False
+    for line in content.splitlines():
+        if line.startswith("## "):
+            skipping = line[3:].strip().casefold() in _EXECUTION_ONLY_STORY_SECTIONS
+        if not skipping:
+            kept.append(line)
+    return "\n".join(kept).strip()
 
 
 def planning_fingerprint(snapshot=None):
@@ -2179,9 +2246,9 @@ class CapacityScheduler:
     """
     Independent per-model capacity gating. Neither model's exhaustion is
     ever a story or planning failure, and neither blocks the other:
-    Claude drains already-planned work while Codex is exhausted, Codex
-    replenishes the queue while Claude is exhausted, and when both are
-    out the orchestrator waits locally instead of exiting.
+    Claude drains already-planned work while Codex is exhausted. Codex plans
+    for an empty queue or changed planning inputs; when neither model can make
+    progress, the orchestrator waits locally instead of exiting.
     """
 
     def __init__(self, claude=None, codex=None,
@@ -2275,17 +2342,19 @@ class CapacityScheduler:
                  "inputs change or PLANNING_CACHE.json is removed; independent execution continues.")
         return False
 
-    def plan_if_useful(self, idle=False, force=False):
+    def has_changed_planning_inputs(self):
+        if not self.no_work_at:
+            return False
+        return planning_fingerprint() != self.no_work_at
+
+    def plan_if_useful(self, idle=False):
         if self.cache_file is not None and self.no_work_at and not self.cache_file.exists():
             self.no_work_at = None
             self.planning_hold = None
         before = planning_input_snapshot()
         fingerprint = planning_fingerprint(before)
-        changed_since_hold = bool(
-            self.no_work_at
-            and fingerprint != self.no_work_at
-        )
-        queue_low = should_trigger_planning(len(get_selectable_story_candidates()))
+        changed_since_hold = bool(self.no_work_at and fingerprint != self.no_work_at)
+        queue_exhausted = should_trigger_planning(len(get_selectable_story_candidates()))
         # A held result that reported independent work remaining is a trigger in its
         # own right. Nothing else can change while planning is held, so without this
         # the bounded follow-up pass below was only ever reached when the queue
@@ -2301,8 +2370,7 @@ class CapacityScheduler:
                 "planner result has no independent work remaining"
             )
             return False
-        if not (force or queue_low or changed_since_hold or follow_up_requested or
-                (idle and self.planning_hold is None)):
+        if not (queue_exhausted or changed_since_hold or follow_up_requested):
             return False
         if fingerprint == self.no_work_at:
             if follow_up_requested:
@@ -2676,8 +2744,8 @@ def _run_cycle(scheduler, replenish, decisions) -> tuple[str, bool]:
     One scheduling cycle. Returns ("CONTINUE"|"STOP", replenish).
 
     Priority order: resume the active story > execute selectable To Do
-    work > replenish a low queue through Codex > use Claude's idle time
-    for planning > wait locally. Every branch either performs work or
+    work > plan for changed inputs or an exhausted queue > wait locally.
+    Every branch either performs work or
     leaves the orchestrator alive; only a genuinely empty, unblocked,
     unplannable repository reaches "STOP".
     """
@@ -2719,7 +2787,9 @@ def _run_cycle(scheduler, replenish, decisions) -> tuple[str, bool]:
         )
         if result not in ("COMPLETE", "BLOCKED", "NEEDS_USER"):
             raise RuntimeError(f"Unexpected story result: {result}")
-        return "CONTINUE", True
+        # The next cycle will select another eligible story directly. The
+        # completed result is not itself a reason for a Planner invocation.
+        return "CONTINUE", False
 
     # Step 2a: architecture. ARCHITECTURE MODE is invoked only while an
     # actionable architect request exists -- an OPEN one, or a
@@ -2752,19 +2822,21 @@ def _run_cycle(scheduler, replenish, decisions) -> tuple[str, bool]:
 
     candidates = get_selectable_story_candidates()
 
-    # After completing work, give a low queue one replenishment opportunity.
-    # On startup existing executable work takes precedence over planning.
-    if replenish or not claude_ready or not candidates:
+    # Plan only when the executable queue is exhausted, a relevant planning
+    # input changed, or Claude is idle and planning has a genuine trigger.
+    # Existing eligible stories always take precedence over replenishment.
+    planning_inputs_changed = scheduler.has_changed_planning_inputs()
+    if not candidates or not claude_ready or planning_inputs_changed:
         decisions.announce(
             availability,
             "plan (attempt) -- reason: "
             + (
-                "just finished a story (replenish check)" if replenish
-                else "Claude unavailable, using idle time for planning" if not claude_ready
+                "planning inputs changed" if planning_inputs_changed
+                else "Claude unavailable; checking for independent planning inputs" if not claude_ready
                 else "To Do queue is empty"
             ),
         )
-        planned = scheduler.plan_if_useful(idle=not claude_ready, force=replenish)
+        planned = scheduler.plan_if_useful(idle=not claude_ready)
         replenish = False
         if planned:
             # Newly planned work is picked up by the next cycle's own

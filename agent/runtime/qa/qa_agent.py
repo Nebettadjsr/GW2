@@ -9,6 +9,7 @@ from pathlib import Path
 from agent.runtime.runners.local_planner_runner import run_qa
 from agent.runtime.support import config
 from agent.runtime.support.capacity import ModelCapacityUnavailable
+from agent.runtime.support.daily_log import defer_log_writes
 from agent.runtime.support.files import write_json
 from agent.runtime.human.user_decisions import create_qa_user_decision
 from agent.runtime.human.user_decisions import list_decisions
@@ -23,6 +24,18 @@ from agent.runtime.core.story_state import (
 
 class QAPlanError(RuntimeError):
     pass
+
+
+class QAInfrastructureError(RuntimeError):
+    """The harness could not safely execute or guard QA preparation."""
+
+
+class QAFileProtectionError(QAInfrastructureError):
+    """QA changed forbidden files or a safe restoration was not possible."""
+
+
+class QARunnerError(QAInfrastructureError):
+    """The QA model runner failed independently of plan validation."""
 
 
 PLAN_STATUSES = ("READY", "NO_TESTS_NEEDED", "NEEDS_USER")
@@ -186,14 +199,27 @@ def enforce_test_only_changes(before: dict[str, bytes], after: dict[str, bytes],
 
     for name in changed - allowed_modified:
         path = config.REPO_ROOT / name
-        path.parent.mkdir(parents=True, exist_ok=True)
+        current = path.read_bytes() if path.is_file() else None
+        if current != after[name]:
+            violations.append(f"{name} (preserved newer concurrent change; not restored)")
+            continue
         path.write_bytes(before[name])
     for name in deleted:
         path = config.REPO_ROOT / name
+        if path.exists():
+            violations.append(f"{name} (preserved recreated file; not overwritten)")
+            continue
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(before[name])
     for name in added - allowed_added:
-        (config.REPO_ROOT / name).unlink(missing_ok=True)
+        path = config.REPO_ROOT / name
+        if not path.exists():
+            continue
+        current = path.read_bytes() if path.is_file() else None
+        if current != after[name]:
+            violations.append(f"{name} (preserved newer concurrent change; not deleted)")
+            continue
+        path.unlink()
 
     qa_tests = sorted(allowed_added | allowed_modified)
     return qa_tests, violations
@@ -429,7 +455,7 @@ def make_legacy_plan(story_path: Path) -> dict:
     return plan
 
 
-def execute_preparation(story_path: Path) -> dict:
+def execute_preparation(story_path: Path, correction_feedback: str = "") -> dict:
     """One guarded QA run; callers own bounded retry and capacity waiting."""
     story_content = story_path.read_text(encoding="utf-8")
     sid = story_id_from_content(story_content, story_path.stem)
@@ -439,24 +465,79 @@ def execute_preparation(story_path: Path) -> dict:
     except (OSError, json.JSONDecodeError):
         pass
     owned = state.get("owned_test_paths", []) if state.get("story_id") == sid else []
-    before = snapshot_files()
-    messages: list[str] = []
     try:
-        code = run_qa(build_qa_prompt(story_path, story_content, owned), messages)
-    finally:
-        after = snapshot_files()
-        qa_tests, violations = enforce_test_only_changes(before, after, owned)
-        if qa_tests:
-            state = {"schema_version": 1, "story_id": sid,
-                     "attempts": int(state.get("attempts", 0)) if state.get("story_id") == sid else 0,
-                     "owned_test_paths": sorted(set(owned) | set(qa_tests))}
-            write_json(config.QA_STATE_FILE, state)
+        before = snapshot_files()
+    except Exception as exc:
+        raise QAInfrastructureError(
+            f"Could not snapshot the repository before QA: {type(exc).__name__}: {exc}"
+        ) from exc
+    messages: list[str] = []
+    qa_tests = []
+    violations = []
+    runner_error = None
+    code = None
+    prompt = build_qa_prompt(story_path, story_content, owned)
+    if correction_feedback:
+        prompt += (
+            "\n\nCORRECTION REQUIRED FROM THE PREVIOUS INVALID QA PLAN:\n"
+            + correction_feedback
+            + "\nReturn a corrected plan. Do not repeat the invalid field, output, or path.\n"
+        )
+    with defer_log_writes():
+        try:
+            try:
+                code = run_qa(prompt, messages)
+            except ModelCapacityUnavailable:
+                raise
+            except Exception as exc:
+                runner_error = exc
+        finally:
+            try:
+                after = snapshot_files()
+                qa_tests, violations = enforce_test_only_changes(before, after, owned)
+            except Exception as exc:
+                raise QAInfrastructureError(
+                    f"Could not verify or safely restore QA workspace changes: {type(exc).__name__}: {exc}"
+                ) from exc
+            if qa_tests:
+                state = {"schema_version": 1, "story_id": sid,
+                         "attempts": int(state.get("attempts", 0)) if state.get("story_id") == sid else 0,
+                         "owned_test_paths": sorted(set(owned) | set(qa_tests))}
+                write_json(config.QA_STATE_FILE, state)
     if violations:
-        raise QAPlanError("QA modified forbidden files; changes were restored: " + ", ".join(violations))
+        raise QAFileProtectionError("QA modified forbidden files: " + ", ".join(violations))
+    if runner_error is not None:
+        raise QARunnerError(
+            f"QA model runner failed: {type(runner_error).__name__}: {runner_error}"
+        ) from runner_error
     if code != 0:
-        raise QAPlanError(f"QA agent exited with code {code}")
+        raise QARunnerError(f"QA agent exited with code {code}")
     raw = parse_plan(messages)
     return save_plan(story_path, raw, owned_test_paths=sorted(set(owned) | set(qa_tests)))
+
+
+def record_failure(story_path: Path, category: str, message: str, *, model_retries: int) -> Path:
+    """Persist actionable technical QA failure without creating a PO decision."""
+    content = story_path.read_text(encoding="utf-8")
+    sid = story_id_from_content(content, story_path.stem)
+    target = config.QA_FAILURES_DIR / f"QA-{sid}.json"
+    recovery = {
+        "invalid_qa_output": "Inspect the error and QA transcript, correct the invalid plan, then manually requeue the blocked story.",
+        "file_protection_violation": "Inspect the named paths and preserved changes, fix the QA workspace violation, then manually requeue the blocked story.",
+        "qa_runner_failure": "Check Codex CLI availability and the recorded runner error, then manually requeue the blocked story.",
+        "qa_infrastructure_failure": "Repair the repository snapshot or restoration failure without discarding preserved work, then manually requeue the blocked story.",
+    }.get(category, "Inspect the QA failure and repair its technical cause before manually requeuing the story.")
+    config.QA_FAILURES_DIR.mkdir(parents=True, exist_ok=True)
+    write_json(target, {
+        "schema_version": 1,
+        "story_id": sid,
+        "status": "TECHNICAL_FAILURE",
+        "category": category,
+        "message": message,
+        "model_retries": model_retries,
+        "recovery_action": recovery,
+    })
+    return target
 
 
 def record_attempt(story_path: Path) -> int:

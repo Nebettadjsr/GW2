@@ -60,6 +60,16 @@ class DailyLogTest(unittest.TestCase):
         self.assertIn("pre-existing line", content)
         self.assertIn("new line", content)
 
+    def test_deferred_writes_flush_after_guarded_operation(self):
+        self.logs_dir.mkdir(parents=True)
+        path = self.logs_dir / f"{datetime.now().date().isoformat()}.log"
+        path.write_text("pre-existing line\n", encoding="utf-8")
+        with daily_log.defer_log_writes():
+            daily_log.log_line("orchestrator-owned QA output")
+            self.assertEqual(path.read_text(encoding="utf-8"), "pre-existing line\n")
+        self.assertIn("pre-existing line", path.read_text(encoding="utf-8"))
+        self.assertIn("orchestrator-owned QA output", path.read_text(encoding="utf-8"))
+
     def test_each_line_is_timestamped(self):
         daily_log.log_line("hello")
 

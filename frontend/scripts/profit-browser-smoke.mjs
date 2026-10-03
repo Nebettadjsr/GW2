@@ -6,9 +6,10 @@
  *
  * Since STORY-WEB-006 it also covers DOMAIN_SPEC 2.1.1's result-display controls — the three filters,
  * the changeable maximum and Show all — and whole-row selection by pointer, on both viewports. Since
- * STORY-WEB-011 those controls are the *Displayed results* subgroup of the calculation-controls
- * panel, all three filters open enabled, and the removed explanatory paragraphs are checked to be
- * gone without the accessible description going with them. Since STORY-DOM-021 it also covers
+ * STORY-WEB-011 the search and three filters are the *Displayed results* subgroup of the
+ * calculation-controls panel, while the maximum and Show all sit beside the Opportunities title.
+ * All three filters open enabled, and removed explanatory paragraphs are checked to be gone without
+ * the accessible description going with them. Since STORY-DOM-021 it also covers
  * Crafting Profit calculation controls and their request association,
  * that switching it submits one calculation carrying it rather than filtering rows in the page, that
  * a reload keeps it for the table and its detail, and that the restricted result is kept and
@@ -489,7 +490,7 @@ async function listedRecipes(page) {
  * it its own accessible name — the calculation column through `aria-labelledby`, the display group
  * through its `fieldset`'s `legend`. `groupName` reads whichever of the two an element uses, so the
  * check is about the name the group carries rather than about one markup pattern for carrying it.
- * The changeable maximum and Show all are beside the list they limit, in the results toolbar.
+ * The changeable maximum and Show all are beside the Opportunities title in its results toolbar.
  */
 async function displayControlState(page) {
   return page.evaluate(() => {
@@ -527,7 +528,10 @@ async function displayControlState(page) {
       maximum: document.querySelector('[data-test="max-displayed"]')?.value ?? null,
       maximumDisabled: document.querySelector('[data-test="max-displayed"]')?.disabled ?? null,
       limitInResultsRegion:
-        resultsRegion?.contains(document.querySelector('[data-test="opportunities-limit"]')) ?? false
+        resultsRegion?.contains(document.querySelector('[data-test="opportunities-limit"]')) ?? false,
+      limitBesideResultsTitle:
+        document.querySelector('#crafting-results-heading')?.parentElement ===
+        document.querySelector('[data-test="opportunities-limit"]')?.parentElement
     }
   })
 }
@@ -1340,8 +1344,8 @@ async function run() {
         .name} at ${Math.min(...treeContrast.map((sample) => sample.ratio)).toFixed(2)}:1`
     )
 
-    // 6. The display controls are the Displayed results subgroup of the controls panel, in
-    // DOMAIN_SPEC 2.1.1's initial state, and the removed paragraphs are not on screen.
+    // 6. Search and filters are the Displayed results subgroup; maximum and Show all remain beside
+    // the results title per DOMAIN_SPEC 2.1.1. Check both groups and the removed paragraphs.
     const calculationsBeforeDisplayControls = requestsToPath(stub, '/api/crafting/profit').length
     const detailsBeforeDisplayControls = requestsToPath(stub, '/api/crafting/profit/resolution').length
     const defaults = await displayControlState(page)
@@ -1349,7 +1353,11 @@ async function run() {
       defaults.panelLabel === 'Crafting profit controls' &&
         defaults.inControlsPanel &&
         !defaults.inResultsRegion,
-      `The calculation and display controls are not two groups in one labelled panel: ${JSON.stringify(defaults)}`
+      `The calculation and filter groups are not two groups in one labelled panel: ${JSON.stringify(defaults)}`
+    )
+    check(
+      defaults.limitInResultsRegion && defaults.limitBesideResultsTitle,
+      `The maximum and Show all are not beside the results title: ${JSON.stringify(defaults)}`
     )
     check(
       defaults.legend === 'Displayed results' && defaults.calculationLegend === 'Calculation',
@@ -1400,7 +1408,7 @@ async function run() {
       `Expected ${DEFAULT_LISTED.length} rows listed by default, got ${listedAtStart.join(', ')}`
     )
     record(
-      'Displayed results subgroup opens with all three filters on and no explanatory prose',
+      'Displayed results filters open enabled; maximum and Show all are beside the results title',
       `${listedAtStart.length} of ${allRows().length} rows listed, maximum ${defaults.maximum} ` +
         `rendered in ${defaults.limitInResultsRegion ? 'the results toolbar' : 'the controls panel'}`
     )
@@ -1622,8 +1630,8 @@ async function run() {
         JSON.stringify(narrowDefaults)
     )
     check(
-      narrowDefaults.inControlsPanel,
-      `The Displayed results subgroup left the controls panel at ${NARROW.width}px.`
+      narrowDefaults.inControlsPanel && narrowDefaults.limitBesideResultsTitle,
+      `The filter group or results-title controls changed location at ${NARROW.width}px.`
     )
     await showEveryRow(page)
     const expectedRows = allRows().length

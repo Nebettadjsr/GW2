@@ -583,6 +583,20 @@ class RequeueResolvedInterventionsTest(OrchestratorInterventionTestCase):
             [filename],
         )
 
+    def test_requeue_transition_restamps_canonical_backlog_entry(self):
+        filename = "STORY-DOM-015-x.md"
+        backlog = (
+            "# Backlog\n\n## Active\n\n_(none)_\n\n## To Do\n\n_(none)_\n\n"
+            "## Blocked\n\n- STORY-DOM-015 | STORY-DOM-015-x.md | BLOCKED | "
+            "milestone-05 | deps: None\n\n## Done\n\n_(none)_\n\n"
+            "## Archived\n\n_(none)_\n"
+        )
+        updated = story_state.move_backlog_entry_to_todo(backlog, filename)
+        self.assertEqual(story_state.parse_backlog_section(updated, "Blocked"), [])
+        self.assertEqual(story_state.parse_backlog_section(updated, "To Do"), [filename])
+        todo_line = next(line for line in updated.splitlines() if filename in line)
+        self.assertEqual(story_state.parse_backlog_entry(todo_line)["status"], "TODO")
+
     def test_resolved_intervention_but_unmet_dependency_stays_blocked(self):
         filename = "STORY-DOM-015-x.md"
         story_path = self.write_story(

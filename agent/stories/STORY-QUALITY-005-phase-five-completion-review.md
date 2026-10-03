@@ -58,6 +58,8 @@ and is resolved by JavaFX removal, not by Phase 5 closure.
 - STORY-WEB-020
 - STORY-WEB-021
 - STORY-WEB-022
+- STORY-WEB-027
+- STORY-WEB-028
 
 ## Definition of Done
 
@@ -69,8 +71,8 @@ Not started.
 
 ## Blockers
 
-STORY-WEB-018, STORY-WEB-020 and STORY-WEB-021 must be substantially complete before this review.
-STORY-PERF-002, STORY-WEB-019, STORY-SYNC-005 and STORY-WEB-022 are DONE. STORY-UI-003 is SUPERSEDED
+STORY-WEB-020, STORY-WEB-021, STORY-WEB-027 and STORY-WEB-028 must be substantially complete before this review.
+STORY-PERF-002, STORY-WEB-018, STORY-WEB-019, STORY-SYNC-005 and STORY-WEB-022 are DONE. STORY-UI-003 is SUPERSEDED
 by the Product Owner's decision that the legacy JavaFX UI is obsolete and removable, so it no longer
 blocks this review.
 

@@ -8,7 +8,7 @@ Repair browser smoke assertions against current workflow contracts
 
 ## Status
 
-UNFINISHED
+DONE
 
 ## Milestone
 
@@ -200,3 +200,10 @@ F004: `resolutionPresentation.ts`'s `describeRootSourcing` has no browser covera
 crafting pages use `selected-result-mode`, where `CraftingResolution.vue` returns null whenever the
 tree root carries the requested recipe id, and both smoke fixtures build their tree that way — so
 none of its three sentences is rendered in `smoke:profit` or `smoke:discovery`.
+
+## Follow-up Findings Disposition
+
+F001: FOLLOW-UP STORY: STORY-WEB-028
+F002: SUPERSEDED by the later confirmed Product Owner decision. `DOMAIN_SPEC.md` §2.1.1 now places the maximum and Show all beside the results title; STORY-WEB-028 must preserve this accepted placement. No application UI change is warranted.
+F003: FOLLOW-UP STORY: STORY-WEB-028
+F004: FOLLOW-UP STORY: STORY-WEB-028

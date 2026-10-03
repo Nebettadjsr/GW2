@@ -13,17 +13,15 @@ below stay in the plain form.
 
 ## Active
 
-- STORY-WEB-024 | STORY-WEB-024-repair-fresh-build-smoke-contracts.md | UNFINISHED | milestone-05 | deps: STORY-WEB-018
+- STORY-WEB-027 | STORY-WEB-027-remove-tracked-smoke-control-copy.md | TODO | milestone-05 | deps: None
 
 ## To Do
-
-- STORY-WEB-020 | STORY-WEB-020-layout-smoke-total-sell-value.md | TODO | milestone-05 | deps: STORY-WEB-019
-- STORY-WEB-027 | STORY-WEB-027-remove-tracked-smoke-control-copy.md | TODO | milestone-05 | deps: None
 - STORY-WEB-021 | STORY-WEB-021-ecto-content-test-hooks.md | TODO | milestone-05 | deps: STORY-WEB-019
+- STORY-WEB-028 | STORY-WEB-028-align-browser-workflow-contracts.md | TODO | milestone-05 | deps: STORY-WEB-024
+- STORY-WEB-020 | STORY-WEB-020-layout-smoke-total-sell-value.md | TODO | milestone-05 | deps: STORY-WEB-019
 
 ## Blocked
-
-- STORY-QUALITY-005 | STORY-QUALITY-005-phase-five-completion-review.md | BLOCKED | milestone-05 | deps: STORY-PERF-002, STORY-WEB-019, STORY-SYNC-005, STORY-WEB-018, STORY-WEB-020, STORY-WEB-021, STORY-WEB-022
+- STORY-QUALITY-005 | STORY-QUALITY-005-phase-five-completion-review.md | BLOCKED | milestone-05 | deps: STORY-PERF-002, STORY-WEB-019, STORY-SYNC-005, STORY-WEB-018, STORY-WEB-020, STORY-WEB-021, STORY-WEB-022, STORY-WEB-027, STORY-WEB-028
 
 ## Superseded
 
@@ -76,6 +74,7 @@ Completed current-milestone story details remain in their canonical files.
 - STORY-WEB-019 | STORY-WEB-019-layout-smoke-navigation-coverage.md | DONE | milestone-05 | Align layout browser smoke navigation coverage with current destinations
 - STORY-WEB-022 | STORY-WEB-022-align-ecto-page-label.md | DONE | milestone-05 | Align the Ecto Salvage page label and browser checks
 - STORY-WEB-018 | STORY-WEB-018-fresh-build-browser-smoke-checks.md | DONE | milestone-05 | Reject stale frontend bundles in browser smoke checks
+- STORY-WEB-024 | STORY-WEB-024-repair-fresh-build-smoke-contracts.md | DONE | milestone-05 | Repair browser smoke assertions against current workflow contracts
 
 ## Archived
 

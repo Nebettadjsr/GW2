@@ -82,6 +82,7 @@ ARCHITECT_RESULT_FILE = ARTIFACTS_DIR / "ARCHITECT_RESULT.json"
 QA_RESULT_FILE = ARTIFACTS_DIR / "QA_RESULT.json"
 QA_STATE_FILE = ARTIFACTS_DIR / "QA_STATE.json"
 QA_PLANS_DIR = AGENT_DIR / "qa-plans"
+QA_FAILURES_DIR = ARTIFACTS_DIR / "qa-failures"
 
 DOCS_DIR = REPO_ROOT / "docs"
 ROADMAP_FILE = DOCS_DIR / "ROADMAP.md"
@@ -176,9 +177,9 @@ CYCLE_RETRY_SECONDS = 60
 # read, never a model call (Codex/Claude/the evaluator/the planner).
 USER_DECISION_POLL_SECONDS = 1800
 
-# Planning is triggered once the number of selectable "To Do" stories
-# drops to this many or fewer (including zero).
-PLANNING_TRIGGER_MAX_READY_STORIES = 2
+# The normal backlog trigger is an exhausted executable queue. Changed
+# requirements and architecture inputs can trigger planning sooner.
+PLANNING_TRIGGER_MAX_READY_STORIES = 0
 
 # A single COMPLETE planning run that creates stories at all must create
 # at least this many (never zero speculative filler just to pad a batch --

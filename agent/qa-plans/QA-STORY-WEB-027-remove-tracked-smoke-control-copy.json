@@ -1,0 +1,70 @@
+{
+  "status": "NO_TESTS_NEEDED",
+  "story_id": "STORY-WEB-027-remove-tracked-smoke-control-copy",
+  "rationale": "This is a narrowly scoped removal of a tracked, unreferenced temporary script. Adding automated tests would not improve confidence; repository reference checks and the maintained account smoke command directly verify the acceptance criteria.",
+  "acceptance_checks": [
+    {
+      "criterion": "Remove the tracked temporary control copy.",
+      "expected": "The file is absent from the working tree and no longer listed by git ls-files.",
+      "verification": "From the repository root, run Test-Path frontend/scripts/.tmp-control-unrelated-call.mjs and git ls-files frontend/scripts/.tmp-control-unrelated-call.mjs; expect False and no tracked path."
+    },
+    {
+      "criterion": "Confirm no maintained smoke command depends on that temporary file.",
+      "expected": "No maintained script or npm command references the temporary filename; smoke:account still invokes scripts/account-browser-smoke.mjs.",
+      "verification": "Search frontend/package.json and frontend/scripts, excluding node_modules, for .tmp-control-unrelated-call.mjs; expect no matches. Inspect the smoke:account entry in frontend/package.json."
+    },
+    {
+      "criterion": "Record the repository change and focused verification.",
+      "expected": "The story result records the removal and the outcomes of the absence/reference checks and maintained smoke run.",
+      "verification": "Review the implementation result for those command outcomes."
+    }
+  ],
+  "invariants": [
+    "The maintained account browser smoke script remains present and unchanged.",
+    "The smoke:account npm command continues to target scripts/account-browser-smoke.mjs.",
+    "No maintained smoke command references the removed temporary copy."
+  ],
+  "test_levels": [
+    "ui"
+  ],
+  "existing_tests_reviewed": [
+    "frontend/scripts/account-browser-smoke.mjs — maintained real-browser check for Bank and Materials screens; requires a running backend, Vite dev server, and Chromium-family browser.",
+    "frontend/package.json — smoke:account maps directly to node scripts/account-browser-smoke.mjs; no temporary-copy reference is present in the scripts map.",
+    "frontend/src/account/__tests__/BankScreen.spec.ts and frontend/src/account/__tests__/MaterialsScreen.spec.ts — existing account-screen component coverage; neither tests script tracking or npm command wiring.",
+    "frontend/coverage/coverage-summary.json — available frontend report records overall coverage, but the removal concerns script tracking and invocation, not covered frontend source behavior."
+  ],
+  "prepared_test_paths": [],
+  "test_specifications": [
+    "After removal, verify Test-Path frontend/scripts/.tmp-control-unrelated-call.mjs returns False and git ls-files frontend/scripts/.tmp-control-unrelated-call.mjs returns no path.",
+    "Search frontend/package.json and frontend/scripts, excluding node_modules, for .tmp-control-unrelated-call.mjs and expect no matches; confirm frontend/package.json retains \"smoke:account\": \"node scripts/account-browser-smoke.mjs\".",
+    "With the documented backend, Vite dev server, and Chromium-family browser running, execute npm run smoke:account from frontend/ and require exit code 0."
+  ],
+  "pre_implementation_verification": {
+    "status": "NOT_RUN",
+    "command": "Post-removal checks: from repository root, Test-Path frontend/scripts/.tmp-control-unrelated-call.mjs; git ls-files frontend/scripts/.tmp-control-unrelated-call.mjs; rg -n --glob '!node_modules/**' '\\.tmp-control-unrelated-call\\.mjs' frontend/package.json frontend/scripts; then, with its documented prerequisites running, execute npm run smoke:account from frontend/.",
+    "failure_evidence": "Not applicable: these checks establish the post-removal state and require the implementation first. No expected-red test is appropriate for a file removal."
+  },
+  "coverage_review": "An available frontend coverage summary exists, but this change concerns a standalone script file and repository wiring rather than frontend source modules; coverage is not a meaningful correctness measure for this removal. No script-specific coverage report was identified.",
+  "external_sources": [],
+  "clarifications": [],
+  "post_implementation_review_required": true,
+  "post_implementation_review_reason": "The acceptance criteria explicitly require confirming that the maintained account smoke check remains runnable. Review the removal/reference checks and the smoke:account run after implementation; that run needs the documented backend, dev server, and browser prerequisites.",
+  "schema_version": 1,
+  "qa_model": "gpt-6-luna",
+  "qa_reasoning_effort": "medium",
+  "user_decision_ids": [],
+  "protected_test_hashes": {},
+  "post_implementation_reviews": [
+    {
+      "decision": "APPROVE",
+      "reason": "The removal and command-wiring criteria are met. The smoke command exited 1, so the QA plan’s exit-code-0 check is unmet; however, the failure is documented at the bank-screen comparison, and the supplied evidence supports a pre-existing screen/script contract mismatch unrelated to this file-only removal. The deviation is sufficiently justified for this story, while the smoke check itself remains a follow-up defect.",
+      "evidence": [
+        "The temporary copy is absent and `git ls-files` returns no tracked path; the search found no references in `frontend/package.json` or `frontend/scripts`.",
+        "`smoke:account` still maps to `node scripts/account-browser-smoke.mjs`; the maintained smoke script has no diff.",
+        "The story result records a real-browser run reaching the backend and failing at step 3; its asserted hooks/label differ from the current screen contract.",
+        "The QA plan prepared no automated tests; its repository checks are supported by the current state, but its required passing smoke run was not achieved."
+      ],
+      "actionable_items": []
+    }
+  ]
+}

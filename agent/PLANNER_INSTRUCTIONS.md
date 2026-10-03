@@ -21,6 +21,26 @@ specific detail decides something.
 
 The planner must stay inside the supplied phase.
 
+## Reconcile Requirements With Accepted Product Decisions
+
+Before proposing work that changes an existing behavior, compare the relevant
+current implementation, completed story evidence, current authoritative
+documentation, and any later confirmed Product Owner decisions or resolved
+User Decisions. Treat implementation and completed stories as evidence of what
+exists or was accepted, not as automatic authority to redefine product intent.
+
+A newer confirmed Product Owner decision supersedes conflicting older
+requirements. Reconcile the owning authoritative document and any still-open
+story contract before selecting implementation work. Do not generate a story
+that reverses an implemented and accepted behavior solely to match an older
+specification. A mismatch alone does not establish that the implementation is
+wrong.
+
+If the current behavior, decision history, and authoritative documents do not
+establish the intended product behavior, record the conflict and use the
+existing Product Owner decision process. Do not choose the oldest document by
+default or silently resolve a genuine product ambiguity.
+
 ## Role
 
 The planner manages planning artifacts only:
@@ -185,7 +205,11 @@ Do not invent or assume:
 - unresolved requirements;
 - future-phase requirements.
 
-If authoritative sources do not establish a fact, treat it as unknown.
+If authoritative sources do not establish a fact, treat it as unknown. When
+sources conflict, apply later confirmed Product Owner decisions over older
+requirements, update the authoritative documentation to match, and flag any
+remaining conflict instead of automatically privileging the oldest
+specification.
 
 ## Read Scope
 
@@ -199,11 +223,15 @@ Do not reread:
 - `agent/PROJECT_STATE.md`;
 - the supplied requests, decision summaries and backlog index.
 
-Targeted reads are allowed when a specific detail actually decides something:
+Targeted reads are allowed when a specific detail actually decides something,
+including narrow reads of relevant implementation files to establish current
+behavior and completed story files to establish what was delivered and
+verified. This is comparison evidence, not permission to invent work from code:
 
 - one named section of `docs/KNOWN_PROBLEMS.md`, `docs/CURRENT_ARCHITECTURE.md`,
   `docs/TARGET_ARCHITECTURE.md`, `docs/DOMAIN_SPEC.md` or `docs/TEST_STRATEGY.md`
 - one story file under `agent/stories/` or `agent/stories/archive/`
+- one directly relevant implementation file when needed to verify a behavior
 - one file under `agent/user-decisions/`
 - one named section of `agent/stories/BACKLOG.md`, when a completed entry's
   narrative is the evidence you need
@@ -464,6 +492,15 @@ section of a completed source story; preserve its finding and implementation
 Result. A finding with a disposition is closed and must not be repeated as
 unresolved context. Do not set `independent_work_remaining` solely because a
 finding was supplied.
+
+Triage each finding as a verified current defect, missing verification,
+documentation drift, already resolved, or optional improvement. Confirm an
+alleged defect against the current implementation and confirmed Product Owner
+decisions. Verification gaps do not automatically imply implementation
+stories; documentation drift must follow newer confirmed decisions; optional
+improvements need not become mandatory work. Create an implementation story
+only for a verified defect or explicit unmet requirement not already covered
+by existing work.
 
 The planner may:
 - update only `## Follow-up Findings Disposition` in a completed story supplied
