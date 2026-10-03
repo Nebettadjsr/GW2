@@ -18,5 +18,19 @@
   "user_decision_ids": [],
   "post_implementation_review_required": true,
   "post_implementation_review_reason": "Legacy attempt has no pre-implementation QA evidence.",
-  "legacy_attempt": true
+  "legacy_attempt": true,
+  "post_implementation_reviews": [
+    {
+      "decision": "APPROVE",
+      "reason": "The legacy QA plan’s NO_TESTS_NEEDED status is explained and does not represent a missing prepared test that this attempt was required to preserve. The story records focused browser runs for all three affected scripts, and the available implementation review supports that their revised assertions check current rendered workflow contracts. The story also records focused control failures and relevant unit suite results. The evaluator did not independently rerun the browser checks, so approval relies on the recorded run evidence.",
+      "evidence": [
+        "Layout smoke waits for the successful price-cache health state, retains subsequent layout checks, and measures the intro on Discovery, where it is rendered.",
+        "Profit smoke checks labels and values in their rendered regions, excludes obsolete per-craft wording, and covers supplied values and control grouping.",
+        "Discovery smoke checks control grouping and the compact node-value contract.",
+        "Story verification records smoke:layout (13 steps), smoke:profit (34 steps), and smoke:discovery (13 steps) passing against the same build, plus focused negative controls and relevant unit-suite results.",
+        "The QA plan identifies a legacy attempt and explicitly requires post-implementation review; the story records remaining findings separately from this story’s scope."
+      ],
+      "actionable_items": []
+    }
+  ]
 }
