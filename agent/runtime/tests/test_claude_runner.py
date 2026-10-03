@@ -48,15 +48,16 @@ class ClaudeRunnerTest(unittest.TestCase):
     def test_both_capacity_thresholds_are_independent(self):
         self.assertFalse(claude_runner.ClaudeUsage(90, 0).available())
         self.assertFalse(claude_runner.ClaudeUsage(0, 98).available())
-        self.assertTrue(claude_runner.ClaudeUsage(89, 97).available())
+        self.assertFalse(claude_runner.ClaudeUsage(89, 50).available())
+        self.assertTrue(claude_runner.ClaudeUsage(89, 49).available())
         self.assertEqual(CLAUDE_USAGE_LIMIT_PERCENT, 90)
-        self.assertEqual(CLAUDE_WEEKLY_MIN_REMAINING_PERCENT, 2)
+        self.assertEqual(CLAUDE_WEEKLY_MIN_REMAINING_PERCENT, 50)
 
     def test_wait_rechecks_both_allowances_until_both_recover(self):
         readings = [
             claude_runner.ClaudeUsage(90, 20),
             claude_runner.ClaudeUsage(50, 98),
-            claude_runner.ClaudeUsage(50, 97),
+            claude_runner.ClaudeUsage(50, 49),
         ]
         with patch.object(claude_runner, "get_claude_usage", side_effect=readings) as probe, \
              patch.object(claude_runner.time, "sleep") as sleep, \
@@ -65,6 +66,7 @@ class ClaudeRunnerTest(unittest.TestCase):
         self.assertEqual(probe.call_count, 3)
         self.assertEqual(sleep.call_count, 2)
         self.assertTrue(any("weekly remaining 2%" in call.args[0]
+                            and "resumes above 50%" in call.args[0]
                             for call in status.call_args_list))
 
     def test_unreadable_weekly_usage_fails_closed(self):

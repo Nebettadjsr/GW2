@@ -16,6 +16,7 @@ import {
   NO_VALUE
 } from './formatCopper'
 import { materialLabel, recipeLabel, wikiUrl } from './recipeLabel'
+import { formatStackQuantity } from './formatStackQuantity'
 import type { SelectionHiddenReason } from './useProfitTableView'
 import type { ResolutionPhase } from './useResolutionDetail'
 
@@ -353,7 +354,7 @@ function materialQuoteText(item: MissingItem): string {
             </span>
 
             <span class="material-quantity numeric">
-              ×{{ item.quantity }}
+              {{ formatStackQuantity(item.quantity) }}
             </span>
 
             <span class="meta">

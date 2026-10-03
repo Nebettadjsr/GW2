@@ -222,7 +222,7 @@ describe('SelectedResultDetail', () => {
     const forAll = detail.findAll('[data-test="missing-item"]').map((item) => item.text())
     expect(forAll).toHaveLength(2)
     expect(forAll[0]).toContain('Silver Ore')
-    expect(forAll[0]).toContain('×8')
+    expect(forAll[0]).toContain('8')
     expect(forAll[0]).toContain('Price / item: 24c')
     expect(forAll[0]).toContain('Total: 1s 92c')
     expect(forAll[0]).not.toContain('20c')
@@ -243,7 +243,19 @@ describe('SelectedResultDetail', () => {
     expect(detail.find('[data-test="missing-one-none"]').exists()).toBe(false)
     expect(detail.text()).not.toContain('For one further craft')
     // The one-further-craft quantity of the same material was 2; only the counted-craft 8 is shown.
-    expect(forAll[0]).not.toContain('×2')
+    expect(forAll[0]).not.toContain('\u00d72')
+  })
+
+  it('rendersShoppingListQuantitiesAsStacks', () => {
+    const row = {
+      ...lossRow,
+      missingToBuy: lossRow.missingToBuy?.map((item, index) =>
+        index === 0 ? { ...item, quantity: 265 } : item
+      ) ?? null
+    }
+    const detail = detailOf(row)
+    expect(detail.find('[data-test="missing-item"] .material-quantity').text())
+      .toBe('1 \u00d7 250 + 15')
   })
 
   it('rendersTheBackendSelectedPriceForInstantAndListingAcquisitionModes', () => {

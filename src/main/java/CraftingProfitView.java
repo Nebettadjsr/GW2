@@ -761,22 +761,11 @@ public class CraftingProfitView {
 
                                 String name = controller.itemName(itemId);
 
-                                // --- stack calc ---
-                                int stacks = qty / 250;
-                                int rest = qty % 250;
-
-                                String stackText = "";
-                                if (stacks > 0) {
-                                    stackText = " (" + stacks + "x250";
-                                    if (rest > 0) stackText += " + " + rest;
-                                    stackText += ")";
-                                }
-
                                 // --- price ---
                                 int unit = controller.itemSellUnit(itemId, listingSellMode);
                                 int total = unit * qty;
 
-                                return name + " x" + qty + stackText +
+                                return name + " x" + StackQuantityFormatter.format(qty) +
                                         "\n 1 = " + CoinUtils.format(unit) +
                                         " | total = " + CoinUtils.format(total);
                             })

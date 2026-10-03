@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "smoke:browser": "node scripts/browser-smoke.mjs",
     "smoke:sync": "node scripts/sync-browser-smoke.mjs",
@@ -32,6 +33,7 @@
   "devDependencies": {
     "@types/node": "^22.20.4",
     "@vitejs/plugin-vue": "^6.0.9",
+    "@vitest/coverage-v8": "^5.0.1",
     "@vue/test-utils": "^2.5.1",
     "jsdom": "^29.1.1",
     "playwright-core": "^1.63.0",

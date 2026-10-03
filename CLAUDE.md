@@ -29,7 +29,9 @@ one file's facts into another.
 | `docs/TARGET_ARCHITECTURE.md` | Chosen target architecture and remaining decisions |
 | `docs/FRONTEND_UX_GUIDELINES.md` | Reusable browser UX/UI requirements |
 | `docs/CRAFTING_STATUS_LABEL_REFERENCE.md` | Developer reference interpreting crafting status/blocking codes (derived from `DOMAIN_SPEC.md`, not authoritative) |
-| `docs/TEST_STRATEGY.md` | Testing methodology/layers (never live test counts) |
+| `docs/TEST_STRATEGY.md` | Testing methodology, quality requirements, and test layers (never live test counts) |
+| `docs/QUALITY_METRICS.md` | Coverage KPI, baseline, and reporting ownership |
+| `docs/bugs/` | Permanent confirmed-defect registry and reproduction fixture guidance |
 | `docs/ROADMAP.md` | Phases, dependencies, exit criteria |
 | `docs/KNOWN_PROBLEMS.md` | Defects, conflicts, risks, technical debt |
 | `docs/CODING_GUIDELINES.md` | Behavioral/coding standards — read before non-trivial work |
@@ -113,12 +115,21 @@ PostgreSQL password is not a material security finding.
 
 ## Testing
 
-Domain behavior changes need automated tests. Bug fix: reproduce with a test where practical,
-make the smallest fix, run the tests covering it. Refactor: cover with tests, refactor,
-verify unchanged behavior. Don't weaken or delete tests to force a pass unless the spec
-changed. Match test scope to the change — a non-UI logic change doesn't need JavaFX/TestFX
-coverage just for completeness. See `TEST_STRATEGY.md` §31.5/§33 and `CODING_GUIDELINES.md`
-for methodology and effort calibration.
+Before changing behavior, review the applicable business rules and cross-component invariants.
+Add meaningful tests for new or modified behavior; confirmed bug fixes require a regression test
+based on the observed failure and expected requirement. Verify complete calculation results and
+relevant integration points when behavior crosses components. Expected values must be independently
+established, not copied from the implementation under test. Use jqwik properties for generated
+recursive, allocation, boundary, shared-dependency, and settings-combination cases where useful;
+record failing seeds for reproduction. Consult the bug registry lifecycle when a production defect
+is confirmed. Do not weaken tests to force a pass unless requirements changed.
+
+Run applicable tests and builds, inspect line/branch coverage in affected modules/packages, and
+report unresolved quality gaps. Aim for at least 90% in affected areas; the project-wide 90% KPI
+is initially a CI warning, not a build gate. Never pad tests or manipulate measurement scope.
+Infrastructure-only stories may omit application-test changes when explicitly constrained, but
+must still verify the coverage/reporting tools and existing suites. See `TEST_STRATEGY.md` §26
+and `CODING_GUIDELINES.md` §6.1 for methodology.
 
 **Run only the tests that cover what you are changing** — one test, one class, at most the
 directly related suite. Do not run the full backend/frontend/harness suite locally: GitHub

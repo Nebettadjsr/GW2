@@ -157,8 +157,8 @@ class CraftingProfitResolutionDetailTest {
 
     @Test
     void dailyInputsAreUsedOnlyWhenAllowedAndOnlyWithinTheirAvailableOperationCount() throws SQLException {
-        Recipe target = new Recipe(33, 303, 1, 0, "Artificer", List.of(new Ingredient(70762, 1)));
-        Recipe daily = new Recipe(43, 70762, 1, 0, "Artificer", List.of(new Ingredient(503, 1)));
+        Recipe target = new Recipe(33, 303, 1, 0, "Artificer", List.of(new Ingredient(46742, 1)));
+        Recipe daily = new Recipe(43, 46742, 1, 0, "Artificer", List.of(new Ingredient(503, 1)));
         var fakes = new Fakes();
         fakes.visible = List.of(target, daily);
         fakes.graph = List.of(target, daily);

@@ -52,7 +52,7 @@ class SchedulerTest(unittest.TestCase):
         readings = iter([
             claude_runner.ClaudeUsage(90, 20),
             claude_runner.ClaudeUsage(50, 98),
-            claude_runner.ClaudeUsage(50, 97),
+            claude_runner.ClaudeUsage(50, 49),
         ])
         scheduler = orchestrator.CapacityScheduler(codex=self.codex, cache_file=None)
         scheduler.claude = CapacityProbe(scheduler._read_claude_capacity,
@@ -64,7 +64,7 @@ class SchedulerTest(unittest.TestCase):
         self.assertEqual(usage.call_count, 3)
         self.assertEqual(wait.call_count, 2)
         self.assertEqual(scheduler.claude_usage_percent, 50)
-        self.assertEqual(scheduler.claude_weekly_used_percent, 97)
+        self.assertEqual(scheduler.claude_weekly_used_percent, 49)
         self.assertEqual(self.logged.count("Claude capacity exhausted (first detected)."), 1)
         self.assertEqual(self.logged.count("Claude capacity available again."), 1)
 

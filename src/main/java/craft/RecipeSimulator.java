@@ -1,6 +1,5 @@
 package craft;
 
-import java.util.HashMap;
 import java.util.Map;
 
 public class RecipeSimulator {
@@ -106,19 +105,12 @@ public class RecipeSimulator {
             result.addBuyCost(rr.getBuyCostCopper());
             result.addOpportunityCost(rr.getOpportunityCostCopper());
 
-            Map<Integer, Integer> deltaMissing = new HashMap<>();
-            for (var e : state.missingToBuy.entrySet()) {
-                int already = result.getTotalMissingToBuy().getOrDefault(e.getKey(), 0);
-                int delta = e.getValue() - already;
-                if (delta > 0) {
-                    deltaMissing.put(e.getKey(), delta);
-                }
-            }
-            result.mergeMissing(deltaMissing);
+            root.accumulateBoughtItems(result.getTotalMissingToBuy());
 
             if (result.getCraftCount() >= 250) {
                 break;
             }
         }
     }
+
 }

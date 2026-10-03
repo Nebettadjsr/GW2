@@ -309,7 +309,7 @@ describe('CraftingDiscoveryScreen', () => {
     const quote = wrapper.find('[data-test="discovery-detail-output-quote"]')
     expect(quote.findAll('dd').map((value) => value.text())).toEqual(['3s 60c', '4s 20c'])
     expect(wrapper.find('[data-test="tree-node"][data-path="0.0"]').find('[data-test="node-wiki"]').attributes('href')).toContain('Copper%20Ore')
-    expect(wrapper.find('[data-test="tree-node"][data-path="0.0"]').find('[data-test="node-sourcing"]').text()).toContain('From stock ×2')
+    expect(wrapper.find('[data-test="tree-node"][data-path="0.0"]').find('[data-test="node-sourcing"]').text()).toContain('From stock \u00d72')
   })
 
   it('showsALossWithItsSignAndBothSuppliedMaterialListsUnderTheirOwnBases', async () => {
@@ -334,7 +334,7 @@ describe('CraftingDiscoveryScreen', () => {
         ])
 
     expect(materialLines('discovery-missing-item')).toEqual([
-      ['Silver Ore', '×2', 'Price / item: 24c', 'Total: 48c']
+      ['Silver Ore', '2', 'Price / item: 24c', 'Total: 48c']
     ])
   })
 

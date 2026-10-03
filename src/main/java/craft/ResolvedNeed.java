@@ -2,6 +2,7 @@ package craft;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class ResolvedNeed {
 
@@ -119,6 +120,14 @@ public class ResolvedNeed {
 
     public void addChild(ResolvedNeed child) {
         this.children.add(child);
+    }
+
+    /** Accumulates every purchase represented by this resolved need and its descendants. */
+    public void accumulateBoughtItems(Map<Integer, Integer> purchases) {
+        if (qtyBought > 0) purchases.merge(itemId, qtyBought, Integer::sum);
+        for (ResolvedNeed child : children) {
+            child.accumulateBoughtItems(purchases);
+        }
     }
 
     public void determineMode() {

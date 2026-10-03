@@ -196,14 +196,14 @@ public class CraftingPlanner {
 
         Map<Integer, Integer> missingToBuyOne = new HashMap<>();
         if (firstCraft != null) {
-            collectBoughtItems(firstCraft, missingToBuyOne);
+            firstCraft.accumulateBoughtItems(missingToBuyOne);
         }
 
         Map<Integer, MaterialPurchaseCost> purchaseCosts = purchaseCosts(
                 sim.getTotalMissingToBuy(), ctx.tp, ctx.settings);
-        int totalBuyCost = sumPurchaseCosts(purchaseCosts);
+        int totalBuyCost = sim.getBuyCostTotal();
         Map<Integer, MaterialPurchaseCost> purchaseCostsOne = purchaseCosts(missingToBuyOne, ctx.tp, ctx.settings);
-        int buyCostOne = sumPurchaseCosts(purchaseCostsOne);
+        int buyCostOne = firstCraft == null ? 0 : firstCraft.getBuyCostCopper();
 
         int revenueOne = cost.getRevenuePerCraft();
         int matsSellOne = cost.getOpportunityCostPerCraft();
@@ -252,18 +252,6 @@ public class CraftingPlanner {
         );
     }
 
-    private void collectBoughtItems(ResolvedNeed need, Map<Integer, Integer> out) {
-        if (need == null) return;
-
-        if (need.getQtyBought() > 0) {
-            out.merge(need.getItemId(), need.getQtyBought(), Integer::sum);
-        }
-
-        for (ResolvedNeed child : need.getChildren()) {
-            collectBoughtItems(child, out);
-        }
-    }
-
     private Map<Integer, MaterialPurchaseCost> purchaseCosts(Map<Integer, Integer> missing,
                                                               Map<Integer, PriceQuote> tp,
                                                               CraftingSettings settings) {
@@ -275,14 +263,6 @@ public class CraftingPlanner {
             costs.put(entry.getKey(), new MaterialPurchaseCost(unit, total));
         }
         return Map.copyOf(costs);
-    }
-
-    private int sumPurchaseCosts(Map<Integer, MaterialPurchaseCost> costs) {
-        return costs.values().stream()
-                .map(MaterialPurchaseCost::totalPriceCopper)
-                .filter(Objects::nonNull)
-                .mapToInt(Integer::intValue)
-                .sum();
     }
 
 }

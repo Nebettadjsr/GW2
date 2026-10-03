@@ -97,12 +97,6 @@ public class RecipeSimulationResult {
         return totalMissingToBuy;
     }
 
-    public void mergeMissing(Map<Integer, Integer> missing) {
-        for (var e : missing.entrySet()) {
-            totalMissingToBuy.merge(e.getKey(), e.getValue(), Integer::sum);
-        }
-    }
-
     public BlockedReason getBlockedReason() {
         return blockedReason;
     }

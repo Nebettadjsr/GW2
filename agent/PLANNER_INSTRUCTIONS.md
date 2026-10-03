@@ -95,8 +95,16 @@ Authoritative owners (what belongs in each document):
     - current defects, conflicts, risks, and technical debt
 
 - `docs/TEST_STRATEGY.md`
-    - testing methodology and test-layer definitions
+    - binding testing methodology, test-quality requirements, and test-layer definitions
     - never live test totals or current pass/fail counts
+
+- `docs/QUALITY_METRICS.md`
+    - coverage KPI target, baseline ownership, and report locations
+    - never duplicate run-specific coverage totals into planning state
+
+- `docs/bugs/`
+    - permanent confirmed-defect registry lifecycle and report template
+    - read a specific bug record when planning work tied to that defect
 
 - `agent/user-decisions/UD-*.md`
     - human decisions
@@ -613,6 +621,11 @@ Rules:
   (`docs/TEST_STRATEGY.md` §36). Where a story touches a layer the gate cannot run
   — TestFX UI verification, a browser smoke script, a real-database `*IT` check —
   name that check explicitly, because nothing else will run it.
+- For implementation stories, consult `docs/TEST_STRATEGY.md` and include applicable tests for
+  changed behavior, business invariants, confirmed-bug regressions, and affected integration
+  boundaries. Include verification of relevant coverage reports and unresolved quality gaps in
+  the Definition of Done. A test is `None` only when the work is genuinely infrastructure/docs
+  only or behavior cannot reasonably be tested; explain the exception.
 - `Dependencies` may be `None`.
 - `Result` starts as `Not started.` or equivalent.
 - `Blockers` starts as `None.` when unblocked.

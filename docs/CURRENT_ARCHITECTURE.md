@@ -85,7 +85,7 @@ The intended future scope is documented in `TARGET_ARCHITECTURE.md`: account sta
 
 `web.Gw2ApiApplication` starts Spring Boot; `Gw2App` remains the JavaFX entry point. The backend uses `repo.EnvConfig` for local environment and `.env` configuration, and Spring properties expose the HTTP port and global scheduler interval settings. The schema is still created/maintained manually; no versioned migration tool is selected. The system is not containerized or deployed.
 
-Run backend tests with `./mvnw test`. Frontend verification uses npm scripts under `frontend/`. `TEST_STRATEGY.md` defines the test layers, local prerequisites, browser smoke checks, CI gate, and performance acceptance procedure.
+Run backend tests with `./mvnw test jacoco:report`; frontend coverage uses `npm run test:coverage` under `frontend/`; the Python agent-runtime suite and coverage use pytest over the existing unittest-compatible suite. `TEST_STRATEGY.md` defines the test layers, local prerequisites, browser smoke checks, CI gate, coverage KPI, and performance acceptance procedure. CI collects JaCoCo, Vitest V8, and coverage.py reports and publishes a combined summary plus raw/HTML artifacts; coverage is warning-only below the 90% target.
 
 ## 9. Legacy JavaFX paths
 

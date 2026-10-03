@@ -114,6 +114,61 @@ class SelectedResultEconomicValueTest {
     }
 
     @Test
+    void sharedMaterialAcrossCraftingBranchesMatchesTheAggregatedPurchaseListAndCosts() {
+        Recipe target = recipe(10, OUTPUT, List.of(ingredient(301, 1), ingredient(302, 1)));
+        Recipe left = recipe(11, 301, List.of(ingredient(RAW, 10)));
+        Recipe right = recipe(12, 302, List.of(ingredient(RAW, 10)));
+        Outcome outcome = evaluate(target, List.of(target, left, right), Map.of(RAW, 15),
+                Map.of(OUTPUT, quote(1000, 1100), 301, quote(500, 600),
+                        302, quote(500, 600), RAW, quote(9, 10)),
+                settings(true, true, false, 50));
+
+        assertEquals(1, outcome.row().craftableCount);
+        assertEquals(Map.of(RAW, 5), outcome.row().missingToBuy,
+                "the second branch buys only the five units left after the first branch used stock");
+        assertEquals(50, outcome.row().buyCostCopper);
+        assertEquals(5, boughtQuantity(outcome.explanation().root(), RAW));
+        assertEquals(20, requestedQuantity(outcome.explanation().root(), RAW));
+        assertEquals(15, inventoryQuantity(outcome.explanation().root(), RAW));
+        assertEquals(50, outcome.row().materialPurchaseCosts.get(RAW).totalPriceCopper());
+        assertEquals(50, outcome.row().buyCostCopper,
+                "the listed purchase cost must match the selected resolution's actual cash cost");
+        assertEquals(outcome.row().buyCostCopper + outcome.row().totalMatsSellValueCopper,
+                outcome.explanation().root().effectiveCostCopper());
+    }
+
+    @Test
+    void reportedMaterialAllocationIsPreservedInShoppingListAndPurchaseCost() {
+        Recipe target = recipe(13, OUTPUT, List.of(ingredient(RAW, 1425)));
+        Outcome outcome = evaluate(target, List.of(target), Map.of(RAW, 609),
+                Map.of(OUTPUT, quote(10000, 11000), RAW, quote(9, 10)),
+                settings(true, true, false, 8160));
+
+        CraftTraceNode material = outcome.explanation().root().children().get(0);
+        assertEquals(1425, material.requestedQuantity());
+        assertEquals(609, material.inventoryQuantity());
+        assertEquals(816, material.boughtQuantity());
+        assertEquals(Map.of(RAW, 816), outcome.row().missingToBuy);
+        assertEquals(8160, outcome.row().buyCostCopper);
+        assertEquals(8160, outcome.row().materialPurchaseCosts.get(RAW).totalPriceCopper());
+    }
+
+    private static int boughtQuantity(CraftTraceNode node, int itemId) {
+        return (node.itemId() == itemId ? node.boughtQuantity() : 0)
+                + node.children().stream().mapToInt(child -> boughtQuantity(child, itemId)).sum();
+    }
+
+    private static int requestedQuantity(CraftTraceNode node, int itemId) {
+        return (node.itemId() == itemId ? node.requestedQuantity() : 0)
+                + node.children().stream().mapToInt(child -> requestedQuantity(child, itemId)).sum();
+    }
+
+    private static int inventoryQuantity(CraftTraceNode node, int itemId) {
+        return (node.itemId() == itemId ? node.inventoryQuantity() : 0)
+                + node.children().stream().mapToInt(child -> inventoryQuantity(child, itemId)).sum();
+    }
+
+    @Test
     void multiOutputRecipeScalesByExecutionsAndRequestsAllProducedOutputUnits() {
         Recipe target = recipe(9, OUTPUT, 2, List.of(ingredient(RAW, 1)));
         Outcome outcome = evaluate(target, List.of(target), Map.of(RAW, 2),

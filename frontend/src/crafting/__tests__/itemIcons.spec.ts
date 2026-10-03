@@ -160,7 +160,7 @@ describe('item icons in Crafting Profit', () => {
     expect(iconSources(detail, '[data-test="selected-detail"]')).not.toContain(ICON.mithrilOre)
     // The quantity and the name are still the readable part of the entry.
     expect(detail.findAll('[data-test="missing-item"]')[0]?.text()).toContain('Silver Ore')
-    expect(detail.findAll('[data-test="missing-item"]')[0]?.text()).toContain('×8')
+    expect(detail.findAll('[data-test="missing-item"]')[0]?.text()).toContain('8')
   })
 
   it('givesEachTreeNodeItsOwnItemImageIncludingARepeatedItem', async () => {

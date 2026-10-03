@@ -483,7 +483,17 @@ unknown TP price != zero-cost purchase
 requested quantities are conserved
 ```
 
-Property-based testing may be introduced later if useful, but it is not required for the first migration phase.
+Critical business rules must also be expressed as invariants over complete calculation results,
+not only as assertions inside one resolver, allocator, cost calculator, or shopping-list builder.
+For crafting, verify that resolution, stock allocation, purchases, total costs, profitability,
+craftable quantity, and the aggregated shopping list agree for the same plan.
+
+Property-based tests use jqwik for Java where generated inputs provide meaningful breadth. They
+are particularly appropriate for recursive calculations, inventory allocation, numerical
+boundaries, shared dependencies, and combinations of calculation settings. Generated scenarios
+must be reproducible: retain jqwik's reported seed in failure evidence and rerun the same
+property with that seed before diagnosing a failure. Use deterministic examples alongside
+properties for named production regressions and independently calculated expected results.
 
 ---
 
@@ -993,19 +1003,77 @@ A smaller set of high-value tests is preferable to a large number of shallow tes
 
 ---
 
-# 26. Coverage Metrics
+# 26. Coverage KPI and Reports
 
-Code coverage may be used as an informational metric later.
+Test coverage is a permanent software-quality KPI for the Java backend, TypeScript frontend,
+and Python agent runtime. The long-term target is at least **90% line and branch coverage**,
+maintained as consistently as possible. Coverage below target is a warning and does not fail
+the build.
 
-Coverage percentage is not a success criterion by itself.
+Coverage is measured by the test jobs in GitHub Actions and summarized by the `Coverage KPI
+report` job. The job summary contains overall and per-module/package line and branch rates; the
+`coverage-reports` artifact contains the HTML reports and machine-readable inputs/results.
+Missing measurements are labeled unavailable and are never treated as zero. Combined rates are
+weighted over measured executable lines/branches and are only a project-wide tracking aid; each
+module/package must also be reviewed so one well-covered area cannot hide a critical gap.
 
-The project should prioritize:
+Developers and AI agents can generate reports locally:
 
-- domain rule coverage,
-- regression coverage,
-- meaningful edge-case coverage.
+- Java: `./mvnw test jacoco:report` (Windows: `mvnw.cmd test jacoco:report`); HTML at
+  `target/site/jacoco/index.html`, XML at `target/site/jacoco/jacoco.xml`.
+- Frontend: `cd frontend && npm ci && npm run test:coverage`; HTML at
+  `frontend/coverage/index.html`, machine-readable summary at
+  `frontend/coverage/coverage-summary.json`.
+- Python agent runtime: install `requirements-dev.txt`, then run
+  `python -m pytest agent/runtime/tests --import-mode=importlib
+  -o consider_namespace_packages=true --cov-config=.coveragerc
+  --cov=agent.runtime --cov-branch
+  --cov-report=term-missing --cov-report=html:agent/runtime/htmlcov
+  --cov-report=xml:agent/runtime/coverage.xml`; HTML is in `agent/runtime/htmlcov`.
+- Combined local KPI: `python .github/scripts/publish_coverage_kpi.py`; this writes
+  `quality-reports/coverage-kpi.md` and `quality-reports/coverage-kpi.json`.
+
+The baseline is recorded separately in `docs/QUALITY_METRICS.md` and must distinguish measured
+results, estimates, and unavailable values. Re-establish it when coverage infrastructure or
+test scope changes; do not copy live run counts into this strategy document.
+
+New or changed behavior should aim to maintain at least 90% coverage in affected areas, with
+special attention to business-critical branches and edge cases. Coverage is a minimum quality
+indicator, not proof of correctness; meaningful assertions and behavioral verification take
+precedence over percentage growth. Never add artificial tests, exclude legitimate production
+code, or otherwise manipulate the measurement to increase a percentage.
+
+Generated code may be excluded only when the generator and exclusion are documented. Build
+scripts, deployment configuration, static assets, and external-system code that cannot
+reasonably be isolated for unit testing may be recorded as unavailable or excluded with a
+specific rationale. Business logic, adapters, and error paths must not be excluded merely
+because they are difficult to test. Java line and branch coverage, frontend line and branch
+coverage, and Python line and branch coverage are reported where each tool supports them.
 
 Do not create meaningless tests solely to increase coverage percentage.
+
+## 26.1 Test quality rules for implementation work
+
+- Review the applicable domain rules and express critical cross-component business rules as
+  invariants over complete outputs.
+- Add meaningful tests for new or changed behavior. Every confirmed production defect requires
+  a regression test that reproduces the observed failure and verifies the requirement-based
+  expected behavior.
+- Derive expected values independently from the implementation under test, using documented
+  rules, independently calculated values, or stable reference fixtures where appropriate.
+- Verify relevant integration boundaries when correctness depends on their interaction;
+  isolated unit tests alone do not establish an end-to-end workflow.
+- Keep stable external-system fixtures separate from opt-in live integration checks.
+- Run the relevant automated tests and builds, inspect affected-area and package coverage, and
+  report any unresolved testing/coverage gap. A known defect is not closed until its regression
+  test passes unless a documented exception is approved and linked from the bug record.
+
+## 26.2 Permanent bug registry
+
+Confirmed defects are recorded under `docs/bugs/` using the report template and lifecycle in
+that directory's README. Reproduction data that must remain version-controlled belongs under
+`docs/bugs/fixtures/` or an application test fixture directory referenced by the bug record.
+Do not create retrospective records for historical defects as part of unrelated work.
 
 ---
 

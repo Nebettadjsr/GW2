@@ -6,6 +6,7 @@ import CraftingResolution from './CraftingResolution.vue'
 import { formatCopper, formatSignedCopper, moneyTone, NO_VALUE } from './formatCopper'
 import { materialLabel, recipeLabel, wikiUrl } from './recipeLabel'
 import { describeRowState } from './rowState'
+import { formatStackQuantity } from './formatStackQuantity'
 import type { ResolutionPhase } from './useResolutionDetail'
 
 const props = defineProps<{
@@ -105,7 +106,7 @@ function unavailable(value: number | null): string {
         <ul v-else class="material-list" data-test="discovery-missing-items">
           <li v-for="item in purchases" :key="item.itemId" data-test="discovery-missing-item">
             <span class="material-name"><ItemIcon :icon-url="item.iconUrl" :item-id="item.itemId" loading="lazy" />{{ materialLabel(item) }}</span>
-            <span class="material-quantity numeric">×{{ item.quantity }}</span>
+            <span class="material-quantity numeric">{{ formatStackQuantity(item.quantity) }}</span>
             <span class="material-price">Price / item: {{ unavailable(item.purchaseUnitPriceCopper) }}</span>
             <span class="material-total">Total: {{ unavailable(item.totalPurchaseCostCopper) }}</span>
           </li>

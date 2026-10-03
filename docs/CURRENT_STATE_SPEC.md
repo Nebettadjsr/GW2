@@ -62,7 +62,7 @@ Frontend pages present operation loading, completion, and failure states. Backen
 
 ## Build and verification
 
-Backend tests run with `./mvnw test`. Frontend checks are run from `frontend/`: `npm test`, `npm run type-check`, and `npm run build`; browser smoke commands are documented in [Test Strategy](TEST_STRATEGY.md). GitHub Actions provides the push/PR CI gate. Optional integration and live API checks have prerequisites and are not equivalent to the default deterministic suite.
+Backend tests run with `./mvnw test`; JaCoCo reports are generated with `./mvnw test jacoco:report`. Frontend checks are run from `frontend/`: `npm test`, `npm run test:coverage`, `npm run type-check`, and `npm run build`; browser smoke commands are documented in [Test Strategy](TEST_STRATEGY.md). The existing Python agent-runtime unittest suite is also run through pytest-cov for coverage without rewriting its tests. GitHub Actions provides the push/PR CI gate and combined coverage KPI summary. Coverage below the 90% target is reported as a warning, not a build failure. Optional integration and live API checks have prerequisites and are not equivalent to the default deterministic suite.
 
 ## Current limitations
 

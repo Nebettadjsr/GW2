@@ -23,7 +23,6 @@ class PlanStateJournalTest {
                 new HashMap<>(Map.of(100, 10, 200, 5)),
                 new HashMap<>(Map.of(300, 7)),
                 Map.of("Hero", new HashMap<>(Map.of(400, 3))));
-        state.addMissingToBuy(500, 2);
         state.addBuyCost(41);
         state.setDailyLeft(600, 1);
         return state;
@@ -33,7 +32,6 @@ class PlanStateJournalTest {
         return "inv=" + new java.util.TreeMap<>(s.inventory)
                 + " bound=" + new java.util.TreeMap<>(s.boundInventory)
                 + " charBound=" + new java.util.TreeMap<>(s.characterBoundInventory)
-                + " missing=" + new java.util.TreeMap<>(s.missingToBuy)
                 + " visiting=" + new java.util.TreeSet<>(s.visiting)
                 + " daily=" + new java.util.TreeMap<>(s.dailyLeft)
                 + " buyCost=" + s.buyCostCopper;
@@ -49,8 +47,6 @@ class PlanStateJournalTest {
         state.consumeInventoryWithBinding(100, 4, "Hero");   // sellable pool
         state.consumeInventoryWithBinding(300, 7, "Hero");   // account-bound pool, emptied
         state.consumeInventoryWithBinding(400, 2, "Hero");   // character-bound pool
-        state.addMissingToBuy(500, 9);                       // existing key
-        state.addMissingToBuy(501, 1);                       // new key
         state.addBuyCost(1000);
         state.setDailyLeft(600, 0);
         state.beginVisiting(700);
@@ -103,7 +99,6 @@ class PlanStateJournalTest {
         // Candidate A: the one that will "win".
         state.consumeInventoryWithBinding(100, 4, "Hero");
         state.consumeInventoryWithBinding(400, 3, "Hero");
-        state.addMissingToBuy(500, 6);
         state.addBuyCost(70);
         String winning = snapshot(state);
         PlanState.Delta bestEffect = state.captureDelta(mark);

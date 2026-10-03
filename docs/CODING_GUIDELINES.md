@@ -108,6 +108,17 @@ than letting a bad value surface deep in the call stack. Don't use a bare null/N
 equivalent silent "nothing here") as a "not found" signal where the language gives you an
 explicit way to say so (e.g. `Optional<T>` in Java).
 
+## 6.1 Testing and quality evidence
+
+Follow `docs/TEST_STRATEGY.md` for test selection and the permanent coverage KPI. Before changing
+behavior, review its normative business rules and relevant invariants. New or modified behavior
+needs meaningful automated tests; confirmed defect fixes need a regression test reproducing the
+observed failure. Check cross-component behavior when correctness spans boundaries, and derive
+expected values independently from the implementation. Run the applicable tests/builds, inspect
+coverage for affected modules and critical branches, and report unresolved gaps. The 90% line and
+branch target is a warning target, not permission to pad tests or omit production code from
+measurement.
+
 ## 7. Java 25 Specific
 
 - `record` for immutable data carriers instead of manual getter/setter/equals/hashCode

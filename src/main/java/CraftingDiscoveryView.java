@@ -524,20 +524,10 @@ public class CraftingDiscoveryView {
 
                                 String name = controller.itemName(itemId);
 
-                                int stacks = qty / 250;
-                                int rest = qty % 250;
-
-                                String stackText = "";
-                                if (stacks > 0) {
-                                    stackText = " (" + stacks + "x250";
-                                    if (rest > 0) stackText += " + " + rest;
-                                    stackText += ")";
-                                }
-
                                 int unit = controller.itemSellUnit(itemId, listingSellMode);
                                 int total = unit * qty;
 
-                                return qty + " x " +name +  stackText +
+                                return StackQuantityFormatter.format(qty) + " x " + name +
                                         "\n 1 = " + CoinUtils.format(unit) +
                                         " | total = " + CoinUtils.format(total);
                             })

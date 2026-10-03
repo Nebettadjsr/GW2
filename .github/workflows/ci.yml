@@ -87,7 +87,7 @@ jobs:
         # checks) stay excluded by their naming convention, exactly as locally.
         # javafx.platform overrides the pom's Windows default; no test in this
         # suite loads a JavaFX native library.
-        run: ./mvnw -B -ntp test -Djavafx.platform=linux
+        run: ./mvnw -B -ntp test jacoco:report -Djavafx.platform=linux
 
       - name: Summarize failing tests
         if: failure()
@@ -95,6 +95,14 @@ jobs:
           python .github/scripts/summarize_test_failures.py
           --label "Backend (Maven)"
           --junit target/surefire-reports
+
+      - name: Upload Java coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-coverage
+          path: target/site/jacoco
+          if-no-files-found: warn
 
   frontend:
     name: Frontend tests (Vitest)
@@ -120,16 +128,24 @@ jobs:
       # github-actions reporter publishes one failure annotation per failing
       # test, which is the same compact channel the summarizer provides for
       # the other jobs -- no extra tooling needed here.
-      - name: Run frontend unit tests
-        run: npm test -- --reporter=default --reporter=github-actions
+      - name: Run frontend unit tests with coverage
+        run: npm run test:coverage -- --reporter=default --reporter=github-actions
 
       # `npm run build` type-checks first (vue-tsc --noEmit), so this covers
       # docs/TEST_STRATEGY.md §12.1's type-check and build verification levels.
       - name: Type-check and build
         run: npm run build
 
+      - name: Upload frontend coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+          if-no-files-found: warn
+
   agent-runtime:
-    name: Agent runtime tests (unittest)
+    name: Agent runtime tests (pytest-cov)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -140,18 +156,93 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install Python test and coverage tools
+        run: python -m pip install -r requirements-dev.txt
+
       # Offline contract/flow tests. tests/__init__.py makes every model
       # runner, git push and GitHub API call raise, so this job can never
       # start a model, push a commit or reach the network.
-      - name: Run orchestrator/harness tests
-        # `shell: bash` (not the default `bash -e`) runs with `-o pipefail`, so
-        # a failing test run cannot be hidden by tee's own exit status.
-        shell: bash
-        run: python -m unittest discover -s agent/runtime/tests -t . 2>&1 | tee runtime-tests.log
+      - name: Run orchestrator/harness tests with coverage
+        run: >-
+          python -m pytest agent/runtime/tests -q
+          --import-mode=importlib -o consider_namespace_packages=true
+          --cov-config=.coveragerc
+          --cov=agent.runtime --cov-branch
+          --cov-report=term-missing
+          --cov-report=html:agent/runtime/htmlcov
+          --cov-report=xml:agent/runtime/coverage.xml
+          --junitxml=agent/runtime/pytest-results.xml
 
       - name: Summarize failing tests
         if: failure()
         run: >-
           python .github/scripts/summarize_test_failures.py
           --label "Agent runtime (unittest)"
-          --unittest-log runtime-tests.log
+          --junit agent/runtime
+
+      - name: Upload Python coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage
+          path: |
+            agent/runtime/htmlcov
+            agent/runtime/coverage.xml
+          if-no-files-found: warn
+
+  coverage-kpi:
+    name: Coverage KPI report
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, agent-runtime]
+    if: always()
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Download Java coverage report
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: java-coverage
+          path: coverage-input/java-coverage
+
+      - name: Download frontend coverage report
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: frontend-coverage
+          path: coverage-input/frontend-coverage
+
+      - name: Download Python coverage report
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: python-coverage
+          path: coverage-input/python-coverage
+
+      - name: Generate combined coverage KPI
+        run: >-
+          python .github/scripts/publish_coverage_kpi.py
+          --java coverage-input/java-coverage/jacoco.xml
+          --frontend coverage-input/frontend-coverage/coverage-summary.json
+          --python coverage-input/python-coverage/coverage.xml
+          --revision "${{ github.sha }}"
+          --output coverage-kpi
+
+      - name: Publish coverage KPI to workflow summary
+        if: always()
+        shell: bash
+        run: cat coverage-kpi/coverage-kpi.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload combined KPI and raw reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage-kpi
+            coverage-input
+          if-no-files-found: warn

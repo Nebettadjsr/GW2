@@ -6,8 +6,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Mutable planning state for one recipe's simulation: what is still owned, what must still be
- * bought, which items are currently being resolved, and the daily-craft allowance left.
+ * Mutable planning state for one recipe's simulation: what is still owned, which items are
+ * currently being resolved, and the daily-craft allowance left.
  *
  * <h2>Speculation without copying (STORY-PERF-001 / UD-005)</h2>
  * The planner is speculative: it tries a craft, compares it against buying, tries one eligible
@@ -49,7 +49,6 @@ public class PlanState {
      */
     public final Map<String, Map<Integer, Integer>> characterBoundInventory;
 
-    public final Map<Integer, Integer> missingToBuy;
     public final Set<Integer> visiting;
     public final Map<Integer, Integer> dailyLeft;
 
@@ -60,10 +59,9 @@ public class PlanState {
     private static final int SELLABLE = 0;
     private static final int ACCOUNT_BOUND = 1;
     private static final int CHARACTER_BOUND = 2;
-    private static final int MISSING = 3;
-    private static final int DAILY = 4;
-    private static final int VISITING = 5;
-    private static final int BUY_COST = 6;
+    private static final int DAILY = 3;
+    private static final int VISITING = 4;
+    private static final int BUY_COST = 5;
 
     /** Journalled "this slot had no value before", distinguishable from every real quantity. */
     private static final int ABSENT = Integer.MIN_VALUE;
@@ -105,7 +103,6 @@ public class PlanState {
         for (var e : characterBoundInventory.entrySet()) {
             this.characterBoundInventory.put(e.getKey(), new HashMap<>(e.getValue()));
         }
-        this.missingToBuy = new HashMap<>();
         this.visiting = new HashSet<>();
         this.dailyLeft = new HashMap<>();
     }
@@ -121,7 +118,6 @@ public class PlanState {
         for (var e : other.characterBoundInventory.entrySet()) {
             this.characterBoundInventory.put(e.getKey(), new HashMap<>(e.getValue()));
         }
-        this.missingToBuy = new HashMap<>(other.missingToBuy);
         this.visiting = new HashSet<>(other.visiting);
         this.dailyLeft = new HashMap<>(other.dailyLeft);
         this.buyCostCopper = other.buyCostCopper;
@@ -237,7 +233,6 @@ public class PlanState {
                 Map<Integer, Integer> stock = characterBoundInventory.get(owner);
                 yield stock == null ? ABSENT : valueOrAbsent(stock, key);
             }
-            case MISSING -> valueOrAbsent(missingToBuy, key);
             case DAILY -> valueOrAbsent(dailyLeft, key);
             case VISITING -> visiting.contains(key) ? 1 : ABSENT;
             case BUY_COST -> buyCostCopper;
@@ -253,7 +248,6 @@ public class PlanState {
                 Map<Integer, Integer> stock = characterBoundInventory.get(owner);
                 if (stock != null) writeOrRemove(stock, key, value);
             }
-            case MISSING -> writeOrRemove(missingToBuy, key, value);
             case DAILY -> writeOrRemove(dailyLeft, key, value);
             case VISITING -> {
                 if (value == ABSENT) visiting.remove(key);
@@ -275,12 +269,6 @@ public class PlanState {
     }
 
     // ---------------- journalled mutations ----------------
-
-    /** Adds {@code qty} to what still has to be bought for {@code itemId}. */
-    public void addMissingToBuy(int itemId, int qty) {
-        int current = valueOrAbsent(missingToBuy, itemId);
-        setValue(MISSING, itemId, null, current == ABSENT ? qty : current + qty);
-    }
 
     /** Adds {@code delta} copper to the running cash cost of this plan. */
     public void addBuyCost(int delta) {

@@ -277,7 +277,7 @@ gate: `available()` calls a model-specific check function at most once per
 between so neither model is probed more than necessary. `core/orchestrator.py`'s
 `CapacityScheduler` holds one `CapacityProbe` per model -- Claude's checks
 both the five-hour session allowance (usage below 90%) and weekly allowance
-(remaining above 2%) from one `/usage` reading in `runners/claude_runner.py`; Codex's
+(remaining above 50%) from one `/usage` reading in `runners/claude_runner.py`; Codex's
 calls `codex_available()` (`runners/codex_capacity.py`, a genuinely
 token-free `app-server` JSON-RPC quota read) -- and applies the scheduling
 priority order: resume an unfinished active story first, then execute other

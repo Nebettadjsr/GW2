@@ -318,7 +318,7 @@ class InterruptedClaudeTest(OrchestratorInterventionTestCase):
                               capacity_signal=weekly_signal,
                               capacity_readings=[
                                   claude_runner.ClaudeUsage(50, 98),
-                                  claude_runner.ClaudeUsage(50, 97),
+                                  claude_runner.ClaudeUsage(50, 49),
                               ]),
             [1, "capacity", 0, "evaluate"],
         )

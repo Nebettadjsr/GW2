@@ -106,13 +106,9 @@ public class CraftingResolver {
                 buyNeed.setBuyCostCopper(remaining * buyUnit);
                 buyNeed.determineMode();
 
-                Map<Integer, Integer> extraMissing = new HashMap<>();
-                extraMissing.put(itemId, remaining);
-
                 buyEval = new CandidateEval(
                         buyNeed,
-                        buyNeed.getBuyCostCopper(),
-                        extraMissing
+                        buyNeed.getBuyCostCopper()
                 );
             } else {
                 // DOMAIN_SPEC.md section 21: no usable TP quote is not the same as a free item.
@@ -166,9 +162,6 @@ public class CraftingResolver {
 
                 state.addBuyCost(chosen.extraBuyCost);
 
-                for (var e : chosen.extraMissing.entrySet()) {
-                    state.addMissingToBuy(e.getKey(), e.getValue());
-                }
             }
 
             ResolvedNeed chosenNeed = chosen.need;
@@ -627,20 +620,17 @@ public class CraftingResolver {
         /** True for the craft candidate, whose effect is already applied to the live PlanState. */
         final boolean stateCandidate;
         final int extraBuyCost;
-        final Map<Integer, Integer> extraMissing;
 
         CandidateEval(ResolvedNeed need) {
             this.need = need;
             this.stateCandidate = true;
             this.extraBuyCost = 0;
-            this.extraMissing = Map.of();
         }
 
-        CandidateEval(ResolvedNeed need, int extraBuyCost, Map<Integer, Integer> extraMissing) {
+        CandidateEval(ResolvedNeed need, int extraBuyCost) {
             this.need = need;
             this.stateCandidate = false;
             this.extraBuyCost = extraBuyCost;
-            this.extraMissing = extraMissing;
         }
 
         boolean isStateCandidate() {

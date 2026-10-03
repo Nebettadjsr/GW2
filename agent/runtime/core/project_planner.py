@@ -334,7 +334,9 @@ Targeted reads, only when a specific detail actually decides something:
 - a single story file under agent/stories/ (or agent/stories/archive/)
 - a single file under agent/user-decisions/
 - the relevant section of docs/KNOWN_PROBLEMS.md, docs/CURRENT_ARCHITECTURE.md,
-  docs/TARGET_ARCHITECTURE.md, docs/DOMAIN_SPEC.md or docs/TEST_STRATEGY.md
+  docs/TARGET_ARCHITECTURE.md, docs/DOMAIN_SPEC.md, docs/TEST_STRATEGY.md,
+  docs/QUALITY_METRICS.md, docs/bugs/README.md, docs/bugs/BUG-REPORT-TEMPLATE.md,
+  or one bug record under docs/bugs/
 - one named section of agent/stories/BACKLOG.md, when a completed entry's
 narrative is the evidence you need
 
@@ -431,6 +433,11 @@ Result starts with a placeholder such as "Not started."
 Blockers is "None." when not blocked.
 Dependencies may be "None".
 Required Tests may be "None" only when genuinely not applicable.
+For behavior changes, include relevant business rules and `docs/TEST_STRATEGY.md` in
+authoritative references. Require meaningful behavior tests, cross-component checks, regression
+tests for confirmed defects, and review of affected coverage; make any exception explicit in the
+story. Consult `docs/QUALITY_METRICS.md` for coverage target and reports, and `docs/bugs/` for
+confirmed defect records. Keep these requirements proportional to the affected behavior.
 
 PRODUCT OWNER REQUESTS
 =======================

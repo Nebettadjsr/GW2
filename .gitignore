@@ -6,6 +6,18 @@
 out/
 target/
 build/
+frontend/coverage/
+.coverage
+.pytest_cache/
+.github/scripts/__pycache__/
+agent/runtime/.coverage
+agent/runtime/coverage.xml
+agent/runtime/htmlcov/
+agent/runtime/pytest-results.xml
+coverage-input/
+coverage-kpi/
+quality-reports/
+.jqwik-database*
 
 # OS junk
 .DS_Store

@@ -93,7 +93,6 @@ class ResolutionTracePreservesCalculationTest {
 
         assertEquals(plainState.inventory, tracedState.inventory);
         assertEquals(plainState.boundInventory, tracedState.boundInventory);
-        assertEquals(plainState.missingToBuy, tracedState.missingToBuy);
         assertEquals(plainState.buyCostCopper, tracedState.buyCostCopper);
 
         assertEquals(plain.getBuyCostCopper(), traced.getBuyCostCopper());
