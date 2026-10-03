@@ -17,6 +17,12 @@ The schema is versioned (`schema_version: 1`) and records:
 - clarifications and their standard Product Owner decision IDs;
 - protected test SHA-256 values and any independent post-implementation reviews.
 
+For a durable attempt already underway when the QA gate is introduced, the
+harness persists a `legacy_attempt` compatibility plan instead of rerunning
+pre-implementation QA or coding. Such plans document why no new acceptance
+tests are prepared and require post-implementation review of the completed
+attempt.
+
 `NO_TESTS_NEEDED` requires a specific story-based justification. `NEEDS_USER`
 blocks only the affected story until the referenced `UD-*` decision is resolved;
 the harness then requeues it and reruns QA against the answer. Do not edit a QA

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "story_id": "STORY-WEB-024-repair-fresh-build-smoke-contracts",
+  "status": "NO_TESTS_NEEDED",
+  "rationale": "This attempt was already in progress before pre-implementation QA was introduced; resume its recorded evaluator/publication phase without repeating completed coding.",
+  "acceptance_checks": [],
+  "invariants": [],
+  "test_levels": [],
+  "existing_tests_reviewed": [],
+  "prepared_test_paths": [],
+  "test_specifications": [],
+  "pre_implementation_verification": {
+    "status": "NOT_RUN"
+  },
+  "coverage_review": "Legacy attempt; evaluator will inspect available verification.",
+  "external_sources": [],
+  "clarifications": [],
+  "user_decision_ids": [],
+  "post_implementation_review_required": true,
+  "post_implementation_review_reason": "Legacy attempt has no pre-implementation QA evidence.",
+  "legacy_attempt": true
+}
