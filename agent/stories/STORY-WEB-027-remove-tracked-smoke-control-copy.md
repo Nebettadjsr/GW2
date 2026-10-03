@@ -132,6 +132,78 @@ The Vite dev server started for the smoke run was stopped afterwards and `curl h
 confirmed to refuse the connection; stopping the wrapper left the `vite` process listening, so its
 process tree was killed by PID before that probe.
 
+### CI repair for commit `3084e18`
+
+GitHub CI failed for the published commit on two harness tests — not on anything this story removed:
+
+- `QueueConsistencyTest.test_the_committed_queue_is_internally_consistent`
+- `QueueConsistencyTest.test_no_superseded_or_done_story_sits_in_the_queue`
+
+**Reproduced at the exact published tree.** The working tree the harness handed back no longer shows
+the failure (it had reset this story's Status to `UNFINISHED`), so the pushed snapshot was checked out
+into a throwaway worktree and the narrowest command re-run there:
+
+```
+git worktree add --detach <tmp> 3084e18
+python -m unittest agent.runtime.tests.test_story_completion.QueueConsistencyTest -v
+→ FAILED (failures=2)
+  'STORY-WEB-027-… is DONE but is still listed under ''## Active''.'
+  "'## Active' lists STORY-WEB-027-…, whose own Status is DONE; a finished story must not remain active."
+```
+
+**Cause.** Both failures are the publication window, not a corrupt queue. The harness publishes before
+it finalizes: `orchestrator.execute_active_story()` records `AWAITING_CI`, `verify_with_github_ci()`
+commits and pushes, and only once that gate answers does `finalize_completed_story()` set the Status,
+move the entry out of `## Active` and clear `CURRENT_STORY.md` — deliberately, because a red verdict
+has to hand the story back as active work (orchestrator.py §"GitHub CI verification gate"). So every
+commit a story completes in contains Status `DONE` + an `## Active` entry + a pointer naming it, and
+`QueueConsistencyTest` asserts over the live repository files of exactly that commit. The invariant as
+written therefore cannot pass in the gate that evaluates it. Evidence it is structural rather than
+specific to this story: `61cd1a0` (STORY-WEB-024, Status `DONE` under `## Active`) failed CI at
+`19:15:15`, while the commit that went green, `f2c3670`, carried Status `UNFINISHED` because the
+CI-failure path had reset it and the resumed attempt never rewrote it — the gate passed by accident of
+a reset status, not because the queue was consistent.
+
+**Fix.** The in-flight story is named explicitly instead of the invariant being dropped.
+`story_state.validate_backlog_consistency()` takes an optional `publishing` argument: for that one
+story, and only while its own Status is `DONE`, the two rules that forbid a finished story under
+`## Active` are suspended. Every other caller passes nothing and gets today's strict behaviour
+unchanged — in particular the running harness, which must keep reporting a finalization that never
+happened (it logged exactly that for `STORY-WEB-018` at `09:56:45`). `QueueConsistencyTest` derives
+the argument from the committed tree (the `## Active` entry that `CURRENT_STORY.md` names, if its
+Status is `DONE`) and skips that one story; `## To Do`, every other `## Active` entry, retired
+stories, duplicate listings, prose and malformed rows stay strict.
+
+A checkout cannot distinguish the publication window from a finalization that never ran: the trees are
+byte-identical and the record that separates them, `agent/runtime/artifacts/ATTEMPT_STATE.json`, is a
+gitignored runtime artifact. No test was deleted, skipped or renamed, and the rule itself remains
+covered where it is decidable — `assert_finalized()`,
+`CompletedWorkIsNeverSelectedTest.test_a_done_story_left_under_active_or_to_do_is_reported`, the two
+new tests below, and the harness at run time.
+
+**Tests.**
+
+- `python -m unittest agent.runtime.tests.test_story_completion.QueueConsistencyTest agent.runtime.tests.test_story_completion.CompletedWorkIsNeverSelectedTest -v`
+  → `Ran 9 tests … OK` (the two previously failing tests among them).
+- Decisive check, the same published tree plus the fix, run the way CI runs it:
+  `python -m pytest agent/runtime/tests/test_story_completion.py -q --import-mode=importlib -o consider_namespace_packages=true`
+  inside the `3084e18` worktree → `43 passed, 23 subtests passed`. The worktree was then removed
+  (`git worktree remove --force`; `git worktree list` shows only the repository).
+- New coverage for the added argument, in `CompletedWorkIsNeverSelectedTest`:
+  `test_the_story_being_published_is_excused_while_its_gate_is_open` (strict call reports both
+  problems; naming the story clears them) and
+  `test_publishing_excuses_neither_a_retired_story_nor_the_rest_of_the_queue` (a `SUPERSEDED` active
+  story and a `DONE` `## To Do` entry are still reported).
+- The other callers of the changed function:
+  `python -m unittest agent.runtime.tests.test_orchestrator agent.runtime.tests.test_pipeline_recovery`
+  → `Ran 41 tests … OK`; and
+  `python -m pytest agent/runtime/tests/test_completion_recovery.py agent/runtime/tests/test_selector.py -q …`
+  → `39 passed`. Full-module run in this tree:
+  `python -m pytest agent/runtime/tests/test_story_completion.py -q …` → `43 passed`.
+
+Nothing outside `agent/runtime/core/story_state.py`, `agent/runtime/tests/test_story_completion.py`
+and this record was touched; the file this story removes stays removed.
+
 ## Blockers
 
 None.
@@ -149,3 +221,12 @@ F002: throwaway control copies are not ignored by git — `git check-ignore -v
 frontend/scripts/.tmp-control-unrelated-call.mjs` exits 1 and `.gitignore` contains no `tmp` pattern —
 so the accidental tracking this story cleaned up can recur the next time a control copy is generated
 next to a smoke script, as `tasks/lessons.md` instructs.
+
+F003: `CompletionLifecycleTestCase` patches `ATTEMPT_STATE_FILE`, `CLAUDE_RESULT_FILE` and
+`NEXT_PROMPT_FILE` but not `EVALUATOR_RESULT_FILE`, so the resume tests read the live, gitignored
+`agent/runtime/artifacts/EVALUATOR_RESULT.json` while the orchestrator may be writing it.
+`InterruptedFinalizationTest.test_an_unfinished_ci_gate_is_never_bypassed_by_a_restart` failed once
+here under `python -m unittest agent.runtime.tests.test_story_completion` at 22:16 — no persisted
+verdict matched, so the resume re-evaluated and hit the package guard — and passed on the next three
+runs and under pytest. CI is unaffected (its artifacts directory is empty), but the gap makes the
+local harness suite order- and timing-dependent.

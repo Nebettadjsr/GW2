@@ -489,3 +489,28 @@ the passing run. And before re-implementing a rejected story, diff the tree
 against its Result: here the maintainer's commits had already rewritten both
 scripts, so the whole remaining job was to verify and to make the verification
 legible, not to re-edit anything.
+
+## An invariant asserted inside the gate must hold for the tree the gate is handed
+
+A test that reads the live repository files runs, in CI, against the commit the harness
+pushed *mid-transition*. Before asserting that the repository is in its settled state,
+check whether the gated commit can ever be in it.
+
+**Why:** `3084e18` failed `QueueConsistencyTest` on "a finished story must not remain
+active". It was not a corrupt queue: the orchestrator records `AWAITING_CI`, commits and
+pushes, and only once GitHub answers does `finalize_completed_story()` set the Status, move
+the entry out of `## Active` and clear `CURRENT_STORY.md` — because a red verdict has to
+hand the story back as active work. So Status `DONE` + an `## Active` entry + a pointer
+naming it is the normal content of *every* commit a story completes in, and that invariant
+could never pass in the gate that evaluated it. `61cd1a0` had failed the same way; the
+commit that went green, `f2c3670`, only carried `UNFINISHED` because the CI-failure path
+had reset it.
+
+**How to apply:** reproduce such a failure against the pushed tree, not the handed-back
+one — `git worktree add --detach <tmp> <sha>` and run the narrowest command there; the
+working tree may have been reset and look green. Then fix it by naming the legitimate
+exception explicitly (an optional argument for the one story being published, strict for
+every other caller) rather than by dropping the rule, and keep the rule covered where it is
+decidable — in the running harness, which can still see `ATTEMPT_STATE.json`. A checkout
+cannot distinguish a transaction in flight from one that never finished when the record
+that separates them is gitignored.

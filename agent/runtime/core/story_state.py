@@ -1053,7 +1053,25 @@ def get_selectable_story_candidates() -> list[Path]:
 # problem strings; an empty list means the backlog is consistent.
 # ============================================================
 
-def validate_backlog_consistency() -> list[str]:
+def validate_backlog_consistency(publishing: str | None = None) -> list[str]:
+    """Report every way the live queue contradicts itself.
+
+    `publishing` names the one story whose completion is being published
+    right now: committed, pushed, and waiting for that commit's CI
+    verdict. The harness publishes before it finalizes
+    (orchestrator.verify_with_github_ci, then finalize_completed_story
+    once the gate answers), because a red gate has to hand the story back
+    as active work -- so between the push and the verdict the committed
+    tree deliberately holds a story whose own Status is DONE while its
+    entry is still under '## Active' and CURRENT_STORY.md still names it.
+    The two rules that forbid a finished story under '## Active' are
+    suspended for that one story, and for nothing else.
+
+    Every other caller passes nothing and gets the strict rules: the
+    running harness must keep reporting a finalization that never
+    happened, which is the failure these rules were added for.
+    """
+
     backlog = read_file(
         BACKLOG_FILE
     )
@@ -1086,7 +1104,9 @@ def validate_backlog_consistency() -> list[str]:
             extract_status_section(read_file(story_path))
         )
 
-        if state in ("DONE", "SUPERSEDED"):
+        if state in ("DONE", "SUPERSEDED") and not (
+            state == "DONE" and filename == publishing
+        ):
             problems.append(
                 f"'## Active' lists {filename}, whose own Status is {state}; "
                 "a finished story must not remain active."
@@ -1164,7 +1184,11 @@ def validate_backlog_consistency() -> list[str]:
             status_text
         )
 
-        if classification == "DONE" and current_name in active_names:
+        if (
+            classification == "DONE"
+            and current_name in active_names
+            and current_name != publishing
+        ):
             problems.append(
                 f"{current_name} is DONE but is still listed under "
                 "'## Active'."

@@ -369,6 +369,56 @@ class CompletedWorkIsNeverSelectedTest(OrchestratorInterventionTestCase):
             problems,
         )
 
+    def test_the_story_being_published_is_excused_while_its_gate_is_open(self):
+        """The one tree the CI gate is handed: pushed, DONE, not yet moved."""
+
+        self._story("STORY-A-001-done.md", "STORY-A-001", "DONE")
+        self.write_backlog(active=["STORY-A-001-done.md"])
+        self.set_active("STORY-A-001-done.md")
+
+        strict = story_state.validate_backlog_consistency()
+
+        self.assertTrue(
+            any("must not remain active" in problem for problem in strict), strict,
+        )
+        self.assertTrue(
+            any("is DONE but is still listed" in problem for problem in strict),
+            strict,
+        )
+
+        self.assertEqual(
+            story_state.validate_backlog_consistency(
+                publishing="STORY-A-001-done.md"
+            ),
+            [],
+        )
+
+    def test_publishing_excuses_neither_a_retired_story_nor_the_rest_of_the_queue(self):
+        """Only a DONE story's own publication window, never anything else."""
+
+        self._story("STORY-A-001-superseded.md", "STORY-A-001", "SUPERSEDED")
+        self._story("STORY-A-002-done.md", "STORY-A-002", "DONE")
+        self.write_backlog(
+            active=["STORY-A-001-superseded.md"], todo=["STORY-A-002-done.md"],
+        )
+        self.set_active("STORY-A-001-superseded.md")
+
+        problems = story_state.validate_backlog_consistency(
+            publishing="STORY-A-001-superseded.md"
+        )
+
+        self.assertTrue(
+            any("whose own Status is SUPERSEDED" in problem for problem in problems),
+            problems,
+        )
+        self.assertTrue(
+            any(
+                "'## To Do' lists STORY-A-002-done.md" in problem
+                for problem in problems
+            ),
+            problems,
+        )
+
 
 class BacklogIsAnIndexTest(unittest.TestCase):
     """The entry format, and what the movers and validator do with it."""
@@ -876,6 +926,51 @@ class DocumentOwnershipTest(unittest.TestCase):
 class QueueConsistencyTest(unittest.TestCase):
     """The live repository's own queue, as a standing invariant."""
 
+    def story_awaiting_its_gate(self):
+        """The story this very commit publishes, while its gate is open.
+
+        This suite runs inside the CI gate, against the commit the harness
+        just pushed -- and that commit is taken mid-transition on purpose:
+        the orchestrator commits the accepted story, waits for *this* run's
+        verdict, and only then sets the status, moves the entry out of
+        '## Active' and clears the pointer, because a red verdict has to
+        hand the story back as active work. So Status DONE + an '## Active'
+        entry + a pointer still naming it is the normal content of every
+        commit a story completes in (commit 3084e18 failed here for exactly
+        that, as 61cd1a0 did before it).
+
+        A checkout cannot tell that window apart from a finalization that
+        never ran: the trees are identical, and the record that separates
+        them -- ATTEMPT_STATE.json -- is a gitignored runtime artifact. So
+        the exception is granted here, to this one story only, and the rule
+        itself stays covered where it is decidable: in the running harness
+        (which validates strictly, and logged exactly this for
+        STORY-WEB-018), in assert_finalized() above, and in
+        CompletedWorkIsNeverSelectedTest.
+        """
+
+        from agent.runtime.support.config import BACKLOG_FILE
+
+        active = story_state.parse_backlog_section(
+            BACKLOG_FILE.read_text(encoding="utf-8"), "Active"
+        )
+
+        try:
+            pointer = story_state.get_active_story_path()
+        except (FileNotFoundError, RuntimeError):
+            return None
+
+        if pointer is None or not active or active[0] != pointer.name:
+            return None
+
+        status = story_state.classify_story_status(
+            story_state.extract_status_section(
+                pointer.read_text(encoding="utf-8")
+            )
+        )
+
+        return pointer.name if status == "DONE" else None
+
     def test_the_committed_backlog_is_a_valid_machine_readable_index(self):
         from agent.runtime.support.config import BACKLOG_FILE
 
@@ -887,7 +982,12 @@ class QueueConsistencyTest(unittest.TestCase):
         )
 
     def test_the_committed_queue_is_internally_consistent(self):
-        self.assertEqual(story_state.validate_backlog_consistency(), [])
+        self.assertEqual(
+            story_state.validate_backlog_consistency(
+                publishing=self.story_awaiting_its_gate()
+            ),
+            [],
+        )
 
     def test_every_selectable_story_has_its_dependencies_satisfied(self):
         index = story_state.build_story_index()
@@ -905,12 +1005,13 @@ class QueueConsistencyTest(unittest.TestCase):
         from agent.runtime.support.config import BACKLOG_FILE, STORIES_DIR
 
         backlog = BACKLOG_FILE.read_text(encoding="utf-8")
+        publishing = self.story_awaiting_its_gate()
 
         for heading in ("Active", "To Do"):
             for filename in story_state.parse_backlog_section(backlog, heading):
                 path = STORIES_DIR / filename
 
-                if not path.exists():
+                if not path.exists() or filename == publishing:
                     continue
 
                 with self.subTest(section=heading, story=filename):

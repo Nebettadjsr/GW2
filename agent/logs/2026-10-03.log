@@ -1052,3 +1052,89 @@
 [22:13:47] Evaluator decision: COMPLETE
 [22:13:47] Reason: The tracked temporary copy is deleted, no maintained command references it, and the maintained smoke script and npm mapping are unchanged. The smoke run failed on an existing screen/script contract mismatch, which is documented and outside this story’s constraints. The QA plan’s required exit-code-0 check was not satisfied, so independent QA review is required.
 [22:13:47] ========================================
+[22:13:50] STORY-WEB-027-remove-tracked-smoke-control-copy.md published for CI verification: 3084e18 on master (35 changed path(s), new commit, waiting for GitHub Actions.
+[22:15:52] GitHub CI FAILED for 3084e18 (STORY-WEB-027-remove-tracked-smoke-control-copy.md): CI: failure
+[22:15:52] GitHub CI failed; returning the story to Claude (1/2).
+[22:15:57] ========================================
+[22:15:57] Starting Claude Code
+[22:15:57] ========================================
+[22:28:33] ## Fixed and verified
+[22:28:33] **The failure was the harness's publication window, not a corrupt queue.**
+[22:28:33] **Reproduced at the pushed tree.** The handed-back working tree no longer failed (the harness had reset this story's Status to `UNFINISHED`), so I checked out the published snapshot into a throwaway worktree and ran the narrowest command there:
+[22:28:33] ```
+[22:28:33] git worktree add --detach <tmp> 3084e18
+[22:28:33] python -m unittest agent.runtime.tests.test_story_completion.QueueConsistencyTest -v
+[22:28:33] → FAILED (failures=2)   # both CI problem strings, verbatim
+[22:28:33] ```
+[22:28:33] **Cause.** `orchestrator.execute_active_story()` records `AWAITING_CI`, `verify_with_github_ci()` commits and pushes, and only after the gate answers does `finalize_completed_story()` set the Status, move the entry out of `## Active` and clear `CURRENT_STORY.md` — deliberately, so a red verdict can hand the story back as active work (`orchestrator.py:671-688`). Every commit a story completes in therefore contains Status `DONE` + an `## Active` entry + a pointer naming it, and `QueueConsistencyTest` asserts over the live repository files of exactly that commit, so the invariant could never pass in the gate that evaluates it. Structural, not specific to WEB-027: `61cd1a0` (WEB-024, `DONE` under `## Active`) failed CI the same way at 19:15:15, and the commit that went green — `f2c3670` — carried `UNFINISHED` only because the CI-failure path had reset it and the resumed attempt never rewrote it.
+[22:28:33] **Fix** (`agent/runtime/core/story_state.py:1056`, `agent/runtime/tests/test_story_completion.py:876`): `validate_backlog_consistency()` takes an optional `publishing` argument naming the story being published; for that one story, while its own Status is `DONE`, the two rules forbidding a finished story under `## Active` are suspended. Every other caller passes nothing and keeps today's strict behaviour — including the running harness, which must keep reporting a finalization that never happened (it logged exactly that for WEB-018 at 09:56:45). The two live-repository tests derive the argument from the committed tree and exempt that story alone; `## To Do`, other `## Active` entries, retired stories, duplicate listings, prose and malformed rows stay strict. A checkout can't distinguish the window from a missed finalization — the trees are identical and `ATTEMPT_STATE.json` is gitignored — so the distinction is drawn where it's decidable. Nothing was deleted, skipped or renamed.
+[22:28:33] **Tests run**
+[22:28:33] - `python -m unittest …QueueConsistencyTest …CompletedWorkIsNeverSelectedTest -v` → `Ran 9 tests, OK`
+[22:28:33] - Published tree + fix, CI-style, inside the `3084e18` worktree: `python -m pytest agent/runtime/tests/test_story_completion.py -q --import-mode=importlib -o consider_namespace_packages=true` → `43 passed, 23 subtests passed` (worktree then removed)
+[22:28:33] - Other callers: `python -m unittest …test_orchestrator …test_pipeline_recovery` → `Ran 41 tests, OK`; `pytest test_completion_recovery.py test_selector.py -q` → `39 passed`
+[22:28:33] - Added coverage: `test_the_story_being_published_is_excused_while_its_gate_is_open`, `test_publishing_excuses_neither_a_retired_story_nor_the_rest_of_the_queue`
+[22:28:33] Story Status set to `DONE`, Result and `CLAUDE_RESULT.md` updated (including the rejected alternative: finalizing before the push would strand a resumed `AWAITING_CI` attempt, since the story is resolved from `CURRENT_STORY.md`), one new follow-up finding **F003** (the lifecycle fixture reads the real gitignored `EVALUATOR_RESULT.json`; one non-reproducible local failure observed, CI unaffected), and a lesson appended to `tasks/lessons.md`. `BACKLOG.md` left untouched — that transition is the harness's.
+[22:28:33] ========================================
+[22:28:33] Claude Code exit code: 0
+[22:28:33] ========================================
+[22:28:36] Claude run measurement: repo_map=on, duration=756.5s, usage_before=ClaudeUsage(session_used_percent=77, weekly_used_percent=18), usage_after=ClaudeUsage(session_used_percent=99, weekly_used_percent=20)
+[22:28:36] Evaluator started (Codex, read-only)
+[22:28:36] ========================================
+[22:28:36] Starting hosted Codex evaluator
+[22:28:36] ========================================
+[22:28:36] [evaluator] session 01a10374-4e84-7a31-bd92-5bd34bb1132e
+[22:28:36] [evaluator] reasoning...
+[22:28:41] Evaluator last response:
+[22:28:41] I’ll inspect the actual working tree and focused diffs, then verify the deletion, command references, maintained smoke script, and relevant QA checks against the repository. I’ll keep the verdict limited to STORY-WEB-027.
+[22:28:43] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git status --porcelain; git diff HEAD -- frontend/scripts/.tmp-control-unrelated-call.mjs frontend/scripts/account-browser-smoke.mjs frontend/package.json; git diff --cached -- frontend/scripts/.tmp-control-unrelated-call.mjs frontend/scripts/account-browser-smoke.mjs frontend/package.json'
+[22:28:44] [evaluator command done] exit 0
+[22:28:50] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$p='"'frontend/scripts/.tmp-control-unrelated-call.mjs'; Write-Output \"exists="'$(Test-Path $p)"; git ls-files -- $p; rg -n --glob '"'"'!node_modules/**'"' '\\.tmp-control-unrelated-call\\.mjs|\"smoke:account\"' frontend/package.json frontend/scripts; git diff HEAD -- agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md agent/runtime/core/story_state.py agent/runtime/tests/test_story_completion.py agent/logs/2026-10-03.log tasks/lessons.md; rg -n 'acceptance_checks|verification|smoke:account|test_levels|post_implementation' agent/qa-plans/QA-STORY-WEB-027-remove-tracked-smoke-control-copy.json"
+[22:28:50] [evaluator command done] exit 0
+[22:29:02] Evaluator last response:
+[22:29:02] ```json
+[22:29:02] {
+[22:29:02]   "decision": "COMPLETE",
+[22:29:02]   "reason": "The temporary copy is absent and untracked, no maintained command references it, and the account smoke command still targets its maintained script. The smoke run reached its third check but failed on a pre-existing screen/script mismatch outside this story’s constraints; independent QA review is required because the QA plan expected exit code 0.",
+[22:29:02]   "intent_achieved": true,
+[22:29:02]   "evidence": [
+[22:29:02]     "Working tree status and diffs for the temporary script, account smoke script, and frontend/package.json: no pending changes to these paths.",
+[22:29:02]     "Test-Path frontend/scripts/.tmp-control-unrelated-call.mjs returned False; git ls-files for that path returned no output.",
+[22:29:02]     "Search of frontend/package.json and frontend/scripts found no temporary filename reference; frontend/package.json maps smoke:account to node scripts/account-browser-smoke.mjs.",
+[22:29:02]     "The story result records the smoke run reaching the bank read and failing at step 3 on rendered item identity/count mismatch; it also records the maintained script matching HEAD.",
+[22:29:02]     "Inspected agent/qa-plans/QA-STORY-WEB-027-remove-tracked-smoke-control-copy.json: its smoke test specification expected exit code 0 and requires post-implementation review."
+[22:29:02]   ],
+[22:29:02]   "unmet_intent": [],
+[22:29:02]   "unmet_acceptance_criteria": [],
+[22:29:02]   "unmet_definition_of_done": [],
+[22:29:02]   "actionable_retry_items": [],
+[22:29:02]   "qa_review_required": true,
+[22:29:03]   "qa_review_reason": "The QA plan’s required smoke run did not exit 0. The recorded failure is a pre-existing Bank screen/script contract mismatch, and this story explicitly constrains changes to the maintained smoke script."
+[22:29:03] }
+[22:29:03] ```
+[22:29:03] [evaluator] turn completed | input tokens: 81955 | cached input tokens: 59648 | output tokens: 1071
+[22:29:03] ========================================
+[22:29:03] [evaluator] turn totals | model requests: 1 | gross input tokens: 81,955 | cached input tokens: 59,648 | uncached input tokens: 22,307 | output tokens: 1,071
+[22:29:03] Hosted codex evaluator exit code: 0
+[22:29:03] ========================================
+[22:29:03] ========================================
+[22:29:03] Starting Codex QA agent
+[22:29:03] ========================================
+[22:29:04] [qa] session 01a10374-ba3e-7fc3-b99a-c809fdf1b3c2
+[22:29:04] [qa] reasoning...
+[22:29:07] Qa last response:
+[22:29:07] I’ll check the story result and repository state against the supplied QA plan and evaluator evidence, keeping this review read-only.
+[22:29:11] [qa command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md; Get-Content agent/runtime/artifacts/QA_RESULT.json -ErrorAction SilentlyContinue; Get-Content agent/runtime/artifacts/IMPLEMENTATION_RESULT.json -ErrorAction SilentlyContinue; Test-Path frontend/scripts/.tmp-control-unrelated-call.mjs; git ls-files frontend/scripts/.tmp-control-unrelated-call.mjs; git status --short; Select-String -Path frontend/package.json -Pattern 'smoke:account|tmp-control-unrelated-call'; Get-ChildItem frontend/scripts -File | Select-String -Pattern '\\.tmp-control-unrelated-call\\.mjs'"
+[22:29:11] [qa command done] exit 0
+[22:29:21] Qa last response:
+[22:29:21] ```json
+[22:29:21] {"decision":"APPROVE","reason":"The removal and wiring criteria are satisfied. The required account smoke command was attempted but did not pass; the recorded failure is a pre-existing mismatch between the maintained smoke script and the Bank screen, and the story documents why fixing that is outside scope. This deviation is supported by evidence, though the smoke check does not confirm full account-screen behavior.","evidence":["The temporary file is absent and git ls-files returns no tracked path.","Searches found no maintained reference to the temporary filename; smoke:account still invokes scripts/account-browser-smoke.mjs.","The story records that the maintained smoke script is unchanged and documents the smoke run failing at step 3 on rendered item identity/count mismatch.","The QA plan has no prepared test paths. Its repository checks were performed; the smoke specification required exit code 0, which was not achieved."],"actionable_items":[]}
+[22:29:21] ```
+[22:29:21] [qa] turn completed | input tokens: 42122 | cached input tokens: 29184 | output tokens: 645
+[22:29:22] ========================================
+[22:29:22] [qa] turn totals | model requests: 1 | gross input tokens: 42,122 | cached input tokens: 29,184 | uncached input tokens: 12,938 | output tokens: 645
+[22:29:22] Codex qa agent exit code: 0
+[22:29:22] ========================================
+[22:29:22] ========================================
+[22:29:22] Evaluator decision: COMPLETE
+[22:29:22] Reason: The temporary copy is absent and untracked, no maintained command references it, and the account smoke command still targets its maintained script. The smoke run reached its third check but failed on a pre-existing screen/script mismatch outside this story’s constraints; independent QA review is required because the QA plan expected exit code 0.
+[22:29:22] ========================================

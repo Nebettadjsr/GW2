@@ -65,6 +65,17 @@
         "The QA plan prepared no automated tests; its repository checks are supported by the current state, but its required passing smoke run was not achieved."
       ],
       "actionable_items": []
+    },
+    {
+      "decision": "APPROVE",
+      "reason": "The removal and wiring criteria are satisfied. The required account smoke command was attempted but did not pass; the recorded failure is a pre-existing mismatch between the maintained smoke script and the Bank screen, and the story documents why fixing that is outside scope. This deviation is supported by evidence, though the smoke check does not confirm full account-screen behavior.",
+      "evidence": [
+        "The temporary file is absent and git ls-files returns no tracked path.",
+        "Searches found no maintained reference to the temporary filename; smoke:account still invokes scripts/account-browser-smoke.mjs.",
+        "The story records that the maintained smoke script is unchanged and documents the smoke run failing at step 3 on rendered item identity/count mismatch.",
+        "The QA plan has no prepared test paths. Its repository checks were performed; the smoke specification required exit code 0, which was not achieved."
+      ],
+      "actionable_items": []
     }
   ]
 }
