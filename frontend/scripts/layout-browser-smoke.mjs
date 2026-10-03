@@ -44,7 +44,16 @@ const AREAS = [
   // The structured salvage calculation needs the TP quotes and the Luck section needs the account
   // answer, so a page that rendered only one of them is not ready.
   { id: 'ecto', heading: 'Ecto Salvage', ready: '.panel:has(.salvage-calculation):has(.account-luck)' },
-  { id: 'synchronization', heading: 'System Status', ready: '[data-test="sync-controls"]' },
+  // `SyncScreen.vue` has no single controls container; its content is the three status cards, and a
+  // card is on screen before the status answer is. The readiness selector therefore names the
+  // health badge in the state the supplied status produces (the hook and the tone class
+  // `SyncScreen.spec.ts` asserts), so a page still showing "Loading status…" or "Status
+  // unavailable" fails the wait instead of being measured as ready.
+  {
+    id: 'synchronization',
+    heading: 'System Status',
+    ready: '[data-test="price-cache-status"] [data-test="price-cache-health"].status--success'
+  },
   { id: 'bank', heading: 'Bank', ready: '[data-test="bank-slots"]' },
   { id: 'materials', heading: 'Materials', ready: '[data-test="material-category"]' }
 ]
@@ -63,9 +72,11 @@ const INTRO_SAMPLE = 'page intro'
 /**
  * Where the introductory sentence is measured. Crafting Profit no longer has one (DOMAIN_SPEC 2.1.1
  * removed it), so this pair is taken on an area that still renders an introduction instead of being
- * skipped on a page where the element cannot exist — see `assertMeasured`.
+ * skipped on a page where the element cannot exist — see `assertMeasured`. Crafting Discovery and
+ * Ecto Salvage are the two areas that still pass `intro` to `PageHeader.vue`; System Status does
+ * not, which is why measuring it there measured nothing.
  */
-const INTRO_AREA = areaOf('synchronization')
+const INTRO_AREA = areaOf('discovery')
 
 const steps = []
 
@@ -205,7 +216,32 @@ function accountLuck() {
   }
 }
 
+/**
+ * A settled system status: nothing running, every timestamp and count supplied, no failure. The
+ * System Status area is read-only here — this answer is what lets it render its facts instead of its
+ * "Status unavailable" notice, and nothing in this check submits a synchronization (step 10).
+ */
+function systemStatus() {
+  return {
+    running: false,
+    lastCheckedAt: '2026-09-29T08:10:00Z',
+    lastChangedAt: '2026-09-28T19:45:00Z',
+    lastRecipeSyncAt: '2026-09-28T19:30:00Z',
+    lastGraphRebuildAt: '2026-09-28T19:40:00Z',
+    lastFailure: null,
+    accountLastRefreshedAt: '2026-09-29T07:55:00Z',
+    accountRefreshScope: 'Characters, bank and material storage',
+    cachedPriceItems: 48_213,
+    stalePriceItems: 117,
+    newestPriceFetchedAt: '2026-09-29T08:05:00Z',
+    priceCacheError: null
+  }
+}
+
 function answerApi({ url, sendJson }) {
+  if (url.pathname === '/api/system/status') {
+    return sendJson(200, systemStatus())
+  }
   if (url.pathname === '/api/crafting/selector-options') {
     return sendJson(200, {
       defaultScopeKind: 'ALL',

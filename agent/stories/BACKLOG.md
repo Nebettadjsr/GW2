@@ -13,10 +13,10 @@ below stay in the plain form.
 
 ## Active
 
+- STORY-WEB-024 | STORY-WEB-024-repair-fresh-build-smoke-contracts.md | TODO | milestone-05 | deps: STORY-WEB-018
 
 ## To Do
 
-- STORY-WEB-024 | STORY-WEB-024-repair-fresh-build-smoke-contracts.md | TODO | milestone-05 | deps: STORY-WEB-018
 - STORY-WEB-020 | STORY-WEB-020-layout-smoke-total-sell-value.md | TODO | milestone-05 | deps: STORY-WEB-019
 - STORY-WEB-027 | STORY-WEB-027-remove-tracked-smoke-control-copy.md | TODO | milestone-05 | deps: None
 - STORY-WEB-021 | STORY-WEB-021-ecto-content-test-hooks.md | TODO | milestone-05 | deps: STORY-WEB-019

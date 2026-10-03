@@ -80,6 +80,9 @@ function allRows() {
     totalSellValueCopper: 1_481_401,
     buyCostCopper: 98_765,
     matsSellValueCopper: 4_321,
+    // Also deliberately not 12 x 4_321: the detail reads the counted-crafts field, not the per-craft
+    // one, so a view taking the wrong `matsSellValue` would print 43s 21c here.
+    totalMatsSellValueCopper: 51_852,
     revenueCopper: 111_110,
     blockedReason: 'NONE',
     outputPrice: { buyUnitCopper: 120_000, sellUnitCopper: 130_000 },
@@ -94,12 +97,40 @@ function allRows() {
 
   return [
     row(1, 'Deldrimor Steel Ingot', {
+      // The acquisition price the calculation selected and its own authoritative total — the fields
+      // `SelectedResultDetail.vue` prints. The total is deliberately not 60 x 120: a view that
+      // multiplied the quantity itself would show 72s 0c instead of the supplied 74s 4c.
       missingToBuy: [
-        { itemId: 19_700, itemName: 'Mithril Ore', quantity: 60, price: { buyUnitCopper: 120, sellUnitCopper: 140 }, iconUrl: null },
-        { itemId: 19_701, itemName: null, quantity: 5, price: null, iconUrl: null }
+        {
+          itemId: 19_700,
+          itemName: 'Mithril Ore',
+          quantity: 60,
+          price: { buyUnitCopper: 120, sellUnitCopper: 140 },
+          purchaseUnitPriceCopper: 120,
+          totalPurchaseCostCopper: 7_404,
+          iconUrl: null
+        },
+        // No name and no price at all: the id identifies it and both amounts stay visibly missing.
+        {
+          itemId: 19_701,
+          itemName: null,
+          quantity: 5,
+          price: null,
+          purchaseUnitPriceCopper: null,
+          totalPurchaseCostCopper: null,
+          iconUrl: null
+        }
       ],
       missingToBuyOne: [
-        { itemId: 19_700, itemName: 'Mithril Ore', quantity: 5, price: { buyUnitCopper: 120, sellUnitCopper: 140 }, iconUrl: null }
+        {
+          itemId: 19_700,
+          itemName: 'Mithril Ore',
+          quantity: 5,
+          price: { buyUnitCopper: 120, sellUnitCopper: 140 },
+          purchaseUnitPriceCopper: 120,
+          totalPurchaseCostCopper: 617,
+          iconUrl: null
+        }
       ]
     }),
     row(2, 'Elonian Leather Square', { blockedReason: 'BUYING_DISABLED', craftableCount: 0 }),
@@ -109,7 +140,15 @@ function allRows() {
       totalProfitCopper: null,
       totalSellValueCopper: null,
       buyCostCopper: null,
-      missingToBuy: [{ itemId: 19_699, itemName: 'Charged Core', quantity: 3, price: null, iconUrl: null }]
+      missingToBuy: [{
+        itemId: 19_699,
+        itemName: 'Charged Core',
+        quantity: 3,
+        price: null,
+        purchaseUnitPriceCopper: null,
+        totalPurchaseCostCopper: null,
+        iconUrl: null
+      }]
     }),
     row(4, 'Bolt of Damask', {
       resultAvailable: false,
@@ -119,6 +158,7 @@ function allRows() {
       totalSellValueCopper: null,
       buyCostCopper: null,
       matsSellValueCopper: null,
+      totalMatsSellValueCopper: null,
       revenueCopper: null,
       blockedReason: null,
       outputPrice: null,
@@ -143,6 +183,8 @@ function allRows() {
           itemName: 'Glob of Ectoplasm',
           quantity: 20,
           price: { buyUnitCopper: 2_400, sellUnitCopper: 2_600 },
+          purchaseUnitPriceCopper: 2_400,
+          totalPurchaseCostCopper: 48_123,
           iconUrl: null
         }
       ]
@@ -440,25 +482,52 @@ async function listedRecipes(page) {
   )
 }
 
+/**
+ * What the two control groups are and where they sit.
+ *
+ * `CraftingProfitScreen.vue` names the controls panel with `aria-label` and gives each group inside
+ * it its own accessible name — the calculation column through `aria-labelledby`, the display group
+ * through its `fieldset`'s `legend`. `groupName` reads whichever of the two an element uses, so the
+ * check is about the name the group carries rather than about one markup pattern for carrying it.
+ * The changeable maximum and Show all are beside the list they limit, in the results toolbar.
+ */
 async function displayControlState(page) {
   return page.evaluate(() => {
     const checked = (test) => document.querySelector(`[data-test="${test}"]`)?.checked ?? null
     const controls = document.querySelector('[data-test="display-controls"]')
+    const calculation = document.querySelector('[data-test="calculation-controls"]')
+    const panel = document.querySelector('.controls-panel')
+    const resultsRegion = document.querySelector('[data-test="results-region"]')
+    const groupName = (element) => {
+      if (element === null) return null
+      const labelledBy = element.getAttribute('aria-labelledby')
+      if (labelledBy !== null) {
+        return document.getElementById(labelledBy)?.textContent?.replace(/\s+/g, ' ').trim() ?? null
+      }
+      return element.querySelector(':scope > legend')?.textContent?.replace(/\s+/g, ' ').trim() ?? null
+    }
     return {
+      panelLabel: panel?.getAttribute('aria-label') ?? null,
       inControlsPanel:
-        document.querySelector('[data-test="calculation-controls"]')?.closest('.panel')?.contains(controls) ??
-        false,
-      inResultsRegion: document.querySelector('[data-test="results-region"]')?.contains(controls) ?? false,
-      legend: controls?.querySelector('legend')?.textContent?.trim() ?? null,
-      calculationLegend:
-        document.querySelector('[data-test="calculation-controls"] legend')?.textContent?.trim() ?? null,
+        panel !== null &&
+        controls !== null &&
+        calculation !== null &&
+        panel.contains(controls) &&
+        panel.contains(calculation) &&
+        !calculation.contains(controls) &&
+        !controls.contains(calculation),
+      inResultsRegion: resultsRegion?.contains(controls) ?? false,
+      legend: groupName(controls),
+      calculationLegend: groupName(calculation),
       holdsSearch: controls?.contains(document.querySelector('[data-test="search"]')) ?? false,
       zeroCraftable: checked('filter-zero-craftable'),
       notAllowed: checked('filter-not-allowed'),
       nonPositiveProfit: checked('filter-non-positive-profit'),
       showAll: checked('show-all'),
       maximum: document.querySelector('[data-test="max-displayed"]')?.value ?? null,
-      maximumDisabled: document.querySelector('[data-test="max-displayed"]')?.disabled ?? null
+      maximumDisabled: document.querySelector('[data-test="max-displayed"]')?.disabled ?? null,
+      limitInResultsRegion:
+        resultsRegion?.contains(document.querySelector('[data-test="opportunities-limit"]')) ?? false
     }
   })
 }
@@ -645,93 +714,142 @@ async function run() {
     record('selection follows the recipe, not the row position', `"${firstRowName}" still selected after re-sorting`)
 
     // 5. The detail shows the supplementary values under the basis the contract gives them.
+    //
+    // `SelectedResultDetail.vue` renders one accounting list for the counted crafts — the price
+    // basis and item count as context, then sell value, both material costs and the profit — with
+    // the Trading Post quote, the resolution and the purchase list beside it. There is no per-craft
+    // basis: `SelectedResultDetail.spec.ts`'s
+    // `labelsTheCalculatedItemsAndSuppliedEconomicTotals` requires "For one craft" to be *absent*,
+    // which is the phrase this step used to demand be present (STORY-WEB-018 F003). Each label is
+    // compared inside the region that renders it rather than against the whole detail's text, so a
+    // term found somewhere else cannot stand in for it.
     const detailText = await textOf(page, '[data-test="selected-detail"]')
-    for (const expected of [
-      'For one craft',
-      'For all 12 crafts counted',
-      'Output revenue',
-      'Cost of materials to buy',
-      'Output quantity',
-      'Trading Post price / item',
-      'Instant buy',
-      'Crafting resolution',
-      'Materials still to buy',
-      'Mithril Ore',
-      'Item #19701'
-    ]) {
-      check(detailText.includes(expected), `The detail region did not contain "${expected}".`)
+    const calculationText = await textOf(page, '[data-test="detail-calculation"]')
+    const quoteText = await textOf(page, '[data-test="detail-output-quote"]')
+    const labelRegions = [
+      // `listingSell: false` in the echoed settings, so the price basis is named as the instant sell.
+      ['the calculation list', calculationText, [
+        'Price 1 item (Instant sell)',
+        'No. craftable Items',
+        'Total sell value',
+        'Own materials',
+        'Bought materials',
+        'Profit'
+      ]],
+      ['the Trading Post quote', quoteText, ['Trading Post price / item', 'Instant sell', 'Listing sell']],
+      ['the detail', detailText, [
+        'Crafting resolution',
+        'Materials still to buy',
+        'For all 12 crafts counted',
+        'Mithril Ore',
+        'Item #19701'
+      ]]
+    ]
+    for (const [where, text, expectedLabels] of labelRegions) {
+      for (const expected of expectedLabels) {
+        check(text.includes(expected), `${where} did not contain "${expected}".`)
+      }
     }
-    check(
-      !detailText.includes('shopping list total'),
-      'The detail region claimed a total it must not calculate.'
+    for (const removed of ['For one craft', 'shopping list total']) {
+      check(
+        !detailText.includes(removed),
+        `The detail region still carries "${removed}", which the compact selected result does not have.`
+      )
+    }
+    record(
+      'detail separates calculation, quote, resolution and materials',
+      `${labelRegions.reduce((count, [, , labels]) => count + labels.length, 0)} labels present in ` +
+        'their own regions; no per-craft basis and no calculated shopping-list total'
     )
-    record('detail separates summary, resolution and materials', '11 expected labels present')
 
-    // 5z. DOMAIN_SPEC 2.1.1 / 25 (resolved UD-011): the fee note belongs to Profit and Total profit
-    // and to nothing else, and every money value on screen is still the one the stub supplied — a
-    // page that deducted 15% of its own would show 10s 49c rather than 1g 23s 45c here.
+    // 5z. DOMAIN_SPEC 2.1.1 / 25 (resolved UD-011): the fee note belongs to the profit figure and to
+    // nothing else, and every money value on screen is still the one the stub supplied. The compact
+    // detail prints one profit — the counted crafts' total — so there is exactly one note, which is
+    // what `SelectedResultDetail.spec.ts`'s
+    // `marksOnlyTheProfitFiguresAsBeingAfterTradingPostFees` asserts. A page that deducted 15% of
+    // its own would show +12g 59s 19c here rather than the supplied +14g 81s 40c.
     const fees = await page.evaluate(() => {
       const text = (element) => (element?.textContent ?? '').replace(/\s+/g, ' ').trim()
+      const value = (test) => text(document.querySelector(`[data-test="${test}"]`))
       return {
-        profitNote: text(document.querySelector('[data-test="detail-profit-fee-note"]')),
-        totalNote: text(document.querySelector('[data-test="detail-total-profit-fee-note"]')),
+        totalNote: value('detail-total-profit-fee-note'),
         allNotes: [...document.querySelectorAll('.value-note')].map(text),
-        profit: text(document.querySelector('[data-test="detail-profit-per-craft"]')),
-        totalProfit: text(document.querySelector('[data-test="detail-total-profit"]')),
-        totalSellValue: text(document.querySelector('[data-test="detail-total-sell-value"]')),
-        quote: text(document.querySelector('[data-test="detail-output-quote"]'))
+        totalProfit: value('detail-total-profit'),
+        totalSellValue: value('detail-total-sell-value'),
+        ownMaterials: value('detail-own-material-cost'),
+        buyCost: value('detail-buy-cost'),
+        quote: value('detail-output-quote')
       }
     })
     check(
-      fees.profitNote === 'after 15% TP fees' && fees.totalNote === 'after 15% TP fees',
-      `The profit figures do not carry the fee note: ${JSON.stringify(fees)}`
+      fees.totalNote === 'after 15% TP fees',
+      `The profit figure does not carry the fee note: ${JSON.stringify(fees)}`
     )
     check(
-      fees.allNotes.length === 2,
-      `A value other than Profit and Total profit carries a note: ${JSON.stringify(fees.allNotes)}`
+      fees.allNotes.length === 1,
+      `A value other than the profit carries a note: ${JSON.stringify(fees.allNotes)}`
     )
     check(
-      fees.profit === '+1g 23s 45c' && fees.totalProfit === '+14g 81s 40c',
-      `The profits are not the supplied backend values: ${JSON.stringify(fees)}`
+      fees.totalProfit === '+14g 81s 40c',
+      `The profit is not the supplied backend value: ${JSON.stringify(fees)}`
     )
     check(
       fees.totalSellValue === '148g 14s 1c' &&
+        fees.ownMaterials === '5g 18s 52c' &&
+        fees.buyCost === '9g 87s 65c' &&
         fees.quote.includes('12g 0s 0c') &&
         fees.quote.includes('13g 0s 0c'),
       `A gross value was altered by the page: ${JSON.stringify(fees)}`
     )
     check(
-      !fees.totalSellValue.includes('TP fees') && !fees.quote.includes('TP fees'),
+      !fees.totalSellValue.includes('TP fees') &&
+        !fees.ownMaterials.includes('TP fees') &&
+        !fees.buyCost.includes('TP fees') &&
+        !fees.quote.includes('TP fees'),
       'A gross value was labelled as being after fees.'
     )
     record(
-      'only Profit and Total profit are marked after 15% TP fees; gross values unchanged',
-      `${fees.profit} / ${fees.totalProfit}, sell value ${fees.totalSellValue}`
+      'only the profit is marked after 15% TP fees; gross values unchanged',
+      `profit ${fees.totalProfit}, sell value ${fees.totalSellValue}, materials ` +
+        `${fees.ownMaterials} own and ${fees.buyCost} bought`
     )
 
     // 5a. The purchases are the ones for the crafts already counted, and there is no second list
     // (DOMAIN_SPEC 2.1.1). This row supplies both bases — 60 Mithril Ore for the 12 crafts counted
     // and 5 for one further craft — so a section that showed the wrong one would be visible here.
     const purchases = await page.evaluate(() => {
-      const line = (element) => (element.textContent ?? '').replace(/\s+/g, ' ').trim()
+      const text = (element) => (element?.textContent ?? '').replace(/\s+/g, ' ').trim()
+      // The three parts of one line, read from their own elements: the grid lays them out with no
+      // separating whitespace, so the concatenated text of the row cannot tell the name from the
+      // quantity that follows it.
+      const parts = (item) => ({
+        name: text(item.querySelector('.material-name')),
+        quantity: text(item.querySelector('.material-quantity')),
+        quote: text(item.querySelector('.meta'))
+      })
       return {
-        counted: [...document.querySelectorAll('[data-test="missing-item"]')].map(line),
+        counted: [...document.querySelectorAll('[data-test="missing-item"]')].map(parts),
         furtherSection: document.querySelector('[data-test="missing-one"]') !== null,
         furtherItems: document.querySelectorAll('[data-test="missing-one-item"]').length,
         furtherEmptyState: document.querySelector('[data-test="missing-one-none"]') !== null
       }
     })
+    // Each line is the material, its quantity, the acquisition price the calculation selected and
+    // that material's own supplied total — `SelectedResultDetail.vue`'s `materialQuoteText`. The
+    // total is read, never derived: 60 x 1s 20c would be 72s 0c, and 74s 4c is what was supplied.
     check(
       purchases.counted.length === 2 &&
-        purchases.counted[0].includes('Mithril Ore') &&
-        purchases.counted[0].includes('×60') &&
-        purchases.counted[0].includes('Instant buy 1s 20c'),
+        purchases.counted[0].name === 'Mithril Ore' &&
+        purchases.counted[0].quantity === '60' &&
+        purchases.counted[0].quote === 'Price / item: 1s 20c · Total: 74s 4c',
       `The counted-craft purchase list is not what the backend supplied: ${JSON.stringify(purchases.counted)}`
     )
     check(
-      // No name for this material, so its id identifies it and its absent quote says so.
-      purchases.counted[1].includes('Item #19701') && purchases.counted[1].includes('No price supplied'),
-      `A material with no supplied name or price was not reported as such: ${purchases.counted[1]}`
+      // No name for this material, so its id identifies it and both absent amounts say so.
+      purchases.counted[1].name === 'Item #19701' &&
+        purchases.counted[1].quantity === '5' &&
+        purchases.counted[1].quote === 'Price / item: Unavailable · Total: Unavailable',
+      `A material with no supplied name or price was not reported as such: ${JSON.stringify(purchases.counted[1])}`
     )
     check(
       !purchases.furtherSection && purchases.furtherItems === 0 && !purchases.furtherEmptyState,
@@ -743,7 +861,7 @@ async function run() {
     )
     record(
       'purchases are the counted crafts’ only, with quantities and supplied quotes',
-      purchases.counted.join(' | ').slice(0, 96)
+      purchases.counted.map((item) => `${item.name} ×${item.quantity} ${item.quote}`).join(' | ')
     )
 
     // 5a2. DOMAIN_SPEC 2.1.1 removes the page's introductory sentence; the heading stays.
@@ -760,38 +878,64 @@ async function run() {
     check(introduction.heading === 'Crafting Profit', `The page heading read "${introduction.heading}".`)
     record('no introductory sentence under the heading', `heading "${introduction.heading}"`)
 
-    // 5b. Buy cost is emphasized as a cost, and the quote is identified as a single-item price.
+    // 5b. The accounting list reads as accounting, and the quote is identified as a single-item
+    // price. Each money value is matched to the term it stands under — the `dt` immediately before
+    // its own `dd` — so renaming or reordering a row fails here instead of finding a word like
+    // "cost" somewhere else in the list. The costs carry the negative treatment, the revenue the
+    // positive one, and the profit row is the emphasized one; none of the three is the colour of an
+    // ordinary value.
     const costPresentation = await page.evaluate(() => {
-      const cost = document.querySelector('[data-test="detail-buy-cost"]')
-      const label = [...document.querySelectorAll('[data-test="detail-totals"] dt')]
-        .map((term) => term.textContent?.trim() ?? '')
-        .find((text) => text.toLowerCase().includes('cost'))
-      const costStyle = getComputedStyle(cost)
-      const plain = getComputedStyle(document.querySelector('[data-test="detail-per-craft"] dd'))
+      const style = (element) => {
+        if (element === null) return null
+        const computed = getComputedStyle(element)
+        return {
+          color: computed.color,
+          weight: Number.parseInt(computed.fontWeight, 10),
+          size: Number.parseFloat(computed.fontSize)
+        }
+      }
+      const valueOf = (test) => document.querySelector(`[data-test="${test}"]`)
+      const termOf = (test) => {
+        const term = valueOf(test)?.closest('dd')?.previousElementSibling ?? null
+        return (term?.textContent ?? '').replace(/\s+/g, ' ').trim()
+      }
       return {
-        label: label ?? null,
-        color: costStyle.color,
-        weight: Number.parseInt(costStyle.fontWeight, 10),
-        size: Number.parseFloat(costStyle.fontSize),
-        plainColor: plain.color,
-        plainSize: Number.parseFloat(plain.fontSize),
+        buyCostLabel: termOf('detail-buy-cost'),
+        ownCostLabel: termOf('detail-own-material-cost'),
+        sellValueLabel: termOf('detail-total-sell-value'),
+        profitLabel: termOf('detail-total-profit'),
+        buyCost: style(valueOf('detail-buy-cost')),
+        ownCost: style(valueOf('detail-own-material-cost')),
+        sellValue: style(valueOf('detail-total-sell-value')),
+        // The list's own inherited text treatment: what an ordinary value looks like here.
+        plain: style(valueOf('detail-calculation')),
+        profitRow: style(valueOf('detail-total-profit')?.closest('dd') ?? null),
         danger: getComputedStyle(document.documentElement).getPropertyValue('--color-danger').trim()
       }
     })
     check(
-      costPresentation.label !== null && costPresentation.label.toLowerCase().startsWith('cost'),
-      `Buy cost is not labelled with cost wording: ${JSON.stringify(costPresentation)}`
+      costPresentation.buyCostLabel === 'Bought materials' &&
+        costPresentation.ownCostLabel === 'Own materials' &&
+        costPresentation.sellValueLabel === 'Total sell value' &&
+        costPresentation.profitLabel.startsWith('Profit'),
+      `The accounting values do not stand under their own terms: ${JSON.stringify(costPresentation)}`
     )
     check(
-      costPresentation.color !== costPresentation.plainColor,
-      `Buy cost does not use the cost treatment: ${JSON.stringify(costPresentation)}`
+      costPresentation.buyCost.color === costPresentation.ownCost.color &&
+        costPresentation.buyCost.color !== costPresentation.plain.color,
+      `The material costs do not share the cost treatment: ${JSON.stringify(costPresentation)}`
     )
     check(
-      costPresentation.size > costPresentation.plainSize,
-      `Buy cost is not emphasized over ordinary values: ${JSON.stringify(costPresentation)}`
+      costPresentation.sellValue.color !== costPresentation.plain.color &&
+        costPresentation.sellValue.color !== costPresentation.buyCost.color,
+      `The revenue is not told apart from a cost: ${JSON.stringify(costPresentation)}`
+    )
+    check(
+      costPresentation.profitRow.weight > costPresentation.plain.weight,
+      `The profit row is not emphasized over ordinary values: ${JSON.stringify(costPresentation)}`
     )
     // The concise label carries the basis now; the paragraph that used to explain it is gone, and
-    // the output quantity stays with the crafting values (DOMAIN_SPEC 2.1.1).
+    // the item count stays with the crafting values (DOMAIN_SPEC 2.1.1). 12 crafts of 1 item each.
     check(
       (await textOf(page, '[data-test="detail-quote-heading"]')) === 'Trading Post price / item',
       'The Trading Post quote does not carry the concise per-item label.'
@@ -801,13 +945,14 @@ async function run() {
       'The removed unit-price explanatory paragraph is still on screen.'
     )
     check(
-      (await textOf(page, '[data-test="detail-per-craft"]')).includes('Output quantity'),
-      'The output quantity was removed along with the unit-price prose.'
+      calculationText.includes('No. craftable Items 12'),
+      `The craftable item count was removed along with the unit-price prose: ${calculationText}`
     )
     record(
-      'buy cost reads as a cost and the quote as a single-item price',
-      `"${costPresentation.label}" in ${costPresentation.color} at ${costPresentation.size}px ` +
-        `(${costPresentation.plainSize}px elsewhere)`
+      'costs read as costs, the revenue as a revenue and the quote as a single-item price',
+      `"${costPresentation.buyCostLabel}"/"${costPresentation.ownCostLabel}" in ` +
+        `${costPresentation.buyCost.color}, "${costPresentation.sellValueLabel}" in ` +
+        `${costPresentation.sellValue.color}, profit row at weight ${costPresentation.profitRow.weight}`
     )
 
     // 5c. The resolution region holds the backend's tree, whole and in order.
@@ -837,26 +982,41 @@ async function run() {
       `The tree was not rendered whole and in order: ${treeItems.join(', ')}`
     )
     const resolutionText = await textOf(page, '[data-test="selected-detail"]')
+    // What Crafting Profit's compact presentation of a requirement keeps (`CraftingResolution.vue`
+    // with `selected-result-mode`, `ResolutionTreeNode.vue` with `compact-value`): the identity, the
+    // quantity needed, how it was sourced, the crafter the backend named, and one effective value —
+    // 103_086 copper for the root, read and not re-added from the children.
     for (const expected of [
-      'The requested recipe 1 is the recipe selected',
-      'one output batch',
-      'Price missing',
-      'Not tradable, valued at zero',
-      'SOME_STATE_ADDED_LATER (not recognized)',
-      'Each cost includes everything below its own requirement'
+      '60 needed',
+      'From stock ×24',
+      'Bought ×36',
+      'Crafted by Nbt Anch',
+      'Value: 10g 30s 86c',
+      // The two collapsed groups this fixture has, each naming how much it holds.
+      '4 ingredient requirements',
+      '2 ingredient requirements'
     ]) {
       check(resolutionText.includes(expected), `The resolution region did not contain "${expected}".`)
     }
     // DOMAIN_SPEC 2.1.1: the introductory paragraph, the per-node bookkeeping rows and the fresh
-    // row's own summary are gone from the normal view — and none of them leaves a gap that reads
-    // as success, which the retained states above are what prove.
+    // row's own summary are gone from the normal view. So are the raw Resolver state, blocked-reason
+    // and acquisition-method codes — `resolutionPresentation.ts` keeps them to the API's
+    // diagnostics, and `SelectedResultDetail.spec.ts`'s
+    // `keepsRawKnownUnknownAndMissingRowStatesOutOfTheVisibleDetail` requires their absence. The
+    // player-facing status step 5c2 reads is what keeps that from leaving a gap reading as success.
     for (const removed of [
       'starting inventory',
       'This recipe in that fresh calculation',
       'Producing recipe',
       'Crafts run',
       'Produced in total',
-      'Crafted for this requirement'
+      'Crafted for this requirement',
+      'PRICE_UNAVAILABLE',
+      'BUYING_DISABLED',
+      'UNVALUED_NONTRADEABLE',
+      'SOME_STATE_ADDED_LATER',
+      'SOME_REASON_ADDED_LATER',
+      'SOME_METHOD_ADDED_LATER'
     ]) {
       check(
         !resolutionText.includes(removed),
@@ -876,21 +1036,44 @@ async function run() {
         'node-recipe',
         'node-craft-count',
         'node-produced',
-        'node-character'
+        'node-character',
+        // `CraftingResolution.vue`'s non-compact branch renders these — the three separate cost
+        // figures, the batch note and the tree note. Crafting Profit selects the compact one, which
+        // replaces them with a single `node-value` per requirement and no surrounding prose. The
+        // recipe-knowledge chips are Crafting Discovery's alone (`show-recipe-knowledge`).
+        'node-costs',
+        'node-cash-cost',
+        'node-opportunity-cost',
+        'node-effective-cost',
+        'resolution-basis',
+        'resolution-tree-note',
+        'recipe-knowledge'
       ].filter((test) => document.querySelector(`[data-test="${test}"]`) !== null)
     )
     check(
       freshRowHooks.length === 0,
-      `Removed normal-view rows are still rendered: ${freshRowHooks.join(', ')}`
+      `Rows belonging to another presentation are rendered here: ${freshRowHooks.join(', ')}`
+    )
+    // The root of this tree *is* the recipe that was asked about, so there is no sourcing difference
+    // to report and the compact view says nothing rather than stating the obvious
+    // (`CraftingResolution.vue`'s `rootSourcing`). Crafting Discovery's own check covers the wording
+    // for a root that differs.
+    check(
+      (await page.$('[data-test="resolution-root-sourcing"]')) === null &&
+        !resolutionText.includes('is the recipe selected for this requirement'),
+      'The compact view restates that the requested recipe is the one that was selected.'
     )
     record(
-      'the backend tree is rendered whole, in order, with its own states',
-      `${treeItems.length} nodes, one detail request carrying scope and settings only`
+      'the backend tree is rendered whole, in order, in the compact presentation',
+      `${treeItems.length} nodes, one detail request carrying scope and settings only, ` +
+        'one effective value per requirement and no raw Resolver codes'
     )
 
-    // 5c2. A missing price names the item it is about, at the requirement it applies to
-    // (DOMAIN_SPEC 2.1.1), while the requirement above it — which has a price — carries neither the
-    // state nor the reason.
+    // 5c2. A missing price is marked at the requirement it applies to and names the item it is about
+    // (DOMAIN_SPEC 2.1.1), while the requirement above it — which has a price — carries no such
+    // mark. `resolutionPresentation.ts`'s `nodePlayerStatus` is the player-facing form of that fact:
+    // the raw `PRICE_UNAVAILABLE` code step 5c requires to be absent reaches the screen as
+    // "Not available on TP", beside that node's own wiki link.
     const missingPrice = await page.evaluate(() => {
       const own = (node, test) =>
         [...node.querySelectorAll(`:scope > [data-test="${test}"]`)].map(
@@ -905,52 +1088,66 @@ async function run() {
         const node = byName(name)
         if (node === undefined) return null
         return {
-          states: own(node, 'node-state-explanation'),
-          reasons: own(node, 'node-blocked-explanation')
+          status: own(node, 'node-player-status'),
+          value: own(node, 'node-value')
         }
       }
       return { affected: facts('Charged Core'), parent: facts('Lump of Mithril') }
     })
     check(
       missingPrice.affected !== null &&
-        missingPrice.affected.states.some((sentence) =>
-          sentence.includes('No purchase price is available for Charged Core')
-        ) &&
-        missingPrice.affected.reasons.some((sentence) =>
-          sentence.includes('no price is available for Charged Core')
-        ),
+        missingPrice.affected.status.length === 1 &&
+        missingPrice.affected.status[0].startsWith('Not available on TP') &&
+        missingPrice.affected.status[0].includes('Charged Core'),
       `The missing price does not name the item it is about: ${JSON.stringify(missingPrice.affected)}`
     )
     check(
-      missingPrice.parent !== null &&
-        missingPrice.parent.states.length === 0 &&
-        missingPrice.parent.reasons.length === 0,
+      // No cost was established for it, and the compact value says so rather than reading as zero.
+      missingPrice.affected.value.join(' | ') === 'Value: —',
+      `A cost the backend could not establish was not left missing: ${JSON.stringify(missingPrice.affected)}`
+    )
+    check(
+      missingPrice.parent !== null && missingPrice.parent.status.length === 0,
       `A requirement with a price was marked as missing one: ${JSON.stringify(missingPrice.parent)}`
     )
     record(
       'the item with no price is named beside its own requirement',
-      missingPrice.affected.reasons.join(' ').slice(0, 96)
+      missingPrice.affected.status.join(' ').slice(0, 96)
     )
 
-    // 5c3. The selected detail does not repeat a label its own sentence already carries (2.1.1).
-    // This row is unblocked, so "Not blocked" is exactly the label that must be gone while the
-    // sentence stays. The retained tree chips are a node's own codes, not this row's status.
+    // 5c3. The selected detail does not carry a generic row-state block at all any more: neither the
+    // label nor the sentence that repeated it, and no budget or affected-item row either. This row
+    // is unblocked, so "Not blocked" is exactly what must not be on screen — and
+    // `SelectedResultDetail.spec.ts`'s
+    // `keepsGenericRowStateExplanationsOutOfTheNormalSelectedResult` requires the same four hooks to
+    // be absent for every row state it lists. The retained node status step 5c2 reads is a
+    // requirement's own fact, not this row's.
     const unblockedStatus = await page.evaluate(() => ({
-      badge: document.querySelector('[data-test="detail-status"]') !== null,
-      explanation:
-        document.querySelector('[data-test="detail-status-explanation"]')?.textContent?.trim() ?? null,
+      stateHooks: [
+        'detail-status',
+        'detail-status-explanation',
+        'detail-budget-context',
+        'detail-affected-item',
+        'detail-state-code',
+        'detail-diagnostics'
+      ].filter((test) => document.querySelector(`[data-test="${test}"]`) !== null),
       statusText: (document.querySelector('[data-test="selected-detail"]')?.textContent ?? '')
         .replace(/\s+/g, ' ')
     }))
     check(
-      !unblockedStatus.badge && !unblockedStatus.statusText.includes('Not blocked'),
-      `The redundant "Not blocked" label is still in the detail: ${JSON.stringify(unblockedStatus)}`
+      unblockedStatus.stateHooks.length === 0,
+      `The selected result still carries a generic row-state block: ${unblockedStatus.stateHooks.join(', ')}`
     )
     check(
-      unblockedStatus.explanation === 'Nothing blocked the calculation for this recipe.',
-      `The state sentence went with the label: ${unblockedStatus.explanation}`
+      !unblockedStatus.statusText.includes('Not blocked') &&
+        !unblockedStatus.statusText.includes('Nothing blocked the calculation for this recipe'),
+      `The redundant unblocked wording is still in the detail: ${unblockedStatus.statusText.slice(0, 160)}`
     )
-    record('no redundant status label on an unblocked result', unblockedStatus.explanation)
+    record(
+      'no generic row-state label or sentence on an unblocked result',
+      'none of detail-status, detail-status-explanation, detail-budget-context, ' +
+        'detail-affected-item, detail-state-code, detail-diagnostics is rendered'
+    )
 
     // 5d. Child groups start collapsed and expand from the keyboard alone, one level at a time.
     const groupSummary = '[data-test="node-children"] > summary'
@@ -1029,7 +1226,10 @@ async function run() {
       const aside = document.querySelector('[data-test="selected-detail"]')
       window.scrollTo(0, document.documentElement.scrollHeight)
       aside.scrollTop = aside.scrollHeight
-      const last = aside.querySelector('[data-test="detail-diagnostics"]')
+      // The last line the detail renders: the purchase list closes it now that the technical
+      // diagnostics disclosure is gone from the normal view.
+      const purchases = aside.querySelectorAll('[data-test="missing-item"]')
+      const last = purchases[purchases.length - 1]
       const asideBox = aside.getBoundingClientRect()
       const lastBox = last.getBoundingClientRect()
       return {
@@ -1094,17 +1294,38 @@ async function run() {
     )
 
     // 5g. The tree's own treatments are readable. `smoke:layout` measures the shared ones, but the
-    // chips and node states are scoped component styles it never has a rendered instance of.
-    const treeContrast = await measureTreeContrast(page, [
+    // chips, the quantity, the compact value, the crafter line, the player status and the group
+    // summary are scoped component styles it never has a rendered instance of. Every group is opened
+    // first, so each pair is measured on text the browser actually laid out, and every named pair
+    // must be measured — a selector that stops matching is a pair that silently went unchecked
+    // (STORY-WEB-015 F001), not a smaller set that still clears a count.
+    const expandedGroups = await page.evaluate(() => {
+      const groups = [...document.querySelectorAll('[data-test="node-children"]')]
+      for (const group of groups) group.open = true
+      return groups.length
+    })
+    check(expandedGroups > 0, 'There was no ingredient group to open, so nothing nested was measured.')
+    const TREE_PAIRS = [
       ['method chip', '[data-test="node-method"].chip--method'],
-      ['unrecognized code chip', '[data-test="node-method"].chip--unknown'],
-      ['node state', '[data-test="node-state"].status--caution'],
-      ['unrecognized node state', '[data-test="node-state"].status--unknown'],
-      ['node cost line', '.node__costs'],
+      ['needed quantity', '[data-test="node-requested"]'],
+      ['node name', '[data-test="node-name"]'],
+      ['compact value line', '[data-test="node-value"]'],
       ['node crafter line', '.node__crafter'],
-      ['node explanation', '.node__note']
-    ])
-    check(treeContrast.length >= 5, `Too few tree samples measured: ${JSON.stringify(treeContrast)}`)
+      ['node player status', '[data-test="node-player-status"]'],
+      ['ingredient group summary', '[data-test="node-children"] > summary']
+    ]
+    const treeContrast = await measureTreeContrast(page, TREE_PAIRS)
+    const unmeasured = TREE_PAIRS.map(([name]) => name).filter(
+      (name) => !treeContrast.some((sample) => sample.name === name && Number.isFinite(sample.ratio))
+    )
+    check(
+      unmeasured.length === 0,
+      `No measurable element in the tree for ${unmeasured.join(', ')}. That pair was not measured, ` +
+        'so it cannot count as coverage — point the sample at a rendered element.'
+    )
+    await page.evaluate(() => {
+      for (const group of document.querySelectorAll('[data-test="node-children"]')) group.open = false
+    })
     const dimSamples = treeContrast.filter((sample) => sample.ratio < 4.5)
     check(
       dimSamples.length === 0,
@@ -1125,8 +1346,10 @@ async function run() {
     const detailsBeforeDisplayControls = requestsToPath(stub, '/api/crafting/profit/resolution').length
     const defaults = await displayControlState(page)
     check(
-      defaults.inControlsPanel && !defaults.inResultsRegion,
-      `The display controls are not a subgroup of the calculation-controls panel: ${JSON.stringify(defaults)}`
+      defaults.panelLabel === 'Crafting profit controls' &&
+        defaults.inControlsPanel &&
+        !defaults.inResultsRegion,
+      `The calculation and display controls are not two groups in one labelled panel: ${JSON.stringify(defaults)}`
     )
     check(
       defaults.legend === 'Displayed results' && defaults.calculationLegend === 'Calculation',
@@ -1178,7 +1401,8 @@ async function run() {
     )
     record(
       'Displayed results subgroup opens with all three filters on and no explanatory prose',
-      `${listedAtStart.length} of ${allRows().length} rows listed, maximum 250`
+      `${listedAtStart.length} of ${allRows().length} rows listed, maximum ${defaults.maximum} ` +
+        `rendered in ${defaults.limitInResultsRegion ? 'the results toolbar' : 'the controls panel'}`
     )
 
     // 7. Each filter is reversible on its own, and changes nothing but what is listed.
@@ -1482,23 +1706,39 @@ async function run() {
         `At ${viewport.width}px a row with no supplied total sell value did not stay blank: ${sellValues.join(', ')}`
       )
 
-      const diagnostics = await page.$$eval('[data-test="row-diagnostic"]', (chips) =>
+      // `DOMAIN_SPEC.md` 2.1.1: the normal comparison table presents actionable crafting and
+      // economic information and no generic row-state label, code, explanation or marker derived
+      // from one — "Recipe loop" among them. Every row of this fixture is listed here (the three
+      // filters are off), including the cycle, the not-allowed and the no-result rows, so a table
+      // that still labelled any of their states would be caught by this.
+      const stateLabels = await page.$$eval('[data-test="row-diagnostic"]', (chips) =>
         chips.map((chip) => (chip.textContent ?? '').replace(/\s+/g, ' ').trim())
       )
       check(
-        diagnostics.includes('Recipe loop'),
-        `At ${viewport.width}px the retained cycle diagnostic is gone: ${diagnostics.join(', ')}`
+        stateLabels.length === 0,
+        `At ${viewport.width}px the table labels rows with their state: ${stateLabels.join(', ')}`
       )
       const tableText = await textOf(page, '[data-test="profit-table"]')
-      for (const moved of ['BUYING_DISABLED', 'RECIPE_NOT_ALLOWED', 'CYCLE_DETECTED', 'Buying is off']) {
+      for (const moved of [
+        'BUYING_DISABLED',
+        'RECIPE_NOT_ALLOWED',
+        'CYCLE_DETECTED',
+        'Buying is off',
+        'Recipe loop',
+        'Price missing',
+        'No result',
+        'State not reported',
+        'Unrecognized state'
+      ]) {
         check(
           !tableText.includes(moved),
           `At ${viewport.width}px the table still labels rows with "${moved}".`
         )
       }
       record(
-        `required economic columns and no State column at ${viewport.width}px`,
-        `${headers.length} columns, diagnostics: ${diagnostics.join(', ') || 'none'}`
+        `required economic columns, no State column and no row-state label at ${viewport.width}px`,
+        `${headers.length} columns over ${(await listedRecipes(page)).length} rows, ` +
+          `first total sell value ${sellValues[0]}`
       )
     }
 
@@ -1521,50 +1761,59 @@ async function run() {
         const text = (test) =>
           document.querySelector(`[data-test="${test}"]`)?.textContent?.replace(/\s+/g, ' ').trim() ?? null
         return {
-          badge: document.querySelector('[data-test="detail-status"]') !== null,
-          explanation: text('detail-status-explanation'),
-          context: text('detail-budget-context'),
-          affected: text('detail-affected-item'),
+          stateHooks: [
+            'detail-status',
+            'detail-status-explanation',
+            'detail-budget-context',
+            'detail-affected-item'
+          ].filter((test) => document.querySelector(`[data-test="${test}"]`) !== null),
           buyCost: text('detail-buy-cost'),
-          purchases: [...document.querySelectorAll('[data-test="missing-item"]')].map((item) =>
-            (item.textContent ?? '').replace(/\s+/g, ' ').trim()
-          ),
+          totalProfit: text('detail-total-profit'),
+          purchases: [...document.querySelectorAll('[data-test="missing-item"]')].map((item) => ({
+            name: (item.querySelector('.material-name')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+            quantity: (item.querySelector('.material-quantity')?.textContent ?? '').trim(),
+            quote: (item.querySelector('.meta')?.textContent ?? '').replace(/\s+/g, ' ').trim()
+          })),
           basis: (document.querySelector('[data-test="selected-detail"]')?.textContent ?? '').replace(
             /\s+/g,
             ' '
           )
         }
       })
+      // `DOMAIN_SPEC.md` 2.1.1: the Selected Result panel carries no generic row-state label, no
+      // explanation of one and no context derived from one — the echoed maximum-buy sentence and the
+      // affected-item sentence included. What it does have to preserve is the distinction between
+      // the limit on further crafting and the crafts already counted, and that is carried by the
+      // supplied figures under their own basis heading, which is what the rest of this step reads.
       check(
-        !budget.badge && !budget.basis.includes('Over the buy limit'),
-        `At ${viewport.width}px the redundant "Over the buy limit" label is still shown: ${JSON.stringify(budget)}`
+        budget.stateHooks.length === 0,
+        `At ${viewport.width}px the detail still explains the row's state: ${budget.stateHooks.join(', ')}`
       )
+      for (const forbidden of [
+        'Over the buy limit',
+        'Further crafting is blocked',
+        "The calculation's maximum buy setting",
+        'INSUFFICIENT_BUDGET'
+      ]) {
+        check(
+          !budget.basis.includes(forbidden),
+          `At ${viewport.width}px the detail still carries "${forbidden}".`
+        )
+      }
+      // The backend's own amounts for the 4 crafts it did count: 240000 copper of purchase and the
+      // supplied total profit, under the basis heading that names those crafts.
       check(
-        budget.explanation.includes('Further crafting is blocked') &&
-          budget.explanation.includes('4 crafts already counted stay valid'),
-        `At ${viewport.width}px the limit was not told apart from the counted crafts: ${budget.explanation}`
-      )
-      // Both amounts are the backend's: 250000 copper of budget echoed with the calculation, and
-      // 240000 copper of purchase supplied for the crafts counted.
-      check(
-        budget.context === "The calculation's maximum buy setting is 25g 0s 0c.",
-        `At ${viewport.width}px the echoed maximum buy was not stated: ${budget.context}`
-      )
-      check(
-        budget.buyCost === '24g 0s 0c' && budget.basis.includes('For all 4 crafts counted'),
-        `At ${viewport.width}px the counted-craft purchase cost is wrong: ${budget.buyCost}`
+        budget.buyCost === '24g 0s 0c' &&
+          budget.totalProfit === '+14g 81s 40c' &&
+          budget.basis.includes('For all 4 crafts counted'),
+        `At ${viewport.width}px the counted crafts' own figures are wrong: ${JSON.stringify(budget)}`
       )
       check(
         budget.purchases.length === 1 &&
-          budget.purchases[0].includes('Glob of Ectoplasm') &&
-          budget.purchases[0].includes('×20'),
+          budget.purchases[0].name === 'Glob of Ectoplasm' &&
+          budget.purchases[0].quantity === '20' &&
+          budget.purchases[0].quote === 'Price / item: 24s 0c · Total: 4g 81s 23c',
         `At ${viewport.width}px the affected purchase was not listed: ${JSON.stringify(budget.purchases)}`
-      )
-      // The purchase that went over the limit is not in the row contract, and is not invented.
-      check(
-        budget.affected !== null &&
-          budget.affected.includes('does not name the further purchase that went over the limit'),
-        `At ${viewport.width}px the detail did not say what it has no fact for: ${budget.affected}`
       )
       const budgetOverflow = await pageOverflow(page)
       check(
@@ -1573,8 +1822,9 @@ async function run() {
           `(${budgetOverflow.scrollWidth} > ${budgetOverflow.clientWidth}).`
       )
       record(
-        `budget limit explained from supplied facts at ${viewport.width}px`,
-        `${budget.context} ${budget.purchases[0].slice(0, 48)}`
+        `the counted crafts stay stated and the limit is not explained at ${viewport.width}px`,
+        `purchase cost ${budget.buyCost} for the 4 crafts counted, ` +
+          `${budget.purchases[0].name} ×${budget.purchases[0].quantity}`
       )
     }
 
@@ -1594,23 +1844,40 @@ async function run() {
       { timeout: TIMEOUT_MS }
     )
     const buyingOff = await page.evaluate(() => ({
-      badge: document.querySelector('[data-test="detail-status"]') !== null,
-      explanation:
-        document.querySelector('[data-test="detail-status-explanation"]')?.textContent?.replace(/\s+/g, ' ').trim() ??
-        null,
+      stateHooks: ['detail-status', 'detail-status-explanation'].filter(
+        (test) => document.querySelector(`[data-test="${test}"]`) !== null
+      ),
       detail: (document.querySelector('[data-test="selected-detail"]')?.textContent ?? '').replace(/\s+/g, ' '),
+      name: document.querySelector('[data-test="detail-name"]')?.textContent?.trim() ?? null,
+      // The purchase list's own basis heading. `.detail__basis` also labels the resolution tree's
+      // "Requirements", so the heading is picked by what it names rather than by being the first one.
+      basis:
+        [...document.querySelectorAll('[data-test="selected-detail"] .detail__basis')]
+          .map((heading) => (heading.textContent ?? '').replace(/\s+/g, ' ').trim())
+          .find((heading) => heading.startsWith('For ')) ?? null,
+      emptyPurchases: document.querySelector('[data-test="missing-all-none"]')?.textContent?.trim() ?? null,
       focused: document.activeElement?.getAttribute('data-test') ?? null
     }))
     check(
-      !buyingOff.badge && !buyingOff.detail.includes('Buying is off'),
-      `The redundant "Buying is off" label is still in the detail: ${JSON.stringify(buyingOff)}`
+      buyingOff.stateHooks.length === 0 &&
+        !buyingOff.detail.includes('Buying is off') &&
+        !buyingOff.detail.includes('buying is switched off') &&
+        !buyingOff.detail.includes('BUYING_DISABLED'),
+      `The row's state is still labelled or explained in the detail: ${JSON.stringify(buyingOff)}`
     )
+    // The recipe is still opened and still accounted for; its supplied craftable count is 0, so the
+    // purchase list's basis says so rather than claiming crafts that were not counted.
     check(
-      buyingOff.explanation.includes('buying is switched off'),
-      `The cause went with the label: ${buyingOff.explanation}`
+      buyingOff.name === 'Elonian Leather Square' &&
+        buyingOff.basis === 'For all 0 crafts counted' &&
+        buyingOff.emptyPurchases === 'Nothing needs to be bought.',
+      `The blocked row was not shown under its own counted basis: ${JSON.stringify(buyingOff)}`
     )
     check(buyingOff.focused === 'select-row', 'Selecting by keyboard moved focus off the row control.')
-    record('no redundant "Buying is off" label, cause kept', buyingOff.explanation.slice(0, 96))
+    record(
+      'a row blocked because buying is off carries no state label or explanation',
+      `"${buyingOff.name}" under "${buyingOff.basis}"`
+    )
 
     // 17. Nothing here submitted a synchronization, and nothing failed in the page.
     check(

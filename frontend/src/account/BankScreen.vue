@@ -41,7 +41,8 @@ function onReload(): void { void bank.load() }
 <template>
   <div class="screen" data-test="bank-screen">
     <header class="bank-page-header">
-      <h1>Bank</h1>
+      <!-- The hooks `App.vue` moves focus to after a navigation, as `PageHeader.vue` carries them. -->
+      <h1 tabindex="-1" data-page-heading data-test="page-heading">Bank</h1>
       <button
         type="button"
         class="button--primary"

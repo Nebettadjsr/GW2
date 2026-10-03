@@ -310,3 +310,197 @@
 [10:00:30] Project planning FAILED: Phase 5 remains incomplete: active and ready browser stories plus the required bounded health review remain. This pass recorded all supplied follow-up findings and created four bounded current-phase stories; WEB-020 and WEB-021 remain ready for a subsequent batch.; validation: ["Invalid phase_review outcome: 'DEFERRED'"]. Held until planning inputs change; independent execution continues.
 [10:00:31] Interrupted by user. Exiting.
 [10:26:41] STORY-WEB-018-fresh-build-browser-smoke-checks.md completed and finalized (PASSED 2f9b2d5): Status DONE, entry moved to '## Done', CURRENT_STORY.md cleared, queue consistent.
+[10:41:06] GW2 AI Orchestrator started. Repository: C:\Users\Administrator\IdeaProjects\GW2
+[10:41:14] Availability check: claude_available=True, codex_available=True
+[10:41:14] Decision: code (select next story) -- reason: 4 selectable To Do candidate(s), Claude available
+[10:41:14] ========================================
+[10:41:14] Story selector: NEXT
+[10:41:14] Reason: Deterministic selection: first executable entry in BACKLOG.md's 'To Do' order (STORY-WEB-024-repair-fresh-build-smoke-contracts.md).
+[10:41:14] ========================================
+[10:41:14] Next story activated:
+[10:41:14] agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md
+[10:41:23] Availability check: claude_available=True, codex_available=True
+[10:41:23] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[10:41:23] ========================================
+[10:41:23] Active story: agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md
+[10:41:23] ========================================
+[10:41:37] RepoMap: enabled, budget=1200 tokens, available=True, generated=9205 chars (~2301 tokens) in 11.94s
+[10:41:41] ========================================
+[10:41:41] Starting Claude Code
+[10:41:41] ========================================
+[10:48:03] You've hit your session limit · resets 2:10pm (Europe/Berlin)
+[10:48:03] ========================================
+[10:48:03] Claude Code exit code: 1
+[10:48:03] ========================================
+[10:48:06] Claude run measurement: repo_map=on, duration=382.2s, usage_before=ClaudeUsage(session_used_percent=86, weekly_used_percent=11), usage_after=ClaudeUsage(session_used_percent=100, weekly_used_percent=12)
+[10:48:06] Claude exited with code 1 after running out of capacity. Story remains active and UNFINISHED; waiting locally for capacity before continuing the same story.
+[10:48:06] Claude capacity exhausted during STORY-WEB-024-repair-fresh-build-smoke-contracts.md; story preserved as UNFINISHED, waiting locally.
+[10:48:06] Claude capacity exhausted (first detected).
+[10:48:13] Planning resumed for changed inputs: AGENTS.md, agent/ARCHITECT_INSTRUCTIONS.md, agent/CURRENT_STORY.md, agent/PLANNER_INSTRUCTIONS.md, agent/runtime/core/planning_context.py, agent/runtime/core/project_planner.py, agent/runtime/core/story_state.py, agent/runtime/support/config.py, agent/stories/BACKLOG.md, agent/stories/STORY-DOM-023-crafting-profit-fee-integration.md, agent/stories/STORY-DOM-025-remove-stale-cost-evaluator-profit.md, agent/stories/STORY-SYNC-004-complete-referenced-item-metadata.md, agent/stories/STORY-WEB-015-profit-purchase-and-blocking-details.md, agent/stories/STORY-WEB-017-layout-smoke-intro-contrast-sample.md, agent/stories/STORY-WEB-022-align-ecto-page-label.md, agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md, agent/stories/STORY-WEB-025-backend-total-sell-value-display.md, agent/stories/STORY-WEB-026-account-smoke-bank-reload-contract.md, agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md
+[10:48:13] ========================================
+[10:48:13] Running project-planning pass
+[10:48:13] ========================================
+[10:48:13] ========================================
+[10:48:13] Starting hosted Codex planner
+[10:48:13] ========================================
+[10:48:14] [planner] session 01a100f3-1776-7241-91bd-36adc3c5a558
+[10:48:14] [planner] reasoning...
+[10:48:17] Planner last response:
+[10:48:17] I’ll review the remaining Phase 5 exit work against the queued stories and the health-review contract, then record the review outcome and validate the planning artifacts.
+[10:48:21] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content docs/TARGET_ARCHITECTURE.md | Select-Object -Skip 260 -First 45; Get-Content agent/stories/STORY-QUALITY-005-phase-five-completion-review.md; Get-Content agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md; Get-Content agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md | Select-String -Pattern '"'^## (Goal|Acceptance Criteria|Dependencies|Blockers|Status)'"' -Context 0,6; rg --files agent/runtime/core agent/runtime | Select-String 'planning_check|backlog_writer'"
+[10:48:22] [planner command done] exit 0
+[10:48:29] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path docs/TARGET_ARCHITECTURE.md -Pattern '"'^## 21'"\\.' -Context 0,35; Select-String -Path docs/TEST_STRATEGY.md -Pattern '"'^## (12|36)'"\\.' -Context 0,8"
+[10:48:29] [planner command done] exit 0
+[10:48:34] Planner last response:
+[10:48:34] The supplied Phase 5 criteria are covered except browser smoke follow-ups already represented by the active/queued stories and the required bounded health review, which is blocked on queued verification work. There’s no evidence here for an additional story or a milestone transition. I’m recording those dispositions now.
+[10:48:47] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[10:48:47] import json
+[10:48:47] from pathlib import Path
+[10:48:47] p = Path('agent/runtime/artifacts/PLANNING_RESULT.json')
+[10:48:47] data = {
+[10:48:47]   \"status\": \"COMPLETE\",
+[10:48:47]   \"phase_considered\": \"Phase 5\",
+[10:48:47]   \"independent_work_remaining\": False,
+[10:48:47]   \"phase_review\": [
+[10:48:47]     {\"area\": \"Crafting Profit performance requirement\", \"outcome\": \"COVERED\", \"references\": [\"STORY-PERF-002\"]},
+[10:48:47]     {\"area\": \"Vue/TypeScript selection and browser rendering of backend-authoritative results\", \"outcome\": \"COVERED\", \"references\": [\"AR-001\", \"STORY-WEB-001\", \"STORY-WEB-007\", \"STORY-WEB-012\"]},
+[10:48:47]     {\"area\": \"Normal workflow refresh and System Status\", \"outcome\": \"COVERED\", \"references\": [\"STORY-WEB-002\", \"STORY-SYNC-005\"]},
+[10:48:47]     {\"area\": \"Frontend-owned Ecto Salvage behavior and obsolete backend route\", \"outcome\": \"COVERED\", \"references\": [\"STORY-WEB-013\", \"STORY-WEB-022\", \"STORY-API-003\"]},
+[10:48:47]     {\"area\": \"Remaining browser smoke acceptance\", \"outcome\": \"PREREQUISITE\", \"references\": [\"STORY-WEB-024\", \"STORY-WEB-020\", \"STORY-WEB-027\", \"STORY-WEB-021\"]},
+[10:48:47]     {\"area\": \"Phase 5 bounded project health review\", \"outcome\": \"PREREQUISITE\", \"references\": [\"STORY-QUALITY-005\"]}
+[10:48:47]   ],
+[10:48:47]   \"phase_exit_criteria_satisfied\": False,
+[10:48:47]   \"story_files_created\": [],
+[10:48:47]   \"user_decision_ids\": [],
+[10:48:47]   \"product_owner_requests_processed\": [],
+[10:48:47]   \"architect_requests_created\": [],
+[10:48:47]   \"milestone_transition\": False,
+[10:48:47]   \"completed_milestone\": None,
+[10:48:47]   \"next_milestone\": None,
+[10:48:47]   \"backlog_updated\": False,
+[10:48:47]   \"roadmap_updated\": False,
+[10:48:47]   \"project_state_updated\": False,
+[10:48:47]   \"reason\": \"The remaining Phase 5 smoke and health-review work is already represented by the active and queued milestone stories; no additional justified planning artifact is needed.\"
+[10:48:47] }
+[10:48:47] p.write_text(json.dumps(data, indent=2) + '\\n', encoding='utf-8')
+[10:48:47] '@ | python -; python -c \"import sys; sys.path.insert(0,'.'); from agent.runtime.core.planning_check import main; sys.exit(main())\""
+[10:48:47] [planner command done] exit 0
+[10:48:50] Planner last response:
+[10:48:50] Recorded the Phase 5 review in [PLANNING_RESULT.json](/C:/Users/Administrator/IdeaProjects/GW2/agent/runtime/artifacts/PLANNING_RESULT.json). The remaining smoke work and health review are already represented by active or queued stories, so I created no stories and made no milestone transition.
+[10:48:50] Validation passed: `PLANNING OUTPUT OK`.
+[10:48:50] [planner] turn completed | input tokens: 165491 | cached input tokens: 131072 | output tokens: 1458
+[10:48:50] ========================================
+[10:48:50] [planner] turn totals | model requests: 1 | gross input tokens: 165,491 | cached input tokens: 131,072 | uncached input tokens: 34,419 | output tokens: 1,458
+[10:48:50] Hosted codex planner exit code: 0
+[10:48:50] ========================================
+[10:48:50] ========================================
+[10:48:50] Planning result: COMPLETE
+[10:48:50] Reason: The remaining Phase 5 smoke and health-review work is already represented by the active and queued milestone stories; no additional justified planning artifact is needed.
+[10:48:50] ========================================
+[10:49:51] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[10:50:51] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[10:51:51] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[10:52:52] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[10:53:52] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[10:54:52] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[10:55:52] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[10:56:52] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[10:57:53] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[10:58:53] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[10:59:53] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:00:53] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:01:53] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:02:53] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:03:54] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:04:54] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:05:54] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:06:54] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:07:54] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:08:54] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:09:55] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:10:55] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:11:55] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:12:55] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:13:55] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:14:55] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:15:55] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:16:56] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:17:56] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:18:56] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:19:56] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:20:57] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:21:57] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:22:57] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:23:57] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:24:57] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:25:57] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:26:58] Decision: wait -- no planning inputs changed and previous planner result has no independent work remaining
+[11:27:23] Interrupted by user. Exiting.
+[18:42:44] GW2 AI Orchestrator started. Repository: C:\Users\Administrator\IdeaProjects\GW2
+[18:42:52] Availability check: claude_available=True, codex_available=True
+[18:42:52] Decision: code (resume active story) -- reason: an unfinished active story exists, which is always priority 1
+[18:42:52] ========================================
+[18:42:52] Active story: agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md
+[18:42:52] ========================================
+[18:43:08] RepoMap: enabled, budget=1200 tokens, available=True, generated=8812 chars (~2203 tokens) in 13.75s
+[18:43:12] ========================================
+[18:43:12] Starting Claude Code
+[18:43:12] ========================================
+[19:12:09] STORY-WEB-024 is complete. Summary of what I did:
+[19:12:09] **What changed** — five files. `discovery-browser-smoke.mjs` already carried the maintainer's own reconciliation of its control-group and inventory-selector steps in the working tree; that work is preserved and I only repaired the two stale steps below it.
+[19:12:09] - **AC 1, layout** — the `synchronization` readiness selector waited for `[data-test="sync-controls"]`, which `SyncScreen.vue` doesn't render. It now waits for the price-cache health badge in the state the supplied status produces (the hook and tone class `SyncScreen.spec.ts` asserts), with the stub answering `/api/system/status`. Two further blockers appeared past that wait: the `page intro` contrast pair was being measured on an area with no intro (moved to `discovery`), and `BankScreen.vue`/`MaterialsScreen.vue` render their own `<h1>` without the `tabindex="-1" data-page-heading data-test="page-heading"` hooks, so `App.vue:56`'s post-navigation focus was a no-op there. I added those three attributes to the two headings — restoring the shell's existing behavior — and nothing else in either file.
+[19:12:09] - **AC 2, Profit** — the drift was far wider than the one `For one craft` phrase: the detail is now a single compact accounting list with no row-state block and a compact tree. Twelve steps were reconciled against the component, its spec, and `DOMAIN_SPEC.md` 2.1.1 (including flipping `For one craft` to an absence claim and replacing the required `Recipe loop` chip with "no row-state label at all"). The fixture was completed rather than assertions loosened — `totalMatsSellValueCopper` and the two `MissingItem` purchase fields, each a value the page cannot derive.
+[19:12:09] - **AC 3, Discovery** — `resolution-basis`/`resolution-root-sourcing` aren't rendered in the compact presentation, and `node-effective-cost` is now `node-value`.
+[19:12:09] **Verification** — `smoke:layout` PASSED (13 steps), `smoke:profit` PASSED (34 steps), `smoke:discovery` PASSED (13 steps), all on one bundle. Two controls from throwaway copies (deleted; `git status` is clean) failed for the right reason: removing the status answer times out naming the new readiness selector, and flipping the echoed `listingSell` fails on the reconciled price-basis label. Unit suites for the two product files and the shell that reads the new hook: 29, 19 and 15 tests passing.
+[19:12:09] Four follow-up findings are recorded (page-header duplication, a 2.1.1 placement deviation for the result maximum, and two presentation branches now unreachable from either crafting page).
+[19:12:09] ========================================
+[19:12:09] Claude Code exit code: 0
+[19:12:09] ========================================
+[19:12:13] Claude run measurement: repo_map=on, duration=1737.0s, usage_before=ClaudeUsage(session_used_percent=0, weekly_used_percent=12), usage_after=ClaudeUsage(session_used_percent=55, weekly_used_percent=16)
+[19:12:13] Evaluator started (Codex, read-only)
+[19:12:13] ========================================
+[19:12:13] Starting hosted Codex evaluator
+[19:12:13] ========================================
+[19:12:14] [evaluator] session 01a102c0-8644-7270-a120-1bd617cf7cdb
+[19:12:15] [evaluator] reasoning...
+[19:12:18] Evaluator last response:
+[19:12:18] I’ll inspect the working tree diff and the changed smoke scripts plus their relevant browser assertions, then return the required JSON verdict without running tests or changing files.
+[19:12:22] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git status --porcelain; git diff --stat HEAD; git diff -- frontend/scripts/layout-browser-smoke.mjs frontend/scripts/profit-browser-smoke.mjs frontend/scripts/discovery-browser-smoke.mjs frontend/src/screens/BankScreen.vue frontend/src/screens/MaterialsScreen.vue'
+[19:12:22] [evaluator command done] exit 0
+[19:12:32] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "git diff --unified=3 HEAD -- frontend/scripts/layout-browser-smoke.mjs frontend/src/account/BankScreen.vue frontend/src/account/MaterialsScreen.vue; Select-String -Path frontend/scripts/profit-browser-smoke.mjs -Pattern 'function displayControlState|detail-calculation|For one craft|Price 1 item|buyingOff|stateHooks|record\\(' | Select-Object -First 30; Select-String -Path frontend/scripts/discovery-browser-smoke.mjs -Pattern 'bothInPanel|selectorCount|discovery-detail-profit|removedProse|node-value|rootCost'"
+[19:12:33] [evaluator command done] exit 0
+[19:12:44] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$p='"'frontend/scripts/profit-browser-smoke.mjs'; Get-Content "'$p | Select-Object -Skip 710 -First 78; Get-Content $p | Select-Object -Skip 490 -First 52; Select-String -Path frontend/src/crafting/SelectedResultDetail.vue,frontend/src/crafting/SelectedDiscoveryDetail.vue,frontend/src/sync/SyncScreen.vue -Pattern '"'data-test=\"detail-calculation\"|detail-output-quote|discovery-detail-profit|price-cache-health|detail-total-profit|selected-result-mode' -Context 1,2;"
+[19:12:45] [evaluator command done] exit 0
+[19:12:54] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md -Pattern 'AC 4|smoke:layout|smoke:profit|smoke:discovery|Definition of Done|PASSED|Remaining uncertainty' -Context 0,3;"
+[19:12:54] [evaluator command done] exit 0
+[19:13:08] Evaluator last response:
+[19:13:08] ```json
+[19:13:08] {
+[19:13:08]   "decision": "COMPLETE",
+[19:13:08]   "reason": "The three smoke scripts now check the current rendered workflow contracts, and the changed story records focused browser verification for each script. The reported remaining findings concern work outside this story's scope.",
+[19:13:08]   "intent_achieved": true,
+[19:13:08]   "evidence": [
+[19:13:08]     "`git status --porcelain` and `git diff --stat HEAD`: identified the changed smoke scripts, the two account screens, the story record, and other working-tree changes.",
+[19:13:08]     "`frontend/scripts/layout-browser-smoke.mjs` diff: readiness now waits for the successful price-cache health status, supplies `/api/system/status`, and measures the page intro on Discovery.",
+[19:13:08]     "`frontend/src/account/BankScreen.vue` and `frontend/src/account/MaterialsScreen.vue` diffs: both headings carry the focus hooks used by the shell.",
+[19:13:08]     "`frontend/scripts/profit-browser-smoke.mjs`, steps 5 and 5z: checks calculation and quote labels in their rendered regions, excludes obsolete per-craft wording, and checks supplied values and the fee note.",
+[19:13:08]     "`frontend/scripts/profit-browser-smoke.mjs`, `displayControlState` and later detail checks: checks control grouping and the compact selected-result state and counted-craft figures.",
+[19:13:08]     "`frontend/scripts/discovery-browser-smoke.mjs`, steps 3–4, 8–9: checks control grouping, the single character selector, the selected row's profit, compact resolution content, and supplied values.",
+[19:13:08]     "`frontend/src/crafting/SelectedResultDetail.vue`, `SelectedDiscoveryDetail.vue`, and `SyncScreen.vue` targeted sections: confirmed the rendered hooks and content used by the revised assertions.",
+[19:13:08]     "`agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md`, AC 4 and verification section: records passing results for layout (13 steps), Profit (34), and Discovery (13), plus failure controls."
+[19:13:08]   ],
+[19:13:08]   "unmet_intent": [],
+[19:13:08]   "unmet_acceptance_criteria": [],
+[19:13:08]   "unmet_definition_of_done": [],
+[19:13:08]   "actionable_retry_items": []
+[19:13:08] }
+[19:13:08] ```
+[19:13:08] [evaluator] turn completed | input tokens: 156331 | cached input tokens: 127744 | output tokens: 1362
+[19:13:08] ========================================
+[19:13:08] [evaluator] turn totals | model requests: 1 | gross input tokens: 156,331 | cached input tokens: 127,744 | uncached input tokens: 28,587 | output tokens: 1,362
+[19:13:08] Hosted codex evaluator exit code: 0
+[19:13:08] ========================================
+[19:13:08] ========================================
+[19:13:08] Evaluator decision: COMPLETE
+[19:13:08] Reason: The three smoke scripts now check the current rendered workflow contracts, and the changed story records focused browser verification for each script. The reported remaining findings concern work outside this story's scope.
+[19:13:08] ========================================

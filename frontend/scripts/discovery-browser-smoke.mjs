@@ -389,22 +389,52 @@ async function run() {
       `list ${Math.round(wideResults.width)}px, detail ${Math.round(wideDetail.width)}px, no page overflow`
     )
 
-    // 3. The controls are grouped as Calculation and Displayed results, in one panel.
-    const legends = await textsOf(page, '[data-test="discovery-calculation-controls"] > legend, [data-test="discovery-display-controls"] > legend')
+    // 3. The inputs that drive a calculation and the inputs that only change what is displayed are two
+    // separate groups inside the one labelled controls panel. The screen names that panel with
+    // `aria-label` and marks each group with its own hook rather than with a `fieldset`/`legend` pair,
+    // so what this step compares is membership: a control that moved between the two still fails here.
+    const grouping = await page.evaluate(() => {
+      const panel = document.querySelector('.discovery-controls')
+      const calculation = document.querySelector('[data-test="discovery-calculation-controls"]')
+      const display = document.querySelector('[data-test="discovery-display-controls"]')
+      const holds = (group, selector) => group !== null && group.querySelector(selector) !== null
+      return {
+        panelLabel: panel?.getAttribute('aria-label') ?? null,
+        bothInPanel:
+          panel !== null &&
+          calculation !== null &&
+          display !== null &&
+          panel.contains(calculation) &&
+          panel.contains(display) &&
+          !calculation.contains(display) &&
+          !display.contains(calculation),
+        scopeInCalculation: holds(calculation, '[data-test="discovery-scope-selector"]'),
+        scopeInDisplay: holds(display, '[data-test="discovery-scope-selector"]'),
+        searchInDisplay: holds(display, '[data-test="discovery-search"]'),
+        searchInCalculation: holds(calculation, '[data-test="discovery-search"]')
+      }
+    })
     check(
-      legends.join(' | ') === 'Calculation | Displayed results',
-      `The controls are not grouped the way the corrected Profit pattern asks: ${legends.join(' | ')}`
+      grouping.panelLabel === 'Discovery controls' && grouping.bothInPanel,
+      `The calculation and display controls are not two sibling groups in one labelled panel: ${JSON.stringify(grouping)}`
     )
-    const searchGrouped = await page.$eval('[data-test="discovery-display-controls"]', (group) =>
-      group.querySelector('[data-test="discovery-search"]') !== null
+    check(
+      grouping.scopeInCalculation && !grouping.scopeInDisplay,
+      `The scope selector is not in the calculation group: ${JSON.stringify(grouping)}`
     )
-    check(searchGrouped, 'The search is not in the Displayed results subgroup.')
+    check(
+      grouping.searchInDisplay && !grouping.searchInCalculation,
+      `The search is not in the display-only group: ${JSON.stringify(grouping)}`
+    )
     // No profit filter: hiding candidates by profit is a Profit control, not Discovery eligibility.
     check(
       (await page.$('[data-test="filter-non-positive-profit"]')) === null,
       "Discovery offers Crafting Profit's non-positive-profit filter as if it were an eligibility rule."
     )
-    record('controls grouped as Calculation and Displayed results', 'search in the second, no profit filter')
+    record(
+      `calculation and display controls are separate groups in the "${grouping.panelLabel}" panel`,
+      'scope selector in the calculation group, search in the display group, no non-positive-profit filter'
+    )
 
     // 4. Individual character disciplines only, each carrying the rating the backend reported.
     const scopeOptions = await textsOf(page, '[data-test="discovery-scope-selector"] option')
@@ -416,12 +446,22 @@ async function run() {
       !scopeOptions.includes('All'),
       'The scope selector offers an All entry, which Discovery has no reading for.'
     )
-    const inventoryOptions = await textsOf(page, '[data-test="discovery-inventory-selector"] option')
-    check(
-      inventoryOptions[0] === 'No character — all owned materials',
-      `"No character" is not offered as a real inventory choice: ${inventoryOptions.join(' | ')}`
+    // The selected character is both the eligibility scope and the material source, so there is one
+    // selector and no separate inventory choice to disagree with it (`useCraftingDiscovery.ts`,
+    // `CraftingDiscoveryScreen.spec.ts` "uses one selected character as both the discovery scope and
+    // material source"). Step 12 checks the requests this leaves on the wire.
+    const selectorCount = await page.$$eval(
+      '[data-test="discovery-scope-selector"], [data-test="discovery-inventory-selector"]',
+      (elements) => elements.map((element) => element.getAttribute('data-test'))
     )
-    record('individual character disciplines with supplied ratings', scopeOptions.join(' | '))
+    check(
+      selectorCount.join(' | ') === 'discovery-scope-selector',
+      `Discovery offers a scope and material source other than the one selected character: ${selectorCount.join(' | ')}`
+    )
+    record(
+      'one character selector supplying both scope and materials, with the supplied ratings',
+      scopeOptions.join(' | ')
+    )
 
     // 5. Every candidate the backend returned is listed, losses included, in level order.
     const levels = await textsOf(page, '[data-test="discovery-level"]')
@@ -429,9 +469,12 @@ async function run() {
       levels.join(',') === '400,225,150,75,0',
       `The list does not open on highest recipe level first: ${levels.join(',')}`
     )
+    // The row's own supplied total, like the sell value beside it and the detail's profit figure —
+    // never the per-craft `profitCopper` the same fixture sets to a different value, so a column
+    // reading that field instead would print `+1g 23s 45c` here and fail.
     const profits = await textsOf(page, '[data-test="discovery-profit"]')
     check(
-      profits.join(' | ') === '+1g 23s 45c | -2g 50s 0c | 0c | — | —',
+      profits.join(' | ') === '+14g 81s 40c | -17g 50s 0c | 0c | — | —',
       `The supplied profits are not displayed with their signs, zeros and nulls: ${profits.join(' | ')}`
     )
     // The backend's own total, not a product of a count and a revenue.
@@ -496,7 +539,7 @@ async function run() {
     // 8. The table row's own total is what the detail shows, and the fresh calculation's
     //    disagreeing figures are not printed beside it (`DOMAIN_SPEC.md` 2.1.1). The fresh answer
     //    is still requested and still supplies the tree below.
-    const tableTotal = await textOf(page, '[data-test="discovery-detail-total-profit"]')
+    const tableTotal = await textOf(page, '[data-test="discovery-detail-profit"]')
     check(
       tableTotal === '+14g 81s 40c',
       `The fresh calculation overwrote the table row's own total: ${tableTotal}`
@@ -509,24 +552,52 @@ async function run() {
         !detailText.includes('This recipe in that fresh calculation'),
       'The removed fresh-row summary is still rendered in the Discovery detail.'
     )
-    const basis = await textOf(page, '[data-test="resolution-basis"]')
-    check(
-      basis.includes('one output batch') && basis.includes('not every craft the table counted'),
-      `The tree's basis is not stated truthfully: ${basis}`
+    // The compact presentation `DOMAIN_SPEC.md` 2.1.1 asks of Crafting Resolution: no basis
+    // paragraph, no closing tree note, and no sentence restating what the requested recipe already
+    // says. This tree's root recipe *is* the recipe that was asked about, so
+    // `CraftingResolution.vue`'s `rootSourcing` has nothing to report and says nothing; the
+    // requirements themselves are what step 9 reads.
+    const removedProse = await page.evaluate(() =>
+      ['resolution-basis', 'resolution-tree-note', 'resolution-root-sourcing'].filter(
+        (test) => document.querySelector(`[data-test="${test}"]`) !== null
+      )
     )
-    const sourcing = await textOf(page, '[data-test="resolution-root-sourcing"]')
     check(
-      sourcing.includes('is the recipe selected for this requirement'),
-      `The actual root sourcing is not labelled: ${sourcing}`
+      removedProse.length === 0,
+      `The tree is not rendered in its compact form: ${removedProse.join(', ')} still on screen.`
     )
-    const feeNote = await textOf(page, '[data-test="discovery-fee-note"]')
     check(
-      feeNote.includes('15%') && feeNote.includes('stay gross'),
-      `DOMAIN_SPEC 25's gross/after-fees note is missing or reworded: ${feeNote}`
+      !detailText.includes('is the recipe selected for this requirement') &&
+        !detailText.includes('one output batch'),
+      'The detail still carries the prose the compact resolution removed.'
+    )
+    // DOMAIN_SPEC 25: the fee is named on the profit figure and nowhere else, so the gross values
+    // beside it are not described as net of anything. The note now sits on the Profit term of the
+    // calculation list rather than in a note of its own, so the claim is checked where it is rendered:
+    // one note in the whole detail, carried by the profit term.
+    const feeNotes = await page.evaluate(() => {
+      const calculation = document.querySelector('[data-test="discovery-detail-calculation"]')
+      const profitTerm = [...(calculation?.querySelectorAll('dt') ?? [])].find((term) =>
+        term.querySelector('.value-note') !== null
+      )
+      const text = (element) => (element?.textContent ?? '').replace(/\s+/g, ' ').trim()
+      return {
+        all: [...document.querySelectorAll('[data-test="discovery-detail"] .value-note')].map(text),
+        onTerm: text(profitTerm)
+      }
+    })
+    check(
+      feeNotes.all.length === 1 && feeNotes.all[0] === 'after 15% TP fees',
+      `The after-fees note is missing, reworded, or repeated on a gross value: ${JSON.stringify(feeNotes)}`
+    )
+    check(
+      feeNotes.onTerm.startsWith('Profit'),
+      `The after-fees note does not belong to the profit figure: ${JSON.stringify(feeNotes)}`
     )
     record(
       'the fresh tree is shown beside the table row without repeating its figures',
-      'truthful basis, root sourcing and fee note; no fresh-row summary'
+      'compact tree with no basis, tree-note or root-sourcing prose; one fee note on the profit ' +
+        'term; no fresh-row summary'
     )
 
     // 9. The supplied requirements are rendered in order, through the shared tree.
@@ -536,13 +607,19 @@ async function run() {
         'Deldrimor Steel Ingot of Considerable Length and Name | Mithril Ore | Item #19701',
       `The supplied requirements are not rendered in their own order: ${nodeNames.join(' | ')}`
     )
-    const rootCost = await textOf(page, '[data-path="0"] [data-test="node-effective-cost"]')
+    // The compact presentation carries one effective value per requirement rather than the three
+    // separate cost figures (`ResolutionTreeNode.vue`'s `compact-value`, which `selected-result-mode`
+    // selects). The root's is the backend's own inclusive 783_332 copper, not the children's added up.
+    const rootCost = await textOf(page, '[data-path="0"] [data-test="node-value"]')
     check(
-      rootCost === '78g 33s 32c',
+      rootCost === 'Value: 78g 33s 32c',
       `The root's inclusive cost is not the supplied figure: ${rootCost}`
     )
-    const unpricedCost = await textOf(page, '[data-path="0.1"] [data-test="node-effective-cost"]')
-    check(unpricedCost === '—', `A cost the backend could not establish became a number: ${unpricedCost}`)
+    const unpricedCost = await textOf(page, '[data-path="0.1"] [data-test="node-value"]')
+    check(
+      unpricedCost === 'Value: —',
+      `A cost the backend could not establish became a number: ${unpricedCost}`
+    )
     // Discovery shares the tree component, so it inherits the collapsed presentation: every
     // requirement is rendered, and none of the groups starts open.
     const discoveryOpenGroups = await page.$$eval('[data-test="node-children"]', (groups) =>
@@ -645,9 +722,17 @@ async function run() {
     }
     for (const request of detailCalls) {
       const sent = JSON.parse(request.body)
+      // The one selected character is the material source, so the detail asks under the scope it was
+      // calculated with and sends no second inventory character beside it
+      // (`discoveryResolutionAssociation.spec.ts`).
       check(
-        sent.calculation?.inventoryCharacterName === 'Nbt Anch',
-        `A detail request did not carry the table's echoed inventory character: ${request.body}`
+        sent.calculation?.scope?.characterName === 'Nbt Anch' &&
+          sent.calculation.scope.rating === 500,
+        `A detail request did not carry the calculation's own scope: ${request.body}`
+      )
+      check(
+        !Object.hasOwn(sent.calculation, 'inventoryCharacterName'),
+        `A detail request sent a separate inventory character: ${request.body}`
       )
     }
     const unexpected = apiCalls.filter(

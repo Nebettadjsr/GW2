@@ -15,7 +15,8 @@ function onReload(): void { void materials.load() }
 <template>
   <div class="screen" data-test="materials-screen">
     <header class="materials-page-header">
-      <h1>Materials</h1>
+      <!-- The hooks `App.vue` moves focus to after a navigation, as `PageHeader.vue` carries them. -->
+      <h1 tabindex="-1" data-page-heading data-test="page-heading">Materials</h1>
       <button type="button" class="button--primary" data-test="materials-reload"
         :disabled="materials.phase.value === 'loading'" @click="onReload">Reload materials</button>
     </header>
