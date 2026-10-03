@@ -1,1 +1,1 @@
-agent/stories/STORY-SYNC-005-stabilize-bank-reload-smoke-check.md
+agent/stories/STORY-WEB-018-fresh-build-browser-smoke-checks.md

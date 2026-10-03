@@ -43,7 +43,7 @@ Applied here as: **fix behavior before refactoring, refactor before extracting, 
 - Domain conflicts (`KNOWN_PROBLEMS.md` §3) are fixed **before** the domain is decoupled from `repo.*`, so the decoupling step is a mechanical, behavior-preserving refactor (`TEST_STRATEGY.md` §18), not a place where bugs and restructuring get tangled together (`CLAUDE.md` "Working Rules" forbids combining unrelated refactoring with a fix).
 - The domain is decoupled from persistence **before** an application-service layer is introduced, so the application layer orchestrates a clean domain instead of relocating the same coupling one level up.
 - A backend HTTP API exists **before** frontend work starts, so the frontend has a real contract to build against instead of a guessed one.
-- JavaFX is only removed **after** the web frontend has functional parity and a deployable backend exists — per `TARGET_ARCHITECTURE.md` §14 ("Reuse of Existing Code"), the current implementation is not thrown away by default.
+- JavaFX removal is **permitted but not required** from Phase 5 onward. The original sequencing held it back until the web frontend had functional parity and a deployable backend existed, per `TARGET_ARCHITECTURE.md` §14 ("Reuse of Existing Code"). The Product Owner has since decided that the browser frontend is the canonical user interface and that the legacy JavaFX UI is obsolete and removable (`TARGET_ARCHITECTURE.md` §1, §13 and its Decided list), so parity against JavaFX is no longer a precondition for removing it. Phase 9 remains the phase that *guarantees* it is finished; no phase requires it to be deferred until then. Shared domain, application and backend code that the browser still uses is never removed with it.
 - Any technology or product decision still listed under `TARGET_ARCHITECTURE.md` §16 “To Be Decided” is called out at the phase where it first becomes a blocking decision. None should be silently finalized by whoever executes a story.
 
 ---
@@ -60,7 +60,7 @@ Phase 5  Browser Frontend Completion             (current; browser implementatio
 Phase 6  Multi-User / Account Isolation         (not started)
 Phase 7  Containerized Runtime and Database Migration (not started; PostgreSQL is already used locally)
 Phase 8  Deployment / Runtime Configuration     (not started)
-Phase 9  Final Cleanup / JavaFX Removal         (not started)
+Phase 9  Final Cleanup / JavaFX Removal         (not started; removal is already permitted earlier — see §2)
 ```
 
 Every new or revised phase must retain the PROJECT HEALTH REVIEW exit requirement, with execution and findings governed by `TARGET_ARCHITECTURE.md` §21. Schedule the review near exit, after milestone implementation; planner/user disposition of blocking findings precedes closure. Phase 1 uses the existing `STORY-QUALITY-001` ("Review Phase 1 project health before milestone completion").
@@ -244,7 +244,7 @@ Phase 3. The API layer should be a thin translation over existing application se
 
 ### Objective
 
-Complete and verify browser feature workflows over the backend HTTP API. JavaFX removal is sequenced for Phase 9 after browser parity and a deployable runtime. Authoritative crafting-profit/discovery and other backend-owned domain results remain backend-provided. The Ecto Salvage calculator is an explicit exception: its small feature-specific calculation is frontend-owned and operates from the required metadata, Trading Post prices, and account Luck data.
+Complete and verify browser feature workflows over the backend HTTP API. JavaFX is obsolete and may be removed from this phase onward, but removing it is not a Phase 5 exit criterion; Phase 9 is where any remainder is finished. Authoritative crafting-profit/discovery and other backend-owned domain results remain backend-provided. The Ecto Salvage calculator is an explicit exception: its small feature-specific calculation is frontend-owned and operates from the required metadata, Trading Post prices, and account Luck data.
 
 ### Dependencies
 
@@ -270,7 +270,7 @@ Phase 4. The frontend needs stable backend APIs for backend-owned workflows. Sma
 - (Done) The shared refresh workflow and System Status page are implemented; remaining Phase 5 stories are listed in `agent/stories/BACKLOG.md`.
 - (Done and continuing) Frontend component and browser smoke coverage is tracked in the canonical stories and `TEST_STRATEGY.md`.
 - (Done) The obsolete backend-owned Ectoplasm calculation route was removed; the browser calculation is canonical.
-- Finish browser coverage and acceptance; JavaFX removal is a later Phase 9 deliverable.
+- Finish browser coverage and acceptance. JavaFX removal is permitted from this phase onward but is not required to close it; Phase 9 still owns completing it.
 
 ---
 
@@ -374,11 +374,13 @@ Phase 7. Deployment configuration only matters once there is something container
 
 ### Objective
 
-Once the web frontend has functional parity and a deployable backend exists, retire the JavaFX desktop UI and any code it alone still uses — consistent with `TARGET_ARCHITECTURE.md` §14 (existing code is reused when sound, replaced when superseded, not thrown away speculatively).
+Retire whatever remains of the JavaFX desktop UI, and any code it alone still uses — consistent with `TARGET_ARCHITECTURE.md` §14 (existing code is reused when sound, replaced when superseded, not thrown away speculatively).
+
+The JavaFX UI is already superseded by the browser frontend, so removal work may happen in any phase from Phase 5 onward (see §2). This phase is not a gate holding that work back; it is where the remaining items below are confirmed finished, and it closes immediately if earlier phases already did them.
 
 ### Dependencies
 
-Phase 5 (frontend functional parity) and Phase 8 (a deployable system users can actually switch to).
+Phase 5 (frontend functional parity) and Phase 8 (a deployable system users can actually switch to) for *completing* this phase. Individual removal steps have no such dependency: the Product Owner has declared the JavaFX UI obsolete, so any of them may be done earlier as long as shared domain/application/backend code the browser still uses is preserved.
 
 ### Exit Criteria
 

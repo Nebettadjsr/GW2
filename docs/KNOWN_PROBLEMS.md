@@ -85,6 +85,8 @@ No finding in this document by itself authorizes an implementation change. Norma
 
 **Partly resolved (`STORY-DOM-024`).** The Ectoplasm half is fixed at the call site, not in `CoinUtils`: `EctoView.fillProfitGrid` now formats its four cells with `CoinUtils.format`, which keeps the minus sign, so a salvage loss reads as a loss (`EctoSalvageViewIT` asserts the rendered `-0g 8s 73c`). `formatSigned` itself is unchanged and still strips the sign, and the crafting-table styling and the two Buy Cost labelling problems above are untouched.
 
+**Disposition (2026-10-03): resolved by removal, not by repair.** The story that carried the remaining JavaFX half (`STORY-UI-003`) is SUPERSEDED: the Product Owner declared the legacy JavaFX UI obsolete and removable, and `docs/ROADMAP.md` §2 now permits that removal from Phase 5 onward. The defect below is still present in the legacy views - `CoinUtils.formatSigned` still strips the sign, and `CraftingProfitView` still contains a signed/unsigned conditional whose branches are identical - and it is retained here as legacy-interface debt until those views are deleted. The browser presentation is unaffected. Do not open new JavaFX-only presentation work against this entry.
+
 
 ### KP-11 — Legacy JavaFX `MaxBuy UI=...` debug text still appears transiently
 

@@ -8,7 +8,7 @@ Preserve signs and correct cost labels in JavaFX monetary presentation
 
 ## Status
 
-TODO
+SUPERSEDED
 
 ## Milestone
 
@@ -54,8 +54,39 @@ Affected JavaFX crafting views preserve monetary signs and accurately describe s
 
 ## Result
 
-Not started.
+SUPERSEDED — not implemented, and must not be implemented as written.
+
+This story asked for presentation fixes inside the legacy JavaFX crafting views. After it was
+written, the Product Owner decided that the JavaFX user interface is obsolete and removable:
+
+- The resolution notes on `agent/user-interventions/UI-002-STORY-SYNC-005.md`,
+  `UI-003-STORY-UI-003.md`, `UI-004-STORY-WEB-018.md` and `UI-005-STORY-WEB-020.md` each state that
+  "the JavaFX user interface is no longer required" and that JavaFX UI code, and code existing
+  exclusively to support it, may be removed.
+- `docs/TARGET_ARCHITECTURE.md` §1 records the browser frontend as the canonical user interface and
+  the legacy JavaFX UI as not part of the target architecture; §13 and the Decided list repeat that
+  JavaFX is obsolete and removable.
+- `docs/KNOWN_PROBLEMS.md` KP-09 was retitled "Legacy JavaFX monetary presentation …" to mark it as
+  a legacy-interface finding rather than browser behavior.
+
+Spending implementation effort on a UI scheduled for removal conflicts with that decision, so the
+story is retired rather than updated. Its Required Tests also depended on TestFX JavaFX view
+verification, which the CI gate cannot run (`docs/TEST_STRATEGY.md` §32, §36.4).
+
+The underlying defect is real and still present — `util/CoinUtils.java:53` still calls
+`format(Math.abs(copper))`, and `CraftingProfitView.java:900` still evaluates
+`(signed ? CoinUtils.formatSigned(v) : CoinUtils.formatSigned(v))`, a conditional whose two branches
+are identical. It is not lost: it remains recorded under `docs/KNOWN_PROBLEMS.md` KP-09 and is
+resolved by removing the affected views, which `docs/ROADMAP.md` now allows at any point from
+Phase 5 onward. The equivalent browser presentation is already correct and is not affected by this
+story.
+
+No JavaFX code was changed by this disposition, and JavaFX removal is explicitly not started here.
 
 ## Blockers
+
+None. Retired by product decision, not blocked.
+
+## Follow-up Findings
 
 None.

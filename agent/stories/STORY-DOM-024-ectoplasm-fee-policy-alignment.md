@@ -229,4 +229,7 @@ let a stale bundle produce a green run, which is the kind of evidence these chec
 
 ## Follow-up Findings Disposition
 F001: ALREADY COVERED ? STORY-UI-003 covers signed monetary presentation in the affected JavaFX crafting views.
+F001 (re-dispositioned 2026-10-03): STORY-UI-003 is now SUPERSEDED - the Product Owner declared the legacy
+JavaFX UI obsolete and removable, so this finding is no longer carried by a story. It remains recorded as
+docs/KNOWN_PROBLEMS.md KP-09 and is resolved by JavaFX removal, not by a presentation fix.
 F002: ALREADY COVERED ? STORY-WEB-018 covers stale-build guards across browser smoke scripts.

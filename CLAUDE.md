@@ -27,6 +27,8 @@ one file's facts into another.
 | `docs/CURRENT_STATE_SPEC.md` | Descriptive current behavior |
 | `docs/CURRENT_ARCHITECTURE.md` | Current structure/runtime architecture |
 | `docs/TARGET_ARCHITECTURE.md` | Chosen target architecture and remaining decisions |
+| `docs/FRONTEND_UX_GUIDELINES.md` | Reusable browser UX/UI requirements |
+| `docs/CRAFTING_STATUS_LABEL_REFERENCE.md` | Developer reference interpreting crafting status/blocking codes (derived from `DOMAIN_SPEC.md`, not authoritative) |
 | `docs/TEST_STRATEGY.md` | Testing methodology/layers (never live test counts) |
 | `docs/ROADMAP.md` | Phases, dependencies, exit criteria |
 | `docs/KNOWN_PROBLEMS.md` | Defects, conflicts, risks, technical debt |

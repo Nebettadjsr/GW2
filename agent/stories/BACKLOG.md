@@ -2,70 +2,83 @@
 
 Index only. Each entry points to its canonical story file under `agent/stories/`, which owns the story's status, goal, acceptance criteria, references, definition of done, and result/blockers.
 
-The active story is the file pointed to by `agent/CURRENT_STORY.md`.
+The active story is the file pointed to by `agent/CURRENT_STORY.md`. `## Active` holds at most one
+entry and is empty whenever no story is active; the harness fills it deterministically when it
+activates a story.
+
+Entry format is machine-read, not decorative. `agent/runtime/core/story_state.py` parses each row as
+`- STORY-ID | <filename>.md | STATUS | milestone-NN | deps: …`, with the filename bare. A markdown
+link in the filename field makes the row invisible to story selection, so rows in the queue sections
+below stay in the plain form.
 
 ## Active
 
-- STORY-SYNC-005 | [STORY-SYNC-005-stabilize-bank-reload-smoke-check.md](STORY-SYNC-005-stabilize-bank-reload-smoke-check.md) | UNFINISHED | milestone-05 | deps: STORY-SYNC-004
+- STORY-WEB-018 | STORY-WEB-018-fresh-build-browser-smoke-checks.md | TODO | milestone-05 | deps: None
 
 ## To Do
 
-- STORY-UI-003 | [STORY-UI-003-signed-monetary-presentation.md](STORY-UI-003-signed-monetary-presentation.md) | TODO | milestone-05 | deps: None
-- STORY-WEB-018 | [STORY-WEB-018-fresh-build-browser-smoke-checks.md](STORY-WEB-018-fresh-build-browser-smoke-checks.md) | TODO | milestone-05 | deps: None
-- STORY-WEB-020 | [STORY-WEB-020-layout-smoke-total-sell-value.md](STORY-WEB-020-layout-smoke-total-sell-value.md) | TODO | milestone-05 | deps: STORY-WEB-019
-- STORY-WEB-021 | [STORY-WEB-021-ecto-content-test-hooks.md](STORY-WEB-021-ecto-content-test-hooks.md) | TODO | milestone-05 | deps: STORY-WEB-019, STORY-WEB-022
+  backlog entry: milestone-05: Reject stale frontend bundles in browser smoke checks.
+- STORY-WEB-020 | STORY-WEB-020-layout-smoke-total-sell-value.md | TODO | milestone-05 | deps: STORY-WEB-019
+  backlog entry: milestone-05: Exercise backend total sell value in the shared layout smoke fixture and realign it with the current contract.
+- STORY-WEB-021 | STORY-WEB-021-ecto-content-test-hooks.md | TODO | milestone-05 | deps: STORY-WEB-019, STORY-WEB-022
+  backlog entry: milestone-05: Give the frontend-owned Ectoplasm results stable content hooks for browser checks.
 
 ## Blocked
 
-- STORY-QUALITY-005 | [STORY-QUALITY-005-phase-five-completion-review.md](STORY-QUALITY-005-phase-five-completion-review.md) | BLOCKED | milestone-05 | deps: STORY-PERF-002, STORY-WEB-019, STORY-SYNC-005, STORY-UI-003, STORY-WEB-018, STORY-WEB-020, STORY-WEB-021, STORY-WEB-022
+- STORY-QUALITY-005 | STORY-QUALITY-005-phase-five-completion-review.md | BLOCKED | milestone-05 | deps: STORY-PERF-002, STORY-WEB-019, STORY-SYNC-005, STORY-WEB-018, STORY-WEB-020, STORY-WEB-021, STORY-WEB-022
+  dependency note: Bounded Phase 5 health review, after the remaining browser-check stories are substantially complete.
+  backlog entry: milestone-05: Review Phase 5 project health before milestone completion.
 
 ## Superseded
 
-- STORY-WEB-023 | [STORY-WEB-023-backend-ecto-calculation-screen.md](STORY-WEB-023-backend-ecto-calculation-screen.md) | SUPERSEDED | milestone-05 | deps: None â€” Ecto Salvage remains a frontend calculation by product decision.
+- STORY-WEB-023 | STORY-WEB-023-backend-ecto-calculation-screen.md | SUPERSEDED | milestone-05 | deps: None
+  disposition: Ecto Salvage remains a frontend calculation by product decision. Must not be selected for implementation.
+- STORY-UI-003 | STORY-UI-003-signed-monetary-presentation.md | SUPERSEDED | milestone-05 | deps: None
+  disposition: The Product Owner declared the legacy JavaFX UI obsolete and removable, so JavaFX-only presentation work is retired. The defect stays recorded as `docs/KNOWN_PROBLEMS.md` KP-09 and is resolved by JavaFX removal. Must not be selected for implementation.
 
 ## Done
 
 Completed current-milestone story details remain in their canonical files.
 
-- `STORY-API-006` | [STORY-API-006-crafting-selector-options.md](STORY-API-006-crafting-selector-options.md) | DONE | milestone-05 | Expose crafting selector options for the browser UI
-- `STORY-API-007` | [STORY-API-007-bank-materials-read-endpoints.md](STORY-API-007-bank-materials-read-endpoints.md) | DONE | milestone-05 | Expose bank and material storage reads for the web frontend
-- `STORY-API-008` | [STORY-API-008-crafting-resolution-endpoints.md](STORY-API-008-crafting-resolution-endpoints.md) | DONE | milestone-05 | Expose request-local crafting resolution through the decided HTTP contract
-- `STORY-API-009` | [STORY-API-009-web-item-icon-metadata.md](STORY-API-009-web-item-icon-metadata.md) | DONE | milestone-05 | Expose item icon metadata and persistent backend image delivery
-- `STORY-APP-011` | [STORY-APP-011-display-authoritative-total-profit.md](STORY-APP-011-display-authoritative-total-profit.md) | DONE | milestone-03 | Display and sort by the authoritative crafting total profit
-- `STORY-APP-012` | [STORY-APP-012-request-local-resolution-detail.md](STORY-APP-012-request-local-resolution-detail.md) | DONE | milestone-05 | Coordinate resolution detail from one request-local set of calculation inputs
-- `STORY-APP-013` | [STORY-APP-013-carry-authoritative-total-sell-value.md](STORY-APP-013-carry-authoritative-total-sell-value.md) | DONE | milestone-05 | Carry authoritative total sell value into the JavaFX Profit view
-- `STORY-DOM-020` | [STORY-DOM-020-semantic-resolution-trace.md](STORY-DOM-020-semantic-resolution-trace.md) | DONE | milestone-05 | Produce a semantic single-craft trace from authoritative resolution
-- `STORY-DOM-021` | [STORY-DOM-021-profit-non-tp-material-control.md](STORY-DOM-021-profit-non-tp-material-control.md) | DONE | milestone-05 | Implement the decided Profit non-Trading-Post material calculation option
-- `STORY-DOM-022` | [STORY-DOM-022-trading-post-sale-fee-calculation.md](STORY-DOM-022-trading-post-sale-fee-calculation.md) | DONE | milestone-05 | Establish a shared copper-accurate Trading Post sale fee calculation
-- `STORY-DOM-023` | [STORY-DOM-023-crafting-profit-fee-integration.md](STORY-DOM-023-crafting-profit-fee-integration.md) | DONE | milestone-05 | Apply the decided Trading Post fee model to crafting profits and presentation
-- `STORY-DOM-024` | [STORY-DOM-024-ectoplasm-fee-policy-alignment.md](STORY-DOM-024-ectoplasm-fee-policy-alignment.md) | DONE | milestone-05 | Align Ectoplasm expected-value economics and labels with the decided fee policy
-- `STORY-DOM-025` | [STORY-DOM-025-remove-stale-cost-evaluator-profit.md](STORY-DOM-025-remove-stale-cost-evaluator-profit.md) | DONE | milestone-05 | Remove the stale pre-fee profit calculation from CostEvaluator
-- `STORY-PERF-002` | [STORY-PERF-002-phase-five-crafting-profit-page-budget.md](STORY-PERF-002-phase-five-crafting-profit-page-budget.md) | DONE | milestone-05 | Verify Phase 5 Crafting Profit page performance on the real user database
-- `STORY-QUALITY-002` | [STORY-QUALITY-002-phase-two-completion-review.md](STORY-QUALITY-002-phase-two-completion-review.md) | DONE | milestone-02 | Review Phase 2 project health before milestone completion
-- `STORY-QUALITY-004` | [STORY-QUALITY-004-phase-four-completion-review.md](STORY-QUALITY-004-phase-four-completion-review.md) | DONE | milestone-04 | Review Phase 4 project health before milestone completion
-- `STORY-SYNC-004` | [STORY-SYNC-004-complete-referenced-item-metadata.md](STORY-SYNC-004-complete-referenced-item-metadata.md) | DONE | milestone-05 | Repair referenced-item metadata gaps for real item icons
-- `STORY-TEST-008` | [STORY-TEST-008-recipe-sync-write-path-integration-test.md](STORY-TEST-008-recipe-sync-write-path-integration-test.md) | DONE | milestone-00 | Layer 2 PostgreSQL integration test: `sync.RecipeSync`'s `recipes`/`recipe_ingredients` upsert write path
-- `STORY-TEST-009` | [STORY-TEST-009-character-inventory-api-fixture.md](STORY-TEST-009-character-inventory-api-fixture.md) | DONE | milestone-01 | Verify character inventory and binding parsing with captured GW2 API fixtures
-- `STORY-WEB-001` | [STORY-WEB-001-crafting-profit-table.md](STORY-WEB-001-crafting-profit-table.md) | DONE | milestone-05 | Build the Vue Crafting Profit table against the backend API
-- `STORY-WEB-002` | [STORY-WEB-002-sync-task-controls.md](STORY-WEB-002-sync-task-controls.md) | DONE | milestone-05 | Add browser synchronization controls and backend task status
-- `STORY-WEB-003` | [STORY-WEB-003-bank-materials-views.md](STORY-WEB-003-bank-materials-views.md) | DONE | milestone-05 | Render bank and material storage in the browser
-- `STORY-WEB-004` | [STORY-WEB-004-application-navigation-layout.md](STORY-WEB-004-application-navigation-layout.md) | DONE | milestone-05 | Restructure the existing frontend around application navigation and shared layouts
-- `STORY-WEB-005` | [STORY-WEB-005-crafting-profit-information-hierarchy.md](STORY-WEB-005-crafting-profit-information-hierarchy.md) | DONE | milestone-05 | Separate Crafting Profit comparison results, calculation controls and selected details
-- `STORY-WEB-006` | [STORY-WEB-006-profit-result-display-controls.md](STORY-WEB-006-profit-result-display-controls.md) | DONE | milestone-05 | Add Crafting Profit display filters and whole-row selection
-- `STORY-WEB-007` | [STORY-WEB-007-profit-resolution-detail-view.md](STORY-WEB-007-profit-resolution-detail-view.md) | DONE | milestone-05 | Render authoritative Crafting Profit resolution in sticky selected-result details
-- `STORY-WEB-008` | [STORY-WEB-008-profit-economic-columns.md](STORY-WEB-008-profit-economic-columns.md) | DONE | milestone-05 | Expose backend total sell value and complete Profit comparison columns
-- `STORY-WEB-009` | [STORY-WEB-009-replaceable-favicon.md](STORY-WEB-009-replaceable-favicon.md) | DONE | milestone-05 | Add replaceable browser favicon support
-- `STORY-WEB-010` | [STORY-WEB-010-shared-item-icon-presentation.md](STORY-WEB-010-shared-item-icon-presentation.md) | DONE | milestone-05 | Render backend-supplied icons through one reusable frontend component
-- `STORY-WEB-011` | [STORY-WEB-011-profit-controls-text-cleanup.md](STORY-WEB-011-profit-controls-text-cleanup.md) | DONE | milestone-05 | Complete Crafting Profit control grouping and concise presentation
-- `STORY-WEB-012` | [STORY-WEB-012-crafting-discovery-page.md](STORY-WEB-012-crafting-discovery-page.md) | DONE | milestone-05 | Build the Crafting Discovery browser workflow over existing APIs
-- `STORY-WEB-013` | [STORY-WEB-013-ectoplasm-salvage-page.md](STORY-WEB-013-ectoplasm-salvage-page.md) | DONE | milestone-05 | Expose the existing Ectoplasm calculation through HTTP and a browser screen
-- `STORY-WEB-014` | [STORY-WEB-014-profit-live-contract-repairs.md](STORY-WEB-014-profit-live-contract-repairs.md) | DONE | milestone-05 | Repair reported Profit value, resolution and calculation-control integration failures
-- `STORY-WEB-015` | [STORY-WEB-015-profit-purchase-and-blocking-details.md](STORY-WEB-015-profit-purchase-and-blocking-details.md) | DONE | milestone-05 | Simplify Profit purchase details and identify concrete blocking materials
-- `STORY-WEB-016` | [STORY-WEB-016-compact-crafting-resolution-tree.md](STORY-WEB-016-compact-crafting-resolution-tree.md) | DONE | milestone-05 | Make Crafting Resolution compact with collapsed ingredient groups
-- `STORY-WEB-017` | [STORY-WEB-017-layout-smoke-intro-contrast-sample.md](STORY-WEB-017-layout-smoke-intro-contrast-sample.md) | DONE | milestone-05 | Keep browser layout smoke contrast sampling valid after Profit intro removal
-- `STORY-WEB-019` | [STORY-WEB-019-layout-smoke-navigation-coverage.md](STORY-WEB-019-layout-smoke-navigation-coverage.md) | DONE | milestone-05 | Align layout browser smoke navigation coverage with current destinations
-- `STORY-WEB-022` | [STORY-WEB-022-align-ecto-page-label.md](STORY-WEB-022-align-ecto-page-label.md) | DONE | milestone-05 | Align the Ecto Salvage page label and browser checks
-
+- STORY-API-006 | STORY-API-006-crafting-selector-options.md | DONE | milestone-05 | Expose crafting selector options for the browser UI
+- STORY-API-007 | STORY-API-007-bank-materials-read-endpoints.md | DONE | milestone-05 | Expose bank and material storage reads for the web frontend
+- STORY-API-008 | STORY-API-008-crafting-resolution-endpoints.md | DONE | milestone-05 | Expose request-local crafting resolution through the decided HTTP contract
+- STORY-API-009 | STORY-API-009-web-item-icon-metadata.md | DONE | milestone-05 | Expose item icon metadata and persistent backend image delivery
+- STORY-APP-011 | STORY-APP-011-display-authoritative-total-profit.md | DONE | milestone-03 | Display and sort by the authoritative crafting total profit
+- STORY-APP-012 | STORY-APP-012-request-local-resolution-detail.md | DONE | milestone-05 | Coordinate resolution detail from one request-local set of calculation inputs
+- STORY-APP-013 | STORY-APP-013-carry-authoritative-total-sell-value.md | DONE | milestone-05 | Carry authoritative total sell value into the JavaFX Profit view
+- STORY-DOM-020 | STORY-DOM-020-semantic-resolution-trace.md | DONE | milestone-05 | Produce a semantic single-craft trace from authoritative resolution
+- STORY-DOM-021 | STORY-DOM-021-profit-non-tp-material-control.md | DONE | milestone-05 | Implement the decided Profit non-Trading-Post material calculation option
+- STORY-DOM-022 | STORY-DOM-022-trading-post-sale-fee-calculation.md | DONE | milestone-05 | Establish a shared copper-accurate Trading Post sale fee calculation
+- STORY-DOM-023 | STORY-DOM-023-crafting-profit-fee-integration.md | DONE | milestone-05 | Apply the decided Trading Post fee model to crafting profits and presentation
+- STORY-DOM-024 | STORY-DOM-024-ectoplasm-fee-policy-alignment.md | DONE | milestone-05 | Align Ectoplasm expected-value economics and labels with the decided fee policy
+- STORY-DOM-025 | STORY-DOM-025-remove-stale-cost-evaluator-profit.md | DONE | milestone-05 | Remove the stale pre-fee profit calculation from CostEvaluator
+- STORY-PERF-002 | STORY-PERF-002-phase-five-crafting-profit-page-budget.md | DONE | milestone-05 | Verify Phase 5 Crafting Profit page performance on the real user database
+- STORY-QUALITY-002 | STORY-QUALITY-002-phase-two-completion-review.md | DONE | milestone-02 | Review Phase 2 project health before milestone completion
+- STORY-QUALITY-004 | STORY-QUALITY-004-phase-four-completion-review.md | DONE | milestone-04 | Review Phase 4 project health before milestone completion
+- STORY-SYNC-004 | STORY-SYNC-004-complete-referenced-item-metadata.md | DONE | milestone-05 | Repair referenced-item metadata gaps for real item icons
+- STORY-SYNC-005 | STORY-SYNC-005-stabilize-bank-reload-smoke-check.md | DONE | milestone-05 | Stabilize the Bank reload browser smoke check (satisfied by the maintainer implementation in commit `0fcdbb4`)
+- STORY-TEST-008 | STORY-TEST-008-recipe-sync-write-path-integration-test.md | DONE | milestone-00 | Layer 2 PostgreSQL integration test: `sync.RecipeSync`'s `recipes`/`recipe_ingredients` upsert write path
+- STORY-TEST-009 | STORY-TEST-009-character-inventory-api-fixture.md | DONE | milestone-01 | Verify character inventory and binding parsing with captured GW2 API fixtures
+- STORY-WEB-001 | STORY-WEB-001-crafting-profit-table.md | DONE | milestone-05 | Build the Vue Crafting Profit table against the backend API
+- STORY-WEB-002 | STORY-WEB-002-sync-task-controls.md | DONE | milestone-05 | Add browser synchronization controls and backend task status
+- STORY-WEB-003 | STORY-WEB-003-bank-materials-views.md | DONE | milestone-05 | Render bank and material storage in the browser
+- STORY-WEB-004 | STORY-WEB-004-application-navigation-layout.md | DONE | milestone-05 | Restructure the existing frontend around application navigation and shared layouts
+- STORY-WEB-005 | STORY-WEB-005-crafting-profit-information-hierarchy.md | DONE | milestone-05 | Separate Crafting Profit comparison results, calculation controls and selected details
+- STORY-WEB-006 | STORY-WEB-006-profit-result-display-controls.md | DONE | milestone-05 | Add Crafting Profit display filters and whole-row selection
+- STORY-WEB-007 | STORY-WEB-007-profit-resolution-detail-view.md | DONE | milestone-05 | Render authoritative Crafting Profit resolution in sticky selected-result details
+- STORY-WEB-008 | STORY-WEB-008-profit-economic-columns.md | DONE | milestone-05 | Expose backend total sell value and complete Profit comparison columns
+- STORY-WEB-009 | STORY-WEB-009-replaceable-favicon.md | DONE | milestone-05 | Add replaceable browser favicon support
+- STORY-WEB-010 | STORY-WEB-010-shared-item-icon-presentation.md | DONE | milestone-05 | Render backend-supplied icons through one reusable frontend component
+- STORY-WEB-011 | STORY-WEB-011-profit-controls-text-cleanup.md | DONE | milestone-05 | Complete Crafting Profit control grouping and concise presentation
+- STORY-WEB-012 | STORY-WEB-012-crafting-discovery-page.md | DONE | milestone-05 | Build the Crafting Discovery browser workflow over existing APIs
+- STORY-WEB-013 | STORY-WEB-013-ectoplasm-salvage-page.md | DONE | milestone-05 | Expose the existing Ectoplasm calculation through HTTP and a browser screen
+- STORY-WEB-014 | STORY-WEB-014-profit-live-contract-repairs.md | DONE | milestone-05 | Repair reported Profit value, resolution and calculation-control integration failures
+- STORY-WEB-015 | STORY-WEB-015-profit-purchase-and-blocking-details.md | DONE | milestone-05 | Simplify Profit purchase details and identify concrete blocking materials
+- STORY-WEB-016 | STORY-WEB-016-compact-crafting-resolution-tree.md | DONE | milestone-05 | Make Crafting Resolution compact with collapsed ingredient groups
+- STORY-WEB-017 | STORY-WEB-017-layout-smoke-intro-contrast-sample.md | DONE | milestone-05 | Keep browser layout smoke contrast sampling valid after Profit intro removal
+- STORY-WEB-019 | STORY-WEB-019-layout-smoke-navigation-coverage.md | DONE | milestone-05 | Align layout browser smoke navigation coverage with current destinations
+- STORY-WEB-022 | STORY-WEB-022-align-ecto-page-label.md | DONE | milestone-05 | Align the Ecto Salvage page label and browser checks
 ## Archived
 
 Completed milestone details and evidence remain in the archived canonical story files.
