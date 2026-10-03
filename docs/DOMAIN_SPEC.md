@@ -102,8 +102,8 @@ ordered nested structure; collapsed presentation must not discard requirements.
 Remove the permanent introductory explanation beneath "Crafting resolution".
 Normal nodes omit bookkeeping rows for stock/crafted/bought/missing quantities,
 producing recipe and recipe ID, crafts run and produced total. This does not hide
-meaningful blocked/unavailable explanations. Internal values may remain in optional
-technical details without removing data from the backend contract. The normal
+meaningful blocked/unavailable explanations. Diagnostic values remain in the
+backend/API contract without adding visible technical-detail sections. The normal
 Profit tree shows one `Value` from the backend's `effectiveCostCopper` field. It is the
 economic cost of everything consumed by that requirement: the opportunity value of owned sellable
 materials plus the actual acquisition cost of materials that must be bought. It is inclusive of
@@ -130,12 +130,20 @@ actually used by the calculation, and the authoritative total purchase cost. Do 
 Trading Post quote alternatives in this shopping list. Do not display a separate "FOR ONE FURTHER
 CRAFT" purchase section.
 
-Selected details must not repeat generic labels such as "Buying is off", "Over
-the buy limit" or "Not blocked" where surrounding content already explains the
-state. Retain useful causes, including the affected requirement and supplied
-purchase/budget information. A missing-price explanation must identify the
-affected item by name or item ID, not only say "Price missing". Preserve the
-distinction between limitations on further crafting and crafts already counted.
+Selected details must not expose generic resolver labels such as "Blocked",
+"Not blocked", "Recipe not allowed", "Buying disabled", "Daily limit" or
+"Recipe loop" in the normal presentation. Keep the original row, state and
+blocked-reason codes in the backend/API for diagnostics and tests; do not render
+expandable Technical details sections in the crafting detail panels or tree. In the
+resolution tree, describe an item with no usable recipe path as "Not craftable"
+and an item with no usable Trading Post quote as "Not available on
+TP"; link each named requirement to its GW2 Wiki article. A failed or incomplete
+resolution is not proof that no crafting path exists; use "Not craftable" only
+when no usable recipe path is present. Do not distinguish
+why a quote is unavailable in the normal view. Keep the supplied source
+quantities visible as From stock, Crafted and Bought. These labels describe the
+resolution data, not a new acquisition decision. Preserve the distinction
+between limitations on further crafting and crafts already counted.
 Remove the introductory sentence "Crafting opportunities the backend calculated
 for the selected scope, with the profit it reported for each."
 
@@ -166,7 +174,7 @@ The normal comparison table and Selected Result panel present actionable craftin
 and economic information. They do not display generic row/domain state labels,
 codes, explanations or context derived from those states, including unknown states
 and unavailable-result markers. The raw supplied row state remains available in the
-collapsed Technical details disclosure. Preserve the semantic meaning of all row
+backend/API for diagnostics and automated tests. Preserve the semantic meaning of all row
 states in section 42. Keep item-specific sourcing and blocking information in the
 Crafting Resolution tree, attached to the affected requirement or item.
 
@@ -254,7 +262,7 @@ max-buy behavior. Use the selected character as the sole inventory context.
 Selection uses recipe identity, not table position. Where supported by supplied
 data, details show recipe information, material requirements, owned/missing
 quantities, buy requirements/costs, the resolution tree, shopping/material lists
-and contextual blocked/unavailable explanations. Follow TARGET_ARCHITECTURE
+and the same actionable item statuses as Crafting Profit. Follow TARGET_ARCHITECTURE
 section 13's fresh-detail consistency contract; do not derive missing economics.
 
 Use the application-wide icon strategy when available, established signed money
@@ -1059,7 +1067,7 @@ Only recipes the selected character can legitimately use should be considered al
 
 The semantics differ further because the purpose is specifically to analyze recipes not yet known.
 
-The planner must therefore receive an explicit allowed recipe set rather than assuming every recipe in the global graph can be used.
+Keep the target candidate set separate from the resolver's intermediate recipe set. Discovery candidates contain only undiscovered recipes eligible for normal ingredient discovery by the selected character. Ingredient resolution may use recipes already known account-wide and undiscovered recipes that are themselves normally discoverable and usable by that character. A recipe's mere presence in the global graph does not make it usable; unknown non-discoverable recipes remain excluded. The final target may be undiscovered because Discovery evaluates that one attempt.
 
 ---
 

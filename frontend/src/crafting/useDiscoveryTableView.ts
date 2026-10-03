@@ -29,6 +29,9 @@ export type DiscoverySortKey =
 
 export type SortDirection = 'asc' | 'desc'
 
+export const INITIAL_MAX_DISPLAYED = 250
+export const MIN_MAX_DISPLAYED = 1
+
 export interface DiscoveryTableView {
   searchText: Ref<string>
   sortKey: Ref<DiscoverySortKey>
@@ -36,6 +39,10 @@ export interface DiscoveryTableView {
 
   /** Every row the search keeps, in the current sort order. */
   matchingRows: ComputedRef<CraftingRow[]>
+  visibleRows: ComputedRef<CraftingRow[]>
+  maxDisplayed: Ref<number>
+  showAll: Ref<boolean>
+  setMaxDisplayed(value: number): boolean
 
   /** The selected recipe's identity — never a row number, which sorting and searching would move. */
   selectedRecipeId: Ref<number | null>
@@ -56,6 +63,8 @@ export function useDiscoveryTableView(
   const sortKey = ref<DiscoverySortKey>('minRating')
   const sortDirection = ref<SortDirection>('desc')
   const selectedRecipeId = ref<number | null>(null)
+  const maxDisplayed = ref(INITIAL_MAX_DISPLAYED)
+  const showAll = ref(false)
 
   const matchingRows = computed<CraftingRow[]>(() => {
     const matching = rows.value.filter((row) =>
@@ -68,6 +77,16 @@ export function useDiscoveryTableView(
    * Read from the current rows rather than copied when the row was clicked, so a replacement
    * calculation cannot leave an earlier answer's numbers on screen under the newer result.
    */
+  const visibleRows = computed<CraftingRow[]>(() =>
+    showAll.value ? matchingRows.value : matchingRows.value.slice(0, maxDisplayed.value)
+  )
+
+  function setMaxDisplayed(value: number): boolean {
+    if (!Number.isFinite(value) || !Number.isInteger(value) || value < MIN_MAX_DISPLAYED) return false
+    maxDisplayed.value = value
+    return true
+  }
+
   const selectedRow = computed<CraftingRow | null>(() =>
     selectedRecipeId.value === null
       ? null
@@ -104,6 +123,10 @@ export function useDiscoveryTableView(
     sortKey,
     sortDirection,
     matchingRows,
+    visibleRows,
+    maxDisplayed,
+    showAll,
+    setMaxDisplayed,
     selectedRecipeId,
     selectedRow,
     selectionHiddenBySearch,

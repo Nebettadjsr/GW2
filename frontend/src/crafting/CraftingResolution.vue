@@ -23,6 +23,8 @@ const props = defineProps<{
   failure: string | null
   /** Profit explains the selected result and uses a compact, full-quantity tree presentation. */
   selectedResultMode?: boolean
+  /** Discovery alone asks for account recipe-knowledge indicators in its tree. */
+  showRecipeKnowledge?: boolean
   /** The recipe the current phase is about, so no wording can attach to a different row. */
   requestedRecipeId: number | null
 }>()
@@ -110,6 +112,7 @@ watch(
           :node="tree"
           path="0"
           :compact-value="selectedResultMode"
+          :show-recipe-knowledge="showRecipeKnowledge"
         />
       </ul>
       <p v-if="!selectedResultMode" class="meta" data-test="resolution-tree-note">

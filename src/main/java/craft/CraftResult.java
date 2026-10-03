@@ -13,6 +13,8 @@ public class CraftResult {
     public final int matsSellValueCopper;    // PER 1 craft
     public final int totalMatsSellValueCopper; // TOTAL opportunity value of consumed owned materials
     public final Map<Integer, MaterialPurchaseCost> materialPurchaseCosts;
+    /** Selected unit and total purchase values for the one-attempt missing-material list. */
+    public final Map<Integer, MaterialPurchaseCost> materialPurchaseCostsOne;
     public final int revenueCopper;          // PER 1 craft, GROSS (DOMAIN_SPEC.md §24)
 
     /**
@@ -85,6 +87,18 @@ public class CraftResult {
                        int totalProfitCopper, int totalSellValueCopper, Node tree, BlockedReason blockedReason,
                        int totalMatsSellValueCopper,
                        Map<Integer, MaterialPurchaseCost> materialPurchaseCosts) {
+        this(outputItemId, discipline, craftableCount, missingToBuy, missingToBuyOne, buyCostCopper,
+                matsSellValueCopper, revenueCopper, profitCopper, totalProfitCopper, totalSellValueCopper,
+                tree, blockedReason, totalMatsSellValueCopper, materialPurchaseCosts, Map.of());
+    }
+
+    public CraftResult(int outputItemId, String discipline, int craftableCount,
+                       Map<Integer, Integer> missingToBuy, Map<Integer, Integer> missingToBuyOne,
+                       int buyCostCopper, int matsSellValueCopper, int revenueCopper, int profitCopper,
+                       int totalProfitCopper, int totalSellValueCopper, Node tree, BlockedReason blockedReason,
+                       int totalMatsSellValueCopper,
+                       Map<Integer, MaterialPurchaseCost> materialPurchaseCosts,
+                       Map<Integer, MaterialPurchaseCost> materialPurchaseCostsOne) {
         this.blockedReason = blockedReason;
         this.outputItemId = outputItemId;
         this.discipline = discipline;
@@ -95,6 +109,7 @@ public class CraftResult {
         this.matsSellValueCopper = matsSellValueCopper;
         this.totalMatsSellValueCopper = totalMatsSellValueCopper;
         this.materialPurchaseCosts = Map.copyOf(materialPurchaseCosts);
+        this.materialPurchaseCostsOne = Map.copyOf(materialPurchaseCostsOne);
         this.revenueCopper = revenueCopper;
         this.profitCopper = profitCopper;
         this.totalProfitCopper = totalProfitCopper;

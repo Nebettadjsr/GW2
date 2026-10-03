@@ -164,7 +164,9 @@ class CraftingDiscoveryApiControllerTest {
     void completeResultIsMappedIncludingAuthoritativeTotalsAndMissingMaterials() throws Exception {
         CraftResult result = new CraftResult(100, "Chef", 4,
                 new HashMap<>(Map.of(300, 9, 200, 5)), new HashMap<>(Map.of(200, 2)),
-                1_234, 56, 7_890, 700, 2_800, null);
+                1_234, 56, 7_890, 700, 2_800, 31_560, null, BlockedReason.NONE, 224,
+                Map.of(200, new craft.MaterialPurchaseCost(12, 60), 300, new craft.MaterialPurchaseCost(null, null)),
+                Map.of(200, new craft.MaterialPurchaseCost(12, 24)));
 
         factory.next(service -> service.canned = discoveryData(
                 List.of(RECIPE),
@@ -207,7 +209,9 @@ class CraftingDiscoveryApiControllerTest {
                 .andExpect(jsonPath("$.rows[0].missingToBuy[1].price").doesNotExist())
                 .andExpect(jsonPath("$.rows[0].missingToBuyOne.length()").value(1))
                 .andExpect(jsonPath("$.rows[0].missingToBuyOne[0].itemId").value(200))
-                .andExpect(jsonPath("$.rows[0].missingToBuyOne[0].quantity").value(2));
+                .andExpect(jsonPath("$.rows[0].missingToBuyOne[0].quantity").value(2))
+                .andExpect(jsonPath("$.rows[0].missingToBuyOne[0].purchaseUnitPriceCopper").value(12))
+                .andExpect(jsonPath("$.rows[0].missingToBuyOne[0].totalPurchaseCostCopper").value(24));
     }
 
     @Test

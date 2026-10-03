@@ -323,6 +323,15 @@ public class RecipeRepository {
         return ids;
     }
 
+    /** Account-wide known recipes from either unlock source; recipe existence alone is not ownership. */
+    public Set<Integer> loadKnownRecipeIds() throws SQLException {
+        try (Connection con = repo.Db.open()) {
+            Set<Integer> ids = loadAccountUnlockedRecipeIds(con);
+            ids.addAll(loadAnyCharacterUnlockedRecipeIds(con));
+            return Set.copyOf(ids);
+        }
+    }
+
     public int countRecipes() throws SQLException {
         String sql = "SELECT COUNT(*) FROM recipes";
         try (Connection conn = repo.Db.open();

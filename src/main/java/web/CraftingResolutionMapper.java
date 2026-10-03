@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The part of the resolution-detail contract both routes share (STORY-API-008,
@@ -151,15 +152,24 @@ final class CraftingResolutionMapper {
      */
     static ResolutionNodeDto toTree(CraftingResolutionDetail detail) {
         if (detail.explanation() == null || detail.explanation().root() == null) return null;
-        return toNode(detail.explanation().root(), detail.itemNames(), detail.items());
+        return toNode(detail.explanation().root(), detail.itemNames(), detail.items(), Set.of(), Set.of());
+    }
+
+    /** Discovery-only projection: adds knowledge for recipes proven known or eligible to discover. */
+    static ResolutionNodeDto toDiscoveryTree(CraftingResolutionDetail detail) {
+        if (detail.explanation() == null || detail.explanation().root() == null) return null;
+        return toNode(detail.explanation().root(), detail.itemNames(), detail.items(),
+                detail.knownUsableRecipeIds(), detail.discoverableRecipeIds());
     }
 
     private static ResolutionNodeDto toNode(CraftTraceNode node,
                                             Map<Integer, String> itemNames,
-                                            Map<Integer, ItemRepository.ItemInfo> items) {
+                                            Map<Integer, ItemRepository.ItemInfo> items,
+                                            Set<Integer> knownRecipeIds,
+                                            Set<Integer> discoverableRecipeIds) {
         List<ResolutionNodeDto> children = new ArrayList<>(node.children().size());
         for (CraftTraceNode child : node.children()) {
-            children.add(toNode(child, itemNames, items));
+            children.add(toNode(child, itemNames, items, knownRecipeIds, discoverableRecipeIds));
         }
 
         return new ResolutionNodeDto(
@@ -181,7 +191,17 @@ final class CraftingResolutionMapper {
                 node.opportunityCostCopper(),
                 node.effectiveCostCopper(),
                 children,
-                iconUrl(node.itemId(), items));
+                iconUrl(node.itemId(), items),
+                recipeKnowledge(node.recipeId(), knownRecipeIds, discoverableRecipeIds));
+    }
+
+    private static String recipeKnowledge(Integer recipeId,
+                                          Set<Integer> knownRecipeIds,
+                                          Set<Integer> discoverableRecipeIds) {
+        if (recipeId == null) return null;
+        if (knownRecipeIds.contains(recipeId)) return "KNOWN";
+        if (discoverableRecipeIds.contains(recipeId)) return "TO_DISCOVER";
+        return null;
     }
 
     /** Null when this operation captured no item metadata for the node, or none that is acceptable. */

@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -236,6 +237,31 @@ class CraftingDiscoveryResolutionApiControllerTest {
                 .andExpect(jsonPath("$.tree.children[0].itemName").value("Carrot"))
                 .andExpect(jsonPath("$.tree.children[0].boughtQuantity").value(2))
                 .andExpect(jsonPath("$.tree.children[0].children.length()").value(0));
+    }
+
+    @Test
+    void discoveryTreeMarksOnlyKnownOrDiscoverableCraftedRecipes() throws Exception {
+        CraftTraceNode ordinary = new CraftTraceNode(300, 1, 1, 0, 0, 0, null, 0, 0, null,
+                List.of(AcquisitionMethod.INVENTORY), List.of(), List.of(), 0, 0, 0, List.of());
+        CraftTraceNode unknownIntermediate = new CraftTraceNode(250, 1, 0, 1, 0, 0, 9, 1, 1, "Aria",
+                List.of(AcquisitionMethod.CRAFT), List.of(), List.of(), 10, 0, 10, List.of(ordinary));
+        CraftTraceNode knownCraft = new CraftTraceNode(200, 1, 0, 1, 0, 0, 8, 1, 1, "Aria",
+                List.of(AcquisitionMethod.CRAFT), List.of(), List.of(), 10, 0, 10, List.of(unknownIntermediate));
+        CraftTraceNode root = new CraftTraceNode(100, 1, 0, 1, 0, 0, 5, 1, 1, "Aria",
+                List.of(AcquisitionMethod.CRAFT), List.of(), List.of(), 10, 0, 10, List.of(knownCraft));
+        CraftingResolutionDetail detail = new CraftingResolutionDetail(
+                5, CraftingResolutionDetail.Status.AVAILABLE, REQUESTED,
+                new CraftResult(100, "Chef", 1, Map.of(), Map.of(), 10, 0, 400, 390, 390, null),
+                new SingleCraftExplanation(5, 100, 1, true, root), ITEMS, QUOTES,
+                Set.of(8), Set.of(5, 9));
+        factory.next(service -> service.canned = detail);
+
+        mockMvc.perform(resolution(validRequest(5)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tree.recipeKnowledge").value("TO_DISCOVER"))
+                .andExpect(jsonPath("$.tree.children[0].recipeKnowledge").value("KNOWN"))
+                .andExpect(jsonPath("$.tree.children[0].children[0].recipeKnowledge").value("TO_DISCOVER"))
+                .andExpect(jsonPath("$.tree.children[0].children[0].children[0].recipeKnowledge").doesNotExist());
     }
 
     /**

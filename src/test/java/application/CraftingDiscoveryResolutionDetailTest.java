@@ -473,6 +473,7 @@ class CraftingDiscoveryResolutionDetailTest {
      */
     private static class Fakes {
         List<Integer> missingIds = List.of();
+        Set<Integer> knownRecipeIds = Set.of();
         Map<Integer, PriceQuote> quotes = QUOTES;
         Map<Integer, PriceQuote> laterQuotes;
         Map<Integer, ItemRepository.ItemInfo> items = Map.of();
@@ -527,6 +528,11 @@ class CraftingDiscoveryResolutionDetailTest {
             fakes.missingIdLoads.incrementAndGet();
             fakes.capturedMissingCharName = charName;
             return fakes.missingIds;
+        }
+
+        @Override
+        public Set<Integer> loadKnownRecipeIds() {
+            return fakes.knownRecipeIds;
         }
     }
 

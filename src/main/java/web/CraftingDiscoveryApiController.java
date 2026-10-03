@@ -125,6 +125,6 @@ public class CraftingDiscoveryApiController {
                 CraftingResolutionMapper.toRow(detail),
                 CraftingResolutionMapper.treeStatus(detail),
                 CraftingResolutionMapper.TREE_BASIS_SINGLE_OUTPUT_REQUIREMENT,
-                CraftingResolutionMapper.toTree(detail));
+                CraftingResolutionMapper.toDiscoveryTree(detail));
     }
 }

@@ -184,7 +184,8 @@ class CraftingProfitApiControllerTest {
                 new HashMap<>(Map.of(300, 9, 200, 5)), new HashMap<>(Map.of(200, 2)),
                 1_234, 56, 7_890, 700, 2_800, 31_560, null, BlockedReason.NONE, 224,
                 Map.of(200, new craft.MaterialPurchaseCost(12, 60),
-                        300, new craft.MaterialPurchaseCost(null, null)));
+                        300, new craft.MaterialPurchaseCost(null, null)),
+                Map.of(200, new craft.MaterialPurchaseCost(12, 24)));
 
         factory.next(service -> service.canned = profitData(
                 List.of(RECIPE),
@@ -231,15 +232,18 @@ class CraftingProfitApiControllerTest {
                 .andExpect(jsonPath("$.rows[0].missingToBuy[1].price").doesNotExist())
                 .andExpect(jsonPath("$.rows[0].missingToBuyOne.length()").value(1))
                 .andExpect(jsonPath("$.rows[0].missingToBuyOne[0].itemId").value(200))
-                .andExpect(jsonPath("$.rows[0].missingToBuyOne[0].quantity").value(2));
+                .andExpect(jsonPath("$.rows[0].missingToBuyOne[0].quantity").value(2))
+                .andExpect(jsonPath("$.rows[0].missingToBuyOne[0].purchaseUnitPriceCopper").value(12))
+                .andExpect(jsonPath("$.rows[0].missingToBuyOne[0].totalPurchaseCostCopper").value(24));
     }
 
     @Test
     void missingMaterialPurchaseValuesComeFromTheConfiguredAcquisitionMode() throws Exception {
         CraftResult result = new CraftResult(100, "Artificer", 4,
-                new HashMap<>(Map.of(200, 5)), new HashMap<>(),
+                new HashMap<>(Map.of(200, 5)), new HashMap<>(Map.of(200, 2)),
                 60, 0, 7_890, 700, 2_800, 31_560, null, BlockedReason.NONE, 0,
-                Map.of(200, new craft.MaterialPurchaseCost(10, 50)));
+                Map.of(200, new craft.MaterialPurchaseCost(10, 50)),
+                Map.of(200, new craft.MaterialPurchaseCost(10, 20)));
         factory.next(service -> service.canned = profitData(List.of(RECIPE),
                 Map.of(RECIPE.recipeId, result), Map.of(200, new ItemRepository.ItemInfo(200, "Ingot", null, null)),
                 Map.of(200, new PriceQuote(10, 12))));
@@ -249,7 +253,9 @@ class CraftingProfitApiControllerTest {
                         .content("{\"listingBuy\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.rows[0].missingToBuy[0].purchaseUnitPriceCopper").value(10))
-                .andExpect(jsonPath("$.rows[0].missingToBuy[0].totalPurchaseCostCopper").value(50));
+                .andExpect(jsonPath("$.rows[0].missingToBuy[0].totalPurchaseCostCopper").value(50))
+                .andExpect(jsonPath("$.rows[0].missingToBuyOne[0].purchaseUnitPriceCopper").value(10))
+                .andExpect(jsonPath("$.rows[0].missingToBuyOne[0].totalPurchaseCostCopper").value(20));
     }
 
     @Test

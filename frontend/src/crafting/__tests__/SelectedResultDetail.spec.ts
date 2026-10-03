@@ -172,15 +172,15 @@ describe('SelectedResultDetail', () => {
     }
   })
 
-  it('keepsRawKnownUnknownAndMissingRowStatesOnlyInCollapsedTechnicalDetails', () => {
+  it('keepsRawKnownUnknownAndMissingRowStatesOutOfTheVisibleDetail', () => {
     for (const [row, raw] of [
       [priceUnavailableRow, 'PRICE_UNAVAILABLE'],
       [{ ...profitableRow, blockedReason: 'SOME_STATE_ADDED_LATER' }, 'SOME_STATE_ADDED_LATER'],
       [{ ...profitableRow, blockedReason: null }, '—']
     ] as const) {
       const detail = detailOf(row as CraftingRow)
-      expect(detail.find('[data-test="detail-state-code"]').text()).toBe(raw)
-      expect(detail.find('[data-test="detail-diagnostics"]').attributes('open')).toBeUndefined()
+      expect(detail.find('[data-test="detail-state-code"]').exists()).toBe(false)
+      expect(detail.find('[data-test="detail-diagnostics"]').exists()).toBe(false)
       expect(selectedResultNormalText(detail)).not.toContain(raw)
     }
   })
@@ -199,15 +199,15 @@ describe('SelectedResultDetail', () => {
     expect(detail.find('[data-test="detail-total-profit"]').text()).toBe('—')
     expect(detail.find('[data-test="detail-buy-cost"]').text()).toBe('—')
     expect(detail.find('[data-test="detail-total-profit"]').classes()).toContain('money--none')
-    expect(detail.find('[data-test="detail-state-code"]').text()).toBe('—')
+    expect(detail.find('[data-test="detail-state-code"]').exists()).toBe(false)
     expect(detail.find('[data-test="detail-output-quote"]').text()).toContain('No quote supplied')
   })
 
   it('keepsMaterialPriceInformationWhileRowStateIsTechnicalOnly', () => {
     const detail = detailOf(priceUnavailableRow)
 
-    expect(detail.find('[data-test="detail-state-code"]').text()).toBe('PRICE_UNAVAILABLE')
-    expect(detail.find('[data-test="detail-diagnostics"]').attributes('open')).toBeUndefined()
+    expect(detail.find('[data-test="detail-state-code"]').exists()).toBe(false)
+    expect(detail.find('[data-test="detail-diagnostics"]').exists()).toBe(false)
 
     expect(detail.find('[data-test="missing-item"]').text()).toContain('Charged Core')
     expect(detail.find('[data-test="missing-item"]').text()).toContain('Price / item: Unavailable')
@@ -366,15 +366,13 @@ describe('SelectedResultDetail', () => {
     expect(detail.find('[data-test="resolution-basis"]').exists()).toBe(false)
   })
 
-  it('keepsTheBackendsResolutionLiteralsInTheTechnicalDisclosure', () => {
+  it('doesNotRenderBackendResolutionDiagnostics', () => {
     const detail = detailWithResolution(profitableRow, 'ready', responseFor(profitableRow.recipeId))
 
-    expect(detail.find('[data-test="detail-consistency"]').text()).toBe('FRESH_CALCULATION')
-    expect(detail.find('[data-test="detail-tree-basis"]').text()).toBe('SELECTED_RESULT_OUTPUT_QUANTITY')
-    expect(detail.find('[data-test="detail-tree-status"]').text()).toBe('AVAILABLE')
-    expect(detail.find('[data-test="detail-calculated-at"]').text()).toBe('2026-09-25T10:20:30Z')
-    // Still secondary: the disclosure is closed, so none of it is in the primary workflow.
-    expect(detail.find('[data-test="detail-diagnostics"]').attributes('open')).toBeUndefined()
+    expect(detail.find('[data-test="detail-consistency"]').exists()).toBe(false)
+    expect(detail.find('[data-test="detail-tree-basis"]').exists()).toBe(false)
+    expect(detail.find('[data-test="detail-tree-status"]').exists()).toBe(false)
+    expect(detail.find('[data-test="detail-diagnostics"]').exists()).toBe(false)
   })
 
   it('namesTheDisplayControlThatKeepsTheSelectedRecipeOutOfTheList', () => {

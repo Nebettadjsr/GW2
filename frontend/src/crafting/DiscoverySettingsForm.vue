@@ -73,10 +73,16 @@ function onBuyPriceChange(event: Event): void {
 </template>
 
 <style scoped>
-.settings { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4) var(--space-6); }
+.settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--space-4);
+}
 .settings__checks { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
 .check-row { display: flex; align-items: center; gap: var(--space-2); }
-.price-settings { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.price-settings { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
+@media (max-width: 640px) { .settings { grid-template-columns: minmax(0, 1fr); } }
 .price-setting { display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
 .price-setting select { min-width: 9rem; }
 </style>

@@ -321,7 +321,10 @@ public class CraftingProfitService {
                 cr.totalProfitCopper,
                 cr.totalSellValueCopper,
                 lazyTree,
-                cr.blockedReason
+                cr.blockedReason,
+                cr.totalMatsSellValueCopper,
+                cr.materialPurchaseCosts,
+                cr.materialPurchaseCostsOne
         );
 
         Map<Integer, CraftResult> copy = new HashMap<>(lastResultsByRecipeId);

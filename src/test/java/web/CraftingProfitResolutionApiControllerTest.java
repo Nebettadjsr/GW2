@@ -266,6 +266,7 @@ class CraftingProfitResolutionApiControllerTest {
                 .andExpect(jsonPath("$.tree.characterName").value("Aria"))
                 .andExpect(jsonPath("$.tree.methods[0]").value("CRAFT"))
                 .andExpect(jsonPath("$.tree.methods.length()").value(1))
+                .andExpect(jsonPath("$.tree.recipeKnowledge").doesNotExist())
                 .andExpect(jsonPath("$.tree.states.length()").value(0))
                 .andExpect(jsonPath("$.tree.blockedReasons.length()").value(0))
                 .andExpect(jsonPath("$.tree.cashCostCopper").value(36))

@@ -53,6 +53,11 @@ const missingForAllCrafts = computed<MissingItem[] | null>(
   () => props.row?.missingToBuy ?? null
 )
 
+const outputQuoteUnavailable = computed(() => {
+  const quote = props.row?.outputPrice
+  return quote === null || quote === undefined || (quote.buyUnitCopper === null && quote.sellUnitCopper === null)
+})
+
 /*
  * Name the price basis used for the calculation.
  *
@@ -258,13 +263,15 @@ function materialQuoteText(item: MissingItem): string {
           </h4>
 
           <p
-            v-if="row.outputPrice === null"
+            v-if="outputQuoteUnavailable"
             class="meta"
+            data-test="detail-output-unavailable"
           >
-            No quote supplied
+            <strong>Not available on TP</strong> · No quote supplied
+            <a v-if="wikiHref !== null" :href="wikiHref" target="_blank" rel="noopener noreferrer">GW2 Wiki: {{ recipeLabel(row) }}</a>
           </p>
 
-          <dl v-else class="tp-prices__values">
+          <dl v-if="row.outputPrice !== null && (row.outputPrice.buyUnitCopper !== null || row.outputPrice.sellUnitCopper !== null)" class="tp-prices__values">
             <dt>Instant sell</dt>
             <dd class="numeric">
               {{ formatCopper(row.outputPrice.buyUnitCopper) }}
@@ -356,53 +363,6 @@ function materialQuoteText(item: MissingItem): string {
         </ul>
       </section>
 
-      <!-- Technical information -->
-      <details
-        class="diagnostics"
-        data-test="detail-diagnostics"
-      >
-        <summary>
-          Technical details
-        </summary>
-
-        <dl class="diagnostics__body">
-          <dt>Recipe id</dt>
-          <dd>{{ row.recipeId }}</dd>
-
-          <dt>Output item id</dt>
-          <dd>{{ row.outputItemId }}</dd>
-
-          <dt>Result supplied</dt>
-          <dd>{{ row.resultAvailable ? 'yes' : 'no' }}</dd>
-
-          <dt>Result state</dt>
-          <dd data-test="detail-state-code">
-            {{ row.blockedReason ?? NO_VALUE }}
-          </dd>
-
-          <template v-if="resolutionDetail !== null">
-            <dt>Resolution consistency</dt>
-            <dd data-test="detail-consistency">
-              {{ resolutionDetail.consistency }}
-            </dd>
-
-            <dt>Resolution basis</dt>
-            <dd data-test="detail-tree-basis">
-              {{ resolutionDetail.treeBasis }}
-            </dd>
-
-            <dt>Resolution tree status</dt>
-            <dd data-test="detail-tree-status">
-              {{ resolutionDetail.treeStatus }}
-            </dd>
-
-            <dt>Resolution calculated at</dt>
-            <dd data-test="detail-calculated-at">
-              {{ resolutionDetail.calculatedAt }}
-            </dd>
-          </template>
-        </dl>
-      </details>
     </template>
   </section>
 </template>

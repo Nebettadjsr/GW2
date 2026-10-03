@@ -52,7 +52,7 @@ public class CraftingDiscoveryService {
     // when there is nothing discoverable" behavior).
     private List<Recipe> lastAllRecipes = List.of();
     private CraftingSettings lastSettings;
-    private Set<Integer> lastAllowedRecipeIds = Collections.emptySet();
+    private Set<Integer> lastUsableRecipeIds = Collections.emptySet();
     private Map<Integer, PriceQuote> lastTp = Map.of();
     private Map<Integer, ItemRepository.ItemInfo> lastItems = Map.of();
     private Map<Integer, CraftResult> lastResultsByRecipeId = Map.of();
@@ -111,18 +111,18 @@ public class CraftingDiscoveryService {
         Candidates candidates = loadCandidates(choice);
 
         if (!candidates.missingRecipesFound()) {
-            this.lastAllowedRecipeIds = Collections.emptySet();
+            this.lastUsableRecipeIds = Collections.emptySet();
             return new DiscoveryData(List.of(), List.of(), Map.of(), Map.of(), Map.of());
         }
 
-        this.lastAllowedRecipeIds = candidates.allowedRecipeIds();
+        this.lastUsableRecipeIds = candidates.usableRecipeIds();
 
         CalculationInputs inputs =
                 loadCalculationInputs(oneCraftSettings, characterName(choice), candidates.allRecipes());
 
         Map<Integer, CraftResult> results = planner.evaluateAllSingleCraft(
                 candidates.allRecipes(), inputs.sellableInventory(), inputs.boundInventory(),
-                inputs.tp(), oneCraftSettings, candidates.allowedRecipeIds());
+                inputs.tp(), oneCraftSettings, candidates.usableRecipeIds());
 
         this.lastAllRecipes = candidates.allRecipes();
         this.lastSettings = oneCraftSettings;
@@ -168,14 +168,18 @@ public class CraftingDiscoveryService {
 
         CraftResult row = planner.evaluateSingleCraft(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
-                inputs.boundInventory(), inputs.tp(), oneCraftSettings, candidates.allowedRecipeIds());
+                inputs.boundInventory(), inputs.tp(), oneCraftSettings, candidates.usableRecipeIds());
 
         SingleCraftExplanation explanation = new SingleCraftExplainer().explainIndividual(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
-                inputs.boundInventory(), inputs.tp(), oneCraftSettings, candidates.allowedRecipeIds());
+                inputs.boundInventory(), inputs.tp(), oneCraftSettings, candidates.usableRecipeIds());
 
-        return CraftingResolutionDetail.of(
-                recipeId, selected, row, explanation, inputs.items(), inputs.tp());
+        Set<Integer> knownUsableRecipeIds = candidates.knownRecipeIds().stream()
+                .filter(candidates.usableRecipeIds()::contains)
+                .collect(Collectors.toSet());
+        return CraftingResolutionDetail.ofDiscovery(
+                recipeId, selected, row, explanation, inputs.items(), inputs.tp(),
+                knownUsableRecipeIds, candidates.candidateRecipeIds());
     }
 
     private String characterName(DiscChoice choice) {
@@ -208,15 +212,17 @@ public class CraftingDiscoveryService {
     private record Candidates(boolean missingRecipesFound,
                               List<Recipe> visibleRecipes,
                               List<Recipe> allRecipes,
-                              Set<Integer> allowedRecipeIds) {
+                              Set<Integer> candidateRecipeIds,
+                              Set<Integer> knownRecipeIds,
+                              Set<Integer> usableRecipeIds) {
 
         static Candidates noMissingRecipes() {
-            return new Candidates(false, List.of(), List.of(), Set.of());
+            return new Candidates(false, List.of(), List.of(), Set.of(), Set.of(), Set.of());
         }
 
         /** The recipe this operation would produce a row for, or null when it would produce none. */
         Recipe selected(int recipeId) {
-            if (!allowedRecipeIds.contains(recipeId)) return null;
+            if (!candidateRecipeIds.contains(recipeId)) return null;
             for (Recipe r : allRecipes) {
                 if (r.recipeId == recipeId) return r;
             }
@@ -263,11 +269,25 @@ public class CraftingDiscoveryService {
                     .toList();
         }
 
-        Set<Integer> allowedRecipeIds = visibleRecipes.stream()
+        Set<Integer> candidateRecipeIds = visibleRecipes.stream()
                 .map(r -> r.recipeId)
                 .collect(Collectors.toSet());
 
-        return new Candidates(true, visibleRecipes, allRecipes, allowedRecipeIds);
+        Set<Integer> knownIds = recipeRepo.loadKnownRecipeIds();
+        Set<Integer> usableRecipeIds = allRecipes.stream()
+                .filter(r -> r.minRating <= maxLevel)
+                .filter(r -> supportsDiscipline(r.disciplinesText, discipline))
+                .filter(r -> knownIds.contains(r.recipeId) || candidateRecipeIds.contains(r.recipeId))
+                .map(r -> r.recipeId)
+                .collect(Collectors.toSet());
+
+        return new Candidates(true, visibleRecipes, allRecipes, candidateRecipeIds, knownIds, usableRecipeIds);
+    }
+
+    private boolean supportsDiscipline(String disciplinesText, String discipline) {
+        return discipline == null || discipline.isBlank() || "All".equalsIgnoreCase(discipline)
+                || (disciplinesText != null && java.util.Arrays.stream(disciplinesText.split(","))
+                .map(String::trim).anyMatch(discipline::equalsIgnoreCase));
     }
 
     private CalculationInputs loadCalculationInputs(CraftingSettings settings,
@@ -332,7 +352,10 @@ public class CraftingDiscoveryService {
                 cr.totalProfitCopper,
                 cr.totalSellValueCopper,
                 lazyTree,
-                cr.blockedReason
+                cr.blockedReason,
+                cr.totalMatsSellValueCopper,
+                cr.materialPurchaseCosts,
+                cr.materialPurchaseCostsOne
         );
 
         Map<Integer, CraftResult> copy = new HashMap<>(lastResultsByRecipeId);
@@ -380,7 +403,7 @@ public class CraftingDiscoveryService {
                 recipesByOutput,
                 lastTp,
                 lastSettings,
-                lastAllowedRecipeIds
+                lastUsableRecipeIds
         );
 
         RecipeTreeBuilder treeBuilder = new RecipeTreeBuilder();

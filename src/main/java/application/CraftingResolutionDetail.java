@@ -9,6 +9,7 @@ import repo.ItemRepository;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * What one resolution-detail operation produced for one selected recipe
@@ -48,8 +49,18 @@ public record CraftingResolutionDetail(
         CraftResult row,
         SingleCraftExplanation explanation,
         Map<Integer, ItemRepository.ItemInfo> items,
-        Map<Integer, PriceQuote> quotes
+        Map<Integer, PriceQuote> quotes,
+        Set<Integer> knownUsableRecipeIds,
+        Set<Integer> discoverableRecipeIds
 ) {
+
+    /** Compatibility constructor for Profit and callers that do not carry Discovery knowledge data. */
+    public CraftingResolutionDetail(int recipeId, Status status, Recipe recipe, CraftResult row,
+                                    SingleCraftExplanation explanation,
+                                    Map<Integer, ItemRepository.ItemInfo> items,
+                                    Map<Integer, PriceQuote> quotes) {
+        this(recipeId, status, recipe, row, explanation, items, quotes, Set.of(), Set.of());
+    }
 
     public enum Status {
         /** The recipe is not part of this operation's visible candidate set. */
@@ -63,6 +74,8 @@ public record CraftingResolutionDetail(
     public CraftingResolutionDetail {
         items = Map.copyOf(items);
         quotes = Map.copyOf(quotes);
+        knownUsableRecipeIds = Set.copyOf(knownUsableRecipeIds);
+        discoverableRecipeIds = Set.copyOf(discoverableRecipeIds);
     }
 
     static CraftingResolutionDetail recipeNotInCalculation(int recipeId) {
@@ -84,6 +97,19 @@ public record CraftingResolutionDetail(
                 explanation,
                 capturedItems,
                 capturedQuotes);
+    }
+
+    static CraftingResolutionDetail ofDiscovery(int recipeId,
+                                                Recipe recipe,
+                                                CraftResult row,
+                                                SingleCraftExplanation explanation,
+                                                Map<Integer, ItemRepository.ItemInfo> capturedItems,
+                                                Map<Integer, PriceQuote> capturedQuotes,
+                                                Set<Integer> knownUsableRecipeIds,
+                                                Set<Integer> discoverableRecipeIds) {
+        CraftingResolutionDetail detail = of(recipeId, recipe, row, explanation, capturedItems, capturedQuotes);
+        return new CraftingResolutionDetail(detail.recipeId, detail.status, detail.recipe, detail.row,
+                detail.explanation, detail.items, detail.quotes, knownUsableRecipeIds, discoverableRecipeIds);
     }
 
     /**

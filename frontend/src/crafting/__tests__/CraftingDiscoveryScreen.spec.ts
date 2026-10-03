@@ -285,8 +285,11 @@ describe('CraftingDiscoveryScreen', () => {
     expect(normalized(wrapper, '[data-test="discovery-table"]')).not.toContain('PRICE_UNAVAILABLE')
 
     await selectRecipe(wrapper, priceUnavailableRow.outputName as string)
-    expect(wrapper.find('[data-test="discovery-detail-status"]').text()).toBe('Price missing')
-    expect(wrapper.find('[data-test="discovery-detail-state-code"]').text()).toBe('PRICE_UNAVAILABLE')
+    expect(wrapper.find('[data-test="discovery-detail-status"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="discovery-detail-state-code"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="discovery-detail-diagnostics"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="discovery-detail-output-unavailable"]').text()).toContain('Not available on TP')
+    expect(wrapper.find('[data-test="discovery-detail-output-unavailable"] a').attributes('href')).toContain('Mystic%20Curio')
 
     await selectRecipe(wrapper, noResultRow.outputName as string)
     expect(wrapper.find('[data-test="discovery-detail-status"]').text()).toBe('No result')
@@ -305,6 +308,8 @@ describe('CraftingDiscoveryScreen', () => {
     expect(wrapper.find('[data-test="discovery-detail-calculation"]').text()).toContain('after 15% TP fees')
     const quote = wrapper.find('[data-test="discovery-detail-output-quote"]')
     expect(quote.findAll('dd').map((value) => value.text())).toEqual(['3s 60c', '4s 20c'])
+    expect(wrapper.find('[data-test="tree-node"][data-path="0.0"]').find('[data-test="node-wiki"]').attributes('href')).toContain('Copper%20Ore')
+    expect(wrapper.find('[data-test="tree-node"][data-path="0.0"]').find('[data-test="node-sourcing"]').text()).toContain('From stock ×2')
   })
 
   it('showsALossWithItsSignAndBothSuppliedMaterialListsUnderTheirOwnBases', async () => {
@@ -414,7 +419,8 @@ describe('CraftingDiscoveryScreen', () => {
     await wrapper.find('[data-test="discovery-search"]').setValue('Soup')
 
     expect(recipeNames(wrapper)).toEqual([lessProfitableRow.outputName])
-    expect(normalized(wrapper, '[data-test="discovery-summary"]')).toContain('Showing 1 of 5')
+    expect(normalized(wrapper, '[data-test="discovery-summary"]')).toContain('Showing 1 of 1 matching recipe')
+    expect(normalized(wrapper, '[data-test="discovery-summary"]')).toContain('5 returned by the backend')
 
     // A recipe level and the words a state is called are both searchable.
     await wrapper.find('[data-test="discovery-search"]').setValue('225')
@@ -666,16 +672,17 @@ describe('CraftingDiscoveryScreen', () => {
     // controls panel, with the search in the second — not a section of the results region.
     const calculation = wrapper.find('[data-test="discovery-calculation-controls"]')
     const display = wrapper.find('[data-test="discovery-display-controls"]')
-    expect(calculation.find('legend').text()).toBe('Calculation')
-    expect(display.find('legend').text()).toBe('Displayed results')
-    expect(calculation.element.parentElement?.contains(display.element)).toBe(true)
+    const controls = wrapper.find('.discovery-controls')
+    expect(controls.exists()).toBe(true)
+    expect(controls.element.contains(calculation.element)).toBe(true)
+    expect(controls.element.contains(display.element)).toBe(true)
     expect(display.element.contains(wrapper.find('[data-test="discovery-search"]').element)).toBe(true)
     expect(
-      wrapper.find('[data-test="discovery-results-region"]').element.contains(display.element)
-    ).toBe(false)
+      wrapper.find('[data-test="discovery-results-region"]').element.contains(controls.element)
+    ).toBe(true)
 
     expect(calculation.find('[data-test="discovery-scope-selector"]').exists()).toBe(true)
-    expect(calculation.find('[data-test="discovery-settings-form"]').exists()).toBe(true)
+    expect(controls.find('[data-test="discovery-settings-form"]').exists()).toBe(true)
 
     // The detail area is its own region beside the list, not a column of it.
     const detail = wrapper.find('[data-test="discovery-detail"]')

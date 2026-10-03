@@ -1,14 +1,17 @@
 package web.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.util.List;
 
 /**
  * One requirement in a resolution tree, as reported by both detail routes (STORY-API-008,
  * TARGET_ARCHITECTURE.md §13.3's recursive node shape).
  *
- * <p>A transport copy of the domain's {@code craft.CraftTraceNode} and nothing more. Every value is
- * the one the authoritative resolver produced: no quantity or cost is repaired, summed or rounded
- * here, no state is inferred from a price quote, and no node is dropped or truncated. Enum-valued
+ * <p>A transport copy of the domain's {@code craft.CraftTraceNode}, with an optional Discovery-only
+ * recipe-knowledge label derived from the explicit account-known and eligible-candidate sets. No
+ * quantity or cost is repaired, summed or rounded here, no state is inferred from a price quote,
+ * and no node is dropped or truncated. Enum-valued
  * domain facts are carried as their own names, so a state or reason this schema does not yet
  * enumerate stays visible instead of silently reading as success.
  *
@@ -42,6 +45,8 @@ import java.util.List;
  *                           never derived from how the requirement was sourced; null when the
  *                           operation captured no accepted source for that item. Display metadata
  *                           only: it changes no quantity, cost or state
+ * @param recipeKnowledge    Discovery-only {@code KNOWN}/{@code TO_DISCOVER}, null for ordinary
+ *                           ingredients and all Crafting Profit tree nodes
  */
 public record ResolutionNodeDto(int itemId,
                                 String itemName,
@@ -61,5 +66,6 @@ public record ResolutionNodeDto(int itemId,
                                 Integer opportunityCostCopper,
                                 Integer effectiveCostCopper,
                                 List<ResolutionNodeDto> children,
-                                String iconUrl) {
+                                String iconUrl,
+                                @JsonInclude(JsonInclude.Include.NON_NULL) String recipeKnowledge) {
 }

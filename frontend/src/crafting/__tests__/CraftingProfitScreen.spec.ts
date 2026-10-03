@@ -340,16 +340,15 @@ describe('CraftingProfitScreen', () => {
     expect(tableText).not.toContain('Buying is off')
     expect(tableText).not.toContain('Recipe not allowed')
 
-    // Selecting one preserves its economics and keeps the raw code in Technical details only.
+    // Selecting one preserves its economics without exposing resolver codes in the UI.
     await selectRecipe(wrapper, 'Restricted Recipe 5')
-    expect(wrapper.find('[data-test="detail-state-code"]').text()).toBe('INSUFFICIENT_BUDGET')
-    const selectedCopy = wrapper.find('[data-test="selected-detail"]').element.cloneNode(true) as HTMLElement
-    selectedCopy.querySelector('[data-test="detail-diagnostics"]')?.remove()
-    expect(selectedCopy.textContent).not.toContain('INSUFFICIENT_BUDGET')
+    expect(wrapper.find('[data-test="detail-state-code"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="detail-diagnostics"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('INSUFFICIENT_BUDGET')
     expect(wrapper.find('[data-test="detail-buy-cost"]').text()).toBe('2s 50c')
   })
 
-  it('keepsRawCycleCodeInTechnicalDetailsWithoutARowBadge', async () => {
+  it('keepsRawCycleCodeOutOfTheVisibleDetailWithoutARowBadge', async () => {
     const api = new FakeCraftingApi()
     api.profitHandler = () =>
       Promise.resolve(profitResponse([profitableRow, cycleDetectedRow, ...movedReasonRows]))
@@ -360,7 +359,8 @@ describe('CraftingProfitScreen', () => {
     expect(wrapper.find('[data-test="profit-table"]').text()).not.toContain('CYCLE_DETECTED')
 
     await selectRecipe(wrapper, cycleDetectedRow.outputName as string)
-    expect(wrapper.find('[data-test="detail-state-code"]').text()).toBe('CYCLE_DETECTED')
+    expect(wrapper.find('[data-test="detail-state-code"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('CYCLE_DETECTED')
   })
 
   it('rendersUnavailableAndBlockedRowsWithoutSubstitutingZero', async () => {
@@ -410,6 +410,8 @@ describe('CraftingProfitScreen', () => {
     await selectRecipe(wrapper, priceUnavailableRow.outputName as string)
     expect(wrapper.find('[data-test="missing-all"]').text()).toContain('Charged Core')
     expect(wrapper.find('[data-test="detail-output-quote"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="detail-output-unavailable"]').text()).toContain('Not available on TP')
+    expect(wrapper.find('[data-test="detail-output-unavailable"] a').attributes('href')).toContain('Mystic%20Curio')
   })
 
   it('opensTheDetailForTheChosenRecipeWithAKeyboardOperableControl', async () => {

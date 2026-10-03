@@ -85,7 +85,7 @@ final class CraftingRowMapper {
                 result.blockedReason == null ? null : result.blockedReason.name(),
                 toQuote(tp.get(recipe.outputItemId)),
                 toMissing(result.missingToBuy, result.materialPurchaseCosts, items, tp),
-                toMissing(result.missingToBuyOne, Map.of(), items, tp),
+                toMissing(result.missingToBuyOne, result.materialPurchaseCostsOne, items, tp),
                 ingredientNames(recipe, items),
                 iconUrl(recipe.outputItemId, items));
     }

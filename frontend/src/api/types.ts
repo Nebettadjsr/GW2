@@ -116,7 +116,8 @@ export interface CraftingProfitRequest {
 /**
  * One requirement in a resolution tree (`TARGET_ARCHITECTURE.md` 13.3, `web.dto.ResolutionNodeDto`).
  *
- * Every field is a fact the backend's authoritative resolver produced. The browser displays them and
+ * Resolver fields are authoritative backend facts. The Discovery-only recipeKnowledge field comes
+ * from explicit account-known and eligible-discovery sets. The browser displays these fields and
  * nothing else: it does not add the three cost fields up (they already include everything below the
  * node), does not repair or infer a quantity, does not merge two occurrences of the same item and
  * does not read a state out of a price. `recipeId` is the recipe *actually* selected or attempted
@@ -160,6 +161,8 @@ export interface ResolutionNode {
    * not derived from how the requirement was sourced - or null when there is no accepted source.
    */
   iconUrl: string | null
+  /** Discovery only: present only for a crafted recipe proven known or eligible to discover. */
+  recipeKnowledge?: 'KNOWN' | 'TO_DISCOVER' | null
 }
 
 /** The effective inputs a resolution response echoes back, in the table response's own shape. */

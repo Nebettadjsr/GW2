@@ -205,6 +205,52 @@ class CraftingDiscoveryServiceTest {
     }
 
     @Test
+    void discoveryUsesKnownAndDiscoverableIntermediateRecipesButExcludesUnknownNonDiscoverableRecipes() throws SQLException {
+        Recipe target = new Recipe(10, 100, 1, 0, "Chef", List.of(new Ingredient(200, 1)));
+        Recipe knownIntermediate = new Recipe(11, 200, 1, 0, "Chef", List.of(new Ingredient(300, 1)));
+        Recipe discoverableIntermediate = new Recipe(12, 300, 2, 0, "Chef", List.of(new Ingredient(400, 1)));
+        Recipe unavailableRecipe = new Recipe(13, 200, 1, 0, "Chef", List.of(new Ingredient(500, 1)));
+        var recipeRepo = new FakeRecipeRepository();
+        recipeRepo.missingIds = List.of(10, 12);
+        recipeRepo.knownIds = Set.of(11);
+        var tp = new FakeTpPriceRepository();
+        tp.canned = Map.of(400, new PriceQuote(5, 7));
+        var planner = new RecordingCraftingPlanner();
+        var service = serviceWith(recipeRepo, new FakeInventoryRepository(), tp,
+                new FakeItemRepository(), List.of(target, knownIntermediate, discoverableIntermediate,
+                        unavailableRecipe), planner);
+
+        var data = service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(false, true));
+
+        assertEquals(List.of(10, 12), data.visibleRecipes().stream().map(r -> r.recipeId).toList());
+        assertEquals(Set.of(10, 11, 12), planner.capturedAllowedRecipeIds,
+                "known recipes and missing discoverable recipes can resolve, but database presence alone cannot");
+        CraftResult result = data.resultsByRecipeId().get(10);
+        assertNotNull(result);
+        assertEquals(1, result.craftableCount, "the resolver follows both intermediate levels and buys the leaf");
+        assertEquals(Map.of(400, 1), result.missingToBuyOne);
+        assertEquals(7, result.buyCostCopper, "the selected ask quote is authoritative for this one attempt");
+    }
+
+    @Test
+    void discoveryDetailCarriesOnlyExplicitKnownAndEligibleRecipeKnowledge() throws SQLException {
+        Recipe target = new Recipe(1, 100, 1, 0, "Chef", List.of(new Ingredient(200, 1)));
+        Recipe knownIntermediate = new Recipe(2, 200, 1, 0, "Chef", List.of());
+        Recipe knownButIneligible = new Recipe(3, 200, 1, 500, "Tailor", List.of());
+        var recipeRepo = new FakeRecipeRepository();
+        recipeRepo.missingIds = List.of(1);
+        recipeRepo.knownIds = Set.of(2, 3);
+        var service = serviceWith(recipeRepo, new FakeInventoryRepository(), new FakeTpPriceRepository(),
+                new FakeItemRepository(), List.of(target, knownIntermediate, knownButIneligible),
+                new RecordingCraftingPlanner());
+
+        var detail = service.resolveDetail(1, DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(false, false));
+
+        assertEquals(Set.of(2), detail.knownUsableRecipeIds());
+        assertEquals(Set.of(1), detail.discoverableRecipeIds());
+    }
+
+    @Test
     void getResultByRecipeIdBuildsTreeOnceAndReloadDropsStaleEntries() throws SQLException {
         var recipeRepo = new FakeRecipeRepository();
         recipeRepo.missingIds = List.of(1);
@@ -290,6 +336,7 @@ class CraftingDiscoveryServiceTest {
 
     private static class FakeRecipeRepository extends RecipeRepository {
         List<Integer> missingIds = List.of();
+        Set<Integer> knownIds = Set.of();
         SQLException failure;
         String capturedCharName;
         String capturedDiscipline;
@@ -301,6 +348,9 @@ class CraftingDiscoveryServiceTest {
             capturedDiscipline = discipline;
             return missingIds;
         }
+
+        @Override
+        public Set<Integer> loadKnownRecipeIds() { return knownIds; }
     }
 
     private static class FakeInventoryRepository extends InventoryRepository {

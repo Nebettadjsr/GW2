@@ -202,7 +202,8 @@ public class CraftingPlanner {
         Map<Integer, MaterialPurchaseCost> purchaseCosts = purchaseCosts(
                 sim.getTotalMissingToBuy(), ctx.tp, ctx.settings);
         int totalBuyCost = sumPurchaseCosts(purchaseCosts);
-        int buyCostOne = sumPurchaseCosts(purchaseCosts(missingToBuyOne, ctx.tp, ctx.settings));
+        Map<Integer, MaterialPurchaseCost> purchaseCostsOne = purchaseCosts(missingToBuyOne, ctx.tp, ctx.settings);
+        int buyCostOne = sumPurchaseCosts(purchaseCostsOne);
 
         int revenueOne = cost.getRevenuePerCraft();
         int matsSellOne = cost.getOpportunityCostPerCraft();
@@ -246,7 +247,8 @@ public class CraftingPlanner {
                 tree,
                 sim.getBlockedReason(),
                 sim.getOpportunityCostTotal(),
-                purchaseCosts
+                purchaseCosts,
+                purchaseCostsOne
         );
     }
 

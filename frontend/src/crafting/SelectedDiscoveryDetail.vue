@@ -21,6 +21,10 @@ const props = defineProps<{
 const state = computed(() => props.row === null ? null : describeRowState(props.row))
 const wikiHref = computed(() => props.row === null ? null : wikiUrl(props.row.outputName))
 const purchases = computed<MissingItem[] | null>(() => props.row?.missingToBuyOne ?? null)
+const outputQuoteUnavailable = computed(() => {
+  const quote = props.row?.outputPrice
+  return quote === null || quote === undefined || (quote.buyUnitCopper === null && quote.sellUnitCopper === null)
+})
 
 function unavailable(value: number | null): string {
   return value === null ? NO_VALUE : formatCopper(value)
@@ -53,9 +57,9 @@ function unavailable(value: number | null): string {
         This recipe is hidden by the current search.
       </p>
 
-      <div v-if="state.labelAddsMeaning || row.blockedReason !== 'NONE'" class="stack" data-test="discovery-detail-state">
+      <div v-if="!row.resultAvailable" class="stack" data-test="discovery-detail-state">
         <span :class="`status status--${state.tone}`" data-test="discovery-detail-status">{{ state.label }}</span>
-        <p v-if="row.blockedReason !== 'NONE'" data-test="discovery-detail-status-explanation">{{ state.explanation }}</p>
+        <p v-if="!row.resultAvailable" data-test="discovery-detail-status-explanation">{{ state.explanation }}</p>
       </div>
 
       <section class="detail__section" aria-labelledby="discovery-calculation-heading">
@@ -78,8 +82,11 @@ function unavailable(value: number | null): string {
 
       <section class="detail__section" aria-labelledby="discovery-price-heading">
         <h3 id="discovery-price-heading">Trading Post price / item</h3>
-        <p v-if="row.outputPrice === null" class="meta">{{ NO_VALUE }}</p>
-        <dl v-else class="detail-values" data-test="discovery-detail-output-quote">
+        <p v-if="outputQuoteUnavailable" class="meta" data-test="discovery-detail-output-unavailable">
+          <strong>Not available on TP</strong> · {{ NO_VALUE }}
+          <a v-if="wikiHref !== null" :href="wikiHref" target="_blank" rel="noopener noreferrer">GW2 Wiki: {{ recipeLabel(row) }}</a>
+        </p>
+        <dl v-if="row.outputPrice !== null && (row.outputPrice.buyUnitCopper !== null || row.outputPrice.sellUnitCopper !== null)" class="detail-values" data-test="discovery-detail-output-quote">
           <dt>Instant sell</dt><dd class="numeric">{{ unavailable(row.outputPrice.buyUnitCopper) }}</dd>
           <dt>Listing sell</dt><dd class="numeric">{{ unavailable(row.outputPrice.sellUnitCopper) }}</dd>
         </dl>
@@ -88,7 +95,7 @@ function unavailable(value: number | null): string {
       <section class="detail__section" aria-labelledby="discovery-tree-heading">
         <h3 id="discovery-tree-heading">Crafting resolution</h3>
         <CraftingResolution :phase="resolutionPhase" :detail="resolutionDetail" :failure="resolutionFailure"
-          :requested-recipe-id="resolutionRecipeId" selected-result-mode />
+          :requested-recipe-id="resolutionRecipeId" selected-result-mode show-recipe-knowledge />
       </section>
 
       <section class="detail__section" aria-labelledby="discovery-materials-heading">
@@ -105,20 +112,6 @@ function unavailable(value: number | null): string {
         </ul>
       </section>
 
-      <details class="diagnostics" data-test="discovery-detail-diagnostics">
-        <summary>Technical details</summary>
-        <dl class="diagnostics__body">
-          <dt>Recipe id</dt><dd>{{ row.recipeId }}</dd>
-          <dt>Output item id</dt><dd>{{ row.outputItemId }}</dd>
-          <dt>Result supplied</dt><dd>{{ row.resultAvailable ? 'yes' : 'no' }}</dd>
-          <dt>Reported state code</dt><dd data-test="discovery-detail-state-code">{{ state.code ?? NO_VALUE }}</dd>
-          <template v-if="resolutionDetail !== null">
-            <dt>Resolution consistency</dt><dd>{{ resolutionDetail.consistency }}</dd>
-            <dt>Resolution tree status</dt><dd>{{ resolutionDetail.treeStatus }}</dd>
-            <dt>Resolution calculated at</dt><dd>{{ resolutionDetail.calculatedAt }}</dd>
-          </template>
-        </dl>
-      </details>
     </template>
   </section>
 </template>

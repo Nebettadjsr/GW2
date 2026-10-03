@@ -126,7 +126,7 @@ describe('CraftingResolution', () => {
       expect(region.find('[data-test="resolution-tree"]').exists()).toBe(true)
       expect(region.find('[data-test="resolution-failed"]').exists()).toBe(false)
       expect(region.find('[data-test="resolution-unavailable"]').exists()).toBe(false)
-      expect(nodeAt(region, '0').find('[data-test="node-blocked-reason"]').text()).toBe('Buying is off')
+      expect(region.text()).not.toContain('BUYING_DISABLED')
     })
 
     it('neverLeavesATreeUpWhenTheSituationIsNotReady', () => {
@@ -186,7 +186,7 @@ describe('CraftingResolution', () => {
       expect(region.find('[data-test="resolution-root-sourcing"]').text()).toContain(
         'No recipe was selected'
       )
-      expect(fact(region, '0', 'node-methods')).toBe('From stock')
+      expect(fact(region, '0', 'node-methods')).toContain('From stock ×1')
       // No recipe, so no ingredient is invented for it — and no group to expand either.
       expect(nodePaths(region)).toEqual(['0'])
       expect(region.find('[data-test="node-children"]').exists()).toBe(false)
@@ -206,9 +206,8 @@ describe('CraftingResolution', () => {
     it('keepsABlockedAttemptedRecipeWithoutClaimingACompletedCraft', () => {
       const region = ready({ tree: blockedTree }, blockedTree.recipeId ?? 13)
 
-      expect(fact(region, '0', 'node-methods')).toBe('Nothing supplied this requirement')
+      expect(region.text()).not.toContain('Nothing supplied this requirement')
       expect(fact(region, '0', 'node-value')).toBe('Value: —')
-      expect(ownFacts(region, '0', 'node-blocked-explanation')).toHaveLength(1)
     })
   })
 
@@ -231,10 +230,12 @@ describe('CraftingResolution', () => {
       // is not forced into one label (`DOMAIN_SPEC.md` 2.1.1).
       const split = nodeAt(region, '0.0')
       expect(split.findAll('[data-test="node-method"]').map((chip) => chip.text())).toEqual([
-        'From stock',
-        'Bought'
+        'From stock ×2',
+        'Bought ×4'
       ])
       expect(fact(region, '0.0', 'node-requested')).toBe('6 needed')
+      expect(fact(region, '0.0', 'node-sourcing')).toContain('From stock ×2')
+      expect(fact(region, '0.0', 'node-sourcing')).toContain('Bought ×4')
 
       // A node the backend assigned no character to carries no crafter line at all, rather than a
       // "Not assigned" row on every requirement.
@@ -242,17 +243,11 @@ describe('CraftingResolution', () => {
       expect(region.text()).not.toContain('Not assigned')
     })
 
-    it('omitsTheResolverBookkeepingRowsFromTheNormalNode', () => {
+    it('keepsSourceQuantitiesVisibleWithoutShowingResolverCodes', () => {
       const region = ready({ tree: craftedTree })
 
-      // Request-012 / DOMAIN_SPEC 2.1.1: the stock/crafted/bought/missing split, the producing
-      // recipe and its id, the craft count and the produced batch total are gone from the normal
-      // view. The transport fields they came from are untouched.
+      // Sourcing quantities are useful to players; resolver codes remain API diagnostics only.
       for (const removed of [
-        'node-inventory',
-        'node-crafted',
-        'node-bought',
-        'node-missing',
         'node-recipe',
         'node-craft-count',
         'node-produced',
@@ -260,41 +255,33 @@ describe('CraftingResolution', () => {
       ]) {
         expect(region.find(`[data-test="${removed}"]`).exists()).toBe(false)
       }
-      const text = region.text().replace(/\s+/g, ' ')
-      for (const label of [
-        'Crafted for this requirement',
-        'Producing recipe',
-        'Crafts run',
-        'Produced in total',
-        'None selected'
-      ]) {
-        expect(text).not.toContain(label)
-      }
-      // The supplied values themselves are still in the response the region was given.
+      expect(fact(region, '0.0', 'node-sourcing')).toContain('From stock ×2')
+      expect(fact(region, '0.0', 'node-sourcing')).toContain('Bought ×4')
+      expect(fact(region, '0.1', 'node-sourcing')).toContain('Crafted ×1')
+      expect(region.find('[data-test="node-technical-details"]').exists()).toBe(false)
       expect(craftedTree.producedQuantity).toBe(3)
       expect(craftedTree.recipeId).toBe(11)
     })
 
-    it('keepsAKnownZeroApartFromACostItCouldNotEstablish', () => {
+    it('usesActionableLabelsForMissingPriceAndUncraftableItems', () => {
       const region = ready({ tree: blockedTree })
 
-      // An unvalued non-tradable item is a domain zero and stays 0c with its own state.
+      // A known zero remains distinct from a missing valuation; resolver codes stay out of the UI.
       expect(fact(region, '0.1', 'node-value')).toBe('Value: 0c')
-      expect(nodeAt(region, '0.1').find('[data-test="node-state"]').text()).toBe(
-        'Not tradable, valued at zero'
-      )
-      expect(nodeAt(region, '0.1').find('[data-test="node-state-explanation"]').text()).toContain(
-        'known zero rather than a missing price'
-      )
-
-      // An unknown purchase price leaves no cost at all, and never becomes zero. The node's own
-      // state sentence still says so for the item it is about; the marker is explained once for
-      // the tree rather than under every requirement.
       expect(fact(region, '0.0', 'node-value')).toBe('Value: —')
-      expect(ownFacts(region, '0.0', 'node-state-explanation')).toContain(
-        'No purchase price is available for Pile of Dust. A cost shown as missing is unknown, not zero.'
-      )
-      expect(region.find('[data-test="resolution-tree-note"]').exists()).toBe(false)
+      expect(ownFacts(region, '0.0', 'node-player-status')[0]).toContain('Not available on TP')
+      expect(region.find('[data-test="node-technical-details"]').exists()).toBe(false)
+      expect(nodeAt(region, '0.0').find('[data-test="node-wiki"]').attributes('href')).toContain('Pile%20of%20Dust')
+      const uncraftable = node({ itemId: 94, itemName: 'Orichalcum Ore', methods: [], states: ['BLOCKED'], blockedReasons: ['NO_RECIPE'] })
+      const noRecipeRegion = ready({ tree: uncraftable })
+      expect(ownFacts(noRecipeRegion, '0', 'node-player-status')[0]).toContain('Not craftable')
+      expect(nodeAt(noRecipeRegion, '0').find('[data-test="node-wiki"]').attributes('href')).toContain('Orichalcum%20Ore')
+    })
+
+    it('linksEveryNamedRecursiveIngredientToItsOwnWikiPage', () => {
+      const region = ready({ tree: craftedTree })
+      expect(nodeAt(region, '0').find('[data-test="node-wiki"]').attributes('href')).toContain('Iron%20Ingot')
+      expect(nodeAt(region, '0.1.0').find('[data-test="node-wiki"]').attributes('href')).toContain('Copper%20Ore')
     })
 
     it('keepsRepeatedItemsAsSeparateOrderedOccurrences', () => {
@@ -423,20 +410,13 @@ describe('CraftingResolution', () => {
   })
 
   describe('state, reason and unknown codes', () => {
-    it('explainsEachSuppliedBlockedReasonWithoutDroppingAny', () => {
+    it('doesNotRenderRawStateAndBlockedCodes', () => {
       const region = ready({ tree: blockedTree })
-
-      expect(
-        nodeAt(region, '0.0')
-          .findAll('[data-test="node-blocked-reason"]')
-          .map((reason) => reason.text())
-      ).toEqual(['Price missing', 'No recipe'])
-      const sentence = nodeAt(region, '0.0').find('[data-test="node-blocked-explanation"]').text()
-      // DOMAIN_SPEC 2.1.1: the missing-price cause names the item it is about, which is this node's
-      // own item and not the root's.
-      expect(sentence).toContain('no price is available for Pile of Dust')
-      expect(sentence).not.toContain('Mystic Curio')
-      expect(sentence).toContain('this item has no usable recipe')
+      expect(region.text()).not.toContain('PRICE_UNAVAILABLE')
+      expect(region.text()).not.toContain('NO_RECIPE')
+      expect(region.find('[data-test="node-technical-details"]').exists()).toBe(false)
+      expect(region.text()).not.toContain('Recipe not allowed')
+      expect(region.text()).not.toContain('Buying is off')
     })
 
     it('namesTheItemWithNoPriceBesideItsOwnRequirementAtEveryDepth', () => {
@@ -467,38 +447,30 @@ describe('CraftingResolution', () => {
       })
 
       expect(fact(region, '0.0.0', 'node-name')).toBe('Item #502')
-      expect(ownFacts(region, '0.0.0', 'node-state-explanation')).toEqual([
-        'No purchase price is available for Item #502. A cost shown as missing is unknown, not zero.'
-      ])
-      expect(ownFacts(region, '0.0.0', 'node-blocked-explanation')).toEqual([
-        'Blocked because no price is available for Item #502.'
-      ])
+      expect(region.text()).not.toContain('PRICE_UNAVAILABLE')
       // And the requirement above it, which has a price, carries no restriction of its own.
-      expect(ownFacts(region, '0.0', 'node-blocked-explanation')).toEqual([])
-      expect(ownFacts(region, '0.0', 'node-state-explanation')).toEqual([])
     })
 
-    it('wordsBuyingDisabledAsThisRequirementNotAsLostCrafts', () => {
-      const sentence = nodeAt(ready({ tree: blockedTree }), '0')
-        .find('[data-test="node-blocked-explanation"]')
-        .text()
+    it('doesNotExposeBuyingDisabledAsNormalPresentation', () => {
+      const root = nodeAt(ready({ tree: blockedTree }), '0')
+      expect(ownFacts(ready({ tree: blockedTree }), '0', 'node-player-status')).toEqual([])
+      expect(root.text()).not.toContain('Buying is off')
+      expect(root.text()).not.toContain('BUYING_DISABLED')
 
-      expect(sentence).toBe(
-        'Blocked because it would have to be bought to resolve this requirement, and buying is ' +
-          'switched off.'
-      )
+      const cycle = ready({ tree: node({
+        itemName: 'Cyclic Material', methods: [], states: ['BLOCKED'], blockedReasons: ['CYCLE_DETECTED']
+      }) })
+      expect(nodeAt(cycle, '0').find('[data-test="node-player-status"]').exists()).toBe(false)
+      expect(cycle.text()).not.toContain('CYCLE_DETECTED')
     })
 
     it('showsAnUnknownCodeAsItselfAndNeverAsSuccess', () => {
       const unknown = nodeAt(ready({ tree: blockedTree }), '0.2')
 
-      expect(unknown.find('[data-test="node-method"]').text()).toBe('SALVAGE_ADDED_LATER (not recognized)')
-      expect(unknown.find('[data-test="node-state"]').text()).toBe('SOME_STATE_ADDED_LATER (not recognized)')
-      expect(unknown.find('[data-test="node-state"]').classes()).toContain('status--unknown')
-      expect(unknown.find('[data-test="node-state"]').classes()).not.toContain('status--success')
-      expect(unknown.find('[data-test="node-blocked-explanation"]').text()).toContain(
-        'which this page does not recognize'
-      )
+      expect(unknown.text()).not.toContain('SALVAGE_ADDED_LATER')
+      expect(unknown.text()).not.toContain('SOME_STATE_ADDED_LATER')
+      expect(unknown.text()).not.toContain('SOME_REASON_ADDED_LATER')
+      expect(unknown.text()).not.toContain('not recognized')
     })
   })
 
@@ -538,14 +510,8 @@ describe('CraftingResolution', () => {
       const region = ready({ row: noResultRow, tree: blockedTree })
 
       expect(region.find('[data-test="resolution-row-status"]').exists()).toBe(false)
-      expect(nodeAt(region, '0').find('[data-test="node-blocked-reason"]').text()).toBe(
-        'Buying is off'
-      )
-      expect(
-        nodeAt(region, '0.0')
-          .findAll('[data-test="node-state"]')
-          .map((state) => state.text())
-      ).toEqual(['Price missing', 'Blocked'])
+      expect(region.text()).not.toContain('BUYING_DISABLED')
+      expect(region.text()).not.toContain('PRICE_UNAVAILABLE, BLOCKED')
       expect(region.find('.status--success').exists()).toBe(false)
     })
 

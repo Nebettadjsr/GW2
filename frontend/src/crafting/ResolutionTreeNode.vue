@@ -4,37 +4,20 @@ import type { ResolutionNode } from '@/api/types'
 import ItemIcon from '@/items/ItemIcon.vue'
 import { formatCopper } from './formatCopper'
 import {
-  blockedExplanation,
-  blockedReasonLabels,
-  methodLabels,
   nodeLabel,
-  stateExplanations,
-  stateLabels
+  nodePlayerStatus
 } from './resolutionPresentation'
+import { wikiUrl } from './recipeLabel'
 
 /**
- * One requirement of the resolution tree, and — recursively — the ingredient requirements of the
- * craft that was selected or attempted for it (`TARGET_ARCHITECTURE.md` 13.3).
+ * One requirement of the resolution tree, recursively including the ingredients of a selected or
+ * attempted craft. Both crafting pages show backend-supplied identity, needed and source quantities,
+ * crafter and economic values. Raw state, blocked-reason and acquisition-method codes remain in
+ * backend/API diagnostics. No value is recalculated, and repeated items remain separate
+ * ordered occurrences.
  *
- * Profit's compact presentation is a **summary** (`DOMAIN_SPEC.md` 2.1.1): what the item is,
- * how many are needed, how the requirement was supplied, who crafted it where the backend said so,
- * and its effective economic value. The resolver's own bookkeeping — the stock/crafted/bought/
- * missing split, the producing recipe and its id, the craft count and the produced batch total — is
- * not shown here; it stays in the backend contract and is simply not part of the normal view.
- *
- * What is never dropped for brevity is a fact about a requirement that did not resolve: every
- * supplied state and blocked reason keeps its own marker and its own sentence, so no missing price,
- * daily limit or restriction can read as success.
- *
- * Everything on screen is still a value the backend supplied for *this* node. `effectiveCostCopper`
- * is the cash plus opportunity cost for this requirement, including its descendants. No quantity is
- * derived from the others, no state
- * is read out of a price, no identity is replaced by the requested recipe's, and two occurrences of
- * the same item in different branches stay two nodes.
- *
- * Children sit in a **collapsed** disclosure at every level, the root's included. Each group opens
- * on its own and opens nothing below it, so a deep tree is a short list until the user asks for the
- * next level. Collapsing hides nothing: every returned requirement is rendered, in its order.
+ * Child groups are collapsed independently at every level, including the root. Collapsing changes
+ * visibility only; all returned requirements remain in the tree.
  */
 const props = defineProps<{
   node: ResolutionNode
@@ -42,16 +25,18 @@ const props = defineProps<{
   path: string
   /** Profit shows effective value; Discovery retains the separate cost figures. */
   compactValue?: boolean
+  /** Only Discovery displays recipe-knowledge state. */
+  showRecipeKnowledge?: boolean
 }>()
 
 const label = computed(() => nodeLabel(props.node))
-const methods = computed(() => methodLabels(props.node.methods))
-const states = computed(() => stateLabels(props.node.states))
-// `label` is this node's own item, so a missing-price sentence says which item has no price
-// (`DOMAIN_SPEC.md` 2.1.1) instead of leaving that to the heading above it.
-const stateSentences = computed(() => stateExplanations(props.node.states, label.value))
-const reasons = computed(() => blockedReasonLabels(props.node.blockedReasons))
-const blockedSentence = computed(() => blockedExplanation(props.node.blockedReasons, label.value))
+const sourcing = computed(() => [
+  { label: 'From stock', quantity: props.node.inventoryQuantity },
+  { label: 'Crafted', quantity: props.node.craftedQuantity },
+  { label: 'Bought', quantity: props.node.boughtQuantity }
+].filter((source) => source.quantity > 0))
+const playerStatus = computed(() => nodePlayerStatus(props.node))
+const wikiHref = computed(() => wikiUrl(props.node.itemName))
 
 const childCount = computed(() => props.node.children.length)
 const childSummary = computed(() =>
@@ -69,25 +54,31 @@ const childSummary = computed(() =>
       -->
       <span class="node__identity">
         <ItemIcon :icon-url="node.iconUrl" :item-id="node.itemId" loading="lazy" />
-        <span class="node__name" data-test="node-name">{{ label }}</span>
+        <a v-if="wikiHref !== null" class="node__name" :href="wikiHref" target="_blank"
+          rel="noopener noreferrer" data-test="node-wiki"><span data-test="node-name">{{ label }}</span></a>
+        <span v-else class="node__name" data-test="node-name">{{ label }}</span>
+        <span v-if="showRecipeKnowledge && node.recipeKnowledge === 'KNOWN'"
+          class="status status--success recipe-knowledge" data-test="recipe-knowledge">Known</span>
+        <span v-else-if="showRecipeKnowledge && node.recipeKnowledge === 'TO_DISCOVER'"
+          class="status status--caution recipe-knowledge" data-test="recipe-knowledge">To discover</span>
       </span>
       <span class="node__needed numeric" data-test="node-requested">
         {{ node.requestedQuantity }} needed
       </span>
     </div>
 
-    <p class="node__methods" data-test="node-methods">
-      <template v-if="methods.length === 0">
-        <span class="chip chip--empty">Nothing supplied this requirement</span>
-      </template>
-      <span
-        v-for="method in methods"
-        :key="method.code"
-        :class="['chip', method.known ? 'chip--method' : 'chip--unknown']"
-        data-test="node-method"
-      >
-        {{ method.label }}
+    <p v-if="sourcing.length > 0" class="node__methods" data-test="node-methods">
+      <span data-test="node-sourcing">
+        <span v-for="source in sourcing" :key="source.label" class="chip chip--method" data-test="node-method">
+          {{ source.label }} ×{{ source.quantity }}
+        </span>
       </span>
+    </p>
+
+    <p v-if="playerStatus !== null" class="node__player-status" data-test="node-player-status">
+      <strong>{{ playerStatus }}</strong>
+      <span> · </span>
+      <a v-if="wikiHref !== null" :href="wikiHref" target="_blank" rel="noopener noreferrer">GW2 Wiki: {{ label }}</a>
     </p>
 
     <!--
@@ -122,39 +113,6 @@ const childSummary = computed(() =>
       </span>
     </p>
 
-    <p v-if="states.length > 0" class="node__codes" data-test="node-states">
-      <span
-        v-for="state in states"
-        :key="state.code"
-        :class="['status', state.known ? 'status--caution' : 'status--unknown']"
-        data-test="node-state"
-      >
-        {{ state.label }}
-      </span>
-    </p>
-    <p
-      v-for="(sentence, index) in stateSentences"
-      :key="`state-text-${index}`"
-      class="node__note"
-      data-test="node-state-explanation"
-    >
-      {{ sentence }}
-    </p>
-
-    <template v-if="reasons.length > 0">
-      <p class="node__codes" data-test="node-blocked">
-        <span
-          v-for="reason in reasons"
-          :key="reason.code"
-          :class="['status', reason.known ? 'status--caution' : 'status--unknown']"
-          data-test="node-blocked-reason"
-        >
-          {{ reason.label }}
-        </span>
-      </p>
-      <p class="node__note" data-test="node-blocked-explanation">{{ blockedSentence }}</p>
-    </template>
-
     <details v-if="childCount > 0" class="node__children" data-test="node-children">
       <summary>{{ childSummary }}</summary>
       <ul class="node__list">
@@ -164,6 +122,7 @@ const childSummary = computed(() =>
           :node="child"
           :path="`${path}.${index}`"
           :compact-value="compactValue"
+          :show-recipe-knowledge="showRecipeKnowledge"
         />
       </ul>
     </details>
@@ -204,6 +163,10 @@ const childSummary = computed(() =>
   overflow-wrap: anywhere;
 }
 
+.node__identity a { color: inherit; text-decoration: underline; text-decoration-color: var(--color-muted); }
+
+.recipe-knowledge { padding: 0 var(--space-2); font-size: var(--text-sm); }
+
 .node__needed {
   color: var(--color-muted);
   font-size: var(--text-sm);
@@ -243,8 +206,7 @@ const childSummary = computed(() =>
   color: var(--color-secondary);
 }
 
-.chip--unknown,
-.chip--empty {
+.chip--unknown {
   border-style: dashed;
   color: var(--color-muted);
 }
@@ -287,6 +249,7 @@ const childSummary = computed(() =>
   font-size: var(--text-sm);
 }
 
+.node__player-status { margin: 0; font-size: var(--text-sm); }
 .node__children > summary {
   padding: var(--space-1) 0;
   cursor: pointer;
