@@ -187,6 +187,11 @@ cannot stand in for a missing or stale evaluator verdict. Such a verdict
 resumes evaluation; this covers a crash between the coding agent finishing and
 the harness recording `AWAITING_EVALUATION`.
 
+`AWAITING_CI` and `AWAITING_QA_REVIEW` also validate the saved verdict against
+the current story/result hashes before reusing it. If the ignored runtime
+artifact is absent, stale or from an older runner, the harness resumes
+evaluation on the completed implementation without invoking Claude.
+
 Because `artifacts/` is disposable, a second and independent check covers a
 `DONE` story whose record was wiped with it: the repository is asked whether a
 commit named `implemented <STORY-ID>` exists **and** whether work is still

@@ -65,6 +65,7 @@ class PipelineRecoveryTestCase(OrchestratorInterventionTestCase):
             ("ATTEMPT_STATE_FILE", self.attempt_state_file),
             ("CLAUDE_RESULT_FILE", self.result_file),
             ("NEXT_PROMPT_FILE", self.prompt_file),
+            ("EVALUATOR_RESULT_FILE", self.stories_dir / "EVALUATOR_RESULT.json"),
         ]:
             self._stack.enter_context(
                 patch.object(orchestrator, name, value)
@@ -90,6 +91,19 @@ class PipelineRecoveryTestCase(OrchestratorInterventionTestCase):
         orchestrator.record_attempt_state(story, phase, **budgets)
 
         return story
+
+    def write_matching_evaluator_verdict(self, story):
+        story_content = story.read_text(encoding="utf-8")
+        evaluator_file = self.stories_dir / "EVALUATOR_RESULT.json"
+        evaluator_file.write_text(json.dumps({
+            "decision": "COMPLETE",
+            "reason": "persisted test verdict",
+            "story_id": "STORY-DOM-001",
+            "evaluated_story_sha256": hashlib.sha256(
+                story_content.encode("utf-8")
+            ).hexdigest(),
+            "evaluated_result_sha256": orchestrator.file_hash(self.result_file),
+        }), encoding="utf-8")
 
     def run_execute(self, stack, **patches):
         """execute_active_story() with every model path accounted for."""
@@ -141,7 +155,8 @@ class ResumeAfterInterruptionTest(PipelineRecoveryTestCase):
         self.assertFalse(self.attempt_state_file.exists())
 
     def test_awaiting_ci_resumes_at_publication_without_reevaluating(self):
-        self.given_finished_attempt("AWAITING_CI")
+        story = self.given_finished_attempt("AWAITING_CI")
+        self.write_matching_evaluator_verdict(story)
 
         with ExitStack() as stack:
             claude = stack.enter_context(
@@ -165,6 +180,30 @@ class ResumeAfterInterruptionTest(PipelineRecoveryTestCase):
         evaluate.assert_not_called()
         claude.assert_not_called()
         self.assertFalse(self.attempt_state_file.exists())
+
+    def test_awaiting_ci_without_a_matching_verdict_resumes_evaluation_not_coding(self):
+        self.given_finished_attempt("AWAITING_CI")
+
+        with ExitStack() as stack:
+            claude = stack.enter_context(
+                patch.object(orchestrator, "run_claude_attempt")
+            )
+            evaluate = stack.enter_context(
+                patch.object(orchestrator, "evaluate_story",
+                             return_value={"decision": "COMPLETE", "reason": "verified"})
+            )
+            verify = stack.enter_context(
+                patch.object(orchestrator, "verify_with_github_ci",
+                             return_value={"status": "PASSED", "reason": "ok",
+                                           "report": "", "sha": "abc1234",
+                                           "run_urls": []})
+            )
+            result = self.run_execute(stack)
+
+        self.assertEqual(result, "COMPLETE")
+        evaluate.assert_called_once()
+        claude.assert_not_called()
+        verify.assert_called_once()
 
     def test_awaiting_ci_fix_resumes_saved_prompt_without_repeating_qa_or_publication(self):
         self.given_finished_attempt(

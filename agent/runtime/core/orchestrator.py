@@ -327,6 +327,30 @@ def _publishable_changes() -> list[str]:
     ]
 
 
+def _load_current_evaluator_result(
+        story_path: Path,
+        story_content: str,
+) -> dict | None:
+    """Return a verdict only when it is bound to the current story and result."""
+    try:
+        evaluation = json.loads(
+            EVALUATOR_RESULT_FILE.read_text(encoding="utf-8")
+        )
+        result_hash = file_hash(CLAUDE_RESULT_FILE)
+        story_hash = hashlib.sha256(story_content.encode("utf-8")).hexdigest()
+        if (
+            not isinstance(evaluation, dict)
+            or evaluation.get("story_id") != (extract_story_id(story_content) or story_path.stem)
+            or evaluation.get("evaluated_story_sha256") != story_hash
+            or result_hash is None
+            or evaluation.get("evaluated_result_sha256") != result_hash
+        ):
+            return None
+        return evaluation
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return None
+
+
 def unpublished_completion(
         story_path: Path,
         story_content: str,
@@ -343,23 +367,8 @@ def unpublished_completion(
     # AWAITING_EVALUATION is persisted. CI passing (or a story commit existing)
     # cannot substitute for evaluation. Bind the verdict to the exact story
     # and coding result so an older COMPLETE cannot masquerade as this attempt.
-    try:
-        evaluation = json.loads(
-            EVALUATOR_RESULT_FILE.read_text(encoding="utf-8")
-        )
-        result_hash = file_hash(CLAUDE_RESULT_FILE)
-        story_hash = hashlib.sha256(story_content.encode("utf-8")).hexdigest()
-        evaluator_accepted_this_attempt = (
-            evaluation.get("decision") == "COMPLETE"
-            and evaluation.get("story_id") == (extract_story_id(story_content) or story_path.stem)
-            and evaluation.get("evaluated_story_sha256") == story_hash
-            and result_hash is not None
-            and evaluation.get("evaluated_result_sha256") == result_hash
-        )
-    except (OSError, json.JSONDecodeError, AttributeError):
-        evaluator_accepted_this_attempt = False
-
-    if not evaluator_accepted_this_attempt:
+    evaluation = _load_current_evaluator_result(story_path, story_content)
+    if evaluation is None or evaluation.get("decision") != "COMPLETE":
         return (
             "no durable COMPLETE evaluator verdict matches this story and its "
             "current coding result"
@@ -1268,39 +1277,65 @@ def execute_active_story(
                 resume_ci_fix = True
                 evaluation = None
             elif resume["phase"] == "AWAITING_CI":
-                # The evaluator already accepted this attempt; only
-                # publication and the CI verdict are outstanding, so its
-                # verdict is not paid for a second time.
-                evaluation = {
-                    "decision": "COMPLETE",
-                    "reason": (
-                        "Resumed attempt: the evaluator accepted this work "
-                        "before the previous run was interrupted, and only "
-                        "its CI verification was outstanding."
-                    ),
-                }
-            elif resume["phase"] == "AWAITING_QA_REVIEW":
-                try:
-                    saved_evaluation = json.loads(
-                        EVALUATOR_RESULT_FILE.read_text(encoding="utf-8")
-                    )
-                except (OSError, json.JSONDecodeError) as exc:
-                    raise RuntimeError(
-                        "QA review is pending but the completed evaluator result "
-                        f"cannot be resumed: {exc}"
-                    ) from exc
-                evaluation = _evaluate_preserving_completed_attempt(
-                    story_content,
-                    result_content,
-                    int(resume.get("claude_exit_code") or 0),
-                    bool(resume.get("result_was_updated")),
-                    wait_for_evaluator=wait_for_evaluator,
-                    qa_plan=qa_plan,
-                    story_path=story_path,
-                    retry_count=retry_count,
-                    ci_fix_attempts=ci_fix_attempts,
-                    evaluation_override=saved_evaluation,
+                saved_evaluation = _load_current_evaluator_result(
+                    story_path, story_content
                 )
+                if saved_evaluation is not None and saved_evaluation.get("decision") == "COMPLETE":
+                    # The persisted verdict is proven to belong to this exact
+                    # story/result pair, so publication can resume directly.
+                    evaluation = saved_evaluation
+                else:
+                    # Old or missing evaluator artifacts cannot be inferred
+                    # from phase state alone. Re-evaluate completed code, but
+                    # never send it back to the coding agent for this reason.
+                    log_line(
+                        f"{story_path.name} reached AWAITING_CI without a "
+                        "matching persisted evaluator verdict; resuming at evaluation."
+                    )
+                    evaluation = _evaluate_preserving_completed_attempt(
+                        story_content,
+                        result_content,
+                        int(resume.get("claude_exit_code") or 0),
+                        bool(resume.get("result_was_updated")),
+                        wait_for_evaluator=wait_for_evaluator,
+                        qa_plan=qa_plan,
+                        story_path=story_path,
+                        retry_count=retry_count,
+                        ci_fix_attempts=ci_fix_attempts,
+                    )
+            elif resume["phase"] == "AWAITING_QA_REVIEW":
+                saved_evaluation = _load_current_evaluator_result(
+                    story_path, story_content
+                )
+                if saved_evaluation is not None:
+                    evaluation = _evaluate_preserving_completed_attempt(
+                        story_content,
+                        result_content,
+                        int(resume.get("claude_exit_code") or 0),
+                        bool(resume.get("result_was_updated")),
+                        wait_for_evaluator=wait_for_evaluator,
+                        qa_plan=qa_plan,
+                        story_path=story_path,
+                        retry_count=retry_count,
+                        ci_fix_attempts=ci_fix_attempts,
+                        evaluation_override=saved_evaluation,
+                    )
+                else:
+                    log_line(
+                        f"{story_path.name} reached AWAITING_QA_REVIEW without "
+                        "a matching persisted evaluator verdict; resuming evaluation."
+                    )
+                    evaluation = _evaluate_preserving_completed_attempt(
+                        story_content,
+                        result_content,
+                        int(resume.get("claude_exit_code") or 0),
+                        bool(resume.get("result_was_updated")),
+                        wait_for_evaluator=wait_for_evaluator,
+                        qa_plan=qa_plan,
+                        story_path=story_path,
+                        retry_count=retry_count,
+                        ci_fix_attempts=ci_fix_attempts,
+                    )
             else:
                 evaluation = _evaluate_preserving_completed_attempt(
                     story_content,

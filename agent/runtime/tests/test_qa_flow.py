@@ -1,5 +1,6 @@
 """QA gate ordering, clarification, retry, resume, and conditional-review flows."""
 
+import hashlib
 import json
 import tempfile
 import unittest
@@ -178,8 +179,14 @@ class QAGateTest(unittest.TestCase):
     def test_resume_awaiting_qa_review_uses_saved_evaluator_result(self):
         plan = ready_plan(review=True)
         result_path = self.root / "EVALUATOR_RESULT.json"
+        claude_result = self.root / "CLAUDE_RESULT.md"
+        claude_result.write_text("completed implementation", encoding="utf-8")
+        story_content = self.story.read_text(encoding="utf-8")
         result_path.write_text(json.dumps({
             "decision": "BLOCKED", "reason": "saved", "qa_review_required": True,
+            "story_id": orchestrator.extract_story_id(story_content) or self.story.stem,
+            "evaluated_story_sha256": hashlib.sha256(story_content.encode("utf-8")).hexdigest(),
+            "evaluated_result_sha256": orchestrator.file_hash(claude_result),
         }), encoding="utf-8")
         attempt = {"phase": "AWAITING_QA_REVIEW", "claude_exit_code": 0,
                    "result_was_updated": False, "retry_count": 1, "ci_fix_attempts": 0}
@@ -188,6 +195,7 @@ class QAGateTest(unittest.TestCase):
                 patch.object(orchestrator, "pending_attempt_for", return_value=attempt), \
                 patch.object(qa_agent, "load_plan", return_value=plan), \
                 patch.object(orchestrator, "_ensure_preimplementation_qa") as qa, \
+                patch.object(orchestrator, "CLAUDE_RESULT_FILE", claude_result), \
                 patch.object(orchestrator, "EVALUATOR_RESULT_FILE", result_path), \
                 patch.object(orchestrator, "_evaluate_with_local_retries") as evaluator, \
                 patch.object(qa_agent, "run_conditional_review", return_value={"decision": "APPROVE", "reason": "ok", "evidence": [], "actionable_items": []}), \
