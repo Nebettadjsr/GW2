@@ -546,7 +546,7 @@ class EvaluationRetryTest(unittest.TestCase):
     def test_evaluator_outage_is_retried_locally_without_re_invoking_claude(self):
         calls = []
 
-        def evaluate(*args):
+        def evaluate(*args, **_kwargs):
             calls.append(args)
 
             if len(calls) < 3:

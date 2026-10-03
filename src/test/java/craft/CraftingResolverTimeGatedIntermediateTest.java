@@ -10,13 +10,14 @@ class CraftingResolverTimeGatedIntermediateTest {
     private static final int XUNLAI_INGOT = 46743;
     private static final int LUMP_OF_MITHRILLIUM = 46742;
     private static final int OLD_MISIDENTIFIED_ID = 70762;
-    private static final int MITHRIL_INGOT = 19687;
+    private static final int MITHRIL_INGOT = 19684;
+    private static final int SILVER_INGOT = 19687;
     private static final int ORICHALCUM_INGOT = 19682;
     private static final int ANCIENT_WOOD_PLANK = 19686;
     private static final int ECTOPLASM = 19721;
     private static final int THERMOCATALYTIC_REAGENT = 46747;
     private static final Recipe XUNLAI_RECIPE = CraftTestFixtures.recipe(7310, XUNLAI_INGOT, 1, List.of(
-            new Ingredient(MITHRIL_INGOT, 20), new Ingredient(ORICHALCUM_INGOT, 10),
+            new Ingredient(SILVER_INGOT, 20), new Ingredient(ORICHALCUM_INGOT, 10),
             new Ingredient(ANCIENT_WOOD_PLANK, 20), new Ingredient(LUMP_OF_MITHRILLIUM, 1)));
     private static final Recipe LUMP_RECIPE = CraftTestFixtures.recipe(7319, LUMP_OF_MITHRILLIUM, 1, List.of(
             new Ingredient(MITHRIL_INGOT, 50), new Ingredient(ECTOPLASM, 1),
@@ -42,6 +43,7 @@ class CraftingResolverTimeGatedIntermediateTest {
         CraftResult result = plannerResult(false, true, false, 100_000, inventory,
                 Map.of(XUNLAI_INGOT, CraftTestFixtures.quote(18_000, null),
                         LUMP_OF_MITHRILLIUM, CraftTestFixtures.quote(null, 13_500),
+                        SILVER_INGOT, CraftTestFixtures.quote(null, 10),
                         MITHRIL_INGOT, CraftTestFixtures.quote(null, 10),
                         ORICHALCUM_INGOT, CraftTestFixtures.quote(null, 10),
                         ANCIENT_WOOD_PLANK, CraftTestFixtures.quote(null, 10),
@@ -52,7 +54,7 @@ class CraftingResolverTimeGatedIntermediateTest {
         assertEquals(98_000, result.buyCostCopper);
         assertEquals(1_300, result.profitCopper);
         assertEquals(9_100, result.totalProfitCopper);
-        assertEquals(Map.of(LUMP_OF_MITHRILLIUM, 7, MITHRIL_INGOT, 140,
+        assertEquals(Map.of(LUMP_OF_MITHRILLIUM, 7, SILVER_INGOT, 140,
                 ORICHALCUM_INGOT, 70, ANCIENT_WOOD_PLANK, 140), result.missingToBuy);
         assertEquals(94_500, result.materialPurchaseCosts.get(LUMP_OF_MITHRILLIUM).totalPriceCopper());
     }
@@ -75,7 +77,7 @@ class CraftingResolverTimeGatedIntermediateTest {
     @Test
     void existingIntermediateIsUsableWhenOwnMaterialsAreEnabledWithoutCraftingTheDailyRecipe() {
         CraftResult result = plannerResult(true, false, false, 0,
-                Map.of(LUMP_OF_MITHRILLIUM, 1, MITHRIL_INGOT, 20,
+                Map.of(LUMP_OF_MITHRILLIUM, 1, MITHRIL_INGOT, 20, SILVER_INGOT, 20,
                         ORICHALCUM_INGOT, 10, ANCIENT_WOOD_PLANK, 20),
                 Map.of(XUNLAI_INGOT, CraftTestFixtures.quote(18_000, null)));
 
@@ -89,6 +91,7 @@ class CraftingResolverTimeGatedIntermediateTest {
         CraftResult result = plannerResult(false, true, true, 100_000, Map.of(),
                 Map.of(XUNLAI_INGOT, CraftTestFixtures.quote(18_000, null),
                         LUMP_OF_MITHRILLIUM, CraftTestFixtures.quote(null, 13_500),
+                        SILVER_INGOT, CraftTestFixtures.quote(null, 10),
                         MITHRIL_INGOT, CraftTestFixtures.quote(null, 10),
                         ORICHALCUM_INGOT, CraftTestFixtures.quote(null, 10),
                         ANCIENT_WOOD_PLANK, CraftTestFixtures.quote(null, 10),

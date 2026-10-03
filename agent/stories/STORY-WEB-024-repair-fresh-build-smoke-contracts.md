@@ -8,7 +8,7 @@ Repair browser smoke assertions against current workflow contracts
 
 ## Status
 
-DONE
+UNFINISHED
 
 ## Milestone
 

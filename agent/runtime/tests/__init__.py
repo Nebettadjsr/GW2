@@ -29,6 +29,7 @@ from pathlib import Path
 from agent.runtime.core import orchestrator
 from agent.runtime.runners import claude_runner, codex_capacity, local_planner_runner
 from agent.runtime.support import config, daily_log, git_sync, github_ci
+from agent.runtime.qa import qa_agent
 
 
 def _refuse(name, what):
@@ -59,7 +60,29 @@ local_planner_runner.find_codex = _refuse_model("local_planner_runner.find_codex
 REAL_RUN_CODEX = local_planner_runner.run_codex
 
 local_planner_runner.run_codex = _refuse_model("local_planner_runner.run_codex")
+REAL_RUN_QA = local_planner_runner.run_qa
+local_planner_runner.run_qa = _refuse_model("local_planner_runner.run_qa")
+qa_agent.run_qa = _refuse_model("qa_agent.run_qa")
 codex_capacity.find_codex = _refuse_model("codex_capacity.find_codex")
+
+# Story-execution tests get a deterministic, explicitly test-free QA plan;
+# QA's own tests patch this seam to exercise preparation and model failures.
+REAL_QA_PREPARATION = qa_agent.execute_preparation
+qa_agent.execute_preparation = lambda story_path: {
+    "schema_version": 1,
+    "story_id": qa_agent.story_id_from_content(story_path.read_text(encoding="utf-8"), story_path.stem),
+    "status": "NO_TESTS_NEEDED",
+    "rationale": "Deterministic QA fixture for an unrelated story-execution test.",
+    "acceptance_checks": [], "invariants": [], "test_levels": [],
+    "existing_tests_reviewed": [], "prepared_test_paths": [],
+    "test_specifications": [], "pre_implementation_verification": {"status": "NOT_RUN"},
+    "coverage_review": "Not applicable to fixture.", "external_sources": [],
+    "clarifications": [], "post_implementation_review_required": False,
+}
+qa_agent.run_conditional_review = lambda **kwargs: {
+    "decision": "APPROVE", "reason": "Deterministic QA review fixture.",
+    "evidence": ["Mocked by agent runtime tests."], "actionable_items": [],
+}
 
 # The CI gate writes to the real repository and the real remote. Its own
 # paths resolve through support/config.py, so a fixture that patches
@@ -138,6 +161,13 @@ TEST_ATTEMPT_STATE_FILE = (
     Path(tempfile.gettempdir()) / "gw2-agent-tests" / "ATTEMPT_STATE.json"
 )
 TEST_ATTEMPT_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+TEST_QA_DIR = Path(tempfile.gettempdir()) / "gw2-agent-tests" / "qa"
+TEST_QA_DIR.mkdir(parents=True, exist_ok=True)
+config.QA_PLANS_DIR = TEST_QA_DIR / "plans"
+config.QA_STATE_FILE = TEST_QA_DIR / "QA_STATE.json"
+config.QA_RESULT_FILE = TEST_QA_DIR / "QA_RESULT.json"
+config.ARTIFACTS_DIR = TEST_QA_DIR / "artifacts"
+orchestrator.EVALUATOR_RESULT_FILE = TEST_QA_DIR / "EVALUATOR_RESULT.json"
 
 orchestrator.ATTEMPT_STATE_FILE = TEST_ATTEMPT_STATE_FILE
 config.ATTEMPT_STATE_FILE = TEST_ATTEMPT_STATE_FILE

@@ -13,7 +13,7 @@ below stay in the plain form.
 
 ## Active
 
-- STORY-WEB-024 | STORY-WEB-024-repair-fresh-build-smoke-contracts.md | TODO | milestone-05 | deps: STORY-WEB-018
+- STORY-WEB-024 | STORY-WEB-024-repair-fresh-build-smoke-contracts.md | UNFINISHED | milestone-05 | deps: STORY-WEB-018
 
 ## To Do
 

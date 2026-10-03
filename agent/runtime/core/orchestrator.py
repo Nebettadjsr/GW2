@@ -23,6 +23,7 @@ from agent.runtime.support.config import (
     MAX_CI_FIX_ATTEMPTS,
     EVALUATION_ATTEMPTS,
     EVALUATION_RETRY_SECONDS,
+    EVALUATOR_RESULT_FILE,
     MAX_EVALUATION_BATCHES,
     PROJECT_STATE_FILE,
     USER_DECISIONS_DIR,
@@ -30,6 +31,7 @@ from agent.runtime.support.config import (
     ROADMAP_FILE,
     TARGET_ARCHITECTURE_FILE,
     MAX_CLAUDE_FAILED_RUNS_PER_STORY,
+    MAX_QA_ATTEMPTS_PER_STORY,
     MAX_CONSECUTIVE_CYCLE_ERRORS,
     MAX_RETRIES_PER_STORY,
     NEXT_PROMPT_FILE,
@@ -45,8 +47,9 @@ from agent.runtime.support.daily_log import (
     print_status,
     start_console_logging,
 )
-from agent.runtime.support.files import file_hash, read_file
+from agent.runtime.support.files import file_hash, read_file, write_json
 from agent.runtime.support import git_sync, github_ci
+from agent.runtime.qa import qa_agent
 from agent.runtime.core.architect import run_architect_pass
 from agent.runtime.core.project_planner import run_planning_pass, should_trigger_planning
 from agent.runtime.core.selector import select_next_story
@@ -182,6 +185,8 @@ def _seconds_until_recheck(probe) -> int | None:
 #   AWAITING_EVALUATION  Claude's attempt finished; no evaluator verdict.
 #   AWAITING_CI          the evaluator accepted it; publication and the
 #                        CI verdict are still outstanding.
+#   AWAITING_CI_FIX      CI failed and the repair prompt is saved; resume
+#                        the bounded repair attempt rather than publication.
 #   FINALIZING           every gate has passed; the story's own state
 #                        transition (Status, BACKLOG section, pointer)
 #                        is the only thing left to do.
@@ -200,7 +205,10 @@ def _seconds_until_recheck(probe) -> int | None:
 # second CI wait.
 # ============================================================
 
-ATTEMPT_PHASES = ("AWAITING_EVALUATION", "AWAITING_CI", "FINALIZING")
+ATTEMPT_PHASES = (
+    "AWAITING_EVALUATION", "AWAITING_QA_REVIEW", "AWAITING_CI",
+    "AWAITING_CI_FIX", "FINALIZING",
+)
 
 
 def read_attempt_state() -> dict | None:
@@ -323,19 +331,43 @@ def unpublished_completion(
         story_path: Path,
         story_content: str,
 ) -> str | None:
-    """Why a DONE story's completion cannot have been published, or None.
+    """Why a DONE story's completion is not safely resumable, or None.
 
-    None means "nothing here contradicts completion" -- including every
-    case git cannot answer. This never reports a doubt it cannot
-    substantiate, because the caller resumes the story on it.
+    A hash-bound persisted COMPLETE evaluator verdict is required before
+    either CI state or Git history can establish completion. None means the
+    evaluator accepted this exact story and result, and any configured CI
+    gate has no outstanding publication evidence.
     """
+
+    # A crash can occur after the coding agent writes Status DONE but before
+    # AWAITING_EVALUATION is persisted. CI passing (or a story commit existing)
+    # cannot substitute for evaluation. Bind the verdict to the exact story
+    # and coding result so an older COMPLETE cannot masquerade as this attempt.
+    try:
+        evaluation = json.loads(
+            EVALUATOR_RESULT_FILE.read_text(encoding="utf-8")
+        )
+        result_hash = file_hash(CLAUDE_RESULT_FILE)
+        story_hash = hashlib.sha256(story_content.encode("utf-8")).hexdigest()
+        evaluator_accepted_this_attempt = (
+            evaluation.get("decision") == "COMPLETE"
+            and evaluation.get("story_id") == (extract_story_id(story_content) or story_path.stem)
+            and evaluation.get("evaluated_story_sha256") == story_hash
+            and result_hash is not None
+            and evaluation.get("evaluated_result_sha256") == result_hash
+        )
+    except (OSError, json.JSONDecodeError, AttributeError):
+        evaluator_accepted_this_attempt = False
+
+    if not evaluator_accepted_this_attempt:
+        return (
+            "no durable COMPLETE evaluator verdict matches this story and its "
+            "current coding result"
+        )
 
     available, _detail = git_sync.ci_verification_available()
 
     if not available:
-        # With no CI gate a story completes on the evaluator's verdict
-        # alone and nothing is ever committed, so neither half of this
-        # check means anything.
         return None
 
     subject = "implemented " + (
@@ -389,18 +421,19 @@ def _evaluate_with_local_retries(
         result_content: str,
         claude_exit_code: int,
         result_was_updated: bool,
+        qa_plan: dict | None = None,
+        qa_integrity_findings: list[str] | None = None,
 ) -> dict:
 
     last_error = None
 
     for attempt in range(1, EVALUATION_ATTEMPTS + 1):
         try:
-            return evaluate_story(
-                story_content,
-                result_content,
-                claude_exit_code,
-                result_was_updated,
-            )
+            args = (story_content, result_content, claude_exit_code, result_was_updated)
+            if qa_plan is None and not qa_integrity_findings:
+                return evaluate_story(*args)
+            return evaluate_story(*args, qa_plan=qa_plan,
+                                  qa_integrity_findings=qa_integrity_findings)
         except ModelCapacityUnavailable:
             raise
         except (OSError, RuntimeError, ValueError, KeyError) as exc:
@@ -438,6 +471,12 @@ def _evaluate_preserving_completed_attempt(
         claude_exit_code: int,
         result_was_updated: bool,
         wait_for_evaluator=None,
+        qa_plan: dict | None = None,
+        qa_integrity_findings: list[str] | None = None,
+        story_path: Path | None = None,
+        retry_count: int = 0,
+        ci_fix_attempts: int = 0,
+        evaluation_override: dict | None = None,
 ) -> dict:
     """Retry evaluation in bounded batches, never rerunning Claude.
 
@@ -463,13 +502,57 @@ def _evaluate_preserving_completed_attempt(
     """
 
     batch = 0
+    evaluation = evaluation_override
 
     while True:
         try:
-            return _evaluate_with_local_retries(
-                story_content, result_content, claude_exit_code,
-                result_was_updated,
+            if evaluation is None:
+                evaluation = _evaluate_with_local_retries(
+                    story_content, result_content, claude_exit_code,
+                    result_was_updated, qa_plan, qa_integrity_findings,
+                )
+            if story_path is not None:
+                evaluation["story_id"] = (
+                    extract_story_id(story_content) or story_path.stem
+                )
+                evaluation["evaluated_story_sha256"] = hashlib.sha256(
+                    story_content.encode("utf-8")
+                ).hexdigest()
+                current_result_hash = file_hash(CLAUDE_RESULT_FILE)
+                evaluation["evaluated_result_sha256"] = current_result_hash or ""
+                write_json(EVALUATOR_RESULT_FILE, evaluation)
+            review_required = bool(
+                evaluation.get("qa_review_required")
+                or evaluation.get("decision") == "RETRY"
+                or (qa_plan or {}).get("post_implementation_review_required")
+                or qa_integrity_findings
             )
+            if review_required and qa_plan and not evaluation.get("qa_post_review"):
+                if story_path is not None:
+                    record_attempt_state(
+                        story_path, "AWAITING_QA_REVIEW",
+                        claude_exit_code=claude_exit_code,
+                        result_was_updated=result_was_updated,
+                        retry_count=retry_count,
+                        ci_fix_attempts=ci_fix_attempts,
+                    )
+                review = qa_agent.run_conditional_review(story_path=get_active_story_path(), plan=qa_plan,
+                                                        evaluation=evaluation)
+                qa_agent.record_review(qa_plan, review)
+                evaluation["qa_post_review"] = review
+                if review["decision"] == "RETRY":
+                    items = review.get("actionable_items") or [review.get("reason", "QA review found an unmet requirement.")]
+                    evaluation["decision"] = "RETRY"
+                    evaluation["actionable_retry_items"] = list(dict.fromkeys(
+                        (evaluation.get("actionable_retry_items") or []) + items
+                    ))
+                    evaluation["reason"] = (evaluation.get("reason", "") + " Independent QA review: " + review.get("reason", "")).strip()
+                elif review["decision"] == "NEEDS_USER":
+                    evaluation["decision"] = "NEEDS_USER"
+                    evaluation["qa_user_decision_ids"] = qa_plan.get("user_decision_ids", [])
+                    evaluation["reason"] = (evaluation.get("reason", "") + " QA requires Product Owner clarification: " + review.get("reason", "")).strip()
+                write_json(EVALUATOR_RESULT_FILE, evaluation)
+            return evaluation
         except ModelCapacityUnavailable as exc:
             log_line(
                 f"Codex capacity exhausted during evaluation ({exc}); the "
@@ -922,6 +1005,9 @@ def _prepare_implementation_prompt(story_path: Path) -> tuple[str, bool]:
         story_path,
         repo_map_context=format_repo_map_for_prompt(repo_map),
     )
+    qa_plan = qa_agent.load_plan(story_path)
+    if qa_plan is not None:
+        prompt += qa_agent.implementation_contract(qa_plan)
 
     NEXT_PROMPT_FILE.write_text(
         prompt + "\n",
@@ -931,10 +1017,68 @@ def _prepare_implementation_prompt(story_path: Path) -> tuple[str, bool]:
     return prompt, repo_map["enabled"]
 
 
+def _block_story_for_qa_decision(story_path: Path, plan: dict) -> None:
+    decision_ids = plan.get("user_decision_ids", [])
+    refs = ", ".join(decision_ids)
+    set_story_blocked(story_path, f"Blocked on QA Product Owner decision(s): {refs}.")
+    backlog = read_file(BACKLOG_FILE)
+    updated = move_backlog_entry_to_blocked(
+        backlog, story_path.name, f"waiting on {refs}"
+    )
+    if updated != backlog:
+        BACKLOG_FILE.write_text(updated, encoding="utf-8")
+    if CURRENT_STORY_FILE.exists() and CURRENT_STORY_FILE.read_text(encoding="utf-8").strip().endswith(story_path.name):
+        CURRENT_STORY_FILE.write_text("", encoding="utf-8")
+
+
+def _ensure_preimplementation_qa(story_path: Path, wait_for_qa=None) -> dict | None:
+    """Run QA once before coding; persist successful plans and bound failures."""
+    plan = qa_agent.load_plan(story_path)
+    if plan and plan.get("status") in ("READY", "NO_TESTS_NEEDED"):
+        changed = qa_agent.restore_protected_tests(plan)
+        if changed:
+            log_line("Restored QA-owned tests before coding: " + ", ".join(changed))
+        return plan
+    if plan and plan.get("status") == "NEEDS_USER":
+        unresolved = qa_agent.unresolved_plan_decisions(plan)
+        if unresolved:
+            _block_story_for_qa_decision(story_path, plan)
+            return None
+
+    while True:
+        try:
+            plan = qa_agent.execute_preparation(story_path)
+        except ModelCapacityUnavailable:
+            if wait_for_qa is None:
+                raise
+            wait_for_qa()
+            continue
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+            attempts = qa_agent.record_attempt(story_path)
+            log_line(f"QA preparation failed ({attempts}/{MAX_QA_ATTEMPTS_PER_STORY}): {type(exc).__name__}: {exc}")
+            if attempts < MAX_QA_ATTEMPTS_PER_STORY:
+                continue
+            _create_intervention_and_block_story(
+                story_path,
+                read_file(story_path),
+                f"QA preparation failed {attempts} times; no coding was started. {type(exc).__name__}: {exc}",
+                "QA could not produce a validated plan. Inspect the QA artifacts and resume this story after resolving the cause.",
+            )
+            return None
+
+        if plan["status"] == "NEEDS_USER":
+            _block_story_for_qa_decision(story_path, plan)
+            return None
+        qa_agent.clear_state()
+        log_line(f"QA preparation complete for {plan['story_id']}: {plan['status']}.")
+        return plan
+
+
 def execute_active_story(
         before_attempt=None,
         on_interruption=None,
         wait_for_evaluator=None,
+        wait_for_qa=None,
 ) -> str:
 
     story_path = get_active_story_path()
@@ -1029,11 +1173,23 @@ def execute_active_story(
             "ci_fix_attempts": 0,
         }
 
+    # Existing durable attempts began before QA or already completed the QA
+    # gate. Never repeat a completed implementation merely to backfill QA.
+    if resume is not None:
+        qa_plan = qa_agent.load_plan(story_path) or qa_agent.make_legacy_plan(story_path)
+    else:
+        qa_plan = _ensure_preimplementation_qa(
+            story_path, wait_for_qa or wait_for_evaluator
+        )
+        if qa_plan is None:
+            return "BLOCKED"
+
     retry_count = 0
     failed_runs = 0
     ci_fix_attempts = 0
     prompt = None
     repo_map_enabled = False
+    resume_ci_fix = False
 
     if resume is not None:
         # Budgets travel with the recorded attempt so a restart cannot
@@ -1103,7 +1259,15 @@ def execute_active_story(
 
                 return "COMPLETE"
 
-            if resume["phase"] == "AWAITING_CI":
+            if resume["phase"] == "AWAITING_CI_FIX":
+                prompt = read_file(NEXT_PROMPT_FILE)
+                if not prompt.strip():
+                    raise RuntimeError(
+                        "CI repair is pending but the persisted repair prompt is empty."
+                    )
+                resume_ci_fix = True
+                evaluation = None
+            elif resume["phase"] == "AWAITING_CI":
                 # The evaluator already accepted this attempt; only
                 # publication and the CI verdict are outstanding, so its
                 # verdict is not paid for a second time.
@@ -1115,6 +1279,28 @@ def execute_active_story(
                         "its CI verification was outstanding."
                     ),
                 }
+            elif resume["phase"] == "AWAITING_QA_REVIEW":
+                try:
+                    saved_evaluation = json.loads(
+                        EVALUATOR_RESULT_FILE.read_text(encoding="utf-8")
+                    )
+                except (OSError, json.JSONDecodeError) as exc:
+                    raise RuntimeError(
+                        "QA review is pending but the completed evaluator result "
+                        f"cannot be resumed: {exc}"
+                    ) from exc
+                evaluation = _evaluate_preserving_completed_attempt(
+                    story_content,
+                    result_content,
+                    int(resume.get("claude_exit_code") or 0),
+                    bool(resume.get("result_was_updated")),
+                    wait_for_evaluator=wait_for_evaluator,
+                    qa_plan=qa_plan,
+                    story_path=story_path,
+                    retry_count=retry_count,
+                    ci_fix_attempts=ci_fix_attempts,
+                    evaluation_override=saved_evaluation,
+                )
             else:
                 evaluation = _evaluate_preserving_completed_attempt(
                     story_content,
@@ -1122,6 +1308,10 @@ def execute_active_story(
                     int(resume.get("claude_exit_code") or 0),
                     bool(resume.get("result_was_updated")),
                     wait_for_evaluator=wait_for_evaluator,
+                    qa_plan=qa_plan,
+                    story_path=story_path,
+                    retry_count=retry_count,
+                    ci_fix_attempts=ci_fix_attempts,
                 )
 
             resume = None
@@ -1130,7 +1320,8 @@ def execute_active_story(
             # A new Claude attempt supersedes any recorded position: what
             # is on disk is about to change, so no later run may resume
             # the previous attempt's evaluation or publication.
-            clear_attempt_state()
+            if not resume_ci_fix:
+                clear_attempt_state()
 
             if prompt is None:
                 prompt, repo_map_enabled = _prepare_implementation_prompt(
@@ -1147,9 +1338,24 @@ def execute_active_story(
             usage_before = _safe_claude_usage()
             claude_start = time.time()
 
-            attempt = run_claude_attempt(
-                prompt
+            changed_before = qa_agent.restore_protected_tests(qa_plan)
+            qa_plan_file = qa_agent.plan_path(qa_plan["story_id"])
+            qa_plan_snapshot = qa_plan_file.read_bytes() if qa_plan_file.is_file() else None
+            try:
+                attempt = run_claude_attempt(prompt)
+            finally:
+                changed_after = qa_agent.restore_protected_tests(qa_plan)
+            qa_test_integrity = sorted(set(changed_before + changed_after))
+            plan_changed = (
+                qa_plan_file.is_file() != (qa_plan_snapshot is not None)
+                or (qa_plan_snapshot is not None and qa_plan_file.read_bytes() != qa_plan_snapshot)
             )
+            if plan_changed:
+                if qa_plan_snapshot is None:
+                    qa_plan_file.unlink(missing_ok=True)
+                else:
+                    qa_plan_file.write_bytes(qa_plan_snapshot)
+                qa_test_integrity.append(qa_plan_file.relative_to(REPO_ROOT).as_posix())
 
             claude_exit_code = attempt.exit_code
 
@@ -1252,6 +1458,12 @@ def execute_active_story(
             )
 
             result_content = _current_result_content()
+            if qa_test_integrity:
+                result_content += (
+                    "\n\nQA ownership violation: the coding agent modified or removed "
+                    "QA-owned acceptance tests; Python restored them. A conditional "
+                    "read-only QA review is required for: " + ", ".join(qa_test_integrity)
+                )
 
             story_content = read_file(
                 story_path
@@ -1279,7 +1491,13 @@ def execute_active_story(
                 claude_exit_code,
                 result_was_updated,
                 wait_for_evaluator=wait_for_evaluator,
+                qa_plan=qa_plan,
+                qa_integrity_findings=qa_test_integrity,
+                story_path=story_path,
+                retry_count=retry_count,
+                ci_fix_attempts=ci_fix_attempts,
             )
+            resume_ci_fix = False
 
         decision = evaluation[
             "decision"
@@ -1380,11 +1598,19 @@ def execute_active_story(
             )
 
             prompt = build_ci_failure_prompt(verification, story_path)
+            prompt += qa_agent.implementation_contract(qa_plan)
 
             NEXT_PROMPT_FILE.write_text(
                 prompt + "\n",
                 encoding="utf-8"
             )
+            record_attempt_state(
+                story_path,
+                "AWAITING_CI_FIX",
+                retry_count=retry_count,
+                ci_fix_attempts=ci_fix_attempts,
+            )
+            resume_ci_fix = True
 
             continue
 
@@ -1414,6 +1640,14 @@ def execute_active_story(
             return "BLOCKED"
 
         if decision == "NEEDS_USER":
+            if evaluation.get("qa_user_decision_ids"):
+                clear_attempt_state()
+                _block_story_for_qa_decision(story_path, {
+                    "user_decision_ids": evaluation["qa_user_decision_ids"]
+                })
+                log_line("Implementation blocked pending QA Product Owner decision: "
+                         + ", ".join(evaluation["qa_user_decision_ids"]))
+                return "NEEDS_USER"
             _create_intervention_and_block_story(
                 story_path,
                 story_content,
@@ -1489,6 +1723,7 @@ def execute_active_story(
             story_path,
             unmet_intent=evaluation.get("unmet_intent") or [],
         )
+        prompt += qa_agent.implementation_contract(qa_plan)
 
         NEXT_PROMPT_FILE.write_text(
             prompt + "\n",
@@ -2415,6 +2650,8 @@ def _run_cycle(scheduler, replenish, decisions) -> tuple[str, bool]:
     decisions.begin_cycle()
 
     requeue_resolved_interventions()
+    for story_id in qa_agent.requeue_resolved_qa_stories():
+        log_line(f"QA clarification resolved for {story_id}; story requeued for QA review.")
 
     _report_backlog_inconsistencies()
 

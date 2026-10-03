@@ -33,6 +33,8 @@ The browser UI is the active and canonical product interface. JavaFX remains as 
 
 The primary direction is browser -> HTTP -> application -> domain/repository/API adapters. Domain calculation code remains free of UI, HTTP, SQL/JDBC, and GW2 response-model dependencies. JavaFX is a parallel compatibility entry point, not a dependency of the browser backend.
 
+The Python runtime in `agent/runtime/` is a separate development orchestrator, not part of the deployed application. Its story flow is Planner -> Architect when an actionable architecture request exists -> pre-implementation QA -> coding agent -> Evaluator. QA writes a durable, per-story verification plan in `agent/qa-plans/`; QA-owned tests and expectations are preserved across coding retries. Clarifications use the existing Product Owner decision process. See [QA Instructions](../agent/QA_INSTRUCTIONS.md) and the [orchestrator runtime guide](../agent/runtime/README.md).
+
 ## 4. Browser API and workflows
 
 The browser calls same-origin `/api` routes; during development Vite proxies those routes to the Spring Boot server (default port 8080). GW2 credentials and database settings remain backend-side in the current local configuration. The frontend does not contact ArenaNet.

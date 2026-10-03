@@ -16,6 +16,7 @@ run tests separately from live orchestration. Individual suites can be run as
 | `core/` | Workflow orchestration, planning, architecture, story selection/state and archiving. |
 | `runners/` | Claude and Codex process execution, output and capacity handling. |
 | `evaluation/` | Claude prompt construction, and post-implementation evaluation (Codex, read-only). |
+| `qa/` | Persistent pre-implementation QA planning, test ownership and conditional read-only review. |
 | `human/` | Product Owner requests, architect requests, user decisions and intervention records. |
 | `support/` | Shared configuration, paths, file helpers, and the Git/GitHub CI verification integration. |
 | `tests/` | Runtime regression tests and temporary fixtures. |
@@ -26,14 +27,20 @@ imports; do not add module directories to `sys.path` or duplicate modules at
 the runtime root. All repository and artifact paths belong in
 `support/config.py` and are resolved independently of the working directory.
 
-`artifacts/` contains `CLAUDE_RESULT.md`, `EVALUATOR_RESULT.json`,
+`artifacts/` contains `CLAUDE_RESULT.md`, `EVALUATOR_RESULT.json`, `QA_RESULT.json`,
 `PLANNING_RESULT.json`, `ARCHITECT_RESULT.json`,
-`SELECTOR_RESULT.json`, `ATTEMPT_STATE.json`, and `NEXT_PROMPT.md`. Claude owns its implementation
+`SELECTOR_RESULT.json`, `ATTEMPT_STATE.json`, `QA_STATE.json`, and `NEXT_PROMPT.md`. Claude owns its implementation
 result; evaluation, planning, architecture, selection and
 orchestration own their respective generated outputs.
 These files are local runtime state, ignored by Git, and are not authoritative
 requirements or reusable test fixtures. The tracked `.gitkeep` preserves the
 directory in a fresh checkout. Python bytecode caches are also ignored.
+
+Validated story-specific QA plans are persistent source artifacts in
+`agent/qa-plans/QA-STORY-*.json`, with the format described in
+`agent/qa-plans/README.md`. Pre-implementation acceptance tests are committed
+with their story change. An ignored copy under `artifacts/qa-tests/` lets the
+harness restore those files if a coding attempt changes or deletes them.
 
 Authoritative stories, the current-story pointer, backlog, planning documents,
 PO requests, user decisions and interventions remain in their existing locations
@@ -51,6 +58,48 @@ log" below.
 Place new runtime files by responsibility, not in the root. Keep shared helpers
 small, tests separate from production code, and generated outputs separate from
 source. Avoid duplicate state, compatibility copies and redundant abstractions.
+
+## Pre-implementation QA (Codex GPT-6 Luna, medium)
+
+Behavior stories run in this order: Planner, Architect when an actionable
+architecture request exists, QA, Coding Agent, Evaluator. Planner and Architect
+scheduling and ownership are unchanged. QA runs before a new implementation
+attempt; it maps requirements to tests and invariants, checks existing tests and
+relevant coverage, writes acceptance/regression tests where practical, and runs
+them before implementation. Documentation-only work may have a justified
+`NO_TESTS_NEEDED` plan. A requirement ambiguity needing Product Owner input
+creates a standard `UD-*` decision and blocks only that story.
+
+QA uses `--model gpt-6-luna` and a `model_reasoning_effort="medium"` Codex
+override on every QA call, including conditional post-implementation review.
+Planner, Architect and Evaluator do not add model/effort flags and continue to
+inherit the Codex CLI configuration. The local Codex configuration inspected
+for this implementation was GPT-6 Luna with medium effort; a historical runtime
+measurement records a Planner run on GPT-6 Astra, a session-level setting not
+pinned by this repository.
+
+QA writes new tests or permanent fixtures only in approved test roots. Python
+compares the complete tracked and visible-untracked file snapshot around each
+QA run, restores forbidden writes, and rejects the plan if QA changes anything
+outside its test boundary. Plans store acceptance checks, invariants, test
+levels, existing tests reviewed, test files/specifications, pre-code results,
+coverage notes, external source facts, clarifications and conditional-review
+requirements. The harness persists a validated plan only after QA finishes.
+
+The coding prompt includes the plan. QA-owned test bytes and the plan are
+snapshotted before every coding attempt; edits are restored and reported to
+the evaluator, which can trigger independent QA review. The evaluator checks
+whether the plan was implemented, not merely whether tests pass. Evaluator
+rejection, a stated plan deviation, a test-integrity finding, insufficient
+verification, or a QA plan marked critical triggers a read-only QA review.
+
+QA preparation failures retry at most `MAX_QA_ATTEMPTS_PER_STORY` times before
+creating a user intervention. Model capacity exhaustion is a scheduling wait,
+not a failed attempt. A completed QA plan survives interruption, so the next
+run skips QA; generated tests from an interrupted QA run are recorded and reused.
+For legacy attempts already in evaluation/publication when this gate was
+introduced, the harness writes a compatibility plan and resumes the saved
+phase without rerunning coding.
 
 ## Evaluation (Codex, read-only)
 
@@ -123,12 +172,20 @@ only while a step is outstanding:
 | --- | --- | --- |
 | `AWAITING_EVALUATION` | Claude's attempt finished; no evaluator verdict yet. | Evaluates the story and result already on disk. Claude is not re-invoked and its capacity is not waited on. |
 | `AWAITING_CI` | The evaluator accepted the work; publication and the CI verdict are outstanding. | Commits, pushes and waits for CI. The evaluator's verdict is not bought a second time. |
+| `AWAITING_CI_FIX` | CI failed and the bounded repair prompt is saved. | Resumes the saved repair prompt without repeating QA or prematurely publishing partial work. |
 
 Every terminal outcome (COMPLETE, BLOCKED, NEEDS_USER) clears the file, and so
 does starting a new Claude attempt — what is on disk is about to change, so no
 later run may resume the previous attempt. `MAX_RETRIES_PER_STORY` and
 `MAX_CI_FIX_ATTEMPTS` counters travel with the record, so a restart cannot hand
 the same story a fresh allowance and loop past its escalation.
+
+Any `DONE` story without an attempt-state record is considered complete only
+if `EVALUATOR_RESULT.json` contains a `COMPLETE` verdict bound to that story ID
+and the exact story/result SHA-256 values. A published commit or passing CI
+cannot stand in for a missing or stale evaluator verdict. Such a verdict
+resumes evaluation; this covers a crash between the coding agent finishing and
+the harness recording `AWAITING_EVALUATION`.
 
 Because `artifacts/` is disposable, a second and independent check covers a
 `DONE` story whose record was wiped with it: the repository is asked whether a

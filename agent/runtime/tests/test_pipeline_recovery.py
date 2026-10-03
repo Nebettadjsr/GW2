@@ -18,6 +18,7 @@ Run with: python -m unittest agent.runtime.tests.test_pipeline_recovery -v
 """
 
 import io
+import hashlib
 import json
 import unittest
 from contextlib import ExitStack
@@ -165,6 +166,40 @@ class ResumeAfterInterruptionTest(PipelineRecoveryTestCase):
         claude.assert_not_called()
         self.assertFalse(self.attempt_state_file.exists())
 
+    def test_awaiting_ci_fix_resumes_saved_prompt_without_repeating_qa_or_publication(self):
+        self.given_finished_attempt(
+            "AWAITING_CI_FIX", status="UNFINISHED", ci_fix_attempts=1
+        )
+        saved_prompt = "Fix the failed agent-runtime queue consistency checks."
+        self.prompt_file.write_text(saved_prompt, encoding="utf-8")
+
+        with ExitStack() as stack:
+            claude = stack.enter_context(
+                patch.object(orchestrator, "run_claude_attempt",
+                             return_value=claude_runner.ClaudeAttempt(0, False))
+            )
+            evaluate = stack.enter_context(
+                patch.object(orchestrator, "_evaluate_preserving_completed_attempt",
+                             return_value={"decision": "COMPLETE", "reason": "verified"})
+            )
+            qa = stack.enter_context(
+                patch.object(orchestrator, "_ensure_preimplementation_qa")
+            )
+            verify = stack.enter_context(
+                patch.object(orchestrator, "verify_with_github_ci",
+                             return_value={"status": "PASSED", "reason": "ok",
+                                           "report": "", "sha": "abc1234",
+                                           "run_urls": []})
+            )
+            result = self.run_execute(stack)
+
+        self.assertEqual(result, "COMPLETE")
+        claude.assert_called_once_with(saved_prompt)
+        evaluate.assert_called_once()
+        qa.assert_not_called()
+        verify.assert_called_once()
+        self.assertFalse(self.attempt_state_file.exists())
+
     def test_retry_budget_survives_a_restart(self):
         # MAX_RETRIES_PER_STORY already spent before the interruption: a
         # resumed attempt must escalate, not hand the story a fresh
@@ -190,16 +225,27 @@ class ResumeAfterInterruptionTest(PipelineRecoveryTestCase):
         claude.assert_not_called()
         self.assertFalse(self.attempt_state_file.exists())
 
-    def test_active_story_is_executable_while_an_attempt_is_outstanding(self):
+    def test_done_story_remains_executable_until_durable_evaluation_exists(self):
         story = self.given_finished_attempt("AWAITING_EVALUATION")
 
-        with patch.object(orchestrator, "CURRENT_STORY_FILE",
-                          self.current_story_file):
+        evaluator_file = self.stories_dir / "EVALUATOR_RESULT.json"
+        with patch.object(orchestrator, "CURRENT_STORY_FILE", self.current_story_file), \
+                patch.object(orchestrator, "EVALUATOR_RESULT_FILE", evaluator_file), \
+                patch.object(git_sync, "ci_verification_available",
+                             return_value=(False, "no GitHub remote")):
             self.assertTrue(orchestrator._active_is_executable())
 
-            # Once the pipeline has finished with it, the same DONE story
-            # is no longer executable and selection may move on.
+            # Lost attempt state cannot make DONE alone authoritative.
             orchestrator.clear_attempt_state()
+            self.assertTrue(orchestrator._active_is_executable())
+
+            content = story.read_text(encoding="utf-8")
+            evaluator_file.write_text(json.dumps({
+                "decision": "COMPLETE",
+                "story_id": "STORY-DOM-001",
+                "evaluated_story_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                "evaluated_result_sha256": orchestrator.file_hash(self.result_file),
+            }), encoding="utf-8")
             self.assertFalse(orchestrator._active_is_executable())
 
         self.assertEqual(
@@ -252,6 +298,19 @@ class UnpublishedCompletionTest(PipelineRecoveryTestCase):
         super().setUp()
         self.story = self.given_finished_attempt("AWAITING_EVALUATION")
         orchestrator.clear_attempt_state()
+        self.evaluator_file = self.stories_dir / "EVALUATOR_RESULT.json"
+        self._stack.enter_context(
+            patch.object(orchestrator, "EVALUATOR_RESULT_FILE", self.evaluator_file)
+        )
+        story_content = self.story.read_text(encoding="utf-8")
+        self.evaluator_file.write_text(json.dumps({
+            "decision": "COMPLETE",
+            "story_id": "STORY-DOM-001",
+            "evaluated_story_sha256": hashlib.sha256(
+                story_content.encode("utf-8")
+            ).hexdigest(),
+            "evaluated_result_sha256": orchestrator.file_hash(self.result_file),
+        }), encoding="utf-8")
 
     def test_missing_commit_with_uncommitted_work_is_reported(self):
         reason = self.check(
@@ -286,16 +345,14 @@ class UnpublishedCompletionTest(PipelineRecoveryTestCase):
                        changes=[" M frontend/src/App.vue"], ahead=3)
         )
 
-    def test_nothing_is_claimed_when_there_is_no_ci_gate(self):
-        # With the gate off nothing is ever committed, so neither half of
-        # the check means anything.
+    def test_missing_evaluator_verdict_requires_recovery_without_a_ci_gate(self):
+        self.evaluator_file.unlink()
         with patch.object(git_sync, "ci_verification_available",
                           return_value=(False, "no GitHub remote")):
-            self.assertIsNone(
-                orchestrator.unpublished_completion(
-                    self.story, self.story.read_text(encoding="utf-8")
-                )
+            reason = orchestrator.unpublished_completion(
+                self.story, self.story.read_text(encoding="utf-8")
             )
+        self.assertIn("no durable COMPLETE evaluator verdict", reason)
 
 
 class BoundedEvaluationTest(PipelineRecoveryTestCase):

@@ -120,7 +120,14 @@ def build_evaluation_prompt(
     result_content: str,
     claude_exit_code: int,
     result_was_updated: bool,
+    qa_plan: dict | None = None,
+    qa_integrity_findings: list[str] | None = None,
 ) -> str:
+
+    qa_section = json.dumps(qa_plan, indent=2, ensure_ascii=False) if qa_plan else (
+        "No pre-implementation QA plan is available (legacy attempt); inspect the requirements and tests directly."
+    )
+    integrity_section = ", ".join(qa_integrity_findings or []) or "None reported."
 
     return f"""STORY EVALUATION MODE
 
@@ -138,6 +145,10 @@ THE TWO QUESTIONS
    satisfied, as written in the story file?
 
 2. Did the work actually achieve what this story set out to achieve?
+
+3. Was the pre-implementation QA plan adequately implemented? Verify its
+   acceptance checks, invariants, required verification levels and protected
+   tests against the actual repository and behavior.
 
 The second question is the one that needs your judgement, and it is not
 answered by the first. A change can tick every criterion literally and still
@@ -157,6 +168,17 @@ fail the story's purpose. Look for exactly that:
   the real rule stated in two places that can now disagree;
 - something the story explicitly required be preserved was quietly changed,
   or something it required be removed is still reachable.
+
+PRE-IMPLEMENTATION QA PLAN:
+{qa_section}
+
+QA TEST OWNERSHIP FINDINGS:
+{integrity_section}
+
+Set `qa_review_required` true if tests were changed, implementation deviates
+from the plan, verification is insufficient, or critical behavior warrants
+independent post-implementation QA. Include `qa_review_reason`. Passing tests
+alone do not establish completion.
 
 If the story's purpose is achieved, say so. Do not invent a shortfall to look
 rigorous, and do not treat a different-but-equivalent implementation choice as
@@ -285,7 +307,9 @@ else outside it:
   "unmet_intent": ["<purpose not achieved>", ...],
   "unmet_acceptance_criteria": ["<criterion>", ...],
   "unmet_definition_of_done": ["<item>", ...],
-  "actionable_retry_items": ["<concrete task>", ...]
+  "actionable_retry_items": ["<concrete task>", ...],
+  "qa_review_required": true | false,
+  "qa_review_reason": "<reason or empty string>"
 }}
 ```
 
@@ -358,6 +382,11 @@ def parse_evaluator_verdict(messages: list[str]) -> dict:
             )
             continue
 
+        if ("qa_review_required" in parsed
+                and not isinstance(parsed["qa_review_required"], bool)):
+            failures.append("qa_review_required is not a boolean")
+            continue
+
         for field in REQUIRED_LIST_FIELDS:
             if field in parsed and not isinstance(parsed[field], list):
                 failures.append(f"{field} is not a list")
@@ -380,7 +409,9 @@ def evaluate_story(
     story_content: str,
     result_content: str,
     claude_exit_code: int,
-    result_was_updated: bool
+    result_was_updated: bool,
+    qa_plan: dict | None = None,
+    qa_integrity_findings: list[str] | None = None,
 ) -> dict:
 
     prompt = build_evaluation_prompt(
@@ -388,6 +419,8 @@ def evaluate_story(
         result_content,
         claude_exit_code,
         result_was_updated,
+        qa_plan,
+        qa_integrity_findings,
     )
 
     messages: list[str] = []
@@ -415,6 +448,8 @@ def evaluate_story(
     )
 
     result["evaluator_exit_code"] = evaluator_exit_code
+    result["qa_review_required"] = bool(verdict.get("qa_review_required", False))
+    result["qa_review_reason"] = str(verdict.get("qa_review_reason", ""))
 
     write_json(
         EVALUATOR_RESULT_FILE,

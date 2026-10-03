@@ -33,6 +33,26 @@ def fake_process(output: str = "", returncode: int = 0):
 
 class ClaudeRunnerTest(unittest.TestCase):
 
+    def test_unrepresentable_model_output_does_not_abort_completed_attempt(self):
+        class Cp1252Console(io.StringIO):
+            @property
+            def encoding(self):
+                return "cp1252"
+
+            def write(self, value):
+                value.encode(self.encoding)
+                return super().write(value)
+
+        process = fake_process("Result contains an arrow →\n")
+        terminal = Cp1252Console()
+        with patch.object(claude_runner, "find_claude", return_value="claude.exe"), \
+             patch.object(claude_runner.subprocess, "Popen", return_value=process), \
+             redirect_stdout(terminal):
+            result = claude_runner.run_claude_attempt("Implement")
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("Result contains an arrow ?", terminal.getvalue())
+
     def test_usage_probe_parses_session_and_weekly_from_one_response(self):
         result = Mock(returncode=0, stdout=(
             "Current session: 89% used\n"

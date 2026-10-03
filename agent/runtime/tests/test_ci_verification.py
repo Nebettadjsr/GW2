@@ -463,7 +463,7 @@ class StoryCompletionGateTest(OrchestratorInterventionTestCase):
                                              side_effect=claude))
             stack.enter_context(patch.object(
                 orchestrator, "evaluate_story",
-                side_effect=evaluate or (lambda *a: next(outcomes)),
+                side_effect=evaluate or (lambda *a, **_kwargs: next(outcomes)),
             ))
             stack.enter_context(patch.object(orchestrator.git_sync,
                                              "ci_verification_available",
@@ -509,7 +509,7 @@ class StoryCompletionGateTest(OrchestratorInterventionTestCase):
     def test_a_story_whose_ci_fails_is_not_left_claiming_to_be_done(self):
         recorded = []
 
-        def evaluate(*args):
+        def evaluate(*args, **_kwargs):
             recorded.append(orchestrator.extract_status_section(
                 self.story.read_text(encoding="utf-8")))
             return {"decision": "COMPLETE", "reason": "ok"}

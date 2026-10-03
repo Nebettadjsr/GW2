@@ -183,3 +183,42 @@ def find_duplicate_decision_ids() -> list[str]:
         seen.add(decision_id)
 
     return sorted(duplicates)
+
+
+def create_qa_user_decision(story_id: str, question: str, context: str = "") -> str:
+    """Create a normal Product Owner decision from a validated QA clarification."""
+    USER_DECISIONS_DIR.mkdir(parents=True, exist_ok=True)
+    for existing in list_decision_files():
+        content = existing.read_text(encoding="utf-8")
+        if (story_id in content and question.strip() in content
+                and extract_status(content) == "OPEN"):
+            decision_id = extract_decision_id(content)
+            if decision_id:
+                return decision_id
+    used = [
+        int(match.group(1))
+        for path in list_decision_files()
+        if (match := re.match(r"^UD-(\d+)", path.name))
+    ]
+    number = max(used, default=0) + 1
+    decision_id = f"UD-{number:03d}"
+    slug = re.sub(r"[^a-z0-9]+", "-", question.lower()).strip("-")[:48] or "qa-clarification"
+    path = USER_DECISIONS_DIR / f"{decision_id}-{slug}.md"
+    path.write_text(
+        f"# {decision_id} — QA clarification for {story_id}\n\n"
+        "## Status\n\nOPEN\n\n"
+        "## Decision Needed\n\n"
+        f"{question.strip()}\n\n"
+        "## Why This Is Needed\n\n"
+        "The independent QA review found that implementation requirements are insufficient to define a reliable expected result.\n\n"
+        "## Context\n\n"
+        f"Story: {story_id}\n\n{context.strip() or 'See the story and its QA plan.'}\n\n"
+        "## Blocks\n\n"
+        f"Implementation of {story_id}.\n\n"
+        "## External Input Possibly Required\n\n"
+        "Product Owner decision.\n\n"
+        "## User Decision\n\nTODO\n\n"
+        "## Resolution\n\nTODO\n",
+        encoding="utf-8",
+    )
+    return decision_id

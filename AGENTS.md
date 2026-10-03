@@ -270,6 +270,16 @@ Preserve these established target principles:
 - prefer incremental migration over broad rewrite;
 - prefer the simplest design that preserves correctness, testability, and clear responsibility boundaries.
 
+## Orchestrated Story Quality Flow
+
+The Python orchestrator runs implementation stories through Planner, Architect
+when an actionable request exists, QA, Coding Agent, and Evaluator. QA prepares
+the persistent plan in `agent/qa-plans/` before a new coding attempt. The coding
+agent follows its criteria and must preserve QA-owned tests and plan; Evaluator
+checks the plan and actual behavior. See `agent/QA_INSTRUCTIONS.md`,
+`agent/qa-plans/README.md`, and `agent/runtime/README.md`. A QA clarification
+uses the normal Product Owner `UD-*` decision flow; QA never answers it.
+
 ---
 
 ## Direct Instructions

@@ -1,5 +1,11 @@
 # GW2 Tool — Test Strategy
 
+## Orchestrated story QA
+
+The Python story orchestrator prepares a persistent QA plan before coding when a story changes behavior that needs verification. QA may write acceptance/regression tests first, specify exact executable checks when preparation is not feasible, or record `NO_TESTS_NEEDED` with a justification. If requirements need a Product Owner decision, QA blocks the story through the existing `UD-*` flow. See [`agent/QA_INSTRUCTIONS.md`](../agent/QA_INSTRUCTIONS.md) for QA's contract and [`agent/qa-plans/README.md`](../agent/qa-plans/README.md) for the plan format and ownership rules.
+
+The coding agent must implement the plan and preserve QA-owned tests. A test expectation may change only with documented evidence and independent review. The evaluator checks acceptance behavior, integration points, invariants, coverage and plan adherence; a green test suite alone does not establish completion. Conditional independent QA review runs when the evaluator requests it, tests/expectations changed, the implementation diverged from the plan, or verification remains critical. Runtime tests must cover these transitions and restart recovery without invoking real model processes or external services.
+
 ## 1. Purpose
 
 This document defines the testing strategy for the GW2 Tool.

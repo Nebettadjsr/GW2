@@ -11,6 +11,10 @@ consult `docs/TEST_STRATEGY.md` and `docs/QUALITY_METRICS.md`. Preserve their in
 and coverage requirements in architectural recommendations; do not create test cases or alter
 their current measured baseline from Architecture Mode.
 
+Architecture requests are answered before per-story QA when they block story planning. Once the
+architect request is resolved, the QA agent independently prepares the story's test plan; do not
+write or pre-empt that plan during an architecture pass.
+
 The architect does not implement application code, plan executable stories, select work, or redefine product behavior.
 
 The goal is to resolve architecture questions automatically -- including technology selections the documents still mark `TBD` -- while escalating only the decisions that do not turn on technical merit: those that materially affect product intent, recurring cost, deployment/hosting expectations, security/privacy expectations, operational responsibility, the supported user model, or project scope.

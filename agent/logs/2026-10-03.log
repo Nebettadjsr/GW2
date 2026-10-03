@@ -504,3 +504,10 @@
 [19:13:08] Evaluator decision: COMPLETE
 [19:13:08] Reason: The three smoke scripts now check the current rendered workflow contracts, and the changed story records focused browser verification for each script. The reported remaining findings concern work outside this story's scope.
 [19:13:08] ========================================
+[19:13:12] STORY-WEB-024-repair-fresh-build-smoke-contracts.md published for CI verification: 61cd1a0 on master (11 changed path(s), new commit, waiting for GitHub Actions.
+[19:15:15] GitHub CI FAILED for 61cd1a0 (STORY-WEB-024-repair-fresh-build-smoke-contracts.md): CI: failure
+[19:15:15] GitHub CI failed; returning the story to Claude (1/2).
+[19:15:19] ========================================
+[19:15:19] Starting Claude Code
+[19:15:19] ========================================
+[19:15:24] Interrupted by user. Exiting.

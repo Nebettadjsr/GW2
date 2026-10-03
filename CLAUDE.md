@@ -124,6 +124,12 @@ recursive, allocation, boundary, shared-dependency, and settings-combination cas
 record failing seeds for reproduction. Consult the bug registry lifecycle when a production defect
 is confirmed. Do not weaken tests to force a pass unless requirements changed.
 
+Before implementation, read the persistent plan in `agent/qa-plans/` and follow
+its test specifications and expected results. Do not edit, remove, skip or weaken
+QA-owned tests or the plan. If an expectation is wrong, preserve it and document
+the evidence for independent review. Add implementation-specific tests as
+needed, and report the exact commands/results for prepared tests.
+
 Run applicable tests and builds, inspect line/branch coverage in affected modules/packages, and
 report unresolved quality gaps. Aim for at least 90% in affected areas; the project-wide 90% KPI
 is initially a CI warning, not a build gate. Never pad tests or manipulate measurement scope.

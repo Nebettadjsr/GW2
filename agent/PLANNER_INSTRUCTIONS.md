@@ -106,6 +106,10 @@ Authoritative owners (what belongs in each document):
     - permanent confirmed-defect registry lifecycle and report template
     - read a specific bug record when planning work tied to that defect
 
+- `agent/qa-plans/`
+    - persistent per-story verification contract created by the QA role before coding
+    - implementation must preserve and satisfy its QA-owned tests and expectations
+
 - `agent/user-decisions/UD-*.md`
     - human decisions
     - OPEN / RESOLVED status
@@ -626,6 +630,10 @@ Rules:
   boundaries. Include verification of relevant coverage reports and unresolved quality gaps in
   the Definition of Done. A test is `None` only when the work is genuinely infrastructure/docs
   only or behavior cannot reasonably be tested; explain the exception.
+- Make each story's acceptance criteria, expected outcomes, relevant data/settings and boundaries
+  explicit enough for independent QA to write pre-implementation checks. Do not pre-decide its QA
+  plan or turn an unresolved product question into an assumed answer; QA uses the normal Product
+  Owner decision mechanism when clarification is needed.
 - `Dependencies` may be `None`.
 - `Result` starts as `Not started.` or equivalent.
 - `Blockers` starts as `None.` when unblocked.

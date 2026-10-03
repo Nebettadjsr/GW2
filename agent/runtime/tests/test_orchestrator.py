@@ -152,7 +152,7 @@ class OrchestratorInterventionTestCase(unittest.TestCase):
             events.append("claude")
             return claude_runner.ClaudeAttempt(0, False)
 
-        def evaluate(*_args):
+        def evaluate(*_args, **_kwargs):
             events.append("evaluate")
             if events.count("evaluate") == 1:
                 raise OSError("evaluator unavailable")
@@ -227,7 +227,7 @@ class InterruptedClaudeTest(OrchestratorInterventionTestCase):
 
         outcomes = iter(evaluations)
 
-        def evaluate(*args):
+        def evaluate(*args, **_kwargs):
             self.assertEqual(events[-1], 0)
             self.assertEqual(args[2], 0)
             events.append("evaluate")

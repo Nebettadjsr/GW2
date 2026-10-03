@@ -30,6 +30,7 @@ PRODUCT_OWNER_REQUESTS_DIR = AGENT_DIR / "product-owner-requests"
 ARCHITECT_REQUESTS_DIR = AGENT_DIR / "architect-requests"
 ARCHITECT_INSTRUCTIONS_FILE = AGENT_DIR / "ARCHITECT_INSTRUCTIONS.md"
 PLANNER_INSTRUCTIONS_FILE = AGENT_DIR / "PLANNER_INSTRUCTIONS.md"
+QA_INSTRUCTIONS_FILE = AGENT_DIR / "QA_INSTRUCTIONS.md"
 
 # The role contracts themselves (AGENTS.md's router, each role's own
 # instructions, and Claude's). A model run in one role may never
@@ -40,6 +41,7 @@ ROLE_CONTRACT_FILES = (
     REPO_ROOT / "CLAUDE.md",
     ARCHITECT_INSTRUCTIONS_FILE,
     PLANNER_INSTRUCTIONS_FILE,
+    QA_INSTRUCTIONS_FILE,
 )
 
 # Implementation-time human/tooling intervention records (distinct from
@@ -77,6 +79,9 @@ EVALUATOR_RESULT_FILE = ARTIFACTS_DIR / "EVALUATOR_RESULT.json"
 SELECTOR_RESULT_FILE = ARTIFACTS_DIR / "SELECTOR_RESULT.json"
 PLANNING_RESULT_FILE = ARTIFACTS_DIR / "PLANNING_RESULT.json"
 ARCHITECT_RESULT_FILE = ARTIFACTS_DIR / "ARCHITECT_RESULT.json"
+QA_RESULT_FILE = ARTIFACTS_DIR / "QA_RESULT.json"
+QA_STATE_FILE = ARTIFACTS_DIR / "QA_STATE.json"
+QA_PLANS_DIR = AGENT_DIR / "qa-plans"
 
 DOCS_DIR = REPO_ROOT / "docs"
 ROADMAP_FILE = DOCS_DIR / "ROADMAP.md"
@@ -275,8 +280,8 @@ REPO_MAP_ENABLED = _default_repo_map_enabled()
 # ============================================================
 # Document ownership -- one definition, enforced, not just described
 #
-# Four roles write into this repository (IMPLEMENTATION, PROJECT PLANNING,
-# ARCHITECTURE, and the harness itself) and the rules about who may write
+# Roles write into this repository (IMPLEMENTATION, PROJECT PLANNING,
+# ARCHITECTURE, QA, EVALUATION, and the harness itself) and the rules about who may write
 # what were previously stated in prose in four separate files -- CLAUDE.md,
 # AGENTS.md, agent/PLANNER_INSTRUCTIONS.md and
 # agent/ARCHITECT_INSTRUCTIONS.md -- while the actual enforcement lived as
@@ -306,7 +311,15 @@ HARNESS = "harness"
 IMPLEMENTATION = "implementation"
 PLANNER = "planner"
 ARCHITECT = "architect"
+QA = "qa"
 HUMAN = "human"
+
+# QA has a dedicated model configuration. Planner, Architect, and Evaluator
+# keep inheriting the Codex CLI's normal configuration.
+QA_MODEL = "gpt-6-luna"
+QA_REASONING_EFFORT = "medium"
+MAX_QA_ATTEMPTS_PER_STORY = 2
+MAX_QA_REVIEW_ATTEMPTS = 1
 
 # Mechanical state. The harness is the only writer, because every one of
 # these encodes a transition that must be deterministic: which story is
@@ -350,8 +363,12 @@ DOCUMENT_OWNERSHIP = (
     (ARCHITECT_REQUESTS_DIR, (ARCHITECT, PLANNER),
      "The planner may create a request; only ARCHITECTURE MODE answers, "
      "edits or resolves one."),
-    (USER_DECISIONS_DIR, (PLANNER, HUMAN),
+    (USER_DECISIONS_DIR, (PLANNER, HUMAN, HARNESS),
      "The planner may open a decision; only the human resolves it."),
+    (QA_PLANS_DIR, (QA, HARNESS),
+     "Persistent QA plans; QA prepares them and the harness records validated results."),
+    (QA_INSTRUCTIONS_FILE, (HUMAN,),
+     "Authoritative QA role contract; no model role may rewrite it."),
     (USER_INTERVENTIONS_DIR, (HARNESS, HUMAN),
      "The harness records an intervention; only the human resolves it."),
     (PRODUCT_OWNER_REQUESTS_DIR, (HUMAN, PLANNER),

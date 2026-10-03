@@ -352,6 +352,7 @@ def _drain_stderr(
 ROLE_BY_TASK_HEADER = {
     "PROJECT PLANNING TASK": "planner",
     "ARCHITECTURE TASK": "architect",
+    "STORY QA TASK": "qa",
     "STORY EVALUATION TASK": "evaluator",
 }
 
@@ -439,6 +440,8 @@ def run_codex(
         label: str = "hosted Codex planner",
         sandbox: str = "workspace-write",
         messages: list | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
 ) -> int:
     """Run one Codex role.
 
@@ -464,8 +467,7 @@ def run_codex(
 
     planner_prompt = compose_codex_prompt(prompt, task_header, sandbox)
 
-    process = subprocess.Popen(
-        [
+    command = [
             codex,
             "exec",
 
@@ -476,9 +478,17 @@ def run_codex(
             "--sandbox",
             sandbox,
 
-            # Prompt comes from stdin.
-            "-",
-        ],
+        ]
+
+    if model:
+        command.extend(["--model", model])
+    if reasoning_effort:
+        command.extend(["-c", f'model_reasoning_effort="{reasoning_effort}"'])
+    # Prompt comes from stdin; keep it after runner-level options.
+    command.append("-")
+
+    process = subprocess.Popen(
+        command,
         cwd=REPO_ROOT,
         text=True,
         encoding="utf-8",
@@ -597,4 +607,20 @@ def run_evaluator(
         label="hosted Codex evaluator",
         sandbox="read-only",
         messages=messages,
+    )
+
+
+def run_qa(prompt: str, messages: list[str], *, read_only: bool = False) -> int:
+    """Run QA with its dedicated, explicit model and reasoning effort."""
+
+    from agent.runtime.support.config import QA_MODEL, QA_REASONING_EFFORT
+
+    return run_codex(
+        prompt,
+        task_header="STORY QA TASK",
+        label="Codex QA agent",
+        sandbox="read-only" if read_only else "workspace-write",
+        messages=messages,
+        model=QA_MODEL,
+        reasoning_effort=QA_REASONING_EFFORT,
     )

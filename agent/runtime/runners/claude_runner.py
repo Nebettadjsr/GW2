@@ -3,6 +3,7 @@ from typing import NamedTuple
 import re
 import shutil
 import subprocess
+import sys
 import time
 
 from agent.runtime.support.config import (
@@ -179,6 +180,26 @@ CAPACITY_OUTPUT_PATTERN = re.compile(
 )
 
 
+def _console_safe(text: str) -> str:
+    """Replace characters the active console encoding cannot represent.
+
+    Model output is UTF-8, but Windows consoles may expose a legacy encoding
+    such as cp1252. A print failure here occurs after the model has finished
+    and can prevent the orchestrator from recording its resumable phase.
+    """
+    encoding = getattr(sys.stdout, "encoding", None)
+    if not encoding:
+        return text
+    try:
+        text.encode(encoding)
+    except (LookupError, UnicodeEncodeError):
+        try:
+            return text.encode(encoding, errors="replace").decode(encoding)
+        except LookupError:
+            return text
+    return text
+
+
 def output_indicates_capacity_exhaustion(
     output: str
 ) -> bool:
@@ -251,9 +272,7 @@ def run_claude_attempt(
     for line in process.stdout:
         text = line.rstrip("\n")
 
-        print(
-            text
-        )
+        print(_console_safe(text))
 
         tail = (tail + text + "\n")[-CAPACITY_OUTPUT_TAIL_CHARS:]
 
