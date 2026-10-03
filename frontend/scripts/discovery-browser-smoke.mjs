@@ -22,9 +22,9 @@
  *
  * Exits 0 when every step passed, 1 otherwise.
  */
-import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
+import { requireFreshBundle } from './bundleFreshness.mjs'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import { startStubOrigin } from './stubOrigin.mjs'
 
@@ -323,11 +323,12 @@ async function focusState(page) {
 }
 
 async function run() {
-  check(existsSync(`${DIST_DIR}index.html`), 'frontend/dist is missing — run `npm run build` first.')
+  const bundle = requireFreshBundle()
 
   const browserPath = resolveBrowserPath()
   const stub = await startStubOrigin({ port: PORT, distDir: DIST_DIR, answerApi })
   console.log(`Browser : ${browserPath}`)
+  console.log(`Bundle  : ${bundle}`)
   console.log(`Page    : ${stub.origin} (stub backend in this process)\n`)
 
   const browser = await chromium.launch({ executablePath: browserPath })

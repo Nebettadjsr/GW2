@@ -37,7 +37,8 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'jsdom',
-      include: ['src/**/*.spec.ts']
+      // The browser-smoke helpers under `scripts/` are plain ESM, so their checks are `.spec.mjs`.
+      include: ['src/**/*.spec.ts', 'scripts/**/*.spec.mjs']
     }
   }
 })

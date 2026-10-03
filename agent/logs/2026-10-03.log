@@ -16,3 +16,68 @@
 [09:42:32] ========================================
 [09:42:32] Starting Claude Code
 [09:42:32] ========================================
+[09:55:04] Story complete.
+[09:55:04] ## What changed
+[09:55:04] **New `frontend/scripts/bundleFreshness.mjs`** — `requireFreshBundle()` refuses to let a browser check start unless `frontend/dist/` can stand as evidence about the current source, and otherwise returns the comparison for the caller to print. Three rejections, each naming the file and both timestamps plus the build instruction:
+[09:55:04] 1. output missing (`dist/index.html` absent),
+[09:55:04] 2. output incomplete (the emitted document references a same-origin file `dist/` doesn't contain),
+[09:55:04] 3. output stale (any build input — `index.html`, `package.json`, `package-lock.json`, `public/`, `src/` recursively, `tsconfig.json`, `vite.config.ts` — modified later than `dist/index.html`).
+[09:55:04] It requires the build rather than performing one, so the check stays a report on what the developer has.
+[09:55:04] **The seven dist-serving smoke scripts** (`sync`, `layout`, `profit`, `icon`, `discovery`, `ecto`, `favicon`) replaced the shared `existsSync(…index.html)` guard with that call and print a `Bundle  : …` header line. No browser/API assertion, step name or step count changed. The other scripts (`smoke:browser`, `smoke:account`, the three `*:live` checks, `check:icons:live`, `perf:profit-page`) never read `dist` — they open an operator-started origin — so they had no such guard to fix.
+[09:55:04] Also: `frontend/scripts/__tests__/bundleFreshness.spec.mjs`, one `test.include` line in `vite.config.ts`, and the methodology rule in `docs/TEST_STRATEGY.md` §12.2.
+[09:55:04] ## Tests run
+[09:55:04] - `npx vitest run scripts/__tests__/bundleFreshness.spec.mjs` — `Tests 7 passed (7)`
+[09:55:04] - `npm test` — `Test Files 22 passed (22) | Tests 302 passed (302)` (the include change affects collection)
+[09:55:04] - `npm run build` — `✓ built in 442ms`
+[09:55:04] - Controls on the shipped files: touching only `src/App.vue`'s mtime made `ecto-browser-smoke.mjs` exit 1 with `frontend/dist is stale: src/App.vue was modified …, after dist/index.html was built …`; with `dist/` moved aside, `favicon-browser-smoke.mjs` exit 1 with `frontend/dist/index.html is missing`.
+[09:55:04] - Against the current build: `smoke:ecto` PASSED (6), `smoke:favicon` PASSED (7), `smoke:sync` PASSED (8), `smoke:icons` PASSED (10).
+[09:55:04] - `smoke:layout`, `smoke:profit`, `smoke:discovery` passed the guard and then failed further on for pre-existing reasons (stale `sync-controls` selector; a `For one craft` expectation the component's own spec forbids; `> legend` queries against `div`s). Each reproduced identically with a throwaway `git show HEAD:…` copy of the committed script, so the guard is not the cause; the copies were deleted and `git status` lists none.
+[09:55:04] Those three are recorded as F002–F004 (plus F001: `scripts/.tmp-control-unrelated-call.mjs` is tracked in git; F005: an orphaned backlog summary line) in the story and `CLAUDE_RESULT.md`. Story status, backlog row and result are updated; nothing was committed.
+[09:55:04] ========================================
+[09:55:04] Claude Code exit code: 0
+[09:55:04] ========================================
+[09:55:06] Claude run measurement: repo_map=on, duration=752.1s, usage_before=ClaudeUsage(session_used_percent=15, weekly_used_percent=2), usage_after=ClaudeUsage(session_used_percent=36, weekly_used_percent=4)
+[09:55:06] Evaluator started (Codex, read-only)
+[09:55:06] ========================================
+[09:55:06] Starting hosted Codex evaluator
+[09:55:06] ========================================
+[09:55:07] [evaluator] session 01a100c2-776b-71b3-a9a8-e27b1015b639
+[09:55:07] [evaluator] reasoning...
+[09:55:10] Evaluator last response:
+[09:55:10] I’ll inspect the actual diff and the story’s acceptance/DoD wording in the repository, then check the guard and its tests against the smoke-script call paths. I’ll keep the verdict limited to this story.
+[09:55:14] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git status --porcelain; git diff HEAD --stat; git diff HEAD -- frontend/scripts/bundleFreshness.mjs frontend/scripts/__tests__/bundleFreshness.spec.mjs frontend/vite.config.ts docs/TEST_STRATEGY.md scripts/sync-browser-smoke.mjs scripts/layout-browser-smoke.mjs scripts/profit-browser-smoke.mjs scripts/icon-browser-smoke.mjs scripts/discovery-browser-smoke.mjs scripts/ecto-browser-smoke.mjs scripts/favicon-browser-smoke.mjs'
+[09:55:15] [evaluator command done] exit 0
+[09:55:19] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'git diff HEAD -- agent/stories/STORY-WEB-018-fresh-build-browser-smoke-checks.md frontend/scripts/sync-browser-smoke.mjs frontend/scripts/layout-browser-smoke.mjs frontend/scripts/profit-browser-smoke.mjs frontend/scripts/icon-browser-smoke.mjs frontend/scripts/discovery-browser-smoke.mjs frontend/scripts/ecto-browser-smoke.mjs frontend/scripts/favicon-browser-smoke.mjs; Get-Content frontend/scripts/bundleFreshness.mjs; Get-Content frontend/scripts/__tests__/bundleFreshness.spec.mjs'
+[09:55:19] [evaluator command done] exit 0
+[09:55:27] [evaluator command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "rg -n \"existsSync\\(["'^'"\\n]*index\\.html|startStubOrigin\\(|requireFreshBundle\\(\" frontend/scripts; rg -n \"## Acceptance Criteria|## Required Tests|## Definition of Done|passes the CI gate\" agent/stories/STORY-WEB-018-fresh-build-browser-smoke-checks.md"
+[09:55:27] [evaluator command done] exit 0
+[09:55:41] Evaluator last response:
+[09:55:41] ```json
+[09:55:41] {
+[09:55:41]   "decision": "COMPLETE",
+[09:55:41]   "reason": "The seven scripts that serve frontend/dist check freshness before starting their stub origins. The shared guard checks for missing or incomplete output and for build inputs newer than dist/index.html. The added tests exercise stale, missing, incomplete, and current output. The reported browser runs record results for all seven scripts; three proceed past the guard and fail on separate existing assertions, which does not show a failure of this story’s purpose.",
+[09:55:41]   "intent_achieved": true,
+[09:55:41]   "evidence": [
+[09:55:41]     "git status --porcelain and git diff HEAD --stat: confirmed the working-tree changes, including the new guard, test, seven smoke scripts, story Result, and docs/TEST_STRATEGY.md.",
+[09:55:41]     "agent/stories/STORY-WEB-018-fresh-build-browser-smoke-checks.md: inspected the Acceptance Criteria, Required Tests, Definition of Done, and recorded Result.",
+[09:55:41]     "frontend/scripts/bundleFreshness.mjs: inspected missing-output, incomplete-output, build-input mtime comparison, and requireFreshBundle behavior.",
+[09:55:41]     "frontend/scripts/__tests__/bundleFreshness.spec.mjs: inspected the seven tests covering missing, stale, incomplete, current, same-millisecond, no-input, and throwing-versus-returning behavior.",
+[09:55:41]     "Diffs for frontend/scripts/sync-browser-smoke.mjs, layout-browser-smoke.mjs, profit-browser-smoke.mjs, icon-browser-smoke.mjs, discovery-browser-smoke.mjs, ecto-browser-smoke.mjs, and favicon-browser-smoke.mjs: confirmed each calls the guard before starting its stub origin and retains its other checks.",
+[09:55:41]     "frontend/vite.config.ts diff: confirmed scripts/**/*.spec.mjs is included in Vitest collection.",
+[09:55:41]     "Search results for existsSync(...index.html), startStubOrigin, and requireFreshBundle under frontend/scripts: confirmed the seven dist-serving smoke scripts use the guard and no matching existence-only guard remains."
+[09:55:41]   ],
+[09:55:41]   "unmet_intent": [],
+[09:55:41]   "unmet_acceptance_criteria": [],
+[09:55:41]   "unmet_definition_of_done": [],
+[09:55:41]   "actionable_retry_items": []
+[09:55:41] }
+[09:55:41] ```
+[09:55:41] [evaluator] turn completed | input tokens: 103595 | cached input tokens: 81920 | output tokens: 1438
+[09:55:41] ========================================
+[09:55:41] [evaluator] turn totals | model requests: 1 | gross input tokens: 103,595 | cached input tokens: 81,920 | uncached input tokens: 21,675 | output tokens: 1,438
+[09:55:42] Hosted codex evaluator exit code: 0
+[09:55:42] ========================================
+[09:55:42] ========================================
+[09:55:42] Evaluator decision: COMPLETE
+[09:55:42] Reason: The seven scripts that serve frontend/dist check freshness before starting their stub origins. The shared guard checks for missing or incomplete output and for build inputs newer than dist/index.html. The added tests exercise stale, missing, incomplete, and current output. The reported browser runs record results for all seven scripts; three proceed past the guard and fail on separate existing assertions, which does not show a failure of this story’s purpose.
+[09:55:42] ========================================

@@ -13,7 +13,7 @@ below stay in the plain form.
 
 ## Active
 
-- STORY-WEB-018 | STORY-WEB-018-fresh-build-browser-smoke-checks.md | TODO | milestone-05 | deps: None
+- STORY-WEB-018 | STORY-WEB-018-fresh-build-browser-smoke-checks.md | DONE | milestone-05 | deps: None
 
 ## To Do
 

@@ -2,9 +2,9 @@
  * Real-browser check of the current Ecto Salvage page against a controlled API origin.
  * Usage: npm run build && npm run smoke:ecto
  */
-import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
+import { requireFreshBundle } from './bundleFreshness.mjs'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import { startStubOrigin } from './stubOrigin.mjs'
 
@@ -84,7 +84,7 @@ async function figure(page, label) {
 }
 
 async function run() {
-  check(existsSync(DIST_DIR + 'index.html'), 'frontend/dist is missing; run npm run build first.')
+  console.log(`Bundle  : ${requireFreshBundle()}`)
   const browserPath = resolveBrowserPath()
   const origin = await startStubOrigin({ port: PORT, distDir: DIST_DIR, answerApi })
   const browser = await chromium.launch({ executablePath: browserPath })

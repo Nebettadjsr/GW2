@@ -24,6 +24,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
+import { requireFreshBundle } from './bundleFreshness.mjs'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import { startStubOrigin } from './stubOrigin.mjs'
 
@@ -58,7 +59,7 @@ function answerApi({ url, sendJson }) {
 }
 
 async function run() {
-  check(existsSync(`${DIST_DIR}index.html`), 'frontend/dist is missing — run `npm run build` first.')
+  const bundle = requireFreshBundle()
   check(existsSync(SOURCE_FILE), `The replaceable favicon is missing: ${SOURCE_FILE}`)
 
   // 1. The build copied the replaceable file itself, not a processed or renamed derivative.
@@ -91,6 +92,7 @@ async function run() {
   const browserPath = resolveBrowserPath()
   const origin = await startStubOrigin({ port: PORT, distDir: DIST_DIR, answerApi })
   console.log(`Browser : ${browserPath}`)
+  console.log(`Bundle  : ${bundle}`)
   console.log(`Page    : ${origin.origin} (every /api/ call answered 404 by this process)\n`)
 
   const browser = await chromium.launch({ executablePath: browserPath })

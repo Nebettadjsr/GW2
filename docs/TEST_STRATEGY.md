@@ -659,6 +659,13 @@ A special state that the live database does not currently produce (for example a
 price) is covered at the component level with a controlled response, and the Result says so rather
 than implying the browser run exercised it.
 
+A check that serves the production build itself must establish that the build it serves is the
+current source, not merely that a build exists: it compares the emitted document against every
+file the build reads and refuses to start — naming the file and both timestamps — when any input is
+newer. Requiring the build rather than performing it keeps the check a report on what the developer
+has. Asserting only that the output directory is present turns any additive source change into
+browser evidence for source the browser never loaded.
+
 ### Fresh-runtime prerequisite after substantial changes
 
 After a substantial backend/frontend integration change—especially an API contract, DTO field,
