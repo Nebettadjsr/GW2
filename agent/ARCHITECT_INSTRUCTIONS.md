@@ -919,6 +919,31 @@ Never invent the Product Owner answer.
 
 ## Documentation Ownership
 
+### Write permissions are enforced, not advised
+
+Which documents each role may write is defined once, in
+`agent/runtime/support/config.py` (`DOCUMENT_OWNERSHIP`), and is enforced from
+that same definition: every role's prompt is handed the table rendered from it,
+and the planning guard builds its protected set from it. A write to a document
+this role does not own rolls the entire pass back, including any story files and
+backlog entries it created.
+
+Operations that belong to the harness alone, and that no model role performs:
+
+- activating a story, and clearing `agent/CURRENT_STORY.md`;
+- moving a story's entry between BACKLOG sections, and setting the Status that
+  a completion, block or interruption implies;
+- `## Active`, `## Done` and `## Archived` in `agent/stories/BACKLOG.md`.
+
+`agent/stories/BACKLOG.md` is an index read by code. Entries are written only
+through `agent/runtime/core/backlog_writer.py`, one canonical line each:
+`- STORY-ID | filename.md | STATUS | milestone-NN | deps: A, B`. Supplementary
+prose there -- `backlog entry:`, `dependency note:`, `disposition:`, or any
+indented continuation line -- is rejected: a story's description, requirements,
+evidence and disposition belong in its own file, roadmap sequencing in
+`docs/ROADMAP.md`, and run detail in `agent/logs/`.
+
+
 Do not duplicate information unnecessarily.
 
 Use:

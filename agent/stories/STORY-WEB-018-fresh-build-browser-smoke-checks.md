@@ -146,6 +146,13 @@ and `npm run build`'s own type-check means a spec edit also marks the bundle sta
 false failure). Three of the seven scripts cannot currently reach a full pass for reasons outside
 this story.
 
+## Follow-up Findings Disposition
+F001: FOLLOW-UP STORY — STORY-WEB-027.
+F002: FOLLOW-UP STORY — STORY-WEB-024.
+F003: FOLLOW-UP STORY — STORY-WEB-024.
+F004: FOLLOW-UP STORY — STORY-WEB-024.
+F005: ALREADY COVERED — agent/stories/BACKLOG.md; the orphaned summary line is removed while adding the current TODO entries.
+
 ## Blockers
 
 None.

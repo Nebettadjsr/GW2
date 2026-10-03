@@ -21,6 +21,7 @@ Let Ectoplasm browser and component checks identify the current frontend-calcula
 ## Authoritative Source Documents / Sections
 
 - `agent/stories/STORY-WEB-019-layout-smoke-navigation-coverage.md`, Follow-up Findings F002–F003.
+- `agent/stories/STORY-WEB-019-layout-smoke-navigation-coverage.md`, Follow-up Finding F002: update the layout smoke Ectoplasm readiness check to use the stable result hook.
 - Product Owner resolution establishing the frontend-owned Ectoplasm calculation as the canonical implementation.
 - `docs/TEST_STRATEGY.md` §12.1–12.2, frontend state and browser verification.
 - Supplied `docs/ROADMAP.md` Phase 5, Ectoplasm screen and rendering/interaction/state tests.
@@ -38,7 +39,7 @@ The component also retains two scoped style rules for removed elements.
 ## Acceptance Criteria
 
 1. Add stable `data-test` hooks to the current Ectoplasm screen's data-driven calculation/result regions so browser and component checks can identify when the required data has loaded and the frontend-owned result is available.
-2. Update relevant Ectoplasm browser and component assertions to use those hooks for content readiness and result checks instead of style-only selectors where a stable hook is appropriate.
+2. Update relevant Ectoplasm browser and component assertions, including the layout browser smoke check, to use those hooks for content readiness and result checks instead of style-only selectors where a stable hook is appropriate.
 3. Verify the current frontend-owned behavior, including populated calculation results, input-driven recalculation, Trading Post price refresh behavior, account Luck presentation, and relevant warning/error states already supported by the screen. Tests must not introduce or require a backend Ectoplasm calculation operation.
 4. A root hook alone must not count as evidence that the required data and calculated result are available.
 5. Remove the unused `.result-conclusion` and `.tool-separator` scoped rules identified in the original finding without changing visible page behavior.

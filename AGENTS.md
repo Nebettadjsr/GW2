@@ -134,6 +134,23 @@ Do not assume the target architecture is already implemented.
 
 Use the correct owner for each kind of information.
 
+Write permissions are defined once, in `agent/runtime/support/config.py`
+(`DOCUMENT_OWNERSHIP`), and enforced from that same definition -- each role's
+prompt is handed the table rendered from it. The list below says what belongs in
+each document; the table says who may write it.
+
+These operations belong to the harness alone, and no model role performs them:
+activating a story or clearing `agent/CURRENT_STORY.md`; moving a story's entry
+between `agent/stories/BACKLOG.md` sections; and setting the Status that a
+completion, block or interruption implies. `## Active`, `## Done` and
+`## Archived` are harness-owned sections.
+
+`agent/stories/BACKLOG.md` is an index read by code, not prose. Entries are
+written only through `agent/runtime/core/backlog_writer.py`, one canonical line
+each (`- STORY-ID | filename.md | STATUS | milestone-NN | deps: A, B`).
+Supplementary prose there -- `backlog entry:`, `dependency note:`,
+`disposition:`, or any indented continuation line -- is rejected.
+
 - `docs/DOMAIN_SPEC.md`
   - normative product/domain behavior
 

@@ -887,7 +887,8 @@ class ArchitectPromptTest(InboxTestCase):
         prompt, sections = architect.build_architect_context(self.request())
 
         self.assertEqual(set(sections), {
-            "dispatched request", "user decision index", "role instructions",
+            "dispatched request", "user decision index", "document ownership",
+            "role instructions",
         })
         self.assertIn("role instructions:", planning_context.context_report(
             "Architect", sections, prompt))

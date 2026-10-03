@@ -117,4 +117,4 @@ indented `dependency note:`/`backlog entry:` continuation lines are left behind.
 were orphaned under `## To Do` with no row above them (removed by hand while updating the entry).
 
 ## Follow-up Findings Disposition
-F001: DEFERRED ? STORY-DOM-025 Follow-up Findings; planner backlog-mutation helpers fall outside the supplied Phase 5 frontend migration scope.
+F001: DEFERRED — STORY-DOM-025 Follow-up Findings; planner backlog-mutation helpers fall outside the supplied Phase 5 frontend migration scope.

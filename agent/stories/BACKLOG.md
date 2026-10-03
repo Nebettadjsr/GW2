@@ -13,28 +13,24 @@ below stay in the plain form.
 
 ## Active
 
-- STORY-WEB-018 | STORY-WEB-018-fresh-build-browser-smoke-checks.md | DONE | milestone-05 | deps: None
 
 ## To Do
 
-  backlog entry: milestone-05: Reject stale frontend bundles in browser smoke checks.
+- STORY-WEB-024 | STORY-WEB-024-repair-fresh-build-smoke-contracts.md | TODO | milestone-05 | deps: STORY-WEB-018
 - STORY-WEB-020 | STORY-WEB-020-layout-smoke-total-sell-value.md | TODO | milestone-05 | deps: STORY-WEB-019
-  backlog entry: milestone-05: Exercise backend total sell value in the shared layout smoke fixture and realign it with the current contract.
-- STORY-WEB-021 | STORY-WEB-021-ecto-content-test-hooks.md | TODO | milestone-05 | deps: STORY-WEB-019, STORY-WEB-022
-  backlog entry: milestone-05: Give the frontend-owned Ectoplasm results stable content hooks for browser checks.
+- STORY-WEB-027 | STORY-WEB-027-remove-tracked-smoke-control-copy.md | TODO | milestone-05 | deps: None
+- STORY-WEB-021 | STORY-WEB-021-ecto-content-test-hooks.md | TODO | milestone-05 | deps: STORY-WEB-019
 
 ## Blocked
 
 - STORY-QUALITY-005 | STORY-QUALITY-005-phase-five-completion-review.md | BLOCKED | milestone-05 | deps: STORY-PERF-002, STORY-WEB-019, STORY-SYNC-005, STORY-WEB-018, STORY-WEB-020, STORY-WEB-021, STORY-WEB-022
-  dependency note: Bounded Phase 5 health review, after the remaining browser-check stories are substantially complete.
-  backlog entry: milestone-05: Review Phase 5 project health before milestone completion.
 
 ## Superseded
 
 - STORY-WEB-023 | STORY-WEB-023-backend-ecto-calculation-screen.md | SUPERSEDED | milestone-05 | deps: None
-  disposition: Ecto Salvage remains a frontend calculation by product decision. Must not be selected for implementation.
 - STORY-UI-003 | STORY-UI-003-signed-monetary-presentation.md | SUPERSEDED | milestone-05 | deps: None
-  disposition: The Product Owner declared the legacy JavaFX UI obsolete and removable, so JavaFX-only presentation work is retired. The defect stays recorded as `docs/KNOWN_PROBLEMS.md` KP-09 and is resolved by JavaFX removal. Must not be selected for implementation.
+- STORY-WEB-025 | STORY-WEB-025-backend-total-sell-value-display.md | SUPERSEDED | milestone-05 | deps: None
+- STORY-WEB-026 | STORY-WEB-026-account-smoke-bank-reload-contract.md | SUPERSEDED | milestone-05 | deps: None
 
 ## Done
 
@@ -79,6 +75,8 @@ Completed current-milestone story details remain in their canonical files.
 - STORY-WEB-017 | STORY-WEB-017-layout-smoke-intro-contrast-sample.md | DONE | milestone-05 | Keep browser layout smoke contrast sampling valid after Profit intro removal
 - STORY-WEB-019 | STORY-WEB-019-layout-smoke-navigation-coverage.md | DONE | milestone-05 | Align layout browser smoke navigation coverage with current destinations
 - STORY-WEB-022 | STORY-WEB-022-align-ecto-page-label.md | DONE | milestone-05 | Align the Ecto Salvage page label and browser checks
+- STORY-WEB-018 | STORY-WEB-018-fresh-build-browser-smoke-checks.md | DONE | milestone-05 | Reject stale frontend bundles in browser smoke checks
+
 ## Archived
 
 Completed milestone details and evidence remain in the archived canonical story files.

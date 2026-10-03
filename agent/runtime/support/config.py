@@ -270,3 +270,149 @@ def _default_repo_map_enabled() -> bool:
     return shutil.which("aider") is not None
 
 REPO_MAP_ENABLED = _default_repo_map_enabled()
+
+
+# ============================================================
+# Document ownership -- one definition, enforced, not just described
+#
+# Four roles write into this repository (IMPLEMENTATION, PROJECT PLANNING,
+# ARCHITECTURE, and the harness itself) and the rules about who may write
+# what were previously stated in prose in four separate files -- CLAUDE.md,
+# AGENTS.md, agent/PLANNER_INSTRUCTIONS.md and
+# agent/ARCHITECT_INSTRUCTIONS.md -- while the actual enforcement lived as
+# scattered literals inside project_planner._run_guarded_planner(). Prose
+# in four places drifts, and a rule only a prompt states is a rule a model
+# can miss.
+#
+# So the contract is defined once, here:
+#
+#   * HARNESS_OWNED_PATHS   no model role may write these at all. They are
+#                           the harness's own mechanical state, and a model
+#                           editing them is how shared state gets corrupted.
+#   * DOCUMENT_OWNERSHIP    for every shared document, who may write it and
+#                           what belongs in it.
+#
+# ownership_table() renders this for a prompt, so each role is told the
+# current contract from the same definition that is enforced against it;
+# protected_paths_for() renders it as the guard's protected set.
+#
+# Enforcement is deliberately coarse: it rejects a write rather than trying
+# to judge whether the content was reasonable. A rejected planning pass
+# rolls back (see project_planner.PlanningRejected); a corrupted index is
+# never published.
+# ============================================================
+
+HARNESS = "harness"
+IMPLEMENTATION = "implementation"
+PLANNER = "planner"
+ARCHITECT = "architect"
+HUMAN = "human"
+
+# Mechanical state. The harness is the only writer, because every one of
+# these encodes a transition that must be deterministic: which story is
+# active, which pipeline step still owes an answer, and which BACKLOG
+# section a story sits in.
+HARNESS_OWNED_PATHS = (
+    CURRENT_STORY_FILE,
+    ATTEMPT_STATE_FILE,
+)
+
+# Sections of BACKLOG.md the harness alone moves entries into or out of.
+# '## To Do' is shared: the planner appends to it (through
+# core/backlog_writer.py), and the harness moves entries out of it.
+HARNESS_OWNED_BACKLOG_SECTIONS = ("Active", "Done", "Archived")
+
+DOCUMENT_OWNERSHIP = (
+    (CURRENT_STORY_FILE, (HARNESS,),
+     "Which story is active. Written only by the activation and completion "
+     "transitions."),
+    (ATTEMPT_STATE_FILE, (HARNESS,),
+     "Which of the harness's own pipeline steps still owes an answer."),
+    (BACKLOG_FILE, (HARNESS, PLANNER),
+     "Index only: one canonical entry line per story, carrying nothing "
+     "beyond what selection and navigation need. The planner appends to "
+     "'## To Do' through core/backlog_writer.py; the harness owns every "
+     "section transition. No role hand-writes its Markdown."),
+    (STORIES_DIR, (HARNESS, PLANNER, IMPLEMENTATION),
+     "One canonical file per story, owning its scope, acceptance criteria, "
+     "result, blockers and findings. The planner creates them and records "
+     "finding dispositions; IMPLEMENTATION updates the active story's "
+     "Status/Result/Findings; the harness sets Status on its own "
+     "transitions."),
+    (PROJECT_STATE_FILE, (PLANNER,),
+     "Planner-only continuity state. IMPLEMENTATION must not write here, "
+     "and completed-story history and live test counts never belong here."),
+    (ROADMAP_FILE, (PLANNER,),
+     "Phases, dependencies and exit criteria."),
+    (ADR_DIR, (ARCHITECT,),
+     "Architecture decision records. The planner may neither add nor edit "
+     "one."),
+    (ARCHITECT_REQUESTS_DIR, (ARCHITECT, PLANNER),
+     "The planner may create a request; only ARCHITECTURE MODE answers, "
+     "edits or resolves one."),
+    (USER_DECISIONS_DIR, (PLANNER, HUMAN),
+     "The planner may open a decision; only the human resolves it."),
+    (USER_INTERVENTIONS_DIR, (HARNESS, HUMAN),
+     "The harness records an intervention; only the human resolves it."),
+    (PRODUCT_OWNER_REQUESTS_DIR, (HUMAN, PLANNER),
+     "The human writes requests; the planner records their resolution and "
+     "never deletes a request file."),
+    (ARTIFACTS_DIR, (HARNESS, IMPLEMENTATION),
+     "Generated run artifacts. IMPLEMENTATION writes CLAUDE_RESULT.md; "
+     "everything else here belongs to the harness. Never a source of truth "
+     "about a story."),
+    (LOGS_DIR, (HARNESS,),
+     "Append-only operational log."),
+)
+
+# No role rewrites the contract that governs it.
+ROLE_CONTRACT_OWNERSHIP = tuple(
+    (path, (HUMAN,), "Role contract: no model role may rewrite it.")
+    for path in ROLE_CONTRACT_FILES
+)
+
+
+def protected_paths_for(role: str) -> tuple:
+    """Paths `role` must not modify, derived from DOCUMENT_OWNERSHIP."""
+
+    protected = []
+
+    for path, owners, _ in DOCUMENT_OWNERSHIP + ROLE_CONTRACT_OWNERSHIP:
+        if role not in owners:
+            protected.append(path)
+
+    return tuple(protected)
+
+
+def ownership_table(role: str | None = None) -> str:
+    """The ownership contract as prompt text, from the enforced definition.
+
+    With `role`, each line says whether that role may write the document, so
+    a prompt never has to restate the table in its own words.
+    """
+
+    lines = []
+
+    for path, owners, note in DOCUMENT_OWNERSHIP + ROLE_CONTRACT_OWNERSHIP:
+        try:
+            shown = path.relative_to(REPO_ROOT).as_posix()
+        except ValueError:
+            shown = str(path)
+
+        if path.is_dir() or shown.endswith(("stories", "decisions", "requests",
+                                            "interventions", "artifacts", "logs")):
+            shown += "/"
+
+        verdict = ""
+
+        if role is not None:
+            verdict = " [you may write]" if role in owners else " [READ-ONLY for you]"
+
+        lines.append(
+            f"- {shown}{verdict}\n"
+            f"  owners: {', '.join(owners)}\n"
+            f"  {note}"
+        )
+
+    return "\n".join(lines)
+

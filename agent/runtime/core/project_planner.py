@@ -6,7 +6,7 @@ from agent.runtime.runners.local_planner_runner import run_local_planner
 from agent.runtime.support.capacity import ModelCapacityUnavailable
 from agent.runtime.core.story_state import (
     get_active_story_path, classify_story_status, extract_status_section, parse_backlog_section,
-    get_unsatisfied_dependencies,
+    get_unsatisfied_dependencies, validate_backlog_entries,
 )
 from agent.runtime.support.config import (
     ADR_DIR,
@@ -25,6 +25,7 @@ from agent.runtime.support.config import (
     STORIES_DIR,
     USER_DECISIONS_DIR,
 )
+from agent.runtime.support import config
 from agent.runtime.support.files import file_hash, write_json
 from agent.runtime.support.daily_log import print_status
 from agent.runtime.core import planning_context
@@ -242,8 +243,12 @@ def build_planning_context() -> tuple[str, dict]:
         "unresolved Claude follow-up findings": implementation_follow_up_findings_block,
         "current roadmap phase": phase_section,
         "project state": project_state,
+        "document ownership": config.ownership_table(config.PLANNER),
         "role instructions": planner_instructions,
     }
+
+    review_outcomes = " | ".join(f'"{outcome}"' for outcome in REVIEW_OUTCOMES)
+    ownership_table = config.ownership_table(config.PLANNER)
 
     prompt = f"""PROJECT PLANNING MODE
 
@@ -348,6 +353,18 @@ disposition in its source story under `## Follow-up Findings Disposition`:
 - `F001: DEFERRED — <known-problem/reference or later milestone and reason>`
 - `F001: DISMISSED — <reason and reference>`
 
+These four words are the disposition vocabulary for findings ONLY. They are
+not phase_review outcomes: DEFERRED in particular is not an accepted
+phase_review[].outcome value, and a result using it is rejected. A deferred
+*area* is PREREQUISITE or COVERED depending on what it waits for.
+
+Before creating a story for a finding, confirm the underlying problem still
+exists in the current implementation and is not already covered. A finding is
+an observation from an earlier run, not a work order: a later story or a
+maintainer change may already have fixed it. Check the source story's existing
+disposition first -- if one is already recorded there, do not replace it with a
+new story.
+
 Create stories only through the normal story and backlog workflow. Never ask
 Claude to create stories. Update only the disposition section of a completed
 source story; leave its implementation finding and Result unchanged. Do not
@@ -359,9 +376,28 @@ Read a section or line range rather than a whole large document, batch
 independent reads into one command, and never read the same thing twice. The
 forbidden-read list in your role contract's "Read Scope" still applies.
 
-Editing agent/stories/BACKLOG.md is not a read: add your entries with a small
-Python script (read the file, insert under the exact section, write it back)
-that never prints its contents.
+agent/stories/BACKLOG.md is a machine-read index, not prose. Do not hand-write
+its Markdown. Add, move and restamp entries only through the harness's own
+entry writer, which produces the one canonical spelling:
+
+  python -c "import sys; sys.path.insert(0,'.'); from agent.runtime.core.backlog_writer import add_to_do_entries; add_to_do_entries([('STORY-WEB-030','STORY-WEB-030-short-name.md','milestone-NN',['STORY-WEB-029'])])"
+
+Rules the harness enforces and will reject the whole pass over:
+- one line per entry, exactly
+  `- STORY-ID | filename.md | STATUS | milestone-NN | deps: A, B` (or `deps: None`);
+- no `backlog entry:`, `dependency note:` or `disposition:` lines, and no
+  indented continuation lines of any kind, anywhere in the file. A story's
+  description, requirements, evidence and disposition belong in its own file;
+  roadmap sequencing belongs in docs/ROADMAP.md; run detail belongs in the log;
+- never touch `## Active` or `## Archived`; the harness owns those.
+
+Before you finish, validate your own output -- a result that fails validation
+is discarded together with every change this pass made:
+
+  python -c "import sys; sys.path.insert(0,'.'); from agent.runtime.core.planning_check import main; sys.exit(main())"
+
+It prints either `PLANNING OUTPUT OK` or one problem per line. Fix what it
+names and run it again until it passes.
 
 STORY OUTPUT
 ============
@@ -499,7 +535,7 @@ with exactly these fields:
   "status": "COMPLETE" | "NEEDS_USER" | "FAILED",
   "phase_considered": "Phase {phase_number}",
   "independent_work_remaining": true | false,
-  "phase_review": [{{"area": "current-phase area", "outcome": "PLANNED | READY | USER_DECISION | ARCHITECT_REQUEST | COVERED | PREREQUISITE", "references": ["artifact path or stable ID", ...]}}],
+  "phase_review": [{{"area": "current-phase area", "outcome": {review_outcomes}, "references": ["artifact path or stable ID", ...]}}],
   "phase_exit_criteria_satisfied": true | false,
   "story_files_created": ["STORY-AREA-NUMBER-short-name.md", ...],
   "user_decision_ids": ["UD-NUMBER", ...],
@@ -549,6 +585,16 @@ If milestone_transition is false:
 - completed_milestone and next_milestone must both be null.
 
 Stop immediately after writing PLANNING_RESULT.json.
+
+DOCUMENT OWNERSHIP (enforced by the harness, not advisory)
+==========================================================
+
+This is the contract this pass is checked against. A write to anything marked
+READ-ONLY rolls the entire pass back, including every story file and backlog
+entry it created. The same list is what the harness protects, so there is no
+second, unstated rule.
+
+{ownership_table}
 
 AUTHORITATIVE PLANNER INSTRUCTIONS
 ==================================
@@ -720,7 +766,36 @@ def _git_dirty_src_lines() -> set:
     }
 
 
-REVIEW_OUTCOMES = {"PLANNED", "READY", "USER_DECISION", "ARCHITECT_REQUEST", "COVERED", "PREREQUISITE"}
+# The ONLY accepted phase_review[].outcome values. An ordered tuple, not a
+# set, because build_planning_prompt() renders this very sequence into the
+# prompt's result schema: the planner is shown exactly what this validator
+# accepts, from one definition, so the two can never drift.
+#
+# DEFERRED is deliberately absent, and is the value a real run emitted. It
+# belongs to the *other* vocabulary in this prompt -- the follow-up-finding
+# dispositions (ALREADY COVERED / FOLLOW-UP STORY / DEFERRED / DISMISSED) --
+# and the planner carried the word across. A deferred *area* is PREREQUISITE
+# or COVERED depending on what it is waiting for, and choosing between those
+# is a judgment the harness must not silently make on the planner's behalf.
+# The accepted top-level planning statuses, shared with planning_check so the
+# planner is validated against the same list the harness applies.
+PLANNING_STATUSES = ("COMPLETE", "NEEDS_USER", "FAILED")
+
+REVIEW_OUTCOMES = (
+    "PLANNED",
+    "READY",
+    "USER_DECISION",
+    "ARCHITECT_REQUEST",
+    "COVERED",
+    "PREREQUISITE",
+)
+
+FINDING_DISPOSITIONS = (
+    "ALREADY COVERED",
+    "FOLLOW-UP STORY",
+    "DEFERRED",
+    "DISMISSED",
+)
 
 
 def _validate_phase_review(result, made_progress):
@@ -811,7 +886,7 @@ def validate_planning_result(
     # complaint tacked on, obscuring the real problem.
     original_status = status
 
-    if status not in ("COMPLETE", "NEEDS_USER", "FAILED"):
+    if status not in PLANNING_STATUSES:
         problems.append(
             f"Unknown or missing planning status: {status!r}"
         )
@@ -1250,22 +1325,85 @@ def _planning_snapshot():
     return {path: path.read_bytes() for path in paths if path.is_file()}
 
 
-def _run_guarded_planner(prompt):
-    """One synchronous writer; interrupted planning cannot publish partial queue changes."""
+def _planner_protected_paths() -> tuple:
+    """The planner-protected documents, resolved through this module's names.
+
+    `config.DOCUMENT_OWNERSHIP` is the one place that *declares* which
+    documents the planner may not write. The paths come back through this
+    module's own module-level names so that the ownership guarantees stay
+    directly testable: the guard tests patch `ADR_DIR`, `CURRENT_STORY_FILE`
+    and friends to temporary directories, and a guard reading the real
+    repository paths instead would protect the wrong files and quietly pass.
+    """
+
+    local = {
+        config.CURRENT_STORY_FILE: CURRENT_STORY_FILE,
+        config.ADR_DIR: ADR_DIR,
+        config.ARCHITECT_REQUESTS_DIR: ARCHITECT_REQUESTS_DIR,
+        config.BACKLOG_FILE: BACKLOG_FILE,
+        config.PROJECT_STATE_FILE: PROJECT_STATE_FILE,
+        config.ROADMAP_FILE: ROADMAP_FILE,
+        config.STORIES_DIR: STORIES_DIR,
+        config.USER_DECISIONS_DIR: USER_DECISIONS_DIR,
+    }
+
+    paths = [
+        local.get(path, path)
+        for path in config.protected_paths_for(config.PLANNER)
+    ]
+
+    # The architect-request *directory* is resolved through the module that
+    # owns it, which the guard tests patch separately.
+    paths.extend(architect_requests.list_request_files())
+
+    return tuple(paths)
+
+
+class PlanningRejected(RuntimeError):
+    """The pass produced an invalid result; its changes were rolled back."""
+
+    def __init__(self, result):
+        super().__init__(result.get("reason") or "planning validation failed")
+        self.result = result
+
+
+def _run_guarded_planner(prompt, validate=None):
+    """One synchronous writer; interrupted or invalid planning publishes nothing.
+
+    `validate` is called after the planner exits, while the rollback is still
+    armed, and returns the validated result dict. A FAILED one raises
+    PlanningRejected, which rolls the pass back exactly like a crash.
+
+    That ordering is the fix for a real failure: validation used to run in
+    run_planning_pass(), *after* this function had already returned
+    successfully, so a pass that exited 0 and touched nothing protected was
+    never rolled back no matter what validation said. One run therefore left
+    four new story files, a rewritten '## To Do' and five edited story files on
+    disk under a FAILED result -- partial plan, no record of which half applied.
+    """
     before = _planning_snapshot()
-    protected = {CURRENT_STORY_FILE: CURRENT_STORY_FILE.read_bytes()
-                 if CURRENT_STORY_FILE.exists() else None}
-    # The planner may add an architect request but never answer, edit or
-    # resolve one, and never touch an architect-owned ADR: those belong
-    # to ARCHITECTURE MODE. Creation is validated afterwards; any change
-    # to an existing file rolls the whole pass back here.
-    protected.update({path: path.read_bytes()
-                      for path in architect_requests.list_request_files()})
-    # No role rewrites the contract that governs it (see config.py).
-    protected.update({path: path.read_bytes() if path.exists() else None
-                      for path in ROLE_CONTRACT_FILES})
-    protected.update({path: path.read_bytes()
-                      for path in sorted(ADR_DIR.glob("*.md"))})
+
+    # The protected set is derived from config.DOCUMENT_OWNERSHIP -- the same
+    # definition the prompt's ownership table is rendered from -- rather than
+    # listed again here. It used to be a handful of literals in this function
+    # while the rules were also stated in prose in four role files, so the
+    # enforced contract and the described one could drift apart silently.
+    #
+    # Files are protected individually; a protected *directory* protects every
+    # file currently in it (the planner may add a new architect request, but
+    # never change an existing one).
+    protected = {}
+
+    for path in _planner_protected_paths():
+        if path.is_dir():
+            protected.update(
+                {child: child.read_bytes() for child in sorted(path.rglob("*.md"))}
+            )
+        elif path.exists() or path == CURRENT_STORY_FILE:
+            protected[path] = (
+                path.read_bytes() if path.exists() else None
+            )
+
     active = None
     active_entries = parse_backlog_section(BACKLOG_FILE.read_text(encoding="utf-8"), "Active")
     if CURRENT_STORY_FILE.exists() and CURRENT_STORY_FILE.read_text(encoding="utf-8").strip():
@@ -1291,6 +1429,11 @@ def _run_guarded_planner(prompt):
                 raise RuntimeError("Planner tried to transition with an unfinished active story")
         if code != 0:
             raise RuntimeError(f"Codex planner exited with code {code}")
+        if validate is not None:
+            validated = validate(code)
+            if validated.get("status") == "FAILED":
+                raise PlanningRejected(validated)
+            return code, validated
         return code
     except (ModelCapacityUnavailable, RuntimeError, ValueError, OSError, TypeError, AttributeError):
         after = _planning_snapshot()
@@ -1348,63 +1491,98 @@ def run_planning_pass() -> dict:
         planning_context.context_report("Planner", sections, prompt)
     )
 
-    planner_exit_code = _run_guarded_planner(
-        prompt
-    )
+    def _validate(planner_exit_code: int) -> dict:
+        """Read and validate this pass's result, still inside the rollback.
 
-    if not PLANNING_RESULT_FILE.exists():
-        result = {
-            "status": "FAILED",
-            "reason": (
-                "Planning run did not produce a new "
-                "agent/runtime/artifacts/PLANNING_RESULT.json."
-            ),
-            "planner_exit_code": planner_exit_code,
-        }
+        Returns the validated result; a FAILED one makes
+        _run_guarded_planner() restore the previous queue before anything
+        else sees it. A missing or unparseable result is a FAILED result for
+        the same reason -- it used to be returned as-is, leaving whatever the
+        pass had already written to story files and BACKLOG.md in place.
+        """
 
-        write_json(
-            PLANNING_RESULT_FILE,
-            result
+        if not PLANNING_RESULT_FILE.exists():
+            return {
+                "status": "FAILED",
+                "reason": (
+                    "Planning run did not produce a new "
+                    "agent/runtime/artifacts/PLANNING_RESULT.json."
+                ),
+                "planner_exit_code": planner_exit_code,
+            }
+
+        try:
+            raw_result = json.loads(
+                PLANNING_RESULT_FILE.read_text(
+                    encoding="utf-8"
+                )
+            )
+        except (OSError, json.JSONDecodeError) as exc:
+            return {
+                "status": "FAILED",
+                "reason": (
+                    "Could not parse "
+                    f"agent/runtime/artifacts/PLANNING_RESULT.json: {exc}"
+                ),
+                "planner_exit_code": planner_exit_code,
+            }
+
+        checked = validate_planning_result(
+            raw_result,
+            pre_current_story_hash,
+            pre_src_status,
+            pre_story_ids,
+            pre_existing_story_filenames,
+            pre_decisions,
+            pre_requests,
+            pre_architect_requests,
+            pre_adr_files,
         )
 
-        return result
+        # The index is validated with the result: a pass that left
+        # BACKLOG.md unparseable has broken story selection for every later
+        # run, which is a failed pass however good its JSON looks.
+        entry_problems = validate_backlog_entries(
+            BACKLOG_FILE.read_text(encoding="utf-8")
+        )
+
+        if entry_problems:
+            checked.setdefault("validation_problems", []).extend(entry_problems)
+            checked["status"] = "FAILED"
+
+        checked["planner_exit_code"] = planner_exit_code
+
+        return checked
 
     try:
-        raw_result = json.loads(
-            PLANNING_RESULT_FILE.read_text(
-                encoding="utf-8"
-            )
+        planner_exit_code, validated = _run_guarded_planner(
+            prompt,
+            validate=_validate,
         )
-    except (OSError, json.JSONDecodeError) as exc:
-        result = {
-            "status": "FAILED",
-            "reason": (
-                "Could not parse "
-                f"agent/runtime/artifacts/PLANNING_RESULT.json: {exc}"
-            ),
-            "planner_exit_code": planner_exit_code,
-        }
+    except PlanningRejected as rejected:
+        # The rollback has already restored the previous queue, including the
+        # previous PLANNING_RESULT.json, so the failure is recorded now --
+        # after the restore, not before it.
+        write_json(PLANNING_RESULT_FILE, rejected.result)
 
-        write_json(
-            PLANNING_RESULT_FILE,
-            result
+        print(
+            "\n========================================"
+        )
+        print(
+            "Planning result: FAILED (all changes rolled back)"
+        )
+        print(
+            f"Reason: {rejected.result.get('reason', '')}"
         )
 
-        return result
+        for problem in rejected.result.get("validation_problems", []):
+            print(f"- {problem}")
 
-    validated = validate_planning_result(
-        raw_result,
-        pre_current_story_hash,
-        pre_src_status,
-        pre_story_ids,
-        pre_existing_story_filenames,
-        pre_decisions,
-        pre_requests,
-        pre_architect_requests,
-        pre_adr_files,
-    )
+        print(
+            "========================================\n"
+        )
 
-    validated["planner_exit_code"] = planner_exit_code
+        return rejected.result
 
     # Archiving is a deterministic side effect of a validated,
     # confirmed transition -- never something the planning run does

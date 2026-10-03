@@ -265,8 +265,35 @@ class InterruptedClaudeTest(OrchestratorInterventionTestCase):
             stack.enter_context(patch.object(orchestrator, "evaluate_story", side_effect=evaluate))
             stack.enter_context(patch.object(orchestrator, "wait_for_claude_capacity", side_effect=capacity))
             self.assertEqual(orchestrator.execute_active_story(), "COMPLETE")
-        self.assertEqual(self.backlog_file.read_bytes(), backlog_before)
-        self.assertEqual(self.current_story_file.read_bytes(), pointer_before)
+
+        # A completed story finishes its transition here. These assertions used
+        # to require BACKLOG.md and CURRENT_STORY.md to be byte-identical
+        # afterwards, which is precisely the defect: completion changed nothing,
+        # so a story that passed evaluation and CI stayed under '## Active' with
+        # the pointer still naming it, and the next planning pass ran against
+        # that inconsistent queue.
+        self.assertEqual(
+            story_state.parse_backlog_section(
+                self.backlog_file.read_text(encoding="utf-8"), "Active"
+            ),
+            [],
+        )
+        self.assertIn(
+            filename,
+            story_state.parse_backlog_section(
+                self.backlog_file.read_text(encoding="utf-8"), "Done"
+            ),
+        )
+        self.assertEqual(
+            self.current_story_file.read_text(encoding="utf-8").strip(), ""
+        )
+        self.assertEqual(
+            story_state.classify_story_status(
+                story_state.extract_status_section(story.read_text())
+            ),
+            "DONE",
+        )
+        self.assertEqual(story_state.validate_backlog_consistency(), [])
         self.assertIn("Existing work.", story.read_text())
         self.assertFalse(self.interventions_dir.exists())
         return events

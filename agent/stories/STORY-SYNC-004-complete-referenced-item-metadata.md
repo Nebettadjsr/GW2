@@ -267,8 +267,8 @@ exactly what remains open. No other document owns information this story changed
 intended architecture, testing method or user-visible crafting rule changed.
 
 ## Follow-up Findings Disposition
-F001: ALREADY COVERED ? docs/TARGET_ARCHITECTURE.md ?12.1 now contains the metadata-repair and runtime image-storage requirements; STORY-SYNC-004 covers the repair.
-F002: ALREADY COVERED ? STORY-SYNC-005 isolates Bank reload requests from an outstanding initial Profit request.
+F001: ALREADY COVERED — docs/TARGET_ARCHITECTURE.md ?12.1 now contains the metadata-repair and runtime image-storage requirements; STORY-SYNC-004 covers the repair.
+F002: ALREADY COVERED — STORY-SYNC-005 isolates Bank reload requests from an outstanding initial Profit request.
 
 ## Follow-up Findings
 

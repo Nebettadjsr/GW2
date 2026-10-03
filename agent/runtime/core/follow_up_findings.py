@@ -4,9 +4,28 @@ import re
 FINDINGS_HEADING = "Follow-up Findings"
 DISPOSITIONS_HEADING = "Follow-up Findings Disposition"
 FINDING_LINE = re.compile(r"^\s*(?:[-*]\s+)?(F\d{3})\s*:\s*(.+?)\s*$", re.I)
+
+# The separator between the disposition keyword and its reference is
+# deliberately permissive: any run of non-alphanumeric characters, or none
+# at all.
+#
+# It used to be the character class [-—:], which silently broke the whole
+# follow-up mechanism. Several story files were written through a non-UTF-8
+# round trip at some point, turning their em dashes into literal '?'
+# characters -- "F002: ALREADY COVERED ? STORY-SYNC-005 ...". Those lines
+# stopped matching, so unresolved_findings() reported the findings as
+# undisposed, the planner was handed them again as new work, and it
+# replaced the existing dispositions with fresh follow-up stories. Two
+# duplicate stories in one real run came from exactly this: WEB-025 for a
+# finding already closed by STORY-APP-013, and WEB-026 for one already
+# closed by STORY-SYNC-005.
+#
+# A disposition is a record that a human or planner decided something. It
+# must not become invisible because of a mangled punctuation mark.
 DISPOSITION_LINE = re.compile(
     r"^\s*(?:[-*]\s+)?(F\d{3})\s*:\s*"
-    r"(ALREADY COVERED|FOLLOW-UP STORY|DEFERRED|DISMISSED)\s*[-—:]\s*(.+?)\s*$",
+    r"(ALREADY COVERED|FOLLOW-UP STORY|DEFERRED|DISMISSED)"
+    r"\s*[^\w\s]*\s*(.+?)\s*$",
     re.I,
 )
 

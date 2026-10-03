@@ -56,6 +56,13 @@ If information is derivable from its owner, don't store a second copy anywhere e
 - `agent/runtime/artifacts/CLAUDE_RESULT.md` is your implementation result output.
 - **Never select or activate the next story.** Selection is deterministic and Python-owned.
 - Do not modify `CURRENT_STORY.md`.
+- Do not edit `agent/stories/BACKLOG.md`. Moving a story's entry between sections, setting the
+  Status a completion or block implies, and clearing the active-story pointer are harness
+  transitions, performed deterministically in Python. Your job is the active story's own file
+  (Status, Result, Follow-up Findings) and `CLAUDE_RESULT.md`.
+- Write permissions for every role are defined once in `agent/runtime/support/config.py`
+  (`DOCUMENT_OWNERSHIP`) and rendered into each prompt from there; the Documentation Map above
+  says what belongs in each document.
 
 ## IMPLEMENTATION MODE
 

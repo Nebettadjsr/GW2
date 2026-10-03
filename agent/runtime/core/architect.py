@@ -2,6 +2,7 @@ import json
 
 from agent.runtime.runners.local_planner_runner import run_architect
 from agent.runtime.support.capacity import ModelCapacityUnavailable
+from agent.runtime.support import config
 from agent.runtime.support.config import (
     ARCHITECT_INSTRUCTIONS_FILE,
     ARCHITECT_RESULT_FILE,
@@ -141,8 +142,11 @@ def build_architect_context(request: dict) -> tuple[str, dict]:
     sections = {
         "dispatched request": request["content"],
         "user decision index": decisions_block,
+        "document ownership": config.ownership_table(config.ARCHITECT),
         "role instructions": instructions,
     }
+
+    ownership_table = config.ownership_table(config.ARCHITECT)
 
     prompt = f"""ARCHITECTURE MODE
 
@@ -161,6 +165,11 @@ The dispatched request is supplied below in full. Read further files only
 where the answer genuinely depends on them, a section at a time rather than
 whole documents, batching independent reads into one command and never
 reading the same section twice.
+
+DOCUMENT OWNERSHIP (enforced by the harness, not advisory)
+==========================================================
+
+{ownership_table}
 
 DISPATCHED REQUEST LOCK
 =======================

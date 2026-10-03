@@ -274,10 +274,9 @@ component's scoped `<style>` block, alongside `.tool-separator`, which no longer
 Both are dead rules in a file whose scoped styles are meant to be page-specific layout only.
 
 ## Follow-up Findings Disposition
-
 F001: FOLLOW-UP STORY — STORY-WEB-020.
-F002: FOLLOW-UP STORY — STORY-WEB-021.
-F003: FOLLOW-UP STORY — STORY-WEB-021.
+F002: ALREADY COVERED — STORY-WEB-021 is updated to include the layout smoke readiness consumer alongside Ectoplasm result hooks.
+F003: DEFERRED — STORY-WEB-019 Constraints deliberately retain only the required page-intro pair; no authoritative Phase 5 requirement asks to make every optional selector a required contrast sample.
 
 ## Blockers
 

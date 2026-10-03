@@ -161,6 +161,6 @@ out of scope.
 None.
 
 ## Follow-up Findings Disposition
-F001: ALREADY COVERED ? STORY-WEB-019 updates keyboard-navigation coverage for rendered destinations.
-F002: ALREADY COVERED ? STORY-WEB-019 includes Crafting Discovery and Ectoplasm Salvage in layout smoke coverage.
-F003: DEFERRED ? STORY-WEB-019 Constraints limit required contrast coverage to the page-intro pair; a broader optional-selector policy is outside that bounded check.
+F001: ALREADY COVERED — STORY-WEB-019 updates keyboard-navigation coverage for rendered destinations.
+F002: ALREADY COVERED — STORY-WEB-019 includes Crafting Discovery and Ectoplasm Salvage in layout smoke coverage.
+F003: DEFERRED — STORY-WEB-019 Constraints limit required contrast coverage to the page-intro pair; a broader optional-selector policy is outside that bounded check.

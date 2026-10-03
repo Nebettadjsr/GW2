@@ -53,6 +53,7 @@ from agent.runtime.core.selector import select_next_story
 from agent.runtime.core.story_state import (
     build_story_index,
     classify_story_status,
+    clear_active_story,
     clear_story_blocked,
     ensure_backlog_entry_blocked,
     extract_status_section,
@@ -63,11 +64,14 @@ from agent.runtime.core.story_state import (
     get_selectable_story_candidates,
     get_unsatisfied_dependencies,
     move_backlog_entry_to_blocked,
+    move_backlog_entry_to_done,
     move_backlog_entry_to_todo,
     resolve_story_path,
     set_active_story,
     set_story_blocked,
+    set_story_done,
     set_story_unfinished,
+    strip_backlog_prose,
     validate_backlog_consistency,
 )
 from agent.runtime.human.architect_requests import (
@@ -178,12 +182,25 @@ def _seconds_until_recheck(probe) -> int | None:
 #   AWAITING_EVALUATION  Claude's attempt finished; no evaluator verdict.
 #   AWAITING_CI          the evaluator accepted it; publication and the
 #                        CI verdict are still outstanding.
+#   FINALIZING           every gate has passed; the story's own state
+#                        transition (Status, BACKLOG section, pointer)
+#                        is the only thing left to do.
 #
 # The file exists only between those points. Its absence means the
 # harness is not mid-attempt, and every terminal outcome clears it.
+#
+# FINALIZING exists because the transition is several writes to several
+# files and an interrupt can land between any two of them. Without it, a
+# restart had to re-derive "did this already pass?" from the repository,
+# and the only honest answers were "re-run the gate" or "assume it
+# passed" -- one wastes a verdict on a published commit, the other
+# bypasses an unfinished gate. The record carries the verdict it already
+# has (`ci_status`, `ci_sha`), so a resumed run finishes the bookkeeping
+# and nothing else: no Claude invocation, no second evaluator call, no
+# second CI wait.
 # ============================================================
 
-ATTEMPT_PHASES = ("AWAITING_EVALUATION", "AWAITING_CI")
+ATTEMPT_PHASES = ("AWAITING_EVALUATION", "AWAITING_CI", "FINALIZING")
 
 
 def read_attempt_state() -> dict | None:
@@ -217,6 +234,8 @@ def record_attempt_state(
         result_was_updated: bool = False,
         retry_count: int = 0,
         ci_fix_attempts: int = 0,
+        ci_status: str = "",
+        ci_sha: str = "",
 ) -> None:
     """Record which step still owes an answer, atomically.
 
@@ -234,6 +253,8 @@ def record_attempt_state(
         "result_was_updated": result_was_updated,
         "retry_count": retry_count,
         "ci_fix_attempts": ci_fix_attempts,
+        "ci_status": ci_status,
+        "ci_sha": ci_sha,
     }
 
     ATTEMPT_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -751,6 +772,93 @@ def _create_intervention_and_block_story(
 # Story execution loop
 # ============================================================
 
+# ============================================================
+# Completing a story -- the harness's own state transition
+#
+# Every completion gate has an owner: Claude implements, the evaluator
+# accepts, GitHub Actions verifies. None of them owns the *bookkeeping*
+# that follows a green verdict, and for a long time nothing did: the
+# PASSED branch cleared the attempt record and returned "COMPLETE",
+# which left the story's entry under '## Active', CURRENT_STORY.md still
+# pointing at it, and the queue internally inconsistent. The next
+# planning pass then ran against that state, read the stale '## Active'
+# row as the execution truth, and planned around a story that had
+# already shipped.
+#
+# So the transition is stated here, in one deterministic, idempotent
+# function, exactly like the BLOCKED verdict's bookkeeping beside it. No
+# model is asked to move a row.
+#
+# Idempotence is the crash-safety mechanism: each step is a no-op when it
+# has already happened, so a FINALIZING record can simply be replayed
+# after an interrupt rather than reconciled step by step.
+# ============================================================
+
+def finalize_completed_story(
+        story_path: Path,
+        ci_status: str = "",
+        ci_sha: str = "",
+) -> list[str]:
+    """Move a passed story to its completed state. Idempotent.
+
+    Returns the queue problems that remain afterwards, which the caller
+    logs. The transition itself never depends on that list being empty:
+    refusing to finalize because of an unrelated inconsistency elsewhere
+    in the index would strand finished, published work.
+    """
+
+    story_content = read_file(story_path)
+
+    verdict = " ".join(part for part in (ci_status, ci_sha[:7]) if part)
+
+    # 1. The story's own Status. Claude usually wrote DONE already, but a
+    #    CI-fix round sets UNFINISHED and a resumed attempt may never
+    #    have rewritten it, so the harness states its own verdict.
+    set_story_done(story_path)
+
+    # 2. The index: out of '## Active' (or wherever it still sits) and
+    #    into '## Done', restamped, carrying the story's title.
+    backlog_content = read_file(BACKLOG_FILE)
+
+    updated_backlog = move_backlog_entry_to_done(
+        backlog_content,
+        story_path.name,
+        extract_section(story_content, "Title") or "",
+    )
+
+    # Any supplementary prose an earlier writer left in the index goes
+    # with it -- see strip_backlog_prose().
+    updated_backlog = strip_backlog_prose(updated_backlog)
+
+    if updated_backlog != backlog_content:
+        BACKLOG_FILE.write_text(updated_backlog, encoding="utf-8")
+        print(f"{story_path.name} moved to BACKLOG '## Done'.")
+
+    # 3. The pointer. Nothing is active until deterministic selection
+    #    says so, and leaving a completed story named here is what made
+    #    _active_is_executable() keep re-examining finished work.
+    clear_active_story()
+
+    # 4. Validate before anything else proceeds to planning or selection.
+    problems = validate_backlog_consistency()
+
+    log_line(
+        f"{story_path.name} completed and finalized"
+        + (f" ({verdict})" if verdict else "")
+        + ": Status DONE, entry moved to '## Done', CURRENT_STORY.md cleared, "
+        + (
+            "queue consistent."
+            if not problems
+            else f"{len(problems)} queue problem(s) remain -- see below."
+        )
+    )
+
+    for problem in problems:
+        log_line(f"BACKLOG.md inconsistency after finalizing -- {problem}")
+
+    return problems
+
+
 def _blocked_bookkeeping(story_path: Path) -> None:
     """Make BACKLOG.md agree that this story is blocked. Idempotent."""
 
@@ -895,6 +1003,14 @@ def execute_active_story(
                 "the story as complete."
             )
 
+            # Same transition as the CI-passed branch, for the same
+            # reason: "treat as complete" previously returned without
+            # moving anything, so a DONE story could stay under
+            # '## Active' with the pointer still naming it, run after run.
+            finalize_completed_story(story_path)
+
+            clear_attempt_state()
+
             return "COMPLETE"
 
         log_line(
@@ -957,6 +1073,35 @@ def execute_active_story(
         if resume is not None:
             story_content = read_file(story_path)
             result_content = _current_result_content()
+
+            if resume["phase"] == "FINALIZING":
+                # Claude, the evaluator and CI all already answered for
+                # this story; the previous run was interrupted partway
+                # through the transition itself. Replaying it is safe
+                # because every step is idempotent, and nothing here pays
+                # for a verdict again or bypasses one that never ran --
+                # the record only exists once CI has passed.
+                log_line(
+                    f"Resuming {story_path.name} at FINALIZING: its CI "
+                    f"verdict ({resume.get('ci_status') or 'PASSED'}"
+                    + (
+                        f" {str(resume.get('ci_sha') or '')[:7]}"
+                        if resume.get("ci_sha")
+                        else ""
+                    )
+                    + ") is already established, so only the story's state "
+                      "transition is completed here."
+                )
+
+                finalize_completed_story(
+                    story_path,
+                    str(resume.get("ci_status") or "PASSED"),
+                    str(resume.get("ci_sha") or ""),
+                )
+
+                clear_attempt_state()
+
+                return "COMPLETE"
 
             if resume["phase"] == "AWAITING_CI":
                 # The evaluator already accepted this attempt; only
@@ -1173,6 +1318,26 @@ def execute_active_story(
             verification = verify_with_github_ci(story_path, story_content)
 
             if verification["status"] in ("PASSED", "SKIPPED"):
+                # Every gate has answered. Record that the only remaining
+                # step is the harness's own transition, carrying the
+                # verdict with it, so an interrupt in the middle of those
+                # writes resumes at the bookkeeping and never re-runs the
+                # gate or Claude.
+                record_attempt_state(
+                    story_path,
+                    "FINALIZING",
+                    retry_count=retry_count,
+                    ci_fix_attempts=ci_fix_attempts,
+                    ci_status=verification["status"],
+                    ci_sha=verification.get("sha") or "",
+                )
+
+                finalize_completed_story(
+                    story_path,
+                    verification["status"],
+                    verification.get("sha") or "",
+                )
+
                 clear_attempt_state()
 
                 return "COMPLETE"

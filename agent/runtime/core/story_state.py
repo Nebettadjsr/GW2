@@ -166,6 +166,20 @@ def set_active_story(
     return story_path
 
 
+def clear_active_story() -> None:
+    """Leave no active story. Idempotent.
+
+    The counterpart to set_active_story(), and the only supported way to
+    say "nothing is active": an empty CURRENT_STORY.md is what
+    _active_is_executable() reads as "no active story", which is what lets
+    deterministic selection run. Deleting the file would work too, but an
+    empty tracked file keeps the pointer's absence visible in review.
+    """
+
+    CURRENT_STORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CURRENT_STORY_FILE.write_text("", encoding="utf-8")
+
+
 def move_backlog_entry_to_active(
     backlog_content: str,
     filename: str
@@ -179,31 +193,15 @@ def move_backlog_entry_to_active(
     silently leaving the newly active story undocumented.
     """
 
-    content = backlog_content
-    bullet = None
-
-    todo_span = find_section_span(
-        content,
-        "To Do"
+    # Routed through the shared puller rather than repeating its loop here.
+    # This function used to carry its own copy, which moved the bullet alone and
+    # left any continuation lines under it behind in '## To Do' -- the orphaned
+    # "backlog entry: ..." line a real run found and tried to clean up by hand.
+    content, bullet = _pull_bullet_from_backlog_section(
+        backlog_content,
+        "To Do",
+        filename,
     )
-
-    if todo_span is not None:
-        start, end = todo_span
-        todo_body = content[start:end]
-
-        remaining_lines = []
-
-        for line in todo_body.splitlines(keepends=True):
-            if bullet is None and bullet_names_story(line, filename):
-                bullet = line.rstrip("\n")
-            else:
-                remaining_lines.append(line)
-
-        content = (
-            content[:start]
-            + "".join(remaining_lines)
-            + content[end:]
-        )
 
     if bullet is None:
         bullet = f"- `{filename}`"
@@ -258,6 +256,12 @@ DONE_PATTERN = re.compile(r"^done\b", re.IGNORECASE)
 BLOCKED_PATTERN = re.compile(r"\bblocked\b", re.IGNORECASE)
 TODO_PATTERN = re.compile(r"^todo\b", re.IGNORECASE)
 UNFINISHED_PATTERN = re.compile(r"^unfinished\b", re.IGNORECASE)
+# A story retired by a product/architecture decision. Classified
+# explicitly rather than falling through to "OTHER", which every caller
+# reads as "still executable" -- the only thing keeping a SUPERSEDED
+# story out of the queue used to be which BACKLOG section it happened to
+# sit in.
+SUPERSEDED_PATTERN = re.compile(r"^superseded\b", re.IGNORECASE)
 
 
 def extract_status_section(story_content: str) -> str:
@@ -316,6 +320,9 @@ def classify_story_status(status_text: str) -> str:
     if UNFINISHED_PATTERN.match(first_line):
         return "UNFINISHED"
 
+    if SUPERSEDED_PATTERN.match(first_line):
+        return "SUPERSEDED"
+
     # Genuinely unrecognized/malformed Status text (blank, or
     # something other than the four canonical values) -- every
     # existing caller only ever branches on "DONE"/"BLOCKED"
@@ -356,6 +363,311 @@ COMPACT_BACKLOG_ENTRY = re.compile(
     r"^\s*[-*]\s*(STORY-[A-Za-z0-9]+-\d+)\s*\|\s*"
     r"([^|]+?\.md)\s*\|\s*([^|]+)\s*\|"
 )
+
+
+# ============================================================
+# The canonical BACKLOG.md entry -- one writer, one parser
+#
+# BACKLOG.md is an index: the only information it carries is what story
+# selection and navigation need. Everything else -- a story's goal,
+# requirements, evidence, findings, or why it was superseded -- belongs
+# in that story's own canonical file; roadmap sequencing belongs in
+# docs/ROADMAP.md; run diagnostics belong in agent/logs/ and
+# agent/runtime/artifacts/.
+#
+# One entry is exactly one line:
+#
+#   - STORY-ID | filename.md | STATUS | milestone-NN | deps: A, B
+#
+# format_backlog_entry() is the ONLY place that spelling is produced and
+# parse_backlog_entry() the only place it is taken apart. Before they
+# existed, three different writers each had their own idea of the
+# format: planning_context's rendered index emitted supplementary
+# "backlog entry:"/"dependency note:" continuation lines, the planner
+# copied that rendering back into BACKLOG.md as if it were canonical,
+# and the movers below -- which only ever understood a single line --
+# left those continuation lines behind as orphans whenever an entry
+# moved sections.
+# ============================================================
+
+BACKLOG_ENTRY_STATUSES = (
+    "ACTIVE",
+    "TODO",
+    "UNFINISHED",
+    "BLOCKED",
+    "DONE",
+    "SUPERSEDED",
+)
+
+# Sections whose rows drive story selection. Every content line in one
+# of these must be a canonical entry -- there is nothing else a
+# selectable queue can usefully say.
+STRICT_ENTRY_SECTIONS = ("Active", "To Do", "Blocked", "Superseded")
+
+# Supplementary prose the index must never carry, in any section. These
+# are exactly the three prefixes that accumulated in practice.
+BANNED_ENTRY_PROSE = re.compile(
+    r"^\s*(?:[-*]\s*)?(backlog entry|dependency note|disposition)\s*:",
+    re.IGNORECASE,
+)
+
+SECTION_PLACEHOLDER = re.compile(r"^\s*_?\(\s*none\b.*$", re.IGNORECASE)
+
+CANONICAL_BACKLOG_ENTRY = re.compile(
+    r"^- (STORY-[A-Za-z0-9]+-\d+) \| (\S+\.md) \| ([A-Z]+) \| "
+    r"(milestone-\d+|unassigned) \| deps: (.*)$"
+)
+
+# A completed entry's fifth field is the story's title rather than its
+# dependencies: '## Done' is a navigational record, and what a reader
+# needs there is what the story was, not what it once waited for. Same
+# four leading fields, so both forms stay machine-readable.
+COMPLETED_BACKLOG_ENTRY = re.compile(
+    r"^- (STORY-[A-Za-z0-9]+-\d+) \| (\S+\.md) \| ([A-Z]+) \| "
+    r"(milestone-\d+|unassigned) \| (.+)$"
+)
+
+
+def _dependency_names(dependencies) -> list[str]:
+    if isinstance(dependencies, str):
+        text = dependencies.strip()
+
+        if text.lower() in ("", "none"):
+            return []
+
+        return [part.strip() for part in text.split(",") if part.strip()]
+
+    return [
+        str(name).strip()
+        for name in (dependencies or [])
+        if str(name).strip()
+    ]
+
+
+def format_backlog_entry(
+        story_id: str,
+        filename: str,
+        status: str,
+        milestone: str,
+        dependencies,
+) -> str:
+    """The one canonical spelling of a BACKLOG.md entry line."""
+
+    normalized_status = (status or "TODO").strip().upper()
+
+    if normalized_status not in BACKLOG_ENTRY_STATUSES:
+        raise ValueError(
+            f"Unsupported BACKLOG entry status: {status!r}. "
+            f"Supported: {', '.join(BACKLOG_ENTRY_STATUSES)}."
+        )
+
+    return "- " + " | ".join([
+        story_id.strip(),
+        filename.strip(),
+        normalized_status,
+        (milestone or "").strip() or "unassigned",
+        "deps: " + (", ".join(_dependency_names(dependencies)) or "None"),
+    ])
+
+
+def format_completed_backlog_entry(
+        story_id: str,
+        filename: str,
+        milestone: str,
+        title: str,
+) -> str:
+    """The one canonical spelling of a '## Done' entry line."""
+
+    return "- " + " | ".join([
+        story_id.strip(),
+        filename.strip(),
+        "DONE",
+        (milestone or "").strip() or "unassigned",
+        " ".join((title or "").split()) or "(title not recorded in the story file)",
+    ])
+
+
+def parse_completed_backlog_entry(line: str) -> dict | None:
+    """One '## Done' entry line as fields, or None when it is not one."""
+
+    match = COMPLETED_BACKLOG_ENTRY.match(line.rstrip())
+
+    if not match:
+        return None
+
+    return {
+        "story_id": match.group(1),
+        "filename": match.group(2),
+        "status": match.group(3),
+        "milestone": match.group(4),
+        "title": match.group(5).strip(),
+    }
+
+
+def parse_backlog_entry(line: str) -> dict | None:
+    """One canonical entry line as fields, or None when it is not one."""
+
+    match = CANONICAL_BACKLOG_ENTRY.match(line.rstrip())
+
+    if not match:
+        return None
+
+    raw_dependencies = match.group(5).strip()
+
+    return {
+        "story_id": match.group(1),
+        "filename": match.group(2),
+        "status": match.group(3),
+        "milestone": match.group(4),
+        "dependencies": _dependency_names(raw_dependencies),
+    }
+
+
+def rewrite_backlog_entry_status(line: str, status: str) -> str:
+    """Re-emit one entry with a different status.
+
+    A line that does not parse canonically is returned unchanged rather
+    than guessed at -- validate_backlog_entries() is what reports it.
+    """
+
+    fields = parse_backlog_entry(line)
+
+    if fields is None:
+        return line
+
+    return format_backlog_entry(
+        fields["story_id"],
+        fields["filename"],
+        status,
+        fields["milestone"],
+        fields["dependencies"],
+    )
+
+
+def _is_entry_continuation(line: str) -> bool:
+    """A line that belongs to the entry above it rather than standing alone.
+
+    Indented text, or any of the banned supplementary-prose prefixes.
+    Such a line is never carried along when its entry moves: it is prose
+    the index may not hold at all, so the movers drop it.
+    """
+
+    if not line.strip():
+        return False
+
+    if BANNED_ENTRY_PROSE.match(line):
+        return True
+
+    return (
+        line[:1] in (" ", "\t")
+        and parse_backlog_entry(line.strip()) is None
+    )
+
+
+def strip_backlog_prose(backlog_content: str) -> str:
+    """Drop every supplementary-prose line from the index.
+
+    Idempotent, and safe on an already-clean file. This is the cleanup
+    half of the orphan problem: a prose line whose entry already moved
+    elsewhere has nothing left to attach to, so no mover can ever find
+    it by story name again.
+    """
+
+    return "".join(
+        line
+        for line in backlog_content.splitlines(keepends=True)
+        if not BANNED_ENTRY_PROSE.match(line)
+    )
+
+
+def _section_entry_problems(
+        backlog_content: str,
+        heading: str,
+        strict: bool,
+) -> list[str]:
+    span = find_section_span(
+        backlog_content,
+        heading
+    )
+
+    if span is None:
+        return []
+
+    start, end = span
+    offset = backlog_content[:start].count("\n") + 1
+    problems = []
+
+    for index, line in enumerate(backlog_content[start:end].splitlines()):
+        if BANNED_ENTRY_PROSE.match(line):
+            # Already reported once, for the whole file.
+            continue
+
+        if not strict and not line.lstrip().startswith(("- ", "* ")):
+            # A non-strict section (Done) keeps a short navigational
+            # preamble; only lines presenting themselves as entries are
+            # held to the entry format.
+            continue
+
+        if strict and (not line.strip() or SECTION_PLACEHOLDER.match(line)):
+            continue
+
+        if parse_backlog_entry(line) is not None:
+            continue
+
+        # Validation accepts whatever selection can actually parse, and no
+        # less: COMPACT_BACKLOG_ENTRY is what parse_backlog_section() reads, so
+        # a row in that older four-field shape is a working entry even though
+        # format_backlog_entry() would not write it that way. Being stricter
+        # here than the parser would flag rows that select perfectly well.
+        # What must still be rejected is anything selection cannot see at all
+        # -- prose lines, and continuation lines that orphan on a move.
+        if COMPACT_BACKLOG_ENTRY.match(line) or LEGACY_BACKLOG_ENTRY.match(line):
+            continue
+
+        if not strict and parse_completed_backlog_entry(line) is not None:
+            continue
+
+        problems.append(
+            f"line {offset + index}: '## {heading}' "
+            + (
+                "may contain only canonical entries "
+                "('- STORY-ID | filename.md | STATUS | milestone-NN | "
+                "deps: ...')"
+                if strict
+                else "entry is not in a recognized format"
+            )
+            + f", found: {line.strip()[:80]!r}"
+        )
+
+    return problems
+
+
+def validate_backlog_entries(backlog_content: str) -> list[str]:
+    """Every way BACKLOG.md can stop being a machine-readable index.
+
+    Reported, never repaired here: the caller that wrote the file
+    decides whether to reject the write (the planning guard does) or to
+    surface the problem (the orchestrator's periodic report does).
+    """
+
+    problems = [
+        f"line {number}: BACKLOG.md carries supplementary prose, which "
+        "belongs in the story file, docs/ROADMAP.md or the run log, not "
+        f"the index: {line.strip()[:80]!r}"
+        for number, line in enumerate(backlog_content.splitlines(), start=1)
+        if BANNED_ENTRY_PROSE.match(line)
+    ]
+
+    for heading in STRICT_ENTRY_SECTIONS:
+        problems.extend(
+            _section_entry_problems(backlog_content, heading, strict=True)
+        )
+
+    problems.extend(
+        _section_entry_problems(backlog_content, "Done", strict=False)
+    )
+
+    return problems
 
 
 def bullet_names_story(line: str, filename: str) -> bool:
@@ -716,9 +1028,10 @@ def get_selectable_story_candidates() -> list[Path]:
             status_text
         )
 
-        # Stale To Do entries must not reselect completed stories or
-        # interrupted work, which resumes through CURRENT_STORY.
-        if classification in ("DONE", "UNFINISHED"):
+        # Stale To Do entries must not reselect completed stories,
+        # retired ones, or interrupted work (which resumes through
+        # CURRENT_STORY instead).
+        if classification in ("DONE", "UNFINISHED", "SUPERSEDED"):
             continue
 
         if is_story_blocked_by_own_file(content):
@@ -750,13 +1063,50 @@ def validate_backlog_consistency() -> list[str]:
         for heading in ("Active", "To Do", "Blocked", "Done", "Archived")
     }
 
-    problems = []
+    problems = validate_backlog_entries(backlog)
 
     if len(sections["Active"]) > 1:
         problems.append(
             "'## Active' lists more than one story: "
             f"{sections['Active']}"
         )
+
+    # A completed or retired story under '## Active' is wrong regardless
+    # of where CURRENT_STORY.md points. The pointer-relative check further
+    # down only fires while the pointer still names that story, so a
+    # finalization that cleared the pointer but failed to move the entry
+    # went unreported.
+    for filename in sections["Active"]:
+        story_path = STORIES_DIR / filename
+
+        if not story_path.exists():
+            continue
+
+        state = classify_story_status(
+            extract_status_section(read_file(story_path))
+        )
+
+        if state in ("DONE", "SUPERSEDED"):
+            problems.append(
+                f"'## Active' lists {filename}, whose own Status is {state}; "
+                "a finished story must not remain active."
+            )
+
+    for filename in sections["To Do"]:
+        story_path = STORIES_DIR / filename
+
+        if not story_path.exists():
+            continue
+
+        state = classify_story_status(
+            extract_status_section(read_file(story_path))
+        )
+
+        if state in ("DONE", "SUPERSEDED"):
+            problems.append(
+                f"'## To Do' lists {filename}, whose own Status is {state}; "
+                "it can never be selected and must not sit in the queue."
+            )
 
     seen_in = {}
 
@@ -874,6 +1224,27 @@ def set_story_unfinished(story_path: Path) -> None:
     story_path.write_text(content, encoding="utf-8")
 
 
+def set_story_done(story_path: Path) -> None:
+    """Normalize a completed story's own Status to DONE. Idempotent.
+
+    Claude normally writes DONE itself, but its Status is a statement
+    about the implementation and cannot be relied on as the record of the
+    harness's verdict: a CI-fix round sets UNFINISHED, and a resumed
+    attempt may complete from a status Claude never rewrote. The
+    completion transition therefore states it rather than assuming it.
+    """
+
+    content = read_file(story_path)
+
+    if classify_story_status(extract_status_section(content)) == "DONE":
+        return
+
+    story_path.write_text(
+        _replace_section_body(content, "Status", "DONE"),
+        encoding="utf-8",
+    )
+
+
 def set_story_blocked(
         story_path: Path,
         blocker_note: str,
@@ -942,12 +1313,25 @@ def _pull_bullet_from_backlog_section(
 
     bullet = None
     remaining_lines = []
+    dropping_continuation = False
 
     for line in body.splitlines(keepends=True):
         if bullet is None and bullet_names_story(line, filename):
             bullet = line.rstrip("\n")
-        else:
-            remaining_lines.append(line)
+            dropping_continuation = True
+            continue
+
+        # Continuation lines under the entry being moved are prose the
+        # index may not carry (see BANNED_ENTRY_PROSE). They are dropped
+        # with the move rather than left behind: a note reading
+        # "dependency note: - STORY-WEB-019 (DONE)." under a To Do row
+        # means nothing once the row is Done in another section, and no
+        # mover can ever find it again by story name.
+        if dropping_continuation and _is_entry_continuation(line):
+            continue
+
+        dropping_continuation = False
+        remaining_lines.append(line)
 
     content = (
         backlog_content[:start]
@@ -976,7 +1360,11 @@ def _append_bullet_to_backlog_section(
     start, end = span
     body = backlog_content[start:end]
 
-    if body.strip().lower() in ("_(none)_", "(none)", ""):
+    # Any "_(none ...)_" placeholder, not only the bare "_(none)_" spelling
+    # -- a placeholder that explains itself ("_(none - no story is
+    # active)_") is still a placeholder, and leaving it above the first
+    # real entry made that section fail entry validation.
+    if not body.strip() or SECTION_PLACEHOLDER.match(body.strip()):
         body = ""
 
     new_body = body.rstrip("\n")
@@ -988,15 +1376,21 @@ def _append_bullet_to_backlog_section(
 def move_backlog_entry_to_blocked(
         backlog_content: str,
         filename: str,
-        blocker_note: str,
+        blocker_note: str = "",
 ) -> str:
     """
     Move `filename`'s bullet out of '## Active' (its only possible
     source -- a story is only ever blocked this way while it is the
-    active story) into '## Blocked', appending a short annotation
-    citing why. If BACKLOG.md has no matching bullet under Active
-    (already out of sync), a bare bullet is used rather than leaving
-    the newly blocked story undocumented.
+    active story) into '## Blocked', restamped BLOCKED. If BACKLOG.md
+    has no matching bullet under Active (already out of sync), a bare
+    bullet is used rather than leaving the newly blocked story
+    undocumented.
+
+    `blocker_note` is accepted and deliberately not written: the reason a
+    story is blocked belongs in that story's own '## Blockers' section,
+    which is the single place anything reads it from. Appending it here
+    used to leave the row unparseable as a canonical entry, so the row
+    stopped counting as a Blocked entry at all.
     """
 
     content, bullet = _pull_bullet_from_backlog_section(
@@ -1006,10 +1400,64 @@ def move_backlog_entry_to_blocked(
     if bullet is None:
         bullet = f"- `{filename}`"
 
-    bullet = f"{bullet} -- {blocker_note}"
+    return _append_bullet_to_backlog_section(
+        content, "Blocked", rewrite_backlog_entry_status(bullet, "BLOCKED")
+    )
+
+
+def move_backlog_entry_to_done(
+        backlog_content: str,
+        filename: str,
+        title: str = "",
+) -> str:
+    """
+    Move `filename`'s entry into '## Done', restamped DONE, from
+    whichever queue section currently holds it.
+
+    This is the transition that had no implementation at all. Every other
+    one existed (To Do -> Active, Active -> Blocked, Blocked -> To Do),
+    so a story that passed evaluation and CI could only leave '## Active'
+    if a *planner* happened to rewrite the Markdown later -- an LLM doing
+    the harness's own bookkeeping, which is exactly how a DONE story sat
+    under '## Active' while planning ran against the inconsistent queue.
+
+    Idempotent: a story already listed under '## Done' is left alone, so
+    an interrupted finalization can simply be repeated.
+    """
+
+    if filename in parse_backlog_section(backlog_content, "Done"):
+        return _pull_bullet_from_backlog_section(
+            backlog_content, "Active", filename
+        )[0]
+
+    content = backlog_content
+    bullet = None
+
+    for heading in ("Active", "To Do", "Blocked"):
+        content, bullet = _pull_bullet_from_backlog_section(
+            content, heading, filename
+        )
+
+        if bullet is not None:
+            break
+
+    if bullet is None:
+        bullet = f"- `{filename}`"
+
+    fields = parse_backlog_entry(bullet)
+
+    if fields is not None:
+        bullet = format_completed_backlog_entry(
+            fields["story_id"],
+            fields["filename"],
+            fields["milestone"],
+            title,
+        )
+    else:
+        bullet = rewrite_backlog_entry_status(bullet, "DONE")
 
     return _append_bullet_to_backlog_section(
-        content, "Blocked", bullet
+        content, "Done", bullet
     )
 
 

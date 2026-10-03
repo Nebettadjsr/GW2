@@ -26,6 +26,9 @@ from agent.runtime.core.story_state import (
     extract_dependencies_section,
     extract_status_section,
     extract_story_id,
+    BACKLOG_ENTRY_STATUSES,
+    format_backlog_entry,
+    format_completed_backlog_entry,
     is_story_filename,
 )
 from agent.runtime.human.user_decisions import extract_section as markdown_section
@@ -270,29 +273,46 @@ def _entry_description(line: str) -> str:
 
 
 def _queue_entry(filename: str, facts: dict, description: str) -> str:
+    """One queue row, rendered in exactly the format BACKLOG.md holds.
+
+    This index is the planner's view of the backlog, and the planner
+    writes entries back into BACKLOG.md -- so whatever shape appears here
+    is the shape that ends up in the file. It used to add
+    "  dependency note: ..." and "  backlog entry: ..." continuation
+    lines, which is precisely how supplementary prose got into the index:
+    the planner mirrored its own input faithfully. The row now goes
+    through format_backlog_entry(), the single canonical writer, and the
+    description it was summarizing stays where it is owned -- in the
+    story's own file, which this index already tells the planner how to
+    read.
+    """
+
     fact = facts.get(filename) or {}
 
-    head = " | ".join([
+    status = _status(fact, "TODO")
+    milestone = _milestone(fact)
+
+    # This index describes whatever is on disk, including a story whose
+    # own file is missing or whose Status is unrecognized. Those are
+    # reported as-is rather than raising: the planner needs to see the
+    # broken row, and format_backlog_entry() only accepts the statuses a
+    # well-formed entry may carry.
+    if status not in BACKLOG_ENTRY_STATUSES:
+        return "- " + " | ".join([
+            _identifier(filename, fact),
+            filename,
+            status,
+            milestone,
+            "deps: " + (", ".join(fact.get("prerequisites") or []) or "None"),
+        ])
+
+    return format_backlog_entry(
         _identifier(filename, fact),
         filename,
-        _status(fact, "TODO"),
-        _milestone(fact),
-        "deps: " + (", ".join(fact.get("prerequisites") or []) or "None"),
-    ])
-
-    detail = []
-
-    note = fact.get("dependencies") or ""
-
-    if note and note.strip().strip(".").lower() != "none":
-        detail.append(f"  dependency note: {note}")
-
-    summary = _line(description, QUEUE_DESCRIPTION_CHARS)
-
-    if summary:
-        detail.append(f"  backlog entry: {summary}")
-
-    return "\n".join([f"- {head}"] + detail)
+        status,
+        milestone if milestone.startswith("milestone-") else "unassigned",
+        fact.get("prerequisites") or [],
+    )
 
 
 def _section_status(section: str | None) -> str:
@@ -306,15 +326,16 @@ def _section_status(section: str | None) -> str:
 
 
 def _completed_entry(filename: str, facts: dict) -> str:
+    """One '## Done' row, in the same canonical spelling the file holds."""
+
     fact = facts.get(filename) or {}
 
-    return "- " + " | ".join([
+    return format_completed_backlog_entry(
         _identifier(filename, fact),
         filename,
-        _status(fact, "DONE"),
         _milestone(fact),
-        fact.get("title") or "(title not recorded in the story file)",
-    ])
+        fact.get("title") or "",
+    )
 
 
 def _split_blocks(text: str) -> list[tuple[int, str | None, list[str]]]:
@@ -373,6 +394,14 @@ def backlog_index(backlog_text: str, facts: dict) -> str:
     lines = [INDEX_HEADER]
     coverage: dict[str, dict[str, int]] = {}
     section = None
+    # Title and dependency wording for the queued stories, collected as a
+    # separate block below the reconstructed sections. The planner needs
+    # this wording to recognize a duplicate, but it must never appear
+    # inside something shaped like a BACKLOG section: when it did, the
+    # planner copied it back into the real file as "backlog entry:" and
+    # "dependency note:" continuation lines, and the entry movers then
+    # orphaned them on the next transition.
+    summaries: list[str] = []
 
     for level, heading, body in _split_blocks(backlog_text):
         # The document title and its preamble describe the file's own
@@ -426,6 +455,30 @@ def backlog_index(backlog_text: str, facts: dict) -> str:
                 lines.append(_queue_entry(
                     filename, {filename: index_fact}, _entry_description(line)
                 ))
+
+                identifier = _identifier(filename, fact)
+                title = fact.get("title") or _entry_description(line)
+                note = (fact.get("dependencies") or "").strip()
+
+                if title:
+                    summaries.append(
+                        f"{identifier}: {_line(title, QUEUE_DESCRIPTION_CHARS)}"
+                    )
+
+                if note and note.strip(".").lower() != "none":
+                    summaries.append(
+                        f"{identifier} dependencies: "
+                        f"{_line(note, DEPENDENCIES_CHARS)}"
+                    )
+
+    if summaries:
+        lines.extend([
+            "",
+            "QUEUED STORY SUMMARIES (index only -- never written to "
+            "BACKLOG.md)",
+            "",
+            *summaries,
+        ])
 
     lines.extend(_coverage_lines(coverage))
 

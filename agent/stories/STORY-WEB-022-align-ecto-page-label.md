@@ -168,5 +168,5 @@ F002: FOLLOW-UP CLEANUP — The Product Owner confirmed that the frontend-owned 
 STORY-WEB-023 does not represent the current architecture and must not be used to replace the local Ectoplasm calculator or reintroduce a backend-owned Ectoplasm calculation.
 ## Follow-up Findings Disposition
 
-F001: ALREADY COVERED ? STORY-WEB-021 AC 3 now checks the backend-calculated states after STORY-WEB-023.
-F002: FOLLOW-UP STORY ? STORY-WEB-023 replaces the local calculator and reconciles unused Ectoplasm API client modules and types.
+F001: ALREADY COVERED — STORY-WEB-021 AC 3 now checks the backend-calculated states after STORY-WEB-023.
+F002: FOLLOW-UP STORY — STORY-WEB-023 replaces the local calculator and reconciles unused Ectoplasm API client modules and types.

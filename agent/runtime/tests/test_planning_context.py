@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 
 from agent.runtime.core import planning_context as context
+from agent.runtime.core import story_state
 from agent.runtime.runners.local_planner_runner import UsageTally
 
 
@@ -164,7 +165,7 @@ class BacklogIndexTest(unittest.TestCase):
 
         return path
 
-    def test_queue_sections_keep_their_order_and_their_wording(self):
+    def test_queue_sections_keep_their_order(self):
         order = [
             self.index.index(name) for name in
             ("STORY-DOM-022-fees.md", "STORY-WEB-011-controls.md")
@@ -172,10 +173,49 @@ class BacklogIndexTest(unittest.TestCase):
 
         self.assertEqual(order, sorted(order))
         self.assertIn("## To Do", self.index)
-        self.assertIn(
-            "Establish a shared fee calculation", self.index
-        )
-        self.assertIn("blocked until API-009 completes", self.index)
+
+    def test_queue_rows_are_canonical_entries_with_no_prose(self):
+        """The index renders exactly what BACKLOG.md may hold, and nothing else.
+
+        The planner writes entries back into BACKLOG.md, so any shape this
+        index invents is a shape that ends up in the file. Queue rows
+        therefore go through format_backlog_entry() and carry no
+        continuation lines: the previous rendering added
+        "  backlog entry: ..." and "  dependency note: ..." beneath each
+        row, the planner mirrored them into the real file, and the entry
+        movers -- which only ever understood one line -- left them behind
+        as orphans on the next transition.
+        """
+
+        for heading in ("Active", "To Do", "Blocked"):
+            start = self.index.index(f"## {heading}")
+            end = self.index.index("\n## ", start + 1)
+
+            for line in self.index[start:end].splitlines()[1:]:
+                if not line.strip() or not line.lstrip().startswith("- "):
+                    continue
+
+                self.assertIsNone(
+                    story_state.BANNED_ENTRY_PROSE.match(line),
+                    f"{heading} row carries banned prose: {line!r}",
+                )
+                self.assertIsNotNone(
+                    story_state.parse_backlog_entry(line),
+                    f"{heading} row is not a canonical entry: {line!r}",
+                )
+
+        self.assertNotIn("backlog entry:", self.index)
+        self.assertNotIn("dependency note:", self.index)
+
+    def test_queued_story_wording_is_kept_outside_the_backlog_sections(self):
+        """Deduplication wording survives, but not where it can be copied back."""
+
+        summaries = self.index[
+            self.index.index("QUEUED STORY SUMMARIES"):
+        ]
+
+        self.assertIn("STORY-DOM-022: Sale fee calculation", summaries)
+        self.assertIn("STORY-WEB-010 dependencies: STORY-API-009", summaries)
 
     def test_every_story_id_and_filename_survives_for_deduplication(self):
         for fact in self.facts.values():

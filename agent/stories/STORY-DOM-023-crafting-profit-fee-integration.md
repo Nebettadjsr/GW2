@@ -213,8 +213,10 @@ question the change actually raises ("why is Total Sell Value minus my costs mor
 
 
 ## Follow-up Findings Disposition
-F001: ALREADY COVERED ? STORY-DOM-025 removes the stale CostEvaluator profit calculation.
-F002: ALREADY COVERED ? STORY-APP-013 carries authoritative total sell value into the JavaFX Profit view.
+F001: ALREADY COVERED — STORY-DOM-025 removes the stale CostEvaluator profit calculation.
+F002: ALREADY COVERED — STORY-APP-013 carries authoritative total sell value into the JavaFX
+Profit view, and STORY-WEB-008 avoided the same derivation on the web row. STORY-WEB-025, which a
+2026-10-03 planning pass created for this finding, is SUPERSEDED as duplicate work.
 
 ## Follow-up Findings
 

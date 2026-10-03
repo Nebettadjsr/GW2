@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from agent.runtime.support import config
 from agent.runtime.support.config import REPO_ROOT
 
 
@@ -18,6 +19,20 @@ backlog. If you discover a useful issue outside this story's scope, record it
 under `## Follow-up Findings` in the story and in `CLAUDE_RESULT.md` as a concise
 bullet `F001: <finding>`; increment the ID for additional findings. Use `None.`
 when there are no findings. Do not report work already covered by this story.
+
+A finding is an observation, not a work order: it is dispositioned later by a
+planning pass, which checks whether the problem still exists before creating any
+story for it.
+
+DOCUMENT OWNERSHIP (enforced by the harness, not advisory)
+==========================================================
+
+Write only the active story file and `CLAUDE_RESULT.md` among the documents
+below. The harness owns every story-state transition -- the active-story
+pointer, a story's BACKLOG section, and the Status it sets on completion -- so
+do not perform them yourself.
+
+{config.ownership_table(config.IMPLEMENTATION)}
 
 Stop after completing or blocking this story.
 """
