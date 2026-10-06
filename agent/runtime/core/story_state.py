@@ -1,10 +1,158 @@
+from contextlib import contextmanager
 from pathlib import Path
+import os
 import re
+import time
+import uuid
 
-from agent.runtime.support.config import ARCHIVE_DIR, BACKLOG_FILE, CURRENT_STORY_FILE, REPO_ROOT, STORIES_DIR
+from agent.runtime.support.config import ARCHIVE_DIR, ARTIFACTS_DIR, ATTEMPT_STATE_FILE, BACKLOG_FILE, CURRENT_STORY_FILE, REPO_ROOT, STORIES_DIR
 from agent.runtime.support.files import find_section_span, read_file
 from agent.runtime.human.user_decisions import list_decisions
 from agent.runtime.human.architect_requests import list_requests as list_architect_requests
+
+
+ACTIVATION_LOCK_FILE = ARTIFACTS_DIR / "STORY_ACTIVATION.lock"
+ACTIVATION_LOCK_TIMEOUT_SECONDS = 10
+
+
+@contextmanager
+def story_activation_lock(timeout: float = ACTIVATION_LOCK_TIMEOUT_SECONDS):
+    """Serialize activation across bridge threads and cooperating processes."""
+    ACTIVATION_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with ACTIVATION_LOCK_FILE.open("a+b") as lock_file:
+        if os.name == "nt":
+            import msvcrt
+
+            lock_file.seek(0, os.SEEK_END)
+            if lock_file.tell() == 0:
+                lock_file.write(b"\0")
+                lock_file.flush()
+            lock_file.seek(0)
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError as error:
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError(
+                            "Story activation is locked by another process; "
+                            "wait for it to finish and retry."
+                        ) from error
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError as error:
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError(
+                            "Story activation is locked by another process; "
+                            "wait for it to finish and retry."
+                        ) from error
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("w", encoding="utf-8") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def reconcile_story_activation() -> Path | None:
+    """Repair only the known pointer-first partial activation state.
+
+    A returned story path means recovery completed the backlog half of a
+    prior activation. Contradictory states raise instead of guessing.
+    Caller must hold story_activation_lock().
+    """
+    backlog = read_file(BACKLOG_FILE)
+    active = parse_backlog_section(backlog, "Active")
+    todo = parse_backlog_section(backlog, "To Do")
+    pointer = CURRENT_STORY_FILE.read_text(encoding="utf-8").strip() \
+        if CURRENT_STORY_FILE.exists() else ""
+
+    if len(active) > 1:
+        raise RuntimeError(
+            f"Cannot recover activation: BACKLOG.md lists multiple Active stories: {active}. Reconcile manually."
+        )
+    if not pointer and not active:
+        return None
+    if not pointer:
+        raise RuntimeError(
+            f"Cannot recover activation: BACKLOG.md lists {active[0]} as Active but CURRENT_STORY.md is empty. Reconcile manually."
+        )
+
+    try:
+        pointed = resolve_story_path(pointer)
+    except (FileNotFoundError, RuntimeError) as error:
+        raise RuntimeError(
+            f"Cannot recover activation: CURRENT_STORY.md is invalid ({error}). Reconcile manually."
+        ) from error
+
+    if active == [pointed.name]:
+        return None
+    if active:
+        raise RuntimeError(
+            f"Cannot recover activation: CURRENT_STORY.md names {pointed.name}, "
+            f"but BACKLOG.md lists {active[0]} as Active. Reconcile manually."
+        )
+    if pointed.name not in todo:
+        if _is_completed_or_blocked_pointer(backlog, pointed):
+            # Existing completion/blocking transitions can leave a stale
+            # pointer until the next story is selected. This is not the
+            # pointer-first activation window and is safe to replace.
+            return None
+        raise RuntimeError(
+            f"Cannot recover activation: CURRENT_STORY.md names {pointed.name}, "
+            "but it is neither the sole Active entry nor listed under To Do. Reconcile manually."
+        )
+
+    updated = move_backlog_entry_to_active(backlog, pointed.name)
+    _atomic_write_text(BACKLOG_FILE, updated)
+    return pointed
+
+
+def recover_story_activation() -> Path | None:
+    """Acquire the shared lock and reconcile a pointer-first activation."""
+    with story_activation_lock():
+        return reconcile_story_activation()
+
+
+def _is_completed_or_blocked_pointer(backlog: str, story_path: Path) -> bool:
+    """Recognize a retained pointer to work already parked outside Active."""
+    status = classify_story_status(
+        extract_status_section(read_file(story_path))
+    )
+    sections = {
+        name: parse_backlog_section(backlog, name)
+        for name in ("Blocked", "Done", "Archived")
+    }
+    if status == "BLOCKED":
+        return story_path.name in sections["Blocked"]
+    if status in {"DONE", "SUPERSEDED"}:
+        return story_path.name in sections["Done"] or story_path.name in sections["Archived"]
+    return False
 
 
 # ============================================================
@@ -130,39 +278,118 @@ def get_active_story_path() -> Path:
 def set_active_story(
     story_relative_path: str
 ) -> Path:
+    with story_activation_lock():
+        reconcile_story_activation()
+        story_path = resolve_story_path(story_relative_path)
+        backlog = read_file(BACKLOG_FILE)
+        active = parse_backlog_section(backlog, "Active")
+        pointer = CURRENT_STORY_FILE.read_text(encoding="utf-8").strip() \
+            if CURRENT_STORY_FILE.exists() else ""
 
-    story_path = resolve_story_path(
-        story_relative_path
-    )
+        if pointer:
+            pointed = resolve_story_path(pointer)
+            if pointed == story_path and active == [story_path.name]:
+                raise RuntimeError(
+                    f"Cannot activate {story_path.name}: it is already active; resume it instead of starting it again."
+                )
+            if active or not _is_completed_or_blocked_pointer(backlog, pointed):
+                raise RuntimeError(
+                    f"Cannot activate {story_path.name}: {pointed.name} is already active or its state is inconsistent."
+                )
+        if active:
+            raise RuntimeError(
+                f"Cannot activate {story_path.name}: BACKLOG.md already lists {active[0]} as Active."
+            )
+        if ATTEMPT_STATE_FILE.exists():
+            raise RuntimeError(
+                "Cannot activate a new story while ATTEMPT_STATE.json records an unfinished orchestrator attempt. "
+                "Resume or reconcile that attempt first."
+            )
 
-    normalized = story_path.relative_to(
-        REPO_ROOT
-    ).as_posix()
+        candidates = get_selectable_story_candidates()
+        if not candidates or candidates[0] != story_path:
+            raise RuntimeError(
+                f"Cannot activate {story_path.name}: the current selector no longer identifies it as the next eligible story."
+            )
+        try:
+            return _write_active_story_locked(story_path)
+        except OSError as error:
+            raise RuntimeError(
+                f"Activation did not finish writing repository state for {story_path.name}. "
+                "Retry the same activation to reconcile it, or inspect BACKLOG.md and CURRENT_STORY.md manually."
+            ) from error
 
-    CURRENT_STORY_FILE.write_text(
-        normalized + "\n",
-        encoding="utf-8"
-    )
 
-    # Keep BACKLOG.md's Active/To Do sections in sync deterministically
-    # -- this is exactly the bookkeeping a planning run must never do by
-    # prose (see the canonical-sections note above), so it happens here
-    # in code instead, every time a story is activated.
-    backlog_content = read_file(
-        BACKLOG_FILE
-    )
+def activate_selected_story(story_id: str, filename: str) -> tuple[Path, str]:
+    """Revalidate and activate the selected first eligible story atomically."""
+    if not isinstance(filename, str) or not filename or Path(filename).name != filename:
+        raise ValueError("filename must be a canonical story filename without a path.")
+    if not isinstance(story_id, str) or not story_id.strip():
+        raise ValueError("story_id must be a non-empty string.")
 
-    updated_backlog = move_backlog_entry_to_active(
-        backlog_content,
-        story_path.name
-    )
+    with story_activation_lock():
+        path = resolve_story_path(filename)
+        content = read_file(path)
+        if extract_story_id(content) != story_id:
+            raise RuntimeError(
+                f"Stale story selection: {filename} no longer has story ID {story_id}. Fetch the next story again."
+            )
 
-    if updated_backlog != backlog_content:
-        BACKLOG_FILE.write_text(
-            updated_backlog,
-            encoding="utf-8"
-        )
+        backlog = read_file(BACKLOG_FILE)
+        active = parse_backlog_section(backlog, "Active")
+        pointer = CURRENT_STORY_FILE.read_text(encoding="utf-8").strip() \
+            if CURRENT_STORY_FILE.exists() else ""
+        if pointer:
+            pointed = resolve_story_path(pointer)
+            if pointed == path and active == [path.name]:
+                return path, "already_active"
 
+        if ATTEMPT_STATE_FILE.exists():
+            raise RuntimeError(
+                "Cannot activate a new story while ATTEMPT_STATE.json records an unfinished orchestrator attempt. "
+                "Resume or reconcile that attempt first."
+            )
+
+        recovered_path = reconcile_story_activation()
+        backlog = read_file(BACKLOG_FILE)
+        active = parse_backlog_section(backlog, "Active")
+        pointer = CURRENT_STORY_FILE.read_text(encoding="utf-8").strip() \
+            if CURRENT_STORY_FILE.exists() else ""
+        if pointer:
+            pointed = resolve_story_path(pointer)
+            if pointed == path and active == [path.name]:
+                return path, "recovered" if recovered_path == path else "already_active"
+            if active or not _is_completed_or_blocked_pointer(backlog, pointed):
+                raise RuntimeError(
+                    f"Another story is already active: {pointed.name}. Finish or recover it before activating another story."
+                )
+        if active:
+            raise RuntimeError(
+                f"Cannot activate {filename}: BACKLOG.md already lists {active[0]} as Active without a matching pointer. Reconcile manually."
+            )
+        candidates = get_selectable_story_candidates()
+        if not candidates or candidates[0] != path:
+            raise RuntimeError(
+                f"Stale story selection: {filename} is no longer the next eligible story. Fetch /stories/next again."
+            )
+        try:
+            activated = _write_active_story_locked(path)
+        except OSError as error:
+            raise RuntimeError(
+                f"Activation did not finish writing repository state for {filename}. "
+                "Retry the same activation to reconcile it, or inspect BACKLOG.md and CURRENT_STORY.md manually."
+            ) from error
+        return activated, "activated"
+
+
+def _write_active_story_locked(story_path: Path) -> Path:
+    normalized = story_path.relative_to(REPO_ROOT).as_posix()
+    _atomic_write_text(CURRENT_STORY_FILE, normalized + "\n")
+
+    backlog = read_file(BACKLOG_FILE)
+    updated = move_backlog_entry_to_active(backlog, story_path.name)
+    if updated != backlog:
+        _atomic_write_text(BACKLOG_FILE, updated)
     return story_path
 
 
@@ -1248,15 +1475,68 @@ def set_story_unfinished(story_path: Path) -> None:
     story_path.write_text(content, encoding="utf-8")
 
 
-def set_story_done(story_path: Path) -> None:
-    """Normalize a completed story's own Status to DONE. Idempotent.
+def restore_story_status(story_path: Path, status: str) -> None:
+    """Restore a previously captured nonterminal status after an unauthorized edit."""
+    if status not in {"TODO", "UNFINISHED", "BLOCKED"}:
+        raise ValueError("Only a nonterminal story status can be restored.")
+    content = read_file(story_path)
+    content = _replace_section_body(content, "Status", status)
+    story_path.write_text(content, encoding="utf-8")
 
-    Claude normally writes DONE itself, but its Status is a statement
-    about the implementation and cannot be relied on as the record of the
-    harness's verdict: a CI-fix round sets UNFINISHED, and a resumed
-    attempt may complete from a status Claude never rewrote. The
-    completion transition therefore states it rather than assuming it.
-    """
+
+def snapshot_story_lifecycle(story_path: Path) -> dict:
+    """Capture the active pointer, backlog and story Status around an agent run."""
+    content = read_file(story_path)
+    return {
+        "story_content": content,
+        "story_status_text": extract_status_section(content),
+        "story_status": classify_story_status(extract_status_section(content)),
+        "backlog": BACKLOG_FILE.read_bytes(),
+        "current_story": CURRENT_STORY_FILE.read_bytes(),
+    }
+
+
+def restore_story_lifecycle(story_path: Path, snapshot: dict) -> list[str]:
+    """Restore lifecycle records changed during an agent run; preserve story prose."""
+    changed = []
+    failures = []
+    for path, key in ((BACKLOG_FILE, "backlog"), (CURRENT_STORY_FILE, "current_story")):
+        original = snapshot[key]
+        if not path.is_file() or path.read_bytes() != original:
+            changed.append(path.relative_to(REPO_ROOT).as_posix())
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(original)
+            except OSError as error:
+                failures.append(f"{path.relative_to(REPO_ROOT).as_posix()}: {type(error).__name__}")
+
+    if not story_path.is_file():
+        changed.append(story_path.relative_to(REPO_ROOT).as_posix() + "#Status")
+        try:
+            story_path.write_text(snapshot["story_content"], encoding="utf-8")
+        except OSError as error:
+            failures.append(f"{story_path.relative_to(REPO_ROOT).as_posix()}: {type(error).__name__}")
+    else:
+        current_status = extract_status_section(read_file(story_path))
+        if current_status != snapshot["story_status_text"]:
+            changed.append(story_path.relative_to(REPO_ROOT).as_posix() + "#Status")
+            try:
+                restore_story_status(story_path, snapshot["story_status"])
+            except (OSError, RuntimeError, ValueError) as error:
+                try:
+                    story_path.write_text(snapshot["story_content"], encoding="utf-8")
+                except OSError as write_error:
+                    failures.append(f"{story_path.relative_to(REPO_ROOT).as_posix()}: {type(write_error).__name__}")
+                else:
+                    failures.append(f"{story_path.relative_to(REPO_ROOT).as_posix()}: {type(error).__name__}")
+
+    if failures:
+        raise OSError("Could not fully restore harness-owned story lifecycle state: " + ", ".join(failures))
+    return changed
+
+
+def set_story_done(story_path: Path) -> None:
+    """Set a completed story's Status to DONE during harness finalization. Idempotent."""
 
     content = read_file(story_path)
 

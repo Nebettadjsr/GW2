@@ -213,6 +213,7 @@ def output_indicates_capacity_exhaustion(
 class ClaudeAttempt(NamedTuple):
     exit_code: int
     capacity_exhausted: bool
+    output: str = ""
 
 
 def run_claude_attempt(
@@ -268,9 +269,11 @@ def run_claude_attempt(
     process.stdin.close()
 
     tail = ""
+    output_lines = []
 
     for line in process.stdout:
         text = line.rstrip("\n")
+        output_lines.append(text)
 
         print(_console_safe(text))
 
@@ -296,6 +299,7 @@ def run_claude_attempt(
         return_code,
         return_code != 0
         and output_indicates_capacity_exhaustion(tail),
+        "\n".join(output_lines),
     )
 
 

@@ -42,8 +42,14 @@ const AREAS = [
   { id: 'crafting', heading: 'Crafting Profit', ready: '[data-test="profit-table"]' },
   { id: 'discovery', heading: 'Crafting Discovery', ready: '[data-test="discovery-table"]' },
   // The structured salvage calculation needs the TP quotes and the Luck section needs the account
-  // answer, so a page that rendered only one of them is not ready.
-  { id: 'ecto', heading: 'Ecto Salvage', ready: '.panel:has(.salvage-calculation):has(.account-luck)' },
+  // answer, so a page that rendered only one of them is not ready. `ecto-result` is attached only
+  // once the screen's metadata and quotes arrived and the effective cost was computed, which the
+  // always-rendered `ecto-screen` root says nothing about.
+  {
+    id: 'ecto',
+    heading: 'Ecto Salvage',
+    ready: '[data-test="ecto-result"]:has([data-test="ecto-account-luck"])'
+  },
   // `SyncScreen.vue` has no single controls container; its content is the three status cards, and a
   // card is on screen before the status answer is. The readiness selector therefore names the
   // health badge in the state the supplied status produces (the hook and the tone class

@@ -266,6 +266,17 @@ const costPer1000LuckCopper = computed<number | null>(() => {
   return Math.round((effectiveLuckCostCopper.value / expectedLuck.value) * 1000)
 })
 
+/*
+ * Says the browser-calculated result is actually there: the item metadata and the Trading Post
+ * quotes the screen reads have both arrived and the effective cost they feed could be computed.
+ * The `ecto-result` hook is attached only while this holds, so a check that waits for it cannot
+ * mistake the always-rendered screen root — or a page that loaded only part of its inputs — for a
+ * populated result.
+ */
+const resultReady = computed(() =>
+  !loading.value && metadata.value.size > 0 && effectiveLuckCostCopper.value != null
+)
+
 function buildTarget(
   key: string,
   label: string,
@@ -616,8 +627,12 @@ onMounted(loadPage)
     <section class="panel" aria-labelledby="ecto-result-heading">
       <h2 id="ecto-result-heading" class="panel__title">Ecto Salvage Result</h2>
 
-        <div class="result-layout">
-          <div class="result-left">
+        <!-- Content hooks for browser and component checks: `ecto-result` marks this region only
+             while `resultReady` holds, `ecto-calculation` names the calculated figures and
+             `ecto-account-luck` below names the account's Luck, so each region is addressable
+             without a styling class. -->
+        <div class="result-layout" :data-test="resultReady ? 'ecto-result' : null">
+          <div class="result-left" data-test="ecto-calculation">
           <!-- Left: human-readable explanation -->
           <div class="result-story">
             <p class="result-lead">
@@ -797,7 +812,7 @@ onMounted(loadPage)
           </div>
         </div>
 
-        <div v-if="accountLuck" class="stack account-luck">
+        <div v-if="accountLuck" class="stack account-luck" data-test="ecto-account-luck">
           <div class="account-summary">
             <div>
               <span class="meta">Consumed Luck</span>
@@ -1220,18 +1235,8 @@ onMounted(loadPage)
   font-weight: 600;
 }
 
-.tool-separator {
-  color: var(--color-muted);
-}
-
 .tool-cost-note {
   margin-top: var(--space-1) !important;
-}
-
-.result-conclusion {
-  color: var(--color-success);
-  font-size: var(--text-lg);
-  font-weight: 600;
 }
 
 .section-heading {

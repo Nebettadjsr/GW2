@@ -16,6 +16,7 @@ supplies its own fake in their place.
 
 Run with: python -m unittest agent.runtime.tests.test_ci_verification -v
 """
+import json
 import subprocess
 import tempfile
 import unittest
@@ -125,6 +126,23 @@ class CommitAndPushTest(unittest.TestCase):
             git_sync.run_git("log", "-1", "--pretty=%s").stdout.strip(),
             "implemented STORY-X: a thing",
         )
+
+    def test_scoped_publication_leaves_unrelated_dirty_files_uncommitted(self):
+        (self.repo / "frontend-change.ts").write_text("story change\n", encoding="utf-8")
+        unrelated = self.repo / "agent-runtime-change.py"
+        unrelated.write_text("unrelated pre-existing change\n", encoding="utf-8")
+
+        result = REAL_COMMIT_AND_PUSH(
+            "implemented STORY-X: a thing", paths=["frontend-change.ts"]
+        )
+
+        self.assertEqual(result["status"], "PUSHED")
+        self.assertEqual(result["changed_paths"], ["frontend-change.ts"])
+        committed = git_sync.run_git("show", "--name-only", "--pretty=", "HEAD").stdout
+        self.assertIn("frontend-change.ts", committed)
+        self.assertNotIn("agent-runtime-change.py", committed)
+        self.assertTrue(unrelated.exists())
+        self.assertIn("agent-runtime-change.py", git_sync.working_tree_paths())
 
     def test_ignored_files_are_never_swept_into_the_commit(self):
         (self.repo / ".env").write_text("DATABASE_PASSWORD=secret\n", encoding="utf-8")
@@ -433,7 +451,7 @@ class StoryCompletionGateTest(OrchestratorInterventionTestCase):
             self.prompts.append(prompt)
             return claude_runner.ClaudeAttempt(0, False)
 
-        def commit_and_push(message):
+        def commit_and_push(message, paths=None):
             self.pushed.append(message)
             return {"status": "PUSHED", "committed": True, "pushed": True,
                     "sha": f"sha{len(self.pushed)}0000000", "branch": "master",
@@ -505,6 +523,31 @@ class StoryCompletionGateTest(OrchestratorInterventionTestCase):
         self.assertIn(self.filename, retry)
         self.assertNotIn("Implement it", retry)
         self.assertFalse(self.interventions_dir.exists())
+
+    def test_known_failure_in_unrelated_suite_holds_ci_without_reinvoking_claude(self):
+        outcome = self.execute([dict(self.verdict("FAILED", "Agent runtime tests: Python runtime failed"),
+            failed_jobs=[{"job": "Agent runtime tests (pytest-cov)",
+                          "steps": ["Run orchestrator/harness tests"]}])])
+
+        self.assertEqual(outcome, "NEEDS_USER")
+        self.assertEqual(len(self.prompts), 1)
+        state = json.loads(orchestrator.ATTEMPT_STATE_FILE.read_text(encoding="utf-8"))
+        self.assertEqual(state["phase"], "AWAITING_CI")
+        self.assertEqual(state["story"], f"stories/{self.filename}")
+        interventions = user_interventions.list_interventions()
+        self.assertEqual(len(interventions), 1)
+        text = (self.interventions_dir / interventions[0]["file"]).read_text(encoding="utf-8")
+        self.assertIn("does not overlap", text)
+        self.assertIn("Agent runtime tests", text)
+
+    def test_unrecognized_ci_failure_is_conservatively_attributed_to_story(self):
+        self.assertFalse(orchestrator.ci_failures_are_outside_story_scope(
+            {"failed_jobs": [{"job": "New unknown job"}]}, ["frontend/src/App.vue"]
+        ))
+        self.assertFalse(orchestrator.ci_failures_are_outside_story_scope(
+            {"failed_jobs": [{"job": "Agent runtime tests (pytest-cov)"}]},
+            ["agent/stories/BACKLOG.md"],
+        ))
 
     def test_a_story_whose_ci_fails_is_not_left_claiming_to_be_done(self):
         recorded = []

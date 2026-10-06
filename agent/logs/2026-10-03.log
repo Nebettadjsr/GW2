@@ -1138,3 +1138,129 @@
 [22:29:22] Evaluator decision: COMPLETE
 [22:29:22] Reason: The temporary copy is absent and untracked, no maintained command references it, and the account smoke command still targets its maintained script. The smoke run reached its third check but failed on a pre-existing screen/script mismatch outside this story’s constraints; independent QA review is required because the QA plan expected exit code 0.
 [22:29:22] ========================================
+[22:29:25] STORY-WEB-027-remove-tracked-smoke-control-copy.md published for CI verification: 675fddb on master (6 changed path(s), new commit, waiting for GitHub Actions.
+[22:31:26] GitHub CI PASSED for 675fddb (STORY-WEB-027-remove-tracked-smoke-control-copy.md): CI: success
+[22:31:26] STORY-WEB-027-remove-tracked-smoke-control-copy.md moved to BACKLOG '## Done'.
+[22:31:26] STORY-WEB-027-remove-tracked-smoke-control-copy.md completed and finalized (PASSED 675fddb): Status DONE, entry moved to '## Done', CURRENT_STORY.md cleared, queue consistent.
+[22:31:28] Claude capacity exhausted (first detected).
+[22:31:34] Availability check: claude_available=False, codex_available=True
+[22:31:34] Decision: plan (attempt) -- reason: planning inputs changed
+[22:31:40] Planning resumed for changed inputs: agent/runtime/core/story_state.py, docs/CURRENT_ARCHITECTURE.md, docs/CURRENT_STATE_SPEC.md
+[22:31:40] ========================================
+[22:31:40] Running project-planning pass
+[22:31:40] ========================================
+[22:31:41] ========================================
+[22:31:41] Starting hosted Codex planner
+[22:31:41] ========================================
+[22:31:41] [planner] session 01a10377-2109-79a0-9c2d-5054ec1800ad
+[22:31:41] [planner] reasoning...
+[22:31:46] Planner last response:
+[22:31:46] I’ll review the remaining Phase 5 queue and health-review prerequisite, then triage each supplied follow-up finding against its source story and the relevant current files. I’ll keep the plan within milestone-05 and write the planning result only after the review is complete.
+[22:31:49] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md; Get-Content agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md; Get-Content docs/TEST_STRATEGY.md | Select-String -Pattern '"'^## 36'"\\b' -Context 0,16; Get-Content docs/TARGET_ARCHITECTURE.md | Select-String -Pattern '"'^## 21'"\\b' -Context 0,24"
+[22:31:49] [planner command done] exit 0
+[22:31:55] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$files = @('"'agent/stories/STORY-WEB-024-repair-fresh-build-smoke-contracts.md','agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md','agent/stories/STORY-WEB-019-layout-smoke-navigation-coverage.md','agent/stories/STORY-WEB-020-layout-smoke-total-sell-value.md'); foreach ("'$f in $files) { Select-String -Path $f -Pattern '"'"'^## Follow-up Findings Disposition'"','"'^F00[123]:'"' -Context 0,8 }; Get-Content agent/stories/STORY-QUALITY-005-phase-five-completion-review.md;"
+[22:31:56] [planner command done] exit 0
+[22:32:02] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Select-String -Path agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md -Pattern '"'^## Follow-up Findings Disposition'"','"'^F001:'"','"'^F002:'"','"'^F003:'"' -Context 0,2; rg -n 'item-identity|smoke:account|ATTEMPT_STATE_FILE|EVALUATOR_RESULT_FILE|tmp-control|\\.tmp|tmp' frontend/scripts/account-browser-smoke.mjs agent/runtime/tests agent/runtime -g '*.py' .gitignore;"
+[22:32:03] [planner command done] exit 0
+[22:32:09] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content agent/runtime/tests/test_story_completion.py -TotalCount 90; Get-Content agent/runtime/tests/__init__.py | Select-Object -Skip 150 -First 30; Get-Content .gitignore | Select-String -Pattern 'tmp|control' -Context 1,1; rg -n 'data-test=\"item-identity\"|InventoryTile|data-test=\"inventory' frontend/src; Get-Content agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md | Select-Object -Skip 200 -First 35"
+[22:32:09] [planner command done] exit 0
+[22:32:17] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "Get-Content agent/stories/STORY-WEB-028-align-browser-workflow-contracts.md; Select-String -Path .gitignore -Pattern 'tmp|control' -CaseSensitive:"'$false; Get-Content docs/TEST_STRATEGY.md | Select-String -Pattern '"'"'^## 12'"\\.2\\b' -Context 0,12;"
+[22:32:17] [planner command done] exit 0
+[22:32:24] Planner last response:
+[22:32:24] The remaining account-browser smoke assertion is still mismatched with the current screen contract, and STORY-WEB-028 does not cover that account script. I’ll add one focused Phase 5 story for it. The other findings are already dispositioned or covered by the package-wide test fixture, so they do not justify extra implementation work.
+[22:32:51] [planner command] "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "@'
+[22:32:51] from pathlib import Path
+[22:32:51] import json, sys
+[22:32:51] root = Path('.')
+[22:32:51] story = '''## Story ID
+[22:32:51] STORY-WEB-029
+[22:32:51] ## Title
+[22:32:51] Align account browser smoke assertions with inventory tiles
+[22:32:51] ## Status
+[22:32:51] TODO
+[22:32:51] ## Milestone
+[22:32:51] milestone-05
+[22:32:51] ## Goal
+[22:32:51] Make the account browser smoke check validate the Bank and Materials inventory tile contracts currently rendered by the browser, so it can verify those account workflows without relying on superseded InventoryItem markup.
+[22:32:51] ## Authoritative Source Documents / Sections
+[22:32:51] - "'`agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md`, Follow-up Finding F001.
+[22:32:51] - `docs/TEST_STRATEGY.md` §12.2, browser smoke verification.
+[22:32:51] - Supplied `docs/ROADMAP.md` Phase 5, browser coverage and acceptance.
+[22:32:51] ## Context
+[22:32:51] STORY-WEB-027 records that `account-browser-smoke.mjs` still queries `[data-test="item-identity"]` and formats quantities as `× <count>`, while the current Bank and Materials screens render `InventoryTile.vue` with a different contract. The mismatch makes the account smoke check fail before it can establish its intended workflow evidence. Confirm both screen contracts and the smoke script before changing assertions.
+[22:32:51] ## Acceptance Criteria
+[22:32:51] 1. Update account smoke assertions for Bank and Materials to inspect stable rendered inventory-tile hooks and displayed values that those screens actually provide.
+[22:32:51] 2. Preserve meaningful checks of the account workflow, item identity, quantities where displayed, and comparison between the Bank and Materials views; handle single-item stacks according to the current UI contract.
+[22:32:51] 3. Do not change product behavior solely to satisfy stale smoke expectations.
+[22:32:51] 4. Run the account browser smoke check against the controlled browser/backend environment and record its result and any live-data limitations.
+[22:32:51] ## Required Tests
+[22:32:51] - `npm run smoke:account` in a controlled browser runtime against the running backend, as required by `docs/TEST_STRATEGY.md` §12.2.
+[22:32:51] - Focused component checks only if implementation changes an inventory-tile behavior; otherwise no additional component test is required because this story changes smoke assertions only.
+[22:32:51] ## Constraints
+[22:32:51] - Keep changes within the account smoke assertions and directly necessary test hooks.
+[22:32:51] - Do not weaken the workflow comparison or invent assumptions about live account contents.
+[22:32:51] ## Dependencies
+[22:32:51] - STORY-WEB-027 (DONE; source of the finding).
+[22:32:51] ## Definition of Done
+[22:32:51] The smoke script uses the current Bank and Materials inventory-tile contracts, retains useful account workflow assertions, passes in its controlled browser environment, and records evidence and limitations. Review affected coverage and unresolved quality gaps under `docs/TEST_STRATEGY.md` and `docs/QUALITY_METRICS.md`.
+[22:32:51] ## Result
+[22:32:51] Not started.
+[22:32:51] ## Blockers
+[22:32:51] None.
+[22:32:51] '"'''
+[22:32:51] p = root / 'agent/stories/STORY-WEB-029-align-account-browser-smoke-contract.md'
+[22:32:51] if p.exists(): raise SystemExit(f'already exists: {p}')
+[22:32:51] p.write_text(story, encoding='utf-8')
+[22:32:51] source = root / 'agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md'
+[22:32:51] s = source.read_text(encoding='utf-8')
+[22:32:51] if '## Follow-up Findings Disposition' in s: raise SystemExit('unexpected existing disposition section')
+[22:32:51] s += '''\\n\\n## Follow-up Findings Disposition\\n\\nF001: FOLLOW-UP STORY — STORY-WEB-029.\\nF002: DISMISSED — optional repository hygiene; Phase 5 has no requirement to ignore arbitrary temporary control-copy filenames, and the recorded incident was cleanup of a single tracked copy in STORY-WEB-027.\\nF003: ALREADY COVERED — "'`agent/runtime/tests/__init__.py` redirects `orchestrator.EVALUATOR_RESULT_FILE` to the isolated test QA directory for the package, including `test_story_completion`; the per-test patch omission does not leave these tests reading the live artifact.'"\\n'''
+[22:32:51] source.write_text(s, encoding='utf-8')
+[22:32:51] sys.path.insert(0, '.')
+[22:32:51] from agent.runtime.core.backlog_writer import add_to_do_entries
+[22:32:51] add_to_do_entries([('STORY-WEB-029','STORY-WEB-029-align-account-browser-smoke-contract.md','milestone-05',['STORY-WEB-027'])])
+[22:32:51] result = {
+[22:32:51]   'status':'COMPLETE',
+[22:32:51]   'phase_considered':'Phase 5',
+[22:32:51]   'independent_work_remaining':True,
+[22:32:51]   'phase_review':[
+[22:32:51]     {'area':'Account browser smoke contract','outcome':'PLANNED','references':['STORY-WEB-029','agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md']},
+[22:32:51]     {'area':'Remaining browser workflow contracts and coverage','outcome':'PREREQUISITE','references':['STORY-WEB-028','STORY-WEB-024']},
+[22:32:51]     {'area':'Ectoplasm browser hooks and layout smoke readiness','outcome':'PREREQUISITE','references':['STORY-WEB-021','STORY-WEB-019']},
+[22:32:51]     {'area':'Layout smoke total sell value','outcome':'PREREQUISITE','references':['STORY-WEB-020','STORY-WEB-019']},
+[22:32:51]     {'area':'Phase 5 project health review','outcome':'PREREQUISITE','references':['STORY-QUALITY-005']},
+[22:32:51]     {'area':'Real-user Crafting Profit performance gate','outcome':'COVERED','references':['STORY-PERF-002']}
+[22:32:51]   ],
+[22:32:51]   'phase_exit_criteria_satisfied':False,
+[22:32:51]   'story_files_created':['STORY-WEB-029-align-account-browser-smoke-contract.md'],
+[22:32:51]   'user_decision_ids':[],
+[22:32:51]   'product_owner_requests_processed':[],
+[22:32:51]   'architect_requests_created':[],
+[22:32:51]   'milestone_transition':False,
+[22:32:51]   'completed_milestone':None,
+[22:32:52]   'next_milestone':None,
+[22:32:52]   'backlog_updated':True,
+[22:32:52]   'roadmap_updated':False,
+[22:32:52]   'project_state_updated':False,
+[22:32:52]   'reason':'Phase 5 remains open with four queued implementation stories and its blocked health review; this pass added the independently verified account browser smoke follow-up.'
+[22:32:52] }
+[22:32:52] (root/'agent/runtime/artifacts/PLANNING_RESULT.json').write_text(json.dumps(result, indent=2)+'\\n', encoding='utf-8')
+[22:32:52] '@ | python -
+[22:32:52] python -c \"import sys; sys.path.insert(0,'.'); from agent.runtime.core.planning_check import main; sys.exit(main())\""
+[22:32:52] [planner command done] exit 0
+[22:32:54] Planner last response:
+[22:32:54] Completed the Phase 5 planning pass. Added [STORY-WEB-029](C:/Users/Administrator/IdeaProjects/GW2/agent/stories/STORY-WEB-029-align-account-browser-smoke-contract.md) for the verified account smoke mismatch, added it to the backlog, and recorded dispositions for STORY-WEB-027’s findings. STORY-WEB-024’s findings already had dispositions.
+[22:32:54] Phase 5 remains open; the remaining stories and health review are prerequisites. The planning output passed validation.
+[22:32:54] [planner] turn completed | input tokens: 335643 | cached input tokens: 288000 | output tokens: 3291
+[22:32:55] ========================================
+[22:32:55] [planner] turn totals | model requests: 1 | gross input tokens: 335,643 | cached input tokens: 288,000 | uncached input tokens: 47,643 | output tokens: 3,291
+[22:32:55] Hosted codex planner exit code: 0
+[22:32:55] ========================================
+[22:32:55] ========================================
+[22:32:55] Planning result: FAILED (all changes rolled back)
+[22:32:55] Reason: Phase 5 remains open with four queued implementation stories and its blocked health review; this pass added the independently verified account browser smoke follow-up.
+[22:32:55] - independent_work_remaining must agree with READY areas in phase_review.
+[22:32:55] ========================================
+[22:32:55] Project planning FAILED: Phase 5 remains open with four queued implementation stories and its blocked health review; this pass added the independently verified account browser smoke follow-up.; validation: ['independent_work_remaining must agree with READY areas in phase_review.']. Held until planning inputs change; independent execution continues.
+[22:33:01] Decision: wait -- reason: claude_available=False, codex_available=True; no work an available model can currently make progress on (Claude out of capacity)
+[22:33:22] Interrupted by user. Exiting.

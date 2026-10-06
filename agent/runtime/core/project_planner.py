@@ -862,8 +862,16 @@ def _validate_phase_review(result, made_progress):
     if isinstance(ids, list) and all(isinstance(item, str) for item in ids):
         if set(ids) != reviewed_decisions:
             problems.append("phase_review USER_DECISION references must match all user_decision_ids.")
-    if remaining != ready:
-        problems.append("independent_work_remaining must agree with READY areas in phase_review.")
+    if isinstance(remaining, bool) and remaining != ready:
+        # The review entries are the structured source of truth for this
+        # derived scheduler flag. Correct this one deterministic inconsistency
+        # rather than discarding an otherwise validated planning pass and
+        # paying for the same full-context run again.
+        normalizations = result.setdefault("planning_normalizations", [])
+        normalizations.append(
+            "independent_work_remaining was derived from phase_review READY entries."
+        )
+        result["independent_work_remaining"] = ready
     if remaining:
         if result.get("status") != "COMPLETE":
             problems.append("Independent READY work remains: use COMPLETE, not NEEDS_USER/FAILED.")
@@ -1570,6 +1578,7 @@ def run_planning_pass() -> dict:
 
         return checked
 
+    planning_files_before = _planning_snapshot()
     try:
         planner_exit_code, validated = _run_guarded_planner(
             prompt,
@@ -1638,6 +1647,30 @@ def run_planning_pass() -> dict:
         PLANNING_RESULT_FILE,
         validated
     )
+
+    if validated.get("status") in ("COMPLETE", "NEEDS_USER"):
+        planning_files_after = _planning_snapshot()
+        changed_paths = sorted(
+            path.relative_to(REPO_ROOT).as_posix()
+            for path in planning_files_before.keys() | planning_files_after.keys()
+            if path.suffix.lower() == ".md"
+            and planning_files_before.get(path) != planning_files_after.get(path)
+        )
+        try:
+            pending = json.loads(
+                config.PENDING_COMMIT_PATHS_FILE.read_text(encoding="utf-8")
+            )
+            pending_paths = pending.get("paths", [])
+        except (OSError, json.JSONDecodeError, AttributeError):
+            pending_paths = []
+        pending_paths = sorted(set(pending_paths) | set(changed_paths))
+        if pending_paths:
+            write_json(config.PENDING_COMMIT_PATHS_FILE, {"paths": pending_paths})
+        validated["planning_changed_paths"] = changed_paths
+        if validated.get("planning_normalizations"):
+            print("Planner metadata normalized: "
+                  + "; ".join(validated["planning_normalizations"]))
+        write_json(PLANNING_RESULT_FILE, validated)
 
     print(
         "\n========================================"

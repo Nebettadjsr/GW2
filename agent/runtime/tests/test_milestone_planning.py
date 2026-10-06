@@ -115,6 +115,19 @@ class MilestonePlanningTest(unittest.TestCase):
                 review("D", "PLANNED", story), review("E", "READY", "docs/ROADMAP.md")])
         self.assertEqual(result["status"], "COMPLETE", result)
 
+    def test_scheduler_flag_is_derived_from_structured_phase_review(self):
+        before = self.before()
+        story = self.story(1)
+        result = self.validate(
+            before,
+            story_files_created=[story],
+            independent_work_remaining=True,
+            phase_review=[review("Completed area", "PLANNED", story)],
+        )
+        self.assertEqual(result["status"], "COMPLETE", result)
+        self.assertFalse(result["independent_work_remaining"])
+        self.assertIn("planning_normalizations", result)
+
     def test_multiple_uds_and_ars_and_executable_stories_in_one_pass(self):
         before = self.before()
         self.decision(10)

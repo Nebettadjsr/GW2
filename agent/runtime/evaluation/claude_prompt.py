@@ -27,10 +27,10 @@ story for it.
 DOCUMENT OWNERSHIP (enforced by the harness, not advisory)
 ==========================================================
 
-Write only the active story file and `CLAUDE_RESULT.md` among the documents
-below. The harness owns every story-state transition -- the active-story
-pointer, a story's BACKLOG section, and the Status it sets on completion -- so
-do not perform them yourself.
+Write only the active story's Result/Findings sections and `CLAUDE_RESULT.md`
+among the documents below. The harness owns every story-state transition --
+including story Status, the active-story pointer and BACKLOG sections. Never
+mark a story DONE or move it between lifecycle sections.
 
 {config.ownership_table(config.IMPLEMENTATION)}
 

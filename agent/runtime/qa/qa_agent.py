@@ -2,7 +2,9 @@
 
 import hashlib
 import json
+import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -16,6 +18,7 @@ from agent.runtime.human.user_decisions import list_decisions
 from agent.runtime.core.story_state import (
     build_story_index,
     clear_story_blocked,
+    extract_story_id,
     find_story_file_by_id,
     get_unsatisfied_dependencies,
     move_backlog_entry_to_todo,
@@ -46,7 +49,29 @@ TEST_ROOTS = (
 FENCED_JSON = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
 
+_NON_CONTRACT_STORY_SECTIONS = {
+    "status", "result", "blockers", "follow-up findings",
+    "follow-up findings disposition",
+}
+
+
+def story_contract_sha256(story_content: str) -> str:
+    """Fingerprint requirements while ignoring harness-owned execution notes."""
+    kept = []
+    skip = False
+    for line in story_content.splitlines():
+        if line.startswith("## "):
+            skip = line[3:].strip().casefold() in _NON_CONTRACT_STORY_SECTIONS
+        if not skip:
+            kept.append(line)
+    stable = "\n".join(kept).strip()
+    return hashlib.sha256(stable.encode("utf-8")).hexdigest()
+
+
 def story_id_from_content(content: str, fallback: str = "") -> str:
+    canonical_id = extract_story_id(content)
+    if canonical_id:
+        return canonical_id.upper()
     match = re.search(r"^#\s*(STORY-[A-Za-z0-9]+-\d+)", content, re.MULTILINE)
     if match:
         return match.group(1).upper()
@@ -108,7 +133,17 @@ def validate_plan(raw: dict, story_id: str, owned_test_paths=()) -> dict:
     status = plan.get("status")
     if status not in PLAN_STATUSES:
         raise QAPlanError(f"Unknown QA plan status: {status!r}")
-    if plan.get("story_id") not in (None, story_id):
+    supplied_story_id = plan.get("story_id")
+    # Models occasionally omit the conventional `STORY-` prefix while still
+    # identifying the exact dispatched story (for example `WEB-027`). This
+    # deterministic alias is unambiguous because it is derived from the one
+    # canonical story ID supplied by the harness. No fuzzy/substring match is
+    # accepted, so a plan for a different story remains a hard validation
+    # failure.
+    accepted_story_ids = {None, story_id}
+    if story_id.startswith("STORY-"):
+        accepted_story_ids.add(story_id[len("STORY-"):])
+    if supplied_story_id not in accepted_story_ids:
         raise QAPlanError("QA plan references a different story.")
 
     for field in ("acceptance_checks", "invariants", "test_levels", "existing_tests_reviewed",
@@ -311,13 +346,17 @@ report their exact command and result. Passing tests alone do not establish
 completion; verify the end-to-end behavior and invariants too.
 
 QA plan JSON:
-""" + json.dumps(plan, indent=2, ensure_ascii=False) + "\n"
+""" + json.dumps(
+        {key: value for key, value in plan.items() if key != "post_implementation_reviews"},
+        indent=2, ensure_ascii=False,
+    ) + "\n"
 
 
 def save_plan(story_path: Path, raw: dict, owned_test_paths=()) -> dict:
     story_content = story_path.read_text(encoding="utf-8")
     story_id = story_id_from_content(story_content, story_path.stem)
     plan = validate_plan(raw, story_id, owned_test_paths)
+    plan["story_contract_sha256"] = story_contract_sha256(story_content)
 
     if plan["status"] == "NEEDS_USER":
         plan["user_decision_ids"] = [
@@ -556,8 +595,19 @@ def clear_state() -> None:
     config.QA_STATE_FILE.unlink(missing_ok=True)
 
 
-def run_conditional_review(story_path: Path, plan: dict, evaluation: dict) -> dict:
+def run_conditional_review(story_path: Path, plan: dict, evaluation: dict | None = None) -> dict:
     """Independent read-only QA check after implementation when requested."""
+    host_test_verification = (evaluation or {}).get("host_run_test_verification")
+    evaluation_context = (
+        "No evaluator result was provided; review this implementation independently."
+        if evaluation is None else json.dumps(evaluation, indent=2)
+    )
+    host_test_instruction = (
+        "The harness ran the focused WEB-021 Vitest command outside the Codex sandbox and supplied its result above. "
+        "Use that evidence; do not rerun the same command inside the read-only Codex shell, where Windows profile "
+        "filesystem restrictions may prevent Node from starting."
+        if isinstance(host_test_verification, dict) else ""
+    )
     prompt = f"""STORY QA POST-IMPLEMENTATION REVIEW
 
 Inspect the repository read-only. Check this story's acceptance criteria and
@@ -569,8 +619,9 @@ tests alone do not prove the feature works.
 Story: {story_path.relative_to(config.REPO_ROOT).as_posix()}
 QA plan:
 {json.dumps(plan, indent=2)}
-Evaluator result:
-{json.dumps(evaluation, indent=2)}
+Evaluator result or review context:
+{evaluation_context}
+{host_test_instruction}
 
 Return exactly one fenced JSON object:
 {{"decision":"APPROVE|RETRY|NEEDS_USER","reason":"...","evidence":[...],"actionable_items":[...]}}
@@ -582,12 +633,88 @@ Return exactly one fenced JSON object:
     raw = parse_plan(messages)
     if raw.get("decision") not in ("APPROVE", "RETRY", "NEEDS_USER"):
         raise QAPlanError("QA review returned an invalid decision.")
+    if not isinstance(raw.get("reason"), str):
+        raise QAPlanError("QA review reason must be text.")
+    if not isinstance(raw.get("evidence", []), list):
+        raise QAPlanError("QA review evidence must be a list.")
     if not isinstance(raw.get("actionable_items", []), list):
         raise QAPlanError("QA review actionable_items must be a list.")
     return raw
 
 
-def record_review(plan: dict, review: dict) -> None:
+def run_web021_review_tests(story_path: Path, plan: dict) -> dict:
+    """Run WEB-021's focused Vitest gate in the host environment, outside Codex's sandbox."""
+    story_content = story_path.read_text(encoding="utf-8")
+    if story_id_from_content(story_content, story_path.stem) != "STORY-WEB-021":
+        return {"status": "not_configured", "reason": "No host-run review command is configured for this story."}
+
+    relative_tests = [
+        "src/ecto/__tests__/EctoContentHooks.spec.ts",
+        "src/ecto/__tests__/EctoSalvageScreen.spec.ts",
+        "src/__tests__/App.spec.ts",
+    ]
+    prepared = "frontend/src/ecto/__tests__/EctoContentHooks.spec.ts"
+    if prepared not in plan.get("prepared_test_paths", []):
+        raise QAPlanError("WEB-021 review command does not match its prepared QA test path.")
+
+    frontend = config.REPO_ROOT / "frontend"
+    for relative in relative_tests:
+        if not (frontend / relative).is_file():
+            raise QAInfrastructureError(f"Required WEB-021 review test is missing: frontend/{relative}")
+    node = shutil.which("node")
+    if not node:
+        raise QAInfrastructureError("Node.js was not found in PATH for WEB-021 review tests.")
+    npm_cli = Path(node).resolve().parent / "node_modules" / "npm" / "bin" / "npm-cli.js"
+    if not npm_cli.is_file():
+        raise QAInfrastructureError("The Node installation's npm-cli.js was not found.")
+
+    support = frontend / "node_modules" / ".cache" / "qa-review-runner"
+    cache = support / "npm-cache"
+    temporary = support / "tmp"
+    cache.mkdir(parents=True, exist_ok=True)
+    temporary.mkdir(parents=True, exist_ok=True)
+    user_config = support / "npmrc"
+    user_config.touch(exist_ok=True)
+
+    env = os.environ.copy()
+    for key in ("NODE_OPTIONS", "NODE_PATH", "INIT_CWD", "PWD"):
+        env.pop(key, None)
+    for key in tuple(env):
+        if key.lower().startswith("npm_config_"):
+            env.pop(key, None)
+    env.update({
+        "CI": "true",
+        "TEMP": str(temporary),
+        "TMP": str(temporary),
+        "npm_config_cache": str(cache),
+        "npm_config_userconfig": str(user_config),
+        "npm_config_loglevel": "error",
+        "npm_config_update_notifier": "false",
+        "npm_config_audit": "false",
+        "npm_config_fund": "false",
+    })
+    command = [str(node), str(npm_cli), "test", "--", "--run", *relative_tests]
+    try:
+        result = subprocess.run(
+            command, cwd=frontend, env=env, text=True, encoding="utf-8",
+            errors="replace", capture_output=True, timeout=180, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return {
+            "status": "runner_error", "command": "npm test -- --run " + " ".join(relative_tests),
+            "working_directory": "frontend", "error": f"{type(error).__name__}: {error}",
+        }
+    output = (result.stdout + "\n" + result.stderr).strip()
+    return {
+        "status": "passed" if result.returncode == 0 else "failed",
+        "command": "npm test -- --run " + " ".join(relative_tests),
+        "working_directory": "frontend",
+        "exit_code": result.returncode,
+        "output": output[-12000:],
+    }
+
+
+def record_review(plan: dict, review: dict, request_id: str | None = None) -> None:
     """Persist the independent review alongside its pre-implementation plan."""
     path = plan_path(plan["story_id"])
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -609,5 +736,9 @@ def record_review(plan: dict, review: dict) -> None:
         if field in plan:
             latest[field] = plan[field]
     reviews = latest.setdefault("post_implementation_reviews", [])
+    if request_id:
+        review = {**review, "request_id": request_id}
+        if any(item.get("request_id") == request_id for item in reviews if isinstance(item, dict)):
+            return
     reviews.append(review)
     write_json(path, latest)

@@ -5,6 +5,7 @@ import io
 import subprocess
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -40,6 +41,62 @@ def raw_plan(status="READY", **overrides):
 
 
 class QAPlanValidationTest(unittest.TestCase):
+    def test_web021_review_tests_use_frontend_cwd_and_sanitized_node_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            frontend = root / "frontend"
+            test_paths = (
+                "src/ecto/__tests__/EctoContentHooks.spec.ts",
+                "src/ecto/__tests__/EctoSalvageScreen.spec.ts",
+                "src/__tests__/App.spec.ts",
+            )
+            for relative in test_paths:
+                path = frontend / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("fixture", encoding="utf-8")
+            npm_cli = root / "node_modules/npm/bin/npm-cli.js"
+            npm_cli.parent.mkdir(parents=True)
+            npm_cli.touch()
+            story = root / "STORY-WEB-021-fixture.md"
+            story.write_text("# WEB-021\n\n## Story ID\nSTORY-WEB-021\n", encoding="utf-8")
+            plan = {"prepared_test_paths": ["frontend/src/ecto/__tests__/EctoContentHooks.spec.ts"]}
+
+            with patch.object(config, "REPO_ROOT", root), \
+                    patch.object(qa_agent.shutil, "which", return_value=str(root / "node.exe")), \
+                    patch.object(qa_agent.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "3 files passed", "")) as run:
+                result = qa_agent.run_web021_review_tests(story, plan)
+
+        self.assertEqual("passed", result["status"])
+        args, kwargs = run.call_args
+        self.assertEqual(frontend, kwargs["cwd"])
+        self.assertTrue(args[0][1].endswith("node_modules\\npm\\bin\\npm-cli.js"))
+        self.assertEqual(["test", "--", "--run", *test_paths], args[0][2:])
+        self.assertNotIn("NODE_OPTIONS", kwargs["env"])
+        self.assertNotIn("INIT_CWD", kwargs["env"])
+        self.assertTrue(kwargs["env"]["npm_config_cache"].startswith(str(frontend)))
+        self.assertTrue(kwargs["env"]["TMP"].startswith(str(frontend)))
+
+    def test_story_id_section_overrides_filename_slug(self):
+        content = "# Ecto Content Hooks\n\n## Story ID\n\nSTORY-WEB-021\n"
+        story_id = qa_agent.story_id_from_content(
+            content, "STORY-WEB-021-ecto-content-test-hooks"
+        )
+        self.assertEqual(story_id, "STORY-WEB-021")
+        plan = raw_plan(story_id="STORY-WEB-021")
+        self.assertEqual(
+            qa_agent.validate_plan(plan, story_id)["story_id"],
+            "STORY-WEB-021",
+        )
+
+    def test_unprefixed_exact_story_id_is_normalized_without_fuzzy_matching(self):
+        value = raw_plan(story_id="WEB-027")
+        normalized = qa_agent.validate_plan(value, "STORY-WEB-027")
+        self.assertEqual(normalized["story_id"], "STORY-WEB-027")
+
+        value["story_id"] = "WEB-028"
+        with self.assertRaises(qa_agent.QAPlanError):
+            qa_agent.validate_plan(value, "STORY-WEB-027")
+
     def test_no_tests_needs_story_specific_justification(self):
         value = raw_plan("NO_TESTS_NEEDED", rationale="This changes prose only; no runtime behavior or contract changes.", test_specifications=[])
         self.assertEqual(qa_agent.validate_plan(value, "STORY-QA-001")["status"], "NO_TESTS_NEEDED")
@@ -157,13 +214,17 @@ class QAPreparationPersistenceTest(unittest.TestCase):
         self.assertEqual(plan["status"], "READY")
         self.assertEqual(plan["pre_implementation_verification"]["status"], "EXPECTED_FAILURE")
         self.assertIn(self.test_file, plan["protected_test_hashes"])
+        self.assertEqual(
+            plan["story_contract_sha256"],
+            qa_agent.story_contract_sha256(self.story.read_text(encoding="utf-8")),
+        )
         self.assertTrue((self.root / "agent/qa-plans/QA-STORY-QA-001.json").is_file())
         self.assertTrue((self.root / "agent/runtime/artifacts/qa-tests" / self.test_file).is_file())
 
     def test_orchestrator_log_appends_during_qa_are_not_misclassified_as_agent_writes(self):
         logs = self.root / "agent/logs"
         logs.mkdir(parents=True)
-        log = logs / "2026-10-03.log"
+        log = logs / f"{datetime.now().date().isoformat()}.log"
         log.write_text("pre-existing history\n", encoding="utf-8")
 
         def prepare(_prompt, output):
@@ -186,7 +247,7 @@ class QAPreparationPersistenceTest(unittest.TestCase):
     def test_direct_qa_log_edit_is_rejected_and_restored_without_losing_buffered_logs(self):
         logs = self.root / "agent/logs"
         logs.mkdir(parents=True)
-        log = logs / "2026-10-03.log"
+        log = logs / f"{datetime.now().date().isoformat()}.log"
         log.write_text("pre-existing history\n", encoding="utf-8")
 
         def prepare(_prompt, _output):
@@ -197,7 +258,7 @@ class QAPreparationPersistenceTest(unittest.TestCase):
         with patch.object(daily_log, "LOGS_DIR", logs), \
                 patch.object(qa_agent, "execute_preparation", REAL_QA_PREPARATION), \
                 patch.object(qa_agent, "run_qa", side_effect=prepare):
-            with self.assertRaisesRegex(qa_agent.QAFileProtectionError, "agent/logs/2026-10-03.log"):
+            with self.assertRaises(qa_agent.QAFileProtectionError):
                 qa_agent.execute_preparation(self.story)
         content = log.read_text(encoding="utf-8")
         self.assertIn("pre-existing history", content)

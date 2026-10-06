@@ -70,10 +70,13 @@ from agent.runtime.core.story_state import (
     move_backlog_entry_to_done,
     move_backlog_entry_to_todo,
     resolve_story_path,
+    recover_story_activation,
     set_active_story,
     set_story_blocked,
     set_story_done,
     set_story_unfinished,
+    snapshot_story_lifecycle,
+    restore_story_lifecycle,
     strip_backlog_prose,
     validate_backlog_consistency,
 )
@@ -206,9 +209,14 @@ def _seconds_until_recheck(probe) -> int | None:
 # ============================================================
 
 ATTEMPT_PHASES = (
+    "CODING",
     "AWAITING_EVALUATION", "AWAITING_QA_REVIEW", "AWAITING_CI",
     "AWAITING_CI_FIX", "FINALIZING",
 )
+
+
+class UnrecoverableWorkflowState(RuntimeError):
+    """Persisted state is contradictory and cannot be safely guessed through."""
 
 
 def read_attempt_state() -> dict | None:
@@ -219,18 +227,31 @@ def read_attempt_state() -> dict | None:
     driven by a state this code cannot fully understand.
     """
 
+    if not ATTEMPT_STATE_FILE.exists():
+        return None
+
     try:
         state = json.loads(
             ATTEMPT_STATE_FILE.read_text(encoding="utf-8")
         )
-    except (OSError, ValueError):
-        return None
+    except (OSError, ValueError) as exc:
+        raise UnrecoverableWorkflowState(
+            f"Cannot read {ATTEMPT_STATE_FILE.relative_to(REPO_ROOT)}: {exc}. "
+            "Preserve the artifact and inspect it before restarting."
+        ) from exc
 
     if not isinstance(state, dict) or state.get("version") != 1:
-        return None
+        raise UnrecoverableWorkflowState(
+            "ATTEMPT_STATE.json has an unsupported or invalid schema; "
+            "preserve it and reconcile against the story, evaluator result, "
+            "Git history, and CI before continuing."
+        )
 
     if state.get("phase") not in ATTEMPT_PHASES or not state.get("story"):
-        return None
+        raise UnrecoverableWorkflowState(
+            "ATTEMPT_STATE.json is missing a valid phase or story; preserve "
+            "it and reconcile the interrupted attempt before continuing."
+        )
 
     return state
 
@@ -244,6 +265,9 @@ def record_attempt_state(
         ci_fix_attempts: int = 0,
         ci_status: str = "",
         ci_sha: str = "",
+        publish_paths: list[str] | None = None,
+        baseline_paths: list[str] | None = None,
+        baseline_result_sha256: str = "",
 ) -> None:
     """Record which step still owes an answer, atomically.
 
@@ -263,6 +287,9 @@ def record_attempt_state(
         "ci_fix_attempts": ci_fix_attempts,
         "ci_status": ci_status,
         "ci_sha": ci_sha,
+        "publish_paths": sorted(set(publish_paths or [])),
+        "baseline_paths": sorted(set(baseline_paths or [])),
+        "baseline_result_sha256": baseline_result_sha256,
     }
 
     ATTEMPT_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -294,10 +321,63 @@ def pending_attempt_for(story_path: Path) -> dict | None:
     try:
         recorded = resolve_story_path(state["story"])
     except (FileNotFoundError, RuntimeError):
-        clear_attempt_state()
-        return None
+        raise UnrecoverableWorkflowState(
+            f"ATTEMPT_STATE.json references unresolved story {state['story']!r}; "
+            "the record was preserved. Reconcile it before continuing."
+        )
 
-    return state if recorded == story_path else None
+    if recorded != story_path:
+        raise UnrecoverableWorkflowState(
+            f"ATTEMPT_STATE.json belongs to {recorded.name}, but the active "
+            f"pointer names {story_path.name}; refusing to run either story."
+        )
+    return state
+
+
+def reconcile_attempt_pointer() -> None:
+    """Restore a missing active pointer from the durable attempt journal.
+
+    Finalization writes story status, backlog section, and pointer separately.
+    If interrupted between those writes, ATTEMPT_STATE is the journal that
+    proves which operation still needs replay. A conflicting nonempty pointer
+    is not overwritten because that state cannot be reconciled safely here.
+    """
+    state = read_attempt_state()
+    if state is None:
+        return
+    try:
+        story = resolve_story_path(state["story"])
+    except (FileNotFoundError, RuntimeError) as exc:
+        raise UnrecoverableWorkflowState(
+            f"ATTEMPT_STATE.json references an unresolved story: {exc}. "
+            "Preserve the record and inspect the backlog before continuing."
+        ) from exc
+
+    pointer = CURRENT_STORY_FILE.read_text(encoding="utf-8").strip() \
+        if CURRENT_STORY_FILE.exists() else ""
+    expected = story.relative_to(REPO_ROOT).as_posix()
+    if pointer:
+        try:
+            pointed_story = resolve_story_path(pointer)
+        except (FileNotFoundError, RuntimeError) as exc:
+            raise UnrecoverableWorkflowState(
+                f"ATTEMPT_STATE.json names {expected}, but CURRENT_STORY.md "
+                f"is invalid ({exc}); preserve both and reconcile manually."
+            ) from exc
+        if pointed_story != story:
+            raise UnrecoverableWorkflowState(
+                f"ATTEMPT_STATE.json names {expected}, while "
+                f"CURRENT_STORY.md names {pointed_story.name}; refusing to "
+                "select another story."
+            )
+        return
+
+    CURRENT_STORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CURRENT_STORY_FILE.write_text(expected + "\n", encoding="utf-8")
+    log_line(
+        f"Restored CURRENT_STORY.md from ATTEMPT_STATE.json for "
+        f"{story.name} ({state['phase']}); resuming its recorded stage."
+    )
 
 
 # ============================================================
@@ -338,10 +418,14 @@ def _load_current_evaluator_result(
         )
         result_hash = file_hash(CLAUDE_RESULT_FILE)
         story_hash = hashlib.sha256(story_content.encode("utf-8")).hexdigest()
+        contract_hash = story_contract_hash(story_content)
         if (
             not isinstance(evaluation, dict)
             or evaluation.get("story_id") != (extract_story_id(story_content) or story_path.stem)
-            or evaluation.get("evaluated_story_sha256") != story_hash
+            or not (
+                evaluation.get("evaluated_story_sha256") == story_hash
+                or evaluation.get("evaluated_story_contract_sha256") == contract_hash
+            )
             or result_hash is None
             or evaluation.get("evaluated_result_sha256") != result_hash
         ):
@@ -349,6 +433,16 @@ def _load_current_evaluator_result(
         return evaluation
     except (OSError, json.JSONDecodeError, AttributeError):
         return None
+
+
+def story_contract_hash(story_content: str) -> str:
+    """Hash stable requirements while excluding harness-owned execution notes.
+
+    A status transition during a technical hold must not invalidate an
+    evaluator verdict for unchanged acceptance criteria. Editing requirements,
+    constraints, or the Definition of Done still changes this hash.
+    """
+    return qa_agent.story_contract_sha256(story_content)
 
 
 def unpublished_completion(
@@ -363,10 +457,10 @@ def unpublished_completion(
     gate has no outstanding publication evidence.
     """
 
-    # A crash can occur after the coding agent writes Status DONE but before
-    # AWAITING_EVALUATION is persisted. CI passing (or a story commit existing)
-    # cannot substitute for evaluation. Bind the verdict to the exact story
-    # and coding result so an older COMPLETE cannot masquerade as this attempt.
+    # A crash can leave Status DONE while CI publication/finalization is being
+    # recovered. CI passing (or a story commit existing) cannot substitute for
+    # evaluation. Bind the verdict to the exact story and coding result so an
+    # older COMPLETE cannot masquerade as this attempt.
     evaluation = _load_current_evaluator_result(story_path, story_content)
     if evaluation is None or evaluation.get("decision") != "COMPLETE":
         return (
@@ -527,6 +621,9 @@ def _evaluate_preserving_completed_attempt(
                 evaluation["evaluated_story_sha256"] = hashlib.sha256(
                     story_content.encode("utf-8")
                 ).hexdigest()
+                evaluation["evaluated_story_contract_sha256"] = story_contract_hash(
+                    story_content
+                )
                 current_result_hash = file_hash(CLAUDE_RESULT_FILE)
                 evaluation["evaluated_result_sha256"] = current_result_hash or ""
                 write_json(EVALUATOR_RESULT_FILE, evaluation)
@@ -690,6 +787,40 @@ Stop after completing or blocking this story.
 COMMIT_SUBJECT_MAX_CHARS = 72
 
 
+def ci_failures_are_outside_story_scope(verification: dict, publish_paths) -> bool:
+    """True only when every reported failing job maps to disjoint owned paths.
+
+    Missing or unfamiliar job data stays conservatively attributable to the
+    story. This prevents unrelated known CI suites from invoking Claude while
+    avoiding guesses when GitHub changes job names or omits details.
+    """
+    failures = verification.get("failed_jobs")
+    if not isinstance(failures, list) or not failures:
+        return False
+    scope = {str(path).replace("\\", "/") for path in publish_paths}
+    ownership = (
+        ("backend", ("src/", "pom.xml", "mvnw", ".mvn/")),
+        ("maven", ("src/", "pom.xml", "mvnw", ".mvn/")),
+        ("frontend", ("frontend/",)),
+        ("vitest", ("frontend/",)),
+        ("agent runtime", ("agent/runtime/", "agent/stories/", "agent/CURRENT_STORY.md",
+                            "requirements-dev.txt", ".coveragerc")),
+        ("python", ("agent/runtime/", "agent/stories/", "agent/CURRENT_STORY.md",
+                     "requirements-dev.txt", ".coveragerc")),
+        ("coverage kpi", (".github/scripts/publish_coverage_kpi.py",)),
+    )
+    recognized = 0
+    for failure in failures:
+        name = str(failure.get("job", "")).casefold()
+        roots = next((paths for label, paths in ownership if label in name), None)
+        if roots is None:
+            return False
+        recognized += 1
+        if any(path == root or path.startswith(root) for path in scope for root in roots):
+            return False
+    return recognized > 0
+
+
 def _story_commit_message(story_path: Path, story_content: str) -> str:
     story_id = extract_story_id(story_content) or story_path.stem
     title = " ".join((extract_section(story_content, "Title") or "").split())
@@ -702,7 +833,8 @@ def _story_commit_message(story_path: Path, story_content: str) -> str:
     return subject
 
 
-def verify_with_github_ci(story_path: Path, story_content: str) -> dict:
+def verify_with_github_ci(story_path: Path, story_content: str,
+                          publish_paths=None) -> dict:
     """Commit, push and wait for this commit's CI verdict."""
 
     available, detail = git_sync.ci_verification_available()
@@ -715,8 +847,32 @@ def verify_with_github_ci(story_path: Path, story_content: str) -> dict:
         return {"status": "SKIPPED", "reason": detail, "report": "",
                 "sha": "", "run_urls": []}
 
+    paths = set(publish_paths or [])
+    for required_path in (story_path, BACKLOG_FILE, CURRENT_STORY_FILE):
+        try:
+            paths.add(required_path.relative_to(REPO_ROOT).as_posix())
+        except ValueError:
+            # Some direct unit fixtures deliberately put story files outside
+            # the repository root; production paths always resolve inside it.
+            continue
+    qa_plan_path = qa_agent.plan_path(
+        qa_agent.story_id_from_content(story_content, story_path.stem)
+    )
+    if qa_plan_path.is_file():
+        try:
+            paths.add(qa_plan_path.relative_to(REPO_ROOT).as_posix())
+        except ValueError:
+            # Test and recovery fixtures may keep QA state outside the
+            # repository. Such artifacts are local state, never publish input.
+            pass
+        try:
+            plan = json.loads(qa_plan_path.read_text(encoding="utf-8"))
+            paths.update(plan.get("prepared_test_paths", []))
+        except (OSError, ValueError, AttributeError):
+            pass
+    paths.update(git_sync.pending_planning_paths())
     push = git_sync.commit_and_push(
-        _story_commit_message(story_path, story_content)
+        _story_commit_message(story_path, story_content), paths=sorted(paths)
     )
 
     if push["status"] in ("UNAVAILABLE", "PUSH_REJECTED"):
@@ -814,10 +970,13 @@ def _create_intervention_and_block_story(
         story_content: str,
         reason: str,
         claude_response: str,
+        *,
+        preserve_attempt: bool = False,
 ) -> None:
     # The attempt is over: it is a human's problem now, and no later run
     # may resume a pipeline step on this story's behalf.
-    clear_attempt_state()
+    if not preserve_attempt:
+        clear_attempt_state()
 
     story_id = extract_story_id(story_content) or story_path.stem
 
@@ -903,9 +1062,8 @@ def finalize_completed_story(
 
     verdict = " ".join(part for part in (ci_status, ci_sha[:7]) if part)
 
-    # 1. The story's own Status. Claude usually wrote DONE already, but a
-    #    CI-fix round sets UNFINISHED and a resumed attempt may never
-    #    have rewritten it, so the harness states its own verdict.
+    # 1. The harness alone states the terminal story Status. A coding agent
+    #    may update Result and Findings, but finalization owns DONE.
     set_story_done(story_path)
 
     # 2. The index: out of '## Active' (or wherever it still sits) and
@@ -1168,6 +1326,34 @@ def execute_active_story(
 
     # The harness's own position, which the story file cannot express.
     resume = pending_attempt_for(story_path)
+    publish_paths = set((resume or {}).get("publish_paths", []))
+    if resume is not None and resume["phase"] == "CODING":
+        current_result_hash = file_hash(CLAUDE_RESULT_FILE)
+        coding_finished_before_journal = (
+            classification == "DONE"
+            and current_result_hash is not None
+            and current_result_hash != resume.get("baseline_result_sha256")
+        )
+        if coding_finished_before_journal:
+            baseline_paths = set(resume.get("baseline_paths", []))
+            discovered = git_sync.working_tree_paths() - baseline_paths
+            discovered = {
+                path for path in discovered
+                if not path.startswith("agent/logs/")
+            }
+            publish_paths = set(resume.get("publish_paths", [])) | discovered
+            record_attempt_state(
+                story_path, "AWAITING_EVALUATION",
+                claude_exit_code=0, result_was_updated=True,
+                retry_count=int(resume.get("retry_count") or 0),
+                ci_fix_attempts=int(resume.get("ci_fix_attempts") or 0),
+                publish_paths=sorted(publish_paths),
+            )
+            resume = read_attempt_state()
+            log_line(
+                f"Recovered completed coding output for {story_path.name} "
+                "from the CODING journal; resuming at evaluation."
+            )
 
     if classification == "BLOCKED":
         clear_attempt_state()
@@ -1249,11 +1435,12 @@ def execute_active_story(
     resume_ci_fix = False
 
     if resume is not None:
-        # Budgets travel with the recorded attempt so a restart cannot
-        # hand the same story a fresh allowance forever.
+        # Budgets travel with every recorded phase, including an interrupted
+        # CODING call, so restarts cannot reset retry allowances.
         retry_count = int(resume.get("retry_count") or 0)
         ci_fix_attempts = int(resume.get("ci_fix_attempts") or 0)
 
+    if resume is not None and resume["phase"] != "CODING":
         log_line(
             f"Resuming {story_path.name} at {resume['phase']}: the "
             "previous run's Claude attempt is already finished on disk, "
@@ -1283,7 +1470,7 @@ def execute_active_story(
 
         evaluation = None
 
-        if resume is not None:
+        if resume is not None and resume["phase"] != "CODING":
             story_content = read_file(story_path)
             result_content = _current_result_content()
 
@@ -1312,6 +1499,7 @@ def execute_active_story(
                     str(resume.get("ci_sha") or ""),
                 )
 
+                git_sync.clear_pending_planning_paths()
                 clear_attempt_state()
 
                 return "COMPLETE"
@@ -1418,17 +1606,36 @@ def execute_active_story(
                 CLAUDE_RESULT_FILE
             )
 
+            baseline_paths = git_sync.working_tree_paths()
+            publish_paths = set((resume or {}).get("publish_paths", []))
+            publish_paths.update(git_sync.pending_planning_paths())
+            record_attempt_state(
+                story_path, "CODING",
+                retry_count=retry_count,
+                ci_fix_attempts=ci_fix_attempts,
+                publish_paths=sorted(publish_paths),
+                baseline_paths=sorted(baseline_paths),
+                baseline_result_sha256=old_result_hash or "",
+            )
+
             usage_before = _safe_claude_usage()
             claude_start = time.time()
 
             changed_before = qa_agent.restore_protected_tests(qa_plan)
             qa_plan_file = qa_agent.plan_path(qa_plan["story_id"])
             qa_plan_snapshot = qa_plan_file.read_bytes() if qa_plan_file.is_file() else None
+            lifecycle_snapshot = snapshot_story_lifecycle(story_path)
             try:
-                attempt = run_claude_attempt(prompt)
+                try:
+                    attempt = run_claude_attempt(prompt)
+                finally:
+                    changed_after = qa_agent.restore_protected_tests(qa_plan)
             finally:
-                changed_after = qa_agent.restore_protected_tests(qa_plan)
-            qa_test_integrity = sorted(set(changed_before + changed_after))
+                lifecycle_changes = restore_story_lifecycle(story_path, lifecycle_snapshot)
+            qa_test_integrity = sorted(set(
+                changed_before + changed_after
+                + [f"harness lifecycle state: {path}" for path in lifecycle_changes]
+            ))
             plan_changed = (
                 qa_plan_file.is_file() != (qa_plan_snapshot is not None)
                 or (qa_plan_snapshot is not None and qa_plan_file.read_bytes() != qa_plan_snapshot)
@@ -1439,6 +1646,25 @@ def execute_active_story(
                 else:
                     qa_plan_file.write_bytes(qa_plan_snapshot)
                 qa_test_integrity.append(qa_plan_file.relative_to(REPO_ROOT).as_posix())
+
+            changed_paths = git_sync.working_tree_paths() - baseline_paths
+            changed_paths = {
+                path for path in changed_paths
+                if not path.startswith("agent/logs/")
+            }
+            publish_paths.update(changed_paths)
+            # Journal the output paths before any evaluator call, so a crash
+            # after the coding process exits cannot lose the publication
+            # scope or accidentally stage unrelated dirty files.
+            record_attempt_state(
+                story_path, "CODING",
+                claude_exit_code=attempt.exit_code,
+                retry_count=retry_count,
+                ci_fix_attempts=ci_fix_attempts,
+                publish_paths=sorted(publish_paths),
+                baseline_paths=sorted(baseline_paths),
+                baseline_result_sha256=old_result_hash or "",
+            )
 
             claude_exit_code = attempt.exit_code
 
@@ -1543,8 +1769,9 @@ def execute_active_story(
             result_content = _current_result_content()
             if qa_test_integrity:
                 result_content += (
-                    "\n\nQA ownership violation: the coding agent modified or removed "
-                    "QA-owned acceptance tests; Python restored them. A conditional "
+                    "\n\nProtected-state violation: the coding agent modified QA-owned "
+                    "tests or harness-owned lifecycle state; Python restored the captured "
+                    "state. A conditional "
                     "read-only QA review is required for: " + ", ".join(qa_test_integrity)
                 )
 
@@ -1566,6 +1793,7 @@ def execute_active_story(
                 result_was_updated=result_was_updated,
                 retry_count=retry_count,
                 ci_fix_attempts=ci_fix_attempts,
+                publish_paths=sorted(publish_paths),
             )
 
             evaluation = _evaluate_preserving_completed_attempt(
@@ -1614,9 +1842,12 @@ def execute_active_story(
                 "AWAITING_CI",
                 retry_count=retry_count,
                 ci_fix_attempts=ci_fix_attempts,
+                publish_paths=sorted(publish_paths),
             )
 
-            verification = verify_with_github_ci(story_path, story_content)
+            verification = verify_with_github_ci(
+                story_path, story_content, publish_paths=publish_paths
+            )
 
             if verification["status"] in ("PASSED", "SKIPPED"):
                 # Every gate has answered. Record that the only remaining
@@ -1639,6 +1870,7 @@ def execute_active_story(
                     verification.get("sha") or "",
                 )
 
+                git_sync.clear_pending_planning_paths()
                 clear_attempt_state()
 
                 return "COMPLETE"
@@ -1658,6 +1890,29 @@ def execute_active_story(
                     result_content,
                 )
 
+                return "NEEDS_USER"
+
+            if ci_failures_are_outside_story_scope(verification, publish_paths):
+                # Keep AWAITING_CI as the durable resume point. A tooling
+                # intervention resolution requeues the same story, whose
+                # evaluator verdict is reused and whose CI gate is retried;
+                # application code is not sent back to Claude.
+                diagnostic = (
+                    "GitHub CI failed only in suites whose known source scope "
+                    "does not overlap this story's published paths. Resolve "
+                    "the CI/runtime failure and rerun CI for the recorded commit, "
+                    "then resolve this tooling intervention. The implementation "
+                    "agent was not reinvoked.\n\n"
+                    + (verification.get("report") or verification.get("reason", ""))
+                )
+                _create_intervention_and_block_story(
+                    story_path, story_content, diagnostic, result_content,
+                    preserve_attempt=True,
+                )
+                log_line(
+                    f"{story_path.name} held for unrelated CI failure; "
+                    "preserved AWAITING_CI state and did not invoke Claude."
+                )
                 return "NEEDS_USER"
 
             ci_fix_attempts += 1
@@ -1692,6 +1947,7 @@ def execute_active_story(
                 "AWAITING_CI_FIX",
                 retry_count=retry_count,
                 ci_fix_attempts=ci_fix_attempts,
+                publish_paths=sorted(publish_paths),
             )
             resume_ci_fix = True
 
@@ -2181,7 +2437,18 @@ def planning_input_snapshot():
                       ARCHITECT_REQUESTS_DIR):
         paths.update(directory.glob("*.md"))
     paths.update(path for path in BACKLOG_FILE.parent.glob("STORY-*.md"))
-    paths.update((REPO_ROOT / "docs").rglob("*.md"))
+    docs = REPO_ROOT / "docs"
+    # Only inputs that can change product intent, planning priorities, or
+    # implementation constraints release a planning hold. Descriptive current
+    # architecture/state snapshots are maintained after implementation and
+    # must not by themselves trigger another expensive roadmap pass.
+    paths.update(docs / name for name in (
+        "DOMAIN_SPEC.md", "FRONTEND_UX_GUIDELINES.md", "KNOWN_PROBLEMS.md",
+        "QUALITY_METRICS.md", "TEST_STRATEGY.md", "CODING_GUIDELINES.md",
+    ))
+    paths.update((docs / "architecture" / "decisions").glob("*.md"))
+    paths.update((docs / "bugs").glob("*.md"))
+    paths.update((docs / "crafting").glob("*.md"))
     paths.update((REPO_ROOT / "agent").glob("*INSTRUCTIONS.md"))
     paths.add(REPO_ROOT / "AGENTS.md")
     # Contract/validator fixes are meaningful inputs too; logs, result JSON,
@@ -2752,6 +3019,13 @@ def _run_cycle(scheduler, replenish, decisions) -> tuple[str, bool]:
 
     decisions.begin_cycle()
 
+    # The attempt journal outlives the active pointer. Finalization spans
+    # several files, and a crash can land after the pointer write but before
+    # the journal is cleared. Reconcile that window before selection can
+    # activate another story.
+    reconcile_attempt_pointer()
+    recover_story_activation()
+
     requeue_resolved_interventions()
     for story_id in qa_agent.requeue_resolved_qa_stories():
         log_line(f"QA clarification resolved for {story_id}; story requeued for QA review.")
@@ -2937,6 +3211,10 @@ def main() -> None:
             failures = 0
         except KeyboardInterrupt:
             raise
+        except UnrecoverableWorkflowState as exc:
+            log_line(f"Orchestration stopped safely: {exc}")
+            print(f"\nOrchestration stopped safely: {exc}")
+            return
         except Exception as exc:  # noqa: BLE001
             # An unattended run must survive one recoverable failure
             # (a local evaluator outage, a transient file/OS error)

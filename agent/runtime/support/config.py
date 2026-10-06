@@ -76,6 +76,7 @@ NEXT_PROMPT_FILE = ARTIFACTS_DIR / "NEXT_PROMPT.md"
 ATTEMPT_STATE_FILE = ARTIFACTS_DIR / "ATTEMPT_STATE.json"
 
 EVALUATOR_RESULT_FILE = ARTIFACTS_DIR / "EVALUATOR_RESULT.json"
+PENDING_COMMIT_PATHS_FILE = ARTIFACTS_DIR / "PENDING_COMMIT_PATHS.json"
 SELECTOR_RESULT_FILE = ARTIFACTS_DIR / "SELECTOR_RESULT.json"
 PLANNING_RESULT_FILE = ARTIFACTS_DIR / "PLANNING_RESULT.json"
 ARCHITECT_RESULT_FILE = ARTIFACTS_DIR / "ARCHITECT_RESULT.json"
@@ -351,8 +352,7 @@ DOCUMENT_OWNERSHIP = (
      "One canonical file per story, owning its scope, acceptance criteria, "
      "result, blockers and findings. The planner creates them and records "
      "finding dispositions; IMPLEMENTATION updates the active story's "
-     "Status/Result/Findings; the harness sets Status on its own "
-     "transitions."),
+     "Result/Findings. Only the harness changes Status."),
     (PROJECT_STATE_FILE, (PLANNER,),
      "Planner-only continuity state. IMPLEMENTATION must not write here, "
      "and completed-story history and live test counts never belong here."),

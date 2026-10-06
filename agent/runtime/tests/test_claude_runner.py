@@ -51,6 +51,7 @@ class ClaudeRunnerTest(unittest.TestCase):
             result = claude_runner.run_claude_attempt("Implement")
 
         self.assertEqual(result.exit_code, 0)
+        self.assertIn("Result contains an arrow", result.output)
         self.assertIn("Result contains an arrow ?", terminal.getvalue())
 
     def test_usage_probe_parses_session_and_weekly_from_one_response(self):

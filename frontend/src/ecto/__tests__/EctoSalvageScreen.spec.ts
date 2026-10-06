@@ -15,6 +15,7 @@ interface RecordedRequest { method: string; url: string }
 const requests: RecordedRequest[] = []
 let luckAnswer: unknown = accountLuck
 let pricesAnswer: unknown = itemPrices
+let priceFailure = false
 let wrapper: VueWrapper | null = null
 
 function jsonResponse(body: unknown): Response {
@@ -39,7 +40,9 @@ function buttonIn(open: VueWrapper, selector: string, label: string) {
 /** One labelled figure of the salvage calculation, addressed by the label it is filed under. */
 function calculationFigure(open: VueWrapper, label: string) {
   const row = open
-    .findAll('.salvage-calculation .calculation-row, .salvage-calculation .calculation-total')
+    .findAll(
+      '[data-test="ecto-calculation"] .calculation-row, [data-test="ecto-calculation"] .calculation-total'
+    )
     .find((candidate) => candidate.find('span').text() === label)
   if (!row) throw new Error(`Missing "${label}" row in the salvage calculation`)
   return row
@@ -53,11 +56,16 @@ beforeEach(() => {
   requests.length = 0
   luckAnswer = accountLuck
   pricesAnswer = itemPrices
+  priceFailure = false
   vi.stubGlobal('fetch', vi.fn((input: string, init?: RequestInit) => {
     requests.push({ method: init?.method ?? 'GET', url: input })
     const url = new URL(input, 'http://test.local')
     if (url.pathname === '/api/items/metadata') return Promise.resolve(jsonResponse(itemMetadata))
-    if (url.pathname === '/api/items/prices') return Promise.resolve(jsonResponse(pricesAnswer))
+    if (url.pathname === '/api/items/prices') {
+      return priceFailure
+        ? Promise.reject(new Error('prices unavailable'))
+        : Promise.resolve(jsonResponse(pricesAnswer))
+    }
     if (url.pathname === '/api/account/luck') return Promise.resolve(jsonResponse(luckAnswer))
     throw new Error(`Obsolete or unexpected request: ${input}`)
   }))
@@ -225,6 +233,30 @@ describe('EctoSalvageScreen', () => {
     const bar = open.find('.luck-progress__bar')
     const expectedPercent = ((14_134 - 13_790) / (14_550 - 13_790)) * 100
     expect(parseFloat((bar.element as HTMLElement).style.width)).toBeCloseTo(expectedPercent, 8)
+  })
+
+  it('files the account Luck figures under their own hook, apart from the result hook', async () => {
+    const open = await openScreen()
+    const luck = open.find('[data-test="ecto-account-luck"]')
+    const result = open.find('[data-test="ecto-result"]')
+
+    expect(result.exists()).toBe(true)
+    expect(luck.text()).toContain((14_134).toLocaleString())
+    expect(luck.element).not.toBe(result.element)
+    expect(requests).toHaveLength(3)
+  })
+
+  it('withholds the result hook and warns when the Trading Post quotes could not be read', async () => {
+    priceFailure = true
+    const open = await openScreen()
+
+    expect(open.find('[role="alert"]').text()).toContain('Trading Post prices could not be read.')
+    // The screen root and the Luck section are both on screen, so neither of them can stand in for
+    // a calculated result the missing quotes made impossible.
+    expect(open.find('[data-test="ecto-screen"]').exists()).toBe(true)
+    expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(true)
+    expect(open.find('[data-test="ecto-result"]').exists()).toBe(false)
+    expect(open.find('.result-details').text()).toContain('185 Dust')
   })
 
   it('renders a full progress bar at the 300% Luck-derived Magic Find cap', async () => {

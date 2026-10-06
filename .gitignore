@@ -9,6 +9,7 @@ build/
 frontend/coverage/
 .coverage
 .pytest_cache/
+local_bridge/__pycache__/
 .github/scripts/__pycache__/
 agent/runtime/.coverage
 agent/runtime/coverage.xml

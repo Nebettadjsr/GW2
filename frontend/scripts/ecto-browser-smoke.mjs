@@ -76,7 +76,7 @@ function answerApi({ url, sendJson }) {
 async function figure(page, label) {
   return page.evaluate((wanted) => {
     const rows = document.querySelectorAll(
-      '.salvage-calculation .calculation-row, .salvage-calculation .calculation-total'
+      '[data-test="ecto-calculation"] .calculation-row, [data-test="ecto-calculation"] .calculation-total'
     )
     const row = [...rows].find((candidate) => candidate.querySelector('span')?.textContent.trim() === wanted)
     return row?.textContent.replace(/\s+/g, ' ').trim() ?? null
@@ -98,10 +98,26 @@ async function run() {
     await page.goto(origin.origin, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS })
     await page.waitForSelector('[data-test="nav-ecto"]', { timeout: TIMEOUT_MS })
     await page.click('[data-test="nav-ecto"]')
-    await page.waitForSelector('.salvage-calculation', { timeout: TIMEOUT_MS })
-    await page.waitForSelector('.account-luck', { timeout: TIMEOUT_MS })
+    // Readiness is taken from the content hooks, not from styling classes: `ecto-result` is attached
+    // only once the metadata and TP quotes arrived and the effective cost was computed, and the Luck
+    // section is waited for separately so a page that loaded only one of the two cannot pass.
+    await page.waitForSelector('[data-test="ecto-result"]', { timeout: TIMEOUT_MS })
+    await page.waitForSelector('[data-test="ecto-account-luck"]', { timeout: TIMEOUT_MS })
 
     check(origin.servedCount() > 0, 'The stub origin did not serve the page.')
+    // The root may not be the thing that says "loaded": the result and Luck hooks have to be their
+    // own data-driven regions inside it, or waiting for them would prove nothing.
+    const hooks = await page.evaluate(() => {
+      const root = document.querySelector('[data-test="ecto-screen"]')
+      const result = document.querySelector('[data-test="ecto-result"]')
+      const luck = document.querySelector('[data-test="ecto-account-luck"]')
+      return {
+        resultInsideRoot: root !== null && result !== null && result !== root && root.contains(result),
+        luckIsOwnRegion: luck !== null && luck !== result && luck !== root
+      }
+    })
+    check(hooks.resultInsideRoot, 'The result hook is not a region of its own inside the screen root.')
+    check(hooks.luckIsOwnRegion, 'Account Luck is not identifiable apart from the salvage result.')
     check(new URL(page.url()).hash === '#/ecto', 'Ecto is not addressable at its own URL.')
     check((await page.title()) === 'Ecto Salvage · GW2 Crafting Tool', 'The document title is stale.')
     check((await page.locator('[data-page-heading]').innerText()) === 'Ecto Salvage', 'The page heading is stale.')
@@ -115,7 +131,10 @@ async function run() {
     check(priceRequest !== undefined, 'Price request missing.')
     check(JSON.stringify(requestedIds(new URL(metadataRequest))) === JSON.stringify(METADATA_IDS), 'Metadata IDs differ.')
     check(JSON.stringify(requestedIds(new URL(priceRequest))) === JSON.stringify(PRICE_IDS), 'Prices requested more than Ecto and Dust.')
-    record('destination, the "Ecto Salvage" title and heading, and three current input reads')
+    record(
+      'destination, the "Ecto Salvage" title and heading, three current input reads, and readiness ' +
+        'taken from ecto-result / ecto-account-luck inside ecto-screen'
+    )
 
     check((await figure(page, 'Ecto value consumed'))?.includes('-1g 20s 0c'), 'Default Ecto value is wrong.')
     check((await figure(page, 'Dust value after TP fees'))?.includes('+3g 14s 50c'), 'Default Dust proceeds are wrong.')

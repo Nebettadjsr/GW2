@@ -151,6 +151,45 @@ class CompletionLifecycleTestCase(OrchestratorInterventionTestCase):
 
 class PassingCiCompletesTheTransitionTest(CompletionLifecycleTestCase):
 
+    def test_implementation_cannot_finalize_or_deactivate_before_evaluation(self):
+        self.activate()
+
+        def fake_claude(*_args, **_kwargs):
+            content = self.story.read_text(encoding="utf-8")
+            self.story.write_text(
+                content.replace("## Status\n\nTODO\n", "## Status\n\nDONE\n"),
+                encoding="utf-8",
+            )
+            self.backlog_file.write_text("# Agent moved story to Done\n", encoding="utf-8")
+            self.current_story_file.write_text("", encoding="utf-8")
+            return claude_runner.ClaudeAttempt(0, False)
+
+        def evaluate_after_restore(*_args, **_kwargs):
+            self.assertEqual(
+                "TODO",
+                story_state.classify_story_status(
+                    story_state.extract_status_section(self.story.read_text(encoding="utf-8"))
+                ),
+            )
+            self.assertEqual([self.filename], story_state.parse_backlog_section(
+                self.backlog_file.read_text(encoding="utf-8"), "Active"
+            ))
+            self.assertEqual(
+                self.filename,
+                self.current_story_file.read_text(encoding="utf-8").strip(),
+            )
+            return {"decision": "COMPLETE", "reason": "fixture review passed"}
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(orchestrator, "evaluate_story", side_effect=evaluate_after_restore))
+            stack.enter_context(patch.object(orchestrator, "run_claude_attempt", side_effect=fake_claude))
+            stack.enter_context(patch.object(orchestrator, "verify_with_github_ci", return_value={
+                "status": "SKIPPED", "reason": "fixture", "report": "", "sha": "", "run_urls": []
+            }))
+            self.assertEqual(self.run_execute(stack), "COMPLETE")
+
+        self.assert_finalized()
+
     def test_successful_ci_moves_the_story_clears_the_pointer_and_validates(self):
         self.activate()
 

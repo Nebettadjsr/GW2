@@ -391,6 +391,24 @@ class EvaluateStoryEndToEndTests(unittest.TestCase):
         self.assertEqual(result["evaluator_exit_code"], 0)
         self.assertIn("git diff HEAD", result["evidence"])
 
+    def test_bridge_can_defer_persistence_until_contract_revalidation(self):
+        from agent.runtime.evaluation import evaluator
+
+        with tempfile.TemporaryDirectory() as directory:
+            result_file = Path(directory) / "EVALUATOR_RESULT.json"
+            with patch.object(evaluator, "run_evaluator", return_value=0), \
+                    patch.object(evaluator, "parse_evaluator_verdict", return_value={
+                        "decision": "COMPLETE", "reason": "verified", "intent_achieved": True,
+                        "evidence": ["fixture"], "unmet_intent": [],
+                        "unmet_acceptance_criteria": [], "unmet_definition_of_done": [],
+                        "actionable_retry_items": [],
+                    }), \
+                    patch.object(evaluator, "EVALUATOR_RESULT_FILE", result_file):
+                result = evaluator.evaluate_story(DONE_STORY, "report", 0, True, persist=False)
+
+            self.assertEqual("COMPLETE", result["decision"])
+            self.assertFalse(result_file.exists())
+
     def test_an_intent_shortfall_comes_back_as_actionable_retry_work(self):
         result = self.run_evaluation(
             "```json\n" + json.dumps({

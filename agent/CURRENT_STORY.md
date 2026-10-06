@@ -1,1 +1,1 @@
-agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md
+agent/stories/STORY-WEB-021-ecto-content-test-hooks.md

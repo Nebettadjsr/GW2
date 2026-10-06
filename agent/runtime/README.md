@@ -178,17 +178,26 @@ only while a step is outstanding:
 
 | Phase | Meaning | What a resumed run does |
 | --- | --- | --- |
+| `CODING` | Claude may be running; a baseline path set and prior result hash are persisted first. | If the story/result show Claude finished before the next journal write, promotes directly to evaluation. Otherwise resumes the saved coding prompt with retry budgets preserved. |
 | `AWAITING_EVALUATION` | Claude's attempt finished; no evaluator verdict yet. | Evaluates the story and result already on disk. Claude is not re-invoked and its capacity is not waited on. |
 | `AWAITING_QA_REVIEW` | A saved evaluator verdict requires independent QA review before it can be acted on. | Resumes the review/evaluation gate against the completed implementation; Claude is not re-invoked. |
 | `AWAITING_CI` | The evaluator accepted the work; publication and the CI verdict are outstanding. | Commits, pushes and waits for CI. The evaluator's verdict is not bought a second time. |
 | `AWAITING_CI_FIX` | CI failed and the bounded repair prompt is saved. | Resumes the saved repair prompt without repeating QA or prematurely publishing partial work. |
 | `FINALIZING` | Evaluation and CI passed; only deterministic story/backlog bookkeeping remains. | Replays the idempotent completion transition without rerunning coding, QA, evaluation, or CI. |
 
-Every terminal outcome (COMPLETE, BLOCKED, NEEDS_USER) clears the file, and so
-does starting a new Claude attempt — what is on disk is about to change, so no
-later run may resume the previous attempt. `MAX_RETRIES_PER_STORY` and
+Every terminal outcome (COMPLETE, BLOCKED, NEEDS_USER) clears the file, except
+an unrelated-CI tooling hold, which deliberately retains `AWAITING_CI`. Starting
+a new Claude attempt replaces the prior journal before mutable work starts.
+`MAX_RETRIES_PER_STORY` and
 `MAX_CI_FIX_ATTEMPTS` counters travel with the record, so a restart cannot hand
 the same story a fresh allowance and loop past its escalation.
+
+The journal is atomically replaced and validated before queue selection. A
+malformed journal, a missing story, or a journal/pointer disagreement stops
+execution with a diagnostic while preserving the artifact. If finalization
+cleared `CURRENT_STORY.md` but crashed before clearing `ATTEMPT_STATE.json`, the
+journal restores the same pointer and replays the idempotent transition. The
+runtime does not guess through contradictory state.
 
 Any `DONE` story without an attempt-state record is considered complete only
 if `EVALUATOR_RESULT.json` contains a `COMPLETE` verdict bound to that story ID
@@ -227,19 +236,24 @@ package waits for it.
 What happens the moment the evaluator returns COMPLETE, inside
 `execute_active_story()`:
 
-1. `support/git_sync.py` stages everything outstanding, commits it as
+1. `support/git_sync.py` stages only the persisted publication scope: changed
+   paths observed around the coding attempt, validated planning outputs, the
+   story/backlog/pointer, and its QA plan and prepared tests. It commits these as
    `implemented <STORY-ID>: <title>` and pushes the current branch to `origin`.
-   This is the only place either model's work is committed, so one commit is one
-   verified story rather than one per file touched, and `.gitignore` alone decides
-   what can be swept in (`.env` and `artifacts/` therefore cannot).
+   Unrelated dirty files remain untouched. Pre-staged files outside scope cause
+   a safe publication stop rather than being swept into the story commit.
 2. `support/github_ci.py` polls that commit's workflow runs until they are
    decided, then reports one of three outcomes.
-3. **PASSED** completes the story. **FAILED** returns a bounded failure report to
-   Claude as another attempt on the same story, with the story set back to
-   UNFINISHED so nothing claims to be done that CI has contradicted. Anything
-   **UNVERIFIED** — no run appeared, a cancelled run, an unreadable API, a
-   rejected push — creates a user intervention: an unproven pipeline is never
-   completed as if it were green.
+3. **PASSED** completes the story. **FAILED** is attributed using structured
+   failing-job names. A known failing suite whose source scope is disjoint from
+   the published story paths creates a tooling intervention and preserves
+   `AWAITING_CI`; after the CI problem is resolved, the same story resumes at
+   CI without invoking Claude or repeating evaluation. Failures in a known
+   overlapping suite, or failures whose ownership cannot be established, are
+   conservatively sent through the bounded repair path. Anything **UNVERIFIED**
+   — no run appeared, a cancelled run, an unreadable API, a rejected push —
+   creates a tooling intervention: an unproven pipeline is never completed as
+   if it were green.
 
 `MAX_CI_FIX_ATTEMPTS` (default 2) bounds the fix loop. It is deliberately a
 separate budget from `MAX_RETRIES_PER_STORY`: an evaluator retry and a red
@@ -562,7 +576,12 @@ filenames/paths in this result field and duplicate filename IDs are rejected.
 The scheduler atomically persists `artifacts/PLANNING_CACHE.json` after
 NEEDS_USER, no-work results, or planner execution/validation failure. Its
 fingerprint includes UDs, PO/architect requests, authoritative docs, planner
-contracts, continuity and story requirements. Story status/result/follow-up
+contracts, continuity and story requirements. Product/domain and target
+requirements, architecture decisions, known defects, coding/testing contracts,
+and story requirements are planning inputs. Descriptive implementation snapshots
+(`CURRENT_STATE_SPEC.md`, `CURRENT_ARCHITECTURE.md`), logs, result JSON, timestamps
+and capacity readings are excluded: updating those records alone does not earn a
+full planning pass. Story status/result/follow-up
 sections, active-story pointers, backlog section moves, Claude run artifacts,
 logs, result JSON, timestamps and capacity cooldowns are excluded because they
 record execution progress, not new planning inputs. Relevant input changes

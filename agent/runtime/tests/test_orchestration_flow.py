@@ -14,10 +14,44 @@ Run with: python -m unittest agent.runtime.tests.test_orchestration_flow -v
 (from the repository root).
 """
 
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from agent.runtime.core import orchestrator
+
+
+class PlanningInputSnapshotTest(unittest.TestCase):
+
+    def test_descriptive_runtime_snapshots_do_not_trigger_full_planning(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            docs = root / "docs"
+            agent = root / "agent"
+            stories = agent / "stories"
+            for path in (docs, agent, stories):
+                path.mkdir(parents=True, exist_ok=True)
+            (docs / "DOMAIN_SPEC.md").write_text("intent A", encoding="utf-8")
+            (docs / "CURRENT_ARCHITECTURE.md").write_text("snapshot A", encoding="utf-8")
+            (docs / "CURRENT_STATE_SPEC.md").write_text("state A", encoding="utf-8")
+            names = {
+                "REPO_ROOT": root,
+                "PROJECT_STATE_FILE": agent / "PROJECT_STATE.md",
+                "ROADMAP_FILE": docs / "ROADMAP.md",
+                "TARGET_ARCHITECTURE_FILE": docs / "TARGET_ARCHITECTURE.md",
+                "USER_DECISIONS_DIR": agent / "user-decisions",
+                "PRODUCT_OWNER_REQUESTS_DIR": agent / "product-owner-requests",
+                "ARCHITECT_REQUESTS_DIR": agent / "architect-requests",
+                "BACKLOG_FILE": stories / "BACKLOG.md",
+            }
+            with patch.multiple(orchestrator, **names):
+                before = orchestrator.planning_input_snapshot()
+                (docs / "CURRENT_ARCHITECTURE.md").write_text("snapshot B", encoding="utf-8")
+                (docs / "CURRENT_STATE_SPEC.md").write_text("state B", encoding="utf-8")
+                self.assertEqual(before, orchestrator.planning_input_snapshot())
+                (docs / "DOMAIN_SPEC.md").write_text("intent B", encoding="utf-8")
+                self.assertNotEqual(before, orchestrator.planning_input_snapshot())
 
 
 class LoopStopped(BaseException):
@@ -70,6 +104,7 @@ class MainFlowTestCase(unittest.TestCase):
         patches = [
             patch.object(orchestrator, "CapacityScheduler", return_value=self.scheduler),
             patch.object(orchestrator, "requeue_resolved_interventions"),
+            patch.object(orchestrator, "recover_story_activation", return_value=None),
             patch.object(orchestrator, "get_actionable_architect_requests",
                          side_effect=lambda: list(self.architect_requests)),
             patch.object(orchestrator, "undispatchable_architect_requests",

@@ -14,10 +14,12 @@ committed and what is pushed.
 """
 import re
 import subprocess
+from pathlib import PurePosixPath
 
 from agent.runtime.support.config import (
     CI_VERIFICATION_ENABLED,
     CI_WORKFLOW_FILE,
+    PENDING_COMMIT_PATHS_FILE,
     REPO_ROOT,
 )
 
@@ -83,6 +85,41 @@ def working_tree_changes() -> list[str]:
     """Porcelain lines for everything git would commit, .gitignore honored."""
 
     return [line for line in _output("status", "--porcelain").splitlines() if line.strip()]
+
+
+def working_tree_paths() -> set[str]:
+    """Repository-relative paths reported by Git, including untracked files."""
+    result = run_git("status", "--porcelain", "-z")
+    records = result.stdout.split("\0")
+    paths: set[str] = set()
+    index = 0
+    while index < len(records):
+        record = records[index]
+        index += 1
+        if len(record) < 4:
+            continue
+        status, path = record[:2], record[3:]
+        paths.add(path.replace("\\", "/"))
+        if "R" in status or "C" in status:
+            if index < len(records) and records[index]:
+                paths.add(records[index].replace("\\", "/"))
+                index += 1
+    return paths
+
+
+def pending_planning_paths() -> set[str]:
+    """Validated planner writes awaiting the next story publication commit."""
+    try:
+        import json
+        value = json.loads(PENDING_COMMIT_PATHS_FILE.read_text(encoding="utf-8"))
+        paths = value.get("paths", []) if isinstance(value, dict) else []
+        return {str(path) for path in paths if isinstance(path, str)}
+    except (OSError, ValueError, AttributeError):
+        return set()
+
+
+def clear_pending_planning_paths() -> None:
+    PENDING_COMMIT_PATHS_FILE.unlink(missing_ok=True)
 
 
 def unpushed_commit_count(branch: str) -> int | None:
@@ -158,8 +195,8 @@ def push_branch(branch: str) -> subprocess.CompletedProcess:
     return run_git("push", "origin", f"{branch}:{branch}", check=False)
 
 
-def commit_and_push(message: str) -> dict:
-    """Commit everything outstanding and publish it.
+def commit_and_push(message: str, paths=None) -> dict:
+    """Commit only the validated story/planning scope and publish it.
 
     Returns a record of what happened, never raising for the ordinary
     failure modes (nothing to commit, rejected push, no remote): the
@@ -173,11 +210,37 @@ def commit_and_push(message: str) -> dict:
         return {"status": "UNAVAILABLE", "reason": "HEAD is detached; refusing to push",
                 "committed": False, "pushed": False, "sha": head_sha(), "branch": None}
 
-    changes = working_tree_changes()
+    if paths is None:
+        # Kept for standalone callers. The orchestrator always supplies a
+        # scope assembled from validated planner writes and observed coding
+        # changes, so unrelated dirty files are never swept into a story.
+        scoped_paths = working_tree_paths()
+    else:
+        scoped_paths = set(paths)
+    for path in scoped_paths:
+        parsed = PurePosixPath(str(path).replace("\\", "/"))
+        if parsed.is_absolute() or ".." in parsed.parts:
+            return {"status": "UNAVAILABLE", "committed": False, "pushed": False,
+                    "sha": head_sha(), "branch": branch,
+                    "reason": f"unsafe publication path: {path!r}"}
+
+    staged_before = set(_output("diff", "--cached", "--name-only").splitlines())
+    unexpected_staged = staged_before - scoped_paths
+    if unexpected_staged:
+        return {"status": "UNAVAILABLE", "committed": False, "pushed": False,
+                "sha": head_sha(), "branch": branch,
+                "reason": "refusing to publish pre-staged unrelated changes: "
+                          + ", ".join(sorted(unexpected_staged))}
+
     committed = False
 
-    if changes:
-        run_git("add", "--all")
+    if scoped_paths:
+        run_git("add", "--all", "--", *sorted(scoped_paths))
+        staged = _output("diff", "--cached", "--name-only").splitlines()
+    else:
+        staged = []
+
+    if staged:
 
         # `git add --all` stages exactly what .gitignore allows, so .env,
         # agent/runtime/artifacts/ and build output stay out by construction.
@@ -210,6 +273,7 @@ def commit_and_push(message: str) -> dict:
         "pushed": push_result is not None,
         "sha": sha,
         "branch": branch,
-        "changed_files": len(changes),
+        "changed_files": len(staged),
+        "changed_paths": sorted(staged),
         "reason": "",
     }

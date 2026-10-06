@@ -71,6 +71,7 @@ class OrchestratorInterventionTestCase(unittest.TestCase):
         self.backlog_file = self.stories_dir / "BACKLOG.md"
 
         self.current_story_file = root / "CURRENT_STORY.md"
+        self.attempt_state_file = root / "ATTEMPT_STATE.json"
 
         self._stack = ExitStack()
 
@@ -94,6 +95,10 @@ class OrchestratorInterventionTestCase(unittest.TestCase):
             (story_state, "STORIES_DIR", self.stories_dir),
             (story_state, "BACKLOG_FILE", self.backlog_file),
             (story_state, "CURRENT_STORY_FILE", self.current_story_file),
+            (story_state, "ATTEMPT_STATE_FILE", self.attempt_state_file),
+            (story_state, "ACTIVATION_LOCK_FILE", root / "STORY_ACTIVATION.lock"),
+            (orchestrator, "CURRENT_STORY_FILE", self.current_story_file),
+            (orchestrator, "ATTEMPT_STATE_FILE", self.attempt_state_file),
             (story_state, "ARCHIVE_DIR", self.archive_dir),
             (story_state, "REPO_ROOT", root),
             (story_archive, "ARCHIVE_DIR", self.archive_dir),

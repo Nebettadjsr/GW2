@@ -1,0 +1,153 @@
+{
+  "status": "READY",
+  "story_id": "STORY-WEB-021",
+  "rationale": "Existing component and controlled-browser checks cover much of the frontend-owned Ectoplasm calculation. The missing contract is stable content readiness: the screen root is always rendered, and the browser checks still use styling classes. I added a focused component test for readiness hooks and metadata failure. The test could not run because Node was blocked by a Windows filesystem permission error before Vitest started.",
+  "acceptance_checks": [
+    {
+      "criterion": "Add stable data-test hooks to current Ectoplasm data-driven regions.",
+      "expected": "Hooks identify the calculated result/calculation and account Luck regions, and the result readiness hook is available only once its required inputs have loaded.",
+      "verification": "Run the prepared Ecto content-hook component test; assert the always-rendered root alone does not satisfy readiness, populated result and Luck regions are identifiable, and a metadata failure does not expose result readiness."
+    },
+    {
+      "criterion": "Update Ectoplasm and layout browser/component checks to use semantic hooks where appropriate.",
+      "expected": "Ectoplasm and layout readiness checks wait on semantic result and Luck hooks rather than presentational selectors such as .salvage-calculation and .account-luck.",
+      "verification": "Run the focused component suite and controlled Ectoplasm and layout browser smoke checks; inspect their readiness selectors."
+    },
+    {
+      "criterion": "Verify current frontend-owned behavior, including recalculation, refresh, Luck, and supported warning/error states.",
+      "expected": "Existing assertions continue to verify populated economics, input-driven recalculation without another calculation request, price refresh without metadata or Luck reload, Luck presentation, and supported warnings/errors. No backend Ectoplasm calculation operation is introduced or required.",
+      "verification": "Run Ecto component tests and controlled Ectoplasm browser smoke; retain the existing assertion that no /api/ecto/salvage request occurs."
+    },
+    {
+      "criterion": "A root hook alone must not count as evidence that data and calculation results are available.",
+      "expected": "Readiness assertions target data-dependent result hooks, and the prepared test demonstrates the root exists before result readiness.",
+      "verification": "Run Ecto content-hook component test and browser readiness checks."
+    },
+    {
+      "criterion": "Remove unused .result-conclusion and .tool-separator scoped rules without changing visible behavior.",
+      "expected": "Both unused selectors are absent; focused component and browser checks still pass.",
+      "verification": "Inspect the component scoped styles and run the named Ecto checks."
+    }
+  ],
+  "invariants": [
+    "The browser remains the canonical owner of Ectoplasm salvage calculation; no backend calculation route is called.",
+    "Local input and TP mode changes recalculate without additional API requests.",
+    "A manual TP refresh rereads only Ecto and Dust prices, without reloading item metadata or account Luck.",
+    "Result readiness does not follow merely from the always-rendered ecto-screen root.",
+    "Account Luck presentation remains independently identifiable from the salvage result."
+  ],
+  "test_levels": [
+    "unit",
+    "ui",
+    "end_to_end"
+  ],
+  "existing_tests_reviewed": [
+    "frontend/src/ecto/__tests__/EctoSalvageScreen.spec.ts: verifies read requests and their IDs, absence of the obsolete calculation route, populated calculations, input/method/tool/TP recalculation, price refresh boundaries, Luck targets/progress, and capped Luck.",
+    "frontend/src/ecto/__tests__/currentEctoFixtures.ts: provides stable item, price, and Luck fixtures.",
+    "frontend/scripts/ecto-browser-smoke.mjs: exercises the controlled browser calculation and interactions; readiness currently uses .salvage-calculation and .account-luck.",
+    "frontend/scripts/layout-browser-smoke.mjs: layout destination readiness for Ectoplasm currently uses .panel:has(.salvage-calculation):has(.account-luck).",
+    "frontend/src/__tests__/App.spec.ts: checks the Ectoplasm screen root hook, which alone does not establish loaded content."
+  ],
+  "prepared_test_paths": [
+    "frontend/src/ecto/__tests__/EctoContentHooks.spec.ts"
+  ],
+  "test_specifications": [
+    "The prepared component test asserts ecto-screen exists immediately while ecto-result is absent; after successful metadata, prices, and Luck responses, the result, calculation, and account Luck hooks are present and expose the expected fixture result and consumed Luck.",
+    "The prepared component test rejects metadata and asserts the existing metadata warning appears while the result readiness hook remains absent.",
+    "After implementation, run `npm test -- --run src/ecto/__tests__/EctoContentHooks.spec.ts` and the focused Ecto component suite. The broader Ecto component suite must retain current calculation, refresh, Luck, and no-obsolete-route assertions.",
+    "After implementation, run `npm run build && npm run smoke:ecto` and `npm run build && npm run smoke:layout` in the controlled browser environment. Verify both browser checks use semantic readiness hooks, not styling classes, for result readiness."
+  ],
+  "pre_implementation_verification": {
+    "status": "NOT_RUN",
+    "command": "From frontend/: `npx vitest run src/ecto/__tests__/EctoContentHooks.spec.ts`",
+    "failure_evidence": "The command failed before Vitest loaded: Node reported EPERM from fs.realpathSync/lstat at C:\\Users\\Administrator. This is an environment/process filesystem failure, not a behavior assertion failure, so it is not expected-red evidence."
+  },
+  "coverage_review": "A local coverage summary is available: EctoSalvageScreen.vue reports 96.13% lines, 93.61% functions, 93.06% statements, and 88.99% branches. This is existing snapshot evidence, not a fresh run. Coverage does not establish the missing semantic-hook contract.",
+  "external_sources": [],
+  "clarifications": [],
+  "post_implementation_review_required": true,
+  "post_implementation_review_reason": "Required: the browser smoke scripts and layout consumer must be updated and run in a controlled browser runtime, which the prepared component test cannot verify. Review that readiness hooks represent loaded data and calculated results and that the obsolete style rules are removed.",
+  "schema_version": 1,
+  "qa_model": "gpt-6-luna",
+  "qa_reasoning_effort": "medium",
+  "story_contract_sha256": "b19d8a40d34612b372480aa600b8cf58e64a416997b4ed3586a5180bff278284",
+  "user_decision_ids": [],
+  "protected_test_hashes": {
+    "frontend/src/ecto/__tests__/EctoContentHooks.spec.ts": "8bb8144fd415edce6c4ab4a805f17448363401a3712c0e34d02cfa1bc728930c"
+  },
+  "post_implementation_reviews": [
+    {
+      "decision": "RETRY",
+      "reason": "The implementation meets the reviewed hook, selector, and behavior requirements, but the prepared QA test does not pass on this machine: its locale-sensitive Luck text assertion fails under de-DE.",
+      "evidence": [
+        "The prepared test is present and its SHA-256 matches the QA plan's protected hash.",
+        "The screen gates ecto-result on loading completion, available metadata, and a computed result; separate hooks identify the calculation and account Luck regions.",
+        "The Ectoplasm and layout smoke scripts use semantic hooks for readiness. The obsolete .result-conclusion and .tool-separator rules are absent.",
+        "The recorded implementation results report the focused existing component suite passing (29 tests), build and both browser smoke checks passing, and retention of recalculation, refresh-boundary, Luck, and obsolete-route assertions.",
+        "The recorded prepared-test run reports 1 pass and 1 failure: expected '14,134' but received '14.134' under de-DE. The test's literal expectation makes the new required check locale-dependent."
+      ],
+      "actionable_items": [
+        "Make the prepared test's Luck assertion locale-independent, for example by deriving its expected formatted value using the same locale behavior as the component, while preserving the semantic-hook and content checks.",
+        "Rerun the prepared test and focused Ectoplasm component suite in the affected locale; confirm they pass."
+      ],
+      "request_id": "ed796152-8be1-4469-a179-48134683bcc3"
+    },
+    {
+      "decision": "RETRY",
+      "reason": "The implementation appears to meet the hook, selector, and behavior requirements, but the prepared component test has no passing evidence for the current file. The recorded 14,134 failure describes a literal assertion, while the checked-in test derives the expected value with toLocaleString() and its SHA-256 matches the QA plan's protected hash. My focused test attempt failed before Vitest loaded because Node hit EPERM at C:\\Users\\Administrator. Re-run the current prepared test and focused suite in a working test environment before approval.",
+      "evidence": [
+        "The checked-in EctoContentHooks.spec.ts is present and its SHA-256 matches the QA plan's protected hash: 8bb8144fd415edce6c4ab4a805f17448363401a3712c0e34d02cfa1bc728930c.",
+        "The prepared test checks that ecto-screen exists before ecto-result, then checks calculation and Luck content; its Luck expectation uses the runtime locale.",
+        "EctoSalvageScreen.vue gates ecto-result on loading completion, metadata availability, and a computed effective cost; separate hooks identify calculation and account Luck.",
+        "The Ectoplasm and layout smoke scripts use semantic result and Luck hooks for readiness. The story reports both smoke checks and the build passing, as well as 29 focused existing component tests passing.",
+        "The story reports the prepared test failing on a literal locale-specific expectation, which does not match the current protected test contents and hash.",
+        "A fresh focused test invocation failed before Vitest started with Node EPERM at C:\\Users\\Administrator; this gives no behavior result.",
+        "The implementation report states that recalculation, price-refresh boundaries, Luck behavior, and absence of /api/ecto/salvage remain covered. The obsolete .result-conclusion and .tool-separator rules are absent."
+      ],
+      "actionable_items": [
+        "Rerun frontend/src/ecto/__tests__/EctoContentHooks.spec.ts and the focused Ecto component suite in an environment where Node can start; record results for the current hash-matching protected test."
+      ],
+      "request_id": "bdf7c822-dfd0-40ee-bc61-4fd1800f4e5e"
+    },
+    {
+      "decision": "APPROVE",
+      "reason": "The implementation meets the story’s readiness-hook, selector, behavior, and style-removal criteria. The prepared test is present and its SHA-256 matches the QA plan’s protected hash. The supplied host run passes the prepared test and focused component tests: 3 files, 31 tests.",
+      "evidence": [
+        "EctoSalvageScreen.vue exposes ecto-result only when loading is complete, metadata is available, and the effective cost is computed; it identifies calculation and account Luck separately.",
+        "The prepared test checks that the screen root exists before result readiness, verifies populated calculation and Luck content, and checks that metadata failure withholds result readiness.",
+        "The Ectoplasm and layout browser smoke scripts use semantic hooks for readiness. The implementation record reports both browser smoke checks and the build passed.",
+        "Existing component assertions cover recalculation, price refresh boundaries, Luck behavior, and no request to /api/ecto/salvage.",
+        "The unused .result-conclusion and .tool-separator rules are absent.",
+        "The supplied host verification passed EctoContentHooks.spec.ts, EctoSalvageScreen.spec.ts, and App.spec.ts: 31 tests across 3 files."
+      ],
+      "actionable_items": [],
+      "request_id": "8a38d2c7-95a2-47ac-a986-f51ac67f130f"
+    }
+  ],
+  "protected_test_corrections": [
+    {
+      "path": "frontend/src/ecto/__tests__/EctoContentHooks.spec.ts",
+      "reason": "The story requires the Luck value 14,134 but specifies no grouping separator. The UI uses locale-sensitive toLocaleString(), so the protected assertion now derives the expected rendering using the runtime locale.",
+      "previous_review": "RETRY; preserved in post_implementation_reviews. This correction does not change that verdict."
+    }
+  ],
+  "post_implementation_test_verification": {
+    "recorded_at": "2026-10-05T07:09:06+02:00",
+    "command": "npm test -- --run src/ecto/__tests__/EctoContentHooks.spec.ts src/ecto/__tests__/EctoSalvageScreen.spec.ts src/__tests__/App.spec.ts",
+    "working_directory": "frontend",
+    "execution_path": "qa_agent.run_web021_review_tests: Node invokes the installed npm-cli.js outside Codex sandbox",
+    "environment": {
+      "CI": "true",
+      "npm_user_config_cache_and_temp": "frontend/node_modules/.cache/qa-review-runner",
+      "unset": [
+        "NODE_OPTIONS",
+        "NODE_PATH",
+        "INIT_CWD",
+        "PWD",
+        "inherited npm_config_*"
+      ]
+    },
+    "exit_code": 0,
+    "result": "PASS: 3 test files, 31 tests"
+  }
+}

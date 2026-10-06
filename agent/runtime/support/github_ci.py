@@ -259,6 +259,7 @@ def _decide(slug: str, sha: str, runs: list[dict]) -> dict:
             runs=runs,
         )
 
+    details = failure_details(slug, failed)
     return {
         "status": "FAILED",
         "sha": sha,
@@ -266,7 +267,8 @@ def _decide(slug: str, sha: str, runs: list[dict]) -> dict:
             f"{run.get('name', 'workflow')}: {run.get('conclusion')}"
             for run in failed
         ),
-        "report": failure_report(slug, sha, failed),
+        "report": failure_report(slug, sha, failed, details=details),
+        "failed_jobs": details,
         "run_urls": [run.get("html_url", "") for run in failed],
     }
 
@@ -350,9 +352,27 @@ def _failed_step_names(job: dict) -> list[str]:
     ]
 
 
-def failure_report(slug: str, sha: str, failed_runs: list[dict]) -> str:
+def failure_details(slug: str, failed_runs: list[dict]) -> list[dict]:
+    """Return structured failing jobs and annotations for deterministic triage."""
+    result = []
+    for run in failed_runs:
+        for job in _failed_jobs(slug, run):
+            result.append({
+                "workflow": run.get("name", "CI"),
+                "run_url": run.get("html_url", ""),
+                "job": job.get("name", "(unnamed job)"),
+                "steps": _failed_step_names(job),
+                "annotations": _annotations(job),
+            })
+    return result
+
+
+def failure_report(slug: str, sha: str, failed_runs: list[dict],
+                   details: list[dict] | None = None) -> str:
     sections = [f"GitHub CI failed for commit {sha[:7]}."]
     reported = 0
+    if details is None:
+        details = failure_details(slug, failed_runs)
 
     for run in failed_runs:
         sections.append(
@@ -360,14 +380,16 @@ def failure_report(slug: str, sha: str, failed_runs: list[dict]) -> str:
             f"Run log: {run.get('html_url', '(url unavailable)')}"
         )
 
-        for job in _failed_jobs(slug, run):
-            steps = _failed_step_names(job)
+        run_details = [item for item in details
+                       if item.get("run_url") == run.get("html_url", "")]
+        for item in run_details:
+            steps = item.get("steps", [])
             sections.append(
-                f"\nFailed job: {job.get('name', '(unnamed job)')}"
+                f"\nFailed job: {item.get('job', '(unnamed job)')}"
                 + (f" (step: {', '.join(steps)})" if steps else "")
             )
 
-            annotations = _annotations(job)
+            annotations = item.get("annotations", [])
 
             if not annotations:
                 sections.append(

@@ -412,6 +412,7 @@ def evaluate_story(
     result_was_updated: bool,
     qa_plan: dict | None = None,
     qa_integrity_findings: list[str] | None = None,
+    persist: bool = True,
 ) -> dict:
 
     prompt = build_evaluation_prompt(
@@ -451,10 +452,11 @@ def evaluate_story(
     result["qa_review_required"] = bool(verdict.get("qa_review_required", False))
     result["qa_review_reason"] = str(verdict.get("qa_review_reason", ""))
 
-    write_json(
-        EVALUATOR_RESULT_FILE,
-        result
-    )
+    if persist:
+        write_json(
+            EVALUATOR_RESULT_FILE,
+            result
+        )
 
     return result
 

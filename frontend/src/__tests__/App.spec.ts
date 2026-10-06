@@ -218,7 +218,10 @@ describe('App shell', () => {
       .toEqual(METADATA_IDS)
     expect(pathsOf('/api/account')).toEqual(['/api/account/luck'])
     expect(open.find('[data-test="ecto-screen"]').exists()).toBe(true)
-    expect(open.find('.salvage-calculation').exists()).toBe(true)
+    // The screen root is rendered before its inputs answer, so the loaded, locally calculated
+    // result is asserted through its own readiness hook rather than through the root or a style class.
+    expect(open.find('[data-test="ecto-result"]').exists()).toBe(true)
+    expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(true)
     expect(pathsOf('/api/sync')).toEqual([])
   })
 

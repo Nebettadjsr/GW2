@@ -24,6 +24,14 @@ calculation outputs when correctness spans components. Use property-based tests
 for recursive, shared-dependency, allocation, numerical-boundary, or settings
 combination spaces when appropriate; ensure generated failures are reproducible.
 
+Scale verification to the story's risk and changed behavior. A narrow deletion,
+documentation edit, or similarly low-risk maintenance change normally needs only
+focused deterministic checks. Do not turn a broad smoke command or an already
+known unrelated failure into a required story gate unless it is necessary to
+verify this story's acceptance criteria or a critical integration boundary. Keep
+optional confidence checks separate from required acceptance checks, and state
+why each required check is in scope.
+
 Run newly prepared tests before implementation where practical. Record the exact
 command and distinguish a behavior-level expected failure from compilation,
 fixture, dependency, or environment failure. A failing test is not expected-red

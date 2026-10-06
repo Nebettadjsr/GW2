@@ -1,0 +1,24 @@
+[14:16:55] Codex capacity exhausted during evaluation (quota); the finished Claude work is preserved and recorded in ATTEMPT_STATE.json. Waiting locally for Codex capacity; this does not consume an evaluation attempt.
+[14:16:55] Resuming STORY-QA-010-example.md at AWAITING_EVALUATION: the previous run's Claude attempt is already finished on disk, so it is not repeated (retries 0/2, CI fixes 0/2 carried over).
+[14:16:55] STORY-QA-010-example.md recorded BLOCKED per the evaluator's verdict: fixture
+[14:16:55] QA preparation complete for STORY-QA-010: READY.
+[14:16:55] QA preparation complete for STORY-QA-010: NO_TESTS_NEEDED.
+[14:16:56] Resuming STORY-QA-010-example.md at AWAITING_QA_REVIEW: the previous run's Claude attempt is already finished on disk, so it is not repeated (retries 1/2, CI fixes 0/2 carried over).
+[14:16:56] STORY-QA-010-example.md recorded BLOCKED per the evaluator's verdict: saved
+[14:16:56] STORY-QA-010-example.md recorded BLOCKED per the evaluator's verdict: fixture stop
+[16:51:43] Codex capacity exhausted during evaluation (quota); the finished Claude work is preserved and recorded in ATTEMPT_STATE.json. Waiting locally for Codex capacity; this does not consume an evaluation attempt.
+[16:51:43] Resuming STORY-QA-010-example.md at AWAITING_EVALUATION: the previous run's Claude attempt is already finished on disk, so it is not repeated (retries 0/2, CI fixes 0/2 carried over).
+[16:51:43] STORY-QA-010-example.md recorded BLOCKED per the evaluator's verdict: fixture
+[16:51:43] QA preparation complete for STORY-QA-010: READY.
+[16:51:43] QA preparation complete for STORY-QA-010: NO_TESTS_NEEDED.
+[16:51:43] Resuming STORY-QA-010-example.md at AWAITING_QA_REVIEW: the previous run's Claude attempt is already finished on disk, so it is not repeated (retries 1/2, CI fixes 0/2 carried over).
+[16:51:43] STORY-QA-010-example.md recorded BLOCKED per the evaluator's verdict: saved
+[16:51:43] STORY-QA-010-example.md recorded BLOCKED per the evaluator's verdict: fixture stop
+[16:53:56] Codex capacity exhausted during evaluation (quota); the finished Claude work is preserved and recorded in ATTEMPT_STATE.json. Waiting locally for Codex capacity; this does not consume an evaluation attempt.
+[16:53:56] Resuming STORY-QA-010-example.md at AWAITING_EVALUATION: the previous run's Claude attempt is already finished on disk, so it is not repeated (retries 0/2, CI fixes 0/2 carried over).
+[16:53:56] STORY-QA-010-example.md recorded BLOCKED per the evaluator's verdict: fixture
+[16:53:56] QA preparation complete for STORY-QA-010: READY.
+[16:53:56] QA preparation complete for STORY-QA-010: NO_TESTS_NEEDED.
+[16:53:56] Resuming STORY-QA-010-example.md at AWAITING_QA_REVIEW: the previous run's Claude attempt is already finished on disk, so it is not repeated (retries 1/2, CI fixes 0/2 carried over).
+[16:53:56] STORY-QA-010-example.md recorded BLOCKED per the evaluator's verdict: saved
+[16:53:56] STORY-QA-010-example.md recorded BLOCKED per the evaluator's verdict: fixture stop

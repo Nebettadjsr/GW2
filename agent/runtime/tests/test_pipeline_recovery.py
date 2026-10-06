@@ -282,7 +282,7 @@ class ResumeAfterInterruptionTest(PipelineRecoveryTestCase):
             evaluator_file.write_text(json.dumps({
                 "decision": "COMPLETE",
                 "story_id": "STORY-DOM-001",
-                "evaluated_story_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                "evaluated_story_contract_sha256": orchestrator.story_contract_hash(content),
                 "evaluated_result_sha256": orchestrator.file_hash(self.result_file),
             }), encoding="utf-8")
             self.assertFalse(orchestrator._active_is_executable())
@@ -294,11 +294,68 @@ class ResumeAfterInterruptionTest(PipelineRecoveryTestCase):
             "DONE",
         )
 
-    def test_a_malformed_record_is_ignored_rather_than_guessed_at(self):
+    def test_a_malformed_record_is_preserved_and_stops_recovery(self):
         self.given_finished_attempt("AWAITING_EVALUATION")
         self.attempt_state_file.write_text("{not json", encoding="utf-8")
 
-        self.assertIsNone(orchestrator.read_attempt_state())
+        with self.assertRaises(orchestrator.UnrecoverableWorkflowState):
+            orchestrator.read_attempt_state()
+        self.assertEqual(self.attempt_state_file.read_text(encoding="utf-8"), "{not json")
+
+    def test_status_transition_does_not_invalidate_matching_evaluator_contract(self):
+        story = self.given_finished_attempt("AWAITING_EVALUATION")
+        content = story.read_text(encoding="utf-8")
+        evaluator_file = self.stories_dir / "EVALUATOR_RESULT.json"
+        evaluator_file.write_text(json.dumps({
+            "decision": "COMPLETE",
+            "story_id": "STORY-DOM-001",
+            "evaluated_story_contract_sha256": orchestrator.story_contract_hash(content),
+            "evaluated_result_sha256": orchestrator.file_hash(self.result_file),
+        }), encoding="utf-8")
+        changed_status = content.replace("Status\n\nDONE", "Status\n\nBLOCKED")
+        with patch.object(orchestrator, "EVALUATOR_RESULT_FILE", evaluator_file):
+            self.assertIsNotNone(orchestrator._load_current_evaluator_result(
+                story, changed_status
+            ))
+
+    def test_crash_after_coding_completion_resumes_at_evaluation(self):
+        story = self.given_finished_attempt(
+            "CODING", baseline_result_sha256="before-coding"
+        )
+        with patch.object(git_sync, "working_tree_paths",
+                          return_value={story.relative_to(orchestrator.REPO_ROOT).as_posix()}), \
+             patch.object(orchestrator, "_evaluate_preserving_completed_attempt",
+                          return_value={"decision": "COMPLETE", "reason": "valid"}) as evaluate, \
+             patch.object(orchestrator, "run_claude_attempt") as claude:
+            outcome = orchestrator.execute_active_story()
+
+        self.assertEqual(outcome, "COMPLETE")
+        evaluate.assert_called_once()
+        claude.assert_not_called()
+        self.assertFalse(self.attempt_state_file.exists())
+
+    def test_missing_pointer_is_restored_from_attempt_journal(self):
+        story = self.given_finished_attempt("FINALIZING")
+        self.current_story_file.write_text("", encoding="utf-8")
+
+        with patch.object(orchestrator, "CURRENT_STORY_FILE", self.current_story_file):
+            orchestrator.reconcile_attempt_pointer()
+
+        self.assertEqual(self.current_story_file.read_text(encoding="utf-8").strip(),
+                         story.relative_to(orchestrator.REPO_ROOT).as_posix())
+
+    def test_conflicting_pointer_is_not_overwritten(self):
+        self.given_finished_attempt("AWAITING_EVALUATION")
+        other = self.write_story("STORY-DOM-002-other.md",
+                                 story_with_id("STORY-DOM-002", "## Status\n\nTODO\n"))
+        self.current_story_file.write_text(other.name + "\n", encoding="utf-8")
+
+        with patch.object(orchestrator, "CURRENT_STORY_FILE", self.current_story_file), \
+                self.assertRaises(orchestrator.UnrecoverableWorkflowState):
+            orchestrator.reconcile_attempt_pointer()
+
+        self.assertEqual(self.current_story_file.read_text(encoding="utf-8"),
+                         other.name + "\n")
 
 
 class UnpublishedCompletionTest(PipelineRecoveryTestCase):
