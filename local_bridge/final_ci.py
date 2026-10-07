@@ -186,6 +186,7 @@ def execute_final_ci(story_id: str, head_sha: str, contract_sha256: str, impleme
         raise FinalCIRequestError("The GitHub origin remote is unavailable.")
     result = github_ci.wait_for_commit(
         slug, head_sha, sleep=time.sleep, monotonic=time.monotonic,
+        application_checks=True,
     )
 
     after = inspect_final_ci(implementation, store, allow_task_id=task_id)
@@ -201,5 +202,6 @@ def execute_final_ci(story_id: str, head_sha: str, contract_sha256: str, impleme
         "evaluation_contract_sha256": before["evaluation_contract_sha256"],
         "final_ci_contract_sha256": contract_sha256,
         "result_source": "github_actions_for_pushed_commit",
+        "application_verdict_policy": github_ci.APPLICATION_CI_VERDICT_POLICY,
         "operation_source": "local_bridge_http",
     }

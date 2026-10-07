@@ -19,6 +19,83 @@ from agent.runtime.support import config, git_sync, github_ci
 from local_bridge import final_ci
 
 
+class ApplicationScopedCIVerdictTests(unittest.TestCase):
+    sha = "a" * 40
+    run_url = "https://github.invalid/actions/runs/51"
+    jobs_url = "https://api.github.com/repos/fixture/repo/actions/runs/51/jobs?per_page=100"
+
+    @staticmethod
+    def job(name, conclusion="success", status="completed"):
+        return {"name": name, "status": status, "conclusion": conclusion,
+                "steps": [], "check_run_url": "https://api.github.com/check-runs/51"}
+
+    def base_jobs(self):
+        return [self.job("Backend tests (Maven)"),
+                self.job("Frontend tests (Vitest)"),
+                self.job("Coverage KPI report")]
+
+    def evaluate(self, jobs, *, run_conclusion="failure", jobs_response=None):
+        run_record = {
+            "id": 51, "name": "CI", "path": ".github/workflows/ci.yml@refs/heads/main",
+            "status": "completed", "conclusion": run_conclusion,
+            "html_url": self.run_url,
+        }
+
+        def fetch(url, timeout=30):
+            if "/actions/runs?" in url:
+                return 200, {}, {"workflow_runs": [run_record]}
+            if url == self.jobs_url:
+                if jobs_response is not None:
+                    return jobs_response
+                return 200, {}, {"total_count": len(jobs), "jobs": jobs}
+            if url.endswith("/annotations"):
+                return 200, {}, []
+            raise AssertionError(f"unexpected GitHub API request: {url}")
+
+        with patch.object(github_ci, "fetch_json", side_effect=fetch):
+            return github_ci.wait_for_commit(
+                "fixture/repo", self.sha, sleep=lambda _seconds: None,
+                monotonic=lambda: 0.0, application_checks=True,
+            )
+
+    def test_agent_only_failure_passes_when_each_application_job_succeeds(self):
+        result = self.evaluate(self.base_jobs() + [
+            self.job("Agent runtime tests (pytest-cov)", "failure")
+        ])
+        self.assertEqual("PASSED", result["status"])
+        self.assertEqual("Agent runtime tests (pytest-cov)", result["ignored_failures"][0]["job"])
+
+    def test_required_application_failure_stays_failed(self):
+        jobs = self.base_jobs()
+        jobs[0] = self.job("Backend tests (Maven)", "failure")
+        self.assertEqual("FAILED", self.evaluate(jobs)["status"])
+
+    def test_mixed_application_and_agent_failures_stay_failed(self):
+        jobs = self.base_jobs() + [self.job("Agent runtime tests (pytest-cov)", "failure")]
+        jobs[1] = self.job("Frontend tests (Vitest)", "failure")
+        result = self.evaluate(jobs)
+        self.assertEqual("FAILED", result["status"])
+        self.assertIn("Frontend tests (Vitest)", result["reason"])
+
+    def test_unknown_combined_failure_is_not_ignored(self):
+        result = self.evaluate(self.base_jobs() + [self.job("Backend and agent checks", "failure")])
+        self.assertEqual("FAILED", result["status"])
+        self.assertIn("Backend and agent checks", result["reason"])
+
+    def test_missing_or_unreadable_results_are_unverified(self):
+        missing = self.evaluate(self.base_jobs()[:-1])
+        self.assertEqual("UNVERIFIED", missing["status"])
+        self.assertIn("missing or ambiguous", missing["reason"])
+        unreadable = self.evaluate([], jobs_response=(503, {}, {"message": "unavailable"}))
+        self.assertEqual("UNVERIFIED", unreadable["status"])
+
+    def test_cancelled_required_application_check_is_not_a_pass(self):
+        jobs = self.base_jobs()
+        jobs[-1] = self.job("Coverage KPI report", "cancelled")
+        result = self.evaluate(jobs)
+        self.assertEqual("UNVERIFIED", result["status"])
+
+
 class FinalCIBridgeTests(unittest.TestCase):
     story_id = "STORY-WEB-921"
     head_sha = "b" * 40
@@ -109,6 +186,7 @@ class FinalCIBridgeTests(unittest.TestCase):
         self.wait_patch.start()
         self.addCleanup(self.wait_patch.stop)
         self.wait_calls = []
+        self.application_policy_calls = []
 
         self.bridge = Bridge(self.store, "fixture-token", callback_origin="http://127.0.0.1:56789")
         self.callbacks = []
@@ -151,8 +229,9 @@ class FinalCIBridgeTests(unittest.TestCase):
             return dict(self.persisted_evaluator)
         return None
 
-    def wait_for_commit(self, slug, sha, sleep, monotonic, notify=None):
+    def wait_for_commit(self, slug, sha, sleep, monotonic, notify=None, application_checks=False):
         self.wait_calls.append((slug, sha))
+        self.application_policy_calls.append(application_checks)
         return dict(self.ci_result)
 
     def readiness(self):
@@ -227,6 +306,7 @@ class FinalCIBridgeTests(unittest.TestCase):
         self.wait_callback()
         self.assertEqual("PASSED", task["result"]["status"])
         self.assertEqual([("fixture/repo", self.head_sha)], self.wait_calls)
+        self.assertEqual([True], self.application_policy_calls)
         callback2 = self.bridge.callback_origin + "/webhook-waiting/run-2/wait?signature=fixture"
         status, replay = self.request(callback_url=callback2)
         self.assertEqual(202, status, replay)
@@ -260,6 +340,46 @@ class FinalCIBridgeTests(unittest.TestCase):
         self.wait_callback()
         self.assertEqual([], self.wait_calls)
         self.assertEqual(task_id, self.callbacks[-1]["task_id"])
+
+    def test_legacy_failed_record_rechecks_same_run_under_application_policy(self):
+        started = []
+        self.bridge.start_final_ci = started.append
+        fingerprint = self.readiness()["final_ci_contract_sha256"]
+        status, initial = self.request(fingerprint=fingerprint)
+        self.assertEqual(202, status, initial)
+        task_id = initial["task_id"]
+        started.clear()
+
+        old_result = {
+            "status": "FAILED", "sha": self.head_sha, "story_id": self.story_id,
+            "final_ci_contract_sha256": fingerprint,
+            "result_source": "github_actions_for_pushed_commit",
+            "reason": "CI: failure", "failed_jobs": [
+                {"job": "Agent runtime tests (pytest-cov)"},
+            ],
+        }
+        self.store.update(task_id, status="completed", exit_code=1, result=old_result)
+        callback2 = self.bridge.callback_origin + "/webhook-waiting/run-2/wait?signature=fixture"
+        status, replay = self.request(callback_url=callback2, fingerprint=fingerprint)
+        self.assertEqual(202, status, replay)
+        self.assertEqual(task_id, replay["task_id"])
+        self.assertEqual("queued", replay["status"])
+        self.assertEqual([task_id], started)
+
+        self.ci_result = {
+            "status": "PASSED", "sha": self.head_sha,
+            "reason": "All required GW2 application CI checks passed.",
+            "report": "", "run_urls": ["https://github.invalid/actions/1"],
+            "ignored_failures": [{"job": "Agent runtime tests (pytest-cov)", "conclusion": "failure"}],
+        }
+        self.bridge._run_final_ci(task_id)
+        task = self.store.get(task_id)
+        self.assertEqual("completed", task["status"])
+        self.assertEqual(0, task["exit_code"])
+        self.assertEqual("PASSED", task["result"]["status"])
+        self.assertEqual("gw2-application-jobs-v1", task["result"]["application_verdict_policy"])
+        self.assertEqual([("fixture/repo", self.head_sha)], self.wait_calls)
+        self.assertEqual([True], self.application_policy_calls)
 
     def test_failed_ci_is_distinct_from_unverified_timeout(self):
         self.ci_result = {"status": "FAILED", "sha": self.head_sha, "reason": "Frontend tests: failure",

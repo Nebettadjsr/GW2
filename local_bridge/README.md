@@ -116,6 +116,26 @@ The endpoint adapter tests use temporary backlog and story files, so they do not
 python -m unittest discover -s local_bridge -p "test_story_selection.py" -v
 ```
 
+## Finalize a story after CI
+
+`GET /stories/active/finalization-readiness` verifies the existing implementation, QA plan and protected tests, latest APPROVE review, COMPLETE Evaluator result, and the application-scoped PASSED final-CI result for the published HEAD commit. `POST /story-finalizations` accepts the story ID and readiness contract hash. It repeats the checks under the shared story lifecycle lock, marks the story DONE, moves its backlog entry, clears `CURRENT_STORY.md`, and creates one local finalization commit. It never pushes or activates the next story.
+
+The n8n workflow **GW2 - Finalize Story** is manual, inactive and unpublished. Restart the bridge after updating `bridge.py`. Before the first real run, inspect readiness without changing anything:
+
+```powershell
+$token = (Get-Content -Raw (Join-Path $env:USERPROFILE '.gw2-claude-bridge\token.txt')).Trim()
+Invoke-RestMethod -Uri 'http://172.29.240.1:8765/stories/active/finalization-readiness' `
+    -Headers @{ Authorization = "Bearer $token" }
+```
+
+Proceed only if `finalization_permitted` is true and the story is the one intended. Then execute the n8n workflow once; it fetches readiness again and submits the guarded transition. Verify the resulting local commit and the Done/empty-pointer state before publishing that commit separately. Do not run this workflow while the old orchestrator is running. If a lifecycle write or local commit is interrupted, rerunning the same readiness/submission is safe only when the bridge identifies the exact known transition prefix; unrelated staged files or other repository inconsistencies return a recovery diagnostic and require manual inspection.
+
+Finalization fixture tests use temporary Git repositories and never change the live backlog:
+
+```powershell
+python -m unittest local_bridge.test_finalization -v
+```
+
 ## Safely activate a selected story
 
 The existing runtime's rules remain authoritative: selection walks `## To Do` in backlog order; it skips missing, archived, completed, unfinished, superseded, blocked, or dependency-incomplete stories. `## Active` holds at most one story and must agree with `CURRENT_STORY.md`. Activation moves the existing backlog row and its summary from To Do to Active. Completion later moves it to Done and clears the pointer. `ATTEMPT_STATE.json` records the orchestrator's later execution/evaluation/publication phase; it is not an activation journal, so the bridge refuses to start another story while that record is present.

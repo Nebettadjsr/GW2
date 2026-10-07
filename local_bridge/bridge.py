@@ -710,6 +710,18 @@ def make_handler(bridge: Bridge):
                     "operation_source": "local_bridge_http",
                 })
                 return
+            if path == "/stories/active/finalization-readiness":
+                if not self._authorized():
+                    return
+                from local_bridge.finalization import inspect_finalization
+                from agent.runtime.core import story_state
+                try:
+                    active_path = story_state.get_active_story_path()
+                    active_id = story_state.extract_story_id(active_path.read_text(encoding="utf-8"))
+                except (OSError, ValueError, RuntimeError, FileNotFoundError):
+                    active_id = None
+                self._send(200, inspect_finalization(active_id, bridge.store))
+                return
             if not path.startswith("/tasks/"):
                 self._send(404, {"error": "Not found."})
                 return
@@ -738,6 +750,9 @@ def make_handler(bridge: Bridge):
                 return
             if path == "/final-ci-tasks":
                 self._submit_final_ci()
+                return
+            if path == "/story-finalizations":
+                self._submit_finalization()
                 return
             if path == "/stories/activate":
                 try:
@@ -784,6 +799,7 @@ def make_handler(bridge: Bridge):
                     **_story_details(story_path),
                 })
                 return
+
             if path not in {"/tasks", "/implementation-tasks"}:
                 self._send(404, {"error": "Not found."})
                 return
@@ -1147,6 +1163,39 @@ def make_handler(bridge: Bridge):
             except (OSError, ValueError, KeyError, TypeError) as error:
                 self._send(409, {"error": f"Evaluator task could not be safely accepted: {type(error).__name__}: {error}"})
 
+        def _submit_finalization(self) -> None:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 4096:
+                    raise ValueError("Request body is empty or too large.")
+                raw_body = self.rfile.read(length)
+            except ValueError as error:
+                self._send(400, {"error": str(error)})
+                return
+            if not self._authorized():
+                return
+            try:
+                body = json.loads(raw_body)
+                if not isinstance(body, dict) or set(body) != {"story_id", "finalization_contract_sha256"}:
+                    raise ValueError("Finalization requires story_id and finalization_contract_sha256.")
+                story_id = body.get("story_id")
+                fingerprint = body.get("finalization_contract_sha256")
+                if not isinstance(story_id, str) or not re.fullmatch(r"STORY-[A-Za-z0-9]+-\d+", story_id):
+                    raise ValueError("story_id must be a canonical STORY identifier.")
+                if not isinstance(fingerprint, str) or not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+                    raise ValueError("finalization_contract_sha256 must be a SHA-256 hex digest.")
+                if self.headers.get("Idempotency-Key", "") != f"gw2-finalize-{story_id}-{fingerprint}":
+                    raise ValueError("Idempotency-Key must bind the story and finalization contract.")
+            except (ValueError, json.JSONDecodeError) as error:
+                self._send(400, {"error": str(error)})
+                return
+            try:
+                from local_bridge.finalization import finalize_story
+                self._send(200, finalize_story(story_id, fingerprint, bridge.store))
+            except (ValueError, RuntimeError, OSError) as error:
+                self._send(409, {"error": str(error), "recovery_required": True,
+                                 "operation_source": "local_bridge_http"})
+
         def _submit_final_ci(self) -> None:
             try:
                 length = int(self.headers.get("Content-Length", "0"))
@@ -1188,6 +1237,7 @@ def make_handler(bridge: Bridge):
                 from local_bridge.final_ci import (
                     CI_TASK_TYPE, FinalCIRequestError, inspect_final_ci,
                 )
+                from agent.runtime.support.github_ci import APPLICATION_CI_VERDICT_POLICY
                 from agent.runtime.core import story_state
 
                 active_path = story_state.get_active_story_path()
@@ -1215,7 +1265,22 @@ def make_handler(bridge: Bridge):
                 if bridge.store.has_uncertain_final_ci_task(story_id, existing.get("id") if existing else None):
                     raise RuntimeError("A different final CI task was interrupted with an uncertain outcome. Inspect it before recovery.")
 
-                replay_is_terminal = bool(existing and existing.get("status") in TERMINAL_STATUSES)
+                prior_result = existing.get("result") if existing else None
+                recheck_legacy_ci_verdict = bool(
+                    existing
+                    and existing.get("status") == "completed"
+                    and isinstance(prior_result, dict)
+                    and prior_result.get("status") == "FAILED"
+                    and prior_result.get("result_source") == "github_actions_for_pushed_commit"
+                    and prior_result.get("story_id") == story_id
+                    and prior_result.get("final_ci_contract_sha256") == fingerprint
+                    and prior_result.get("sha") == head_sha
+                    and prior_result.get("application_verdict_policy") != APPLICATION_CI_VERDICT_POLICY
+                )
+                replay_is_terminal = bool(
+                    existing and existing.get("status") in TERMINAL_STATUSES
+                    and not recheck_legacy_ci_verdict
+                )
                 task, created = bridge.store.create(
                     f"Final CI {story_id} {head_sha}", key,
                     None if replay_is_terminal else callback_url,
@@ -1224,6 +1289,14 @@ def make_handler(bridge: Bridge):
                 )
                 if created:
                     task = bridge.store.update(task["id"], ci_head_sha=head_sha)
+                    bridge.start_final_ci(task["id"])
+                elif recheck_legacy_ci_verdict:
+                    # Re-evaluate the already completed GitHub run under the
+                    # application-job policy. This queries the same commit;
+                    # it does not dispatch CI or rerun its jobs.
+                    task = bridge.store.update(
+                        task["id"], status="queued", result=None, exit_code=None, error=None,
+                    )
                     bridge.start_final_ci(task["id"])
                 elif task.get("status") == "interrupted":
                     recovered = task.get("result")

@@ -51,6 +51,18 @@ MAX_CONSECUTIVE_API_ERRORS = 5
 # hourly; the overall CI deadline still applies on top of this.
 MAX_BACKOFF_SECONDS = 15 * 60
 
+# These jobs are the GW2 application contract in .github/workflows/ci.yml.
+# A pass for application stories requires each job to be independently green;
+# the agent-runtime job is deliberately not in this required set.
+APPLICATION_REQUIRED_JOBS = (
+    "backend tests (maven)",
+    "frontend tests (vitest)",
+    "coverage kpi report",
+)
+AGENT_RUNTIME_JOB = "agent runtime tests (pytest-cov)"
+APPLICATION_CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
+APPLICATION_CI_VERDICT_POLICY = "gw2-application-jobs-v1"
+
 
 def _token() -> str | None:
     for name in TOKEN_VARIABLES:
@@ -159,6 +171,7 @@ def wait_for_commit(
         sleep,
         monotonic,
         notify=None,
+        application_checks: bool = False,
 ) -> dict:
     """Block until this commit's CI is decided, or a deadline passes.
 
@@ -195,6 +208,8 @@ def wait_for_commit(
             last_seen = len(runs)
 
             if runs and all(run.get("status") == "completed" for run in runs):
+                if application_checks:
+                    return _decide_application_checks(slug, sha, runs)
                 return _decide(slug, sha, runs)
 
             if not runs and waited >= CI_RUN_START_TIMEOUT_SECONDS:
@@ -270,6 +285,149 @@ def _decide(slug: str, sha: str, runs: list[dict]) -> dict:
         "report": failure_report(slug, sha, failed, details=details),
         "failed_jobs": details,
         "run_urls": [run.get("html_url", "") for run in failed],
+    }
+
+
+def _application_job_rows(slug: str, run: dict) -> tuple[list[dict] | None, str | None]:
+    run_id = run.get("id")
+    if not isinstance(run_id, (int, str)) or not str(run_id).isdigit():
+        return None, "The GitHub CI run has no verifiable run ID."
+
+    status, _headers, body = fetch_json(
+        f"{API_ROOT}/repos/{slug}/actions/runs/{run_id}/jobs?per_page=100"
+    )
+    if status != 200 or not isinstance(body, dict):
+        return None, f"GitHub job results for CI run {run_id} could not be verified (HTTP {status})."
+
+    jobs = body.get("jobs")
+    count = body.get("total_count")
+    if (not isinstance(jobs, list) or not isinstance(count, int)
+            or count != len(jobs) or any(not isinstance(job, dict) for job in jobs)):
+        return None, f"GitHub returned an incomplete job list for CI run {run_id}."
+    return jobs, None
+
+
+def _application_failure_details(slug: str, run: dict, jobs: list[dict]) -> list[dict]:
+    details = []
+    for job in jobs:
+        if job.get("conclusion") in NON_FAILING_CONCLUSIONS:
+            continue
+        details.append({
+            "workflow": run.get("name", "CI"),
+            "run_url": run.get("html_url", ""),
+            "job": job.get("name", "(unnamed job)"),
+            "steps": _failed_step_names(job),
+            "annotations": _annotations(job),
+        })
+    return details
+
+
+def _decide_application_checks(slug: str, sha: str, runs: list[dict]) -> dict:
+    """Evaluate GW2 application jobs independently of the agent-runtime job.
+
+    A failed overall CI run is acceptable only when its application jobs are
+    individually successful and its only failed job is the agent runtime
+    suite. Missing/ambiguous job data and all other failures fail closed.
+    """
+    ci_runs = []
+    for run in runs:
+        path = str(run.get("path", "")).split("@", 1)[0]
+        if path == APPLICATION_CI_WORKFLOW_PATH:
+            ci_runs.append(run)
+        elif run.get("name") == "CI":
+            return _unverified(sha, "The CI workflow path could not be verified.", runs)
+
+    if not ci_runs:
+        return _unverified(sha, "No run of the required GW2 CI workflow was found.", runs)
+
+    non_ci_failures = [run for run in runs if run not in ci_runs
+                       and run.get("conclusion") not in NON_FAILING_CONCLUSIONS]
+    if non_ci_failures:
+        return _decide(slug, sha, non_ci_failures)
+
+    ignored_agent_failures = []
+    application_failures = []
+    for run in ci_runs:
+        if run.get("conclusion") not in {"success", "failure"}:
+            return _unverified(
+                sha,
+                f"The GW2 CI workflow ended without a verifiable verdict ({run.get('conclusion')}).",
+                ci_runs,
+            )
+
+        jobs, error = _application_job_rows(slug, run)
+        if error:
+            return _unverified(sha, error, ci_runs)
+
+        by_name: dict[str, list[dict]] = {}
+        for job in jobs:
+            by_name.setdefault(str(job.get("name", "")).strip().casefold(), []).append(job)
+
+        for required_name in APPLICATION_REQUIRED_JOBS:
+            matches = by_name.get(required_name, [])
+            if len(matches) != 1:
+                return _unverified(
+                    sha,
+                    f"Required application CI job '{required_name}' is missing or ambiguous.",
+                    ci_runs,
+                )
+            job = matches[0]
+            if job.get("status") != "completed":
+                return _unverified(sha, f"Required application CI job '{job.get('name')}' is incomplete.", ci_runs)
+            if job.get("conclusion") == "failure":
+                application_failures.append(job)
+            elif job.get("conclusion") != "success":
+                return _unverified(
+                    sha,
+                    f"Required application CI job '{job.get('name')}' was not successful ({job.get('conclusion')}).",
+                    ci_runs,
+                )
+
+        failed_jobs = [job for job in jobs if job.get("conclusion") == "failure"]
+        unexpected = [job for job in failed_jobs
+                      if str(job.get("name", "")).strip().casefold() != AGENT_RUNTIME_JOB]
+        if unexpected:
+            # Includes mixed failures and newly added failing jobs: never hide
+            # them behind the agent-runtime exception.
+            application_failures.extend(job for job in unexpected if job not in application_failures)
+        for job in failed_jobs:
+            if str(job.get("name", "")).strip().casefold() == AGENT_RUNTIME_JOB:
+                ignored_agent_failures.append({
+                    "job": job.get("name", AGENT_RUNTIME_JOB),
+                    "conclusion": "failure",
+                    "run_url": run.get("html_url", ""),
+                })
+
+        if run.get("conclusion") == "failure" and not failed_jobs:
+            return _unverified(sha, "The CI workflow failed without attributable job results.", ci_runs)
+
+    if application_failures:
+        details = []
+        for run in ci_runs:
+            run_jobs, error = _application_job_rows(slug, run)
+            if error:
+                return _unverified(sha, error, ci_runs)
+            details.extend(_application_failure_details(slug, run, run_jobs))
+        failed_names = sorted({str(job.get("name", "unnamed job")) for job in application_failures})
+        return {
+            "status": "FAILED",
+            "sha": sha,
+            "reason": "Required application CI check(s) failed: " + ", ".join(failed_names),
+            "report": failure_report(slug, sha, ci_runs, details=details),
+            "failed_jobs": details,
+            "run_urls": [run.get("html_url", "") for run in ci_runs],
+        }
+
+    return {
+        "status": "PASSED",
+        "sha": sha,
+        "reason": "All required GW2 application CI checks passed."
+                  + (" Agent runtime test failure(s) were excluded: "
+                     + ", ".join(sorted({item["job"] for item in ignored_agent_failures}))
+                     + "." if ignored_agent_failures else ""),
+        "report": "",
+        "run_urls": [run.get("html_url", "") for run in runs],
+        "ignored_failures": ignored_agent_failures,
     }
 
 
