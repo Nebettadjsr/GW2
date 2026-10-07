@@ -8,7 +8,7 @@ Give Ectoplasm results stable content hooks for browser checks
 
 ## Status
 
-TODO
+DONE
 
 ## Milestone
 
