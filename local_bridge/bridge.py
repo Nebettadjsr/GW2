@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+import hashlib
 import json
 import logging
 import os
@@ -226,6 +227,13 @@ class TaskStore:
             return any(task.get("task_type") == FINAL_CI_TASK_TYPE
                        and task.get("story_id") == story_id
                        and task.get("status") == "interrupted"
+                       and task.get("id") != excluding_task_id
+                       for task in self.tasks.values())
+
+    def has_unfinished_publication_task(self, excluding_task_id: str | None = None) -> bool:
+        with self.lock:
+            return any(task.get("task_type") == "implementation_publication"
+                       and task.get("status") in {"queued", "running", "interrupted"}
                        and task.get("id") != excluding_task_id
                        for task in self.tasks.values())
 
@@ -501,6 +509,14 @@ class Bridge:
 
             lifecycle_snapshot = story_state.snapshot_story_lifecycle(story_path)
 
+            # The publication scope starts with a persisted pre-run Git
+            # baseline, before Claude can make any repository changes.
+            from local_bridge.publication import capture_implementation_baseline
+            publication_metadata = capture_implementation_baseline(
+                task_id, task["story_id"], contract,
+            )
+            self.store.update(task_id, publication_metadata=publication_metadata)
+
             attempt = None
             protected_changes = []
             lifecycle_changes = []
@@ -523,6 +539,12 @@ class Bridge:
                     lifecycle_changes = story_state.restore_story_lifecycle(
                         story_path, lifecycle_snapshot
                     )
+
+            from local_bridge.publication import finalize_implementation_metadata
+            publication_metadata = finalize_implementation_metadata(
+                publication_metadata, protected_changes, lifecycle_changes,
+            )
+            self.store.update(task_id, publication_metadata=publication_metadata)
 
             if protected_changes:
                 self.store.update(
@@ -710,6 +732,20 @@ def make_handler(bridge: Bridge):
                     "operation_source": "local_bridge_http",
                 })
                 return
+            if path == "/stories/active/publication-readiness":
+                if not self._authorized():
+                    return
+                from local_bridge.publication import inspect_publication
+                from agent.runtime.core import story_state
+                try:
+                    active_path = story_state.get_active_story_path()
+                    active_id = story_state.extract_story_id(active_path.read_text(encoding="utf-8"))
+                    implementation = bridge.store.latest_implementation_task(active_id)
+                except (OSError, ValueError, RuntimeError, FileNotFoundError):
+                    implementation = None
+                self._send(200, {**inspect_publication(implementation, bridge.store),
+                                 "operation_source": "local_bridge_http"})
+                return
             if path == "/stories/active/finalization-readiness":
                 if not self._authorized():
                     return
@@ -750,6 +786,9 @@ def make_handler(bridge: Bridge):
                 return
             if path == "/final-ci-tasks":
                 self._submit_final_ci()
+                return
+            if path == "/implementation-publications":
+                self._submit_publication()
                 return
             if path == "/story-finalizations":
                 self._submit_finalization()
@@ -1332,6 +1371,111 @@ def make_handler(bridge: Bridge):
             except (OSError, ValueError, KeyError, TypeError) as error:
                 self._send(409, {"error": f"Final CI task could not be safely accepted: {type(error).__name__}: {error}"})
 
+        def _submit_publication(self) -> None:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 4096:
+                    raise ValueError("Request body is empty or too large.")
+                raw_body = self.rfile.read(length)
+            except ValueError as error:
+                self._send(400, {"error": str(error)})
+                return
+            if not self._authorized():
+                return
+            try:
+                body = json.loads(raw_body)
+                if not isinstance(body, dict) or set(body) != {"story_id", "publication_contract_sha256"}:
+                    raise ValueError("Publication requires story_id and publication_contract_sha256.")
+                story_id = body.get("story_id")
+                fingerprint = body.get("publication_contract_sha256")
+                if not isinstance(story_id, str) or not re.fullmatch(r"STORY-[A-Za-z0-9]+-\d+", story_id):
+                    raise ValueError("story_id must be a canonical STORY identifier.")
+                if not isinstance(fingerprint, str) or not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+                    raise ValueError("publication_contract_sha256 must be a SHA-256 hex digest.")
+                key = self.headers.get("Idempotency-Key", "")
+                if key != f"gw2-publish-{story_id}-{fingerprint}":
+                    raise ValueError("Idempotency-Key must bind the story and publication contract.")
+            except (ValueError, json.JSONDecodeError) as error:
+                self._send(400, {"error": str(error)})
+                return
+            from local_bridge.publication import (inspect_publication, publish_implementation,
+                                                  verify_already_published, PUBLICATION_TASK_TYPE)
+            from agent.runtime.core import story_state
+            try:
+                active_path = story_state.get_active_story_path()
+                active_id = story_state.extract_story_id(active_path.read_text(encoding="utf-8"))
+                implementation = bridge.store.latest_implementation_task(active_id)
+                readiness = inspect_publication(implementation, bridge.store)
+                if active_id != story_id or not readiness.get("publication_permitted"):
+                    self._send(409, {"error": "Publication gate rejected the request.", **readiness})
+                    return
+                # Readiness owns the publication fingerprint. Normal tasks bind
+                # their baseline and scope there; the explicitly validated
+                # legacy adoption binds its story/task/commit/path/QA/Evaluator
+                # record instead and intentionally has no baseline_head_sha.
+                calculated = readiness.get("publication_contract_sha256")
+                if calculated != fingerprint:
+                    self._send(409, {"error": "Publication scope changed; fetch readiness again.", **readiness})
+                    return
+                existing = bridge.store.get_by_idempotency_key(key)
+                if existing and existing.get("task_type") != PUBLICATION_TASK_TYPE:
+                    raise RuntimeError("Idempotency-Key belongs to another task type.")
+                if existing and existing.get("status") == "interrupted":
+                    sha = verify_already_published(story_id, implementation.get("publication_metadata", {}))
+                    if sha:
+                        recovered = {"status": "ALREADY_PUBLISHED", "story_id": story_id,
+                                     "sha": sha, "push_status": "verified"}
+                        task = bridge.store.update(existing["id"], status="completed", exit_code=0,
+                                                   result=recovered, error=None)
+                        self._send(200, _public_task(task, submission_disposition="recovered_published"))
+                    else:
+                        self._send(409, {"error": "Publication was interrupted without proof of remote publication; inspect Git and origin before recovery.",
+                                         "task_id": existing["id"], "recovery_required": True})
+                    return
+                if existing and existing.get("status") in TERMINAL_STATUSES:
+                    prior = existing.get("result") if isinstance(existing.get("result"), dict) else {}
+                    if (existing.get("status") == "failed"
+                            and prior.get("status") == "PUSH_REJECTED"):
+                        # Retry only the same recorded implementation commit.
+                        # Readiness below binds the baseline and exact changed paths.
+                        task = existing
+                    else:
+                        self._send(200, _public_task(existing, submission_disposition="idempotent_replay"))
+                        return
+                if existing and existing.get("status") in {"queued", "running", "interrupted"}:
+                    self._send(409, {"error": "A publication task has an uncertain or unfinished outcome; inspect its persisted record and Git remote before retrying.",
+                                     "task_id": existing["id"], "recovery_required": True})
+                    return
+                if bridge.store.has_unfinished_publication_task(existing.get("id") if existing else None):
+                    raise RuntimeError("A different publication task is unfinished or interrupted; inspect it before publishing another story.")
+                if existing and existing.get("status") == "failed":
+                    task, created = existing, False
+                else:
+                    task, created = bridge.store.create(
+                        f"Publish implementation {story_id} {fingerprint}", key,
+                        task_type=PUBLICATION_TASK_TYPE, story_id=story_id,
+                        contract_sha256=fingerprint,
+                    )
+                bridge.store.update(task["id"], status="running")
+                try:
+                    result = publish_implementation(implementation, bridge.store)
+                    status = "completed" if result.get("status") in {"PUBLISHED", "ALREADY_PUBLISHED"} else "failed"
+                    task = bridge.store.update(task["id"], status=status,
+                                               exit_code=0 if status == "completed" else 1,
+                                               result=result, error=None if status == "completed" else result)
+                except Exception as error:
+                    task = bridge.store.update(task["id"], status="failed", exit_code=1,
+                                               error={"category": "publication_failure",
+                                                      "message": f"{type(error).__name__}: {error}",
+                                                      "recovery_action": "Inspect the Git index, HEAD and origin branch before retrying."})
+                # Return terminal task records as JSON even on publication
+                # failure so n8n can report a created SHA and recovery details.
+                self._send(200, _public_task(task,
+                                             submission_disposition="created" if created else "idempotent_replay"))
+            except (OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
+                self._send(409, {"error": f"Publication could not be safely accepted: {type(error).__name__}: {error}",
+                                 "recovery_required": True})
+
     return Handler
 
 
@@ -1415,14 +1559,28 @@ def _active_implementation_contract(task_store: TaskStore | None = None) -> dict
         if task_store and story.get("id"):
             previous = task_store.latest_implementation_task(story["id"])
             if previous and previous.get("status") == "completed" and previous.get("exit_code") == 0:
-                contract.update(
-                    preparation_status="implementation_already_completed",
-                    implementation_permitted=False,
-                    prompt=None,
-                    outstanding_prerequisites=[
-                        "A successful implementation task is already persisted for this active story. Complete its post-implementation review before any deliberate new implementation attempt."
-                    ],
-                )
+                if previous.get("contract_sha256") == contract.get("contract_sha256"):
+                    contract.update(
+                        preparation_status="implementation_already_completed",
+                        implementation_permitted=False,
+                        implementation_task_id=previous.get("id"),
+                        implementation_task_contract_sha256=previous.get("contract_sha256"),
+                        prompt=None,
+                        outstanding_prerequisites=[
+                            "A successful implementation task is already persisted for this active story. Complete its post-implementation review before any deliberate new implementation attempt."
+                        ],
+                    )
+                else:
+                    contract.update(
+                        preparation_status="stale_implementation_task",
+                        implementation_permitted=False,
+                        implementation_task_id=previous.get("id"),
+                        implementation_task_contract_sha256=previous.get("contract_sha256"),
+                        prompt=None,
+                        outstanding_prerequisites=[
+                            "The persisted implementation task was created under a different implementation contract. Inspect the contract and task before proceeding; do not rerun implementation automatically."
+                        ],
+                    )
         return contract
     except (OSError, ValueError, TypeError, KeyError) as error:
         logging.error("Implementation contract inspection failed (%s)", type(error).__name__)

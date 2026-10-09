@@ -285,6 +285,21 @@ class FinalCIBridgeTests(unittest.TestCase):
         self.persisted_evaluator["decision"] = "RETRY"
         self.assertFalse(self.readiness()["ci_permitted"])
 
+    def test_story_plan_and_lifecycle_artifacts_do_not_block_current_application_ci(self):
+        with patch.object(git_sync, "working_tree_paths", return_value={
+                self.story.relative_to(self.root).as_posix(),
+                self.plan_file.relative_to(self.root).as_posix(),
+                "agent/CURRENT_STORY.md", "agent/stories/BACKLOG.md"}):
+            ready = self.readiness()
+        self.assertTrue(ready["ci_permitted"], ready)
+
+    def test_dirty_workflow_or_protected_test_still_blocks_final_ci(self):
+        for path in (".github/workflows/ci.yml", "frontend/fixture.spec.ts"):
+            with self.subTest(path=path), patch.object(git_sync, "working_tree_paths", return_value={path}):
+                ready = self.readiness()
+                self.assertFalse(ready["ci_permitted"])
+                self.assertEqual("story_changes_unpublished", ready["blocking_code"])
+
     def test_missing_or_stale_evaluator_result_blocks_final_ci(self):
         self.persisted_evaluator = None
         self.assertEqual("evaluator_result_invalid", self.readiness()["blocking_code"])

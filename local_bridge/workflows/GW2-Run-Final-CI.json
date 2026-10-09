@@ -1,0 +1,402 @@
+[
+  {
+    "updatedAt": "2026-10-07T04:38:12.546Z",
+    "createdAt": "2026-10-06T04:37:53.752Z",
+    "id": "RJQlkKsYAbZgc0wq",
+    "name": "GW2 - Run Final CI",
+    "description": "Checks final CI prerequisites and waits for the existing GitHub Actions result for the published implementation commit.",
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {},
+        "id": "6de58c7d-ea55-41df-8bb2-40b4b34c8d72",
+        "name": "Start Final CI",
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          0,
+          96
+        ]
+      },
+      {
+        "parameters": {
+          "url": "http://172.29.240.1:8765/stories/active/final-ci-readiness",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "options": {
+            "timeout": 15000
+          }
+        },
+        "id": "398b53d6-7b14-4ce3-8ede-105d40a9badb",
+        "name": "Fetch Final CI Readiness",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          224,
+          96
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "sSJvxExuzE2rWZg8",
+            "name": "Header Auth account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.ci_permitted }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true"
+                }
+              },
+              {
+                "leftValue": "={{ $json.head_sha === $('Called by Development Pipeline').first().json.published_commit_sha }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "1454d3ad-6cf4-45dc-9b4c-cafa97c3f40e",
+        "name": "Final CI Gate Permits Submission?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          448,
+          96
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://172.29.240.1:8765/final-ci-tasks",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Idempotency-Key",
+                "value": "=gw2-final-ci-{{ $(\"Fetch Final CI Readiness\").item.json.story.id }}-{{ $(\"Fetch Final CI Readiness\").item.json.final_ci_contract_sha256 }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { story_id: $(\"Fetch Final CI Readiness\").item.json.story.id, head_sha: $(\"Fetch Final CI Readiness\").item.json.head_sha, final_ci_contract_sha256: $(\"Fetch Final CI Readiness\").item.json.final_ci_contract_sha256, callback_url: $execution.resumeUrl } }}",
+          "options": {
+            "timeout": 15000
+          }
+        },
+        "id": "c606c0ce-d13a-415f-9bc1-ec5549ef8fc4",
+        "name": "Submit Final CI Task",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          656,
+          144
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "sSJvxExuzE2rWZg8",
+            "name": "Header Auth account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "resume": "webhook",
+          "httpMethod": "POST",
+          "limitWaitTime": true,
+          "resumeAmount": 60,
+          "resumeUnit": "minutes",
+          "options": {
+            "noResponseBody": true
+          }
+        },
+        "id": "e6d326b6-1731-4aab-9912-ee00019a5138",
+        "name": "Wait for Final CI Callback",
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": [
+          1056,
+          -160
+        ],
+        "webhookId": "3df7d894-7217-4709-bb0f-a9172575faa2"
+      },
+      {
+        "parameters": {
+          "jsCode": "const incoming = $input.first().json ?? {};\nconst submission = $(\"Submit Final CI Task\").first().json ?? {};\nconst readiness = $(\"Fetch Final CI Readiness\").first().json ?? {};\nconst callback = incoming.body?.task_id ? incoming.body : (incoming.task_id ? incoming : null);\nconst terminal = [\"completed\", \"failed\", \"interrupted\"].includes(callback?.status);\nconst task = terminal ? callback : ([\"completed\", \"failed\", \"interrupted\"].includes(submission.status) ? submission : null);\nconst result = task?.result ?? {};\nconst error = task?.error ?? null;\nconst timedOut = !task;\nconst taskStatus = timedOut ? \"callback_timeout\" : (task.status ?? \"unknown\");\nconst ciStatus = timedOut ? \"CALLBACK_TIMEOUT\" : (result.status ?? (taskStatus === \"interrupted\" ? \"INTERRUPTED\" : taskStatus === \"failed\" ? \"TECHNICAL_FAILURE\" : \"UNKNOWN\"));\nreturn [{ json: {\n  story_id: result.story_id ?? readiness.story?.id ?? \"\",\n  task_id: task?.task_id ?? submission.task_id ?? \"\",\n  ci_status: ciStatus,\n  task_status: taskStatus,\n  commit_sha: result.sha ?? readiness.head_sha ?? \"\",\n  duration_seconds: result.duration_seconds ?? null,\n  command_summary: result.reason ?? \"\",\n  failures: result.failed_jobs ?? [],\n  diagnostic_report: result.report ?? \"\",\n  run_urls: result.run_urls ?? [],\n  exit_code: task?.exit_code ?? null,\n  error,\n  recovery_information: error?.recovery_action ?? (timedOut ? \"The callback timed out; the persisted CI task may still be waiting for GitHub Actions. Inspect this task ID and exact commit; do not submit a second task.\" : taskStatus === \"interrupted\" ? \"The bridge stopped during CI verification. Inspect this persisted task and its exact GitHub Actions run; CI is not restarted automatically.\" : \"\"),\n  result_source: result.result_source ?? \"persisted_bridge_task\",\n  operation_source: submission.operation_source ?? \"local_bridge_http\",\n  record_source: task?.record_source ?? submission.record_source ?? \"persisted_bridge_task\",\n  submission_disposition: submission.submission_disposition ?? \"unknown\",\n  final_ci_contract_sha256: readiness.final_ci_contract_sha256 ?? \"\"\n} }];"
+        },
+        "id": "fcf7b6f9-da55-42fe-b557-fdb7595c2d6e",
+        "name": "Format Final CI Result",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1216,
+          16
+        ]
+      },
+      {
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "status",
+                "name": "ci_status",
+                "value": "NOT_SUBMITTED",
+                "type": "string"
+              },
+              {
+                "id": "story",
+                "name": "story_id",
+                "value": "={{ $json.story?.id ?? \"\" }}",
+                "type": "string"
+              },
+              {
+                "id": "permitted",
+                "name": "ci_permitted",
+                "value": "={{ $json.ci_permitted ?? false }}",
+                "type": "boolean"
+              },
+              {
+                "id": "prerequisites",
+                "name": "outstanding_prerequisites",
+                "value": "={{ [...($json.outstanding_prerequisites ?? []), ...($json.head_sha !== $('Called by Development Pipeline').first().json.published_commit_sha ? ['Final CI HEAD does not match the published implementation SHA.'] : [])] }}",
+                "type": "array"
+              },
+              {
+                "id": "blocking-code",
+                "name": "blocking_code",
+                "value": "={{ $json.head_sha !== $('Called by Development Pipeline').first().json.published_commit_sha ? 'published_sha_mismatch' : ($json.blocking_code ?? '') }}",
+                "type": "string"
+              },
+              {
+                "id": "head",
+                "name": "head_sha",
+                "value": "={{ $json.head_sha ?? \"\" }}",
+                "type": "string"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "1a3c277d-a31c-4d2c-898f-4159a7af65da",
+        "name": "Display Final CI Prerequisites",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
+        "position": [
+          672,
+          192
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ [\"queued\", \"running\"].includes($json.status) }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "d2a871c4-578f-49e5-8882-a6893a171322",
+        "name": "CI task still running?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          880,
+          240
+        ]
+      },
+      {
+        "id": "pipeline-trigger-6",
+        "name": "Called by Development Pipeline",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          -420,
+          360
+        ],
+        "parameters": {
+          "inputSource": "passthrough"
+        }
+      }
+    ],
+    "connections": {
+      "Start Final CI": {
+        "main": [
+          [
+            {
+              "node": "Fetch Final CI Readiness",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Fetch Final CI Readiness": {
+        "main": [
+          [
+            {
+              "node": "Final CI Gate Permits Submission?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Final CI Gate Permits Submission?": {
+        "main": [
+          [
+            {
+              "node": "Submit Final CI Task",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Display Final CI Prerequisites",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Wait for Final CI Callback": {
+        "main": [
+          [
+            {
+              "node": "Format Final CI Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Submit Final CI Task": {
+        "main": [
+          [
+            {
+              "node": "CI task still running?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "CI task still running?": {
+        "main": [
+          [
+            {
+              "node": "Wait for Final CI Callback",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Format Final CI Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Called by Development Pipeline": {
+        "main": [
+          [
+            {
+              "node": "Fetch Final CI Readiness",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "availableInMCP": true,
+      "binaryMode": "separate"
+    },
+    "staticData": null,
+    "meta": {
+      "aiBuilderAssisted": true,
+      "builderVariant": "mcp"
+    },
+    "nodeGroups": [
+      {
+        "id": "final-ci-request-stage",
+        "name": "Check CI request",
+        "nodeIds": [
+          "c606c0ce-d13a-415f-9bc1-ec5549ef8fc4",
+          "d2a871c4-578f-49e5-8882-a6893a171322"
+        ],
+        "description": "Verifies one published commit and routes terminal results directly or waits for active CI."
+      }
+    ],
+    "pinData": {},
+    "versionId": "bcbb6f07-b7b6-4840-9cf8-d2ca7ce7a96c",
+    "activeVersionId": "bcbb6f07-b7b6-4840-9cf8-d2ca7ce7a96c",
+    "versionCounter": 8,
+    "triggerCount": 0,
+    "sourceWorkflowId": null,
+    "tags": [],
+    "shared": [
+      {
+        "updatedAt": "2026-10-06T04:37:53.755Z",
+        "createdAt": "2026-10-06T04:37:53.755Z",
+        "role": "workflow:owner",
+        "workflowId": "RJQlkKsYAbZgc0wq",
+        "projectId": "Dfg3ueNXkFsODDN8",
+        "project": {
+          "updatedAt": "2026-10-04T06:38:52.937Z",
+          "createdAt": "2026-10-04T06:38:21.728Z",
+          "id": "Dfg3ueNXkFsODDN8",
+          "name": "Bianca Krause <bianca-krause@tuta.io>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "f56fafc3-47e3-4739-9998-51acfc6aac24"
+        }
+      }
+    ],
+    "versionMetadata": {
+      "name": "Expose as pipeline sub-workflow",
+      "description": "Adds an Execute Sub-workflow Trigger while preserving the manual trigger."
+    }
+  }
+]

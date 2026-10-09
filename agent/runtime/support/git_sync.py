@@ -40,6 +40,8 @@ def run_git(*arguments: str, check: bool = True) -> subprocess.CompletedProcess:
         ["git", *arguments],
         cwd=REPO_ROOT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         capture_output=True,
     )
 
@@ -89,9 +91,14 @@ def working_tree_changes() -> list[str]:
 
 def working_tree_paths() -> set[str]:
     """Repository-relative paths reported by Git, including untracked files."""
-    result = run_git("status", "--porcelain", "-z")
+    return set(working_tree_entries())
+
+
+def working_tree_entries() -> dict[str, str]:
+    """Map each current path to its two-column porcelain status."""
+    result = run_git("status", "--porcelain", "-z", "--untracked-files=all")
     records = result.stdout.split("\0")
-    paths: set[str] = set()
+    paths: dict[str, str] = {}
     index = 0
     while index < len(records):
         record = records[index]
@@ -99,10 +106,10 @@ def working_tree_paths() -> set[str]:
         if len(record) < 4:
             continue
         status, path = record[:2], record[3:]
-        paths.add(path.replace("\\", "/"))
+        paths[path.replace("\\", "/")] = status
         if "R" in status or "C" in status:
             if index < len(records) and records[index]:
-                paths.add(records[index].replace("\\", "/"))
+                paths[records[index].replace("\\", "/")] = status
                 index += 1
     return paths
 
@@ -235,15 +242,17 @@ def commit_and_push(message: str, paths=None) -> dict:
     committed = False
 
     if scoped_paths:
-        run_git("add", "--all", "--", *sorted(scoped_paths))
+        # Path-limited add stages only the validated publication scope. Never
+        # use repository-wide `git add -A`/`--all` in the publication path.
+        run_git("add", "--", *sorted(scoped_paths))
         staged = _output("diff", "--cached", "--name-only").splitlines()
     else:
         staged = []
 
     if staged:
 
-        # `git add --all` stages exactly what .gitignore allows, so .env,
-        # agent/runtime/artifacts/ and build output stay out by construction.
+        # Path-limited `git add` stages only names in the validated scope;
+        # ignored files remain excluded by Git's normal ignore rules.
         result = run_git("commit", "-m", message, check=False)
 
         if result.returncode != 0 and "nothing to commit" not in (

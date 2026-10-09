@@ -119,12 +119,13 @@ def inspect_final_ci(implementation: dict | None, store, allow_task_id: str | No
         story_path = story_state.get_active_story_path()
         plan = qa_agent.load_plan(story_path)
         protected_paths = set(plan.get("prepared_test_paths", [])) if isinstance(plan, dict) else set()
+        # Story and plan changes are governed by the current evaluator and
+        # protected-test fingerprints above. Application CI consumes the
+        # published source tree, workflow, and prepared test files; requiring
+        # documentation artifacts themselves to be committed blocks a safe
+        # recheck after the parent resumes with current persisted contracts.
         required_paths = {
-            story_path.relative_to(config.REPO_ROOT).as_posix(),
-            "agent/stories/BACKLOG.md",
-            "agent/CURRENT_STORY.md",
             ".github/workflows/ci.yml",
-            qa_agent.plan_path(story_id).relative_to(config.REPO_ROOT).as_posix(),
             *protected_paths,
         }
         dirty = git_sync.working_tree_paths()

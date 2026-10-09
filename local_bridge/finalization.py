@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import tempfile
 from pathlib import Path
 
 from agent.runtime.core import story_state
 from agent.runtime.support import config, git_sync
 from local_bridge.final_ci import inspect_final_ci
+from local_bridge.evaluation import persisted_evaluation
 
 
 FINALIZATION_FILES = (
@@ -65,6 +67,101 @@ def _finalization_fingerprint(story_id: str, head_sha: str, ci_fingerprint: str)
     value = {"story_id": story_id, "head_sha": head_sha,
              "final_ci_contract_sha256": ci_fingerprint}
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+_RESULT_FINDING_SECTIONS = {"result", "findings", "follow-up findings"}
+_TOP_LEVEL_SECTION = re.compile(r"(?m)^##[ \t]+([^\r\n]+?)[ \t]*\r?$")
+
+
+def _without_result_findings(content: str) -> tuple[str, list[str]]:
+    """Return story material outside the implementation-owned result sections."""
+    matches = list(_TOP_LEVEL_SECTION.finditer(content))
+    if not matches:
+        return content, []
+    preamble = content[:matches[0].start()]
+    retained = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(content)
+        section = content[match.start():end]
+        heading = match.group(1).strip().casefold()
+        if heading in _RESULT_FINDING_SECTIONS:
+            continue
+        else:
+            # The trailing line breaks delimit a following allowed Result or
+            # Findings section; their count is not story content.
+            retained.append(section.rstrip("\r\n"))
+    return preamble, retained
+
+
+def _story_delta_is_persisted_result(story_path: Path, story_id: str, ci: dict, store) -> bool:
+    """Allow only Result/Findings edits that the current COMPLETE Evaluator read."""
+    try:
+        relative = story_path.relative_to(config.REPO_ROOT).as_posix()
+        baseline = git_sync.run_git("show", f"{ci['head_sha']}:{relative}", check=False)
+        if baseline.returncode != 0:
+            return False
+        current_bytes = story_path.read_bytes()
+        current = current_bytes.decode("utf-8").replace("\r\n", "\n")
+        before_preamble, before_sections = _without_result_findings(baseline.stdout)
+        after_preamble, after_sections = _without_result_findings(current)
+        # All non-result material, including Status and lifecycle metadata,
+        # must remain byte-for-byte identical to the published story.
+        from agent.runtime.support.files import find_section_span
+        if (before_preamble != after_preamble or before_sections != after_sections
+                or find_section_span(baseline.stdout, "Result") is None
+                or find_section_span(current, "Result") is None):
+            return False
+
+        evaluator_task_id = ci.get("evaluator_task_id")
+        contract = ci.get("evaluation_contract_sha256")
+        evaluator_task = store.get(evaluator_task_id) if evaluator_task_id else None
+        evaluated = persisted_evaluation(evaluator_task_id, contract, story_id) if evaluator_task_id and contract else None
+        if (not evaluator_task or evaluator_task.get("task_type") != "evaluator"
+                or evaluator_task.get("story_id") != story_id
+                or evaluator_task.get("status") != "completed" or evaluator_task.get("exit_code") != 0
+                or not isinstance(evaluator_task.get("result"), dict)
+                or evaluator_task["result"] != evaluated
+                or not evaluated or evaluated.get("decision") != "COMPLETE"
+                or evaluated.get("evaluation_task_id") != evaluator_task_id
+                or evaluated.get("evaluation_contract_sha256") != contract
+                or evaluated.get("implementation_task_id") != ci.get("implementation_task_id")
+                or evaluated.get("evaluated_story_sha256") != hashlib.sha256(current.encode("utf-8")).hexdigest()
+                or evaluated.get("evaluated_story_contract_sha256") is None):
+            return False
+        from agent.runtime.qa import qa_agent
+        if evaluated["evaluated_story_contract_sha256"] != qa_agent.story_contract_sha256(current):
+            return False
+        result_content = config.CLAUDE_RESULT_FILE.read_text(encoding="utf-8")
+        if evaluated.get("evaluated_result_sha256") != hashlib.sha256(result_content.encode("utf-8")).hexdigest():
+            return False
+        return True
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError, AttributeError):
+        return False
+
+
+def _activation_lifecycle_matches_head(story_path: Path, head_sha: str) -> bool:
+    """Allow only the deterministic Active/backlog/pointer delta from activation."""
+    try:
+        relative = story_path.relative_to(config.REPO_ROOT).as_posix()
+        baseline_backlog = git_sync.run_git(
+            "show", f"{head_sha}:agent/stories/BACKLOG.md", check=False)
+        baseline_pointer = git_sync.run_git(
+            "show", f"{head_sha}:agent/CURRENT_STORY.md", check=False)
+        if baseline_backlog.returncode != 0 or baseline_pointer.returncode != 0:
+            return False
+        if (story_state.parse_backlog_section(baseline_backlog.stdout, "Active")
+                or story_path.name not in story_state.parse_backlog_section(baseline_backlog.stdout, "To Do")
+                or baseline_pointer.stdout.strip()):
+            return False
+        expected_backlog = story_state.move_backlog_entry_to_active(
+            baseline_backlog.stdout, story_path.name)
+        current_backlog = story_state.BACKLOG_FILE.read_text(encoding="utf-8")
+        current_pointer = story_state.CURRENT_STORY_FILE.read_text(encoding="utf-8")
+        return (current_backlog == expected_backlog
+                and current_pointer == relative + "\n"
+                and story_state.parse_backlog_section(current_backlog, "Active") == [story_path.name])
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError):
+        return False
 
 
 def _partial_finalization(story_id: str, store) -> dict | None:
@@ -193,11 +290,17 @@ def inspect_finalization(story_id: str | None, store) -> dict:
         ci_task = _task_for_ci(active_id, ci["final_ci_contract_sha256"], ci["head_sha"], store)
         if not ci_task:
             return block("A verified PASSED application CI result for the current pushed commit is required.", "ci_result_invalid")
-        if git_sync.working_tree_paths().intersection({
-            active_path.relative_to(config.REPO_ROOT).as_posix(),
-            "agent/stories/BACKLOG.md", "agent/CURRENT_STORY.md",
-        }):
-            return block("Story lifecycle files already contain changes; inspect them before finalization.", "lifecycle_files_dirty")
+        dirty = git_sync.working_tree_paths()
+        story_relative = active_path.relative_to(config.REPO_ROOT).as_posix()
+        if (story_relative in dirty
+                and not _story_delta_is_persisted_result(active_path, active_id, ci, store)):
+            return block("The active story has changes outside the current persisted Result/Findings; inspect them before finalization.",
+                         "story_result_changes_invalid")
+        activation_paths = {"agent/stories/BACKLOG.md", "agent/CURRENT_STORY.md"}
+        if (dirty.intersection(activation_paths)
+                and not _activation_lifecycle_matches_head(active_path, ci["head_sha"])):
+            return block("BACKLOG.md or CURRENT_STORY.md contains changes beyond the recorded active-story transition.",
+                         "lifecycle_files_dirty")
         fingerprint = _finalization_fingerprint(active_id, ci["head_sha"], ci["final_ci_contract_sha256"])
         result.update(finalization_permitted=True, outstanding_prerequisites=[], story=ci["story"],
                       head_sha=ci["head_sha"], final_ci_contract_sha256=ci["final_ci_contract_sha256"],

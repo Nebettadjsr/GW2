@@ -1,0 +1,101 @@
+{
+  "status": "READY",
+  "story_id": "STORY-WEB-028",
+  "rationale": "The current contracts are sufficiently specified. F002 is superseded by the confirmed placement in DOMAIN_SPEC.md §2.1.1 and is already asserted by the Profit component test. Existing resolution component tests cover compact presentation and root-sourcing text, but browser smoke fixtures suppress that text. A new Bank/Materials header contract test is prepared; browser fixture changes remain a precise implementation specification.",
+  "acceptance_checks": [
+    {
+      "criterion": "Reconcile Bank and Materials page headers with the shared page-header contract while preserving focus and reload behavior.",
+      "expected": "Each screen renders its heading in the shared .page-head structure with tabindex=-1 and data-page-heading; its reload control is grouped in page-actions and still invokes the existing reload behavior.",
+      "verification": "Run AccountPageHeaderContract.spec.ts plus the existing BankScreen.spec.ts and MaterialsScreen.spec.ts."
+    },
+    {
+      "criterion": "Preserve maximum displayed recipe count and Show all beside the results title, with accessible calculation and filter groups.",
+      "expected": "Maximum and Show all remain in the opportunities toolbar beside the title, outside Calculation controls; calculation and displayed-result controls retain their distinct groups.",
+      "verification": "Existing CraftingProfitScreen.spec.ts test keepsSearchAndFiltersInDisplayedResultsAndPlacesTheLimitInTheOpportunitiesToolbar asserts the placement and grouping. Preserve it; no UI change is warranted."
+    },
+    {
+      "criterion": "Align compact-value documentation and behavior with both crafting workflows.",
+      "expected": "Both workflows show the compact effective value presentation and omit the non-compact cost/basis branches; remove unreachable branches only if the implementation confirms they are unused and within scope.",
+      "verification": "Existing CraftingResolution.spec.ts, CraftingProfitScreen.spec.ts, and CraftingDiscoveryScreen.spec.ts cover compact workflow presentation. Correct the prop documentation if implementation confirms it is stale."
+    },
+    {
+      "criterion": "Exercise root-sourcing presentation in controlled-browser smoke coverage.",
+      "expected": "At least one fixture in each relevant crafting workflow reaches a tree whose root recipe identity differs from the requested recipe, and the rendered resolution-root-sourcing text matches the supplied identities. Keep the same-recipe suppression assertion where separately useful.",
+      "verification": "Update the controlled Profit and Discovery smoke fixture/checks to render and assert the sourcing sentence; use fixture responses, with no live API dependency."
+    },
+    {
+      "criterion": "Add or update focused checks for changed contracts while retaining meaningful workflow assertions.",
+      "expected": "The prepared header test verifies shared structure, focus semantics, and grouped reload actions; existing focused tests and smoke checks continue to assert their current workflow behavior.",
+      "verification": "Run the focused component suites and affected controlled-browser smoke checks after implementation."
+    },
+    {
+      "criterion": "Disposition findings that are already resolved or superseded.",
+      "expected": "Record F002 as superseded by the confirmed DOMAIN_SPEC §2.1.1 decision and preserve its current implementation. Record current component evidence for compact presentation and root-sourcing, while noting the browser coverage gap.",
+      "verification": "Review the named source sections, component specs, and smoke assertions in the story Result."
+    }
+  ],
+  "invariants": [
+    "Navigation focus targets the destination heading through tabindex=-1 and data-page-heading.",
+    "Bank and Materials reload actions remain available in the page header and retain their existing reload behavior.",
+    "The display maximum and Show all affect displayed rows only and remain beside the results title, outside Calculation controls.",
+    "Calculation controls and displayed-result filters retain separate accessible groupings.",
+    "Resolution values and recipe identities remain backend-supplied; the frontend formats and presents them without reconstructing domain results.",
+    "Root-sourcing prose reflects the supplied root recipe identity relative to the requested recipe; a matching identity is not redundantly described."
+  ],
+  "test_levels": [
+    "component",
+    "ui"
+  ],
+  "existing_tests_reviewed": [
+    "frontend/src/crafting/__tests__/CraftingProfitScreen.spec.ts — asserts maximum and Show all placement, separate control groups, heading, filters, and workflow behavior.",
+    "frontend/src/crafting/__tests__/CraftingResolution.spec.ts — asserts compact presentation and the root-sourcing outcomes for inventory-only, matching-recipe, and different-recipe roots.",
+    "frontend/src/crafting/__tests__/profitResolutionAssociation.spec.ts — covers root-sourcing text through the Profit association path.",
+    "frontend/src/crafting/__tests__/CraftingDiscoveryScreen.spec.ts — covers Discovery workflow controls, heading, and reload behavior.",
+    "frontend/src/account/__tests__/BankScreen.spec.ts — covers Bank reads and reload behavior, but not shared header structure.",
+    "frontend/src/account/__tests__/MaterialsScreen.spec.ts — covers Materials reads and reload behavior, but not shared header structure.",
+    "frontend/scripts/profit-browser-smoke.mjs — asserts compact presentation and currently requires root-sourcing text to be absent for its matching-recipe fixture.",
+    "frontend/scripts/discovery-browser-smoke.mjs — asserts compact presentation and currently requires root-sourcing text to be absent for its matching-recipe fixture."
+  ],
+  "prepared_test_paths": [
+    "frontend/src/account/__tests__/AccountPageHeaderContract.spec.ts"
+  ],
+  "test_specifications": [
+    "For Bank and Materials, mount each screen with FakeAccountApi and assert .page-head contains the correctly named page-heading with tabindex=-1 and data-page-heading, and page-actions contains the screen's reload control.",
+    "In the controlled Profit browser smoke fixture, return a resolution tree whose root recipeId differs from the requested recipe ID; assert resolution-root-sourcing displays the sentence identifying the supplied selected recipe and requested recipe.",
+    "In the controlled Discovery browser smoke fixture, return a root with no selected recipe or a different recipe ID; assert the corresponding describeRootSourcing sentence renders. Keep its existing same-recipe suppression assertion if a separate matching fixture remains.",
+    "Retain the existing Profit placement assertion and component coverage for compact values and resolution behavior; do not change expected placement to the obsolete Calculation-controls location."
+  ],
+  "pre_implementation_verification": {
+    "status": "NOT_RUN",
+    "command": "From frontend/: npx vitest run src/account/__tests__/AccountPageHeaderContract.spec.ts",
+    "failure_evidence": "The command did not reach Vitest test collection. Node exited with EPERM while resolving its runtime path, reporting lstat 'C:\\Users\\Administrator'. The shell environment also showed the same error when launched from the frontend directory. This is an environment failure, not behavior-level expected-red evidence."
+  },
+  "coverage_review": "docs/QUALITY_METRICS.md provides a measured frontend snapshot dated 2026-10-03: 92.88% line and 85.22% branch coverage overall, below the 90% branch warning target. Reported source-area coverage includes crafting at 94.02% line / 85.63% branch and account at 98.88% line / 86.84% branch. No screen-level report was available in the inspected report summary. Review updated affected coverage after implementation; do not add tests merely to raise the KPI.",
+  "external_sources": [],
+  "clarifications": [],
+  "post_implementation_review_required": true,
+  "post_implementation_review_reason": "Required because controlled-browser smoke fixture coverage is currently missing for rendered root-sourcing output, and the prepared header test could not run in this environment. Verify the smoke assertions against the actual rendered pages and review affected frontend coverage.",
+  "schema_version": 1,
+  "qa_model": "gpt-6-luna",
+  "qa_reasoning_effort": "medium",
+  "story_contract_sha256": "4665e9c10d6f5ecae29e77ef85df1c9d5a131540a7c73d1f580d5156c719b7a5",
+  "user_decision_ids": [],
+  "protected_test_hashes": {
+    "frontend/src/account/__tests__/AccountPageHeaderContract.spec.ts": "23b1dd83e807730cb1428a7cd8ca9d0c775d3526982df4fded2297d044e5531b"
+  },
+  "post_implementation_reviews": [
+    {
+      "decision": "APPROVE",
+      "reason": "The implementation matches the acceptance criteria, and the story records focused component and controlled-browser checks passing. The prepared header test remains present and meaningful with its protected SHA-256 unchanged. The stated scope changes and F002 disposition are supported by the inspected contracts and assertions. The supplied focused WEB-021 run evidence was not treated as verification for WEB-028; review relies on the WEB-028 results recorded in the story.",
+      "evidence": [
+        "The Bank and Materials header contract test asserts the shared header, correct heading, tabindex=-1, data-page-heading, and grouped reload control. Its SHA-256 matches the QA plan’s protected hash.",
+        "The story reports 246 component tests passing, the focused placement assertion passing, and both controlled-browser smoke checks passing with assertions for rendered root-sourcing text and same-recipe suppression.",
+        "Inspected smoke fixtures use a different root recipe for Profit and a stock-sourced root for Discovery, exercising distinct root-sourcing messages.",
+        "F002 is recorded as superseded by DOMAIN_SPEC §2.1.1; the existing placement assertion remains, and the story reports the matching browser assertion passing.",
+        "The QA plan notes the 2026-10-03 branch-coverage snapshot is below its warning target and requests review without adding tests solely to raise the metric."
+      ],
+      "actionable_items": [],
+      "request_id": "cd15909c-19e3-48d4-9e8f-0ab3a012dbd6"
+    }
+  ]
+}

@@ -1,0 +1,253 @@
+[
+  {
+    "id": "Qf8h1s7K2m4B9c6D",
+    "name": "GW2 - Publish Implementation",
+    "active": false,
+    "nodes": [
+      {
+        "parameters": {
+          "inputSource": "passthrough"
+        },
+        "id": "6a32fc94-8bd8-4de1-b6e5-51f3799a8501",
+        "name": "Called by Development Pipeline",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1.1,
+        "position": [
+          0,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "url": "http://172.29.240.1:8765/stories/active/publication-readiness",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "options": {
+            "timeout": 15000
+          }
+        },
+        "id": "4828dd30-ba0c-4904-9eda-4b5ef87c5d3a",
+        "name": "Fetch Publication Readiness",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          240,
+          300
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "sSJvxExuzE2rWZg8",
+            "name": "Header Auth account"
+          }
+        },
+        "onError": "continueErrorOutput"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.publication_permitted }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "00edb5fd-1d0b-4082-b1ad-6d88f3d59cc3",
+        "name": "Publication Gate Permits Submission?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          480,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://172.29.240.1:8765/implementation-publications",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Idempotency-Key",
+                "value": "=gw2-publish-{{ $('Fetch Publication Readiness').item.json.story.id }}-{{ $('Fetch Publication Readiness').item.json.publication_contract_sha256 }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { story_id: $('Fetch Publication Readiness').item.json.story.id, publication_contract_sha256: $('Fetch Publication Readiness').item.json.publication_contract_sha256 } }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "id": "5845e719-eed2-410b-96d3-b10b024882b2",
+        "name": "Submit Implementation Publication",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          720,
+          200
+        ],
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "sSJvxExuzE2rWZg8",
+            "name": "Header Auth account"
+          }
+        },
+        "onError": "continueErrorOutput"
+      },
+      {
+        "parameters": {
+          "jsCode": "const raw=$input.first()?.json??{}; const readiness=$('Fetch Publication Readiness').first()?.json??{}; const result=raw.result??{}; const ok=raw.status==='completed' && ['PUBLISHED','ALREADY_PUBLISHED'].includes(result.status); return [{json:{publication_status:result.status??raw.status??'UNKNOWN',story_id:result.story_id??readiness.story?.id??'',commit_sha:result.sha??'',push_status:result.push_status??'unknown',publication_permitted:readiness.publication_permitted===true,reason:result.reason??raw.error?.message??raw.error?.message??raw.message??readiness.outstanding_prerequisites?.join('; ')??'',error:raw.error??null,task_id:raw.task_id??'',publication_contract_sha256:readiness.publication_contract_sha256??'',authorized_paths:readiness.authorized_paths??[],pipeline_continue:ok}}];"
+        },
+        "id": "97680136-5d56-42b8-b932-329adf4b0f0e",
+        "name": "Format Publication Result",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          960,
+          200
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const r=$input.first()?.json??{}; return [{json:{publication_status:'BLOCKED',story_id:$('Fetch Publication Readiness').first()?.json?.story?.id??'',commit_sha:'',push_status:'not_attempted',reason:( $('Fetch Publication Readiness').first()?.json?.outstanding_prerequisites??[]).join('; ')||'Publication prerequisites are not satisfied.',recovery_information:'Inspect the persisted implementation metadata, protected QA state and Git status. Preserve unrelated changes, then rerun the parent after resolving the reported condition.',pipeline_continue:false}}];"
+        },
+        "id": "97581015-da40-4ca8-9576-95726e571a92",
+        "name": "Format Publication Block",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          720,
+          440
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const r=$input.first()?.json??{}; const ok=['PUBLISHED','ALREADY_PUBLISHED'].includes(r.publication_status); return [{json:{stage:'publication',publication_status:r.publication_status??'BLOCKED',story_id:r.story_id??'',commit_sha:r.commit_sha??'',push_status:r.push_status??'unknown',reason:r.reason??'',task_id:r.task_id??'',recovery_information:r.recovery_information??'',authorized_paths:r.authorized_paths??[],pipeline_continue:ok}}];"
+        },
+        "id": "a7d4667c-4ecb-4fba-824a-fbfa7edb7456",
+        "name": "Return Publication Result",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1200,
+          300
+        ]
+      }
+    ],
+    "connections": {
+      "Called by Development Pipeline": {
+        "main": [
+          [
+            {
+              "node": "Fetch Publication Readiness",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Fetch Publication Readiness": {
+        "main": [
+          [
+            {
+              "node": "Publication Gate Permits Submission?",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Format Publication Block",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Publication Gate Permits Submission?": {
+        "main": [
+          [
+            {
+              "node": "Submit Implementation Publication",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Format Publication Block",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Submit Implementation Publication": {
+        "main": [
+          [
+            {
+              "node": "Format Publication Result",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Format Publication Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Format Publication Result": {
+        "main": [
+          [
+            {
+              "node": "Return Publication Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Format Publication Block": {
+        "main": [
+          [
+            {
+              "node": "Return Publication Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "availableInMCP": true,
+      "binaryMode": "separate"
+    },
+    "pinData": {},
+    "staticData": null,
+    "tags": []
+  }
+]

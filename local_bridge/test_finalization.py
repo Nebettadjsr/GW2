@@ -3,6 +3,8 @@
 import subprocess
 import tempfile
 import unittest
+import hashlib
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -20,7 +22,7 @@ class FinalizationTests(unittest.TestCase):
         self.backlog = self.root / "agent/stories/BACKLOG.md"
         self.current = self.root / "agent/CURRENT_STORY.md"
         self.current.parent.mkdir(parents=True, exist_ok=True)
-        self.story.write_text("## Story ID\nSTORY-WEB-021\n\n## Title\nFixture\n\n## Status\nTODO\n", encoding="utf-8")
+        self.story.write_text("## Story ID\nSTORY-WEB-021\n\n## Title\nFixture\n\n## Status\nTODO\n\n## Result\nNot started.\n", encoding="utf-8")
         self.backlog.write_text("## Active\n- STORY-WEB-021 | STORY-WEB-021-fixture.md | Active | milestone-01 | deps: None\n\n## Done\n", encoding="utf-8")
         self.current.write_text("agent/stories/STORY-WEB-021-fixture.md\n", encoding="utf-8")
         (self.root / "agent/runtime/artifacts").mkdir(parents=True, exist_ok=True)
@@ -62,6 +64,157 @@ class FinalizationTests(unittest.TestCase):
         self.backlog.write_text("## Active\n\n## Done\n- STORY-WEB-021 | STORY-WEB-021-fixture.md | Done | milestone-01 | deps: None\n", encoding="utf-8")
         self.current.write_text("", encoding="utf-8")
         return []
+
+    def _activate_fixture_story(self):
+        # Establish the same committed pre-activation state WEB-028 had:
+        # queued story, empty Active section, and no current pointer.
+        queued = ("## Active\n\n## To Do\n"
+                  "- STORY-WEB-021 | STORY-WEB-021-fixture.md | TODO | milestone-01 | deps: None\n"
+                  "\n## Done\n")
+        self.backlog.write_text(queued, encoding="utf-8")
+        self.current.write_text("", encoding="utf-8")
+        subprocess.run(["git", "add", "--", "agent/stories/BACKLOG.md", "agent/CURRENT_STORY.md"],
+                       cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "fixture story queued"], cwd=self.root, check=True)
+        updated = story_state.move_backlog_entry_to_active(
+            self.backlog.read_text(encoding="utf-8"), self.story.name)
+        self.backlog.write_text(updated, encoding="utf-8")
+        self.current.write_text(
+            "agent/stories/" + self.story.name + "\n", encoding="utf-8")
+
+    def _dirty_result_and_findings(self):
+        content = self.story.read_text(encoding="utf-8")
+        content = content.replace("Not started.", "COMPLETE. Result and verification details persisted by implementation.")
+        content += "\n## Follow-up Findings\n\nF001: Live backend smoke remains unverified.\n"
+        self.story.write_text(content, encoding="utf-8")
+
+    def _store_with_current_ci_and_evaluator(self):
+        from agent.runtime.qa import qa_agent
+
+        story_content = self.story.read_text(encoding="utf-8")
+        result_path = self.root / "agent/runtime/artifacts/CLAUDE_RESULT.md"
+        result_path.write_text("implementation result fixture\n", encoding="utf-8")
+        evaluation_contract = "e" * 64
+        ci_contract = "c" * 64
+        evaluator_id = "eval-current"
+        implementation_id = "impl-current"
+        evaluator_result = {
+            "decision": "COMPLETE", "story_id": "STORY-WEB-021",
+            "evaluation_task_id": evaluator_id,
+            "evaluation_contract_sha256": evaluation_contract,
+            "implementation_task_id": implementation_id,
+            "evaluated_story_sha256": hashlib.sha256(story_content.encode("utf-8")).hexdigest(),
+            "evaluated_story_contract_sha256": qa_agent.story_contract_sha256(story_content),
+            "evaluated_result_sha256": hashlib.sha256(result_path.read_text(encoding="utf-8").encode("utf-8")).hexdigest(),
+        }
+        evaluator_task = {
+            "id": evaluator_id, "task_type": "evaluator", "story_id": "STORY-WEB-021",
+            "status": "completed", "exit_code": 0, "result": evaluator_result,
+        }
+        implementation = {
+            "id": implementation_id, "task_type": "implementation",
+            "story_id": "STORY-WEB-021", "status": "completed", "exit_code": 0,
+        }
+        ci_task = {
+            "id": "ci-current", "task_type": "final_ci", "story_id": "STORY-WEB-021",
+            "contract_sha256": ci_contract, "status": "completed", "exit_code": 0,
+            "result": {
+                "status": "PASSED", "sha": git_sync.head_sha(),
+                "final_ci_contract_sha256": ci_contract,
+                "result_source": "github_actions_for_pushed_commit",
+                "application_verdict_policy": "gw2-application-jobs-v1",
+            },
+        }
+
+        class Store:
+            tasks = {evaluator_id: evaluator_task, "impl-current": implementation,
+                     "ci-current": ci_task}
+
+            def get(self, task_id):
+                return self.tasks.get(task_id)
+
+            def latest_implementation_task(self, _story_id):
+                return implementation
+
+            def get_by_idempotency_key(self, key):
+                return ci_task if key == f"final-ci:STORY-WEB-021:{ci_contract}" else None
+
+        ci_readiness = {
+            "ci_permitted": True,
+            "story": {"id": "STORY-WEB-021", "filename": self.story.name, "title": "Fixture"},
+            "head_sha": git_sync.head_sha(), "final_ci_contract_sha256": ci_contract,
+            "evaluator_task_id": evaluator_id, "evaluation_contract_sha256": evaluation_contract,
+            "implementation_task_id": implementation_id,
+        }
+        return Store(), evaluator_result, result_path, ci_readiness
+
+    def test_valid_persisted_result_findings_and_activation_state_pass_readiness(self):
+        self._activate_fixture_story()
+        self._dirty_result_and_findings()
+        store, evaluator_result, result_path, ci_readiness = self._store_with_current_ci_and_evaluator()
+        with patch.object(finalization, "inspect_final_ci", return_value=ci_readiness), \
+             patch.object(finalization, "persisted_evaluation", return_value=evaluator_result), \
+             patch.object(config, "CLAUDE_RESULT_FILE", result_path):
+            ready = finalization.inspect_finalization("STORY-WEB-021", store)
+        self.assertTrue(ready["finalization_permitted"], ready)
+        self.assertEqual("STORY-WEB-021", ready["story"]["id"])
+
+    def test_unrelated_story_edit_still_blocks(self):
+        self._activate_fixture_story()
+        self._dirty_result_and_findings()
+        self.story.write_text(self.story.read_text(encoding="utf-8").replace(
+            "## Title\nFixture", "## Title\nUnreviewed title edit"), encoding="utf-8")
+        store, evaluator_result, result_path, ci_readiness = self._store_with_current_ci_and_evaluator()
+        with patch.object(finalization, "inspect_final_ci", return_value=ci_readiness), \
+             patch.object(finalization, "persisted_evaluation", return_value=evaluator_result), \
+             patch.object(config, "CLAUDE_RESULT_FILE", result_path):
+            ready = finalization.inspect_finalization("STORY-WEB-021", store)
+        self.assertFalse(ready["finalization_permitted"])
+        self.assertEqual("story_result_changes_invalid", ready["blocking_code"])
+
+    def test_unrelated_backlog_edit_still_blocks(self):
+        self._activate_fixture_story()
+        self._dirty_result_and_findings()
+        self.backlog.write_text(self.backlog.read_text(encoding="utf-8") + "\n# maintainer note\n", encoding="utf-8")
+        store, evaluator_result, result_path, ci_readiness = self._store_with_current_ci_and_evaluator()
+        with patch.object(finalization, "inspect_final_ci", return_value=ci_readiness), \
+             patch.object(finalization, "persisted_evaluation", return_value=evaluator_result), \
+             patch.object(config, "CLAUDE_RESULT_FILE", result_path):
+            ready = finalization.inspect_finalization("STORY-WEB-021", store)
+        self.assertFalse(ready["finalization_permitted"])
+        self.assertEqual("lifecycle_files_dirty", ready["blocking_code"])
+
+    def test_unrelated_current_story_pointer_edit_still_blocks(self):
+        self._activate_fixture_story()
+        self._dirty_result_and_findings()
+        self.current.write_text("agent/stories/STORY-WEB-999-other.md\n", encoding="utf-8")
+        store, evaluator_result, result_path, ci_readiness = self._store_with_current_ci_and_evaluator()
+        with patch.object(finalization, "inspect_final_ci", return_value=ci_readiness), \
+             patch.object(finalization, "persisted_evaluation", return_value=evaluator_result), \
+             patch.object(config, "CLAUDE_RESULT_FILE", result_path):
+            ready = finalization.inspect_finalization("STORY-WEB-021", store)
+        self.assertFalse(ready["finalization_permitted"])
+        self.assertEqual("lifecycle_files_dirty", ready["blocking_code"])
+
+    def test_real_transition_preserves_result_findings_and_marks_done(self):
+        from agent.runtime.core import orchestrator
+
+        self._dirty_result_and_findings()
+        original_result = self.story.read_text(encoding="utf-8").split("## Result\n", 1)[1].split("\n## ", 1)[0]
+        original_findings = self.story.read_text(encoding="utf-8").split("## Follow-up Findings\n", 1)[1]
+        with patch.object(finalization, "inspect_finalization", side_effect=self._ready), \
+             patch.object(orchestrator, "BACKLOG_FILE", self.backlog), \
+             patch.object(orchestrator, "validate_backlog_consistency", return_value=[]), \
+             patch.object(orchestrator, "log_line"):
+            # The real transition uses story_state's tracked lifecycle paths.
+            with patch.object(story_state, "BACKLOG_FILE", self.backlog):
+                response = finalization.finalize_story("STORY-WEB-021", "f" * 64, object())
+        updated = self.story.read_text(encoding="utf-8")
+        self.assertEqual("finalized", response["status"])
+        self.assertEqual("DONE", story_state.classify_story_status(story_state.extract_status_section(updated)))
+        self.assertIn(original_result, updated)
+        self.assertIn(original_findings.strip(), updated)
+        self.assertEqual("", self.current.read_text(encoding="utf-8"))
 
     def test_success_commits_only_lifecycle_and_repeat_is_idempotent(self):
         unrelated = self.root / "notes.txt"
