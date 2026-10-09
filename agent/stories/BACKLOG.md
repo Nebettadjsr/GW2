@@ -15,7 +15,6 @@ below stay in the plain form.
 
 
 ## To Do
-- STORY-WEB-028 | STORY-WEB-028-align-browser-workflow-contracts.md | TODO | milestone-05 | deps: STORY-WEB-024
 - STORY-WEB-020 | STORY-WEB-020-layout-smoke-total-sell-value.md | TODO | milestone-05 | deps: STORY-WEB-019
 
 ## Blocked
@@ -75,6 +74,7 @@ Completed current-milestone story details remain in their canonical files.
 - STORY-WEB-024 | STORY-WEB-024-repair-fresh-build-smoke-contracts.md | DONE | milestone-05 | Repair browser smoke assertions against current workflow contracts
 - STORY-WEB-027 | STORY-WEB-027-remove-tracked-smoke-control-copy.md | DONE | milestone-05 | Remove the tracked temporary account smoke control copy
 - STORY-WEB-021 | STORY-WEB-021-ecto-content-test-hooks.md | DONE | milestone-05 | Give Ectoplasm results stable content hooks for browser checks
+- STORY-WEB-028 | STORY-WEB-028-align-browser-workflow-contracts.md | DONE | milestone-05 | Align remaining browser workflow contracts and coverage
 
 ## Archived
 
