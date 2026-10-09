@@ -13,7 +13,6 @@ below stay in the plain form.
 
 ## Active
 
-- STORY-WEB-020 | STORY-WEB-020-layout-smoke-total-sell-value.md | TODO | milestone-05 | deps: STORY-WEB-019
 
 ## To Do
 
@@ -75,6 +74,7 @@ Completed current-milestone story details remain in their canonical files.
 - STORY-WEB-027 | STORY-WEB-027-remove-tracked-smoke-control-copy.md | DONE | milestone-05 | Remove the tracked temporary account smoke control copy
 - STORY-WEB-021 | STORY-WEB-021-ecto-content-test-hooks.md | DONE | milestone-05 | Give Ectoplasm results stable content hooks for browser checks
 - STORY-WEB-028 | STORY-WEB-028-align-browser-workflow-contracts.md | DONE | milestone-05 | Align remaining browser workflow contracts and coverage
+- STORY-WEB-020 | STORY-WEB-020-layout-smoke-total-sell-value.md | DONE | milestone-05 | Exercise backend total sell value in the shared layout smoke fixture
 
 ## Archived
 

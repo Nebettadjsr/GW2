@@ -8,7 +8,7 @@ Exercise backend total sell value in the shared layout smoke fixture
 
 ## Status
 
-TODO
+DONE
 
 ## Milestone
 

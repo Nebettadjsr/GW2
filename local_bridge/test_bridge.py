@@ -1,370 +1,344 @@
+"""Bridge and development-cycle tests. Agents, Git and CI are faked; nothing is launched."""
+
+from __future__ import annotations
+
 import json
-import sys
 import tempfile
 import threading
 import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from bridge import Bridge, TaskStore, make_handler, validate_callback_url
+from local_bridge import bridge, cycle
+
+TOKEN = "t" * 40
+STORY_FILE = "agent/stories/STORY-T-001-x.md"
+
+
+def make_cycle(**values) -> dict:
+    record = {"story_id": "STORY-T-001", "story_file": STORY_FILE, "phase": "qa", "retry_count": 0,
+              "ci_fix_attempts": 0, "failed_runs": 0, "prompt": None, "implement_started": False,
+              "publish_paths": [], "published_sha": None, "history": []}
+    record.update(values)
+    return record
+
+
+class _CycleTestCase(unittest.TestCase):
+    """Fakes every runtime collaborator of the cycle module."""
+
+    def setUp(self):
+        patches = {
+            "read_file": mock.Mock(return_value="story"),
+            "story_state": mock.Mock(),
+            "qa_agent": mock.Mock(**{"load_plan.return_value": {"story_id": "STORY-T-001"},
+                                     "plan_path.return_value": cycle.REPO_ROOT / "agent/qa-plans/QA-STORY-T-001.json",
+                                     "implementation_contract.return_value": " +contract",
+                                     "restore_protected_tests.return_value": []}),
+            "git_sync": mock.Mock(**{"pending_planning_paths.return_value": set(),
+                                     "ci_verification_available.return_value": (True, "")}),
+            "github_ci": mock.Mock(),
+            "orchestrator": mock.Mock(**{"build_retry_prompt.return_value": "retry prompt",
+                                         "build_ci_failure_prompt.return_value": "ci prompt",
+                                         "ci_failures_are_outside_story_scope.return_value": False,
+                                         "_current_result_content.return_value": "result"}),
+        }
+        for name, value in patches.items():
+            patcher = mock.patch.object(cycle, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.orchestrator = cycle.orchestrator
+
+    def evaluate(self, record, decision, **extra):
+        self.orchestrator._evaluate_preserving_completed_attempt.return_value = {
+            "decision": decision, "reason": "why", **extra}
+        return cycle.step_evaluate(record, None)
+
+
+class CycleStepTests(_CycleTestCase):
+    """Phase transitions follow the old orchestrator's retry and CI-fix rules."""
+
+    def test_complete_evaluation_moves_to_publication(self):
+        record = make_cycle(phase="evaluate")
+        result = self.evaluate(record, "COMPLETE")
+        self.assertEqual((record["phase"], result["proceed"]), ("publish", True))
+
+    def test_retry_returns_to_claude_with_retry_prompt_until_budget_is_exhausted(self):
+        record = make_cycle(phase="evaluate")
+        for attempt in (1, 2):
+            result = self.evaluate(record, "RETRY", actionable_retry_items=["fix x"])
+            self.assertEqual((record["phase"], record["retry_count"], result["proceed"]), ("implement", attempt, True))
+            self.assertEqual(record["prompt"], "retry prompt +contract")
+        result = self.evaluate(record, "RETRY", actionable_retry_items=["fix x"])
+        self.assertEqual((record["phase"], result["outcome"], result["proceed"]), ("blocked", "blocked", False))
+        self.orchestrator._create_intervention_and_block_story.assert_called_once()
+        cycle.story_state.clear_active_story.assert_called()
+
+    def test_retry_without_items_blocks_instead_of_spending_a_claude_run(self):
+        record = make_cycle(phase="evaluate")
+        self.evaluate(record, "RETRY", actionable_retry_items=[])
+        self.assertEqual(record["phase"], "blocked")
+
+    def test_evaluator_blocked_moves_story_to_blocked_and_frees_the_pointer(self):
+        record = make_cycle(phase="evaluate")
+        result = self.evaluate(record, "BLOCKED")
+        self.assertFalse(result["proceed"])
+        self.orchestrator._blocked_bookkeeping.assert_called_once()
+        cycle.story_state.clear_active_story.assert_called_once()
+
+    def test_ci_failure_in_story_scope_returns_to_claude_then_blocks(self):
+        record = make_cycle(phase="ci", published_sha="a" * 40)
+        cycle.github_ci.wait_for_commit.return_value = {"status": "FAILED", "reason": "red", "report": "r"}
+        for attempt in (1, 2):
+            result = cycle.step_ci(record, None)
+            self.assertEqual((record["phase"], record["ci_fix_attempts"], record["prompt"]),
+                             ("implement", attempt, "ci prompt +contract"))
+            record["phase"] = "ci"
+        cycle.step_ci(record, None)
+        self.assertEqual(record["phase"], "blocked")
+
+    def test_ci_waits_for_the_published_sha_not_head(self):
+        record = make_cycle(phase="ci", published_sha="b" * 40)
+        cycle.github_ci.wait_for_commit.return_value = {"status": "PASSED", "reason": ""}
+        result = cycle.step_ci(record, None)
+        self.assertEqual(cycle.github_ci.wait_for_commit.call_args.args[1], "b" * 40)
+        self.assertEqual((record["phase"], result["proceed"]), ("finalize", True))
+
+    def test_unverified_ci_keeps_the_phase_for_a_later_recheck(self):
+        record = make_cycle(phase="ci", published_sha="c" * 40)
+        cycle.github_ci.wait_for_commit.return_value = {"status": "UNVERIFIED", "reason": "timeout"}
+        result = cycle.step_ci(record, None)
+        self.assertEqual((record["phase"], result["proceed"]), ("ci", False))
+
+    def test_ci_failure_outside_story_scope_stops_without_invoking_claude(self):
+        record = make_cycle(phase="ci", published_sha="c" * 40)
+        cycle.github_ci.wait_for_commit.return_value = {"status": "FAILED", "reason": "red"}
+        self.orchestrator.ci_failures_are_outside_story_scope.return_value = True
+        result = cycle.step_ci(record, None)
+        self.assertEqual((record["phase"], record["ci_fix_attempts"], result["proceed"]), ("ci", 0, False))
+
+    def test_publish_commits_only_dirty_story_scope_and_records_the_sha(self):
+        record = make_cycle(phase="publish", publish_paths=["src/A.java"])
+        cycle.git_sync.working_tree_paths.return_value = {"src/A.java", STORY_FILE, "unrelated.txt"}
+        cycle.git_sync.commit_and_push.return_value = {"status": "PUSHED", "sha": "d" * 40}
+        result = cycle.step_publish(record, None)
+        self.assertEqual(cycle.git_sync.commit_and_push.call_args.kwargs["paths"], sorted(["src/A.java", STORY_FILE]))
+        self.assertEqual((record["phase"], record["published_sha"], result["proceed"]), ("ci", "d" * 40, True))
+
+    def test_failed_push_keeps_the_publish_phase(self):
+        record = make_cycle(phase="publish")
+        cycle.git_sync.working_tree_paths.return_value = set()
+        cycle.git_sync.commit_and_push.return_value = {"status": "PUSH_REJECTED", "reason": "behind"}
+        result = cycle.step_publish(record, None)
+        self.assertEqual((record["phase"], result["proceed"]), ("publish", False))
+
+
+class IdleAndPlanningTests(_CycleTestCase):
+    """With no active story the bridge selects queued work or replenishes an empty queue."""
+
+    def setUp(self):
+        super().setUp()
+        self.orchestrator.get_actionable_architect_requests.return_value = []
+        self.orchestrator.planning_fingerprint.return_value = "fp1"
+        cycle.story_state.get_selectable_story_candidates.return_value = []
+        patcher = mock.patch.object(cycle, "run_planning_pass", return_value={"status": "COMPLETE"})
+        self.planner = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_queued_work_is_selected_without_planning(self):
+        cycle.story_state.get_selectable_story_candidates.return_value = ["story"]
+        self.assertEqual(cycle.idle_step({}), "select")
+        self.orchestrator.requeue_resolved_interventions.assert_called_once()
+
+    def test_empty_queue_plans_once_then_reports_empty_until_inputs_change(self):
+        planning = {}
+        self.assertEqual(cycle.idle_step(planning), "plan")
+        result = cycle.step_plan(planning)
+        self.assertEqual((result["outcome"], result["proceed"]), ("planning_complete", False))
+        self.assertEqual(cycle.idle_step(planning), "select")
+        self.orchestrator.planning_fingerprint.return_value = "fp2"
+        self.assertEqual(cycle.idle_step(planning), "plan")
+
+    def test_planning_that_adds_a_selectable_story_continues_to_selection(self):
+        self.planner.side_effect = lambda: cycle.story_state.get_selectable_story_candidates.configure_mock(
+            return_value=["new story"]) or {"status": "COMPLETE", "story_files_created": ["new.md"]}
+        result = cycle.step_plan({})
+        self.assertTrue(result["proceed"])
+        self.assertEqual(result["stories_created"], ["new.md"])
+
+    def test_actionable_architect_request_is_answered_before_planning(self):
+        self.orchestrator.get_actionable_architect_requests.return_value = [{"file": "AR-1.md"}]
+        self.orchestrator.run_architect_pass.return_value = {"status": "COMPLETE"}
+        self.assertEqual(cycle.idle_step({}), "plan")
+        result = cycle.step_plan({})
+        self.assertEqual((result["outcome"], result["proceed"]), ("architect_complete", True))
+        self.planner.assert_not_called()
+
+
+class ImplementStepTests(_CycleTestCase):
+    def setUp(self):
+        super().setUp()
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        plan_file = Path(self.directory.name) / "plan.json"
+        plan_file.write_text("{}", encoding="utf-8")
+        cycle.qa_agent.plan_path.return_value = plan_file
+        cycle.story_state.restore_story_lifecycle.return_value = []
+        cycle.git_sync.working_tree_paths.side_effect = [{"dirty.txt"}, {"dirty.txt", "src/New.java"}]
+        self.orchestrator._prepare_implementation_prompt.return_value = ("prompt", False)
+        for name, value in {"file_hash": mock.Mock(side_effect=["h1", "h2"]),
+                            "run_claude_attempt": mock.Mock()}.items():
+            patcher = mock.patch.object(cycle, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def implement(self, record, exit_code=0, capacity=False):
+        cycle.run_claude_attempt.return_value = mock.Mock(exit_code=exit_code, capacity_exhausted=capacity, output="")
+        checkpoints = []
+        result = cycle.step_implement(record, lambda: checkpoints.append(dict(record)))
+        self.assertTrue(checkpoints and checkpoints[0]["implement_started"], "baseline must be saved before Claude runs")
+        return result
+
+    def test_success_records_only_new_changes_and_moves_to_evaluation(self):
+        record = make_cycle(phase="implement")
+        result = self.implement(record)
+        self.assertEqual(record["publish_paths"], ["src/New.java"])
+        self.assertEqual((record["phase"], record["implement_started"], record["result_was_updated"]),
+                         ("evaluate", False, True))
+        self.assertTrue(result["proceed"])
+
+    def test_interrupted_attempt_resumes_with_a_continuation_prompt_and_its_baseline(self):
+        record = make_cycle(phase="implement", implement_started=True, prompt="prompt",
+                            run_baseline=["dirty.txt"], result_hash_before="h0")
+        cycle.git_sync.working_tree_paths.side_effect = [{"dirty.txt", "src/New.java"}]
+        self.implement(record)
+        self.assertTrue(cycle.run_claude_attempt.call_args.args[0].startswith(cycle.CONTINUATION))
+        self.assertEqual(record["publish_paths"], ["src/New.java"])
+
+    def test_capacity_exhaustion_stops_without_using_the_failure_budget(self):
+        record = make_cycle(phase="implement")
+        result = self.implement(record, exit_code=1, capacity=True)
+        self.assertEqual((record["phase"], record["failed_runs"], result["proceed"]), ("implement", 0, False))
+
+    def test_repeated_claude_failures_block_the_story(self):
+        record = make_cycle(phase="implement")
+        self.assertTrue(self.implement(record, exit_code=2)["proceed"])
+        cycle.git_sync.working_tree_paths.side_effect = [{"dirty.txt"}]
+        cycle.file_hash.side_effect = ["h3"]
+        self.assertFalse(self.implement(record, exit_code=2)["proceed"])
+        self.assertEqual(record["phase"], "blocked")
+
+
+class _CallbackReceiver(BaseHTTPRequestHandler):
+    received: list = []
+
+    def do_POST(self):
+        self.received.append((self.path, json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
+        self.send_response(200)
+        self.end_headers()
+
+    def log_message(self, *args):
+        pass
 
 
 class BridgeHttpTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
-        self.root = Path(self.directory.name)
-        self.fake_claude = self.root / "fake_claude.py"
-        self.fake_calls = self.root / "claude-calls.txt"
-        self.fake_codex = self.root / "fake_codex.py"
-        self.fake_codex_calls = self.root / "codex-calls.txt"
-        self.fake_claude.write_text(
-            "import json, os, sys\n"
-            f"open({str(self.fake_calls)!r}, 'a', encoding='utf-8').write('called\\n')\n"
-            "print(json.dumps({'args': sys.argv[1:], 'cwd': os.getcwd()}))\n"
-            "if sys.argv[-1] == 'slow task':\n"
-            " import time; time.sleep(0.3)\n"
-            "if sys.argv[-1] == 'exit nonzero': sys.exit(7)\n",
-            encoding="utf-8",
-        )
-        self.fake_codex.write_text(
-            "import json, os, sys\n"
-            f"open({str(self.fake_codex_calls)!r}, 'a', encoding='utf-8').write('called\\n')\n"
-            "prompt = sys.stdin.read()\n"
-            "print(json.dumps({'args': sys.argv[1:], 'prompt': prompt, 'cwd': os.getcwd()}))\n"
-            "if 'exit nonzero' in prompt: sys.exit(8)\n",
-            encoding="utf-8",
-        )
-        self.store = TaskStore(self.root / "tasks.json")
-        self.callback_payloads = []
-        self.callback_paths = []
-        self.callback_responses = []
-        self.callback_block_path = None
-        self.callback_entered = threading.Event()
-        self.callback_release = threading.Event()
+        self.addCleanup(self.directory.cleanup)
+        self.state = Path(self.directory.name) / "tasks.json"
+        _CallbackReceiver.received = []
+        self.receiver = ThreadingHTTPServer(("127.0.0.1", 0), _CallbackReceiver)
+        threading.Thread(target=self.receiver.serve_forever, daemon=True).start()
+        self.addCleanup(self.receiver.shutdown)
+        origin = f"http://127.0.0.1:{self.receiver.server_port}"
+        self.callback = origin + "/webhook-waiting/1?signature=abc"
+        self.bridge = bridge.Bridge(bridge.Store(self.state), TOKEN, callback_origin=origin)
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), bridge.make_handler(self.bridge))
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.addCleanup(self.server.shutdown)
+        self.release = threading.Event()
+        pointer = mock.patch.object(cycle, "pointer_story", return_value=cycle.REPO_ROOT / STORY_FILE)
+        pointer.start()
+        self.addCleanup(pointer.stop)
+        self.bridge.store.save_cycle(make_cycle(phase="ci", published_sha="e" * 40))
 
-        test_case = self
+    def post(self, path, body, token=TOKEN):
+        request = Request(f"http://127.0.0.1:{self.server.server_port}{path}", method="POST",
+                          data=json.dumps(body).encode(), headers={"Authorization": f"Bearer {token}",
+                                                                   "Content-Type": "application/json"})
+        with urlopen(request, timeout=5) as response:
+            return response.status, json.loads(response.read())
 
-        class CallbackHandler(BaseHTTPRequestHandler):
-            def do_POST(self):
-                length = int(self.headers.get("Content-Length", "0"))
-                test_case.callback_payloads.append(json.loads(self.rfile.read(length)))
-                test_case.callback_paths.append(self.path)
-                if self.path == test_case.callback_block_path:
-                    test_case.callback_entered.set()
-                    test_case.callback_release.wait(3)
-                status = test_case.callback_responses.pop(0) if test_case.callback_responses else 200
-                self.send_response(status)
-                self.end_headers()
-
-            def log_message(self, format_string, *args):
-                pass
-
-        self.callback_server = ThreadingHTTPServer(("127.0.0.1", 0), CallbackHandler)
-        self.callback_thread = threading.Thread(target=self.callback_server.serve_forever, daemon=True)
-        self.callback_thread.start()
-        self.callback_origin = f"http://127.0.0.1:{self.callback_server.server_port}"
-        self.callback_url = self.callback_origin + "/webhook-waiting/exec-1/wait-node?signature=local-test"
-        self.bridge = Bridge(self.store, "test-token", command_prefix=(sys.executable, str(self.fake_claude)),
-                             codex_command_prefix=(sys.executable, str(self.fake_codex)),
-                             callback_origin=self.callback_origin)
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.bridge))
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
-        self.url = f"http://127.0.0.1:{self.server.server_port}"
-
-    def tearDown(self):
-        self.server.shutdown()
-        self.server.server_close()
-        self.callback_server.shutdown()
-        self.callback_server.server_close()
-        self.directory.cleanup()
-
-    def request(self, path, method="GET", payload=None, token="test-token", key=None, callback_url=None):
-        headers = {}
-        data = None
-        if token is not None:
-            headers["Authorization"] = f"Bearer {token}"
-        if key is not None:
-            headers["Idempotency-Key"] = key
-        if payload is not None:
-            if callback_url is not None:
-                payload["callback_url"] = callback_url
-            data = json.dumps(payload).encode()
-            headers["Content-Type"] = "application/json"
-        request = Request(self.url + path, data=data, headers=headers, method=method)
-        try:
-            response = urlopen(request, timeout=3)
-        except HTTPError as error:
-            return error.code, json.loads(error.read())
-        return response.status, json.loads(response.read())
-
-    def wait_for(self, task_id):
-        for _ in range(100):
-            task = self.store.get(task_id)
-            if task["status"] in {"completed", "failed", "interrupted"}:
-                return task
+    def wait_for(self, condition):
+        deadline = time.monotonic() + 5
+        while not condition():
+            self.assertLess(time.monotonic(), deadline, "timed out")
             time.sleep(0.02)
-        self.fail("Task did not complete")
 
-    def wait_for_callback(self, task_id, expected="delivered", store=None):
-        task_store = store or self.store
-        for _ in range(150):
-            task = task_store.get(task_id)
-            if task.get("callback_delivery_status") == expected:
-                return task
-            time.sleep(0.02)
-        self.fail(f"Callback did not reach status {expected}")
+    def fake_ci(self, record, _checkpoint):
+        self.release.wait(5)
+        record["phase"] = "finalize"
+        return cycle.StepResult("PASSED", True)
 
-    def callback_url_for(self, execution_id):
-        return self.callback_origin + f"/webhook-waiting/{execution_id}/wait-node?signature=local-test"
+    def test_async_step_runs_once_and_delivers_its_result_to_the_latest_wait_url(self):
+        with mock.patch.dict(cycle.STEPS, {"ci": self.fake_ci}):
+            status, first = self.post("/cycle/step", {"callback_url": self.callback})
+            self.assertEqual((status, first["status"], first["step"]), (202, "running", "ci"))
+            replacement = self.callback.replace("/1?", "/2?")
+            _, attached = self.post("/cycle/step", {"callback_url": replacement})
+            self.assertEqual(attached["task_id"], first["task_id"])
+            self.release.set()
+            self.wait_for(lambda: _CallbackReceiver.received)
+        path, payload = _CallbackReceiver.received[0]
+        self.assertEqual(path, "/webhook-waiting/2?signature=abc")
+        self.assertEqual((payload["outcome"], payload["proceed"], payload["phase"]), ("PASSED", True, "finalize"))
+        self.assertEqual(self.bridge.store.active_cycle()["history"][-1]["outcome"], "PASSED")
 
-    def test_health_is_public_and_task_routes_require_token(self):
-        self.assertEqual(200, self.request("/health", token=None)[0])
-        self.assertEqual(401, self.request("/tasks/unknown", token=None)[0])
-        status, _ = self.request("/tasks", method="POST", payload={"prompt": "x"}, token="wrong", key="unauth")
-        self.assertEqual(401, status)
+    def test_failing_step_stops_the_pipeline_and_keeps_the_phase(self):
+        def broken(_record, _checkpoint):
+            raise RuntimeError("boom")
+        with mock.patch.dict(cycle.STEPS, {"ci": broken}):
+            self.post("/cycle/step", {"callback_url": self.callback})
+            self.wait_for(lambda: _CallbackReceiver.received)
+        payload = _CallbackReceiver.received[0][1]
+        self.assertEqual((payload["status"], payload["proceed"], payload["phase"]), ("failed", False, "ci"))
+        self.assertIn("boom", payload["reason"])
 
-    def test_task_runs_once_and_persists_result(self):
-        status, created = self.request("/tasks", method="POST", payload={"prompt": "inspect status"}, key="req-1")
-        self.assertEqual(202, status)
-        self.assertEqual("created", created["submission_disposition"])
-        self.assertEqual("persisted_bridge_task", created["record_source"])
-        result = self.wait_for(created["task_id"])
-        self.assertEqual("completed", result["status"])
-        self.assertEqual(0, result["exit_code"])
-        output = json.loads(result["result"])
-        self.assertIn("inspect status", output["args"])
-        self.assertEqual("plan", output["args"][output["args"].index("--permission-mode") + 1])
-        self.assertEqual(str(Path(__file__).resolve().parent.parent), output["cwd"])
-        duplicate_status, duplicate = self.request("/tasks", method="POST", payload={"prompt": "inspect status"}, key="req-1")
-        self.assertEqual(202, duplicate_status)
-        self.assertEqual("idempotent_replay", duplicate["submission_disposition"])
-        self.assertEqual(created["task_id"], duplicate["task_id"])
-        self.assertEqual("completed", duplicate["status"])
-        self.assertEqual(result["result"], duplicate["result"])
-        public_status, public_task = self.request(f"/tasks/{created['task_id']}")
-        self.assertEqual(200, public_status)
-        self.assertEqual("persisted_bridge_task", public_task["record_source"])
-        self.assertNotIn("prompt", public_task)
-        recovered = TaskStore(self.root / "tasks.json").get(created["task_id"])
-        self.assertEqual(result["result"], recovered["result"])
+    def test_restart_marks_a_running_step_interrupted_so_the_next_run_repeats_it(self):
+        with mock.patch.dict(cycle.STEPS, {"ci": self.fake_ci}):
+            _, task = self.post("/cycle/step", {"callback_url": self.callback})
+            restarted = bridge.Store(self.state)
+            self.release.set()
+        self.assertEqual(restarted.get(task["task_id"])["status"], "interrupted")
+        self.assertEqual(restarted.active_cycle()["phase"], "ci")
 
-    def test_codex_selection_uses_fixed_read_only_gw2_command_and_callback(self):
-        status, created = self.request("/tasks", method="POST",
-                                       payload={"agent": "codex", "prompt": "Return the fixed test sentence.",
-                                                "callback_url": self.callback_url},
-                                       key="codex-task")
-        self.assertEqual(202, status)
-        task = self.wait_for(created["task_id"])
-        self.wait_for_callback(created["task_id"])
-        output = json.loads(task["result"])
-        self.assertEqual("completed", task["status"])
-        self.assertEqual("codex", task["agent"])
-        self.assertEqual("Return the fixed test sentence.", output["prompt"])
-        self.assertEqual(str(Path(__file__).resolve().parent.parent), output["cwd"])
-        self.assertEqual(["exec", "--sandbox", "read-only", "--cd",
-                          str(Path(__file__).resolve().parent.parent), "--ephemeral", "-"], output["args"])
-        self.assertEqual(created["task_id"], self.callback_payloads[0]["task_id"])
-        self.assertEqual("completed", self.callback_payloads[0]["status"])
-        self.assertEqual(1, len(self.fake_codex_calls.read_text(encoding="utf-8").splitlines()))
-        self.assertFalse(self.fake_calls.exists())
-        self.request("/tasks", method="POST", payload={"agent": "codex", "prompt": "Return the fixed test sentence."},
-                     key="codex-task", callback_url=self.callback_url)
-        self.assertEqual(1, len(self.fake_codex_calls.read_text(encoding="utf-8").splitlines()))
+    def test_pointer_change_by_a_human_drops_the_stale_cycle_and_adopts_the_new_story(self):
+        other = cycle.REPO_ROOT / "agent/stories/STORY-T-002-y.md"
+        with mock.patch.object(cycle, "pointer_story", return_value=other), \
+                mock.patch.object(cycle, "new_cycle", return_value=make_cycle(story_id="STORY-T-002",
+                                                                               story_file="agent/stories/STORY-T-002-y.md")):
+            adopted = self.bridge._current_cycle()
+        self.assertEqual((adopted["story_id"], adopted["phase"]), ("STORY-T-002", "qa"))
 
-    def test_codex_nonzero_exit_is_saved_as_failed(self):
-        status, created = self.request("/tasks", method="POST",
-                                       payload={"agent": "codex", "prompt": "exit nonzero"},
-                                       key="codex-failed")
-        self.assertEqual(202, status)
-        task = self.wait_for(created["task_id"])
-        self.assertEqual("failed", task["status"])
-        self.assertEqual(8, task["exit_code"])
+    def test_rejects_bad_token_and_foreign_callback_urls(self):
+        with self.assertRaises(HTTPError) as unauthorized:
+            self.post("/cycle/step", {"callback_url": self.callback}, token="wrong")
+        self.assertEqual(unauthorized.exception.code, 401)
+        for url in ("http://evil.example/webhook-waiting/1?signature=a", self.callback.split("?")[0]):
+            with self.assertRaises(HTTPError) as rejected:
+                self.post("/cycle/step", {"callback_url": url})
+            self.assertEqual(rejected.exception.code, 400)
 
-    def test_restart_recovers_codex_callback_as_interrupted_without_rerunning(self):
-        task, _ = self.store.create("do not run after restart", "codex-restart", self.callback_url, "codex")
-        self.store.update(task["id"], status="running")
-        recovered_store = TaskStore(self.root / "tasks.json")
-        recovered_bridge = Bridge(recovered_store, "test-token",
-                                  codex_command_prefix=(sys.executable, str(self.fake_codex)),
-                                  callback_origin=self.callback_origin)
-        recovered_bridge.resume_pending_callbacks()
-        recovered = self.wait_for_callback(task["id"], store=recovered_store)
-        self.assertEqual("interrupted", recovered["status"])
-        self.assertEqual("codex", recovered["agent"])
-        self.assertEqual("interrupted", self.callback_payloads[0]["status"])
-        self.assertFalse(self.fake_codex_calls.exists())
-
-    def test_agent_is_authenticated_and_unknown_selection_is_rejected(self):
-        status, _ = self.request("/tasks", method="POST", payload={"agent": "codex", "prompt": "x"},
-                                 token=None, key="codex-unauth")
-        self.assertEqual(401, status)
-        status, response = self.request("/tasks", method="POST",
-                                        payload={"agent": "shell", "prompt": "x"}, key="unknown-agent")
-        self.assertEqual(400, status)
-        self.assertIn("agent", response["error"])
-
-    def test_rejects_invalid_prompt_and_missing_idempotency_key(self):
-        self.assertEqual(400, self.request("/tasks", method="POST", payload={"prompt": " "}, key="x")[0])
-        self.assertEqual(400, self.request("/tasks", method="POST", payload={"prompt": "hello"})[0])
-
-    def test_restart_marks_running_task_interrupted_without_rerunning(self):
-        task, _ = self.store.create("uncertain", "uncertain-key")
-        self.store.update(task["id"], status="running")
-        recovered = TaskStore(self.root / "tasks.json")
-        self.assertEqual("interrupted", recovered.get(task["id"])["status"])
-
-    def test_callback_delivered_once_and_hidden_from_status_response(self):
-        status, created = self.request("/tasks", method="POST", payload={"prompt": "callback once"},
-                                       key="callback-once", callback_url=self.callback_url)
-        self.assertEqual(202, status)
-        self.wait_for(created["task_id"])
-        task = self.wait_for_callback(created["task_id"])
-        self.assertEqual("delivered", task["callback_delivery_status"])
-        self.assertEqual("delivered", TaskStore(self.root / "tasks.json").get(created["task_id"])["callback_delivery_status"])
-        self.assertEqual(1, len(self.callback_payloads))
-        self.assertEqual({"task_id", "status", "exit_code", "result", "error"}, set(self.callback_payloads[0]))
-        self.assertEqual("completed", self.callback_payloads[0]["status"])
-
-        public_status, public_task = self.request(f"/tasks/{created['task_id']}")
-        self.assertEqual(200, public_status)
-        self.assertNotIn("callback_url", public_task)
-        self.assertNotIn("prompt", public_task)
-
-        self.request("/tasks", method="POST", payload={"prompt": "callback once"}, key="callback-once",
-                     callback_url=self.callback_url)
-        self.assertEqual(1, len(self.callback_payloads))
-        self.assertEqual(1, len(self.fake_calls.read_text(encoding="utf-8").splitlines()))
-
-    def test_replacement_callback_before_completion_uses_same_running_task(self):
-        first_url = self.callback_url_for("old-run")
-        replacement_url = self.callback_url_for("new-run")
-        status, first = self.request("/tasks", method="POST", payload={"prompt": "slow task"},
-                                     key="replace-before", callback_url=first_url)
-        self.assertEqual(202, status)
-        for _ in range(100):
-            if self.store.get(first["task_id"])["status"] == "running":
-                break
-            time.sleep(0.005)
-        status, replacement = self.request("/tasks", method="POST", payload={"prompt": "slow task"},
-                                           key="replace-before", callback_url=replacement_url)
-        self.assertEqual(202, status)
-        self.assertEqual(first["task_id"], replacement["task_id"])
-        task = self.wait_for(first["task_id"])
-        self.wait_for_callback(first["task_id"])
-        self.assertEqual("completed", task["status"])
-        self.assertEqual(["/webhook-waiting/new-run/wait-node?signature=local-test"], self.callback_paths)
-        self.assertEqual(1, len(self.fake_calls.read_text(encoding="utf-8").splitlines()))
-
-    def test_completed_task_replays_persisted_result_to_replacement_callback(self):
-        _, submitted = self.request("/tasks", method="POST", payload={"prompt": "complete then replace"},
-                                    key="replace-after", callback_url=self.callback_url_for("old-done"))
-        original = self.wait_for(submitted["task_id"])
-        self.wait_for_callback(submitted["task_id"])
-        original_result = original["result"]
-        _, replacement = self.request("/tasks", method="POST", payload={"prompt": "complete then replace"},
-                                      key="replace-after", callback_url=self.callback_url_for("new-done"))
-        self.wait_for_callback(submitted["task_id"])
-        self.assertEqual(submitted["task_id"], replacement["task_id"])
-        self.assertEqual("completed", replacement["status"])
-        self.assertEqual(original_result, replacement["result"])
-        self.assertEqual(2, len(self.callback_payloads))
-        self.assertEqual(original_result, self.callback_payloads[-1]["result"])
-        self.assertEqual("/webhook-waiting/new-done/wait-node?signature=local-test", self.callback_paths[-1])
-        self.assertEqual(1, len(self.fake_calls.read_text(encoding="utf-8").splitlines()))
-
-    def test_delayed_obsolete_callback_stops_retrying_after_replacement(self):
-        old_url = self.callback_url_for("delayed-old")
-        new_url = self.callback_url_for("delayed-new")
-        self.callback_block_path = "/webhook-waiting/delayed-old/wait-node?signature=local-test"
-        self.callback_responses[:] = [503, 200]
-        _, submitted = self.request("/tasks", method="POST", payload={"prompt": "slow task"},
-                                    key="replace-delayed", callback_url=old_url)
-        self.assertTrue(self.callback_entered.wait(3), "Old callback was not attempted")
-        _, replacement = self.request("/tasks", method="POST", payload={"prompt": "slow task"},
-                                      key="replace-delayed", callback_url=new_url)
-        self.callback_release.set()
-        self.wait_for_callback(submitted["task_id"])
-        self.assertEqual(submitted["task_id"], replacement["task_id"])
-        self.assertEqual(["/webhook-waiting/delayed-old/wait-node?signature=local-test",
-                          "/webhook-waiting/delayed-new/wait-node?signature=local-test"], self.callback_paths)
-        self.assertEqual(1, len(self.fake_calls.read_text(encoding="utf-8").splitlines()))
-
-    def test_idempotency_key_cannot_be_reused_for_different_task(self):
-        _, submitted = self.request("/tasks", method="POST", payload={"prompt": "original prompt"}, key="key-conflict")
-        self.wait_for(submitted["task_id"])
-        status, response = self.request("/tasks", method="POST", payload={"prompt": "different prompt"}, key="key-conflict")
-        self.assertEqual(409, status)
-        self.assertIn("different", response["error"])
-        self.assertEqual(1, len(self.fake_calls.read_text(encoding="utf-8").splitlines()))
-
-    def test_restart_retries_persisted_completed_result_without_agent_restart(self):
-        task, _ = self.store.create("completed before restart", "done-restart", self.callback_url_for("restart-old"))
-        self.store.update(task["id"], status="completed", exit_code=0, result="saved result", error=None,
-                          callback_delivery_status="delivery_unconfirmed")
-        recovered_store = TaskStore(self.root / "tasks.json")
-        recovered_bridge = Bridge(recovered_store, "test-token", command_prefix=(sys.executable, str(self.fake_claude)),
-                                  callback_origin=self.callback_origin)
-        recovered_bridge.resume_pending_callbacks()
-        recovered = self.wait_for_callback(task["id"], store=recovered_store)
-        self.assertEqual("saved result", self.callback_payloads[0]["result"])
-        self.assertEqual("completed", recovered["status"])
-        self.assertFalse(self.fake_calls.exists())
-
-    def test_temporary_callback_failure_retries_without_rerunning_claude(self):
-        self.callback_responses[:] = [503, 200]
-        status, created = self.request("/tasks", method="POST", payload={"prompt": "retry callback"},
-                                       key="callback-retry", callback_url=self.callback_url)
-        self.assertEqual(202, status)
-        self.wait_for(created["task_id"])
-        task = self.wait_for_callback(created["task_id"])
-        self.assertGreaterEqual(task["callback_delivery_attempts"], 2)
-        self.assertEqual(2, len(self.callback_payloads))
-        self.assertEqual("completed", task["status"])
-        self.assertEqual(1, len(self.fake_calls.read_text(encoding="utf-8").splitlines()))
-
-    def test_failed_claude_task_notifies_with_exit_code_and_error(self):
-        status, created = self.request("/tasks", method="POST", payload={"prompt": "exit nonzero"},
-                                       key="callback-failed", callback_url=self.callback_url)
-        self.assertEqual(202, status)
-        self.wait_for(created["task_id"])
-        self.wait_for_callback(created["task_id"])
-        self.assertEqual("failed", self.callback_payloads[0]["status"])
-        self.assertEqual(7, self.callback_payloads[0]["exit_code"])
-        self.assertIn("non-zero", self.callback_payloads[0]["error"])
-
-    def test_rejects_callback_outside_configured_local_n8n_resume_route(self):
-        for invalid in (
-            "http://example.com/webhook-waiting/exec-1/wait-node",
-            self.callback_origin + "/other/path",
-            "https://127.0.0.1:5678/webhook-waiting/exec-1/wait-node",
-        ):
-            status, _ = self.request("/tasks", method="POST", payload={"prompt": "reject callback"},
-                                     key="reject-" + str(len(invalid)), callback_url=invalid)
-            self.assertEqual(400, status)
-        self.assertEqual({}, self.store.tasks)
-
-    def test_accepts_this_n8n_instances_execution_only_resume_path(self):
-        resume_url = self.callback_origin + "/webhook-waiting/14?signature=local-test"
-        self.assertEqual(resume_url, validate_callback_url(resume_url, self.callback_origin))
-
-    def test_restart_recovers_callback_for_interrupted_task_without_rerunning(self):
-        task, _ = self.store.create("never run", "restart-key", self.callback_url)
-        self.store.update(task["id"], status="running")
-
-        recovered_store = TaskStore(self.root / "tasks.json")
-        self.assertEqual("interrupted", recovered_store.get(task["id"])["status"])
-        recovered_bridge = Bridge(recovered_store, "test-token",
-                                  command_prefix=(sys.executable, str(self.fake_claude)),
-                                  callback_origin=self.callback_origin)
-        recovered_bridge.resume_pending_callbacks()
-        recovered = self.wait_for_callback(task["id"], store=recovered_store)
-        self.assertEqual("interrupted", recovered["status"])
-        self.assertEqual("interrupted", self.callback_payloads[0]["status"])
-        self.assertFalse(self.fake_calls.exists())
+    def test_connection_test_task_is_refused_while_a_step_runs(self):
+        with mock.patch.dict(cycle.STEPS, {"ci": self.fake_ci}):
+            self.post("/cycle/step", {"callback_url": self.callback})
+            with self.assertRaises(HTTPError) as busy:
+                self.post("/tasks", {"prompt": "hi", "callback_url": self.callback})
+            self.release.set()
+        self.assertEqual(busy.exception.code, 409)
 
 
 if __name__ == "__main__":

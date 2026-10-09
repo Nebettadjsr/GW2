@@ -231,29 +231,21 @@ def commit_and_push(message: str, paths=None) -> dict:
                     "sha": head_sha(), "branch": branch,
                     "reason": f"unsafe publication path: {path!r}"}
 
-    staged_before = set(_output("diff", "--cached", "--name-only").splitlines())
-    unexpected_staged = staged_before - scoped_paths
-    if unexpected_staged:
-        return {"status": "UNAVAILABLE", "committed": False, "pushed": False,
-                "sha": head_sha(), "branch": branch,
-                "reason": "refusing to publish pre-staged unrelated changes: "
-                          + ", ".join(sorted(unexpected_staged))}
-
     committed = False
 
     if scoped_paths:
         # Path-limited add stages only the validated publication scope. Never
         # use repository-wide `git add -A`/`--all` in the publication path.
         run_git("add", "--", *sorted(scoped_paths))
-        staged = _output("diff", "--cached", "--name-only").splitlines()
+        staged = sorted(set(_output("diff", "--cached", "--name-only").splitlines()) & scoped_paths)
     else:
         staged = []
 
     if staged:
 
-        # Path-limited `git add` stages only names in the validated scope;
-        # ignored files remain excluded by Git's normal ignore rules.
-        result = run_git("commit", "-m", message, check=False)
+        # `--only` commits exactly the scoped paths; anything else a human
+        # has staged stays staged and out of this commit.
+        result = run_git("commit", "--only", "-m", message, "--", *staged, check=False)
 
         if result.returncode != 0 and "nothing to commit" not in (
                 result.stdout + result.stderr).lower():

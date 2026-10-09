@@ -41,41 +41,6 @@ def raw_plan(status="READY", **overrides):
 
 
 class QAPlanValidationTest(unittest.TestCase):
-    def test_web021_review_tests_use_frontend_cwd_and_sanitized_node_environment(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            frontend = root / "frontend"
-            test_paths = (
-                "src/ecto/__tests__/EctoContentHooks.spec.ts",
-                "src/ecto/__tests__/EctoSalvageScreen.spec.ts",
-                "src/__tests__/App.spec.ts",
-            )
-            for relative in test_paths:
-                path = frontend / relative
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text("fixture", encoding="utf-8")
-            npm_cli = root / "node_modules/npm/bin/npm-cli.js"
-            npm_cli.parent.mkdir(parents=True)
-            npm_cli.touch()
-            story = root / "STORY-WEB-021-fixture.md"
-            story.write_text("# WEB-021\n\n## Story ID\nSTORY-WEB-021\n", encoding="utf-8")
-            plan = {"prepared_test_paths": ["frontend/src/ecto/__tests__/EctoContentHooks.spec.ts"]}
-
-            with patch.object(config, "REPO_ROOT", root), \
-                    patch.object(qa_agent.shutil, "which", return_value=str(root / "node.exe")), \
-                    patch.object(qa_agent.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "3 files passed", "")) as run:
-                result = qa_agent.run_web021_review_tests(story, plan)
-
-        self.assertEqual("passed", result["status"])
-        args, kwargs = run.call_args
-        self.assertEqual(frontend, kwargs["cwd"])
-        self.assertTrue(args[0][1].endswith("node_modules\\npm\\bin\\npm-cli.js"))
-        self.assertEqual(["test", "--", "--run", *test_paths], args[0][2:])
-        self.assertNotIn("NODE_OPTIONS", kwargs["env"])
-        self.assertNotIn("INIT_CWD", kwargs["env"])
-        self.assertTrue(kwargs["env"]["npm_config_cache"].startswith(str(frontend)))
-        self.assertTrue(kwargs["env"]["TMP"].startswith(str(frontend)))
-
     def test_story_id_section_overrides_filename_slug(self):
         content = "# Ecto Content Hooks\n\n## Story ID\n\nSTORY-WEB-021\n"
         story_id = qa_agent.story_id_from_content(

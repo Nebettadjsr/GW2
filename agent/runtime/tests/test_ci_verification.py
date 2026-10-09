@@ -144,6 +144,20 @@ class CommitAndPushTest(unittest.TestCase):
         self.assertTrue(unrelated.exists())
         self.assertIn("agent-runtime-change.py", git_sync.working_tree_paths())
 
+    def test_unrelated_staged_changes_neither_block_nor_join_the_scoped_commit(self):
+        # Regression: a maintainer's staged deletion made finalization refuse
+        # to publish, stranding a CI-passed story as finalized only locally.
+        (self.repo / "story.md").write_text("DONE\n", encoding="utf-8")
+        self.git("rm", "-q", "seed.txt", cwd=self.repo)
+
+        result = REAL_COMMIT_AND_PUSH("finalized STORY-X", paths=["story.md"])
+
+        self.assertEqual((result["status"], result["changed_paths"]), ("PUSHED", ["story.md"]))
+        committed = git_sync.run_git("show", "--name-only", "--pretty=", "HEAD").stdout.split()
+        self.assertEqual(committed, ["story.md"])
+        staged = git_sync.run_git("diff", "--cached", "--name-only").stdout.split()
+        self.assertEqual(staged, ["seed.txt"])
+
     def test_ignored_files_are_never_swept_into_the_commit(self):
         (self.repo / ".env").write_text("DATABASE_PASSWORD=secret\n", encoding="utf-8")
         (self.repo / "src.txt").write_text("work\n", encoding="utf-8")

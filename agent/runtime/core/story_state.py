@@ -320,68 +320,6 @@ def set_active_story(
             ) from error
 
 
-def activate_selected_story(story_id: str, filename: str) -> tuple[Path, str]:
-    """Revalidate and activate the selected first eligible story atomically."""
-    if not isinstance(filename, str) or not filename or Path(filename).name != filename:
-        raise ValueError("filename must be a canonical story filename without a path.")
-    if not isinstance(story_id, str) or not story_id.strip():
-        raise ValueError("story_id must be a non-empty string.")
-
-    with story_activation_lock():
-        path = resolve_story_path(filename)
-        content = read_file(path)
-        if extract_story_id(content) != story_id:
-            raise RuntimeError(
-                f"Stale story selection: {filename} no longer has story ID {story_id}. Fetch the next story again."
-            )
-
-        backlog = read_file(BACKLOG_FILE)
-        active = parse_backlog_section(backlog, "Active")
-        pointer = CURRENT_STORY_FILE.read_text(encoding="utf-8").strip() \
-            if CURRENT_STORY_FILE.exists() else ""
-        if pointer:
-            pointed = resolve_story_path(pointer)
-            if pointed == path and active == [path.name]:
-                return path, "already_active"
-
-        if ATTEMPT_STATE_FILE.exists():
-            raise RuntimeError(
-                "Cannot activate a new story while ATTEMPT_STATE.json records an unfinished orchestrator attempt. "
-                "Resume or reconcile that attempt first."
-            )
-
-        recovered_path = reconcile_story_activation()
-        backlog = read_file(BACKLOG_FILE)
-        active = parse_backlog_section(backlog, "Active")
-        pointer = CURRENT_STORY_FILE.read_text(encoding="utf-8").strip() \
-            if CURRENT_STORY_FILE.exists() else ""
-        if pointer:
-            pointed = resolve_story_path(pointer)
-            if pointed == path and active == [path.name]:
-                return path, "recovered" if recovered_path == path else "already_active"
-            if active or not _is_completed_or_blocked_pointer(backlog, pointed):
-                raise RuntimeError(
-                    f"Another story is already active: {pointed.name}. Finish or recover it before activating another story."
-                )
-        if active:
-            raise RuntimeError(
-                f"Cannot activate {filename}: BACKLOG.md already lists {active[0]} as Active without a matching pointer. Reconcile manually."
-            )
-        candidates = get_selectable_story_candidates()
-        if not candidates or candidates[0] != path:
-            raise RuntimeError(
-                f"Stale story selection: {filename} is no longer the next eligible story. Fetch /stories/next again."
-            )
-        try:
-            activated = _write_active_story_locked(path)
-        except OSError as error:
-            raise RuntimeError(
-                f"Activation did not finish writing repository state for {filename}. "
-                "Retry the same activation to reconcile it, or inspect BACKLOG.md and CURRENT_STORY.md manually."
-            ) from error
-        return activated, "activated"
-
-
 def _write_active_story_locked(story_path: Path) -> Path:
     normalized = story_path.relative_to(REPO_ROOT).as_posix()
     _atomic_write_text(CURRENT_STORY_FILE, normalized + "\n")

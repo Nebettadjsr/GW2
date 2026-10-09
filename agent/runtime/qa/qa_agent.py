@@ -2,9 +2,7 @@
 
 import hashlib
 import json
-import os
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -640,78 +638,6 @@ Return exactly one fenced JSON object:
     if not isinstance(raw.get("actionable_items", []), list):
         raise QAPlanError("QA review actionable_items must be a list.")
     return raw
-
-
-def run_web021_review_tests(story_path: Path, plan: dict) -> dict:
-    """Run WEB-021's focused Vitest gate in the host environment, outside Codex's sandbox."""
-    story_content = story_path.read_text(encoding="utf-8")
-    if story_id_from_content(story_content, story_path.stem) != "STORY-WEB-021":
-        return {"status": "not_configured", "reason": "No host-run review command is configured for this story."}
-
-    relative_tests = [
-        "src/ecto/__tests__/EctoContentHooks.spec.ts",
-        "src/ecto/__tests__/EctoSalvageScreen.spec.ts",
-        "src/__tests__/App.spec.ts",
-    ]
-    prepared = "frontend/src/ecto/__tests__/EctoContentHooks.spec.ts"
-    if prepared not in plan.get("prepared_test_paths", []):
-        raise QAPlanError("WEB-021 review command does not match its prepared QA test path.")
-
-    frontend = config.REPO_ROOT / "frontend"
-    for relative in relative_tests:
-        if not (frontend / relative).is_file():
-            raise QAInfrastructureError(f"Required WEB-021 review test is missing: frontend/{relative}")
-    node = shutil.which("node")
-    if not node:
-        raise QAInfrastructureError("Node.js was not found in PATH for WEB-021 review tests.")
-    npm_cli = Path(node).resolve().parent / "node_modules" / "npm" / "bin" / "npm-cli.js"
-    if not npm_cli.is_file():
-        raise QAInfrastructureError("The Node installation's npm-cli.js was not found.")
-
-    support = frontend / "node_modules" / ".cache" / "qa-review-runner"
-    cache = support / "npm-cache"
-    temporary = support / "tmp"
-    cache.mkdir(parents=True, exist_ok=True)
-    temporary.mkdir(parents=True, exist_ok=True)
-    user_config = support / "npmrc"
-    user_config.touch(exist_ok=True)
-
-    env = os.environ.copy()
-    for key in ("NODE_OPTIONS", "NODE_PATH", "INIT_CWD", "PWD"):
-        env.pop(key, None)
-    for key in tuple(env):
-        if key.lower().startswith("npm_config_"):
-            env.pop(key, None)
-    env.update({
-        "CI": "true",
-        "TEMP": str(temporary),
-        "TMP": str(temporary),
-        "npm_config_cache": str(cache),
-        "npm_config_userconfig": str(user_config),
-        "npm_config_loglevel": "error",
-        "npm_config_update_notifier": "false",
-        "npm_config_audit": "false",
-        "npm_config_fund": "false",
-    })
-    command = [str(node), str(npm_cli), "test", "--", "--run", *relative_tests]
-    try:
-        result = subprocess.run(
-            command, cwd=frontend, env=env, text=True, encoding="utf-8",
-            errors="replace", capture_output=True, timeout=180, check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as error:
-        return {
-            "status": "runner_error", "command": "npm test -- --run " + " ".join(relative_tests),
-            "working_directory": "frontend", "error": f"{type(error).__name__}: {error}",
-        }
-    output = (result.stdout + "\n" + result.stderr).strip()
-    return {
-        "status": "passed" if result.returncode == 0 else "failed",
-        "command": "npm test -- --run " + " ".join(relative_tests),
-        "working_directory": "frontend",
-        "exit_code": result.returncode,
-        "output": output[-12000:],
-    }
 
 
 def record_review(plan: dict, review: dict, request_id: str | None = None) -> None:

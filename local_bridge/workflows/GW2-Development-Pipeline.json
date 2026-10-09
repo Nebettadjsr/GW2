@@ -1,1435 +1,242 @@
-[
-  {
-    "updatedAt": "2026-10-07T05:09:26.591Z",
-    "createdAt": "2026-10-07T04:39:08.312Z",
-    "id": "qMaNwA16S7Dcxi75",
-    "name": "GW2 - Development Pipeline",
-    "description": "Coordinates the existing GW2 story stages in order and stops with structured recovery details whenever a stage does not meet its success gate.",
-    "active": false,
-    "isArchived": false,
-    "nodes": [
-      {
-        "parameters": {},
-        "id": "eae59e6a-bd48-44d3-a764-65abb78b52db",
-        "name": "Start Development Pipeline",
-        "type": "n8n-nodes-base.manualTrigger",
-        "typeVersion": 1,
-        "position": [
-          0,
-          400
-        ]
-      },
-      {
-        "parameters": {
-          "workflowId": {
-            "__rl": true,
-            "mode": "id",
-            "value": "dENwqwHwnWa8GtmH"
-          },
-          "options": {
-            "waitForSubWorkflow": true
-          }
-        },
-        "id": "63080b9e-ef01-41e1-99ec-c962192d10d8",
-        "name": "Select Next Story",
-        "type": "n8n-nodes-base.executeWorkflow",
-        "typeVersion": 1.4,
-        "position": [
-          720,
-          544
-        ],
-        "retryOnFail": false,
-        "onError": "continueErrorOutput"
-      },
-      {
-        "parameters": {
-          "jsCode": "function normalizeStageResult(value) {\n  const result = value && typeof value === \"object\" ? value : {};\n  const executions = [\"RUN\", \"REUSED\", \"SKIPPED\", \"STOPPED\"];\n  const error = result.error === undefined || result.error === null || result.error === \"\"\n    ? null\n    : result.error;\n  return {\n    ...result,\n    stage: typeof result.stage === \"string\" && result.stage ? result.stage : \"unknown\",\n    execution: executions.includes(result.execution) ? result.execution : \"STOPPED\",\n    status: result.status ?? \"UNKNOWN\",\n    decision: result.decision ?? result.status ?? \"UNKNOWN\",\n    story_id: result.story_id ?? \"\",\n    task_id: result.task_id ?? \"\",\n    commit_sha: result.commit_sha ?? \"\",\n    error,\n    reason: result.reason ?? \"\",\n    outstanding_requirements: Array.isArray(result.outstanding_requirements)\n      ? result.outstanding_requirements\n      : [],\n    provenance: result.provenance ?? \"unknown\",\n    record_source: result.record_source ?? \"unknown\",\n    submission_disposition: result.submission_disposition ?? \"unknown\"\n  };\n}\nconst raw=$input.first()?.json??{}; let prior=[]; try { prior=[]; } catch(e) { prior=[]; } const selectedStoryId=prior.find(x=>x.stage===\"selection\")?.story_id??\"\"; const status=raw.queue_empty===true?\"EMPTY_QUEUE\":\"SELECTED\"; const ok=!!(raw.queue_empty===false && !!raw.story?.id && raw.operation_source===\"local_bridge_http\"); const storyId=raw.story?.id??\"\"; const summary={stage:\"selection\",execution:ok?\"RUN\":\"STOPPED\",label:\"Select Next Story\",status,story_id:storyId,task_id:raw.task_id??\"\",decision:raw.decision??raw.qa_status??raw.ci_status??raw.activation_status??status,exit_code:raw.exit_code??null,reason:ok?\"\":(raw.error?.message??raw.reason??raw.rationale??raw.message??raw.blocking_code??\"Story selection did not return an authenticated eligible story.\"),recovery:raw.recovery_information??raw.recovery_message??raw.error?.recovery_action??\"\",provenance:raw.operation_source??raw.record_source??raw.result_source??\"unknown\",record_source:raw.record_source??raw.result_source??\"unknown\",submission_disposition:raw.submission_disposition??\"unknown\",error:ok?null:(raw.error??null),outstanding_requirements:raw.outstanding_requirements??raw.outstanding_prerequisites??raw.findings??raw.actionable_items??[],story:raw.story?{id:raw.story.id,title:raw.story.title,filename:raw.story.filename}:undefined}; const pipeline=[...prior,normalizeStageResult(summary)]; const recovery=summary.recovery||summary.reason||(ok?\"\":\"Inspect the child execution and persisted bridge task before resuming; do not submit manually with a new key.\"); return [{json:{pipeline_summary:pipeline,story_id:storyId,pipeline_continue:pipeline[pipeline.length-1].execution!==\"STOPPED\",stopped_stage:ok?\"\":\"selection\",stage_status:status,reason:summary.reason||(!ok?\"Child stage did not return its required success state.\":\"\"),task_id:summary.task_id,recovery_information:recovery,next_action:ok?\"\":recovery}}];"
-        },
-        "id": "963edd43-cc48-4e10-81df-c27c346b65ba",
-        "name": "Normalize Select Next Story",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          896,
-          544
-        ]
-      },
-      {
-        "parameters": {
-          "conditions": {
-            "options": {
-              "caseSensitive": true,
-              "leftValue": "",
-              "typeValidation": "strict",
-              "version": 2
-            },
-            "conditions": [
-              {
-                "leftValue": "={{ $json.pipeline_continue }}",
-                "rightValue": true,
-                "operator": {
-                  "type": "boolean",
-                  "operation": "true"
-                }
-              }
-            ],
-            "combinator": "and"
-          },
-          "options": {}
-        },
-        "id": "678b301d-7a4e-4d22-9456-adaf0afbb6e7",
-        "name": "Story Selected?",
-        "type": "n8n-nodes-base.if",
-        "typeVersion": 2.3,
-        "position": [
-          1072,
-          544
-        ]
-      },
-      {
-        "parameters": {
-          "workflowId": {
-            "__rl": true,
-            "mode": "id",
-            "value": "p0pjHlYxPUFuqWYX"
-          },
-          "workflowInputs": {
-            "mappingMode": "defineBelow",
-            "value": {
-              "story_id": "={{ $('Normalize Select Next Story').first().json.pipeline_summary[0].story_id }}",
-              "filename": "={{ $('Normalize Select Next Story').first().json.pipeline_summary[0].story.filename }}"
-            },
-            "matchingColumns": [],
-            "schema": [
-              {
-                "id": "story_id",
-                "displayName": "story_id",
-                "required": true,
-                "defaultMatch": false,
-                "display": true,
-                "canBeUsedToMatch": true,
-                "type": "string"
-              },
-              {
-                "id": "filename",
-                "displayName": "filename",
-                "required": true,
-                "defaultMatch": false,
-                "display": true,
-                "canBeUsedToMatch": true,
-                "type": "string"
-              }
-            ],
-            "attemptToConvertTypes": false
-          },
-          "options": {
-            "waitForSubWorkflow": true
-          }
-        },
-        "id": "9d88560d-08c5-4e56-b653-c34a1fcc63cf",
-        "name": "Activate Story",
-        "type": "n8n-nodes-base.executeWorkflow",
-        "typeVersion": 1.4,
-        "position": [
-          1328,
-          384
-        ],
-        "retryOnFail": false,
-        "onError": "continueErrorOutput"
-      },
-      {
-        "parameters": {
-          "jsCode": "function normalizeStageResult(value) {\n  const result = value && typeof value === \"object\" ? value : {};\n  const executions = [\"RUN\", \"REUSED\", \"SKIPPED\", \"STOPPED\"];\n  const error = result.error === undefined || result.error === null || result.error === \"\"\n    ? null\n    : result.error;\n  return {\n    ...result,\n    stage: typeof result.stage === \"string\" && result.stage ? result.stage : \"unknown\",\n    execution: executions.includes(result.execution) ? result.execution : \"STOPPED\",\n    status: result.status ?? \"UNKNOWN\",\n    decision: result.decision ?? result.status ?? \"UNKNOWN\",\n    story_id: result.story_id ?? \"\",\n    task_id: result.task_id ?? \"\",\n    commit_sha: result.commit_sha ?? \"\",\n    error,\n    reason: result.reason ?? \"\",\n    outstanding_requirements: Array.isArray(result.outstanding_requirements)\n      ? result.outstanding_requirements\n      : [],\n    provenance: result.provenance ?? \"unknown\",\n    record_source: result.record_source ?? \"unknown\",\n    submission_disposition: result.submission_disposition ?? \"unknown\"\n  };\n}\nconst raw=$input.first()?.json??{}; let prior=[]; try { prior=$('Normalize Select Next Story').first().json.pipeline_summary??[]; } catch(e) {} const selectedStoryId=prior.find(x=>x.stage===\"selection\")?.story_id??\"\"; const status=raw.activation_status??\"UNKNOWN\"; const storyId=raw.story_id??\"\"; const ok=!!(storyId===selectedStoryId && [\"activated\",\"already_active\"].includes(status) && raw.operation_source===\"local_bridge_http\"); const execution=status===\"already_active\"?\"REUSED\":ok?\"RUN\":\"STOPPED\"; const summary={stage:\"activation\",execution,label:\"Select and Activate Story\",status,story_id:storyId,task_id:raw.task_id??\"\",decision:status,reason:ok?\"\":(raw.error?.message??raw.reason??raw.message??\"Activation did not verify the selected story.\"),recovery:ok?\"\":(raw.recovery_information??\"\"),provenance:raw.operation_source??\"unknown\",record_source:raw.record_source??\"unknown\",submission_disposition:raw.submission_disposition??\"unknown\",error:ok?null:(raw.error??null),outstanding_requirements:raw.outstanding_requirements??[]}; const pipeline=[...prior,normalizeStageResult(summary)]; const recovery=summary.recovery||summary.reason||(ok?\"\":\"Activation was not verified for the selected active story.\"); return [{json:{pipeline_summary:pipeline,story_id:storyId,pipeline_continue:pipeline[pipeline.length-1].execution!==\"STOPPED\",stopped_stage:ok?\"\":\"activation\",stage_status:status,reason:summary.reason||(!ok?\"Activation did not return the current story from the authenticated bridge.\":\"\"),task_id:summary.task_id,recovery_information:recovery,next_action:ok?\"\":recovery}}];"
-        },
-        "id": "449cd87f-830c-4ad3-9ef4-bfd7361212d0",
-        "name": "Normalize Select and Activate Story",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          1504,
-          384
-        ]
-      },
-      {
-        "parameters": {
-          "conditions": {
-            "options": {
-              "caseSensitive": true,
-              "leftValue": "",
-              "typeValidation": "strict",
-              "version": 2
-            },
-            "conditions": [
-              {
-                "leftValue": "={{ $json.pipeline_continue }}",
-                "rightValue": true,
-                "operator": {
-                  "type": "boolean",
-                  "operation": "true"
-                }
-              }
-            ],
-            "combinator": "and"
-          },
-          "options": {}
-        },
-        "id": "a45f983c-d2ca-4617-aba7-637b14668fe2",
-        "name": "Activation Succeeded?",
-        "type": "n8n-nodes-base.if",
-        "typeVersion": 2.3,
-        "position": [
-          1680,
-          384
-        ]
-      },
-      {
-        "parameters": {
-          "workflowId": {
-            "__rl": true,
-            "mode": "id",
-            "value": "uEKhb6fvheAND8iI"
-          },
-          "options": {
-            "waitForSubWorkflow": true
-          }
-        },
-        "id": "9fee5c47-7201-44b0-924e-8eea390c510f",
-        "name": "Run QA Preparation",
-        "type": "n8n-nodes-base.executeWorkflow",
-        "typeVersion": 1.4,
-        "position": [
-          1984,
-          272
-        ],
-        "retryOnFail": false,
-        "onError": "continueErrorOutput"
-      },
-      {
-        "parameters": {
-          "jsCode": "function normalizeStageResult(value) {\n  const result = value && typeof value === \"object\" ? value : {};\n  const executions = [\"RUN\", \"REUSED\", \"SKIPPED\", \"STOPPED\"];\n  const error = result.error === undefined || result.error === null || result.error === \"\"\n    ? null\n    : result.error;\n  return {\n    ...result,\n    stage: typeof result.stage === \"string\" && result.stage ? result.stage : \"unknown\",\n    execution: executions.includes(result.execution) ? result.execution : \"STOPPED\",\n    status: result.status ?? \"UNKNOWN\",\n    decision: result.decision ?? result.status ?? \"UNKNOWN\",\n    story_id: result.story_id ?? \"\",\n    task_id: result.task_id ?? \"\",\n    commit_sha: result.commit_sha ?? \"\",\n    error,\n    reason: result.reason ?? \"\",\n    outstanding_requirements: Array.isArray(result.outstanding_requirements)\n      ? result.outstanding_requirements\n      : [],\n    provenance: result.provenance ?? \"unknown\",\n    record_source: result.record_source ?? \"unknown\",\n    submission_disposition: result.submission_disposition ?? \"unknown\"\n  };\n}\nconst raw=$input.first()?.json??{}; let prior=[]; try { prior=$('Normalize Select and Activate Story').first().json.pipeline_summary??[]; } catch(e) { try { prior=$('Normalize Existing Active Story').first().json.pipeline_summary??[]; } catch(e2) {} } const selectedStoryId=prior.find(x=>x.stage===\"selection\")?.story_id??\"\"; const qaStatus=raw.verified_qa_status??raw.qa_status??\"UNKNOWN\"; const storyId=raw.story_id??\"\"; const noFindings=Array.isArray(raw.outstanding_requirements)&&raw.outstanding_requirements.length===0; const noError=raw.error===undefined||raw.error===null||raw.error===\"\"; const fingerprint=/^[0-9a-f]{64}$/.test(raw.story_contract_sha256??\"\") && raw.story_contract_sha256===raw.verified_story_contract_sha256; const current=!!(selectedStoryId && storyId===selectedStoryId && raw.operation_source===\"local_bridge_http\" && noError && noFindings && raw.verified_qa_status===qaStatus && raw.decision===qaStatus && fingerprint && raw.implementation_permitted===true); const reused=[\"cached_result\",\"idempotent_replay\"].includes(raw.submission_disposition) && raw.record_source===\"persisted_bridge_task\" && raw.task_status===\"completed\" && Number(raw.exit_code)===0; const fresh=raw.submission_disposition===\"created\" && raw.task_status===\"completed\" && Number(raw.exit_code)===0; const validStatus=[\"READY\",\"NO_TESTS_NEEDED\"].includes(qaStatus); const ok=!!(current && validStatus && (reused||fresh)); const execution=!ok?\"STOPPED\":qaStatus===\"NO_TESTS_NEEDED\"?\"SKIPPED\":reused?\"REUSED\":\"RUN\"; const status=qaStatus; const summary={stage:\"qa_preparation\",execution,label:\"Prepare QA\",status,story_id:storyId,task_id:raw.task_id??\"\",decision:qaStatus,reason:ok?\"\":(raw.reason??raw.error?.message??raw.message??\"QA readiness was not verified for the selected story and current bridge contract.\"),recovery:ok?\"\":(raw.recovery_information??raw.recovery_message??\"\"),provenance:raw.operation_source??raw.record_source??\"unknown\",record_source:raw.record_source??\"unknown\",submission_disposition:raw.submission_disposition??\"unknown\",error:ok?null:(raw.error??null),outstanding_requirements:raw.outstanding_requirements??[]}; const pipeline=[...prior,normalizeStageResult(summary)]; const recovery=summary.recovery||summary.reason||(ok?\"\":\"QA readiness was not verified for the selected story and current bridge contract.\"); return [{json:{pipeline_summary:pipeline,story_id:storyId,pipeline_continue:pipeline[pipeline.length-1].execution!==\"STOPPED\",stopped_stage:ok?\"\":\"qa_preparation\",stage_status:status,reason:summary.reason||(!ok?\"QA did not return a current successful READY or NO_TESTS_NEEDED result.\":\"\"),task_id:summary.task_id,recovery_information:recovery,next_action:ok?\"\":recovery}}];"
-        },
-        "id": "fe446d66-c074-4283-9b83-e728ac5cbca8",
-        "name": "Normalize Prepare QA",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          2160,
-          272
-        ]
-      },
-      {
-        "parameters": {
-          "conditions": {
-            "options": {
-              "caseSensitive": true,
-              "leftValue": "",
-              "typeValidation": "strict",
-              "version": 2
-            },
-            "conditions": [
-              {
-                "leftValue": "={{ $json.pipeline_continue }}",
-                "rightValue": true,
-                "operator": {
-                  "type": "boolean",
-                  "operation": "true"
-                }
-              }
-            ],
-            "combinator": "and"
-          },
-          "options": {}
-        },
-        "id": "b8be5880-aed0-4c94-a95d-6983c5dec0ae",
-        "name": "QA Preparation Permits Implementation?",
-        "type": "n8n-nodes-base.if",
-        "typeVersion": 2.3,
-        "position": [
-          2336,
-          272
-        ]
-      },
-      {
-        "parameters": {
-          "workflowId": {
-            "__rl": true,
-            "mode": "id",
-            "value": "vyWVuD29QLlNbHqK"
-          },
-          "options": {
-            "waitForSubWorkflow": true
-          }
-        },
-        "id": "779d0d80-85cc-4a8c-bb8a-aee213088c21",
-        "name": "Run Claude Implementation",
-        "type": "n8n-nodes-base.executeWorkflow",
-        "typeVersion": 1.4,
-        "position": [
-          2656,
-          256
-        ],
-        "retryOnFail": false,
-        "onError": "continueErrorOutput"
-      },
-      {
-        "parameters": {
-          "jsCode": "function normalizeStageResult(value) {\n  const result = value && typeof value === \"object\" ? value : {};\n  const executions = [\"RUN\", \"REUSED\", \"SKIPPED\", \"STOPPED\"];\n  const error = result.error === undefined || result.error === null || result.error === \"\"\n    ? null\n    : result.error;\n  return {\n    ...result,\n    stage: typeof result.stage === \"string\" && result.stage ? result.stage : \"unknown\",\n    execution: executions.includes(result.execution) ? result.execution : \"STOPPED\",\n    status: result.status ?? \"UNKNOWN\",\n    decision: result.decision ?? result.status ?? \"UNKNOWN\",\n    story_id: result.story_id ?? \"\",\n    task_id: result.task_id ?? \"\",\n    commit_sha: result.commit_sha ?? \"\",\n    error,\n    reason: result.reason ?? \"\",\n    outstanding_requirements: Array.isArray(result.outstanding_requirements)\n      ? result.outstanding_requirements\n      : [],\n    provenance: result.provenance ?? \"unknown\",\n    record_source: result.record_source ?? \"unknown\",\n    submission_disposition: result.submission_disposition ?? \"unknown\"\n  };\n}\nconst raw=$input.first()?.json??{}; let prior=[]; try { prior=$('Normalize Prepare QA').first().json.pipeline_summary??[]; } catch(e) {} const selectedStoryId=prior.find(x=>x.stage===\"selection\")?.story_id??\"\"; const invocationError=raw.error!==undefined&&raw.error!==null&&raw.error!==\"\"&&Array.isArray(raw.pipeline_summary); const errorMessage=typeof raw.error===\"string\"?raw.error:(raw.error?.message??raw.message??\"Child workflow invocation failed.\"); if(invocationError){const recovery=\"Implementation was not invoked. Inspect the child execution and persisted bridge task before resuming.\"; const summary={stage:\"implementation\",execution:\"STOPPED\",label:\"Implement Active Story\",status:\"TECHNICAL_FAILURE\",story_id:selectedStoryId,task_id:\"\",reason:errorMessage,recovery,provenance:\"n8n_subworkflow_invocation\",record_source:\"n8n_subworkflow_invocation\",submission_disposition:\"not_invoked\",error:{message:errorMessage},outstanding_requirements:[]}; return [{json:{pipeline_summary:[...prior,normalizeStageResult(summary)],story_id:selectedStoryId,pipeline_continue:false,stopped_stage:\"implementation\",stage_status:\"TECHNICAL_FAILURE\",reason:errorMessage,task_id:\"\",error:{message:errorMessage},recovery_information:recovery,next_action:recovery}}];} const storyId=raw.story_id??\"\"; const already=raw.preparation_status===\"implementation_already_completed\"&&!!raw.implementation_task_id&&!!raw.implementation_contract_sha256&&raw.implementation_contract_sha256===raw.implementation_task_contract_sha256; const completed=raw.status===\"completed\"&&Number(raw.exit_code)===0&&!!raw.task_id; const ok=!!(storyId===selectedStoryId&&((already&&raw.operation_source===\"local_bridge_http\")||completed)); const execution=!ok?\"STOPPED\":already?\"REUSED\":\"RUN\"; const status=ok?\"COMPLETED\":(raw.status??\"UNKNOWN\"); const reason=ok?\"\":(raw.reason??raw.error?.message??raw.message??\"Implementation completion was not verified for the selected story.\"); const error=ok?null:(raw.error??null); const recovery=ok?\"\":(raw.recovery_information??raw.recovery_message??\"Inspect the persisted implementation task and current contract before retrying.\"); const summary={stage:\"implementation\",execution,label:\"Implement Active Story\",status,story_id:storyId,task_id:raw.task_id??raw.implementation_task_id??\"\",decision:ok?\"COMPLETED\":(raw.decision??status),exit_code:raw.exit_code??null,reason,recovery,provenance:raw.operation_source??\"unknown\",record_source:raw.record_source??\"unknown\",submission_disposition:raw.submission_disposition??\"unknown\",error,outstanding_requirements:ok?[]:(raw.outstanding_requirements??raw.outstanding_prerequisites??[])}; const pipeline=[...prior,normalizeStageResult(summary)]; return [{json:{pipeline_summary:pipeline,story_id:storyId,pipeline_continue:pipeline[pipeline.length-1].execution!==\"STOPPED\",stopped_stage:ok?\"\":\"implementation\",stage_status:status,reason,task_id:summary.task_id,error,recovery_information:recovery,next_action:ok?\"\":recovery}}];"
-        },
-        "id": "7c94d610-bd13-47ab-9d6c-ba45ad84e1d8",
-        "name": "Normalize Implement Active Story",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          2832,
-          256
-        ]
-      },
-      {
-        "parameters": {
-          "conditions": {
-            "options": {
-              "caseSensitive": true,
-              "leftValue": "",
-              "typeValidation": "strict",
-              "version": 2
-            },
-            "conditions": [
-              {
-                "leftValue": "={{ $json.pipeline_continue }}",
-                "rightValue": true,
-                "operator": {
-                  "type": "boolean",
-                  "operation": "true"
-                }
-              }
-            ],
-            "combinator": "and"
-          },
-          "options": {}
-        },
-        "id": "828dc1c9-8375-429b-ba64-0f8d60504496",
-        "name": "Implementation Succeeded?",
-        "type": "n8n-nodes-base.if",
-        "typeVersion": 2.3,
-        "position": [
-          3008,
-          256
-        ]
-      },
-      {
-        "parameters": {
-          "workflowId": {
-            "__rl": true,
-            "mode": "id",
-            "value": "qqNHDKoE9jaQEf7h"
-          },
-          "options": {
-            "waitForSubWorkflow": true
-          }
-        },
-        "id": "f966d95d-7f49-4be5-9618-c7f5eb74b272",
-        "name": "Run Post-Implementation QA",
-        "type": "n8n-nodes-base.executeWorkflow",
-        "typeVersion": 1.4,
-        "position": [
-          3328,
-          256
-        ],
-        "retryOnFail": false,
-        "onError": "continueErrorOutput"
-      },
-      {
-        "parameters": {
-          "jsCode": "function normalizeStageResult(value) {\n  const result = value && typeof value === \"object\" ? value : {};\n  const executions = [\"RUN\", \"REUSED\", \"SKIPPED\", \"STOPPED\"];\n  const error = result.error === undefined || result.error === null || result.error === \"\"\n    ? null\n    : result.error;\n  return {\n    ...result,\n    stage: typeof result.stage === \"string\" && result.stage ? result.stage : \"unknown\",\n    execution: executions.includes(result.execution) ? result.execution : \"STOPPED\",\n    status: result.status ?? \"UNKNOWN\",\n    decision: result.decision ?? result.status ?? \"UNKNOWN\",\n    story_id: result.story_id ?? \"\",\n    task_id: result.task_id ?? \"\",\n    commit_sha: result.commit_sha ?? \"\",\n    error,\n    reason: result.reason ?? \"\",\n    outstanding_requirements: Array.isArray(result.outstanding_requirements)\n      ? result.outstanding_requirements\n      : [],\n    provenance: result.provenance ?? \"unknown\",\n    record_source: result.record_source ?? \"unknown\",\n    submission_disposition: result.submission_disposition ?? \"unknown\"\n  };\n}\nconst raw=$input.first()?.json??{}; let prior=[]; try { prior=$('Normalize Implement Active Story').first().json.pipeline_summary??[]; } catch(e) {} const selectedStoryId=prior.find(x=>x.stage===\"selection\")?.story_id??\"\"; const storyId=raw.story_id??\"\"; const status=raw.decision??\"UNKNOWN\"; const errorFree=raw.error===undefined||raw.error===null||raw.error===\"\"; const taskOK=raw.task_status===\"completed\"&&raw.exit_code===0; const ok=!!(storyId===selectedStoryId&&raw.operation_source===\"local_bridge_http\"&&taskOK&&errorFree&&status===\"APPROVE\"&&Array.isArray(raw.outstanding_requirements)&&raw.outstanding_requirements.length===0); const reused=[\"cached_result\",\"idempotent_replay\"].includes(raw.submission_disposition); const execution=!ok?\"STOPPED\":reused?\"REUSED\":\"RUN\"; const summary={stage:\"qa_review\",execution,label:\"Review Implementation\",status,story_id:storyId,task_id:raw.task_id??\"\",decision:status,exit_code:raw.exit_code??null,reason:ok?\"\":(raw.reason??raw.error?.message??\"QA review was not approved for the current contract.\"),recovery:ok?\"\":(raw.recovery_message??raw.recovery_information??\"\"),provenance:raw.operation_source??\"unknown\",record_source:raw.record_source??\"unknown\",submission_disposition:raw.submission_disposition??\"unknown\",error:ok?null:(raw.error??null),outstanding_requirements:raw.outstanding_requirements??[]}; const pipeline=[...prior,normalizeStageResult(summary)]; const recovery=summary.recovery||summary.reason||(ok?\"\":\"QA review was not an authenticated, current APPROVE result.\"); return [{json:{pipeline_summary:pipeline,story_id:storyId,pipeline_continue:pipeline[pipeline.length-1].execution!==\"STOPPED\",stopped_stage:ok?\"\":\"qa_review\",stage_status:status,reason:summary.reason||(!ok?\"QA review did not return a verified current APPROVE result.\":\"\"),task_id:summary.task_id,recovery_information:recovery,next_action:ok?\"\":recovery}}];"
-        },
-        "id": "698d0fa0-53e3-41fe-9584-ace47cf969ed",
-        "name": "Normalize Review Implementation",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          3504,
-          256
-        ]
-      },
-      {
-        "parameters": {
-          "conditions": {
-            "options": {
-              "caseSensitive": true,
-              "leftValue": "",
-              "typeValidation": "strict",
-              "version": 2
-            },
-            "conditions": [
-              {
-                "leftValue": "={{ $json.pipeline_continue }}",
-                "rightValue": true,
-                "operator": {
-                  "type": "boolean",
-                  "operation": "true"
-                }
-              }
-            ],
-            "combinator": "and"
-          },
-          "options": {}
-        },
-        "id": "0f9df7f7-50fb-42fb-ae84-6243e471c13e",
-        "name": "QA Review Approved?",
-        "type": "n8n-nodes-base.if",
-        "typeVersion": 2.3,
-        "position": [
-          3680,
-          256
-        ]
-      },
-      {
-        "parameters": {
-          "workflowId": {
-            "__rl": true,
-            "mode": "id",
-            "value": "RZEt87u8BWvX3yC1"
-          },
-          "options": {
-            "waitForSubWorkflow": true
-          }
-        },
-        "id": "3306684e-c83e-4172-9425-57998b6f4f96",
-        "name": "Run Evaluator",
-        "type": "n8n-nodes-base.executeWorkflow",
-        "typeVersion": 1.4,
-        "position": [
-          3984,
-          256
-        ],
-        "retryOnFail": false,
-        "onError": "continueErrorOutput"
-      },
-      {
-        "parameters": {
-          "jsCode": "function normalizeStageResult(value) {\n  const result = value && typeof value === \"object\" ? value : {};\n  const executions = [\"RUN\", \"REUSED\", \"SKIPPED\", \"STOPPED\"];\n  const error = result.error === undefined || result.error === null || result.error === \"\"\n    ? null\n    : result.error;\n  return {\n    ...result,\n    stage: typeof result.stage === \"string\" && result.stage ? result.stage : \"unknown\",\n    execution: executions.includes(result.execution) ? result.execution : \"STOPPED\",\n    status: result.status ?? \"UNKNOWN\",\n    decision: result.decision ?? result.status ?? \"UNKNOWN\",\n    story_id: result.story_id ?? \"\",\n    task_id: result.task_id ?? \"\",\n    commit_sha: result.commit_sha ?? \"\",\n    error,\n    reason: result.reason ?? \"\",\n    outstanding_requirements: Array.isArray(result.outstanding_requirements)\n      ? result.outstanding_requirements\n      : [],\n    provenance: result.provenance ?? \"unknown\",\n    record_source: result.record_source ?? \"unknown\",\n    submission_disposition: result.submission_disposition ?? \"unknown\"\n  };\n}\nconst raw=$input.first()?.json??{}; let prior=[]; try { prior=$('Normalize Review Implementation').first().json.pipeline_summary??[]; } catch(e) {} const selectedStoryId=prior.find(x=>x.stage===\"selection\")?.story_id??\"\"; const storyId=raw.story_id??\"\"; const decision=raw.decision??raw.status??\"UNKNOWN\"; const status=raw.status??raw.decision??\"UNKNOWN\"; const noFindings=[raw.unmet_intent,raw.unmet_acceptance_criteria,raw.unmet_definition_of_done,raw.actionable_items].every(x=>!Array.isArray(x)||x.length===0); const errorFree=raw.error===undefined||raw.error===null||raw.error===\"\"; const ok=!!(storyId===selectedStoryId&&raw.operation_source===\"local_bridge_http\"&&raw.task_status===\"completed\"&&raw.exit_code===0&&(raw.evaluator_exit_code===0||raw.evaluator_exit_code===undefined)&&!!raw.evaluation_contract_sha256&&errorFree&&decision===\"COMPLETE\"&&noFindings); const reused=[\"cached_result\",\"idempotent_replay\"].includes(raw.submission_disposition); const execution=!ok?\"STOPPED\":reused?\"REUSED\":\"RUN\"; const reason=ok?\"\":(raw.rationale??raw.error?.message??raw.message??\"Evaluator did not return a current COMPLETE result.\"); const recovery=ok?\"\":(raw.recovery_information??\"\"); const summary={stage:\"evaluator\",execution,label:\"Evaluate Implementation\",status,story_id:storyId,task_id:raw.task_id??\"\",decision,exit_code:raw.exit_code??null,reason,recovery,provenance:raw.operation_source??\"unknown\",record_source:raw.record_source??\"unknown\",submission_disposition:raw.submission_disposition??\"unknown\",error:ok?null:(raw.error??null),outstanding_requirements:ok?[]:[...(raw.unmet_intent??[]),...(raw.unmet_acceptance_criteria??[]),...(raw.unmet_definition_of_done??[]),...(raw.actionable_items??[])]}; const pipeline=[...prior,normalizeStageResult(summary)]; const stopReason=reason||\"Evaluator did not verify current completion for the selected story.\"; return [{json:{pipeline_summary:pipeline,story_id:storyId,pipeline_continue:pipeline[pipeline.length-1].execution!==\"STOPPED\",stopped_stage:ok?\"\":\"evaluator\",stage_status:status,reason:ok?\"\":stopReason,task_id:summary.task_id,recovery_information:recovery,next_action:ok?\"\":(recovery||stopReason)}}];"
-        },
-        "id": "eaa113c7-2e09-486c-a10f-cee929938599",
-        "name": "Normalize Evaluate Implementation",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          4160,
-          256
-        ]
-      },
-      {
-        "parameters": {
-          "conditions": {
-            "options": {
-              "caseSensitive": true,
-              "leftValue": "",
-              "typeValidation": "strict",
-              "version": 2
-            },
-            "conditions": [
-              {
-                "leftValue": "={{ $json.pipeline_continue }}",
-                "rightValue": true,
-                "operator": {
-                  "type": "boolean",
-                  "operation": "true"
-                }
-              }
-            ],
-            "combinator": "and"
-          },
-          "options": {}
-        },
-        "id": "8fc80df7-84fb-4f1b-9ac1-4ab10f21d8f6",
-        "name": "Evaluator Complete?",
-        "type": "n8n-nodes-base.if",
-        "typeVersion": 2.3,
-        "position": [
-          4336,
-          256
-        ]
-      },
-      {
-        "parameters": {
-          "workflowId": {
-            "__rl": true,
-            "mode": "id",
-            "value": "RJQlkKsYAbZgc0wq"
-          },
-          "options": {
-            "waitForSubWorkflow": true
-          },
-          "workflowInputs": {
-            "mappingMode": "defineBelow",
-            "value": {
-              "published_commit_sha": "={{ $('Normalize Publication').first().json.commit_sha }}"
-            },
-            "matchingColumns": [],
-            "schema": [
-              {
-                "id": "published_commit_sha",
-                "displayName": "published_commit_sha",
-                "required": true,
-                "defaultMatch": false,
-                "display": true,
-                "canBeUsedToMatch": true,
-                "type": "string"
-              }
-            ],
-            "attemptToConvertTypes": false
-          }
-        },
-        "id": "d6fac58b-19ce-4ede-97a0-98b8927310c1",
-        "name": "Run Final Application CI",
-        "type": "n8n-nodes-base.executeWorkflow",
-        "typeVersion": 1.4,
-        "position": [
-          5296,
-          256
-        ],
-        "retryOnFail": false,
-        "onError": "continueErrorOutput"
-      },
-      {
-        "parameters": {
-          "jsCode": "function normalizeStageResult(value) {\n  const result = value && typeof value === \"object\" ? value : {};\n  const executions = [\"RUN\", \"REUSED\", \"SKIPPED\", \"STOPPED\"];\n  const error = result.error === undefined || result.error === null || result.error === \"\"\n    ? null\n    : result.error;\n  return {\n    ...result,\n    stage: typeof result.stage === \"string\" && result.stage ? result.stage : \"unknown\",\n    execution: executions.includes(result.execution) ? result.execution : \"STOPPED\",\n    status: result.status ?? \"UNKNOWN\",\n    decision: result.decision ?? result.status ?? \"UNKNOWN\",\n    story_id: result.story_id ?? \"\",\n    task_id: result.task_id ?? \"\",\n    commit_sha: result.commit_sha ?? \"\",\n    error,\n    reason: result.reason ?? \"\",\n    outstanding_requirements: Array.isArray(result.outstanding_requirements)\n      ? result.outstanding_requirements\n      : [],\n    provenance: result.provenance ?? \"unknown\",\n    record_source: result.record_source ?? \"unknown\",\n    submission_disposition: result.submission_disposition ?? \"unknown\"\n  };\n}\nconst raw=$input.first()?.json??{}; let prior=[]; try { prior=$('Normalize Publication').first().json.pipeline_summary??[]; } catch(e) {} const selectedStoryId=prior.find(x=>x.stage==='selection')?.story_id??''; let publishedSha=''; try { publishedSha=$('Normalize Publication').first().json.commit_sha??''; } catch(e) {} const storyId=raw.story_id??''; const status=raw.ci_status??'UNKNOWN'; const errorFree=raw.error===undefined||raw.error===null||raw.error===''; const ok=!!(raw.operation_source==='local_bridge_http'&&storyId===selectedStoryId&&status==='PASSED'&&!!publishedSha&&raw.commit_sha===publishedSha&&raw.task_status==='completed'&&raw.exit_code===0&&errorFree&&Array.isArray(raw.failures)&&raw.failures.length===0&&!!raw.final_ci_contract_sha256); const reused=[\"cached_result\",\"idempotent_replay\"].includes(raw.submission_disposition); const execution=!ok?'STOPPED':reused?'REUSED':'RUN'; const summary={stage:'final_ci',execution,label:'Run Final CI',status,story_id:storyId,task_id:raw.task_id??'',commit_sha:raw.commit_sha??'',decision:status,reason:ok?'':((status==='PASSED'&&raw.commit_sha!==publishedSha?'Final CI did not verify the exact published implementation SHA. ':'')+(raw.error?.message??raw.reason??raw.message??raw.blocking_code??'Final CI did not pass for the published implementation SHA.')),recovery:ok?'':(raw.recovery_information??''),provenance:raw.operation_source??'unknown',record_source:raw.record_source??'unknown',submission_disposition:raw.submission_disposition??'unknown',error:ok?null:(raw.error??null),outstanding_requirements:raw.failures??[]}; const pipeline=[...prior,normalizeStageResult(summary)]; const recovery=summary.recovery||summary.reason||(ok?'':'Inspect the persisted CI task and exact published commit; verify the current CI contract before retrying.'); return [{json:{pipeline_summary:pipeline,story_id:storyId,pipeline_continue:pipeline[pipeline.length-1].execution!==\"STOPPED\",stopped_stage:ok?'':'final_ci',stage_status:status,reason:summary.reason||(!ok?'Final CI did not verify the published implementation commit.':''),task_id:summary.task_id,commit_sha:summary.commit_sha,recovery_information:recovery,next_action:ok?'':recovery}}];"
-        },
-        "id": "5ef2413c-2ab2-409c-ab03-c2cb5ab77b55",
-        "name": "Normalize Run Final CI",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          5472,
-          256
-        ]
-      },
-      {
-        "parameters": {
-          "conditions": {
-            "options": {
-              "caseSensitive": true,
-              "leftValue": "",
-              "typeValidation": "strict",
-              "version": 2
-            },
-            "conditions": [
-              {
-                "leftValue": "={{ $json.pipeline_continue }}",
-                "rightValue": true,
-                "operator": {
-                  "type": "boolean",
-                  "operation": "true"
-                }
-              }
-            ],
-            "combinator": "and"
-          },
-          "options": {}
-        },
-        "id": "07592796-162b-43e9-bf73-3e1cce04a519",
-        "name": "Final Application CI Passed?",
-        "type": "n8n-nodes-base.if",
-        "typeVersion": 2.3,
-        "position": [
-          5632,
-          256
-        ]
-      },
-      {
-        "parameters": {
-          "workflowId": {
-            "__rl": true,
-            "mode": "id",
-            "value": "3BnETFUs1yRgGD6d"
-          },
-          "options": {
-            "waitForSubWorkflow": true
-          }
-        },
-        "id": "8cf5ceec-e72f-401f-a959-db21abd1247f",
-        "name": "Finalize Story",
-        "type": "n8n-nodes-base.executeWorkflow",
-        "typeVersion": 1.4,
-        "position": [
-          5936,
-          256
-        ],
-        "retryOnFail": false,
-        "onError": "continueErrorOutput"
-      },
-      {
-        "parameters": {
-          "jsCode": "function normalizeStageResult(value) {\n  const result = value && typeof value === \"object\" ? value : {};\n  const executions = [\"RUN\", \"REUSED\", \"SKIPPED\", \"STOPPED\"];\n  const error = result.error === undefined || result.error === null || result.error === \"\"\n    ? null\n    : result.error;\n  return {\n    ...result,\n    stage: typeof result.stage === \"string\" && result.stage ? result.stage : \"unknown\",\n    execution: executions.includes(result.execution) ? result.execution : \"STOPPED\",\n    status: result.status ?? \"UNKNOWN\",\n    decision: result.decision ?? result.status ?? \"UNKNOWN\",\n    story_id: result.story_id ?? \"\",\n    task_id: result.task_id ?? \"\",\n    commit_sha: result.commit_sha ?? \"\",\n    error,\n    reason: result.reason ?? \"\",\n    outstanding_requirements: Array.isArray(result.outstanding_requirements)\n      ? result.outstanding_requirements\n      : [],\n    provenance: result.provenance ?? \"unknown\",\n    record_source: result.record_source ?? \"unknown\",\n    submission_disposition: result.submission_disposition ?? \"unknown\"\n  };\n}\nconst raw=$input.first()?.json??{}; let prior=[]; try { prior=$('Normalize Run Final CI').first().json.pipeline_summary??[]; } catch(e) {} const selectedStoryId=prior.find(x=>x.stage===\"selection\")?.story_id??\"\"; const status=raw.finalization_status??raw.status??\"UNKNOWN\"; const storyId=raw.story_id??\"\"; const ok=!!(storyId===selectedStoryId&&raw.operation_source===\"local_bridge_http\"&&[\"finalized\",\"already_finalized\",\"recovered_and_finalized\"].includes(status)); const execution=!ok?\"STOPPED\":status===\"finalized\"?\"RUN\":\"REUSED\"; const summary={stage:\"finalization\",execution,label:\"Finalize Story\",status,story_id:storyId,task_id:raw.task_id??\"\",commit_sha:raw.commit_sha??\"\",decision:status,reason:ok?\"\":(raw.error?.message??raw.reason??raw.message??\"Finalization was not verified for the selected story.\"),recovery:ok?\"\":(raw.recovery_information??raw.recovery_message??\"\"),provenance:raw.operation_source??\"unknown\",record_source:raw.record_source??\"unknown\",submission_disposition:raw.submission_disposition??\"unknown\",error:ok?null:(raw.error??null),outstanding_requirements:raw.outstanding_requirements??raw.outstanding_prerequisites??[]}; const pipeline=[...prior,normalizeStageResult(summary)]; const recovery=summary.recovery||summary.reason||(ok?\"\":\"Finalization was not verified for the selected story.\"); return [{json:{pipeline_summary:pipeline,story_id:storyId,pipeline_continue:pipeline[pipeline.length-1].execution!==\"STOPPED\",stopped_stage:ok?\"\":\"finalization\",stage_status:status,reason:summary.reason||(!ok?\"Finalization did not return a verified current-story result.\":\"\"),task_id:summary.task_id,commit_sha:summary.commit_sha,recovery_information:recovery,next_action:ok?\"\":recovery}}];"
-        },
-        "id": "fb0e9991-0356-4cf2-b92c-439051d29e65",
-        "name": "Normalize Finalize Story",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          6112,
-          256
-        ]
-      },
-      {
-        "parameters": {
-          "conditions": {
-            "options": {
-              "caseSensitive": true,
-              "leftValue": "",
-              "typeValidation": "strict",
-              "version": 2
-            },
-            "conditions": [
-              {
-                "leftValue": "={{ $json.pipeline_continue }}",
-                "rightValue": true,
-                "operator": {
-                  "type": "boolean",
-                  "operation": "true"
-                }
-              }
-            ],
-            "combinator": "and"
-          },
-          "options": {}
-        },
-        "id": "d51791f2-9535-4ebe-8a15-1135ea0e684c",
-        "name": "Finalization Succeeded?",
-        "type": "n8n-nodes-base.if",
-        "typeVersion": 2.3,
-        "position": [
-          6272,
-          256
-        ]
-      },
-      {
-        "parameters": {
-          "jsCode": "const j=$input.first()?.json??{}; const stages=j.pipeline_summary??[]; return [{json:{status:'completed',story_id:j.story_id??'',selected_story:stages.find(x=>x.stage==='selection')?.story??null,activation:stages.find(x=>x.stage==='activation')??null,qa_preparation:stages.find(x=>x.stage==='qa_preparation')??null,implementation:stages.find(x=>x.stage==='implementation')??null,qa_review:stages.find(x=>x.stage==='qa_review')??null,evaluator:stages.find(x=>x.stage==='evaluator')??null,publication:stages.find(x=>x.stage==='publication')??null,final_ci:stages.find(x=>x.stage==='final_ci')??null,finalization:stages.find(x=>x.stage==='finalization')??null,stages}}];"
-        },
-        "id": "509e6dad-7618-4531-be77-3dd60407e4ba",
-        "name": "Return Completed Pipeline Result",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          6592,
-          256
-        ]
-      },
-      {
-        "parameters": {
-          "jsCode": "const j=$input.first()?.json??{}; return [{json:{status:'stopped',story_id:j.story_id??'',stopped_stage:j.stopped_stage??'unknown',stage_status:j.stage_status??'unknown',reason:j.reason??'Stage did not meet its success gate.',task_id:j.task_id??'',commit_sha:j.commit_sha??'',push_status:j.push_status??'',error:j.error??null,recovery_information:j.recovery_information??'',next_action:j.next_action??'',stages:j.pipeline_summary??[]}}];"
-        },
-        "id": "11d1c58b-297c-4286-9a2d-9200182196a4",
-        "name": "Return Stopped Pipeline Result",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          5888,
-          1440
-        ]
-      },
-      {
-        "parameters": {
-          "url": "http://172.29.240.1:8765/stories/active/implementation-contract",
-          "authentication": "genericCredentialType",
-          "genericAuthType": "httpHeaderAuth",
-          "options": {
-            "timeout": 15000
-          }
-        },
-        "id": "pipeline-active-contract",
-        "name": "Check Active Story",
-        "type": "n8n-nodes-base.httpRequest",
-        "typeVersion": 4.5,
-        "position": [
-          224,
-          400
-        ],
-        "retryOnFail": false,
-        "credentials": {
-          "httpHeaderAuth": {
-            "id": "sSJvxExuzE2rWZg8",
-            "name": "Header Auth account"
-          }
-        },
-        "onError": "continueErrorOutput"
-      },
-      {
-        "parameters": {
-          "conditions": {
-            "options": {
-              "caseSensitive": true,
-              "leftValue": "",
-              "typeValidation": "strict",
-              "version": 2
-            },
-            "conditions": [
-              {
-                "leftValue": "={{ !!$json.story?.id }}",
-                "rightValue": true,
-                "operator": {
-                  "type": "boolean",
-                  "operation": "true"
-                }
-              }
-            ],
-            "combinator": "and"
-          },
-          "options": {}
-        },
-        "id": "pipeline-active-exists",
-        "name": "Active Story Exists?",
-        "type": "n8n-nodes-base.if",
-        "typeVersion": 2.3,
-        "position": [
-          464,
-          400
-        ]
-      },
-      {
-        "parameters": {
-          "jsCode": "function normalizeStageResult(value) {\n  const result = value && typeof value === \"object\" ? value : {};\n  const executions = [\"RUN\", \"REUSED\", \"SKIPPED\", \"STOPPED\"];\n  const error = result.error === undefined || result.error === null || result.error === \"\"\n    ? null\n    : result.error;\n  return {\n    ...result,\n    stage: typeof result.stage === \"string\" && result.stage ? result.stage : \"unknown\",\n    execution: executions.includes(result.execution) ? result.execution : \"STOPPED\",\n    status: result.status ?? \"UNKNOWN\",\n    decision: result.decision ?? result.status ?? \"UNKNOWN\",\n    story_id: result.story_id ?? \"\",\n    task_id: result.task_id ?? \"\",\n    commit_sha: result.commit_sha ?? \"\",\n    error,\n    reason: result.reason ?? \"\",\n    outstanding_requirements: Array.isArray(result.outstanding_requirements)\n      ? result.outstanding_requirements\n      : [],\n    provenance: result.provenance ?? \"unknown\",\n    record_source: result.record_source ?? \"unknown\",\n    submission_disposition: result.submission_disposition ?? \"unknown\"\n  };\n}\nconst raw=$input.first()?.json??{}; const story=raw.story??{}; const id=story.id??\"\"; const valid=!!(id&&raw.operation_source===\"local_bridge_http\"); const execution=valid?\"REUSED\":\"STOPPED\"; const reason=valid?\"\":\"Active story inspection did not return a current authenticated story.\"; const pipeline=[{stage:\"selection\",execution,label:\"Current active story\",status:valid?\"RESUMED_ACTIVE\":\"STOPPED\",decision:valid?\"RESUMED_ACTIVE\":\"STOPPED\",story_id:id,task_id:\"\",provenance:raw.operation_source??\"unknown\",reason,story:{id,title:story.title,filename:story.filename}},{stage:\"activation\",execution,label:\"Activation\",status:valid?\"already_active\":\"STOPPED\",decision:valid?\"already_active\":\"STOPPED\",story_id:id,provenance:valid?\"existing_active_story\":raw.operation_source??\"unknown\",reason}].map(normalizeStageResult); const continuePipeline=pipeline[pipeline.length-1].execution!==\"STOPPED\"; return [{json:{pipeline_summary:pipeline,story_id:id,pipeline_continue:continuePipeline,stopped_stage:continuePipeline?\"\":\"active_story_inspection\",stage_status:continuePipeline?\"RESUMED_ACTIVE\":\"STOPPED\",reason,task_id:\"\",recovery_information:continuePipeline?\"\":\"Check active story state from the bridge.\",next_action:\"\"}}];"
-        },
-        "id": "pipeline-normalize-active",
-        "name": "Normalize Existing Active Story",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          944,
-          48
-        ]
-      },
-      {
-        "parameters": {
-          "jsCode": "const j=$input.first()?.json??{}; return [{json:{status:\"stopped\",story_id:\"\",stopped_stage:\"active_story_inspection\",stage_status:\"technical_failure\",reason:j.error?.message??j.message??\"Could not inspect current active story.\",task_id:\"\",recovery_information:\"Check the bridge and active-story state. Do not start a new story until the inspection succeeds.\",next_action:\"Restore the bridge or reconcile the current story, then rerun the pipeline.\",stages:[]}}];"
-        },
-        "id": "pipeline-active-error",
-        "name": "Stop - Active Story Check",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          464,
-          752
-        ]
-      },
-      {
-        "parameters": {
-          "workflowId": {
-            "__rl": true,
-            "mode": "id",
-            "value": "Qf8h1s7K2m4B9c6D"
-          },
-          "options": {
-            "waitForSubWorkflow": true
-          }
-        },
-        "id": "37d98dc1-5140-4b0d-9918-b78621a06dc6",
-        "name": "Publish Implementation",
-        "type": "n8n-nodes-base.executeWorkflow",
-        "typeVersion": 1.4,
-        "position": [
-          4656,
-          256
-        ],
-        "retryOnFail": false,
-        "onError": "continueErrorOutput"
-      },
-      {
-        "parameters": {
-          "jsCode": "function normalizeStageResult(value) {\n  const result = value && typeof value === \"object\" ? value : {};\n  const executions = [\"RUN\", \"REUSED\", \"SKIPPED\", \"STOPPED\"];\n  const error = result.error === undefined || result.error === null || result.error === \"\"\n    ? null\n    : result.error;\n  return {\n    ...result,\n    stage: typeof result.stage === \"string\" && result.stage ? result.stage : \"unknown\",\n    execution: executions.includes(result.execution) ? result.execution : \"STOPPED\",\n    status: result.status ?? \"UNKNOWN\",\n    decision: result.decision ?? result.status ?? \"UNKNOWN\",\n    story_id: result.story_id ?? \"\",\n    task_id: result.task_id ?? \"\",\n    commit_sha: result.commit_sha ?? \"\",\n    error,\n    reason: result.reason ?? \"\",\n    outstanding_requirements: Array.isArray(result.outstanding_requirements)\n      ? result.outstanding_requirements\n      : [],\n    provenance: result.provenance ?? \"unknown\",\n    record_source: result.record_source ?? \"unknown\",\n    submission_disposition: result.submission_disposition ?? \"unknown\"\n  };\n}\nconst raw=$input.first()?.json??{}; let prior=[]; try { prior=$('Normalize Evaluate Implementation').first().json.pipeline_summary??[]; } catch(e) {} const selectedStoryId=prior.find(x=>x.stage==='selection')?.story_id??''; const publication=raw; const storyId=publication.story_id??''; const status=publication.publication_status??publication.status??publication.decision??'UNKNOWN'; const sha=publication.commit_sha??publication.sha??''; const errorFree=publication.error===undefined||publication.error===null||publication.error===''; const aliasesMatch=(!publication.publication_status||publication.publication_status===status)&&(!publication.status||publication.status===status)&&(!publication.decision||publication.decision===status)&&(!publication.commit_sha||!publication.sha||publication.commit_sha===publication.sha); const provenanceValid=!publication.operation_source||publication.operation_source==='local_bridge_http'; const childAllowsContinue=publication.pipeline_continue!==false&&publication.publication_permitted!==false; const paths=Array.isArray(publication.authorized_paths)?publication.authorized_paths:[]; const ok=storyId===selectedStoryId&&provenanceValid&&childAllowsContinue&&aliasesMatch&&['PUBLISHED','ALREADY_PUBLISHED'].includes(status)&&/^[0-9a-f]{40,64}$/.test(sha)&&publication.push_status==='verified'&&errorFree&&paths.length>0; const execution=!ok?'STOPPED':status==='ALREADY_PUBLISHED'?'REUSED':'RUN'; const reason=ok?'':(publication.error?.message??publication.reason??(storyId!==selectedStoryId?'Publication story does not match the active story.':!aliasesMatch?'Publication status or commit SHA fields disagree.':!errorFree?'Publication returned an error.':publication.push_status!=='verified'?'Publication push was not verified.':!['PUBLISHED','ALREADY_PUBLISHED'].includes(status)?'Publication did not complete successfully.':'Publication did not return a verified published commit and authorized scope for the active story.')); const recovery=ok?'':(publication.recovery_information??'Inspect the persisted publication task, authorized paths, commit SHA and origin before retrying.'); const summary={stage:'publication',execution,label:'Publish Implementation',status,story_id:storyId,task_id:publication.task_id??'',commit_sha:sha,push_status:publication.push_status??'unknown',decision:publication.decision??status,reason,recovery,error:errorFree?null:publication.error,authorized_paths:paths,record_source:publication.record_source??'unknown',submission_disposition:publication.submission_disposition??'unknown'}; const pipeline=[...prior,normalizeStageResult(summary)]; const stopReason=reason||(!ok?'Publication did not verify the implementation commit.':''); return [{json:{pipeline_summary:pipeline,story_id:storyId,pipeline_continue:pipeline[pipeline.length-1].execution!==\"STOPPED\",stopped_stage:ok?'':'publication',stage_status:status,reason:stopReason,task_id:summary.task_id,commit_sha:sha,push_status:summary.push_status,error:summary.error,recovery_information:recovery,next_action:ok?'':recovery}}];"
-        },
-        "id": "e4a86da7-11d1-4077-889b-9439c088bada",
-        "name": "Normalize Publication",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          4832,
-          256
-        ]
-      },
-      {
-        "parameters": {
-          "conditions": {
-            "options": {
-              "caseSensitive": true,
-              "leftValue": "",
-              "typeValidation": "strict",
-              "version": 2
-            },
-            "conditions": [
-              {
-                "leftValue": "={{ $json.pipeline_continue }}",
-                "rightValue": true,
-                "operator": {
-                  "type": "boolean",
-                  "operation": "true"
-                }
-              }
-            ],
-            "combinator": "and"
-          },
-          "options": {}
-        },
-        "id": "60d1e837-ac0a-4cb0-ae89-d8d984df914e",
-        "name": "Publication Succeeded?",
-        "type": "n8n-nodes-base.if",
-        "typeVersion": 2.3,
-        "position": [
-          4992,
-          256
-        ]
-      }
-    ],
-    "connections": {
-      "Normalize Select Next Story": {
-        "main": [
-          [
-            {
-              "node": "Story Selected?",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Normalize Select and Activate Story": {
-        "main": [
-          [
-            {
-              "node": "Activation Succeeded?",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Normalize Prepare QA": {
-        "main": [
-          [
-            {
-              "node": "QA Preparation Permits Implementation?",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Normalize Implement Active Story": {
-        "main": [
-          [
-            {
-              "node": "Implementation Succeeded?",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Normalize Review Implementation": {
-        "main": [
-          [
-            {
-              "node": "QA Review Approved?",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Normalize Evaluate Implementation": {
-        "main": [
-          [
-            {
-              "node": "Evaluator Complete?",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Normalize Run Final CI": {
-        "main": [
-          [
-            {
-              "node": "Final Application CI Passed?",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Normalize Finalize Story": {
-        "main": [
-          [
-            {
-              "node": "Finalization Succeeded?",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Start Development Pipeline": {
-        "main": [
-          [
-            {
-              "node": "Check Active Story",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Normalize Existing Active Story": {
-        "main": [
-          [
-            {
-              "node": "Run QA Preparation",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Check Active Story": {
-        "main": [
-          [
-            {
-              "node": "Active Story Exists?",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Stop - Active Story Check",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Active Story Exists?": {
-        "main": [
-          [
-            {
-              "node": "Normalize Existing Active Story",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Select Next Story",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Select Next Story": {
-        "main": [
-          [
-            {
-              "node": "Normalize Select Next Story",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Normalize Select Next Story",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Story Selected?": {
-        "main": [
-          [
-            {
-              "node": "Activate Story",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Return Stopped Pipeline Result",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Activate Story": {
-        "main": [
-          [
-            {
-              "node": "Normalize Select and Activate Story",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Normalize Select and Activate Story",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Activation Succeeded?": {
-        "main": [
-          [
-            {
-              "node": "Run QA Preparation",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Return Stopped Pipeline Result",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Run QA Preparation": {
-        "main": [
-          [
-            {
-              "node": "Normalize Prepare QA",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Normalize Prepare QA",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "QA Preparation Permits Implementation?": {
-        "main": [
-          [
-            {
-              "node": "Run Claude Implementation",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Return Stopped Pipeline Result",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Run Claude Implementation": {
-        "main": [
-          [
-            {
-              "node": "Normalize Implement Active Story",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Normalize Implement Active Story",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Implementation Succeeded?": {
-        "main": [
-          [
-            {
-              "node": "Run Post-Implementation QA",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Return Stopped Pipeline Result",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Run Post-Implementation QA": {
-        "main": [
-          [
-            {
-              "node": "Normalize Review Implementation",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Normalize Review Implementation",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "QA Review Approved?": {
-        "main": [
-          [
-            {
-              "node": "Run Evaluator",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Return Stopped Pipeline Result",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Run Evaluator": {
-        "main": [
-          [
-            {
-              "node": "Normalize Evaluate Implementation",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Normalize Evaluate Implementation",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Evaluator Complete?": {
-        "main": [
-          [
-            {
-              "node": "Publish Implementation",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Return Stopped Pipeline Result",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Run Final Application CI": {
-        "main": [
-          [
-            {
-              "node": "Normalize Run Final CI",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Normalize Run Final CI",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Final Application CI Passed?": {
-        "main": [
-          [
-            {
-              "node": "Finalize Story",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Return Stopped Pipeline Result",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Finalize Story": {
-        "main": [
-          [
-            {
-              "node": "Normalize Finalize Story",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Normalize Finalize Story",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Finalization Succeeded?": {
-        "main": [
-          [
-            {
-              "node": "Return Completed Pipeline Result",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Return Stopped Pipeline Result",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Publish Implementation": {
-        "main": [
-          [
-            {
-              "node": "Normalize Publication",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Normalize Publication",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Publication Succeeded?": {
-        "main": [
-          [
-            {
-              "node": "Run Final Application CI",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Return Stopped Pipeline Result",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Normalize Publication": {
-        "main": [
-          [
-            {
-              "node": "Publication Succeeded?",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      }
+{
+  "id": "qMaNwA16S7Dcxi75",
+  "name": "GW2 - Development Pipeline",
+  "description": "Runs the development cycle one bridge step at a time: plans when the queue is empty, then works stories until nothing is selectable or something needs attention.",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "00000000-0000-4000-8000-954042953023",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
     },
-    "settings": {
-      "executionOrder": "v1",
-      "availableInMCP": true,
-      "binaryMode": "separate"
-    },
-    "staticData": null,
-    "meta": {
-      "aiBuilderAssisted": true,
-      "builderVariant": "mcp"
-    },
-    "nodeGroups": [
-      {
-        "id": "grp-story-acquisition-active",
-        "name": "Story Acquisition — Active Check",
-        "nodeIds": [
-          "pipeline-active-contract",
-          "pipeline-active-exists",
-          "pipeline-active-error"
-        ],
-        "description": "Checks whether this run is resuming an already active story."
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://172.29.240.1:8765/cycle/step",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { callback_url: $execution.resumeUrl } }}",
+        "options": {
+          "timeout": 600000
+        }
       },
-      {
-        "id": "grp-story-acquisition-select",
-        "name": "Story Acquisition — Select",
-        "nodeIds": [
-          "63080b9e-ef01-41e1-99ec-c962192d10d8",
-          "963edd43-cc48-4e10-81df-c27c346b65ba",
-          "678b301d-7a4e-4d22-9456-adaf0afbb6e7"
-        ],
-        "description": "Selects the next eligible story and gates the empty or blocked queue."
-      },
-      {
-        "id": "grp-story-acquisition-activate",
-        "name": "Story Acquisition — Activate",
-        "nodeIds": [
-          "9d88560d-08c5-4e56-b653-c34a1fcc63cf",
-          "449cd87f-830c-4ad3-9ef4-bfd7361212d0",
-          "a45f983c-d2ca-4617-aba7-637b14668fe2"
-        ],
-        "description": "Activates the selected story and stops on a stale or rejected activation."
-      },
-      {
-        "id": "grp-story-acquisition-resume",
-        "name": "Story Acquisition — Resume",
-        "nodeIds": [
-          "pipeline-normalize-active"
-        ],
-        "description": "Carries the existing active story into the pipeline without selecting another."
-      },
-      {
-        "id": "grp-qa-preparation",
-        "name": "QA Preparation",
-        "nodeIds": [
-          "9fee5c47-7201-44b0-924e-8eea390c510f",
-          "fe446d66-c074-4283-9b83-e728ac5cbca8",
-          "b8be5880-aed0-4c94-a95d-6983c5dec0ae"
-        ],
-        "description": "Prepares QA and proceeds only when implementation is permitted."
-      },
-      {
-        "id": "grp-implementation",
-        "name": "Implementation",
-        "nodeIds": [
-          "779d0d80-85cc-4a8c-bb8a-aee213088c21",
-          "7c94d610-bd13-47ab-9d6c-ba45ad84e1d8",
-          "828dc1c9-8375-429b-ba64-0f8d60504496"
-        ],
-        "description": "Runs Claude through the guarded child workflow and checks its task result."
-      },
-      {
-        "id": "grp-qa-review",
-        "name": "QA Review",
-        "nodeIds": [
-          "f966d95d-7f49-4be5-9618-c7f5eb74b272",
-          "698d0fa0-53e3-41fe-9584-ace47cf969ed",
-          "0f9df7f7-50fb-42fb-ae84-6243e471c13e"
-        ],
-        "description": "Runs post-implementation QA and continues only on APPROVE."
-      },
-      {
-        "id": "grp-evaluation",
-        "name": "Evaluation",
-        "nodeIds": [
-          "3306684e-c83e-4172-9425-57998b6f4f96",
-          "eaa113c7-2e09-486c-a10f-cee929938599",
-          "8fc80df7-84fb-4f1b-9ac1-4ab10f21d8f6"
-        ],
-        "description": "Runs Evaluator and continues only on COMPLETE."
-      },
-      {
-        "id": "grp-final-ci",
-        "name": "Final CI",
-        "nodeIds": [
-          "d6fac58b-19ce-4ede-97a0-98b8927310c1",
-          "5ef2413c-2ab2-409c-ab03-c2cb5ab77b55",
-          "07592796-162b-43e9-bf73-3e1cce04a519"
-        ],
-        "description": "Runs final application CI and continues only on PASSED."
-      },
-      {
-        "id": "grp-finalization",
-        "name": "Finalization",
-        "nodeIds": [
-          "8cf5ceec-e72f-401f-a959-db21abd1247f",
-          "fb0e9991-0356-4cf2-b92c-439051d29e65",
-          "d51791f2-9535-4ebe-8a15-1135ea0e684c"
-        ],
-        "description": "Finalizes the story only after every previous stage succeeds."
-      },
-      {
-        "id": "grp-result-stopped",
-        "name": "Pipeline Result — Stopped",
-        "nodeIds": [
-          "11d1c58b-297c-4286-9a2d-9200182196a4"
-        ],
-        "description": "Returns the stage, decision, reason, task ID and recovery action when a gate stops."
-      },
-      {
-        "id": "grp-result-complete",
-        "name": "Pipeline Result — Complete",
-        "nodeIds": [
-          "509e6dad-7618-4531-be77-3dd60407e4ba"
-        ],
-        "description": "Returns the concise result after successful finalization."
-      },
-      {
-        "id": "grp-publication",
-        "name": "Publication",
-        "nodeIds": [
-          "37d98dc1-5140-4b0d-9918-b78621a06dc6",
-          "e4a86da7-11d1-4077-889b-9439c088bada",
-          "60d1e837-ac0a-4cb0-ae89-d8d984df914e"
-        ],
-        "description": "Reuses or publishes the validated implementation commit, then gates Final CI."
-      }
-    ],
-    "pinData": {},
-    "versionId": "c0ffcb41-0643-468b-bd26-a38b4c07ec3e",
-    "activeVersionId": null,
-    "versionCounter": 53,
-    "triggerCount": 0,
-    "sourceWorkflowId": null,
-    "tags": [],
-    "shared": [
-      {
-        "updatedAt": "2026-10-07T04:39:08.315Z",
-        "createdAt": "2026-10-07T04:39:08.315Z",
-        "role": "workflow:owner",
-        "workflowId": "qMaNwA16S7Dcxi75",
-        "projectId": "Dfg3ueNXkFsODDN8",
-        "project": {
-          "updatedAt": "2026-10-04T06:38:52.937Z",
-          "createdAt": "2026-10-04T06:38:21.728Z",
-          "id": "Dfg3ueNXkFsODDN8",
-          "name": "Bianca Krause <bianca-krause@tuta.io>",
-          "type": "personal",
-          "icon": null,
-          "description": null,
-          "customTelemetryTags": [],
-          "creatorId": "f56fafc3-47e3-4739-9998-51acfc6aac24"
+      "id": "00000000-0000-4000-8000-675637205696",
+      "name": "Run Next Step",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        220,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "sSJvxExuzE2rWZg8",
+          "name": "Header Auth account"
         }
       }
-    ],
-    "versionMetadata": {
-      "name": "Updated Normalize Implement Active Story, Return Stopped Pipeline Result",
-      "description": "Updated nodes: Normalize Implement Active Story, Return Stopped Pipeline Result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.status === 'running' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-935396967338",
+      "name": "Step Running?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "httpMethod": "POST",
+        "limitWaitTime": true,
+        "resumeAmount": 30,
+        "resumeUnit": "minutes",
+        "options": {
+          "noResponseBody": true
+        }
+      },
+      "id": "00000000-0000-4000-8000-017999198260",
+      "name": "Wait for Step",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        -120
+      ],
+      "webhookId": "6f9d2c1e-5b4a-4c3d-9e8f-7a6b5c4d3e2f"
+    },
+    {
+      "parameters": {
+        "jsCode": "// A callback carries the finished step in `body`. When the Wait times out, the\n// still-running task passes through instead and the next request re-attaches to it.\nconst item = $input.first().json;\nconst step = item.body ?? item;\nconst running = step.status === 'running';\nconst exhausted = $runIndex >= 200;\nreturn [{ json: {\n  step: step.step,\n  story_id: step.story_id,\n  status: step.status,\n  outcome: running ? 'waiting' : step.outcome,\n  phase: step.phase,\n  reason: exhausted ? 'Loop guard reached (200 iterations); rerun the pipeline to continue.' : step.reason,\n  continue: !exhausted && (running || step.proceed === true),\n  task: step,\n} }];"
+      },
+      "id": "00000000-0000-4000-8000-150103891175",
+      "name": "Record Step",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.continue }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-040406729577",
+      "name": "Continue?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1100,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "00000000-0000-4000-8000-422186259335",
+      "name": "Pipeline Stopped",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        80
+      ]
     }
-  }
-]
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Run Next Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Next Step": {
+      "main": [
+        [
+          {
+            "node": "Step Running?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step Running?": {
+      "main": [
+        [
+          {
+            "node": "Wait for Step",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Record Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Step": {
+      "main": [
+        [
+          {
+            "node": "Record Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Step": {
+      "main": [
+        [
+          {
+            "node": "Continue?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continue?": {
+      "main": [
+        [
+          {
+            "node": "Run Next Step",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pipeline Stopped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
