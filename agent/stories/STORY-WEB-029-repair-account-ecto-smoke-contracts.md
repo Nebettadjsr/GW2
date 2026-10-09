@@ -8,7 +8,7 @@ Repair stale account and Ectoplasm browser smoke contracts
 
 ## Status
 
-TODO
+DONE
 
 ## Milestone
 

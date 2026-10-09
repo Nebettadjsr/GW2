@@ -13,7 +13,6 @@ below stay in the plain form.
 
 ## Active
 
-- STORY-WEB-029 | STORY-WEB-029-repair-account-ecto-smoke-contracts.md | TODO | milestone-05 | deps: None
 
 ## To Do
 - STORY-WEB-030 | STORY-WEB-030-align-layout-discovery-smoke-contracts.md | TODO | milestone-05 | deps: None
@@ -77,6 +76,7 @@ Completed current-milestone story details remain in their canonical files.
 - STORY-WEB-021 | STORY-WEB-021-ecto-content-test-hooks.md | DONE | milestone-05 | Give Ectoplasm results stable content hooks for browser checks
 - STORY-WEB-028 | STORY-WEB-028-align-browser-workflow-contracts.md | DONE | milestone-05 | Align remaining browser workflow contracts and coverage
 - STORY-WEB-020 | STORY-WEB-020-layout-smoke-total-sell-value.md | DONE | milestone-05 | Exercise backend total sell value in the shared layout smoke fixture
+- STORY-WEB-029 | STORY-WEB-029-repair-account-ecto-smoke-contracts.md | DONE | milestone-05 | Repair stale account and Ectoplasm browser smoke contracts
 
 ## Archived
 
