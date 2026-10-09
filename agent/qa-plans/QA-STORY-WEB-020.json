@@ -1,0 +1,77 @@
+{
+  "status": "READY",
+  "story_id": "STORY-WEB-020",
+  "rationale": "This is a focused change to a controlled browser-smoke fixture and its response shape. Existing frontend tests cover rendering and backend-supplied totals, while the story’s named browser smoke check is the relevant verification for the shared layout fixture. No new unit or component test is needed.",
+  "acceptance_checks": [
+    {
+      "criterion": "1–2. Supply totalSellValueCopper in representative shared rows, with at least one value distinguishable from multiplication of other row fields.",
+      "expected": "Available Profit and Discovery rows render the supplied monetary total; at least one supplied total differs from outputCount × revenueCopper.",
+      "verification": "Run the controlled browser smoke after rebuilding. Confirm the Profit “Total sell value” and Discovery “Sell value” cells display supplied values."
+    },
+    {
+      "criterion": "3. Supply totalMatsSellValueCopper consistently, including unavailable cases.",
+      "expected": "Available rows contain the appropriate backend-supplied material total; rows where that value is unavailable retain null.",
+      "verification": "Inspect the shared fixture’s available and unavailable rows, then run the browser smoke to confirm they render without errors."
+    },
+    {
+      "criterion": "4. Align the Discovery stub with current response and settings types while retaining Profit’s maxBuyCopper.",
+      "expected": "The Discovery response has no inventoryCharacterName or settings.maxBuyCopper; Profit settings retain maxBuyCopper.",
+      "verification": "Review both stub responses against frontend/src/api/types.ts and run the browser smoke."
+    },
+    {
+      "criterion": "5–6. Preserve gain, loss, and unavailable presentation and exercise layout and contrast assertions with the populated column.",
+      "expected": "Existing fixture cases remain represented, no browser-side economic calculation is added, and the layout smoke reaches its responsive and contrast assertions.",
+      "verification": "Run npm run build and npm run smoke:layout in frontend/ with the controlled browser runtime; confirm the relevant assertions pass."
+    }
+  ],
+  "invariants": [
+    "The browser presents backend-supplied totals and does not derive them from other row fields.",
+    "Profit’s buying-budget setting remains present; Discovery’s removed buying-budget and inventory-character response fields remain absent.",
+    "Unavailable totals retain their null representation, and existing gain and loss cases remain available to presentation checks."
+  ],
+  "test_levels": [
+    "ui"
+  ],
+  "existing_tests_reviewed": [
+    "frontend/src/crafting/__tests__/CraftingProfitScreen.spec.ts — covers Profit screen rendering and supplied totalSellValueCopper behavior.",
+    "frontend/src/crafting/__tests__/CraftingDiscoveryScreen.spec.ts — covers Discovery screen rendering and supplied totalSellValueCopper sorting/presentation.",
+    "frontend/src/crafting/__tests__/fixtures.ts — existing typed fixtures include deliberately non-derived totals and null cases for both totalSellValueCopper and totalMatsSellValueCopper.",
+    "frontend/scripts/layout-browser-smoke.mjs — controlled API fixture drives both screens and measures responsive layout and contrast in a real browser."
+  ],
+  "prepared_test_paths": [],
+  "test_specifications": [
+    "After implementation, run npm run build and npm run smoke:layout from frontend/. The controlled browser check should render both crafting tables and pass its responsive layout, contrast, and other existing assertions.",
+    "Review the shared fixture to verify at least one supplied totalSellValueCopper differs from outputCount × revenueCopper; verify totalMatsSellValueCopper is present for representative rows and null for unavailable cases.",
+    "Review the Profit and Discovery stub payloads against frontend/src/api/types.ts: retain Profit settings.maxBuyCopper and omit Discovery inventoryCharacterName and settings.maxBuyCopper."
+  ],
+  "pre_implementation_verification": {
+    "status": "NOT_RUN",
+    "command": "None. No QA-owned tests were prepared; the acceptance check depends on the post-change browser fixture.",
+    "failure_evidence": ""
+  },
+  "coverage_review": "Existing component tests cover the two table screens and supplied totals. No local coverage report was found in the inspected frontend paths, so no coverage percentage is available. The controlled browser smoke is required because component tests do not establish that the shared real-browser fixture reaches its layout and contrast assertions with the updated rows.",
+  "external_sources": [],
+  "clarifications": [],
+  "post_implementation_review_required": true,
+  "post_implementation_review_reason": "The story’s acceptance depends on the shared fixture reaching responsive and contrast checks in a real browser. Review the fixture contract and the named smoke result after implementation.",
+  "schema_version": 1,
+  "qa_model": "gpt-6-luna",
+  "qa_reasoning_effort": "medium",
+  "story_contract_sha256": "e35dc8e5ef13883ebf5f01c97ae47676b94e297b35b7d907c5382a3f07a0b8c2",
+  "user_decision_ids": [],
+  "protected_test_hashes": {},
+  "post_implementation_reviews": [
+    {
+      "decision": "APPROVE",
+      "reason": "The implementation meets STORY-WEB-020’s acceptance criteria. The shared browser fixture supplies backend totals, includes a deliberately non-derivable sell value, preserves null totals for the unavailable result, and aligns the Discovery stub while retaining Profit’s maxBuyCopper. The added browser assertion compares rendered values to fixture values and the reported smoke run reaches the responsive and contrast checks. No QA-owned test files were prepared, as the plan specifies; the smoke assertion provides meaningful coverage for this change. The separate WEB-021 Vitest result and unconfigured host-run verification do not establish this story’s behavior.",
+      "evidence": [
+        "frontend/scripts/layout-browser-smoke.mjs supplies totalSellValueCopper and totalMatsSellValueCopper, including zero and null cases; its rendered-cell check compares both tables against supplied totals.",
+        "The Discovery stub omits inventoryCharacterName and settings.maxBuyCopper; the Profit stub retains maxBuyCopper. frontend/src/api/types.ts confirms the relevant total fields are nullable and Profit settings include maxBuyCopper.",
+        "The story’s recorded verification reports npm run build and npm run smoke:layout passed; the smoke exercised the populated columns, responsive layout, and contrast assertions. I did not rerun commands.",
+        "The QA plan has no prepared_test_paths; its existing-test and controlled-smoke strategy matches the focused fixture change."
+      ],
+      "actionable_items": [],
+      "request_id": "97bfdbd8-da65-468a-838c-5f7e0ff6cadd"
+    }
+  ]
+}

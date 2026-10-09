@@ -95,7 +95,48 @@ function check(condition, message) {
   if (!condition) throw new Error(message)
 }
 
-/** A row set wide enough to need the table's own horizontal scrolling, with real null cases. */
+/**
+ * DOMAIN_SPEC 2.1.1's three display filters, which open enabled. Switching them off puts the rows
+ * they hide — a zero count, a not-allowed state and a loss — back on screen; it changes nothing
+ * about what those rows render.
+ */
+const DISPLAY_FILTERS = ['filter-zero-craftable', 'filter-not-allowed', 'filter-non-positive-profit']
+
+async function showEveryRow(page) {
+  for (const filter of DISPLAY_FILTERS) {
+    await page.setChecked(`[data-test="${filter}"]`, false)
+  }
+}
+
+/**
+ * Formatting only, in `formatCopper.ts`'s gold/silver/copper text. Every amount passed to it is one
+ * this script itself supplied, so nothing here computes a money value, and a value that was not
+ * supplied keeps the page's own missing marker rather than becoming a zero (DOMAIN_SPEC 21).
+ */
+function money(copper) {
+  if (copper === null || copper === undefined) return '—'
+  const sign = copper < 0 ? '-' : ''
+  const amount = Math.abs(copper)
+  const gold = Math.floor(amount / 10_000)
+  const silver = Math.floor((amount % 10_000) / 100)
+  const head = gold > 0 ? `${gold}g ${silver}s ` : silver > 0 ? `${silver}s ` : ''
+  return `${sign}${head}${amount % 100}c`
+}
+
+/**
+ * A row set wide enough to need the table's own horizontal scrolling, with real null cases.
+ *
+ * `totalSellValueCopper` and `totalMatsSellValueCopper` are supplied here because both tables render
+ * the first of them — `CraftingProfitTable.vue` as "Total sell value", `DiscoveryTable.vue` as "Sell
+ * value" — and an omitted field left those cells showing the "not supplied" marker, so the money
+ * presentation of the widest column was never on screen to be laid out or measured.
+ *
+ * The supplied total sell value is deliberately *not* the product of this row's own parts (1 284 509
+ * is neither 12 × 111 110 nor 1 × 111 110), so a page that multiplied a count by a per-craft value
+ * would print a different string and fail step 4 rather than agree with the fixture by coincidence
+ * (TEST_STRATEGY 12.1 rule 2). The owned-material total, which no table derives or scales, stays the
+ * straightforward 12 × 4 321 its per-craft basis implies.
+ */
 function profitRows() {
   const row = (recipeId, outputName, overrides) => ({
     recipeId,
@@ -109,7 +150,9 @@ function profitRows() {
     totalProfitCopper: 148_140,
     buyCostCopper: 98_765,
     matsSellValueCopper: 4_321,
+    totalMatsSellValueCopper: 51_852,
     revenueCopper: 111_110,
+    totalSellValueCopper: 1_284_509,
     resultAvailable: true,
     blockedReason: 'NONE',
     outputPrice: { buyUnitCopper: 120_000, sellUnitCopper: 130_000 },
@@ -120,7 +163,16 @@ function profitRows() {
 
   return [
     row(1, 'Deldrimor Steel Ingot'),
-    row(2, 'Elonian Leather Square', { blockedReason: 'BUYING_DISABLED', craftableCount: 0 }),
+    // No craft was counted, so both totals are a supplied zero — `0c`, which is not the "not
+    // supplied" marker the unavailable row below shows.
+    row(2, 'Elonian Leather Square', {
+      blockedReason: 'BUYING_DISABLED',
+      craftableCount: 0,
+      totalSellValueCopper: 0,
+      totalMatsSellValueCopper: 0
+    }),
+    // A missing *ingredient* price: the output is still quoted, so the two totals stay supplied
+    // while the profit figures do not.
     row(3, 'Spiritwood Plank of Considerable Length and Name', {
       blockedReason: 'PRICE_UNAVAILABLE',
       profitCopper: null,
@@ -134,6 +186,9 @@ function profitRows() {
       profitCopper: null,
       totalProfitCopper: null,
       buyCostCopper: null,
+      // No result was calculated, so neither total was supplied either.
+      totalSellValueCopper: null,
+      totalMatsSellValueCopper: null,
       outputPrice: null,
       missingToBuy: null,
       missingToBuyOne: null
@@ -225,7 +280,7 @@ function accountLuck() {
 /**
  * A settled system status: nothing running, every timestamp and count supplied, no failure. The
  * System Status area is read-only here — this answer is what lets it render its facts instead of its
- * "Status unavailable" notice, and nothing in this check submits a synchronization (step 10).
+ * "Status unavailable" notice, and nothing in this check submits a synchronization (step 11).
  */
 function systemStatus() {
   return {
@@ -276,15 +331,17 @@ function answerApi({ url, sendJson }) {
   }
   // Discovery's rows are the same shape as Profit's, so the same fixture serves both tables; what this
   // check needs from this route is a rendered comparison list, not a second set of candidates.
+  //
+  // The envelope is `CraftingDiscoveryResponse`/`EffectiveDiscoverySettings` as they stand: one
+  // combined character/discipline scope, so there is no separate inventory character to echo, and no
+  // buying budget — Profit's own `maxBuyCopper` above is a Profit field and stays.
   if (url.pathname === '/api/crafting/discovery') {
     const rows = profitRows()
     return sendJson(200, {
       scope: { discipline: 'Chef', characterName: 'A Long Character Name', rating: 500 },
-      inventoryCharacterName: 'A Long Character Name',
       settings: {
         useOwnMats: true,
         allowBuying: true,
-        maxBuyCopper: 200_000,
         listingSell: false,
         listingBuy: false,
         allowDailyCrafts: false
@@ -352,6 +409,54 @@ async function textOf(page, selector) {
   return (await page.$eval(selector, (element) => element.textContent ?? ''))
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+/**
+ * One table's rendered sell-value column, each cell paired with the recipe id printed in its own row.
+ * Pairing by id rather than by position means the comparison does not depend on the sort order or on
+ * which rows a display filter left on screen.
+ */
+async function sellValueColumn(page, rowTest, cellTest) {
+  return page.$$eval(
+    `[data-test="${rowTest}"]`,
+    (rows, cellSelector) =>
+      rows.map((row) => ({
+        recipeId: Number.parseInt(
+          (row.querySelector('.recipe-ids')?.textContent ?? '').replace(/\D+/g, ''),
+          10
+        ),
+        text: (row.querySelector(cellSelector)?.textContent ?? '').replace(/\s+/g, ' ').trim()
+      })),
+    `[data-test="${cellTest}"]`
+  )
+}
+
+/**
+ * Every rendered cell against the total this script supplied for that very row — the only expectation
+ * available here, since the browser may not compute one. A page that multiplied a count by a
+ * per-craft value prints a different string, and a field the fixture omitted prints the missing
+ * marker where an amount was supplied; both fail here instead of being laid out unnoticed.
+ */
+function checkSellValues(rendered, column, where) {
+  const supplied = new Map(
+    profitRows().map((row) => [row.recipeId, money(row.totalSellValueCopper)])
+  )
+  check(rendered.length > 0, `${where}: no row was on screen, so ${column} was not measured.`)
+  const wrong = rendered.filter((cell) => cell.text !== supplied.get(cell.recipeId))
+  check(
+    wrong.length === 0,
+    `${where}: ${column} did not show the supplied total for ` +
+      wrong
+        .map((cell) => `recipe ${cell.recipeId} (${cell.text}, supplied ${supplied.get(cell.recipeId)})`)
+        .join(', ')
+  )
+  const amounts = rendered.filter((cell) => cell.text !== money(null) && cell.text !== money(0))
+  check(
+    amounts.length > 0,
+    `${where}: ${column} rendered no monetary amount at all, only ` +
+      `${rendered.map((cell) => cell.text).join(', ')} — the column was not exercised.`
+  )
+  return rendered.map((cell) => `recipe ${cell.recipeId} ${cell.text}`).join(', ')
 }
 
 /**
@@ -598,7 +703,36 @@ async function run() {
       `region ${region.clientWidth}px wide holds ${region.scrollWidth}px of columns`
     )
 
-    // 4. Browser zoom: doubling the text size must reflow, not overflow the page.
+    // 4. The money column both tables render from a backend total, on screen and reading exactly the
+    // amount this script supplied for each row. The column step 3 measured was a column of missing
+    // markers while the fixture omitted the field. The display filters are switched off so every
+    // fixture row is included — the supplied zero of the zero-count row and the missing marker of the
+    // row with no result among them.
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await openArea(page, stub.origin, PROFIT_AREA)
+    await showEveryRow(page)
+    const profitCells = await sellValueColumn(page, 'profit-row', 'total-sell-value')
+    check(
+      profitCells.length === profitRows().length,
+      `${PROFIT_AREA.id}: ${profitCells.length} of ${profitRows().length} supplied rows were on ` +
+        'screen, so the column was compared against only part of the fixture.'
+    )
+    const profitColumn = checkSellValues(profitCells, '"Total sell value"', PROFIT_AREA.id)
+    // The same rows under Discovery's own column heading, on the area that renders them.
+    const discoveryArea = areaOf('discovery')
+    await openArea(page, stub.origin, discoveryArea)
+    const discoveryColumn = checkSellValues(
+      await sellValueColumn(page, 'discovery-row', 'discovery-sell-value'),
+      '"Sell value"',
+      discoveryArea.id
+    )
+    record(
+      'both tables show the supplied total sell value',
+      `${PROFIT_AREA.id} "Total sell value": ${profitColumn}; ` +
+        `${discoveryArea.id} "Sell value": ${discoveryColumn}`
+    )
+
+    // 5. Browser zoom: doubling the text size must reflow, not overflow the page.
     await page.setViewportSize({ width: 1440, height: 900 })
     await openArea(page, stub.origin, PROFIT_AREA)
     await page.evaluate(() => {
@@ -618,7 +752,7 @@ async function run() {
     })
     record('reflows at 200% text size', `${zoomed.scrollWidth}px content in ${zoomed.clientWidth}px`)
 
-    // 5. Keyboard: the skip link and every destination are focusable, visibly, in document order.
+    // 6. Keyboard: the skip link and every destination are focusable, visibly, in document order.
     // The walk is as long as the shell's own navigation, and the stops after the skip link must be
     // exactly that navigation, in its order — a count written here would only assert an older shell.
     await openArea(page, stub.origin, PROFIT_AREA)
@@ -640,7 +774,7 @@ async function run() {
     )
     record('keyboard focus order and visible focus', walk.map((stop) => stop.test ?? 'skip link').join(' → '))
 
-    // 6. Enter on a focused destination opens it, and the new page's heading takes focus.
+    // 7. Enter on a focused destination opens it, and the new page's heading takes focus.
     await page.focus('[data-test="nav-bank"]')
     await page.keyboard.press('Enter')
     await page.waitForSelector('[data-test="bank-slots"]', { timeout: TIMEOUT_MS })
@@ -657,14 +791,11 @@ async function run() {
     )
     record('destinations are operable by keyboard', 'Enter opened Bank and focused its heading')
 
-    // 7. Contrast of the combinations actually rendered, not of the token values.
+    // 8. Contrast of the combinations actually rendered, not of the token values.
     await openArea(page, stub.origin, PROFIT_AREA)
-    // DOMAIN_SPEC 2.1.1's three display filters open enabled, and two of them hide exactly the rows
-    // whose treatments are measured here (a loss and a zero count). Switching them off puts those
-    // treatments back on screen; it changes nothing about the styles being measured.
-    for (const filter of ['filter-zero-craftable', 'filter-not-allowed', 'filter-non-positive-profit']) {
-      await page.setChecked(`[data-test="${filter}"]`, false)
-    }
+    // Two of the display filters hide exactly the rows whose treatments are measured here (a loss
+    // and a zero count), so they are switched off; it changes nothing about the styles measured.
+    await showEveryRow(page)
     const profitSamples = await measureContrast(page)
     // The introductory sentence is measured where one is still rendered, and is required there: after
     // DOMAIN_SPEC 2.1.1 removed it from Crafting Profit this pair silently measured nothing.
@@ -690,7 +821,7 @@ async function run() {
         `${INTRO_AREA.id} at ${intro.ratio.toFixed(2)}:1`
     )
 
-    // 8. The required-pair guard is what turns a vanished target into a failure. With the rendered
+    // 9. The required-pair guard is what turns a vanished target into a failure. With the rendered
     // introduction taken out of the page, the same measurement must report the pair as unmeasured
     // rather than return a smaller set that still satisfies the sample floor above.
     const introRemoved = await page.evaluate(() => {
@@ -715,7 +846,7 @@ async function run() {
     )
     record('a missing contrast target fails the check', reported.message)
 
-    // 9. Reduced motion: the decorative transitions are actually switched off.
+    // 10. Reduced motion: the decorative transitions are actually switched off.
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await openArea(page, stub.origin, PROFIT_AREA)
     const durations = await page.evaluate(() =>
@@ -730,7 +861,7 @@ async function run() {
     await page.emulateMedia({ reducedMotion: null })
     record('reduced-motion preference respected', `${durations.length} controls at 0s`)
 
-    // 10. Nothing in any of the above submitted a synchronization or called another host.
+    // 11. Nothing in any of the above submitted a synchronization or called another host.
     check(
       stub.requestsTo('/api/sync').length === 0 && stub.requestsTo('/api/prices').length === 0,
       `Navigating submitted a synchronization request: ${JSON.stringify(stub.requestsTo('/api'))}`
