@@ -9,6 +9,10 @@
  * synchronized. It therefore evidences structure, layout, interaction and what the page sends —
  * never real data, and never page-load performance (`TARGET_ARCHITECTURE.md` 33).
  *
+ * Since STORY-WEB-028 one candidate's answer carries a root the resolver supplied from stock, so the
+ * root-sourcing sentence is rendered and read here as well as suppressed where it would only restate
+ * the requested recipe.
+ *
  * Which eligibility and special-state cases this run evidences is controlled-response evidence only:
  * the rating filter, the account-wide recipe-knowledge rule and normal-discovery eligibility are the
  * backend's, are not re-implemented here, and are not exercised against real data by this script.
@@ -146,6 +150,14 @@ function candidateRows() {
 
 const ROWS = candidateRows()
 
+/**
+ * The one candidate this script answers with a root the resolver did not craft at all: its output came
+ * from stock, so no recipe was selected for it and `CraftingResolution.vue` renders the root-sourcing
+ * sentence for that case (STORY-WEB-024 F004). Every other candidate's root carries the recipe that
+ * was asked about, which is the suppression case step 8 reads.
+ */
+const STOCK_ROOT = { recipeId: 3, row: 'Break-even Discovery' }
+
 /** The tree for a selected recipe: owned stock, a purchase and a deeper craft, in that order. */
 function resolutionTree(recipeId) {
   const node = (overrides) => ({
@@ -171,9 +183,26 @@ function resolutionTree(recipeId) {
     ...overrides
   })
 
+  const outputName =
+    ROWS.find((row) => row.recipeId === recipeId)?.outputName ?? `Item #${1000 + recipeId}`
+
+  if (recipeId === STOCK_ROOT.recipeId) {
+    return node({
+      itemId: 1000 + recipeId,
+      itemName: outputName,
+      requestedQuantity: 2,
+      inventoryQuantity: 2,
+      methods: ['INVENTORY'],
+      // No recipe was selected for this root, so it has no ingredients of its own either.
+      cashCostCopper: 0,
+      opportunityCostCopper: 6_543,
+      effectiveCostCopper: 6_543
+    })
+  }
+
   return node({
     itemId: 1000 + recipeId,
-    itemName: ROWS.find((row) => row.recipeId === recipeId)?.outputName ?? `Item #${1000 + recipeId}`,
+    itemName: outputName,
     craftedQuantity: 1,
     recipeId,
     craftCount: 1,
@@ -554,9 +583,10 @@ async function run() {
     )
     // The compact presentation `DOMAIN_SPEC.md` 2.1.1 asks of Crafting Resolution: no basis
     // paragraph, no closing tree note, and no sentence restating what the requested recipe already
-    // says. This tree's root recipe *is* the recipe that was asked about, so
-    // `CraftingResolution.vue`'s `rootSourcing` has nothing to report and says nothing; the
-    // requirements themselves are what step 9 reads.
+    // says. STORY-WEB-028 removed the basis and tree-note branches outright — no page selected them —
+    // so those two are a guard against reintroduction, while the sourcing sentence is genuinely
+    // suppressed here because this tree's root recipe *is* the recipe that was asked about. Step 9b
+    // selects the candidate whose root has no recipe at all and reads what that case does say.
     const removedProse = await page.evaluate(() =>
       ['resolution-basis', 'resolution-tree-note', 'resolution-root-sourcing'].filter(
         (test) => document.querySelector(`[data-test="${test}"]`) !== null
@@ -608,8 +638,8 @@ async function run() {
       `The supplied requirements are not rendered in their own order: ${nodeNames.join(' | ')}`
     )
     // The compact presentation carries one effective value per requirement rather than the three
-    // separate cost figures (`ResolutionTreeNode.vue`'s `compact-value`, which `selected-result-mode`
-    // selects). The root's is the backend's own inclusive 783_332 copper, not the children's added up.
+    // separate cost figures (`ResolutionTreeNode.vue` has no other mode). The root's is the backend's
+    // own inclusive 783_332 copper, not the children's added up.
     const rootCost = await textOf(page, '[data-path="0"] [data-test="node-value"]')
     check(
       rootCost === 'Value: 78g 33s 32c',
@@ -632,6 +662,50 @@ async function run() {
     record(
       'requirements rendered in order with supplied costs, groups collapsed',
       `${nodeNames.length} nodes, ${discoveryOpenGroups} groups open`
+    )
+
+    // 9b. A root the resolver supplied from stock had no recipe selected for it, so the view says
+    //     that in `resolutionPresentation.ts`'s `describeRootSourcing` words instead of letting the
+    //     requested recipe read as the one that produced it. Step 8's root *is* the requested recipe,
+    //     which is why that one says nothing (STORY-WEB-024 F004).
+    const listedNames = await textsOf(page, '[data-test="discovery-row"] .recipe-name')
+    const stockIndex = listedNames.indexOf(STOCK_ROOT.row)
+    check(stockIndex >= 0, `"${STOCK_ROOT.row}" is not listed: ${listedNames.join(', ')}`)
+    await (await page.$$('[data-test="discovery-select-row"]'))[stockIndex].click()
+    await page.waitForFunction(
+      (name) =>
+        document.querySelector('[data-test="discovery-detail-name"]')?.textContent?.trim() === name,
+      STOCK_ROOT.row,
+      { timeout: TIMEOUT_MS }
+    )
+    await page.waitForSelector('[data-test="resolution-root-sourcing"]', { timeout: TIMEOUT_MS })
+    const stockRoot = await page.evaluate(() => {
+      const text = (selector) => {
+        const element = document.querySelector(selector)
+        return element === null ? null : element.textContent.replace(/\s+/g, ' ').trim()
+      }
+      return {
+        sourcing: text('[data-test="resolution-root-sourcing"]'),
+        methods: text('[data-path="0"] [data-test="node-sourcing"]'),
+        value: text('[data-path="0"] [data-test="node-value"]'),
+        nodes: document.querySelectorAll('[data-test="tree-node"]').length
+      }
+    })
+    check(
+      stockRoot.sourcing ===
+        'No recipe was selected for this requirement, so the output shown here was not crafted by ' +
+          `the requested recipe ${STOCK_ROOT.recipeId}.`,
+      `A root with no selected recipe is not described as such: ${JSON.stringify(stockRoot)}`
+    )
+    // And the requirement itself is the stock the answer named, with its own supplied value: the
+    // sentence describes the tree on screen rather than standing on its own.
+    check(
+      stockRoot.methods === 'From stock ×2' && stockRoot.value === 'Value: 65s 43c' && stockRoot.nodes === 1,
+      `The root this sentence is about is not the supplied one: ${JSON.stringify(stockRoot)}`
+    )
+    record(
+      'a root supplied from stock is not called an execution of the requested recipe',
+      `"${stockRoot.sourcing}" over ${stockRoot.nodes} requirement at ${stockRoot.value}`
     )
 
     // 10. Sorting and searching are view state: neither reaches the backend, and neither drops the

@@ -300,7 +300,6 @@ function materialQuoteText(item: MissingItem): string {
           :detail="resolutionDetail"
           :failure="resolutionFailure"
           :requested-recipe-id="resolutionRecipeId"
-          selected-result-mode
         />
       </section>
 

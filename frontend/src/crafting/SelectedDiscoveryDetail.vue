@@ -96,7 +96,7 @@ function unavailable(value: number | null): string {
       <section class="detail__section" aria-labelledby="discovery-tree-heading">
         <h3 id="discovery-tree-heading">Crafting resolution</h3>
         <CraftingResolution :phase="resolutionPhase" :detail="resolutionDetail" :failure="resolutionFailure"
-          :requested-recipe-id="resolutionRecipeId" selected-result-mode show-recipe-knowledge />
+          :requested-recipe-id="resolutionRecipeId" show-recipe-knowledge />
       </section>
 
       <section class="detail__section" aria-labelledby="discovery-materials-heading">

@@ -26,11 +26,10 @@ function render(
   phase: ResolutionPhase,
   detail: CraftingProfitResolutionResponse | null = null,
   failure: string | null = null,
-  requestedRecipeId: number | null = profitableRow.recipeId,
-  selectedResultMode = true
+  requestedRecipeId: number | null = profitableRow.recipeId
 ) {
   return mount(CraftingResolution, {
-    props: { phase, detail, failure, requestedRecipeId, selectedResultMode }
+    props: { phase, detail, failure, requestedRecipeId }
   })
 }
 
@@ -147,6 +146,23 @@ describe('CraftingResolution', () => {
     it('omitsTheGenericTreeHelpParagraph', () => {
       const region = ready({ tree: craftedTree })
       expect(region.find('[data-test="resolution-tree-note"]').exists()).toBe(false)
+    })
+
+    it('showsOneValuePerRequirementAndNeverTheSeparateCostFigures', () => {
+      // Both crafting workflows use this one presentation, so the three-figure alternative is not a
+      // mode either of them can ask for (`DOMAIN_SPEC.md` 2.1.1: no per-node cost disclosure).
+      const region = ready({ tree: craftedTree })
+
+      expect(region.findAll('[data-test="node-value"]')).toHaveLength(4)
+      for (const gone of [
+        'node-costs',
+        'node-cash-cost',
+        'node-opportunity-cost',
+        'node-effective-cost'
+      ]) {
+        expect(region.find(`[data-test="${gone}"]`).exists()).toBe(false)
+      }
+      expect(region.text()).not.toContain('Opportunity cost')
     })
 
     it('rendersBackendSuppliedFullQuantitiesAndEffectiveValueWithoutRecomputingThem', () => {

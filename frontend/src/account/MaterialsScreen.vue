@@ -2,6 +2,7 @@
 import { computed, onMounted } from 'vue'
 import { accountApi, type AccountApi } from '@/api/accountApi'
 import type { MaterialStorage } from '@/api/types'
+import PageHeader from '@/shell/PageHeader.vue'
 import InventoryTile from './InventoryTile.vue'
 import { useAccountRead } from './useAccountRead'
 
@@ -14,12 +15,14 @@ function onReload(): void { void materials.load() }
 
 <template>
   <div class="screen" data-test="materials-screen">
-    <header class="materials-page-header">
-      <!-- The hooks `App.vue` moves focus to after a navigation, as `PageHeader.vue` carries them. -->
-      <h1 tabindex="-1" data-page-heading data-test="page-heading">Materials</h1>
-      <button type="button" class="button--primary" data-test="materials-reload"
-        :disabled="materials.phase.value === 'loading'" @click="onReload">Reload materials</button>
-    </header>
+    <!-- The shared heading block, which carries the hooks `App.vue` moves focus to after a
+         navigation and groups this page's own actions. -->
+    <PageHeader heading="Materials">
+      <template #actions>
+        <button type="button" class="button--primary" data-test="materials-reload"
+          :disabled="materials.phase.value === 'loading'" @click="onReload">Reload materials</button>
+      </template>
+    </PageHeader>
     <div class="stack">
       <p v-if="materials.phase.value === 'loading'" class="notice notice--info" role="status" data-test="materials-loading">Loading material storage…</p>
       <p v-else-if="materials.failure.value !== null" class="notice notice--error" data-test="materials-error">
@@ -47,8 +50,6 @@ function onReload(): void { void materials.load() }
 
 <style scoped>
 .screen { width: min(100%, 636px); margin-inline: auto; }
-.materials-page-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
-.materials-page-header h1 { margin: 0; }
 .detail { display: block; margin-top: var(--space-2); }
 .material-category { margin-block: var(--space-4); }
 .material-category h2 { margin: 0 0 var(--space-2); font-size: var(--text-base); }

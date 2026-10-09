@@ -21,6 +21,10 @@
  * missing price names the item it is about at the requirement it applies to, and a budget limit states
  * the supplied purchase cost and the echoed budget without inventing the amount that went over.
  *
+ * Since STORY-WEB-028 one recipe's answer carries a root the resolver produced from a different
+ * recipe, so the root-sourcing sentence is rendered and read here as well as suppressed where it would
+ * only restate the requested recipe.
+ *
  * Runs the built frontend against a *controlled* API boundary (`scripts/stubOrigin.mjs`): every
  * answer comes from this process, so no backend, database or GW2 API is involved and nothing can be
  * synchronized. It therefore evidences structure, layout and interaction — never real data, and never
@@ -259,6 +263,14 @@ function treeNode(itemId, itemName, overrides) {
 }
 
 /**
+ * The one recipe this script answers with a root the resolver produced from a *different* recipe, so
+ * `CraftingResolution.vue`'s root-sourcing sentence is actually rendered and step 16 can read it
+ * (STORY-WEB-024 F004). Every other recipe's root carries the recipe that was asked about, which is
+ * the suppression case step 5c reads.
+ */
+const SUBSTITUTE_ROOT = { recipeId: 7, row: 'Self-Referential Ingot', rootRecipeId: 4_242 }
+
+/**
  * A deliberately tall tree: split sourcing, a nested craft, a repeated item in two branches, a
  * blocked requirement with two reasons, a domain-established zero on an untradable item, costs the
  * backend could not establish, and a state code this client has no wording for.
@@ -267,7 +279,7 @@ function resolutionTree(recipeId) {
   return treeNode(1000 + recipeId, 'Deldrimor Steel Ingot', {
     requestedQuantity: 1,
     craftedQuantity: 1,
-    recipeId,
+    recipeId: recipeId === SUBSTITUTE_ROOT.recipeId ? SUBSTITUTE_ROOT.rootRecipeId : recipeId,
     craftCount: 1,
     producedQuantity: 4,
     characterName: 'Nbt Anch',
@@ -986,8 +998,8 @@ async function run() {
       `The tree was not rendered whole and in order: ${treeItems.join(', ')}`
     )
     const resolutionText = await textOf(page, '[data-test="selected-detail"]')
-    // What Crafting Profit's compact presentation of a requirement keeps (`CraftingResolution.vue`
-    // with `selected-result-mode`, `ResolutionTreeNode.vue` with `compact-value`): the identity, the
+    // What the compact presentation of a requirement keeps — the one presentation
+    // `CraftingResolution.vue` and `ResolutionTreeNode.vue` have: the identity, the
     // quantity needed, how it was sourced, the crafter the backend named, and one effective value —
     // 103_086 copper for the root, read and not re-added from the children.
     for (const expected of [
@@ -1041,10 +1053,11 @@ async function run() {
         'node-craft-count',
         'node-produced',
         'node-character',
-        // `CraftingResolution.vue`'s non-compact branch renders these — the three separate cost
-        // figures, the batch note and the tree note. Crafting Profit selects the compact one, which
-        // replaces them with a single `node-value` per requirement and no surrounding prose. The
-        // recipe-knowledge chips are Crafting Discovery's alone (`show-recipe-knowledge`).
+        // The three separate cost figures, the batch note and the tree note: STORY-WEB-028 removed
+        // the branch that rendered them, since neither crafting page ever selected it. A single
+        // `node-value` per requirement and no surrounding prose is now the only presentation, and
+        // these stay listed so reintroducing one is noticed here. The recipe-knowledge chips are
+        // Crafting Discovery's alone (`show-recipe-knowledge`).
         'node-costs',
         'node-cash-cost',
         'node-opportunity-cost',
@@ -1059,9 +1072,9 @@ async function run() {
       `Rows belonging to another presentation are rendered here: ${freshRowHooks.join(', ')}`
     )
     // The root of this tree *is* the recipe that was asked about, so there is no sourcing difference
-    // to report and the compact view says nothing rather than stating the obvious
-    // (`CraftingResolution.vue`'s `rootSourcing`). Crafting Discovery's own check covers the wording
-    // for a root that differs.
+    // to report and the view says nothing rather than stating the obvious
+    // (`CraftingResolution.vue`'s `rootSourcing`). Step 16 selects the one row whose root the
+    // resolver produced from another recipe and reads the sentence that case does render.
     check(
       (await page.$('[data-test="resolution-root-sourcing"]')) === null &&
         !resolutionText.includes('is the recipe selected for this requirement'),
@@ -1885,6 +1898,53 @@ async function run() {
     record(
       'a row blocked because buying is off carries no state label or explanation',
       `"${buyingOff.name}" under "${buyingOff.basis}"`
+    )
+
+    // 16. A root the resolver produced from a recipe other than the one asked about is described in
+    // the words `resolutionPresentation.ts`'s `describeRootSourcing` gives it, with both supplied
+    // identities in the sentence — the case step 5c's fixture deliberately has nothing to report.
+    await openProfit(page, stub.origin, WIDE)
+    const substituteIndex = (await listedRecipes(page)).indexOf(SUBSTITUTE_ROOT.row)
+    check(
+      substituteIndex >= 0,
+      `"${SUBSTITUTE_ROOT.row}" is not listed by default: ${(await listedRecipes(page)).join(', ')}`
+    )
+    await (await page.$$('[data-test="select-row"]'))[substituteIndex].click()
+    await page.waitForFunction(
+      (name) => document.querySelector('[data-test="detail-name"]')?.textContent?.trim() === name,
+      SUBSTITUTE_ROOT.row,
+      { timeout: TIMEOUT_MS }
+    )
+    await page.waitForSelector('[data-test="resolution-tree"]', { timeout: TIMEOUT_MS })
+    const substituteRequest = requestsToPath(stub, '/api/crafting/profit/resolution').at(-1)
+    check(
+      JSON.parse(substituteRequest.body).recipeId === SUBSTITUTE_ROOT.recipeId,
+      `The detail read was not recipe ${SUBSTITUTE_ROOT.recipeId}'s: ${substituteRequest.body}`
+    )
+    const rootSourcing = await page.evaluate(() => {
+      const sentence = document.querySelector('[data-test="resolution-root-sourcing"]')
+      const tree = document.querySelector('[data-test="resolution-tree"]')
+      return {
+        text: sentence === null ? null : (sentence.textContent ?? '').replace(/\s+/g, ' ').trim(),
+        // It introduces the requirements, so it has to be above them rather than buried in the tree.
+        aboveTree:
+          sentence !== null &&
+          tree !== null &&
+          !tree.contains(sentence) &&
+          (sentence.compareDocumentPosition(tree) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+      }
+    })
+    check(
+      rootSourcing.text ===
+        `Recipe ${SUBSTITUTE_ROOT.rootRecipeId} was selected for this requirement, not the ` +
+          `requested recipe ${SUBSTITUTE_ROOT.recipeId}.`,
+      `The root's own producing recipe is not described by the supplied identities: ` +
+        JSON.stringify(rootSourcing)
+    )
+    check(rootSourcing.aboveTree, 'The sourcing sentence does not introduce the requirements below it.')
+    record(
+      'a root produced by another recipe is named as such',
+      `"${rootSourcing.text}" above the requirements of "${SUBSTITUTE_ROOT.row}"`
     )
 
     // 17. Nothing here submitted a synchronization, and nothing failed in the page.

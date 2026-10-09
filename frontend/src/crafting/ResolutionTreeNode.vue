@@ -11,10 +11,10 @@ import { wikiUrl } from './recipeLabel'
 
 /**
  * One requirement of the resolution tree, recursively including the ingredients of a selected or
- * attempted craft. Both crafting pages show backend-supplied identity, needed and source quantities,
- * crafter and economic values. Raw state, blocked-reason and acquisition-method codes remain in
- * backend/API diagnostics. No value is recalculated, and repeated items remain separate
- * ordered occurrences.
+ * attempted craft. Both crafting pages use this one compact presentation: backend-supplied identity,
+ * needed and source quantities, the named crafter and a single `Value`. Raw state, blocked-reason and
+ * acquisition-method codes remain in backend/API diagnostics. No value is recalculated, and repeated
+ * items remain separate ordered occurrences.
  *
  * Child groups are collapsed independently at every level, including the root. Collapsing changes
  * visibility only; all returned requirements remain in the tree.
@@ -23,8 +23,6 @@ const props = defineProps<{
   node: ResolutionNode
   /** Index path from the root, the presentation key 13.3 permits — not a persistent node ID. */
   path: string
-  /** Profit shows effective value; Discovery retains the separate cost figures. */
-  compactValue?: boolean
   /** Only Discovery displays recipe-knowledge state. */
   showRecipeKnowledge?: boolean
 }>()
@@ -90,27 +88,13 @@ const childSummary = computed(() =>
       Crafted by {{ node.characterName }}
     </p>
 
-    <p v-if="compactValue" class="node__value" data-test="node-value">
+    <!--
+      One `Value` per requirement, the backend's own `effectiveCostCopper` (`DOMAIN_SPEC.md` 2.1.1).
+      The separate cash/opportunity/effective figures remain in the API contract for diagnostics and
+      are deliberately not a per-node disclosure here.
+    -->
+    <p class="node__value" data-test="node-value">
       Value: {{ formatCopper(node.effectiveCostCopper) }}
-    </p>
-
-    <p v-else class="node__costs" data-test="node-costs">
-      <span class="node__cost">
-        <span class="node__cost-label">Cash cost</span>
-        <span class="numeric" data-test="node-cash-cost">{{ formatCopper(node.cashCostCopper) }}</span>
-      </span>
-      <span class="node__cost">
-        <span class="node__cost-label">Opportunity cost</span>
-        <span class="numeric" data-test="node-opportunity-cost">
-          {{ formatCopper(node.opportunityCostCopper) }}
-        </span>
-      </span>
-      <span class="node__cost">
-        <span class="node__cost-label">Effective cost</span>
-        <span class="numeric" data-test="node-effective-cost">
-          {{ formatCopper(node.effectiveCostCopper) }}
-        </span>
-      </span>
     </p>
 
     <details v-if="childCount > 0" class="node__children" data-test="node-children">
@@ -121,7 +105,6 @@ const childSummary = computed(() =>
           :key="`${path}.${index}`"
           :node="child"
           :path="`${path}.${index}`"
-          :compact-value="compactValue"
           :show-recipe-knowledge="showRecipeKnowledge"
         />
       </ul>
@@ -216,31 +199,12 @@ const childSummary = computed(() =>
   font-size: var(--text-sm);
 }
 
-/*
- * One line instead of the former three-row grid: the labels wrap onto further lines on a narrow
- * viewport rather than pushing the page sideways, and each amount keeps its own label beside it.
- */
-.node__costs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 var(--space-3);
-  margin: 0;
-  color: var(--color-muted);
-  font-size: var(--text-sm);
-}
-
 .node__value {
   display: flex;
   gap: var(--space-2);
   margin: 0;
   color: var(--color-muted);
   font-size: var(--text-sm);
-}
-
-.node__cost {
-  display: inline-flex;
-  gap: var(--space-1);
-  white-space: nowrap;
 }
 
 .node__note {

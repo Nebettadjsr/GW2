@@ -73,10 +73,12 @@ async function checkCompactSummaries(body) {
     supplied.map((node) => `${node.requestedQuantity} needed`),
     'A displayed required quantity is not the one the backend supplied'
   )
+  // One `Value` per requirement, which is the only presentation `ResolutionTreeNode.vue` has; the
+  // three separate cost figures this once read are not rendered by either crafting page.
   assert.deepEqual(
-    await locator('node-effective-cost').allTextContents().then((texts) => texts.map((t) => t.trim())),
-    supplied.map((node) => money(node.effectiveCostCopper)),
-    'A displayed effective cost is not the one the backend supplied'
+    await locator('node-value').allTextContents().then((texts) => texts.map((t) => t.trim())),
+    supplied.map((node) => `Value: ${money(node.effectiveCostCopper)}`),
+    'A displayed effective value is not the one the backend supplied'
   )
   assert.deepEqual(
     await locator('node-crafter').allTextContents().then((texts) => texts.map((t) => t.trim())),

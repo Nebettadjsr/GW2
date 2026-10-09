@@ -2,6 +2,7 @@
 import { computed, onMounted } from 'vue'
 import { accountApi, type AccountApi } from '@/api/accountApi'
 import type { BankContents, BankSlot } from '@/api/types'
+import PageHeader from '@/shell/PageHeader.vue'
 import BankSlotTile from './BankSlotTile.vue'
 import { useAccountRead } from './useAccountRead'
 
@@ -40,17 +41,19 @@ function onReload(): void { void bank.load() }
 
 <template>
   <div class="screen" data-test="bank-screen">
-    <header class="bank-page-header">
-      <!-- The hooks `App.vue` moves focus to after a navigation, as `PageHeader.vue` carries them. -->
-      <h1 tabindex="-1" data-page-heading data-test="page-heading">Bank</h1>
-      <button
-        type="button"
-        class="button--primary"
-        data-test="bank-reload"
-        :disabled="bank.phase.value === 'loading'"
-        @click="onReload"
-      >Reload bank</button>
-    </header>
+    <!-- The shared heading block, which carries the hooks `App.vue` moves focus to after a
+         navigation and groups this page's own actions. -->
+    <PageHeader heading="Bank">
+      <template #actions>
+        <button
+          type="button"
+          class="button--primary"
+          data-test="bank-reload"
+          :disabled="bank.phase.value === 'loading'"
+          @click="onReload"
+        >Reload bank</button>
+      </template>
+    </PageHeader>
 
     <div class="stack">
       <p v-if="bank.phase.value === 'loading'" class="notice notice--info" role="status" data-test="bank-loading">
@@ -84,14 +87,6 @@ function onReload(): void { void bank.load() }
 
 <style scoped>
 .screen { width: min(100%, 636px); margin-inline: auto; }
-.bank-page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-}
-.bank-page-header h1 { margin: 0; }
 .detail { display: block; margin-top: var(--space-2); }
 .bank-tab { margin-block: var(--space-4); }
 .bank-tab__header {
