@@ -8,6 +8,13 @@
  * routes are GETs (CURRENT_ARCHITECTURE.md 5.12), and the script's own comparison read is a second
  * GET of the same route.
  *
+ * The comparison is taken from the hooks the current screens render (STORY-WEB-029). Both screens
+ * place `InventoryTile.vue` inside their own wrapper, which carries no identity hook: an entry's item
+ * id and owned count are stated in the tile's `title`, and `[data-test="item-count"]` is the painted
+ * quantity badge, which the tile deliberately omits where the game omits it too — a bank slot holding
+ * one item, and a material position that is not owned at all. Both omissions are therefore part of
+ * what is compared, not gaps in it.
+ *
  * It asserts no domain value and establishes no performance (TEST_STRATEGY / TARGET_ARCHITECTURE 33).
  *
  * Prerequisites, both started by hand:
@@ -31,7 +38,29 @@ const TIMEOUT_MS = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 60_000)
 /** The one route an item image may come from (TARGET_ARCHITECTURE.md 12.1). */
 const ICON_ROUTE = /^\/api\/items\/\d+\/icon\/[0-9a-f]{64}\.(png|jpg)$/
 
+/**
+ * The read-only task-status route the shared HTTP client polls when a read answers
+ * `ACCOUNT_DATA_STALE` with a `taskStatusUrl` (`frontend/src/api/http.ts`): it waits for the refresh
+ * the backend already had running and then repeats the one read, once. That recovery is part of every
+ * account read's current behavior, so it is separated out and counted here rather than treated as an
+ * unexpected call — but it starts nothing, which the synchronization step below still asserts.
+ */
+const TASK_STATUS_ROUTE = /^\/api\/sync\/tasks\/[0-9a-fA-F-]+$/
+
 const steps = []
+
+/**
+ * The quantity badge as `InventoryTile.vue` paints it, or null where it paints none.
+ *
+ * `showOne` is the one difference between the two screens: material storage shows a single owned
+ * unit, a bank slot does not, and neither shows anything for a position holding nothing. The grouping
+ * digits are pinned to `en-US` by the component itself, so this is browser-locale independent.
+ */
+function quantityBadge(count, { showOne }) {
+  if (count === null || count === undefined || count <= 0) return null
+  if (count === 1 && !showOne) return null
+  return count.toLocaleString('en-US')
+}
 
 function record(name, detail) {
   steps.push({ name, detail })
@@ -73,7 +102,7 @@ async function run() {
     browserRequests.push({ url: request.url(), type: request.resourceType() })
     const url = new URL(request.url())
     if (!url.pathname.startsWith('/api/')) return
-    const entry = { path: url.pathname, answered: false }
+    const entry = { path: url.pathname, method: request.method(), answered: false }
     apiRequests.push(entry)
     apiRequestsByRequest.set(request, entry)
   })
@@ -81,7 +110,11 @@ async function run() {
   page.on('response', (response) => {
     const url = new URL(response.url())
     if (url.pathname.startsWith('/api/')) {
-      apiCalls.push({ path: url.pathname, status: response.status() })
+      apiCalls.push({
+        path: url.pathname,
+        method: response.request().method(),
+        status: response.status()
+      })
     }
     const entry = apiRequestsByRequest.get(response.request())
     if (entry !== undefined) entry.answered = true
@@ -115,13 +148,21 @@ async function run() {
 
     // The same route, read again, as the reference the rendering is compared against.
     const bankResponse = await (await page.request.get(`${FRONTEND_URL}/api/account/bank`)).json()
+    if (bankResponse.slots.length === 0) {
+      throw new Error(
+        `The live bank read returned no slots at all (slotCount ${bankResponse.slotCount}), so this ` +
+          'run would compare nothing — synchronize the account before taking this as evidence.'
+      )
+    }
 
     const renderedSlots = await page.$$eval('[data-test="bank-slot"]', (slots) =>
       slots.map((slot) => ({
         slot: slot.getAttribute('data-slot'),
         empty: slot.querySelector('[data-test="bank-empty-slot"]') !== null,
-        identity: slot.querySelector('[data-test="item-identity"]')?.textContent.trim() ?? null,
-        count: slot.querySelector('[data-test="item-count"]')?.textContent.trim() ?? null
+        // The slot's own stated identity and owned count. `BankSlotTile.vue` has no identity hook —
+        // it names the item here, on the slot itself, and on the tile inside it.
+        title: slot.getAttribute('title'),
+        quantity: slot.querySelector('[data-test="item-count"]')?.textContent.trim() ?? null
       }))
     )
 
@@ -138,16 +179,33 @@ async function run() {
       'The empty slot positions do not match the response.'
     )
     assertEqual(
-      renderedSlots.filter((slot) => !slot.empty).map((slot) => `${slot.identity} ${slot.count}`),
-      bankResponse.slots
-        .filter((slot) => !(slot.itemId === null && slot.count === null))
-        .map((slot) => `#${slot.itemId} × ${slot.count}`),
-      'The rendered item identities or counts do not match the response.'
+      renderedSlots.map((slot) => slot.title),
+      bankResponse.slots.map((slot) =>
+        slot.itemId === null && slot.count === null
+          ? `Empty slot #${slot.slot}`
+          : `Item #${slot.itemId ?? 'unknown'} · ${slot.count ?? 'unknown'} in slot #${slot.slot}`
+      ),
+      'The item identities or owned counts the slots state do not match the response.'
+    )
+    assertEqual(
+      renderedSlots.map((slot) => slot.quantity),
+      bankResponse.slots.map((slot) => quantityBadge(slot.count, { showOne: false })),
+      'The painted slot quantities do not match the response, badge for badge and omission for omission.'
     )
     const emptySlots = renderedSlots.filter((slot) => slot.empty).length
+    const occupiedSlots = renderedSlots.length - emptySlots
+    if (occupiedSlots === 0) {
+      throw new Error(
+        `All ${renderedSlots.length} rendered slots are empty, so no item identity or quantity was ` +
+          'compared — synchronize the account before taking this as evidence.'
+      )
+    }
+    const paintedQuantities = renderedSlots.filter((slot) => slot.quantity !== null).length
     record(
       'bank rendering matches the response',
-      `${renderedSlots.length} slots (slotCount ${bankResponse.slotCount}), ${emptySlots} empty, in the supplied order`
+      `${renderedSlots.length} slots (slotCount ${bankResponse.slotCount}), ${emptySlots} empty, ` +
+        `${occupiedSlots} occupied, in the supplied order; ${paintedQuantities} painted quantities and ` +
+        `${occupiedSlots - paintedQuantities} deliberately omitted for a single held item`
     )
 
     // An explicit reload repeats that one read and nothing else.
@@ -158,6 +216,10 @@ async function run() {
     // inside the window and fail a step it has nothing to do with (STORY-SYNC-004, Follow-up Finding
     // F002). Anything the reload itself causes is necessarily issued after the click, so no call this
     // assertion exists to catch is excluded — only calls that were already on the wire.
+    //
+    // Such a call also gets one continuation: the shared client repeats a read once after waiting out
+    // an `ACCOUNT_DATA_STALE` refresh, and that repeat is issued inside the window although it belongs
+    // to the earlier read. One further request per in-flight path is therefore allowed for below.
     const beforeReload = apiRequests.length
     const inFlight = apiRequests.filter((call) => !call.answered).map((call) => call.path)
     const inFlightOther = inFlight.filter((path) => !ICON_ROUTE.test(path))
@@ -173,25 +235,51 @@ async function run() {
     await page.waitForSelector('[data-test="bank-slots"], [data-test="bank-no-slots"]', {
       timeout: TIMEOUT_MS
     })
-    // The reload re-reads the bank once. Images on the shared icon route may arrive alongside it —
-    // re-rendered rows can bring further icons into loading distance — so they are separated out and
-    // counted rather than treated as an unexpected call; anything else at all is a failure.
+    // The reload re-reads the bank, and nothing but the bank. Two kinds of accompanying request are
+    // separated out and counted rather than treated as an unexpected call, because both belong to
+    // that same read: images on the shared icon route — re-rendered rows can bring further icons into
+    // loading distance — and the task-status polls the shared client makes while the backend reports
+    // the account data stale, after which it repeats the read once. Anything else at all is a failure.
     const reloadCalls = apiRequests.slice(beforeReload).map((call) => call.path)
     const reloadImages = reloadCalls.filter((path) => ICON_ROUTE.test(path))
-    const reloadOther = reloadCalls.filter((path) => !ICON_ROUTE.test(path))
-    if (JSON.stringify(reloadOther) !== JSON.stringify(['/api/account/bank'])) {
+    const reloadPolls = reloadCalls.filter((path) => TASK_STATUS_ROUTE.test(path))
+    const continuations = new Map()
+    for (const path of inFlightOther) continuations.set(path, (continuations.get(path) ?? 0) + 1)
+    const carriedOver = []
+    const reloadOther = []
+    for (const path of reloadCalls) {
+      if (ICON_ROUTE.test(path) || TASK_STATUS_ROUTE.test(path)) continue
+      const remaining = continuations.get(path) ?? 0
+      if (remaining > 0) {
+        continuations.set(path, remaining - 1)
+        carriedOver.push(path)
+        continue
+      }
+      reloadOther.push(path)
+    }
+    // One bank read, or two when the first answered `ACCOUNT_DATA_STALE` and the client waited out the
+    // refresh the backend already had running before repeating it. A second read without a poll is not
+    // that path, and is a reload asking for the bank twice.
+    const bankReads = reloadOther.filter((path) => path === '/api/account/bank').length
+    const allowedReads = reloadPolls.length > 0 ? [1, 2] : [1]
+    if (reloadOther.length !== bankReads || !allowedReads.includes(bankReads)) {
       throw new Error(
-        'Reloading the bank requested something other than that one read and its item images.\n' +
+        'Reloading the bank requested something other than that one read, its item images and the ' +
+          'stale-data recovery for that read.\n' +
           `  issued by the reload: ${JSON.stringify(reloadOther)}\n` +
-          `  expected            : ["/api/account/bank"]\n` +
-          `  plus ${reloadImages.length} image request(s) on the shared icon route\n` +
+          `  expected            : ${allowedReads.join(' or ')} × "/api/account/bank" and nothing else\n` +
+          `  plus ${reloadImages.length} image request(s) on the shared icon route and ` +
+          `${reloadPolls.length} task-status poll(s)\n` +
+          `  continuations of calls already on the wire: ${JSON.stringify(carriedOver)}\n` +
           `  already in flight when the reload was clicked, so not attributed to it: ${inFlightExcluded}`
       )
     }
     record(
       'bank reload repeats only that read',
-      `/api/account/bank, plus ${reloadImages.length} image request(s) on the shared icon route; ` +
-        `${inFlight.length} call(s) already in flight excluded — ${inFlightExcluded}`
+      `${bankReads} × /api/account/bank, plus ${reloadImages.length} image request(s) on the shared ` +
+        `icon route and ${reloadPolls.length} task-status poll(s) for a refresh the backend already had ` +
+        `running; ${inFlight.length} call(s) already in flight excluded — ${inFlightExcluded}` +
+        (carriedOver.length === 0 ? '' : `; continuations of those: ${JSON.stringify(carriedOver)}`)
     )
 
     // ----------------------------------------------------------- Materials
@@ -216,16 +304,31 @@ async function run() {
     const materialsResponse = await (
       await page.request.get(`${FRONTEND_URL}/api/account/materials`)
     ).json()
+    const suppliedStacks = materialsResponse.categories.reduce(
+      (sum, category) => sum + category.materials.length,
+      0
+    )
+    if (suppliedStacks === 0) {
+      throw new Error(
+        `The live materials read returned no stacks at all (categoryCount ` +
+          `${materialsResponse.categoryCount}), so this run would compare nothing — synchronize the ` +
+          'account before taking this as evidence.'
+      )
+    }
 
     const renderedCategories = await page.$$eval('[data-test="material-category"]', (categories) =>
       categories.map((category) => ({
         name: category.querySelector('[data-test="material-category-name"]').textContent.trim(),
-        stacks: Array.from(category.querySelectorAll('[data-test="material-stack"]')).map(
-          (stack) =>
-            `${stack.querySelector('[data-test="item-identity"]').textContent.trim()} ` +
-            `${stack.querySelector('[data-test="item-count"]').textContent.trim()} ` +
-            `${stack.querySelector('[data-test="material-stack-category"]').textContent.trim()}`
-        )
+        stacks: Array.from(category.querySelectorAll('[data-test="material-stack"]')).map((stack) => {
+          // One tile per official position, owned or not. The position states its item on the tile;
+          // the badge and the greyed-out treatment are what distinguish owned from unowned.
+          const tile = stack.querySelector('.inventory-tile')
+          return {
+            title: tile === null ? null : tile.getAttribute('title'),
+            quantity: stack.querySelector('[data-test="item-count"]')?.textContent.trim() ?? null,
+            unowned: tile !== null && tile.classList.contains('inventory-tile--empty')
+          }
+        })
       }))
     )
 
@@ -237,19 +340,24 @@ async function run() {
     assertEqual(
       renderedCategories.map((category) => category.stacks),
       materialsResponse.categories.map((category) =>
-        category.materials.map(
-          (stack) =>
-            `${stack.itemId === null ? '— (no item id supplied)' : `#${stack.itemId}`} ` +
-            `× ${stack.count} category id ${stack.category}`
-        )
+        category.materials.map((stack) => ({
+          title: `Item #${stack.itemId}`,
+          quantity: quantityBadge(stack.count, { showOne: true }),
+          unowned: stack.count === 0
+        }))
       ),
       'The rendered stacks do not match the response.'
     )
     const stackCount = renderedCategories.reduce((sum, category) => sum + category.stacks.length, 0)
+    const ownedStacks = renderedCategories.reduce(
+      (sum, category) => sum + category.stacks.filter((stack) => !stack.unowned).length,
+      0
+    )
     record(
       'materials rendering matches the response',
       `${renderedCategories.length} categories (categoryCount ${materialsResponse.categoryCount}), ` +
-        `${stackCount} stacks, labels and order as supplied`
+        `${stackCount} positions, labels and order as supplied; ${ownedStacks} owned with a painted ` +
+        `quantity, ${stackCount - ownedStacks} unowned positions kept in place and greyed out`
     )
 
     // ------------------------------------------------------------- Overall
@@ -279,12 +387,19 @@ async function run() {
       `${images.length} on /api/items/{id}/icon/…, all no-referrer; ${fallbacks} entries on the fallback`
     )
 
-    const syncCalls = apiCalls.filter(
-      (call) => call.path.startsWith('/api/sync') || call.path.startsWith('/api/prices')
+    // Nothing here starts synchronization or refreshes prices. The task-status route is the one
+    // `/api/sync` path this run may touch: it is a GET that reports on a refresh the backend decided
+    // to run, and waiting for it is how a stale read recovers — it begins nothing.
+    const started = apiCalls.filter(
+      (call) =>
+        call.path.startsWith('/api/prices') ||
+        (call.path.startsWith('/api/sync') &&
+          !(TASK_STATUS_ROUTE.test(call.path) && call.method === 'GET'))
     )
-    if (syncCalls.length > 0) {
-      throw new Error(`Synchronization routes were called: ${JSON.stringify(syncCalls)}`)
+    if (started.length > 0) {
+      throw new Error(`Synchronization or price-refresh routes were called: ${JSON.stringify(started)}`)
     }
+    const statusPolls = apiCalls.filter((call) => TASK_STATUS_ROUTE.test(call.path))
     const foreignCalls = apiCalls.filter((call) => !call.path.startsWith('/api/'))
     if (foreignCalls.length > 0) {
       throw new Error(`Non-backend API calls observed: ${JSON.stringify(foreignCalls)}`)
@@ -302,8 +417,9 @@ async function run() {
     }
     if (consoleErrors.length > 0) throw new Error(`Uncaught page errors: ${consoleErrors.join(' | ')}`)
     record(
-      'no synchronization, no page error, no non-backend call',
-      `${browserRequests.length} browser requests, all to ${new URL(FRONTEND_URL).origin}`
+      'nothing synchronized, no page error, no non-backend call',
+      `${browserRequests.length} browser requests, all to ${new URL(FRONTEND_URL).origin}; ` +
+        `${statusPolls.length} read-only task-status poll(s) and no start of any kind`
     )
 
     console.log(`\nAccount browser smoke PASSED (${steps.length} steps).`)

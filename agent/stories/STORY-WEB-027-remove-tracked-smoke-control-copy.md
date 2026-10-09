@@ -230,3 +230,9 @@ here under `python -m unittest agent.runtime.tests.test_story_completion` at 22:
 verdict matched, so the resume re-evaluated and hit the package guard — and passed on the next three
 runs and under pytest. CI is unaffected (its artifacts directory is empty), but the gap makes the
 local harness suite order- and timing-dependent.
+
+## Follow-up Findings Disposition
+
+F001: FOLLOW-UP STORY ? STORY-WEB-029
+F002: DISMISSED ? preventing future temporary-file tracking is an optional repository hygiene improvement, not a Phase 5 browser acceptance requirement; supplied Phase 5 excerpt
+F003: ALREADY COVERED ? agent/runtime/tests/test_completion_recovery.py patches EVALUATOR_RESULT_FILE

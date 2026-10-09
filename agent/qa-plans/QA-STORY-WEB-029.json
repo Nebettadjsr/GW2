@@ -1,0 +1,73 @@
+{
+  "status": "READY",
+  "story_id": "STORY-WEB-029",
+  "rationale": "Both requested checks are browser integration contracts, and the existing frontend component tests already cover the relevant rendered account and Ectoplasm behavior. No additional test file is needed before implementation; the story's live smoke commands are the precise acceptance checks. Both commands were attempted, but Node failed before either smoke script ran because the environment denied access to C:\\Users\\Administrator, so this is an environment failure rather than behavior-level expected-red evidence.",
+  "acceptance_checks": [
+    {
+      "criterion": "AC1: Account smoke uses current Bank and Materials rendered hooks and quantity behavior.",
+      "expected": "Against a running application, the script compares Bank slots and Materials categories/stacks with their backend responses using hooks that exist in the current screens, including omitted quantity display where the UI omits it. Missing expected content or mismatched data fails the command.",
+      "verification": "With backend and frontend running, execute `npm run smoke:account` from `frontend/`; confirm exit code 0 and successful Bank and Materials assertions."
+    },
+    {
+      "criterion": "AC2: Live Ectoplasm smoke exercises the frontend-owned calculation and makes no request to the removed backend calculation route.",
+      "expected": "The browser supplies the current Ectoplasm inputs, renders the calculated result through current result hooks, and does not request `/api/ecto/salvage` or await the former scenario table.",
+      "verification": "With the current backend inputs and frontend available, execute `npm run smoke:ecto:live`; inspect browser network requests and confirm the current input/result assertions pass without a calculation-route request."
+    },
+    {
+      "criterion": "AC3: Both scripts retain meaningful workflow assertions and fail when expected content is absent.",
+      "expected": "Each command exits nonzero with a useful failure when required workflow content or assertions are absent.",
+      "verification": "Review assertions in both scripts, then run each against the live application. If practical, confirm missing result content causes a failed assertion rather than a pass."
+    }
+  ],
+  "invariants": [
+    "Account smoke compares rendered Bank and Materials data against the responses for those reads; it does not assert domain values.",
+    "Bank quantity visibility follows the current InventoryTile behavior, including hiding quantity for a count of one.",
+    "Ectoplasm calculation remains frontend-owned and its displayed result corresponds to current backend-provided inputs.",
+    "Neither smoke command treats absent content, failed reads, or unavailable results as success."
+  ],
+  "test_levels": [
+    "ui",
+    "end_to_end"
+  ],
+  "existing_tests_reviewed": [
+    "frontend/src/account/__tests__/BankScreen.spec.ts — covers Bank slot rendering, empty positions, quantity hooks/visibility, reload and error states.",
+    "frontend/src/account/__tests__/MaterialsScreen.spec.ts — covers material categories, stack rendering, quantity visibility, reload and error states.",
+    "frontend/src/ecto/__tests__/EctoContentHooks.spec.ts — covers readiness and rendered Ectoplasm result/Luck hooks using controlled inputs.",
+    "frontend/src/ecto/__tests__/EctoSalvageScreen.spec.ts — covers Ectoplasm screen calculation and interaction behavior."
+  ],
+  "prepared_test_paths": [],
+  "test_specifications": [
+    "Run `npm run smoke:account` from `frontend/` with the backend and dev server running. Verify Bank slot order, empty-slot positions and item/count rendering against the Bank response; verify Materials category labels, stack order and rendered quantities against the Materials response; expect exit code 0.",
+    "Run `npm run smoke:ecto:live` from `frontend/` with the backend inputs and dev server running. Verify current inputs produce the result hooks and figures expected from those inputs, and verify the browser does not request `/api/ecto/salvage`; expect exit code 0.",
+    "For both commands, confirm required content absence or a response/render mismatch produces a nonzero exit."
+  ],
+  "pre_implementation_verification": {
+    "status": "NOT_RUN",
+    "command": "From `frontend/`: `npm run smoke:account` and `npm run smoke:ecto:live`",
+    "failure_evidence": "Both commands failed before loading their scripts. Node reported `EPERM: operation not permitted, lstat 'C:\\Users\\Administrator'` while resolving the executable path. This does not exercise either smoke assertion, so it is not expected-failure evidence."
+  },
+  "coverage_review": "Existing coverage report is available at frontend/coverage/coverage-summary.json: overall lines 91.14%, statements 88.61%, functions 90.02%, branches 84.99%. The report shows BankScreen.vue at 100% lines and statements, 100% functions, and 95.65% branches. Component tests cover the account and Ectoplasm rendering behaviors, but do not verify the real browser/backend integration or smoke-script network contracts; the two story-required live checks remain necessary.",
+  "external_sources": [],
+  "clarifications": [],
+  "post_implementation_review_required": true,
+  "post_implementation_review_reason": "The acceptance criteria specifically require both live browser smoke checks against the running application. The attempted pre-implementation runs were blocked by environment path access before script execution, so a reviewer must run both commands after implementation and inspect the Ectoplasm browser requests for absence of the removed calculation route.",
+  "schema_version": 1,
+  "qa_model": "gpt-6-luna",
+  "qa_reasoning_effort": "medium",
+  "story_contract_sha256": "5cea078274895b6489f2a85cc26718c60fb82daeb795b35526aad26fc2bcf411",
+  "user_decision_ids": [],
+  "protected_test_hashes": {},
+  "post_implementation_reviews": [
+    {
+      "decision": "APPROVE",
+      "reason": "The implementation meets the reviewed smoke contracts, and the story records successful live runs and negative controls. The required QA plan lists no separate prepared test files, so none were expected to be added. I did not independently rerun the checks; approval relies on the recorded run evidence.",
+      "evidence": [
+        "The account smoke compares rendered Bank slots and Materials categories/stacks, including quantity badge omissions, against backend responses; it fails when comparison data is empty.",
+        "The Ectoplasm smoke derives expected results from live input responses, checks rendered results and interactions, and asserts zero requests to /api/ecto/salvage.",
+        "The story records both live smoke commands passing, 47 relevant component tests passing, and four negative controls exiting nonzero for deliberately broken assertions.",
+        "The supplied QA plan’s prepared_test_paths is empty and states that existing component tests plus the live smoke commands provide the planned coverage."
+      ],
+      "actionable_items": []
+    }
+  ]
+}

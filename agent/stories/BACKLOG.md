@@ -13,8 +13,10 @@ below stay in the plain form.
 
 ## Active
 
+- STORY-WEB-029 | STORY-WEB-029-repair-account-ecto-smoke-contracts.md | TODO | milestone-05 | deps: None
 
 ## To Do
+- STORY-WEB-030 | STORY-WEB-030-align-layout-discovery-smoke-contracts.md | TODO | milestone-05 | deps: None
 
 ## Blocked
 - STORY-QUALITY-005 | STORY-QUALITY-005-phase-five-completion-review.md | BLOCKED | milestone-05 | deps: STORY-PERF-002, STORY-WEB-019, STORY-SYNC-005, STORY-WEB-018, STORY-WEB-020, STORY-WEB-021, STORY-WEB-022, STORY-WEB-027, STORY-WEB-028

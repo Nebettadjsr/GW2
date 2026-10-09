@@ -152,3 +152,9 @@ None.
   `checkContract` asserts `Object.hasOwn(body, 'inventoryCharacterName')` and `checkDetail`
   compares `body.calculation.inventoryCharacterName` — while `CraftingDiscoveryApiControllerTest`
   asserts the backend no longer sends it, so that live check must fail at its contract step.
+
+## Follow-up Findings Disposition
+
+F001: FOLLOW-UP STORY ? STORY-WEB-030
+F002: FOLLOW-UP STORY ? STORY-WEB-030
+F003: FOLLOW-UP STORY ? STORY-WEB-030

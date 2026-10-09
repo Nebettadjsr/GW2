@@ -142,3 +142,9 @@ screen has, so that live check cannot pass against the frontend-owned calculatio
 F003: the prepared QA test's literal `'14,134'` depends on the test runner's ICU default locale. Every
 other frontend expectation formats through `toLocaleString()` for exactly this reason, so the suite is
 green on an `en-US` runner (CI, `ubuntu-latest`) and red on a `de-DE` workstation.
+
+## Follow-up Findings Disposition
+
+F001: DISMISSED ? legacy browser API cleanup is explicitly not required for Phase 5 feature behavior; supplied Phase 5 excerpt, KP-25
+F002: FOLLOW-UP STORY ? STORY-WEB-029
+F003: FOLLOW-UP STORY ? STORY-WEB-030

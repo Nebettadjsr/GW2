@@ -235,3 +235,9 @@ F003: `describeRootSourcing`'s matching-identity sentence
 file; the alternative — deleting the branch — would make a direct caller passing a matching id produce
 the opposite claim, so the decision between keeping the helper's complete contract and narrowing it is
 worth taking deliberately rather than for coverage.
+
+## Follow-up Findings Disposition
+
+F001: DISMISSED ? the live checks have explicit opt-in npm commands in frontend/package.json; no Phase 5 criterion requires them to run as a gate, and their manual live-backend verification is recorded as not run in this story Result
+F002: DISMISSED ? unused scoped CSS is optional cleanup with no observed workflow defect; frontend/src/crafting/ResolutionTreeNode.vue
+F003: DISMISSED ? this is an uncovered helper branch without an observed user-facing defect, and the story Result records exercised root-sourcing presentations in both browser checks; agent/stories/STORY-WEB-028-align-browser-workflow-contracts.md
