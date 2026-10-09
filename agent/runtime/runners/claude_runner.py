@@ -56,11 +56,14 @@ class ClaudeUsage(NamedTuple):
 
 
 def get_claude_usage() -> ClaudeUsage:
-    claude = find_claude()
+    return parse_claude_usage(read_claude_usage_text())
 
+
+def read_claude_usage_text() -> str:
+    """Raw `claude -p /usage` output; a slash command, so it spends no tokens."""
     result = subprocess.run(
         [
-            claude,
+            find_claude(),
             "-p",
             "/usage",
         ],
@@ -74,25 +77,29 @@ def get_claude_usage() -> ClaudeUsage:
     if result.returncode != 0:
         raise RuntimeError(
             "Could not read Claude usage:\n"
-            + result.stderr
+                + result.stderr
         )
 
+    return result.stdout
+
+
+def parse_claude_usage(text: str) -> ClaudeUsage:
     session = re.search(
         r"Current session:\s*(\d+)% used",
-        result.stdout,
+        text,
         re.IGNORECASE,
     )
 
     weekly = re.findall(
         r"^Current week(?:\s*\([^\n)]*\))?:\s*(\d+)% used",
-        result.stdout,
+        text,
         re.IGNORECASE | re.MULTILINE,
     )
 
     if not session or not weekly:
         raise RuntimeError(
             "Could not parse Claude session and weekly usage from:\n"
-            + result.stdout
+            + text
         )
 
     # If /usage reports more than one weekly allowance, the most-used

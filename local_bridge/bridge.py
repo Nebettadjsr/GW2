@@ -23,7 +23,7 @@ REPOSITORY = Path(__file__).resolve().parent.parent
 if str(REPOSITORY) not in sys.path:
     sys.path.insert(0, str(REPOSITORY))
 
-from local_bridge import cycle as dev_cycle  # noqa: E402  (needs the repository on sys.path)
+from local_bridge import claude_budget, cycle as dev_cycle  # noqa: E402  (needs the repository on sys.path)
 
 CLAUDE_EXECUTABLE = Path(r"C:\Users\Administrator\.local\bin\claude.EXE")
 CODEX_NODE_EXECUTABLE = Path(r"C:\Program Files\nodejs\node.exe")
@@ -158,13 +158,18 @@ class Bridge:
         node = str(CODEX_NODE_EXECUTABLE if CODEX_NODE_EXECUTABLE.exists() else (shutil.which("node") or CODEX_NODE_EXECUTABLE))
         self.codex_command = codex_command or (node, str(CODEX_CLI_SCRIPT))
         self.step_lock = threading.Lock()
+        self.budget_settings: dict | None = None
+        self.last_step_request_at: str | None = None
         self._delivery_locks: dict[str, threading.Lock] = {}
 
     # ------------------------------------------------------------ cycle
 
-    def next_step(self, callback_url: str) -> dict:
+    def next_step(self, callback_url: str, budget_settings: dict | None = None) -> dict:
         """Start (or re-attach to) the next cycle step and return its task."""
         with self.step_lock:
+            self.last_step_request_at = utc_now()
+            if budget_settings is not None:
+                self.budget_settings = claude_budget.settings_from(budget_settings)
             running = self.store.running()
             if running:
                 if running.get("kind") != "step":
@@ -211,7 +216,8 @@ class Bridge:
             elif step == "select":
                 result, cycle = dev_cycle.step_select(None)
             else:
-                result = dev_cycle.STEPS[step](cycle, lambda: self.store.save_cycle(cycle))
+                context = dev_cycle.StepContext(lambda: self.store.save_cycle(cycle), self.budget_settings)
+                result = dev_cycle.STEPS[step](cycle, context)
             status, error = "completed", None
         except Exception as exc:  # The step reruns on the next pipeline run.
             logging.exception("Step %s failed", step)
@@ -322,7 +328,8 @@ def make_handler(bridge: Bridge):
             elif path == "/cycle":
                 running = bridge.store.running()
                 self._send(200, {"active_cycle": bridge.store.active_cycle(),
-                                 "running_task": public_task(running) if running else None})
+                                 "running_task": public_task(running) if running else None,
+                                 "last_step_request_at": bridge.last_step_request_at})
             elif path.startswith("/tasks/") and (task := bridge.store.get(path.removeprefix("/tasks/"))):
                 self._send(200, public_task(task))
             else:
@@ -330,7 +337,7 @@ def make_handler(bridge: Bridge):
 
         def do_POST(self) -> None:
             path = urlparse(self.path).path
-            if path not in ("/cycle/step", "/tasks"):
+            if path not in ("/cycle/step", "/tasks", "/budget"):
                 self._send(404, {"error": "Not found."})
                 return
             try:
@@ -341,10 +348,16 @@ def make_handler(bridge: Bridge):
                 return
             if not self._authorized():
                 return
+            if path == "/budget":
+                try:
+                    self._send(200, claude_budget.status(body.get("budget")))
+                except (ValueError, RuntimeError, OSError) as error:
+                    self._send(400 if isinstance(error, ValueError) else 500, {"error": str(error)})
+                return
             try:
                 callback_url = validate_callback_url(body.get("callback_url"), bridge.callback_origin)
                 if path == "/cycle/step":
-                    task = bridge.next_step(callback_url)
+                    task = bridge.next_step(callback_url, body.get("budget"))
                 else:
                     prompt, agent = body.get("prompt"), body.get("agent", "claude")
                     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > MAX_PROMPT_LENGTH:

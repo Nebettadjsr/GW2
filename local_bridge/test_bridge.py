@@ -189,8 +189,10 @@ class ImplementStepTests(_CycleTestCase):
         cycle.story_state.restore_story_lifecycle.return_value = []
         cycle.git_sync.working_tree_paths.side_effect = [{"dirty.txt"}, {"dirty.txt", "src/New.java"}]
         self.orchestrator._prepare_implementation_prompt.return_value = ("prompt", False)
+        self.budget = {"claude_allowed": True, "reason": "ok"}
         for name, value in {"file_hash": mock.Mock(side_effect=["h1", "h2"]),
-                            "run_claude_attempt": mock.Mock()}.items():
+                            "run_claude_attempt": mock.Mock(),
+                            "claude_budget": mock.Mock(**{"status.return_value": self.budget})}.items():
             patcher = mock.patch.object(cycle, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -198,7 +200,8 @@ class ImplementStepTests(_CycleTestCase):
     def implement(self, record, exit_code=0, capacity=False):
         cycle.run_claude_attempt.return_value = mock.Mock(exit_code=exit_code, capacity_exhausted=capacity, output="")
         checkpoints = []
-        result = cycle.step_implement(record, lambda: checkpoints.append(dict(record)))
+        context = cycle.StepContext(lambda: checkpoints.append(dict(record)), {"mode": "auto"})
+        result = cycle.step_implement(record, context)
         self.assertTrue(checkpoints and checkpoints[0]["implement_started"], "baseline must be saved before Claude runs")
         return result
 
@@ -209,6 +212,13 @@ class ImplementStepTests(_CycleTestCase):
         self.assertEqual((record["phase"], record["implement_started"], record["result_was_updated"]),
                          ("evaluate", False, True))
         self.assertTrue(result["proceed"])
+
+    def test_exhausted_budget_stops_before_claude_and_keeps_the_phase(self):
+        self.budget.update(claude_allowed=False, reason="Weekly Claude budget reached")
+        result = cycle.step_implement(make_cycle(phase="implement"), cycle.StepContext(lambda: None, {"mode": "auto"}))
+        self.assertEqual((result["outcome"], result["proceed"]), ("waiting_for_claude_budget", False))
+        cycle.claude_budget.status.assert_called_once_with({"mode": "auto"})
+        cycle.run_claude_attempt.assert_not_called()
 
     def test_interrupted_attempt_resumes_with_a_continuation_prompt_and_its_baseline(self):
         record = make_cycle(phase="implement", implement_started=True, prompt="prompt",

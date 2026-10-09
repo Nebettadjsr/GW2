@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Callable, NamedTuple
 
 from agent.runtime.core import orchestrator, story_state
 from agent.runtime.core.project_planner import run_planning_pass
@@ -34,6 +35,7 @@ from agent.runtime.support.config import (
     MAX_CLAUDE_FAILED_RUNS_PER_STORY, MAX_RETRIES_PER_STORY, REPO_ROOT,
 )
 from agent.runtime.support.files import file_hash, read_file
+from local_bridge import claude_budget
 
 ASYNC_STEPS = {"plan", "qa", "implement", "evaluate", "ci"}
 CONTINUATION = (
@@ -41,6 +43,11 @@ CONTINUATION = (
     "Inspect existing repository work and resume where it stopped; "
     "do not restart completed work.\n\n"
 )
+
+
+class StepContext(NamedTuple):
+    checkpoint: Callable[[], None]  # persist the cycle mid-step
+    budget_settings: dict | None = None  # the n8n "GW2 Claude Budget" row
 
 
 class StepResult(dict):
@@ -141,7 +148,7 @@ def step_select(_cycle: None) -> tuple[StepResult, dict | None]:
     return StepResult("activated", True, selection.get("reason", "")), cycle
 
 
-def step_qa(cycle: dict, _checkpoint) -> StepResult:
+def step_qa(cycle: dict, _context: StepContext) -> StepResult:
     plan = orchestrator._ensure_preimplementation_qa(_story_path(cycle))
     if plan is None:
         # QA recorded a Product Owner decision or a technical failure and
@@ -151,12 +158,16 @@ def step_qa(cycle: dict, _checkpoint) -> StepResult:
     return StepResult(plan["status"], True)
 
 
-def step_implement(cycle: dict, checkpoint) -> StepResult:
+def step_implement(cycle: dict, context: StepContext) -> StepResult:
     story_path = _story_path(cycle)
     plan = qa_agent.load_plan(story_path)
     if plan is None:
         cycle["phase"] = "qa"
         return StepResult("qa_plan_missing", True, "No QA plan found; running QA preparation first.")
+    budget = claude_budget.status(context.budget_settings)
+    if not budget["claude_allowed"]:
+        # Nothing has started; the next scheduled run tries again.
+        return StepResult("waiting_for_claude_budget", False, budget["reason"], budget=budget)
 
     prompt = cycle["prompt"] or orchestrator._prepare_implementation_prompt(story_path)[0]
     if cycle["implement_started"]:
@@ -167,7 +178,7 @@ def step_implement(cycle: dict, checkpoint) -> StepResult:
                      run_baseline=sorted(git_sync.working_tree_paths()),
                      result_hash_before=file_hash(CLAUDE_RESULT_FILE))
     baseline = set(cycle["run_baseline"])
-    checkpoint()  # an interrupted run must resume with this baseline
+    context.checkpoint()  # an interrupted run must resume with this baseline
 
     plan_file = qa_agent.plan_path(plan["story_id"])
     plan_snapshot = plan_file.read_bytes()
@@ -207,10 +218,10 @@ def step_implement(cycle: dict, checkpoint) -> StepResult:
         integrity_findings=sorted(set(integrity)),
         result_was_updated=file_hash(CLAUDE_RESULT_FILE) != cycle["result_hash_before"],
     )
-    return StepResult("implemented", True, changed_paths=sorted(changed))
+    return StepResult("implemented", True, changed_paths=sorted(changed), budget=budget)
 
 
-def step_evaluate(cycle: dict, _checkpoint) -> StepResult:
+def step_evaluate(cycle: dict, _context: StepContext) -> StepResult:
     story_path = _story_path(cycle)
     plan = qa_agent.load_plan(story_path)
     integrity = cycle.get("integrity_findings") or []
@@ -257,7 +268,7 @@ def step_evaluate(cycle: dict, _checkpoint) -> StepResult:
     return StepResult("RETRY", True, reason, retry=cycle["retry_count"], items=items)
 
 
-def step_publish(cycle: dict, _checkpoint) -> StepResult:
+def step_publish(cycle: dict, _context: StepContext) -> StepResult:
     story_path = _story_path(cycle)
     candidates = set(cycle["publish_paths"]) | git_sync.pending_planning_paths() | {
         cycle["story_file"], _relative(BACKLOG_FILE), _relative(CURRENT_STORY_FILE),
@@ -277,7 +288,7 @@ def step_publish(cycle: dict, _checkpoint) -> StepResult:
     return StepResult("published", True, sha=push["sha"], paths=paths)
 
 
-def step_ci(cycle: dict, _checkpoint) -> StepResult:
+def step_ci(cycle: dict, _context: StepContext) -> StepResult:
     sha = cycle["published_sha"]
     available, detail = git_sync.ci_verification_available()
     if available:
@@ -312,7 +323,7 @@ def step_ci(cycle: dict, _checkpoint) -> StepResult:
     return StepResult("FAILED", True, reason, ci_fix=cycle["ci_fix_attempts"])
 
 
-def step_finalize(cycle: dict, _checkpoint) -> StepResult:
+def step_finalize(cycle: dict, _context: StepContext) -> StepResult:
     story_path = _story_path(cycle)
     sha = cycle["published_sha"]
     orchestrator.finalize_completed_story(story_path, "PASSED", sha)

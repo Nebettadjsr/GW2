@@ -1,12 +1,16 @@
 {
   "id": "qMaNwA16S7Dcxi75",
   "name": "GW2 - Development Pipeline",
-  "description": "Runs the development cycle one bridge step at a time: plans when the queue is empty, then works stories until nothing is selectable or something needs attention.",
+  "description": "Runs the development cycle one bridge step at a time. Starts by hand, or every hour from 17:35 to 06:35 when idle. Claude only runs within the GW2 Claude Budget.",
   "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
   "nodes": [
     {
       "parameters": {},
-      "id": "00000000-0000-4000-8000-954042953023",
+      "id": "495cf0df-63c4-54e5-bee0-61f1a8e84142",
       "name": "Start",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
@@ -17,23 +21,131 @@
     },
     {
       "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "35 17-23,0-6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "b28b81ca-9db9-5999-af3b-9711a7793aaf",
+      "name": "Every Evening Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://172.29.240.1:8765/cycle",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "83d83382-5064-571c-8101-cc33fb5f9fba",
+      "name": "Check Pipeline Idle",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        220,
+        -220
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "sSJvxExuzE2rWZg8",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !$json.running_task && (!$json.last_step_request_at || Date.now() - new Date($json.last_step_request_at).getTime() > 120000) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2fa793bd-72f9-56be-910a-30c0d6f35ac0",
+      "name": "Pipeline Idle?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        440,
+        -220
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "fffc84f6-7563-5c72-889c-c600ab195726",
+      "name": "Already Running",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        660,
+        -340
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "GW2 Claude Budget"
+        },
+        "limit": 1
+      },
+      "id": "6c129e53-7e55-5adb-8381-eb777da45835",
+      "name": "Read Budget Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        0
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "http://172.29.240.1:8765/cycle/step",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { callback_url: $execution.resumeUrl } }}",
+        "jsonBody": "={{ { callback_url: $execution.resumeUrl, budget: $json } }}",
         "options": {
           "timeout": 600000
         }
       },
-      "id": "00000000-0000-4000-8000-675637205696",
+      "id": "0f433efd-f84b-5025-a4b4-82d3b0a4a7fa",
       "name": "Run Next Step",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
       "position": [
-        220,
+        880,
         0
       ],
       "credentials": {
@@ -66,12 +178,12 @@
         },
         "options": {}
       },
-      "id": "00000000-0000-4000-8000-935396967338",
+      "id": "b10dbb91-41a3-5e28-b77f-68ece6ce83c9",
       "name": "Step Running?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        440,
+        1100,
         0
       ]
     },
@@ -91,21 +203,21 @@
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        660,
+        1320,
         -120
       ],
       "webhookId": "6f9d2c1e-5b4a-4c3d-9e8f-7a6b5c4d3e2f"
     },
     {
       "parameters": {
-        "jsCode": "// A callback carries the finished step in `body`. When the Wait times out, the\n// still-running task passes through instead and the next request re-attaches to it.\nconst item = $input.first().json;\nconst step = item.body ?? item;\nconst running = step.status === 'running';\nconst exhausted = $runIndex >= 200;\nreturn [{ json: {\n  step: step.step,\n  story_id: step.story_id,\n  status: step.status,\n  outcome: running ? 'waiting' : step.outcome,\n  phase: step.phase,\n  reason: exhausted ? 'Loop guard reached (200 iterations); rerun the pipeline to continue.' : step.reason,\n  continue: !exhausted && (running || step.proceed === true),\n  task: step,\n} }];"
+        "jsCode": "// A callback carries the finished step in `body`. When the Wait times out, the\n// still-running task passes through instead and the next request re-attaches to it.\nconst item = $input.first().json;\nconst step = item.body ?? item;\nconst running = step.status === 'running';\nconst exhausted = $runIndex >= 200;\nreturn [{ json: {\n  step: step.step,\n  story_id: step.story_id,\n  status: step.status,\n  outcome: running ? 'waiting' : step.outcome,\n  phase: step.phase,\n  reason: exhausted ? 'Loop guard reached (200 iterations); rerun the pipeline to continue.' : step.reason,\n  continue: !exhausted && (running || step.proceed === true),\n  budget: step.budget,\n  task: step,\n} }];"
       },
-      "id": "00000000-0000-4000-8000-150103891175",
+      "id": "490d35e5-93a7-512d-b06d-08a1cd07beb0",
       "name": "Record Step",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        880,
+        1540,
         0
       ]
     },
@@ -132,29 +244,80 @@
         },
         "options": {}
       },
-      "id": "00000000-0000-4000-8000-040406729577",
+      "id": "6d7e2bc1-b49c-5426-8e7c-a5cf00ecfcf8",
       "name": "Continue?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        1100,
+        1760,
         0
       ]
     },
     {
       "parameters": {},
-      "id": "00000000-0000-4000-8000-422186259335",
+      "id": "b9423d19-cd0d-5b09-b89f-6d6d8045ffbc",
       "name": "Pipeline Stopped",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        1320,
+        1980,
         80
       ]
     }
   ],
   "connections": {
     "Start": {
+      "main": [
+        [
+          {
+            "node": "Read Budget Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every Evening Hour": {
+      "main": [
+        [
+          {
+            "node": "Check Pipeline Idle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Pipeline Idle": {
+      "main": [
+        [
+          {
+            "node": "Pipeline Idle?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pipeline Idle?": {
+      "main": [
+        [
+          {
+            "node": "Read Budget Settings",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Already Running",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Budget Settings": {
       "main": [
         [
           {
@@ -220,7 +383,7 @@
       "main": [
         [
           {
-            "node": "Run Next Step",
+            "node": "Read Budget Settings",
             "type": "main",
             "index": 0
           }

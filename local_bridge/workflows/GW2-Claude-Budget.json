@@ -1,0 +1,183 @@
+{
+  "id": "Gw2ClaudeBudget1",
+  "name": "GW2 - Claude Budget",
+  "description": "Refreshes the now_* columns of the GW2 Claude Budget data table. Edit mode, allowance_windows, unlock_time or manual_cap_percent in that table.",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "bfa30345-6165-5ee7-86ee-ba1219f6e7ef",
+      "name": "Check Now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "ad6f2748-0af6-517a-9b31-f6384563d42e",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "GW2 Claude Budget"
+        },
+        "limit": 1
+      },
+      "id": "6c129e53-7e55-5adb-8381-eb777da45835",
+      "name": "Read Budget Settings",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        220,
+        0
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://172.29.240.1:8765/budget",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { budget: $json } }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "641114bb-db24-5ca0-8a1c-fdeda4b6a857",
+      "name": "Compute Budget",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        440,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "sSJvxExuzE2rWZg8",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "GW2 Claude Budget"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Read Budget Settings').first().json.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "now_weekly_used": "={{ $json.weekly_used_percent }}",
+            "now_weekly_cap": "={{ $json.weekly_cap_percent }}",
+            "now_session_used": "={{ $json.session_used_percent }}",
+            "now_claude_allowed": "={{ $json.claude_allowed }}",
+            "now_next_unlock": "={{ $json.next_unlock }}",
+            "now_checked_at": "={{ $now.toFormat('yyyy-MM-dd HH:mm') }}",
+            "now_note": "={{ $json.reason }}"
+          },
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "d23aa3c1-47e7-53a8-aa18-98686b02169c",
+      "name": "Save Budget Status",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Check Now": {
+      "main": [
+        [
+          {
+            "node": "Read Budget Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Read Budget Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Budget Settings": {
+      "main": [
+        [
+          {
+            "node": "Compute Budget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Budget": {
+      "main": [
+        [
+          {
+            "node": "Save Budget Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
