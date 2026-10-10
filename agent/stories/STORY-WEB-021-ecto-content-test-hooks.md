@@ -145,6 +145,6 @@ green on an `en-US` runner (CI, `ubuntu-latest`) and red on a `de-DE` workstatio
 
 ## Follow-up Findings Disposition
 
-F001: DISMISSED ? legacy browser API cleanup is explicitly not required for Phase 5 feature behavior; supplied Phase 5 excerpt, KP-25
-F002: FOLLOW-UP STORY ? STORY-WEB-029
-F003: FOLLOW-UP STORY ? STORY-WEB-030
+F001: DISMISSED — legacy browser API cleanup is explicitly not required for Phase 5 feature behavior; supplied Phase 5 excerpt, KP-25
+F002: FOLLOW-UP STORY — STORY-WEB-029
+F003: FOLLOW-UP STORY — STORY-WEB-030

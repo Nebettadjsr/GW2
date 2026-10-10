@@ -21,7 +21,7 @@ Keep the layout browser smoke check's keyboard-navigation assertions and destina
 ## Authoritative Source Documents / Sections
 
 - `agent/stories/STORY-WEB-017-layout-smoke-intro-contrast-sample.md`, Follow-up Findings Disposition (F001, F002)
-- `docs/TEST_STRATEGY.md` ?12
+- `docs/TEST_STRATEGY.md` §12
 
 ## Context
 

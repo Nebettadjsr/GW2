@@ -233,6 +233,6 @@ local harness suite order- and timing-dependent.
 
 ## Follow-up Findings Disposition
 
-F001: FOLLOW-UP STORY ? STORY-WEB-029
-F002: DISMISSED ? preventing future temporary-file tracking is an optional repository hygiene improvement, not a Phase 5 browser acceptance requirement; supplied Phase 5 excerpt
-F003: ALREADY COVERED ? agent/runtime/tests/test_completion_recovery.py patches EVALUATOR_RESULT_FILE
+F001: FOLLOW-UP STORY — STORY-WEB-029
+F002: DISMISSED — preventing future temporary-file tracking is an optional repository hygiene improvement, not a Phase 5 browser acceptance requirement; supplied Phase 5 excerpt
+F003: ALREADY COVERED — agent/runtime/tests/test_completion_recovery.py patches EVALUATOR_RESULT_FILE

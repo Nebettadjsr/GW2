@@ -15,9 +15,9 @@ milestone-05
 Verify that the integrated web Crafting Profit page meets the accepted complete-page performance budget on the real user PostgreSQL database, measuring navigation through usable rendered content across backend calculation, persistence, transport, and frontend rendering.
 
 ## Authoritative Source Documents / Sections
-- `docs/ROADMAP.md` ? Phase 5 exit criteria (supplied current-phase excerpt)
-- `docs/TARGET_ARCHITECTURE.md` ?33
-- `docs/TEST_STRATEGY.md` ?34, Real-user Crafting Profit performance acceptance
+- `docs/ROADMAP.md` — Phase 5 exit criteria (supplied current-phase excerpt)
+- `docs/TARGET_ARCHITECTURE.md` §33
+- `docs/TEST_STRATEGY.md` §34, Real-user Crafting Profit performance acceptance
 
 ## Context
 Phase 5 requires performance verification for the complete browser page, including backend, transport, and rendering, against the real user database. The accepted target is at most 7 seconds. Miniature or synthetic data, service-only timings, and first-row timing are not acceptance evidence. The final frontend integration must be in place before this measurement is meaningful.
@@ -30,7 +30,7 @@ Phase 5 requires performance verification for the complete browser page, includi
 - Record measurements and any outstanding or received user acceptance in this story's Result without exposing credentials or private account contents.
 
 ## Required Tests
-- Explicit real-user-database browser performance measurement following `docs/TEST_STRATEGY.md` ?34. This is a local acceptance check and is not established by CI or mocked browser smoke tests.
+- Explicit real-user-database browser performance measurement following `docs/TEST_STRATEGY.md` §34. This is a local acceptance check and is not established by CI or mocked browser smoke tests.
 
 ## Constraints
 - Do not use or alter disposable fixtures as a substitute for real-database acceptance evidence.

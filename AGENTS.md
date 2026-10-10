@@ -238,6 +238,14 @@ Prefer:
 
 Do not repeatedly reread unchanged large files.
 
+## Editing Files on Windows
+
+Repository files are UTF-8 and use characters such as `—` and `§`. Your shell may be Windows
+PowerShell 5.1, which converts text piped into a program (`@'…'@ | python -`, `… | git apply`)
+to ASCII and silently turns those characters into `?`. Edit files with `apply_patch`. If a script
+is unavoidable, write it to a temporary `.py` file and run that file; never pipe source text into
+an interpreter. Re-read what you wrote when it contains non-ASCII text.
+
 ---
 
 ## Product Intent
