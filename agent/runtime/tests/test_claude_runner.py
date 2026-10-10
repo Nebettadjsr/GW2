@@ -180,6 +180,16 @@ class ClaudeRunnerTest(unittest.TestCase):
         )
         self.assertTrue(captured["code"].capacity_exhausted)
 
+    def test_session_limit_in_final_output_is_a_capacity_interruption(self):
+        # Regression: this exact message was counted as a failed run and
+        # blocked STORY-WEB-030 after two "failures".
+        captured = self.run_claude(
+            lambda: claude_runner.run_claude_attempt("Implement"),
+            output="You've hit your session limit · resets 11:40pm (Europe/Berlin)\n",
+            returncode=1,
+        )
+        self.assertTrue(captured["code"].capacity_exhausted)
+
     def test_failed_run_without_a_capacity_signal_is_not_capacity(self):
         captured = self.run_claude(
             lambda: claude_runner.run_claude_attempt("Implement"),

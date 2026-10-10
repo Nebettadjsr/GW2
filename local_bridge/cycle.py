@@ -9,9 +9,10 @@ orchestrator's runtime functions, including its retry and CI-fix budgets:
                                 ^            |                    |
                                 +-- RETRY ---+---- CI FAILED -----+
 
-With no active story, queued work is selected; an empty queue first runs the
-architect (for actionable requests) and the project planner, as the old
-orchestrator did.
+Between stories, and while Claude waits for its budget, Codex does the old
+orchestrator's background work first: an actionable architect request, or a
+planning pass when the queue is low, planning inputs changed, or the planner
+asked for a follow-up pass.
 
 Blocking outcomes (NEEDS_USER, BLOCKED, exhausted budgets) move the story to
 the backlog's Blocked section and clear the pointer, so the next run selects
@@ -25,7 +26,7 @@ from pathlib import Path
 from typing import Callable, NamedTuple
 
 from agent.runtime.core import orchestrator, story_state
-from agent.runtime.core.project_planner import run_planning_pass
+from agent.runtime.core.project_planner import run_planning_pass, should_trigger_planning
 from agent.runtime.core.selector import select_next_story
 from agent.runtime.qa import qa_agent
 from agent.runtime.runners.claude_runner import run_claude_attempt
@@ -107,18 +108,27 @@ def _stop_blocked(cycle: dict, reason: str) -> StepResult:
 
 # ---------------------------------------------------------------- steps
 
-def idle_step(planning: dict) -> str:
-    """With no active story: select queued work, otherwise plan if that can help."""
-    orchestrator.requeue_resolved_interventions()
-    qa_agent.requeue_resolved_qa_stories()
-    if story_state.get_selectable_story_candidates():
-        return "select"
-    if orchestrator.get_actionable_architect_requests():
+def codex_work_needed(planning: dict) -> bool:
+    """The old orchestrator's triggers for architect or planner work."""
+    if orchestrator.get_actionable_architect_requests() or planning.get("follow_up"):
+        return True
+    fingerprint = orchestrator.planning_fingerprint()
+    if fingerprint == planning.get("fingerprint"):
+        return False  # a pass on unchanged inputs would repeat its last answer
+    queue_low = should_trigger_planning(len(story_state.get_selectable_story_candidates()))
+    return queue_low or planning.get("fingerprint") is not None  # or inputs changed since the last pass
+
+
+def choose_step(cycle: dict | None, planning: dict, budget_settings: dict | None) -> str:
+    """The next step: the cycle's phase, with Codex work between stories and while Claude waits."""
+    if cycle is None:
+        orchestrator.requeue_resolved_interventions()
+        qa_agent.requeue_resolved_qa_stories()
+        return "plan" if codex_work_needed(planning) else "select"
+    if (cycle["phase"] == "implement" and codex_work_needed(planning)
+            and not claude_budget.status(budget_settings)["claude_allowed"]):
         return "plan"
-    # Planning on unchanged inputs would only repeat the last empty answer.
-    if orchestrator.planning_fingerprint() != planning.get("fingerprint"):
-        return "plan"
-    return "select"  # reports why the queue is empty
+    return cycle["phase"]
 
 
 def step_plan(planning: dict) -> StepResult:
@@ -128,24 +138,32 @@ def step_plan(planning: dict) -> StepResult:
         status = result.get("status", "FAILED")
         return StepResult(f"architect_{status.lower()}", status != "FAILED",
                           result.get("reason", ""), request=requests[0]["file"])
+    before = orchestrator.planning_fingerprint()
     result = run_planning_pass()
-    planning["fingerprint"] = orchestrator.planning_fingerprint()
+    after = orchestrator.planning_fingerprint()
     status = result.get("status", "FAILED")
-    created = result.get("story_files_created") or []
-    planned = status == "COMPLETE" and bool(story_state.get_selectable_story_candidates())
-    return StepResult(f"planning_{status.lower()}", planned,
-                      result.get("reason", "") or ("" if planned else "The planner added no selectable story."),
-                      stories_created=created)
+    # A follow-up pass is only honoured after a pass that actually changed something.
+    planning.update(fingerprint=after,
+                    follow_up=bool(result.get("independent_work_remaining")) and after != before)
+    return StepResult(f"planning_{status.lower()}", status != "FAILED", result.get("reason", ""),
+                      stories_created=result.get("story_files_created") or [],
+                      follow_up=planning["follow_up"])
 
 
 def step_select(_cycle: None) -> tuple[StepResult, dict | None]:
+    problems = story_state.validate_backlog_consistency()
+    for problem in problems:
+        orchestrator.log_line(f"BACKLOG.md inconsistency before selection -- {problem}")
     selection = select_next_story()
     if selection["decision"] != "NEXT":
-        return StepResult("queue_empty", False, selection.get("reason", ""),
-                          decision=selection["decision"]), None
+        stranded = orchestrator._report_undispatchable_architect_requests()
+        reason = selection.get("reason", "") + (
+            " Architect request(s) no model can advance: " + ", ".join(stranded) if stranded else "")
+        return StepResult("queue_empty", False, reason, decision=selection["decision"],
+                          queue_problems=problems), None
     story_path = story_state.set_active_story(selection["story_path"])
     cycle = new_cycle(story_path)
-    return StepResult("activated", True, selection.get("reason", "")), cycle
+    return StepResult("activated", True, selection.get("reason", ""), queue_problems=problems), cycle
 
 
 def step_qa(cycle: dict, _context: StepContext) -> StepResult:
@@ -202,7 +220,8 @@ def step_implement(cycle: dict, context: StepContext) -> StepResult:
 
     if attempt.exit_code != 0:
         story_state.set_story_unfinished(story_path)
-        if attempt.capacity_exhausted:
+        # Claude's wording for an exhausted limit changes; /usage is authoritative.
+        if attempt.capacity_exhausted or not claude_budget.status(context.budget_settings)["claude_allowed"]:
             return StepResult("capacity_exhausted", False,
                               "Claude ran out of capacity; rerun the pipeline once it is available.")
         cycle["failed_runs"] += 1
@@ -302,7 +321,10 @@ def step_ci(cycle: dict, _context: StepContext) -> StepResult:
 
     if status in ("PASSED", "SKIPPED"):
         cycle["phase"] = "finalize"
-        return StepResult(status, True, reason, sha=sha)
+        # Agent-workflow suites never gate a story; they are reported separately.
+        warnings = [f"{item['job']} failed for {sha[:12]}: agent workflow issue, the story is not affected "
+                    f"({item.get('run_url', '')})" for item in verification.get("ignored_failures", [])]
+        return StepResult(status, True, reason, sha=sha, workflow_warnings=warnings)
     if status != "FAILED":
         return StepResult(status, False, f"CI result for {sha[:12]} is not established: {reason}. "
                                          "Rerun the pipeline to check again.")

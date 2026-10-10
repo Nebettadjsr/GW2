@@ -13,6 +13,7 @@ from unittest import mock
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+import agent.runtime.tests  # noqa: F401  (guards: no agent/logs writes, model runs or real pushes)
 from local_bridge import bridge, cycle
 
 TOKEN = "t" * 40
@@ -137,45 +138,145 @@ class CycleStepTests(_CycleTestCase):
 
 
 class IdleAndPlanningTests(_CycleTestCase):
-    """With no active story the bridge selects queued work or replenishes an empty queue."""
+    """The old orchestrator's architect/planner triggers, between stories and while Claude waits."""
 
     def setUp(self):
         super().setUp()
         self.orchestrator.get_actionable_architect_requests.return_value = []
         self.orchestrator.planning_fingerprint.return_value = "fp1"
         cycle.story_state.get_selectable_story_candidates.return_value = []
-        patcher = mock.patch.object(cycle, "run_planning_pass", return_value={"status": "COMPLETE"})
-        self.planner = patcher.start()
-        self.addCleanup(patcher.stop)
+        patches = {"run_planning_pass": mock.Mock(return_value={"status": "COMPLETE"}),
+                   "claude_budget": mock.Mock(**{"status.return_value": {"claude_allowed": False}})}
+        for name, value in patches.items():
+            patcher = mock.patch.object(cycle, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.planner = cycle.run_planning_pass
 
-    def test_queued_work_is_selected_without_planning(self):
+    def test_queued_work_is_selected_without_planning_on_unknown_inputs(self):
         cycle.story_state.get_selectable_story_candidates.return_value = ["story"]
-        self.assertEqual(cycle.idle_step({}), "select")
+        self.assertEqual(cycle.choose_step(None, {}, None), "select")
         self.orchestrator.requeue_resolved_interventions.assert_called_once()
 
-    def test_empty_queue_plans_once_then_reports_empty_until_inputs_change(self):
+    def test_empty_queue_plans_once_then_selects_until_inputs_change(self):
         planning = {}
-        self.assertEqual(cycle.idle_step(planning), "plan")
+        self.assertEqual(cycle.choose_step(None, planning, None), "plan")
         result = cycle.step_plan(planning)
-        self.assertEqual((result["outcome"], result["proceed"]), ("planning_complete", False))
-        self.assertEqual(cycle.idle_step(planning), "select")
+        self.assertEqual((result["outcome"], result["proceed"]), ("planning_complete", True))
+        self.assertEqual(cycle.choose_step(None, planning, None), "select")
         self.orchestrator.planning_fingerprint.return_value = "fp2"
-        self.assertEqual(cycle.idle_step(planning), "plan")
+        self.assertEqual(cycle.choose_step(None, planning, None), "plan")
 
-    def test_planning_that_adds_a_selectable_story_continues_to_selection(self):
-        self.planner.side_effect = lambda: cycle.story_state.get_selectable_story_candidates.configure_mock(
-            return_value=["new story"]) or {"status": "COMPLETE", "story_files_created": ["new.md"]}
-        result = cycle.step_plan({})
-        self.assertTrue(result["proceed"])
-        self.assertEqual(result["stories_created"], ["new.md"])
+    def test_changed_planning_inputs_replan_even_with_a_stocked_queue(self):
+        cycle.story_state.get_selectable_story_candidates.return_value = ["story"]
+        self.assertEqual(cycle.choose_step(None, {"fingerprint": "fp0"}, None), "plan")
+
+    def test_planning_trigger_threshold_from_config_is_honoured(self):
+        cycle.story_state.get_selectable_story_candidates.return_value = ["one", "two"]
+        with mock.patch.object(cycle, "should_trigger_planning", return_value=True) as trigger:
+            self.assertEqual(cycle.choose_step(None, {}, None), "plan")
+        trigger.assert_called_once_with(2)
+
+    def test_follow_up_pass_only_after_a_pass_that_changed_something(self):
+        self.planner.return_value = {"status": "COMPLETE", "independent_work_remaining": True}
+        self.orchestrator.planning_fingerprint.side_effect = ["before", "after"]
+        planning = {}
+        cycle.step_plan(planning)
+        self.assertTrue(planning["follow_up"])
+        self.orchestrator.planning_fingerprint.side_effect = ["same", "same"]
+        cycle.step_plan(planning)
+        self.assertFalse(planning["follow_up"])
+
+    def test_failed_planning_stops_and_waits_for_changed_inputs(self):
+        self.planner.return_value = {"status": "FAILED", "reason": "invalid output"}
+        planning = {}
+        result = cycle.step_plan(planning)
+        self.assertEqual((result["outcome"], result["proceed"]), ("planning_failed", False))
+        self.assertEqual(planning["fingerprint"], "fp1")
 
     def test_actionable_architect_request_is_answered_before_planning(self):
         self.orchestrator.get_actionable_architect_requests.return_value = [{"file": "AR-1.md"}]
         self.orchestrator.run_architect_pass.return_value = {"status": "COMPLETE"}
-        self.assertEqual(cycle.idle_step({}), "plan")
+        cycle.story_state.get_selectable_story_candidates.return_value = ["story"]
+        self.assertEqual(cycle.choose_step(None, {"fingerprint": "fp1"}, None), "plan")
         result = cycle.step_plan({})
         self.assertEqual((result["outcome"], result["proceed"]), ("architect_complete", True))
         self.planner.assert_not_called()
+
+    def test_codex_works_while_claude_waits_for_its_budget(self):
+        record = make_cycle(phase="implement")
+        self.assertEqual(cycle.choose_step(record, {}, {"mode": "auto"}), "plan")
+        cycle.claude_budget.status.return_value = {"claude_allowed": True}
+        self.assertEqual(cycle.choose_step(record, {}, {"mode": "auto"}), "implement")
+
+    def test_other_phases_are_never_delayed_by_codex_work(self):
+        self.assertEqual(cycle.choose_step(make_cycle(phase="ci"), {}, None), "ci")
+        cycle.claude_budget.status.assert_not_called()
+
+
+class SelectQaFinalizeTests(_CycleTestCase):
+    def test_selection_activates_the_first_story_and_starts_at_qa(self):
+        cycle.story_state.validate_backlog_consistency.return_value = []
+        cycle.story_state.set_active_story.return_value = cycle.REPO_ROOT / STORY_FILE
+        cycle.story_state.extract_story_id.return_value = "STORY-T-001"
+        with mock.patch.object(cycle, "select_next_story",
+                               return_value={"decision": "NEXT", "story_path": "STORY-T-001-x.md", "reason": "first"}):
+            result, record = cycle.step_select(None)
+        cycle.story_state.set_active_story.assert_called_once_with("STORY-T-001-x.md")
+        self.assertEqual((result["outcome"], record["phase"], record["story_file"]), ("activated", "qa", STORY_FILE))
+
+    def test_empty_queue_reports_inconsistencies_and_stranded_architect_requests(self):
+        cycle.story_state.validate_backlog_consistency.return_value = ["two Active entries"]
+        self.orchestrator._report_undispatchable_architect_requests.return_value = ["AR-9.md"]
+        with mock.patch.object(cycle, "select_next_story",
+                               return_value={"decision": "NO_WORK", "reason": "Nothing queued."}):
+            result, record = cycle.step_select(None)
+        self.assertIsNone(record)
+        self.assertEqual((result["outcome"], result["proceed"], result["queue_problems"]),
+                         ("queue_empty", False, ["two Active entries"]))
+        self.assertIn("AR-9.md", result["reason"])
+        self.orchestrator.log_line.assert_called_once()
+
+    def test_ready_qa_plan_moves_to_implementation(self):
+        record = make_cycle()
+        self.orchestrator._ensure_preimplementation_qa.return_value = {"status": "READY"}
+        result = cycle.step_qa(record, None)
+        self.assertEqual((record["phase"], result["outcome"], result["proceed"]), ("implement", "READY", True))
+
+    def test_qa_that_blocked_the_story_stops_and_frees_the_pointer(self):
+        record = make_cycle()
+        self.orchestrator._ensure_preimplementation_qa.return_value = None
+        result = cycle.step_qa(record, None)
+        self.assertEqual((record["phase"], result["proceed"]), ("blocked", False))
+        cycle.story_state.clear_active_story.assert_called_once()
+
+    def test_ci_pass_reports_agent_workflow_failures_without_holding_the_story(self):
+        record = make_cycle(phase="ci", published_sha="f" * 40)
+        cycle.github_ci.wait_for_commit.return_value = {
+            "status": "PASSED", "reason": "ok",
+            "ignored_failures": [{"job": "Agent runtime tests (pytest-cov)", "run_url": "u"}]}
+        result = cycle.step_ci(record, None)
+        self.assertEqual((record["phase"], result["proceed"]), ("finalize", True))
+        self.assertIn("Agent runtime tests (pytest-cov) failed for ffffffffffff", result["workflow_warnings"][0])
+
+    def test_finalize_commits_only_lifecycle_files_and_continues(self):
+        record = make_cycle(phase="finalize", published_sha="a" * 40)
+        cycle.git_sync.working_tree_paths.return_value = {STORY_FILE, "agent/stories/BACKLOG.md", "other.txt"}
+        cycle.git_sync.commit_and_push.return_value = {"status": "PUSHED", "sha": "b" * 40}
+        result = cycle.step_finalize(record, None)
+        self.assertEqual(cycle.git_sync.commit_and_push.call_args.args, ("finalized STORY-T-001 after CI aaaaaaaaaaaa",))
+        self.assertEqual(cycle.git_sync.commit_and_push.call_args.kwargs["paths"],
+                         sorted([STORY_FILE, "agent/stories/BACKLOG.md"]))
+        self.assertEqual((record["phase"], result["proceed"]), ("done", True))
+        cycle.git_sync.clear_pending_planning_paths.assert_called_once()
+
+    def test_finalize_push_failure_keeps_the_phase_for_a_retry(self):
+        record = make_cycle(phase="finalize", published_sha="a" * 40)
+        cycle.git_sync.working_tree_paths.return_value = set()
+        cycle.git_sync.commit_and_push.return_value = {"status": "PUSH_REJECTED", "reason": "behind"}
+        result = cycle.step_finalize(record, None)
+        self.assertEqual((record["phase"], result["proceed"]), ("finalize", False))
+        cycle.git_sync.clear_pending_planning_paths.assert_not_called()
 
 
 class ImplementStepTests(_CycleTestCase):
@@ -233,6 +334,13 @@ class ImplementStepTests(_CycleTestCase):
         result = self.implement(record, exit_code=1, capacity=True)
         self.assertEqual((record["phase"], record["failed_runs"], result["proceed"]), ("implement", 0, False))
 
+    def test_failure_with_exhausted_usage_counts_as_capacity_even_without_a_known_message(self):
+        record = make_cycle(phase="implement")
+        cycle.claude_budget.status.side_effect = [dict(self.budget), {"claude_allowed": False, "reason": "session"}]
+        result = self.implement(record, exit_code=1)
+        self.assertEqual((result["outcome"], record["failed_runs"], result["proceed"]),
+                         ("capacity_exhausted", 0, False))
+
     def test_repeated_claude_failures_block_the_story(self):
         record = make_cycle(phase="implement")
         self.assertTrue(self.implement(record, exit_code=2)["proceed"])
@@ -273,6 +381,8 @@ class BridgeHttpTests(unittest.TestCase):
         pointer = mock.patch.object(cycle, "pointer_story", return_value=cycle.REPO_ROOT / STORY_FILE)
         pointer.start()
         self.addCleanup(pointer.stop)
+        self.log = mock.patch.object(bridge, "log_line").start()  # never write the real agent/logs
+        self.addCleanup(mock.patch.stopall)
         self.bridge.store.save_cycle(make_cycle(phase="ci", published_sha="e" * 40))
 
     def post(self, path, body, token=TOKEN):
@@ -349,6 +459,54 @@ class BridgeHttpTests(unittest.TestCase):
                 self.post("/tasks", {"prompt": "hi", "callback_url": self.callback})
             self.release.set()
         self.assertEqual(busy.exception.code, 409)
+
+    def get(self, path):
+        request = Request(f"http://127.0.0.1:{self.server.server_port}{path}",
+                          headers={"Authorization": f"Bearer {TOKEN}"})
+        with urlopen(request, timeout=5) as response:
+            return json.loads(response.read())
+
+    def test_finished_steps_are_written_to_the_decision_log_and_inspectable(self):
+        with mock.patch.dict(cycle.STEPS, {"ci": self.fake_ci}):
+            _, task = self.post("/cycle/step", {"callback_url": self.callback, "budget": {"mode": "auto"}})
+            self.assertEqual(self.get("/cycle")["running_task"]["task_id"], task["task_id"])
+            self.release.set()
+            self.wait_for(lambda: _CallbackReceiver.received)
+        self.assertEqual(self.get(f"/tasks/{task['task_id']}")["outcome"], "PASSED")
+        self.assertIsNone(self.get("/cycle")["running_task"])
+        self.log.assert_any_call("Pipeline ci [STORY-T-001]: PASSED")
+
+    def test_exhausted_model_capacity_is_a_pause_not_a_failure(self):
+        def exhausted(_record, _context):
+            raise bridge.ModelCapacityUnavailable("Codex weekly limit")
+        with mock.patch.dict(cycle.STEPS, {"ci": exhausted}):
+            self.post("/cycle/step", {"callback_url": self.callback})
+            self.wait_for(lambda: _CallbackReceiver.received)
+        payload = _CallbackReceiver.received[0][1]
+        self.assertEqual((payload["status"], payload["outcome"], payload["proceed"], payload["phase"]),
+                         ("completed", "model_capacity_exhausted", False, "ci"))
+
+    def test_invalid_budget_settings_are_rejected_before_any_step_starts(self):
+        with self.assertRaises(HTTPError) as rejected:
+            self.post("/cycle/step", {"callback_url": self.callback, "budget": {"mode": "sometimes"}})
+        self.assertEqual(rejected.exception.code, 400)
+        self.assertIsNone(self.bridge.store.running())
+
+    def test_budget_endpoint_reports_the_cap_in_force(self):
+        usage = ("Current session: 10% used\n"
+                 "Current week (all models): 20% used · resets Oct 10, 7am (Europe/Berlin)\n")
+        with mock.patch.object(bridge.claude_budget, "read_claude_usage_text", return_value=usage):
+            status, body = self.post("/budget", {"budget": {"mode": "manual", "manual_cap_percent": 15}})
+        self.assertEqual((status, body["weekly_cap_percent"], body["claude_allowed"]), (200, 15, False))
+
+    def test_connection_test_task_runs_the_agent_read_only_and_reports_back(self):
+        self.bridge.claude_command = ("python", "-c", "import sys; print('pong', sys.argv[1:4])")
+        status, task = self.post("/tasks", {"prompt": "ping", "callback_url": self.callback})
+        self.assertEqual((status, task["kind"]), (202, "agent"))
+        self.wait_for(lambda: _CallbackReceiver.received)
+        payload = _CallbackReceiver.received[0][1]
+        self.assertEqual(payload["status"], "completed")
+        self.assertIn("--permission-mode', 'plan'", payload["result"])
 
 
 if __name__ == "__main__":

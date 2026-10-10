@@ -24,6 +24,8 @@ if str(REPOSITORY) not in sys.path:
     sys.path.insert(0, str(REPOSITORY))
 
 from local_bridge import claude_budget, cycle as dev_cycle  # noqa: E402  (needs the repository on sys.path)
+from agent.runtime.support.capacity import ModelCapacityUnavailable  # noqa: E402
+from agent.runtime.support.daily_log import log_line  # noqa: E402
 
 CLAUDE_EXECUTABLE = Path(r"C:\Users\Administrator\.local\bin\claude.EXE")
 CODEX_NODE_EXECUTABLE = Path(r"C:\Program Files\nodejs\node.exe")
@@ -179,7 +181,7 @@ class Bridge:
                 return self.store.update(running["id"], callback_url=callback_url)
 
             cycle = self._current_cycle()
-            step = cycle["phase"] if cycle else dev_cycle.idle_step(self.store.planning)
+            step = dev_cycle.choose_step(cycle, self.store.planning, self.budget_settings)
             asynchronous = step in dev_cycle.ASYNC_STEPS
             task = self.store.create(kind="step", step=step,
                                      story_id=cycle["story_id"] if cycle else None,
@@ -219,6 +221,9 @@ class Bridge:
                 context = dev_cycle.StepContext(lambda: self.store.save_cycle(cycle), self.budget_settings)
                 result = dev_cycle.STEPS[step](cycle, context)
             status, error = "completed", None
+        except ModelCapacityUnavailable as exc:  # A scheduling pause, not a failure.
+            result = dev_cycle.StepResult("model_capacity_exhausted", False, f"{exc}; the next run retries.")
+            status, error = "completed", None
         except Exception as exc:  # The step reruns on the next pipeline run.
             logging.exception("Step %s failed", step)
             result = dev_cycle.StepResult("error", False, f"{type(exc).__name__}: {exc}")
@@ -230,6 +235,11 @@ class Bridge:
                           story_id=cycle["story_id"] if cycle else None,
                           result={**result, "phase": cycle["phase"] if cycle else None})
         logging.info("Step %s finished: %s", step, result["outcome"])
+        # The decision trail the old orchestrator kept in agent/logs.
+        log_line(f"Pipeline {step} [{(cycle or {}).get('story_id', 'no active story')}]: "
+                 f"{result['outcome']}" + (f" -- {result['reason']}" if result.get("reason") else ""))
+        for warning in result.get("workflow_warnings", []):
+            log_line(f"WORKFLOW WARNING: {warning}")
         self.deliver_callback(task_id)
 
     # ------------------------------------------------------ connection test

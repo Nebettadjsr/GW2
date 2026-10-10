@@ -178,6 +178,7 @@ CAPACITY_OUTPUT_TAIL_CHARS = 2000
 CAPACITY_OUTPUT_PATTERN = re.compile(
     r"usage limit"
     r"|weekly limit"
+    r"|session limit"
     r"|rate limit"
     r"|limit reached"
     r"|quota (?:exceeded|exhausted)"
