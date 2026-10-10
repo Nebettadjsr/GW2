@@ -143,8 +143,8 @@ Normally, from the repository root:
 .\local_bridge\start-bridge.cmd
 ```
 
-It reads the token from `%USERPROFILE%\.gw2-claude-bridge	oken.txt` and sets the bridge's settings for that
-window only. Running `python .\local_bridgeridge.py` directly fails with "Set GW2_BRIDGE_TOKEN ...",
+It reads the token from `%USERPROFILE%\.gw2-claude-bridge\token.txt` and sets the bridge's settings for that
+window only. Running `python .\local_bridge\bridge.py` directly fails with "Set GW2_BRIDGE_TOKEN ...",
 because those settings are missing in a fresh window.
 
 The first time, or to recreate the token, paste this into PowerShell instead. It creates the bearer
