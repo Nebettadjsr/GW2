@@ -42,6 +42,9 @@ class _CycleTestCase(unittest.TestCase):
             "git_sync": mock.Mock(**{"pending_planning_paths.return_value": set(),
                                      "ci_verification_available.return_value": (True, "")}),
             "github_ci": mock.Mock(),
+            "get_actionable_requests": mock.Mock(return_value=[]),
+            "run_architect_pass": mock.Mock(),
+            "log_line": mock.Mock(),
             "orchestrator": mock.Mock(**{"build_retry_prompt.return_value": "retry prompt",
                                          "build_ci_failure_prompt.return_value": "ci prompt",
                                          "ci_failures_are_outside_story_scope.return_value": False,
@@ -142,7 +145,7 @@ class IdleAndPlanningTests(_CycleTestCase):
 
     def setUp(self):
         super().setUp()
-        self.orchestrator.get_actionable_architect_requests.return_value = []
+        cycle.get_actionable_requests.return_value = []
         self.orchestrator.planning_fingerprint.return_value = "fp1"
         cycle.story_state.get_selectable_story_candidates.return_value = []
         patches = {"run_planning_pass": mock.Mock(return_value={"status": "COMPLETE"}),
@@ -195,8 +198,8 @@ class IdleAndPlanningTests(_CycleTestCase):
         self.assertEqual(planning["fingerprint"], "fp1")
 
     def test_actionable_architect_request_is_answered_before_planning(self):
-        self.orchestrator.get_actionable_architect_requests.return_value = [{"file": "AR-1.md"}]
-        self.orchestrator.run_architect_pass.return_value = {"status": "COMPLETE"}
+        cycle.get_actionable_requests.return_value = [{"file": "AR-1.md"}]
+        cycle.run_architect_pass.return_value = {"status": "COMPLETE"}
         cycle.story_state.get_selectable_story_candidates.return_value = ["story"]
         self.assertEqual(cycle.choose_step(None, {"fingerprint": "fp1"}, None), "plan")
         result = cycle.step_plan({})
@@ -235,7 +238,7 @@ class SelectQaFinalizeTests(_CycleTestCase):
         self.assertEqual((result["outcome"], result["proceed"], result["queue_problems"]),
                          ("queue_empty", False, ["two Active entries"]))
         self.assertIn("AR-9.md", result["reason"])
-        self.orchestrator.log_line.assert_called_once()
+        cycle.log_line.assert_called_once()
 
     def test_ready_qa_plan_moves_to_implementation(self):
         record = make_cycle()

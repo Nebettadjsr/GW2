@@ -55,7 +55,6 @@ class CompletionLifecycleTestCase(OrchestratorInterventionTestCase):
         self.prompt_file = self.stories_dir / "NEXT_PROMPT.md"
 
         for name, value in [
-            ("ATTEMPT_STATE_FILE", self.attempt_state_file),
             ("CLAUDE_RESULT_FILE", self.result_file),
             ("NEXT_PROMPT_FILE", self.prompt_file),
         ]:
@@ -74,10 +73,7 @@ class CompletionLifecycleTestCase(OrchestratorInterventionTestCase):
     def claude_writes_done(self, *args, **kwargs):
         """Stand in for a Claude attempt that finished and recorded DONE.
 
-        The story must not start out DONE: `execute_active_story()` reads a
-        pre-set DONE status as "already finished" and short-circuits before the
-        evaluator and the gate, so a fixture that pre-sets it would never reach
-        the branch under test.
+        The story starts out TODO so the transition under test is observable.
         """
 
         self.story.write_text(
@@ -89,36 +85,9 @@ class CompletionLifecycleTestCase(OrchestratorInterventionTestCase):
 
         return claude_runner.ClaudeAttempt(0, False)
 
-    def given_finished_story(self, phase, **state):
-        """A story Claude already finished, with `phase` still outstanding."""
-
-        self.claude_writes_done()
-        self.activate()
-        orchestrator.record_attempt_state(self.story, phase, **state)
-
     def activate(self):
         self.write_backlog(active=[self.filename])
         self.set_active(self.filename)
-
-    def run_execute(self, stack, **patches):
-        stack.enter_context(
-            patch.object(orchestrator, "build_claude_prompt", return_value="Implement")
-        )
-        stack.enter_context(
-            patch.object(orchestrator, "generate_repo_map",
-                         return_value={"enabled": False, "text": "",
-                                       "token_budget": 0, "error": None})
-        )
-        stack.enter_context(
-            patch.object(orchestrator, "get_claude_usage",
-                         return_value=claude_runner.ClaudeUsage(0, 0))
-        )
-        stack.enter_context(patch.object(orchestrator.time, "sleep"))
-
-        for name, value in patches.items():
-            stack.enter_context(patch.object(orchestrator, name, **value))
-
-        return orchestrator.execute_active_story()
 
     def assert_finalized(self):
         """The complete transition, as one assertion."""
@@ -149,165 +118,7 @@ class CompletionLifecycleTestCase(OrchestratorInterventionTestCase):
         self.assertEqual(story_state.validate_backlog_consistency(), [])
 
 
-class PassingCiCompletesTheTransitionTest(CompletionLifecycleTestCase):
-
-    def test_implementation_cannot_finalize_or_deactivate_before_evaluation(self):
-        self.activate()
-
-        def fake_claude(*_args, **_kwargs):
-            content = self.story.read_text(encoding="utf-8")
-            self.story.write_text(
-                content.replace("## Status\n\nTODO\n", "## Status\n\nDONE\n"),
-                encoding="utf-8",
-            )
-            self.backlog_file.write_text("# Agent moved story to Done\n", encoding="utf-8")
-            self.current_story_file.write_text("", encoding="utf-8")
-            return claude_runner.ClaudeAttempt(0, False)
-
-        def evaluate_after_restore(*_args, **_kwargs):
-            self.assertEqual(
-                "TODO",
-                story_state.classify_story_status(
-                    story_state.extract_status_section(self.story.read_text(encoding="utf-8"))
-                ),
-            )
-            self.assertEqual([self.filename], story_state.parse_backlog_section(
-                self.backlog_file.read_text(encoding="utf-8"), "Active"
-            ))
-            self.assertEqual(
-                self.filename,
-                self.current_story_file.read_text(encoding="utf-8").strip(),
-            )
-            return {"decision": "COMPLETE", "reason": "fixture review passed"}
-
-        with ExitStack() as stack:
-            stack.enter_context(patch.object(orchestrator, "evaluate_story", side_effect=evaluate_after_restore))
-            stack.enter_context(patch.object(orchestrator, "run_claude_attempt", side_effect=fake_claude))
-            stack.enter_context(patch.object(orchestrator, "verify_with_github_ci", return_value={
-                "status": "SKIPPED", "reason": "fixture", "report": "", "sha": "", "run_urls": []
-            }))
-            self.assertEqual(self.run_execute(stack), "COMPLETE")
-
-        self.assert_finalized()
-
-    def test_successful_ci_moves_the_story_clears_the_pointer_and_validates(self):
-        self.activate()
-
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch.object(orchestrator, "evaluate_story",
-                             return_value={"decision": "COMPLETE", "reason": "ok"})
-            )
-            stack.enter_context(
-                patch.object(orchestrator, "run_claude_attempt",
-                             side_effect=self.claude_writes_done)
-            )
-            stack.enter_context(
-                patch.object(orchestrator, "verify_with_github_ci",
-                             return_value={"status": "PASSED", "reason": "CI: success",
-                                           "report": "", "sha": "2f9b2d5" * 5,
-                                           "run_urls": []})
-            )
-            self.assertEqual(self.run_execute(stack), "COMPLETE")
-
-        self.assert_finalized()
-
-        self.assertTrue(
-            any("completed and finalized" in line for line in self.logged),
-            f"the transition must be logged; got {self.logged}",
-        )
-
-    def test_a_skipped_gate_completes_the_same_way(self):
-        """No CI configured is still a completion, so it must still transition."""
-
-        self.activate()
-
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch.object(orchestrator, "evaluate_story",
-                             return_value={"decision": "COMPLETE", "reason": "ok"})
-            )
-            stack.enter_context(
-                patch.object(orchestrator, "run_claude_attempt",
-                             side_effect=self.claude_writes_done)
-            )
-            stack.enter_context(
-                patch.object(orchestrator, "verify_with_github_ci",
-                             return_value={"status": "SKIPPED", "reason": "no remote",
-                                           "report": "", "sha": "", "run_urls": []})
-            )
-            self.assertEqual(self.run_execute(stack), "COMPLETE")
-
-        self.assert_finalized()
-
-    def test_a_failing_gate_does_not_finalize_anything(self):
-        """The counterpart: a red pipeline must leave the story active."""
-
-        self.activate()
-
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch.object(orchestrator, "evaluate_story",
-                             return_value={"decision": "COMPLETE", "reason": "ok"})
-            )
-            stack.enter_context(
-                patch.object(orchestrator, "run_claude_attempt",
-                             side_effect=self.claude_writes_done)
-            )
-            stack.enter_context(
-                patch.object(orchestrator, "verify_with_github_ci",
-                             return_value={"status": "FAILED", "reason": "red",
-                                           "report": "one test failed",
-                                           "sha": "abc1234", "run_urls": []})
-            )
-            stack.enter_context(patch.object(orchestrator, "MAX_CI_FIX_ATTEMPTS", 0))
-            self.run_execute(stack)
-
-        backlog = self.backlog_file.read_text(encoding="utf-8")
-
-        self.assertNotIn(
-            self.filename, story_state.parse_backlog_section(backlog, "Done"),
-        )
-        self.assertNotEqual(
-            self.current_story_file.read_text(encoding="utf-8").strip(), "",
-        )
-
-
 class InterruptedFinalizationTest(CompletionLifecycleTestCase):
-
-    def test_restart_during_finalization_finishes_it_without_rerunning_anything(self):
-        """A FINALIZING record means CI already passed; only bookkeeping is left."""
-
-        self.given_finished_story(
-            "FINALIZING",
-            ci_status="PASSED", ci_sha="2f9b2d54d99d205f100f5a17be066d432b37764f",
-        )
-
-        with ExitStack() as stack:
-            claude = stack.enter_context(
-                patch.object(orchestrator, "run_claude_attempt")
-            )
-            evaluate = stack.enter_context(
-                patch.object(orchestrator, "evaluate_story")
-            )
-            verify = stack.enter_context(
-                patch.object(orchestrator, "verify_with_github_ci")
-            )
-            self.assertEqual(self.run_execute(stack), "COMPLETE")
-
-        self.assert_finalized()
-
-        # Nothing that already answered is asked again. Re-running the gate
-        # would buy a second verdict on an already-published commit; re-running
-        # Claude would redo accepted work.
-        claude.assert_not_called()
-        evaluate.assert_not_called()
-        verify.assert_not_called()
-
-        self.assertTrue(
-            any("Resuming" in line and "FINALIZING" in line for line in self.logged),
-            f"the resume must be logged; got {self.logged}",
-        )
 
     def test_finalizing_is_idempotent_so_a_second_interrupt_is_harmless(self):
         self.claude_writes_done()
@@ -322,42 +133,6 @@ class InterruptedFinalizationTest(CompletionLifecycleTestCase):
         self.assertEqual(
             story_state.parse_backlog_section(first, "Done").count(self.filename), 1,
         )
-        self.assert_finalized()
-
-    def test_an_unfinished_ci_gate_is_never_bypassed_by_a_restart(self):
-        """AWAITING_CI still publishes and waits; it does not shortcut to done."""
-
-        self.given_finished_story("AWAITING_CI")
-
-        with ExitStack() as stack:
-            verify = stack.enter_context(
-                patch.object(orchestrator, "verify_with_github_ci",
-                             return_value={"status": "PASSED", "reason": "CI: success",
-                                           "report": "", "sha": "deadbee",
-                                           "run_urls": []})
-            )
-            stack.enter_context(patch.object(orchestrator, "run_claude_attempt"))
-            self.assertEqual(self.run_execute(stack), "COMPLETE")
-
-        verify.assert_called_once()
-        self.assert_finalized()
-
-    def test_a_done_story_already_published_still_completes_its_transition(self):
-        """The 'treat as complete' path used to return without moving anything."""
-
-        self.claude_writes_done()
-        self.activate()
-
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch.object(orchestrator, "unpublished_completion", return_value=None)
-            )
-            claude = stack.enter_context(
-                patch.object(orchestrator, "run_claude_attempt")
-            )
-            self.assertEqual(self.run_execute(stack), "COMPLETE")
-
-        claude.assert_not_called()
         self.assert_finalized()
 
 

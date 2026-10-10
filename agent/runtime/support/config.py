@@ -120,24 +120,9 @@ CLAUDE_MODEL = "claude-opus-5"
 
 MAX_RETRIES_PER_STORY = 2
 
+# Claude starts only while its 5h session is below this; the weekly limit is
+# governed by the n8n Claude budget (local_bridge/claude_budget.py).
 CLAUDE_USAGE_LIMIT_PERCENT = 90
-# Weekly capacity is independent of the five-hour session allowance.
-# A run may start only with more than 50% of the weekly allowance remaining.
-CLAUDE_WEEKLY_MIN_REMAINING_PERCENT = 50
-
-# Shared local-recheck cooldown for both models' capacity probes
-# (see support/capacity.py's CapacityProbe) -- deliberately not named
-# for Claude specifically, since Codex's probe uses this same default.
-MODEL_CAPACITY_RECHECK_SECONDS = 60 * 60
-
-# Local waiting cadence while a model is out of capacity. The cooldown
-# above governs when a model is actually re-probed; these two only
-# control how often the orchestrator wakes up to re-derive permissible
-# work, and how often it refreshes the terminal while it waits. Status
-# output during a wait is terminal-only (support/daily_log.py's
-# print_status) -- never a persistent log entry.
-CAPACITY_WAIT_POLL_SECONDS = 60
-CAPACITY_STATUS_INTERVAL_SECONDS = 300
 
 # A Claude run that exits non-zero while carrying no capacity signal is a
 # failed attempt, not a capacity pause. After this many consecutive such
@@ -150,33 +135,17 @@ MAX_CLAUDE_FAILED_RUNS_PER_STORY = 2
 # failed. These two are deliberately small: every attempt is now a real
 # Codex run against the working tree, not a free local HTTP call, so the
 # ceiling is EVALUATION_ATTEMPTS * MAX_EVALUATION_BATCHES = 4 evaluation
-# runs before the cycle fails and a human is involved. Codex usage
-# exhaustion is NOT one of these attempts -- it is a scheduling event the
-# orchestrator waits out (CapacityScheduler.wait_for_codex).
+# runs before the step fails and the next pipeline run retries evaluation.
+# Codex usage exhaustion is NOT one of these attempts -- it pauses the
+# pipeline until a later run.
 EVALUATION_ATTEMPTS = 2
 EVALUATION_RETRY_SECONDS = 60
 
-# How many bounded batches of EVALUATION_ATTEMPTS a single cycle rides out
-# before the failure propagates to main()'s recoverable-failure handler.
-# Evaluation used to be the one step that retried forever while every
-# other unrecoverable condition escalated, so an unavailable evaluator
-# pinned the orchestrator in a silent loop with a stocked queue and full
-# capacity. Giving up is safe now only because ATTEMPT_STATE_FILE records
-# that Claude's attempt is already finished: each retried cycle resumes at
-# evaluation, never at another Claude run.
+# How many bounded batches of EVALUATION_ATTEMPTS one evaluate step rides
+# out before it fails. The bridge keeps the story at its evaluate phase, so
+# the next run resumes at evaluation, never at another Claude run.
 MAX_EVALUATION_BATCHES = 2
-
-# One unexpected failure in a single orchestration cycle is retried
-# locally rather than killing an unattended run; a failure that keeps
-# repeating needs a human and stops the orchestrator explicitly.
-MAX_CONSECUTIVE_CYCLE_ERRORS = 3
 CYCLE_RETRY_SECONDS = 60
-
-# When a planning pass returns NEEDS_USER and no other current-milestone
-# story is independently selectable, the orchestrator waits locally and
-# re-checks agent/user-decisions/*.md at this interval -- a plain file
-# read, never a model call (Codex/Claude/the evaluator/the planner).
-USER_DECISION_POLL_SECONDS = 1800
 
 # The normal backlog trigger is an exhausted executable queue. Changed
 # requirements and architecture inputs can trigger planning sooner.

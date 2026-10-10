@@ -1,6 +1,5 @@
 """QA gate ordering, clarification, retry, resume, and conditional-review flows."""
 
-import hashlib
 import json
 import tempfile
 import unittest
@@ -9,7 +8,6 @@ from unittest.mock import patch
 
 from agent.runtime.core import orchestrator
 from agent.runtime.qa import qa_agent
-from agent.runtime.runners.claude_runner import ClaudeAttempt
 from agent.runtime.support import config
 from agent.runtime.support.capacity import ModelCapacityUnavailable
 
@@ -51,40 +49,6 @@ class QAGateTest(unittest.TestCase):
                     patch.object(qa_agent, "clear_state"):
                 result = orchestrator._ensure_preimplementation_qa(self.story)
             self.assertEqual(result["status"], plan["status"])
-
-    def test_successful_qa_runs_before_coding_and_evaluation(self):
-        plan = ready_plan(prepared=True)
-        result_file = self.root / "CLAUDE_RESULT.md"
-
-        def prep(*_args):
-            self.events.append("qa")
-            return plan
-
-        def code(_prompt):
-            self.events.append("coding")
-            result_file.write_text("implementation report", encoding="utf-8")
-            return ClaudeAttempt(0, False)
-
-        def evaluate(*_args, **_kwargs):
-            self.events.append("evaluation")
-            return {"decision": "BLOCKED", "reason": "fixture stop"}
-
-        with patch.object(orchestrator, "get_active_story_path", return_value=self.story), \
-                patch.object(orchestrator, "REPO_ROOT", self.root), \
-                patch.object(orchestrator, "pending_attempt_for", return_value=None), \
-                patch.object(orchestrator, "_ensure_preimplementation_qa", side_effect=prep), \
-                patch.object(orchestrator, "_prepare_implementation_prompt", return_value=("implement", False)), \
-                patch.object(orchestrator, "CLAUDE_RESULT_FILE", result_file), \
-                patch.object(orchestrator, "run_claude_attempt", side_effect=code), \
-                patch.object(orchestrator, "_evaluate_preserving_completed_attempt", side_effect=evaluate), \
-                patch.object(orchestrator, "set_story_blocked"), \
-                patch.object(orchestrator, "_blocked_bookkeeping"), \
-                patch.object(orchestrator, "record_attempt_state"), \
-                patch.object(orchestrator, "clear_attempt_state"), \
-                patch.object(orchestrator, "get_claude_usage", return_value=None):
-            result = orchestrator.execute_active_story()
-        self.assertEqual(result, "BLOCKED")
-        self.assertEqual(self.events, ["qa", "coding", "evaluation"])
 
     def test_clarification_blocks_only_story_until_product_owner_answers(self):
         plan = ready_plan()
@@ -140,26 +104,6 @@ class QAGateTest(unittest.TestCase):
         escalate.assert_not_called()
         self.assertEqual(self.events, ["wait"])
 
-    def test_completed_qa_and_interrupted_attempt_are_not_repeated(self):
-        plan = ready_plan()
-        attempt = {"phase": "AWAITING_EVALUATION", "claude_exit_code": 0, "result_was_updated": False,
-                   "retry_count": 0, "ci_fix_attempts": 0}
-        result_file = self.root / "CLAUDE_RESULT.md"
-        result_file.write_text("finished", encoding="utf-8")
-        with patch.object(orchestrator, "get_active_story_path", return_value=self.story), \
-                patch.object(orchestrator, "REPO_ROOT", self.root), \
-                patch.object(orchestrator, "pending_attempt_for", return_value=attempt), \
-                patch.object(qa_agent, "load_plan", return_value=plan), \
-                patch.object(orchestrator, "_ensure_preimplementation_qa") as qa, \
-                patch.object(orchestrator, "_current_result_content", return_value="finished"), \
-                patch.object(orchestrator, "_evaluate_preserving_completed_attempt", return_value={"decision": "BLOCKED", "reason": "fixture"}), \
-                patch.object(orchestrator, "set_story_blocked"), \
-                patch.object(orchestrator, "_blocked_bookkeeping"), \
-                patch.object(orchestrator, "record_attempt_state"), \
-                patch.object(orchestrator, "clear_attempt_state"):
-            self.assertEqual(orchestrator.execute_active_story(), "BLOCKED")
-        qa.assert_not_called()
-
     def test_evaluator_rejection_gets_conditional_read_only_qa_review(self):
         plan = ready_plan(prepared=True)
         retry = {"decision": "RETRY", "reason": "Missing invariant.", "actionable_retry_items": ["verify invariant"]}
@@ -174,58 +118,6 @@ class QAGateTest(unittest.TestCase):
         self.assertEqual(result["decision"], "RETRY")
         self.assertIn("add an integration assertion", result["actionable_retry_items"])
         qa_review.assert_called_once()
-
-    def test_codex_capacity_during_qa_review_does_not_repeat_completed_evaluation(self):
-        plan = ready_plan(review=True)
-        evaluated = {"decision": "COMPLETE", "reason": "ok", "qa_review_required": True}
-        reviews = iter([ModelCapacityUnavailable("quota"), {
-            "decision": "APPROVE", "reason": "verified", "evidence": [], "actionable_items": []
-        }])
-        with patch.object(orchestrator, "_evaluate_with_local_retries", return_value=evaluated) as evaluator, \
-                patch.object(qa_agent, "run_conditional_review", side_effect=reviews) as reviewer, \
-                patch.object(qa_agent, "record_review"), \
-                patch.object(orchestrator, "get_active_story_path", return_value=self.story):
-            result = orchestrator._evaluate_preserving_completed_attempt(
-                "story", "result", 0, True,
-                wait_for_evaluator=lambda: self.events.append("wait"),
-                qa_plan=plan,
-            )
-        self.assertEqual(result["decision"], "COMPLETE")
-        evaluator.assert_called_once()
-        self.assertEqual(reviewer.call_count, 2)
-        self.assertEqual(self.events, ["wait"])
-
-    def test_resume_awaiting_qa_review_uses_saved_evaluator_result(self):
-        plan = ready_plan(review=True)
-        result_path = self.root / "EVALUATOR_RESULT.json"
-        claude_result = self.root / "CLAUDE_RESULT.md"
-        claude_result.write_text("completed implementation", encoding="utf-8")
-        story_content = self.story.read_text(encoding="utf-8")
-        result_path.write_text(json.dumps({
-            "decision": "BLOCKED", "reason": "saved", "qa_review_required": True,
-            "story_id": orchestrator.extract_story_id(story_content) or self.story.stem,
-            "evaluated_story_sha256": hashlib.sha256(story_content.encode("utf-8")).hexdigest(),
-            "evaluated_result_sha256": orchestrator.file_hash(claude_result),
-        }), encoding="utf-8")
-        attempt = {"phase": "AWAITING_QA_REVIEW", "claude_exit_code": 0,
-                   "result_was_updated": False, "retry_count": 1, "ci_fix_attempts": 0}
-        with patch.object(orchestrator, "get_active_story_path", return_value=self.story), \
-                patch.object(orchestrator, "REPO_ROOT", self.root), \
-                patch.object(orchestrator, "pending_attempt_for", return_value=attempt), \
-                patch.object(qa_agent, "load_plan", return_value=plan), \
-                patch.object(orchestrator, "_ensure_preimplementation_qa") as qa, \
-                patch.object(orchestrator, "CLAUDE_RESULT_FILE", claude_result), \
-                patch.object(orchestrator, "EVALUATOR_RESULT_FILE", result_path), \
-                patch.object(orchestrator, "_evaluate_with_local_retries") as evaluator, \
-                patch.object(qa_agent, "run_conditional_review", return_value={"decision": "APPROVE", "reason": "ok", "evidence": [], "actionable_items": []}), \
-                patch.object(qa_agent, "record_review"), \
-                patch.object(orchestrator, "record_attempt_state"), \
-                patch.object(orchestrator, "set_story_blocked"), \
-                patch.object(orchestrator, "_blocked_bookkeeping"), \
-                patch.object(orchestrator, "clear_attempt_state"):
-            self.assertEqual(orchestrator.execute_active_story(), "BLOCKED")
-        qa.assert_not_called()
-        evaluator.assert_not_called()
 
     def test_resolved_product_decision_requeues_qa_blocked_story(self):
         plans = self.root / "plans"

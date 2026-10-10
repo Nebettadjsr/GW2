@@ -20,8 +20,6 @@ from unittest.mock import patch
 
 from agent.runtime.core import architect, orchestrator, planning_context
 from agent.runtime.human import architect_requests, user_decisions
-from agent.runtime.support.capacity import ModelCapacityUnavailable
-from agent.runtime.tests.test_orchestration_flow import MainFlowTestCase
 
 
 REQUEST_TEMPLATE = """# {request_id} — {title}
@@ -637,192 +635,26 @@ class ArchitectResultValidationTest(InboxTestCase):
         )
 
 
-class ArchitectSchedulingTest(MainFlowTestCase):
-    """The orchestrator side: when the architect runs, and what follows."""
+class UndispatchableReportingTest(unittest.TestCase):
 
-    def open_request(self, filename="AR-001-frontend.md"):
-        return {
-            "file": filename,
-            "path": Path(filename),
-            "id": "AR-001",
-            "title": "Frontend framework",
-            "status": "OPEN",
-            "blocking_decision_ids": [],
-            "content": request_text(),
-        }
-
-    def test_empty_inbox_never_invokes_the_architect(self):
-        self.state["candidates"] = ["STORY-A.md"]
-
-        self.run_main(expect_stop=True)
-
-        self.assertFalse(
-            any(event.startswith("architect") for event in self.events),
-            self.events,
-        )
-
-    def test_open_request_runs_the_architect_before_planning(self):
-        self.architect_requests = [self.open_request()]
-
-        self.run_main(expect_stop=True)
-
-        self.assertEqual(
-            self.events[0], "architect:AR-001-frontend.md", self.events
-        )
-        # Architecture first, then planning resumes by itself.
-        self.assertEqual(self.events[1], "plan", self.events)
-
-    def test_resolved_architecture_lets_planning_create_and_run_work(self):
-        self.architect_requests = [self.open_request()]
-        created = ["STORY-NEW.md"]
-
-        def plan():
-            self.events.append("plan")
-
-            if created:
-                self.state["fingerprint"] += "+"
-                self.state["candidates"] = [created.pop()]
-                return {"status": "COMPLETE",
-                        "story_files_created": ["STORY-NEW.md"]}
-
-            return {"status": "COMPLETE", "story_files_created": []}
-
-        with patch.object(orchestrator, "run_planning_pass", side_effect=plan):
-            self.run_main(expect_stop=True)
-
-        self.assertEqual(
-            self.events,
-            ["architect:AR-001-frontend.md", "plan", "select", "claude",
-             "select"],
-        )
-
-    def test_architect_needs_user_waits_for_the_existing_decision_flow(self):
-        self.architect_requests = [self.open_request()]
-        self.architect_result = {
-            "status": "NEEDS_USER",
-            "request_status": "NEEDS_USER",
-            "user_decision_ids": ["UD-009"],
-        }
-        self.decisions = [
-            {"id": "UD-009", "status": "OPEN", "file": "UD-009-frontend.md"}
-        ]
-
-        self.run_main(expect_stop=True)
-
-        # One architect pass, then the ordinary user-decision wait --
-        # no second escalation mechanism.
-        self.assertEqual(
-            self.events,
-            ["architect:AR-001-frontend.md", "plan",
-             "decision-wait:['UD-009']", "plan", "select"],
-        )
-
-    def test_resolved_decision_makes_the_architect_resume_the_same_request(self):
-        # The human answers; get_actionable_requests() hands the same
-        # request back, and the orchestrator dispatches it again with no
-        # extra state of its own.
-        blocked = self.open_request()
-        blocked["status"] = "NEEDS_USER"
-        blocked["blocking_decision_ids"] = ["UD-009"]
-        self.decisions = [
-            {"id": "UD-009", "status": "OPEN", "file": "UD-009-frontend.md"}
-        ]
-
-        # Actionable only once the decision is RESOLVED, exactly as the
-        # real inbox computes it.
-        answered = []
-
-        def actionable():
-            resolved = {
-                decision["id"] for decision in self.decisions
-                if decision["status"] == "RESOLVED"
-            }
-            if "UD-009" not in resolved or answered:
-                return []
-            return [blocked]
-
-        def architect_pass(request):
-            answered.append(request["file"])
-            return self.architect(request)
-
-        with patch.object(orchestrator, "get_actionable_architect_requests",
-                          side_effect=actionable),              patch.object(orchestrator, "run_architect_pass",
-                          side_effect=architect_pass):
-            self.run_main(expect_stop=True)
-
-        self.assertEqual(
-            self.events,
-            ["plan", "decision-wait:['UD-009']",
-             "architect:AR-001-frontend.md", "plan", "select"],
-        )
-
-    def test_codex_exhaustion_is_not_an_architecture_failure(self):
-        self.architect_requests = [self.open_request()]
-        self.state["candidates"] = ["STORY-A.md"]
-
-        with patch.object(orchestrator, "run_architect_pass",
-                          side_effect=ModelCapacityUnavailable("Codex")):
-            self.run_main()
-
-        # The request is untouched, Codex is deferred rather than
-        # blamed, and Claude still drains the queue it already has.
-        self.assertEqual(self.architect_requests[0]["status"], "OPEN")
-        self.codex.defer.assert_called_once()
-        self.assertIn("select", self.events)
-        self.assertIn("claude", self.events)
-        self.assertTrue(
-            any("capacity exhausted during architecture work" in line
-                for line in self.logged),
-            self.logged,
-        )
-        self.assertFalse(
-            any("failed" in line.lower() for line in self.logged), self.logged
-        )
-
-    def test_failed_architect_pass_does_not_stop_execution(self):
-        self.architect_requests = [self.open_request()]
-        self.state["candidates"] = ["STORY-A.md"]
-        self.architect_result = {"status": "FAILED", "reason": "rejected"}
-
-        self.run_main()
-
-        self.codex.defer.assert_called_once()
-        self.assertIn("claude", self.events)
-        self.assertTrue(
-            any("Architect pass for AR-001-frontend.md failed" in line
-                for line in self.logged),
-            self.logged,
-        )
-
-
-class UndispatchableReportingTest(MainFlowTestCase):
-
-    def test_an_undispatchable_request_is_logged_once_and_named_on_stop(self):
+    def test_an_undispatchable_request_is_logged_once_and_named(self):
         orchestrator._reported_inbox_problems.clear()
         self.addCleanup(orchestrator._reported_inbox_problems.clear)
+        stranded = [{
+            "file": "AR-001-frontend.md",
+            "reason": "unreadable Status 'TODO'; expected one of OPEN, NEEDS_USER, RESOLVED",
+        }]
+        logged = []
+        with patch.object(orchestrator, "undispatchable_architect_requests", return_value=stranded), \
+                patch.object(orchestrator, "log_line", side_effect=logged.append):
+            first = orchestrator._report_undispatchable_architect_requests()
+            second = orchestrator._report_undispatchable_architect_requests()
 
-        self.undispatchable_requests = [
-            {
-                "file": "AR-001-frontend.md",
-                "reason": "unreadable Status 'TODO'; expected one of "
-                          "OPEN, NEEDS_USER, RESOLVED",
-            }
-        ]
-
-        self.run_main(expect_stop=True)
-
-        reported = [line for line in self.logged
-                    if line.startswith("Architect request cannot be dispatched")]
-
-        # Logged once with the concrete reason, not once per cycle.
-        self.assertEqual(len(reported), 1, self.logged)
+        # Named every time the pipeline reports an empty queue, logged once.
+        self.assertEqual((first, second), (["AR-001-frontend.md"], ["AR-001-frontend.md"]))
+        reported = [line for line in logged if line.startswith("Architect request cannot be dispatched")]
+        self.assertEqual(len(reported), 1, logged)
         self.assertIn("unreadable Status 'TODO'", reported[0])
-        self.assertTrue(
-            any("unadvanceable architect request(s) need a human: "
-                "AR-001-frontend.md" in line
-                for line in self.decisions_logged()),
-            self.decisions_logged(),
-        )
 
 
 class ArchitectPromptTest(InboxTestCase):

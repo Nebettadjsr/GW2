@@ -26,8 +26,10 @@ from pathlib import Path
 from typing import Callable, NamedTuple
 
 from agent.runtime.core import orchestrator, story_state
+from agent.runtime.core.architect import run_architect_pass
 from agent.runtime.core.project_planner import run_planning_pass, should_trigger_planning
 from agent.runtime.core.selector import select_next_story
+from agent.runtime.human.architect_requests import get_actionable_requests
 from agent.runtime.qa import qa_agent
 from agent.runtime.runners.claude_runner import run_claude_attempt
 from agent.runtime.support import git_sync, github_ci
@@ -35,6 +37,7 @@ from agent.runtime.support.config import (
     BACKLOG_FILE, CLAUDE_RESULT_FILE, CURRENT_STORY_FILE, MAX_CI_FIX_ATTEMPTS,
     MAX_CLAUDE_FAILED_RUNS_PER_STORY, MAX_RETRIES_PER_STORY, REPO_ROOT,
 )
+from agent.runtime.support.daily_log import log_line
 from agent.runtime.support.files import file_hash, read_file
 from local_bridge import claude_budget
 
@@ -110,7 +113,7 @@ def _stop_blocked(cycle: dict, reason: str) -> StepResult:
 
 def codex_work_needed(planning: dict) -> bool:
     """The old orchestrator's triggers for architect or planner work."""
-    if orchestrator.get_actionable_architect_requests() or planning.get("follow_up"):
+    if get_actionable_requests() or planning.get("follow_up"):
         return True
     fingerprint = orchestrator.planning_fingerprint()
     if fingerprint == planning.get("fingerprint"):
@@ -132,9 +135,9 @@ def choose_step(cycle: dict | None, planning: dict, budget_settings: dict | None
 
 
 def step_plan(planning: dict) -> StepResult:
-    requests = orchestrator.get_actionable_architect_requests()
+    requests = get_actionable_requests()
     if requests:
-        result = orchestrator.run_architect_pass(requests[0])
+        result = run_architect_pass(requests[0])
         status = result.get("status", "FAILED")
         return StepResult(f"architect_{status.lower()}", status != "FAILED",
                           result.get("reason", ""), request=requests[0]["file"])
@@ -153,7 +156,7 @@ def step_plan(planning: dict) -> StepResult:
 def step_select(_cycle: None) -> tuple[StepResult, dict | None]:
     problems = story_state.validate_backlog_consistency()
     for problem in problems:
-        orchestrator.log_line(f"BACKLOG.md inconsistency before selection -- {problem}")
+        log_line(f"BACKLOG.md inconsistency before selection -- {problem}")
     selection = select_next_story()
     if selection["decision"] != "NEXT":
         stranded = orchestrator._report_undispatchable_architect_requests()

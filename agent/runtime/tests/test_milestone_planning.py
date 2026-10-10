@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from contextlib import ExitStack
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from agent.runtime.core import project_planner as planner, orchestrator as loop, story_state, story_archive
 from agent.runtime.human import user_decisions as uds, architect_requests as ars
@@ -56,10 +56,6 @@ class MilestonePlanningTest(unittest.TestCase):
         self.stack.enter_context(patch.object(planner, "read_requests", return_value=[]))
         self.stack.enter_context(patch.object(planner, "validate_request_updates", return_value=[]))
         self.stack.enter_context(patch.object(loop, "log_line"))
-        self.claude, self.codex = Mock(), Mock()
-        self.claude.available.return_value = False
-        self.codex.available.return_value = True
-        self.scheduler = loop.CapacityScheduler(self.claude, self.codex, cache_file=self.root / "cache.json")
 
     def backlog(self):
         planner.BACKLOG_FILE.write_text("## Active\n\n## To Do\n\n" + "\n".join(
@@ -140,39 +136,6 @@ class MilestonePlanningTest(unittest.TestCase):
                 review("D/E", "PLANNED", *stories)])
         self.assertEqual(result["status"], "COMPLETE", result)
         self.assertEqual(len(story_state.get_selectable_story_candidates()), 2)
-
-    def test_idle_batches_discover_both_uds_before_any_answer_then_wait_locally(self):
-        calls = []
-        def plan():
-            before = self.before()
-            calls.append(len(calls) + 1)
-            if len(calls) == 1:
-                self.decision(10)
-                self.decision(11)
-                story = self.story(1)
-                return self.validate(before, story_files_created=[story], user_decision_ids=["UD-010", "UD-011"],
-                    independent_work_remaining=True, phase_review=[review("A", "USER_DECISION", "UD-010"),
-                        review("B", "USER_DECISION", "UD-011"), review("D", "PLANNED", story),
-                        review("E", "READY", "docs/ROADMAP.md")])
-            story = self.story(len(calls))
-            ids = [item["id"] for item in uds.list_decisions() if item["status"] == "OPEN"]
-            return self.validate(before, status="NEEDS_USER", story_files_created=[story], user_decision_ids=ids,
-                phase_review=[review("Blocked areas", "USER_DECISION", *ids), review("Independent area", "PLANNED", story)])
-        with patch.object(loop, "run_planning_pass", side_effect=plan) as model:
-            self.assertTrue(self.scheduler.plan_if_useful(idle=True))
-            self.assertEqual({item["id"] for item in uds.list_decisions()}, {"UD-010", "UD-011"})
-            self.assertTrue(self.scheduler.plan_if_useful(idle=True))
-            for _ in range(3):
-                self.assertFalse(self.scheduler.plan_if_useful(idle=True))
-            self.assertEqual(model.call_count, 2)
-            second = (planner.USER_DECISIONS_DIR / "UD-011-choice.md").read_bytes()
-            first = planner.USER_DECISIONS_DIR / "UD-010-choice.md"
-            first.write_text(first.read_text().replace("OPEN", "RESOLVED").replace("TODO", "Human answer"))
-            self.assertTrue(self.scheduler.plan_if_useful(idle=True))
-            self.assertFalse(self.scheduler.plan_if_useful(idle=True))
-            self.assertEqual(model.call_count, 3)
-            self.assertEqual(len(uds.list_decisions()), 2)
-            self.assertEqual((planner.USER_DECISIONS_DIR / "UD-011-choice.md").read_bytes(), second)
 
     def test_ready_work_cannot_claim_needs_user_or_request_prose_only_retries(self):
         self.decision(10)

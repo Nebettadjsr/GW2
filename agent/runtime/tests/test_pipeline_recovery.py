@@ -27,8 +27,7 @@ from unittest.mock import Mock, patch
 from agent.runtime.core import orchestrator
 from agent.runtime.core import story_state
 from agent.runtime.evaluation.evaluator import parse_evaluator_verdict
-from agent.runtime.runners import claude_runner, local_planner_runner
-from agent.runtime.support import git_sync
+from agent.runtime.runners import local_planner_runner
 from agent.runtime.support.capacity import ModelCapacityUnavailable
 from agent.runtime.tests import REAL_RUN_CODEX
 from agent.runtime.tests.test_orchestrator import (
@@ -62,7 +61,6 @@ class PipelineRecoveryTestCase(OrchestratorInterventionTestCase):
         self.prompt_file = self.stories_dir / "NEXT_PROMPT.md"
 
         for name, value in [
-            ("ATTEMPT_STATE_FILE", self.attempt_state_file),
             ("CLAUDE_RESULT_FILE", self.result_file),
             ("NEXT_PROMPT_FILE", self.prompt_file),
             ("EVALUATOR_RESULT_FILE", self.stories_dir / "EVALUATOR_RESULT.json"),
@@ -105,351 +103,6 @@ class PipelineRecoveryTestCase(OrchestratorInterventionTestCase):
             "evaluated_result_sha256": orchestrator.file_hash(self.result_file),
         }), encoding="utf-8")
 
-    def run_execute(self, stack, **patches):
-        """execute_active_story() with every model path accounted for."""
-
-        stack.enter_context(
-            patch.object(orchestrator, "build_claude_prompt",
-                         return_value="Implement active story")
-        )
-        stack.enter_context(
-            patch.object(orchestrator, "generate_repo_map",
-                         return_value={"enabled": False, "text": "",
-                                       "token_budget": 0, "error": None})
-        )
-        stack.enter_context(
-            patch.object(orchestrator, "get_claude_usage",
-                         return_value=claude_runner.ClaudeUsage(0, 0))
-        )
-        stack.enter_context(patch.object(orchestrator.time, "sleep"))
-
-        for name, value in patches.items():
-            stack.enter_context(
-                patch.object(orchestrator, name, **value)
-            )
-
-        return orchestrator.execute_active_story()
-
-
-class ResumeAfterInterruptionTest(PipelineRecoveryTestCase):
-
-    def test_done_story_awaiting_evaluation_resumes_without_rerunning_claude(self):
-        self.given_finished_attempt("AWAITING_EVALUATION")
-
-        with ExitStack() as stack:
-            claude = stack.enter_context(
-                patch.object(orchestrator, "run_claude_attempt")
-            )
-            evaluate = stack.enter_context(
-                patch.object(orchestrator, "evaluate_story",
-                             return_value={"decision": "COMPLETE",
-                                           "reason": "ok"})
-            )
-            result = self.run_execute(stack)
-
-        self.assertEqual(result, "COMPLETE")
-        # The whole point: the evaluation that never happened happens, and
-        # the Claude run that already happened is not paid for twice.
-        evaluate.assert_called_once()
-        claude.assert_not_called()
-        self.assertFalse(self.attempt_state_file.exists())
-
-    def test_awaiting_ci_resumes_at_publication_without_reevaluating(self):
-        story = self.given_finished_attempt("AWAITING_CI")
-        self.write_matching_evaluator_verdict(story)
-
-        with ExitStack() as stack:
-            claude = stack.enter_context(
-                patch.object(orchestrator, "run_claude_attempt")
-            )
-            evaluate = stack.enter_context(
-                patch.object(orchestrator, "evaluate_story")
-            )
-            verify = stack.enter_context(
-                patch.object(orchestrator, "verify_with_github_ci",
-                             return_value={"status": "PASSED", "reason": "ok",
-                                           "report": "", "sha": "abc1234",
-                                           "run_urls": []})
-            )
-            result = self.run_execute(stack)
-
-        self.assertEqual(result, "COMPLETE")
-        verify.assert_called_once()
-        # The evaluator already accepted this attempt; its verdict is not
-        # bought a second time, and Claude is not re-invoked either.
-        evaluate.assert_not_called()
-        claude.assert_not_called()
-        self.assertFalse(self.attempt_state_file.exists())
-
-    def test_awaiting_ci_without_a_matching_verdict_resumes_evaluation_not_coding(self):
-        self.given_finished_attempt("AWAITING_CI")
-
-        with ExitStack() as stack:
-            claude = stack.enter_context(
-                patch.object(orchestrator, "run_claude_attempt")
-            )
-            evaluate = stack.enter_context(
-                patch.object(orchestrator, "evaluate_story",
-                             return_value={"decision": "COMPLETE", "reason": "verified"})
-            )
-            verify = stack.enter_context(
-                patch.object(orchestrator, "verify_with_github_ci",
-                             return_value={"status": "PASSED", "reason": "ok",
-                                           "report": "", "sha": "abc1234",
-                                           "run_urls": []})
-            )
-            result = self.run_execute(stack)
-
-        self.assertEqual(result, "COMPLETE")
-        evaluate.assert_called_once()
-        claude.assert_not_called()
-        verify.assert_called_once()
-
-    def test_awaiting_ci_fix_resumes_saved_prompt_without_repeating_qa_or_publication(self):
-        self.given_finished_attempt(
-            "AWAITING_CI_FIX", status="UNFINISHED", ci_fix_attempts=1
-        )
-        saved_prompt = "Fix the failed agent-runtime queue consistency checks."
-        self.prompt_file.write_text(saved_prompt, encoding="utf-8")
-
-        with ExitStack() as stack:
-            claude = stack.enter_context(
-                patch.object(orchestrator, "run_claude_attempt",
-                             return_value=claude_runner.ClaudeAttempt(0, False))
-            )
-            evaluate = stack.enter_context(
-                patch.object(orchestrator, "_evaluate_preserving_completed_attempt",
-                             return_value={"decision": "COMPLETE", "reason": "verified"})
-            )
-            qa = stack.enter_context(
-                patch.object(orchestrator, "_ensure_preimplementation_qa")
-            )
-            verify = stack.enter_context(
-                patch.object(orchestrator, "verify_with_github_ci",
-                             return_value={"status": "PASSED", "reason": "ok",
-                                           "report": "", "sha": "abc1234",
-                                           "run_urls": []})
-            )
-            result = self.run_execute(stack)
-
-        self.assertEqual(result, "COMPLETE")
-        claude.assert_called_once_with(saved_prompt)
-        evaluate.assert_called_once()
-        qa.assert_not_called()
-        verify.assert_called_once()
-        self.assertFalse(self.attempt_state_file.exists())
-
-    def test_retry_budget_survives_a_restart(self):
-        # MAX_RETRIES_PER_STORY already spent before the interruption: a
-        # resumed attempt must escalate, not hand the story a fresh
-        # allowance and loop forever across restarts.
-        self.given_finished_attempt(
-            "AWAITING_EVALUATION",
-            retry_count=orchestrator.MAX_RETRIES_PER_STORY,
-        )
-
-        with ExitStack() as stack:
-            claude = stack.enter_context(
-                patch.object(orchestrator, "run_claude_attempt")
-            )
-            stack.enter_context(
-                patch.object(orchestrator, "evaluate_story",
-                             return_value={"decision": "RETRY",
-                                           "reason": "still incomplete",
-                                           "actionable_retry_items": ["do x"]})
-            )
-            result = self.run_execute(stack)
-
-        self.assertEqual(result, "NEEDS_USER")
-        claude.assert_not_called()
-        self.assertFalse(self.attempt_state_file.exists())
-
-    def test_done_story_remains_executable_until_durable_evaluation_exists(self):
-        story = self.given_finished_attempt("AWAITING_EVALUATION")
-
-        evaluator_file = self.stories_dir / "EVALUATOR_RESULT.json"
-        with patch.object(orchestrator, "CURRENT_STORY_FILE", self.current_story_file), \
-                patch.object(orchestrator, "EVALUATOR_RESULT_FILE", evaluator_file), \
-                patch.object(git_sync, "ci_verification_available",
-                             return_value=(False, "no GitHub remote")):
-            self.assertTrue(orchestrator._active_is_executable())
-
-            # Lost attempt state cannot make DONE alone authoritative.
-            orchestrator.clear_attempt_state()
-            self.assertTrue(orchestrator._active_is_executable())
-
-            content = story.read_text(encoding="utf-8")
-            evaluator_file.write_text(json.dumps({
-                "decision": "COMPLETE",
-                "story_id": "STORY-DOM-001",
-                "evaluated_story_contract_sha256": orchestrator.story_contract_hash(content),
-                "evaluated_result_sha256": orchestrator.file_hash(self.result_file),
-            }), encoding="utf-8")
-            self.assertFalse(orchestrator._active_is_executable())
-
-        self.assertEqual(
-            story_state.extract_status_section(
-                story.read_text(encoding="utf-8")
-            ),
-            "DONE",
-        )
-
-    def test_a_malformed_record_is_preserved_and_stops_recovery(self):
-        self.given_finished_attempt("AWAITING_EVALUATION")
-        self.attempt_state_file.write_text("{not json", encoding="utf-8")
-
-        with self.assertRaises(orchestrator.UnrecoverableWorkflowState):
-            orchestrator.read_attempt_state()
-        self.assertEqual(self.attempt_state_file.read_text(encoding="utf-8"), "{not json")
-
-    def test_status_transition_does_not_invalidate_matching_evaluator_contract(self):
-        story = self.given_finished_attempt("AWAITING_EVALUATION")
-        content = story.read_text(encoding="utf-8")
-        evaluator_file = self.stories_dir / "EVALUATOR_RESULT.json"
-        evaluator_file.write_text(json.dumps({
-            "decision": "COMPLETE",
-            "story_id": "STORY-DOM-001",
-            "evaluated_story_contract_sha256": orchestrator.story_contract_hash(content),
-            "evaluated_result_sha256": orchestrator.file_hash(self.result_file),
-        }), encoding="utf-8")
-        changed_status = content.replace("Status\n\nDONE", "Status\n\nBLOCKED")
-        with patch.object(orchestrator, "EVALUATOR_RESULT_FILE", evaluator_file):
-            self.assertIsNotNone(orchestrator._load_current_evaluator_result(
-                story, changed_status
-            ))
-
-    def test_crash_after_coding_completion_resumes_at_evaluation(self):
-        story = self.given_finished_attempt(
-            "CODING", baseline_result_sha256="before-coding"
-        )
-        with patch.object(git_sync, "working_tree_paths",
-                          return_value={story.relative_to(orchestrator.REPO_ROOT).as_posix()}), \
-             patch.object(orchestrator, "_evaluate_preserving_completed_attempt",
-                          return_value={"decision": "COMPLETE", "reason": "valid"}) as evaluate, \
-             patch.object(orchestrator, "run_claude_attempt") as claude:
-            outcome = orchestrator.execute_active_story()
-
-        self.assertEqual(outcome, "COMPLETE")
-        evaluate.assert_called_once()
-        claude.assert_not_called()
-        self.assertFalse(self.attempt_state_file.exists())
-
-    def test_missing_pointer_is_restored_from_attempt_journal(self):
-        story = self.given_finished_attempt("FINALIZING")
-        self.current_story_file.write_text("", encoding="utf-8")
-
-        with patch.object(orchestrator, "CURRENT_STORY_FILE", self.current_story_file):
-            orchestrator.reconcile_attempt_pointer()
-
-        self.assertEqual(self.current_story_file.read_text(encoding="utf-8").strip(),
-                         story.relative_to(orchestrator.REPO_ROOT).as_posix())
-
-    def test_conflicting_pointer_is_not_overwritten(self):
-        self.given_finished_attempt("AWAITING_EVALUATION")
-        other = self.write_story("STORY-DOM-002-other.md",
-                                 story_with_id("STORY-DOM-002", "## Status\n\nTODO\n"))
-        self.current_story_file.write_text(other.name + "\n", encoding="utf-8")
-
-        with patch.object(orchestrator, "CURRENT_STORY_FILE", self.current_story_file), \
-                self.assertRaises(orchestrator.UnrecoverableWorkflowState):
-            orchestrator.reconcile_attempt_pointer()
-
-        self.assertEqual(self.current_story_file.read_text(encoding="utf-8"),
-                         other.name + "\n")
-
-
-class UnpublishedCompletionTest(PipelineRecoveryTestCase):
-    """
-    The second, independent check, for a DONE story whose record was lost
-    with the rest of the gitignored artifacts directory.
-    """
-
-    def check(self, story, *, published, changes, ahead):
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch.object(git_sync, "ci_verification_available",
-                             return_value=(True, "owner/repo via ci.yml"))
-            )
-            stack.enter_context(
-                patch.object(git_sync, "commit_exists_with_subject",
-                             return_value=published)
-            )
-            stack.enter_context(
-                patch.object(git_sync, "working_tree_changes",
-                             return_value=changes)
-            )
-            stack.enter_context(
-                patch.object(git_sync, "current_branch", return_value="master")
-            )
-            stack.enter_context(
-                patch.object(git_sync, "unpushed_commit_count",
-                             return_value=ahead)
-            )
-
-            return orchestrator.unpublished_completion(
-                story, story.read_text(encoding="utf-8")
-            )
-
-    def setUp(self):
-        super().setUp()
-        self.story = self.given_finished_attempt("AWAITING_EVALUATION")
-        orchestrator.clear_attempt_state()
-        self.evaluator_file = self.stories_dir / "EVALUATOR_RESULT.json"
-        self._stack.enter_context(
-            patch.object(orchestrator, "EVALUATOR_RESULT_FILE", self.evaluator_file)
-        )
-        story_content = self.story.read_text(encoding="utf-8")
-        self.evaluator_file.write_text(json.dumps({
-            "decision": "COMPLETE",
-            "story_id": "STORY-DOM-001",
-            "evaluated_story_sha256": hashlib.sha256(
-                story_content.encode("utf-8")
-            ).hexdigest(),
-            "evaluated_result_sha256": orchestrator.file_hash(self.result_file),
-        }), encoding="utf-8")
-
-    def test_missing_commit_with_uncommitted_work_is_reported(self):
-        reason = self.check(
-            self.story, published=False,
-            changes=[" M frontend/src/App.vue"], ahead=0,
-        )
-
-        self.assertIsNotNone(reason)
-        self.assertIn("implemented STORY-DOM-001", reason)
-
-    def test_missing_commit_with_unpushed_commits_is_reported(self):
-        reason = self.check(
-            self.story, published=False, changes=[], ahead=2,
-        )
-
-        self.assertIsNotNone(reason)
-        self.assertIn("not on origin", reason)
-
-    def test_log_churn_alone_is_not_unpublished_work(self):
-        # agent/logs/<date>.log is tracked and appended to continuously, so
-        # the tree is dirty within seconds of every commit. Treating that as
-        # unpublished work would re-run the CI gate on a finished story
-        # forever.
-        self.assertIsNone(
-            self.check(self.story, published=False,
-                       changes=[" M agent/logs/2026-09-28.log"], ahead=0)
-        )
-
-    def test_a_published_story_is_never_reported(self):
-        self.assertIsNone(
-            self.check(self.story, published=True,
-                       changes=[" M frontend/src/App.vue"], ahead=3)
-        )
-
-    def test_missing_evaluator_verdict_requires_recovery_without_a_ci_gate(self):
-        self.evaluator_file.unlink()
-        with patch.object(git_sync, "ci_verification_available",
-                          return_value=(False, "no GitHub remote")):
-            reason = orchestrator.unpublished_completion(
-                self.story, self.story.read_text(encoding="utf-8")
-            )
-        self.assertIn("no durable COMPLETE evaluator verdict", reason)
-
 
 class BoundedEvaluationTest(PipelineRecoveryTestCase):
 
@@ -470,11 +123,11 @@ class BoundedEvaluationTest(PipelineRecoveryTestCase):
                     "story", "finished result", 0, True
                 )
 
-        # Bounded, not infinite -- and the finished work is never re-run,
-        # because the failure reaches main() with the attempt recorded.
+        # Bounded, not infinite -- and the failure reaches the bridge step,
+        # which reruns evaluation, never the finished Claude work.
         self.assertEqual(evaluate.call_count, 6)
         self.assertTrue(
-            any("resume at evaluation" in line for line in self.logged)
+            any("never Claude" in line for line in self.logged)
         )
 
 
@@ -486,58 +139,25 @@ class EvaluatorCapacityTest(PipelineRecoveryTestCase):
     because a quota reset is hours away.
     """
 
-    def test_codex_exhaustion_waits_instead_of_consuming_an_attempt(self):
+    def test_codex_exhaustion_is_handed_back_without_consuming_an_attempt(self):
         attempts = []
-        waits = []
 
         def evaluate(*_args):
             attempts.append(1)
-
-            if len(attempts) <= 2:
-                raise ModelCapacityUnavailable("Codex usage exhausted")
-
-            return {"decision": "COMPLETE", "reason": "ok"}
+            raise ModelCapacityUnavailable("Codex usage exhausted")
 
         with ExitStack() as stack:
-            stack.enter_context(
-                patch.object(orchestrator, "evaluate_story", side_effect=evaluate)
-            )
-            # One attempt per batch and one batch: were exhaustion counted
-            # as a failure, the very first one would end the evaluation.
-            stack.enter_context(patch.object(orchestrator, "EVALUATION_ATTEMPTS", 1))
-            stack.enter_context(patch.object(orchestrator, "MAX_EVALUATION_BATCHES", 1))
-            stack.enter_context(patch.object(orchestrator.time, "sleep"))
+            stack.enter_context(patch.object(orchestrator, "evaluate_story", side_effect=evaluate))
+            stack.enter_context(patch.object(orchestrator, "EVALUATION_ATTEMPTS", 3))
+            sleep = stack.enter_context(patch.object(orchestrator.time, "sleep"))
 
-            result = orchestrator._evaluate_preserving_completed_attempt(
-                "story", "finished result", 0, True,
-                wait_for_evaluator=lambda: waits.append(1),
-            )
+            with self.assertRaises(ModelCapacityUnavailable):
+                orchestrator._evaluate_preserving_completed_attempt("story", "finished result", 0, True)
 
-        self.assertEqual(result["decision"], "COMPLETE")
-        self.assertEqual(len(attempts), 3)
-        self.assertEqual(len(waits), 2)
-        self.assertTrue(
-            any("does not consume an evaluation attempt" in line
-                for line in self.logged),
-            self.logged,
-        )
-
-    def test_waiting_for_codex_never_spends_it_on_other_work(self):
-        scheduler = orchestrator.CapacityScheduler(Mock(), Mock(), cache_file=None)
-        scheduler.codex_work_if_useful = Mock(
-            side_effect=AssertionError(
-                "the planner and architect run on the same exhausted budget"
-            )
-        )
-        availability = iter([False, True])
-        scheduler.codex_available = Mock(side_effect=lambda: next(availability))
-        scheduler.wait_locally = Mock()
-
-        with patch.object(orchestrator, "log_line", side_effect=self.logged.append):
-            scheduler.wait_for_codex()
-
-        scheduler.wait_locally.assert_called_once_with(["Codex"])
-        scheduler.codex_work_if_useful.assert_not_called()
+        # A pause for the caller: no retry spent, no wait, no failure logged.
+        self.assertEqual(len(attempts), 1)
+        sleep.assert_not_called()
+        self.assertFalse(any("failed" in line for line in self.logged), self.logged)
 
 
 class TestGuardTest(unittest.TestCase):
@@ -625,49 +245,6 @@ class EvaluatorIsReadOnlyTest(unittest.TestCase):
         self.assertEqual(
             parse_evaluator_verdict(messages)["decision"], "COMPLETE"
         )
-
-
-class EvaluatorBlockedVerdictTest(PipelineRecoveryTestCase):
-
-    def test_blocked_verdict_records_the_block_on_story_and_backlog(self):
-        filename = "STORY-DOM-002-blocked.md"
-        story = self.write_story(
-            filename,
-            story_with_id("STORY-DOM-002", "## Status\n\nTODO\n"),
-        )
-        self.write_backlog(active=[filename])
-        self.set_active(filename)
-
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch.object(orchestrator, "run_claude_attempt",
-                             return_value=_finished_attempt())
-            )
-            stack.enter_context(
-                patch.object(orchestrator, "evaluate_story",
-                             return_value={"decision": "BLOCKED",
-                                           "reason": "the API has no such field"})
-            )
-            result = self.run_execute(stack)
-
-        self.assertEqual(result, "BLOCKED")
-
-        # Without this bookkeeping the verdict changed nothing, so the very
-        # next cycle re-invoked Claude on the same story, forever.
-        content = story.read_text(encoding="utf-8")
-        self.assertEqual(
-            story_state.extract_status_section(content), "BLOCKED"
-        )
-        self.assertIn("the API has no such field", content)
-
-        backlog = self.backlog_file.read_text(encoding="utf-8")
-        self.assertEqual(
-            story_state.parse_backlog_section(backlog, "Blocked"), [filename]
-        )
-        self.assertEqual(
-            story_state.parse_backlog_section(backlog, "Active"), []
-        )
-        self.assertFalse(self.attempt_state_file.exists())
 
 
 class CompactBacklogRowTest(PipelineRecoveryTestCase):

@@ -4,16 +4,11 @@ import re
 import shutil
 import subprocess
 import sys
-import time
 
 from agent.runtime.support.config import (
     CLAUDE_MODEL,
-    CLAUDE_USAGE_LIMIT_PERCENT,
-    CLAUDE_WEEKLY_MIN_REMAINING_PERCENT,
-    MODEL_CAPACITY_RECHECK_SECONDS,
     REPO_ROOT,
 )
-from agent.runtime.support.daily_log import print_status
 
 
 # ============================================================
@@ -48,11 +43,6 @@ def find_claude() -> str:
 class ClaudeUsage(NamedTuple):
     session_used_percent: int
     weekly_used_percent: int
-
-    def available(self, session_threshold=CLAUDE_USAGE_LIMIT_PERCENT,
-                  weekly_min_remaining=CLAUDE_WEEKLY_MIN_REMAINING_PERCENT) -> bool:
-        return (self.session_used_percent < session_threshold
-                and 100 - self.weekly_used_percent > weekly_min_remaining)
 
 
 def get_claude_usage() -> ClaudeUsage:
@@ -105,55 +95,6 @@ def parse_claude_usage(text: str) -> ClaudeUsage:
     # If /usage reports more than one weekly allowance, the most-used
     # one is the safe gate for the pinned model.
     return ClaudeUsage(int(session.group(1)), max(map(int, weekly)))
-
-
-def get_claude_session_usage_percent() -> int:
-    return get_claude_usage().session_used_percent
-
-
-def wait_for_claude_capacity(
-    threshold: int = CLAUDE_USAGE_LIMIT_PERCENT,
-    weekly_min_remaining: int = CLAUDE_WEEKLY_MIN_REMAINING_PERCENT,
-) -> None:
-    """
-    Wait locally until both Claude allowances permit a run.
-
-    `claude -p /usage` runs a slash command and performs no inference,
-    so re-checking costs no tokens and never invokes the exhausted
-    model. Status output is terminal-only (print_status): an overnight
-    wait must not fill agent/logs/ with identical heartbeat lines.
-    """
-
-    while True:
-        usage = get_claude_usage()
-
-        if usage.available(threshold, weekly_min_remaining):
-            print_status(
-                "Claude capacity available again "
-                f"(session usage {usage.session_used_percent}%, "
-                f"weekly remaining {100 - usage.weekly_used_percent}%)."
-            )
-            return
-
-        print_status(
-            "Claude capacity unavailable - waiting..."
-        )
-
-        print_status(
-            f"Current usage: Claude session {usage.session_used_percent}% "
-            f"(resumes below {threshold}%), weekly remaining "
-            f"{100 - usage.weekly_used_percent}% "
-            f"(resumes above {weekly_min_remaining}%)"
-        )
-
-        print_status(
-            "Next capacity check in "
-            f"{MODEL_CAPACITY_RECHECK_SECONDS // 60} min"
-        )
-
-        time.sleep(
-            MODEL_CAPACITY_RECHECK_SECONDS
-        )
 
 
 # ============================================================

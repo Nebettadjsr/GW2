@@ -27,7 +27,7 @@ import tempfile
 from pathlib import Path
 
 from agent.runtime.core import orchestrator
-from agent.runtime.runners import claude_runner, codex_capacity, local_planner_runner
+from agent.runtime.runners import claude_runner, local_planner_runner
 from agent.runtime.support import config, daily_log, git_sync, github_ci
 from agent.runtime.qa import qa_agent
 
@@ -63,7 +63,6 @@ local_planner_runner.run_codex = _refuse_model("local_planner_runner.run_codex")
 REAL_RUN_QA = local_planner_runner.run_qa
 local_planner_runner.run_qa = _refuse_model("local_planner_runner.run_qa")
 qa_agent.run_qa = _refuse_model("qa_agent.run_qa")
-codex_capacity.find_codex = _refuse_model("codex_capacity.find_codex")
 
 # Story-execution tests get a deterministic, explicitly test-free QA plan;
 # QA's own tests patch this seam to exercise preparation and model failures.
