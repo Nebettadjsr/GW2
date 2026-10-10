@@ -137,7 +137,18 @@ the new values.
 
 ## Start the bridge
 
-Paste this into PowerShell. It creates the bearer token once and keeps it outside the repository.
+Normally, from the repository root:
+
+```powershell
+.\local_bridge\start-bridge.cmd
+```
+
+It reads the token from `%USERPROFILE%\.gw2-claude-bridge	oken.txt` and sets the bridge's settings for that
+window only. Running `python .\local_bridgeridge.py` directly fails with "Set GW2_BRIDGE_TOKEN ...",
+because those settings are missing in a fresh window.
+
+The first time, or to recreate the token, paste this into PowerShell instead. It creates the bearer
+token once and keeps it outside the repository.
 
 ```powershell
 Set-Location C:\Users\Administrator\IdeaProjects\GW2
