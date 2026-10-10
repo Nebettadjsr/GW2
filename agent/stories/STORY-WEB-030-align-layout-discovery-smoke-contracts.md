@@ -8,7 +8,7 @@ Align layout fixtures and Discovery live smoke contract
 
 ## Status
 
-UNFINISHED
+DONE
 
 ## Milestone
 
