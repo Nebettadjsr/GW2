@@ -224,3 +224,9 @@ page it drives that loads item icons.
 ## Blockers
 
 None.
+
+## Follow-up Findings Disposition
+
+F001: DISMISSED — Verified redundant account assertion and missing verification in the general smoke, not a verified app boundary defect. Both scripts collect only `/api/` responses before their `foreignCalls` filters. The account script independently checks `browserRequests` for upstream and other-origin requests; the general smoke's dead filter does not prove that guarantee. No application violation was established. Preserve this evidence limitation for `STORY-QUALITY-005` under `docs/TARGET_ARCHITECTURE.md` §21; `Request-013-raise-backend-test-coverage.md` excludes cosmetic smoke follow-ups while open unless they hide a real app defect.
+
+F002: DISMISSED — Optional reporting improvement. `frontend/scripts/browser-smoke.mjs` still prints its complete observed-call list, but this establishes no app defect or unmet feature requirement. `Request-013-raise-backend-test-coverage.md` explicitly prohibits cosmetic browser-smoke reporting stories while open unless the issue hides a real app defect; no such defect is evidenced here.

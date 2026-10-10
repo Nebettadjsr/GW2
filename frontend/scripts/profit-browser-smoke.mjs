@@ -1075,15 +1075,21 @@ async function run() {
     // to report and the view says nothing rather than stating the obvious
     // (`CraftingResolution.vue`'s `rootSourcing`). Step 16 selects the one row whose root the
     // resolver produced from another recipe and reads the sentence that case does render.
+    const suppressedSourcing =
+      (await page.$('[data-test="resolution-root-sourcing"]')) === null
+        ? null
+        : await textOf(page, '[data-test="resolution-root-sourcing"]')
     check(
-      (await page.$('[data-test="resolution-root-sourcing"]')) === null &&
+      suppressedSourcing === null &&
         !resolutionText.includes('is the recipe selected for this requirement'),
-      'The compact view restates that the requested recipe is the one that was selected.'
+      'A root carrying the requested recipe was given a sourcing sentence anyway: ' +
+        JSON.stringify(suppressedSourcing)
     )
     record(
       'the backend tree is rendered whole, in order, in the compact presentation',
       `${treeItems.length} nodes, one detail request carrying scope and settings only, ` +
-        'one effective value per requirement and no raw Resolver codes'
+        'one effective value per requirement, no raw Resolver codes, and no root-sourcing ' +
+        `sentence for recipe ${sentDetail.recipeId}, whose supplied root carries that same recipe`
     )
 
     // 5c2. A missing price is marked at the requirement it applies to and names the item it is about

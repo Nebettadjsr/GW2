@@ -179,3 +179,11 @@ F003: `frontend/src/crafting/` has no spec for `DiscoveryTable.vue` itself. Its 
 mapping is only covered indirectly through `CraftingDiscoveryScreen.spec.ts`, and two of the
 contract drifts this story had to repair in the live check — the removed craftable column and the
 profit column's switch to `totalProfitCopper` — live exactly there.
+
+## Follow-up Findings Disposition
+
+F001: DISMISSED — Environment-readiness limitation, not a verified application defect. `frontend/scripts/discovery-live-smoke.mjs` still asserts HTTP 200 on the first response; this story's Result records the successful identical request after cache warm-up. Automatic waiting or richer classification is optional smoke tooling work, not an unmet Phase 5 feature requirement. Reassess concrete acceptance limitations in `STORY-QUALITY-005` rather than requiring a new implementation story.
+
+F002: ALREADY COVERED — `docs/KNOWN_PROBLEMS.md` KP-25 explicitly records the unreferenced `frontend/src/ecto/useEctoSalvage.ts`; the supplied Phase 5 exit criteria explicitly exclude its cleanup from feature acceptance. A targeted caller search found no reference elsewhere in `frontend/src`.
+
+F003: ALREADY COVERED — Missing standalone component verification, not a confirmed mapping defect. `frontend/src/crafting/__tests__/CraftingDiscoveryScreen.spec.ts` exercises the actual DiscoveryTable, including total-profit sorting and selection; this story's Result records layout and live Discovery checks comparing rendered monetary columns with supplied backend values. A separate spec is optional test organization; assess remaining evidence limitations in `STORY-QUALITY-005` under `docs/TARGET_ARCHITECTURE.md` §21.

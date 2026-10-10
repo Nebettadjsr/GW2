@@ -1,0 +1,71 @@
+{
+  "status": "READY",
+  "story_id": "STORY-WEB-032",
+  "rationale": "The repository already contains controlled browser coverage for both root identity cases in the Profit smoke check, plus component coverage. The alternate-root fixture supplies requested recipe 7 and actual root recipe 4242, and the browser checks the detail request identity and rendered description. No new test file is needed. Verification could not run because Node was denied access to C:\\Users\\Administrator.",
+  "acceptance_checks": [
+    {
+      "criterion": "A browser-level check supplies a requested recipe whose resolution tree has a different actual root recipe and verifies the corresponding root-sourcing description is rendered.",
+      "expected": "The controlled fixture supplies requested recipe 7 with actual root recipe 4242; the browser asserts the rendered description names both identities and appears above the tree.",
+      "verification": "Existing frontend/scripts/profit-browser-smoke.mjs check 16; run npm run smoke:profit."
+    },
+    {
+      "criterion": "The check verifies the requested recipe identity and actual root sourcing remain distinct and consistent with the supplied backend detail.",
+      "expected": "The resolution request carries recipeId 7, while the fixture-provided tree root carries recipeId 4242; the rendered sentence preserves both values.",
+      "verification": "Existing frontend/scripts/profit-browser-smoke.mjs controlled fixture and check 16."
+    },
+    {
+      "criterion": "Existing root-equals-requested-recipe behavior remains covered and does not display a misleading alternate-root description.",
+      "expected": "The ordinary tree root carries the requested recipe identity and no root-sourcing description is rendered.",
+      "verification": "Existing frontend/scripts/profit-browser-smoke.mjs check 5c and frontend/src/crafting/__tests__/CraftingResolution.spec.ts."
+    }
+  ],
+  "invariants": [
+    "The frontend renders backend-provided resolution detail and does not recalculate sourcing.",
+    "The requested recipe identity and the tree root's actual recipe identity remain distinct when the fixture supplies different values.",
+    "When the tree root recipe equals the requested recipe, the alternate-root description is omitted."
+  ],
+  "test_levels": [
+    "ui",
+    "unit"
+  ],
+  "existing_tests_reviewed": [
+    "frontend/scripts/profit-browser-smoke.mjs — controlled fixture and browser assertions cover both same-root suppression and alternate-root description, including request identity and sentence placement.",
+    "frontend/src/crafting/__tests__/CraftingResolution.spec.ts — component checks same-root suppression and alternate producing recipe identity and description.",
+    "frontend/src/crafting/__tests__/profitResolutionAssociation.spec.ts — covers rendered root-sourcing detail in the associated Profit resolution flow."
+  ],
+  "prepared_test_paths": [],
+  "test_specifications": [
+    "Run npm run smoke:profit against the controlled origin; assert the same-root case has no resolution-root-sourcing element, then select the alternate-root fixture and assert the request uses recipeId 7 while the rendered sentence identifies actual root recipe 4242 and requested recipe 7.",
+    "Run the focused component tests for CraftingResolution and Profit resolution association; retain assertions for both same-root suppression and alternate producing-recipe identity."
+  ],
+  "pre_implementation_verification": {
+    "status": "NOT_RUN",
+    "command": "From frontend/: npm.cmd test -- src/crafting/__tests__/CraftingResolution.spec.ts src/crafting/__tests__/profitResolutionAssociation.spec.ts; npm.cmd run smoke:profit",
+    "failure_evidence": "Both commands failed before tests or browser checks started. Node v22.13.1 reported EPERM: operation not permitted, lstat 'C:\\Users\\Administrator' while resolving the executable entry point. This is an environment failure, not behavior-level expected-failure evidence."
+  },
+  "coverage_review": "No local frontend coverage report was available (frontend/coverage/coverage-final.json and coverage-summary.json were absent). docs/QUALITY_METRICS.md records a provisional 2026-10-03 frontend snapshot of 92.88% line and 85.22% branch coverage; it is not current module-level evidence. Review the affected presentation branch in a current coverage report after implementation and report any remaining gap.",
+  "external_sources": [],
+  "clarifications": [],
+  "post_implementation_review_required": true,
+  "post_implementation_review_reason": "The required browser check could not execute in this environment. After the coding attempt, run the controlled Profit smoke and relevant component tests, and review current coverage for the root-sourcing presentation branch.",
+  "schema_version": 1,
+  "qa_model": "gpt-6-luna",
+  "qa_reasoning_effort": "medium",
+  "story_contract_sha256": "f12442f33e9a3804ac3f88be7c112c7be335c6281f1f2460cd502e1d07a4255d",
+  "user_decision_ids": [],
+  "protected_test_hashes": {},
+  "post_implementation_reviews": [
+    {
+      "decision": "APPROVE",
+      "reason": "The acceptance criteria and invariants are supported by meaningful controlled browser assertions and component tests. The story records a successful 35-step Profit browser smoke run and 47 passing component tests. The change preserves the existing alternate-root fixture and assertions while making same-root suppression visible in the smoke output. The coverage review reports 93.54% statement and 93.18% branch coverage for the relevant files, explains the unreachable helper branch, and identifies no unresolved gap. No CI result is required at this stage.",
+      "evidence": [
+        "The controlled browser fixture supplies requested recipe 7 and actual root recipe 4242; the browser asserts the detail request uses recipeId 7, the rendered sentence names both identities, and it appears above the requirements tree.",
+        "The same-root browser assertion checks that no root-sourcing element or sentence appears; the recorded smoke run passed all 35 steps.",
+        "The story records the focused component suites passing: 2 test files and 47 tests. The existing CraftingResolution and Profit association tests remain unchanged.",
+        "The story records focused coverage of 93.54% statements and 93.18% branches, with the remaining helper branch documented as unreachable through its caller.",
+        "The only implementation diff is in the browser smoke script; its change improves same-root suppression diagnostics and recorded output without changing fixture values or application behavior."
+      ],
+      "actionable_items": []
+    }
+  ]
+}
