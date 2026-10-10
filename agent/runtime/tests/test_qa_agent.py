@@ -281,3 +281,25 @@ class QAPreparationPersistenceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConditionalReviewPromptTest(unittest.TestCase):
+    """The review runs before publication, so it must not demand CI evidence."""
+
+    def test_review_prompt_explains_ci_timing_and_reserves_needs_user_for_product_decisions(self):
+        from agent.runtime.tests import REAL_RUN_CONDITIONAL_REVIEW
+
+        prompts = []
+
+        def fake_run_qa(prompt, messages, read_only):
+            prompts.append(prompt)
+            messages.append('```json\n{"decision": "APPROVE", "reason": "ok", "evidence": [], "actionable_items": []}\n```')
+            return 0
+
+        story = config.REPO_ROOT / "agent" / "stories" / "STORY-T-001-x.md"
+        with patch.object(qa_agent, "run_qa", side_effect=fake_run_qa):
+            review = REAL_RUN_CONDITIONAL_REVIEW(story_path=story, plan={"story_id": "STORY-T-001"})
+
+        self.assertEqual(review["decision"], "APPROVE")
+        self.assertIn("no CI result for this story exists yet", prompts[0])
+        self.assertIn("NEEDS_USER is only for a product decision", prompts[0])

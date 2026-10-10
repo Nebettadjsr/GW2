@@ -595,16 +595,9 @@ def clear_state() -> None:
 
 def run_conditional_review(story_path: Path, plan: dict, evaluation: dict | None = None) -> dict:
     """Independent read-only QA check after implementation when requested."""
-    host_test_verification = (evaluation or {}).get("host_run_test_verification")
     evaluation_context = (
         "No evaluator result was provided; review this implementation independently."
         if evaluation is None else json.dumps(evaluation, indent=2)
-    )
-    host_test_instruction = (
-        "The harness ran the focused WEB-021 Vitest command outside the Codex sandbox and supplied its result above. "
-        "Use that evidence; do not rerun the same command inside the read-only Codex shell, where Windows profile "
-        "filesystem restrictions may prevent Node from starting."
-        if isinstance(host_test_verification, dict) else ""
     )
     prompt = f"""STORY QA POST-IMPLEMENTATION REVIEW
 
@@ -614,12 +607,19 @@ whether prepared QA tests remain present and meaningful, relevant tests pass
 based on available evidence, and any plan deviation is justified. Passing
 tests alone do not prove the feature works.
 
+The harness publishes the change and waits for GitHub Actions only after this
+review and the Evaluator accept it, so no CI result for this story exists yet.
+Never require one: a "CI is green" criterion is verified by the harness
+afterwards. Checks the implementation reports running locally (live smoke
+runs, outputs not stored in the repository) are evidence to weigh. If a claim
+you cannot verify matters, return RETRY with a concrete actionable item, not
+NEEDS_USER. NEEDS_USER is only for a product decision the story leaves open.
+
 Story: {story_path.relative_to(config.REPO_ROOT).as_posix()}
 QA plan:
 {json.dumps(plan, indent=2)}
 Evaluator result or review context:
 {evaluation_context}
-{host_test_instruction}
 
 Return exactly one fenced JSON object:
 {{"decision":"APPROVE|RETRY|NEEDS_USER","reason":"...","evidence":[...],"actionable_items":[...]}}

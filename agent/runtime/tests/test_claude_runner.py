@@ -12,6 +12,7 @@ Run with: python -m unittest agent.runtime.tests.test_claude_runner -v
 """
 
 import io
+import json
 import unittest
 from contextlib import redirect_stdout
 from unittest.mock import Mock, patch
@@ -173,6 +174,53 @@ class ClaudeRunnerTest(unittest.TestCase):
         )
 
         self.assertFalse(captured["code"].capacity_exhausted)
+
+    def stream(self, *events):
+        return "".join(json.dumps(event) + "\n" for event in events)
+
+    def test_attempt_reads_stream_json_and_renders_text_and_tool_calls(self):
+        output = self.stream(
+            {"type": "system", "subtype": "init"},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "name": "Bash", "input": {"command": "npm   test --  --run"}}]}},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "Story implemented."}]}},
+            {"type": "result", "subtype": "success", "is_error": False, "result": "Story implemented."},
+        )
+        captured = self.run_claude(lambda: claude_runner.run_claude_attempt("Implement"), output=output)
+
+        argv = captured["argv"]
+        self.assertEqual(argv[argv.index("--output-format") + 1], "stream-json")
+        self.assertIn("--verbose", argv)
+        self.assertEqual(captured["code"].output, "> Bash: npm test -- --run\nStory implemented.")
+        self.assertEqual(captured["code"].exit_code, 0)
+
+    def test_a_finished_answer_does_not_wait_for_background_processes(self):
+        # Regression: Claude answered, but a dev server it had started kept
+        # the process alive, so the pipeline step never returned.
+        process = fake_process(self.stream(
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "Done."}]}},
+            {"type": "result", "subtype": "success", "is_error": False, "result": "Done."},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "never read"}]}},
+        ))
+        process.wait.side_effect = [claude_runner.subprocess.TimeoutExpired("claude", 30), 1]
+        with patch.object(claude_runner, "find_claude", return_value="claude.exe"), \
+             patch.object(claude_runner.subprocess, "Popen", return_value=process), \
+             patch.object(claude_runner, "_stop_process_tree") as stop, \
+             redirect_stdout(io.StringIO()):
+            result = claude_runner.run_claude_attempt("Implement")
+
+        stop.assert_called_once_with(process)
+        self.assertEqual(process.wait.call_args_list[0].kwargs, {"timeout": claude_runner.RESULT_EXIT_GRACE_SECONDS})
+        self.assertEqual((result.exit_code, result.output), (0, "Done."))
+
+    def test_an_error_result_carrying_the_session_limit_is_capacity(self):
+        output = self.stream({"type": "result", "subtype": "success", "is_error": True,
+                              "result": "You've hit your session limit \u00b7 resets 11:40pm"})
+        captured = self.run_claude(lambda: claude_runner.run_claude_attempt("Implement"),
+                                   output=output, returncode=1)
+
+        self.assertTrue(captured["code"].capacity_exhausted)
+        self.assertIn("session limit", captured["code"].output)
 
     def test_zero_exit_is_never_treated_as_capacity_exhaustion(self):
         # A story about capacity handling legitimately prints these

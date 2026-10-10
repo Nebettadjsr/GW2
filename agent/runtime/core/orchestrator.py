@@ -376,8 +376,8 @@ Fix the cause of these failures, and only these.
   and a placeholder GW2 API key -- a test that depends on your local machine's
   data, paths, display or network is the defect.
 - Do not start unrelated work, refactoring or planning.
-- Update the story's Result and Status the same way a normal completed
-  attempt does.
+- Update the story's Result the same way a normal completed attempt does;
+  the harness sets its Status.
 
 The harness commits, pushes and re-runs CI again once you are done.
 

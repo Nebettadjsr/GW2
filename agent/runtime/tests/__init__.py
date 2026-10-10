@@ -78,6 +78,7 @@ qa_agent.execute_preparation = lambda story_path: {
     "coverage_review": "Not applicable to fixture.", "external_sources": [],
     "clarifications": [], "post_implementation_review_required": False,
 }
+REAL_RUN_CONDITIONAL_REVIEW = qa_agent.run_conditional_review
 qa_agent.run_conditional_review = lambda **kwargs: {
     "decision": "APPROVE", "reason": "Deterministic QA review fixture.",
     "evidence": ["Mocked by agent runtime tests."], "actionable_items": [],
@@ -170,3 +171,9 @@ orchestrator.EVALUATOR_RESULT_FILE = TEST_QA_DIR / "EVALUATOR_RESULT.json"
 
 orchestrator.ATTEMPT_STATE_FILE = TEST_ATTEMPT_STATE_FILE
 config.ATTEMPT_STATE_FILE = TEST_ATTEMPT_STATE_FILE
+
+# The planner's queue of files still to be committed with the next story.
+# An unguarded completion test once deleted the live file and dropped a
+# planned story from a publication; every test now uses a temporary one.
+config.PENDING_COMMIT_PATHS_FILE = TEST_QA_DIR / "PENDING_COMMIT_PATHS.json"
+git_sync.PENDING_COMMIT_PATHS_FILE = config.PENDING_COMMIT_PATHS_FILE

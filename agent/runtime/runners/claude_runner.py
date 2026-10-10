@@ -1,5 +1,7 @@
 from pathlib import Path
 from typing import NamedTuple
+import json
+import os
 import re
 import shutil
 import subprocess
@@ -116,6 +118,12 @@ def parse_claude_usage(text: str) -> ClaudeUsage:
 
 CAPACITY_OUTPUT_TAIL_CHARS = 2000
 
+# Claude's final `result` event ends the answer, but in --print mode the
+# process stays alive while a background shell it started (a dev server, a
+# watcher) keeps running -- the pipeline then waits forever. After the result
+# it gets this long to exit on its own before its process tree is stopped.
+RESULT_EXIT_GRACE_SECONDS = 30
+
 CAPACITY_OUTPUT_PATTERN = re.compile(
     r"usage limit"
     r"|weekly limit"
@@ -165,6 +173,34 @@ class ClaudeAttempt(NamedTuple):
     output: str = ""
 
 
+def _render_event(event: dict) -> str:
+    """One readable console/log line per stream-json event ('' to skip)."""
+    kind = event.get("type")
+    if kind == "assistant":
+        parts = []
+        for block in (event.get("message") or {}).get("content") or []:
+            if block.get("type") == "text" and block.get("text", "").strip():
+                parts.append(block["text"].rstrip())
+            elif block.get("type") == "tool_use":
+                tool_input = block.get("input") or {}
+                detail = (tool_input.get("command") or tool_input.get("file_path")
+                          or tool_input.get("description") or "")
+                parts.append(f"> {block.get('name')}: {' '.join(str(detail).split())[:160]}")
+        return "\n".join(parts)
+    if kind == "result" and event.get("is_error"):
+        return str(event.get("result") or event.get("subtype") or "Claude reported an error.")
+    return ""
+
+
+def _stop_process_tree(process) -> None:
+    """Stop Claude and everything it left running (dev servers, shells)."""
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                       capture_output=True, check=False)
+    else:
+        process.kill()
+
+
 def run_claude_attempt(
     prompt: str,
     label: str = "Claude Code"
@@ -183,17 +219,20 @@ def run_claude_attempt(
     )
 
     # Claude's output is piped rather than inherited so that every line
-    # passes through this process's stdout, which the daily log mirrors
-    # (see support/daily_log.py). Inheriting the terminal would write
-    # straight to the OS file descriptor and leave no record of what
-    # Claude actually did during an unattended run. stderr is merged
-    # into stdout to keep interleaved output in its original order.
+    # passes through this process's stdout and can be inspected. stream-json
+    # marks the end of the answer explicitly (a `result` event); plain text
+    # cannot, which left the pipeline waiting on a Claude process kept alive
+    # by its own background shells. stderr is merged into stdout to keep
+    # interleaved output in its original order.
     process = subprocess.Popen(
         [
             claude,
             "-p",
             "--model",
             CLAUDE_MODEL,
+            "--output-format",
+            "stream-json",
+            "--verbose",
             "--permission-mode",
             "dontAsk",
             "--allowedTools",
@@ -219,18 +258,36 @@ def run_claude_attempt(
 
     tail = ""
     output_lines = []
+    final = None
 
     for line in process.stdout:
-        text = line.rstrip("\n")
-        output_lines.append(text)
+        raw = line.rstrip("\n")
+        try:
+            event = json.loads(raw)
+        except ValueError:
+            event = None
+        text = _render_event(event) if isinstance(event, dict) else raw
+        if text:
+            output_lines.append(text)
+            print(_console_safe(text))
+            tail = (tail + text + "\n")[-CAPACITY_OUTPUT_TAIL_CHARS:]
+        if isinstance(event, dict) and event.get("type") == "result":
+            final = event
+            break
 
-        print(_console_safe(text))
-
-        tail = (tail + text + "\n")[-CAPACITY_OUTPUT_TAIL_CHARS:]
-
-    process.stdout.close()
-
-    return_code = process.wait()
+    if final is None:
+        process.stdout.close()
+        return_code = process.wait()
+    else:
+        try:
+            return_code = process.wait(timeout=RESULT_EXIT_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            print(f"{label} answered but is still running (background processes); "
+                  "stopping its process tree.")
+            _stop_process_tree(process)
+            process.wait()
+            return_code = 1 if final.get("is_error") else 0
+        process.stdout.close()
 
     print(
         "\n========================================"

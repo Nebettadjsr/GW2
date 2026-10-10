@@ -61,7 +61,7 @@ If information is derivable from its owner, don't store a second copy anywhere e
 - Do not edit `agent/stories/BACKLOG.md`. Moving a story's entry between sections, setting the
   Status a completion or block implies, and clearing the active-story pointer are harness
   transitions, performed deterministically in Python. Your job is the active story's own file
-  (Status, Result, Follow-up Findings) and `CLAUDE_RESULT.md`.
+  (Result, Follow-up Findings) and `CLAUDE_RESULT.md`; the harness alone sets the story's Status.
 - Write permissions for every role are defined once in `agent/runtime/support/config.py`
   (`DOCUMENT_OWNERSHIP`) and rendered into each prompt from there; the Documentation Map above
   says what belongs in each document.
@@ -80,8 +80,8 @@ it in `## Follow-up Findings` in both the completed story and `CLAUDE_RESULT.md`
 `F001: <finding>`, incrementing the ID for each additional finding. Leave both sections as
 `None.` when there are no findings. Do not include work already covered by this story.
 
-**After:** Update the story file's status/result, `CLAUDE_RESULT.md`, and that story's single
-BACKLOG entry. Include the same `## Follow-up Findings` section in the story and result so the
+**After:** Update the story file's Result and `CLAUDE_RESULT.md`. Leave the story's Status,
+`BACKLOG.md` and `CURRENT_STORY.md` alone; the harness performs those transitions. Include the same `## Follow-up Findings` section in the story and result so the
 planner can disposition out-of-scope observations during its next normal pass. Update another
 doc only if this story materially changed information that doc
 owns (see Documentation Map) — e.g. an architecture change updates `CURRENT_ARCHITECTURE.md`,
@@ -159,6 +159,11 @@ placeholder GW2 API key, so a test that needs your machine's data, display or ne
 itself the defect.
 
 ## Working Habits
+
+Stop every process you start (dev servers, backends, watchers) before you finish, and stop it by
+the PID you started — never by a name or command-line filter, which can hit the maintainer's own
+tools. The pipeline treats your final answer as the end of the run and stops anything you left
+running.
 
 Start exploration from named files, direct callers/callees, and relevant tests; expand only
 as needed. For large files, inspect relevant sections rather than the whole file. Don't
