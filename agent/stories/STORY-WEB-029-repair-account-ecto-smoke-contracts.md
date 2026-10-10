@@ -21,7 +21,7 @@ Restore the account and Ectoplasm live browser smoke checks so they verify the c
 ## Authoritative Source Documents / Sections
 
 - Supplied Phase 5 roadmap excerpt: complete and verify browser feature workflows; browser smoke coverage is tracked in canonical stories and TEST_STRATEGY.md.
-- `docs/DOMAIN_SPEC.md` ?2.3.1, Ecto Salvage browser-owned calculation inputs and behavior.
+- `docs/DOMAIN_SPEC.md` §2.3.1, Ecto Salvage browser-owned calculation inputs and behavior.
 - `docs/TEST_STRATEGY.md` browser smoke testing section.
 - `agent/stories/STORY-WEB-021-ecto-content-test-hooks.md`, Follow-up Findings F002.
 - `agent/stories/STORY-WEB-027-remove-tracked-smoke-control-copy.md`, Follow-up Findings F001.
@@ -184,3 +184,11 @@ assertion is never made. `BankSlotTile.vue` branch coverage is 78.94%, the lowes
 F003: `account-browser-smoke.mjs` ends by printing every observed backend call, which on live data is
 one ~700-entry line of icon URLs (~60 KB). It pushes the step lines that are the actual evidence out
 of any bounded log view, and had to be filtered out by hand to read this run's outcome.
+
+## Follow-up Findings Disposition
+
+F001: DISMISSED — the unreferenced `InventoryItem.vue` is optional cleanup, and its recorded 0% coverage does not establish a Phase 5 workflow defect or an unmet Phase 5 requirement. `docs/QUALITY_METRICS.md`.
+
+F002: DISMISSED — this is a dead unit-test assertion (the current empty-slot class is `bank-cell--empty`), a verification gap rather than a confirmed behavior defect; no additional implementation story is justified by the finding alone. `frontend/src/account/__tests__/BankScreen.spec.ts`; `docs/TEST_STRATEGY.md` §12.1.
+
+F003: FOLLOW-UP STORY — STORY-WEB-031

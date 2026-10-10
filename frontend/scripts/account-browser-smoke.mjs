@@ -49,6 +49,56 @@ const TASK_STATUS_ROUTE = /^\/api\/sync\/tasks\/[0-9a-fA-F-]+$/
 
 const steps = []
 
+/** Every backend call the browser really made, so the run proves the network path was used. */
+const apiCalls = []
+
+/**
+ * How many distinct call shapes the summary below prints before it reports the rest as a count.
+ */
+const CALL_SUMMARY_LIMIT = 15
+
+/**
+ * The path with its identifying segments replaced by the shape they belong to.
+ *
+ * Only the two routes whose path carries an id need this: a live account's items produce one icon
+ * path per item, and a stale read produces one task path per refresh.
+ */
+function callShape(path) {
+  if (ICON_ROUTE.test(path)) return '/api/items/{id}/icon/{hash}'
+  if (TASK_STATUS_ROUTE.test(path)) return '/api/sync/tasks/{id}'
+  return path
+}
+
+/**
+ * The observed backend calls as a bounded summary — one line per distinct shape, method and status
+ * with how often it was seen, never one line per request.
+ *
+ * A live account holds hundreds of items, and listing every call individually put all of them on one
+ * line — 30 KB of a 31 KB run, measured against a 180-slot bank and 681 material positions — which
+ * pushed the step evidence above out of bounded log views (STORY-WEB-031). Collapsing
+ * the icon and task-status paths to their shape and capping the printed lines keeps this the same
+ * size however much the account holds, while still naming every route that was called and every
+ * status it answered — which is what an unexpected call has to be recognized by.
+ */
+function summarizeBackendCalls(calls) {
+  if (calls.length === 0) return 'no backend call observed'
+  const byShape = new Map()
+  for (const call of calls) {
+    const key = `${call.method} ${callShape(call.path)} → HTTP ${call.status}`
+    byShape.set(key, (byShape.get(key) ?? 0) + 1)
+  }
+  const ranked = [...byShape.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  const lines = ranked
+    .slice(0, CALL_SUMMARY_LIMIT)
+    .map(([key, count]) => `  ${String(count).padStart(4)} × ${key}`)
+  if (ranked.length > CALL_SUMMARY_LIMIT) {
+    lines.push(`  … and ${ranked.length - CALL_SUMMARY_LIMIT} further distinct call shape(s)`)
+  }
+  return (
+    `${calls.length} backend call(s) in ${ranked.length} distinct shape(s):\n${lines.join('\n')}`
+  )
+}
+
 /**
  * The quantity badge as `InventoryTile.vue` paints it, or null where it paints none.
  *
@@ -83,9 +133,6 @@ async function run() {
 
   const browser = await chromium.launch({ executablePath: browserPath })
   const page = await browser.newPage()
-
-  /** Every backend call the browser really made, so the run proves the network path was used. */
-  const apiCalls = []
 
   /** Every request the browser issued, whatever its origin — what proves where images came from. */
   const browserRequests = []
@@ -372,7 +419,12 @@ async function run() {
     )
     const offRoute = images.filter((image) => !ICON_ROUTE.test(image.src ?? ''))
     if (offRoute.length > 0) {
-      throw new Error(`An image was rendered off the icon route: ${JSON.stringify(offRoute)}`)
+      // One misrouted image is the defect; a live page holds hundreds of them, so name the count and
+      // the first few rather than every src (STORY-WEB-031).
+      throw new Error(
+        `${offRoute.length} image(s) were rendered off the icon route, first: ` +
+          JSON.stringify(offRoute.slice(0, 5))
+      )
     }
     const withoutPolicy = images.filter((image) => image.referrer !== 'no-referrer')
     if (withoutPolicy.length > 0) {
@@ -423,7 +475,7 @@ async function run() {
     )
 
     console.log(`\nAccount browser smoke PASSED (${steps.length} steps).`)
-    console.log(`Backend calls observed: ${apiCalls.map((call) => `${call.path} ${call.status}`).join(', ')}`)
+    console.log(`Backend calls observed: ${summarizeBackendCalls(apiCalls)}`)
   } finally {
     await browser.close()
   }
@@ -431,6 +483,10 @@ async function run() {
 
 run().catch((error) => {
   console.error(`\nAccount browser smoke FAILED after ${steps.length} step(s): ${error.message}`)
+  // The same bounded summary a passing run prints: a failing step's own message names what it
+  // compared, and this says which routes the browser had reached by then and what they answered,
+  // without the icon requests growing the report (STORY-WEB-031).
+  console.error(`Backend calls observed: ${summarizeBackendCalls(apiCalls)}`)
   console.error('Are both the backend (./mvnw spring-boot:run) and the dev server (npm run dev) running?')
   process.exitCode = 1
 })

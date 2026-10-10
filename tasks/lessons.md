@@ -490,6 +490,27 @@ against its Result: here the maintainer's commits had already rewritten both
 scripts, so the whole remaining job was to verify and to make the verification
 legible, not to re-edit anything.
 
+## Kill the PIDs you identified, never a pattern re-matched against the machine
+
+A cleanup step that re-queries processes by command-line substring is not the same list you
+inspected a moment earlier. Resolve the PIDs once, confirm each one is yours, then stop exactly
+those numbers.
+
+**Why:** `STORY-WEB-031` started a backend for live smoke evidence and shut it down correctly the
+first time, by the two PIDs it had read out of `Get-CimInstance` and recognized (`spring-boot`
+argfile, `mvnw` wrapper). The second shutdown took a shortcut —
+`Where-Object { $_.CommandLine -like '*maven*' -or … }` — which also matched the maintainer's
+headless IntelliJ helper JVM (PID 27740, started two days earlier, `jna.boot.library.path` pointing
+into the IDE install, listed in the *same* earlier output and explicitly set aside as not mine).
+It was killed. `idea64` survived, but a process the session had already identified as the
+maintainer's was stopped by a filter written to be convenient.
+
+**How to apply:** `taskkill /PID <n> /T /F` (or `Stop-Process -Id`) against PIDs read from a listing
+you actually looked at, one call per PID so a surprise match cannot hide in a loop. A substring like
+`maven`, `java` or `node` describes the maintainer's toolchain as readily as your own child process;
+distinguish yours by creation time and parent PID, as the existing profile lesson above already
+says, and say so in the result when a cleanup touched anything you did not start.
+
 ## An invariant asserted inside the gate must hold for the tree the gate is handed
 
 A test that reads the live repository files runs, in CI, against the commit the harness
@@ -514,3 +535,24 @@ every other caller) rather than by dropping the rule, and keep the rule covered 
 decidable — in the running harness, which can still see `ATTEMPT_STATE.json`. A checkout
 cannot distinguish a transaction in flight from one that never finished when the record
 that separates them is gitignored.
+
+## When the criterion is about output, the Result must carry the output, not its measurements
+
+A figure you measured ("1,678 bytes", "exited 1 after 3 steps") is a claim about a run nobody
+else can see. If an acceptance criterion is about what a command prints, paste the command's
+complete captured stdout+stderr into the Result, and say which command produced it.
+
+**Why:** `STORY-WEB-031` was rejected with its implementation judged correct. Its Result described
+a successful high-volume run and a controlled unexpected-call failure accurately — byte counts, exit
+codes, the summary's last five lines — but the criteria were "output stays bounded", "step summaries
+remain visible" and "the failure diagnostic is useful", and none of those can be checked against a
+paraphrase. The re-run that fixed the rejection changed no code at all; it only captured both runs to
+a file and quoted them whole. The captures were ~1.8 KB and ~1.4 KB — small enough that withholding
+them bought nothing.
+
+**How to apply:** redirect the run (`cmd > capture.log 2>&1; echo "exit=$?" >> capture.log`), quote
+the file verbatim in a fenced block, and label which lines you appended. Keep the derived numbers as
+well — they are what makes the bound legible — but next to the text they were derived from. For a
+*control*, give the reviewer the one command that regenerates it (`sed`-insert a single line, or
+`git show HEAD:<path>` for "before"), state the one-line `diff`, and delete the copy afterwards:
+a control is reproducible instructions plus its output, never a tracked file.

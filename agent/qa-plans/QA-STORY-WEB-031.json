@@ -1,0 +1,103 @@
+{
+  "status": "READY",
+  "story_id": "STORY-WEB-031",
+  "rationale": "This is a reporting-only change to the account browser smoke script. Existing frontend component tests do not exercise that script, and adding tests solely to increase coverage is not warranted. The story’s controlled and live browser runs provide the relevant verification.",
+  "acceptance_checks": [
+    {
+      "criterion": "A successful account smoke run does not print the complete per-request call list.",
+      "expected": "A run with many icon requests exits successfully without printing all observed backend calls.",
+      "verification": "Run `npm run smoke:account` against its supported controlled or live application; inspect captured output and confirm it contains no complete per-request call list."
+    },
+    {
+      "criterion": "Its step summaries and final pass status remain visible and identify the checks performed.",
+      "expected": "The output retains the step evidence and final `Account browser smoke PASSED` status.",
+      "verification": "In the successful run, inspect captured output for step summaries and the final pass status."
+    },
+    {
+      "criterion": "Failure reporting retains enough bounded context to diagnose unexpected backend calls without dumping an unbounded list of successful icon requests.",
+      "expected": "A controlled unexpected-call failure exits nonzero and reports the unexpected call with bounded context; successful icon requests do not make the error output grow with the full observed call list.",
+      "verification": "Exercise a controlled unexpected-call failure and inspect captured output, including its size and diagnostic content."
+    },
+    {
+      "criterion": "The smoke continues to assert the same account workflow behavior and request-origin constraints.",
+      "expected": "Existing bank/material comparisons, reload/request checks, synchronization restrictions, and browser origin/upstream constraints remain asserted and pass as applicable.",
+      "verification": "Review the script diff to confirm only reporting and directly related assertions changed; run `npm run smoke:account` and confirm the workflow checks pass."
+    }
+  ],
+  "invariants": [
+    "Reporting changes must not weaken account workflow or request-origin assertions.",
+    "Successful-run output must remain bounded as the number of icon requests grows.",
+    "Failure output must retain enough information to identify unexpected calls while remaining bounded."
+  ],
+  "test_levels": [
+    "end_to_end"
+  ],
+  "existing_tests_reviewed": [
+    "frontend/src/account/__tests__/BankScreen.spec.ts and MaterialsScreen.spec.ts cover account screen behavior; they do not exercise the browser smoke script.",
+    "frontend/scripts/account-browser-smoke.mjs records workflow steps, checks observed requests and origin constraints, and currently prints every observed backend call at completion.",
+    "frontend/package.json maps `smoke:account` to `node scripts/account-browser-smoke.mjs`."
+  ],
+  "prepared_test_paths": [],
+  "test_specifications": [
+    "Run `npm run smoke:account` against a supported controlled or live application with representative high icon-request volume. Confirm successful output retains each step summary and final pass status, omits the full per-request call list, and stays bounded as icon request count increases.",
+    "Cause a controlled unexpected backend call during the account smoke run. Confirm the process exits nonzero and output identifies the unexpected call and relevant check while omitting the full successful icon-request list."
+  ],
+  "pre_implementation_verification": {
+    "status": "NOT_RUN",
+    "command": "npm run smoke:account (requires the supported browser runtime, backend, and frontend dev server; run after implementation as specified by the story)",
+    "failure_evidence": ""
+  },
+  "coverage_review": "The available QUALITY_METRICS snapshot reports frontend TypeScript coverage by source area, including account, but does not provide coverage for this standalone reporting script. Existing account component tests do not cover script output. No new component tests are needed for this script-only change.",
+  "external_sources": [],
+  "clarifications": [],
+  "post_implementation_review_required": true,
+  "post_implementation_review_reason": "The acceptance criteria depend on captured output from both a successful high-volume run and a controlled unexpected-call failure; the existing component suite cannot establish either.",
+  "schema_version": 1,
+  "qa_model": "gpt-6-luna",
+  "qa_reasoning_effort": "medium",
+  "story_contract_sha256": "c40dd36e2e1aa57aca6ce34b105874742a216ab7fe05a2c72e1d72c52670df0d",
+  "user_decision_ids": [],
+  "protected_test_hashes": {},
+  "post_implementation_reviews": [
+    {
+      "decision": "NEEDS_USER",
+      "reason": "The implementation diff preserves the workflow assertions and bounds the normal summary by distinct call shapes. The story reports successful live and controlled failure runs, including output sizes and relevant diagnostics, but the captured outputs are absent, so I could not independently verify them. The available log also has no STORY-WEB-031 CI result, despite the story’s DoD requiring a green CI gate.",
+      "evidence": [
+        "The diff changes reporting in frontend/scripts/account-browser-smoke.mjs and caps the summary at 15 distinct method, path-shape, and status combinations.",
+        "The bank and materials comparisons, reload request checks, image route and referrer checks, synchronization restrictions, and browser-origin assertions remain in the script.",
+        "The QA plan has no prepared test paths and requires post-implementation review of successful high-volume and controlled failure output.",
+        "The story reports an 8-step live run with 1,678 bytes of output and a controlled failure with exit code 1 and 1,445 bytes; those captured outputs are not present for inspection.",
+        "The available 2026-10-10 log records implementation and evaluator start but no current-story CI result."
+      ],
+      "actionable_items": [
+        "Provide the captured successful and controlled-failure smoke outputs, or an independently reviewable run artifact.",
+        "Provide evidence that the required STORY-WEB-031 CI gate passed."
+      ]
+    },
+    {
+      "decision": "RETRY",
+      "reason": "The implementation appears to bound success and failure summaries while preserving the workflow checks, but the acceptance criteria depend on captured output from a successful high-volume run and a controlled unexpected-call failure. The story reports those runs, yet their outputs are not available to review. The QA plan has no prepared test files, so there are no prepared tests whose presence or integrity needs confirmation. CI is a harness follow-up and is not required for this review.",
+      "evidence": [
+        "The script normalizes icon and task-status IDs, caps reported call shapes at 15, and uses the summary on success and failure.",
+        "The diff preserves the bank and materials comparisons, reload checks, image route and referrer checks, synchronization restrictions, and browser-origin checks; the off-route image error now reports only the first five examples.",
+        "The story reports successful and controlled-failure smoke runs, but no captured output or reviewable run artifact is present in the repository.",
+        "The QA plan lists no prepared test paths and requires review of both run outputs."
+      ],
+      "actionable_items": [
+        "Provide reviewable output artifacts for a successful high-volume account smoke run and a controlled unexpected-call failure, showing bounded output, retained step summaries and pass status, and a useful bounded failure diagnostic."
+      ]
+    },
+    {
+      "decision": "APPROVE",
+      "reason": "The implementation meets the story’s acceptance criteria. The story contains reviewable output from a successful high-volume run and a controlled unexpected-call failure; CI remains a harness follow-up and is not required for this review.",
+      "evidence": [
+        "The diff bounds backend-call reporting by normalizing icon and task-status paths and capping distinct call shapes at 15; failure reporting uses the same summary.",
+        "The recorded successful run exited 0 with 8 step summaries, a visible pass status, and 231 calls including 223 icon requests. Its 373-byte summary replaces the prior 23,194-byte per-request line.",
+        "The recorded controlled failure exited 1 after an injected unexpected call, identified the reload violation, and emitted a bounded 276-byte backend-call report despite 156 observed icon requests.",
+        "The diff preserves the account workflow, reload, image route and referrer, synchronization, and browser-origin checks. The recorded run shows those checks passing.",
+        "The QA plan has no prepared test paths. Its required end-to-end evidence is present in the story’s Result; no component tests exercise this reporting-only script."
+      ],
+      "actionable_items": []
+    }
+  ]
+}

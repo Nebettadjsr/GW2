@@ -13,9 +13,9 @@ below stay in the plain form.
 
 ## Active
 
+- STORY-WEB-031 | STORY-WEB-031-bound-account-smoke-call-reporting.md | TODO | milestone-05 | deps: STORY-WEB-029
 
 ## To Do
-- STORY-WEB-031 | STORY-WEB-031-bound-account-smoke-call-reporting.md | TODO | milestone-05 | deps: STORY-WEB-029
 - STORY-WEB-032 | STORY-WEB-032-root-sourcing-browser-coverage.md | TODO | milestone-05 | deps: None
 
 ## Blocked
