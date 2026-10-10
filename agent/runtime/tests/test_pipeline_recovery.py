@@ -324,3 +324,30 @@ def _finished_attempt():
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QAReviewGateTest(PipelineRecoveryTestCase):
+    """A QA review that only misses post-acceptance gates must not withhold acceptance."""
+
+    def review_with(self, review):
+        plan = {"story_id": "STORY-WEB-018", "status": "READY", "post_implementation_review_required": True}
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(orchestrator, "evaluate_story",
+                                             return_value={"decision": "COMPLETE", "reason": "ok"}))
+            stack.enter_context(patch.object(orchestrator.qa_agent, "run_conditional_review", return_value=review))
+            stack.enter_context(patch.object(orchestrator.qa_agent, "record_review"))
+            stack.enter_context(patch.object(orchestrator, "get_active_story_path", return_value=self.stories_dir / "s.md"))
+            return orchestrator._evaluate_preserving_completed_attempt("story", "result", 0, True, qa_plan=plan)
+
+    def test_a_review_asking_only_for_ci_evidence_approves(self):
+        evaluation = self.review_with({"decision": "NEEDS_USER", "reason": "No CI result yet.",
+                                       "actionable_items": ["Provide evidence that the required CI gate passed."]})
+        self.assertEqual(evaluation["decision"], "COMPLETE")
+        self.assertEqual(evaluation["qa_post_review"]["decision"], "APPROVE")
+
+    def test_a_review_with_a_real_item_still_retries_without_the_ci_item(self):
+        evaluation = self.review_with({"decision": "RETRY", "reason": "Outputs missing.",
+                                       "actionable_items": ["Store the smoke outputs in the story Result.",
+                                                            "Provide evidence that the required CI gate passed."]})
+        self.assertEqual(evaluation["decision"], "RETRY")
+        self.assertEqual(evaluation["actionable_retry_items"], ["Store the smoke outputs in the story Result."])

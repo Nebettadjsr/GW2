@@ -32,7 +32,7 @@ from agent.runtime.support.config import (
     REPO_ROOT,
 )
 from agent.runtime.evaluation.claude_prompt import build_claude_prompt
-from agent.runtime.evaluation.evaluator import evaluate_story
+from agent.runtime.evaluation.evaluator import drop_post_acceptance_gates, evaluate_story
 from agent.runtime.support.capacity import ModelCapacityUnavailable
 from agent.runtime.support.daily_log import (
     log_line,
@@ -138,6 +138,10 @@ def _evaluate_with_local_retries(
     raise last_error
 
 
+def _as_text_list(value) -> list[str]:
+    return [str(item) for item in value or [] if str(item).strip()]
+
+
 def _evaluate_preserving_completed_attempt(
         story_content: str,
         result_content: str,
@@ -171,6 +175,14 @@ def _evaluate_preserving_completed_attempt(
             if review_required and qa_plan and not evaluation.get("qa_post_review"):
                 review = qa_agent.run_conditional_review(story_path=get_active_story_path(), plan=qa_plan,
                                                         evaluation=evaluation)
+                items, gates = drop_post_acceptance_gates(_as_text_list(review.get("actionable_items")))
+                if gates and review["decision"] != "APPROVE" and not items:
+                    # Only post-acceptance gates were missing: the pipeline checks them next.
+                    review = {**review, "decision": "APPROVE", "actionable_items": [],
+                              "reason": review.get("reason", "") + " (Post-acceptance gates are "
+                                        "verified by the pipeline after acceptance: " + "; ".join(gates) + ")"}
+                elif gates:
+                    review = {**review, "actionable_items": items}
                 qa_agent.record_review(qa_plan, review)
                 evaluation["qa_post_review"] = review
                 if review["decision"] == "RETRY":

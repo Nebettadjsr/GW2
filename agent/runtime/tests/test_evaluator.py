@@ -494,3 +494,44 @@ class RetryPromptScopeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PostAcceptanceGateTests(unittest.TestCase):
+    """CI, commit and push are checked by the pipeline after acceptance, never before."""
+
+    def test_a_verdict_withheld_only_for_the_ci_gate_is_acceptance(self):
+        # Regression: STORY-WEB-031's evaluator returned exactly this and blocked the story.
+        raw = {"decision": "NEEDS_USER", "intent_achieved": True, "reason": "CI is a harness follow-up.",
+               "evidence": ["frontend/scripts/account-browser-smoke.mjs"],
+               "unmet_intent": [], "unmet_acceptance_criteria": [],
+               "unmet_definition_of_done": ["The required green CI gate for STORY-WEB-031 is not evidenced in the available log."],
+               "actionable_retry_items": []}
+        result = normalize_evaluation(raw, TODO_STORY)
+        self.assertEqual(result["decision"], "COMPLETE")
+        self.assertTrue(result["normalized"])
+        self.assertEqual(result["unmet_definition_of_done"], [])
+
+    def test_a_retry_for_committing_and_pushing_is_acceptance(self):
+        raw = {"decision": "RETRY", "unmet_definition_of_done": ["The change is not committed and pushed."],
+               "actionable_retry_items": ["Commit and push the change."]}
+        self.assertEqual(normalize_evaluation(raw, TODO_STORY)["decision"], "COMPLETE")
+
+    def test_a_real_deficiency_still_retries_without_the_gate_item(self):
+        raw = {"decision": "RETRY",
+               "unmet_acceptance_criteria": ["The failure handler prints no call summary."],
+               "unmet_definition_of_done": ["The CI gate is green."],
+               "actionable_retry_items": ["Print the bounded summary on failure.", "Provide CI evidence."]}
+        result = normalize_evaluation(raw, TODO_STORY)
+        self.assertEqual(result["decision"], "RETRY")
+        self.assertEqual(result["actionable_retry_items"], ["Print the bounded summary on failure."])
+        self.assertEqual(result["unmet_definition_of_done"], [])
+
+    def test_a_genuine_external_action_is_not_reinterpreted(self):
+        raw = {"decision": "NEEDS_USER", "reason": "A GW2 API key with the inventories scope is required.",
+               "unmet_definition_of_done": [], "actionable_retry_items": []}
+        self.assertEqual(normalize_evaluation(raw, TODO_STORY)["decision"], "NEEDS_USER")
+
+    def test_an_unachieved_purpose_is_never_waved_through_by_the_gate_rule(self):
+        raw = {"decision": "RETRY", "intent_achieved": False,
+               "unmet_definition_of_done": ["The CI gate is green."], "actionable_retry_items": []}
+        self.assertNotEqual(normalize_evaluation(raw, TODO_STORY)["decision"], "COMPLETE")

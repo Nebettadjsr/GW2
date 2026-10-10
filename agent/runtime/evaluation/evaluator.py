@@ -201,6 +201,15 @@ You cannot run the build or the test suite, and you are not being asked to:
 the full regression run is GitHub Actions' job, after you accept the story.
 Judge what the code does, not whether it compiles on your machine.
 
+POST-ACCEPTANCE GATES
+=====================
+
+The pipeline commits and pushes the story and runs GitHub CI only after you
+return COMPLETE. A Definition of Done item such as "the CI gate is green" or
+"the change is committed and pushed" is therefore verified by the pipeline
+afterwards, never by you: treat it as satisfied, never list it as unmet, and
+never return RETRY, BLOCKED or NEEDS_USER because of it.
+
 Record in `evidence` the concrete things you actually inspected -- file paths,
 diff hunks, test names. Never list something you did not look at.
 
@@ -507,6 +516,22 @@ def _as_list(value) -> list[str]:
     return [str(item) for item in value if str(item).strip()]
 
 
+# Items only the pipeline can establish, and only after acceptance: it
+# publishes the story and runs CI once the evaluator says COMPLETE. A
+# verdict that withholds acceptance for them can never be satisfied.
+POST_ACCEPTANCE_GATE = re.compile(
+    r"\bCI\b|continuous integration|github actions|\bgreen (?:ci )?gate\b"
+    r"|\bcommitted\b|\bpushed\b|\bcommit(?:ted)? and push",
+    re.IGNORECASE,
+)
+
+
+def drop_post_acceptance_gates(items: list[str]) -> tuple[list[str], list[str]]:
+    """Split items into (still actionable, post-acceptance gates)."""
+    kept = [item for item in items if not POST_ACCEPTANCE_GATE.search(item)]
+    return kept, [item for item in items if POST_ACCEPTANCE_GATE.search(item)]
+
+
 def normalize_evaluation(
     evaluation: dict,
     story_content: str
@@ -515,18 +540,32 @@ def normalize_evaluation(
     decision = evaluation.get("decision")
     reason = evaluation.get("reason", "")
 
-    unmet_intent = _as_list(
-        evaluation.get("unmet_intent")
-    )
-    unmet_acceptance_criteria = _as_list(
-        evaluation.get("unmet_acceptance_criteria")
-    )
-    unmet_definition_of_done = _as_list(
-        evaluation.get("unmet_definition_of_done")
-    )
-    actionable_retry_items = _as_list(
-        evaluation.get("actionable_retry_items")
-    )
+    lists = {}
+    gates = []
+    for field in ("unmet_intent", "unmet_acceptance_criteria",
+                  "unmet_definition_of_done", "actionable_retry_items"):
+        lists[field], dropped = drop_post_acceptance_gates(_as_list(evaluation.get(field)))
+        gates += dropped
+    unmet_intent = lists["unmet_intent"]
+    unmet_acceptance_criteria = lists["unmet_acceptance_criteria"]
+    unmet_definition_of_done = lists["unmet_definition_of_done"]
+    actionable_retry_items = lists["actionable_retry_items"]
+
+    if (gates and decision in ("RETRY", "BLOCKED", "NEEDS_USER")
+            and not any(lists.values()) and evaluation.get("intent_achieved") is not False):
+        # The only objections were gates the pipeline itself checks after
+        # acceptance, so withholding acceptance would block forever.
+        return {
+            "decision": "COMPLETE",
+            "reason": (f"Normalized {decision} -> COMPLETE: the only unmet items were "
+                       "post-acceptance pipeline gates (commit, push, CI), which the "
+                       f"pipeline verifies after acceptance: {gates}. Original reason: {reason!r}"),
+            "intent_achieved": evaluation.get("intent_achieved"),
+            "evidence": _as_list(evaluation.get("evidence")),
+            "unmet_intent": [], "unmet_acceptance_criteria": [],
+            "unmet_definition_of_done": [], "actionable_retry_items": [],
+            "raw_decision": decision, "normalized": True,
+        }
 
     unmet_items = (
         unmet_intent

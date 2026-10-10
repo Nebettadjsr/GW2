@@ -659,7 +659,10 @@ Rules:
 - `Required Tests` names the tests that must exist and pass. Neither it nor
   `Definition of Done` may require a full local regression run: the GitHub CI gate
   owns the complete suites and a story is not complete until that gate is green
-  (`docs/TEST_STRATEGY.md` §36). Where a story touches a layer the gate cannot run
+  (`docs/TEST_STRATEGY.md` §36). The pipeline publishes and runs that gate only after
+  the Evaluator accepts the story, so never make it an item the implementation or
+  evaluation must evidence; if mentioned at all, write it as "the CI gate is green
+  (verified by the pipeline after acceptance)". Where a story touches a layer the gate cannot run
   — TestFX UI verification, a browser smoke script, a real-database `*IT` check —
   name that check explicitly, because nothing else will run it.
 - For implementation stories, consult `docs/TEST_STRATEGY.md` and include applicable tests for
