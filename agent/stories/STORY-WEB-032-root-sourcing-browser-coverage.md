@@ -8,7 +8,7 @@ Verify root sourcing in browser resolution details
 
 ## Status
 
-TODO
+DONE
 
 ## Milestone
 
