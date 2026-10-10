@@ -4,7 +4,7 @@
 
 This directory contains the experimental AI-assisted development workflow used to clean up, stabilize, and further develop the GW2 crafting application.
 
-> **Documentation status:** This file preserves the experiment's background and earlier design notes. It is not the current runtime contract; some operational details below are historical. For the implemented workflow, use [`runtime/README.md`](runtime/README.md), [`PLANNER_INSTRUCTIONS.md`](PLANNER_INSTRUCTIONS.md), [`ARCHITECT_INSTRUCTIONS.md`](ARCHITECT_INSTRUCTIONS.md), and [`QA_INSTRUCTIONS.md`](QA_INSTRUCTIONS.md). The runtime guide owns current Planner triggers, stage recovery, retry limits, and technical failure handling.
+> **Documentation status:** This file preserves the experiment's background and earlier design notes. It is not the current runtime contract; some operational details below are historical. The standalone Python orchestrator described below has been replaced by the n8n development pipeline; for the implemented workflow, use [`../local_bridge/README.md`](../local_bridge/README.md), [`runtime/README.md`](runtime/README.md), [`PLANNER_INSTRUCTIONS.md`](PLANNER_INSTRUCTIONS.md), [`ARCHITECT_INSTRUCTIONS.md`](ARCHITECT_INSTRUCTIONS.md), and [`QA_INSTRUCTIONS.md`](QA_INSTRUCTIONS.md). The runtime guide owns current Planner triggers, stage recovery, retry limits, and technical failure handling.
 
 This setup is deliberately experimental.
 

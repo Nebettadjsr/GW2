@@ -232,10 +232,11 @@ These findings concern the repository's agent/runtime implementation. They remai
 **Inferred risk:** illegal source edits can escape detection, and rejected planning changes remain visible to later runs/users. Synchronous invocation prevents simultaneous model writers but does not make validation a commit boundary (TARGET_ARCHITECTURE §36). **Recommendation:** separately define content-based protected-state checks and a commit/rollback boundary covering validation; preserve pre-existing user changes.
 
 
-### KP-28 — All nonzero Claude exits are treated as capacity interruptions (CH-19)
+### KP-28 — All nonzero Claude exits are treated as capacity interruptions (CH-19) (resolved)
 
+**Resolved 2026-10-10:** `run_claude_attempt()` classifies each non-zero exit from its output tail, and the pipeline's `implement` step double-checks `/usage`. Only a real capacity signal pauses the story; other failures count against `MAX_CLAUDE_FAILED_RUNS_PER_STORY` and then create a user intervention (`local_bridge/README.md`). The original finding is kept below for history.
 
-**Observed fact:** the runner returns only the process exit code. Every nonzero exit sets the story UNFINISHED, defers capacity and loops back to the same prompt, without classifying usage exhaustion versus authentication/CLI/configuration/process failure. This path never consumes the normal retry limit or creates an intervention.
+**Observed fact (original):** the runner returns only the process exit code. Every nonzero exit sets the story UNFINISHED, defers capacity and loops back to the same prompt, without classifying usage exhaustion versus authentication/CLI/configuration/process failure. This path never consumes the normal retry limit or creates an intervention.
 
 **Inferred risk:** a deterministic invocation failure becomes an indefinite hourly retry cycle masquerading as quota exhaustion, withholding actionable failure handling. **Recommendation:** preserve quota-resume behavior while distinguishing capacity events from terminal/tooling errors. No Claude command was invoked in this audit.
 

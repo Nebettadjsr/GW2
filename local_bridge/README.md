@@ -79,6 +79,35 @@ re-attaches to the step that is still running. It never starts a second one. If 
 start a new one; it re-attaches the same way. After a story is finalized the run continues with the next
 story, planning first if the queue is empty, until nothing is selectable or a step needs attention.
 
+## Rules for working alongside the pipeline
+
+1. **Pause before touching the repository by hand.** Stop the bridge (Ctrl+C in its window) or unpublish
+   **GW2 - Development Pipeline**, then make your change, then restart. While Claude implements, every file
+   that becomes dirty is attributed to the story and committed with it. A hand edit during that window
+   ends up in the story's commit.
+2. **Change lifecycle files only while the bridge is stopped.** The pipeline follows `CURRENT_STORY.md`. If
+   you activate, unblock or re-queue a story by hand, edit the pointer, `BACKLOG.md` and the story Status
+   together, check `story_state.validate_backlog_consistency()`, and adjust or drop that story's record in
+   `tasks.json` (back it up first). See *Recovering by hand*.
+3. **Keep agent-workflow work out of stories.** Fixes to `agent/runtime/`, `local_bridge/`, the n8n
+   workflows or `.github/workflows/` are their own commits, made while the pipeline is paused. GW2 stories
+   never change them, and a failing agent-runtime CI job never holds a story.
+4. **Commit your own work before resuming.** Uncommitted hand changes stay out of story commits, because a
+   story commits only its own paths. But they linger in every later baseline, so publish them yourself.
+5. **One driver at a time.** Run one bridge process. The hourly schedule skips while a run is active; a
+   manual start re-attaches to a running step instead of starting another. Never start the bridge twice.
+6. **Restart the bridge only between steps, or while it waits on CI.** A restart marks the running step
+   `interrupted`, and the next run repeats it. That is cheap for `ci` and `publish`; for `implement` it
+   repeats Claude's attempt with a continuation prompt.
+7. **Change the n8n workflows deliberately.** After editing a workflow in the UI, click **Publish**. If you
+   import one with `n8n import:workflow`, publish it and run `docker restart n8n`, because the CLI only takes
+   effect on restart. Export the result to `workflows/` so the repository copy stays current.
+8. **Steer Claude's spending only through the budget table.** Use `mode = manual` for a day, and never
+   edit code constants for that.
+9. **Agents must not pipe text into programs from PowerShell** (`AGENTS.md`, *Editing Files on Windows*);
+   Windows PowerShell 5.1 turns `—` and `§` into `?`. A machine-wide PowerShell 7 fixes it for the Codex
+   sandbox; the Microsoft Store edition does not.
+
 ## Claude budget
 
 Claude only starts when both checks pass. It is never stopped mid-run.
@@ -105,8 +134,6 @@ the new values.
 | `unlock_time` | When each day's share unlocks (default `17:30`). |
 | `manual_cap_percent` | Weekly-usage cap in `manual` mode. |
 | `now_*` | Live status, written every 15 minutes by **GW2 - Claude Budget**. Run that workflow to refresh it. |
-
-Don't run the old orchestrator (`agent/runtime/core/orchestrator.py main`) at the same time.
 
 ## Start the bridge
 

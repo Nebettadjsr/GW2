@@ -30,7 +30,7 @@ RESOLVED     answered; never processed again
 ```
 
 **Re-queuing a request by hand** is a normal operation: set `## Status` back to
-`OPEN` and the architect is dispatched again on the next orchestrator cycle.
+`OPEN` and the architect is dispatched again on the next pipeline run.
 `TODO`, `TO DO`, `NEW`, `PENDING` and `REOPENED` are also read as `OPEN`, since
 that is what "not done yet" looks like everywhere else in this repository.
 

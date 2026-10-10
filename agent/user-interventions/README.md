@@ -31,18 +31,18 @@ actually block progress, is never a reason to create a file here.
 3. The affected story is moved to `agent/stories/BACKLOG.md`'s
    `## Blocked` section, citing this file as its blocker. This does not
    consume the story's normal implementation retry count.
-4. The orchestrator continues with other independently executable work;
-   it does not stop.
-5. If no other executable work remains, the orchestrator waits locally
-   (no model calls) and re-checks this file's `## Status` on a timer.
+4. The development pipeline continues with other independently executable
+   work; the blocked story's pointer is cleared.
+5. Every pipeline run (by hand or the hourly schedule) re-checks this file's
+   `## Status` before selecting work; nothing waits on a timer.
 6. Once you have performed the required action, set `## Status` to
    `RESOLVED` and fill in `## User Resolution` / `## Resolution Notes`.
-7. The orchestrator then re-checks the story's normal eligibility
+7. The pipeline then re-checks the story's normal eligibility
    (dependencies, other blockers) before requeuing it — resolving an
    intervention here never bypasses an unrelated blocker.
 
 Never delete a file here manually while its story is still blocked; the
-orchestrator (Python, not an LLM) is the only thing that moves the story
+pipeline (Python, not an LLM) is the only thing that moves the story
 back to `## To Do`, and only after re-verifying it is genuinely
 executable.
 

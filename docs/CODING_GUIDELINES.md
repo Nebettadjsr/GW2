@@ -149,8 +149,8 @@ plan and check in before implementing — see Section 4.
 **Subagents:** offload research, exploration, and parallel analysis to subagents to keep the
 main context window clean. One task per subagent, for focused execution.
 
-**Version control:** the orchestrator owns committing and pushing. When the evaluator
-accepts a story, `agent/runtime` stages everything outstanding, commits it as
+**Version control:** the development pipeline owns committing and pushing. When the
+evaluator accepts a story, the bridge stages the story's own changes, commits them as
 `implemented <STORY-ID>: <title>`, pushes it, and waits for the GitHub CI gate
 (`docs/TEST_STRATEGY.md` §36). One commit per verified story, not one per file
 touched — so do not commit during implementation, and never push, unless a human

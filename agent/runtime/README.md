@@ -1,19 +1,24 @@
 # Agent runtime
 
-Run from the repository root:
+The story workflow runs as the n8n **GW2 - Development Pipeline**, which calls
+the local bridge (`local_bridge/`) one step at a time. The bridge's README owns
+the pipeline: its steps, rules, budgets, recovery and how to start it. This
+package holds the building blocks the bridge calls: QA, the implementation
+prompt and Claude runner, the Evaluator, planner and architect passes, story
+state and the Git/GitHub CI integration. `core/orchestrator.py` is no longer an
+entry point; it keeps only the shared story-cycle helpers.
+
+Run the tests from the repository root (they use fixtures and mocks and never
+start a model or push):
 
 ```powershell
-python -m agent.runtime.core.orchestrator
 python -m unittest discover -s agent/runtime/tests -t . -p 'test_*.py'
+python -m unittest local_bridge.test_bridge local_bridge.test_claude_budget
 ```
-
-The orchestrator command starts the live workflow. Tests use fixtures and mocks;
-run tests separately from live orchestration. Individual suites can be run as
-`python -m unittest agent.runtime.tests.test_orchestrator -v`.
 
 | Folder | Responsibility |
 | --- | --- |
-| `core/` | Workflow orchestration, planning, architecture, story selection/state and archiving. |
+| `core/` | Story-cycle helpers used by the bridge (`orchestrator.py`), planning, architecture, story selection/state and archiving. |
 | `runners/` | Claude and Codex process execution, output and capacity handling. |
 | `evaluation/` | Claude prompt construction, and post-implementation evaluation (Codex, read-only). |
 | `qa/` | Persistent pre-implementation QA planning, test ownership and conditional read-only review. |
@@ -29,7 +34,7 @@ the runtime root. All repository and artifact paths belong in
 
 `artifacts/` contains `CLAUDE_RESULT.md`, `EVALUATOR_RESULT.json`, `QA_RESULT.json`,
 `PLANNING_RESULT.json`, `ARCHITECT_RESULT.json`,
-`SELECTOR_RESULT.json`, `ATTEMPT_STATE.json`, `QA_STATE.json`, and `NEXT_PROMPT.md`. Claude owns its implementation
+`SELECTOR_RESULT.json`, `QA_STATE.json`, and `NEXT_PROMPT.md`. Claude owns its implementation
 result; evaluation, planning, architecture, selection and
 orchestration own their respective generated outputs.
 These files are local runtime state, ignored by Git, and are not authoritative
@@ -80,7 +85,7 @@ pinned by this repository.
 
 QA writes new tests or permanent fixtures only in approved test roots. Python
 compares the complete tracked and visible-untracked file snapshot around each
-QA run, buffers the orchestrator's own append-only console transcript until the
+QA run, buffers the harness's own append-only log writes until the
 snapshot is checked, restores forbidden writes without overwriting a newer
 concurrent change, and rejects the plan if QA changes anything outside its
 test boundary. Plans store acceptance checks, invariants, test
@@ -105,9 +110,6 @@ developer manually requeues it. Only a validated `NEEDS_USER` plan uses the
 Product Owner decision flow. Model capacity exhaustion is a scheduling wait,
 not a failed attempt. A completed QA plan survives interruption, so the next
 run skips QA; generated tests from an interrupted QA run are recorded and reused.
-For legacy attempts already in evaluation/publication when this gate was
-introduced, the harness writes a compatibility plan and resumes the saved
-phase without rerunning coding.
 
 ## Evaluation (Codex, read-only)
 
@@ -154,74 +156,18 @@ It also gets no file-editing guidance, since it has nothing to apply it to.
 
 **Cost and capacity.** An evaluation is now a real Codex run on the shared
 Codex budget, so the attempt counts are small:
-`EVALUATION_ATTEMPTS * MAX_EVALUATION_BATCHES` = 4 runs before the cycle fails
-and a human is involved. Usage exhaustion is **not** one of those attempts —
-`ModelCapacityUnavailable` is re-raised past the retry handler and waited out
-by `CapacityScheduler.wait_for_codex()`, because the work is already finished
-and waiting is free. That wait deliberately does no other Codex work (the
-planner and architect share the exhausted budget) and lets no other story
-start (see the next section).
+`EVALUATION_ATTEMPTS * MAX_EVALUATION_BATCHES` = 4 runs before the evaluate
+step fails; the story keeps its evaluate phase, so the next pipeline run
+evaluates again and never re-runs Claude. Usage exhaustion is **not** one of
+those attempts: `ModelCapacityUnavailable` passes straight through and the
+bridge records it as a pause (`model_capacity_exhausted`).
 
-## Resuming an interrupted attempt (`ATTEMPT_STATE.json`)
+## Resuming an interrupted step
 
-A story's own `## Status` is written by Claude. It states what Claude believes
-about the implementation, and it can never state whether the harness has
-finished its own remaining steps: evaluation, the commit, the push and the CI
-verdict. Reading `Status: DONE` as "story complete" equated those two
-different facts, so any interruption between them — an evaluator outage, a
-Ctrl+C, a crash — was indistinguishable from a finished story: the next run
-skipped the story, selected a fresh one, and left the completed work
-unevaluated and unpushed.
-
-`ATTEMPT_STATE.json` records the harness's own position instead, and exists
-only while a step is outstanding:
-
-| Phase | Meaning | What a resumed run does |
-| --- | --- | --- |
-| `CODING` | Claude may be running; a baseline path set and prior result hash are persisted first. | If the story/result show Claude finished before the next journal write, promotes directly to evaluation. Otherwise resumes the saved coding prompt with retry budgets preserved. |
-| `AWAITING_EVALUATION` | Claude's attempt finished; no evaluator verdict yet. | Evaluates the story and result already on disk. Claude is not re-invoked and its capacity is not waited on. |
-| `AWAITING_QA_REVIEW` | A saved evaluator verdict requires independent QA review before it can be acted on. | Resumes the review/evaluation gate against the completed implementation; Claude is not re-invoked. |
-| `AWAITING_CI` | The evaluator accepted the work; publication and the CI verdict are outstanding. | Commits, pushes and waits for CI. The evaluator's verdict is not bought a second time. |
-| `AWAITING_CI_FIX` | CI failed and the bounded repair prompt is saved. | Resumes the saved repair prompt without repeating QA or prematurely publishing partial work. |
-| `FINALIZING` | Evaluation and CI passed; only deterministic story/backlog bookkeeping remains. | Replays the idempotent completion transition without rerunning coding, QA, evaluation, or CI. |
-
-Every terminal outcome (COMPLETE, BLOCKED, NEEDS_USER) clears the file, except
-an unrelated-CI tooling hold, which deliberately retains `AWAITING_CI`. Starting
-a new Claude attempt replaces the prior journal before mutable work starts.
-`MAX_RETRIES_PER_STORY` and
-`MAX_CI_FIX_ATTEMPTS` counters travel with the record, so a restart cannot hand
-the same story a fresh allowance and loop past its escalation.
-
-The journal is atomically replaced and validated before queue selection. A
-malformed journal, a missing story, or a journal/pointer disagreement stops
-execution with a diagnostic while preserving the artifact. If finalization
-cleared `CURRENT_STORY.md` but crashed before clearing `ATTEMPT_STATE.json`, the
-journal restores the same pointer and replays the idempotent transition. The
-runtime does not guess through contradictory state.
-
-Any `DONE` story without an attempt-state record is considered complete only
-if `EVALUATOR_RESULT.json` contains a `COMPLETE` verdict bound to that story ID
-and the exact story/result SHA-256 values. A published commit or passing CI
-cannot stand in for a missing or stale evaluator verdict. Such a verdict
-resumes evaluation; this covers a crash between the coding agent finishing and
-the harness recording `AWAITING_EVALUATION`.
-
-`AWAITING_CI` and `AWAITING_QA_REVIEW` also validate the saved verdict against
-the current story/result hashes before reusing it. If the ignored runtime
-artifact is absent, stale or from an older runner, the harness resumes
-evaluation on the completed implementation without invoking Claude.
-
-Because `artifacts/` is disposable, a second and independent check covers a
-`DONE` story whose record was wiped with it: the repository is asked whether a
-commit named `implemented <STORY-ID>` exists **and** whether work is still
-outstanding (uncommitted changes outside `agent/logs/`, or commits not on
-`origin`). Both halves are required — "no commit" alone is also true of a
-story legitimately completed with the gate off, and the tree is dirty within
-seconds of every commit because `agent/logs/<date>.log` is tracked and
-appended to continuously. It reports nothing git cannot answer, because the
-caller resumes the story on it. A story that was published once and then
-re-opened by a CI fix is outside its reach by construction; that case is what
-the state file covers.
+The bridge's per-story cycle record (`local_bridge/README.md`) replaced the old
+`ATTEMPT_STATE.json` journal. A step only advances the story's phase once it has
+finished, so an interruption reruns the same step; retry and CI-fix budgets live
+in the same record. An interrupted Claude run resumes with a continuation prompt.
 
 ## Commit, push, and the GitHub CI verification gate
 
@@ -233,27 +179,28 @@ authoritative regression verdict moved to GitHub Actions
 (`.github/workflows/ci.yml`, defined in `docs/TEST_STRATEGY.md` §36) and this
 package waits for it.
 
-What happens the moment the evaluator returns COMPLETE, inside
-`execute_active_story()`:
+What happens after the evaluator returns COMPLETE, in the bridge's `publish`
+and `ci` steps:
 
-1. `support/git_sync.py` stages only the persisted publication scope: changed
-   paths observed around the coding attempt, validated planning outputs, the
-   story/backlog/pointer, and its QA plan and prepared tests. It commits these as
-   `implemented <STORY-ID>: <title>` and pushes the current branch to `origin`.
-   Unrelated dirty files remain untouched. Pre-staged files outside scope cause
-   a safe publication stop rather than being swept into the story commit.
-2. `support/github_ci.py` polls that commit's workflow runs until they are
-   decided, then reports one of three outcomes.
-3. **PASSED** completes the story. **FAILED** is attributed using structured
+1. `support/git_sync.py` stages only the story's publication scope: changed
+   paths observed around the coding attempts, validated planning outputs, the
+   story/backlog/pointer, and its QA plan and prepared tests. It commits exactly
+   those paths (`git commit --only`) as `implemented <STORY-ID>: <title>` and
+   pushes the current branch to `origin`. Unrelated dirty or staged files stay
+   out of the commit.
+2. `support/github_ci.py` polls the workflow runs of that published SHA until
+   they are decided. Only the application jobs decide the story
+   (`APPLICATION_CI_VERDICT_POLICY`); a failing agent-runtime job is reported as
+   a workflow warning.
+3. **PASSED** finalizes the story. **FAILED** is attributed using structured
    failing-job names. A known failing suite whose source scope is disjoint from
-   the published story paths creates a tooling intervention and preserves
-   `AWAITING_CI`; after the CI problem is resolved, the same story resumes at
-   CI without invoking Claude or repeating evaluation. Failures in a known
+   the published story paths stops the run without invoking Claude; the story
+   stays at its `ci` phase until CI is fixed and rerun. Failures in a known
    overlapping suite, or failures whose ownership cannot be established, are
    conservatively sent through the bounded repair path. Anything **UNVERIFIED**
-   — no run appeared, a cancelled run, an unreadable API, a rejected push —
-   creates a tooling intervention: an unproven pipeline is never completed as
-   if it were green.
+   — no run appeared, a cancelled run, an unreadable API — also keeps the `ci`
+   phase for a later recheck: an unproven pipeline is never completed as if it
+   were green.
 
 `MAX_CI_FIX_ATTEMPTS` (default 2) bounds the fix loop. It is deliberately a
 separate budget from `MAX_RETRIES_PER_STORY`: an evaluator retry and a red
@@ -269,10 +216,8 @@ characters. CI logs are never downloaded, and successful output is never fetched
 
 **Waiting is bounded and quiet.** One poll per `CI_POLL_SECONDS`, a
 `CI_RUN_START_TIMEOUT_SECONDS` deadline for a run to appear at all, a
-`CI_WAIT_TIMEOUT_SECONDS` ceiling overall, rate-limit backoff instead of hammering
-the API, and a terminal-only heartbeat throttled to
-`CAPACITY_STATUS_INTERVAL_SECONDS`. The log records transitions — published,
-verdict — not the waiting.
+`CI_WAIT_TIMEOUT_SECONDS` ceiling overall, and rate-limit backoff instead of
+hammering the API. The log records the step outcome, not the waiting.
 
 **Configuration.** No secret is required: a public repository's run conclusion is
 public, and a token in `AGENT_GITHUB_TOKEN`/`GITHUB_TOKEN`/`GH_TOKEN` is optional,
@@ -286,7 +231,8 @@ on the evaluator's verdict, with a log line saying the gate was skipped).
 `git_sync.commit_and_push`, `git_sync.push_branch` and `github_ci.fetch_json`
 raise. Those paths resolve their own configuration, so a fixture patching
 `orchestrator.REPO_ROOT` does not redirect them — without the guard a test that
-reached the completion path would commit and push this repository for real.
+reached the publication path would commit and push this repository for real.
+`local_bridge/test_bridge.py` imports the same guards.
 `tests/test_ci_verification.py` exercises the real implementations against a
 throwaway repository with a local bare remote and a scripted API.
 
@@ -322,25 +268,12 @@ never blocks a Claude run.
 **Token budget:** `support/config.py`'s `REPO_MAP_TOKEN_BUDGET`, recommended
 initial value **1200** tokens (Aider's own `--map-tokens` setting).
 
-**Measuring the effect (A/B comparison):** `core/orchestrator.py` prints a
-`RepoMap: ...` line (enabled/disabled, budget, generated size, generation
-time) and a `Claude run measurement: ...` line (repo_map on/off, run
-duration, Claude session and weekly usage before/after, via
-`get_claude_usage()`) around every Claude
-invocation, regardless of whether RepoMap is enabled. To compare two runs of
-the same story:
-
-```powershell
-$env:AGENT_REPO_MAP_ENABLED = "0"
-python -m agent.runtime.core.orchestrator   # run A: baseline, no RepoMap
-
-$env:AGENT_REPO_MAP_ENABLED = "1"
-python -m agent.runtime.core.orchestrator   # run B: with RepoMap (needs Aider installed)
-```
-
-Compare the two runs' `usage_before`/`usage_after` and `duration` log lines
-for the same story to see whether RepoMap measurably reduced Claude's
-context/token usage.
+**Measuring the effect (A/B comparison):** `_prepare_implementation_prompt()`
+prints a `RepoMap: ...` line (enabled/disabled, budget, generated size,
+generation time) in the bridge console before every Claude run. To compare,
+start the bridge once with `$env:AGENT_REPO_MAP_ENABLED = "0"` and once with
+`"1"`, and compare the Claude weekly-usage change per story (`/usage`, or the
+`now_weekly_used` column of the GW2 Claude Budget data table).
 
 ## Pinned Claude model
 
@@ -348,77 +281,29 @@ context/token usage.
 `--model` flag whose value is `CLAUDE_MODEL` in `support/config.py`
 (currently `claude-opus-5`). Both story execution and Claude planning
 runs go through `run_claude()`, so both use that one value -- change it
-in that single place to move the orchestrator to a different model.
+in that single place to move the pipeline to a different model.
 
 The pin exists so unattended runs do not silently follow whatever the
 interactive CLI default (`~/.claude/settings.json`, `/model`) happens to
 be set to. The usage probe (`claude -p /usage`) is deliberately left
 unpinned: it runs a slash command and never performs inference.
 
-## Independent Claude/Codex capacity scheduling
+## Model capacity
 
-`support/capacity.py`'s `CapacityProbe` is a generic, reusable local-cooldown
-gate: `available()` calls a model-specific check function at most once per
-`MODEL_CAPACITY_RECHECK_SECONDS` (`support/config.py`), caching the result in
-between so neither model is probed more than necessary. `core/orchestrator.py`'s
-`CapacityScheduler` holds one `CapacityProbe` per model -- Claude's checks
-both the five-hour session allowance (usage below 90%) and weekly allowance
-(remaining above 50%) from one `/usage` reading in `runners/claude_runner.py`; Codex's
-calls `codex_available()` (`runners/codex_capacity.py`, a genuinely
-token-free `app-server` JSON-RPC quota read) -- and applies the scheduling
-priority order: resume an unfinished active story first, then execute other
-selectable To Do work. Codex planning runs when the executable queue is empty,
-meaningful planning inputs have changed, or a bounded independent follow-up
-was explicitly requested by the previous Planner result. Ordinary story
-completion and low queue depth do not trigger planning. If Claude is unavailable,
-Codex plans only when one of those conditions applies; otherwise the scheduler
-waits locally. This prevents repeated full planning passes while eligible work
-remains.
+Claude starts only while its 5h session is below `CLAUDE_USAGE_LIMIT_PERCENT`
+and its weekly usage is within the Claude budget kept in n8n
+(`local_bridge/claude_budget.py`, documented in `local_bridge/README.md`).
+`claude -p /usage` is a slash command and spends no tokens.
 
-Once started, the loop keeps going while any permissible work exists. The
-properties that guarantee it, each covered by `tests/test_orchestration_flow.py`:
-
-- **Capacity exhaustion is a scheduling event, never a work result.** A Claude
-  run that exits non-zero is classified from its own output tail plus the
-  token-free usage probe (`runners/claude_runner.py`'s `run_claude_attempt()`
-  and `output_indicates_capacity_exhaustion()`). A capacity interruption keeps
-  the story active and `UNFINISHED`, costs nothing from the story's evaluator
-  retry budget, and resumes the same work order. A non-zero exit with no
-  capacity signal is a *failed run*: retrying it hourly forever could never fix
-  it, so after `MAX_CLAUDE_FAILED_RUNS_PER_STORY` consecutive such runs the
-  story is escalated to a user intervention and the orchestrator moves on.
-- **A failed planning pass never stops execution.** Codex reporting `FAILED`,
-  a rolled-back guarded pass, or an unreadable planning input puts the planner
-  on a persistent hold for those inputs and is logged; Claude keeps draining
-  already-planned work. Changed planning inputs or an explicit cache reset
-  permit a retry; a capacity cooldown alone does not.
-- **Neither model blocks the other.** Codex exhausted -> Claude still executes
-  the queue to zero. Claude exhausted -> Codex still performs useful
-  current-scope planning (deliberately past the To Do <= 2 watermark, until a
-  pass reports nothing further worth creating). Both exhausted -> the
-  orchestrator waits locally and resumes the correct flow by itself.
-- **Newly planned work needs no restart**; the next cycle re-reads state and
-  selects it.
-- **Real gates still block.** An unresolved user decision or an open user
-  intervention is waited on locally, never bypassed. Both waits return as soon
-  as *any* blocking item resolves, because one resolution can be enough to
-  unblock planning or requeue a story, and eligibility is then re-derived from
-  scratch.
-- **Stale state does not strand execution.** An unusable
-  `agent/CURRENT_STORY.md` counts as "no active story" so deterministic
-  selection can proceed and overwrite it.
-- **One recoverable cycle failure is not fatal.** An unexpected exception (a
-  failed evaluation, a transient file error) is retried; evaluation itself is
-  retried first, so a finished Claude run is never thrown away and Claude is
-  never re-invoked to work around an evaluator failure. After
-  `MAX_CONSECUTIVE_CYCLE_ERRORS` consecutive failures the orchestrator stops
-  explicitly rather than looping.
-- **Evaluation retrying is bounded too.** `MAX_EVALUATION_BATCHES` batches of
-  `EVALUATION_ATTEMPTS` ride out a transient outage; a permanent one then
-  propagates to the handler above instead of holding the orchestrator in a
-  silent loop with a stocked queue. Giving up costs nothing, because
-  `ATTEMPT_STATE.json` makes each retried cycle resume at evaluation rather
-  than at another Claude run.
+A Claude run that exits non-zero is classified from its own output tail
+(`runners/claude_runner.py`'s `run_claude_attempt()` and
+`output_indicates_capacity_exhaustion()`) and, as a second check, from `/usage`.
+A capacity interruption keeps the story at `implement`, costs nothing from any
+budget, and resumes with a continuation prompt. A non-zero exit with no
+capacity signal is a *failed run*; after `MAX_CLAUDE_FAILED_RUNS_PER_STORY`
+consecutive ones the story is escalated to a user intervention. Codex
+exhaustion during QA, evaluation, planning or architecture
+(`ModelCapacityUnavailable`) is likewise a pause, never a failed step.
 
 ## Codex Architect
 
@@ -445,9 +330,9 @@ that same question -- happened, and is indistinguishable from the architect
 ignoring the question.
 
 The
-orchestrator attempts it before planning (step 2a in `_run_cycle`), because an
-answered question is what unblocks the planner, and dispatches exactly one
-request per invocation.
+bridge's `plan` step answers it before any planning pass, between stories and
+while Claude waits for its budget, because an answered question is what
+unblocks the planner. It dispatches exactly one request per step.
 
 **The flow has no manual step in it:**
 
@@ -462,10 +347,9 @@ Planner hits a question it may not decide
                     -> RESOLVED -> planning continues automatically
 ```
 
-`planning_fingerprint()` includes the inbox, and a finished architect pass
-clears the scheduler's "nothing useful to plan" verdict, so a resolved question
-always leads to a fresh planning pass rather than a suppressed one. A RESOLVED
-request is never dispatched again.
+`planning_fingerprint()` includes the inbox, so a resolved question changes the
+planning inputs and leads to a fresh planning pass rather than a suppressed
+one. A RESOLVED request is never dispatched again.
 
 **Role separation is enforced, not requested.** `_run_guarded_architect()`
 snapshots and verifies the planner/harness state ARCHITECTURE MODE must not
@@ -482,8 +366,7 @@ pass has its request file restored, so the inbox never holds an unvalidated
 transition.
 
 **Capacity exhaustion is never an architecture failure**: the request keeps its
-status and is dispatched again after the local cooldown, exactly like a
-deferred planning pass.
+status and is dispatched again on a later pipeline run.
 
 `validate_planning_result()` additionally rejects a planner that creates a
 duplicate of an unresolved question (normalized question text), reuses an
@@ -495,9 +378,8 @@ snapshots protected state (the active story file, `CURRENT_STORY.md`, the
 BACKLOG `## Active` section) before every planning pass and verifies it
 byte-for-byte afterwards, rolling back and raising if anything protected
 changed. This is what guarantees Codex never touches the active story and
-never becomes a second writer of orchestration state -- there is exactly one
-process (the orchestrator) writing workflow state at a time, by construction,
-not by locking.
+never becomes a second writer of workflow state -- the bridge runs one step at
+a time, so exactly one process writes workflow state, by construction.
 
 ## Daily operational log
 
@@ -508,52 +390,14 @@ not by locking.
 is logged after the date rolls over; an existing day's file is only ever
 appended to, never truncated or overwritten.
 
-Every orchestrator cycle (`core/orchestrator.py`'s `main()`) still checks
-both models and decides what to do next before acting, and logs two lines
-when it does: the raw Claude/Codex availability check (`Availability
-check: ...`), and the scheduling decision made from it and why (`Decision:
-...`). This makes the check -> decide -> (optionally prepare a RepoMap) ->
-act ordering described above independently auditable after the fact, not
-just verifiable by reading the code.
-
-**Transitions only.** A cycle whose decisions are identical to the previous
-cycle's is not logged again (`DecisionLog`). The orchestrator can repeat the
-same holding pattern once a minute for hours while it waits for capacity or
-for a human, and re-recording it would bury the entries that matter. What is
-always logged: capacity exhaustion first detected, capacity available again,
-orchestration resumed, planning failures, a story interrupted by exhaustion,
-an escalation, and entering/leaving a user-decision or intervention wait.
-
-**Waiting output is terminal-only.** Heartbeat lines -- `Claude capacity
-unavailable - waiting...`, `Current usage: ...`, `Next Claude capacity check
-in N min`, `Still unresolved: ...` -- go through `support/daily_log.py`'s
-`print_status()`, which writes to the stream `ConsoleTee` wraps and therefore
-never reaches `agent/logs/`. They are throttled to one burst per
-`CAPACITY_STATUS_INTERVAL_SECONDS` (`StatusHeartbeat`). An overnight wait
-leaves a readable terminal and a log containing only what happened.
-
-**Re-checks cost no tokens.** Claude's probe runs `claude -p /usage` (a slash
-command, no inference); Codex's reads `account/rateLimits/read` over
-`app-server`. Both are gated by `CapacityProbe`'s local cooldown, so an
-exhausted model is never re-invoked while waiting -- only re-probed, at most
-once per `MODEL_CAPACITY_RECHECK_SECONDS`.
-
-**Full console transcript.** `start_console_logging()` (called from the
-orchestrator's `__main__` entry point) wraps `sys.stdout`/`sys.stderr` in
-`ConsoleTee`, so everything printed to the terminal is appended to the same
-daily file -- the orchestrator's own progress output, the Codex planner's
-streamed events, and Claude's implementation output. The terminal still
-shows exactly what it always did; the log is an addition, not a
-replacement. This is what makes an unattended overnight run readable
-afterwards.
-
-For Claude's output to reach the log at all, `runners/claude_runner.py`
-pipes it (`stdout=PIPE`, `stderr=STDOUT`) and reprints each line rather
-than letting the child inherit the terminal -- an inherited descriptor
-writes past Python and leaves no record. One consequence: Claude no longer
-sees a TTY on stdout, so it emits plain streamed lines instead of
-terminal-rendered progress. Tests call `main()` directly and never call
-`start_console_logging()`, so they never write to the real `agent/logs/`.
+The bridge writes one line per finished pipeline step
+(`Pipeline <step> [<story>]: <outcome> -- <reason>`), `WORKFLOW WARNING` lines
+for agent-workflow problems, and the transitions recorded by the runtime
+helpers it calls (QA preparation, evaluation retries, story blocking and
+finalization, backlog inconsistencies). Waiting is never logged. Claude's
+streamed output is piped through `runners/claude_runner.py` and printed in the
+bridge console, not the log. Tests never write here: `agent/runtime/tests`
+drops writes to the committed directory, and the bridge tests import that guard.
 
 Unlike `artifacts/`, `agent/logs/` is **committed to Git, not ignored** --
 it is meant to be a permanent historical record, not disposable runtime
@@ -573,32 +417,26 @@ while Codex plans during Claude capacity waits.
 `agent/user-decisions/UD-010-*.md` (or `UD-010.md`). Markdown titles are optional;
 filenames/paths in this result field and duplicate filename IDs are rejected.
 
-The scheduler atomically persists `artifacts/PLANNING_CACHE.json` after
-NEEDS_USER, no-work results, or planner execution/validation failure. Its
+The bridge decides when to plan (`local_bridge/cycle.py`'s `codex_work_needed()`,
+documented in `local_bridge/README.md`) from `planning_fingerprint()`. The
 fingerprint includes UDs, PO/architect requests, authoritative docs, planner
 contracts, continuity and story requirements. Product/domain and target
 requirements, architecture decisions, known defects, coding/testing contracts,
 and story requirements are planning inputs. Descriptive implementation snapshots
-(`CURRENT_STATE_SPEC.md`, `CURRENT_ARCHITECTURE.md`), logs, result JSON, timestamps
-and capacity readings are excluded: updating those records alone does not earn a
-full planning pass. Story status/result/follow-up
-sections, active-story pointers, backlog section moves, Claude run artifacts,
-logs, result JSON, timestamps and capacity cooldowns are excluded because they
-record execution progress, not new planning inputs. Relevant input changes
-trigger another pass even with eligible stories waiting. Holds survive
-restarts. A validated Planner result may request one bounded follow-up pass
-when independent work remains and progress was made; finding presence alone
-does not request another pass. A validated milestone transition can plan the
-next phase. Model capacity interruption is not a planning failure and resumes
-after capacity returns.
+(`CURRENT_STATE_SPEC.md`, `CURRENT_ARCHITECTURE.md`), logs, result JSON,
+timestamps and capacity readings are excluded: updating those records alone does
+not earn a full planning pass. Story status/result/follow-up sections,
+active-story pointers, backlog section moves and Claude run artifacts are
+excluded because they record execution progress, not new planning inputs.
+Fingerprinting normalizes UTF-8 BOMs and line endings only.
 
-FAILED is distinct from NEEDS_USER and retains diagnostics in the local cache.
-It does not repeatedly retry after a cooldown or prevent independent execution
-or architecture work. Correct the input/contract problem to retry, or remove
-PLANNING_CACHE.json to request an explicit retry. Waiting polls local files and
-prints terminal heartbeats; user waits also wake for unrelated planning input
-changes. No model is called merely because a wait timer expired.
-
+Relevant input changes trigger another pass even with eligible stories waiting.
+A pass on unchanged inputs is never repeated, which also holds a FAILED pass
+until its inputs change. A validated Planner result may request one bounded
+follow-up pass when independent work remains and that pass changed something;
+finding presence alone does not request another pass. A validated milestone
+transition can plan the next phase. Model capacity interruption is not a
+planning failure.
 
 ### Review past individual milestone blockers
 
@@ -624,10 +462,9 @@ open UDs, new ARs and independent stories together. NEEDS_USER is valid only aft
 the review finds no further useful independent planning without human input. A
 final NEEDS_USER batch may still publish independent stories; those execute normally.
 Architecture-only or story-prerequisite waits use COMPLETE with the flag false.
-The scheduler holds either exhausted planning state locally, while separately
-executing eligible stories or dispatching actionable architect requests. During
-Claude capacity waits, Codex continues bounded batches only while independent
-work remains. Meaningful input changes release the existing persistent hold.
+Eligible stories still execute and actionable architect requests are still
+answered while planning has nothing new to do. During Claude budget waits, Codex
+continues bounded batches only while independent work remains.
 
 For A -> UD-010, B -> UD-011, C -> AR-006 and executable D/E, one pass records
 both UDs, the AR, and D/E stories, with five review entries. If another executable
@@ -651,40 +488,8 @@ claim an executable status. Do not guess acceptance criteria behind an unanswere
 product or architecture question.
 
 `tests/test_milestone_planning.py` exercises mixed outcomes, early multi-question
-reporting, continued idle batches, local exhaustion, duplicate guards and dependent
-story selection with scripted outputs. These are offline contract/flow tests, not
+reporting, duplicate guards and dependent story selection with scripted outputs. These are offline contract/flow tests, not
 a claim of measured live-model discovery completeness.
-
-### Stable planning holds and Codex quota visibility
-
-A final NEEDS_USER pass is held against its post-pass inputs. Schema 2 of
-PLANNING_CACHE.json records normalized per-file hashes, the aggregate fingerprint,
-the remaining-work flag, and paths changed by that pass. Its new UDs/stories,
-backlog changes and PO resolutions are already part of that baseline.
-
-Fingerprinting normalizes UTF-8 BOMs and CRLF/CR/LF line endings only; all other
-content and whitespace remains significant. Delayed editor/Git line-ending saves
-cannot launch another model pass. Real UD/PO/AR changes, story completion,
-CLAUDE_RESULT.md, authoritative documents and planning/validation contracts can.
-Own results/cache/logs, test code and presentation/runner code cannot. Changed
-input paths are logged once when planning actually resumes. An architect invocation
-alone no longer clears a hold; changed authoritative artifacts do. A successful
-COMPLETE batch with independent_work_remaining=true can still continue.
-Schema-1 aggregate hashes are invalidated by this schema/contract upgrade;
-subsequent holds persist in schema 2.
-
-Both CapacityScheduler.plan_if_useful() and answer_architect_request() check quota
-before invoking the role. The default probe reads codex app-server's
-account/rateLimits/read, never a model turn. Invalid/missing quota fails closed.
-Both windows must be below 100%; an explicit reached-limit state also blocks.
-This is an availability check, not a reservation for the entire run.
-
-That same reading now prints one terminal-only pre-role line, for example:
-`Codex available before architect: primary 25% used/300min; secondary 80% used/10080min`.
-Display causes no extra RPC. Local capacity-wait heartbeats show the last reading.
-The endpoint provides percentages/windows, not an exact number of tokens remaining.
-Role completion lines now distinguish planner/architect and include cached input.
-Gross input is cumulative across model requests, not initial prompt size.
 
 See [the measured usage investigation](reports/2026-09-26-planner-usage.md) for
 the evidence behind the supplied-context bounds described next.

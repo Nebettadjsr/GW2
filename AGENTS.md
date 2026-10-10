@@ -280,8 +280,9 @@ Preserve these established target principles:
 
 ## Orchestrated Story Quality Flow
 
-The Python orchestrator runs implementation stories through Planner, Architect
-when an actionable request exists, QA, Coding Agent, and Evaluator. QA prepares
+The n8n development pipeline (`local_bridge/README.md`) runs implementation
+stories through Planner, Architect when an actionable request exists, QA, Coding
+Agent, and Evaluator, then publishes, waits for CI and finalizes. QA prepares
 the persistent plan in `agent/qa-plans/` before a new coding attempt. The coding
 agent follows its criteria and must preserve QA-owned tests and plan; Evaluator
 checks the plan and actual behavior. See `agent/QA_INSTRUCTIONS.md`,

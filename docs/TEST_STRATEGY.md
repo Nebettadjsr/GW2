@@ -1438,8 +1438,10 @@ layer passed". It is the regression gate, not the whole strategy.
 
 ## 36.5 What "verified" means for a story
 
-The orchestrator (`agent/runtime`, see its README) commits and pushes a story once
-the evaluator accepts it, then waits for that commit's CI conclusion:
+The development pipeline (`local_bridge/README.md`) commits and pushes a story once
+the evaluator accepts it, then waits for that commit's CI conclusion. Only the
+application jobs decide; a failing agent-runtime job is reported as an
+agent-workflow warning and never holds a story:
 
 - **green** — the story completes normally;
 - **red** — the failing tests, and only those, come back to Claude as a bounded
@@ -1447,7 +1449,8 @@ the evaluator accepts it, then waits for that commit's CI conclusion:
   After a small number of failed attempts the story is blocked for a human
   instead of looping;
 - **undetermined** (no run appeared, a cancelled run, an unreadable API, a
-  rejected push) — never treated as a pass; a human is asked.
+  rejected push) — never treated as a pass; the story keeps its step and the
+  next pipeline run checks again.
 
 A story's Definition of Done must not demand a full local regression run. Where
 it needs test evidence, it names the tests that must exist and pass, and the gate
