@@ -1,7 +1,9 @@
 [run]
 branch = True
 source = agent.runtime
-omit = agent/runtime/tests/*
+omit =
+    agent/runtime/tests/*
+    local_bridge/test_*
 
 [report]
 show_missing = True

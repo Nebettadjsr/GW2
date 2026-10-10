@@ -257,6 +257,82 @@ class FakeApi:
         raise AssertionError(f"unexpected API call: {url}")
 
 
+class ApplicationVerdictTest(unittest.TestCase):
+    """The story gate: application jobs decide; the agent-runtime job is reported, never blocking."""
+
+    APP_JOBS = ("Backend tests (Maven)", "Frontend tests (Vitest)", "Coverage KPI report")
+
+    def ci_run(self, conclusion="success", path=".github/workflows/ci.yml@refs/heads/master"):
+        return {"id": 7, "name": "CI", "path": path, "status": "completed", "conclusion": conclusion,
+                "html_url": "https://github.com/o/r/actions/runs/7"}
+
+    def job(self, name, conclusion="success"):
+        return {"name": name, "status": "completed", "conclusion": conclusion,
+                "steps": [{"name": "Run tests", "conclusion": conclusion}]}
+
+    def verdict(self, runs, jobs, total=None):
+        def api(url, timeout=30):
+            if "/actions/runs?" in url:
+                return 200, {}, {"workflow_runs": runs}
+            if url.endswith("/jobs?per_page=100"):
+                return 200, {}, {"jobs": jobs, "total_count": len(jobs) if total is None else total}
+            raise AssertionError(f"unexpected API call: {url}")
+
+        with patch.object(github_ci, "fetch_json", side_effect=api):
+            return github_ci.wait_for_commit("o/r", "abc1234def", sleep=lambda _s: None,
+                                             monotonic=lambda: 0.0, application_checks=True)
+
+    def test_agent_runtime_failure_is_reported_but_does_not_fail_the_story(self):
+        jobs = [self.job(name) for name in self.APP_JOBS] + [self.job("Agent runtime tests (pytest-cov)", "failure")]
+        result = self.verdict([self.ci_run("failure")], jobs)
+        self.assertEqual(result["status"], "PASSED")
+        self.assertEqual([item["job"] for item in result["ignored_failures"]], ["Agent runtime tests (pytest-cov)"])
+        self.assertIn("were excluded", result["reason"])
+
+    def test_a_failed_application_job_fails_the_story_with_its_details(self):
+        jobs = [self.job("Backend tests (Maven)", "failure"), self.job("Frontend tests (Vitest)"),
+                self.job("Coverage KPI report")]
+        result = self.verdict([self.ci_run("failure")], jobs)
+        self.assertEqual(result["status"], "FAILED")
+        self.assertEqual(result["reason"], "Required application CI check(s) failed: Backend tests (Maven)")
+        self.assertEqual([item["job"] for item in result["failed_jobs"]], ["Backend tests (Maven)"])
+        self.assertEqual(result["failed_jobs"][0]["steps"], ["Run tests"])
+
+    def test_an_unknown_failing_job_is_never_hidden_behind_the_runtime_exception(self):
+        jobs = [self.job(name) for name in self.APP_JOBS] + [self.job("Docker image build", "failure")]
+        result = self.verdict([self.ci_run("failure")], jobs)
+        self.assertEqual(result["status"], "FAILED")
+        self.assertIn("Docker image build", result["reason"])
+
+    def test_a_missing_required_job_cannot_pass(self):
+        jobs = [self.job("Backend tests (Maven)"), self.job("Coverage KPI report")]
+        result = self.verdict([self.ci_run()], jobs)
+        self.assertEqual(result["status"], "UNVERIFIED")
+        self.assertIn("frontend tests (vitest)", result["reason"])
+
+    def test_an_incomplete_job_list_cannot_pass(self):
+        jobs = [self.job(name) for name in self.APP_JOBS]
+        result = self.verdict([self.ci_run()], jobs, total=5)
+        self.assertEqual(result["status"], "UNVERIFIED")
+        self.assertIn("incomplete job list", result["reason"])
+
+    def test_a_ci_run_from_an_unexpected_workflow_file_cannot_pass(self):
+        result = self.verdict([self.ci_run(path=".github/workflows/other.yml")], [])
+        self.assertEqual(result["status"], "UNVERIFIED")
+        self.assertIn("path could not be verified", result["reason"])
+
+    def test_a_cancelled_ci_run_is_unverified_not_failed(self):
+        jobs = [self.job(name) for name in self.APP_JOBS]
+        result = self.verdict([self.ci_run("cancelled")], jobs)
+        self.assertEqual(result["status"], "UNVERIFIED")
+
+    def test_a_skipped_required_job_is_not_a_pass(self):
+        jobs = [self.job("Backend tests (Maven)", "skipped"), self.job("Frontend tests (Vitest)"),
+                self.job("Coverage KPI report")]
+        result = self.verdict([self.ci_run()], jobs)
+        self.assertEqual(result["status"], "UNVERIFIED")
+
+
 class WaitForCommitTest(unittest.TestCase):
 
     def setUp(self):

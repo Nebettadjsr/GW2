@@ -4,7 +4,9 @@ import shutil
 
 from agent.runtime.support.config import ARCHIVE_DIR, BACKLOG_FILE, CURRENT_STORY_FILE, STORIES_DIR
 from agent.runtime.support.files import find_section_span, read_file
-from agent.runtime.core.story_state import classify_story_status, extract_status_section
+from agent.runtime.core.story_state import (
+    COMPACT_BACKLOG_ENTRY, LEGACY_BACKLOG_ENTRY, classify_story_status, extract_status_section,
+)
 
 
 # ============================================================
@@ -334,6 +336,15 @@ def _milestone_number_from_slug(
     return match.group(1) if match else milestone_slug
 
 
+def _entry_filename(line: str) -> str | None:
+    """The story filename of a backlog row: legacy (backticked) or compact (`ID | file | ...`)."""
+    legacy = LEGACY_BACKLOG_ENTRY.match(line)
+    if legacy:
+        return legacy.group(1)
+    compact = COMPACT_BACKLOG_ENTRY.match(line)
+    return compact.group(2).strip() if compact else None
+
+
 def update_backlog_for_archive(
     backlog_content: str,
     milestone_slug: str,
@@ -358,18 +369,7 @@ def update_backlog_for_archive(
         remaining_lines = []
 
         for line in done_body.splitlines(keepends=True):
-            stripped = line.strip()
-
-            matched_filename = next(
-                (
-                    filename
-                    for filename in archived_filenames
-                    if f"`{filename}`" in stripped
-                ),
-                None
-            )
-
-            if matched_filename is not None:
+            if _entry_filename(line) in archived_filenames:
                 moved_lines.append(
                     line.rstrip("\n")
                 )
@@ -387,11 +387,7 @@ def update_backlog_for_archive(
     # Any archived filename that had no matching bullet in "## Done"
     # (e.g. BACKLOG.md was already out of sync) still gets a bare
     # index entry, so the archive doesn't silently go undocumented.
-    already_moved_filenames = {
-        re.search(r"`([^`]+\.md)`", line).group(1)
-        for line in moved_lines
-        if re.search(r"`([^`]+\.md)`", line)
-    }
+    already_moved_filenames = {_entry_filename(line) for line in moved_lines}
 
     for filename in archived_filenames:
         if filename not in already_moved_filenames:
