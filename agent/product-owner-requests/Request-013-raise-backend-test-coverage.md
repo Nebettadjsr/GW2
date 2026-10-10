@@ -66,3 +66,4 @@ should not block feature work that is already queued.
 
 ## Planner Resolution
 
+OPEN — Reviewed against the supplied Phase 5 scope. The request asks for Java backend package coverage work, but the supplied Phase 5 objective and exit criteria concern browser workflows and acceptance; they do not authorize this separate backend coverage batch. The requested CI refresh also cannot be represented by the existing provisional 2026-10-03 working-tree snapshot in `docs/QUALITY_METRICS.md` §23. No coverage targets or stories were created from the stale package values. Revisit in a planning scope that authorizes backend quality work and after a fresh CI artifact is available.

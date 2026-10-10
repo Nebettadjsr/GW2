@@ -203,7 +203,10 @@ none of its three sentences is rendered in `smoke:profit` or `smoke:discovery`.
 
 ## Follow-up Findings Disposition
 
-F001: FOLLOW-UP STORY: STORY-WEB-028
-F002: SUPERSEDED by the later confirmed Product Owner decision. `DOMAIN_SPEC.md` §2.1.1 now places the maximum and Show all beside the results title; STORY-WEB-028 must preserve this accepted placement. No application UI change is warranted.
-F003: FOLLOW-UP STORY: STORY-WEB-028
-F004: FOLLOW-UP STORY: STORY-WEB-028
+F001: DISMISSED — Page-header reuse is a maintainability opportunity, not a Phase 5 workflow acceptance requirement; the two screens already received keyboard-focus hooks in this story Result. Supplied Phase 5 roadmap excerpt; this story Result.
+
+F003: DISMISSED — the prop comment describes an unrequired presentation distinction; the authoritative resolution-tree requirement is to render backend-provided details, and no Phase 5 requirement requires Discovery to expose separate cost figures. `docs/TARGET_ARCHITECTURE.md` §10.2; supplied Phase 5 roadmap excerpt.
+
+F004: FOLLOW-UP STORY — STORY-WEB-032
+
+F002: DISMISSED — the later confirmed Product Owner decision and `docs/DOMAIN_SPEC.md` §2.1.1 establish the accepted placement beside the results title; the prior placement in the Calculation controls subgroup is superseded. `agent/stories/STORY-WEB-028-align-browser-workflow-contracts.md` preserves the accepted placement.

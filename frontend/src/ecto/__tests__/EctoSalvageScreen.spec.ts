@@ -10,6 +10,7 @@ import {
   itemPrices,
   METADATA_IDS
 } from './currentEctoFixtures'
+import { withoutDigitGrouping } from './renderedNumbers'
 
 interface RecordedRequest { method: string; url: string }
 const requests: RecordedRequest[] = []
@@ -35,6 +36,14 @@ function buttonIn(open: VueWrapper, selector: string, label: string) {
   const button = open.findAll(selector).find((candidate) => candidate.text().includes(label))
   if (!button) throw new Error(`Missing ${label} button in ${selector}`)
   return button
+}
+
+/**
+ * A rendered region's text with locale digit grouping removed, so every Luck and Gem expectation
+ * below names the number the screen was asked to show instead of the runner's default separator.
+ */
+function ungrouped(region: { text: () => string }): string {
+  return withoutDigitGrouping(region.text())
 }
 
 /** One labelled figure of the salvage calculation, addressed by the label it is filed under. */
@@ -115,7 +124,7 @@ describe('EctoSalvageScreen', () => {
     expect(open.find('.tool-choice__button--selected').text()).toBe('Silver-Fed')
     expect(open.findAll('.tp-block')[0]?.find('.tp-option.selected').text()).toContain('Instant buy')
     expect(open.findAll('.tp-block')[1]?.find('.tp-option.selected').text()).toContain('Instant sell')
-    expect(open.find('.result-details').text()).toContain(`${(10_457).toLocaleString()} Luck`)
+    expect(ungrouped(open.find('.result-details'))).toContain(`${10_457} Luck`)
     expect(open.find('.result-details').text()).toContain('185 Dust')
   })
 
@@ -155,14 +164,14 @@ describe('EctoSalvageScreen', () => {
     const open = await openScreen()
     await open.find('#ecto-count').setValue('10')
 
-    expect(open.find('.result-details').text()).toContain(`${(1_046).toLocaleString()} Luck`)
+    expect(ungrouped(open.find('.result-details'))).toContain(`${1_046} Luck`)
     expect(open.find('.result-details').text()).toContain('19 Dust')
     expect(open.find('.result-details').text()).toContain('6s 0c') // 10 Silver-Fed uses
     expect(calculationFigure(open, 'Effective cost').text()).toContain('-13s 45c')
 
     await buttonIn(open, '.salvage-row', 'Basic / Copper-Fed').trigger('click')
     expect(open.find('.tool-choice__button--selected').text()).toBe('Copper-Fed')
-    expect(open.find('.result-details').text()).toContain(`${(1_032).toLocaleString()} Luck`)
+    expect(ungrouped(open.find('.result-details'))).toContain(`${1_032} Luck`)
     expect(open.find('.result-details').text()).toContain('16 Dust')
     expect(open.find('.result-details').text()).toContain('30c')
     expect(calculationFigure(open, 'Effective cost').text()).toContain('-15s 40c')
@@ -185,11 +194,11 @@ describe('EctoSalvageScreen', () => {
     const open = await openScreen()
     await buttonIn(open, '.salvage-row', 'Black Lion').trigger('click')
 
-    expect(open.find('.result-details').text()).toContain(`${(1_200).toLocaleString()} Gems`)
+    expect(ungrouped(open.find('.result-details'))).toContain(`${1_200} Gems`)
     // A gem-priced tool renames the coin total and files the gems in their own row.
     expect(calculationFigure(open, 'Effective coin result').text()).toContain('-2g 26s 80c')
     expect(calculationFigure(open, 'Effective coin result').text()).not.toContain('Gems')
-    expect(calculationFigure(open, 'Additional cost').text()).toContain(`${(1_200).toLocaleString()} Gems`)
+    expect(ungrouped(calculationFigure(open, 'Additional cost'))).toContain(`${1_200} Gems`)
     expect(open.find('.tool-cost-note').text()).toContain('not converted to gold')
     expect(open.find('.target-row .target-cost small').text()).toContain('Gems')
     expect(requests).toHaveLength(3)
@@ -241,7 +250,8 @@ describe('EctoSalvageScreen', () => {
     const result = open.find('[data-test="ecto-result"]')
 
     expect(result.exists()).toBe(true)
-    expect(luck.text()).toContain((14_134).toLocaleString())
+    // The supplied `accountLuck.consumedLuck`, by its digits rather than by this runner's locale.
+    expect(ungrouped(luck)).toContain(String(14_134))
     expect(luck.element).not.toBe(result.element)
     expect(requests).toHaveLength(3)
   })

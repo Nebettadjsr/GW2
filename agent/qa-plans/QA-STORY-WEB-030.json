@@ -1,0 +1,83 @@
+{
+  "status": "READY",
+  "story_id": "STORY-WEB-030",
+  "rationale": "The expected behavior is defined by the supplied acceptance criteria and the current CraftingRow contract. Existing component tests cover adjacent presentation and request behavior, but do not validate the layout smoke fixture or Discovery live smoke contract. No new QA-owned tests were added: the required layout and live-backend checks are existing opt-in browser scripts, and the locale fix can be verified with the focused component test using a locale-independent expected value.",
+  "acceptance_checks": [
+    {
+      "criterion": "Every layout fixture row supplies contract-valid CraftingRow fields, including iconUrl and explicit nullable values; unavailable rows have null result-derived fields.",
+      "expected": "The layout smoke passes for valid, unavailable, and missing-ingredient-price rows. The unavailable row has null result-derived values, and the other rows preserve their intended supplied values.",
+      "verification": "Run `npm run smoke:layout`; inspect the controlled responses against `frontend/src/api/types.ts` CraftingRow, including explicit nulls and iconUrl."
+    },
+    {
+      "criterion": "The Discovery live smoke matches the current response contract and does not require inventoryCharacterName.",
+      "expected": "Against the current backend, the live check accepts the response without inventoryCharacterName and verifies the displayed details against values supplied by the response.",
+      "verification": "Run `npm run smoke:discovery:live` against a freshly started current backend and frontend with populated data; verify response and rendered detail comparisons."
+    },
+    {
+      "criterion": "The Ectoplasm numeric expectation is independent of the machine's default locale while still checking the intended formatted value.",
+      "expected": "The component test verifies the rendered Luck value corresponds to 14,134 independently of default locale, for example by comparing its digits after removing locale grouping separators.",
+      "verification": "Run the affected Ectoplasm component test; an equivalent acceptable check is a test run under two available locales with the expected value adjusted explicitly for each locale."
+    },
+    {
+      "criterion": "The live check and controlled fixture continue to assert backend-provided authoritative values without calculating them in the browser.",
+      "expected": "Displayed/smoke-checked economic values are compared with the response or fixture values; no browser-derived substitute is used.",
+      "verification": "Review the layout and Discovery smoke assertions and run the applicable smoke checks."
+    }
+  ],
+  "invariants": [
+    "When resultAvailable is false, every result-derived CraftingRow field is null.",
+    "A missing ingredient price does not make an otherwise available result unavailable.",
+    "The frontend displays backend-provided authoritative economics and does not recompute them.",
+    "Live smoke checks remain read-only and use the current API response as the source of expected values."
+  ],
+  "test_levels": [
+    "contract",
+    "ui",
+    "end_to_end"
+  ],
+  "existing_tests_reviewed": [
+    "frontend/src/ecto/__tests__/EctoContentHooks.spec.ts — covers Ectoplasm result and Luck rendering; its `(14_134).toLocaleString()` expectation depends on the runner's default locale.",
+    "frontend/src/crafting/__tests__/CraftingDiscoveryScreen.spec.ts — covers Discovery screen behavior and verifies the request omits inventoryCharacterName.",
+    "frontend/src/crafting/__tests__/discoveryResolutionAssociation.spec.ts — checks Discovery request association and absence of inventoryCharacterName.",
+    "frontend/src/crafting/__tests__/fixtures.ts — contains typed CraftingRow examples, including available, price-unavailable, and unavailable rows; it does not cover the script-local layout fixture.",
+    "frontend/scripts/layout-browser-smoke.mjs — existing controlled browser smoke with shared Profit/Discovery fixture and layout checks.",
+    "frontend/scripts/discovery-live-smoke.mjs — existing live check currently requires inventoryCharacterName in its contract assertion and additional request/render comparisons."
+  ],
+  "prepared_test_paths": [],
+  "test_specifications": [
+    "Run `npm run smoke:layout` and verify all fixture cases: normal available row, zero-count row, missing ingredient-price row, and unavailable row. Check each fixture supplies every required CraftingRow field including iconUrl; nullable fields are explicitly null where appropriate; the unavailable row has null result-derived fields.",
+    "Run `npm run smoke:discovery:live` against a freshly started backend/frontend with populated data. Verify its contract checks no longer require inventoryCharacterName and that displayed list/detail values match the corresponding response fields.",
+    "Run `npm test -- --run src/ecto/__tests__/EctoContentHooks.spec.ts`. Verify the expected Luck value is locale-independent while still identifying 14,134; a separator-insensitive digit comparison is one precise option.",
+    "Run the relevant component suite, including Discovery and Ectoplasm tests, and review available affected coverage and unresolved gaps. Keep the live smoke separate from the deterministic component suite."
+  ],
+  "pre_implementation_verification": {
+    "status": "NOT_RUN",
+    "command": "From frontend/: `npm test -- --run src/ecto/__tests__/EctoContentHooks.spec.ts`; `npm run smoke:layout`",
+    "failure_evidence": "Both commands were attempted. Node exited before loading either test or smoke script with `EPERM: operation not permitted, lstat 'C:\\Users\\Administrator'`; this is a filesystem/environment failure, not a behavior-level expected failure. The Discovery live smoke was not run because a current backend and populated live environment were not established."
+  },
+  "coverage_review": "A checked-in local frontend coverage report is available. Relevant reported figures include CraftingDiscoveryScreen.vue 92.75% line / 83.09% branch, CraftingProfitScreen.vue 95.19% / 86.13%, EctoSalvageScreen.vue 97.23% / 92.05%, and Ecto useEctoSalvage.ts 0% / 0%. These are report figures, not proof of this story's smoke-script coverage; the report does not establish coverage for the standalone smoke scripts. Review any unresolved gaps for the changed fixture and live-check paths in the post-implementation review.",
+  "external_sources": [],
+  "clarifications": [],
+  "post_implementation_review_required": true,
+  "post_implementation_review_reason": "The story changes standalone browser smoke contracts, including an opt-in live check that could not be verified pre-implementation here. Review the updated fixture and response assertions, run layout smoke, run Discovery live smoke against a fresh current runtime, run the affected component tests, and inspect relevant coverage.",
+  "schema_version": 1,
+  "qa_model": "gpt-6-luna",
+  "qa_reasoning_effort": "medium",
+  "story_contract_sha256": "7a5f2723dd9ccc90dcd6b6094b0a83b91309f36033ab50dcc14e4d80cf4271fb",
+  "user_decision_ids": [],
+  "protected_test_hashes": {},
+  "post_implementation_reviews": [
+    {
+      "decision": "APPROVE",
+      "reason": "The implementation meets the acceptance criteria. The review found the layout fixture and Discovery live assertions aligned with the current contracts, authoritative values are compared without browser-side economic calculations, and Ectoplasm checks are locale-independent. The story records passing smoke checks, relevant component suites, type-check, and coverage review; those run results are reported evidence and were not rerun in this review. The QA plan added no protected tests, and the prepared existing tests remain present and meaningful. The known lack of instrumented coverage for standalone smoke scripts is disclosed and those scripts were reportedly run directly.",
+      "evidence": [
+        "The layout smoke validates required CraftingRow fields, explicit nullable values, and null result-derived fields for unavailable rows; it compares rendered money cells with supplied fixture values.",
+        "The Discovery live smoke rejects the removed inventoryCharacterName field, compares displayed rows and detail values to the current response, and asserts that its requests omit the separate inventory character.",
+        "The Ectoplasm component tests use a digit-grouping helper; a dedicated test exercises five explicit locales and checks that distinct renderings normalize to 14134.",
+        "The story records passing layout smoke, live Discovery smoke against a fresh local runtime, 51 relevant component tests, type-check, and scoped coverage review. The live check is described as read-only.",
+        "The QA plan lists no prepared test paths or protected hashes; existing Discovery and Ectoplasm tests remain in place, with the locale expectations updated."
+      ],
+      "actionable_items": []
+    }
+  ]
+}

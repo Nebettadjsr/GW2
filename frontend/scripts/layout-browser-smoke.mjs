@@ -136,6 +136,10 @@ function money(copper) {
  * would print a different string and fail step 4 rather than agree with the fixture by coincidence
  * (TEST_STRATEGY 12.1 rule 2). The owned-material total, which no table derives or scales, stays the
  * straightforward 12 × 4 321 its per-craft basis implies.
+ *
+ * Every field of `CraftingRow` in `frontend/src/api/types.ts` is supplied on every row — `iconUrl`
+ * included, as an explicit null rather than an omission, so no cell reads an `undefined` the real
+ * response can never contain.
  */
 function profitRows() {
   const row = (recipeId, outputName, overrides) => ({
@@ -158,7 +162,27 @@ function profitRows() {
     outputPrice: { buyUnitCopper: 120_000, sellUnitCopper: 130_000 },
     missingToBuy: [],
     missingToBuyOne: [],
+    // No icon is offered for any item this check answers for (see `itemMetadata`), so the no-icon
+    // treatment is what every table renders and no extra subresource is requested. Display metadata
+    // only: a missing icon says nothing about this row's economics.
+    iconUrl: null,
     ...overrides
+  })
+
+  /**
+   * One material the calculation still needs, with every `MissingItem` field of
+   * `frontend/src/api/types.ts` supplied. This material carries no quote at all — the state
+   * `PRICE_UNAVAILABLE` names — so its selected acquisition price and that price times the quantity
+   * are null, which is the contract's own meaning of "unavailable" and not a zero.
+   */
+  const missingCore = (quantity) => ({
+    itemId: 19_699,
+    itemName: 'Charged Core',
+    quantity,
+    price: null,
+    purchaseUnitPriceCopper: null,
+    totalPurchaseCostCopper: null,
+    iconUrl: null
   })
 
   return [
@@ -177,18 +201,27 @@ function profitRows() {
       blockedReason: 'PRICE_UNAVAILABLE',
       profitCopper: null,
       totalProfitCopper: null,
-      missingToBuy: [{ itemId: 19_699, itemName: 'Charged Core', quantity: 3, price: null }],
-      missingToBuyOne: [{ itemId: 19_699, itemName: 'Charged Core', quantity: 1, price: null }]
+      missingToBuy: [missingCore(3)],
+      missingToBuyOne: [missingCore(1)]
     }),
+    // No result was calculated, so *every* result-derived field is null — what `CraftingRow` states
+    // for `resultAvailable: false` and what `web.CraftingRowMapper` actually sends for a recipe with
+    // no result. The blocking code, the owned-material value and the revenue are among them: this row
+    // used to keep the available row's 4 321 and 111 110, so the page printed an "Own materials"
+    // amount for a calculation that produced none (DOMAIN_SPEC 21 — a null is never a zero, and here
+    // not a leftover either). `outputPrice` and the two missing-material lists stay null as the other
+    // contract-valid case for an unquoted output and an absent list, which no other fixture row shows.
     row(4, 'Bolt of Damask', {
       resultAvailable: false,
+      blockedReason: null,
       craftableCount: null,
-      profitCopper: null,
-      totalProfitCopper: null,
       buyCostCopper: null,
-      // No result was calculated, so neither total was supplied either.
-      totalSellValueCopper: null,
+      matsSellValueCopper: null,
       totalMatsSellValueCopper: null,
+      revenueCopper: null,
+      profitCopper: null,
+      totalSellValueCopper: null,
+      totalProfitCopper: null,
       outputPrice: null,
       missingToBuy: null,
       missingToBuyOne: null
@@ -196,6 +229,99 @@ function profitRows() {
     // A loss, so the negative money treatment is on screen to be measured as well as the positive.
     row(5, 'Charged Quartz Crystal', { profitCopper: -3_400, totalProfitCopper: -40_800 })
   ]
+}
+
+/**
+ * The names `CraftingRow` requires, and the subset of them it derives from a calculation result —
+ * "Every result-derived field is null when `resultAvailable` is false" (`frontend/src/api/types.ts`,
+ * DOMAIN_SPEC 21). `ingredientNames` is the contract's one optional member and no step here reads it,
+ * so it is not required of this fixture.
+ */
+const RESULT_DERIVED_ROW_FIELDS = [
+  'craftableCount',
+  'buyCostCopper',
+  'matsSellValueCopper',
+  'totalMatsSellValueCopper',
+  'revenueCopper',
+  'profitCopper',
+  'totalSellValueCopper',
+  'totalProfitCopper',
+  'blockedReason'
+]
+const ROW_FIELDS = [
+  'recipeId',
+  'outputItemId',
+  'outputName',
+  'outputCount',
+  'disciplines',
+  'minRating',
+  'resultAvailable',
+  'outputPrice',
+  'missingToBuy',
+  'missingToBuyOne',
+  'iconUrl',
+  ...RESULT_DERIVED_ROW_FIELDS
+]
+const MISSING_ITEM_FIELDS = [
+  'itemId',
+  'itemName',
+  'quantity',
+  'price',
+  'purchaseUnitPriceCopper',
+  'totalPurchaseCostCopper',
+  'iconUrl'
+]
+
+/**
+ * The controlled rows against the response contract they stand in for, before any of them reaches a
+ * page.
+ *
+ * This is not the same question as the on-screen comparisons below: those read each cell against the
+ * value this very fixture supplied, so they agree with a row carrying an amount no real response
+ * could — an unavailable result keeping the available row's owned-material figure is exactly how that
+ * went unnoticed. Here the fixture itself is the subject: every required name present as a value or
+ * an explicit null rather than omitted, and nothing result-derived on a row that has no result.
+ */
+function checkRowContract(rows) {
+  const problems = []
+  for (const row of rows) {
+    for (const field of ROW_FIELDS) {
+      if (!Object.hasOwn(row, field)) problems.push(`recipe ${row.recipeId} omits ${field}`)
+    }
+    if (row.resultAvailable === false) {
+      for (const field of RESULT_DERIVED_ROW_FIELDS) {
+        if (row[field] !== null) {
+          problems.push(
+            `recipe ${row.recipeId} has no result but supplies ${field} = ${JSON.stringify(row[field])}`
+          )
+        }
+      }
+    }
+    for (const item of [...(row.missingToBuy ?? []), ...(row.missingToBuyOne ?? [])]) {
+      for (const field of MISSING_ITEM_FIELDS) {
+        if (!Object.hasOwn(item, field)) {
+          problems.push(`recipe ${row.recipeId}'s missing item ${item.itemId} omits ${field}`)
+        }
+      }
+    }
+  }
+  check(
+    problems.length === 0,
+    'These controlled rows are not answers the backend could give: ' + problems.join('; ')
+  )
+  // Each case the contract distinguishes has to be among them, or this check passed on rows that
+  // never exercised it.
+  const withoutResult = rows.filter((row) => !row.resultAvailable)
+  const withMissingMaterial = rows.filter((row) => (row.missingToBuy ?? []).length > 0)
+  const available = rows.filter((row) => row.resultAvailable && row.totalSellValueCopper !== null)
+  check(withoutResult.length > 0, 'No row without a result, so that half of the contract went unchecked.')
+  check(withMissingMaterial.length > 0, 'No row with a missing material, so MissingItem went unchecked.')
+  check(available.length > 0, 'No row with a supplied result, so nothing was compared on screen.')
+  return (
+    `${rows.length} rows: ${available.length} with a supplied result, ` +
+    `${withMissingMaterial.length} with an unpriced material, ` +
+    `${withoutResult.length} with no result and every result-derived field null`
+  )
 }
 
 function bankSlots() {
@@ -412,11 +538,11 @@ async function textOf(page, selector) {
 }
 
 /**
- * One table's rendered sell-value column, each cell paired with the recipe id printed in its own row.
+ * One table's rendered money column, each cell paired with the recipe id printed in its own row.
  * Pairing by id rather than by position means the comparison does not depend on the sort order or on
  * which rows a display filter left on screen.
  */
-async function sellValueColumn(page, rowTest, cellTest) {
+async function moneyColumn(page, rowTest, cellTest) {
   return page.$$eval(
     `[data-test="${rowTest}"]`,
     (rows, cellSelector) =>
@@ -432,20 +558,22 @@ async function sellValueColumn(page, rowTest, cellTest) {
 }
 
 /**
- * Every rendered cell against the total this script supplied for that very row — the only expectation
- * available here, since the browser may not compute one. A page that multiplied a count by a
- * per-craft value prints a different string, and a field the fixture omitted prints the missing
+ * Every rendered cell against the value this script supplied in `field` for that very row — the only
+ * expectation available here, since the browser may not compute one. A page that multiplied a count by
+ * a per-craft value prints a different string, and a field the fixture omitted prints the missing
  * marker where an amount was supplied; both fail here instead of being laid out unnoticed.
+ *
+ * The missing marker is as much an expectation as an amount: the row with no result supplies null for
+ * every result-derived field, so each of its cells must read `—` and none of them may show a leftover
+ * figure from a calculation that did not happen (DOMAIN_SPEC 21).
  */
-function checkSellValues(rendered, column, where) {
-  const supplied = new Map(
-    profitRows().map((row) => [row.recipeId, money(row.totalSellValueCopper)])
-  )
+function checkSuppliedColumn(rendered, column, where, field) {
+  const supplied = new Map(profitRows().map((row) => [row.recipeId, money(row[field])]))
   check(rendered.length > 0, `${where}: no row was on screen, so ${column} was not measured.`)
   const wrong = rendered.filter((cell) => cell.text !== supplied.get(cell.recipeId))
   check(
     wrong.length === 0,
-    `${where}: ${column} did not show the supplied total for ` +
+    `${where}: ${column} did not show the supplied ${field} for ` +
       wrong
         .map((cell) => `recipe ${cell.recipeId} (${cell.text}, supplied ${supplied.get(cell.recipeId)})`)
         .join(', ')
@@ -612,6 +740,10 @@ async function run() {
   page.on('response', (response) => browserCalls.push(new URL(response.url()).pathname))
 
   try {
+    // What this script is about to answer with: a fixture that is not a possible response makes
+    // every comparison below agree with the wrong thing.
+    record('every controlled row is a valid CraftingRow answer', checkRowContract(profitRows()))
+
     await page.goto(`${stub.origin}/`, { waitUntil: 'networkidle', timeout: TIMEOUT_MS })
     check(
       stub.servedCount() > 0,
@@ -711,24 +843,40 @@ async function run() {
     await page.setViewportSize({ width: 1440, height: 900 })
     await openArea(page, stub.origin, PROFIT_AREA)
     await showEveryRow(page)
-    const profitCells = await sellValueColumn(page, 'profit-row', 'total-sell-value')
+    const profitCells = await moneyColumn(page, 'profit-row', 'total-sell-value')
     check(
       profitCells.length === profitRows().length,
       `${PROFIT_AREA.id}: ${profitCells.length} of ${profitRows().length} supplied rows were on ` +
         'screen, so the column was compared against only part of the fixture.'
     )
-    const profitColumn = checkSellValues(profitCells, '"Total sell value"', PROFIT_AREA.id)
+    const profitColumn = checkSuppliedColumn(
+      profitCells,
+      '"Total sell value"',
+      PROFIT_AREA.id,
+      'totalSellValueCopper'
+    )
+    // The per-craft owned-material column of the same rows, which is where the row with no result
+    // used to print the available row's 43s 21c: with every result-derived field now null it has to
+    // read the missing marker, and this is the cell that says so on screen.
+    const ownMaterialsColumn = checkSuppliedColumn(
+      await moneyColumn(page, 'profit-row', 'own-materials'),
+      '"Own materials"',
+      PROFIT_AREA.id,
+      'matsSellValueCopper'
+    )
     // The same rows under Discovery's own column heading, on the area that renders them.
     const discoveryArea = areaOf('discovery')
     await openArea(page, stub.origin, discoveryArea)
-    const discoveryColumn = checkSellValues(
-      await sellValueColumn(page, 'discovery-row', 'discovery-sell-value'),
+    const discoveryColumn = checkSuppliedColumn(
+      await moneyColumn(page, 'discovery-row', 'discovery-sell-value'),
       '"Sell value"',
-      discoveryArea.id
+      discoveryArea.id,
+      'totalSellValueCopper'
     )
     record(
-      'both tables show the supplied total sell value',
+      'both tables show the supplied total sell value, and no result means no amount',
       `${PROFIT_AREA.id} "Total sell value": ${profitColumn}; ` +
+        `${PROFIT_AREA.id} "Own materials": ${ownMaterialsColumn}; ` +
         `${discoveryArea.id} "Sell value": ${discoveryColumn}`
     )
 

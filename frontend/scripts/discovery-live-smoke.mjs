@@ -50,10 +50,6 @@ function signedMoney(copper) {
   return copper > 0 ? `+${money(copper)}` : money(copper)
 }
 
-function count(value) {
-  return value === null || value === undefined ? '—' : String(value)
-}
-
 function nextResponse(path) {
   const pending = page.waitForResponse((response) => new URL(response.url()).pathname === path)
   // A run may legitimately decide not to await one of these (a reload can drop the selected recipe).
@@ -83,60 +79,108 @@ function names(node) {
 /** The contract fields this page depends on; a missing one means an old backend, not a page defect. */
 function checkContract(body, request) {
   assert.ok(body.scope, 'Missing echoed scope: rebuild/restart the backend serving this origin')
+  assert.equal(typeof body.scope.discipline, 'string', 'Missing echoed discipline')
+  assert.equal(typeof body.scope.characterName, 'string', 'Missing echoed character')
   assert.equal(typeof body.scope.rating, 'number', 'Missing echoed rating')
-  assert.ok(
-    Object.hasOwn(body, 'inventoryCharacterName'),
-    'Missing echoed inventoryCharacterName: rebuild/restart the backend serving this origin'
-  )
   assert.equal(typeof body.settings.allowDailyCrafts, 'boolean', 'Missing echoed daily value')
-  // The route does not accept the fixed daily setting.
-  if (request?.settings !== undefined) {
-    assert.equal(request.settings.allowDailyCrafts, undefined, 'The page sent the fixed daily setting')
+  // `CraftingDiscoveryResponse` carries one combined character/discipline scope: that character is
+  // both the crafter and the owned-material inventory, so there is no second inventory character to
+  // echo. Requiring one here is what made this check fail its own contract step against a current
+  // backend; it is now the *presence* of the removed field that means an old build is serving this
+  // origin (`web.dto.CraftingDiscoveryResponse`, `CraftingDiscoveryApiControllerTest`).
+  assert.ok(
+    !Object.hasOwn(body, 'inventoryCharacterName'),
+    'The response still carries inventoryCharacterName, which this route no longer has: ' +
+      'rebuild/restart the backend serving this origin'
+  )
+  if (request !== undefined && request !== null) {
+    // The route does not accept the fixed daily setting, and has no inventory character to send.
+    assert.equal(request.settings?.allowDailyCrafts, undefined, 'The page sent the fixed daily setting')
+    assert.ok(
+      !Object.hasOwn(request, 'inventoryCharacterName'),
+      'The page sent a separate inventory character the route does not accept'
+    )
   }
   for (const row of body.rows) {
     assert.ok(Object.hasOwn(row, 'totalSellValueCopper'), 'Missing gross total on a row')
     assert.ok(Object.hasOwn(row, 'minRating'), 'Missing recipe level on a row')
+    assert.ok(Object.hasOwn(row, 'iconUrl'), 'Missing output item icon URL on a row')
   }
 }
 
-/** The rendered list, compared against the rows the response actually returned. */
+/**
+ * How many of the calculation's rows the page is showing: its own changeable maximum, or all of them
+ * while "Show all" is ticked (DOMAIN_SPEC 2.1.1, initially 250).
+ *
+ * Read from the page's own controls rather than assumed, because a live calculation returns far more
+ * discoverable recipes than the maximum: this check compares the rows that are actually on screen,
+ * and a result larger than the maximum is the page working as specified, not a mismatch.
+ */
+async function displayedCount(rowCount) {
+  if (await locator('discovery-show-all').isChecked()) return rowCount
+  const maximum = Number(await locator('discovery-max-displayed').inputValue())
+  assert.ok(
+    Number.isInteger(maximum) && maximum > 0,
+    `The page's maximum displayed count is not a count: ${maximum}`
+  )
+  return Math.min(maximum, rowCount)
+}
+
+/**
+ * The rendered list, compared against the rows the response actually returned.
+ *
+ * One entry per column `DiscoveryTable.vue` renders, and the response field each column is supplied
+ * from: the recipe level, the materials to buy, the sell value and the *total* profit. There is no
+ * craftable-count column and no per-craft profit column on this table — Discovery compares one
+ * discovery craft — so a cell for either is not something this check may read.
+ */
 async function checkList(table) {
   const rendered = await page.$$eval('[data-test="discovery-row"]', (rows) =>
     rows.map((row) => ({
       name: row.querySelector('.recipe-name').textContent.trim(),
       recipe: row.querySelector('.recipe-ids').textContent.trim(),
       level: row.querySelector('[data-test="discovery-level"]').textContent.trim(),
-      craftable: row.querySelector('[data-test="discovery-craftable"]').textContent.trim(),
       buyCost: row.querySelector('[data-test="discovery-buy-cost"]').textContent.trim(),
       sellValue: row.querySelector('[data-test="discovery-sell-value"]').textContent.trim(),
       profit: row.querySelector('[data-test="discovery-profit"]').textContent.trim()
     }))
   )
 
-  // The page opens on highest recipe level first; nothing is added to or removed from the result.
+  // The page opens on highest recipe level first; nothing is added to or removed from the result, and
+  // what the maximum leaves out is cut from the end of that order rather than chosen some other way.
+  const visible = await displayedCount(table.rows.length)
   const expected = [...table.rows]
     .sort((left, right) => right.minRating - left.minRating || left.recipeId - right.recipeId)
+    .slice(0, visible)
     .map((row) => ({
       name: row.outputName ?? `Item #${row.outputItemId}`,
       recipe: `recipe ${row.recipeId}`,
       level: String(row.minRating),
-      craftable: count(row.craftableCount),
       buyCost: money(row.buyCostCopper),
       sellValue: money(row.totalSellValueCopper),
-      profit: signedMoney(row.profitCopper)
+      profit: signedMoney(row.totalProfitCopper)
     }))
 
-  assert.equal(rendered.length, table.rows.length, 'The page listed a different number of recipes')
+  assert.equal(
+    rendered.length,
+    visible,
+    'The page listed a different number of recipes than its own maximum allows'
+  )
   assert.deepEqual(rendered, expected, 'The rendered rows do not match the response')
 
-  const losses = table.rows.filter((row) => row.profitCopper !== null && row.profitCopper <= 0)
+  // A loss does not disqualify a discovery, so these rows have to still be listed; the count is the
+  // one the column above shows, which is the total.
+  const losses = table.rows.filter(
+    (row) => row.totalProfitCopper !== null && row.totalProfitCopper <= 0
+  )
   console.log(
     JSON.stringify({
       route: discoveryPath,
       status: 200,
       scope: table.scope,
-      inventoryCharacterName: table.inventoryCharacterName,
+      settings: table.settings,
       rowCount: table.rowCount,
+      displayedMaximum: visible,
       rendered: rendered.length,
       nonPositiveProfitCandidatesKept: losses.length
     })
@@ -147,21 +191,38 @@ async function checkList(table) {
 async function checkDetail(result, table, candidate) {
   const { body, request } = await successful(result)
 
-  // The detail was asked for with the inputs the *table response* echoed, inventory character included.
+  // The detail was asked for with the inputs the *table response* echoed: Discovery's one combined
+  // character/discipline scope, which is also the owned-material context, and the four settings the
+  // route accepts — no second inventory character, and not the daily value the route fixes itself.
   assert.equal(request.recipeId, candidate.recipeId)
   assert.deepEqual(request.calculation.scope, {
     discipline: table.scope.discipline,
     characterName: table.scope.characterName,
     rating: table.scope.rating
   })
-  assert.equal(
-    request.calculation.inventoryCharacterName ?? null,
-    table.inventoryCharacterName,
-    'The detail request did not carry the table\'s echoed inventory character'
+  assert.deepEqual(
+    request.calculation.settings,
+    {
+      useOwnMats: table.settings.useOwnMats,
+      allowBuying: table.settings.allowBuying,
+      listingSell: table.settings.listingSell,
+      listingBuy: table.settings.listingBuy
+    },
+    'The detail request did not carry the settings the table response echoed'
+  )
+  assert.ok(
+    !Object.hasOwn(request.calculation, 'inventoryCharacterName'),
+    'The detail request sent a separate inventory character'
   )
   assert.equal(body.recipeId, candidate.recipeId)
+  // `TARGET_ARCHITECTURE.md` 13.4: the browser only accepts a detail whose echoed calculation is the
+  // one on screen, so these two are what tie this tree to the table above it.
   assert.deepEqual(body.calculation.scope, table.scope)
-  assert.equal(body.calculation.inventoryCharacterName, table.inventoryCharacterName)
+  assert.deepEqual(body.calculation.settings, table.settings)
+  assert.ok(
+    !Object.hasOwn(body.calculation, 'inventoryCharacterName'),
+    'The echoed calculation still carries inventoryCharacterName: rebuild/restart the backend'
+  )
   assert.equal(body.treeBasis, 'SINGLE_OUTPUT_REQUIREMENT')
   assert.equal(
     body.treeStatus,
@@ -182,7 +243,7 @@ async function checkDetail(result, table, candidate) {
   assert.equal(await locator('resolution-total-profit').count(), 0)
   assert.equal(await locator('resolution-row').count(), 0)
   assert.equal(
-    (await locator('discovery-detail-total-profit').textContent()).trim(),
+    (await locator('discovery-detail-profit').textContent()).trim(),
     signedMoney(candidate.totalProfitCopper),
     'The fresh calculation overwrote the table row\'s own total'
   )
@@ -200,7 +261,7 @@ async function checkDetail(result, table, candidate) {
       nodes: names(body.tree).length,
       treeBasis: body.treeBasis,
       consistency: body.consistency,
-      inventoryCharacterName: body.calculation.inventoryCharacterName
+      calculation: body.calculation
     })
   )
 }
@@ -246,7 +307,8 @@ try {
   await page.getByRole('button', { name: `${candidate.outputName} recipe ${candidate.recipeId}`, exact: true }).click()
   await checkDetail(detail, table, candidate)
 
-  // A reload keeps the scope, the inventory character and the settings, and asks for the detail again.
+  // A reload keeps the scope and the settings, and asks for the detail again. `checkContract` is what
+  // establishes that the reloaded request carries no inventory character and no fixed daily setting.
   await locator('discovery-search').fill('')
   const reload = nextResponse(discoveryPath)
   const reloadedDetail = nextResponse(detailPath)
@@ -258,7 +320,7 @@ try {
     characterName: table.scope.characterName,
     rating: table.scope.rating
   })
-  assert.equal(reloaded.request.inventoryCharacterName ?? null, table.inventoryCharacterName)
+  assert.deepEqual(reloaded.body.scope, table.scope, 'The reload calculated a different scope')
   table = reloaded.body
   await settled()
   const stillSelected = table.rows.find((row) => row.recipeId === candidate.recipeId)

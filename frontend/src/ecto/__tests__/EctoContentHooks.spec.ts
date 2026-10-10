@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import EctoSalvageScreen from '../EctoSalvageScreen.vue'
 import { accountLuck, itemMetadata, itemPrices } from './currentEctoFixtures'
+import { withoutDigitGrouping } from './renderedNumbers'
 
 let wrapper: ReturnType<typeof mount> | null = null
 let failMetadata = false
@@ -42,7 +43,10 @@ describe('Ecto semantic content hooks', () => {
 
     expect(wrapper.find('[data-test="ecto-result"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="ecto-calculation"]').text()).toContain('185 Dust')
-    expect(wrapper.find('[data-test="ecto-account-luck"]').text()).toContain((14_134).toLocaleString())
+    // 14 134 is the supplied `accountLuck.consumedLuck`, named by its digits so the expectation is
+    // that value rather than this machine's thousands separator.
+    expect(withoutDigitGrouping(wrapper.find('[data-test="ecto-account-luck"]').text()))
+      .toContain(String(14_134))
   })
 
   it('does not expose a result-ready hook when required item metadata failed', async () => {
