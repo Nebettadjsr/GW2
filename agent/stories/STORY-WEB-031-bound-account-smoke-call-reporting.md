@@ -8,7 +8,7 @@ Bound account browser smoke call reporting
 
 ## Status
 
-TODO
+DONE
 
 ## Milestone
 
