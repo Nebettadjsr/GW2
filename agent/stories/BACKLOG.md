@@ -13,7 +13,6 @@ below stay in the plain form.
 
 ## Active
 
-- STORY-QUALITY-005 | STORY-QUALITY-005-phase-five-completion-review.md | TODO | milestone-05 | deps: STORY-PERF-002, STORY-WEB-019, STORY-SYNC-005, STORY-WEB-018, STORY-WEB-020, STORY-WEB-021, STORY-WEB-022, STORY-WEB-027, STORY-WEB-028
 
 ## To Do
 
@@ -79,6 +78,7 @@ Completed current-milestone story details remain in their canonical files.
 - STORY-WEB-030 | STORY-WEB-030-align-layout-discovery-smoke-contracts.md | DONE | milestone-05 | Align layout fixtures and Discovery live smoke contract
 - STORY-WEB-031 | STORY-WEB-031-bound-account-smoke-call-reporting.md | DONE | milestone-05 | Bound account browser smoke call reporting
 - STORY-WEB-032 | STORY-WEB-032-root-sourcing-browser-coverage.md | DONE | milestone-05 | Verify root sourcing in browser resolution details
+- STORY-QUALITY-005 | STORY-QUALITY-005-phase-five-completion-review.md | DONE | milestone-05 | Review Phase 5 project health before milestone completion
 
 ## Archived
 
