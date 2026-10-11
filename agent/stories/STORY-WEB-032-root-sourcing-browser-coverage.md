@@ -274,6 +274,10 @@ F001: `resolutionPresentation.ts`'s `describeRootSourcing` has an equal-identity
 and that sentence appears nowhere else in `frontend/src`. It is the only uncovered line in the
 root-sourcing path and both browser checks assert its wording is absent from the page.
 
+## Follow-up Findings Disposition
+
+F001: DISMISSED — Optional cleanup of an unreachable helper branch, not a verified app defect or unmet Phase 5 requirement. Current `frontend/src/crafting/CraftingResolution.vue` suppresses equal-identity roots before calling `describeRootSourcing`; the only call site is that component. `frontend/src/crafting/resolutionPresentation.ts` retains the unused sentence. This story's Result verifies same-root suppression and alternate-root presentation in the browser and records the coverage limitation. No additional implementation or coverage story is required by `docs/TARGET_ARCHITECTURE.md` §10.2 or the supplied Phase 5 browser acceptance criteria.
+
 ## Blockers
 
 None.
