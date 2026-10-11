@@ -148,6 +148,7 @@ class IdleAndPlanningTests(_CycleTestCase):
         cycle.get_actionable_requests.return_value = []
         self.orchestrator.planning_fingerprint.return_value = "fp1"
         cycle.story_state.get_selectable_story_candidates.return_value = []
+        cycle.story_state.parse_backlog_section.return_value = ["STORY-T-001-x.md"]
         patches = {"run_planning_pass": mock.Mock(return_value={"status": "COMPLETE"}),
                    "claude_budget": mock.Mock(**{"status.return_value": {"claude_allowed": False}})}
         for name, value in patches.items():
@@ -169,6 +170,21 @@ class IdleAndPlanningTests(_CycleTestCase):
         self.assertEqual(cycle.choose_step(None, planning, None), "select")
         self.orchestrator.planning_fingerprint.return_value = "fp2"
         self.assertEqual(cycle.choose_step(None, planning, None), "plan")
+
+    def test_finished_stories_reopen_planning_on_unchanged_inputs(self):
+        # Regression: the planner held QUALITY-005 "until the queued work is done";
+        # that work finished, the inputs did not change, and planning never ran again.
+        planning = {}
+        cycle.step_plan(planning)
+        self.assertEqual(planning["finished"], ["STORY-T-001-x.md"])
+        self.assertEqual(cycle.choose_step(None, planning, None), "select")
+        cycle.story_state.parse_backlog_section.return_value = ["STORY-T-001-x.md", "STORY-T-002-y.md"]
+        self.assertEqual(cycle.choose_step(None, planning, None), "plan")
+
+    def test_progress_alone_never_replans_while_stories_are_queued(self):
+        planning = {"fingerprint": "fp1", "finished": []}
+        cycle.story_state.get_selectable_story_candidates.return_value = ["queued"]
+        self.assertEqual(cycle.choose_step(None, planning, None), "select")
 
     def test_changed_planning_inputs_replan_even_with_a_stocked_queue(self):
         cycle.story_state.get_selectable_story_candidates.return_value = ["story"]

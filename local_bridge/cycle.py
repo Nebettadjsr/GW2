@@ -111,15 +111,22 @@ def _stop_blocked(cycle: dict, reason: str) -> StepResult:
 
 # ---------------------------------------------------------------- steps
 
+def finished_stories() -> list[str]:
+    """Story files under BACKLOG.md's '## Done' -- execution progress, not a planning input."""
+    return sorted(story_state.parse_backlog_section(read_file(BACKLOG_FILE), "Done"))
+
+
 def codex_work_needed(planning: dict) -> bool:
     """The old orchestrator's triggers for architect or planner work."""
     if get_actionable_requests() or planning.get("follow_up"):
         return True
-    fingerprint = orchestrator.planning_fingerprint()
-    if fingerprint == planning.get("fingerprint"):
-        return False  # a pass on unchanged inputs would repeat its last answer
     queue_low = should_trigger_planning(len(story_state.get_selectable_story_candidates()))
-    return queue_low or planning.get("fingerprint") is not None  # or inputs changed since the last pass
+    if orchestrator.planning_fingerprint() != planning.get("fingerprint"):
+        return queue_low or planning.get("fingerprint") is not None  # or inputs changed since the last pass
+    # Unchanged inputs would repeat the last answer -- unless stories finished
+    # since then: a pass that waited on queued work (e.g. a milestone review
+    # blocked until that work is done) must look again once it is done.
+    return queue_low and finished_stories() != planning.get("finished")
 
 
 def choose_step(cycle: dict | None, planning: dict, budget_settings: dict | None) -> str:
@@ -146,7 +153,7 @@ def step_plan(planning: dict) -> StepResult:
     after = orchestrator.planning_fingerprint()
     status = result.get("status", "FAILED")
     # A follow-up pass is only honoured after a pass that actually changed something.
-    planning.update(fingerprint=after,
+    planning.update(fingerprint=after, finished=finished_stories(),
                     follow_up=bool(result.get("independent_work_remaining")) and after != before)
     return StepResult(f"planning_{status.lower()}", status != "FAILED", result.get("reason", ""),
                       stories_created=result.get("story_files_created") or [],
