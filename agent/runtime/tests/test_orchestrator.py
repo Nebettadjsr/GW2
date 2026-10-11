@@ -360,3 +360,53 @@ class RequeueResolvedInterventionsTest(OrchestratorInterventionTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RequeueDependencyBlockedTest(OrchestratorInterventionTestCase):
+    """A story the planner blocked on prerequisites is released once they are DONE."""
+
+    def blocked_story(self, filename, story_id, dependencies, blockers):
+        path = self.write_story(filename, story_with_id(
+            story_id, "## Status\n\nBLOCKED\n", dependencies_text=dependencies))
+        path.write_text(story_state._replace_section_body(
+            path.read_text(encoding="utf-8"), "Blockers", blockers), encoding="utf-8")
+        return path
+
+    def prerequisite(self, status):
+        self.write_story("STORY-WEB-001-prereq.md", story_with_id("STORY-WEB-001", f"## Status\n\n{status}\n"))
+
+    def test_satisfied_dependencies_requeue_the_story(self):
+        # Regression: QUALITY-005 stayed blocked after all its prerequisites
+        # finished; the planner left eligibility to the harness, which had no rule.
+        self.prerequisite("DONE")
+        path = self.blocked_story("STORY-QUALITY-001-review.md", "STORY-QUALITY-001",
+                                  "- STORY-WEB-001", "STORY-WEB-001 must be complete before this review.")
+        self.write_backlog(blocked=["STORY-QUALITY-001-review.md"])
+
+        self.assertEqual(orchestrator.requeue_dependency_blocked_stories(), ["STORY-QUALITY-001-review.md"])
+
+        content = path.read_text(encoding="utf-8")
+        self.assertEqual(story_state.classify_story_status(story_state.extract_status_section(content)), "TODO")
+        self.assertIn("## Blockers\n\nNone.", content)
+        backlog = self.backlog_file.read_text(encoding="utf-8")
+        self.assertEqual(story_state.parse_backlog_section(backlog, "To Do"), ["STORY-QUALITY-001-review.md"])
+        self.assertEqual(story_state.parse_backlog_section(backlog, "Blocked"), [])
+        self.assertTrue(any("requeued" in line for line in self.logged), self.logged)
+
+    def test_unfinished_dependencies_keep_the_block(self):
+        self.prerequisite("TODO")
+        self.blocked_story("STORY-QUALITY-001-review.md", "STORY-QUALITY-001",
+                           "- STORY-WEB-001", "Waiting on STORY-WEB-001.")
+        self.write_backlog(blocked=["STORY-QUALITY-001-review.md"])
+        self.assertEqual(orchestrator.requeue_dependency_blocked_stories(), [])
+
+    def test_harness_recorded_blocks_and_dependency_free_blocks_are_left_alone(self):
+        self.prerequisite("DONE")
+        self.blocked_story("STORY-QUALITY-001-a.md", "STORY-QUALITY-001", "- STORY-WEB-001",
+                           "Blocked per evaluator: the migration needs a database role.")
+        self.blocked_story("STORY-QUALITY-002-b.md", "STORY-QUALITY-002", "- STORY-WEB-001",
+                           "Blocked on user intervention (see agent/user-interventions/UI-009-STORY-QUALITY-002.md).")
+        self.blocked_story("STORY-QUALITY-003-c.md", "STORY-QUALITY-003", "None.",
+                           "Waiting for the Product Owner to choose a layout.")
+        self.write_backlog(blocked=["STORY-QUALITY-001-a.md", "STORY-QUALITY-002-b.md", "STORY-QUALITY-003-c.md"])
+        self.assertEqual(orchestrator.requeue_dependency_blocked_stories(), [])

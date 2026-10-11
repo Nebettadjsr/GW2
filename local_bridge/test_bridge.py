@@ -161,6 +161,7 @@ class IdleAndPlanningTests(_CycleTestCase):
         cycle.story_state.get_selectable_story_candidates.return_value = ["story"]
         self.assertEqual(cycle.choose_step(None, {}, None), "select")
         self.orchestrator.requeue_resolved_interventions.assert_called_once()
+        self.orchestrator.requeue_dependency_blocked_stories.assert_called_once()
 
     def test_empty_queue_plans_once_then_selects_until_inputs_change(self):
         planning = {}

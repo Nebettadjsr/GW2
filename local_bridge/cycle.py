@@ -133,6 +133,7 @@ def choose_step(cycle: dict | None, planning: dict, budget_settings: dict | None
     """The next step: the cycle's phase, with Codex work between stories and while Claude waits."""
     if cycle is None:
         orchestrator.requeue_resolved_interventions()
+        orchestrator.requeue_dependency_blocked_stories()
         qa_agent.requeue_resolved_qa_stories()
         return "plan" if codex_work_needed(planning) else "select"
     if (cycle["phase"] == "implement" and codex_work_needed(planning)

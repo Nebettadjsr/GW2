@@ -46,6 +46,7 @@ from agent.runtime.core.story_state import (
     clear_active_story,
     clear_story_blocked,
     ensure_backlog_entry_blocked,
+    extract_dependencies_section,
     extract_status_section,
     extract_story_id,
     find_story_file_by_id,
@@ -54,6 +55,9 @@ from agent.runtime.core.story_state import (
     move_backlog_entry_to_blocked,
     move_backlog_entry_to_done,
     move_backlog_entry_to_todo,
+    parse_backlog_section,
+    parse_dependency_ids,
+    resolve_story_path,
     set_story_blocked,
     set_story_done,
     strip_backlog_prose,
@@ -800,6 +804,49 @@ def requeue_resolved_interventions() -> None:
             f"User intervention resolved: {item['file']} -> "
             f"{story_path.name} requeued to BACKLOG '## To Do'."
         )
+
+
+# Blocks the harness records itself, each with its own release path
+# (resolved intervention, resolved QA decision, a deliberate retry).
+_HARNESS_BLOCK_PREFIXES = (
+    "Blocked per evaluator", "Blocked on user intervention",
+    "Blocked on QA Product Owner decision", "QA technical failure",
+)
+
+
+def requeue_dependency_blocked_stories() -> list[str]:
+    """Requeue blocked stories whose declared dependencies are now all satisfied.
+
+    The planner blocks a story on prerequisite work and leaves eligibility to
+    the harness; without this, finishing that work never released the story.
+    Only dependency blocks are released: a story with no declared dependency,
+    an open intervention, or a harness-recorded block stays as it is.
+    """
+    requeued = []
+    story_index = build_story_index()
+    for filename in parse_backlog_section(read_file(BACKLOG_FILE), "Blocked"):
+        try:
+            story_path = resolve_story_path(filename)
+            content = read_file(story_path)
+        except (OSError, RuntimeError):
+            continue
+        blockers = (extract_section(content, "Blockers") or "").strip()
+        story_id = extract_story_id(content) or story_path.stem
+        if (classify_story_status(extract_status_section(content)) != "BLOCKED"
+                or blockers.startswith(_HARNESS_BLOCK_PREFIXES)
+                or not parse_dependency_ids(extract_dependencies_section(content))
+                or get_unsatisfied_dependencies(content, story_index)
+                or get_open_interventions_for_story(story_id)):
+            continue
+        clear_story_blocked(story_path)
+        backlog = read_file(BACKLOG_FILE)
+        updated = move_backlog_entry_to_todo(backlog, story_path.name)
+        if updated != backlog:
+            BACKLOG_FILE.write_text(updated, encoding="utf-8")
+        log_line(f"{story_path.name} requeued to BACKLOG '## To Do': every declared "
+                 f"dependency is satisfied. Previous blocker: {blockers}")
+        requeued.append(story_path.name)
+    return requeued
 
 
 # ============================================================
