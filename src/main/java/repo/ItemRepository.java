@@ -29,6 +29,18 @@ public class ItemRepository {
     }
 
     public Map<Integer, ItemInfo> loadItems(Set<Integer> itemIds) throws SQLException {
+        if (itemIds.isEmpty()) return new HashMap<>();
+        try (Connection con = repo.Db.open()) {
+            return loadItems(con, itemIds);
+        }
+    }
+
+    /**
+     * Same query as {@link #loadItems(Set)}, but on a caller-supplied connection, so one
+     * calculation can read every input it needs inside a single consistent database snapshot
+     * (TARGET_ARCHITECTURE.md §9.1: readers must not mix input generations).
+     */
+    public Map<Integer, ItemInfo> loadItems(Connection con, Set<Integer> itemIds) throws SQLException {
         Map<Integer, ItemInfo> out = new HashMap<>();
         if (itemIds.isEmpty()) return out;
 
@@ -38,8 +50,7 @@ public class ItemRepository {
             WHERE item_id = ANY(?)
         """;
 
-        try (Connection con = repo.Db.open();
-             PreparedStatement ps = con.prepareStatement(sql)) {
+        try (PreparedStatement ps = con.prepareStatement(sql)) {
 
             Array arr = con.createArrayOf("int", itemIds.toArray());
             ps.setArray(1, arr);

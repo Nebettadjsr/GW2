@@ -40,6 +40,17 @@ public class CharacterRepository {
     }
 
     public List<DiscRow> loadAllCharacterCrafting() throws SQLException {
+        try (Connection con = Db.open()) {
+            return loadAllCharacterCrafting(con);
+        }
+    }
+
+    /**
+     * Same query as {@link #loadAllCharacterCrafting()}, but on a caller-supplied connection, so one
+     * calculation can read every input it needs inside a single consistent database snapshot
+     * (TARGET_ARCHITECTURE.md §9.1: readers must not mix input generations).
+     */
+    public List<DiscRow> loadAllCharacterCrafting(Connection con) throws SQLException {
         String sql = """
             SELECT c.name AS char_name, cc.discipline, cc.rating, cc.is_active
             FROM character_crafting cc
@@ -48,8 +59,7 @@ public class CharacterRepository {
         """;
 
         List<DiscRow> out = new ArrayList<>();
-        try (Connection con = Db.open();
-             PreparedStatement ps = con.prepareStatement(sql);
+        try (PreparedStatement ps = con.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
 
             while (rs.next()) {

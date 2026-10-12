@@ -1,10 +1,16 @@
 package web;
 
+import application.AccountRefreshCoordinator;
 import application.AccountRefreshService;
+import application.BackgroundTasks;
 import application.BankContentsService;
+import application.CachedCraftingProfitService;
+import application.CalculationInputVersions;
 import application.CharacterSelectionService;
 import application.CraftingDiscoveryService;
 import application.CraftingProfitService;
+import application.ProfitInputSession;
+import application.TradingPostRefreshCoordinator;
 import application.CurrentAccountLuckService;
 import application.GlobalDataRefreshService;
 import application.MaterialStorageService;
@@ -30,6 +36,8 @@ import web.task.BackgroundTaskService;
 
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.function.Supplier;
 
 /**
@@ -49,17 +57,57 @@ public class Gw2ApiApplication {
         SpringApplication.run(Gw2ApiApplication.class, args);
     }
 
+    /** Adapts the shared task facility to the application layer's refresh-admission port. */
+    @Bean
+    public BackgroundTasks backgroundTasks(BackgroundTaskService tasks) {
+        return new BackgroundTaskServiceTasks(tasks);
+    }
+
     /**
-     * Supplies a fresh {@link CraftingProfitService} per request.
-     *
-     * <p>A plain {@link Supplier} rather than a Spring-scoped bean, so the application layer stays
-     * free of framework annotations and the controller's seam is trivially substitutable in tests.
-     * Each service instance owns the reload state for exactly one request, which is what keeps
-     * concurrent calculations from observing each other.
+     * Single-writer coordination for account sources, shared across every entry point that can
+     * demand them (STORY-APP-014): one instance is what keeps the accumulated demand, the one
+     * account writer and the "never claim an unrefreshed source" rule in force at the same time.
      */
     @Bean
-    public Supplier<CraftingProfitService> craftingProfitServiceFactory(CraftingGraphCache graphCache) {
-        return () -> new CraftingProfitService(graphCache);
+    public AccountRefreshCoordinator accountRefreshCoordinator(AccountRefreshService refresh,
+                                                               BackgroundTasks tasks) {
+        return new AccountRefreshCoordinator(refresh, tasks);
+    }
+
+    /** Shared Trading Post demand coordination, deliberately separate from the account one. */
+    @Bean
+    public TradingPostRefreshCoordinator tradingPostRefreshCoordinator(
+            TradingPostPriceRefreshService refresh, BackgroundTasks tasks) {
+        return new TradingPostRefreshCoordinator(refresh, tasks);
+    }
+
+    /**
+     * Crafting Profit's cached-result use case (TARGET_ARCHITECTURE.md §9.1), shared rather than
+     * per-request: it holds no per-call state, and the coordinators it uses must be the shared ones
+     * for their admission rules to mean anything. The per-request state stays where it was — each
+     * call builds its own {@link CraftingProfitService} over its own captured session, which is what
+     * keeps concurrent calculations from observing each other.
+     *
+     * <p>Constructing it opens nothing: a session is opened inside a call and closed before it
+     * returns, so this bean costs no database connection at startup.
+     */
+    @Bean
+    public CachedCraftingProfitService cachedCraftingProfitService(
+            CraftingGraphCache graphCache,
+            AccountRefreshCoordinator accountRefreshCoordinator,
+            TradingPostRefreshCoordinator tradingPostRefreshCoordinator,
+            BackgroundTasks tasks,
+            @Value("${gw2.account-data.max-age-ms:900000}") long accountMaxAgeMs) {
+        return new CachedCraftingProfitService(
+                ProfitInputSession::open,
+                session -> new CraftingProfitService(graphCache, session),
+                new CalculationInputVersions.DatabaseAccountSourceVersionReader(),
+                new CalculationInputVersions.DatabasePriceCoverageReader(),
+                accountRefreshCoordinator,
+                tradingPostRefreshCoordinator,
+                tasks,
+                Clock.systemUTC(),
+                Duration.ofMillis(accountMaxAgeMs));
     }
 
     /**

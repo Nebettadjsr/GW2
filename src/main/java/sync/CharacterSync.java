@@ -19,16 +19,20 @@ public final class CharacterSync {
 
     private CharacterSync() {}
 
+    /**
+     * One character's parsed payload, as the upstream fetch produced it and as
+     * {@link #publishRoster(Connection, List, java.time.Instant)} writes it.
+     */
+    record CharPayload(
+            CharacterInfo info,
+            List<model.CharacterCraftingRow> crafting,
+            List<model.CharacterRecipeRow> recipes,
+            List<model.CharacterItemRow> items
+    ) {}
+
     public static void syncCharactersCraftingAndRecipes() throws Exception {
         List<String> names = fetchCharacterNames();
         if (names.isEmpty()) return;
-
-        record CharPayload(
-                CharacterInfo info,
-                List<model.CharacterCraftingRow> crafting,
-                List<model.CharacterRecipeRow> recipes,
-                List<model.CharacterItemRow> items
-        ) {}
 
         List<CharPayload> payloads = new ArrayList<>(names.size());
 
@@ -51,34 +55,50 @@ public final class CharacterSync {
         if (payloads.isEmpty()) return;
 
         try (Connection con = Db.open()) {
-            con.setAutoCommit(false);
-            AccountSyncStateRepository.ensure(con);
+            publishRoster(con, payloads, java.time.Instant.now());
+        }
+    }
 
+    /**
+     * Publishes a whole roster and the {@code CHARACTERS} completion marker in one transaction
+     * (TARGET_ARCHITECTURE.md §9.1): a concurrent calculation must never read some characters'
+     * refreshed rows alongside the previous run's still-current marker, and a failure part-way
+     * through must leave the whole last-good generation and its marker intact rather than publishing
+     * a half-replaced roster.
+     *
+     * <p>Separated from the upstream fetch above so the publication protocol itself — including its
+     * rollback — is drivable without a GW2 API call (docs/TEST_STRATEGY.md §8).
+     *
+     * @param completedAt the instant to record as this source's successful completion
+     */
+    static void publishRoster(Connection con, List<CharPayload> payloads, java.time.Instant completedAt)
+            throws Exception {
+
+        con.setAutoCommit(false);
+        AccountSyncStateRepository.ensure(con);
+
+        try {
             for (CharPayload p : payloads) {
-                try {
-                    long characterId = upsertCharacter(con, p.info());
+                long characterId = upsertCharacter(con, p.info());
 
-                    Timestamp runTs;
-                    try (PreparedStatement psNow = con.prepareStatement("SELECT now()");
-                         ResultSet rs = psNow.executeQuery()) {
-                        if (!rs.next()) throw new SQLException("SELECT now() returned no row");
-                        runTs = rs.getTimestamp(1);
-                    }
-
-                    replaceCharacterCrafting(con, characterId, p.crafting(), runTs);
-                    replaceCharacterRecipes(con, characterId, p.recipes(), runTs);
-                    replaceCharacterItems(con, characterId, p.items(), runTs);
-
-                    con.commit();
-
-                } catch (Exception ex) {
-                    con.rollback();
-                    throw ex;
+                Timestamp runTs;
+                try (PreparedStatement psNow = con.prepareStatement("SELECT now()");
+                     ResultSet rs = psNow.executeQuery()) {
+                    if (!rs.next()) throw new SQLException("SELECT now() returned no row");
+                    runTs = rs.getTimestamp(1);
                 }
+
+                replaceCharacterCrafting(con, characterId, p.crafting(), runTs);
+                replaceCharacterRecipes(con, characterId, p.recipes(), runTs);
+                replaceCharacterItems(con, characterId, p.items(), runTs);
             }
-            AccountSyncStateRepository.mark(con, AccountSyncStateRepository.CHARACTERS,
-                    java.time.Instant.now());
+
+            AccountSyncStateRepository.mark(con, AccountSyncStateRepository.CHARACTERS, completedAt);
             con.commit();
+
+        } catch (Exception ex) {
+            con.rollback();
+            throw ex;
         }
     }
 

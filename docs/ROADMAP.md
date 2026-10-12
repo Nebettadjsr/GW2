@@ -252,11 +252,11 @@ Phase 4. The frontend needs stable backend APIs for backend-owned workflows. Sma
 
 ### Exit Criteria
 
-- **(Done)** Verify the full browser-navigation-to-complete-Crafting-Profit-page performance requirement against the real user database; see `STORY-PERF-002` and `TEST_STRATEGY.md` §34.
+- Verify the browser-navigation-to-complete-Crafting-Profit-page performance requirement against the real user database under the resolved cached-result scope in `TARGET_ARCHITECTURE.md` §17; historical `STORY-PERF-002` / `STORY-PERF-003` evidence must be supplemented by `STORY-PERF-004` for the updated behavior. See `TEST_STRATEGY.md` §34.
 - Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
 - **(Done)** Vue 3 and TypeScript are selected for the browser frontend (ADR-001).
 - **(Done)** The browser renders Crafting Profit, Discovery, resolution details and domain states using backend-provided authoritative values (`TARGET_ARCHITECTURE.md` §10.2–10.3).
-- **(Done)** Normal feature workflows refresh their needed account and price data; System Status is reserved for diagnostics and explicit maintenance refreshes.
+- Normal feature workflows refresh their needed account and price data; System Status is reserved for diagnostics and explicit maintenance refreshes. Existing workflows are delivered; complete the decided Crafting Profit cached-result and asynchronous refresh contract (`TARGET_ARCHITECTURE.md` §9.1) through `STORY-APP-014` and `STORY-WEB-034`.
 - **(Done)** Crafting Profit, Discovery, and other backend-owned domain results are not independently recalculated in the browser.
 - **(Done)** Ecto Salvage is frontend-owned and calculates locally from item metadata, Trading Post prices, account Luck, and user-selected inputs; the former backend calculation route is absent.
 - **(Done)** The former backend-owned Ecto calculation route is absent. Unreferenced legacy browser API types/hooks are recorded in `KNOWN_PROBLEMS.md` KP-25; their cleanup is not required for feature behavior.

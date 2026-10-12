@@ -13,13 +13,17 @@ below stay in the plain form.
 
 ## Active
 
+- STORY-APP-014 | STORY-APP-014-cached-profit-refresh-coordination.md | TODO | milestone-05 | deps: None
 
 ## To Do
 
 ## Blocked
+- STORY-WEB-034 | STORY-WEB-034-provisional-profit-refresh-workflow.md | BLOCKED | milestone-05 | deps: STORY-APP-014
+- STORY-PERF-004 | STORY-PERF-004-cached-profit-page-acceptance.md | BLOCKED | milestone-05 | deps: STORY-APP-014, STORY-WEB-034
 
 ## Superseded
 
+- STORY-WEB-033 | STORY-WEB-033-recover-overlapping-account-refresh-scopes.md | SUPERSEDED | milestone-05 | deps: STORY-PERF-003
 - STORY-WEB-023 | STORY-WEB-023-backend-ecto-calculation-screen.md | SUPERSEDED | milestone-05 | deps: None
 - STORY-UI-003 | STORY-UI-003-signed-monetary-presentation.md | SUPERSEDED | milestone-05 | deps: None
 - STORY-WEB-025 | STORY-WEB-025-backend-total-sell-value-display.md | SUPERSEDED | milestone-05 | deps: None

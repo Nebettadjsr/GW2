@@ -1,11 +1,11 @@
 package web;
 
-import application.CraftingProfitService;
-import application.TradingPostPriceRefreshService;
+import application.CachedCraftingProfitService;
 import application.CraftingResolutionDetail;
 import craft.CraftingSettings;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,107 +16,129 @@ import web.dto.CraftingProfitResolutionRequest;
 import web.dto.CraftingProfitResolutionResponse;
 import web.dto.CraftingProfitResponse;
 
-import java.sql.SQLException;
-import java.util.function.Supplier;
-
 /**
- * HTTP boundary for the Crafting Profit calculation (STORY-API-001, TARGET_ARCHITECTURE.md §9) and
- * for one selected recipe's resolution detail (STORY-API-008, §13).
+ * HTTP boundary for the Crafting Profit calculation (STORY-API-001, TARGET_ARCHITECTURE.md §9/§9.1)
+ * and for one selected recipe's resolution detail (STORY-API-008, §10.2).
  *
  * <p>Thin by construction: it validates and defaults the request, hands the resulting
  * {@link DiscChoice}/{@link CraftingSettings} to the existing
- * {@link CraftingProfitService#reload} or {@link CraftingProfitService#resolveDetail} use case, and
- * maps what comes back. No crafting rule, orchestration step, total, resolution choice or cost is
- * implemented or re-derived here - in particular the detail route builds no second resolver.
+ * {@link CachedCraftingProfitService} use case, and maps what comes back. No crafting rule,
+ * orchestration step, total, resolution choice, cost or freshness decision is implemented or
+ * re-derived here - in particular the detail route builds no second resolver, and nothing on this
+ * boundary decides whether a result is provisional.
  *
- * <p><b>Request isolation.</b> {@link CraftingProfitService} keeps the most recent reload's data
- * in instance state (to back its lazy per-row tree lookup). This controller therefore takes a
- * <em>factory</em> and builds one service per request, then reads only the {@code ProfitData} that
- * call returned. Nothing request-specific is held in a field, so successive and concurrent
- * requests cannot observe each other's calculation.
+ * <p><b>Cached-result contract (STORY-APP-014).</b> Neither route waits for account synchronization
+ * or a Trading Post fetch any more. The use case calculates from the last successfully published
+ * inputs and admits the refresh work itself, so:
+ *
+ * <ul>
+ *   <li><b>200</b> with the ordinary authoritative result whenever usable cached inputs existed -
+ *       including when they had expired, which the response reports as
+ *       {@code freshness.provisional} rather than refusing. Expiry alone is never a rejection.</li>
+ *   <li><b>202</b> with the freshness envelope and task references and <em>no</em> rows when no
+ *       source has ever synchronized, so a client is never handed an empty result that reads as
+ *       "nothing is craftable".</li>
+ *   <li><b>400</b> for a malformed or invalid request (no calculation is started), <b>404</b>
+ *       {@code RECIPE_NOT_IN_CALCULATION} on the detail route, <b>503</b> when the database is
+ *       unavailable, <b>500</b> when the calculation itself fails. See
+ *       {@link ApiExceptionHandler}.</li>
+ * </ul>
+ *
+ * <p><b>Request isolation.</b> The application service builds one calculation service per call and
+ * reads only what that call returned, so nothing request-specific is held in a field here and
+ * successive or concurrent requests cannot observe each other's calculation or each other's
+ * freshness envelope.
  */
 @RestController
 @RequestMapping("/api/crafting")
 public class CraftingProfitApiController {
 
-    private final Supplier<CraftingProfitService> profitServiceFactory;
-    private final TradingPostPriceRefreshService priceRefreshService;
+    private final CachedCraftingProfitService profitService;
 
-    public CraftingProfitApiController(Supplier<CraftingProfitService> profitServiceFactory) {
-        this(profitServiceFactory, null);
-    }
-
-    @Autowired
-    public CraftingProfitApiController(Supplier<CraftingProfitService> profitServiceFactory,
-                                       TradingPostPriceRefreshService priceRefreshService) {
-        this.profitServiceFactory = profitServiceFactory;
-        this.priceRefreshService = priceRefreshService;
+    public CraftingProfitApiController(CachedCraftingProfitService profitService) {
+        this.profitService = profitService;
     }
 
     /**
-     * Runs the Crafting Profit calculation for the requested scope and settings.
+     * Runs the Crafting Profit calculation for the requested scope and settings over the inputs
+     * currently available, and reports what those inputs were.
      *
      * <p>The body is optional; an absent body, absent members and absent fields all fall back to
      * the defaults documented on {@link CraftingProfitApiMapper}, so a bare POST performs the
      * default All-scope calculation.
-     *
-     * <p>Status contract: 200 with the complete result set; 400 for a malformed or invalid
-     * request (no calculation is started); 503 when the database is unavailable; 500 when the
-     * calculation itself fails. See {@link ApiExceptionHandler}.
      */
     @PostMapping(path = "/profit", produces = MediaType.APPLICATION_JSON_VALUE)
-    public CraftingProfitResponse profit(@RequestBody(required = false) CraftingProfitRequest request)
-            throws Exception {
+    public ResponseEntity<CraftingProfitResponse> profit(
+            @RequestBody(required = false) CraftingProfitRequest request) throws Exception {
 
         CraftingProfitApiMapper.Effective effective = CraftingProfitApiMapper.toEffective(request);
-        if (priceRefreshService != null) priceRefreshService.refreshForProfit();
 
-        CraftingProfitService.ProfitData data = profitServiceFactory.get()
-                .reload(effective.toDiscChoice(), effective.toCraftingSettings());
+        CachedCraftingProfitService.ProfitOutcome outcome = profitService.profit(
+                effective.toDiscChoice(), effective.toCraftingSettings());
 
-        return CraftingProfitApiMapper.toResponse(effective, data);
+        if (!outcome.hasResult()) {
+            return ResponseEntity.status(HttpStatus.ACCEPTED)
+                    .body(CraftingProfitApiMapper.toPendingResponse(effective, outcome.freshness()));
+        }
+
+        return ResponseEntity.ok(
+                CraftingProfitApiMapper.toResponse(effective, outcome.data(), outcome.freshness()));
     }
 
     /**
      * Explains how one selected recipe's output requirement is resolved in a Profit calculation
-     * (STORY-API-008, TARGET_ARCHITECTURE.md §13.1).
+     * (STORY-API-008, TARGET_ARCHITECTURE.md §10.2).
      *
-     * <p>The body is required and carries both members: {@code recipeId} and the {@code calculation}
-     * it is resolved in, the latter being this route's own table request contract, so scope kinds,
+     * <p>The body is required and carries {@code recipeId} and the {@code calculation} it is
+     * resolved in, the latter being this route's own table request contract, so scope kinds,
      * settings, defaults and validation are the established ones. Both are validated before a
-     * service exists.
+     * calculation starts. The optional {@code basedOnCalculationId} is the table response's input
+     * generation, which lets this response say whether it still explains that generation.
      *
-     * <p>The service call is one <em>fresh</em> calculation with request-local state - never a lookup
-     * of the earlier table request's result - and the response's row and tree are mapped from the
-     * inputs that single operation captured.
-     *
-     * <p>Status contract: 200 with the completed response, including a blocked tree and an
-     * unavailable result; 404 {@code RECIPE_NOT_IN_CALCULATION} when this calculation's visible
-     * recipes do not contain the requested one; otherwise the route's existing 400/503/500 mapping.
-     * See {@link ApiExceptionHandler}.
+     * <p>The service call is one <em>fresh</em> calculation with request-local state - never a
+     * lookup of the earlier table request's result - and the response's row and tree are mapped
+     * from the inputs that single operation captured, so they are compatible with each other by
+     * construction.
      */
     @PostMapping(path = "/profit/resolution", produces = MediaType.APPLICATION_JSON_VALUE)
-    public CraftingProfitResolutionResponse profitResolution(
+    public ResponseEntity<CraftingProfitResolutionResponse> profitResolution(
             @RequestBody(required = false) CraftingProfitResolutionRequest request) throws Exception {
 
         CraftingProfitResolutionRequest body = CraftingResolutionMapper.requireBody(request);
         int recipeId = CraftingResolutionMapper.requireRecipeId(body.recipeId());
         CraftingProfitApiMapper.Effective effective = CraftingProfitApiMapper.toEffective(
                 CraftingResolutionMapper.requireCalculation(body.calculation()));
-        if (priceRefreshService != null) priceRefreshService.refreshForProfit();
 
-        CraftingResolutionDetail detail = CraftingResolutionMapper.requireInCalculation(
-                profitServiceFactory.get().resolveDetail(
-                        recipeId, effective.toDiscChoice(), effective.toCraftingSettings()));
+        CachedCraftingProfitService.ResolutionOutcome outcome = profitService.resolution(
+                recipeId, effective.toDiscChoice(), effective.toCraftingSettings(),
+                body.basedOnCalculationId());
 
-        return new CraftingProfitResolutionResponse(
+        CraftingProfitResolutionResponse.CalculationDto calculation =
+                new CraftingProfitResolutionResponse.CalculationDto(effective.scope(), effective.settings());
+
+        if (!outcome.hasResult()) {
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(new CraftingProfitResolutionResponse(
+                    recipeId,
+                    CraftingProfitResolutionResponse.STATUS_PENDING,
+                    calculation,
+                    outcome.consistency(),
+                    CalculationFreshnessMapper.toDto(outcome.freshness()),
+                    CraftingResolutionMapper.calculatedAt(),
+                    null, null, null, null));
+        }
+
+        CraftingResolutionDetail detail = CraftingResolutionMapper.requireInCalculation(outcome.detail());
+
+        return ResponseEntity.ok(new CraftingProfitResolutionResponse(
                 detail.recipeId(),
-                new CraftingProfitResolutionResponse.CalculationDto(effective.scope(), effective.settings()),
-                CraftingResolutionMapper.CONSISTENCY_FRESH_CALCULATION,
+                CraftingProfitResolutionResponse.STATUS_CALCULATED,
+                calculation,
+                outcome.consistency(),
+                CalculationFreshnessMapper.toDto(outcome.freshness()),
                 CraftingResolutionMapper.calculatedAt(),
                 CraftingResolutionMapper.toRow(detail),
                 CraftingResolutionMapper.treeStatus(detail),
                 CraftingResolutionMapper.profitTreeBasis(detail),
-                CraftingResolutionMapper.toTree(detail));
+                CraftingResolutionMapper.toTree(detail)));
     }
 }

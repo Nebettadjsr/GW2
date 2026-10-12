@@ -1,19 +1,18 @@
 package web;
 
-import application.AccountRefreshService;
+import application.AccountRefreshCoordinator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-import web.task.BackgroundTaskService;
 import java.time.Duration;
 
 @Configuration
 public class AccountDataFreshnessWebConfig implements WebMvcConfigurer {
     private final AccountDataFreshnessInterceptor interceptor;
-    public AccountDataFreshnessWebConfig(AccountRefreshService refresh, BackgroundTaskService tasks,
+    public AccountDataFreshnessWebConfig(AccountRefreshCoordinator refreshCoordinator,
             @Value("${gw2.account-data.max-age-ms:900000}") long maxAgeMs) {
-        interceptor = new AccountDataFreshnessInterceptor(refresh, tasks, Duration.ofMillis(maxAgeMs));
+        interceptor = new AccountDataFreshnessInterceptor(refreshCoordinator, Duration.ofMillis(maxAgeMs));
     }
     @Override public void addInterceptors(InterceptorRegistry registry) { registry.addInterceptor(interceptor).addPathPatterns("/api/**"); }
 }

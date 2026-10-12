@@ -36,6 +36,15 @@ public final class AccountSyncStateRepository {
 
     public Optional<Instant> find(Connection con, String source) throws SQLException {
         ensure(con);
+        return lookup(con, source);
+    }
+
+    /**
+     * Same lookup as {@link #find}, without the {@code CREATE TABLE IF NOT EXISTS}: for a caller
+     * that has already ensured the table and is reading inside a snapshot transaction it must not
+     * turn into a writing one (see {@code application.ProfitInputSession}).
+     */
+    public Optional<Instant> lookup(Connection con, String source) throws SQLException {
         try (PreparedStatement ps = con.prepareStatement("SELECT fetched_at FROM account_sync_state WHERE source = ?")) {
             ps.setString(1, source);
             try (ResultSet rs = ps.executeQuery()) {

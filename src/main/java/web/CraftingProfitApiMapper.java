@@ -1,5 +1,6 @@
 package web;
 
+import application.CalculationFreshness;
 import application.CraftingProfitService;
 import craft.CraftingSettings;
 import repo.DiscChoice;
@@ -133,11 +134,26 @@ final class CraftingProfitApiMapper {
      * repository's visible-recipe order. Row copying itself lives in {@link CraftingRowMapper},
      * shared with Crafting Discovery.
      */
-    static CraftingProfitResponse toResponse(Effective effective, CraftingProfitService.ProfitData data) {
+    static CraftingProfitResponse toResponse(Effective effective,
+                                             CraftingProfitService.ProfitData data,
+                                             CalculationFreshness freshness) {
         List<CraftingRowDto> rows = CraftingRowMapper.toRows(
                 data.visibleRecipes(), data.resultsByRecipeId(), data.items(), data.tp());
 
-        return new CraftingProfitResponse(effective.scope(), effective.settings(), rows.size(), rows);
+        return new CraftingProfitResponse(CraftingProfitResponse.STATUS_CALCULATED,
+                effective.scope(), effective.settings(), rows.size(), rows,
+                CalculationFreshnessMapper.toDto(freshness));
+    }
+
+    /**
+     * The no-usable-cache response: the effective inputs that were asked for and the freshness that
+     * explains why nothing could be calculated, with no rows at all. An empty row list is not used,
+     * because it would be indistinguishable from "this scope has no craftable recipes".
+     */
+    static CraftingProfitResponse toPendingResponse(Effective effective, CalculationFreshness freshness) {
+        return new CraftingProfitResponse(CraftingProfitResponse.STATUS_PENDING,
+                effective.scope(), effective.settings(), null, null,
+                CalculationFreshnessMapper.toDto(freshness));
     }
 
     private static void requirePresent(String value, String field, String kind) {

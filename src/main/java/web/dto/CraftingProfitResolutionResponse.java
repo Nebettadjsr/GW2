@@ -11,9 +11,17 @@ package web.dto;
  *
  * <p>This type exists only at the HTTP boundary: it is not a domain, persistence or GW2 API model.
  *
- * @param consistency  always {@code FRESH_CALCULATION}: this response is a new calculation, not the
- *                     stored result of the earlier table request, so identical inputs may yield
- *                     different values after a synchronization or a price change
+ * @param status       {@code CALCULATED} | {@code PENDING}. {@code PENDING} (HTTP 202) means no
+ *                     usable synchronized inputs existed, so {@code row} and {@code tree} are
+ *                     absent rather than fabricated
+ * @param consistency  {@code FRESH_CALCULATION} when this response explains the same input
+ *                     generation the caller's row came from, or when the caller named none;
+ *                     {@code RECALCULATED_FOR_CHANGED_INPUTS} when the inputs changed since, in
+ *                     which case {@link #row()} is the matching updated row and the caller's older
+ *                     row is not what {@link #tree()} explains. Either way this is a new
+ *                     calculation, not the stored result of the earlier table request
+ * @param freshness    the inputs this response was calculated from, in the same shape the table
+ *                     route reports them; {@code calculationId} is what identifies the generation
  * @param calculatedAt UTC ISO-8601 instant this calculation completed; informational only, never a
  *                     data version or snapshot identifier
  * @param row          the recipe's normal row, recalculated in this operation - the same shared
@@ -31,13 +39,21 @@ package web.dto;
  *                     tree
  */
 public record CraftingProfitResolutionResponse(int recipeId,
+                                               String status,
                                                CalculationDto calculation,
                                                String consistency,
+                                               CalculationFreshnessDto freshness,
                                                String calculatedAt,
                                                CraftingRowDto row,
                                                String treeStatus,
                                                String treeBasis,
                                                ResolutionNodeDto tree) {
+
+    /** A completed detail calculation over usable cached inputs. */
+    public static final String STATUS_CALCULATED = "CALCULATED";
+
+    /** No usable synchronized inputs existed; refresh was admitted and nothing was explained. */
+    public static final String STATUS_PENDING = "PENDING";
 
     /**
      * The effective inputs this calculation ran with, in the shape the Profit table response echoes

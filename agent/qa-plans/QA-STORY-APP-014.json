@@ -1,0 +1,129 @@
+{
+  "status": "READY",
+  "story_id": "STORY-APP-014",
+  "rationale": "The requirements are sufficiently established by AR-007, UD-013/UD-015, and the cited product and architecture documents. Existing tests cover calculation math, resolution, task handling, and refresh services, but not cached Profit responses coordinated with freshness envelopes. The new tests depend on application and HTTP contracts this implementation will introduce; guessing at their APIs now would create brittle or duplicate tests. The specifications below define observable results and deterministic coordination points for implementation.",
+  "acceptance_checks": [
+    {
+      "criterion": "AC1: Usable cached inputs return a synchronous Profit calculation despite expired account or TP TTLs.",
+      "expected": "For fresh, account-expired, TP-expired, and both-expired snapshots, the request returns the ordinary economic result before held refresh work is released. Expiry is reflected as provisional freshness, not a reason to reject or delay usable results.",
+      "verification": "Application test with controlled clock and gated refresh tasks; serialized HTTP test asserts success and result fields while the refresh gate remains closed."
+    },
+    {
+      "criterion": "AC2: Calculation uses successfully published source versions and preserves empty, missing, and unavailable-price semantics.",
+      "expected": "The captured input identifies the successful versions for bank, materials, recipe knowledge, characters, and relevant TP quotes. A synchronized empty source is usable; an absent source is not fabricated. Missing/unavailable prices remain explicit. With no usable calculation, HTTP returns 202 with pending/freshness/task references and no result.",
+      "verification": "Application tests for successful-empty and missing sources plus deterministic price fixtures; contract test checks status and serialized payload for no usable cache."
+    },
+    {
+      "criterion": "AC3: Freshness describes the inputs and work state, and fresh requests do not trigger unnecessary refresh.",
+      "expected": "Envelope provides request/calculation context, evaluation time, per-source fresh/stale/missing state, TP coverage, provisional/final state, outstanding work, and safe failure/retry information. Final requires confirmed required-source freshness and TP coverage for the inputs actually calculated. Task success alone is insufficient.",
+      "verification": "Contract tests assert freshness/version correspondence and finality rules before and after work; fresh-input test asserts no refresh task is admitted."
+    },
+    {
+      "criterion": "AC4: Incremental refresh publication preserves a compatible last-good read view.",
+      "expected": "Concurrent calculation reads cannot combine partially written refreshed data with old success markers or mix generations. A failed refresh preserves last-good data and markers. Resolution detail is associated with compatible input versions/settings; newer detail is identified and paired with a matching updated row.",
+      "verification": "Deterministic publication tests pause writes between source updates while concurrent readers capture inputs; failure test compares the full prior published view and markers; resolution contract test checks version/settings and row association."
+    },
+    {
+      "criterion": "AC5: Account refresh preserves existing scopes and single-writer coordination.",
+      "expected": "At most one ACCOUNT_SYNC is unfinished. If a CHARACTERS-only task is active when Profit requires all four sources, Profit does not claim the task refreshed the other sources; once it ends, remaining work is rechecked and admitted without concurrent account writes. Sufficient-scope reuse remains valid.",
+      "verification": "Controlled task/gateway regression for narrow then broad scope, sufficient-scope reuse, and write exclusion; assert actual refreshed sources and final markers, not just task IDs."
+    },
+    {
+      "criterion": "AC6: TP refresh is independently coordinated and covers changing required IDs.",
+      "expected": "Concurrent required-ID demands coalesce; after active work, uncovered IDs are rechecked and refreshed. Changed account inputs that introduce new relevant TP IDs prevent finality until covered. Profit and Discovery use the shared repository/fetch path. Failed or unknown tasks expose bounded actionable recovery.",
+      "verification": "Deterministic gated TP coordination tests for overlapping demands, uncovered IDs, changed account-derived IDs, failure, and unknown task; assert shared path and no fabricated fresh quotes."
+    },
+    {
+      "criterion": "AC7: Transport and unrelated feature policies remain correct.",
+      "expected": "The bounded HTTP envelope serializes provisional/final success, 202 no-result, validation failures, and independent request contexts. Freshness interception changes enable this Profit behavior without changing other feature policies. Domain math, ownership, fees, quantities, and request isolation are preserved.",
+      "verification": "Mock HTTP contract tests plus affected existing Profit, resolution, Discovery, and task suites; compare unchanged-snapshot row and resolution values against a read-only real-data reference."
+    },
+    {
+      "criterion": "AC8: Confirmed overlap defect follows registry lifecycle.",
+      "expected": "A confirmed bug record links the existing F002 evidence, this correction, and the deterministic regression; reuse a matching record if one exists. Close only after the regression passes and relevant checks complete.",
+      "verification": "Inspect registry for an existing matching record; otherwise create one under the registry lifecycle and link the test path/name and command after the regression passes."
+    }
+  ],
+  "invariants": [
+    "A result's freshness envelope refers to the exact source versions used by its calculation.",
+    "A synchronized empty source is distinct from a missing source.",
+    "Absent or unavailable TP prices never become zero-cost replacements or authoritative fresh unavailability without a successful fetch outcome.",
+    "No reader observes partial refresh data paired with an old successful marker; failed refresh leaves the last-good published view intact.",
+    "Task completion does not by itself establish sufficient source scope, TP coverage, or a final calculation.",
+    "There is at most one unfinished account sync, and account and TP coordination remain separate.",
+    "Resolution detail and summary row use compatible input versions and settings; newer detail cannot explain an older row.",
+    "Economic results, material ownership, fees, quantities, request isolation, existing account TTL, ten-minute TP policy, and shared Profit/Discovery TP path remain unchanged."
+  ],
+  "test_levels": [
+    "unit",
+    "integration",
+    "contract"
+  ],
+  "existing_tests_reviewed": [
+    "src/test/java/application/CraftingProfitServiceTest.java — application Profit calculation orchestration and domain-input construction.",
+    "src/test/java/application/CraftingProfitResolutionDetailTest.java — Profit resolution detail using the resolver/explainer and scoped inventory.",
+    "src/test/java/web/CraftingProfitApiControllerTest.java — Profit request validation, DTO mapping, status behavior, and request isolation.",
+    "src/test/java/web/CraftingProfitResolutionApiControllerTest.java — resolution HTTP mapping and service delegation.",
+    "src/test/java/web/task/BackgroundTaskServiceTest.java — in-process task submission, reuse, and task lifecycle behavior.",
+    "src/test/java/application/AccountDataFreshnessPolicyTest.java and src/test/java/application/AccountRefreshServiceTest.java — account freshness boundary and account refresh orchestration.",
+    "src/test/java/application/TradingPostPriceRefreshServiceTest.java — TP refresh service behavior.",
+    "src/test/java/application/CraftingDiscoveryServiceTest.java — Discovery application behavior relevant to preserving the shared TP path.",
+    "src/test/java/web/CraftingProfitApiRealDbEquivalenceIT.java and src/test/java/application/CraftingProfitServiceRealDbPerfIT.java — existing real-database equivalence/performance integration coverage; neither replaces the story's required before-change reference."
+  ],
+  "prepared_test_paths": [],
+  "test_specifications": [
+    "Application freshness matrix: with a controlled clock and last-good snapshot, cover all-fresh, account-expired, TP-expired, both-expired, successful-empty account source, and missing account source. Hold refresh completion on a latch and assert usable cases produce the ordinary calculation and matching provisional envelope before release; missing required data produces pending state without a fabricated calculation.",
+    "Published-input consistency: seed a known last-good multi-source snapshot with versions; pause a refresh after its first incremental write; concurrently capture inputs and assert all observed data/markers match one published generation. Fail the refresh and assert the complete prior snapshot and markers remain readable.",
+    "Account overlap regression: hold an active CHARACTERS-only ACCOUNT_SYNC, request Profit with CHARACTERS, BANK, ACCOUNT_RECIPES, and MATERIALS required, complete the narrow task, then assert remaining scope is admitted only after terminal completion, no account writes overlap, and narrow-task reuse does not mark omitted sources fresh. Include an active task whose scope is sufficient and verify reuse without extra work.",
+    "TP demand coordination: gate a refresh for one required-ID set, submit concurrent overlapping requests, and assert shared work covers the union without duplicate concurrent fetches. After it finishes, assert uncovered IDs are rechecked/admitted; change account inputs to add a required ID and assert the response is not final until that ID is covered. Include failed and unknown task states with bounded recovery metadata.",
+    "Profit HTTP contract: use serialized endpoint tests for provisional success with expired inputs, final success with current coverage, 202 without result when no usable snapshot exists, validation behavior, freshness/version correspondence, and two interleaved request contexts whose envelopes/results remain isolated. Assert feature interception does not alter a representative non-Profit endpoint's existing policy.",
+    "Resolution compatibility: request summary and detail across differing input versions/settings; assert detail is associated with its originating context and a matching updated row, and never presented as an explanation of a row computed from another snapshot.",
+    "Run focused existing suites after implementation: Profit application and HTTP tests, Profit resolution application and HTTP tests, Discovery application/HTTP tests, account freshness/refresh tests, TP refresh tests, and BackgroundTaskService tests.",
+    "Before changing shared input capture, record a read-only real-database Profit calculation reference including unchanged-snapshot economic/domain row fields and resolution values. After implementation, run the explicitly named real-database equivalence check against the same snapshot/settings. Keep reference data outside version control and disclose no account contents or credentials. If real-database access is unavailable, record that blocker; synthetic fixtures are not a substitute."
+  ],
+  "pre_implementation_verification": {
+    "status": "NOT_RUN",
+    "command": ".\\mvnw.cmd -q \"-Dtest=CraftingProfitServiceTest,CraftingProfitResolutionDetailTest,CraftingProfitApiControllerTest,CraftingProfitResolutionApiControllerTest,BackgroundTaskServiceTest,AccountDataFreshnessPolicyTest,TradingPostPriceRefreshServiceTest,CraftingDiscoveryServiceTest\" test",
+    "failure_evidence": "The focused existing baseline could not start: the Maven wrapper reported `The command \"powershell\" ... could not be found` and `Cannot start maven from wrapper`. The environment lacks the `powershell` executable required by the wrapper. No test assertions ran; this is an environment/tooling failure, not expected-red behavior."
+  },
+  "coverage_review": "The available provisional coverage report is dated 2026-10-03, identifies a dirty working tree, and is not a clean CI baseline. It reports Java backend 58.09% line / 52.72% branch overall and application package 93.82% / 71.25%; the web package is below the 90% warning target (reported package coverage in the artifact). Coverage is a warning KPI, not correctness evidence. No new percentages were measured for this QA run. Review affected application/web package reports after implementation and report unresolved gaps without claiming a clean baseline.",
+  "external_sources": [],
+  "clarifications": [],
+  "post_implementation_review_required": true,
+  "post_implementation_review_reason": "This changes a critical cross-component contract across input publication, application coordination, task lifecycle, and HTTP serialization. Prepared executable tests cannot be safely authored before the implementation contract exists, so independent review must check that tests cover the deterministic races, freshness/version correspondence, and real-database equivalence requirement. The required real-database before/after comparison also needs explicit evidence or an access blocker.",
+  "schema_version": 1,
+  "qa_model": "gpt-6-luna",
+  "qa_reasoning_effort": "medium",
+  "story_contract_sha256": "3947cfef6f3af93498d341b524f5e3c97cf65c187bcc1585f5bfada154a1ba3f",
+  "user_decision_ids": [],
+  "protected_test_hashes": {},
+  "post_implementation_reviews": [
+    {
+      "decision": "RETRY",
+      "reason": "The synchronous cached-result path and logged local checks have supporting evidence, but key acceptance gaps remain: calculation identity can miss changed TP quotes, publication tests do not exercise production refresh/capture paths, and TP coordination tests do not verify actual ID coverage or finality after changed account inputs.",
+      "evidence": [
+        "CalculationInputVersions.calculationId() identifies TP coverage using required/fresh/stale/missing counts and oldest/newest timestamps; it does not include individual relevant quote versions. The existing identity test changes aggregate coverage, so it does not cover an interior quote changing while those aggregates remain constant.",
+        "ProfitInputPublicationTest uses its own probe_rows table and transaction helpers. It does not exercise CharacterSync or ProfitInputSession.open(), so it cannot establish the production publication and rollback behavior required by AC4.",
+        "TradingPostRefreshCoordinatorTest verifies task coalescing, pass counts, and gateway calls, but does not assert actual refreshed IDs, remaining coverage, or provisional-to-final recalculation after account-derived IDs change. The collector tests separately cover SQL selection.",
+        "target/app014-verify.log records 230 tests passing, and target/app014-realdb.log records 3,205 equivalent rows for each of two settings combinations. These logs support those checks but do not close the identified gaps."
+      ],
+      "actionable_items": [
+        "Include the actual relevant TP quote versions in calculation identity, and add a regression that changes an interior quote without changing aggregate coverage; verify resolution reports changed inputs and returns its matching row.",
+        "Add deterministic publication and failure-preservation tests through the production refresh and input-capture paths, asserting data and successful markers during interrupted writes and after rollback.",
+        "Add deterministic TP coordination tests that verify refreshed IDs and remaining coverage for overlapping demands and changed account-derived IDs, including calculation resubmission from provisional to final."
+      ]
+    },
+    {
+      "decision": "APPROVE",
+      "reason": "The implementation and tests address the story criteria, including the gaps from the prior RETRY. The QA plan intentionally had no pre-authored test paths because the APIs were not established; the specified checks are now represented by focused tests. Available logs show affected suites passing and real-database equivalence checks completing. No CI result is required for this review.",
+      "evidence": [
+        "Calculation identity includes individual relevant quote versions; CachedCraftingProfitServiceTest covers an interior quote change and matching resolution row.",
+        "Production publication and capture behavior is exercised by CharacterRosterPublicationTest, which checks consistent generations during writes and last-good behavior on failure. CraftingProfitServiceSessionTest checks that calculation reads use the captured connection.",
+        "TradingPostCoverageCoordinationTest asserts exact refreshed IDs, overlapping demand handling, changed account-derived IDs, remaining coverage, and provisional-to-final resubmission.",
+        "HTTP tests cover provisional and final responses, pending responses without results, validation, request isolation, and freshness policy for other features. BUG-2026-001 links the defect, correction, and regression tests.",
+        "target/app014-fix.log records 270 tests with zero failures or errors, including affected Profit, resolution, Discovery, refresh, and task suites. target/app014-realdb-fix.log records passing database checks, including CraftingProfitInputCaptureEquivalenceIT and 3,205 equivalent rows for each of two settings combinations. These are recorded evidence; tests were not run during this review."
+      ],
+      "actionable_items": []
+    }
+  ]
+}

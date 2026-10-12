@@ -1,5 +1,7 @@
 package web;
 
+import application.CachedCraftingProfitService;
+import application.CalculationFreshness;
 import application.CraftingProfitService;
 import craft.BlockedReason;
 import craft.CraftResult;
@@ -16,16 +18,17 @@ import repo.DiscChoice;
 import repo.ItemRepository;
 
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -396,6 +399,169 @@ class CraftingProfitApiControllerTest {
                 .andExpect(jsonPath("$.rows.length()").value(0));
     }
 
+    // ---------- cached-result contract (STORY-APP-014, TARGET_ARCHITECTURE.md §9.1) ----------
+
+    @Test
+    void expiredInputsStillAnswerTwoHundredWithTheResultAndAProvisionalEnvelope() throws Exception {
+        factory.next(service -> {
+            service.canned = profitData(List.of(RECIPE), Map.of(), Map.of(), Map.of());
+            service.freshness = freshness("req-7", "gen-7", true, true,
+                    List.of(stale("BANK"), stale("MATERIALS"), stale("ACCOUNT_RECIPES"),
+                            fresh("CHARACTERS")),
+                    new CalculationFreshness.PriceCoverage(2_984, 2_900, 60, 24,
+                            Instant.parse("2026-10-12T08:00:00Z"), Instant.parse("2026-10-12T08:55:00Z"),
+                            false, "quotes-7"),
+                    List.of(new CalculationFreshness.OutstandingRefresh(
+                                    CalculationFreshness.RefreshKind.ACCOUNT,
+                                    Set.of("MATERIALS", "BANK", "ACCOUNT_RECIPES"), "task-a", "RUNNING",
+                                    "ADMITTED"),
+                            new CalculationFreshness.OutstandingRefresh(
+                                    CalculationFreshness.RefreshKind.TRADING_POST,
+                                    Set.of(), "task-t", "PENDING", "COALESCED_INTO_ACTIVE_RUN")),
+                    List.of());
+        });
+
+        mockMvc.perform(post("/api/crafting/profit").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                // expiry alone must never reject a usable result
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CALCULATED"))
+                .andExpect(jsonPath("$.rowCount").value(1))
+                .andExpect(jsonPath("$.rows[0].recipeId").value(7))
+                .andExpect(jsonPath("$.freshness.requestId").value("req-7"))
+                .andExpect(jsonPath("$.freshness.calculationId").value("gen-7"))
+                .andExpect(jsonPath("$.freshness.evaluatedAt").value("2026-10-12T09:00:00Z"))
+                .andExpect(jsonPath("$.freshness.provisional").value(true))
+                .andExpect(jsonPath("$.freshness.resultAvailable").value(true))
+                .andExpect(jsonPath("$.freshness.accountSources.length()").value(4))
+                .andExpect(jsonPath("$.freshness.accountSources[0].source").value("BANK"))
+                .andExpect(jsonPath("$.freshness.accountSources[0].state").value("STALE"))
+                .andExpect(jsonPath("$.freshness.accountSources[0].fetchedAt")
+                        .value("2026-10-12T07:00:00Z"))
+                .andExpect(jsonPath("$.freshness.accountSources[3].source").value("CHARACTERS"))
+                .andExpect(jsonPath("$.freshness.accountSources[3].state").value("FRESH"))
+                .andExpect(jsonPath("$.freshness.tradingPost.requiredItems").value(2984))
+                .andExpect(jsonPath("$.freshness.tradingPost.staleItems").value(60))
+                .andExpect(jsonPath("$.freshness.tradingPost.missingItems").value(24))
+                .andExpect(jsonPath("$.freshness.tradingPost.covered").value(false))
+                // account and price work stay separately identified, each with its own status path
+                .andExpect(jsonPath("$.freshness.outstandingWork.length()").value(2))
+                .andExpect(jsonPath("$.freshness.outstandingWork[0].kind").value("ACCOUNT"))
+                .andExpect(jsonPath("$.freshness.outstandingWork[0].sources.length()").value(3))
+                .andExpect(jsonPath("$.freshness.outstandingWork[0].sources[0]").value("ACCOUNT_RECIPES"))
+                .andExpect(jsonPath("$.freshness.outstandingWork[0].sources[1]").value("BANK"))
+                .andExpect(jsonPath("$.freshness.outstandingWork[0].sources[2]").value("MATERIALS"))
+                .andExpect(jsonPath("$.freshness.outstandingWork[0].taskState").value("RUNNING"))
+                .andExpect(jsonPath("$.freshness.outstandingWork[0].taskStatusUrl")
+                        .value("/api/sync/tasks/task-a"))
+                .andExpect(jsonPath("$.freshness.outstandingWork[0].reuse").value("ADMITTED"))
+                .andExpect(jsonPath("$.freshness.outstandingWork[1].kind").value("TRADING_POST"))
+                .andExpect(jsonPath("$.freshness.outstandingWork[1].sources.length()").value(0))
+                .andExpect(jsonPath("$.freshness.outstandingWork[1].taskStatusUrl")
+                        .value("/api/sync/tasks/task-t"))
+                .andExpect(jsonPath("$.freshness.failures.length()").value(0));
+    }
+
+    @Test
+    void confirmedCurrentInputsAnswerAFinalEnvelopeWithNoOutstandingWork() throws Exception {
+        factory.next(service -> {
+            service.canned = profitData(List.of(RECIPE), Map.of(), Map.of(), Map.of());
+            service.freshness = freshness("req-1", "gen-1", false, true,
+                    List.of(fresh("BANK"), fresh("MATERIALS"), fresh("ACCOUNT_RECIPES"),
+                            fresh("CHARACTERS")),
+                    new CalculationFreshness.PriceCoverage(120, 120, 0, 0,
+                            Instant.parse("2026-10-12T08:55:00Z"), Instant.parse("2026-10-12T08:59:00Z"),
+                            true, "quotes-1"),
+                    List.of(), List.of());
+        });
+
+        mockMvc.perform(post("/api/crafting/profit").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CALCULATED"))
+                .andExpect(jsonPath("$.freshness.provisional").value(false))
+                .andExpect(jsonPath("$.freshness.tradingPost.covered").value(true))
+                .andExpect(jsonPath("$.freshness.outstandingWork.length()").value(0));
+    }
+
+    @Test
+    void noUsableCachedInputsAnswerTwoHundredTwoWithFreshnessAndTaskReferencesAndNoRows() throws Exception {
+        factory.next(service -> {
+            service.resultAvailable = false;
+            service.freshness = freshness("req-9", "gen-9", true, false,
+                    List.of(missing("BANK"), fresh("MATERIALS"), fresh("ACCOUNT_RECIPES"),
+                            fresh("CHARACTERS")),
+                    CalculationFreshness.PriceCoverage.none(),
+                    List.of(new CalculationFreshness.OutstandingRefresh(
+                            CalculationFreshness.RefreshKind.ACCOUNT, Set.of("BANK"),
+                            "task-b", "RUNNING", "ADMITTED")),
+                    List.of(new CalculationFreshness.RefreshFailure(
+                            CalculationFreshness.RefreshKind.ACCOUNT, "task-old", "TASK_UNKNOWN",
+                            "The refresh task is no longer known to this backend", true)));
+        });
+
+        mockMvc.perform(post("/api/crafting/profit").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                // no fabricated result: absent rows, not an empty list that would read as
+                // "nothing is craftable"
+                .andExpect(jsonPath("$.rows").doesNotExist())
+                .andExpect(jsonPath("$.rowCount").doesNotExist())
+                // the effective inputs are still echoed, so the client knows what was asked for
+                .andExpect(jsonPath("$.scope.kind").value("ALL"))
+                .andExpect(jsonPath("$.settings.useOwnMats").value(true))
+                .andExpect(jsonPath("$.freshness.resultAvailable").value(false))
+                .andExpect(jsonPath("$.freshness.provisional").value(true))
+                .andExpect(jsonPath("$.freshness.accountSources[0].source").value("BANK"))
+                .andExpect(jsonPath("$.freshness.accountSources[0].state").value("MISSING"))
+                .andExpect(jsonPath("$.freshness.accountSources[0].fetchedAt").doesNotExist())
+                .andExpect(jsonPath("$.freshness.outstandingWork[0].taskStatusUrl")
+                        .value("/api/sync/tasks/task-b"))
+                .andExpect(jsonPath("$.freshness.failures[0].code").value("TASK_UNKNOWN"))
+                .andExpect(jsonPath("$.freshness.failures[0].retryable").value(true))
+                .andExpect(jsonPath("$.freshness.failures[0].taskStatusUrl")
+                        .value("/api/sync/tasks/task-old"));
+    }
+
+    @Test
+    void workWithoutATaskReportsNoStatusUrlRatherThanAFabricatedOne() throws Exception {
+        factory.next(service -> {
+            service.canned = profitData(List.of(), Map.of(), Map.of(), Map.of());
+            service.freshness = freshness("req-2", "gen-2", true, true,
+                    List.of(stale("BANK")), CalculationFreshness.PriceCoverage.none(),
+                    List.of(new CalculationFreshness.OutstandingRefresh(
+                            CalculationFreshness.RefreshKind.ACCOUNT, Set.of("BANK"),
+                            null, "NONE", "WAITING_FOR_UNRELATED_TASK")),
+                    List.of());
+        });
+
+        mockMvc.perform(post("/api/crafting/profit").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.freshness.outstandingWork[0].taskId").doesNotExist())
+                .andExpect(jsonPath("$.freshness.outstandingWork[0].taskStatusUrl").doesNotExist())
+                .andExpect(jsonPath("$.freshness.outstandingWork[0].taskState").value("NONE"));
+    }
+
+    @Test
+    void twoInterleavedRequestContextsKeepTheirOwnEnvelopesAndTheirOwnResults() throws Exception {
+        factory.deriveResultFromRequest = true;
+
+        String first = mockMvc.perform(profitRequestForDiscipline(41))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rows[0].recipeId").value(41))
+                .andExpect(jsonPath("$.freshness.requestId").value("request-D41"))
+                .andExpect(jsonPath("$.freshness.calculationId").value("generation-D41"))
+                .andReturn().getResponse().getContentAsString();
+
+        String second = mockMvc.perform(profitRequestForDiscipline(42))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rows[0].recipeId").value(42))
+                .andExpect(jsonPath("$.freshness.requestId").value("request-D42"))
+                .andExpect(jsonPath("$.freshness.calculationId").value("generation-D42"))
+                .andReturn().getResponse().getContentAsString();
+
+        assertFalse(first.contains("D42"), "the first response must carry nothing of the second");
+        assertFalse(second.contains("D41"), "the second response must carry nothing of the first");
+    }
+
     // ---------- invalid input ----------
 
     @Test
@@ -506,7 +672,7 @@ class CraftingProfitApiControllerTest {
 
         assertEquals(2, factory.created.size());
         assertNotSame(factory.created.get(0), factory.created.get(1),
-                "each request must run on its own service instance, so no reload state is shared");
+                "each request must run as its own calculation, so no result state is shared");
     }
 
     @Test
@@ -535,9 +701,9 @@ class CraftingProfitApiControllerTest {
             pool.shutdownNow();
         }
 
-        assertEquals(requests, factory.created.size(), "one service instance per request");
+        assertEquals(requests, factory.created.size(), "one calculation per request");
         assertEquals(requests, distinctInstances(factory.created),
-                "concurrent requests must not share a service instance");
+                "concurrent requests must not share calculation state");
     }
 
     private static org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
@@ -563,29 +729,69 @@ class CraftingProfitApiControllerTest {
     }
 
     /**
-     * Stands in for the application service: records what the controller handed it and returns
-     * canned data (or fails), so these tests never touch a database or a real calculation.
+     * One recorded call: what the controller handed the use case, and what that call is set up to
+     * answer with. Keeping the per-call state here is what lets the isolation tests below assert
+     * that two requests never share it.
      */
-    private static final class StubProfitService extends CraftingProfitService {
+    private static final class StubProfitService {
         DiscChoice capturedChoice;
         CraftingSettings capturedSettings;
-        ProfitData canned = new ProfitData(List.of(), List.of(), Map.of(), Map.of(), Map.of());
+        String capturedBasedOnCalculationId;
+        CraftingProfitService.ProfitData canned =
+                new CraftingProfitService.ProfitData(List.of(), List.of(), Map.of(), Map.of(), Map.of());
+        /** Null means "no usable cached inputs", i.e. the pending outcome. */
+        boolean resultAvailable = true;
+        CalculationFreshness freshness;
         Exception failure;
         boolean deriveResultFromRequest;
+    }
 
-        StubProfitService() {
-            super(null, null, null, null, null, null, null);
+    /**
+     * Stands in for the cached-result use case: records what the controller handed it and returns a
+     * canned outcome (or fails), so these tests never touch a database, a task or a real
+     * calculation. Freshness decisions belong to the application layer and are stubbed here, which
+     * is exactly the point - the controller must report the envelope it is given, not derive one.
+     */
+    private static final class RecordingServiceFactory extends CachedCraftingProfitService {
+        final List<StubProfitService> created = Collections.synchronizedList(new ArrayList<>());
+        private java.util.function.Consumer<StubProfitService> configure = service -> {};
+        boolean deriveResultFromRequest;
+
+        RecordingServiceFactory() {
+            super(null, null, null, null, null, null, null, null, null);
+        }
+
+        void next(java.util.function.Consumer<StubProfitService> configure) {
+            this.configure = configure;
+        }
+
+        StubProfitService only() {
+            assertEquals(1, created.size(), "expected exactly one recorded calculation");
+            return created.get(0);
+        }
+
+        /** The most recent call, for a test that performs more than one request. */
+        StubProfitService last() {
+            assertFalse(created.isEmpty(), "expected at least one recorded calculation");
+            return created.get(created.size() - 1);
         }
 
         @Override
-        public ProfitData reload(DiscChoice choice, CraftingSettings settings) throws SQLException {
-            this.capturedChoice = choice;
-            this.capturedSettings = settings;
+        public ProfitOutcome profit(DiscChoice choice, CraftingSettings settings) throws Exception {
+            StubProfitService call = newCall();
+            call.capturedChoice = choice;
+            call.capturedSettings = settings;
 
-            if (failure instanceof SQLException sqlException) throw sqlException;
-            if (failure instanceof RuntimeException runtimeException) throw runtimeException;
+            if (call.failure instanceof SQLException sqlException) throw sqlException;
+            if (call.failure instanceof RuntimeException runtimeException) throw runtimeException;
 
-            if (!deriveResultFromRequest) return canned;
+            if (!call.resultAvailable) {
+                return new ProfitOutcome(null, freshnessOf(call, false));
+            }
+
+            if (!call.deriveResultFromRequest) {
+                return new ProfitOutcome(call.canned, freshnessOf(call, true));
+            }
 
             // Result derived from this request's own input, so a response that carried another
             // request's data would be visible as a mismatched recipe id / output name.
@@ -596,40 +802,54 @@ class CraftingProfitApiControllerTest {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            return new ProfitData(List.of(recipe), List.of(recipe), Map.of(),
+            CraftingProfitService.ProfitData derived = new CraftingProfitService.ProfitData(
+                    List.of(recipe), List.of(recipe), Map.of(),
                     Map.of(recipeId, new ItemRepository.ItemInfo(recipeId, choice.discipline, null, null)),
                     Map.of());
+            return new ProfitOutcome(derived, freshness(
+                    "request-" + choice.discipline, "generation-" + choice.discipline, true, true,
+                    List.of(), CalculationFreshness.PriceCoverage.none(), List.of(), List.of()));
+        }
+
+        private StubProfitService newCall() {
+            StubProfitService call = new StubProfitService();
+            call.deriveResultFromRequest = deriveResultFromRequest;
+            configure.accept(call);
+            created.add(call);
+            return call;
+        }
+
+        private static CalculationFreshness freshnessOf(StubProfitService call, boolean resultAvailable) {
+            if (call.freshness != null) return call.freshness;
+            return freshness("request-1", "generation-1", true, resultAvailable, List.of(),
+                    CalculationFreshness.PriceCoverage.none(), List.of(), List.of());
         }
     }
 
-    /** The controller's per-request service seam, recording every instance it hands out. */
-    private static final class RecordingServiceFactory implements Supplier<CraftingProfitService> {
-        final List<StubProfitService> created = Collections.synchronizedList(new ArrayList<>());
-        private java.util.function.Consumer<StubProfitService> configure = service -> {};
-        boolean deriveResultFromRequest;
+    private static CalculationFreshness.SourceFreshness fresh(String source) {
+        return new CalculationFreshness.SourceFreshness(source, Instant.parse("2026-10-12T08:57:00Z"),
+                CalculationFreshness.SourceState.FRESH);
+    }
 
-        void next(java.util.function.Consumer<StubProfitService> configure) {
-            this.configure = configure;
-        }
+    private static CalculationFreshness.SourceFreshness stale(String source) {
+        return new CalculationFreshness.SourceFreshness(source, Instant.parse("2026-10-12T07:00:00Z"),
+                CalculationFreshness.SourceState.STALE);
+    }
 
-        StubProfitService only() {
-            assertEquals(1, created.size(), "expected exactly one service instance");
-            return created.get(0);
-        }
+    private static CalculationFreshness.SourceFreshness missing(String source) {
+        return new CalculationFreshness.SourceFreshness(source, null,
+                CalculationFreshness.SourceState.MISSING);
+    }
 
-        /** The most recently handed-out service, for a test that performs more than one request. */
-        StubProfitService last() {
-            assertFalse(created.isEmpty(), "expected at least one service instance");
-            return created.get(created.size() - 1);
-        }
-
-        @Override
-        public CraftingProfitService get() {
-            StubProfitService service = new StubProfitService();
-            service.deriveResultFromRequest = deriveResultFromRequest;
-            configure.accept(service);
-            created.add(service);
-            return service;
-        }
+    static CalculationFreshness freshness(String requestId,
+                                          String calculationId,
+                                          boolean provisional,
+                                          boolean resultAvailable,
+                                          List<CalculationFreshness.SourceFreshness> sources,
+                                          CalculationFreshness.PriceCoverage coverage,
+                                          List<CalculationFreshness.OutstandingRefresh> outstanding,
+                                          List<CalculationFreshness.RefreshFailure> failures) {
+        return new CalculationFreshness(requestId, calculationId, Instant.parse("2026-10-12T09:00:00Z"),
+                provisional, resultAvailable, sources, coverage, outstanding, failures);
     }
 }

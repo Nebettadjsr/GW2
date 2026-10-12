@@ -1,17 +1,20 @@
 package web;
 
+import application.AccountRefreshCoordinator;
 import application.AccountRefreshService;
 import application.BankContentsService;
+import application.CachedCraftingProfitService;
 import application.CharacterSelectionService;
 import application.CraftingDiscoveryService;
-import application.CraftingProfitService;
 import application.GlobalDataRefreshService;
 import application.MaterialStorageService;
 import application.TradingPostPriceRefreshService;
+import application.TradingPostRefreshCoordinator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.ApplicationContext;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 import web.task.BackgroundTaskService;
@@ -21,6 +24,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,12 +33,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Proves the Spring Boot entry point is genuinely runnable on this Java/Maven setup
  * (STORY-API-001 acceptance criterion 1): the context starts, an embedded server binds a port, and
- * the crafting calculation endpoints are wired to per-request application-service factories.
+ * the crafting calculation endpoints are wired to their application use cases — Discovery to a
+ * per-request service factory, and Profit to the cached-result use case and the shared refresh
+ * coordinators STORY-APP-014 introduced.
  *
  * <p>Deliberately does not call the endpoints - that would need the real database. Transport
  * behavior is covered by {@link CraftingProfitApiControllerTest} and
  * {@link CraftingDiscoveryApiControllerTest}, real-database timing by {@code *RealDbPerfIT}. The
- * service factories are never invoked here, so no connection is opened. The narrowly scoped
+ * service factory and the cached use case are never invoked here, so no connection is opened. The narrowly scoped
  * account-Luck schema initialization is disabled for this wiring-only test; normal startup runs it.
  *
  * <p>STORY-API-003 added the account synchronization trigger, the shared task-status route and the task
@@ -57,7 +63,13 @@ class Gw2ApiApplicationBootTest {
     private CraftingDiscoveryApiController discoveryController;
 
     @Autowired
-    private Supplier<CraftingProfitService> profitServiceFactory;
+    private CachedCraftingProfitService cachedProfitService;
+
+    @Autowired
+    private AccountRefreshCoordinator accountRefreshCoordinator;
+
+    @Autowired
+    private TradingPostRefreshCoordinator tradingPostRefreshCoordinator;
 
     @Autowired
     private Supplier<CraftingDiscoveryService> discoveryServiceFactory;
@@ -106,6 +118,9 @@ class Gw2ApiApplicationBootTest {
 
     @Autowired
     private RequestMappingHandlerMapping handlerMapping;
+
+    @Autowired
+    private ApplicationContext context;
 
     @Test
     void applicationStartsAndExposesTheCraftingControllersOverAnEmbeddedServer() {
@@ -180,9 +195,30 @@ class Gw2ApiApplicationBootTest {
 
     @Test
     void theConfiguredFactoryHandsOutAFreshApplicationServicePerCall() {
-        assertNotSame(profitServiceFactory.get(), profitServiceFactory.get(),
-                "a shared service would let requests observe each other's reload state");
         assertNotSame(discoveryServiceFactory.get(), discoveryServiceFactory.get(),
                 "a shared service would let requests observe each other's reload state");
+    }
+
+    /**
+     * STORY-APP-014: the Profit routes delegate to the cached-result use case, and the two refresh
+     * coordinators it admits work through are single shared beans — which is what makes "at most one
+     * account writer" and "concurrent price demands coalesce" true across entry points rather than
+     * per request. Profit's own per-request calculation service is created inside a call, so it is
+     * not a bean and is asserted where it is observable, in
+     * {@code application.CachedCraftingProfitServiceTest}. Nothing is invoked here, so no connection
+     * is opened.
+     */
+    @Test
+    void theProfitRoutesAreWiredToTheCachedUseCaseAndTheSharedRefreshCoordinators() {
+        assertNotNull(cachedProfitService,
+                "the Profit routes delegate to the cached-result use case, so it must be a bean");
+        assertNotNull(accountRefreshCoordinator,
+                "one shared coordinator is what keeps a single account writer across entry points");
+        assertNotNull(tradingPostRefreshCoordinator,
+                "price coordination is separate from the account one and equally shared");
+        assertEquals(1, context.getBeanNamesForType(AccountRefreshCoordinator.class).length,
+                "a second account coordinator would reintroduce overlapping account writes");
+        assertEquals(1, context.getBeanNamesForType(TradingPostRefreshCoordinator.class).length,
+                "a second price coordinator would reintroduce competing fetches of one item set");
     }
 }

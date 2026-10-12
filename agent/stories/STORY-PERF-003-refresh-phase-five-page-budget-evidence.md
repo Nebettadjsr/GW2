@@ -806,6 +806,14 @@ crafting discovery workflow"); the component now exposes only `[data-test="summa
 `[data-test="effective-scope"]`. Every phase report's `effective settings` line therefore reads
 `null`, so that part of §34's evidence line no longer resolves from the harness output alone.
 
+## Follow-up Findings Disposition
+
+F001: DEFERRED — agent/user-decisions/UD-015-trading-post-refresh-performance-budget-scope.md defines the expired-price budget scope before verification/remediation can be sized. The observed breach remains a Phase 5 closure question; fresh-price compliance does not dispose of it.
+
+F002: FOLLOW-UP STORY — STORY-WEB-033
+
+F003: DISMISSED — Missing reporting evidence, not a verified app defect. This Result's Run context and Limitations record settings from the backend echo and page scope. frontend/scripts/profit-page-perf.mjs still samples the obsolete hook, but Request-013-raise-backend-test-coverage.md prohibits cosmetic smoke reporting follow-ups while open. No separate repair is needed for the recorded measurements; future measurements must still record effective inputs under TEST_STRATEGY.md section 34.
+
 ## Blockers
 
 None.

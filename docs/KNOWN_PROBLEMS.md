@@ -108,6 +108,8 @@ No finding in this document by itself authorizes an implementation change. Norma
 
 **Inferred risk:** moving a stack from bank to material storage can leave its old bank quantity alongside its refreshed storage quantity in Profit indefinitely until a full account refresh; even full refresh has intermediate mixed snapshots. Concurrent runs can publish older fetches after newer ones. This is an application-created consistency problem, distinct from accepted GW2 API lag (DOMAIN_SPEC §39). **Recommendation:** define coherent account snapshot publication/refresh ownership and accurate freshness reporting; preserve or explicitly decide refresh scope.
 
+**Scope reduced (STORY-APP-014), not closed:** the browser Crafting Profit path now reads every input through one `REPEATABLE READ` snapshot and each account source publishes its rows and completion marker in one transaction, so that path can no longer read part of a refresh under an older marker or mix generations within one calculation, and a failed refresh leaves the previous generation intact. Account writes are also serialized through one coordinator with accurate per-source freshness reporting. What remains is the cross-source question this entry names — a generation is per source, so bank and material storage can still be current as of different instants — plus the legacy JavaFX reads and timer wording, which were not changed.
+
 
 ### KP-13 — Removed characters remain eligible and keep phantom inventory (CH-05)
 

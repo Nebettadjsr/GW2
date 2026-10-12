@@ -1,5 +1,7 @@
 package web;
 
+import application.CachedCraftingProfitService;
+import application.CalculationFreshness;
 import application.CraftingProfitService;
 import application.CraftingResolutionDetail;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -32,6 +34,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -43,6 +46,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -571,6 +575,108 @@ class CraftingProfitResolutionApiControllerTest {
                 "the 404 must come from the calculation's own candidate set, not from a pre-check");
     }
 
+    // ---------- cached-result contract (STORY-APP-014, TARGET_ARCHITECTURE.md §9.1/§10.2) ----------
+
+    @Test
+    void theDetailResponseCarriesTheFreshnessOfTheInputsItExplained() throws Exception {
+        factory.next(service -> {
+            service.canned = available(rootCraftedByRequestedRecipe());
+            service.freshness = CraftingProfitApiControllerTest.freshness("req-5", "gen-5", true, true,
+                    List.of(new CalculationFreshness.SourceFreshness("BANK",
+                            Instant.parse("2026-10-12T07:00:00Z"),
+                            CalculationFreshness.SourceState.STALE)),
+                    new CalculationFreshness.PriceCoverage(10, 9, 1, 0,
+                            Instant.parse("2026-10-12T07:30:00Z"),
+                            Instant.parse("2026-10-12T08:50:00Z"), false, "quotes-5"),
+                    List.of(new CalculationFreshness.OutstandingRefresh(
+                            CalculationFreshness.RefreshKind.ACCOUNT, Set.of("BANK"),
+                            "task-d", "RUNNING", "ADMITTED")),
+                    List.of());
+        });
+
+        mockMvc.perform(resolution("{\"recipeId\": 7, \"calculation\": {}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CALCULATED"))
+                .andExpect(jsonPath("$.consistency").value("FRESH_CALCULATION"))
+                .andExpect(jsonPath("$.freshness.calculationId").value("gen-5"))
+                .andExpect(jsonPath("$.freshness.provisional").value(true))
+                .andExpect(jsonPath("$.freshness.accountSources[0].state").value("STALE"))
+                .andExpect(jsonPath("$.freshness.tradingPost.covered").value(false))
+                .andExpect(jsonPath("$.freshness.outstandingWork[0].taskStatusUrl")
+                        .value("/api/sync/tasks/task-d"))
+                // the row the tree explains is still this operation's own
+                .andExpect(jsonPath("$.row.recipeId").value(7));
+    }
+
+    @Test
+    void theCallersInputGenerationIsPassedToTheUseCaseUnchanged() throws Exception {
+        factory.next(service -> service.canned = available(rootCraftedByRequestedRecipe()));
+
+        mockMvc.perform(resolution("""
+                        {"recipeId": 7, "calculation": {}, "basedOnCalculationId": "gen-from-the-table"}"""))
+                .andExpect(status().isOk());
+
+        assertEquals("gen-from-the-table", factory.only().capturedBasedOnCalculationId,
+                "the boundary must not decide compatibility itself");
+    }
+
+    @Test
+    void anAbsentInputGenerationIsPassedThroughAsAbsent() throws Exception {
+        factory.next(service -> service.canned = available(rootCraftedByRequestedRecipe()));
+
+        mockMvc.perform(resolution("{\"recipeId\": 7, \"calculation\": {}}"))
+                .andExpect(status().isOk());
+
+        assertNull(factory.only().capturedBasedOnCalculationId);
+    }
+
+    @Test
+    void detailComputedFromChangedInputsSaysSoAndCarriesTheMatchingUpdatedRow() throws Exception {
+        factory.next(service -> {
+            service.canned = available(rootCraftedByRequestedRecipe());
+            service.consistency = CachedCraftingProfitService.CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS;
+            service.freshness = CraftingProfitApiControllerTest.freshness("req-6", "gen-new", true, true,
+                    List.of(), CalculationFreshness.PriceCoverage.none(), List.of(), List.of());
+        });
+
+        mockMvc.perform(resolution("""
+                        {"recipeId": 7, "calculation": {}, "basedOnCalculationId": "gen-old"}"""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.consistency").value("RECALCULATED_FOR_CHANGED_INPUTS"))
+                .andExpect(jsonPath("$.freshness.calculationId").value("gen-new"))
+                // the explanation is paired with a row from its own generation, not the caller's
+                .andExpect(jsonPath("$.row.recipeId").value(7))
+                .andExpect(jsonPath("$.tree.itemId").value(100));
+    }
+
+    @Test
+    void noUsableCachedInputsAnswerTwoHundredTwoWithoutARowOrATree() throws Exception {
+        factory.next(service -> {
+            service.resultAvailable = false;
+            service.freshness = CraftingProfitApiControllerTest.freshness("req-8", "gen-8", true, false,
+                    List.of(new CalculationFreshness.SourceFreshness("CHARACTERS", null,
+                            CalculationFreshness.SourceState.MISSING)),
+                    CalculationFreshness.PriceCoverage.none(),
+                    List.of(new CalculationFreshness.OutstandingRefresh(
+                            CalculationFreshness.RefreshKind.ACCOUNT, Set.of("CHARACTERS"),
+                            "task-e", "RUNNING", "ADMITTED")),
+                    List.of());
+        });
+
+        mockMvc.perform(resolution("{\"recipeId\": 7, \"calculation\": {}}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.recipeId").value(7))
+                .andExpect(jsonPath("$.row").doesNotExist())
+                .andExpect(jsonPath("$.tree").doesNotExist())
+                .andExpect(jsonPath("$.treeStatus").doesNotExist())
+                .andExpect(jsonPath("$.calculation.scope.kind").value("ALL"))
+                .andExpect(jsonPath("$.freshness.resultAvailable").value(false))
+                .andExpect(jsonPath("$.freshness.accountSources[0].state").value("MISSING"))
+                .andExpect(jsonPath("$.freshness.outstandingWork[0].taskStatusUrl")
+                        .value("/api/sync/tasks/task-e"));
+    }
+
     // ---------- rejected requests ----------
 
     @Test
@@ -853,46 +959,84 @@ class CraftingProfitResolutionApiControllerTest {
     // ---------- stubs ----------
 
     /**
-     * Stands in for the application service: records what the controller handed it and returns a
-     * canned detail (or fails), so these tests never touch a database or a real calculation.
+     * One recorded detail call: what the controller handed the use case, and what that call is set
+     * up to answer with.
      */
-    private static final class StubProfitService extends CraftingProfitService {
+    private static final class StubProfitService {
         int capturedRecipeId;
         DiscChoice capturedChoice;
         CraftingSettings capturedSettings;
+        String capturedBasedOnCalculationId;
         int detailCalls;
         int reloadCalls;
         CraftingResolutionDetail canned;
+        boolean resultAvailable = true;
+        String consistency = CachedCraftingProfitService.CONSISTENCY_FRESH_CALCULATION;
+        CalculationFreshness freshness;
         Exception failure;
         boolean deriveResultFromRequest;
+    }
 
-        StubProfitService() {
-            super(null, null, null, null, null, null, null);
+    /**
+     * Stands in for the cached-result use case: records what the controller handed it and returns a
+     * canned detail outcome (or fails), so these tests never touch a database, a task or a real
+     * calculation.
+     */
+    private static final class RecordingServiceFactory extends CachedCraftingProfitService {
+        final List<StubProfitService> created = Collections.synchronizedList(new ArrayList<>());
+        private Consumer<StubProfitService> configure = service -> {};
+        boolean deriveResultFromRequest;
+
+        RecordingServiceFactory() {
+            super(null, null, null, null, null, null, null, null, null);
+        }
+
+        void next(Consumer<StubProfitService> configure) {
+            this.configure = configure;
+        }
+
+        StubProfitService only() {
+            assertEquals(1, created.size(), "expected exactly one recorded detail calculation");
+            return created.get(0);
         }
 
         @Override
-        public ProfitData reload(DiscChoice choice, CraftingSettings settings) {
-            reloadCalls++;
-            return new ProfitData(List.of(), List.of(), Map.of(), Map.of(), Map.of());
+        public ProfitOutcome profit(DiscChoice choice, CraftingSettings settings) {
+            StubProfitService call = newCall();
+            call.reloadCalls++;
+            return new ProfitOutcome(
+                    new CraftingProfitService.ProfitData(List.of(), List.of(), Map.of(), Map.of(), Map.of()),
+                    freshnessOf(call, true));
         }
 
         @Override
-        public CraftingResolutionDetail resolveDetail(int recipeId, DiscChoice choice,
-                                                     CraftingSettings settings) throws SQLException {
-            detailCalls++;
-            this.capturedRecipeId = recipeId;
-            this.capturedChoice = choice;
-            this.capturedSettings = settings;
+        public ResolutionOutcome resolution(int recipeId, DiscChoice choice, CraftingSettings settings,
+                                            String basedOnCalculationId) throws Exception {
+            StubProfitService call = newCall();
+            call.detailCalls++;
+            call.capturedRecipeId = recipeId;
+            call.capturedChoice = choice;
+            call.capturedSettings = settings;
+            call.capturedBasedOnCalculationId = basedOnCalculationId;
 
-            if (failure instanceof SQLException sqlException) throw sqlException;
-            if (failure instanceof RuntimeException runtimeException) throw runtimeException;
+            if (call.failure instanceof SQLException sqlException) throw sqlException;
+            if (call.failure instanceof RuntimeException runtimeException) throw runtimeException;
 
-            if (!deriveResultFromRequest) return canned;
+            if (!call.resultAvailable) {
+                return new ResolutionOutcome(null, call.consistency, freshnessOf(call, false));
+            }
 
-            // Detail derived from this request's own recipe id, so a response carrying another
-            // request's data would show up as a mismatched id. 99 stands for "not in this
-            // calculation's candidate set".
-            if (recipeId == 99) return notInCalculationDetail(recipeId);
+            if (!call.deriveResultFromRequest) {
+                return new ResolutionOutcome(call.canned, call.consistency, freshnessOf(call, true));
+            }
+
+            // Detail derived from this request own recipe id, so a response carrying another
+            // request data would show up as a mismatched id. 99 stands for "not in this
+            // calculation candidate set".
+            if (recipeId == 99) {
+                return new ResolutionOutcome(notInCalculationDetail(recipeId), call.consistency,
+                        freshnessOf(call, true));
+            }
 
             try {
                 Thread.sleep(5); // widen the window in which concurrent requests overlap
@@ -903,37 +1047,31 @@ class CraftingProfitResolutionApiControllerTest {
             Recipe recipe = new Recipe(recipeId, recipeId, 1, 0, "Chef", List.of());
             CraftTraceNode root = node(recipeId, 1).crafted(1).recipe(recipeId, 1, 1)
                     .methods(AcquisitionMethod.CRAFT).costs(1, 0, 1).build();
-            return new CraftingResolutionDetail(
+            CraftingResolutionDetail derived = new CraftingResolutionDetail(
                     recipeId, CraftingResolutionDetail.Status.AVAILABLE, recipe,
                     new CraftResult(recipeId, "Chef", 1, Map.of(), Map.of(), 1, 0, 2, 1, 1, null),
                     new SingleCraftExplanation(recipeId, recipeId, 1, true, root),
                     Map.of(recipeId, new ItemRepository.ItemInfo(recipeId, "Item " + recipeId, null, null)),
                     Map.of());
-        }
-    }
-
-    /** The controller's per-request service seam, recording every instance it hands out. */
-    private static final class RecordingServiceFactory implements Supplier<CraftingProfitService> {
-        final List<StubProfitService> created = Collections.synchronizedList(new ArrayList<>());
-        private Consumer<StubProfitService> configure = service -> {};
-        boolean deriveResultFromRequest;
-
-        void next(Consumer<StubProfitService> configure) {
-            this.configure = configure;
+            return new ResolutionOutcome(derived, call.consistency,
+                    CraftingProfitApiControllerTest.freshness("request-" + recipeId,
+                            "generation-" + recipeId, true, true, List.of(),
+                            CalculationFreshness.PriceCoverage.none(), List.of(), List.of()));
         }
 
-        StubProfitService only() {
-            assertEquals(1, created.size(), "expected exactly one service instance");
-            return created.get(0);
+        private StubProfitService newCall() {
+            StubProfitService call = new StubProfitService();
+            call.deriveResultFromRequest = deriveResultFromRequest;
+            configure.accept(call);
+            created.add(call);
+            return call;
         }
 
-        @Override
-        public CraftingProfitService get() {
-            StubProfitService service = new StubProfitService();
-            service.deriveResultFromRequest = deriveResultFromRequest;
-            configure.accept(service);
-            created.add(service);
-            return service;
+        private static CalculationFreshness freshnessOf(StubProfitService call, boolean resultAvailable) {
+            if (call.freshness != null) return call.freshness;
+            return CraftingProfitApiControllerTest.freshness("request-1", "generation-1", true,
+                    resultAvailable, List.of(), CalculationFreshness.PriceCoverage.none(),
+                    List.of(), List.of());
         }
     }
 }

@@ -556,3 +556,28 @@ well — they are what makes the bound legible — but next to the text they wer
 *control*, give the reviewer the one command that regenerates it (`sed`-insert a single line, or
 `git show HEAD:<path>` for "before"), state the one-line `diff`, and delete the copy afterwards:
 a control is reproducible instructions plus its output, never a tracked file.
+
+## An aggregate is not an identity, and a stand-in is not the shipped path
+
+Two ways a correct-looking verification misses the thing it is for: deriving an identity from
+summary counters, and proving a protocol with a test double of the code that implements it.
+
+**Why:** `STORY-APP-014`'s `calculationId()` digested the price coverage *aggregates* — required /
+fresh / stale / missing counts plus the oldest and newest fetch instants. A quote refetched between
+those two instants, or rewritten with new numbers under its existing one, moves no aggregate, so the
+identity stayed equal and `/api/crafting/profit/resolution` answered `FRESH_CALCULATION`: newer
+detail presented as the explanation of a row computed from different quotes. Its publication test
+had the same shape of gap — it asserted the one-transaction invariant against a `probe_rows` table
+and hand-written SQL, which cannot fail if `CharacterSync` stops publishing that way.
+
+**How to apply:** when identity must change with an input, fingerprint the input itself
+(`md5(string_agg(item_id || ':' || fetched_at || ':' || <values>, ',' ORDER BY item_id))`, rendering
+instants in UTC so two sessions agree), and write the regression as "every aggregate is equal **and**
+the identity differs" so the weaker version cannot pass. Drive publication and capture through the
+functions production calls — extract the transaction body (`CharacterSync.publishRoster`) rather than
+re-assembling it in the test, point `Db.TEST_SCHEMA_PROPERTY` at a disposable schema, and hold the
+writer mid-transaction with a trigger taking an advisory lock the test owns, waiting on
+`pg_stat_activity.wait_event = 'advisory'` instead of sleeping. Same rule for coordination: assert
+the ids a refresh actually fetched and the coverage it left, not how many runs happened — a run that
+fetched the wrong set passes a counting test. And prove each new assertion by breaking the behaviour
+in the shipped file, running it, then reverting and re-running green; quote both outputs.
