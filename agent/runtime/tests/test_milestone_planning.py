@@ -182,14 +182,36 @@ class MilestonePlanningTest(unittest.TestCase):
         self.story(1, status="UNFINISHED")
         self.assertEqual(len(story_state.get_unsatisfied_dependencies(content)), 1)
 
-    def test_new_story_cannot_be_reported_executable_with_open_ud_dependency(self):
+    def assert_blocked_on_dependencies(self, name):
+        content = (planner.STORIES_DIR / name).read_text()
+        self.assertEqual(story_state.classify_story_status(story_state.extract_status_section(content)), "BLOCKED")
+        self.assertIn("Waiting on dependencies:", content)
+        backlog = planner.BACKLOG_FILE.read_text()
+        self.assertIn(name, story_state.parse_backlog_section(backlog, "Blocked"))
+        self.assertNotIn(name, story_state.parse_backlog_section(backlog, "To Do"))
+
+    def test_new_story_with_open_ud_dependency_is_blocked_not_rejected(self):
         self.decision(10)
         before = self.before()
         name = self.story(1, dependencies="UD-010")
         result = self.validate(before, story_files_created=[name], user_decision_ids=["UD-010"],
                                phase_review=[review("A", "USER_DECISION", "UD-010")])
-        self.assertEqual(result["status"], "FAILED")
-        self.assertIn("unresolved prerequisites", str(result["validation_problems"]))
+        self.assertEqual(result["status"], "COMPLETE", result)
+        self.assert_blocked_on_dependencies(name)
+
+    def test_new_story_chain_queued_in_to_do_is_blocked_behind_its_first_story(self):
+        # Regression: a pass creating APP-014 -> API-010 -> WEB-034 -> PERF-004,
+        # all listed under '## To Do', was rejected and rolled back whole.
+        before = self.before()
+        first = self.story(1)
+        second = self.story(2, dependencies="STORY-TEST-001")
+        third = self.story(3, dependencies="STORY-TEST-002")
+        result = self.validate(before, story_files_created=[first, second, third],
+                               phase_review=[review("A", "READY", first)])
+        self.assertEqual(result["status"], "COMPLETE", result)
+        self.assertEqual(story_state.parse_backlog_section(planner.BACKLOG_FILE.read_text(), "To Do"), [first])
+        self.assert_blocked_on_dependencies(second)
+        self.assert_blocked_on_dependencies(third)
 
     def test_prompt_indexes_completed_backlog_history_instead_of_quoting_it(self):
         # A fresh Codex session resends the whole prompt with every model

@@ -151,6 +151,12 @@ def step_plan(planning: dict) -> StepResult:
                           result.get("reason", ""), request=requests[0]["file"])
     before = orchestrator.planning_fingerprint()
     result = run_planning_pass()
+    if result.get("status") == "FAILED":
+        # A rejected pass was rolled back whole; one retry told why usually
+        # fixes a formatting slip. A second rejection waits for changed inputs.
+        problems = result.get("validation_problems") or [result.get("reason") or "invalid output"]
+        log_line("Planning pass rejected and rolled back; retrying once -- " + "; ".join(problems))
+        result = run_planning_pass(rejected=problems)
     after = orchestrator.planning_fingerprint()
     status = result.get("status", "FAILED")
     # A follow-up pass is only honoured after a pass that actually changed something.

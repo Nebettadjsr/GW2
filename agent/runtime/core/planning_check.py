@@ -11,9 +11,9 @@ created four story files and rewritten `## To Do`.
 Two things follow, and both are implemented rather than asked for:
 
 1. The planner is handed this check in its prompt and told to run it until it
-   passes. It is the same validation the harness applies afterwards, so a pass
-   here means the result will be accepted; there is no second, stricter gate to
-   be surprised by.
+   passes. It reuses the harness's review and architect-request validators for
+   checks available from the proposed output. Checks requiring the pre-run
+   snapshot (such as detecting edits to existing requests) still run afterwards.
 2. Failing it is still fatal (`project_planner._run_guarded_planner` rolls the
    whole pass back), so skipping the check cannot produce a half-applied plan.
 
@@ -58,7 +58,9 @@ def check() -> list[str]:
     from agent.runtime.core.project_planner import (
         REVIEW_OUTCOMES,
         PLANNING_STATUSES,
+        _validate_phase_review,
     )
+    from agent.runtime.human import architect_requests
 
     status = result.get("status")
 
@@ -91,6 +93,24 @@ def check() -> list[str]:
                     + ". Note DEFERRED is a follow-up-finding disposition, "
                       "not a phase_review outcome."
                 )
+
+    created = result.get("architect_requests_created", [])
+    if not isinstance(created, list) or not all(isinstance(name, str) for name in created):
+        problems.append("architect_requests_created must be a list of filenames.")
+    else:
+        # The preflight has no pre-run snapshot. Treat unreported requests as
+        # existing and validate the reported additions with the harness's own
+        # validator: title, sections, status, duplicate questions and answers.
+        before = {
+            request["file"]: request["content"]
+            for request in architect_requests.list_requests()
+            if request["file"] not in created
+        }
+        problems.extend(architect_requests.validate_planner_updates(before, created, status))
+
+    # Concrete progress is checked later against the pre-run snapshot.
+    # Here we check the same stable AR/UD references and review receipt.
+    problems.extend(_validate_phase_review(result, made_progress=True))
 
     if BACKLOG_FILE.exists():
         problems.extend(

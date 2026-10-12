@@ -6,7 +6,8 @@ from agent.runtime.runners.local_planner_runner import run_local_planner
 from agent.runtime.support.capacity import ModelCapacityUnavailable
 from agent.runtime.core.story_state import (
     get_active_story_path, classify_story_status, extract_status_section, parse_backlog_section,
-    get_unsatisfied_dependencies, validate_backlog_entries,
+    get_unsatisfied_dependencies, validate_backlog_entries, set_story_blocked,
+    ensure_backlog_entry_blocked,
 )
 from agent.runtime.support.config import (
     ADR_DIR,
@@ -1007,8 +1008,13 @@ def validate_planning_result(
 
         unresolved = get_unsatisfied_dependencies(content)
         if unresolved and classify_story_status(extract_status_section(content)) != "BLOCKED":
-            problems.append(f"{relative_name} has unresolved prerequisites but is not BLOCKED: {unresolved}")
-            status = "FAILED"
+            # New work queued behind its prerequisites is blocked here rather
+            # than rejected with the whole pass; the harness requeues it once
+            # they are satisfied (orchestrator.requeue_dependency_blocked_stories).
+            set_story_blocked(story_path, "Waiting on dependencies: " + "; ".join(unresolved))
+            BACKLOG_FILE.write_text(ensure_backlog_entry_blocked(
+                BACKLOG_FILE.read_text(encoding="utf-8"), story_path.name), encoding="utf-8")
+            content = story_path.read_text(encoding="utf-8")
 
         missing_headings = [
             heading
@@ -1469,7 +1475,9 @@ def _run_guarded_planner(prompt, validate=None):
         raise
 
 
-def run_planning_pass() -> dict:
+def run_planning_pass(rejected: list[str] | None = None) -> dict:
+    """One planning pass. `rejected` lists why the previous attempt was
+    rolled back, so a retry can correct exactly that."""
 
     print(
         "\n========================================"
@@ -1507,6 +1515,11 @@ def run_planning_pass() -> dict:
     pre_adr_files = _adr_snapshot()
 
     prompt, sections = build_planning_context()
+    if rejected:
+        prompt += ("\nYOUR PREVIOUS ATTEMPT WAS REJECTED AND ROLLED BACK\n"
+                   "===================================================\n\n"
+                   "Nothing it wrote was kept. Plan again and avoid these problems:\n"
+                   + "".join(f"- {problem}\n" for problem in rejected))
 
     # Terminal only: what the harness is about to supply, by section.
     # Characters are not tokens -- the runner reports what the model

@@ -1711,7 +1711,8 @@ def ensure_backlog_entry_blocked(
     Idempotently ensure `filename` is listed under '## Blocked',
     pulling it out of '## Active' if it is still sitting there (e.g.
     a story whose own file already says BLOCKED -- set by Claude Code
-    itself or a human -- before BACKLOG.md was updated to match).
+    itself or a human -- before BACKLOG.md was updated to match), or
+    else out of '## To Do', restamped BLOCKED.
     Never duplicates: does nothing if `filename` is already listed
     under '## Blocked'. Unlike move_backlog_entry_to_blocked(), this
     adds no extra annotation -- the story's own Blockers section is
@@ -1724,6 +1725,13 @@ def ensure_backlog_entry_blocked(
     content, bullet = _pull_bullet_from_backlog_section(
         backlog_content, "Active", filename
     )
+
+    if bullet is None:
+        content, bullet = _pull_bullet_from_backlog_section(
+            content, "To Do", filename
+        )
+        if bullet is not None:
+            bullet = rewrite_backlog_entry_status(bullet, "BLOCKED")
 
     if bullet is None:
         bullet = f"- `{filename}`"

@@ -213,6 +213,15 @@ class IdleAndPlanningTests(_CycleTestCase):
         result = cycle.step_plan(planning)
         self.assertEqual((result["outcome"], result["proceed"]), ("planning_failed", False))
         self.assertEqual(planning["fingerprint"], "fp1")
+        self.assertEqual(self.planner.call_count, 2)  # the original pass plus one retry
+
+    def test_rejected_planning_is_retried_once_with_its_problems(self):
+        problems = ["AR-007-x.md has no readable 'AR-<NUMBER>' title."]
+        self.planner.side_effect = [{"status": "FAILED", "validation_problems": problems},
+                                    {"status": "COMPLETE"}]
+        result = cycle.step_plan({})
+        self.assertEqual((result["outcome"], result["proceed"]), ("planning_complete", True))
+        self.planner.assert_called_with(rejected=problems)
 
     def test_actionable_architect_request_is_answered_before_planning(self):
         cycle.get_actionable_requests.return_value = [{"file": "AR-1.md"}]
