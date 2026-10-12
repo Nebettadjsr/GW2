@@ -8,7 +8,7 @@ Return cached Crafting Profit results while coordinating asynchronous input refr
 
 ## Status
 
-UNFINISHED
+DONE
 
 ## Milestone
 

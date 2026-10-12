@@ -13,7 +13,6 @@ below stay in the plain form.
 
 ## Active
 
-- STORY-APP-014 | STORY-APP-014-cached-profit-refresh-coordination.md | TODO | milestone-05 | deps: None
 
 ## To Do
 
@@ -84,6 +83,7 @@ Completed current-milestone story details remain in their canonical files.
 - STORY-WEB-032 | STORY-WEB-032-root-sourcing-browser-coverage.md | DONE | milestone-05 | Verify root sourcing in browser resolution details
 - STORY-QUALITY-005 | STORY-QUALITY-005-phase-five-completion-review.md | DONE | milestone-05 | Review Phase 5 project health before milestone completion
 - STORY-PERF-003 | STORY-PERF-003-refresh-phase-five-page-budget-evidence.md | DONE | milestone-05 | Refresh Phase 5 complete-page performance evidence after calculation changes
+- STORY-APP-014 | STORY-APP-014-cached-profit-refresh-coordination.md | DONE | milestone-05 | Return cached Crafting Profit results while coordinating asynchronous input refresh
 
 ## Archived
 
