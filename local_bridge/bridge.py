@@ -390,7 +390,21 @@ def make_handler(bridge: Bridge):
     return Handler
 
 
+def disable_console_quick_edit() -> None:
+    """A click in a QuickEdit console pauses every write to it until Esc -- and
+    with it the whole bridge and the Claude run streaming through it."""
+    if os.name != "nt":
+        return
+    import ctypes
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.GetStdHandle(-10)  # STD_INPUT_HANDLE
+    mode = ctypes.c_uint32()
+    if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+        kernel32.SetConsoleMode(handle, (mode.value & ~0x0040) | 0x0080)  # -QUICK_EDIT, +EXTENDED_FLAGS
+
+
 def main() -> None:
+    disable_console_quick_edit()
     token = os.environ.get("GW2_BRIDGE_TOKEN", "")
     if len(token) < 32:
         raise SystemExit("Set GW2_BRIDGE_TOKEN to a randomly generated token of at least 32 characters.")
