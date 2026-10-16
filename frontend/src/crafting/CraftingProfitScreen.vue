@@ -1,35 +1,60 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, ref, watch } from 'vue'
 import { craftingApi, type CraftingApi } from '@/api/craftingApi'
-import type { EffectiveSettings } from '@/api/types'
+import {
+  CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS,
+  type CraftingRow,
+  type EffectiveSettings
+} from '@/api/types'
 import TradingPostPriceDisclaimer from '@/items/TradingPostPriceDisclaimer.vue'
 import PageHeader from '@/shell/PageHeader.vue'
 import CraftingProfitTable from './CraftingProfitTable.vue'
+import ProfitRefreshStatus from './ProfitRefreshStatus.vue'
 import ProfitSettingsForm from './ProfitSettingsForm.vue'
 import ResultDisplayControls from './ResultDisplayControls.vue'
 import ScopeSelector from './ScopeSelector.vue'
 import SelectedResultDetail from './SelectedResultDetail.vue'
-import { useCraftingProfit } from './useCraftingProfit'
+import { timerAlarm, useCraftingProfit, type RecoveryAlarm } from './useCraftingProfit'
 import { calculationKey, useProfitResolution, type CalculationInputs } from './useProfitResolution'
 import { useProfitTableView, type SortKey } from './useProfitTableView'
 import { useIngredientSearch } from './useIngredientSearch'
 import { syncApi } from '@/api/syncApi'
 import type { SyncApi } from '@/api/syncApi'
-import type { SyncTaskAccepted, SyncTaskStatus } from '@/api/types'
 
-const props = withDefaults(defineProps<{ api?: CraftingApi; refreshApi?: SyncApi }>(), {
-  api: () => craftingApi,
-  refreshApi: () => syncApi
+/**
+ * The clock, the waiting and the budget timer the bounded refresh recovery is measured by.
+ * Injectable so a test can drive the five-minute budget deterministically — including while a
+ * request it never answers is pending; in the browser they are the real ones.
+ */
+export interface RefreshClock {
+  now(): number
+  sleep(milliseconds: number): Promise<void>
+  alarm(milliseconds: number): RecoveryAlarm
+}
+
+const props = withDefaults(
+  defineProps<{ api?: CraftingApi; refreshApi?: SyncApi; refreshClock?: RefreshClock | null }>(),
+  {
+    api: () => craftingApi,
+    refreshApi: () => syncApi,
+    refreshClock: null
+  }
+)
+
+const profit = useCraftingProfit(props.api, {
+  readTaskStatus: (statusUrl: string) => props.refreshApi.readTaskStatus(statusUrl),
+  now: () => props.refreshClock?.now() ?? Date.now(),
+  sleep: (milliseconds: number) =>
+    props.refreshClock === null
+      ? new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds))
+      : props.refreshClock.sleep(milliseconds),
+  alarm: (milliseconds: number) =>
+    props.refreshClock === null ? timerAlarm(milliseconds) : props.refreshClock.alarm(milliseconds)
 })
-
-const profit = useCraftingProfit(props.api)
 const ingredientRecipeIds = ref<ReadonlySet<number>>(new Set())
 const table = useProfitTableView(profit.rows, ingredientRecipeIds)
 useIngredientSearch(props.api, table.searchText, ingredientRecipeIds)
 const resolution = useProfitResolution(props.api)
-const isRefreshing = ref(false)
-const refreshPhase = ref<string | null>(null)
-const refreshError = ref<string | null>(null)
 
 onMounted(() => {
   void profit.open()
@@ -40,7 +65,7 @@ const calculationInputs = computed<CalculationInputs | null>(() => {
   const scope = profit.effectiveScope.value
   const settings = profit.settings.value
   if (scope === null || settings === null) return null
-  return { scope, settings }
+  return { scope, settings, calculationId: profit.freshness.value?.calculationId ?? null }
 })
 
 let isViewActive = true
@@ -57,8 +82,17 @@ function syncResolution(): void {
   void resolution.request(recipeId, inputs)
 }
 
+/*
+ * The detail is re-requested for a changed selection, changed effective inputs and — since
+ * STORY-WEB-034 — a changed input *generation*: a replacement calculation computed the row from
+ * newer inputs, so the explanation beside it has to be the new generation's as well. The display
+ * controls are still not part of this, so re-ordering or filtering the table invalidates nothing
+ * (`TARGET_ARCHITECTURE.md` 13.4).
+ */
 watch(
-  () => `${table.selectedRecipeId.value ?? 'none'}|${calculationKey(calculationInputs.value)}`,
+  () =>
+    `${table.selectedRecipeId.value ?? 'none'}|${calculationKey(calculationInputs.value)}` +
+    `|${calculationInputs.value?.calculationId ?? 'none'}`,
   () => syncResolution()
 )
 
@@ -71,6 +105,33 @@ onActivated(() => {
   isViewActive = true
   syncResolution()
 })
+
+/**
+ * The row the displayed explanation actually belongs to.
+ *
+ * Normally the selected table row. When the backend answered the detail request with
+ * `RECALCULATED_FOR_CHANGED_INPUTS`, the inputs moved on since the table result, so its tree does
+ * **not** explain the provisional row that is still in the table — the response's own row is the
+ * matching context, and that is what the panel reads (AC3). The table itself keeps the result it
+ * was given until a whole replacement calculation arrives; only this one panel follows the detail.
+ */
+const detailRow = computed<CraftingRow | null>(() => {
+  const selected = table.selectedRow.value
+  if (selected === null) return null
+
+  const detail = resolution.detail.value
+  if (detail === null || detail.consistency !== CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS) {
+    return selected
+  }
+  return detail.row ?? selected
+})
+
+/** True while the panel is showing the detail's own row rather than the table's, as above. */
+const isDetailRecalculated = computed(
+  () =>
+    table.selectedRow.value !== null &&
+    resolution.detail.value?.consistency === CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS
+)
 
 const isEmptyResult = computed(() => profit.hasResult.value && profit.rows.value.length === 0)
 
@@ -102,6 +163,10 @@ const detailPlaceholder = computed(() => {
     return 'No result was loaded for this scope, so there is nothing to select.'
   }
 
+  if (profit.isPending.value) {
+    return 'No calculation exists yet for this scope, so there is nothing to select.'
+  }
+
   if (isEmptyResult.value) {
     return 'The backend returned no recipes for this scope, so there is nothing to select.'
   }
@@ -130,38 +195,19 @@ function onSelect(recipeId: number): void {
   table.select(recipeId)
 }
 
+/**
+ * Both the header's refresh control and the failed-request retry. Each asks for the calculation
+ * again and nothing else: the backend answers from its last successfully synchronized inputs and
+ * admits the refresh those inputs still need, so the page starts no synchronization of its own and
+ * no System Status visit is involved. What happens after the answer — polling the advertised tasks
+ * and replacing the result — is the bounded recovery cycle in `useCraftingProfit`.
+ */
 function onReload(): void {
   void profit.reload()
 }
 
-async function onRefreshDataAndResults(): Promise<void> {
-  if (isRefreshing.value) return
-  isRefreshing.value = true
-  refreshError.value = null
-  try {
-    refreshPhase.value = 'Refreshing account data…'
-    await waitForTask(await props.refreshApi.startProfitDataRefresh())
-    refreshPhase.value = 'Refreshing stale Trading Post prices…'
-    await waitForTask(await props.refreshApi.startPriceRefresh('PROFIT'))
-    refreshPhase.value = 'Refreshing prices and recalculating Crafting Profit…'
-    await profit.reload()
-    if (profit.requestError.value !== null) throw new Error(profit.requestError.value)
-  } catch (cause) {
-    refreshError.value = cause instanceof Error ? cause.message : String(cause)
-  } finally {
-    refreshPhase.value = null
-    isRefreshing.value = false
-  }
-}
-
-async function waitForTask(task: SyncTaskAccepted): Promise<void> {
-  for (let attempt = 0; attempt < 600; attempt++) {
-    const status: SyncTaskStatus = await props.refreshApi.readTaskStatus(task.statusUrl)
-    if (status.state === 'SUCCEEDED') return
-    if (status.state === 'FAILED') throw new Error(status.failure?.message ?? 'Refresh task failed.')
-    await new Promise((resolve) => window.setTimeout(resolve, 3000))
-  }
-  throw new Error('Refresh is still running; reopen System Status to check its task.')
+function onRetryRefresh(): void {
+  void profit.retryRefresh()
 }
 
 function onMaximumDisplayedChange(event: Event): void {
@@ -179,16 +225,13 @@ function onMaximumDisplayedChange(event: Event): void {
           type="button"
           class="button--primary"
           data-test="refresh-data-and-results"
-          :disabled="profit.isLoading.value || isRefreshing"
-          @click="onRefreshDataAndResults"
+          :disabled="profit.isLoading.value"
+          @click="onReload"
         >
           Refresh data &amp; results
         </button>
       </template>
     </PageHeader>
-
-    <p v-if="refreshPhase !== null" class="notice" role="status" data-test="refresh-progress">{{ refreshPhase }}</p>
-    <p v-if="refreshError !== null" class="error" role="alert" data-test="refresh-error">{{ refreshError }}</p>
 
     <section class="controls-panel" aria-label="Crafting profit controls">
       <div class="controls-grid">
@@ -305,6 +348,20 @@ function onMaximumDisplayedChange(event: Event): void {
             <TradingPostPriceDisclaimer v-if="profit.hasResult.value" />
           </div>
         </div>
+
+        <!--
+          Beside the results, in the Trading Post warning's own visual form: what the backend said
+          about the inputs behind the result below, and the only retry the page offers for refresh.
+        -->
+        <ProfitRefreshStatus
+          :is-recovering="profit.isRecovering.value"
+          :is-provisional="profit.isProvisional.value"
+          :is-pending="profit.isPending.value"
+          :failure="profit.recoveryFailure.value"
+          :freshness="profit.freshness.value"
+          @retry="onRetryRefresh"
+        />
+
         <p
           v-if="profit.isLoading.value"
           class="notice notice--info"
@@ -330,6 +387,21 @@ function onMaximumDisplayedChange(event: Event): void {
               Try again
             </button>
           </span>
+        </p>
+
+        <!--
+          HTTP 202: there were no usable synchronized inputs, so the backend calculated nothing.
+          That is not an empty result and no row is invented from it (AC1) — the refresh status
+          above says what is missing and what is running.
+        -->
+        <p
+          v-else-if="profit.isPending.value"
+          class="notice notice--info"
+          role="status"
+          data-test="pending"
+        >
+          No crafting opportunities have been calculated yet, because the account data they need has
+          not finished synchronizing. The results appear here as soon as it has.
         </p>
 
         <p v-else-if="isEmptyResult" class="notice" data-test="empty">
@@ -395,7 +467,8 @@ function onMaximumDisplayedChange(event: Event): void {
       <SelectedResultDetail
         class="results-split__aside"
         tabindex="0"
-        :row="table.selectedRow.value"
+        :row="detailRow"
+        :recalculated-for-changed-inputs="isDetailRecalculated"
         :hidden-reason="table.selectionHiddenReason.value"
         :settings="profit.settings.value"
         :placeholder="detailPlaceholder"

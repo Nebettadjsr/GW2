@@ -1,5 +1,6 @@
 import type { CraftingApi } from '@/api/craftingApi'
 import type {
+  CalculationFreshness,
   CraftingDiscoveryRequest,
   CraftingDiscoveryResolutionRequest,
   CraftingDiscoveryResolutionResponse,
@@ -13,6 +14,8 @@ import type {
   EffectiveDiscoverySettings,
   EffectiveScope,
   EffectiveSettings,
+  OutstandingRefresh,
+  PriceCoverage,
   ResolutionNode,
   SelectorOptions
 } from '@/api/types'
@@ -284,17 +287,168 @@ export const cycleDetectedRow: CraftingRow = {
   blockedReason: 'CYCLE_DETECTED'
 }
 
+/**
+ * A confirmed-current freshness envelope: every required account source fresh, the whole relevant
+ * item set covered, nothing outstanding and nothing failed (`web.dto.CalculationFreshnessDto`).
+ *
+ * This is what the backend answers once its inputs are current, and it is the default here so that
+ * every test about something else sees a *final* result — no stale indicator, no polling and no
+ * recovery cycle. The provisional and pending envelopes a refresh test needs are built from
+ * `provisionalFreshness` and `pendingFreshness` below.
+ */
+export function finalFreshness(
+  overrides: Partial<CalculationFreshness> = {}
+): CalculationFreshness {
+  return {
+    requestId: 'request-final',
+    calculationId: 'generation-final',
+    evaluatedAt: '2026-10-13T09:00:00Z',
+    provisional: false,
+    resultAvailable: true,
+    accountSources: ACCOUNT_SOURCES.map((source) => ({
+      source,
+      fetchedAt: '2026-10-13T08:59:00Z',
+      state: 'FRESH'
+    })),
+    tradingPost: {
+      requiredItems: 3_205,
+      freshItems: 3_205,
+      staleItems: 0,
+      missingItems: 0,
+      oldestFetchedAt: '2026-10-13T08:55:00Z',
+      newestFetchedAt: '2026-10-13T08:59:00Z',
+      covered: true
+    },
+    outstandingWork: [],
+    failures: [],
+    ...overrides
+  }
+}
+
+/** The four account sources the Crafting Profit calculation requires. */
+export const ACCOUNT_SOURCES = ['CHARACTERS', 'INVENTORY', 'MATERIALS', 'RECIPES']
+
+/**
+ * Inputs the backend does not consider current, with one advertised account task to follow. The
+ * stale sources keep usable data behind them, which is what makes the result provisional rather
+ * than absent.
+ */
+export function provisionalFreshness(
+  overrides: Partial<CalculationFreshness> = {}
+): CalculationFreshness {
+  return finalFreshness({
+    requestId: 'request-provisional',
+    calculationId: 'generation-stale',
+    provisional: true,
+    accountSources: [
+      { source: 'CHARACTERS', fetchedAt: '2026-10-12T08:00:00Z', state: 'STALE' },
+      { source: 'INVENTORY', fetchedAt: '2026-10-13T08:59:00Z', state: 'FRESH' },
+      { source: 'MATERIALS', fetchedAt: '2026-10-13T08:59:00Z', state: 'FRESH' },
+      { source: 'RECIPES', fetchedAt: '2026-10-13T08:59:00Z', state: 'FRESH' }
+    ],
+    outstandingWork: [accountWork('task-account-1')],
+    ...overrides
+  })
+}
+
+/** One piece of advertised account refresh work, in the shape the envelope reports it. */
+export function accountWork(
+  taskId: string,
+  overrides: Partial<OutstandingRefresh> = {}
+): OutstandingRefresh {
+  return {
+    kind: 'ACCOUNT',
+    sources: ['CHARACTERS'],
+    taskId,
+    taskState: 'RUNNING',
+    taskStatusUrl: `/api/sync/tasks/${taskId}`,
+    reuse: 'ADMITTED',
+    ...overrides
+  }
+}
+
+/** One piece of advertised Trading Post refresh work; its item set is the backend's own. */
+export function tradingPostWork(
+  taskId: string,
+  overrides: Partial<OutstandingRefresh> = {}
+): OutstandingRefresh {
+  return {
+    kind: 'TRADING_POST',
+    sources: [],
+    taskId,
+    taskState: 'RUNNING',
+    taskStatusUrl: `/api/sync/tasks/${taskId}`,
+    reuse: 'ADMITTED',
+    ...overrides
+  }
+}
+
+/** Trading Post coverage with a gap: the counts stay separately visible from account freshness. */
+export function uncoveredPrices(): PriceCoverage {
+  return {
+    requiredItems: 3_205,
+    freshItems: 3_000,
+    staleItems: 180,
+    missingItems: 25,
+    oldestFetchedAt: '2026-10-12T07:00:00Z',
+    newestFetchedAt: '2026-10-13T08:59:00Z',
+    covered: false
+  }
+}
+
 export function profitResponse(
   rows: CraftingRow[] = allRows,
+  scopeKind = 'ALL',
+  settings: EffectiveSettings = DEFAULT_SETTINGS,
+  freshness: CalculationFreshness = finalFreshness()
+): CraftingProfitResponse {
+  return {
+    status: 'CALCULATED',
+    scope: { kind: scopeKind, discipline: null, characterName: null, rating: 0 },
+    settings,
+    rowCount: rows.length,
+    rows,
+    freshness
+  }
+}
+
+/**
+ * The HTTP 202 answer: no usable synchronized inputs, so no rows and no count at all — never an
+ * empty list, which would read as "nothing is craftable".
+ */
+export function pendingProfitResponse(
+  freshness: CalculationFreshness = pendingFreshness(),
   scopeKind = 'ALL',
   settings: EffectiveSettings = DEFAULT_SETTINGS
 ): CraftingProfitResponse {
   return {
+    status: 'PENDING',
     scope: { kind: scopeKind, discipline: null, characterName: null, rating: 0 },
     settings,
-    rowCount: rows.length,
-    rows
+    rowCount: null,
+    rows: null,
+    freshness
   }
+}
+
+/** A source that never synchronized at all, which is what makes a result impossible rather than old. */
+export function pendingFreshness(
+  overrides: Partial<CalculationFreshness> = {}
+): CalculationFreshness {
+  return finalFreshness({
+    requestId: 'request-pending',
+    calculationId: 'generation-none',
+    provisional: true,
+    resultAvailable: false,
+    accountSources: [
+      { source: 'CHARACTERS', fetchedAt: null, state: 'MISSING' },
+      { source: 'INVENTORY', fetchedAt: null, state: 'MISSING' },
+      { source: 'MATERIALS', fetchedAt: null, state: 'MISSING' },
+      { source: 'RECIPES', fetchedAt: null, state: 'MISSING' }
+    ],
+    outstandingWork: [accountWork('task-account-1', { sources: ACCOUNT_SOURCES })],
+    ...overrides
+  })
 }
 
 /**
@@ -305,10 +459,12 @@ export function profitResponse(
  */
 export function echoedProfitResponse(
   request: CraftingProfitRequest,
-  rows: CraftingRow[] = allRows
+  rows: CraftingRow[] = allRows,
+  freshness: CalculationFreshness = finalFreshness()
 ): CraftingProfitResponse {
   const scope = request.scope
   return {
+    status: 'CALCULATED',
     scope: {
       kind: scope?.kind ?? 'ALL',
       discipline: scope?.discipline ?? null,
@@ -317,7 +473,8 @@ export function echoedProfitResponse(
     },
     settings: request.settings ?? DEFAULT_SETTINGS,
     rowCount: rows.length,
-    rows
+    rows,
+    freshness
   }
 }
 

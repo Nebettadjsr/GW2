@@ -10,6 +10,7 @@ import {
   FakeCraftingApi,
   blockedTree,
   deferred,
+  finalFreshness,
   inventoryOnlyTree,
   lessProfitableRow,
   node,
@@ -85,10 +86,20 @@ describe('Crafting Profit resolution detail association', () => {
       await selectRecipe(wrapper, 'Iron Ingot')
 
       expect(api.resolutionRequests).toHaveLength(1)
+      // Since STORY-WEB-034 the request also names the input generation the table response reported
+      // (`freshness.calculationId`), which is what lets the backend say whether its answer still
+      // explains that generation. Row numbers, prices and material maps stay out of it, so the
+      // whole body is asserted field for field rather than the absence of one named extra.
       expect(api.resolutionRequests[0]).toEqual({
         recipeId: 11,
-        calculation: { scope: { kind: 'ALL', rating: 0 }, settings: DEFAULT_SETTINGS }
+        calculation: { scope: { kind: 'ALL', rating: 0 }, settings: DEFAULT_SETTINGS },
+        basedOnCalculationId: finalFreshness().calculationId
       })
+      expect(Object.keys(api.resolutionRequests[0] ?? {}).sort()).toEqual([
+        'basedOnCalculationId',
+        'calculation',
+        'recipeId'
+      ])
     })
 
     it('carriesAChangedScopeAndChangedSettingsIntoTheNextDetailRequest', async () => {

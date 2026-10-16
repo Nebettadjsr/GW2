@@ -377,6 +377,17 @@ Two kinds of "how fresh is this" matter, and both are worth remembering when rea
 - **Trading Post prices** reflect the last price refresh, not a live, guaranteed future transaction
   price — actual prices can move between analysis and any real purchase/sale.
 
+A result is never withheld while those inputs are being brought up to date. When either kind has
+expired, the Crafting Profit page shows the ordinary result calculated from whatever synchronized
+last — the mathematics in this guide, applied to older inputs — and marks it **"Stale data –
+refreshing…"** while the refresh runs. The two kinds stay reported separately, because they are
+refreshed by two different mechanisms. The results are replaced automatically once the refresh has
+finished and the recalculation has come back, and until then the search, filters, sorting and the
+selected recipe stay as they were. If the refresh cannot finish, the displayed results remain and
+the page says so with a retry instead of waiting indefinitely. When no account data has ever
+synchronized, no result is shown at all: nothing is assumed about an account the application has
+not yet read.
+
 Every number in this guide's worked examples is illustrative only. It demonstrates how the rules
 combine, not an actual measured application result.
 

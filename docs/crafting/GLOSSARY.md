@@ -40,6 +40,12 @@ Companion to [README.md](README.md), which explains the full calculation flow. S
 - **Transferable intermediate** — a crafted intermediate item that is not soulbound, and can
   therefore be produced by one character and used by another within a coordinated plan (§2.2.1).
 - **Simulation cap** — the intentional 250-craft limit per recipe per calculation (§28, UD-003).
+- **Provisional result** — an ordinary, fully calculated result whose account data or Trading Post
+  prices had expired when it was calculated. The numbers are the normal ones for those inputs; what
+  is provisional is the inputs, not the mathematics (§39–§40).
+- **"Stale data – refreshing…"** — the Crafting Profit label shown beside a provisional result
+  while the refresh it needs is running. It disappears only once the refreshed inputs have produced
+  a replacement result; a finished refresh task on its own does not remove it.
 
 ## FAQ
 

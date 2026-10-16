@@ -13,11 +13,11 @@ below stay in the plain form.
 
 ## Active
 
+- STORY-WEB-034 | STORY-WEB-034-provisional-profit-refresh-workflow.md | TODO | milestone-05 | deps: STORY-APP-014
 
 ## To Do
 
 ## Blocked
-- STORY-WEB-034 | STORY-WEB-034-provisional-profit-refresh-workflow.md | BLOCKED | milestone-05 | deps: STORY-APP-014
 - STORY-PERF-004 | STORY-PERF-004-cached-profit-page-acceptance.md | BLOCKED | milestone-05 | deps: STORY-APP-014, STORY-WEB-034
 
 ## Superseded

@@ -1,5 +1,6 @@
 import type { CraftingApi } from '@/api/craftingApi'
 import type {
+  CraftingProfitResolutionRequest,
   CraftingProfitResolutionResponse,
   EffectiveScope,
   EffectiveSettings,
@@ -24,6 +25,13 @@ import { useResolutionDetail, type ResolutionDetailState } from './useResolution
 export interface CalculationInputs {
   scope: EffectiveScope
   settings: EffectiveSettings
+  /**
+   * The input generation the displayed table result reported (`freshness.calculationId`), or null
+   * when the backend named none. Sent with the detail request so the backend can say whether its
+   * answer still explains that generation; deliberately not part of {@link calculationKey}, because
+   * what makes an answer *this request's* answer is the echoed scope and settings.
+   */
+  calculationId?: string | null
 }
 
 export type ProfitResolutionState = ResolutionDetailState<
@@ -33,11 +41,17 @@ export type ProfitResolutionState = ResolutionDetailState<
 
 export function useProfitResolution(api: CraftingApi): ProfitResolutionState {
   return useResolutionDetail<CraftingProfitResolutionResponse, CalculationInputs>(
-    (recipeId, inputs) =>
-      api.resolveProfitDetail({
+    (recipeId, inputs) => {
+      const request: CraftingProfitResolutionRequest = {
         recipeId,
         calculation: { scope: scopeRequestOf(inputs.scope), settings: inputs.settings }
-      }),
+      }
+      // Omitted rather than sent as a null when the table response named no generation, which is
+      // how this request contract carries "not supplied".
+      const basedOn = inputs.calculationId ?? null
+      if (basedOn !== null) request.basedOnCalculationId = basedOn
+      return api.resolveProfitDetail(request)
+    },
     (response, recipeId, inputs) =>
       response.recipeId === recipeId && sameCalculation(response.calculation, inputs)
   )
@@ -59,7 +73,9 @@ export function scopeRequestOf(scope: EffectiveScope): ScopeRequest {
  * echoed scope and settings only: sorting, searching, the display filters and the display maximum
  * are not part of it, so re-ordering the table does not invalidate a detail (13.4).
  */
-export function calculationKey(inputs: CalculationInputs | null): string {
+export function calculationKey(
+  inputs: { scope: EffectiveScope; settings: EffectiveSettings } | null
+): string {
   if (inputs === null) return ''
   const { scope, settings } = inputs
   return JSON.stringify([

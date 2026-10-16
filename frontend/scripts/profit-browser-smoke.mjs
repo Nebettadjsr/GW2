@@ -361,6 +361,38 @@ const TREE_ITEM_ORDER = [
   'Item #19696'
 ]
 
+/**
+ * A confirmed-current freshness envelope (`web.dto.CalculationFreshnessDto`). This script is about
+ * the information hierarchy, so every answer here reports inputs the backend considers current: no
+ * stale indicator, no polling and no recovery cycle interferes with the layout and interaction
+ * steps below. The provisional and failing lifecycles are `smoke:profit:refresh`'s subject.
+ */
+function currentFreshness(requestId) {
+  return {
+    requestId,
+    calculationId: 'smoke-generation-1',
+    evaluatedAt: '2026-10-13T09:00:00Z',
+    provisional: false,
+    resultAvailable: true,
+    accountSources: ['CHARACTERS', 'INVENTORY', 'MATERIALS', 'RECIPES'].map((source) => ({
+      source,
+      fetchedAt: '2026-10-13T08:59:00Z',
+      state: 'FRESH'
+    })),
+    tradingPost: {
+      requiredItems: 8,
+      freshItems: 8,
+      staleItems: 0,
+      missingItems: 0,
+      oldestFetchedAt: '2026-10-13T08:55:00Z',
+      newestFetchedAt: '2026-10-13T08:59:00Z',
+      covered: true
+    },
+    outstandingWork: [],
+    failures: []
+  }
+}
+
 function answerApi({ url, body, sendJson }) {
   if (url.pathname === '/api/crafting/selector-options') {
     return sendJson(200, {
@@ -375,6 +407,8 @@ function answerApi({ url, body, sendJson }) {
     const scope = request.scope ?? { kind: 'ALL' }
     const rows = rowsForScope(scope.kind)
     return sendJson(200, {
+      status: 'CALCULATED',
+      freshness: currentFreshness('smoke-table'),
       scope: {
         kind: scope.kind,
         discipline: scope.discipline ?? null,
@@ -405,6 +439,8 @@ function answerApi({ url, body, sendJson }) {
     }
     return sendJson(200, {
       recipeId: request.recipeId,
+      status: 'CALCULATED',
+      freshness: currentFreshness('smoke-detail'),
       // Echoed exactly as asked, which is what the browser matches the answer against.
       calculation: {
         scope: {

@@ -374,6 +374,10 @@ gets `OperationAlreadyRunning` for the coordinator's *own* finishing task and re
 admits it — but the `reuse` label the envelope shows for that one response is wrong about whose task
 it is.
 
+## Follow-up Findings Disposition
+
+F001: DISMISSED — Optional diagnostic-label improvement, not a required Phase 5 workflow repair. Targeted inspection of `src/main/java/application/AccountRefreshCoordinator.java`, `require()` and `drain()`, confirms the finishing-task window remains: admission retains demanded sources and returns the existing task reference without starting a second writer. The inaccurate reuse classification does not establish freshness or discard demand. `docs/TARGET_ARCHITECTURE.md` section 9.1 requires task polling followed by input rechecks; `agent/stories/STORY-WEB-034-provisional-profit-refresh-workflow.md` acceptance criteria 2 and 4 and `agent/stories/STORY-PERF-004-cached-profit-page-acceptance.md` acceptance criterion 4 already cover successive work and bounded recovery. This is a static assessment, not a new runtime test result; no mandatory implementation story is justified for the diagnostic wording alone.
+
 ## Blockers
 
 None.

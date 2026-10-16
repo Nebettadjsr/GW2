@@ -20,8 +20,15 @@ import { formatStackQuantity } from './formatStackQuantity'
 import type { SelectionHiddenReason } from './useProfitTableView'
 import type { ResolutionPhase } from './useResolutionDetail'
 
-const props = defineProps<{
+const props = withDefaults(
+  defineProps<{
   row: CraftingRow | null
+  /**
+   * True when `row` is the one the *explanation below* was calculated from rather than the row in
+   * the comparison table: the backend reported the inputs as changed since that table result, so
+   * the two would not describe the same calculation (`TARGET_ARCHITECTURE.md` 10.2, UD-015).
+   */
+  recalculatedForChangedInputs?: boolean
   hiddenReason: SelectionHiddenReason
   settings: EffectiveSettings | null
   placeholder: string
@@ -29,7 +36,9 @@ const props = defineProps<{
   resolutionDetail: CraftingProfitResolutionResponse | null
   resolutionFailure: string | null
   resolutionRecipeId: number | null
-}>()
+  }>(),
+  { recalculatedForChangedInputs: false }
+)
 
 const wikiHref = computed(() =>
   props.row === null ? null : wikiUrl(props.row.outputName)
@@ -145,6 +154,21 @@ function materialQuoteText(item: MissingItem): string {
           not a reliable wiki address.
         </p>
       </div>
+
+      <!--
+        The explanation below belongs to a newer input generation than the table's row. The values
+        shown here are that generation's own, so the panel stays internally consistent instead of
+        presenting a newer tree as the explanation of an older row.
+      -->
+      <p
+        v-if="recalculatedForChangedInputs"
+        class="notice notice--info"
+        data-test="detail-recalculated"
+      >
+        The data behind the results changed while this recipe was open, so the backend recalculated
+        it. The values and the explanation below are that newer calculation's; the comparison table
+        still shows the previous one until it is replaced.
+      </p>
 
       <!-- A selected row can remain available while hidden by the current display controls. -->
       <p

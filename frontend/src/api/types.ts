@@ -91,12 +91,114 @@ export interface EffectiveSettings {
   allowDailyCrafts: boolean
 }
 
-/** Response body of `POST /api/crafting/profit`. */
+/**
+ * One account source the Crafting Profit calculation requires, as the backend captured it
+ * (`web.dto.CalculationFreshnessDto.AccountSourceDto`).
+ *
+ * `state` is typed as a plain string because a received value is unvalidated transport data: a state
+ * this client has no wording for must stay visible rather than read as freshness.
+ */
+export interface AccountSourceFreshness {
+  source: string
+  /** Last successful synchronization instant; null only when `state` is `MISSING`. */
+  fetchedAt: string | null
+  /** `FRESH` | `STALE` | `MISSING`. `STALE` still has usable data behind it. */
+  state: string
+}
+
+/** Coverage of the feature-relevant tradeable item set by the backend's quote cache. */
+export interface PriceCoverage {
+  requiredItems: number
+  freshItems: number
+  staleItems: number
+  /** Required items with no stored quote at all; never reported as covered. */
+  missingItems: number
+  oldestFetchedAt: string | null
+  newestFetchedAt: string | null
+  /** True only when nothing in the required set is stale or missing. */
+  covered: boolean
+}
+
+/**
+ * Refresh work the backend knows to be unfinished for the inputs it answered from.
+ *
+ * `taskStatusUrl` is the location the backend advertised for this task; the browser polls that and
+ * never rebuilds a task path of its own. A null `taskId` means no task could be admitted.
+ */
+export interface OutstandingRefresh {
+  /** `ACCOUNT` | `TRADING_POST`; the two mechanisms are coordinated separately. */
+  kind: string
+  /** The account sources this work is expected to refresh; empty for Trading Post work. */
+  sources: string[]
+  taskId: string | null
+  /** The state the task-status route last reported, or `UNKNOWN`/`NONE`. */
+  taskState: string | null
+  taskStatusUrl: string | null
+  /**
+   * How this work relates to work already running — including `WAITING_FOR_UNRELATED_TASK`, which
+   * means the named task is *not* refreshing these sources.
+   */
+  reuse: string | null
+}
+
+/** Bounded recovery information for refresh work that failed or whose task is no longer known. */
+export interface RefreshFailure {
+  kind: string
+  taskId: string | null
+  taskStatusUrl: string | null
+  code: string
+  message: string
+  /** Whether requesting the calculation again can reasonably admit the work again. */
+  retryable: boolean
+}
+
+/**
+ * What a Crafting Profit response says about the inputs its calculation used
+ * (`TARGET_ARCHITECTURE.md` 9.1, `web.dto.CalculationFreshnessDto`).
+ *
+ * Nothing here is a result. `provisional` describes the *inputs*, not the correctness of the
+ * numbers: a provisional result is the ordinary authoritative calculation over the last
+ * successfully synchronized inputs. The browser displays these facts, polls what they advertise and
+ * asks again — it never infers freshness of its own and never recalculates anything.
+ */
+export interface CalculationFreshness {
+  /** Correlates the response with the request that produced it. */
+  requestId: string
+  /** Identity of the input generation the calculation used; equal across a row and its detail. */
+  calculationId: string
+  evaluatedAt: string
+  /** True while the inputs are not confirmed current; a succeeded task alone never makes it false. */
+  provisional: boolean
+  /** False only on the pending response, which carries no rows. */
+  resultAvailable: boolean
+  accountSources: AccountSourceFreshness[]
+  tradingPost: PriceCoverage
+  outstandingWork: OutstandingRefresh[]
+  failures: RefreshFailure[]
+}
+
+/** A completed Crafting Profit calculation over usable cached inputs (HTTP 200). */
+export const PROFIT_STATUS_CALCULATED = 'CALCULATED'
+
+/** No usable synchronized inputs existed, so the response carries no rows (HTTP 202). */
+export const PROFIT_STATUS_PENDING = 'PENDING'
+
+/**
+ * Response body of `POST /api/crafting/profit` (`web.dto.CraftingProfitResponse`).
+ *
+ * One shape serves both outcomes of the cached-result contract: `rowCount` and `rows` are present
+ * for `CALCULATED` and absent for `PENDING`, which is deliberately not an empty result.
+ */
 export interface CraftingProfitResponse {
+  /** `CALCULATED` | `PENDING`; typed as a string because it is unvalidated transport data. */
+  status: string
   scope: EffectiveScope
   settings: EffectiveSettings
-  rowCount: number
-  rows: CraftingRow[]
+  /** Null when `PENDING`. */
+  rowCount: number | null
+  /** Null when `PENDING` — never a fabricated empty list. */
+  rows: CraftingRow[] | null
+  freshness: CalculationFreshness
 }
 
 /** Requested scope. Omitted fields fall back to the backend's documented defaults. */
@@ -183,10 +285,18 @@ export interface ResolutionCalculation {
  */
 export interface ResolutionDetailView {
   recipeId: number
-  /** Literal `FRESH_CALCULATION`; typed as a string because it is unvalidated transport data. */
+  /**
+   * `FRESH_CALCULATION` or, on the Profit route, `RECALCULATED_FOR_CHANGED_INPUTS`; typed as a
+   * string because it is unvalidated transport data.
+   */
   consistency: string
   calculatedAt: string
-  row: CraftingRow
+  /**
+   * The recipe's row, recalculated in this operation and matching this response's own `tree`. Null
+   * only when the route answered `PENDING` — no usable synchronized inputs existed, so nothing was
+   * calculated and no row is fabricated.
+   */
+  row: CraftingRow | null
   /** `AVAILABLE` or `RESULT_UNAVAILABLE`. */
   treeStatus: string
   /** Profit reports the selected result output quantity; Discovery may report one output batch. */
@@ -204,18 +314,36 @@ export interface ResolutionDetailView {
  */
 export interface CraftingProfitResolutionResponse extends ResolutionDetailView {
   calculation: ResolutionCalculation
+  /** `CALCULATED` | `PENDING`, in the Profit table route's own literals. */
+  status?: string
+  /** The inputs this detail was calculated from, in the table route's shape. */
+  freshness?: CalculationFreshness
 }
+
+/** The detail still explains the input generation the caller's row came from. */
+export const CONSISTENCY_FRESH_CALCULATION = 'FRESH_CALCULATION'
+
+/**
+ * The inputs changed since the caller's row, so this response is a complete recalculation and its
+ * own `row` — not the caller's older one — is what its `tree` explains.
+ */
+export const CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS = 'RECALCULATED_FOR_CHANGED_INPUTS'
 
 /**
  * Request body of `POST /api/crafting/profit/resolution` (`TARGET_ARCHITECTURE.md` 13.1).
  *
  * `calculation` is the existing table request contract, so the browser copies the effective scope
  * and settings the table response echoed rather than relying on defaults a second time. Row numbers,
- * prices, material maps and any prior context identifier are deliberately not part of it.
+ * prices and material maps are deliberately not part of it.
+ *
+ * `basedOnCalculationId` is the input generation the displayed table result reported. It lets the
+ * backend say whether this detail still explains that generation (`consistency`) instead of leaving
+ * the browser to present a newer explanation of an older row.
  */
 export interface CraftingProfitResolutionRequest {
   recipeId: number
   calculation: CraftingProfitRequest
+  basedOnCalculationId?: string
 }
 
 /* ------------------------------------------------------------------ Crafting Discovery ----------- */

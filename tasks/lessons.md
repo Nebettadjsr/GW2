@@ -557,6 +557,48 @@ well — they are what makes the bound legible — but next to the text they wer
 `git show HEAD:<path>` for "before"), state the one-line `diff`, and delete the copy afterwards:
 a control is reproducible instructions plus its output, never a tracked file.
 
+## A timeout checked between awaits does not bound anything that never answers
+
+A budget enforced by `if (now() >= deadlineAt)` at the top of a loop only fires once the request
+before it resolved. A stalled request means the check is unreachable, so the "bounded" cycle is
+unbounded exactly in the case a bound is for. Pair every deadline check with a timer that runs
+independently of the work, and write the regression with a request the test never resolves.
+
+**Why:** `STORY-WEB-034` was rejected with every acceptance criterion individually satisfied. The
+five-minute Crafting Profit recovery budget was cumulative and correct across *answered* steps, but
+a task-status read or a recalculation that never answered kept the "Stale data – refreshing…"
+animation up forever with no failure and no retry — and its late answer could still replace the
+rows. The deadline test resolved every request immediately, so it proved the arithmetic and never
+the bound.
+
+**How to apply:** take a cancellable timer for the whole budget when the cycle starts
+(`RecoveryAlarm`/`timerAlarm` in `useCraftingProfit.ts`), end the cycle from it, and cancel it when
+the cycle ends first so nothing leaks. Expiry must also *invalidate* the in-flight request — a
+monotonic request id cannot reject a late answer when nothing newer was ever requested, so scope
+the answer to its cycle too. In the test, give the controlled clock a way to advance time **without**
+releasing what the code is waiting for (`advance()` beside `tick()`), hold the request with a
+`deferred()`, assert termination, then resolve it and assert nothing changed. Prove it by disabling
+the timer in the shipped file: the regressions must fail on the animation still being up.
+
+## An unstarted server leaves someone else answering your port
+
+`./mvnw` needs `JAVA_HOME`, which the Bash tool's environment does not set: the run dies in two
+lines while a probe of port 8080 still succeeds, because the maintainer's IDE-started backend is
+listening there. The evidence then describes a process of unknown provenance.
+
+**Why:** `STORY-WEB-034`'s live envelope check passed twice against "the backend" after
+`./mvnw -o spring-boot:run` had failed with
+`The JAVA_HOME environment variable is not defined correctly`. Only the process listing afterwards —
+a `java.exe` whose parent was `idea64` — showed whose backend had answered.
+
+**How to apply:** read the log of the server you started before probing anything, and compare the
+listening process's PID/parent/creation time with your own child. To get your own:
+`JAVA_HOME=/c/Users/Administrator/.jdks/openjdk-25.0.1 GW2_API_PORT=<spare> ./mvnw -o spring-boot:run`
+on a port nobody else holds, with `GW2_BACKEND_ORIGIN=http://127.0.0.1:<spare> npx vite preview` in
+front of it — and prove the proxy really follows that variable by starting the same preview against
+a dead port first and requiring `502` from `/api` while the page still serves `200`. Never stop the
+maintainer's listener to free the standard port; take another one.
+
 ## An aggregate is not an identity, and a stand-in is not the shipped path
 
 Two ways a correct-looking verification misses the thing it is for: deriving an identity from
