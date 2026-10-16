@@ -8,7 +8,7 @@ Show provisional Crafting Profit results and finish bounded asynchronous refresh
 
 ## Status
 
-UNFINISHED
+DONE
 
 ## Milestone
 
