@@ -560,20 +560,17 @@ class PlanningRollbackTest(unittest.TestCase):
         new_story = self.agent / "STORY-WEB-025-duplicate.md"
 
         def run(prompt):
-            # Exactly the shape of the real failure: files created, the queue
-            # rewritten, a clean exit, and an invalid result.
+            # Exactly the shape of the real failure: files created, a clean
+            # exit, and an invalid result.
             new_story.write_text("## Status\n\nTODO\n", encoding="utf-8")
-            self.backlog.write_text(
-                self.valid_queue.replace(
-                    "## To Do\n\n",
-                    "## To Do\n\nbacklog entry: milestone-05: new work.\n",
-                ),
-                encoding="utf-8",
-            )
             self.result.write_text('{"status":"COMPLETE"}', encoding="utf-8")
             return 0
 
         def validate(code):
+            # The harness applied the pass's backlog actions before rejecting it.
+            self.backlog.write_text(self.valid_queue.replace(
+                CANONICAL + "\n", CANONICAL + "\n- STORY-WEB-025 | STORY-WEB-025-duplicate.md | TODO | "
+                "milestone-05 | deps: None\n"), encoding="utf-8")
             return {"status": "FAILED", "reason": "invalid phase_review outcome",
                     "validation_problems": ["Invalid phase_review outcome: 'DEFERRED'"]}
 
@@ -591,6 +588,11 @@ class PlanningRollbackTest(unittest.TestCase):
 
     def test_a_valid_pass_keeps_its_changes(self):
         def run(prompt):
+            self.result.write_text('{"status":"COMPLETE"}', encoding="utf-8")
+            return 0
+
+        def validate(code):
+            # The harness applies the pass's backlog actions inside the guard.
             self.backlog.write_text(
                 self.valid_queue.replace(
                     CANONICAL + "\n",
@@ -599,10 +601,6 @@ class PlanningRollbackTest(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            self.result.write_text('{"status":"COMPLETE"}', encoding="utf-8")
-            return 0
-
-        def validate(code):
             return {"status": "COMPLETE", "reason": "ok"}
 
         with patch.object(project_planner, "run_local_planner", side_effect=run):
@@ -730,7 +728,7 @@ class DocumentOwnershipTest(unittest.TestCase):
         table = config.ownership_table(config.PLANNER)
 
         self.assertIn("agent/CURRENT_STORY.md [READ-ONLY for you]", table)
-        self.assertIn("agent/stories/BACKLOG.md [you may write]", table)
+        self.assertIn("agent/stories/BACKLOG.md [READ-ONLY for you]", table)
 
         implementation = config.ownership_table(config.IMPLEMENTATION)
 

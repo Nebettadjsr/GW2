@@ -73,13 +73,13 @@ Operations that belong to the harness alone, and that no model role performs:
   a completion, block or interruption implies;
 - `## Active`, `## Done` and `## Archived` in `agent/stories/BACKLOG.md`.
 
-`agent/stories/BACKLOG.md` is an index read by code. Entries are written only
-through `agent/runtime/core/backlog_writer.py`, one canonical line each:
-`- STORY-ID | filename.md | STATUS | milestone-NN | deps: A, B`. Supplementary
-prose there -- `backlog entry:`, `dependency note:`, `disposition:`, or any
-indented continuation line -- is rejected: a story's description, requirements,
-evidence and disposition belong in its own file, roadmap sequencing in
-`docs/ROADMAP.md`, and run detail in `agent/logs/`.
+`agent/stories/BACKLOG.md` is an index read by code, written only by the
+harness. The planner never edits it: it requests additions, moves and
+reordering as `backlog_actions` in its result (see the prompt's BACKLOG rules),
+and the harness applies them, deriving each canonical entry line from the story
+file. A story's description, requirements, evidence and disposition belong in
+its own file, roadmap sequencing in `docs/ROADMAP.md`, and run detail in
+`agent/logs/`.
 
 Authoritative owners (what belongs in each document):
 
@@ -238,8 +238,7 @@ verified. This is comparison evidence, not permission to invent work from code:
 
 Read a section or line range rather than a whole large document, batch
 independent reads into one command, and never read the same thing twice.
-Editing `agent/stories/BACKLOG.md` is not a read: change it in place with a
-script that never prints its contents.
+Never edit `agent/stories/BACKLOG.md`; request changes through `backlog_actions`.
 
 Do not inspect:
 - `CLAUDE.md`
@@ -453,8 +452,7 @@ the shell.
     - review answered requests using their existing resolution contracts. Resolve a UD only
       when an explicit, sufficient human answer is present; never invent an answer or resolve
       a UI on the user's behalf. Insufficient answers remain OPEN and listed.
-    - call `agent.runtime.core.backlog_writer.sync_user_requests()` to refresh this index;
-      the harness also refreshes it after a validated planning pass and workflow steps
+    - the harness refreshes this index after a validated planning pass and workflow steps
     - resolved requests disappear from this section; retain their canonical files and evidence
 
 - `## Superseded`
@@ -475,7 +473,7 @@ The planner never selects or activates the next story.
 While the current phase is incomplete:
 - `## To Do` may contain only stories for the current milestone;
 - later-milestone stories must not remain selectable;
-- later-milestone stories already in `## To Do` must be moved to `## Blocked`;
+- later-milestone stories already in `## To Do` must be moved to `## Blocked` (a `move` backlog action);
 - their blocker must state that the current milestone must complete first.
 
 When a milestone transition is validated:
@@ -523,8 +521,8 @@ The planner may:
 - inspect allowed planning documents when needed;
 - inspect current-phase stories and user decisions;
 - create current-phase story files under `agent/stories/`;
-- add new current-phase stories to BACKLOG `## To Do`;
-- move later-phase stories from `## To Do` to `## Blocked`;
+- add new current-phase stories to BACKLOG `## To Do` (`add_to_do` backlog actions);
+- move later-phase stories from `## To Do` to `## Blocked` (`move` backlog actions);
 - update `docs/ROADMAP.md` when current-phase status materially changes;
 - update `agent/PROJECT_STATE.md` when planner continuity materially changes;
 - create or reference user-decision files;
@@ -809,7 +807,7 @@ Required fields:
   "milestone_transition": false,
   "completed_milestone": null,
   "next_milestone": null,
-  "backlog_updated": false,
+  "backlog_actions": [],
   "roadmap_updated": false,
   "project_state_updated": false,
   "reason": "short grounded explanation"

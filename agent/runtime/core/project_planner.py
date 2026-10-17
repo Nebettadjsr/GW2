@@ -388,20 +388,20 @@ Read a section or line range rather than a whole large document, batch
 independent reads into one command, and never read the same thing twice. The
 forbidden-read list in your role contract's "Read Scope" still applies.
 
-agent/stories/BACKLOG.md is a machine-read index, not prose. Do not hand-write
-its Markdown. Add, move and restamp entries only through the harness's own
-entry writer, which produces the one canonical spelling:
+agent/stories/BACKLOG.md is a machine-read index the harness alone writes.
+Never edit it, not even through a script: a pass that changes it is rolled
+back. Request every change as `backlog_actions` in PLANNING_RESULT.json; the
+harness applies them in order and derives each entry (ID, status, milestone,
+dependencies) from the story file itself:
 
-  python -c "import sys; sys.path.insert(0,'.'); from agent.runtime.core.backlog_writer import add_to_do_entries; add_to_do_entries([('STORY-WEB-030','STORY-WEB-030-short-name.md','milestone-NN',['STORY-WEB-029'])])"
+  {{"command": "add_to_do", "story": "STORY-WEB-030-short-name.md"}}
+  {{"command": "move", "story": "STORY-WEB-031", "to": "To Do" | "Blocked" | "Superseded",
+   "reason": "<required for Blocked/Superseded; becomes the story's Blockers text>"}}
+  {{"command": "reorder_to_do", "order": ["<every To Do story, in priority order>"]}}
 
-Rules the harness enforces and will reject the whole pass over:
-- one line per entry, exactly
-  `- STORY-ID | filename.md | STATUS | milestone-NN | deps: A, B` (or `deps: None`);
-- no `backlog entry:`, `dependency note:` or `disposition:` lines, and no
-  indented continuation lines of any kind, anywhere in the file. A story's
-  description, requirements, evidence and disposition belong in its own file;
-  roadmap sequencing belongs in docs/ROADMAP.md; run detail belongs in the log;
-- never touch `## Active` or `## Archived`; the harness owns those.
+A story is named by filename or story ID. A new story whose dependencies are
+not yet DONE is listed under Blocked automatically and requeued once they are.
+`## Active`, `## Done`, `## User` and `## Archived` are never yours to change.
 
 Before you finish, validate your own output -- a result that fails validation
 is discarded together with every change this pass made:
@@ -419,7 +419,7 @@ When Phase {phase_number} is not complete and new stories are justified:
 - never create filler stories;
 - place each canonical file directly under agent/stories/;
 - use filename STORY-<AREA>-<NUMBER>-short-name.md;
-- add each new story to BACKLOG.md under ## To Do in execution-priority order;
+- list each new story as an `add_to_do` backlog action, in execution-priority order;
 - never modify ## Active or ## Archived.
 
 Each new story must contain these `##` headings in this exact order:
@@ -561,7 +561,7 @@ with exactly these fields:
   "milestone_transition": true | false,
   "completed_milestone": "{milestone}" | null,
   "next_milestone": "milestone-NN" | null,
-  "backlog_updated": true | false,
+  "backlog_actions": [ {{"command": "add_to_do" | "move" | "reorder_to_do", ...}} ],
   "roadmap_updated": true | false,
   "project_state_updated": true | false,
   "reason": "<short explanation grounded in the supplied current-phase context>"
@@ -1475,9 +1475,10 @@ def _run_guarded_planner(prompt, validate=None):
         raise
 
 
-def run_planning_pass(rejected: list[str] | None = None) -> dict:
+def run_planning_pass(rejected: list[str] | None = None, notes: str | None = None) -> dict:
     """One planning pass. `rejected` lists why the previous attempt was
-    rolled back, so a retry can correct exactly that."""
+    rolled back, so a retry can correct exactly that; `notes` are harness
+    findings the pass must disposition (e.g. a maintainer-sync review)."""
 
     print(
         "\n========================================"
@@ -1515,6 +1516,12 @@ def run_planning_pass(rejected: list[str] | None = None) -> dict:
     pre_adr_files = _adr_snapshot()
 
     prompt, sections = build_planning_context()
+    if notes:
+        prompt += ("\nMAINTAINER CHANGES MERGED SINCE THE LAST PASS\n"
+                   "=============================================\n\n"
+                   "Already reviewed against their documents; disposition what still needs work "
+                   "(a story, or an existing UD/AR/KNOWN_PROBLEMS entry covers it):\n"
+                   + notes + "\n")
     if rejected:
         prompt += ("\nYOUR PREVIOUS ATTEMPT WAS REJECTED AND ROLLED BACK\n"
                    "===================================================\n\n"
@@ -1561,6 +1568,20 @@ def run_planning_pass(rejected: list[str] | None = None) -> dict:
                     "Could not parse "
                     f"agent/runtime/artifacts/PLANNING_RESULT.json: {exc}"
                 ),
+                "planner_exit_code": planner_exit_code,
+            }
+
+        # The planner never edits BACKLOG.md; the harness applies the
+        # changes it asked for before anything is validated against it.
+        action_problems = backlog_writer.apply_backlog_actions(
+            raw_result.get("backlog_actions") or [] if isinstance(raw_result, dict) else [],
+            backlog_file=BACKLOG_FILE,
+        )
+        if action_problems:
+            return {
+                "status": "FAILED",
+                "reason": "backlog_actions could not be applied.",
+                "validation_problems": [f"backlog_actions: {problem}" for problem in action_problems],
                 "planner_exit_code": planner_exit_code,
             }
 

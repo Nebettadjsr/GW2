@@ -112,6 +112,10 @@ def check() -> list[str]:
     # Here we check the same stable AR/UD references and review receipt.
     problems.extend(_validate_phase_review(result, made_progress=True))
 
+    from agent.runtime.core.backlog_writer import check_backlog_actions
+    problems.extend(f"backlog_actions: {problem}"
+                    for problem in check_backlog_actions(result.get("backlog_actions") or []))
+
     if BACKLOG_FILE.exists():
         problems.extend(
             validate_backlog_entries(

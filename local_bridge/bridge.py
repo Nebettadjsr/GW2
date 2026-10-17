@@ -34,6 +34,8 @@ CODEX_CLI_SCRIPT = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" 
 MAX_PROMPT_LENGTH = 20_000
 MAX_BODY_LENGTH = MAX_PROMPT_LENGTH + 4096
 CALLBACK_RETRY_DELAYS = (0, 0.25, 0.5, 1, 2, 4, 8)
+# start-bridge.cmd starts the bridge again when it exits with this code.
+RESTART_EXIT_CODE = 3
 ACTIVE_STATUSES = {"queued", "running"}
 
 
@@ -163,6 +165,7 @@ class Bridge:
         self.step_lock = threading.Lock()
         self.budget_settings: dict | None = None
         self.last_step_request_at: str | None = None
+        self.restarting = False
         self._delivery_locks: dict[str, threading.Lock] = {}
 
     # ------------------------------------------------------------ cycle
@@ -170,6 +173,8 @@ class Bridge:
     def next_step(self, callback_url: str, budget_settings: dict | None = None) -> dict:
         """Start (or re-attach to) the next cycle step and return its task."""
         with self.step_lock:
+            if self.restarting:
+                raise Busy("The bridge is restarting to run merged workflow code; retry in a few seconds.")
             self.last_step_request_at = utc_now()
             if budget_settings is not None:
                 self.budget_settings = claude_budget.settings_from(budget_settings)
@@ -214,8 +219,8 @@ class Bridge:
         step = task["step"]
         logging.info("Running step %s for %s", step, task.get("story_id") or "next story")
         try:
-            if step == "plan":
-                result = dev_cycle.step_plan(self.store.planning)
+            if step in ("plan", "sync", "review"):
+                result = getattr(dev_cycle, f"step_{step}")(self.store.planning)
                 self.store.save()
             elif step == "select":
                 result, cycle = dev_cycle.step_select(None)
@@ -251,6 +256,14 @@ class Bridge:
         for warning in result.get("workflow_warnings", []):
             log_line(f"WORKFLOW WARNING: {warning}")
         self.deliver_callback(task_id)
+        if result.get("restart"):
+            self.restart()
+
+    def restart(self) -> None:
+        """Exit once this response is out; start-bridge.cmd starts the merged code."""
+        self.restarting = True  # nothing new starts; n8n retries until the new process answers
+        log_line("Bridge restarting to run workflow code merged from the maintainer branch.")
+        threading.Timer(2.0, os._exit, args=(RESTART_EXIT_CODE,)).start()
 
     # ------------------------------------------------------ connection test
 

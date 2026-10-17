@@ -19,6 +19,7 @@ from pathlib import PurePosixPath
 from agent.runtime.support.config import (
     CI_VERIFICATION_ENABLED,
     CI_WORKFLOW_FILE,
+    MAINTAINER_BRANCH,
     PENDING_COMMIT_PATHS_FILE,
     REPO_ROOT,
 )
@@ -200,6 +201,70 @@ def push_branch(branch: str) -> subprocess.CompletedProcess:
     """
 
     return run_git("push", "origin", f"{branch}:{branch}", check=False)
+
+
+def fetch_branch(branch: str) -> subprocess.CompletedProcess:
+    """Fetch `branch` from origin; guarded in tests like push_branch."""
+
+    return run_git("fetch", "origin", branch, check=False)
+
+
+def push_ref(source: str, target: str) -> subprocess.CompletedProcess:
+    """Fast-forward origin's `target` to local `source`. Never forced."""
+
+    return run_git("push", "origin", f"{source}:refs/heads/{target}", check=False)
+
+
+def sync_with_maintainer_branch() -> dict:
+    """Merge origin's maintainer branch into the checked-out agent branch.
+
+    Called only between stories. Never leaves a half-merged tree: a conflict
+    is aborted and reported, and a merge git refuses because it would
+    overwrite uncommitted work (e.g. planning output awaiting its commit)
+    is deferred to the next sync. `before`..`after` is exactly what arrived.
+    """
+
+    branch = current_branch()
+    if branch is None or branch == MAINTAINER_BRANCH:
+        return {"status": "SKIPPED",
+                "reason": f"the checkout is on {branch or 'a detached HEAD'}, not the agent branch"}
+    fetch = fetch_branch(MAINTAINER_BRANCH)
+    if fetch.returncode != 0:
+        return {"status": "UNAVAILABLE",
+                "reason": "git fetch failed: " + (fetch.stderr or fetch.stdout).strip()[:500]}
+    upstream = f"origin/{MAINTAINER_BRANCH}"
+    before = head_sha()
+    if run_git("merge-base", "--is-ancestor", upstream, "HEAD", check=False).returncode == 0:
+        return {"status": "UP_TO_DATE", "before": before, "after": before, "changed_paths": []}
+    merge = run_git("merge", "--no-edit", "-m", f"Sync {MAINTAINER_BRANCH} into {branch}",
+                    upstream, check=False)
+    if merge.returncode != 0:
+        conflicts = _output("diff", "--name-only", "--diff-filter=U").splitlines()
+        if conflicts:
+            run_git("merge", "--abort", check=False)
+            return {"status": "CONFLICT", "before": before, "conflicts": conflicts,
+                    "reason": f"merging {upstream} conflicts in: " + ", ".join(conflicts)}
+        return {"status": "DEFERRED", "before": before,
+                "reason": (merge.stderr or merge.stdout).strip()[:500]}
+    after = head_sha()
+    return {"status": "MERGED", "before": before, "after": after,
+            "changed_paths": _output("diff", "--name-only", before, after).splitlines()}
+
+
+def publish_to_maintainer_branch() -> dict:
+    """Fast-forward origin's maintainer branch to the agent branch's HEAD.
+
+    Rejected (never forced) when the maintainer branch moved meanwhile; the
+    next sync merges it in and the next published story carries both.
+    """
+
+    branch = current_branch()
+    if branch is None or branch == MAINTAINER_BRANCH:
+        return {"status": "SKIPPED", "reason": "already working on the maintainer branch"}
+    result = push_ref("HEAD", MAINTAINER_BRANCH)
+    if result.returncode != 0:
+        return {"status": "REJECTED", "reason": (result.stderr or result.stdout).strip()[:500]}
+    return {"status": "PUBLISHED", "sha": head_sha()}
 
 
 def commit_and_push(message: str, paths=None) -> dict:

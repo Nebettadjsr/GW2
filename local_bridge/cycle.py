@@ -14,6 +14,11 @@ orchestrator's background work first: an actionable architect request, or a
 planning pass when the queue is low, planning inputs changed, or the planner
 asked for a follow-up pass.
 
+Between stories only, the agent branch first merges the maintainer branch
+(``sync``); whatever that brings in is reviewed against its documents once
+(``review``) and handed to the next planning pass. A finished story is
+published back to the maintainer branch after CI passes.
+
 Blocking outcomes (NEEDS_USER, BLOCKED, exhausted budgets) move the story to
 the backlog's Blocked section and clear the pointer, so the next run selects
 other work instead of stalling.
@@ -22,10 +27,11 @@ other work instead of stalling.
 from __future__ import annotations
 
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, NamedTuple
 
-from agent.runtime.core import orchestrator, story_state
+from agent.runtime.core import orchestrator, story_state, sync_review
 from agent.runtime.core.architect import run_architect_pass
 from agent.runtime.core.project_planner import run_planning_pass, should_trigger_planning
 from agent.runtime.core.selector import select_next_story
@@ -34,14 +40,18 @@ from agent.runtime.qa import qa_agent
 from agent.runtime.runners.claude_runner import run_claude_attempt
 from agent.runtime.support import git_sync, github_ci
 from agent.runtime.support.config import (
-    BACKLOG_FILE, CLAUDE_RESULT_FILE, CURRENT_STORY_FILE, MAX_CI_FIX_ATTEMPTS,
+    AGENT_BRANCH, BACKLOG_FILE, CLAUDE_RESULT_FILE, CURRENT_STORY_FILE, MAX_CI_FIX_ATTEMPTS,
     MAX_CLAUDE_FAILED_RUNS_PER_STORY, MAX_RETRIES_PER_STORY, REPO_ROOT,
 )
 from agent.runtime.support.daily_log import log_line
 from agent.runtime.support.files import file_hash, read_file
 from local_bridge import claude_budget
 
-ASYNC_STEPS = {"plan", "qa", "implement", "evaluate", "ci"}
+ASYNC_STEPS = {"plan", "review", "qa", "implement", "evaluate", "ci"}
+SYNC_INTERVAL = timedelta(minutes=30)  # between stories; an idle queue fetches at most this often
+MAX_REVIEW_ATTEMPTS = 2
+# A merge that changes these needs the bridge restarted to run the new code.
+RESTART_PATHS = ("local_bridge/", "agent/runtime/")
 CONTINUATION = (
     "Continue the interrupted attempt on the SAME active story.\n"
     "Inspect existing repository work and resume where it stopped; "
@@ -118,7 +128,7 @@ def finished_stories() -> list[str]:
 
 def codex_work_needed(planning: dict) -> bool:
     """The old orchestrator's triggers for architect or planner work."""
-    if get_actionable_requests() or planning.get("follow_up"):
+    if get_actionable_requests() or planning.get("follow_up") or planning.get("sync_notes"):
         return True
     queue_low = should_trigger_planning(len(story_state.get_selectable_story_candidates()))
     if orchestrator.planning_fingerprint() != planning.get("fingerprint"):
@@ -132,6 +142,10 @@ def codex_work_needed(planning: dict) -> bool:
 def choose_step(cycle: dict | None, planning: dict, budget_settings: dict | None) -> str:
     """The next step: the cycle's phase, with Codex work between stories and while Claude waits."""
     if cycle is None:
+        if planning.get("review"):
+            return "review"
+        if sync_due(planning):
+            return "sync"
         orchestrator.requeue_resolved_interventions()
         orchestrator.requeue_dependency_blocked_stories()
         qa_agent.requeue_resolved_qa_stories()
@@ -142,6 +156,54 @@ def choose_step(cycle: dict | None, planning: dict, budget_settings: dict | None
     return cycle["phase"]
 
 
+def sync_due(planning: dict) -> bool:
+    """Between stories, on the agent branch, at most every SYNC_INTERVAL."""
+    if git_sync.current_branch() != AGENT_BRANCH:
+        return False
+    last = planning.get("last_sync")
+    return last is None or datetime.now(timezone.utc) - datetime.fromisoformat(last) >= SYNC_INTERVAL
+
+
+def step_sync(planning: dict) -> StepResult:
+    """Merge the maintainer branch into the agent branch; never during a story."""
+    planning["last_sync"] = datetime.now(timezone.utc).isoformat()
+    result = git_sync.sync_with_maintainer_branch()
+    status = result["status"]
+    if status == "CONFLICT":
+        return StepResult("sync_conflict", False, result["reason"] + ". Merge the maintainer branch into "
+                          f"{AGENT_BRANCH} by hand in the pipeline worktree, then rerun.")
+    if status != "MERGED":
+        # Nothing new, or deferred/unavailable: the next sync tries again.
+        return StepResult(f"sync_{status.lower()}", True, result.get("reason", ""))
+    changed = result["changed_paths"]
+    if sync_review.needs_review(changed):
+        planning["review"] = {"base": result["before"], "head": result["after"], "attempts": 0}
+    restart = any(path.startswith(RESTART_PATHS) and path.endswith(".py") for path in changed)
+    return StepResult("synced", True, f"Merged {len(changed)} changed file(s) from the maintainer branch.",
+                      changed_paths=changed, restart=restart)
+
+
+def step_review(planning: dict) -> StepResult:
+    """Review a sync's incoming range against its documents, once, for the planner."""
+    review = planning["review"]
+    review["attempts"] += 1
+    result = sync_review.run_sync_review(review["base"], review["head"], review.get("problems"))
+    if result["status"] == "FAILED" and review["attempts"] < MAX_REVIEW_ATTEMPTS:
+        review["problems"] = result.get("validation_problems") or [result.get("reason", "")]
+        return StepResult("review_failed", True, "Retrying once: " + result.get("reason", ""))
+    planning.pop("review")
+    if result["status"] == "FAILED":
+        # The range stays known to the planner even though no review succeeded.
+        planning["sync_notes"] = (f"Maintainer commits {review['base'][:12]}..{review['head'][:12]} were "
+                                  "merged but their documentation review failed; check them for "
+                                  "contradictions with the owning documents.")
+        return StepResult("review_failed", True, result.get("reason", ""),
+                          workflow_warnings=["Documentation sync review failed twice: "
+                                             + result.get("reason", "")])
+    planning["sync_notes"] = sync_review.planner_notes(result)
+    return StepResult("reviewed", True, result.get("reason", ""), findings=result.get("findings", []))
+
+
 def step_plan(planning: dict) -> StepResult:
     requests = get_actionable_requests()
     if requests:
@@ -150,15 +212,19 @@ def step_plan(planning: dict) -> StepResult:
         return StepResult(f"architect_{status.lower()}", status != "FAILED",
                           result.get("reason", ""), request=requests[0]["file"])
     before = orchestrator.planning_fingerprint()
-    result = run_planning_pass()
+    notes = planning.get("sync_notes")
+    result = run_planning_pass(notes=notes) if notes else run_planning_pass()
     if result.get("status") == "FAILED":
         # A rejected pass was rolled back whole; one retry told why usually
         # fixes a formatting slip. A second rejection waits for changed inputs.
         problems = result.get("validation_problems") or [result.get("reason") or "invalid output"]
         log_line("Planning pass rejected and rolled back; retrying once -- " + "; ".join(problems))
-        result = run_planning_pass(rejected=problems)
+        result = (run_planning_pass(rejected=problems, notes=notes) if notes
+                  else run_planning_pass(rejected=problems))
     after = orchestrator.planning_fingerprint()
     status = result.get("status", "FAILED")
+    if status != "FAILED":
+        planning.pop("sync_notes", None)
     # A follow-up pass is only honoured after a pass that actually changed something.
     planning.update(fingerprint=after, finished=finished_stories(),
                     follow_up=bool(result.get("independent_work_remaining")) and after != before)
@@ -374,7 +440,14 @@ def step_finalize(cycle: dict, _context: StepContext) -> StepResult:
                           f"Story is finalized locally but publishing failed: {push['reason']}. Rerun to retry.")
     git_sync.clear_pending_planning_paths()
     cycle["phase"] = "done"
-    return StepResult("done", True, f"{cycle['story_id']} is complete.", sha=push["sha"])
+    warnings = []
+    published = git_sync.publish_to_maintainer_branch()
+    if published["status"] == "REJECTED":
+        # The maintainer branch moved; the next sync merges it, the next story publishes both.
+        warnings.append(f"{cycle['story_id']} was not published to the maintainer branch yet: "
+                        f"{published['reason']}")
+    return StepResult("done", True, f"{cycle['story_id']} is complete.", sha=push["sha"],
+                      workflow_warnings=warnings)
 
 
 STEPS = {

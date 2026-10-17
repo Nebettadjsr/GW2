@@ -218,6 +218,14 @@ def _configured_ci_verification() -> bool | None:
 # at call time" (support/git_sync.py). An explicit override wins.
 CI_VERIFICATION_ENABLED = _configured_ci_verification()
 
+# The pipeline works on its own long-lived branch, in its own worktree, so
+# maintainer and workflow changes on MAINTAINER_BRANCH never collide with a
+# story in progress. Between stories the agent branch merges the maintainer
+# branch; after a story passes CI it is published back to it
+# (local_bridge/README.md, "Branches").
+MAINTAINER_BRANCH = "master"
+AGENT_BRANCH = "agent/dev"
+
 
 # ============================================================
 # Aider RepoMap (experimental, orientation-only context for Claude)
@@ -302,8 +310,8 @@ HARNESS_OWNED_PATHS = (
 )
 
 # Sections of BACKLOG.md the harness alone moves entries into or out of.
-# '## To Do' is shared: the planner appends to it (through
-# core/backlog_writer.py), and the harness moves entries out of it.
+# The planner changes To Do, Blocked and Superseded only by asking for it:
+# `backlog_actions` in its result, applied by core/backlog_writer.py.
 HARNESS_OWNED_BACKLOG_SECTIONS = ("Active", "Done", "Archived")
 
 DOCUMENT_OWNERSHIP = (
@@ -312,11 +320,11 @@ DOCUMENT_OWNERSHIP = (
      "transitions."),
     (ATTEMPT_STATE_FILE, (HARNESS,),
      "Which of the harness's own pipeline steps still owes an answer."),
-    (BACKLOG_FILE, (HARNESS, PLANNER),
+    (BACKLOG_FILE, (HARNESS,),
      "Index only: one canonical entry line per story, carrying nothing "
-     "beyond what selection and navigation need. The planner appends to "
-     "'## To Do' through core/backlog_writer.py; the harness owns every "
-     "section transition. No role hand-writes its Markdown."),
+     "beyond what selection and navigation need. The planner requests "
+     "additions, moves and reordering as `backlog_actions` in its result; "
+     "the harness applies them. No role edits this file."),
     (STORIES_DIR, (HARNESS, PLANNER, IMPLEMENTATION),
      "One canonical file per story, owning its scope, acceptance criteria, "
      "result, blockers and findings. The planner creates them and records "

@@ -40,7 +40,9 @@ class _CycleTestCase(unittest.TestCase):
                                      "implementation_contract.return_value": " +contract",
                                      "restore_protected_tests.return_value": []}),
             "git_sync": mock.Mock(**{"pending_planning_paths.return_value": set(),
-                                     "ci_verification_available.return_value": (True, "")}),
+                                     "ci_verification_available.return_value": (True, ""),
+                                     "current_branch.return_value": "master",
+                                     "publish_to_maintainer_branch.return_value": {"status": "SKIPPED"}}),
             "github_ci": mock.Mock(),
             "get_actionable_requests": mock.Mock(return_value=[]),
             "run_architect_pass": mock.Mock(),
@@ -571,6 +573,102 @@ class BridgeHttpTests(unittest.TestCase):
         payload = _CallbackReceiver.received[0][1]
         self.assertEqual(payload["status"], "completed")
         self.assertIn("--permission-mode', 'plan'", payload["result"])
+
+    def test_a_sync_that_merged_workflow_code_restarts_the_bridge_and_refuses_new_steps(self):
+        self.bridge.store.drop_active()
+        with mock.patch.object(cycle, "pointer_story", return_value=None), \
+                mock.patch.object(cycle, "choose_step", return_value="sync"), \
+                mock.patch.object(cycle, "step_sync",
+                                  return_value=cycle.StepResult("synced", True, restart=True)), \
+                mock.patch.object(bridge.threading, "Timer") as timer:
+            task = self.bridge.next_step(self.callback)
+            self.assertEqual(task["result"]["outcome"], "synced")
+            timer.assert_called_once_with(2.0, bridge.os._exit, args=(bridge.RESTART_EXIT_CODE,))
+            with self.assertRaises(bridge.Busy):
+                self.bridge.next_step(self.callback)
+
+
+class SyncAndReviewTests(_CycleTestCase):
+    """Between stories the agent branch merges the maintainer branch, reviews it once, then plans."""
+
+    def setUp(self):
+        super().setUp()
+        cycle.git_sync.current_branch.return_value = cycle.AGENT_BRANCH
+        self.review = mock.patch.object(cycle, "sync_review", mock.Mock(**{
+            "needs_review.return_value": True, "planner_notes.return_value": "S001 notes"})).start()
+        self.planner = mock.patch.object(cycle, "run_planning_pass",
+                                         mock.Mock(return_value={"status": "COMPLETE"})).start()
+        self.addCleanup(mock.patch.stopall)
+        self.orchestrator.planning_fingerprint.return_value = "fp1"
+        cycle.story_state.get_selectable_story_candidates.return_value = ["story"]
+        cycle.story_state.parse_backlog_section.return_value = []
+
+    def merged(self, *paths):
+        cycle.git_sync.sync_with_maintainer_branch.return_value = {
+            "status": "MERGED", "before": "a" * 40, "after": "b" * 40, "changed_paths": list(paths)}
+
+    def test_sync_runs_between_stories_on_the_agent_branch_only(self):
+        self.assertEqual(cycle.choose_step(None, {}, None), "sync")
+        cycle.git_sync.current_branch.return_value = "master"
+        self.assertNotEqual(cycle.choose_step(None, {}, None), "sync")
+
+    def test_sync_waits_for_its_interval_and_never_runs_during_a_story(self):
+        planning = {}
+        cycle.git_sync.sync_with_maintainer_branch.return_value = {"status": "UP_TO_DATE"}
+        cycle.step_sync(planning)
+        self.assertNotEqual(cycle.choose_step(None, planning, None), "sync")
+        self.assertEqual(cycle.choose_step(make_cycle(phase="ci"), {}, None), "ci")
+
+    def test_merged_code_is_reviewed_then_handed_to_the_planner(self):
+        planning = {}
+        self.merged("src/main/java/App.java")
+        result = cycle.step_sync(planning)
+        self.assertEqual((result["outcome"], result["proceed"], result["restart"]), ("synced", True, False))
+        self.assertEqual(cycle.choose_step(None, planning, None), "review")
+        self.review.run_sync_review.return_value = {"status": "COMPLETE", "findings": []}
+        self.assertEqual(cycle.step_review(planning)["outcome"], "reviewed")
+        self.review.run_sync_review.assert_called_once_with("a" * 40, "b" * 40, None)
+        self.assertEqual(planning["sync_notes"], "S001 notes")
+        self.assertEqual(cycle.choose_step(None, planning, None), "plan")
+        cycle.step_plan(planning)
+        self.planner.assert_called_once_with(notes="S001 notes")
+        self.assertNotIn("sync_notes", planning)
+
+    def test_dependency_bumps_are_merged_without_a_review(self):
+        planning = {}
+        self.review.needs_review.return_value = False
+        self.merged("pom.xml")
+        cycle.step_sync(planning)
+        self.assertNotIn("review", planning)
+
+    def test_merged_workflow_code_asks_for_a_restart(self):
+        self.merged("local_bridge/cycle.py")
+        self.assertTrue(cycle.step_sync({})["restart"])
+
+    def test_a_conflict_stops_the_pipeline_for_a_human(self):
+        cycle.git_sync.sync_with_maintainer_branch.return_value = {"status": "CONFLICT", "reason": "x"}
+        result = cycle.step_sync({})
+        self.assertEqual((result["outcome"], result["proceed"]), ("sync_conflict", False))
+
+    def test_a_failed_review_is_retried_once_then_reported_to_the_planner(self):
+        planning = {"review": {"base": "a" * 40, "head": "b" * 40, "attempts": 0}}
+        self.review.run_sync_review.return_value = {"status": "FAILED", "reason": "bad",
+                                                    "validation_problems": ["Not writable: src/x"]}
+        self.assertEqual(cycle.step_review(planning)["outcome"], "review_failed")
+        self.assertEqual(planning["review"]["problems"], ["Not writable: src/x"])
+        result = cycle.step_review(planning)
+        self.assertNotIn("review", planning)
+        self.assertIn("documentation review failed", planning["sync_notes"])
+        self.assertTrue(result["workflow_warnings"])
+
+    def test_finalize_publishes_to_the_maintainer_branch_and_warns_when_it_moved(self):
+        record = make_cycle(phase="finalize", published_sha="a" * 40)
+        cycle.git_sync.working_tree_paths.return_value = set()
+        cycle.git_sync.commit_and_push.return_value = {"status": "PUSHED", "sha": "b" * 40}
+        cycle.git_sync.publish_to_maintainer_branch.return_value = {"status": "REJECTED", "reason": "behind"}
+        result = cycle.step_finalize(record, None)
+        self.assertEqual((result["outcome"], result["proceed"]), ("done", True))
+        self.assertIn("not published to the maintainer branch", result["workflow_warnings"][0])
 
 
 if __name__ == "__main__":

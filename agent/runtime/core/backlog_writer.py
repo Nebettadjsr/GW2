@@ -214,3 +214,147 @@ def clean(backlog_file: Path | None = None) -> list[str]:
         target.write_text(cleaned, encoding="utf-8")
 
     return validate_backlog_entries(cleaned)
+
+
+# ------------------------------------------------------------------
+# Planner backlog actions
+# ------------------------------------------------------------------
+#
+# The planner never edits BACKLOG.md. It lists the changes it wants as
+# `backlog_actions` in PLANNING_RESULT.json and the harness applies them
+# here, deriving every entry field from the story file itself, so the
+# planner neither re-emits index text nor can misspell an entry.
+
+BACKLOG_ACTION_COMMANDS = ("add_to_do", "move", "reorder_to_do")
+_MOVE_TARGETS = {"To Do": "TODO", "Blocked": "BLOCKED", "Superseded": "SUPERSEDED"}
+_PLANNER_MOVABLE_FROM = ("To Do", "Blocked", "Superseded")
+
+
+def _story_file(reference) -> Path:
+    """A story file under agent/stories/ named by filename or story ID."""
+    from agent.runtime.support.config import STORIES_DIR
+
+    name = str(reference or "").strip()
+    if not name:
+        raise BacklogWriteRejected("A backlog action names no story.")
+    if name.endswith(".md"):
+        path = STORIES_DIR / name
+        if path.parent == STORIES_DIR and path.is_file():
+            return path
+    else:
+        matches = sorted(STORIES_DIR.glob(f"{name}-*.md"))
+        if len(matches) == 1:
+            return matches[0]
+    raise BacklogWriteRejected(f"No unique story file under agent/stories/ for {name!r}.")
+
+
+def check_backlog_actions(actions) -> list[str]:
+    """Shape and reference problems, without writing anything (planning_check)."""
+    if not isinstance(actions, list) or not all(isinstance(action, dict) for action in actions):
+        return ["backlog_actions must be a list of objects."]
+    problems = []
+    for action in actions:
+        command = action.get("command")
+        try:
+            if command == "add_to_do":
+                _story_file(action.get("story"))
+            elif command == "move":
+                _story_file(action.get("story"))
+                if action.get("to") not in _MOVE_TARGETS:
+                    problems.append(f"move target must be one of {', '.join(_MOVE_TARGETS)}: {action.get('to')!r}")
+                if action.get("to") in ("Blocked", "Superseded") and not str(action.get("reason") or "").strip():
+                    problems.append(f"move to {action['to']} needs a reason: {action.get('story')!r}")
+            elif command == "reorder_to_do":
+                if not isinstance(action.get("order"), list):
+                    problems.append("reorder_to_do needs an 'order' list.")
+                for reference in action.get("order") or []:
+                    _story_file(reference)
+            else:
+                problems.append(f"Unknown backlog action {command!r}; use one of "
+                                + ", ".join(BACKLOG_ACTION_COMMANDS) + ".")
+        except BacklogWriteRejected as error:
+            problems.append(str(error))
+    return problems
+
+
+def apply_backlog_actions(actions, backlog_file: Path | None = None) -> list[str]:
+    """Apply validated planner actions in order; returns problems (nothing written then).
+
+    Moves are harness transitions: the story's own Status (and Blockers) is
+    set to match the section, exactly as the harness's other transitions do.
+    """
+    from agent.runtime.core import story_state
+    from agent.runtime.core.story_archive import extract_milestone
+
+    problems = check_backlog_actions(actions)
+    if problems:
+        return problems
+    target = backlog_file or BACKLOG_FILE
+    content = strip_backlog_prose(read_file(target))
+    story_writes: dict[Path, str] = {}
+
+    def story_content(path: Path) -> str:
+        return story_writes.get(path) or read_file(path)
+
+    try:
+        for action in actions:
+            command = action["command"]
+            if command == "add_to_do":
+                path = _story_file(action["story"])
+                text = story_content(path)
+                listed = {name for heading in ("Active", "To Do", "Blocked", "Superseded", "Done", "Archived")
+                          for name in parse_backlog_section(content, heading)}
+                if path.name in listed:
+                    continue
+                status = story_state.classify_story_status(story_state.extract_status_section(text))
+                status = "BLOCKED" if status == "BLOCKED" else "TODO"
+                entry = format_backlog_entry(
+                    story_state.extract_story_id(text) or path.stem, path.name, status,
+                    extract_milestone(text) or "",
+                    story_state.parse_dependency_ids(story_state.extract_dependencies_section(text)) or "None")
+                # A story created already blocked is listed where it belongs.
+                content = story_state._append_bullet_to_backlog_section(
+                    content, "Blocked" if status == "BLOCKED" else "To Do", entry)
+            elif command == "move":
+                path = _story_file(action["story"])
+                section = action["to"]
+                bullet = None
+                for source in _PLANNER_MOVABLE_FROM:
+                    content, bullet = story_state._pull_bullet_from_backlog_section(content, source, path.name)
+                    if bullet is not None:
+                        break
+                if bullet is None:
+                    raise BacklogWriteRejected(
+                        f"Cannot move {path.name}: it is not in " + ", ".join(_PLANNER_MOVABLE_FROM) + ".")
+                status = _MOVE_TARGETS[section]
+                content = story_state._append_bullet_to_backlog_section(
+                    content, section, story_state.rewrite_backlog_entry_status(bullet, status))
+                text = story_state._replace_section_body(story_content(path), "Status", status)
+                text = story_state._replace_section_body(
+                    text, "Blockers", str(action.get("reason") or "None.").strip() if status == "BLOCKED" else
+                    ("None. Superseded, not blocked: " + str(action["reason"]).strip()
+                     if status == "SUPERSEDED" else "None."))
+                story_writes[path] = text
+            elif command == "reorder_to_do":
+                names = [_story_file(reference).name for reference in action["order"]]
+                current = parse_backlog_section(content, "To Do")
+                if sorted(names) != sorted(current):
+                    raise BacklogWriteRejected(
+                        "reorder_to_do must list every '## To Do' story exactly once; "
+                        f"To Do holds {current}.")
+                bullets = []
+                for name in names:
+                    content, bullet = story_state._pull_bullet_from_backlog_section(content, "To Do", name)
+                    bullets.append(bullet)
+                for bullet in bullets:
+                    content = story_state._append_bullet_to_backlog_section(content, "To Do", bullet)
+    except (RuntimeError, ValueError, TypeError) as error:  # BacklogWriteRejected included
+        return [str(error)]
+
+    problems = validate_backlog_entries(content)
+    if problems:
+        return problems
+    for path, text in story_writes.items():
+        path.write_text(text, encoding="utf-8")
+    target.write_text(content, encoding="utf-8")
+    return []

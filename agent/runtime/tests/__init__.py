@@ -99,6 +99,8 @@ qa_agent.run_conditional_review = lambda **kwargs: {
 # accident, not the coverage.
 REAL_COMMIT_AND_PUSH = git_sync.commit_and_push
 REAL_PUSH_BRANCH = git_sync.push_branch
+REAL_FETCH_BRANCH = git_sync.fetch_branch
+REAL_PUSH_REF = git_sync.push_ref
 
 git_sync.ci_verification_available = lambda: (
     False, "CI verification is disabled inside the test package"
@@ -108,6 +110,12 @@ git_sync.commit_and_push = _refuse(
 )
 git_sync.push_branch = _refuse(
     "git_sync.push_branch", "push to the real remote"
+)
+git_sync.push_ref = _refuse(
+    "git_sync.push_ref", "push to the real remote"
+)
+git_sync.fetch_branch = _refuse(
+    "git_sync.fetch_branch", "fetch from the real remote"
 )
 github_ci.fetch_json = _refuse(
     "github_ci.fetch_json", "call the real GitHub API"

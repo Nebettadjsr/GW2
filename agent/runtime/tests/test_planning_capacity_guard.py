@@ -71,12 +71,24 @@ class PlanningCapacityGuardTest(unittest.TestCase):
     def test_successful_planning_keeps_changes_and_active_story(self):
         original = self.active.read_bytes()
         def run(prompt):
-            self.backlog.write_text("new queue")
+            self.result.write_text('{"status": "COMPLETE"}')
             return 0
         with patch.object(project_planner, "run_local_planner", side_effect=run):
             self.assertEqual(project_planner._run_guarded_planner("plan"), 0)
-        self.assertEqual(self.backlog.read_text(), "new queue")
+        self.assertEqual(self.result.read_text(), '{"status": "COMPLETE"}')
         self.assertEqual(self.active.read_bytes(), original)
+
+    def test_planner_edit_of_the_backlog_is_rolled_back(self):
+        # The planner requests backlog changes as backlog_actions; the
+        # harness alone writes the index.
+        before = self.backlog.read_bytes()
+        def run(prompt):
+            self.backlog.write_text("new queue")
+            return 0
+        with patch.object(project_planner, "run_local_planner", side_effect=run), \
+                self.assertRaises(RuntimeError):
+            project_planner._run_guarded_planner("plan")
+        self.assertEqual(self.backlog.read_bytes(), before)
 
     def test_planner_may_not_answer_or_edit_an_architect_request(self):
         # The planner asks architecture questions; only ARCHITECTURE MODE
