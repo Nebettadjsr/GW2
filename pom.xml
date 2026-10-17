@@ -15,7 +15,7 @@
 
         <javafx.version>25.0.2</javafx.version>
         <javafx.platform>win</javafx.platform>
-        <postgresql.version>42.7.9</postgresql.version>
+        <postgresql.version>42.7.12</postgresql.version>
 
         <!--
             STORY-API-001 (UD-006): backend web framework. Chosen from implementation-time
