@@ -1,6 +1,6 @@
 ## Status
 
-OPEN
+RESOLVED
 
 ## Decision Needed
 
@@ -28,8 +28,18 @@ Product Owner confirmation of the acceptance policy; current performance measure
 
 ## User Decision
 
-TODO
+RESOLVED
 
 ## Resolution
 
-TODO
+**Product Owner Decision — UD-013**
+
+Measured compliance with the documented seven-second performance budget is sufficient for Phase 5 acceptance.
+
+No additional manual Product Owner confirmation is required when the performance criteria are objectively verified and all required quality gates pass.
+
+Performance measurements must be reproducible, documented and cover the required scenarios, including the updated stale-while-revalidate behavior defined in UD-014 and UD-015.
+
+A Product Owner intervention is only required when acceptance criteria genuinely need clarification or a proposed exception would change the agreed product requirements.
+
+Update the relevant documentation to eliminate contradictory acceptance requirements.

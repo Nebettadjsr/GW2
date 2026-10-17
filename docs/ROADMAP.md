@@ -242,6 +242,8 @@ Phase 3. The API layer should be a thin translation over existing application se
 
 ## 9. Phase 5 — Browser Frontend Completion
 
+**Status: Complete (2026-10-17).** The planner accepted the current-contract evidence in `STORY-PERF-004` and the bounded review in `STORY-QUALITY-005`. Review F1/F2/F5 are addressed by the resolved acceptance contract and its measured verification; the remaining findings are retained as non-blocking at their recorded references. No Phase 5 exit criterion is transferred.
+
 ### Objective
 
 Complete and verify browser feature workflows over the backend HTTP API. JavaFX is obsolete and may be removed from this phase onward, but removing it is not a Phase 5 exit criterion; Phase 9 is where any remainder is finished. Authoritative crafting-profit/discovery and other backend-owned domain results remain backend-provided. The Ecto Salvage calculator is an explicit exception: its small feature-specific calculation is frontend-owned and operates from the required metadata, Trading Post prices, and account Luck data.

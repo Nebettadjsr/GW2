@@ -1,0 +1,36 @@
+[00:35:03] Pipeline implement [STORY-PERF-004]: waiting_for_claude_budget -- Claude 5h session is 100% used (starts only below 90%); waiting for the session to reset.
+[02:27:18] Pipeline implement [STORY-PERF-004]: implemented
+[02:27:21] Evaluator started (Codex, read-only)
+[02:28:26] Pipeline evaluate [STORY-PERF-004]: RETRY -- Saved logs substantiate the reported runs, but the harness does not establish initial-page interactivity or separately measure refresh task execution as required. Independent QA review: The updated timing tests and recorded runs address context attribution and report separate refresh figures, but the two evaluator gaps remain. The real-browser displayed-value read and enabled-selection check still occur only after the measurement loop has followed refresh to its terminal outcome, so they do not prove the initial cached result was interactive before its timing boundary. Refresh start-to-terminal is still inferred from the initial response and stale-indicator disappearance; task-status bodies and terminal task outcomes are not captured or correlated, and indicator termination is not verified against final rendering.
+[03:17:00] Pipeline implement [STORY-PERF-004]: implemented
+[03:17:02] Evaluator started (Codex, read-only)
+[03:18:12] Pipeline evaluate [STORY-PERF-004]: RETRY -- The revised harness addresses both previous attribution gaps. Recorded real-browser runs demonstrate the initial-page budget across all four input states, with refresh outcomes measured separately. Equivalence checks and controlled recovery evidence support the remaining criteria; limitations and coverage gaps are disclosed. Independent QA review: The reported initial-page maxima are under 7,000 ms, but the run logs do not establish that the required interactive read occurred within those measured intervals. For example, expired-TP opening #5 reports the initial usable page at 4,316 ms while its completing-sample read is at 7,442 ms and live read at 8,513 ms. Since AC2 includes a successful displayed-value read in completion, this run does not prove the budget was met. The revised refresh attribution, controlled checks, and equivalence evidence address the prior review gaps but do not resolve this timing evidence gap.
+[03:23:27] Pipeline implement [STORY-PERF-004]: capacity_exhausted -- Claude ran out of capacity; rerun the pipeline once it is available.
+[03:35:02] Pipeline implement [STORY-PERF-004]: waiting_for_claude_budget -- Claude 5h session is 100% used (starts only below 90%); waiting for the session to reset.
+[04:35:02] Pipeline implement [STORY-PERF-004]: waiting_for_claude_budget -- Claude 5h session is 100% used (starts only below 90%); waiting for the session to reset.
+[05:35:02] Pipeline implement [STORY-PERF-004]: waiting_for_claude_budget -- Claude 5h session is 100% used (starts only below 90%); waiting for the session to reset.
+[06:41:38] Pipeline implement [STORY-PERF-004]: capacity_exhausted -- Claude ran out of capacity; rerun the pipeline once it is available.
+[07:01:39] Pipeline plan [STORY-PERF-004]: planning_complete -- Remaining Phase 5 implementation is covered by completed stories; active STORY-PERF-004 owns the required updated real-data acceptance evidence and must finish before closure assessment. The bounded health review already exists. Request-013 was reviewed and remains OPEN under its existing resolution: the independent backend coverage series lacks current-phase authorization and supplied clean-commit CI evidence for sizing targets. No duplicate stories, new decisions, or independent planning batch is justified; the executable queue contains no out-of-phase work. The active story and harness-owned state remain unchanged.
+[07:01:44] Pipeline implement [STORY-PERF-004]: waiting_for_claude_budget -- Weekly Claude budget reached: 0% used of 0% allowed (auto). Next share unlocks Sat 17:30.
+[18:23:41] Pipeline implement [STORY-PERF-004]: implemented
+[18:23:43] Evaluator started (Codex, read-only)
+[18:25:16] Pipeline evaluate [STORY-PERF-004]: COMPLETE -- The story's acceptance criteria, Definition of Done and intended evidence goal are satisfied. The revised boundary includes its own successful displayed-value read and enabled-selection check. Recorded real-browser runs support the 5,145 ms maximum, with refresh outcomes measured separately and limitations explicitly retained. No builds or tests were run during this evaluation.
+[18:25:22] Pipeline publish [STORY-PERF-004]: published
+[18:27:24] Pipeline ci [STORY-PERF-004]: PASSED -- All required GW2 application CI checks passed.
+[18:27:26] STORY-PERF-004-cached-profit-page-acceptance.md completed and finalized (PASSED 2dd92fe): Status DONE, entry moved to '## Done', CURRENT_STORY.md cleared, queue consistent.
+[18:27:30] Pipeline finalize [STORY-PERF-004]: done -- STORY-PERF-004 is complete.
+[18:27:30] WORKFLOW WARNING: STORY-PERF-004 was not published to the maintainer branch yet: To https://github.com/Nebettadjsr/GW2.git
+ ! [rejected]        HEAD -> master (non-fast-forward)
+error: failed to push some refs to 'https://github.com/Nebettadjsr/GW2.git'
+hint: Updates were rejected because a pushed branch tip is behind its remote
+hint: counterpart. If you want to integrate the remote changes, use 'git pull'
+hint: before pushing again.
+hint: See the 'Note about fast-forwards' in 'git push --help' for details.
+[18:27:31] Pipeline sync [no active story]: sync_deferred -- error: Your local changes to the following files would be overwritten by merge:
+	agent/user-decisions/UD-014-account-refresh-performance-budget-scope.md
+Please commit your changes or stash them before you merge.
+Aborting
+Merge with strategy ort failed.
+[18:28:43] Pipeline plan [no active story]: planning_complete -- Phase 5 exit criteria are satisfied by the completed workflow stories, bounded QUALITY-005 review and PERF-004 current-contract acceptance. All 20 initial-page readings met seven seconds (maximum 5145 ms), with asynchronous refresh separately measured and controlled recovery/equivalence checks recorded. F1/F2/F5 are addressed; other review findings remain explicitly non-blocking at their existing references, without transferring any exit criterion. Request-013 remains OPEN for authorized scope and clean CI baseline evidence. Documented current milestone advanced; zero new stories created and no subsequent-phase planning performed.
+[18:28:45] Pipeline select [no active story]: queue_empty -- BACKLOG.md has no stories listed under 'To Do'.
+[18:35:00] Pipeline select [no active story]: queue_empty -- BACKLOG.md has no stories listed under 'To Do'.
