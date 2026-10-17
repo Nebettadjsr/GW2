@@ -1,10 +1,10 @@
 # Workflow Diagrams
 
-This document visualizes the state machine, decision trees, and lifecycle of the AI Development Orchestrator.
+These diagrams show the development cycle, milestone processing, and handling of unresolved questions.
 
 ## 1. The Core SDLC Cycle
 
-This flowchart represents the main loop managed by the local bridge and n8n. It highlights the strict transition rules defined in `local_bridge/cycle.py`.
+The local bridge and n8n run this loop. Transitions are defined in `local_bridge/cycle.py`.
 
 ```mermaid
 stateDiagram-v2
@@ -34,9 +34,9 @@ stateDiagram-v2
     blocked --> select: Human Resolves Blocker
 ```
 
-## 2. Milestone Happy Path
+## 2. Milestone without retries or blockers
 
-This sequence diagram illustrates how a specific milestone is processed from inception in the Roadmap to completion.
+This sequence shows a milestone moving from roadmap planning through story execution to completion.
 
 ```mermaid
 sequenceDiagram
@@ -74,7 +74,7 @@ sequenceDiagram
 
 ## 3. Human Intervention / User Decisions
 
-The system is designed to pause and request human validation when faced with ambiguity, rather than hallucinating features.
+Architecture questions go to the Architect. Unresolved product rules require a human decision.
 
 ```mermaid
 flowchart TD

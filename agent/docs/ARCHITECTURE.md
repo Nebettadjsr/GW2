@@ -1,14 +1,14 @@
-# System Architecture & Technical Design
+# Workflow architecture
 
-The AI Orchestrator is a robust, file-backed state machine. This document explains the technical implementation of the bridge, state management, and the orchestration loop for engineers and developers maintaining the system.
+The orchestrator uses a state machine backed by files. This document describes the bridge, stored state, and orchestration loop.
 
 ## 1. High-Level Architecture
 
-The system consists of three main operational tiers:
+The workflow runs through these components:
 
-1.  **The Engine (n8n):** Runs in a Docker container. It handles the high-level workflow visualization, retries, and timing. It holds the "GW2 - Development Pipeline" workflow.
+1.  **n8n:** Runs in a Docker container and hosts the "GW2 - Development Pipeline" workflow. It handles workflow visualization, retries, and timing.
 2.  **The Local Bridge (Python):** Runs on the host machine alongside the repository. It exposes an HTTP API (`/cycle`, `/cycle/step`, `/budget`) that n8n calls. The bridge is the authority on state transitions and executes the underlying Python logic.
-3.  **The Agent Runtime (Python/LLMs):** The code under `agent/runtime/` that builds prompts, calls the LLM CLIs (`claude` and `codex`), parses outputs, and mutates the physical files (like updating the `BACKLOG.md` or writing to `agent/artifacts/`).
+3.  **The Agent Runtime (Python/LLMs):** Code under `agent/runtime/` builds prompts, calls the LLM CLIs (`claude` and `codex`), parses outputs, and updates files such as `BACKLOG.md`.
 
 ```mermaid
 flowchart LR
@@ -17,20 +17,20 @@ flowchart LR
     C <-->|Reads/Writes| D[(File System State)]
 ```
 
-## 2. State Management (The Immutable Brain)
+## 2. Stored state
 
-Unlike conversational LLM wrappers that rely on context windows to remember active tasks, the memory of this system is entirely externalized to physical files.
+The runtime stores workflow state in files:
 
 *   **`local_bridge/tasks.json`:** Tracks the current cycle phase (`plan`, `qa`, `implement`, etc.) and the token/budget status.
-*   **`agent/CURRENT_STORY.md`:** A physical pointer to the active story being worked on.
-*   **`agent/stories/BACKLOG.md`:** The authoritative index. Parsed deterministically via regex (in `story_state.py` and `backlog_writer.py`), ensuring the LLM cannot secretly drop or alter tasks.
-*   **`agent/runtime/artifacts/`:** Stores the raw JSON/Markdown outputs from the latest LLM runs (e.g., `PLANNING_RESULT.json`, `EVALUATOR_RESULT.json`). These are transient and ignored by git, but crucial for debugging exact model outputs.
+*   **`agent/CURRENT_STORY.md`:** Points to the active story.
+*   **`agent/stories/BACKLOG.md`:** The authoritative work index, parsed by `story_state.py` and maintained through `backlog_writer.py`.
+*   **`agent/runtime/artifacts/`:** Stores JSON/Markdown outputs from the latest LLM runs (e.g., `PLANNING_RESULT.json`, `EVALUATOR_RESULT.json`) for debugging. These files are transient and ignored by Git.
 
-If execution is interrupted, the system reads `tasks.json` and `CURRENT_STORY.md` and resumes the exact phase.
+After an interruption, the system uses `tasks.json` and `CURRENT_STORY.md` to determine where to resume.
 
 ## 3. The Orchestration Loop (Cycle Phases)
 
-The `local_bridge/cycle.py` module defines the state machine. The execution flow follows these specific phases:
+`local_bridge/cycle.py` defines the state machine and its phases:
 
 ```mermaid
 stateDiagram-v2
@@ -52,26 +52,29 @@ stateDiagram-v2
 5.  **`evaluate`**: The Evaluator (Codex) reads the Git working tree (the uncommitted changes) and compares them against the QA plan and Story requirements. If failures are detected, it transitions back to `implement` with a Retry prompt. *Read-only.*
 6.  **`publish`**: Commits the dirty story scope to the active branch.
 7.  **`ci`**: Waits for GitHub Actions to run the test suite against the published commit SHA. If CI fails, transitions back to `implement` with the CI error log.
-8.  **`finalize`**: Marks the story as `DONE` in the backlog, clears `CURRENT_STORY.md`, and readies the queue for the next `select`.
+8.  **`finalize`**: Marks the story as `DONE` in the backlog, clears `CURRENT_STORY.md`, and returns to `select`.
 
 ## 4. Resource & Budget Throttling
 
-Because this system runs autonomously, a failing loop could exhaust API account limits rapidly.
+A repeated failure can consume the available model usage budget.
 
-The `local_bridge/claude_budget.py` acts as a circuit breaker:
+`local_bridge/claude_budget.py` controls Claude usage:
+
 *   It parses the usage output from the Claude CLI.
 *   It calculates "shares" based on the current day of the week and limits usage to a specific percentage cap.
-*   If the system hits the cap, n8n pauses the `implement` step. While Claude is paused, the bridge intelligently uses the available time to run the `plan` step (using the unlimited Codex model) to groom the backlog.
+*   At the cap, n8n pauses the `implement` step. While Claude is paused, the bridge can run `plan` with Codex to update the backlog.
 
 ## 5. Security & Document Ownership
 
-The system enforces strict **Document Ownership** (`agent/runtime/support/config.py`).
-*   The Planner is physically prevented by the Python harness from writing to application source code or modifying the Roadmap.
+Document ownership is defined in `agent/runtime/support/config.py` and enforced by the Python harness.
+
+*   The Planner may not write application source code or modify the Roadmap.
 *   If an agent attempts to violate its write permissions, the harness raises an exception, rolls back the changes, and logs a validation failure.
 
 ## 6. Milestones and Roadmap Phases
 
 The orchestrator derives its goals exclusively from `docs/ROADMAP.md`.
+
 *   A specific "Phase N" in the roadmap maps directly to `milestone-NN` in the backlog.
 *   The Planner is restricted to analyzing the *current* phase excerpt. It is not permitted to discover or redefine its own roadmap scope.
 *   A milestone transition is only reported when the exit criteria defined in the roadmap for the current phase are fully satisfied, including project health reviews.

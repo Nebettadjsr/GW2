@@ -1,52 +1,54 @@
-# Evolution & Lessons Learned
+# Workflow evolution
 
-This document traces the evolution of the AI Development Orchestrator. It explains *why* the system is architected with rigid, deterministic boundaries by exploring the failures and "hiccups" that occurred during earlier iterations of the agent workflow.
+This document describes earlier workflow designs and the problems reported with them.
 
-## Generation 1: The "Simple Coder" Script
+## 1. A single coding script
 
-**The Architecture:** A basic Python script that sent a prompt containing a user goal and the entire codebase to an LLM, asking it to "write the feature."
+**Design:** A Python script sent a user goal and the entire codebase to an LLM for implementation.
 
-**The Failures:**
-*   **Vibe-Coding:** The LLM confidently outputted code that superficially looked correct but failed edge cases or broke existing features because it lacked a formal test plan.
-*   **Context Bloat & Amnesia:** Passing the entire codebase in every prompt caused the LLM to exceed context limits, forget the original requirements, or hallucinate files that didn't exist.
-*   **Cost Runaways:** A single unhandled loop error in the script could trigger the LLM to retry hundreds of times overnight, burning through API budgets in hours.
+**Problems:**
 
-## Generation 2: Introduction of the Planner and Backlog
+* Code missed edge cases or broke existing features. There was no formal test plan.
+* Sending the entire codebase in every prompt exceeded context limits. Model outputs omitted requirements or referenced nonexistent files.
+* Unhandled retry loops could exhaust the usage budget.
 
-**The Fix:** To solve Context Bloat, the "Planner" role was introduced. Its job was to read a high-level roadmap and break it down into small, digestible Markdown "Stories" listed in a `BACKLOG.md` index.
+## 2. Planner and backlog
 
-**The Failures:**
-*   **File Corruption via Full Rewrites:** Initially, the Planner LLM was tasked with rewriting the entire `BACKLOG.md` file every time it updated a story's status. Over time, the LLM would quietly drop completed stories, alter formatting, or hallucinate new status tags, causing the Python regex parsers to crash.
-*   **Token Waste:** Rewriting a 2,000-line backlog file just to change the word `TODO` to `ACTIVE` wasted massive amounts of output tokens and increased latency.
+**Design:** The Planner broke the roadmap into smaller Markdown stories listed in `BACKLOG.md` to reduce the context needed for each task.
 
-**The Current Solution:** The Planner was heavily restricted to output specific *diff commands* (`backlog_actions` like `move` or `add_to_do`) in JSON. A deterministic Python script (`backlog_writer.py`) now safely applies these targeted actions to the physical file without requiring the LLM to rewrite the entire index.
+**Problems:**
 
-## Generation 3: The "Evaluator" and Separation of Duties
+* Rewriting all of `BACKLOG.md` for each status update dropped completed stories, changed formatting, or introduced invalid status tags that broke parsing.
+* Rewriting the index for a single status change used more output tokens and took longer than a targeted update.
 
-**The Architecture:** After realizing the Coder was producing bug-ridden code, the workflow was updated to ask the Coder to verify its own work in a follow-up prompt.
+**Change:** The Planner outputs JSON `backlog_actions`, such as `move` or `add_to_do`. `backlog_writer.py` applies these actions without asking the model to rewrite the index.
 
-**The Failures:**
-*   **Grading its Own Homework:** The Implementation LLM (Claude) would write a bug, and when subsequently asked "Did you fulfill the requirements?", it would confidently respond "Yes!" without actually executing or physically verifying the code.
-*   **Endless Loops:** If the LLM *did* notice a bug, it would try to fix it, fail again, retry, and get stuck in an infinite conversational loop, never recognizing it was stuck.
+## 3. Separate evaluation
 
-**The Current Solution:** A strict Separation of Duties was introduced across multiple agents:
-1.  A **QA Agent** writes the acceptance criteria and test plan *before* implementation begins.
-2.  **The Implementer** writes the code.
-3.  A totally separate reasoning model (**Codex**) acts as the **Evaluator**. Crucially, it operates in a *Read-Only Sandbox*. It does not rely on the Implementer's claims; it physically inspects the Git working tree. If it fails, the orchestrator manages the retry loop, hard-capped at a maximum budget.
+**Design:** A follow-up prompt asked the coding agent to verify its work.
 
-## Generation 4: Visual Orchestration and Human Governance
+**Problems:**
 
-**The Architecture:** The high-level loop management was moved to **n8n** for visual debugging, state tracking, and deterministic retry management.
+* The coding agent reported success without running or checking the code.
+* Attempts to fix a bug could enter a repeated failure loop.
 
-**The Failures:**
-*   **Hallucinating Business Rules:** When the LLM encountered ambiguous domains (like GW2 crafting rules), it would confidently invent business logic rather than asking for clarification, leading to fundamentally incorrect application behavior.
-*   **Merge Clashes & Documentation Drift:** The agent originally ran directly on the `main` branch. If a human developer made a quick manual fix while the agent was running, the agent would either overwrite the human's changes or fail due to git conflicts. Furthermore, if the human forgot to update the AI's authoritative documentation (`docs/ARCHITECTURE.md`), the Planner would detect the discrepancy between the new code and old docs, flag it as a defect, and attempt to "fix" the human's code.
+**Change:** The workflow separates preparation, implementation, and review:
 
-**The Current Solution:**
-1.  **Product Owner & Architect Requests:** The workflow introduced a system of formal "Requests" and "User Decisions". If rules conflict, the agent pauses the active story and generates a markdown file asking the human for a decision, eliminating hallucinated business logic.
-2.  **Dedicated Agent Branching & Sync:** The agent now works exclusively on an isolated branch (`agent/active-development`).
-3.  **Documentation Sync Phase:** Before starting a cycle, the agent pulls `main` and checks the diff. If it detects a discrepancy between the human's new code and the documentation, it generates a non-blocking request for the human to update the docs, ensuring the Planner does not mistakenly roll back valid human interventions.
+1. The QA agent prepares acceptance criteria and a test plan before implementation.
+2. The Implementer writes the code.
+3. The Evaluator (Codex) inspects the Git working tree in a read-only sandbox. The orchestrator manages retries within a usage budget.
 
-## Conclusion
+## 4. n8n and human decisions
 
-Every rule, guardrail, and split-agent role in this system exists as a solution to a previous failure mode. By replacing LLM conversational memory with physical Markdown files, and replacing LLM decision-making with deterministic Python transitions and separate, read-only evaluation roles, the system evolved from a fragile script into a highly reliable software factory.
+**Design:** n8n took over workflow loop management, with visual debugging, state tracking, and retry handling.
+
+**Problems:**
+
+* Models invented business rules when requirements were ambiguous.
+* The agent ran on `main`, where concurrent human edits could be overwritten or cause Git conflicts. When code changed without corresponding documentation updates, the Planner could treat valid code as a defect and attempt to revert it.
+
+**Changes:**
+
+* **Requests and User Decisions:** Agents record questions in Markdown files. Product decisions require a human answer; architecture questions go to the Architect.
+* **Separate branch:** Agent work moved to `agent/active-development`.
+* **Documentation sync:** Before a cycle, the agent pulls `main` and checks the diff. A discrepancy between code and documentation produces a non-blocking request for a documentation update.
