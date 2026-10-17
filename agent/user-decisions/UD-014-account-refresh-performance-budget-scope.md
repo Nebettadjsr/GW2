@@ -1,6 +1,6 @@
 ## Status
 
-OPEN
+RESOLVED
 
 ## Decision Needed
 
@@ -28,8 +28,8 @@ Product Owner definition of the performance scope; subsequent real-account synch
 
 ## User Decision
 
-TODO
+RESOLVED
 
 ## Resolution
 
-TODO
+See UD-015 
