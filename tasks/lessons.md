@@ -623,3 +623,41 @@ writer mid-transaction with a trigger taking an advisory lock the test owns, wai
 the ids a refresh actually fetched and the coverage it left, not how many runs happened — a run that
 fetched the wrong set passes a counting test. And prove each new assertion by breaking the behaviour
 in the shipped file, running it, then reverting and re-running green; quote both outputs.
+
+## A measured boundary is the instant of a sample that already satisfies every requirement
+
+If one of the things completion requires is only read *after* the number has been taken, the number
+does not carry that requirement — however correctly the read is attributed.
+
+**Why:** `STORY-PERF-004`'s initial-page times were the last change of the displayed state, while the
+displayed-value read and the enabled-selection check happened once the 3 s settle window had elapsed:
+a reported 4 316 ms whose reads stood at 7 442 and 8 513 ms. Both reads were inside the initial
+calculation context, so nothing was attributed to the replacement — and QA still rejected it, because
+the criterion counts a successful displayed value as part of completion, so a page proved usable 3 s
+after the reported instant proves nothing about that instant.
+
+**How to apply:** fold every completion requirement into the key quiescence is judged on, report the
+*first* sample of the quiescent state (its boundary) rather than the sample that confirms the window
+elapsed, and decide completeness on that same sample — then a requirement that becomes true later
+moves the number instead of being settled over. Assert the identity in the code that reports
+(`readAt === completedAt`) so the claim cannot drift, keep any later live read as corroboration and
+label it that way, and re-run every affected measurement: a change to where the boundary falls
+invalidates all previously reported figures, not just the one QA quoted.
+
+## A 502 through a proxy is not evidence of what is next in the chain
+
+An `/api` probe that fails proves only that nothing answered, not that *your* recorder is the thing
+that would have.
+
+**Why:** in `STORY-PERF-004`'s fresh pipeline worktree the preview server was started without
+`GW2_BACKEND_ORIGIN`, so `vite.config.ts` fell back to its `localhost:8080` development default. The
+pre-run probe looked exactly as the lesson above expects — `/` 200, `/api/system/status` 502 — and was
+read as "the proxy points at the recorder, which is not up yet". It pointed at a port nobody held, no
+browser request ever reached the recorder or the backend, and 240 s of measurement produced nothing.
+
+**How to apply:** a worktree carries the repository, not the shell: nothing in it supplies the
+run-topology variables, and there is no `.env` here, so set them explicitly on every server you start.
+Then close the chain positively — once the recorder is up, require a `200` through
+preview → recorder → backend, and treat the recorded per-phase request count as the proof that your
+recorder answered the measured calls. A failure with zero recorded backend requests is a topology
+fault, not a slow page.
