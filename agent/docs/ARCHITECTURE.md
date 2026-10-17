@@ -23,7 +23,42 @@ flowchart TB
     G -->|Checks for published commit| B
 ```
 
-n8n is the scheduler and visible workflow. Its visual steps and recorded outputs let the maintainer inspect what happened and what information each step produced. The bridge executes steps and stores their outcomes. The runtime provides the role runners, validation, QA, Git, and CI helpers. The bridge accepts one task at a time, so the outer workflow does not run competing coding agents against the same files. Each role can make several model requests and tool calls within its invocation. The Python code managing those boundaries is referred to as the harness.
+n8n runs in Docker; the bridge runs on the Windows host in the pipeline's worktree. The bridge and agent runtime are both Python code. They are separate responsibilities, not separate programming languages or two independent orchestration services. The runtime modules are called by the bridge and launch the Claude and Codex command-line processes when a step needs a model.
+
+### Who does what, and why?
+
+| Part | Responsibility | Reason for the boundary |
+| --- | --- | --- |
+| **n8n** | Starts scheduled or manual executions, reads budget settings, requests steps, waits for completion, records returned results, and decides whether to request another step. | Makes the execution path and each returned result visible to the maintainer. The graph provides a way to inspect a run without following the Python call stack. |
+| **Bridge — `local_bridge/bridge.py`** | Exposes the authenticated HTTP interface, accepts one task at a time, dispatches work, saves task and cycle records, and sends completion callbacks to n8n. | Connects the containerized workflow to the host checkout, installed agent CLIs, and local execution state. It also lets a replacement n8n execution re-attach to work already running. |
+| **Cycle policy — `local_bridge/cycle.py`** | Chooses the next stage from saved state and planning triggers, applies transitions, and distinguishes correction, capacity waits, blocking, and completion. | Keeps story lifecycle rules in testable Python functions. The model does not choose its own next role, and n8n does not maintain a second copy of story eligibility or retry policy. |
+| **Agent runtime — `agent/runtime/`** | Builds prompts, runs agent processes, validates their outputs and file changes, protects QA artifacts, and supplies planning, story-state, Git, and CI helpers. | Centralizes the project-specific rules used by the cycle instead of rebuilding them in workflow nodes or leaving them to a model's interpretation. |
+
+The Python code enforcing these boundaries is referred to as the harness. A role can make several model requests and tool calls during one bridge task, but the bridge does not run competing coding tasks against the same files.
+
+### Reading the n8n workflow
+
+The graph is a step-request loop. It does not contain a separate node for every Planner, QA, or coding invocation. **Run Next Step** asks the bridge to do whichever stage Python considers due. That might be a maintainer sync, a planning pass, QA preparation, coding, evaluation, publication, a CI check, or finalization. The returned `step`, `outcome`, `reason`, and `phase` explain what actually ran.
+
+![Placeholder: n8n Development Pipeline workflow, showing step requests, waiting, result recording, and continuation](images/n8n-development-pipeline.png)
+
+*Screenshot placeholder: [`images/n8n-development-pipeline.png`](images/n8n-development-pipeline.png) is currently empty. Replace it with an image of the n8n **GW2 - Development Pipeline** canvas. Include the path from **Read Budget Settings** through **Run Next Step**, **Wait for Step**, **Record Step**, and **Continue?** so the request loop is visible.*
+
+The screenshot will show the visible loop; the following example explains what passes between its nodes and the Python process:
+
+1. **Read Budget Settings** loads the Claude budget row. **Run Next Step** sends it to `POST /cycle/step`, along with the resume URL of n8n's Wait node.
+2. The bridge checks for an existing task. If one is running, it re-attaches the new callback URL instead of starting another. Otherwise, Python chooses the next stage and creates a task record.
+3. Short stages can return a finished result immediately. Long stages, such as coding or evaluation, return `running` while the bridge executes them in a background thread. **Step Running?** routes that execution to **Wait for Step**.
+4. When the stage finishes, Python saves the outcome and next phase, then the bridge calls the Wait node's resume URL. n8n continues to **Record Step**, where the returned fields can be inspected.
+5. **Continue?** uses the result's `proceed` flag to loop or stop. For example, an actionable evaluation retry changes the saved phase to `implement` and permits another step. A Claude capacity wait leaves that phase in place and stops the current n8n run until a later attempt.
+
+The saved phase belongs to the Python bridge state, not to the position of a node on the canvas. A Wait timeout or restarted n8n execution can therefore re-attach to the same running task. A bridge-process restart is different: it interrupts the task, and recovery repeats the saved step. The [state and recovery section](#state-and-recovery) explains the records involved.
+
+### Why keep Python after moving to n8n?
+
+The move addressed visibility and control after the Python orchestrator became difficult for the maintainer to follow. n8n exposes the request loop, waits, and returned information in an execution view. Python remains responsible for precise repository rules: which story is eligible, which files a role may change, how a verdict is validated, and what a particular failure means. Moving those rules into canvas nodes would still require implementing and maintaining them, with the risk of splitting the same policy across two places.
+
+This division has a limit: the n8n canvas is not a complete trace of an agent's internal tool use or every Python function. Step results give the maintainer the decision trail; deeper investigation uses the bridge console, [runtime artifacts and logs](#state-and-recovery), and source code. The HTTP connection, callback delivery, saved state, and two running services also add operational work. The [bridge guide](../../local_bridge/README.md#running-the-pipeline) documents the actual execution and recovery procedures; the [exported n8n workflow](../../local_bridge/workflows/GW2-Development-Pipeline.json) records the canvas configuration.
 
 The system combines a fixed outer workflow with agents that choose how to perform their assigned task. Using Anthropic's [workflow and agent terminology](https://www.anthropic.com/engineering/building-effective-agents), the outer structure is a coded workflow; its coding and planning steps contain agent loops. It also uses an evaluator/implementation feedback loop. These patterns do not require different model vendors or parallel execution.
 
