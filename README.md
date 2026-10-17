@@ -10,7 +10,7 @@
 
 **Turn the materials and recipes you already have into useful crafting opportunities.** Nebet's GW2 Crafting Tool combines your Guild Wars 2 account data, recipe knowledge, inventory and Trading Post prices to help you discover recipes, evaluate crafting profit and plan which materials to use, craft or buy.
 
-> **Development note:** This project is also an experiment in AI-assisted, agentic software development. An orchestrated agent workflow helps plan, implement, review and verify changes. The development process is documented separately in the [Agentic Development Experiment](agent/agent_README_experimental.md); the rest of this README is about the application.
+> **Development note:** This project is also an experiment in AI-assisted, agentic software development. An orchestrated agent workflow helps plan, implement, review and verify changes. The development process is documented separately in the [Agentic Development Experiment](agent/README.md); the rest of this README is about the application.
 
 ![Crafting Profit web interface](docs/images/craftingProfit-01-10-2026.jpg)
 
