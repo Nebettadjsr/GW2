@@ -19,6 +19,8 @@ below stay in the plain form.
 ## Blocked
 - STORY-PERF-004 | STORY-PERF-004-cached-profit-page-acceptance.md | BLOCKED | milestone-05 | deps: STORY-APP-014, STORY-WEB-034
 
+## User
+
 ## Superseded
 
 - STORY-WEB-033 | STORY-WEB-033-recover-overlapping-account-refresh-scopes.md | SUPERSEDED | milestone-05 | deps: STORY-PERF-003

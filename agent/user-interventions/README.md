@@ -23,6 +23,10 @@ actually block progress, is never a reason to create a file here.
 
 ## Lifecycle
 
+OPEN intervention files also appear as links in BACKLOG `## User`, alongside
+OPEN User Decisions. The workflow refreshes that index without changing story
+eligibility; resolved requests disappear from the index but their files remain.
+
 1. The evaluator classifies a story-execution attempt as `NEEDS_USER`.
 2. Python — never the evaluator itself — writes a new file here named
    `UI-<NUMBER>-<STORY-ID>.md` (e.g. `UI-001-STORY-DOM-015.md`), embedding

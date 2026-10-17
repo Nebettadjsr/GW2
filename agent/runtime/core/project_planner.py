@@ -29,7 +29,7 @@ from agent.runtime.support.config import (
 from agent.runtime.support import config
 from agent.runtime.support.files import file_hash, write_json
 from agent.runtime.support.daily_log import print_status
-from agent.runtime.core import planning_context
+from agent.runtime.core import backlog_writer, planning_context
 from agent.runtime.core.follow_up_findings import planner_block, unresolved_findings
 from agent.runtime.core.story_archive import (
     archive_milestone_stories,
@@ -1575,6 +1575,10 @@ def run_planning_pass(rejected: list[str] | None = None) -> dict:
             pre_architect_requests,
             pre_adr_files,
         )
+
+        if checked.get("status") in ("COMPLETE", "NEEDS_USER"):
+            # Only validated human-answer transitions may remove a pending UD.
+            backlog_writer.sync_user_requests(backlog_file=BACKLOG_FILE)
 
         # The index is validated with the result: a pass that left
         # BACKLOG.md unparseable has broken story selection for every later

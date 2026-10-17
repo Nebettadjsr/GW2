@@ -832,6 +832,27 @@ def validate_backlog_entries(backlog_content: str) -> list[str]:
         _section_entry_problems(backlog_content, "Done", strict=False)
     )
 
+    user_span = find_section_span(backlog_content, "User")
+    if user_span is not None:
+        start, end = user_span
+        for line in backlog_content[start:end].splitlines():
+            if not line.strip():
+                continue
+            match = re.fullmatch(
+                r"- \[(UD-\d+|UI-\d+)\]\(\.\./(user-decisions|user-interventions)/"
+                r"((?:UD|UI)-\d+[^/\\]*\.md)\)", line
+            )
+            valid = match is not None
+            if valid:
+                request_id, directory, filename = match.groups()
+                valid = (
+                    (filename.startswith(request_id + "-") or filename == request_id + ".md")
+                    and directory == ("user-decisions" if request_id.startswith("UD-")
+                                      else "user-interventions")
+                )
+            if not valid:
+                problems.append("'## User' may contain only links to canonical UD/UI request files: " + line)
+
     return problems
 
 

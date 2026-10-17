@@ -150,6 +150,8 @@ written only through `agent/runtime/core/backlog_writer.py`, one canonical line
 each (`- STORY-ID | filename.md | STATUS | milestone-NN | deps: A, B`).
 Supplementary prose there -- `backlog entry:`, `dependency note:`,
 `disposition:`, or any indented continuation line -- is rejected.
+`## User` is a separate, non-executable index of OPEN UD/UI request links,
+maintained through `backlog_writer.sync_user_requests()`; it never holds stories.
 
 - `docs/DOMAIN_SPEC.md`
   - normative product/domain behavior

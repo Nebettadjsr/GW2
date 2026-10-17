@@ -395,6 +395,10 @@ class BridgeHttpTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
+        self.user_index = mock.Mock()
+        self.index_patch = mock.patch.object(bridge.backlog_writer, "sync_user_requests", self.user_index)
+        self.index_patch.start()
+        self.addCleanup(self.index_patch.stop)
         self.state = Path(self.directory.name) / "tasks.json"
         _CallbackReceiver.received = []
         self.receiver = ThreadingHTTPServer(("127.0.0.1", 0), _CallbackReceiver)
@@ -413,6 +417,13 @@ class BridgeHttpTests(unittest.TestCase):
         self.log = mock.patch.object(bridge, "log_line").start()  # never write the real agent/logs
         self.addCleanup(mock.patch.stopall)
         self.bridge.store.save_cycle(make_cycle(phase="ci", published_sha="e" * 40))
+        # Finish workers before removing mocks: no late User refresh may reach
+        # the real backlog after a test has returned.
+        self.addCleanup(self.finish_workers)
+
+    def finish_workers(self):
+        self.release.set()
+        self.wait_for(lambda: self.bridge.store.running() is None)
 
     def post(self, path, body, token=TOKEN):
         request = Request(f"http://127.0.0.1:{self.server.server_port}{path}", method="POST",
@@ -431,6 +442,30 @@ class BridgeHttpTests(unittest.TestCase):
         self.release.wait(5)
         record["phase"] = "finalize"
         return cycle.StepResult("PASSED", True)
+
+    def test_user_index_refresh_does_not_reset_saved_implementation_progress(self):
+        record = make_cycle(phase="implement", retry_count=2, implement_started=True,
+                            prompt="continue saved repair", publish_paths=["frontend/scripts/profitTiming.mjs"])
+        self.bridge.store.save_cycle(record)
+        with mock.patch.object(cycle, "choose_step", return_value="implement"), mock.patch.dict(
+            cycle.STEPS, {"implement": lambda c, ctx: cycle.StepResult("waiting_for_claude_budget", False)}
+        ):
+            task = self.bridge.next_step(self.callback)
+            self.wait_for(lambda: self.bridge.store.get(task["id"])["status"] == "completed")
+        persisted = self.bridge.store.active_cycle()
+        for key in ("phase", "retry_count", "implement_started", "prompt", "publish_paths"):
+            self.assertEqual(record[key], persisted[key])
+        self.assertGreaterEqual(self.user_index.call_count, 2)
+
+    def test_user_index_failure_does_not_lose_completed_step(self):
+        self.user_index.side_effect = [[], RuntimeError("index unavailable")]
+        with mock.patch.object(cycle, "choose_step", return_value="publish"), mock.patch.dict(
+            cycle.STEPS, {"publish": lambda c, ctx: cycle.StepResult("published", True)}
+        ):
+            task = self.bridge.next_step(self.callback)
+        self.assertEqual("completed", task["status"])
+        self.assertEqual("published", task["result"]["outcome"])
+        self.assertIn("Could not refresh BACKLOG User section.", task["result"]["workflow_warnings"])
 
     def test_async_step_runs_once_and_delivers_its_result_to_the_latest_wait_url(self):
         with mock.patch.dict(cycle.STEPS, {"ci": self.fake_ci}):

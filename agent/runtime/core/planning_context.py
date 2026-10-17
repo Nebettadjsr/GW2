@@ -417,6 +417,11 @@ def backlog_index(backlog_text: str, facts: dict) -> str:
 
         kind = _section_kind(section)
 
+        if (section or "").lower() == "user":
+            # Outstanding human questions are never truncated or rendered as stories.
+            lines.extend(body)
+            continue
+
         if kind == "other":
             lines.append(_body("\n".join(body), OTHER_SECTION_CHARS))
             continue

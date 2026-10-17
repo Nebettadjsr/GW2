@@ -38,6 +38,46 @@ class BacklogWriteRejected(RuntimeError):
     """The requested write would leave BACKLOG.md unparseable."""
 
 
+def sync_user_requests(backlog_file: Path | None = None) -> list[str]:
+    """Refresh the navigational User section from canonical OPEN UD/UI records.
+
+    Resolution stays with the existing request owner. This index never answers
+    a request, moves a story, or changes selection eligibility.
+    """
+    from agent.runtime.human import user_decisions, user_interventions
+
+    target = backlog_file or BACKLOG_FILE
+    content = read_file(target)
+    if not target.exists():
+        raise BacklogWriteRejected(f"Backlog does not exist: {target}")
+    rows = []
+    for directory, records in (
+        ("user-decisions", user_decisions.list_decisions()),
+        ("user-interventions", user_interventions.list_interventions()),
+    ):
+        for record in records:
+            if record["status"] == "OPEN":
+                rows.append(f"- [{record['id'] or record['file']}](../{directory}/{record['file']})")
+
+    span = find_section_span(content, "User")
+    if span is None:
+        # Place it between Blocked and Superseded without touching either body.
+        blocked = find_section_span(content, "Blocked")
+        if blocked is None:
+            raise BacklogWriteRejected("Backlog has no '## Blocked' section.")
+        position = blocked[1]
+        if content[position:position + 1] == "\n":
+            position += 1  # keep the preceding section's terminating blank line
+        content = content[:position] + "## User\n\n" + content[position:]
+        span = find_section_span(content, "User")
+    start, end = span
+    body = ("\n" + "\n".join(rows) + "\n") if rows else ""
+    updated = content[:start] + body + content[end:]
+    if updated != read_file(target):
+        _write_validated(updated, target)
+    return rows
+
+
 def _write_validated(content: str, backlog_file: Path) -> None:
     problems = validate_backlog_entries(content)
 

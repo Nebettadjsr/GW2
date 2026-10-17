@@ -24,6 +24,7 @@ if str(REPOSITORY) not in sys.path:
     sys.path.insert(0, str(REPOSITORY))
 
 from local_bridge import claude_budget, cycle as dev_cycle  # noqa: E402  (needs the repository on sys.path)
+from agent.runtime.core import backlog_writer  # noqa: E402
 from agent.runtime.support.capacity import ModelCapacityUnavailable  # noqa: E402
 from agent.runtime.support.daily_log import log_line  # noqa: E402
 
@@ -181,6 +182,7 @@ class Bridge:
                 return self.store.update(running["id"], callback_url=callback_url)
 
             cycle = self._current_cycle()
+            backlog_writer.sync_user_requests(backlog_file=dev_cycle.BACKLOG_FILE)
             step = dev_cycle.choose_step(cycle, self.store.planning, self.budget_settings)
             asynchronous = step in dev_cycle.ASYNC_STEPS
             task = self.store.create(kind="step", step=step,
@@ -228,6 +230,14 @@ class Bridge:
             logging.exception("Step %s failed", step)
             result = dev_cycle.StepResult("error", False, f"{type(exc).__name__}: {exc}")
             status, error = "failed", result["reason"]
+        try:
+            # Includes requests raised by QA, architect or evaluator, and human
+            # resolutions observed while another story remains active.
+            backlog_writer.sync_user_requests(backlog_file=dev_cycle.BACKLOG_FILE)
+        except Exception:
+            # An index failure must not lose a completed step or rerun an agent.
+            logging.exception("Could not refresh BACKLOG User section")
+            result.setdefault("workflow_warnings", []).append("Could not refresh BACKLOG User section.")
         if cycle is not None:
             cycle["history"].append({"step": step, "outcome": result["outcome"], "at": utc_now()})
             self.store.save_cycle(cycle)

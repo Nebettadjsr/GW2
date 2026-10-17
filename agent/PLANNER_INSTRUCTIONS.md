@@ -431,7 +431,7 @@ the shell.
 
 ## BACKLOG Contract
 
-`agent/stories/BACKLOG.md` has exactly five status sections:
+`agent/stories/BACKLOG.md` has these sections:
 
 - `## Active`
     - current active story
@@ -445,6 +445,20 @@ the shell.
 
 - `## Blocked`
     - stories currently not executable
+
+- `## User`
+    - pending human responses, between `## Blocked` and `## Superseded`
+    - links to OPEN `agent/user-decisions/UD-*.md` and `agent/user-interventions/UI-*.md` files
+    - not executable stories; never move a story here
+    - review answered requests using their existing resolution contracts. Resolve a UD only
+      when an explicit, sufficient human answer is present; never invent an answer or resolve
+      a UI on the user's behalf. Insufficient answers remain OPEN and listed.
+    - call `agent.runtime.core.backlog_writer.sync_user_requests()` to refresh this index;
+      the harness also refreshes it after a validated planning pass and workflow steps
+    - resolved requests disappear from this section; retain their canonical files and evidence
+
+- `## Superseded`
+    - stories replaced by another contract
 
 - `## Done`
     - completed stories in the current, not-yet-archived milestone
