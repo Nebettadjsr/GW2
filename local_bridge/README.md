@@ -188,12 +188,13 @@ The pipeline and the maintainer never share a working tree:
    failing agent-runtime CI job never holds a story.
 4. **Push your own work to `master`.** Only pushed commits reach the pipeline; the sync reviews them against
    the documentation once, so a forgotten doc update becomes a fix or a decision instead of a surprise.
-5. **One driver at a time.** Run one bridge process. The hourly schedule skips while a run is active; a
-   manual start re-attaches to a running step instead of starting another. Never start the bridge twice.
-6. **Restart the bridge only between steps, or while it waits on CI.** A restart marks the running step
-   `interrupted`, and the next run repeats it. That is cheap for `ci` and `publish`; for `implement` it
-   repeats Claude's attempt with a continuation prompt.
-7. **Change the n8n workflows deliberately.** After editing a workflow in the UI, click **Publish**. If you
+5. **One driver at a time.** Run one service process. The Python runner rejects external task starts;
+   its schedule skips while a run is active. In legacy mode, a new n8n execution re-attaches to a
+   running step instead of starting another. Do not leave both schedules enabled during cutover.
+6. **Stop the Python runner with Ctrl+C and let the current step finish.** A forced restart marks its
+   task `interrupted` and retries the saved phase. For interrupted implementation that means another
+   Claude attempt with a continuation prompt. With the legacy bridge, stop only between steps where possible.
+7. **While using n8n, change its workflows deliberately.** After editing a workflow in the UI, click **Publish**. If you
    import one with `n8n import:workflow`, publish it and run `docker restart n8n`, because the CLI only takes
    effect on restart. Export the result to `workflows/` so the repository copy stays current.
 8. **Steer Claude's spending through budget settings, not code constants.** The service persists settings
@@ -264,11 +265,11 @@ change through a step request invalidates the previous observation until the nex
 
 The Python driver uses these saved settings without an n8n table. Retire the separate n8n budget
 refresh workflow at cutover to avoid duplicate probes. The legacy n8n pipeline can still supply settings
-during the transition. No Grafana panels are changed by this step.
+during the transition. The current Grafana Canvas has no budget panels.
 
-## Start the bridge
+## Start the legacy bridge
 
-Normally, from either repository folder:
+For the n8n driver, from either repository folder (use [the Python launcher](#python-driver) after cutover):
 
 ```powershell
 .\local_bridge\start-bridge.cmd

@@ -2,6 +2,39 @@
 
 Start with the milestone diagram for the overall process. The decision diagram explains who may settle a question; the failure diagram distinguishes correction, waiting, and blocking. The [architecture diagram](ARCHITECTURE.md#components-and-communication) shows the host processes and their connections.
 
+## Starting, continuing and stopping a run
+
+The Python runner supplies the outer loop; the existing cycle engine chooses the actual stage.
+This is the implemented replacement for n8n, with a separate [live cutover](../../local_bridge/README.md#cutover-from-n8n).
+
+```mermaid
+flowchart TB
+    START[Service starts] --> SAVED{Unfinished saved run?}
+    SAVED -->|Yes| RESUME[Read saved task and attempt count]
+    SAVED -->|No| TRIGGER[Wait for nightly start or use --now / --once]
+    TRIGGER --> BEGIN[Start run with a 200-step limit]
+    BEGIN --> STEP[Cycle engine chooses and executes next stage]
+    RESUME --> RECOVER[Use completed result or retry interrupted phase]
+    RECOVER --> RESULT{Completed task says proceed?}
+    STEP --> WAIT[Wait locally for task completion]
+    WAIT --> RESULT
+    RESULT -->|Yes, limit not reached| STEP
+    RESULT -->|No, or step limit reached| STOP[Save stop reason and retain story progress]
+    STOP --> NEXT[Wait for next start, or exit in --once mode]
+    WAIT -. Running task and saved history .-> VIEW[Grafana reads status; no execution control]
+```
+
+Nightly starts are hourly at `:35` from `17:35` through `06:35`, in the host's local timezone.
+The window controls starts, not when an active run must stop. Waiting polls do not consume the
+step limit. Scheduled starts during a busy run are skipped; missed starts while the service is
+off are not replayed. Restarting an unfinished run preserves its attempt count, even outside the
+start window. If a sync changes Python workflow code, the launcher restarts the service before
+another stage runs. Ctrl+C allows the current step to finish before shutdown.
+
+Grafana can be unavailable without interrupting this loop. Its boxes and arrows describe stage
+activity; the Python engine still decides every transition. The [architecture guide](ARCHITECTURE.md#execution-and-visibility)
+explains how the display relates to saved state and what it cannot show.
+
 ## From the existing roadmap to a completed milestone
 
 A story is one implementation task. The rough milestones and initial specifications were established before the automated workflow began. A milestone contains several stories and has its own exit criteria; its details can be refined as work approaches. The loop below runs through one bridge task at a time. Planning and architecture calls occur when needed, not before every coding attempt.
@@ -87,7 +120,7 @@ flowchart TB
     LIMIT -->|No| BLOCK[Block story and record intervention]
     TYPE -->|Missing product rule| UD[Record User Decision; block affected story]
     TYPE -->|Claude allowance exhausted| KEEP[Keep phase; wait for a later run]
-    TYPE -->|Bridge process interrupted| AGAIN[Repeat saved step; continue interrupted coding]
+    TYPE -->|Service forcibly interrupted| AGAIN[Resume saved run and retry interrupted phase]
     TYPE -->|Push rejected or CI result unknown| KEEP
     TYPE -->|CI failure outside story scope| STOP[Stop for investigation; do not invoke coder]
     BLOCK --> CLEAR[Clear active pointer; later run can select independent work]
@@ -102,10 +135,12 @@ flowchart TB
 | Coding changes protected tests, plan, or lifecycle files | The harness restores them and reports the finding. This can trigger independent read-only QA review. |
 | Agent-runtime CI job fails | Recorded as a workflow warning separately from application acceptance. |
 | Documentation sync review fails twice | The range and failure are handed to planning, with a workflow warning. |
+| Grafana stops or cannot query the service | Execution continues; the dashboard shows a query error or is unavailable. A monitoring outage does not itself create a story failure. |
+| Python run reaches its 200-step guard | The run stops with a saved reason. It does not automatically block the story or spend a Claude failure retry. |
 
 Claude allowance is the maintainer's current bottleneck on the reported $20 plan. Codex allowance is not currently a constraint; needed Codex planning and architecture work can continue while Claude waits. The runtime can also preserve a phase for other capacity exceptions, but the two allowances are not equal operating problems in this setup. Reducing Claude consumption remains under investigation.
 
-These diagrams omit internal validation attempts and transport details. Separate counters exist for evaluation-driven coding retries, CI fixes, and consecutive non-capacity Claude failures. The [bridge guide](../../local_bridge/README.md) owns exact limits, outcomes, and recovery commands; the [runtime guide](../runtime/README.md) explains completed-attempt preservation and QA protection.
+These diagrams omit internal validation attempts. Separate counters exist for evaluation-driven coding retries, CI fixes, and consecutive non-capacity Claude failures; the outer run's step limit is another guard. The [service guide](../../local_bridge/README.md) owns exact limits, outcomes, and recovery commands; the [runtime guide](../runtime/README.md) explains completed-attempt preservation and QA protection.
 
 ## How maintainer and agent work meet
 

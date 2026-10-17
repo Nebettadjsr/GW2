@@ -13,7 +13,8 @@ This matters for a crafting application because a plausible result can still use
 ```mermaid
 flowchart TB
     H[Human maintainer and Product Owner] -->|Testing feedback, requests, and decisions| R[(Repository: requirements and work records)]
-    N[n8n in Docker: schedule and display workflow] -->|Authenticated HTTP step request| B[Python bridge on Windows: dispatch and persist progress]
+    N[Python runner on Windows: schedule and advance steps] -->|Local call within the service| B[Bridge: dispatch and persist progress]
+    V[Grafana in Docker: read-only stage view] -. Authenticated HTTP status read .-> B
     B -->|Invoke role and validate result| T[Agent runtime]
     T -->|Prompts and tool access| M[Claude and Codex CLI processes]
     M -->|Role-limited reads and writes| R
@@ -23,36 +24,37 @@ flowchart TB
     G -->|Checks for published commit| B
 ```
 
-### How n8n reaches the Python workflow
+### Execution and visibility
 
 ```mermaid
 flowchart TB
-    N[n8n: request, wait, and record result]
-    B[Python bridge: HTTP interface and saved task state]
-    P[Python cycle and runtime: select stage and do the work]
-    N -->|Run next step| B
-    B -->|Dispatch| P
-    P -->|Outcome and next phase| B
-    B -->|Result or callback| N
+    subgraph SERVICE[One Python workflow service]
+        R[Runner: schedule and step loop] --> B[Bridge: execute and save tasks]
+        B --> P[Cycle and runtime: choose stage and apply rules]
+        P -->|Outcome and next phase| B
+        B -->|Saved task result| R
+    end
+    G[Grafana Canvas] -. GET /cycle every five seconds .-> B
 ```
 
-The bridge is the Python service connecting n8n to the host checkout and installed agent tools. It calls the cycle and runtime modules in the same process. Python is the implementation language for those parts; n8n provides the visible execution loop.
+The runner, bridge and cycle are Python modules within one host service, not separate servers. The runner calls the bridge directly; the bridge uses the existing cycle and runtime to do the work. Grafana reads host status over HTTP; the execution loop makes no HTTP step requests. Claude and Codex still run as separate CLI processes.
 
 | Part | Owns | Why it lives there |
 | --- | --- | --- |
-| **n8n** | Scheduling, budget-setting input, waiting, and the execution view. | Makes runs and their returned information inspectable by the maintainer. |
-| **Bridge** | Authenticated requests, one active task, completion callbacks, and persisted cycle records. | Connects the container to local execution and retains progress independently of an n8n run. |
+| **Python runner** | Nightly starts, waiting for tasks, continuing or stopping a run, and the 200-step guard. | Replaces n8n's generic loop without duplicating the stage rules. |
+| **Bridge** | One active task, persisted task/cycle/budget state, the budget refresh worker, and authenticated status/configuration endpoints. | Keeps execution and its records under one state owner; Grafana can inspect them without driving work. |
 | **Cycle and agent runtime** | Stage selection, agent invocation, validation, file protection, lifecycle changes, Git, and CI handling. | Keeps repository rules in testable Python code, with one definition of eligibility and retry policy. |
+| **Grafana** | A Canvas view of current activity and recent active-story events. | Provides an editable stage diagram without implementing the workflow again in a browser application. |
 
-Each n8n **Run Next Step** request can execute a different stage. Python selects it from saved state and current triggers; n8n records the returned stage, outcome, reason, and next phase, then loops or stops according to `proceed`. Long tasks finish through a callback. **Record Step** exposes `step`, `story_id`, `outcome`, `phase`, and `reason` in its output, so identifying the stage does not require reading bridge source. The canvas itself, however, shows the same generic request loop for planning, coding, and evaluation. The [workflow diagrams](WORKFLOW_DIAGRAMS.md) explain the stages, but those diagrams are documentation rather than the executed n8n graph.
+The runner starts hourly at `:35` from `17:35` through `06:35`, using the host's local timezone. A run continues while completed tasks return `proceed: true`; a budget wait, empty queue, decision or failure can stop it. Long tasks are polled locally, with no n8n callback. The start window does not interrupt a running task, and missed starts while the service is off are not replayed. The [run-control diagram](WORKFLOW_DIAGRAMS.md#starting-continuing-and-stopping-a-run) shows these decisions.
 
-![GW2 Development Pipeline in n8n](images/n8n-development-pipeline.png)
+Grafana reads `GET /cycle` through its data source. The dashboard prioritizes the running task over the saved next phase: for example, it can show planning while the active story remains at `implement` awaiting Claude capacity. Blue indicates running work; amber indicates waiting, red needs attention, green records completion, and gray has no result. Completion of a stage is not proof of correctness. Arrows are explanatory and never execute a transition.
 
-n8n currently supplies a schedule, manual execution controls, an editable budget table, callback waits, and a view of returned step data. The separate budget workflow periodically asks Python to calculate usage status and stores the result in that table. Budget calculation, stage selection, and project recovery remain Python responsibilities. A Python loop with a scheduler could drive the same cycle without n8n; the present design does not technically require it.
+The Canvas is a maintained view of the known stages, not a graph generated from Python code. Adding or renaming a stage may require a dashboard edit; changing its internal implementation need not. It shows active-story history rather than a complete project timeline. Agent tool calls and coding output still require the console or runtime records. Budget state is exposed by the service but has no dashboard panel or editing control yet.
 
-Its value here is therefore an existing control and inspection interface. That comes with a container, HTTP callbacks, and workflow exports to maintain. It only partly meets the original goal of seeing the development process: phase names are available in node outputs, but the executed graph does not show separate planning, coding, and evaluation stages. Internal agent tool use also requires the console or runtime records. Keeping n8n for its controls and making actual stages visible are separate decisions; the latter has not been implemented in this graph.
+The reason for this split is the maintainer's need to see which role is working without maintaining the same policy in a visual execution graph. The old n8n canvas displayed a generic request/wait loop even when Python was planning, coding or evaluating. Python now owns the outer loop too; Grafana supplies the separate view. This removes n8n's callback and schedule dependency after deployment, but leaves the custom Python engine to maintain and adds Grafana configuration to operate. The [comparison](COMPARISON.md#execution-and-visibility-are-separate-choices) considers the alternatives.
 
-[State and recovery](#state-and-recovery) describes the Python-owned recovery records. The [bridge guide](../../local_bridge/README.md#running-the-pipeline) and [exported workflow](../../local_bridge/workflows/GW2-Development-Pipeline.json) provide the operating details.
+These changes are implemented on this branch; they do not themselves replace the live n8n service. The [cutover guide](../../local_bridge/README.md#cutover-from-n8n) covers preserving in-flight work and disabling both n8n schedules. Legacy callbacks and [workflow exports](../../local_bridge/workflows/GW2-Development-Pipeline.json) remain for rollback. The [Grafana guide](../../workflow_monitor/README.md) covers setup and dashboard persistence.
 
 ## Why the responsibilities are separate
 
@@ -85,6 +87,8 @@ The maintainer reports using a $20 Claude plan and frequently exhausting its all
 
 The implementation checks Claude's session and weekly allowance before coding. It does not reserve capacity for the whole run or stop a run at the threshold. While Claude waits, triggered Codex planning and architecture work can continue. The quota controls pace the available allowance; they do not increase it. Reducing Claude usage remains under investigation. The [comparison's cost section](COMPARISON.md#cost-and-the-current-bottleneck) distinguishes that practical constraint from general trade-offs between workflow designs.
 
+Budget settings and the latest usage reading now persist in the service's state file. A worker refreshes at startup and every quarter-hour. That cached result is for observation; coding still requires a fresh check. Manual overrides remain available through authenticated `POST /budget`, replacing the n8n table as the live configuration source after cutover. The [budget guide](../../local_bridge/README.md#claude-budget) owns the exact limits and reset rules.
+
 ## Documentation ownership is part of the design
 
 Two different questions matter: **where does a fact belong**, and **who may change that file**? The [documentation map in `CLAUDE.md`](../../CLAUDE.md#documentation-map) answers the first. [`DOCUMENT_OWNERSHIP` in `config.py`](../runtime/support/config.py) and the role contracts define write authority. This overview is a reading guide, not a second permission table.
@@ -107,21 +111,24 @@ The harness alone changes the active-story pointer and mechanical status transit
 
 | Record | Purpose and lifetime |
 | --- | --- |
-| Bridge `tasks.json` | Task records, next phase, retry counters, changed paths, and published SHA. `GW2_BRIDGE_STATE` selects the path; the default is `%USERPROFILE%/.gw2-claude-bridge/tasks.json`, outside Git. |
+| Service `tasks.json` | Task records, next phase, retry counters, changed paths, published SHA, planning continuity, budget settings/readings, and runner checkpoints. `GW2_BRIDGE_STATE` selects the path; the default is `%USERPROFILE%/.gw2-claude-bridge/tasks.json`, outside Git. |
 | `CURRENT_STORY.md` and `BACKLOG.md` | Tracked active-story pointer and queue index. Eligibility also checks the canonical story and its prerequisites. |
 | `agent/qa-plans/` | Tracked QA contracts and review records used across coding attempts. |
 | `agent/runtime/artifacts/` | Ignored generated prompts, results, and backups for the current runtime. These are not authoritative requirements. |
 | `agent/logs/` | Tracked append-only daily operational history, separate from generated artifacts. |
+| Grafana Docker volume | Dashboard edits, data-source settings and Grafana accounts; separate from project execution state. The saved dashboard JSON is a versioned design, not an automatic export of UI edits. |
 
-Progress is recorded outside the live model conversation and independently of n8n's current execution. The bridge saves its JSON state through a temporary file and atomic replacement. That avoids exposing a partially rewritten state file, but does not make a whole stage's file edits, model calls, and Git operations one transaction.
+Progress is recorded outside the live model conversation and independently of Grafana. The bridge saves JSON through a temporary file and atomic replacement. Task creation and the runner's task identity/attempt counter are saved together before work starts. That avoids exposing a partially rewritten file, but does not make a whole stage's file edits, model calls, and Git operations one transaction. An OS file lock rejects another updated service using the same state path; Python-driver mode also rejects n8n or manual HTTP task starts.
 
 | Interruption | How work resumes | Limit |
 | --- | --- | --- |
-| n8n stops or its Wait times out | A later execution re-attaches to the bridge's still-running task instead of starting another. | This depends on the bridge and its saved records remaining available. |
-| The bridge process restarts | Running tasks are marked interrupted; the next run repeats the saved stage. Interrupted coding receives a continuation prompt and retains its captured baseline. | Recovery is at stage boundaries, not the exact point where a process stopped. Some work may be repeated. |
+| Grafana or its connection stops | The Python workflow continues. Grafana reads current state when it reconnects. | The dashboard is unavailable during the outage; it does not retain a complete execution history. |
+| A normal Ctrl+C stops the Python runner | Scheduling stops and the current step is allowed to finish. An unfinished run's saved checkpoint is retained for restart. | Shutdown can take as long as the model call or CI wait. |
+| The service is forcibly stopped or the host restarts | Running tasks are marked interrupted. An active Python run resumes automatically, even outside the start window, and retries through the existing phase recovery. Interrupted coding uses a continuation prompt and its captured baseline. | Recovery is at stage boundaries. Work may repeat; a force-kill does not prove that child processes or external effects stopped. |
+| Legacy n8n stops before cutover | A later n8n execution can reattach to the bridge's still-running task. | This is the legacy driver path, not a dependency of the Python runner. |
 | An agent exhausts capacity or fails | Capacity waits retain the phase. Other failures follow that stage's retry or blocking rules; validated plans and completed work are reused where the recovery path supports it. | An incomplete model response is not a completed result. Uncommitted edits can need inspection before another attempt. |
 
-The daily log in `agent/logs/` records completed step outcomes, reasons, and workflow warnings. Alongside n8n's execution records, prompts and results in `artifacts/`, and the repository diff, it helps reconstruct where a run diverged from expectations. It is a decision trail, not a complete agent transcript; streamed coding output goes to the bridge console, and generated artifacts may be overwritten by later runs. These records make it possible to investigate a failure and target a change to the responsible workflow stage instead of restarting the project without understanding the cause.
+The daily log in `agent/logs/` records completed step outcomes, reasons, and workflow warnings. Together with saved tasks and runner stop reasons, prompts and results in `artifacts/`, and the repository diff, it helps reconstruct where a run diverged from expectations. It is a decision trail, not a complete agent transcript; streamed coding output goes to the service console, and generated artifacts may be overwritten by later runs. These records make it possible to investigate a failure and target a change to the responsible workflow stage instead of restarting the project without understanding the cause.
 
 Recovery can preserve finished work and return a derailed run to a coherent point: reuse a validated QA plan, retry evaluation without repeating completed coding, or reconcile the active-story pointer, backlog, and cycle record. Git history also allows tracked files to be recovered from earlier versions. The runtime already restores specific protected files around agent attempts, but a full rollback of the project and its execution state is a maintainer action, not an automatic time-travel feature. The local cycle file and ignored artifacts are outside Git; recovering an earlier combination requires those records or backups as well as matching tracked files. There is no guarantee of zero lost progress after every failure.
 
@@ -133,4 +140,4 @@ The normal launcher uses the separate `agent/dev` worktree. Between stories, `sy
 
 After scoped publication and the CI step, finalization records DONE and pushes lifecycle updates on the agent branch, then attempts to fast-forward `master`. If `master` moved incompatibly, the push is rejected without force; the story remains complete on the agent branch and a warning records the outstanding integration. The next sync and story can carry both histories. This is branch publication, not proof of deployment to a running application.
 
-The most useful code entry points are [`choose_step()` and stage functions](../../local_bridge/cycle.py), [Git synchronization](../runtime/support/git_sync.py), [sync review](../runtime/core/sync_review.py), [backlog actions](../runtime/core/backlog_writer.py), and [QA/evaluation details in the runtime guide](../runtime/README.md). The [bridge guide](../../local_bridge/README.md#branches) covers the actual worktrees and commands.
+The most useful code entry points are the [runner and schedule](../../local_bridge/run_cycle.py), [executor and status API](../../local_bridge/bridge.py), [`choose_step()` and stage functions](../../local_bridge/cycle.py), [Git synchronization](../runtime/support/git_sync.py), [sync review](../runtime/core/sync_review.py), [backlog actions](../runtime/core/backlog_writer.py), and [QA/evaluation details in the runtime guide](../runtime/README.md). The [service guide](../../local_bridge/README.md#branches) covers the actual worktrees and commands.
