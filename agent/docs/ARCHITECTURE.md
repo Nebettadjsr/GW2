@@ -12,18 +12,28 @@ This matters for a crafting application because a plausible result can still use
 
 ```mermaid
 flowchart TB
-    N[n8n in Docker: schedule, wait, and inspect results]
-    subgraph PY[Python on the Windows host]
-        B[Bridge: HTTP interface and persisted task state]
-        T[Cycle and runtime: choose stage, execute, and validate]
-        B -->|Dispatch saved or next stage| T
-        T -->|Outcome and next phase| B
-    end
-    N -->|Request a step| B
-    B -->|Immediate result or completion callback| N
-    B <-->|Save and reload| S[(Local cycle records)]
-    T -->|Run bounded tasks| A[Claude and Codex agents]
-    T -->|Read, protect, and update| R[(Repository, QA plans, artifacts, and logs)]
+    H[Human maintainer and Product Owner] -->|Testing feedback, requests, and decisions| R[(Repository: requirements and work records)]
+    N[n8n in Docker: schedule and display workflow] -->|Authenticated HTTP step request| B[Python bridge on Windows: dispatch and persist progress]
+    B -->|Invoke role and validate result| T[Agent runtime]
+    T -->|Prompts and tool access| M[Claude and Codex CLI processes]
+    M -->|Role-limited reads and writes| R
+    T -->|Select stories and apply lifecycle changes| R
+    B <-->|Next phase and counters| S[(Local bridge state)]
+    T -->|Commit and push scoped changes| G[GitHub repository and Actions]
+    G -->|Checks for published commit| B
+```
+
+### How n8n reaches the Python workflow
+
+```mermaid
+flowchart TB
+    N[n8n: request, wait, and record result]
+    B[Python bridge: HTTP interface and saved task state]
+    P[Python cycle and runtime: select stage and do the work]
+    N -->|Run next step| B
+    B -->|Dispatch| P
+    P -->|Outcome and next phase| B
+    B -->|Result or callback| N
 ```
 
 The bridge is the Python service connecting n8n to the host checkout and installed agent tools. It calls the cycle and runtime modules in the same process. Python is the implementation language for those parts; n8n provides the visible execution loop.
@@ -34,11 +44,15 @@ The bridge is the Python service connecting n8n to the host checkout and install
 | **Bridge** | Authenticated requests, one active task, completion callbacks, and persisted cycle records. | Connects the container to local execution and retains progress independently of an n8n run. |
 | **Cycle and agent runtime** | Stage selection, agent invocation, validation, file protection, lifecycle changes, Git, and CI handling. | Keeps repository rules in testable Python code, with one definition of eligibility and retry policy. |
 
-Each n8n **Run Next Step** request can execute a different stage. Python selects it from saved state and current triggers; n8n records the returned stage, outcome, reason, and next phase, then loops or stops according to `proceed`. Long tasks finish through a callback. The canvas exposes that loop, while [workflow diagrams](WORKFLOW_DIAGRAMS.md) explain the story stages it drives.
+Each n8n **Run Next Step** request can execute a different stage. Python selects it from saved state and current triggers; n8n records the returned stage, outcome, reason, and next phase, then loops or stops according to `proceed`. Long tasks finish through a callback. **Record Step** exposes `step`, `story_id`, `outcome`, `phase`, and `reason` in its output, so identifying the stage does not require reading bridge source. The canvas itself, however, shows the same generic request loop for planning, coding, and evaluation. The [workflow diagrams](WORKFLOW_DIAGRAMS.md) explain the stages, but those diagrams are documentation rather than the executed n8n graph.
 
 ![GW2 Development Pipeline in n8n](images/n8n-development-pipeline.png)
 
-This separation gives the maintainer a visible workflow while keeping the detailed policy in Python. It also introduces an HTTP and process boundary to maintain. Internal agent tool use is inspected through the console and runtime records, beyond what the canvas shows. [State and recovery](#state-and-recovery) describes how those records support resumption and investigation; the [bridge guide](../../local_bridge/README.md#running-the-pipeline) and [exported workflow](../../local_bridge/workflows/GW2-Development-Pipeline.json) provide the operating details.
+n8n currently supplies a schedule, manual execution controls, an editable budget table, callback waits, and a view of returned step data. The separate budget workflow periodically asks Python to calculate usage status and stores the result in that table. Budget calculation, stage selection, and project recovery remain Python responsibilities. A Python loop with a scheduler could drive the same cycle without n8n; the present design does not technically require it.
+
+Its value here is therefore an existing control and inspection interface. That comes with a container, HTTP callbacks, and workflow exports to maintain. It only partly meets the original goal of seeing the development process: phase names are available in node outputs, but the executed graph does not show separate planning, coding, and evaluation stages. Internal agent tool use also requires the console or runtime records. Keeping n8n for its controls and making actual stages visible are separate decisions; the latter has not been implemented in this graph.
+
+[State and recovery](#state-and-recovery) describes the Python-owned recovery records. The [bridge guide](../../local_bridge/README.md#running-the-pipeline) and [exported workflow](../../local_bridge/workflows/GW2-Development-Pipeline.json) provide the operating details.
 
 ## Why the responsibilities are separate
 
