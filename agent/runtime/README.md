@@ -13,7 +13,7 @@ start a model or push):
 
 ```powershell
 python -m unittest discover -s agent/runtime/tests -t . -p 'test_*.py'
-python -m unittest local_bridge.test_bridge local_bridge.test_claude_budget
+python -m unittest local_bridge.test_bridge local_bridge.test_claude_budget local_bridge.test_budget_state
 ```
 
 | Folder | Responsibility |

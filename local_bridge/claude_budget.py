@@ -12,6 +12,7 @@ session limit is checked separately so Claude is never started near its end.
 
 from __future__ import annotations
 
+import math
 import re
 from datetime import datetime, time, timedelta
 
@@ -26,7 +27,9 @@ _WEEKLY_RESET = re.compile(
 
 
 def settings_from(raw: dict | None) -> dict:
-    """Validated settings from the n8n data-table row; missing fields use the defaults."""
+    """Validated budget settings; legacy data-table metadata is ignored."""
+    if raw is not None and not isinstance(raw, dict):
+        raise ValueError("Claude budget settings must be an object.")
     settings = dict(DEFAULTS)
     settings.update({key: value for key, value in (raw or {}).items()
                      if key in DEFAULTS and value not in (None, "")})
@@ -34,7 +37,12 @@ def settings_from(raw: dict | None) -> dict:
     if settings["mode"] not in ("auto", "manual"):
         raise ValueError("Claude budget mode must be 'auto' or 'manual'.")
     for key in ("allowance_windows", "windows_per_full_week", "manual_cap_percent"):
-        settings[key] = float(settings[key])
+        try:
+            settings[key] = float(settings[key])
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError(f"{key} must be numeric.") from error
+        if not math.isfinite(settings[key]):
+            raise ValueError(f"{key} must be finite.")
     if settings["allowance_windows"] < 0 or settings["windows_per_full_week"] <= 0:
         raise ValueError("allowance_windows must be >= 0 and windows_per_full_week > 0.")
     if not 0 <= settings["manual_cap_percent"] <= 100:
@@ -56,7 +64,12 @@ def weekly_reset(usage_text: str, now: datetime) -> datetime:
             month_number = datetime.strptime(month[:3].title(), "%b").month
             candidates = [datetime.combine(datetime(year, month_number, int(day)).date(), clock)
                           for year in (now.year - 1, now.year, now.year + 1)]
-            return min(candidates, key=lambda candidate: abs(candidate - now))
+            reset = min(candidates, key=lambda candidate: abs(candidate - now))
+            # Preserve the fix already used by the maintainer branch: stale
+            # usage output still names the recurring reset weekday and time.
+            while reset <= now:
+                reset += timedelta(days=7)
+            return reset
         reset = datetime.combine(now.date(), clock)
         return reset if reset > now else reset + timedelta(days=1)
     days_ahead = (5 - now.weekday()) % 7

@@ -129,8 +129,9 @@ The pipeline and the maintainer never share a working tree:
 7. **Change the n8n workflows deliberately.** After editing a workflow in the UI, click **Publish**. If you
    import one with `n8n import:workflow`, publish it and run `docker restart n8n`, because the CLI only takes
    effect on restart. Export the result to `workflows/` so the repository copy stays current.
-8. **Steer Claude's spending only through the budget table.** Use `mode = manual` for a day, and never
-   edit code constants for that.
+8. **Steer Claude's spending through budget settings, not code constants.** The service persists settings
+   and accepts changes through `POST /budget`. During the n8n transition, either workflow's supplied
+   budget row still updates those settings; keep that row consistent until those clients are retired.
 9. **Agents must not pipe text into programs from PowerShell** (`AGENTS.md`, *Editing Files on Windows*);
    Windows PowerShell 5.1 turns `—` and `§` into `?`. A machine-wide PowerShell 7 fixes it for the Codex
    sandbox; the Microsoft Store edition does not.
@@ -150,8 +151,10 @@ If a check fails, `implement` stops with `waiting_for_claude_budget` and keeps i
 run tries again. A Claude run that fails while `/usage` shows no capacity counts as a capacity pause,
 not as a failed run.
 
-Settings live in the n8n data table **GW2 Claude Budget** (one row). Edit it in n8n; the next step uses
-the new values.
+Budget settings and the latest observation now live under `budget` in the bridge's existing `tasks.json`,
+alongside cycle state. They survive a restart. Old state files gain the default settings without
+discarding story progress. The live n8n row inspected during this change matched those defaults:
+`auto`, 10 allowance windows, 10 windows per full week, `17:30`, manual cap 100.
 
 | Column | Meaning |
 | --- | --- |
@@ -160,7 +163,42 @@ the new values.
 | `windows_per_full_week` | How many full 5h windows make up 100 % of the weekly limit (default 10). |
 | `unlock_time` | When each day's share unlocks (default `17:30`). |
 | `manual_cap_percent` | Weekly-usage cap in `manual` mode. |
-| `now_*` | Live status, written every 15 minutes by **GW2 - Claude Budget**. Run that workflow to refresh it. |
+| `now_*` | Legacy n8n display columns. These are ignored as settings; the service's persisted observation replaces them. |
+
+The bridge refreshes usage at startup and at each quarter-hour (`:00`, `:15`, `:30`, `:45`), replacing
+the separate **GW2 - Claude Budget** refresh loop. Both the background refresh and the fresh pre-coding
+gate use `claude_budget.status()` and the existing `/usage` reader. Observations do not stop a running
+coding attempt, consume story retry counters, or change the story's phase. The cached observation is
+for inspection, never a substitute for the fresh coding gate.
+
+Additional rules retained from the calculator:
+
+- Both comparisons are strict: usage equal to the session threshold or weekly cap prevents a start.
+- If multiple weekly allowances are reported, the highest used percentage gates Claude.
+- Unused shares carry within the current week, not into a new week. The weekly cap is capped at 100%.
+- Reset dates/times use the host's local clock. Dated resets already in the past roll forward by whole
+  weeks, retaining the fix already on `master`; without a printed reset the existing fallback is Saturday
+  at 07:00. `next_unlock` is the next share boundary, not a guarantee that the next attempt will fit.
+- Manual mode replaces the weekly cap only. It does not bypass the session threshold or expire
+  automatically; it remains selected until settings change. A manual cap of zero blocks starts.
+- Invalid settings and unreadable usage are errors, not permission to run. Non-finite numeric settings
+  are rejected. The displayed rounded cap does not replace the unrounded value used by the calculator.
+
+For inspection, authenticated `GET /budget` returns `settings`, `checked_at`, `result`, `error`, `stale`,
+`refresh_interval_seconds`, and an effective `claude_allowed` flag. The same object is included as
+`budget` in `GET /cycle`. These reads do not launch a usage probe. After 15 minutes a reading is marked
+stale and the effective flag is false. A failed refresh clears `result` and records its error rather
+than continuing to display an old permission.
+
+Authenticated `POST /budget` with `{}` refreshes the stored configuration. Supplying `{"budget": {...}}`
+validates and persists a replacement settings object, using defaults for omitted fields, then refreshes.
+Its successful response retains the existing flat result format for n8n compatibility. A settings
+change through a step request invalidates the previous observation until the next refresh.
+
+This change prepares the service replacement; it does not modify or stop the installed n8n workflows.
+At deployment, retire the separate n8n budget refresh workflow to avoid duplicate probes. The main
+n8n pipeline can still supply settings during the transition; a future standalone cycle runner can
+omit them and reuse the service's persisted settings. No Grafana panels are changed by this step.
 
 ## Start the bridge
 
@@ -222,9 +260,10 @@ All endpoints except `/health` need the bearer token.
 | --- | --- |
 | `GET /health` | Liveness check. |
 | `GET /cycle` | The active cycle record (phase, budgets, published SHA, step history) and any running task. |
+| `GET /budget` | Saved settings and latest budget observation, including age/error flags; no fresh usage call. |
 | `POST /cycle/step` | `{"callback_url": <Wait resume URL>, "budget": <settings row>}`. Starts the next step, or re-attaches to the running one. |
 | `GET /tasks/{id}` | One task and its result. |
-| `POST /budget` | `{"budget": <settings row>}`. Current usage, the cap in force and whether Claude may start. |
+| `POST /budget` | `{}` refreshes stored settings; `{"budget": <settings row>}` also replaces them. Persists the reading and returns the existing flat result. |
 | `POST /tasks` | `{"prompt", "agent": "claude"\|"codex", "callback_url"}`. A read-only agent call used by the **Bridge/Codex Connection Test** workflows. |
 
 Only one task runs at a time. A step task's result carries `step`, `outcome`, `proceed`, `reason` and
@@ -244,7 +283,7 @@ the `phase` after the step.
 The tests fake agents, Git and CI; they never launch Claude or Codex or touch the remote.
 
 ```powershell
-python -m unittest local_bridge.test_bridge local_bridge.test_claude_budget -v
+python -m unittest local_bridge.test_bridge local_bridge.test_claude_budget local_bridge.test_budget_state -v
 ```
 
 `workflows/` holds the exported **GW2 - Development Pipeline** and **GW2 - Claude Budget**. Import them with

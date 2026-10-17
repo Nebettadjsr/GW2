@@ -565,6 +565,31 @@ class BridgeHttpTests(unittest.TestCase):
             status, body = self.post("/budget", {"budget": {"mode": "manual", "manual_cap_percent": 15}})
         self.assertEqual((status, body["weekly_cap_percent"], body["claude_allowed"]), (200, 15, False))
 
+    def test_budget_status_is_read_only_and_part_of_cycle_state(self):
+        with mock.patch.object(bridge.claude_budget, "status", return_value={"claude_allowed": False, "reason": "quota"}) as probe:
+            self.post("/budget", {"budget": {"mode": "manual", "manual_cap_percent": 15}})
+            probe.reset_mock()
+            saved = self.get("/budget")
+            self.assertEqual(saved, self.get("/cycle")["budget"])
+            probe.assert_not_called()
+        self.assertEqual(saved["settings"]["manual_cap_percent"], 15)
+        self.assertFalse(saved["claude_allowed"])
+        self.assertEqual(saved["result"]["reason"], "quota")
+
+    def test_budget_refresh_reuses_settings_and_records_a_probe_error(self):
+        self.bridge.set_budget_settings({"mode": "manual", "manual_cap_percent": 15})
+        with mock.patch.object(bridge.claude_budget, "status", return_value={"claude_allowed": True}) as probe:
+            self.post("/budget", {})
+            self.assertEqual(probe.call_args.args[0]["mode"], "manual")
+        with mock.patch.object(bridge.claude_budget, "status", side_effect=RuntimeError("usage unavailable")):
+            with self.assertRaises(HTTPError) as failed:
+                self.post("/budget", {})
+        self.assertEqual(failed.exception.code, 500)
+        state = self.get("/budget")
+        self.assertEqual(state["error"], "usage unavailable")
+        self.assertIsNone(state["result"])
+        self.assertFalse(state["claude_allowed"])
+
     def test_connection_test_task_runs_the_agent_read_only_and_reports_back(self):
         self.bridge.claude_command = ("python", "-c", "import sys; print('pong', sys.argv[1:4])")
         status, task = self.post("/tasks", {"prompt": "ping", "callback_url": self.callback})

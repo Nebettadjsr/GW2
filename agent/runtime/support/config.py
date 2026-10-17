@@ -121,7 +121,7 @@ CLAUDE_MODEL = "claude-opus-5"
 MAX_RETRIES_PER_STORY = 2
 
 # Claude starts only while its 5h session is below this; the weekly limit is
-# governed by the n8n Claude budget (local_bridge/claude_budget.py).
+# governed by the service's Claude budget (local_bridge/claude_budget.py).
 CLAUDE_USAGE_LIMIT_PERCENT = 90
 
 # A Claude run that exits non-zero while carrying no capacity signal is a

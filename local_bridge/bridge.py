@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hmac
 import json
 import logging
@@ -11,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -37,6 +39,7 @@ CALLBACK_RETRY_DELAYS = (0, 0.25, 0.5, 1, 2, 4, 8)
 # start-bridge.cmd starts the bridge again when it exits with this code.
 RESTART_EXIT_CODE = 3
 ACTIVE_STATUSES = {"queued", "running"}
+BUDGET_REFRESH_SECONDS = 15 * 60
 
 
 def utc_now() -> str:
@@ -75,6 +78,11 @@ class Store:
         self.cycles: dict[str, dict] = data.get("cycles", {})
         self.active: str | None = data.get("active")
         self.planning: dict = data.get("planning", {})
+        self.budget: dict = data.get("budget") or {
+            "settings": claude_budget.settings_from(None),
+            "checked_at": None, "result": None, "error": None,
+        }
+        self.budget["settings"] = claude_budget.settings_from(self.budget.get("settings"))
         for task in self.tasks.values():
             if task.get("status") in ACTIVE_STATUSES:
                 # Its outcome is unknown. A cycle step is simply run again;
@@ -89,7 +97,7 @@ class Store:
             temporary = self.path.with_suffix(self.path.suffix + ".tmp")
             temporary.write_text(json.dumps(
                 {"tasks": self.tasks, "cycles": self.cycles, "active": self.active,
-                 "planning": self.planning},
+                 "planning": self.planning, "budget": self.budget},
                 ensure_ascii=False), encoding="utf-8")
             os.replace(temporary, self.path)
 
@@ -163,10 +171,66 @@ class Bridge:
         node = str(CODEX_NODE_EXECUTABLE if CODEX_NODE_EXECUTABLE.exists() else (shutil.which("node") or CODEX_NODE_EXECUTABLE))
         self.codex_command = codex_command or (node, str(CODEX_CLI_SCRIPT))
         self.step_lock = threading.Lock()
-        self.budget_settings: dict | None = None
+        self.budget_lock = threading.Lock()
         self.last_step_request_at: str | None = None
         self.restarting = False
         self._delivery_locks: dict[str, threading.Lock] = {}
+
+    @property
+    def budget_settings(self) -> dict:
+        with self.store.lock:
+            return dict(self.store.budget["settings"])
+
+    def set_budget_settings(self, raw: dict) -> None:
+        settings = claude_budget.settings_from(raw)
+        with self.budget_lock, self.store.lock:
+            if settings != self.store.budget["settings"]:
+                self.store.budget.update(settings=settings, checked_at=None, result=None, error=None)
+                self.store.save()
+
+    def budget_state(self) -> dict:
+        """Read saved status without invoking Claude; old readings never grant permission."""
+        with self.store.lock:
+            state = copy.deepcopy(self.store.budget)
+        checked_at = state["checked_at"]
+        state["stale"] = checked_at is None or (
+            datetime.now(timezone.utc) - datetime.fromisoformat(checked_at)
+        ).total_seconds() >= BUDGET_REFRESH_SECONDS
+        state["refresh_interval_seconds"] = BUDGET_REFRESH_SECONDS
+        state["claude_allowed"] = bool(
+            not state["stale"] and not state["error"] and (state["result"] or {}).get("claude_allowed")
+        )
+        return state
+
+    def check_budget(self, raw: dict | None = None) -> dict:
+        """Refresh and persist the existing calculation, also serving legacy n8n callers."""
+        # Validate before changing saved settings. Hold the lock through the
+        # probe so a slow old reading cannot replace a newer configuration.
+        settings = claude_budget.settings_from(raw) if raw is not None else None
+        with self.budget_lock:
+            if settings is None:
+                settings = self.budget_settings
+            try:
+                result = claude_budget.status(settings)
+            except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as error:
+                with self.store.lock:
+                    self.store.budget.update(settings=settings, checked_at=utc_now(), result=None, error=str(error))
+                    self.store.save()
+                raise
+            with self.store.lock:
+                self.store.budget.update(settings=settings, checked_at=utc_now(), result=result, error=None)
+                self.store.save()
+        return result
+
+    def monitor_budget(self, stop: threading.Event) -> None:
+        """Replace the n8n quarter-hour refresh, including an initial reading."""
+        while not stop.is_set():
+            try:
+                self.check_budget()
+            except (ValueError, RuntimeError, OSError, subprocess.SubprocessError):
+                logging.exception("Claude budget refresh failed; saved budget status is unavailable")
+            if stop.wait(BUDGET_REFRESH_SECONDS - time.time() % BUDGET_REFRESH_SECONDS):
+                return
 
     # ------------------------------------------------------------ cycle
 
@@ -177,7 +241,7 @@ class Bridge:
                 raise Busy("The bridge is restarting to run merged workflow code; retry in a few seconds.")
             self.last_step_request_at = utc_now()
             if budget_settings is not None:
-                self.budget_settings = claude_budget.settings_from(budget_settings)
+                self.set_budget_settings(budget_settings)
             running = self.store.running()
             if running:
                 if running.get("kind") != "step":
@@ -362,7 +426,10 @@ def make_handler(bridge: Bridge):
                 running = bridge.store.running()
                 self._send(200, {"active_cycle": bridge.store.active_cycle(),
                                  "running_task": public_task(running) if running else None,
-                                 "last_step_request_at": bridge.last_step_request_at})
+                                 "last_step_request_at": bridge.last_step_request_at,
+                                 "budget": bridge.budget_state()})
+            elif path == "/budget":
+                self._send(200, bridge.budget_state())
             elif path.startswith("/tasks/") and (task := bridge.store.get(path.removeprefix("/tasks/"))):
                 self._send(200, public_task(task))
             else:
@@ -383,8 +450,8 @@ def make_handler(bridge: Bridge):
                 return
             if path == "/budget":
                 try:
-                    self._send(200, claude_budget.status(body.get("budget")))
-                except (ValueError, RuntimeError, OSError) as error:
+                    self._send(200, bridge.check_budget(body.get("budget")))
+                except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as error:
                     self._send(400 if isinstance(error, ValueError) else 500, {"error": str(error)})
                 return
             try:
@@ -437,8 +504,16 @@ def main() -> None:
     bridge = Bridge(Store(state_file), token,
                     callback_origin=os.environ.get("GW2_N8N_CALLBACK_ORIGIN", "http://localhost:5678"))
     server = ThreadingHTTPServer((host, 8765), make_handler(bridge))
+    budget_stop = threading.Event()
+    budget_worker = threading.Thread(target=bridge.monitor_budget, args=(budget_stop,), daemon=True)
+    budget_worker.start()
     logging.info("Bridge listening on %s:8765", host)
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        budget_stop.set()
+        budget_worker.join(timeout=35)
+        server.server_close()
 
 
 if __name__ == "__main__":
