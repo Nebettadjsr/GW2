@@ -1,4 +1,4 @@
-"""Local authenticated HTTP bridge between n8n and the GW2 development cycle."""
+"""Persistent workflow executor and authenticated status API, with legacy n8n support."""
 
 from __future__ import annotations
 
@@ -78,6 +78,7 @@ class Store:
         self.cycles: dict[str, dict] = data.get("cycles", {})
         self.active: str | None = data.get("active")
         self.planning: dict = data.get("planning", {})
+        self.runner: dict = data.get("runner", {})
         self.budget: dict = data.get("budget") or {
             "settings": claude_budget.settings_from(None),
             "checked_at": None, "result": None, "error": None,
@@ -97,11 +98,11 @@ class Store:
             temporary = self.path.with_suffix(self.path.suffix + ".tmp")
             temporary.write_text(json.dumps(
                 {"tasks": self.tasks, "cycles": self.cycles, "active": self.active,
-                 "planning": self.planning, "budget": self.budget},
+                 "planning": self.planning, "budget": self.budget, "runner": self.runner},
                 ensure_ascii=False), encoding="utf-8")
             os.replace(temporary, self.path)
 
-    def create(self, **fields) -> dict:
+    def create(self, *, track_runner: bool = False, **fields) -> dict:
         with self.lock:
             if self.running():
                 raise Busy("A bridge task is already running; wait for it to finish.")
@@ -109,6 +110,8 @@ class Store:
                     "callback_url": None, "callback_delivered": False,
                     "created_at": utc_now(), "updated_at": utc_now(), **fields}
             self.tasks[task["id"]] = task
+            if track_runner:
+                self.runner.update(task_id=task["id"], steps=self.runner.get("steps", 0) + 1)
             self.save()
             return dict(task)
 
@@ -174,6 +177,7 @@ class Bridge:
         self.budget_lock = threading.Lock()
         self.last_step_request_at: str | None = None
         self.restarting = False
+        self.workflow_runner = False
         self._delivery_locks: dict[str, threading.Lock] = {}
 
     @property
@@ -234,7 +238,7 @@ class Bridge:
 
     # ------------------------------------------------------------ cycle
 
-    def next_step(self, callback_url: str, budget_settings: dict | None = None) -> dict:
+    def next_step(self, callback_url: str | None = None, budget_settings: dict | None = None) -> dict:
         """Start (or re-attach to) the next cycle step and return its task."""
         with self.step_lock:
             if self.restarting:
@@ -254,7 +258,7 @@ class Bridge:
             backlog_writer.sync_user_requests(backlog_file=dev_cycle.BACKLOG_FILE)
             step = dev_cycle.choose_step(cycle, self.store.planning, self.budget_settings)
             asynchronous = step in dev_cycle.ASYNC_STEPS
-            task = self.store.create(kind="step", step=step,
+            task = self.store.create(track_runner=self.workflow_runner, kind="step", step=step,
                                      story_id=cycle["story_id"] if cycle else None,
                                      callback_url=callback_url if asynchronous else None)
             if asynchronous:
@@ -310,6 +314,10 @@ class Bridge:
         if cycle is not None:
             cycle["history"].append({"step": step, "outcome": result["outcome"], "at": utc_now()})
             self.store.save_cycle(cycle)
+        # Publish this before the terminal task: the Python driver must not
+        # start another step using code that the sync has just replaced.
+        if result.get("restart"):
+            self.restarting = True
         self.store.update(task_id, status=status, error=error,
                           story_id=cycle["story_id"] if cycle else None,
                           result={**result, "phase": cycle["phase"] if cycle else None})
@@ -427,6 +435,7 @@ def make_handler(bridge: Bridge):
                 self._send(200, {"active_cycle": bridge.store.active_cycle(),
                                  "running_task": public_task(running) if running else None,
                                  "last_step_request_at": bridge.last_step_request_at,
+                                 "runner": copy.deepcopy(bridge.store.runner),
                                  "budget": bridge.budget_state()})
             elif path == "/budget":
                 self._send(200, bridge.budget_state())
@@ -453,6 +462,9 @@ def make_handler(bridge: Bridge):
                     self._send(200, bridge.check_budget(body.get("budget")))
                 except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as error:
                     self._send(400 if isinstance(error, ValueError) else 500, {"error": str(error)})
+                return
+            if bridge.workflow_runner:
+                self._send(409, {"error": "The Python runner owns task execution; n8n/manual task starts are disabled."})
                 return
             try:
                 callback_url = validate_callback_url(body.get("callback_url"), bridge.callback_origin)
@@ -493,7 +505,7 @@ def disable_console_quick_edit() -> None:
         kernel32.SetConsoleMode(handle, (mode.value & ~0x0040) | 0x0080)  # -QUICK_EDIT, +EXTENDED_FLAGS
 
 
-def main() -> None:
+def main(*, run_workflow: bool = False, run_now: bool = False, once: bool = False) -> None:
     disable_console_quick_edit()
     token = os.environ.get("GW2_BRIDGE_TOKEN", "")
     if len(token) < 32:
@@ -501,19 +513,47 @@ def main() -> None:
     host = os.environ.get("GW2_BRIDGE_HOST", "127.0.0.1")
     state_file = Path(os.environ.get("GW2_BRIDGE_STATE", str(Path.home() / ".gw2-claude-bridge" / "tasks.json")))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    bridge = Bridge(Store(state_file), token,
-                    callback_origin=os.environ.get("GW2_N8N_CALLBACK_ORIGIN", "http://localhost:5678"))
-    server = ThreadingHTTPServer((host, 8765), make_handler(bridge))
+    # Bind before opening Store: a duplicate service must not mark the first
+    # service's running tasks interrupted. Also lock the state path, including
+    # when two services bind different interfaces.
+    from local_bridge.run_cycle import StateLease, WorkflowRunner
+    server = ThreadingHTTPServer((host, 8765), None)
+    lease = StateLease(state_file)
+    try:
+        lease.acquire()
+        bridge = Bridge(Store(state_file), token,
+                        callback_origin=os.environ.get("GW2_N8N_CALLBACK_ORIGIN", "http://localhost:5678"))
+    except BaseException:
+        lease.close()
+        server.server_close()
+        raise
+    server.RequestHandlerClass = make_handler(bridge)
+    bridge.workflow_runner = run_workflow
     budget_stop = threading.Event()
     budget_worker = threading.Thread(target=bridge.monitor_budget, args=(budget_stop,), daemon=True)
     budget_worker.start()
+    runner_stop = threading.Event()
+    runner_worker = None
+    if run_workflow:
+        runner = WorkflowRunner(bridge)
+        runner_worker = threading.Thread(
+            target=runner.serve, args=(runner_stop,),
+            kwargs={"run_now": run_now or once, "once": once, "finished": server.shutdown}, daemon=True)
+        runner_worker.start()
     logging.info("Bridge listening on %s:8765", host)
     try:
         server.serve_forever()
+    except KeyboardInterrupt:
+        logging.info("Stopping after the current step finishes; saved progress will resume on restart.")
     finally:
+        runner_stop.set()
+        if runner_worker:
+            # Never abandon a running model/CI operation on a normal shutdown.
+            runner_worker.join()
         budget_stop.set()
         budget_worker.join(timeout=35)
         server.server_close()
+        lease.close()
 
 
 if __name__ == "__main__":

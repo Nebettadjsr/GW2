@@ -16,7 +16,15 @@ rem so this script starts the bridge from there whichever checkout it is run fro
 if not defined GW2_AGENT_WORKTREE set "GW2_AGENT_WORKTREE=%~dp0..\..\GW2-agent"
 if exist "%GW2_AGENT_WORKTREE%\local_bridge\bridge.py" (cd /d "%GW2_AGENT_WORKTREE%") else (cd /d "%~dp0..")
 echo Bridge repository: %CD%
+if /i "%GW2_WORKFLOW_DRIVER%"=="python" if not exist "local_bridge\run_cycle.py" (
+    echo This agent worktree does not contain the Python runner yet. Merge the workflow change before starting it.
+    exit /b 1
+)
 :run
-python local_bridge\bridge.py
+if /i "%GW2_WORKFLOW_DRIVER%"=="python" (
+    python -m local_bridge.run_cycle %*
+) else (
+    python local_bridge\bridge.py
+)
 rem Exit code 3: the bridge merged new workflow code and asks to be started again.
 if errorlevel 3 if not errorlevel 4 goto run

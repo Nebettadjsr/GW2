@@ -1,7 +1,8 @@
 # Agent runtime
 
-The story workflow runs as the n8n **GW2 - Development Pipeline**, which calls
-the local bridge (`local_bridge/`) one step at a time. The bridge's README owns
+The story workflow uses the service in `local_bridge/`, driven by the Python
+runner or, before cutover, the legacy n8n **GW2 - Development Pipeline**.
+The service's README owns
 the pipeline: its steps, rules, budgets, recovery and how to start it. This
 package holds the building blocks the bridge calls: QA, the implementation
 prompt and Claude runner, the Evaluator, planner and architect passes, story
@@ -13,7 +14,7 @@ start a model or push):
 
 ```powershell
 python -m unittest discover -s agent/runtime/tests -t . -p 'test_*.py'
-python -m unittest local_bridge.test_bridge local_bridge.test_claude_budget local_bridge.test_budget_state
+python -m unittest local_bridge.test_bridge local_bridge.test_claude_budget local_bridge.test_budget_state local_bridge.test_run_cycle
 ```
 
 | Folder | Responsibility |
@@ -291,7 +292,7 @@ unpinned: it runs a slash command and never performs inference.
 ## Model capacity
 
 Claude starts only while its 5h session is below `CLAUDE_USAGE_LIMIT_PERCENT`
-and its weekly usage is within the Claude budget kept in n8n
+and its weekly usage is within the Claude budget persisted by the workflow service
 (`local_bridge/claude_budget.py`, documented in `local_bridge/README.md`).
 `claude -p /usage` is a slash command and spends no tokens.
 

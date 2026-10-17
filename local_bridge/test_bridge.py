@@ -576,6 +576,17 @@ class BridgeHttpTests(unittest.TestCase):
         self.assertFalse(saved["claude_allowed"])
         self.assertEqual(saved["result"]["reason"], "quota")
 
+    def test_python_driver_rejects_n8n_steps_and_connection_tasks_but_keeps_status_api(self):
+        self.bridge.workflow_runner = True
+        self.bridge.store.runner.update(enabled=True, active=True, status="running")
+        for path in ("/cycle/step", "/tasks"):
+            with self.assertRaises(HTTPError) as rejected:
+                self.post(path, {"callback_url": self.callback, "prompt": "ping"})
+            self.assertEqual(rejected.exception.code, 409)
+        self.assertIsNone(self.bridge.store.running())
+        self.assertEqual(self.get("/cycle")["runner"]["status"], "running")
+        self.get("/budget")
+
     def test_budget_refresh_reuses_settings_and_records_a_probe_error(self):
         self.bridge.set_budget_settings({"mode": "manual", "manual_cap_percent": 15})
         with mock.patch.object(bridge.claude_budget, "status", return_value={"claude_allowed": True}) as probe:

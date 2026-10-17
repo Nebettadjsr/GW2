@@ -1,9 +1,14 @@
-# n8n development-cycle bridge
+# Development workflow service
 
-n8n drives the GW2 story cycle; this local bridge does the work. The bridge runs on Windows in the
-pipeline's own worktree (see *Branches*), and n8n runs in Docker. The bridge keeps one persisted **cycle record** per story. The record's `phase`
-names the next step. A step only advances the phase once it has finished, so an interruption at any
-point simply reruns the same step.
+The service runs the GW2 story cycle on Windows in the pipeline's own worktree (see *Branches*).
+`run_cycle.py` replaces n8n's schedule and step loop; `cycle.py` still makes the workflow decisions,
+and `bridge.py` still executes steps, saves progress and exposes the status API used by Grafana.
+The legacy n8n driver remains available until cutover. Both use the same engine and state format.
+
+The service keeps one persisted **cycle record** per story. Its `phase` names the next step.
+An interrupted step retries through the existing recovery logic. This is not an exactly-once
+transaction across Git, model processes and local files; inspect uncertain external side effects
+after a forced stop.
 
 ```
 [sync -> review] -> [plan] -> select -> qa -> implement -> evaluate -> publish -> ci -> finalize -> (next story)
@@ -69,7 +74,7 @@ retries the same step:
 - The push was rejected.
 - The step raised an exception.
 
-## Running the pipeline
+## Legacy n8n driver
 
 The pipeline starts by itself every hour at :35 from 17:35 to 06:35 (**Every Evening Hour**). It skips
 if another run is active. You can also start it any time with **Execute workflow**. The loop works like this:
@@ -85,6 +90,68 @@ A Wait that times out after 30 minutes is harmless. The loop calls `/cycle/step`
 re-attaches to the step that is still running. It never starts a second one. If an execution is stopped,
 start a new one; it re-attaches the same way. After a story is finalized the run continues with the next
 story, planning first if the queue is empty, until nothing is selectable or a step needs attention.
+
+## Python driver
+
+After the cutover below, start the service from either checkout:
+
+```powershell
+.\local_bridge\start-workflow.cmd
+```
+
+This waits for the original schedule: hourly at `:35`, from `17:35` through `06:35`, using the
+host's local timezone (Europe/Berlin on this machine). `--now` starts a run immediately and then
+keeps that schedule. `--once` starts a run immediately and exits when it stops. A run can cover
+several stories and continue past `06:35`; the schedule controls starts, not an in-flight cutoff.
+
+The driver polls the current task locally, without n8n callbacks, until it finishes. It advances
+only on `proceed: true`; queue exhaustion, budget waits, user decisions and errors stop that run.
+There is no automatic rapid retry of a stopped run. The next scheduled start tries again through
+the engine. A run is limited to 200 step attempts; waiting polls do not count as steps.
+
+The `runner` record in `tasks.json` stores the task identity, attempt count, consumed schedule slot,
+and stop reason. Task creation and its runner checkpoint are saved together before work starts.
+An active run resumes on service restart, including outside the start window. A sync that changes
+Python workflow code restarts the process through the launcher and resumes that same run.
+Scheduled ticks while a run is busy do not queue another run. Missed starts while the service is
+off are not replayed.
+
+`GET /cycle` includes this runner state alongside the existing cycle, running task and budget,
+so the current Grafana dashboard still works. The service holds an OS file lock beside `tasks.json`
+to reject another service using the same state path. In Python mode, HTTP task starts (`/cycle/step`
+and `/tasks`) return 409, preventing a leftover n8n execution from advancing the cycle. Status
+reads and budget configuration remain available.
+
+Ctrl+C stops scheduling and waits for the current step to finish, then leaves its saved run
+available for restart. A model call or CI wait can take a while. Force-killing the process has
+weaker recovery: the next startup marks its task interrupted and retries the saved phase; it
+does not prove that a child process or external side effect stopped.
+
+### Cutover from n8n
+
+1. Let the current n8n run stop at a step boundary. Disable the **GW2 - Development Pipeline**
+   schedule and **GW2 - Claude Budget** refresh, and stop remaining waiting executions.
+2. Stop the old bridge, then back up `%USERPROFILE%\.gw2-claude-bridge\tasks.json`.
+   Keep the token, budget settings, story pointer, worktree and saved state together.
+3. Bring this change into `GW2-agent` through the normal maintainer sync/merge, with no model
+   running and without discarding uncommitted story work. Do not point a second service at the
+   live file or start this feature checkout as a replacement for the agent worktree.
+4. Run `.\local_bridge\start-workflow.cmd --now`. Check `/cycle`, `/budget` and the existing
+   Grafana dashboard. The launcher refuses to fall back to the old bridge if `GW2-agent` does
+   not contain the runner yet. No n8n container is needed after this cutover.
+
+To roll back, stop the Python service at a step boundary, start `start-bridge.cmd`, then resume
+the n8n workflows. The legacy bridge reads the extended state file; retain the backup for
+inspection rather than restoring an older state over newer completed work.
+
+### Tests and CI
+
+`test_run_cycle.py` exercises the driver against the bridge with fake agents and external systems:
+story progression, evaluator/CI retries, budget pauses, persisted recovery, graceful stop, the loop
+guard, schedule deduplication and state-file ownership. Existing tests cover the actual phase and
+Claude-budget rules. The `agent-runtime` CI job discovers all of these under `local_bridge/` and
+runs them with the runtime suite and branch coverage. Application CI verification remains tied to
+the story's published SHA; this driver does not introduce another story gate.
 
 ## Branches
 
@@ -195,10 +262,9 @@ validates and persists a replacement settings object, using defaults for omitted
 Its successful response retains the existing flat result format for n8n compatibility. A settings
 change through a step request invalidates the previous observation until the next refresh.
 
-This change prepares the service replacement; it does not modify or stop the installed n8n workflows.
-At deployment, retire the separate n8n budget refresh workflow to avoid duplicate probes. The main
-n8n pipeline can still supply settings during the transition; a future standalone cycle runner can
-omit them and reuse the service's persisted settings. No Grafana panels are changed by this step.
+The Python driver uses these saved settings without an n8n table. Retire the separate n8n budget
+refresh workflow at cutover to avoid duplicate probes. The legacy n8n pipeline can still supply settings
+during the transition. No Grafana panels are changed by this step.
 
 ## Start the bridge
 
@@ -259,12 +325,12 @@ All endpoints except `/health` need the bearer token.
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /health` | Liveness check. |
-| `GET /cycle` | The active cycle record (phase, budgets, published SHA, step history) and any running task. |
+| `GET /cycle` | Active cycle (phase, budgets, published SHA, history), running task, Python runner state and budget observation. |
 | `GET /budget` | Saved settings and latest budget observation, including age/error flags; no fresh usage call. |
-| `POST /cycle/step` | `{"callback_url": <Wait resume URL>, "budget": <settings row>}`. Starts the next step, or re-attaches to the running one. |
+| `POST /cycle/step` | Legacy mode only: `{"callback_url": <Wait resume URL>, "budget": <settings row>}` starts or re-attaches to a step. Returns 409 in Python-driver mode. |
 | `GET /tasks/{id}` | One task and its result. |
 | `POST /budget` | `{}` refreshes stored settings; `{"budget": <settings row>}` also replaces them. Persists the reading and returns the existing flat result. |
-| `POST /tasks` | `{"prompt", "agent": "claude"\|"codex", "callback_url"}`. A read-only agent call used by the **Bridge/Codex Connection Test** workflows. |
+| `POST /tasks` | Legacy mode only: `{"prompt", "agent": "claude"\|"codex", "callback_url"}` makes a read-only connection-test call. Returns 409 in Python-driver mode. |
 
 Only one task runs at a time. A step task's result carries `step`, `outcome`, `proceed`, `reason` and
 the `phase` after the step.

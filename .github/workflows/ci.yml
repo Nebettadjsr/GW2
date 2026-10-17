@@ -162,10 +162,11 @@ jobs:
       # Offline contract/flow tests. tests/__init__.py makes every model
       # runner, git push and GitHub API call raise, so this job can never
       # start a model, push a commit or reach the network. local_bridge
-      # (the n8n pipeline bridge) imports the same guards. This job is not
+      # (the workflow service, Python driver and legacy n8n bridge) imports
+      # the same guards. This job is not
       # part of a story's CI verdict: agent-workflow failures are reported
       # by the pipeline as workflow warnings and never block a story.
-      - name: Run orchestrator/harness tests with coverage
+      - name: Run workflow driver, bridge and harness tests with coverage
         run: >-
           python -m pytest agent/runtime/tests local_bridge -q
           --import-mode=importlib -o consider_namespace_packages=true
