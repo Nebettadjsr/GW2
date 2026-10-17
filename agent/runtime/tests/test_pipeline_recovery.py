@@ -233,6 +233,9 @@ class EvaluatorIsReadOnlyTest(unittest.TestCase):
                 sandbox="read-only", messages=messages,
             )
 
+        # A Ctrl+C in the service console must not reach Codex.
+        self.assertEqual(popen.call_args.kwargs["creationflags"],
+                         local_planner_runner.AGENT_PROCESS_FLAGS)
         # read-only reaches the CLI as the sandbox it was asked for.
         command = popen.call_args.args[0]
         self.assertEqual(

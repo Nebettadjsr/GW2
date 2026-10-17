@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 from agent.runtime.support.config import (
+    AGENT_PROCESS_FLAGS,
     CLAUDE_MODEL,
     REPO_ROOT,
 )
@@ -249,6 +250,7 @@ def run_claude_attempt(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         bufsize=1,
+        creationflags=AGENT_PROCESS_FLAGS,
     )
 
     process.stdin.write(

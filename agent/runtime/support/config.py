@@ -124,6 +124,12 @@ MAX_RETRIES_PER_STORY = 2
 # governed by the service's Claude budget (workflow_service/claude_budget.py).
 CLAUDE_USAGE_LIMIT_PERCENT = 90
 
+# Windows delivers a console Ctrl+C to every process attached to that console.
+# Claude and Codex start in their own process group so a Ctrl+C in the service
+# window stops scheduling but lets the running model call finish
+# (subprocess.CREATE_NEW_PROCESS_GROUP; 0 elsewhere).
+AGENT_PROCESS_FLAGS = 0x00000200 if os.name == "nt" else 0
+
 # A Claude run that exits non-zero while carrying no capacity signal is a
 # failed attempt, not a capacity pause. After this many consecutive such
 # runs on the same story the orchestrator escalates to a user

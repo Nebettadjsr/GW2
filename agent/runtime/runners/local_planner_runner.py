@@ -3,7 +3,7 @@ import shutil
 import subprocess
 import threading
 
-from agent.runtime.support.config import REPO_ROOT
+from agent.runtime.support.config import AGENT_PROCESS_FLAGS, REPO_ROOT
 from agent.runtime.support.capacity import ModelCapacityUnavailable
 
 
@@ -497,6 +497,7 @@ def run_codex(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         bufsize=1,
+        creationflags=AGENT_PROCESS_FLAGS,
     )
 
     stderr_thread = threading.Thread(

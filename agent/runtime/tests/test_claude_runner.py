@@ -46,10 +46,12 @@ class ClaudeRunnerTest(unittest.TestCase):
         process = fake_process("Result contains an arrow →\n")
         terminal = Cp1252Console()
         with patch.object(claude_runner, "find_claude", return_value="claude.exe"), \
-             patch.object(claude_runner.subprocess, "Popen", return_value=process), \
+             patch.object(claude_runner.subprocess, "Popen", return_value=process) as popen, \
              redirect_stdout(terminal):
             result = claude_runner.run_claude_attempt("Implement")
 
+        # A Ctrl+C in the service console must not reach Claude.
+        self.assertEqual(popen.call_args.kwargs["creationflags"], claude_runner.AGENT_PROCESS_FLAGS)
         self.assertEqual(result.exit_code, 0)
         self.assertIn("Result contains an arrow", result.output)
         self.assertIn("Result contains an arrow ?", terminal.getvalue())
