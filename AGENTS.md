@@ -282,7 +282,7 @@ Preserve these established target principles:
 
 ## Orchestrated Story Quality Flow
 
-The n8n development pipeline (`local_bridge/README.md`) runs implementation
+The Python workflow service (`workflow_service/README.md`) runs implementation
 stories through Planner, Architect when an actionable request exists, QA, Coding
 Agent, and Evaluator, then publishes, waits for CI and finalizes. QA prepares
 the persistent plan in `agent/qa-plans/` before a new coding attempt. The coding

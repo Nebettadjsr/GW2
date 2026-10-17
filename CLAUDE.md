@@ -150,7 +150,7 @@ checks (§34, §18.2) and live GW2 API smoke (§31.4).
 
 ## Version Control and CI
 
-The n8n development pipeline (`local_bridge/README.md`) commits and pushes a story once the
+The Python workflow service (`workflow_service/README.md`) commits and pushes a story once the
 evaluator accepts it, then waits for that commit's CI result. Don't commit or push yourself unless asked — see
 `CODING_GUIDELINES.md` §8. If CI fails you get the failing tests back as a short report:
 reproduce them with the narrowest command, fix the cause, and stop; the harness re-pushes

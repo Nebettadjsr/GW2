@@ -391,7 +391,7 @@ class EvaluateStoryEndToEndTests(unittest.TestCase):
         self.assertEqual(result["evaluator_exit_code"], 0)
         self.assertIn("git diff HEAD", result["evidence"])
 
-    def test_bridge_can_defer_persistence_until_contract_revalidation(self):
+    def test_service_can_defer_persistence_until_contract_revalidation(self):
         from agent.runtime.evaluation import evaluator
 
         with tempfile.TemporaryDirectory() as directory:

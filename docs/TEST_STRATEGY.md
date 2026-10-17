@@ -1442,7 +1442,7 @@ layer passed". It is the regression gate, not the whole strategy.
 
 ## 36.5 What "verified" means for a story
 
-The development pipeline (`local_bridge/README.md`) commits and pushes a story once
+The development pipeline (`workflow_service/README.md`) commits and pushes a story once
 the evaluator accepts it, then waits for that commit's CI conclusion. Only the
 application jobs decide; a failing agent-runtime job is reported as an
 agent-workflow warning and never holds a story:

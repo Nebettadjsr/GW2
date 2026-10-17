@@ -11,8 +11,9 @@ and the `coverage-reports` artifact. It reports each language/module and package
 well as a weighted aggregate over measured lines and branches. Missing reports are marked
 unavailable. Aggregation never fills unavailable coverage with zero or estimates.
 
-The Python area covers the whole agent workflow: `agent/runtime` and, since 2026-10-10, the n8n
-pipeline bridge `local_bridge` (its `test_*` files excluded like the runtime's tests). Snapshots
+The Python area covers the whole agent workflow: `agent/runtime` and `workflow_service`
+(its `test_*` files excluded like the runtime's tests). Service coverage was added on 2026-10-10,
+before the package was renamed. Snapshots
 taken before that date measured `agent/runtime` only.
 
 Coverage is a minimum signal, not proof of correctness. Review affected modules and critical

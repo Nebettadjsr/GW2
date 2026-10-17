@@ -1,24 +1,20 @@
 # Agent runtime
 
-The story workflow runs as the n8n **GW2 - Development Pipeline**, which calls
-the local bridge (`local_bridge/`) one step at a time. The bridge's README owns
-the pipeline: its steps, rules, budgets, recovery and how to start it. This
-package holds the building blocks the bridge calls: QA, the implementation
-prompt and Claude runner, the Evaluator, planner and architect passes, story
-state and the Git/GitHub CI integration. `core/orchestrator.py` is no longer an
-entry point; it keeps only the shared story-cycle helpers.
+The Python workflow service in `workflow_service/` schedules development and executes one stage at a time. This package supplies the shared code it calls: agent process execution, prompts, QA and evaluation, story records, and Git/CI integration. These modules are support code; the agents are the model processes they invoke.
+
+The [service guide](../../workflow_service/README.md) owns operation, budgets and recovery. The [architecture guide](../docs/ARCHITECTURE.md#what-the-python-parts-do) explains how scheduling, stage rules and this runtime fit together. `core/orchestrator.py` contains shared story helpers and is not an entry point.
 
 Run the tests from the repository root (they use fixtures and mocks and never
 start a model or push):
 
 ```powershell
 python -m unittest discover -s agent/runtime/tests -t . -p 'test_*.py'
-python -m unittest local_bridge.test_bridge local_bridge.test_claude_budget
+python -m unittest workflow_service.test_service workflow_service.test_claude_budget workflow_service.test_budget_state workflow_service.test_control
 ```
 
 | Folder | Responsibility |
 | --- | --- |
-| `core/` | Story-cycle helpers used by the bridge (`orchestrator.py`), planning, architecture, story selection/state and archiving. |
+| `core/` | Story-cycle helpers used by the service (`orchestrator.py`), planning, architecture, story selection/state and archiving. |
 | `runners/` | Claude and Codex process execution, output and capacity handling. |
 | `evaluation/` | Claude prompt construction, and post-implementation evaluation (Codex, read-only). |
 | `qa/` | Persistent pre-implementation QA planning, test ownership and conditional read-only review. |
@@ -160,11 +156,11 @@ Codex budget, so the attempt counts are small:
 step fails; the story keeps its evaluate phase, so the next pipeline run
 evaluates again and never re-runs Claude. Usage exhaustion is **not** one of
 those attempts: `ModelCapacityUnavailable` passes straight through and the
-bridge records it as a pause (`model_capacity_exhausted`).
+service records it as a pause (`model_capacity_exhausted`).
 
 ## Resuming an interrupted step
 
-The bridge's per-story cycle record (`local_bridge/README.md`) replaced the old
+The service's per-story cycle record (`workflow_service/README.md`) replaced the old
 `ATTEMPT_STATE.json` journal. A step only advances the story's phase once it has
 finished, so an interruption reruns the same step; retry and CI-fix budgets live
 in the same record. An interrupted Claude run resumes with a continuation prompt.
@@ -179,7 +175,7 @@ authoritative regression verdict moved to GitHub Actions
 (`.github/workflows/ci.yml`, defined in `docs/TEST_STRATEGY.md` §36) and this
 package waits for it.
 
-What happens after the evaluator returns COMPLETE, in the bridge's `publish`
+What happens after the evaluator returns COMPLETE, in the service's `publish`
 and `ci` steps:
 
 1. `support/git_sync.py` stages only the story's publication scope: changed
@@ -232,7 +228,7 @@ on the evaluator's verdict, with a log line saying the gate was skipped).
 raise. Those paths resolve their own configuration, so a fixture patching
 `orchestrator.REPO_ROOT` does not redirect them — without the guard a test that
 reached the publication path would commit and push this repository for real.
-`local_bridge/test_bridge.py` imports the same guards.
+`workflow_service/test_service.py` imports the same guards.
 `tests/test_ci_verification.py` exercises the real implementations against a
 throwaway repository with a local bare remote and a scripted API.
 
@@ -270,8 +266,8 @@ initial value **1200** tokens (Aider's own `--map-tokens` setting).
 
 **Measuring the effect (A/B comparison):** `_prepare_implementation_prompt()`
 prints a `RepoMap: ...` line (enabled/disabled, budget, generated size,
-generation time) in the bridge console before every Claude run. To compare,
-start the bridge once with `$env:AGENT_REPO_MAP_ENABLED = "0"` and once with
+generation time) in the service console before every Claude run. To compare,
+start the service once with `$env:AGENT_REPO_MAP_ENABLED = "0"` and once with
 `"1"`, and compare the Claude weekly-usage change per story (`/usage`, or the
 `now_weekly_used` column of the GW2 Claude Budget data table).
 
@@ -291,8 +287,8 @@ unpinned: it runs a slash command and never performs inference.
 ## Model capacity
 
 Claude starts only while its 5h session is below `CLAUDE_USAGE_LIMIT_PERCENT`
-and its weekly usage is within the Claude budget kept in n8n
-(`local_bridge/claude_budget.py`, documented in `local_bridge/README.md`).
+and its weekly usage is within the Claude budget persisted by the workflow service
+(`workflow_service/claude_budget.py`, documented in `workflow_service/README.md`).
 `claude -p /usage` is a slash command and spends no tokens.
 
 A Claude run that exits non-zero is classified from its own output tail
@@ -330,7 +326,7 @@ that same question -- happened, and is indistinguishable from the architect
 ignoring the question.
 
 The
-bridge's `plan` step answers it before any planning pass, between stories and
+service's `plan` step answers it before any planning pass, between stories and
 while Claude waits for its budget, because an answered question is what
 unblocks the planner. It dispatches exactly one request per step.
 
@@ -378,7 +374,7 @@ snapshots protected state (the active story file, `CURRENT_STORY.md`, the
 BACKLOG `## Active` section) before every planning pass and verifies it
 byte-for-byte afterwards, rolling back and raising if anything protected
 changed. This is what guarantees Codex never touches the active story and
-never becomes a second writer of workflow state -- the bridge runs one step at
+never becomes a second writer of workflow state -- the service runs one step at
 a time, so exactly one process writes workflow state, by construction.
 
 ## Daily operational log
@@ -390,14 +386,14 @@ a time, so exactly one process writes workflow state, by construction.
 is logged after the date rolls over; an existing day's file is only ever
 appended to, never truncated or overwritten.
 
-The bridge writes one line per finished pipeline step
+The service writes one line per finished pipeline step
 (`Pipeline <step> [<story>]: <outcome> -- <reason>`), `WORKFLOW WARNING` lines
 for agent-workflow problems, and the transitions recorded by the runtime
 helpers it calls (QA preparation, evaluation retries, story blocking and
 finalization, backlog inconsistencies). Waiting is never logged. Claude's
 streamed output is piped through `runners/claude_runner.py` and printed in the
-bridge console, not the log. Tests never write here: `agent/runtime/tests`
-drops writes to the committed directory, and the bridge tests import that guard.
+service console, not the log. Tests never write here: `agent/runtime/tests`
+drops writes to the committed directory, and the service tests import that guard.
 
 Unlike `artifacts/`, `agent/logs/` is **committed to Git, not ignored** --
 it is meant to be a permanent historical record, not disposable runtime
@@ -417,8 +413,8 @@ while Codex plans during Claude capacity waits.
 `agent/user-decisions/UD-010-*.md` (or `UD-010.md`). Markdown titles are optional;
 filenames/paths in this result field and duplicate filename IDs are rejected.
 
-The bridge decides when to plan (`local_bridge/cycle.py`'s `codex_work_needed()`,
-documented in `local_bridge/README.md`) from `planning_fingerprint()`. The
+The service decides when to plan (`workflow_service/cycle.py`'s `codex_work_needed()`,
+documented in `workflow_service/README.md`) from `planning_fingerprint()`. The
 fingerprint includes UDs, PO/architect requests, authoritative docs, planner
 contracts, continuity and story requirements. Product/domain and target
 requirements, architecture decisions, known defects, coding/testing contracts,
