@@ -1,4 +1,4 @@
-"""Story-cycle helpers used by the n8n pipeline bridge (local_bridge/cycle.py).
+"""Story-cycle helpers used by the workflow service (workflow_service/cycle.py).
 
 This module used to be the standalone orchestrator loop. That loop was
 replaced by the n8n pipeline; what remains are the shared building blocks:

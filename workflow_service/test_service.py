@@ -1,4 +1,4 @@
-"""Bridge and development-cycle tests. Agents, Git and CI are faked; nothing is launched."""
+"""WorkflowService and development-cycle tests. Agents, Git and CI are faked; nothing is launched."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import agent.runtime.tests  # noqa: F401  (guards: no agent/logs writes, model runs or real pushes)
-from local_bridge import bridge, cycle
+from workflow_service import service, cycle
 
 TOKEN = "t" * 40
 STORY_FILE = "agent/stories/STORY-T-001-x.md"
@@ -393,12 +393,12 @@ class _CallbackReceiver(BaseHTTPRequestHandler):
         pass
 
 
-class BridgeHttpTests(unittest.TestCase):
+class ServiceHttpTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.user_index = mock.Mock()
-        self.index_patch = mock.patch.object(bridge.backlog_writer, "sync_user_requests", self.user_index)
+        self.index_patch = mock.patch.object(service.backlog_writer, "sync_user_requests", self.user_index)
         self.index_patch.start()
         self.addCleanup(self.index_patch.stop)
         self.state = Path(self.directory.name) / "tasks.json"
@@ -408,24 +408,24 @@ class BridgeHttpTests(unittest.TestCase):
         self.addCleanup(self.receiver.shutdown)
         origin = f"http://127.0.0.1:{self.receiver.server_port}"
         self.callback = origin + "/webhook-waiting/1?signature=abc"
-        self.bridge = bridge.Bridge(bridge.Store(self.state), TOKEN, callback_origin=origin)
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), bridge.make_handler(self.bridge))
+        self.service = service.WorkflowService(service.Store(self.state), TOKEN, callback_origin=origin)
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), service.make_handler(self.service))
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.shutdown)
         self.release = threading.Event()
         pointer = mock.patch.object(cycle, "pointer_story", return_value=cycle.REPO_ROOT / STORY_FILE)
         pointer.start()
         self.addCleanup(pointer.stop)
-        self.log = mock.patch.object(bridge, "log_line").start()  # never write the real agent/logs
+        self.log = mock.patch.object(service, "log_line").start()  # never write the real agent/logs
         self.addCleanup(mock.patch.stopall)
-        self.bridge.store.save_cycle(make_cycle(phase="ci", published_sha="e" * 40))
+        self.service.store.save_cycle(make_cycle(phase="ci", published_sha="e" * 40))
         # Finish workers before removing mocks: no late User refresh may reach
         # the real backlog after a test has returned.
         self.addCleanup(self.finish_workers)
 
     def finish_workers(self):
         self.release.set()
-        self.wait_for(lambda: self.bridge.store.running() is None)
+        self.wait_for(lambda: self.service.store.running() is None)
 
     def post(self, path, body, token=TOKEN):
         request = Request(f"http://127.0.0.1:{self.server.server_port}{path}", method="POST",
@@ -448,13 +448,13 @@ class BridgeHttpTests(unittest.TestCase):
     def test_user_index_refresh_does_not_reset_saved_implementation_progress(self):
         record = make_cycle(phase="implement", retry_count=2, implement_started=True,
                             prompt="continue saved repair", publish_paths=["frontend/scripts/profitTiming.mjs"])
-        self.bridge.store.save_cycle(record)
+        self.service.store.save_cycle(record)
         with mock.patch.object(cycle, "choose_step", return_value="implement"), mock.patch.dict(
             cycle.STEPS, {"implement": lambda c, ctx: cycle.StepResult("waiting_for_claude_budget", False)}
         ):
-            task = self.bridge.next_step(self.callback)
-            self.wait_for(lambda: self.bridge.store.get(task["id"])["status"] == "completed")
-        persisted = self.bridge.store.active_cycle()
+            task = self.service.next_step(self.callback)
+            self.wait_for(lambda: self.service.store.get(task["id"])["status"] == "completed")
+        persisted = self.service.store.active_cycle()
         for key in ("phase", "retry_count", "implement_started", "prompt", "publish_paths"):
             self.assertEqual(record[key], persisted[key])
         self.assertGreaterEqual(self.user_index.call_count, 2)
@@ -464,7 +464,7 @@ class BridgeHttpTests(unittest.TestCase):
         with mock.patch.object(cycle, "choose_step", return_value="publish"), mock.patch.dict(
             cycle.STEPS, {"publish": lambda c, ctx: cycle.StepResult("published", True)}
         ):
-            task = self.bridge.next_step(self.callback)
+            task = self.service.next_step(self.callback)
         self.assertEqual("completed", task["status"])
         self.assertEqual("published", task["result"]["outcome"])
         self.assertIn("Could not refresh BACKLOG User section.", task["result"]["workflow_warnings"])
@@ -481,7 +481,7 @@ class BridgeHttpTests(unittest.TestCase):
         path, payload = _CallbackReceiver.received[0]
         self.assertEqual(path, "/webhook-waiting/2?signature=abc")
         self.assertEqual((payload["outcome"], payload["proceed"], payload["phase"]), ("PASSED", True, "finalize"))
-        self.assertEqual(self.bridge.store.active_cycle()["history"][-1]["outcome"], "PASSED")
+        self.assertEqual(self.service.store.active_cycle()["history"][-1]["outcome"], "PASSED")
 
     def test_failing_step_stops_the_pipeline_and_keeps_the_phase(self):
         def broken(_record, _checkpoint):
@@ -496,7 +496,7 @@ class BridgeHttpTests(unittest.TestCase):
     def test_restart_marks_a_running_step_interrupted_so_the_next_run_repeats_it(self):
         with mock.patch.dict(cycle.STEPS, {"ci": self.fake_ci}):
             _, task = self.post("/cycle/step", {"callback_url": self.callback})
-            restarted = bridge.Store(self.state)
+            restarted = service.Store(self.state)
             self.release.set()
         self.assertEqual(restarted.get(task["task_id"])["status"], "interrupted")
         self.assertEqual(restarted.active_cycle()["phase"], "ci")
@@ -506,7 +506,7 @@ class BridgeHttpTests(unittest.TestCase):
         with mock.patch.object(cycle, "pointer_story", return_value=other), \
                 mock.patch.object(cycle, "new_cycle", return_value=make_cycle(story_id="STORY-T-002",
                                                                                story_file="agent/stories/STORY-T-002-y.md")):
-            adopted = self.bridge._current_cycle()
+            adopted = self.service._current_cycle()
         self.assertEqual((adopted["story_id"], adopted["phase"]), ("STORY-T-002", "qa"))
 
     def test_rejects_bad_token_and_foreign_callback_urls(self):
@@ -544,7 +544,7 @@ class BridgeHttpTests(unittest.TestCase):
 
     def test_exhausted_model_capacity_is_a_pause_not_a_failure(self):
         def exhausted(_record, _context):
-            raise bridge.ModelCapacityUnavailable("Codex weekly limit")
+            raise service.ModelCapacityUnavailable("Codex weekly limit")
         with mock.patch.dict(cycle.STEPS, {"ci": exhausted}):
             self.post("/cycle/step", {"callback_url": self.callback})
             self.wait_for(lambda: _CallbackReceiver.received)
@@ -556,17 +556,17 @@ class BridgeHttpTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as rejected:
             self.post("/cycle/step", {"callback_url": self.callback, "budget": {"mode": "sometimes"}})
         self.assertEqual(rejected.exception.code, 400)
-        self.assertIsNone(self.bridge.store.running())
+        self.assertIsNone(self.service.store.running())
 
     def test_budget_endpoint_reports_the_cap_in_force(self):
         usage = ("Current session: 10% used\n"
                  "Current week (all models): 20% used · resets Oct 10, 7am (Europe/Berlin)\n")
-        with mock.patch.object(bridge.claude_budget, "read_claude_usage_text", return_value=usage):
+        with mock.patch.object(service.claude_budget, "read_claude_usage_text", return_value=usage):
             status, body = self.post("/budget", {"budget": {"mode": "manual", "manual_cap_percent": 15}})
         self.assertEqual((status, body["weekly_cap_percent"], body["claude_allowed"]), (200, 15, False))
 
     def test_budget_status_is_read_only_and_part_of_cycle_state(self):
-        with mock.patch.object(bridge.claude_budget, "status", return_value={"claude_allowed": False, "reason": "quota"}) as probe:
+        with mock.patch.object(service.claude_budget, "status", return_value={"claude_allowed": False, "reason": "quota"}) as probe:
             self.post("/budget", {"budget": {"mode": "manual", "manual_cap_percent": 15}})
             probe.reset_mock()
             saved = self.get("/budget")
@@ -577,22 +577,22 @@ class BridgeHttpTests(unittest.TestCase):
         self.assertEqual(saved["result"]["reason"], "quota")
 
     def test_python_driver_rejects_n8n_steps_and_connection_tasks_but_keeps_status_api(self):
-        self.bridge.workflow_runner = True
-        self.bridge.store.runner.update(enabled=True, active=True, status="running")
+        self.service.automatic_execution = True
+        self.service.store.control.update(enabled=True, active=True, status="running")
         for path in ("/cycle/step", "/tasks"):
             with self.assertRaises(HTTPError) as rejected:
                 self.post(path, {"callback_url": self.callback, "prompt": "ping"})
             self.assertEqual(rejected.exception.code, 409)
-        self.assertIsNone(self.bridge.store.running())
-        self.assertEqual(self.get("/cycle")["runner"]["status"], "running")
+        self.assertIsNone(self.service.store.running())
+        self.assertEqual(self.get("/cycle")["control"]["status"], "running")
         self.get("/budget")
 
     def test_budget_refresh_reuses_settings_and_records_a_probe_error(self):
-        self.bridge.set_budget_settings({"mode": "manual", "manual_cap_percent": 15})
-        with mock.patch.object(bridge.claude_budget, "status", return_value={"claude_allowed": True}) as probe:
+        self.service.set_budget_settings({"mode": "manual", "manual_cap_percent": 15})
+        with mock.patch.object(service.claude_budget, "status", return_value={"claude_allowed": True}) as probe:
             self.post("/budget", {})
             self.assertEqual(probe.call_args.args[0]["mode"], "manual")
-        with mock.patch.object(bridge.claude_budget, "status", side_effect=RuntimeError("usage unavailable")):
+        with mock.patch.object(service.claude_budget, "status", side_effect=RuntimeError("usage unavailable")):
             with self.assertRaises(HTTPError) as failed:
                 self.post("/budget", {})
         self.assertEqual(failed.exception.code, 500)
@@ -602,7 +602,7 @@ class BridgeHttpTests(unittest.TestCase):
         self.assertFalse(state["claude_allowed"])
 
     def test_connection_test_task_runs_the_agent_read_only_and_reports_back(self):
-        self.bridge.claude_command = ("python", "-c", "import sys; print('pong', sys.argv[1:4])")
+        self.service.claude_command = ("python", "-c", "import sys; print('pong', sys.argv[1:4])")
         status, task = self.post("/tasks", {"prompt": "ping", "callback_url": self.callback})
         self.assertEqual((status, task["kind"]), (202, "agent"))
         self.wait_for(lambda: _CallbackReceiver.received)
@@ -610,18 +610,18 @@ class BridgeHttpTests(unittest.TestCase):
         self.assertEqual(payload["status"], "completed")
         self.assertIn("--permission-mode', 'plan'", payload["result"])
 
-    def test_a_sync_that_merged_workflow_code_restarts_the_bridge_and_refuses_new_steps(self):
-        self.bridge.store.drop_active()
+    def test_a_sync_that_merged_workflow_code_restarts_the_service_and_refuses_new_steps(self):
+        self.service.store.drop_active()
         with mock.patch.object(cycle, "pointer_story", return_value=None), \
                 mock.patch.object(cycle, "choose_step", return_value="sync"), \
                 mock.patch.object(cycle, "step_sync",
                                   return_value=cycle.StepResult("synced", True, restart=True)), \
-                mock.patch.object(bridge.threading, "Timer") as timer:
-            task = self.bridge.next_step(self.callback)
+                mock.patch.object(service.threading, "Timer") as timer:
+            task = self.service.next_step(self.callback)
             self.assertEqual(task["result"]["outcome"], "synced")
-            timer.assert_called_once_with(2.0, bridge.os._exit, args=(bridge.RESTART_EXIT_CODE,))
-            with self.assertRaises(bridge.Busy):
-                self.bridge.next_step(self.callback)
+            timer.assert_called_once_with(2.0, service.os._exit, args=(service.RESTART_EXIT_CODE,))
+            with self.assertRaises(service.Busy):
+                self.service.next_step(self.callback)
 
 
 class SyncAndReviewTests(_CycleTestCase):
@@ -678,7 +678,7 @@ class SyncAndReviewTests(_CycleTestCase):
         self.assertNotIn("review", planning)
 
     def test_merged_workflow_code_asks_for_a_restart(self):
-        self.merged("local_bridge/cycle.py")
+        self.merged("workflow_service/cycle.py")
         self.assertTrue(cycle.step_sync({})["restart"])
 
     def test_a_conflict_stops_the_pipeline_for_a_human(self):

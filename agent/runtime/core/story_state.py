@@ -17,7 +17,7 @@ ACTIVATION_LOCK_TIMEOUT_SECONDS = 10
 
 @contextmanager
 def story_activation_lock(timeout: float = ACTIVATION_LOCK_TIMEOUT_SECONDS):
-    """Serialize activation across bridge threads and cooperating processes."""
+    """Serialize activation across service threads and cooperating processes."""
     ACTIVATION_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
     with ACTIVATION_LOCK_FILE.open("a+b") as lock_file:
         if os.name == "nt":

@@ -236,7 +236,7 @@ These findings concern the repository's agent/runtime implementation. They remai
 
 ### KP-28 — All nonzero Claude exits are treated as capacity interruptions (CH-19) (resolved)
 
-**Resolved 2026-10-10:** `run_claude_attempt()` classifies each non-zero exit from its output tail, and the pipeline's `implement` step double-checks `/usage`. Only a real capacity signal pauses the story; other failures count against `MAX_CLAUDE_FAILED_RUNS_PER_STORY` and then create a user intervention (`local_bridge/README.md`). The original finding is kept below for history.
+**Resolved 2026-10-10:** `run_claude_attempt()` classifies each non-zero exit from its output tail, and the pipeline's `implement` step double-checks `/usage`. Only a real capacity signal pauses the story; other failures count against `MAX_CLAUDE_FAILED_RUNS_PER_STORY` and then create a user intervention (`workflow_service/README.md`). The original finding is kept below for history.
 
 **Observed fact (original):** the runner returns only the process exit code. Every nonzero exit sets the story UNFINISHED, defers capacity and loops back to the same prompt, without classifying usage exhaustion versus authentication/CLI/configuration/process failure. This path never consumes the normal retry limit or creates an intervention.
 

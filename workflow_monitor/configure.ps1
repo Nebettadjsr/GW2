@@ -1,12 +1,18 @@
 param(
     [PSCredential]$GrafanaCredential,
     [string]$GrafanaUrl = 'http://localhost:3000',
-    [string]$BridgeUrl = 'http://172.29.240.1:8765',
-    [string]$BridgeTokenPath = (Join-Path $env:USERPROFILE '.gw2-claude-bridge/token.txt'),
+    [Alias('BridgeUrl')][string]$ServiceUrl = 'http://172.29.240.1:8765',
+    [Alias('BridgeTokenPath')][string]$ServiceTokenPath,
     [switch]$ReplaceDashboard
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $ServiceTokenPath) {
+    $ServiceTokenPath = Join-Path $env:USERPROFILE '.gw2-workflow-service/token.txt'
+    if (-not (Test-Path -LiteralPath $ServiceTokenPath)) {
+        $ServiceTokenPath = Join-Path $env:USERPROFILE '.gw2-claude-bridge/token.txt'
+    }
+}
 if (-not $GrafanaCredential) {
     $GrafanaCredential = Get-Credential -UserName admin -Message 'Local Grafana credentials'
 }
@@ -14,7 +20,7 @@ $login = $GrafanaCredential.GetNetworkCredential()
 $authText = $login.UserName + ':' + $login.Password
 $apiHeaders = @{Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($authText))}
 $apiRoot = $GrafanaUrl.TrimEnd('/')
-$bridgeRoot = $BridgeUrl.TrimEnd('/')
+$serviceRoot = $ServiceUrl.TrimEnd('/')
 
 function Invoke-Grafana([string]$Method, [string]$Path, $Body) {
     $request = @{Uri = $apiRoot + $Path; Method = $Method; Headers = $apiHeaders; TimeoutSec = 30}
@@ -40,11 +46,11 @@ $source = @{
     access = 'proxy'
     jsonData = @{
         auth_method = 'bearerToken'
-        allowedHosts = @($bridgeRoot)
+        allowedHosts = @($serviceRoot)
         customHealthCheckEnabled = $true
-        customHealthCheckUrl = $bridgeRoot + '/health'
+        customHealthCheckUrl = $serviceRoot + '/health'
     }
-    secureJsonData = @{bearerToken = [IO.File]::ReadAllText($BridgeTokenPath).Trim()}
+    secureJsonData = @{bearerToken = [IO.File]::ReadAllText($ServiceTokenPath).Trim()}
 }
 if (Find-GrafanaResource '/api/datasources/uid/gw2-workflow-state') {
     $null = Invoke-Grafana PUT '/api/datasources/uid/gw2-workflow-state' $source
@@ -63,7 +69,7 @@ if ($existing -and -not $ReplaceDashboard) {
 $dashboardPath = Join-Path $PSScriptRoot 'dashboards/workflow-overview.json'
 $dashboard = Get-Content -LiteralPath $dashboardPath -Raw -Encoding UTF8 | ConvertFrom-Json
 foreach ($panel in $dashboard.panels) {
-    foreach ($target in $panel.targets) { $target.url = $bridgeRoot + '/cycle' }
+    foreach ($target in $panel.targets) { $target.url = $serviceRoot + '/cycle' }
 }
 $result = Invoke-Grafana POST '/api/dashboards/db' @{
     dashboard = $dashboard

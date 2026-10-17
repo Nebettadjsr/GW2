@@ -25,7 +25,7 @@ REPOSITORY = Path(__file__).resolve().parent.parent
 if str(REPOSITORY) not in sys.path:
     sys.path.insert(0, str(REPOSITORY))
 
-from local_bridge import claude_budget, cycle as dev_cycle  # noqa: E402  (needs the repository on sys.path)
+from workflow_service import claude_budget, cycle as dev_cycle  # noqa: E402  (needs the repository on sys.path)
 from agent.runtime.core import backlog_writer  # noqa: E402
 from agent.runtime.support.capacity import ModelCapacityUnavailable  # noqa: E402
 from agent.runtime.support.daily_log import log_line  # noqa: E402
@@ -36,7 +36,7 @@ CODEX_CLI_SCRIPT = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" 
 MAX_PROMPT_LENGTH = 20_000
 MAX_BODY_LENGTH = MAX_PROMPT_LENGTH + 4096
 CALLBACK_RETRY_DELAYS = (0, 0.25, 0.5, 1, 2, 4, 8)
-# start-bridge.cmd starts the bridge again when it exits with this code.
+# start-service.cmd starts the service again when it exits with this code.
 RESTART_EXIT_CODE = 3
 ACTIVE_STATUSES = {"queued", "running"}
 BUDGET_REFRESH_SECONDS = 15 * 60
@@ -64,7 +64,7 @@ def validate_callback_url(callback_url, callback_origin: str) -> str:
 
 
 class Busy(RuntimeError):
-    """Another task is running; the bridge runs one at a time."""
+    """Another task is running; the service runs one at a time."""
 
 
 class Store:
@@ -78,7 +78,7 @@ class Store:
         self.cycles: dict[str, dict] = data.get("cycles", {})
         self.active: str | None = data.get("active")
         self.planning: dict = data.get("planning", {})
-        self.runner: dict = data.get("runner", {})
+        self.control: dict = data.get("control", data.get("runner", {}))
         self.budget: dict = data.get("budget") or {
             "settings": claude_budget.settings_from(None),
             "checked_at": None, "result": None, "error": None,
@@ -89,7 +89,7 @@ class Store:
                 # Its outcome is unknown. A cycle step is simply run again;
                 # an interrupted implementation resumes with a continuation prompt.
                 task.update(status="interrupted", updated_at=utc_now(),
-                            error="The bridge restarted while this task was running.")
+                            error="The service restarted while this task was running.")
         self.save()
 
     def save(self) -> None:
@@ -98,20 +98,20 @@ class Store:
             temporary = self.path.with_suffix(self.path.suffix + ".tmp")
             temporary.write_text(json.dumps(
                 {"tasks": self.tasks, "cycles": self.cycles, "active": self.active,
-                 "planning": self.planning, "budget": self.budget, "runner": self.runner},
+                 "planning": self.planning, "budget": self.budget, "control": self.control},
                 ensure_ascii=False), encoding="utf-8")
             os.replace(temporary, self.path)
 
-    def create(self, *, track_runner: bool = False, **fields) -> dict:
+    def create(self, *, track_control: bool = False, **fields) -> dict:
         with self.lock:
             if self.running():
-                raise Busy("A bridge task is already running; wait for it to finish.")
+                raise Busy("A service task is already running; wait for it to finish.")
             task = {"id": str(uuid.uuid4()), "status": "running", "result": None, "error": None,
                     "callback_url": None, "callback_delivered": False,
                     "created_at": utc_now(), "updated_at": utc_now(), **fields}
             self.tasks[task["id"]] = task
-            if track_runner:
-                self.runner.update(task_id=task["id"], steps=self.runner.get("steps", 0) + 1)
+            if track_control:
+                self.control.update(task_id=task["id"], steps=self.control.get("steps", 0) + 1)
             self.save()
             return dict(task)
 
@@ -148,7 +148,7 @@ class Store:
 
 
 def public_task(task: dict) -> dict:
-    """The task as n8n sees it: identity, status and the step's result fields."""
+    """Public task identity, status and the step's result fields."""
     view = {"task_id": task["id"], "status": task["status"], "kind": task.get("kind"),
             "step": task.get("step"), "story_id": task.get("story_id"), "error": task.get("error")}
     result = task.get("result")
@@ -160,7 +160,7 @@ def public_task(task: dict) -> dict:
     return view
 
 
-class Bridge:
+class WorkflowService:
     def __init__(self, store: Store, token: str, callback_origin: str = "http://localhost:5678",
                  claude_command: tuple[str, ...] = (str(CLAUDE_EXECUTABLE),),
                  codex_command: tuple[str, ...] | None = None):
@@ -177,7 +177,7 @@ class Bridge:
         self.budget_lock = threading.Lock()
         self.last_step_request_at: str | None = None
         self.restarting = False
-        self.workflow_runner = False
+        self.automatic_execution = False
         self._delivery_locks: dict[str, threading.Lock] = {}
 
     @property
@@ -227,7 +227,7 @@ class Bridge:
         return result
 
     def monitor_budget(self, stop: threading.Event) -> None:
-        """Replace the n8n quarter-hour refresh, including an initial reading."""
+        """Refresh at startup and each quarter-hour."""
         while not stop.is_set():
             try:
                 self.check_budget()
@@ -242,7 +242,7 @@ class Bridge:
         """Start (or re-attach to) the next cycle step and return its task."""
         with self.step_lock:
             if self.restarting:
-                raise Busy("The bridge is restarting to run merged workflow code; retry in a few seconds.")
+                raise Busy("The service is restarting to run merged workflow code; retry in a few seconds.")
             self.last_step_request_at = utc_now()
             if budget_settings is not None:
                 self.set_budget_settings(budget_settings)
@@ -258,7 +258,7 @@ class Bridge:
             backlog_writer.sync_user_requests(backlog_file=dev_cycle.BACKLOG_FILE)
             step = dev_cycle.choose_step(cycle, self.store.planning, self.budget_settings)
             asynchronous = step in dev_cycle.ASYNC_STEPS
-            task = self.store.create(track_runner=self.workflow_runner, kind="step", step=step,
+            task = self.store.create(track_control=self.automatic_execution, kind="step", step=step,
                                      story_id=cycle["story_id"] if cycle else None,
                                      callback_url=callback_url if asynchronous else None)
             if asynchronous:
@@ -277,7 +277,7 @@ class Bridge:
             self.store.drop_active()
             cycle = None
         if cycle is None and pointer is not None:
-            # A story activated outside the bridge starts at QA.
+            # A story activated outside the service starts at QA.
             cycle = dev_cycle.new_cycle(pointer)
             self.store.save_cycle(cycle)
         return cycle
@@ -332,9 +332,9 @@ class Bridge:
             self.restart()
 
     def restart(self) -> None:
-        """Exit once this response is out; start-bridge.cmd starts the merged code."""
-        self.restarting = True  # nothing new starts; n8n retries until the new process answers
-        log_line("Bridge restarting to run workflow code merged from the maintainer branch.")
+        """Exit once this response is out; start-service.cmd starts the merged code."""
+        self.restarting = True  # nothing new starts before the launcher loads the new code
+        log_line("WorkflowService restarting to run workflow code merged from the maintainer branch.")
         threading.Timer(2.0, os._exit, args=(RESTART_EXIT_CODE,)).start()
 
     # ------------------------------------------------------ connection test
@@ -394,9 +394,9 @@ class _NoRedirectHandler(HTTPRedirectHandler):
         return None
 
 
-def make_handler(bridge: Bridge):
+def make_handler(service: WorkflowService):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "GW2Bridge/2.0"
+        server_version = "GW2WorkflowService/2.0"
 
         def log_message(self, format_string: str, *args) -> None:
             logging.info("%s - %s", self.client_address[0], format_string % args)
@@ -410,7 +410,7 @@ def make_handler(bridge: Bridge):
             self.wfile.write(body)
 
         def _authorized(self) -> bool:
-            if hmac.compare_digest(self.headers.get("Authorization", ""), f"Bearer {bridge.token}"):
+            if hmac.compare_digest(self.headers.get("Authorization", ""), f"Bearer {service.token}"):
                 return True
             self._send(401, {"error": "Missing or invalid bearer token."})
             return False
@@ -431,15 +431,15 @@ def make_handler(bridge: Bridge):
             elif not self._authorized():
                 return
             elif path == "/cycle":
-                running = bridge.store.running()
-                self._send(200, {"active_cycle": bridge.store.active_cycle(),
+                running = service.store.running()
+                self._send(200, {"active_cycle": service.store.active_cycle(),
                                  "running_task": public_task(running) if running else None,
-                                 "last_step_request_at": bridge.last_step_request_at,
-                                 "runner": copy.deepcopy(bridge.store.runner),
-                                 "budget": bridge.budget_state()})
+                                 "last_step_request_at": service.last_step_request_at,
+                                 "control": copy.deepcopy(service.store.control),
+                                 "budget": service.budget_state()})
             elif path == "/budget":
-                self._send(200, bridge.budget_state())
-            elif path.startswith("/tasks/") and (task := bridge.store.get(path.removeprefix("/tasks/"))):
+                self._send(200, service.budget_state())
+            elif path.startswith("/tasks/") and (task := service.store.get(path.removeprefix("/tasks/"))):
                 self._send(200, public_task(task))
             else:
                 self._send(404, {"error": "Not found."})
@@ -459,24 +459,24 @@ def make_handler(bridge: Bridge):
                 return
             if path == "/budget":
                 try:
-                    self._send(200, bridge.check_budget(body.get("budget")))
+                    self._send(200, service.check_budget(body.get("budget")))
                 except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as error:
                     self._send(400 if isinstance(error, ValueError) else 500, {"error": str(error)})
                 return
-            if bridge.workflow_runner:
-                self._send(409, {"error": "The Python runner owns task execution; n8n/manual task starts are disabled."})
+            if service.automatic_execution:
+                self._send(409, {"error": "Automatic workflow execution is active; external task starts are disabled."})
                 return
             try:
-                callback_url = validate_callback_url(body.get("callback_url"), bridge.callback_origin)
+                callback_url = validate_callback_url(body.get("callback_url"), service.callback_origin)
                 if path == "/cycle/step":
-                    task = bridge.next_step(callback_url, body.get("budget"))
+                    task = service.next_step(callback_url, body.get("budget"))
                 else:
                     prompt, agent = body.get("prompt"), body.get("agent", "claude")
                     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > MAX_PROMPT_LENGTH:
                         raise ValueError(f"prompt must be a non-empty string of at most {MAX_PROMPT_LENGTH} characters.")
                     if agent not in ("claude", "codex"):
                         raise ValueError("agent must be claude or codex.")
-                    task = bridge.start_agent_task(prompt.strip(), agent, callback_url)
+                    task = service.start_agent_task(prompt.strip(), agent, callback_url)
             except (ValueError, json.JSONDecodeError) as error:
                 self._send(400, {"error": str(error)})
                 return
@@ -494,7 +494,7 @@ def make_handler(bridge: Bridge):
 
 def disable_console_quick_edit() -> None:
     """A click in a QuickEdit console pauses every write to it until Esc -- and
-    with it the whole bridge and the Claude run streaming through it."""
+    with it the whole service and the Claude run streaming through it."""
     if os.name != "nt":
         return
     import ctypes
@@ -505,51 +505,61 @@ def disable_console_quick_edit() -> None:
         kernel32.SetConsoleMode(handle, (mode.value & ~0x0040) | 0x0080)  # -QUICK_EDIT, +EXTENDED_FLAGS
 
 
+def environment_settings() -> tuple[str, str, Path]:
+    """Prefer service names while reusing existing credentials and saved work."""
+    token = os.environ.get("GW2_WORKFLOW_TOKEN", os.environ.get("GW2_BRIDGE_TOKEN", ""))
+    host = os.environ.get("GW2_WORKFLOW_HOST", os.environ.get("GW2_BRIDGE_HOST", "127.0.0.1"))
+    default_state = Path.home() / ".gw2-workflow-service" / "tasks.json"
+    legacy_state = Path.home() / ".gw2-claude-bridge" / "tasks.json"
+    if not default_state.exists() and legacy_state.exists():
+        default_state = legacy_state
+    state = os.environ.get("GW2_WORKFLOW_STATE", os.environ.get("GW2_BRIDGE_STATE", str(default_state)))
+    return token, host, Path(state)
+
+
 def main(*, run_workflow: bool = False, run_now: bool = False, once: bool = False) -> None:
     disable_console_quick_edit()
-    token = os.environ.get("GW2_BRIDGE_TOKEN", "")
+    token, host, state_file = environment_settings()
     if len(token) < 32:
-        raise SystemExit("Set GW2_BRIDGE_TOKEN to a randomly generated token of at least 32 characters.")
-    host = os.environ.get("GW2_BRIDGE_HOST", "127.0.0.1")
-    state_file = Path(os.environ.get("GW2_BRIDGE_STATE", str(Path.home() / ".gw2-claude-bridge" / "tasks.json")))
+        raise SystemExit("Set GW2_WORKFLOW_TOKEN to a randomly generated token of at least 32 characters.")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     # Bind before opening Store: a duplicate service must not mark the first
     # service's running tasks interrupted. Also lock the state path, including
     # when two services bind different interfaces.
-    from local_bridge.run_cycle import StateLease, WorkflowRunner
+    from workflow_service.control import StateLease, WorkflowControl
     server = ThreadingHTTPServer((host, 8765), None)
     lease = StateLease(state_file)
     try:
         lease.acquire()
-        bridge = Bridge(Store(state_file), token,
+        service = WorkflowService(Store(state_file), token,
                         callback_origin=os.environ.get("GW2_N8N_CALLBACK_ORIGIN", "http://localhost:5678"))
     except BaseException:
         lease.close()
         server.server_close()
         raise
-    server.RequestHandlerClass = make_handler(bridge)
-    bridge.workflow_runner = run_workflow
+    server.RequestHandlerClass = make_handler(service)
+    service.automatic_execution = run_workflow
     budget_stop = threading.Event()
-    budget_worker = threading.Thread(target=bridge.monitor_budget, args=(budget_stop,), daemon=True)
+    budget_worker = threading.Thread(target=service.monitor_budget, args=(budget_stop,), daemon=True)
     budget_worker.start()
-    runner_stop = threading.Event()
-    runner_worker = None
+    control_stop = threading.Event()
+    control_worker = None
     if run_workflow:
-        runner = WorkflowRunner(bridge)
-        runner_worker = threading.Thread(
-            target=runner.serve, args=(runner_stop,),
+        control = WorkflowControl(service)
+        control_worker = threading.Thread(
+            target=control.serve, args=(control_stop,),
             kwargs={"run_now": run_now or once, "once": once, "finished": server.shutdown}, daemon=True)
-        runner_worker.start()
-    logging.info("Bridge listening on %s:8765", host)
+        control_worker.start()
+    logging.info("WorkflowService listening on %s:8765", host)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         logging.info("Stopping after the current step finishes; saved progress will resume on restart.")
     finally:
-        runner_stop.set()
-        if runner_worker:
+        control_stop.set()
+        if control_worker:
             # Never abandon a running model/CI operation on a normal shutdown.
-            runner_worker.join()
+            control_worker.join()
         budget_stop.set()
         budget_worker.join(timeout=35)
         server.server_close()

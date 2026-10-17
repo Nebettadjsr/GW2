@@ -123,7 +123,7 @@ class BoundedEvaluationTest(PipelineRecoveryTestCase):
                     "story", "finished result", 0, True
                 )
 
-        # Bounded, not infinite -- and the failure reaches the bridge step,
+        # Bounded, not infinite -- and the failure reaches the service step,
         # which reruns evaluation, never the finished Claude work.
         self.assertEqual(evaluate.call_count, 6)
         self.assertTrue(

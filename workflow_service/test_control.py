@@ -9,9 +9,9 @@ from pathlib import Path
 from unittest import mock
 
 import agent.runtime.tests  # noqa: F401 (no models, real pushes or committed logs)
-from local_bridge import bridge, cycle
-from local_bridge.run_cycle import StateLease, WorkflowRunner, scheduled_slot
-from local_bridge.test_bridge import make_cycle
+from workflow_service import service, cycle
+from workflow_service.control import StateLease, WorkflowControl, scheduled_slot
+from workflow_service.test_service import make_cycle
 
 
 class ScheduleTests(unittest.TestCase):
@@ -28,13 +28,13 @@ class DriverTests(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.path = Path(directory.name) / "tasks.json"
-        self.service = bridge.Bridge(bridge.Store(self.path), "t" * 40)
-        self.service.workflow_runner = True
-        self.runner = WorkflowRunner(self.service, poll_seconds=.001)
+        self.service = service.WorkflowService(service.Store(self.path), "t" * 40)
+        self.service.automatic_execution = True
+        self.control = WorkflowControl(self.service, poll_seconds=.001)
         self.stop = threading.Event()
         patches = [
-            mock.patch.object(bridge.backlog_writer, "sync_user_requests"),
-            mock.patch.object(bridge, "log_line"),
+            mock.patch.object(service.backlog_writer, "sync_user_requests"),
+            mock.patch.object(service, "log_line"),
             mock.patch.object(self.service, "_current_cycle", side_effect=self.service.store.active_cycle),
             mock.patch.object(cycle, "choose_step", side_effect=lambda record, *_: record["phase"] if record else "select"),
         ]
@@ -44,9 +44,9 @@ class DriverTests(unittest.TestCase):
 
     def run_steps(self, implementations, *, start=True):
         if start:
-            self.runner.begin()
+            self.control.begin()
         with mock.patch.dict(cycle.STEPS, implementations):
-            self.runner.run(self.stop)
+            self.control.run(self.stop)
 
     def test_full_story_with_evaluator_and_ci_retry_then_empty_queue(self):
         visited = []
@@ -71,8 +71,8 @@ class DriverTests(unittest.TestCase):
             self.run_steps(steps)
         self.assertEqual(visited, ["qa", "implement", "evaluate", "implement", "evaluate", "publish", "ci",
                                    "implement", "evaluate", "publish", "ci", "finalize"])
-        self.assertEqual(self.service.store.runner["outcome"], "queue_empty")
-        self.assertEqual(self.service.store.runner["steps"], len(visited) + 2)
+        self.assertEqual(self.service.store.control["outcome"], "queue_empty")
+        self.assertEqual(self.service.store.control["steps"], len(visited) + 2)
         self.assertIsNone(self.service.store.active_cycle())
         self.assertTrue(all(t["callback_url"] is None for t in self.service.store.tasks.values()))
 
@@ -81,48 +81,48 @@ class DriverTests(unittest.TestCase):
         with mock.patch.object(cycle, "step_select") as select:
             self.run_steps({"implement": lambda *_: cycle.StepResult("waiting_for_claude_budget", False, "weekly cap")})
         select.assert_not_called()
-        self.assertEqual(self.service.store.runner["outcome"], "waiting_for_claude_budget")
+        self.assertEqual(self.service.store.control["outcome"], "waiting_for_claude_budget")
         current = self.service.store.active_cycle()
         self.assertEqual((current["phase"], current["retry_count"], current["failed_runs"]), ("implement", 2, 1))
-        self.assertEqual(self.service.store.runner["steps"], 1)
+        self.assertEqual(self.service.store.control["steps"], 1)
 
     def test_step_error_stops_without_advancing_phase(self):
         self.service.store.save_cycle(make_cycle(phase="publish"))
-        with mock.patch.object(bridge.logging, "exception"):
+        with mock.patch.object(service.logging, "exception"):
             self.run_steps({"publish": mock.Mock(side_effect=OSError("push failed"))})
-        self.assertEqual(self.service.store.runner["outcome"], "error")
+        self.assertEqual(self.service.store.control["outcome"], "error")
         self.assertEqual(self.service.store.active_cycle()["phase"], "publish")
-        self.assertIn("push failed", self.service.store.runner["reason"])
+        self.assertIn("push failed", self.service.store.control["reason"])
 
     def test_restart_uses_completed_task_result_instead_of_repeating_it(self):
-        self.runner.begin()
-        task = self.service.store.create(track_runner=True, kind="step", step="implement")
+        self.control.begin()
+        task = self.service.store.create(track_control=True, kind="step", step="implement")
         self.service.store.update(task["id"], status="completed",
                                   result={"outcome": "waiting_for_claude_budget", "proceed": False})
-        self.service.store = bridge.Store(self.path)
-        self.runner = WorkflowRunner(self.service, poll_seconds=.001)
+        self.service.store = service.Store(self.path)
+        self.control = WorkflowControl(self.service, poll_seconds=.001)
         with mock.patch.object(self.service, "next_step") as next_step:
-            self.runner.run(self.stop)
+            self.control.run(self.stop)
         next_step.assert_not_called()
-        self.assertEqual(self.service.store.runner["outcome"], "waiting_for_claude_budget")
+        self.assertEqual(self.service.store.control["outcome"], "waiting_for_claude_budget")
 
     def test_interrupted_task_resumes_through_existing_engine(self):
-        self.runner.begin()
-        self.service.store.create(track_runner=True, kind="step", step="ci")
-        self.service.store = bridge.Store(self.path)
-        self.runner = WorkflowRunner(self.service, poll_seconds=.001)
+        self.control.begin()
+        self.service.store.create(track_control=True, kind="step", step="ci")
+        self.service.store = service.Store(self.path)
+        self.control = WorkflowControl(self.service, poll_seconds=.001)
         with mock.patch.object(cycle, "step_select", return_value=(cycle.StepResult("queue_empty", False), None)):
-            self.runner.run(self.stop)
-        self.assertEqual(self.service.store.runner["steps"], 2)
-        self.assertEqual(self.service.store.runner["outcome"], "queue_empty")
+            self.control.run(self.stop)
+        self.assertEqual(self.service.store.control["steps"], 2)
+        self.assertEqual(self.service.store.control["outcome"], "queue_empty")
 
     def test_loop_guard_counts_steps_and_survives_restart(self):
         self.service.store.save_cycle(make_cycle(phase="publish"))
-        self.runner.begin()
-        self.runner.record(steps=199)
+        self.control.begin()
+        self.control.record(steps=199)
         self.run_steps({"publish": lambda *_: cycle.StepResult("again", True)}, start=False)
-        self.assertEqual(self.service.store.runner["outcome"], "loop_guard")
-        self.assertEqual(self.service.store.runner["steps"], 200)
+        self.assertEqual(self.service.store.control["outcome"], "loop_guard")
+        self.assertEqual(self.service.store.control["steps"], 200)
 
     def test_graceful_stop_waits_for_current_async_step_and_starts_no_next_step(self):
         self.service.store.save_cycle(make_cycle(phase="ci"))
@@ -134,9 +134,9 @@ class DriverTests(unittest.TestCase):
                 raise RuntimeError("test did not release CI")
             return cycle.StepResult("PASSED", True)
 
-        self.runner.begin()
+        self.control.begin()
         with mock.patch.dict(cycle.STEPS, {"ci": ci}):
-            worker = threading.Thread(target=self.runner.run, args=(self.stop,))
+            worker = threading.Thread(target=self.control.run, args=(self.stop,))
             worker.start()
             try:
                 self.assertTrue(entered.wait(2))
@@ -146,84 +146,84 @@ class DriverTests(unittest.TestCase):
                 release.set()
                 worker.join(3)
         self.assertFalse(worker.is_alive())
-        self.assertEqual(self.service.store.runner["steps"], 1)
-        self.assertTrue(self.service.store.runner["active"])
-        self.assertEqual(self.service.store.get(self.service.store.runner["task_id"])["status"], "completed")
+        self.assertEqual(self.service.store.control["steps"], 1)
+        self.assertTrue(self.service.store.control["active"])
+        self.assertEqual(self.service.store.get(self.service.store.control["task_id"])["status"], "completed")
 
     def test_sync_restart_does_not_start_a_step_on_old_code(self):
-        self.runner.begin()
+        self.control.begin()
         def synced(_):
             self.stop.set()
             return cycle.StepResult("synced", True, restart=True)
         with mock.patch.object(cycle, "choose_step", return_value="sync"), \
                 mock.patch.object(cycle, "step_sync", side_effect=synced), \
                 mock.patch.object(self.service, "restart") as restart:
-            self.runner.run(self.stop)
+            self.control.run(self.stop)
         restart.assert_called_once()
         self.assertTrue(self.service.restarting)
-        self.assertTrue(self.service.store.runner["active"])
-        self.assertEqual(self.service.store.runner["steps"], 1)
+        self.assertTrue(self.service.store.control["active"])
+        self.assertEqual(self.service.store.control["steps"], 1)
 
     def test_busy_connection_task_is_waited_for_without_creating_a_run_failure(self):
-        self.runner.begin()
+        self.control.begin()
         stop = mock.Mock(spec=threading.Event)
         stop.is_set.return_value = False
         stop.wait.return_value = True
-        with mock.patch.object(self.service, "next_step", side_effect=bridge.Busy("connection test running")):
-            self.runner.run(stop)
-        self.assertTrue(self.service.store.runner["active"])
-        self.assertIsNone(self.service.store.runner["outcome"])
-        self.assertEqual(self.service.store.runner["steps"], 0)
+        with mock.patch.object(self.service, "next_step", side_effect=service.Busy("connection test running")):
+            self.control.run(stop)
+        self.assertTrue(self.service.store.control["active"])
+        self.assertIsNone(self.service.store.control["outcome"])
+        self.assertEqual(self.service.store.control["steps"], 0)
 
     def test_same_scheduled_minute_does_not_repeat_an_empty_run(self):
-        self.runner.clock = lambda: datetime(2026, 10, 17, 17, 35)
+        self.control.clock = lambda: datetime(2026, 10, 17, 17, 35)
         stop = mock.Mock(spec=threading.Event)
         stop.is_set.return_value = False
         stop.wait.side_effect = (False, True)
         with mock.patch.object(cycle, "step_select", return_value=(cycle.StepResult("queue_empty", False), None)) as select:
-            self.runner.serve(stop)
+            self.control.serve(stop)
         select.assert_called_once()
-        self.assertFalse(self.service.store.runner["enabled"])
+        self.assertFalse(self.service.store.control["enabled"])
 
     def test_startup_outside_schedule_waits_without_starting_work(self):
-        self.runner.clock = lambda: datetime(2026, 10, 17, 12, 0)
+        self.control.clock = lambda: datetime(2026, 10, 17, 12, 0)
         stop = mock.Mock(spec=threading.Event)
         stop.is_set.return_value = False
         stop.wait.return_value = True
         with mock.patch.object(self.service, "next_step") as next_step:
-            self.runner.serve(stop)
+            self.control.serve(stop)
         next_step.assert_not_called()
 
     def test_once_resumes_active_run_outside_schedule_and_closes_service(self):
-        self.runner.begin()
-        self.runner.record(steps=7)
-        self.runner.clock = lambda: datetime(2026, 10, 17, 12, 0)
+        self.control.begin()
+        self.control.record(steps=7)
+        self.control.clock = lambda: datetime(2026, 10, 17, 12, 0)
         finished = mock.Mock()
         with mock.patch.object(cycle, "step_select", return_value=(cycle.StepResult("queue_empty", False), None)):
-            self.runner.serve(self.stop, run_now=True, once=True, finished=finished)
-        self.assertEqual(self.service.store.runner["steps"], 8)
+            self.control.serve(self.stop, run_now=True, once=True, finished=finished)
+        self.assertEqual(self.service.store.control["steps"], 8)
         finished.assert_called_once_with()
 
     def test_driver_exception_is_observable_and_stops_this_run(self):
         finished = mock.Mock()
         with mock.patch.object(self.service, "next_step", side_effect=ValueError("invalid pointer")), \
-                mock.patch.object(bridge.logging, "exception"):
-            self.runner.serve(self.stop, once=True, run_now=True, finished=finished)
-        self.assertEqual(self.service.store.runner["outcome"], "driver_error")
-        self.assertIn("invalid pointer", self.service.store.runner["reason"])
+                mock.patch.object(service.logging, "exception"):
+            self.control.serve(self.stop, once=True, run_now=True, finished=finished)
+        self.assertEqual(self.service.store.control["outcome"], "driver_error")
+        self.assertIn("invalid pointer", self.service.store.control["reason"])
         finished.assert_called_once_with()
 
     def test_task_identity_and_attempt_count_are_saved_before_execution(self):
-        self.runner.begin()
+        self.control.begin()
         def select(_):
             saved = json.loads(self.path.read_text(encoding="utf-8"))
-            task_id = saved["runner"]["task_id"]
+            task_id = saved["control"]["task_id"]
             self.assertEqual(saved["tasks"][task_id]["status"], "running")
-            self.assertEqual(saved["runner"]["steps"], 1)
+            self.assertEqual(saved["control"]["steps"], 1)
             return cycle.StepResult("queue_empty", False), None
         with mock.patch.object(cycle, "step_select", side_effect=select):
-            self.runner.run(self.stop)
-        self.assertEqual(self.service.store.runner["outcome"], "queue_empty")
+            self.control.run(self.stop)
+        self.assertEqual(self.service.store.control["outcome"], "queue_empty")
 
 
 class LeaseTests(unittest.TestCase):
@@ -242,22 +242,22 @@ class LeaseTests(unittest.TestCase):
                 second.close()
 
     def test_port_conflict_never_loads_or_changes_live_state(self):
-        with mock.patch.dict(bridge.os.environ, {"GW2_BRIDGE_TOKEN": "t" * 40}), \
-                mock.patch.object(bridge, "disable_console_quick_edit"), \
-                mock.patch.object(bridge, "ThreadingHTTPServer", side_effect=OSError("port in use")), \
-                mock.patch.object(bridge, "Store") as store:
+        with mock.patch.dict(service.os.environ, {"GW2_WORKFLOW_TOKEN": "t" * 40}), \
+                mock.patch.object(service, "disable_console_quick_edit"), \
+                mock.patch.object(service, "ThreadingHTTPServer", side_effect=OSError("port in use")), \
+                mock.patch.object(service, "Store") as store:
             with self.assertRaisesRegex(OSError, "port in use"):
-                bridge.main(run_workflow=True)
+                service.main(run_workflow=True)
         store.assert_not_called()
 
     def test_state_lock_conflict_closes_bound_server_without_loading_state(self):
-        with mock.patch.dict(bridge.os.environ, {"GW2_BRIDGE_TOKEN": "t" * 40}), \
-                mock.patch.object(bridge, "disable_console_quick_edit"), \
-                mock.patch.object(bridge, "ThreadingHTTPServer") as server, \
+        with mock.patch.dict(service.os.environ, {"GW2_WORKFLOW_TOKEN": "t" * 40}), \
+                mock.patch.object(service, "disable_console_quick_edit"), \
+                mock.patch.object(service, "ThreadingHTTPServer") as server, \
                 mock.patch.object(StateLease, "acquire", side_effect=RuntimeError("another owner")), \
-                mock.patch.object(bridge, "Store") as store:
+                mock.patch.object(service, "Store") as store:
             with self.assertRaisesRegex(RuntimeError, "another owner"):
-                bridge.main(run_workflow=True)
+                service.main(run_workflow=True)
         store.assert_not_called()
         server.return_value.server_close.assert_called_once_with()
 

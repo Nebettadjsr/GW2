@@ -3,7 +3,7 @@
 import unittest
 from datetime import datetime
 
-from local_bridge import claude_budget
+from workflow_service import claude_budget
 
 USAGE = ("Current session: {session}% used · resets Oct 9, 11:40pm (Europe/Berlin)\n"
          "Current week (all models): {weekly}% used · resets Oct 10, 7am (Europe/Berlin)\n")

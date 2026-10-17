@@ -1,6 +1,6 @@
-"""Story development cycle driven one step at a time by n8n.
+"""Stage selection and transition rules for the workflow service.
 
-The bridge keeps one persisted cycle record per story. Its ``phase`` names the
+The service keeps one persisted cycle record per story. Its ``phase`` names the
 next step to run; a step only advances the phase once it has finished, so any
 interruption simply reruns the same step. Each step reuses the old
 orchestrator's runtime functions, including its retry and CI-fix budgets:
@@ -45,13 +45,13 @@ from agent.runtime.support.config import (
 )
 from agent.runtime.support.daily_log import log_line
 from agent.runtime.support.files import file_hash, read_file
-from local_bridge import claude_budget
+from workflow_service import claude_budget
 
 ASYNC_STEPS = {"plan", "review", "qa", "implement", "evaluate", "ci"}
 SYNC_INTERVAL = timedelta(minutes=30)  # between stories; an idle queue fetches at most this often
 MAX_REVIEW_ATTEMPTS = 2
-# A merge that changes these needs the bridge restarted to run the new code.
-RESTART_PATHS = ("local_bridge/", "agent/runtime/")
+# A merge that changes these needs the service restarted to run the new code.
+RESTART_PATHS = ("workflow_service/", "agent/runtime/")
 CONTINUATION = (
     "Continue the interrupted attempt on the SAME active story.\n"
     "Inspect existing repository work and resume where it stopped; "
@@ -61,11 +61,11 @@ CONTINUATION = (
 
 class StepContext(NamedTuple):
     checkpoint: Callable[[], None]  # persist the cycle mid-step
-    budget_settings: dict | None = None  # the n8n "GW2 Claude Budget" row
+    budget_settings: dict | None = None  # persisted Claude budget configuration
 
 
 class StepResult(dict):
-    """Outcome of one step: ``proceed`` tells n8n whether to run the next one."""
+    """Outcome of one step: ``proceed`` permits the scheduling loop to continue."""
 
     def __init__(self, outcome: str, proceed: bool, reason: str = "", **details):
         super().__init__(outcome=outcome, proceed=proceed, reason=reason, **details)

@@ -121,7 +121,7 @@ CLAUDE_MODEL = "claude-opus-5"
 MAX_RETRIES_PER_STORY = 2
 
 # Claude starts only while its 5h session is below this; the weekly limit is
-# governed by the service's Claude budget (local_bridge/claude_budget.py).
+# governed by the service's Claude budget (workflow_service/claude_budget.py).
 CLAUDE_USAGE_LIMIT_PERCENT = 90
 
 # A Claude run that exits non-zero while carrying no capacity signal is a
@@ -142,7 +142,7 @@ EVALUATION_ATTEMPTS = 2
 EVALUATION_RETRY_SECONDS = 60
 
 # How many bounded batches of EVALUATION_ATTEMPTS one evaluate step rides
-# out before it fails. The bridge keeps the story at its evaluate phase, so
+# out before it fails. The workflow service keeps the story at its evaluate phase, so
 # the next run resumes at evaluation, never at another Claude run.
 MAX_EVALUATION_BATCHES = 2
 CYCLE_RETRY_SECONDS = 60
@@ -222,7 +222,7 @@ CI_VERIFICATION_ENABLED = _configured_ci_verification()
 # maintainer and workflow changes on MAINTAINER_BRANCH never collide with a
 # story in progress. Between stories the agent branch merges the maintainer
 # branch; after a story passes CI it is published back to it
-# (local_bridge/README.md, "Branches").
+# (workflow_service/README.md, "Branches").
 MAINTAINER_BRANCH = "master"
 AGENT_BRANCH = "agent/dev"
 

@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 import agent.runtime.tests  # noqa: F401  (neutralizes model runs, real pushes, and committed logs)
-from local_bridge import bridge
+from workflow_service import service
 
 
 class BudgetStateTests(unittest.TestCase):
@@ -17,8 +17,8 @@ class BudgetStateTests(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.path = Path(directory.name) / "tasks.json"
-        self.service = bridge.Bridge(bridge.Store(self.path), "t" * 40)
-        self.probe = mock.patch.object(bridge.claude_budget, "status",
+        self.service = service.WorkflowService(service.Store(self.path), "t" * 40)
+        self.probe = mock.patch.object(service.claude_budget, "status",
                                        return_value={"claude_allowed": True, "reason": "capacity available"}).start()
         self.addCleanup(mock.patch.stopall)
 
@@ -26,7 +26,7 @@ class BudgetStateTests(unittest.TestCase):
         original = {"tasks": {}, "cycles": {"STORY-1": {"phase": "evaluate"}},
                     "active": "STORY-1", "planning": {"fingerprint": "saved"}}
         self.path.write_text(json.dumps(original), encoding="utf-8")
-        store = bridge.Store(self.path)
+        store = service.Store(self.path)
         restored = json.loads(self.path.read_text(encoding="utf-8"))
         for key, value in original.items():
             self.assertEqual(restored[key], value)
@@ -35,7 +35,7 @@ class BudgetStateTests(unittest.TestCase):
 
     def test_manual_settings_and_last_reading_survive_restart(self):
         self.service.check_budget({"mode": "manual", "manual_cap_percent": 35})
-        restarted = bridge.Bridge(bridge.Store(self.path), "t" * 40)
+        restarted = service.WorkflowService(service.Store(self.path), "t" * 40)
         self.assertEqual(restarted.budget_settings["manual_cap_percent"], 35)
         self.assertEqual(restarted.budget_settings["mode"], "manual")
         self.assertTrue(restarted.budget_state()["claude_allowed"])
@@ -70,7 +70,7 @@ class BudgetStateTests(unittest.TestCase):
         self.probe.side_effect = subprocess.TimeoutExpired("claude /usage", 30)
         with self.assertRaises(subprocess.TimeoutExpired):
             self.service.check_budget()
-        restarted = bridge.Bridge(bridge.Store(self.path), "t" * 40)
+        restarted = service.WorkflowService(service.Store(self.path), "t" * 40)
         self.assertIsNotNone(restarted.budget_state()["error"])
         self.assertIsNone(restarted.budget_state()["result"])
         self.assertFalse(restarted.budget_state()["claude_allowed"])
@@ -89,8 +89,8 @@ class BudgetStateTests(unittest.TestCase):
         stop.is_set.return_value = False
         stop.wait.return_value = True
         with mock.patch.object(self.service, "check_budget", side_effect=RuntimeError("unavailable")) as check, \
-                mock.patch.object(bridge.time, "time", return_value=3001.25), \
-                mock.patch.object(bridge.logging, "exception"):
+                mock.patch.object(service.time, "time", return_value=3001.25), \
+                mock.patch.object(service.logging, "exception"):
             self.service.monitor_budget(stop)
         check.assert_called_once_with()
         stop.wait.assert_called_once_with(598.75)
