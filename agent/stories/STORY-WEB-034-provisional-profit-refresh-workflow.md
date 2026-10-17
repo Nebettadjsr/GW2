@@ -574,6 +574,10 @@ story's browser requirement is met by `smoke:profit:refresh` and `check:profit:e
 story that cites `smoke:profit:live` as evidence would be citing a check that stops at its first
 wait.
 
+## Follow-up Findings Disposition
+
+F001: DISMISSED — Missing verification in a legacy smoke script, not a verified application defect. Current inspection confirms `profit-live-smoke.mjs` still waits for `reload`, while `CraftingProfitScreen.vue` renders `refresh-data-and-results` and `request-retry`. This does not invalidate the separate refresh-browser and backend-envelope checks recorded in this story's Result. Standalone repair is optional and is not mandatory Phase 5 work; Request-013-raise-backend-test-coverage.md excludes cosmetic smoke follow-ups without an app defect. `agent/stories/STORY-PERF-004-cached-profit-page-acceptance.md` already requires current real-browser/equivalence evidence and permits necessary measurement-harness changes. Its acceptance must not rely on this stale script passing unchanged.
+
 ## Blockers
 
 None.

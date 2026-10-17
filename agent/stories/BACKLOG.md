@@ -13,11 +13,11 @@ below stay in the plain form.
 
 ## Active
 
+- STORY-PERF-004 | STORY-PERF-004-cached-profit-page-acceptance.md | TODO | milestone-05 | deps: STORY-APP-014, STORY-WEB-034
 
 ## To Do
 
 ## Blocked
-- STORY-PERF-004 | STORY-PERF-004-cached-profit-page-acceptance.md | BLOCKED | milestone-05 | deps: STORY-APP-014, STORY-WEB-034
 
 ## User
 
