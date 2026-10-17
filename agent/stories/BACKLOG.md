@@ -13,7 +13,6 @@ below stay in the plain form.
 
 ## Active
 
-- STORY-PERF-004 | STORY-PERF-004-cached-profit-page-acceptance.md | TODO | milestone-05 | deps: STORY-APP-014, STORY-WEB-034
 
 ## To Do
 
@@ -86,6 +85,7 @@ Completed current-milestone story details remain in their canonical files.
 - STORY-PERF-003 | STORY-PERF-003-refresh-phase-five-page-budget-evidence.md | DONE | milestone-05 | Refresh Phase 5 complete-page performance evidence after calculation changes
 - STORY-APP-014 | STORY-APP-014-cached-profit-refresh-coordination.md | DONE | milestone-05 | Return cached Crafting Profit results while coordinating asynchronous input refresh
 - STORY-WEB-034 | STORY-WEB-034-provisional-profit-refresh-workflow.md | DONE | milestone-05 | Show provisional Crafting Profit results and finish bounded asynchronous refresh
+- STORY-PERF-004 | STORY-PERF-004-cached-profit-page-acceptance.md | DONE | milestone-05 | Verify real-data cached Profit page and asynchronous refresh acceptance
 
 ## Archived
 

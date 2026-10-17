@@ -8,7 +8,7 @@ Verify real-data cached Profit page and asynchronous refresh acceptance
 
 ## Status
 
-UNFINISHED
+DONE
 
 ## Milestone
 
