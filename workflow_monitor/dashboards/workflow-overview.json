@@ -1,0 +1,1355 @@
+{
+  "uid": "gw2-workflow-overview",
+  "title": "GW2 Workflow Overview",
+  "schemaVersion": 41,
+  "editable": true,
+  "tags": [
+    "gw2",
+    "workflow"
+  ],
+  "refresh": "5s",
+  "timezone": "browser",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Current activity",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "gw2-workflow-state"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "gw2-workflow-state"
+          },
+          "type": "json",
+          "source": "url",
+          "url": "http://172.29.240.1:8765/cycle",
+          "url_options": {
+            "method": "GET"
+          },
+          "parser": "jq-backend",
+          "format": "table",
+          "root_selector": ". as $s | (.active_cycle // {}) as $c | (.running_task // {}) as $r |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\ndef stage($id):\n  ($h | map(select(.step == $id)) | last // {}) as $event |\n  ($event.outcome // \"\") as $outcome |\n  if $r.status == \"running\" and $r.step == $id then 1\n  elif ($outcome | test(\"fail|error|conflict|blocked\"; \"i\")) or $outcome == \"RETRY\" then 3\n  elif $c.phase == $id and $r.status != \"running\" then 4\n  elif ($outcome | test(\"capacity|budget|NEEDS_USER\"; \"i\")) then 4\n  elif ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\"] | index($outcome)) != null then 2\n  else 0 end;\n[{\n  \"activity\": (if $r.status == \"running\" then \"Running: \" + ($r.step // \"task\")\n    elif $c.phase then \"Paused before \" + $c.phase + \" / \" + ($last.outcome // \"not started\")\n    else \"Idle: no active story or running task\" end),\n  \"story\": ($c.story_id // $r.story_id // \"No active story\"),\n  \"saved_phase\": ($c.phase // \"None\"),\n  \"last_outcome\": ($last.outcome // \"No current-story event\"),\n  \"last_request\": ($s.last_step_request_at // \"Unknown\"),\n  \"sync\": stage(\"sync\"),\n  \"review\": stage(\"review\"),\n  \"plan\": stage(\"plan\"),\n  \"select\": stage(\"select\"),\n  \"qa\": stage(\"qa\"),\n  \"implement\": stage(\"implement\"),\n  \"evaluate\": stage(\"evaluate\"),\n  \"publish\": stage(\"publish\"),\n  \"ci\": stage(\"ci\"),\n  \"finalize\": stage(\"finalize\")\n}]",
+          "columns": [
+            {
+              "selector": "activity",
+              "text": "activity",
+              "type": "string"
+            },
+            {
+              "selector": "story",
+              "text": "story",
+              "type": "string"
+            },
+            {
+              "selector": "saved_phase",
+              "text": "saved_phase",
+              "type": "string"
+            },
+            {
+              "selector": "last_outcome",
+              "text": "last_outcome",
+              "type": "string"
+            },
+            {
+              "selector": "last_request",
+              "text": "last_request",
+              "type": "string"
+            },
+            {
+              "selector": "sync",
+              "text": "sync",
+              "type": "number"
+            },
+            {
+              "selector": "review",
+              "text": "review",
+              "type": "number"
+            },
+            {
+              "selector": "plan",
+              "text": "plan",
+              "type": "number"
+            },
+            {
+              "selector": "select",
+              "text": "select",
+              "type": "number"
+            },
+            {
+              "selector": "qa",
+              "text": "qa",
+              "type": "number"
+            },
+            {
+              "selector": "implement",
+              "text": "implement",
+              "type": "number"
+            },
+            {
+              "selector": "evaluate",
+              "text": "evaluate",
+              "type": "number"
+            },
+            {
+              "selector": "publish",
+              "text": "publish",
+              "type": "number"
+            },
+            {
+              "selector": "ci",
+              "text": "ci",
+              "type": "number"
+            },
+            {
+              "selector": "finalize",
+              "text": "finalize",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^activity$/",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Current story",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "gw2-workflow-state"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "gw2-workflow-state"
+          },
+          "type": "json",
+          "source": "url",
+          "url": "http://172.29.240.1:8765/cycle",
+          "url_options": {
+            "method": "GET"
+          },
+          "parser": "jq-backend",
+          "format": "table",
+          "root_selector": ". as $s | (.active_cycle // {}) as $c | (.running_task // {}) as $r |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\ndef stage($id):\n  ($h | map(select(.step == $id)) | last // {}) as $event |\n  ($event.outcome // \"\") as $outcome |\n  if $r.status == \"running\" and $r.step == $id then 1\n  elif ($outcome | test(\"fail|error|conflict|blocked\"; \"i\")) or $outcome == \"RETRY\" then 3\n  elif $c.phase == $id and $r.status != \"running\" then 4\n  elif ($outcome | test(\"capacity|budget|NEEDS_USER\"; \"i\")) then 4\n  elif ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\"] | index($outcome)) != null then 2\n  else 0 end;\n[{\n  \"activity\": (if $r.status == \"running\" then \"Running: \" + ($r.step // \"task\")\n    elif $c.phase then \"Paused before \" + $c.phase + \" / \" + ($last.outcome // \"not started\")\n    else \"Idle: no active story or running task\" end),\n  \"story\": ($c.story_id // $r.story_id // \"No active story\"),\n  \"saved_phase\": ($c.phase // \"None\"),\n  \"last_outcome\": ($last.outcome // \"No current-story event\"),\n  \"last_request\": ($s.last_step_request_at // \"Unknown\"),\n  \"sync\": stage(\"sync\"),\n  \"review\": stage(\"review\"),\n  \"plan\": stage(\"plan\"),\n  \"select\": stage(\"select\"),\n  \"qa\": stage(\"qa\"),\n  \"implement\": stage(\"implement\"),\n  \"evaluate\": stage(\"evaluate\"),\n  \"publish\": stage(\"publish\"),\n  \"ci\": stage(\"ci\"),\n  \"finalize\": stage(\"finalize\")\n}]",
+          "columns": [
+            {
+              "selector": "activity",
+              "text": "activity",
+              "type": "string"
+            },
+            {
+              "selector": "story",
+              "text": "story",
+              "type": "string"
+            },
+            {
+              "selector": "saved_phase",
+              "text": "saved_phase",
+              "type": "string"
+            },
+            {
+              "selector": "last_outcome",
+              "text": "last_outcome",
+              "type": "string"
+            },
+            {
+              "selector": "last_request",
+              "text": "last_request",
+              "type": "string"
+            },
+            {
+              "selector": "sync",
+              "text": "sync",
+              "type": "number"
+            },
+            {
+              "selector": "review",
+              "text": "review",
+              "type": "number"
+            },
+            {
+              "selector": "plan",
+              "text": "plan",
+              "type": "number"
+            },
+            {
+              "selector": "select",
+              "text": "select",
+              "type": "number"
+            },
+            {
+              "selector": "qa",
+              "text": "qa",
+              "type": "number"
+            },
+            {
+              "selector": "implement",
+              "text": "implement",
+              "type": "number"
+            },
+            {
+              "selector": "evaluate",
+              "text": "evaluate",
+              "type": "number"
+            },
+            {
+              "selector": "publish",
+              "text": "publish",
+              "type": "number"
+            },
+            {
+              "selector": "ci",
+              "text": "ci",
+              "type": "number"
+            },
+            {
+              "selector": "finalize",
+              "text": "finalize",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^story$/",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Saved next phase",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "gw2-workflow-state"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "gw2-workflow-state"
+          },
+          "type": "json",
+          "source": "url",
+          "url": "http://172.29.240.1:8765/cycle",
+          "url_options": {
+            "method": "GET"
+          },
+          "parser": "jq-backend",
+          "format": "table",
+          "root_selector": ". as $s | (.active_cycle // {}) as $c | (.running_task // {}) as $r |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\ndef stage($id):\n  ($h | map(select(.step == $id)) | last // {}) as $event |\n  ($event.outcome // \"\") as $outcome |\n  if $r.status == \"running\" and $r.step == $id then 1\n  elif ($outcome | test(\"fail|error|conflict|blocked\"; \"i\")) or $outcome == \"RETRY\" then 3\n  elif $c.phase == $id and $r.status != \"running\" then 4\n  elif ($outcome | test(\"capacity|budget|NEEDS_USER\"; \"i\")) then 4\n  elif ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\"] | index($outcome)) != null then 2\n  else 0 end;\n[{\n  \"activity\": (if $r.status == \"running\" then \"Running: \" + ($r.step // \"task\")\n    elif $c.phase then \"Paused before \" + $c.phase + \" / \" + ($last.outcome // \"not started\")\n    else \"Idle: no active story or running task\" end),\n  \"story\": ($c.story_id // $r.story_id // \"No active story\"),\n  \"saved_phase\": ($c.phase // \"None\"),\n  \"last_outcome\": ($last.outcome // \"No current-story event\"),\n  \"last_request\": ($s.last_step_request_at // \"Unknown\"),\n  \"sync\": stage(\"sync\"),\n  \"review\": stage(\"review\"),\n  \"plan\": stage(\"plan\"),\n  \"select\": stage(\"select\"),\n  \"qa\": stage(\"qa\"),\n  \"implement\": stage(\"implement\"),\n  \"evaluate\": stage(\"evaluate\"),\n  \"publish\": stage(\"publish\"),\n  \"ci\": stage(\"ci\"),\n  \"finalize\": stage(\"finalize\")\n}]",
+          "columns": [
+            {
+              "selector": "activity",
+              "text": "activity",
+              "type": "string"
+            },
+            {
+              "selector": "story",
+              "text": "story",
+              "type": "string"
+            },
+            {
+              "selector": "saved_phase",
+              "text": "saved_phase",
+              "type": "string"
+            },
+            {
+              "selector": "last_outcome",
+              "text": "last_outcome",
+              "type": "string"
+            },
+            {
+              "selector": "last_request",
+              "text": "last_request",
+              "type": "string"
+            },
+            {
+              "selector": "sync",
+              "text": "sync",
+              "type": "number"
+            },
+            {
+              "selector": "review",
+              "text": "review",
+              "type": "number"
+            },
+            {
+              "selector": "plan",
+              "text": "plan",
+              "type": "number"
+            },
+            {
+              "selector": "select",
+              "text": "select",
+              "type": "number"
+            },
+            {
+              "selector": "qa",
+              "text": "qa",
+              "type": "number"
+            },
+            {
+              "selector": "implement",
+              "text": "implement",
+              "type": "number"
+            },
+            {
+              "selector": "evaluate",
+              "text": "evaluate",
+              "type": "number"
+            },
+            {
+              "selector": "publish",
+              "text": "publish",
+              "type": "number"
+            },
+            {
+              "selector": "ci",
+              "text": "ci",
+              "type": "number"
+            },
+            {
+              "selector": "finalize",
+              "text": "finalize",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^saved_phase$/",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "type": "canvas",
+      "title": "Workflow - live current story",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "gw2-workflow-state"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "gw2-workflow-state"
+          },
+          "type": "json",
+          "source": "url",
+          "url": "http://172.29.240.1:8765/cycle",
+          "url_options": {
+            "method": "GET"
+          },
+          "parser": "jq-backend",
+          "format": "table",
+          "root_selector": ". as $s | (.active_cycle // {}) as $c | (.running_task // {}) as $r |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\ndef stage($id):\n  ($h | map(select(.step == $id)) | last // {}) as $event |\n  ($event.outcome // \"\") as $outcome |\n  if $r.status == \"running\" and $r.step == $id then 1\n  elif ($outcome | test(\"fail|error|conflict|blocked\"; \"i\")) or $outcome == \"RETRY\" then 3\n  elif $c.phase == $id and $r.status != \"running\" then 4\n  elif ($outcome | test(\"capacity|budget|NEEDS_USER\"; \"i\")) then 4\n  elif ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\"] | index($outcome)) != null then 2\n  else 0 end;\n[{\n  \"activity\": (if $r.status == \"running\" then \"Running: \" + ($r.step // \"task\")\n    elif $c.phase then \"Paused before \" + $c.phase + \" / \" + ($last.outcome // \"not started\")\n    else \"Idle: no active story or running task\" end),\n  \"story\": ($c.story_id // $r.story_id // \"No active story\"),\n  \"saved_phase\": ($c.phase // \"None\"),\n  \"last_outcome\": ($last.outcome // \"No current-story event\"),\n  \"last_request\": ($s.last_step_request_at // \"Unknown\"),\n  \"sync\": stage(\"sync\"),\n  \"review\": stage(\"review\"),\n  \"plan\": stage(\"plan\"),\n  \"select\": stage(\"select\"),\n  \"qa\": stage(\"qa\"),\n  \"implement\": stage(\"implement\"),\n  \"evaluate\": stage(\"evaluate\"),\n  \"publish\": stage(\"publish\"),\n  \"ci\": stage(\"ci\"),\n  \"finalize\": stage(\"finalize\")\n}]",
+          "columns": [
+            {
+              "selector": "activity",
+              "text": "activity",
+              "type": "string"
+            },
+            {
+              "selector": "story",
+              "text": "story",
+              "type": "string"
+            },
+            {
+              "selector": "saved_phase",
+              "text": "saved_phase",
+              "type": "string"
+            },
+            {
+              "selector": "last_outcome",
+              "text": "last_outcome",
+              "type": "string"
+            },
+            {
+              "selector": "last_request",
+              "text": "last_request",
+              "type": "string"
+            },
+            {
+              "selector": "sync",
+              "text": "sync",
+              "type": "number"
+            },
+            {
+              "selector": "review",
+              "text": "review",
+              "type": "number"
+            },
+            {
+              "selector": "plan",
+              "text": "plan",
+              "type": "number"
+            },
+            {
+              "selector": "select",
+              "text": "select",
+              "type": "number"
+            },
+            {
+              "selector": "qa",
+              "text": "qa",
+              "type": "number"
+            },
+            {
+              "selector": "implement",
+              "text": "implement",
+              "type": "number"
+            },
+            {
+              "selector": "evaluate",
+              "text": "evaluate",
+              "type": "number"
+            },
+            {
+              "selector": "publish",
+              "text": "publish",
+              "type": "number"
+            },
+            {
+              "selector": "ci",
+              "text": "ci",
+              "type": "number"
+            },
+            {
+              "selector": "finalize",
+              "text": "finalize",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 23
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "#475569"
+              },
+              {
+                "value": 1,
+                "color": "#2563EB"
+              },
+              {
+                "value": 2,
+                "color": "#15803D"
+              },
+              {
+                "value": 3,
+                "color": "#B91C1C"
+              },
+              {
+                "value": 4,
+                "color": "#B45309"
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "inlineEditing": false,
+        "panZoom": true,
+        "zoomToContent": true,
+        "infinitePan": true,
+        "tooltip": {
+          "mode": "single",
+          "disableForOneClick": false
+        },
+        "root": {
+          "name": "workflow",
+          "type": "frame",
+          "elements": [
+            {
+              "name": "sync",
+              "type": "rectangle",
+              "placement": {
+                "left": 40,
+                "top": 70,
+                "width": 180,
+                "height": 70,
+                "rotation": 0
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "background": {
+                "color": {
+                  "field": "sync",
+                  "fixed": "#475569"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "sync",
+                  "fixed": "#64748B"
+                },
+                "width": 3,
+                "radius": 10
+              },
+              "config": {
+                "text": {
+                  "fixed": "Sync maintainer",
+                  "mode": "fixed"
+                },
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "size": 18,
+                "align": "center",
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "targetName": "review",
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "target": {
+                    "x": -1,
+                    "y": 0
+                  },
+                  "path": "straight",
+                  "direction": "forward",
+                  "color": {
+                    "fixed": "#94A3B8"
+                  },
+                  "size": {
+                    "fixed": 2,
+                    "min": 1,
+                    "max": 10
+                  }
+                }
+              ]
+            },
+            {
+              "name": "review",
+              "type": "rectangle",
+              "placement": {
+                "left": 280,
+                "top": 70,
+                "width": 180,
+                "height": 70,
+                "rotation": 0
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "background": {
+                "color": {
+                  "field": "review",
+                  "fixed": "#475569"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "review",
+                  "fixed": "#64748B"
+                },
+                "width": 3,
+                "radius": 10
+              },
+              "config": {
+                "text": {
+                  "fixed": "Review incoming docs",
+                  "mode": "fixed"
+                },
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "size": 18,
+                "align": "center",
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "targetName": "plan",
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "target": {
+                    "x": -1,
+                    "y": 0
+                  },
+                  "path": "straight",
+                  "direction": "forward",
+                  "color": {
+                    "fixed": "#94A3B8"
+                  },
+                  "size": {
+                    "fixed": 2,
+                    "min": 1,
+                    "max": 10
+                  }
+                }
+              ]
+            },
+            {
+              "name": "plan",
+              "type": "rectangle",
+              "placement": {
+                "left": 520,
+                "top": 70,
+                "width": 180,
+                "height": 70,
+                "rotation": 0
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "background": {
+                "color": {
+                  "field": "plan",
+                  "fixed": "#475569"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "plan",
+                  "fixed": "#64748B"
+                },
+                "width": 3,
+                "radius": 10
+              },
+              "config": {
+                "text": {
+                  "fixed": "Plan / Architect",
+                  "mode": "fixed"
+                },
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "size": 18,
+                "align": "center",
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "targetName": "select",
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "target": {
+                    "x": -1,
+                    "y": 0
+                  },
+                  "path": "straight",
+                  "direction": "forward",
+                  "color": {
+                    "fixed": "#94A3B8"
+                  },
+                  "size": {
+                    "fixed": 2,
+                    "min": 1,
+                    "max": 10
+                  }
+                }
+              ]
+            },
+            {
+              "name": "select",
+              "type": "rectangle",
+              "placement": {
+                "left": 760,
+                "top": 70,
+                "width": 180,
+                "height": 70,
+                "rotation": 0
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "background": {
+                "color": {
+                  "field": "select",
+                  "fixed": "#475569"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "select",
+                  "fixed": "#64748B"
+                },
+                "width": 3,
+                "radius": 10
+              },
+              "config": {
+                "text": {
+                  "fixed": "Select story",
+                  "mode": "fixed"
+                },
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "size": 18,
+                "align": "center",
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "targetName": "qa",
+                  "source": {
+                    "x": 0,
+                    "y": -1
+                  },
+                  "target": {
+                    "x": 0,
+                    "y": 1
+                  },
+                  "path": "straight",
+                  "direction": "forward",
+                  "color": {
+                    "fixed": "#94A3B8"
+                  },
+                  "size": {
+                    "fixed": 2,
+                    "min": 1,
+                    "max": 10
+                  }
+                }
+              ]
+            },
+            {
+              "name": "qa",
+              "type": "rectangle",
+              "placement": {
+                "left": 760,
+                "top": 260,
+                "width": 180,
+                "height": 70,
+                "rotation": 0
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "background": {
+                "color": {
+                  "field": "qa",
+                  "fixed": "#475569"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "qa",
+                  "fixed": "#64748B"
+                },
+                "width": 3,
+                "radius": 10
+              },
+              "config": {
+                "text": {
+                  "fixed": "QA preparation",
+                  "mode": "fixed"
+                },
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "size": 18,
+                "align": "center",
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "targetName": "implement",
+                  "source": {
+                    "x": -1,
+                    "y": 0
+                  },
+                  "target": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "path": "straight",
+                  "direction": "forward",
+                  "color": {
+                    "fixed": "#94A3B8"
+                  },
+                  "size": {
+                    "fixed": 2,
+                    "min": 1,
+                    "max": 10
+                  }
+                }
+              ]
+            },
+            {
+              "name": "implement",
+              "type": "rectangle",
+              "placement": {
+                "left": 520,
+                "top": 260,
+                "width": 180,
+                "height": 70,
+                "rotation": 0
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "background": {
+                "color": {
+                  "field": "implement",
+                  "fixed": "#475569"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "implement",
+                  "fixed": "#64748B"
+                },
+                "width": 3,
+                "radius": 10
+              },
+              "config": {
+                "text": {
+                  "fixed": "Coding",
+                  "mode": "fixed"
+                },
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "size": 18,
+                "align": "center",
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "targetName": "evaluate",
+                  "source": {
+                    "x": -1,
+                    "y": 0
+                  },
+                  "target": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "path": "straight",
+                  "direction": "forward",
+                  "color": {
+                    "fixed": "#94A3B8"
+                  },
+                  "size": {
+                    "fixed": 2,
+                    "min": 1,
+                    "max": 10
+                  }
+                }
+              ]
+            },
+            {
+              "name": "evaluate",
+              "type": "rectangle",
+              "placement": {
+                "left": 280,
+                "top": 260,
+                "width": 180,
+                "height": 70,
+                "rotation": 0
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "background": {
+                "color": {
+                  "field": "evaluate",
+                  "fixed": "#475569"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "evaluate",
+                  "fixed": "#64748B"
+                },
+                "width": 3,
+                "radius": 10
+              },
+              "config": {
+                "text": {
+                  "fixed": "Evaluation",
+                  "mode": "fixed"
+                },
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "size": 18,
+                "align": "center",
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "targetName": "publish",
+                  "source": {
+                    "x": -1,
+                    "y": 0
+                  },
+                  "target": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "path": "straight",
+                  "direction": "forward",
+                  "color": {
+                    "fixed": "#94A3B8"
+                  },
+                  "size": {
+                    "fixed": 2,
+                    "min": 1,
+                    "max": 10
+                  }
+                }
+              ]
+            },
+            {
+              "name": "publish",
+              "type": "rectangle",
+              "placement": {
+                "left": 40,
+                "top": 260,
+                "width": 180,
+                "height": 70,
+                "rotation": 0
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "background": {
+                "color": {
+                  "field": "publish",
+                  "fixed": "#475569"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "publish",
+                  "fixed": "#64748B"
+                },
+                "width": 3,
+                "radius": 10
+              },
+              "config": {
+                "text": {
+                  "fixed": "Publish story",
+                  "mode": "fixed"
+                },
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "size": 18,
+                "align": "center",
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "targetName": "ci",
+                  "source": {
+                    "x": 0,
+                    "y": -1
+                  },
+                  "target": {
+                    "x": 0,
+                    "y": 1
+                  },
+                  "path": "straight",
+                  "direction": "forward",
+                  "color": {
+                    "fixed": "#94A3B8"
+                  },
+                  "size": {
+                    "fixed": 2,
+                    "min": 1,
+                    "max": 10
+                  }
+                }
+              ]
+            },
+            {
+              "name": "ci",
+              "type": "rectangle",
+              "placement": {
+                "left": 40,
+                "top": 450,
+                "width": 180,
+                "height": 70,
+                "rotation": 0
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "background": {
+                "color": {
+                  "field": "ci",
+                  "fixed": "#475569"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "ci",
+                  "fixed": "#64748B"
+                },
+                "width": 3,
+                "radius": 10
+              },
+              "config": {
+                "text": {
+                  "fixed": "Application CI",
+                  "mode": "fixed"
+                },
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "size": 18,
+                "align": "center",
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "targetName": "finalize",
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "target": {
+                    "x": -1,
+                    "y": 0
+                  },
+                  "path": "straight",
+                  "direction": "forward",
+                  "color": {
+                    "fixed": "#94A3B8"
+                  },
+                  "size": {
+                    "fixed": 2,
+                    "min": 1,
+                    "max": 10
+                  }
+                }
+              ]
+            },
+            {
+              "name": "finalize",
+              "type": "rectangle",
+              "placement": {
+                "left": 280,
+                "top": 450,
+                "width": 180,
+                "height": 70,
+                "rotation": 0
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "background": {
+                "color": {
+                  "field": "finalize",
+                  "fixed": "#475569"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "finalize",
+                  "fixed": "#64748B"
+                },
+                "width": 3,
+                "radius": 10
+              },
+              "config": {
+                "text": {
+                  "fixed": "Finalize story",
+                  "mode": "fixed"
+                },
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "size": 18,
+                "align": "center",
+                "valign": "middle"
+              }
+            },
+            {
+              "name": "between-stories",
+              "type": "text",
+              "placement": {
+                "left": 40,
+                "top": 12,
+                "width": 920,
+                "height": 40
+              },
+              "config": {
+                "text": {
+                  "fixed": "Between stories: sync and review when due; planning or architecture when triggered",
+                  "mode": "fixed"
+                },
+                "color": {
+                  "fixed": "#CBD5E1"
+                },
+                "size": 15,
+                "align": "left",
+                "valign": "middle"
+              }
+            },
+            {
+              "name": "execution",
+              "type": "text",
+              "placement": {
+                "left": 40,
+                "top": 195,
+                "width": 920,
+                "height": 40
+              },
+              "config": {
+                "text": {
+                  "fixed": "Current story: QA -> coding -> evaluation -> publication",
+                  "mode": "fixed"
+                },
+                "color": {
+                  "fixed": "#CBD5E1"
+                },
+                "size": 15,
+                "align": "left",
+                "valign": "middle"
+              }
+            },
+            {
+              "name": "retry-notes",
+              "type": "text",
+              "placement": {
+                "left": 520,
+                "top": 420,
+                "width": 420,
+                "height": 100
+              },
+              "config": {
+                "text": {
+                  "fixed": "Evaluation RETRY or relevant CI failure returns to coding. Finalization returns to selection.",
+                  "mode": "fixed"
+                },
+                "color": {
+                  "fixed": "#CBD5E1"
+                },
+                "size": 15,
+                "align": "left",
+                "valign": "middle"
+              }
+            },
+            {
+              "name": "legend",
+              "type": "text",
+              "placement": {
+                "left": 40,
+                "top": 560,
+                "width": 920,
+                "height": 45
+              },
+              "config": {
+                "text": {
+                  "fixed": "Blue: running | Green: completed stage | Amber: waiting | Red: attention | Gray: no recorded result",
+                  "mode": "fixed"
+                },
+                "color": {
+                  "fixed": "#CBD5E1"
+                },
+                "size": 15,
+                "align": "left",
+                "valign": "middle"
+              }
+            },
+            {
+              "name": "scope",
+              "type": "text",
+              "placement": {
+                "left": 40,
+                "top": 610,
+                "width": 920,
+                "height": 45
+              },
+              "config": {
+                "text": {
+                  "fixed": "Colors use the active story history. Conditional stages can be skipped. Plan also dispatches Architect requests.",
+                  "mode": "fixed"
+                },
+                "color": {
+                  "fixed": "#CBD5E1"
+                },
+                "size": 14,
+                "align": "left",
+                "valign": "middle"
+              }
+            }
+          ],
+          "background": {
+            "color": {
+              "fixed": "transparent"
+            }
+          },
+          "placement": {
+            "left": 0,
+            "top": 0,
+            "width": 1000,
+            "height": 680
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Recent events - active story",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "gw2-workflow-state"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "gw2-workflow-state"
+          },
+          "type": "json",
+          "source": "url",
+          "url": "http://172.29.240.1:8765/cycle",
+          "url_options": {
+            "method": "GET"
+          },
+          "parser": "jq-backend",
+          "format": "table",
+          "root_selector": "(.active_cycle.history // []) | reverse | .[:30]",
+          "columns": [
+            {
+              "selector": "at",
+              "text": "Time",
+              "type": "string"
+            },
+            {
+              "selector": "step",
+              "text": "Stage",
+              "type": "string"
+            },
+            {
+              "selector": "outcome",
+              "text": "Outcome",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 24,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      }
+    }
+  ]
+}

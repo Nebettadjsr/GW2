@@ -5,6 +5,8 @@ services:
     image: grafana/grafana@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
     container_name: gw2-grafana
     restart: unless-stopped
+    environment:
+      GF_PLUGINS_PREINSTALL_SYNC: yesoreyeram-infinity-datasource@4.1.1
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
