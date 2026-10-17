@@ -71,7 +71,7 @@ Operations that belong to the harness alone, and that no model role performs:
 - activating a story, and clearing `agent/CURRENT_STORY.md`;
 - moving a story's entry between BACKLOG sections, and setting the Status that
   a completion, block or interruption implies;
-- `## Active`, `## Done` and `## Archived` in `agent/stories/BACKLOG.md`.
+- `## Active` and `## Done` in `agent/stories/BACKLOG.md`.
 
 `agent/stories/BACKLOG.md` is an index read by code, written only by the
 harness. The planner never edits it: it requests additions, moves and
@@ -92,7 +92,7 @@ Authoritative owners (what belongs in each document):
 - `agent/stories/BACKLOG.md`
     - executable story queue
     - story priority
-    - Active / To Do / Blocked / Done / Archived grouping
+    - Active / To Do / Blocked / User / Superseded / Done grouping, current milestone only
 
 - `agent/stories/STORY-*.md`
     - story scope
@@ -456,15 +456,15 @@ the shell.
     - resolved requests disappear from this section; retain their canonical files and evidence
 
 - `## Superseded`
-    - stories replaced by another contract
+    - stories replaced by another contract, in the current milestone
 
 - `## Done`
     - completed stories in the current, not-yet-archived milestone
 
-- `## Archived`
-    - historical index
-    - harness-owned
-    - planning never writes here
+BACKLOG.md indexes the current milestone only. When a milestone closes, the harness moves every
+DONE and SUPERSEDED story of it (and of any earlier milestone) to
+`agent/stories/archive/milestone-NN/` and drops its row. Closed milestones are summarized in
+`docs/ROADMAP.md`; the backlog index ends with the highest story number used per area.
 
 The planner never selects or activates the next story.
 
@@ -542,7 +542,6 @@ The planner must not:
 - select or activate another story;
 - move/delete/archive story files;
 - write BACKLOG `## Active`;
-- write BACKLOG `## Archived`;
 - create future-phase work;
 - invent repository facts;
 - treat a file under `agent/product-owner-requests/` as an executable story or add it to BACKLOG `## To Do`;
@@ -779,7 +778,7 @@ Only report a milestone transition when the supplied current phase's exit criter
 
 The historical Phase 3 performance gate is satisfied and Phase 3 is closed; do not apply its former hold to later phases. For any future performance acceptance gate, follow the current phase criteria and the project-owner acceptance recorded in its canonical story.
 
-The planner never moves story files and never edits BACKLOG `## Archived`.
+The planner never moves story files.
 
 The harness performs archiving after validating the transition.
 

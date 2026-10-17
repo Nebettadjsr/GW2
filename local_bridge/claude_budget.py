@@ -56,7 +56,12 @@ def weekly_reset(usage_text: str, now: datetime) -> datetime:
             month_number = datetime.strptime(month[:3].title(), "%b").month
             candidates = [datetime.combine(datetime(year, month_number, int(day)).date(), clock)
                           for year in (now.year - 1, now.year, now.year + 1)]
-            return min(candidates, key=lambda candidate: abs(candidate - now))
+            reset = min(candidates, key=lambda candidate: abs(candidate - now))
+            # A reset already behind us (output captured at the reset, or a
+            # stale reading) still names the weekday and time; the week repeats.
+            while reset <= now:
+                reset += timedelta(days=7)
+            return reset
         reset = datetime.combine(now.date(), clock)
         return reset if reset > now else reset + timedelta(days=1)
     days_ahead = (5 - now.weekday()) % 7

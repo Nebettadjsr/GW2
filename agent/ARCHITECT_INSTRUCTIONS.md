@@ -954,7 +954,7 @@ Operations that belong to the harness alone, and that no model role performs:
 - activating a story, and clearing `agent/CURRENT_STORY.md`;
 - moving a story's entry between BACKLOG sections, and setting the Status that
   a completion, block or interruption implies;
-- `## Active`, `## Done` and `## Archived` in `agent/stories/BACKLOG.md`.
+- `## Active` and `## Done` in `agent/stories/BACKLOG.md`.
 
 `agent/stories/BACKLOG.md` is an index read by code. Entries are written only
 through `agent/runtime/core/backlog_writer.py`, one canonical line each:

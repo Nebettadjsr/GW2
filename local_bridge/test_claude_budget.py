@@ -43,6 +43,13 @@ class WeeklyShareTests(unittest.TestCase):
     def test_reset_time_comes_from_usage_output(self):
         self.assertEqual(status(datetime(2026, 10, 7, 18, 0))["weekly_reset"], "2026-10-10T07:00")
 
+    def test_a_reset_already_passed_rolls_forward_instead_of_failing(self):
+        # Regression: a printed reset more than a week behind left no unlock
+        # after `now`, and /budget answered 500 (StopIteration).
+        result = status(datetime(2026, 10, 17, 19, 0))
+        self.assertEqual((result["weekly_reset"], result["shares_unlocked"], result["next_unlock"]),
+                         ("2026-10-24T07:00", 1, "2026-10-18T17:30"))
+
     def test_smaller_allowance_scales_each_share(self):
         self.assertAlmostEqual(status(datetime(2026, 10, 9, 21, 0), allowance_windows=7)["weekly_cap_percent"], 70.0)
 

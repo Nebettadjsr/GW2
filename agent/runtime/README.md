@@ -505,10 +505,14 @@ What is compacted, and what is guaranteed to survive it:
 
 - **Backlog index.** `## Active`/`## To Do`/`## Blocked` keep BACKLOG's own
   order (the To Do order is the execution priority) and their descriptions.
-  `## Done`/`## Archived` become one line per story:
-  `ID | filename | status | milestone | title`. Every story ID and filename in
-  the project is present, so duplicate detection and milestone-coverage review
-  need nothing else; status, milestone and dependencies come from each story
+  `## Done` becomes one line per story:
+  `ID | filename | status | milestone | title`. BACKLOG.md holds the current
+  milestone only: closing a milestone archives its DONE and SUPERSEDED stories
+  (and any earlier milestone's) to `agent/stories/archive/milestone-NN/` and
+  drops their rows. Instead of listing that history, the index ends with the
+  highest story number per area, archived files included, and the harness
+  rejects a new story whose ID collides with any story file. Status, milestone
+  and dependencies come from each story
   file, not from backlog prose, and every prerequisite identifier
   (`STORY-*`, `UD-*`, `AR-*`) is listed in full even when the surrounding prose
   is summarized. A per-milestone status roll-up is derived at the end. A

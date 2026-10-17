@@ -236,7 +236,8 @@ class MilestonePlanningTest(unittest.TestCase):
         prompt = planner.build_planning_prompt()
         self.assertIn("Do not read, reread or print any", prompt)
         self.assertIn("AGENTS.md", prompt)
-        self.assertIn("agent/stories/BACKLOG.md, when a completed entry's", prompt)
+        self.assertNotIn("agent/stories/BACKLOG.md, when a completed entry's", prompt)
+        self.assertIn("highest story number used per area", prompt)
 
     def test_unresolved_completed_story_findings_are_supplied_once_dispositioned(self):
         finding_story = self.story(50, status="DONE")

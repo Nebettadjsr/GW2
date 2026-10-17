@@ -173,9 +173,11 @@ def _is_completed_or_blocked_pointer(backlog: str, story_path: Path) -> bool:
 #                Status/Dependencies -- see is_story_blocked_by_own_file).
 #   ## Done      completed stories belonging to the current,
 #                not-yet-archived milestone.
-#   ## Archived  a compact historical index only, for stories already
-#                moved to agent/stories/archive/ -- never selectable,
-#                never re-read for selection purposes.
+#
+# Closing a milestone moves its finished stories to
+# agent/stories/archive/milestone-NN/ and drops their rows; BACKLOG.md
+# keeps no historical index (a legacy "## Archived" section is still
+# read, never written).
 #
 # A newly created READY story always goes under "## To Do", never
 # "## Active" -- Active is populated only by the deterministic

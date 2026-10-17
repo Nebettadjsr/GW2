@@ -312,7 +312,7 @@ HARNESS_OWNED_PATHS = (
 # Sections of BACKLOG.md the harness alone moves entries into or out of.
 # The planner changes To Do, Blocked and Superseded only by asking for it:
 # `backlog_actions` in its result, applied by core/backlog_writer.py.
-HARNESS_OWNED_BACKLOG_SECTIONS = ("Active", "Done", "Archived")
+HARNESS_OWNED_BACKLOG_SECTIONS = ("Active", "Done")
 
 DOCUMENT_OWNERSHIP = (
     (CURRENT_STORY_FILE, (HARNESS,),
