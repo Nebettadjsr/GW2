@@ -1,49 +1,41 @@
-# Workflow evolution
+# Why the workflow developed this way
 
-This history follows repository commits and the recorded usage investigation. It covers changes supported by those records, beginning with the September 20 runtime reorganization.
+The maintainer describes the starting point as essentially one coding agent. The earliest tracked orchestration snapshot below already contains planning and evaluation, so it cannot establish every step between that starting point and the current system. The useful history is the evidence for particular boundaries, rather than a reconstructed story about successive generations of agents.
 
-## September 20: Runtime organization and recovery
+The [architecture guide](ARCHITECTURE.md#why-the-responsibilities-are-separate) explains the current trade-offs. These snapshots supply supporting context; they are not evidence that adding more roles always improves results.
 
-Commit [`1b97d16`](https://github.com/Nebettadjsr/GW2/commit/1b97d16) reorganized the runtime into packages for story orchestration, runners, evaluation, human requests, and support code. It also added recovery handling for interrupted stories and separated generated artifacts from maintained source and tests.
+## A few implementation snapshots
 
-That split remains visible in the [runtime layout](../runtime/README.md). Model outputs under `runtime/artifacts/` are disposable run state. Stories, persistent QA plans, and human decisions have their own tracked locations. Daily logs preserve operational history separately from generated results.
+| Snapshot | What the record establishes | Why it matters to today's design |
+| --- | --- | --- |
+| [September 20: `f11ce57`](https://github.com/Nebettadjsr/GW2/commit/f11ce57) | A Python orchestrator already called a Planner, a Claude coding runner, and an evaluator using Ollama. Configuration named `hermes3:8b` and bounded story retries. | The tracked workflow was already moving judgment and task management out of one coding session. This snapshot does not prove that the Implementer previously reviewed its own work. |
+| [September 20: `1b97d16`](https://github.com/Nebettadjsr/GW2/commit/1b97d16) | Runtime code was separated by responsibility, with recovery handling and distinct source, test, and generated-artifact locations. | A workflow that lasts across interruptions needs explicit records and ownership, rather than relying on one live conversation. Persisted state also creates recovery work of its own. |
+| [October 3: `0ef2391`](https://github.com/Nebettadjsr/GW2/commit/0ef2391) | The QA gate introduced persistent plans, prepared tests, protected-test handling, and recovery integration. | Acceptance checks became a contract prepared before implementation. The coding agent could no longer alter those checks without the harness restoring and reporting the change. |
+| [October 6–10: `c253215`](https://github.com/Nebettadjsr/GW2/commit/c253215), [`aed2822`](https://github.com/Nebettadjsr/GW2/commit/aed2822) | Migration to n8n began; the retired standalone outer loop was later removed while reusable runtime helpers remained. | Scheduling and visible execution moved to n8n. Python still owns repository-specific rules. This added an HTTP/process boundary and n8n operations, rather than removing orchestration complexity. |
+| [October 17: `02eb09e`](https://github.com/Nebettadjsr/GW2/commit/02eb09e) | The pipeline gained its own worktree, maintainer sync and document review, and harness-applied JSON backlog actions. These are present in the current source. | Maintainer changes can reach the pipeline between stories without sharing its working tree. Backlog mutations have one mechanical writer, and incoming code/document contradictions have an explicit review step. |
 
-## September 26: Planning context and repeated input
+## Problems with recorded evidence
 
-The [usage investigation](../runtime/reports/2026-09-26-planner-usage.md) examined recorded planner sessions, logs, and runtime code. One supplied prompt contained 139,095 characters of backlog text, about 63% of its 220,114 characters. Completed and archived story narratives accounted for most of that backlog content.
+### Review needed access to the implementation
 
-The report also found evidence of a repeated planning pass after a formatting-only input rewrite. It distinguishes that evidence from what could not be recovered: the earlier cache digest and the process responsible for the rewrite were unavailable.
+The [archived evaluator notes](../agent_README_experimental_archive.md#why-it-is-no-longer-a-local-model) and [runtime evaluation guide](../runtime/README.md#evaluation-codex-read-only) describe the earlier `hermes3:8b` evaluator. Its input was the story and Claude's report. The notes report empty retry verdicts and explain the move to a stronger evaluator with access to the working tree. They do not provide a controlled comparison of model accuracy or establish when every part of that transition happened.
 
-The resulting changes normalized BOMs and line endings for planning fingerprints and supplied compact indexes for completed stories and resolved requests. The [runtime guide](../runtime/README.md#supplied-context-is-indexed-not-narrated) records a measured planning-prompt reduction from 221,331 to about 86,600 characters on the September 26 repository state. Those are character counts, not a measured billing reduction or a guarantee for future runs.
+The important change was the evidence available for review. An Implementer can report that a feature is complete while leaving its user-facing call path unwired. Current evaluation asks whether both the criteria and the story's purpose are met. A read-only sandbox prevents the reviewer from editing the uncommitted work it is judging. It still needs sufficient tests and context to detect that sort of omission.
 
-## Backlog updates: One writer and a parseable index
+### Large context and repeated planning consumed usage
 
-The module notes in [`backlog_writer.py`](../runtime/core/backlog_writer.py) describe a concrete failure: the harness, context renderer, and Planner used different backlog formats. A completed entry remained in `Active`, and supplementary prose became detached from its entry.
+The [September 26 usage investigation](../runtime/reports/2026-09-26-planner-usage.md) recorded a prompt with 139,095 characters of backlog text out of 220,114 supplied characters. Most backlog text described completed or archived work. The report also found evidence of a repeated pass following a formatting-only input rewrite, while identifying the historical cache details it could not recover.
 
-The writer now formats canonical entries and validates the whole index before writing. Lifecycle transitions remain harness-owned. This addresses a parsing and ownership problem: an entry the selector cannot parse may disappear from the executable queue even while its text remains in the file.
+The response was to normalize BOMs and line endings for planning fingerprints and supply compact indexes for historical material. The [runtime guide](../runtime/README.md#supplied-context-is-indexed-not-narrated) records a prompt reduction from 221,331 to about 86,600 characters on the September 26 repository state. Those are prompt characters, not a billing comparison with a single-agent workflow. The lesson is that role count alone says little about cost: what is supplied repeatedly matters.
 
-The October 17 commit [`585c2ec`](https://github.com/Nebettadjsr/GW2/commit/585c2ec) added an index of open User Decisions and interventions under `User`. That section helps humans find pending questions without putting those requests into the story queue.
+### The backlog needed one format and one writer
 
-## Evaluation: From implementation reports to repository evidence
+The module notes in [`backlog_writer.py`](../runtime/core/backlog_writer.py) record different writers using incompatible backlog representations. A completed story remained under `Active`, and explanatory prose became detached from its entry. For a queue read by code, a malformed line can make real work disappear from selection.
 
-The [runtime guide's evaluation history](../runtime/README.md#evaluation-codex-read-only) records an earlier evaluator using `hermes3:8b` through Ollama. It judged story text against Claude's written report and could return empty retry verdicts. The evaluator was a separate model, but its evidence came from the Implementer's account.
+Canonical entries and validation addressed that parsing problem. Current Planner output uses `backlog_actions`, which the harness applies from story data. This keeps prioritization with the Planner while separating it from the mechanics of rewriting an index and changing lifecycle state.
 
-The current Evaluator uses Codex in a read-only sandbox to inspect the working tree. It checks both the explicit criteria and whether the implementation achieves the story's purpose. Python validates and normalizes the verdict; unmet work can turn a reported `COMPLETE` into `RETRY`. The change gives evaluation repository evidence, but it does not prove that every defect will be found.
+## Intent preserved from the experiment
 
-## October 3: Persistent QA before implementation
+The [old README](../agent_README_experimental_archive.md) explains why the experiment uses a product with interacting domain rules, rather than judging success by code generation alone. It also distinguishes human product authority, planning, architecture decisions, implementation, and review, and assigns facts to authoritative documents. Those ideas remain useful in the current [document ownership model](ARCHITECTURE.md#documentation-ownership-is-part-of-the-design).
 
-Commit [`0ef2391`](https://github.com/Nebettadjsr/GW2/commit/0ef2391) added the QA gate, persistent plans, prepared acceptance tests, and protection around coding attempts.
-
-QA can write tests before implementation. The harness saves the validated plan and restores protected tests and plan contents if the coding agent changes them. Evaluation can request an independent read-only QA review. A missing product rule becomes a User Decision and blocks the affected story. See the [QA plan contract](../qa-plans/README.md).
-
-## October 6–10: n8n takes over the outer loop
-
-The migration began in [`c253215`](https://github.com/Nebettadjsr/GW2/commit/c253215). Commit [`0b491ea`](https://github.com/Nebettadjsr/GW2/commit/0b491ea) integrated CI and finalization; [`e941c78`](https://github.com/Nebettadjsr/GW2/commit/e941c78) added Claude usage budgets and scheduling. Commit [`aed2822`](https://github.com/Nebettadjsr/GW2/commit/aed2822) removed the retired standalone orchestrator loop.
-
-n8n now requests one bridge step at a time. The bridge stores the next phase and reuses runtime helpers for planning, QA, coding, evaluation, publication, CI, and finalization. Recovery repeats an interrupted step. The [bridge guide](../../local_bridge/README.md) documents how to re-attach a workflow, handle capacity waits, and recover state manually.
-
-## October 17: Distinguishing commit claims from implemented behavior
-
-Commit [`25ff822`](https://github.com/Nebettadjsr/GW2/commit/25ff822) describes JSON backlog actions, automatic agent branching, and a documentation-sync phase in its message. The later documentation repeated those descriptions as current behavior.
-
-The source in this documentation branch does not implement that full account. `cycle.py` has no documentation-sync phase, `Bridge.next_step()` does not switch or pull branches, and `git_sync.py` pushes the branch already checked out. The Planner and writer code here also do not provide the claimed `backlog_actions` execution path. Current behavior must be checked against these files rather than inferred from that commit message.
+The archive also describes experiments with a local `gpt-oss:20b` Planner, including long passes, excessive reads, and editing problems. These are reported experiences under the setup used then, not grounds for declaring local models generally unsuitable. The current architecture reflects those experiences and the repository's contracts; it is one solution to them, not evidence that a larger pipeline is always necessary.

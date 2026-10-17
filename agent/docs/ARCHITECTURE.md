@@ -1,98 +1,111 @@
-# Workflow architecture
+# Architecture and alternatives
 
-The orchestrator uses a state machine backed by files. This document describes the bridge, stored state, and orchestration loop.
+## The system in plain terms
 
-## 1. High-Level Architecture
+The workflow manages changes to a software product across multiple tasks. The human supplies product intent. A Planner turns that intent into stories: bounded tasks with acceptance criteria. QA prepares checks before coding. An Implementer changes the repository, and an Evaluator inspects the result. Python decides which task may run next and when its status may change.
 
-The workflow runs through these components:
+This matters for a crafting application because a plausible result can still use the wrong domain rule. For example, a passing calculation test does not establish that the tested rule is the intended rule, or that the browser reaches that calculation. The design gives requirement questions, test preparation, and review explicit places in the workflow. It cannot make an incorrect specification correct.
 
-1.  **n8n:** Runs in a Docker container and hosts the "GW2 - Development Pipeline" workflow. It handles workflow visualization, retries, and timing.
-2. **Local bridge (Python):** Runs on the host machine alongside the repository. n8n reads state with `GET /cycle`, requests the next step with `POST /cycle/step`, and checks Claude usage with `POST /budget`. These endpoints require a bearer token. The bridge runs one task at a time; a new step request re-attaches to an existing running step.
-3.  **The Agent Runtime (Python/LLMs):** Code under `agent/runtime/` builds prompts, calls the LLM CLIs (`claude` and `codex`), parses outputs, and updates files such as `BACKLOG.md`.
+### Components and communication
 
 ```mermaid
-flowchart LR
-    A[n8n Workflow Engine] <-->|HTTP API| B[Local Python Bridge]
-    B <-->|Executes| C[Agent Runtime / LLMs]
-    C <-->|Reads/Writes| D[(File System State)]
+flowchart TB
+    H[Human maintainer and Product Owner] -->|Requests and decisions| R[(Repository: requirements and work records)]
+    N[n8n in Docker: schedule and display workflow] -->|Authenticated HTTP step request| B[Python bridge on Windows: dispatch and persist progress]
+    B -->|Invoke role and validate result| T[Agent runtime]
+    T -->|Prompts and tool access| M[Claude and Codex CLI processes]
+    M -->|Role-limited reads and writes| R
+    T -->|Select stories and apply lifecycle changes| R
+    B <-->|Next phase and counters| S[(Local bridge state)]
+    T -->|Commit and push scoped changes| G[GitHub repository and Actions]
+    G -->|Checks for published commit| B
 ```
 
-## 2. Stored state
+n8n is the scheduler and visible workflow. The bridge executes steps and stores their outcomes. The runtime provides the role runners, validation, QA, Git, and CI helpers. The bridge accepts one task at a time, so the outer workflow does not run competing coding agents against the same files. Each role can make several model requests and tool calls within its invocation.
 
-The runtime stores workflow state in files:
+The system combines a fixed outer workflow with agents that choose how to perform their assigned task. Using Anthropic's [workflow and agent terminology](https://www.anthropic.com/engineering/building-effective-agents), the outer structure is a coded workflow; its coding and planning steps contain agent loops. It also uses an evaluator/implementation feedback loop. These patterns do not require different model vendors or parallel execution.
 
-* **Bridge state file:** `GW2_BRIDGE_STATE` selects the location; the default is `%USERPROFILE%/.gw2-claude-bridge/tasks.json`, outside the repository. It stores task records and per-story cycle state, including the next phase, retry counters, changed paths, and published SHA.
-*   **`agent/CURRENT_STORY.md`:** Points to the active story.
-*   **`agent/stories/BACKLOG.md`:** The authoritative work index, parsed by `story_state.py` and maintained through `backlog_writer.py`.
-*   **`agent/runtime/artifacts/`:** Stores JSON/Markdown outputs from the latest LLM runs (e.g., `PLANNING_RESULT.json`, `EVALUATOR_RESULT.json`) for debugging. These files are transient and ignored by Git.
+For the actual stage dispatch, see [`cycle.py`](../../local_bridge/cycle.py) and [`bridge.py`](../../local_bridge/bridge.py). The [workflow diagrams](WORKFLOW_DIAGRAMS.md) show task flow and failure handling without the HTTP details.
 
-The bridge uses the current-story pointer to find the relevant cycle record. A restart marks a running step interrupted, and the next run repeats that step. An interrupted implementation receives a continuation prompt and retains its recorded baseline. Recovery happens at step boundaries; it does not restore a model process at the instruction where it stopped. See [bridge recovery](../../local_bridge/README.md#recovering-by-hand) and [the state-file configuration](../../local_bridge/bridge.py).
+## Why the responsibilities are separate
 
-## 3. The Orchestration Loop (Cycle Phases)
+These are reasons for the mechanisms, not claims that they eliminate the underlying risks. [Design evolution](EVOLUTION.md) distinguishes documented incidents from architectural reasoning.
 
-`local_bridge/cycle.py` defines the state machine and its phases:
+| Problem or constraint | Mechanism and reasoning | Cost or remaining limit |
+| --- | --- | --- |
+| Product rules must not be chosen for coding convenience. | The Planner defines bounded stories; the Implementer works within them. Product ambiguities require a human User Decision. Architecture questions use a separate Architect invocation. | A story can still misinterpret intent. Unnecessary questions delay work; a model can fail to recognize a real ambiguity. |
+| A completion report is a claim about code. | A separate Evaluator reads the working tree, acceptance criteria, and QA plan. It can request concrete corrections without changing the implementation. | Review adds model usage and latency. Different roles or vendors do not establish statistically independent judgments; both can share a mistaken assumption. |
+| Tests prepared after coding can merely confirm the chosen implementation. | QA prepares a persistent plan and may write tests first. The harness restores QA-owned tests and plan contents if coding changes them. | QA can choose weak tests or a wrong expectation. Restoration protects the agreed test contract, not its semantic correctness. Conditional read-only QA review handles disputed or insufficient verification. |
+| Queue selection and status changes have precise rules. | Python checks eligibility and owns lifecycle changes. The Planner requests backlog additions, moves, and reordering through JSON `backlog_actions`; the writer derives and validates index entries. | Validation can check structure and dependencies, not prove that prioritization or acceptance criteria are good. The runtime itself needs maintained tests. |
+| Long-running work can be interrupted or hit a usage limit. | Persisted phases and counters let the bridge resume at a step boundary. Capacity waits keep the phase; actual failures use separate retry budgets. | An interrupted step may run again. File and Git side effects require recovery handling; saving JSON does not provide a transaction over the whole workflow. |
+| Maintainer edits can arrive while an agent is implementing. | The pipeline uses an `agent/dev` worktree. Between stories it merges `origin/master` and reviews incoming changes against their owning documents. | Branch isolation prevents sharing a working tree, not semantic or merge conflicts. Sync, review, and publication add code and operational failure modes. |
 
-```mermaid
-stateDiagram-v2
-    [*] --> plan
-    plan --> select
-    select --> qa
-    qa --> implement
-    implement --> evaluate
-    evaluate --> publish
-    publish --> ci
-    ci --> finalize
-    finalize --> select
-```
+The separation is useful only while the additional checks catch enough relevant problems to justify their overhead. A read-only Evaluator cannot fix a defect itself; every correction requires another handoff. A narrow change can therefore spend more time in preparation and review than in coding.
 
-The diagram shows the successful story path. `plan` is scheduled when needed, rather than before every story. The implementation in [`cycle.py`](../../local_bridge/cycle.py) handles the following cases:
+## Comparing ways to do the same work
 
-| Step | Work and outcome |
+The comparison below is architectural analysis, not a benchmark. It compares configurations, rather than treating a product name as proof of one fixed design. A single agent can use durable files, tests, a sandbox, and CI. A multi-agent system can lack all of those. Agent count, persistence, permission boundaries, and who controls the sequence are separate choices.
+
+| Approach | Advantages and suitable work | Disadvantages, complexity, and costs |
+| --- | --- | --- |
+| **One coding agent with human review** | Short handoffs and one continuing task context. Fits a bounded fix when a developer can define the task and inspect the diff. Testing and CI can remain external requirements. | The human carries task selection and final judgment. The same agent may repeat its assumptions when reviewing itself. Long sessions accumulate context; low agent count does not guarantee low usage. |
+| **One coding agent inside a scripted test/retry loop** | Automates repeated execution without introducing every planning role. Fits a known queue of issues with clear tests. Explicit counters and persisted stages are possible. | Passing tests can miss an incorrect rule or unwired feature. Retry failures need classification to avoid spending usage on capacity or infrastructure problems. Scripts still require maintenance. |
+| **A coder plus a separate reviewer** | Adds a distinct review pass and feedback without a full planning pipeline. Fits work where the human already supplies reliable task contracts. | Additional context loading and review calls. Review can miss defects or reject valid work. Someone must define the criteria, arbitrate disagreement, and cap retries. |
+| **This repository's sequential, role-based workflow** | Carries work from roadmap planning to published stories. Gives product questions, pre-code QA, repository review, recovery, and document reconciliation explicit owners. | More stages, files, validators, CLI integration, and n8n operations. Handoffs can lose context. Stories run serially, so separate roles do not provide coding throughput through parallelism. |
+| **A manager agent delegating to workers** | Can discover subtasks dynamically and run independent investigation or implementation in parallel. Fits work whose decomposition is not known beforehand. | Delegation and synthesis consume context and model calls. Concurrent writers need separate workspaces and integration rules. A manager can delegate badly or combine individually plausible but incompatible answers. |
+
+For a concrete example of checks in a simpler coding tool, [Aider supports configured lint/test commands and attempts to repair failures](https://aider.chat/docs/usage/lint-test.html). Those capabilities are not exclusive to a multi-role pipeline. The manager/worker and evaluator feedback patterns are described in [Anthropic's pattern guide](https://www.anthropic.com/engineering/building-effective-agents); the suitability judgments in the table are our analysis of their consequences for this repository.
+
+### Custom runtime versus a framework
+
+This repository implements its own state machine around CLI processes and Git files. That makes story ownership, publication scope, and dependency rules directly inspectable in local Python code. It also makes this project responsible for maintaining persistence, result parsing, retries, process recovery, and framework-like glue.
+
+A graph or workflow framework could host a similar sequence. [LangGraph provides checkpointers and stores](https://docs.langchain.com/oss/python/langgraph/persistence); durable recovery depends on the selected backend, and its in-memory checkpointers do not survive a restart. [CrewAI Flows supports state and persistence through `@persist`](https://docs.crewai.com/en/concepts/flows#flow-persistence). It is inaccurate to describe either alternative as inherently an in-memory conversation that loses all progress.
+
+A framework would provide reusable orchestration facilities and introduce its own APIs, execution semantics, dependencies, and upgrades. It would not supply this repository's product authority, protected-test policy, backlog schema, or Git publication rules automatically. Moving to one would relocate some runtime work and still require those project-specific contracts. n8n is already a workflow framework here; the custom Python layer is where the repository-specific policy lives.
+
+### Cost and latency
+
+A fresh behavior story normally invokes QA, implementation, and evaluation. Planner and Architect runs are conditional; so are sync review and post-implementation QA review. A retry repeats some of those stages. Each invocation may contain multiple requests, and each role needs enough context to do its job. A reused QA plan avoids a new preparation pass.
+
+Splitting roles can reduce the information needed for any one task, while increasing repeated context across handoffs. Parallel workers can reduce elapsed time for independent subtasks while increasing simultaneous usage and integration work. Local inference trades hosted usage for local compute and operation; a smaller model may also need more correction attempts. None of these choices has a universal cost ranking.
+
+The current implementation checks Claude's session and weekly allowance before a coding run. It does not reserve the entire run's capacity or stop it at the threshold. Codex has separate capacity handling. Waiting for allowance, CI, or a human decision can dominate elapsed time even when no model is running. Subscription allowance, model tokens, elapsed time, and maintenance effort are different costs; this repository has no like-for-like result proving the full pipeline cheaper or more accurate than the alternatives above.
+
+## Documentation ownership is part of the design
+
+Two different questions matter: **where does a fact belong**, and **who may change that file**? The [documentation map in `CLAUDE.md`](../../CLAUDE.md#documentation-map) answers the first. [`DOCUMENT_OWNERSHIP` in `config.py`](../runtime/support/config.py) and the role contracts define write authority. This overview is a reading guide, not a second permission table.
+
+| Reader's question | Authoritative home |
 | --- | --- |
-| `plan` | Dispatches one actionable Architect Request first; otherwise runs the Planner. These are separate role invocations. Planning considers queue availability, changed inputs, completed stories, and a validated request for another planning batch. |
-| `select` | Activates the first eligible `To Do` story. A new cycle starts at `qa`. An empty queue stops the run. |
-| `qa` | Reuses a validated `READY` or justified `NO_TESTS_NEEDED` plan, or runs QA preparation. QA may write tests in approved roots. The harness saves the validated plan under `agent/qa-plans/`. |
-| `implement` | Checks Claude capacity and runs the story or retry prompt. It records changed paths and restores protected tests, the QA plan, and lifecycle files afterwards. A missing plan sends the cycle back to `qa`. |
-| `evaluate` | Runs read-only evaluation against the working tree and QA plan, plus conditional QA review. `COMPLETE` advances to publication; an actionable `RETRY` returns to coding. `BLOCKED` or `NEEDS_USER` blocks the story. |
-| `publish` | Commits and pushes the recorded story paths, pending planning paths, and relevant lifecycle and QA files. It records the published SHA. A rejected push keeps this phase for another attempt. |
-| `ci` | Checks GitHub Actions for that SHA. Relevant application failures return to coding within the CI-fix budget. Workflow-only failures are warnings. An unknown result or a failure outside story scope stops the run without starting Claude. If CI verification is unavailable, the current code records `SKIPPED` and advances. |
-| `finalize` | Marks the story DONE, moves its backlog entry, clears the pointer, and commits and pushes those lifecycle updates. |
+| What should the product do, and what should its player-facing terms mean? | [Domain specification](../../docs/DOMAIN_SPEC.md) and [crafting glossary](../../docs/crafting/GLOSSARY.md). |
+| What exists now, and what architecture is intended? | [Current state](../../docs/CURRENT_STATE_SPEC.md), [current architecture](../../docs/CURRENT_ARCHITECTURE.md), and [target architecture](../../docs/TARGET_ARCHITECTURE.md). Current implementation alone does not decide intended behavior. |
+| What work remains, and what does one task require? | [Roadmap](../../docs/ROADMAP.md), [known problems](../../docs/KNOWN_PROBLEMS.md), [backlog index](../stories/BACKLOG.md), and the linked story contracts. [Project state](../PROJECT_STATE.md) carries Planner continuity. |
+| What standards apply to implementation and verification? | [Coding guidelines](../../docs/CODING_GUIDELINES.md), [test strategy](../../docs/TEST_STRATEGY.md), and the story's [persistent QA plan](../qa-plans/README.md). |
+| Who decided an unresolved question? | [User Decisions](../user-decisions/), [Architect Requests](../architect-requests/), and [architecture decision records](../../docs/architecture/decisions/). |
 
-Blocking a story clears its active pointer so a later run can select independent work. Capacity exhaustion preserves the current phase. The [bridge guide](../../local_bridge/README.md) owns the full operating and recovery procedures.
+Keeping intended and observed behavior separate is necessary when they disagree. A maintainer may intentionally change code without updating its descriptive documentation. The sync review can reconcile a stale description; it may not silently rewrite an authoritative domain rule or target decision to match the code. It raises the appropriate question instead. Copying the same rule into several overviews would create more places for disagreement.
 
-## 4. Resource & Budget Throttling
+The harness alone changes the active-story pointer and mechanical status transitions. The Planner can maintain the roadmap within its contract, but cannot resolve human decisions or act as the Architect. QA can write tests in approved roots; the Evaluator is read-only. The documentation sync review has its own bounded write policy in [`sync_review.py`](../runtime/core/sync_review.py). These are different permissions, not a single rule that every non-coding role is read-only.
 
-A repeated failure can consume the available model usage budget.
+## Implementation details and limits
 
-`local_bridge/claude_budget.py` controls Claude usage:
+### State and recovery
 
-* It reads Claude usage and checks both the five-hour session limit and a weekly cap before starting implementation.
-* In automatic mode, daily shares unlock at the configured time and remain available until the weekly reset. Manual mode uses the configured percentage cap.
-* When capacity is unavailable, `implement` returns `waiting_for_claude_budget` without advancing. The check does not stop a run already in progress.
-* While Claude waits, the bridge can dispatch needed Planner or Architect work. Codex has its own capacity handling; it is not an unlimited fallback.
+| Record | Purpose and lifetime |
+| --- | --- |
+| Bridge `tasks.json` | Task records, next phase, retry counters, changed paths, and published SHA. `GW2_BRIDGE_STATE` selects the path; the default is `%USERPROFILE%/.gw2-claude-bridge/tasks.json`, outside Git. |
+| `CURRENT_STORY.md` and `BACKLOG.md` | Tracked active-story pointer and queue index. Eligibility also checks the canonical story and its prerequisites. |
+| `agent/qa-plans/` | Tracked QA contracts and review records used across coding attempts. |
+| `agent/runtime/artifacts/` | Ignored generated prompts, results, and backups for the current runtime. These are not authoritative requirements. |
+| `agent/logs/` | Tracked append-only daily operational history, separate from generated artifacts. |
 
-Evaluation retries, CI-fix attempts, and consecutive non-capacity Claude failures use separate limits in [`config.py`](../runtime/support/config.py). Exhausting one blocks the story with an intervention record. Budget settings and their calculation are described in the [Claude budget guide](../../local_bridge/README.md#claude-budget).
+An n8n wait can re-attach to a still-running bridge task. A bridge restart instead interrupts that task; a later run repeats the step. Interrupted coding receives a continuation prompt and keeps its captured baseline. Completion requires a usable verdict, publication, and the CI step; the code allows CI verification to be `SKIPPED` when unavailable, so DONE is not an unconditional guarantee of a passing CI run. The [bridge guide](../../local_bridge/README.md) owns the operating and recovery procedures.
 
-## 5. Security & Document Ownership
+### Branch integration and document review
 
-Document ownership is defined in `agent/runtime/support/config.py` and enforced by the Python harness.
+The normal launcher uses the separate `agent/dev` worktree. Between stories, `sync` merges `origin/master`, at most once per 30-minute interval. A merge conflict is aborted and stops the run; a merge that would overwrite uncommitted work is deferred. Incoming changes beyond the dependency-only filter receive a bounded Codex `review` pass. It can update approved descriptive docs, open decisions or architecture requests, record problems, and give findings to the Planner. It cannot change application code or settle a product contradiction. Two invalid review attempts leave a workflow warning and the range for Planner attention.
 
-* The Planner owns planning artifacts, including the roadmap and planner continuity. It may not change application source or answer Architect Requests.
-* The Architect answers dispatched requests and owns architecture decision records. It does not create or prioritize implementation stories.
-* QA may prepare tests in approved roots. The harness validates its changed-file boundary and persists the plan. Post-implementation QA review is read-only.
-* The Evaluator uses a read-only sandbox. The coding agent may change implementation files, but the harness restores QA-owned tests and mechanical lifecycle state after the attempt.
-* Python owns activation, completion, and backlog section transitions. `backlog_writer.py` validates canonical index entries before writing. The `User` section indexes open human requests and is not an executable story queue.
+After scoped publication and the CI step, finalization records DONE and pushes lifecycle updates on the agent branch, then attempts to fast-forward `master`. If `master` moved incompatibly, the push is rejected without force; the story remains complete on the agent branch and a warning records the outstanding integration. The next sync and story can carry both histories. This is branch publication, not proof of deployment to a running application.
 
-These protections use different mechanisms: sandbox restrictions for evaluation, snapshots and validation for writable roles, and restoration around coding attempts. The ownership table in [`config.py`](../runtime/support/config.py) and [runtime guide](../runtime/README.md) describe the boundaries.
-
-## 6. Milestones and Roadmap Phases
-
-The roadmap defines phases and exit criteria. Product requests, User Decisions, and architecture decisions also feed planning.
-
-*   A specific "Phase N" in the roadmap maps directly to `milestone-NN` in the backlog.
-*   The Planner is restricted to analyzing the *current* phase excerpt. It is not permitted to discover or redefine its own roadmap scope.
-*   A milestone transition is only reported when the exit criteria defined in the roadmap for the current phase are fully satisfied, including project health reviews.
-
-## 7. Git branch and documentation sync
-
-In this branch's implementation, [`git_sync.py`](../runtime/support/git_sync.py) publishes the currently checked-out branch to the same branch on `origin`, without force-pushing. The bridge does not automatically select `agent/active-development` or pull `main`, and [`cycle.py`](../../local_bridge/cycle.py) has no `docs_sync` step. Maintainers must select the intended checkout and coordinate manual edits using the [bridge operating rules](../../local_bridge/README.md#rules-for-working-alongside-the-pipeline).
+The most useful code entry points are [`choose_step()` and stage functions](../../local_bridge/cycle.py), [Git synchronization](../runtime/support/git_sync.py), [sync review](../runtime/core/sync_review.py), [backlog actions](../runtime/core/backlog_writer.py), and [QA/evaluation details in the runtime guide](../runtime/README.md). The [bridge guide](../../local_bridge/README.md#branches) covers the actual worktrees and commands.
