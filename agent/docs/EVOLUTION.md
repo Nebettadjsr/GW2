@@ -28,7 +28,7 @@ These details come from the maintainer's account. The Git snapshots below show s
 
 ### Review needed access to the implementation
 
-The [archived evaluator notes](../agent_README_experimental_archive.md#why-it-is-no-longer-a-local-model) and [runtime evaluation guide](../runtime/README.md#evaluation-codex-read-only) describe the earlier `hermes3:8b` evaluator. Its input was the story and Claude's report. The notes report empty retry verdicts and explain the move to a stronger evaluator with access to the working tree. They do not provide a controlled comparison of model accuracy or establish when every part of that transition happened.
+The [runtime evaluation guide](../runtime/README.md#evaluation-codex-read-only) describes the earlier `hermes3:8b` evaluator. Its input was the story and Claude's report. The guide reports empty retry verdicts and explains the move to a stronger evaluator with access to the working tree. It does not provide a controlled comparison of model accuracy or establish when every part of that transition happened.
 
 The important change was the evidence available for review. An Implementer can report that a feature is complete while leaving its user-facing call path unwired. Current evaluation asks whether both the criteria and the story's purpose are met. A read-only sandbox prevents the reviewer from editing the uncommitted work it is judging. It still needs sufficient tests and context to detect that sort of omission.
 
@@ -46,9 +46,9 @@ Canonical entries and validation addressed that parsing problem. Current Planner
 
 ## Intent preserved from the experiment
 
-The [old README](../agent_README_experimental_archive.md) explains why the experiment uses a product with interacting domain rules, rather than judging success by code generation alone. It also distinguishes human product authority, planning, architecture decisions, implementation, and review, and assigns facts to authoritative documents. Those ideas remain useful in the current [document ownership model](ARCHITECTURE.md#documentation-ownership-is-part-of-the-design).
+The experiment uses a product with interacting domain rules, rather than judging success by code generation alone. Human product authority, planning, architecture decisions, implementation, and review have separate responsibilities. The [document ownership model](ARCHITECTURE.md#documentation-ownership-is-part-of-the-design) gives the requirements and decisions an authoritative home.
 
-The archive also describes experiments with a local `gpt-oss:20b` Planner, including long passes, excessive reads, and editing problems. These are reported experiences under the setup used then, not grounds for declaring local models generally unsuitable. The current architecture reflects those experiences and the repository's contracts; it is one solution to them, not evidence that a larger pipeline is always necessary.
+Earlier experiment notes record a local `gpt-oss:20b` Planner, including long passes, excessive reads, and editing problems. These are reported experiences under the setup used then, not grounds for declaring local models generally unsuitable. The current architecture reflects those experiences and the repository's contracts; it is one solution to them, not evidence that a larger pipeline is always necessary.
 
 ## Current constraint: Claude's allowance
 
