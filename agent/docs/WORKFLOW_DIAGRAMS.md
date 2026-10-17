@@ -2,13 +2,14 @@
 
 Start with the milestone diagram for the overall process. The decision diagram explains who may settle a question; the failure diagram distinguishes correction, waiting, and blocking. The [architecture diagram](ARCHITECTURE.md#components-and-communication) shows the host processes and their connections.
 
-## From product request to completed milestone
+## From the existing roadmap to a completed milestone
 
-A story is one implementation task. A milestone contains several stories and has its own exit criteria. The loop below is run through one bridge task at a time. Planning and architecture calls occur when needed, not before every coding attempt.
+A story is one implementation task. The rough milestones and initial specifications were established before the automated workflow began. A milestone contains several stories and has its own exit criteria; its details can be refined as work approaches. The loop below runs through one bridge task at a time. Planning and architecture calls occur when needed, not before every coding attempt.
 
 ```mermaid
 flowchart TB
-    PO[Human supplies product requests and decisions] --> P[Planner reviews current roadmap phase]
+    ROAD[Existing roadmap, domain specification, and known problems] --> P[Planner reviews current roadmap phase]
+    FEEDBACK[Human testing feedback, PO requests, and decisions] --> P
     P --> B[Stories with criteria and prerequisites]
     B --> S[Harness activates first eligible story]
     S --> Q[QA prepares or reuses plan and tests]
@@ -20,6 +21,8 @@ flowchart TB
     CI -->|Relevant failure within budget| C
     CI -->|Passed or verification unavailable and skipped| D[Harness marks DONE and publishes lifecycle updates]
     D --> INT[Attempt fast-forward publication to master]
+    D -. Available features .-> TEST[Human tests features; reports bugs and new ideas]
+    TEST -. PO requests .-> FEEDBACK
     INT --> MORE{More eligible stories?}
     MORE -->|Yes| S
     MORE -->|No| CHECK[Planner reviews remaining work and phase exit evidence when triggered]
@@ -29,6 +32,27 @@ flowchart TB
 ```
 
 DONE is a harness transition, not the Evaluator's own file edit. CI verification can be explicitly skipped when unavailable; the code does not make a passing CI result unconditional. A rejected push to `master` leaves a warning and the completed story on `agent/dev`. Neither a milestone transition nor a branch push means the application has been deployed.
+
+## Human testing and scope changes
+
+Automated implementation lets the maintainer spend more time testing implemented features. Product Owner requests are the input channel for resulting bug reports, ideas, and changes of direction. They can change or expand the app's scope while development continues. A request does not automatically create a milestone or override current-phase rules.
+
+```mermaid
+flowchart TB
+    F[Implemented features] --> T[Human tests behavior and explores the app]
+    T --> R[PO request: bug report, idea, or behavior change]
+    R --> P[Planner checks existing coverage and clarified intent]
+    P --> D[Update the owning specification, known problem, or roadmap]
+    D --> G{Fits current-phase rules?}
+    G -->|Yes| S[Create or adjust bounded stories through normal planning]
+    G -->|Later phase| L[Keep requirement in future planned work]
+    S --> C[Normal QA, coding, evaluation, and publication]
+    C --> F
+    P -->|Missing human decision| U[Open User Decision; keep dependent request waiting]
+    U -->|Human answers| P
+```
+
+The Planner's resolution links a processed request to its authoritative documentation and planned work. User Decisions ask the human to settle a question; User Interventions ask for attention when automatic execution cannot proceed. Those records support human control in both directions: steering the product and responding to the workflow. Replanning still has to preserve consistent requirements and dependency order.
 
 ## Who makes which decision?
 
@@ -62,7 +86,7 @@ flowchart TB
     LIMIT -->|Yes| FIX[Build correction prompt; return to Implementer]
     LIMIT -->|No| BLOCK[Block story and record intervention]
     TYPE -->|Missing product rule| UD[Record User Decision; block affected story]
-    TYPE -->|Model capacity unavailable| KEEP[Keep phase; wait for a later run]
+    TYPE -->|Claude allowance exhausted| KEEP[Keep phase; wait for a later run]
     TYPE -->|Bridge process interrupted| AGAIN[Repeat saved step; continue interrupted coding]
     TYPE -->|Push rejected or CI result unknown| KEEP
     TYPE -->|CI failure outside story scope| STOP[Stop for investigation; do not invoke coder]
@@ -78,6 +102,8 @@ flowchart TB
 | Coding changes protected tests, plan, or lifecycle files | The harness restores them and reports the finding. This can trigger independent read-only QA review. |
 | Agent-runtime CI job fails | Recorded as a workflow warning separately from application acceptance. |
 | Documentation sync review fails twice | The range and failure are handed to planning, with a workflow warning. |
+
+Claude allowance is the maintainer's current bottleneck on the reported $20 plan. Codex allowance is not currently a constraint; needed Codex planning and architecture work can continue while Claude waits. The runtime can also preserve a phase for other capacity exceptions, but the two allowances are not equal operating problems in this setup. Reducing Claude consumption remains under investigation.
 
 These diagrams omit internal validation attempts and transport details. Separate counters exist for evaluation-driven coding retries, CI fixes, and consecutive non-capacity Claude failures. The [bridge guide](../../local_bridge/README.md) owns exact limits, outcomes, and recovery commands; the [runtime guide](../runtime/README.md) explains completed-attempt preservation and QA protection.
 

@@ -1,8 +1,10 @@
-# Architecture and alternatives
+# System architecture
 
 ## The system in plain terms
 
-The workflow manages changes to a software product across multiple tasks. The human supplies product intent. A Planner turns that intent into stories: bounded tasks with acceptance criteria. QA prepares checks before coding. An Implementer changes the repository, and an Evaluator inspects the result. Python decides which task may run next and when its status may change.
+The workflow manages changes to a software product across multiple tasks. Its roadmap, domain specification, architecture documents, and initial problem list were established before the automated workflow started. A Planner turns the current roadmap phase into stories: bounded tasks with acceptance criteria. QA prepares checks before coding. An Implementer changes the repository, and an Evaluator inspects the result. Python decides which task may run next and when its status may change.
+
+The human continues steering the product while it is being built. Testing implemented features produces bug reports, ideas, and requested behavior changes. Product Owner requests bring that feedback into planning; they are not the origin of every milestone. The [feedback diagram](WORKFLOW_DIAGRAMS.md#human-testing-and-scope-changes) shows that route, and [the comparison](COMPARISON.md) evaluates alternatives to this implementation.
 
 This matters for a crafting application because a plausible result can still use the wrong domain rule. For example, a passing calculation test does not establish that the tested rule is the intended rule, or that the browser reaches that calculation. The design gives requirement questions, test preparation, and review explicit places in the workflow. It cannot make an incorrect specification correct.
 
@@ -10,7 +12,7 @@ This matters for a crafting application because a plausible result can still use
 
 ```mermaid
 flowchart TB
-    H[Human maintainer and Product Owner] -->|Requests and decisions| R[(Repository: requirements and work records)]
+    H[Human maintainer and Product Owner] -->|Testing feedback, requests, and decisions| R[(Repository: requirements and work records)]
     N[n8n in Docker: schedule and display workflow] -->|Authenticated HTTP step request| B[Python bridge on Windows: dispatch and persist progress]
     B -->|Invoke role and validate result| T[Agent runtime]
     T -->|Prompts and tool access| M[Claude and Codex CLI processes]
@@ -21,7 +23,7 @@ flowchart TB
     G -->|Checks for published commit| B
 ```
 
-n8n is the scheduler and visible workflow. The bridge executes steps and stores their outcomes. The runtime provides the role runners, validation, QA, Git, and CI helpers. The bridge accepts one task at a time, so the outer workflow does not run competing coding agents against the same files. Each role can make several model requests and tool calls within its invocation.
+n8n is the scheduler and visible workflow. Its visual steps and recorded outputs let the maintainer inspect what happened and what information each step produced. The bridge executes steps and stores their outcomes. The runtime provides the role runners, validation, QA, Git, and CI helpers. The bridge accepts one task at a time, so the outer workflow does not run competing coding agents against the same files. Each role can make several model requests and tool calls within its invocation. The Python code managing those boundaries is referred to as the harness.
 
 The system combines a fixed outer workflow with agents that choose how to perform their assigned task. Using Anthropic's [workflow and agent terminology](https://www.anthropic.com/engineering/building-effective-agents), the outer structure is a coded workflow; its coding and planning steps contain agent loops. It also uses an evaluator/implementation feedback loop. These patterns do not require different model vendors or parallel execution.
 
@@ -42,35 +44,21 @@ These are reasons for the mechanisms, not claims that they eliminate the underly
 
 The separation is useful only while the additional checks catch enough relevant problems to justify their overhead. A read-only Evaluator cannot fix a defect itself; every correction requires another handoff. A narrow change can therefore spend more time in preparation and review than in coding.
 
-## Comparing ways to do the same work
+## Human feedback and changes of scope
 
-The comparison below is architectural analysis, not a benchmark. It compares configurations, rather than treating a product name as proof of one fixed design. A single agent can use durable files, tests, a sandbox, and CI. A multi-agent system can lack all of those. Agent count, persistence, permission boundaries, and who controls the sequence are separate choices.
+The initial roadmap supplied rough milestones. Their details can be refined as work approaches, while product requests can add ideas, report bugs, or change intended behavior during development. The Planner reconciles a request with existing coverage, updates the owning requirement or planning document, and creates work when the phase rules permit it. A later-phase request is retained as future work rather than automatically bypassing the current phase.
 
-| Approach | Advantages and suitable work | Disadvantages, complexity, and costs |
-| --- | --- | --- |
-| **One coding agent with human review** | Short handoffs and one continuing task context. Fits a bounded fix when a developer can define the task and inspect the diff. Testing and CI can remain external requirements. | The human carries task selection and final judgment. The same agent may repeat its assumptions when reviewing itself. Long sessions accumulate context; low agent count does not guarantee low usage. |
-| **One coding agent inside a scripted test/retry loop** | Automates repeated execution without introducing every planning role. Fits a known queue of issues with clear tests. Explicit counters and persisted stages are possible. | Passing tests can miss an incorrect rule or unwired feature. Retry failures need classification to avoid spending usage on capacity or infrastructure problems. Scripts still require maintenance. |
-| **A coder plus a separate reviewer** | Adds a distinct review pass and feedback without a full planning pipeline. Fits work where the human already supplies reliable task contracts. | Additional context loading and review calls. Review can miss defects or reject valid work. Someone must define the criteria, arbitrate disagreement, and cap retries. |
-| **This repository's sequential, role-based workflow** | Carries work from roadmap planning to published stories. Gives product questions, pre-code QA, repository review, recovery, and document reconciliation explicit owners. | More stages, files, validators, CLI integration, and n8n operations. Handoffs can lose context. Stories run serially, so separate roles do not provide coding throughput through parallelism. |
-| **A manager agent delegating to workers** | Can discover subtasks dynamically and run independent investigation or implementation in parallel. Fits work whose decomposition is not known beforehand. | Delegation and synthesis consume context and model calls. Concurrent writers need separate workspaces and integration rules. A manager can delegate badly or combine individually plausible but incompatible answers. |
+This keeps requests actionable without using the request itself as a second requirements store. The Planner's resolution records where the intent is represented. User Decisions serve a different purpose: agents ask the human to settle missing or conflicting behavior. User Interventions record a need for human attention when execution cannot proceed automatically. See the [Product Owner request contract](../PLANNER_INSTRUCTIONS.md#product-owner-requests) for exact processing rules.
 
-For a concrete example of checks in a simpler coding tool, [Aider supports configured lint/test commands and attempts to repair failures](https://aider.chat/docs/usage/lint-test.html). Those capabilities are not exclusive to a multi-role pipeline. The manager/worker and evaluator feedback patterns are described in [Anthropic's pattern guide](https://www.anthropic.com/engineering/building-effective-agents); the suitability judgments in the table are our analysis of their consequences for this repository.
+### Researching game mechanics
 
-### Custom runtime versus a framework
+The maintainer permits both Planner and QA to consult the Guild Wars 2 Wiki when their current work depends on game mechanics. QA's [external-facts guidance](../QA_INSTRUCTIONS.md#external-facts-and-ambiguity) already includes the wiki. Relevant research should retain the source URL and supported claim and distinguish game facts from choices about what this application should do. Research can establish a recipe mechanic; it cannot decide an unspecified valuation or product policy. Conflicts with confirmed product requirements still need the appropriate human decision.
 
-This repository implements its own state machine around CLI processes and Git files. That makes story ownership, publication scope, and dependency rules directly inspectable in local Python code. It also makes this project responsible for maintaining persistence, result parsing, retries, process recovery, and framework-like glue.
+### Current implementation bottleneck
 
-A graph or workflow framework could host a similar sequence. [LangGraph provides checkpointers and stores](https://docs.langchain.com/oss/python/langgraph/persistence); durable recovery depends on the selected backend, and its in-memory checkpointers do not survive a restart. [CrewAI Flows supports state and persistence through `@persist`](https://docs.crewai.com/en/concepts/flows#flow-persistence). It is inaccurate to describe either alternative as inherently an in-memory conversation that loses all progress.
+The maintainer reports using a $20 Claude plan and frequently exhausting its allowance. Claude coding capacity is currently the bottleneck; Codex allowance is not currently a constraint in this setup. This is the maintainer's operating experience, not a price guarantee or a claim that Codex has no limits.
 
-A framework would provide reusable orchestration facilities and introduce its own APIs, execution semantics, dependencies, and upgrades. It would not supply this repository's product authority, protected-test policy, backlog schema, or Git publication rules automatically. Moving to one would relocate some runtime work and still require those project-specific contracts. n8n is already a workflow framework here; the custom Python layer is where the repository-specific policy lives.
-
-### Cost and latency
-
-A fresh behavior story normally invokes QA, implementation, and evaluation. Planner and Architect runs are conditional; so are sync review and post-implementation QA review. A retry repeats some of those stages. Each invocation may contain multiple requests, and each role needs enough context to do its job. A reused QA plan avoids a new preparation pass.
-
-Splitting roles can reduce the information needed for any one task, while increasing repeated context across handoffs. Parallel workers can reduce elapsed time for independent subtasks while increasing simultaneous usage and integration work. Local inference trades hosted usage for local compute and operation; a smaller model may also need more correction attempts. None of these choices has a universal cost ranking.
-
-The current implementation checks Claude's session and weekly allowance before a coding run. It does not reserve the entire run's capacity or stop it at the threshold. Codex has separate capacity handling. Waiting for allowance, CI, or a human decision can dominate elapsed time even when no model is running. Subscription allowance, model tokens, elapsed time, and maintenance effort are different costs; this repository has no like-for-like result proving the full pipeline cheaper or more accurate than the alternatives above.
+The implementation checks Claude's session and weekly allowance before coding. It does not reserve capacity for the whole run or stop a run at the threshold. While Claude waits, triggered Codex planning and architecture work can continue. The quota controls pace the available allowance; they do not increase it. Reducing Claude usage remains under investigation. The [comparison's cost section](COMPARISON.md#cost-and-the-current-bottleneck) distinguishes that practical constraint from general trade-offs between workflow designs.
 
 ## Documentation ownership is part of the design
 
