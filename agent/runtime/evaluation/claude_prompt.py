@@ -35,6 +35,12 @@ mark a story DONE or move it between lifecycle sections.
 {config.ownership_table(config.IMPLEMENTATION)}
 
 Stop after completing or blocking this story.
+
+QA exclusively decides test design and writes/maintains all tests and fixtures.
+Do not write or change tests, including implementation-specific tests. Implement
+production code to meet the QA-defined story exit criteria, run the required
+focused checks and report their results. Report missing or faulty tests to QA;
+a test specification or evaluator request does not authorize you to write one.
 """
     )
     return "\n\n".join(sections)

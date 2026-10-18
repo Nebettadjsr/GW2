@@ -79,7 +79,9 @@ for this implementation was GPT-6 Luna with medium effort; a historical runtime
 measurement records a Planner run on GPT-6 Astra, a session-level setting not
 pinned by this repository.
 
-QA writes new tests or permanent fixtures only in approved test roots. Python
+QA exclusively designs, writes and maintains all tests and permanent fixtures,
+including existing tests, in approved application test roots (never workflow or
+agent-runtime code). Python
 compares the complete tracked and visible-untracked file snapshot around each
 QA run, buffers the harness's own append-only log writes until the
 snapshot is checked, restores forbidden writes without overwriting a newer
@@ -95,6 +97,15 @@ the evaluator, which can trigger independent QA review. The evaluator checks
 whether the plan was implemented, not merely whether tests pass. Evaluator
 rejection, a stated plan deviation, a test-integrity finding, insufficient
 verification, or a QA plan marked critical triggers a read-only QA review.
+
+That review can return `REVISE_TESTS` with requirement-based evidence and concrete
+application-test corrections. The workflow service then schedules `qa_repair`, a
+separate writing QA invocation limited to application tests and fixtures. It saves
+the updated plan and snapshots before returning to evaluation. Story-relevant
+application CI failures first enter `qa_review`; valid tests exposing production
+defects return to Claude, while independently approved test defects enter the
+same QA writing path. Test corrections
+have a separate bounded counter, and saved requests/plans support restart recovery.
 
 An invalid QA plan may be retried up to `MAX_QA_ATTEMPTS_PER_STORY` times, with
 the validation error supplied as corrective feedback. File-protection,

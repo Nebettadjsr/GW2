@@ -67,6 +67,8 @@ qa_agent.run_qa = _refuse_model("qa_agent.run_qa")
 # Story-execution tests get a deterministic, explicitly test-free QA plan;
 # QA's own tests patch this seam to exercise preparation and model failures.
 REAL_QA_PREPARATION = qa_agent.execute_preparation
+REAL_QA_TEST_REPAIR = qa_agent.execute_test_repair
+qa_agent.execute_test_repair = _refuse_model("qa_agent.execute_test_repair")
 qa_agent.execute_preparation = lambda story_path: {
     "schema_version": 1,
     "story_id": qa_agent.story_id_from_content(story_path.read_text(encoding="utf-8"), story_path.stem),

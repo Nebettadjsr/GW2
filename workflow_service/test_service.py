@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 
 import agent.runtime.tests  # noqa: F401  (guards: no agent/logs writes, model runs or real pushes)
 from workflow_service import service, cycle
+from agent.runtime.qa import qa_agent as real_qa_agent
 
 TOKEN = "t" * 40
 STORY_FILE = "agent/stories/STORY-T-001-x.md"
@@ -38,7 +39,16 @@ class _CycleTestCase(unittest.TestCase):
             "qa_agent": mock.Mock(**{"load_plan.return_value": {"story_id": "STORY-T-001"},
                                      "plan_path.return_value": cycle.REPO_ROOT / "agent/qa-plans/QA-STORY-T-001.json",
                                      "implementation_contract.return_value": " +contract",
-                                     "restore_protected_tests.return_value": []}),
+                                     "restore_protected_tests.return_value": [],
+                                     "snapshot_test_files.return_value": {},
+                                     "revert_test_changes.return_value": [],
+                                     "parse_interface_deviations.return_value": [],
+                                     "run_conditional_review.return_value": {
+                                         "decision": "RETRY", "reason": "Tests are valid; fix production behavior.",
+                                         "evidence": ["Requirement and failing assertion agree."],
+                                         "actionable_items": ["Fix the production boundary condition."]},
+                                     "QAPlanError": real_qa_agent.QAPlanError,
+                                     "QAInfrastructureError": real_qa_agent.QAInfrastructureError}),
             "git_sync": mock.Mock(**{"pending_planning_paths.return_value": set(),
                                      "ci_verification_available.return_value": (True, ""),
                                      "current_branch.return_value": "master",
@@ -95,15 +105,19 @@ class CycleStepTests(_CycleTestCase):
         self.orchestrator._blocked_bookkeeping.assert_called_once()
         cycle.story_state.clear_active_story.assert_called_once()
 
-    def test_ci_failure_in_story_scope_returns_to_claude_then_blocks(self):
+    def test_ci_failure_in_story_scope_requires_qa_before_claude_then_blocks(self):
         record = make_cycle(phase="ci", published_sha="a" * 40)
         cycle.github_ci.wait_for_commit.return_value = {"status": "FAILED", "reason": "red", "report": "r"}
         for attempt in (1, 2):
             result = cycle.step_ci(record, None)
-            self.assertEqual((record["phase"], record["ci_fix_attempts"], record["prompt"]),
-                             ("implement", attempt, "ci prompt +contract"))
+            self.assertEqual((record["phase"], record["ci_fix_attempts"]), ("qa_review", attempt - 1))
+            result = cycle.step_qa_review(record, None)
+            self.assertEqual((record["phase"], record["ci_fix_attempts"]), ("implement", attempt))
+            self.assertIn("ci prompt", record["prompt"])
+            self.assertIn("QA confirmed production-code deficiencies", record["prompt"])
             record["phase"] = "ci"
         cycle.step_ci(record, None)
+        cycle.step_qa_review(record, None)
         self.assertEqual(record["phase"], "blocked")
 
     def test_ci_waits_for_the_published_sha_not_head(self):
@@ -329,8 +343,9 @@ class ImplementStepTests(_CycleTestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
 
-    def implement(self, record, exit_code=0, capacity=False):
-        cycle.run_claude_attempt.return_value = mock.Mock(exit_code=exit_code, capacity_exhausted=capacity, output="")
+    def implement(self, record, exit_code=0, capacity=False, output="", context_tokens=0):
+        cycle.run_claude_attempt.return_value = mock.Mock(exit_code=exit_code, capacity_exhausted=capacity, output=output,
+                                                       resume_failed=False, context_tokens=context_tokens)
         checkpoints = []
         context = cycle.StepContext(lambda: checkpoints.append(dict(record)), {"mode": "auto"})
         result = cycle.step_implement(record, context)
@@ -344,6 +359,20 @@ class ImplementStepTests(_CycleTestCase):
         self.assertEqual((record["phase"], record["implement_started"], record["result_was_updated"]),
                          ("evaluate", False, True))
         self.assertTrue(result["proceed"])
+
+    def test_test_files_written_by_claude_are_reverted_and_reported(self):
+        cycle.qa_agent.revert_test_changes.return_value = ["src/test/java/CoderTest.java"]
+        record = make_cycle(phase="implement")
+        self.implement(record)
+        cycle.qa_agent.revert_test_changes.assert_called_once_with(cycle.qa_agent.snapshot_test_files.return_value)
+        self.assertEqual(record["integrity_findings"],
+                         ["coding agent wrote test file (reverted): src/test/java/CoderTest.java"])
+
+    def test_interface_deviations_in_the_result_are_recorded_for_the_evaluate_step(self):
+        cycle.qa_agent.parse_interface_deviations.return_value = ["test expects Foo.bar, production offers Foo.baz"]
+        record = make_cycle(phase="implement")
+        self.implement(record)
+        self.assertEqual(record["interface_deviations"], ["test expects Foo.bar, production offers Foo.baz"])
 
     def test_exhausted_budget_stops_before_claude_and_keeps_the_phase(self):
         self.budget.update(claude_allowed=False, reason="Weekly Claude budget reached")
@@ -359,6 +388,94 @@ class ImplementStepTests(_CycleTestCase):
         self.implement(record)
         self.assertTrue(cycle.run_claude_attempt.call_args.args[0].startswith(cycle.CONTINUATION))
         self.assertEqual(record["publish_paths"], ["src/New.java"])
+
+    def test_first_attempt_creates_a_pinned_session_and_a_later_retry_resumes_it(self):
+        record = make_cycle(phase="implement")
+        self.implement(record, output="worked", context_tokens=40_000)
+        first = cycle.run_claude_attempt.call_args
+        session = record["claude_session_id"]
+        self.assertEqual((first.kwargs["session_id"], first.kwargs["resume"]), (session, False))
+        self.assertTrue(record["claude_session_started"])
+        self.assertEqual(record["claude_session_tokens"], 40_000)
+
+        record.update(phase="implement", prompt="retry items")
+        cycle.git_sync.working_tree_paths.side_effect = [{"dirty.txt"}, {"dirty.txt"}]
+        cycle.file_hash.side_effect = ["h3", "h4"]
+        self.implement(record)
+        second = cycle.run_claude_attempt.call_args
+        self.assertEqual((second.kwargs["session_id"], second.kwargs["resume"]), (session, True))
+        self.assertEqual(second.args[0], cycle.RESUME_NOTE + "retry items")
+
+    def test_interrupted_resume_sends_only_the_continuation_not_the_full_prompt(self):
+        record = make_cycle(phase="implement", implement_started=True, prompt="LONG STORY PROMPT",
+                            run_baseline=["dirty.txt"], result_hash_before="h0",
+                            claude_session_id="s-1", claude_session_started=True)
+        cycle.git_sync.working_tree_paths.side_effect = [{"dirty.txt"}]
+        self.implement(record)
+        sent = cycle.run_claude_attempt.call_args
+        self.assertTrue(sent.kwargs["resume"])
+        self.assertEqual(sent.args[0], cycle.RESUME_NOTE + cycle.CONTINUATION)
+
+    def test_oversized_or_repeatedly_failing_session_starts_fresh(self):
+        for extra in ({"claude_session_tokens": cycle.SESSION_MAX_CONTEXT_TOKENS + 1}, {"failed_runs": 2}):
+            with self.subTest(extra=extra):
+                record = make_cycle(phase="implement", prompt="p", claude_session_id="old",
+                                    claude_session_started=True, **extra)
+                cycle.git_sync.working_tree_paths.side_effect = [{"dirty.txt"}, {"dirty.txt"}]
+                cycle.file_hash.side_effect = ["h1", "h2"]
+                self.implement(record)
+                sent = cycle.run_claude_attempt.call_args
+                self.assertFalse(sent.kwargs["resume"])
+                self.assertNotEqual(sent.kwargs["session_id"], "old")
+
+    def test_missing_session_falls_back_to_a_fresh_one_with_the_full_prompt(self):
+        record = make_cycle(phase="implement", prompt="FULL", claude_session_id="gone",
+                            claude_session_started=True)
+        cycle.git_sync.working_tree_paths.side_effect = [{"dirty.txt"}, {"dirty.txt"}]
+        cycle.file_hash.side_effect = ["h1", "h2"]
+        missing = mock.Mock(exit_code=1, capacity_exhausted=False, output="No conversation found",
+                            resume_failed=True, context_tokens=0)
+        fresh = mock.Mock(exit_code=0, capacity_exhausted=False, output="done",
+                          resume_failed=False, context_tokens=5)
+        cycle.run_claude_attempt.side_effect = [missing, fresh]
+        cycle.step_implement(record, cycle.StepContext(lambda: None, {"mode": "auto"}))
+        retry = cycle.run_claude_attempt.call_args
+        self.assertEqual((retry.args[0], retry.kwargs.get("resume", False)), ("FULL", False))
+        self.assertEqual(retry.kwargs["session_id"], record["claude_session_id"])
+        self.assertNotEqual(record["claude_session_id"], "gone")
+        self.assertEqual(record["phase"], "evaluate")
+
+    def test_a_live_orphan_claude_stops_the_step_before_any_new_run(self):
+        record = make_cycle(phase="implement", claude_pid=77, claude_pid_started=5.0, prompt="p")
+        with mock.patch.object(cycle, "stop_orphan", return_value=False) as guard:
+            result = cycle.step_implement(record, cycle.StepContext(lambda: None, {"mode": "auto"}))
+        guard.assert_called_once_with(77, 5.0)
+        self.assertEqual((result["outcome"], result["proceed"]), ("claude_orphan_running", False))
+        self.assertEqual(record["claude_pid"], 77)  # still recorded for the next attempt
+        cycle.run_claude_attempt.assert_not_called()
+
+    def test_a_cleared_orphan_is_forgotten_and_the_step_continues(self):
+        record = make_cycle(phase="implement", claude_pid=77, claude_pid_started=5.0)
+        with mock.patch.object(cycle, "stop_orphan", return_value=True):
+            self.implement(record)
+        cycle.run_claude_attempt.assert_called_once()
+
+    def test_the_running_claude_pid_is_checkpointed_at_launch_and_cleared_when_it_ends(self):
+        record = make_cycle(phase="implement")
+        saved = []
+
+        def launch(*_args, on_start, **_kwargs):
+            with mock.patch.object(cycle, "process_start_time", return_value=9.5):
+                on_start(1234)
+            return mock.Mock(exit_code=0, capacity_exhausted=False, output="x",
+                             resume_failed=False, context_tokens=0)
+
+        cycle.run_claude_attempt.side_effect = launch
+        context = cycle.StepContext(lambda: saved.append((record["claude_pid"], record["claude_pid_started"])),
+                                    {"mode": "auto"})
+        cycle.step_implement(record, context)
+        self.assertIn((1234, 9.5), saved)
+        self.assertEqual((record["claude_pid"], record["claude_pid_started"]), (None, None))
 
     def test_capacity_exhaustion_stops_without_using_the_failure_budget(self):
         record = make_cycle(phase="implement")
@@ -709,3 +826,66 @@ class SyncAndReviewTests(_CycleTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClaudeSessionStateResetTests(unittest.TestCase):
+    """Every path that ends or abandons a story must leave no Claude session or process behind."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.store = service.Store(Path(directory.name) / "tasks.json")
+        self.service = service.WorkflowService(self.store, TOKEN)
+        patcher = mock.patch.object(service.backlog_writer, "sync_user_requests")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    @staticmethod
+    def with_session(**values):
+        return make_cycle(claude_session_id="sid", claude_session_started=True, claude_session_tokens=9,
+                          claude_pid=31, claude_pid_started=2.0, **values)
+
+    def assert_clean(self, record):
+        for key, empty in cycle.CLAUDE_SESSION_FIELDS.items():
+            self.assertEqual(record[key], empty, key)
+
+    def fresh_cycle(self):
+        with mock.patch.object(cycle, "read_file", return_value="x"), \
+                mock.patch.object(cycle.story_state, "extract_story_id", return_value="STORY-T-001"):
+            return cycle.new_cycle(cycle.REPO_ROOT / STORY_FILE)
+
+    def test_a_new_cycle_starts_with_every_session_field_empty(self):
+        self.assert_clean(self.fresh_cycle())
+
+    def test_clear_covers_exactly_the_session_fields_a_cycle_persists(self):
+        self.assertEqual({k for k in self.fresh_cycle() if k.startswith("claude_")},
+                         set(cycle.CLAUDE_SESSION_FIELDS))
+
+    def test_finishing_or_blocking_a_story_clears_the_session_when_saved(self):
+        for phase in ("done", "blocked"):
+            with self.subTest(phase=phase):
+                self.store.save_cycle(self.with_session(phase=phase))
+                self.assert_clean(service.Store(self.store.path).cycles["STORY-T-001"])
+
+    def test_an_unfinished_story_keeps_its_session_across_a_restart(self):
+        self.store.save_cycle(self.with_session(phase="implement"))
+        kept = service.Store(self.store.path).cycles["STORY-T-001"]
+        self.assertEqual((kept["claude_session_id"], kept["claude_pid"]), ("sid", 31))
+
+    def test_dropping_a_cycle_for_a_changed_story_pointer_stops_its_claude_and_clears_it(self):
+        self.store.save_cycle(self.with_session(phase="implement"))
+        other = cycle.REPO_ROOT / "agent/stories/STORY-T-002-y.md"
+        replacement = make_cycle(story_id="STORY-T-002", story_file="agent/stories/STORY-T-002-y.md")
+        with mock.patch.object(cycle, "pointer_story", return_value=other), \
+                mock.patch.object(cycle, "new_cycle", return_value=replacement), \
+                mock.patch.object(cycle, "stop_orphan", return_value=True) as guard:
+            self.service._current_cycle()
+        guard.assert_called_once_with(31, 2.0)
+        self.assert_clean(service.Store(self.store.path).cycles["STORY-T-001"])
+
+    def test_a_pointer_cleared_by_a_human_also_clears_the_session(self):
+        self.store.save_cycle(self.with_session(phase="implement"))
+        with mock.patch.object(cycle, "pointer_story", return_value=None), \
+                mock.patch.object(cycle, "stop_orphan", return_value=True):
+            self.service._current_cycle()
+        self.assert_clean(self.store.cycles["STORY-T-001"])

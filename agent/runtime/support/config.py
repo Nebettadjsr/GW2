@@ -202,6 +202,8 @@ CI_WAIT_TIMEOUT_SECONDS = 45 * 60
 # is deliberately separate from MAX_RETRIES_PER_STORY: an evaluator
 # retry and a red pipeline are different failures.
 MAX_CI_FIX_ATTEMPTS = 2
+# Application-test corrections by QA have their own budget, separate from coding.
+MAX_QA_TEST_REPAIRS_PER_STORY = 2
 
 # Bounds on what a failure report may cost in Claude's prompt. The full
 # output always remains in the CI job log for a human.

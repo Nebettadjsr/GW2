@@ -1,11 +1,13 @@
 from pathlib import Path
-from typing import NamedTuple
+from typing import Callable, NamedTuple
 import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import time
 
 from agent.runtime.support.config import (
     AGENT_PROCESS_FLAGS,
@@ -168,10 +170,25 @@ def output_indicates_capacity_exhaustion(
     )
 
 
+# `claude -p --resume <unknown id>` prints this and exits 1 without a model call.
+RESUME_MISSING_MARKER = "No conversation found"
+
+
 class ClaudeAttempt(NamedTuple):
     exit_code: int
     capacity_exhausted: bool
     output: str = ""
+    session_id: str | None = None
+    # The resumed session no longer exists; the caller starts a fresh one.
+    resume_failed: bool = False
+    # Input tokens of the last request: what the next resume would re-read.
+    context_tokens: int = 0
+
+
+def _context_tokens(event: dict) -> int:
+    usage = event.get("usage") or {}
+    return sum(int(usage.get(key) or 0) for key in (
+        "input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
 
 
 def _render_event(event: dict) -> str:
@@ -202,10 +219,74 @@ def _stop_process_tree(process) -> None:
         process.kill()
 
 
+def process_start_time(pid: int) -> float | None:
+    """When ``pid`` started, or None if it is gone or psutil cannot tell."""
+    try:
+        import psutil
+        return psutil.Process(pid).create_time()
+    except Exception:
+        return None
+
+
+def process_alive(pid: int) -> bool:
+    try:
+        import psutil
+        return psutil.pid_exists(pid)
+    except ImportError:
+        pass
+    if os.name == "nt":
+        listing = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                                 capture_output=True, text=True, check=False).stdout
+        return f'"{pid}"' in listing
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def stop_orphan(pid: int | None, started: float | None) -> bool:
+    """Make sure the Claude run recorded as ``pid``/``started`` is no longer alive.
+
+    A service crash can leave Claude running (AGENT_PROCESS_FLAGS detaches it from
+    the console), and a second writer on the same session or working tree must
+    never start. Returns True when nothing of that run remains; False when a live
+    process cannot be proven to be, or stopped as, that run -- the caller must
+    not start another Claude then. A reused PID has a different start time and
+    is left alone.
+    """
+    if not pid or not process_alive(pid):
+        return True
+    current = process_start_time(pid)
+    if started is None or current is None:
+        return False
+    if abs(current - started) > 1:
+        return True
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, check=False)
+    else:
+        os.kill(pid, signal.SIGKILL)
+    deadline = time.monotonic() + 10
+    while process_alive(pid) and time.monotonic() < deadline:
+        time.sleep(.2)
+    return not process_alive(pid)
+
+
 def run_claude_attempt(
     prompt: str,
-    label: str = "Claude Code"
+    label: str = "Claude Code",
+    session_id: str | None = None,
+    resume: bool = False,
+    on_start: Callable[[int], None] | None = None
 ) -> ClaudeAttempt:
+    """Run one attempt, optionally pinned to a Claude session.
+
+    ``session_id`` with ``resume=False`` creates that session; with
+    ``resume=True`` it continues it. Never ``--continue``: that picks the most
+    recent session in the directory, which may belong to someone else.
+    """
 
     claude = find_claude()
 
@@ -234,6 +315,7 @@ def run_claude_attempt(
             "--output-format",
             "stream-json",
             "--verbose",
+            *(["--resume" if resume else "--session-id", session_id] if session_id else []),
             "--permission-mode",
             "dontAsk",
             "--allowedTools",
@@ -253,6 +335,9 @@ def run_claude_attempt(
         creationflags=AGENT_PROCESS_FLAGS,
     )
 
+    if on_start is not None:
+        on_start(process.pid)
+
     process.stdin.write(
         prompt
     )
@@ -261,6 +346,8 @@ def run_claude_attempt(
     tail = ""
     output_lines = []
     final = None
+    seen_session = None
+    started_work = False
 
     for line in process.stdout:
         raw = line.rstrip("\n")
@@ -268,6 +355,9 @@ def run_claude_attempt(
             event = json.loads(raw)
         except ValueError:
             event = None
+        if isinstance(event, dict):
+            seen_session = event.get("session_id") or seen_session
+            started_work = started_work or event.get("type") == "assistant"
         text = _render_event(event) if isinstance(event, dict) else raw
         if text:
             output_lines.append(text)
@@ -303,11 +393,15 @@ def run_claude_attempt(
         "========================================\n"
     )
 
+    output = "\n".join(output_lines)
     return ClaudeAttempt(
         return_code,
         return_code != 0
         and output_indicates_capacity_exhaustion(tail),
-        "\n".join(output_lines),
+        output,
+        seen_session or session_id,
+        resume and final is None and not started_work and RESUME_MISSING_MARKER in output,
+        _context_tokens(final) if final else 0,
     )
 
 

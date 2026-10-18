@@ -667,7 +667,10 @@ Rules:
 - New stories start with `Status: TODO`.
 - Every story uses the current milestone.
 - `Required Tests` may be `None` only when genuinely not applicable.
-- `Required Tests` names the tests that must exist and pass. Neither it nor
+- `Required Tests` records verification obligations and relevant behavior; QA decides the
+  concrete test design and exclusively writes or maintains the tests. Never assign test
+  authorship or test maintenance to the coding agent, including for infrastructure stories.
+  The coding agent must satisfy the QA-defined checks. Neither `Required Tests` nor
   `Definition of Done` may require a full local regression run: the GitHub CI gate
   owns the complete suites and a story is not complete until that gate is green
   (`docs/TEST_STRATEGY.md` §36). The pipeline publishes and runs that gate only after
@@ -676,13 +679,14 @@ Rules:
   (verified by the pipeline after acceptance)". Where a story touches a layer the gate cannot run
   — TestFX UI verification, a browser smoke script, a real-database `*IT` check —
   name that check explicitly, because nothing else will run it.
-- For implementation stories, consult `docs/TEST_STRATEGY.md` and include applicable tests for
-  changed behavior, business invariants, confirmed-bug regressions, and affected integration
-  boundaries. Include verification of relevant coverage reports and unresolved quality gaps in
-  the Definition of Done. A test is `None` only when the work is genuinely infrastructure/docs
-  only or behavior cannot reasonably be tested; explain the exception.
+- For implementation stories, identify changed behavior, business invariants, confirmed-bug
+  regressions and integration boundaries that need verification. QA chooses the concrete cases,
+  layers, commands and test implementation under `docs/TEST_STRATEGY.md`; the Planner does not
+  prescribe extra test-writing work to Claude. QA assesses coverage and unresolved testing gaps.
+  State genuine exceptions with a reason; QA determines whether existing checks suffice or
+  `NO_TESTS_NEEDED` applies.
 - Make each story's acceptance criteria, expected outcomes, relevant data/settings and boundaries
-  explicit enough for independent QA to write pre-implementation checks. Do not pre-decide its QA
+  explicit enough for independent QA to write all required checks. Do not pre-decide its QA
   plan or turn an unresolved product question into an assumed answer; QA uses the normal Product
   Owner decision mechanism when clarification is needed.
 - `Dependencies` may be `None`.

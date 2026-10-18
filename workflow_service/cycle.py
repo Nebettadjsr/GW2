@@ -27,6 +27,7 @@ other work instead of stalling.
 from __future__ import annotations
 
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, NamedTuple
@@ -37,17 +38,17 @@ from agent.runtime.core.project_planner import run_planning_pass, should_trigger
 from agent.runtime.core.selector import select_next_story
 from agent.runtime.human.architect_requests import get_actionable_requests
 from agent.runtime.qa import qa_agent
-from agent.runtime.runners.claude_runner import run_claude_attempt
+from agent.runtime.runners.claude_runner import process_start_time, run_claude_attempt, stop_orphan
 from agent.runtime.support import git_sync, github_ci
 from agent.runtime.support.config import (
     AGENT_BRANCH, BACKLOG_FILE, CLAUDE_RESULT_FILE, CURRENT_STORY_FILE, MAX_CI_FIX_ATTEMPTS,
-    MAX_CLAUDE_FAILED_RUNS_PER_STORY, MAX_RETRIES_PER_STORY, REPO_ROOT,
+    MAX_CLAUDE_FAILED_RUNS_PER_STORY, MAX_RETRIES_PER_STORY, MAX_QA_TEST_REPAIRS_PER_STORY, REPO_ROOT,
 )
 from agent.runtime.support.daily_log import log_line
 from agent.runtime.support.files import file_hash, read_file
 from workflow_service import claude_budget
 
-ASYNC_STEPS = {"plan", "review", "qa", "implement", "evaluate", "ci"}
+ASYNC_STEPS = {"plan", "review", "qa", "qa_review", "qa_repair", "implement", "evaluate", "ci"}
 SYNC_INTERVAL = timedelta(minutes=30)  # between stories; an idle queue fetches at most this often
 MAX_REVIEW_ATTEMPTS = 2
 # A merge that changes these needs the service restarted to run the new code.
@@ -57,6 +58,15 @@ CONTINUATION = (
     "Inspect existing repository work and resume where it stopped; "
     "do not restart completed work.\n\n"
 )
+# Answering a resumed session: its history already holds the story, so only the
+# delta is sent, plus the reminder that the tree may have moved under it.
+RESUME_NOTE = (
+    "This session already worked on this story. The harness may have restored "
+    "protected files and others may have edited the tree since; re-read a file "
+    "before you edit it.\n\n"
+)
+# Past this many input tokens a resume re-reads more than a fresh start costs.
+SESSION_MAX_CONTEXT_TOKENS = 150_000
 
 
 class StepContext(NamedTuple):
@@ -88,7 +98,15 @@ def new_cycle(story_path: Path) -> dict:
         "retry_count": 0,
         "ci_fix_attempts": 0,
         "failed_runs": 0,
+        "qa_repair_attempts": 0,
+        "qa_action": None,
+        "interface_deviations": [],
         "prompt": None,
+        "claude_session_id": None,
+        "claude_session_started": False,
+        "claude_session_tokens": 0,
+        "claude_pid": None,
+        "claude_pid_started": None,
         "implement_started": False,
         "publish_paths": [],
         "published_sha": None,
@@ -259,6 +277,28 @@ def step_qa(cycle: dict, _context: StepContext) -> StepResult:
     return StepResult(plan["status"], True)
 
 
+CLAUDE_SESSION_FIELDS = {"claude_session_id": None, "claude_session_started": False,
+                         "claude_session_tokens": 0, "claude_pid": None, "claude_pid_started": None}
+
+
+def clear_claude_session(cycle: dict) -> None:
+    """Forget the Claude session and process recorded for a story."""
+    cycle.update(CLAUDE_SESSION_FIELDS)
+
+
+def release_claude(cycle: dict) -> None:
+    """Stop any leftover Claude run of this cycle and forget its session (the cycle is being abandoned)."""
+    stop_orphan(cycle.get("claude_pid"), cycle.get("claude_pid_started"))
+    clear_claude_session(cycle)
+
+
+def _reuse_session(cycle: dict) -> bool:
+    """Resume the story's Claude session unless it is missing, suspect or too large."""
+    return bool(cycle.get("claude_session_id") and cycle.get("claude_session_started")
+                and cycle.get("failed_runs", 0) < 2
+                and cycle.get("claude_session_tokens", 0) <= SESSION_MAX_CONTEXT_TOKENS)
+
+
 def step_implement(cycle: dict, context: StepContext) -> StepResult:
     story_path = _story_path(cycle)
     plan = qa_agent.load_plan(story_path)
@@ -270,26 +310,64 @@ def step_implement(cycle: dict, context: StepContext) -> StepResult:
         # Nothing has started; the next scheduled run tries again.
         return StepResult("waiting_for_claude_budget", False, budget["reason"], budget=budget)
 
+    if not stop_orphan(cycle.get("claude_pid"), cycle.get("claude_pid_started")):
+        # A Claude from an earlier run may still be writing to the tree or session.
+        return StepResult("claude_orphan_running", False,
+                          f"A Claude process (PID {cycle['claude_pid']}) from an earlier run is still alive and "
+                          "could not be stopped or identified; stop it, then rerun the pipeline.")
+    cycle.update(claude_pid=None, claude_pid_started=None)
+
     prompt = cycle["prompt"] or orchestrator._prepare_implementation_prompt(story_path)[0]
-    if cycle["implement_started"]:
+    interrupted = cycle["implement_started"]
+    resume = _reuse_session(cycle)
+    if interrupted:
         # A previous run of this step was interrupted mid-attempt.
         prompt = CONTINUATION + prompt.removeprefix(CONTINUATION)
+        if resume:
+            prompt = CONTINUATION  # the session already holds the full prompt
     else:
         cycle.update(implement_started=True, prompt=prompt,
                      run_baseline=sorted(git_sync.working_tree_paths()),
                      result_hash_before=file_hash(CLAUDE_RESULT_FILE))
+    if resume:
+        prompt = RESUME_NOTE + prompt
+    else:
+        clear_claude_session(cycle)
+        cycle["claude_session_id"] = str(uuid.uuid4())
     baseline = set(cycle["run_baseline"])
-    context.checkpoint()  # an interrupted run must resume with this baseline
+    context.checkpoint()  # an interrupted run must resume with this baseline and session
+
+    def record_pid(pid: int) -> None:
+        cycle.update(claude_pid=pid, claude_pid_started=process_start_time(pid))
+        context.checkpoint()  # a crash from here on must still find this process
 
     plan_file = qa_agent.plan_path(plan["story_id"])
     plan_snapshot = plan_file.read_bytes()
     lifecycle = story_state.snapshot_story_lifecycle(story_path)
     integrity = qa_agent.restore_protected_tests(plan)
+    tests_before = qa_agent.snapshot_test_files()
     try:
         try:
-            attempt = run_claude_attempt(prompt, label=f"Implementation {cycle['story_id']}")
+            attempt = run_claude_attempt(prompt, label=f"Implementation {cycle['story_id']}",
+                                         session_id=cycle["claude_session_id"], resume=resume,
+                                         on_start=record_pid)
+            if attempt.resume_failed:
+                # The session is gone (never written, or deleted): start a fresh one.
+                clear_claude_session(cycle)
+                cycle["claude_session_id"] = str(uuid.uuid4())
+                full = cycle["prompt"] or orchestrator._prepare_implementation_prompt(story_path)[0]
+                attempt = run_claude_attempt(CONTINUATION + full.removeprefix(CONTINUATION)
+                                             if interrupted else full,
+                                             label=f"Implementation {cycle['story_id']}",
+                                             session_id=cycle["claude_session_id"], on_start=record_pid)
+            # A session that produced any output exists on disk and must be resumed, not recreated.
+            cycle.update(claude_session_started=cycle.get("claude_session_started", False) or bool(attempt.output),
+                         claude_session_tokens=attempt.context_tokens or cycle.get("claude_session_tokens", 0))
         finally:
+            cycle.update(claude_pid=None, claude_pid_started=None)  # this run has ended
             integrity += qa_agent.restore_protected_tests(plan)
+            integrity += [f"coding agent wrote test file (reverted): {path}"
+                          for path in qa_agent.revert_test_changes(tests_before)]
     finally:
         integrity += [f"harness lifecycle state: {path}"
                       for path in story_state.restore_story_lifecycle(story_path, lifecycle)]
@@ -315,16 +393,31 @@ def step_implement(cycle: dict, context: StepContext) -> StepResult:
         return StepResult("claude_failed", True,
                           f"Claude exited with code {attempt.exit_code}; retrying the same attempt.")
 
+    result_was_updated = file_hash(CLAUDE_RESULT_FILE) != cycle["result_hash_before"]
     cycle.update(
         phase="evaluate", implement_started=False, prompt=None, failed_runs=0,
         integrity_findings=sorted(set(integrity)),
-        result_was_updated=file_hash(CLAUDE_RESULT_FILE) != cycle["result_hash_before"],
+        result_was_updated=result_was_updated,
+        interface_deviations=(qa_agent.parse_interface_deviations(read_file(CLAUDE_RESULT_FILE))
+                              if result_was_updated and CLAUDE_RESULT_FILE.exists() else []),
     )
     return StepResult("implemented", True, changed_paths=sorted(changed), budget=budget)
 
 
 def step_evaluate(cycle: dict, _context: StepContext) -> StepResult:
     story_path = _story_path(cycle)
+    deviations = cycle.get("interface_deviations") or []
+    if deviations:
+        # The coder built a different interface than QA's contract: align the tests first, cheaply,
+        # before the evaluator spends tokens judging an attempt the tests cannot yet describe.
+        cycle["interface_deviations"] = []
+        return _queue_test_repair(cycle, {
+            "decision": "REVISE_TESTS",
+            "reason": "The coder reported interface deviations from QA's contract.",
+            "evidence": deviations,
+            "actionable_items": ["Align names, signatures, imports and setup of the affected tests to the "
+                                 "implemented interface; do not change expected values."],
+        }, source="interface_deviation")
     plan = qa_agent.load_plan(story_path)
     integrity = cycle.get("integrity_findings") or []
     result_content = orchestrator._current_result_content()
@@ -354,6 +447,9 @@ def step_evaluate(cycle: dict, _context: StepContext) -> StepResult:
                 story_path, {"user_decision_ids": evaluation["qa_user_decision_ids"]})
             return _stop_blocked(cycle, reason)
         return _block(cycle, reason)
+
+    if evaluation.get("qa_test_repair"):
+        return _queue_test_repair(cycle, evaluation["qa_test_repair"], source="evaluation")
 
     items = evaluation.get("actionable_retry_items") or []
     if not items:
@@ -416,16 +512,115 @@ def step_ci(cycle: dict, _context: StepContext) -> StepResult:
                           "CI failed only in suites this story did not touch. Fix or rerun CI on "
                           f"GitHub for {sha[:12]}, then rerun the pipeline. Claude was not invoked.")
 
+    unchanged = cycle.get("ci_qa_no_action") or {}
+    if unchanged.get("published_sha") == sha and unchanged.get("verification") == verification:
+        return StepResult("ci_still_failed", False,
+                          "QA already found no actionable correction for this unchanged CI failure; investigate or rerun CI.")
+
+    cycle["qa_action"] = {"request_id": str(uuid.uuid4()), "source": "ci_failure",
+                          "published_sha": sha, "verification": verification}
+    cycle["phase"] = "qa_review"
+    return StepResult("ci_qa_review", True, reason)
+
+
+def _queue_test_repair(cycle: dict, review: dict, *, source: str) -> StepResult:
+    """Only an evidenced independent QA decision can authorize test writing."""
+    if (review.get("decision") != "REVISE_TESTS" or not review.get("evidence")
+            or not review.get("actionable_items")):
+        return _block(cycle, "Test correction was requested without an evidenced QA decision.")
+    count = cycle.get("qa_repair_attempts", 0)
+    if count >= MAX_QA_TEST_REPAIRS_PER_STORY:
+        return _block(cycle, f"Application tests still need changes after {count} QA correction rounds.")
+    cycle["qa_repair_attempts"] = count + 1
+    action = cycle.get("qa_action") or {"request_id": str(uuid.uuid4()), "source": source}
+    action.update(review=review, invalid_attempts=0)
+    action.pop("feedback", None)
+    cycle.update(phase="qa_repair", qa_action=action)
+    return StepResult("qa_test_repair_requested", True, review.get("reason", ""))
+
+
+def _qa_routing_failure(cycle: dict, context: StepContext, error: Exception) -> StepResult:
+    action = cycle["qa_action"]
+    action["invalid_attempts"] = action.get("invalid_attempts", 0) + 1
+    action["feedback"] = f"{type(error).__name__}: {error}"
+    if cycle["phase"] == "qa_review":
+        action.pop("review", None)
+        action["request_id"] = str(uuid.uuid4())
+    if isinstance(error, qa_agent.QAPlanError) and action["invalid_attempts"] <= 1:
+        if context:
+            context.checkpoint()
+        return StepResult("qa_correction_required", True, action["feedback"])
+    orchestrator._block_story_for_qa_failure(
+        _story_path(cycle), "qa_test_correction_failure", error,
+        model_retries=action["invalid_attempts"] - 1)
+    return _stop_blocked(cycle, action["feedback"])
+
+
+def step_qa_review(cycle: dict, context: StepContext) -> StepResult:
+    """Read-only QA classifies application CI failure before any coder retry."""
+    action = cycle["qa_action"]
     story_path = _story_path(cycle)
+    plan = qa_agent.load_plan(story_path)
+    if not plan:
+        return StepResult("qa_plan_missing", False, "CI diagnosis requires the story's QA plan.")
+    try:
+        review = action.get("review")
+        if review is None:
+            review = qa_agent.run_conditional_review(story_path, plan, evaluation={
+                "source": "ci_failure", "published_sha": action["published_sha"],
+                "verification": action["verification"], "correction_feedback": action.get("feedback", "")})
+            action["review"] = review
+            if context:
+                context.checkpoint()
+        qa_agent.record_review(plan, review, request_id=action["request_id"])
+    except (qa_agent.QAPlanError, qa_agent.QAInfrastructureError) as error:
+        return _qa_routing_failure(cycle, context, error)
+    decision, reason = review["decision"], review.get("reason", "")
+    if decision == "REVISE_TESTS":
+        return _queue_test_repair(cycle, review, source="ci_failure")
+    if decision == "NEEDS_USER":
+        updated = qa_agent.load_plan(story_path)
+        orchestrator._block_story_for_qa_decision(story_path, updated)
+        return _stop_blocked(cycle, reason)
+    if decision == "APPROVE":
+        # QA cannot turn a red published SHA green. A later run rechecks GitHub.
+        cycle.update(phase="ci", qa_action=None, ci_qa_no_action={
+            "published_sha": action["published_sha"], "verification": action["verification"]})
+        return StepResult("ci_still_failed", False, reason or "QA found no correction; CI must be rechecked.")
+    if decision != "RETRY" or not review.get("actionable_items"):
+        return _qa_routing_failure(cycle, context, qa_agent.QAPlanError("QA must name actionable production defects."))
     cycle["ci_fix_attempts"] += 1
     if cycle["ci_fix_attempts"] > MAX_CI_FIX_ATTEMPTS:
-        return _block(cycle, f"GitHub CI still fails after {MAX_CI_FIX_ATTEMPTS} automatic fix "
-                             "attempts.\n\n" + (verification.get("report") or reason))
+        return _block(cycle, f"GitHub CI still fails after {MAX_CI_FIX_ATTEMPTS} production-code fixes.")
     story_state.set_story_unfinished(story_path)
-    cycle["prompt"] = (orchestrator.build_ci_failure_prompt(verification, story_path)
-                       + qa_agent.implementation_contract(qa_agent.load_plan(story_path)))
-    cycle["phase"] = "implement"
-    return StepResult("FAILED", True, reason, ci_fix=cycle["ci_fix_attempts"])
+    cycle["prompt"] = (orchestrator.build_ci_failure_prompt(action["verification"], story_path)
+                       + "\n\nIndependent QA confirmed production-code deficiencies:\n"
+                       + "\n".join(f"- {item}" for item in review["actionable_items"])
+                       + qa_agent.implementation_contract(plan))
+    cycle.update(phase="implement", qa_action=None)
+    return StepResult("ci_production_retry", True, reason, ci_fix=cycle["ci_fix_attempts"])
+
+
+def step_qa_repair(cycle: dict, context: StepContext) -> StepResult:
+    """Write application tests only, then re-evaluate before any new publication."""
+    action = cycle["qa_action"]
+    story_path = _story_path(cycle)
+    try:
+        plan = qa_agent.execute_test_repair(story_path, action, action.get("feedback", ""))
+    except (qa_agent.QAPlanError, qa_agent.QAInfrastructureError) as error:
+        return _qa_routing_failure(cycle, context, error)
+    if plan["status"] == "NEEDS_USER":
+        orchestrator._block_story_for_qa_decision(story_path, plan)
+        return _stop_blocked(cycle, "QA test correction needs a Product Owner decision.")
+    if plan["status"] != "READY":
+        return _qa_routing_failure(cycle, context, qa_agent.QAPlanError("Test correction did not produce READY."))
+    cycle["publish_paths"] = sorted(set(cycle["publish_paths"]) | set(plan.get("prepared_test_paths", [])))
+    cycle.setdefault("qa_repair_history", []).append({
+        "request_id": action["request_id"], "source": action["source"],
+        "reason": action["review"]["reason"], "paths": plan.get("prepared_test_paths", [])})
+    # Never accept CI for the earlier commit after a test correction.
+    cycle.update(phase="evaluate", qa_action=None, published_sha=None, prompt=None)
+    return StepResult("qa_tests_corrected", True, "Re-evaluate corrected tests and production behavior before publishing.")
 
 
 def step_finalize(cycle: dict, _context: StepContext) -> StepResult:
@@ -451,6 +646,7 @@ def step_finalize(cycle: dict, _context: StepContext) -> StepResult:
 
 
 STEPS = {
-    "qa": step_qa, "implement": step_implement, "evaluate": step_evaluate,
+    "qa": step_qa, "qa_review": step_qa_review, "qa_repair": step_qa_repair,
+    "implement": step_implement, "evaluate": step_evaluate,
     "publish": step_publish, "ci": step_ci, "finalize": step_finalize,
 }

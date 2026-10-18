@@ -2,11 +2,18 @@
 
 ## Orchestrated story QA
 
-The Python story orchestrator prepares a persistent QA plan before coding when a story changes behavior that needs verification. QA may write acceptance/regression tests first, specify exact executable checks when preparation is not feasible, or record `NO_TESTS_NEEDED` with a justification. If requirements need a Product Owner decision, QA blocks the story through the existing `UD-*` flow. See [`agent/QA_INSTRUCTIONS.md`](../agent/QA_INSTRUCTIONS.md) for QA's contract and [`agent/qa-plans/README.md`](../agent/qa-plans/README.md) for the plan format and ownership rules.
+QA is the sole author and maintainer of all test code and fixtures, including acceptance, regression, unit, integration, property, UI, implementation-specific tests of the application. QA decides what and how to test under this strategy and the story's requirements. Existing test coverage can be reused; low-risk work may receive `NO_TESTS_NEEDED` with a specific justification. The orchestrator prepares a persistent QA plan before coding. QA must prepare required test code rather than delegate its implementation through a specification. If requirements need a Product Owner decision, QA uses the existing `UD-*` flow. See [`agent/QA_INSTRUCTIONS.md`](../agent/QA_INSTRUCTIONS.md) and [`agent/qa-plans/README.md`](../agent/qa-plans/README.md).
 
-The coding agent must implement the plan and preserve QA-owned tests. A test expectation may change only with documented evidence and independent review. The evaluator checks acceptance behavior, integration points, invariants, coverage and plan adherence; a green test suite alone does not establish completion. Conditional independent QA review runs when the evaluator requests it, tests/expectations changed, the implementation diverged from the plan, or verification remains critical. Runtime tests must cover these transitions and restart recovery without invoking real model processes or external services.
+The coding agent implements production behavior to satisfy the QA-defined story exit criteria. It runs the required checks and reports exact results, but does not create, modify, delete, skip or weaken tests or fixtures. Missing tests, test defects and changed expectations return to QA; they are not coding-agent repair work. A test expectation may change only with documented evidence and independent review. The evaluator checks acceptance behavior, integration points, invariants, coverage and plan adherence; a green suite alone does not establish completion. Conditional independent QA review runs when needed. Post-publication CI remains the full regression gate. Throughout this document, instructions to add, update or design tests apply to QA; instructions to run required checks and fix production behavior apply to the coding agent as well.
 
 ## 1. Purpose
+
+Application failures discovered in evaluation or story-relevant CI are classified
+by independent QA. Valid tests exposing production defects return to the coder.
+An evidenced `REVISE_TESTS` verdict schedules a guarded QA writing phase for
+application tests/fixtures only, followed by evaluation and publication/CI again.
+The automated flow never works on itself, so workflow tests are outside this routing. Red CI for an old
+commit cannot be accepted merely because QA approved or corrected a test.
 
 This document defines the testing strategy for the GW2 Tool.
 
@@ -1062,6 +1069,9 @@ Do not create meaningless tests solely to increase coverage percentage.
 
 ## 26.1 Test quality rules for implementation work
 
+QA owns test authorship and decides the required checks. The coding agent satisfies
+those checks and reports evidence; the rules below do not authorize it to change tests.
+
 - Review the applicable domain rules and express critical cross-component business rules as
   invariants over complete outputs.
 - Add meaningful tests for new or changed behavior. Every confirmed production defect requires
@@ -1087,19 +1097,21 @@ Do not create retrospective records for historical defects as part of unrelated 
 
 # 27. Claude Code Testing Rules
 
-For tasks involving behavior changes, Claude should:
+For tasks involving behavior changes, Claude must:
 
 1. read `docs/DOMAIN_SPEC.md`,
 2. read this document,
-3. inspect existing relevant tests,
-4. add or update tests before or together with the code change,
-5. run the smallest relevant test scope (§20) — the tests covering the code actually being changed, not the whole suite,
-6. report the exact tests run, with their real output.
+3. read the QA plan and relevant tests to understand the story's exit criteria,
+4. implement production behavior that satisfies those criteria without writing or changing tests,
+5. run the QA-required focused checks (§20), not the whole regression suite,
+6. report exact commands, real results and any test defect or missing check for QA to resolve.
 
 For pure UI styling or documentation-only changes, domain test execution is not automatically required.
 
 Claude must not:
 
+- create or modify any test code or fixture, including implementation-specific tests,
+- choose additional test scope or change expected results; QA owns those decisions,
 - delete failing tests merely to make a build green,
 - weaken assertions without justification,
 - introduce live external API dependencies into normal tests,
@@ -1107,7 +1119,7 @@ Claude must not:
 - run the complete regression suite locally as routine verification — that is the CI gate's job (§20, §36),
 - treat a green targeted run as proof that nothing else broke; the gate decides that.
 
-A CI failure comes back as a short list of failing tests (§36). It is handled like any other failing test under §21: find out whether the code, the test or the specification is wrong, and fix the cause. Making the pipeline green by deleting, skipping or weakening a test is the one thing that is never an acceptable fix.
+A CI failure comes back as a short list of failing tests (§36). Claude reproduces the relevant failure and fixes production-code defects. If the test, fixture or expected result is wrong, Claude reports evidence for QA; only QA changes it. Missing product intent still requires the normal human decision. The applicable post-publication CI gates must pass before finalization; deleting, skipping or weakening a test merely to make CI green is not an acceptable fix.
 
 ---
 
@@ -1301,7 +1313,7 @@ Concretely:
 - Conversely, a change that does alter UI-observable behavior does not need it re-verified at every other layer beyond what already covers the underlying calculation — Layer 5 exists to check that the UI correctly reflects a result, not to re-prove the result itself (§12, §32 already establish this for the frontend generally).
 - §31.5's "choose the lowest layer that proves the behavior" already governs which layer to use; this section governs how much test volume is appropriate once that layer is chosen. Prefer one clear, well-named test (§16, §22, §23) over several overlapping ones asserting the same fact.
 - Heavier layers (Layer 2 PostgreSQL integration, Layer 4 live smoke, Layer 5 TestFX) cost real setup/runtime/review effort disproportionate to most changes; reach for them only when the change's own risk genuinely requires that layer's specific guarantee (real SQL semantics, real external API shape, real UI wiring), not as a default upgrade from a cheaper layer that already proves the point.
-- This does not relax any existing minimum: a domain behavior change still requires an automated test (`CLAUDE.md` Testing), and a real bug still gets a named regression test (§16). It constrains the upper bound — do not add tests, or reach for a broader/heavier layer, beyond what the specific change actually requires.
+- This does not relax any existing minimum: QA must provide appropriate automated verification for domain behavior and named regression tests for confirmed defects (§16). It constrains the upper bound of QA's test design; the coding agent fulfills that design without writing tests.
 
 ---
 

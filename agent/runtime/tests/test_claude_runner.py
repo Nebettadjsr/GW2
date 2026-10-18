@@ -140,6 +140,45 @@ class ClaudeRunnerTest(unittest.TestCase):
         self.assertEqual(kwargs["stdout"], claude_runner.subprocess.PIPE)
         self.assertEqual(kwargs["stderr"], claude_runner.subprocess.STDOUT)
 
+    def test_new_session_is_pinned_with_session_id_and_resume_uses_resume(self):
+        created = self.run_claude(lambda: claude_runner.run_claude_attempt("p", session_id="abc"))
+        resumed = self.run_claude(lambda: claude_runner.run_claude_attempt("p", session_id="abc", resume=True))
+        plain = self.run_claude(lambda: claude_runner.run_claude("p"))
+        self.assertEqual(created["argv"][created["argv"].index("--session-id") + 1], "abc")
+        self.assertNotIn("--resume", created["argv"])
+        self.assertEqual(resumed["argv"][resumed["argv"].index("--resume") + 1], "abc")
+        self.assertNotIn("--session-id", resumed["argv"])
+        self.assertNotIn("--continue", resumed["argv"])
+        self.assertTrue(all(flag not in plain["argv"] for flag in ("--resume", "--session-id")))
+
+    def test_attempt_reports_session_and_context_size_from_stream_events(self):
+        output = ('{"type":"system","subtype":"init","session_id":"sid-1"}\n'
+                  '{"type":"result","is_error":false,"session_id":"sid-1","usage":'
+                  '{"input_tokens":10,"cache_read_input_tokens":20,"cache_creation_input_tokens":5}}\n')
+        attempt = self.run_claude(lambda: claude_runner.run_claude_attempt("p", session_id="sid-1"),
+                                  output=output)["code"]
+        self.assertEqual((attempt.session_id, attempt.context_tokens, attempt.resume_failed), ("sid-1", 35, False))
+
+    def test_resuming_an_unknown_session_is_reported_as_resume_failure(self):
+        missing = "No conversation found with session ID: abc\n"
+        failed = self.run_claude(lambda: claude_runner.run_claude_attempt("p", session_id="abc", resume=True),
+                                 output=missing, returncode=1)["code"]
+        created = self.run_claude(lambda: claude_runner.run_claude_attempt("p", session_id="abc"),
+                                  output=missing, returncode=1)["code"]
+        self.assertTrue(failed.resume_failed)
+        self.assertFalse(created.resume_failed)
+
+    def test_on_start_receives_the_pid_before_the_prompt_is_written(self):
+        order = []
+        process = fake_process('{"type":"result","is_error":false}')
+        process.pid = 4242
+        process.stdin.write.side_effect = lambda _text: order.append("prompt")
+        with patch.object(claude_runner, "find_claude", return_value="claude.exe"), \
+             patch.object(claude_runner.subprocess, "Popen", return_value=process), \
+             redirect_stdout(io.StringIO()):
+            claude_runner.run_claude_attempt("p", on_start=lambda pid: order.append(pid))
+        self.assertEqual(order, [4242, "prompt"])
+
     def test_usage_limit_in_the_final_output_is_a_capacity_interruption(self):
         captured = self.run_claude(
             lambda: claude_runner.run_claude_attempt("Implement"),
@@ -258,3 +297,38 @@ class ClaudeRunnerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StopOrphanTest(unittest.TestCase):
+    def run_guard(self, pid, started, alive, current, stays_alive=False):
+        calls = []
+
+        def is_alive(_pid):
+            calls.append(1)
+            return alive if len(calls) == 1 else stays_alive
+
+        clock = iter(range(0, 1000, 3))
+        with patch.object(claude_runner, "process_alive", side_effect=is_alive),              patch.object(claude_runner.time, "monotonic", side_effect=lambda: next(clock)), \
+             patch.object(claude_runner, "process_start_time", return_value=current), \
+             patch.object(claude_runner.subprocess, "run") as taskkill, \
+             patch.object(claude_runner.os, "kill", create=True) as kill, \
+             patch.object(claude_runner.time, "sleep"):
+            result = claude_runner.stop_orphan(pid, started)
+        return result, taskkill.called or kill.called
+
+    def test_nothing_recorded_or_already_dead_is_clear_and_nothing_is_killed(self):
+        self.assertEqual(self.run_guard(None, None, alive=True, current=1.0), (True, False))
+        self.assertEqual(self.run_guard(10, 1.0, alive=False, current=None), (True, False))
+
+    def test_a_reused_pid_with_a_different_start_time_is_not_ours_and_is_left_alone(self):
+        self.assertEqual(self.run_guard(10, 100.0, alive=True, current=500.0), (True, False))
+
+    def test_the_recorded_run_still_alive_is_stopped(self):
+        self.assertEqual(self.run_guard(10, 100.0, alive=True, current=100.4), (True, True))
+
+    def test_a_run_that_survives_the_kill_is_reported_as_not_clear(self):
+        self.assertEqual(self.run_guard(10, 100.0, alive=True, current=100.0, stays_alive=True)[0], False)
+
+    def test_a_live_process_that_cannot_be_identified_is_never_killed_and_blocks(self):
+        self.assertEqual(self.run_guard(10, None, alive=True, current=100.0), (False, False))
+        self.assertEqual(self.run_guard(10, 100.0, alive=True, current=None), (False, False))

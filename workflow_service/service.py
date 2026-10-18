@@ -137,6 +137,8 @@ class Store:
 
     def save_cycle(self, cycle: dict) -> None:
         with self.lock:
+            if cycle["phase"] in ("done", "blocked"):
+                dev_cycle.clear_claude_session(cycle)  # a finished or handed-off story keeps no session
             self.cycles[cycle["story_id"]] = cycle
             self.active = cycle["story_id"] if cycle["phase"] not in ("done", "blocked") else None
             self.save()
@@ -274,6 +276,7 @@ class WorkflowService:
         pointer_file = pointer.relative_to(dev_cycle.REPO_ROOT).as_posix() if pointer else None
         if cycle and cycle["phase"] != "finalize" and cycle["story_file"] != pointer_file:
             logging.warning("Story pointer no longer names %s; dropping its cycle.", cycle["story_id"])
+            dev_cycle.release_claude(cycle)
             self.store.drop_active()
             cycle = None
         if cycle is None and pointer is not None:
