@@ -299,6 +299,13 @@ def _reuse_session(cycle: dict) -> bool:
                 and cycle.get("claude_session_tokens", 0) <= SESSION_MAX_CONTEXT_TOKENS)
 
 
+def _reported_interface_deviations() -> list[str]:
+    try:
+        return qa_agent.parse_interface_deviations(read_file(CLAUDE_RESULT_FILE))
+    except FileNotFoundError:
+        return []
+
+
 def step_implement(cycle: dict, context: StepContext) -> StepResult:
     story_path = _story_path(cycle)
     plan = qa_agent.load_plan(story_path)
@@ -398,8 +405,7 @@ def step_implement(cycle: dict, context: StepContext) -> StepResult:
         phase="evaluate", implement_started=False, prompt=None, failed_runs=0,
         integrity_findings=sorted(set(integrity)),
         result_was_updated=result_was_updated,
-        interface_deviations=(qa_agent.parse_interface_deviations(read_file(CLAUDE_RESULT_FILE))
-                              if result_was_updated and CLAUDE_RESULT_FILE.exists() else []),
+        interface_deviations=_reported_interface_deviations() if result_was_updated else [],
     )
     return StepResult("implemented", True, changed_paths=sorted(changed), budget=budget)
 
