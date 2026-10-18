@@ -11,6 +11,7 @@ from pathlib import Path
 import time
 import json
 import hashlib
+from agent.runtime.support import activity
 
 from agent.runtime.support.config import (
     ARCHITECT_REQUESTS_DIR,
@@ -105,6 +106,7 @@ def _evaluate_with_local_retries(
     last_error = None
 
     for attempt in range(1, EVALUATION_ATTEMPTS + 1):
+        activity.retrying('Evaluator response validation', attempt - 1, EVALUATION_ATTEMPTS - 1)
         try:
             args = (story_content, result_content, claude_exit_code, result_was_updated)
             if qa_plan is None and not qa_integrity_findings:
@@ -229,6 +231,7 @@ def _evaluate_preserving_completed_attempt(
                 f"evaluation in {CYCLE_RETRY_SECONDS}s."
             )
             time.sleep(CYCLE_RETRY_SECONDS)
+            activity.retrying('Evaluation recovery batch', batch, MAX_EVALUATION_BATCHES - 1)
 
 
 # ============================================================
@@ -705,6 +708,7 @@ def _ensure_preimplementation_qa(story_path: Path, wait_for_qa=None) -> dict | N
             model_retries += 1
             log_line(f"QA returned an invalid plan ({attempts}/{MAX_QA_ATTEMPTS_PER_STORY}): {exc}")
             if attempts < MAX_QA_ATTEMPTS_PER_STORY:
+                activity.retrying('QA plan validation', attempts, MAX_QA_ATTEMPTS_PER_STORY - 1)
                 correction_feedback = str(exc)
                 continue
             _block_story_for_qa_failure(

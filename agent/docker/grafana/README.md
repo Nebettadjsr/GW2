@@ -30,6 +30,8 @@ The QA box distinguishes preparation (`qa`), CI diagnosis (`qa_review`) and test
 
 Open `UI-*` interventions and `UD-*` decisions retain their separate list with story references and repository paths. An older service is explicitly labeled as needing an update. Deploy service changes in the agent worktree separately; provisioning Grafana does not upgrade or restart the workflow service.
 
+The retry/correction counter identifies the current validation retry or story rework round: coding revisions, CI production fixes, QA test corrections and Claude process recovery are separate counts. Completed rework is not labeled as a retry of finalization; a waiting follow-up is marked pending. Repeated budget checks do not count as retries. Updated services expose configured limits and inner Planner/Evaluator/QA validation retries; older services show the available cycle counts without inventing a limit.
+
 All panels share the Canvas panel's single `/cycle` query through Grafana's Dashboard data source. Each five-second refresh fetches one snapshot per open dashboard; panels filter its status, activity and request rows locally. This reads cached budget status and does not invoke agents. Successful status GETs log at DEBUG after the service is updated; failed requests and control actions remain visible at normal log levels.
 
 See the [workflow service guide](../../../workflow_service/README.md) for execution and recovery.

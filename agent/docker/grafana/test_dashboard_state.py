@@ -9,6 +9,7 @@ from build_dashboard import update_queries, add_status_panels, share_queries
 
 QUERY = jq.compile(Path(__file__).with_name("dashboard-state.jq").read_text(encoding="utf-8"))
 FEED = jq.compile(Path(__file__).with_name("dashboard-activity.jq").read_text(encoding="utf-8"))
+RETRY = jq.compile(Path(__file__).with_name("dashboard-retry.jq").read_text(encoding="utf-8"))
 
 
 def state(**changes):
@@ -25,6 +26,38 @@ def state(**changes):
 
 
 class DashboardStateTests(unittest.TestCase):
+    def test_retry_counter_distinguishes_current_rework_from_old_totals(self):
+        base = {'retry_limits': {'coding': 2, 'ci': 2, 'qa': 2, 'claude': 1},
+                'active_cycle': {'phase': 'evaluate', 'retry_count': 2, 'history': [
+                    {'outcome': 'RETRY'}, {'outcome': 'implemented'}]},
+                'running_task': {'step': 'evaluate', 'status': 'running'}}
+        self.assertEqual(RETRY.input_value(base).first()['retry_label'], 'evaluate — Implementation revision 2 / 2')
+        base['running_task']['step'] = 'finalize'
+        self.assertEqual(RETRY.input_value(base).first()['retry_active'], 0)
+        base['running_task']['step'] = 'qa_repair'
+        base['active_cycle']['qa_repair_attempts'] = 1
+        self.assertIn('QA test correction — round 1 / 2', RETRY.input_value(base).first()['retry_label'])
+        base['running_task']['current_retry'] = {'stage': 'QA validation', 'number': 1, 'limit': 1}
+        self.assertEqual(RETRY.input_value(base).first()['retry_label'], 'QA validation — retry 1 / 1')
+
+    def test_budget_wait_does_not_create_retries_or_invent_missing_limits(self):
+        value = {'active_cycle': {'phase': 'implement', 'retry_count': 0, 'history': [
+            {'outcome': 'waiting_for_claude_budget'}] * 30}}
+        self.assertEqual(RETRY.input_value(value).first()['retry_active'], 0)
+        value['active_cycle']['retry_count'] = 1
+        label = RETRY.input_value(value).first()['retry_label']
+        self.assertIn('Pending: implement', label)
+        self.assertIn('revision 1', label)
+        self.assertNotIn('/', label)
+
+    def test_ci_and_process_retries_are_separate_from_evaluator_revisions(self):
+        value = {'active_cycle': {'phase': 'implement', 'retry_count': 2, 'ci_fix_attempts': 1,
+                                 'history': [{'outcome': 'RETRY'}, {'outcome': 'ci_production_retry'}]}}
+        self.assertIn('CI production fix 1', RETRY.input_value(value).first()['retry_label'])
+        value['active_cycle']['failed_runs'] = 1
+        self.assertIn('Claude process recovery — retry 1', RETRY.input_value(value).first()['retry_label'])
+        self.assertEqual(RETRY.input_value({}).first()['retry_active'], 0)
+
     def test_shared_snapshot_contains_status_activity_and_request_rows(self):
         dashboard = json.loads((Path(__file__).with_name('dashboards') / 'workflow-overview.json').read_text(encoding='utf-8'))
         dashboard = share_queries(update_queries(dashboard))
@@ -66,6 +99,7 @@ class DashboardStateTests(unittest.TestCase):
 
     def test_legacy_service_is_explicit_and_empty_new_feed_does_not_invent_progress(self):
         self.assertIn('updated workflow service', FEED.input_value({}).first()[0]['activity_text'])
+        self.assertIsNone(FEED.input_value({}).first()[0]['activity_at'])
         self.assertEqual(FEED.input_value({'activity': []}).first(), [])
 
     def test_status_panel_install_does_not_repeat_or_override_later_ui_edits(self):

@@ -18,7 +18,7 @@ def observe(sink):
         _SINK.reset(token)
 
 
-def emit(role, text, *, kind='message', event_id=None):
+def emit(role, text, *, kind='message', event_id=None, retry=None):
     sink = _SINK.get()
     if sink is None or not isinstance(text, str) or not text.strip():
         return
@@ -36,10 +36,18 @@ def emit(role, text, *, kind='message', event_id=None):
     if len(text) > MAX_TEXT:
         text = text[:MAX_TEXT - 3].rstrip() + '...'
     try:
-        sink(role=role, text=text, kind=kind, event_id=event_id)
+        extra = {'retry': retry} if retry is not None else {}
+        sink(role=role, text=text, kind=kind, event_id=event_id, **extra)
     except Exception:
         # Monitoring must never turn a completed model call into a failed coding attempt.
         logging.warning('Could not record workflow activity', exc_info=True)
+
+
+def retrying(stage, number, limit):
+    """Report an already-decided retry; never alter its counter or control flow."""
+    if number > 0:
+        emit('Workflow', f'{stage}: retry {number}/{limit}.', kind='retry',
+             retry={'stage': stage, 'number': number, 'limit': limit})
 
 
 def claude_event(event):

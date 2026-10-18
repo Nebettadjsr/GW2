@@ -40,6 +40,7 @@ from agent.runtime.human.architect_requests import get_actionable_requests
 from agent.runtime.qa import qa_agent
 from agent.runtime.runners.claude_runner import process_start_time, run_claude_attempt, stop_orphan
 from agent.runtime.support import git_sync, github_ci
+from agent.runtime.support import activity
 from agent.runtime.support.config import (
     AGENT_BRANCH, BACKLOG_FILE, CLAUDE_RESULT_FILE, CURRENT_STORY_FILE, MAX_CI_FIX_ATTEMPTS,
     MAX_CLAUDE_FAILED_RUNS_PER_STORY, MAX_RETRIES_PER_STORY, MAX_QA_TEST_REPAIRS_PER_STORY, REPO_ROOT,
@@ -51,6 +52,7 @@ from workflow_service import claude_budget
 ASYNC_STEPS = {"plan", "review", "qa", "qa_review", "qa_repair", "implement", "evaluate", "ci"}
 SYNC_INTERVAL = timedelta(minutes=30)  # between stories; an idle queue fetches at most this often
 MAX_REVIEW_ATTEMPTS = 2
+MAX_QA_RESPONSE_RETRIES = 1
 # A merge that changes these needs the service restarted to run the new code.
 RESTART_PATHS = ("workflow_service/", "agent/runtime/")
 CONTINUATION = (
@@ -204,6 +206,7 @@ def step_sync(planning: dict) -> StepResult:
 def step_review(planning: dict) -> StepResult:
     """Review a sync's incoming range against its documents, once, for the planner."""
     review = planning["review"]
+    activity.retrying('Documentation review', review['attempts'], MAX_REVIEW_ATTEMPTS - 1)
     review["attempts"] += 1
     result = sync_review.run_sync_review(review["base"], review["head"], review.get("problems"))
     if result["status"] == "FAILED" and review["attempts"] < MAX_REVIEW_ATTEMPTS:
@@ -237,6 +240,7 @@ def step_plan(planning: dict) -> StepResult:
         # fixes a formatting slip. A second rejection waits for changed inputs.
         problems = result.get("validation_problems") or [result.get("reason") or "invalid output"]
         log_line("Planning pass rejected and rolled back; retrying once -- " + "; ".join(problems))
+        activity.retrying('Planner validation', 1, 1)
         result = (run_planning_pass(rejected=problems, notes=notes) if notes
                   else run_planning_pass(rejected=problems))
     after = orchestrator.planning_fingerprint()
@@ -552,7 +556,7 @@ def _qa_routing_failure(cycle: dict, context: StepContext, error: Exception) -> 
     if cycle["phase"] == "qa_review":
         action.pop("review", None)
         action["request_id"] = str(uuid.uuid4())
-    if isinstance(error, qa_agent.QAPlanError) and action["invalid_attempts"] <= 1:
+    if isinstance(error, qa_agent.QAPlanError) and action["invalid_attempts"] <= MAX_QA_RESPONSE_RETRIES:
         if context:
             context.checkpoint()
         return StepResult("qa_correction_required", True, action["feedback"])

@@ -9,6 +9,19 @@ from workflow_service import service, status
 
 
 class StatusTests(unittest.TestCase):
+    def test_retry_marker_is_exposed_only_for_its_running_task(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = service.Store(Path(directory) / 'tasks.json')
+            task = store.create(kind='step', step='plan')
+            with service.activity_stream.observe(lambda **row: store.append_activity(task['id'], **row)):
+                service.activity_stream.retrying('Planner validation', 1, 1)
+            monitor = service.WorkflowService(store, 'x' * 40)
+            view = monitor.cycle_status()
+            self.assertEqual(view['running_task']['current_retry']['number'], 1)
+            self.assertEqual(view['retry_limits']['coding'], service.dev_cycle.MAX_RETRIES_PER_STORY)
+            store.update(task['id'], status='completed', result={'outcome': 'planning_complete', 'proceed': True})
+            self.assertIsNone(monitor.cycle_status()['running_task'])
+
     def test_activity_is_bounded_deduplicated_and_survives_restart(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'tasks.json'

@@ -119,9 +119,11 @@ class Store:
             self.save()
             return dict(task)
 
-    def append_activity(self, task_id: str, *, role: str, text: str, kind: str, event_id=None) -> None:
+    def append_activity(self, task_id: str, *, role: str, text: str, kind: str, event_id=None, retry=None) -> None:
         with self.lock:
             task = self.tasks[task_id]
+            if retry is not None:
+                task['current_retry'] = copy.deepcopy(retry)
             identity = f'{task_id}:{event_id}' if event_id else None
             if identity and any(row.get('event_id') == identity for row in self.activity):
                 return
@@ -173,6 +175,7 @@ def public_task(task: dict) -> dict:
     view = {"task_id": task["id"], "status": task["status"], "kind": task.get("kind"),
             "step": task.get("step"), "story_id": task.get("story_id"), "error": task.get("error")}
     view.update(created_at=task.get("created_at"), updated_at=task.get("updated_at"))
+    view['current_retry'] = copy.deepcopy(task.get('current_retry'))
     result = task.get("result")
     if isinstance(result, dict):
         view.update(result)
@@ -200,6 +203,15 @@ class WorkflowService:
                 "last_step_request_at": self.last_step_request_at,
                 "control": control,
                 "activity": self.store.activity,
+                "sync_review": self.store.planning.get('review'),
+                "retry_limits": {
+                    'coding': dev_cycle.MAX_RETRIES_PER_STORY,
+                    'ci': dev_cycle.MAX_CI_FIX_ATTEMPTS,
+                    'qa': dev_cycle.MAX_QA_TEST_REPAIRS_PER_STORY,
+                    'claude': max(0, dev_cycle.MAX_CLAUDE_FAILED_RUNS_PER_STORY - 1),
+                    'sync_review': max(0, dev_cycle.MAX_REVIEW_ATTEMPTS - 1),
+                    'qa_response': dev_cycle.MAX_QA_RESPONSE_RETRIES,
+                },
             })
         snapshot.update(budget=self.budget_state(), human_requests=status_view.human_requests(REPOSITORY))
         return snapshot

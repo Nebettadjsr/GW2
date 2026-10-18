@@ -12,6 +12,8 @@ For the read-only Grafana view, use the [agent workflow Docker setup](../agent/d
 
 `activity` contains the latest 200 progress entries, persisted in the same `tasks.json` file. Each has a timestamp, role, kind, task, step, story and text (up to 1,000 characters). Scoped runner observers forward Claude narration and Codex messages/emitted summaries, excluding tool events, raw thinking blocks, code blocks and structured result JSON. Step starts, outcomes and failures add system entries. An observer failure is logged without failing the agent attempt. The original console and operational logs are preserved; no additional model calls are made. Grafana displays the newest 60 entries and independently pins the current stop reason, so retention cannot discard that alert.
 
+`retry_limits` exposes the cycle's configured correction budgets, while `running_task.current_retry` reports an inner validation retry when one is actually entered. Retry markers are observations of existing control flow and do not spend or change its budgets. `sync_review` exposes the current documentation-review attempt state. Grafana combines these with the persisted story counters; capacity waits are kept separate from failures and coding revisions.
+
 ## Start the service
 
 After deploying this code to the dedicated agent worktree:

@@ -11,7 +11,7 @@ STAGES = "sync review plan select qa implement evaluate publish ci finalize".spl
 def update_queries(dashboard):
     projection = (ROOT / "dashboard-state.jq").read_text(encoding="utf-8")
     strings = ["activity", "story", "saved_phase", "detail", "weekly", "session",
-               "budget_status", "budget_time", "request_notice"] + [s + "_label" for s in STAGES]
+               "budget_status", "budget_time", "request_notice", "retry_label"] + [s + "_label" for s in STAGES]
     for panel in dashboard["panels"]:
         for target in panel.get("targets", []):
             if (target.get("datasource", {}).get("uid") != "gw2-workflow-state"
@@ -74,7 +74,7 @@ def share_queries(dashboard):
     target = source['targets'][0]
     projection = (ROOT / 'dashboard-state.jq').read_text(encoding='utf-8')
     target['root_selector'] = '. as $snapshot | (' + projection + '''
-      | map(. + {row_type: "status"})) +
+      | map(. + ($snapshot | (''' + (ROOT / 'dashboard-retry.jq').read_text(encoding='utf-8') + ''')) + {row_type: "status"})) +
       ($snapshot | (''' + (ROOT / 'dashboard-activity.jq').read_text(encoding='utf-8') + ''')) +
       [ ($snapshot.human_requests.open // [])[] |
         {row_type: "request", request_id: .id, request_kind: .kind,
@@ -93,7 +93,7 @@ def share_queries(dashboard):
     target['columns'] = [column for column in target['columns']
                          if column['selector'] not in {c['selector'] for c in extra_columns}] + extra_columns
     shared = {'type': 'datasource', 'uid': '-- Dashboard --'}
-    for identifier in (1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12):
+    for identifier in (1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13):
         if identifier not in panels:
             continue
         panel = panels[identifier]
@@ -148,6 +148,36 @@ def add_activity_feed(dashboard):
     return dashboard
 
 
+def add_retry_panel(dashboard):
+    for feed in (p for p in dashboard['panels'] if p['id'] == 5):
+        for override in feed.get('fieldConfig', {}).get('overrides', []):
+            if override.get('matcher', {}).get('options') == 'Kind':
+                for prop in override['properties']:
+                    if prop['id'] == 'mappings':
+                        for mapping in prop['value']:
+                            if mapping['type'] == 'value':
+                                mapping['options'].setdefault('RETRY', {'color': '#FFB357', 'text': 'RETRY'})
+    if any(p['id'] == 13 for p in dashboard['panels']):
+        return dashboard
+    panels = {p['id']: p for p in dashboard['panels']}
+    top = panels[4]['gridPos']['y']
+    for panel in dashboard['panels']:
+        if panel['gridPos']['y'] >= top:
+            panel['gridPos']['y'] += 2
+    panel = copy.deepcopy(panels[3])
+    panel.update(id=13, title='Current retry / correction', gridPos={'x': 0, 'y': top, 'w': 24, 'h': 2},
+                 description='Current task validation retry or active story rework round. Budget polling does not consume retries. Limits are shown only when exposed by the service.')
+    panel['options']['reduceOptions']['fields'] = '/^retry_label$/'
+    panel['options']['text'] = {'valueSize': 20}
+    panel['options']['colorMode'] = 'value'
+    panel['fieldConfig'] = {'defaults': {'mappings': [
+        {'type': 'regex', 'options': {'pattern': '^No retry', 'result': {'color': '#73BF69'}}},
+        {'type': 'regex', 'options': {'pattern': 'retry|revision|fix|correction|Rework', 'result': {'color': '#FFB357'}}}
+    ]}, 'overrides': []}
+    dashboard['panels'].append(panel)
+    return dashboard
+
+
 if __name__ == "__main__":
     dashboard = json.loads(PATH.read_text(encoding="utf-8-sig"))
-    PATH.write_text(json.dumps(share_queries(update_queries(add_activity_feed(add_status_panels(dashboard)))), indent=2) + "\n", encoding="utf-8")
+    PATH.write_text(json.dumps(share_queries(update_queries(add_retry_panel(add_activity_feed(add_status_panels(dashboard))))), indent=2) + "\n", encoding="utf-8")
