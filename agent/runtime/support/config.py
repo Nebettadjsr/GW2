@@ -124,6 +124,12 @@ MAX_RETRIES_PER_STORY = 2
 # governed by the service's Claude budget (workflow_service/claude_budget.py).
 CLAUDE_USAGE_LIMIT_PERCENT = 90
 
+# Windows delivers a console Ctrl+C to every process attached to that console.
+# Claude and Codex start in their own process group so a Ctrl+C in the service
+# window stops scheduling but lets the running model call finish
+# (subprocess.CREATE_NEW_PROCESS_GROUP; 0 elsewhere).
+AGENT_PROCESS_FLAGS = 0x00000200 if os.name == "nt" else 0
+
 # A Claude run that exits non-zero while carrying no capacity signal is a
 # failed attempt, not a capacity pause. After this many consecutive such
 # runs on the same story the orchestrator escalates to a user
@@ -196,6 +202,8 @@ CI_WAIT_TIMEOUT_SECONDS = 45 * 60
 # is deliberately separate from MAX_RETRIES_PER_STORY: an evaluator
 # retry and a red pipeline are different failures.
 MAX_CI_FIX_ATTEMPTS = 2
+# Application-test corrections by QA have their own budget, separate from coding.
+MAX_QA_TEST_REPAIRS_PER_STORY = 2
 
 # Bounds on what a failure report may cost in Claude's prompt. The full
 # output always remains in the CI job log for a human.
@@ -312,7 +320,7 @@ HARNESS_OWNED_PATHS = (
 # Sections of BACKLOG.md the harness alone moves entries into or out of.
 # The planner changes To Do, Blocked and Superseded only by asking for it:
 # `backlog_actions` in its result, applied by core/backlog_writer.py.
-HARNESS_OWNED_BACKLOG_SECTIONS = ("Active", "Done", "Archived")
+HARNESS_OWNED_BACKLOG_SECTIONS = ("Active", "Done")
 
 DOCUMENT_OWNERSHIP = (
     (CURRENT_STORY_FILE, (HARNESS,),

@@ -42,7 +42,7 @@ class QARunnerError(QAInfrastructureError):
 PLAN_STATUSES = ("READY", "NO_TESTS_NEEDED", "NEEDS_USER")
 TEST_ROOTS = (
     "src/test/", "frontend/src/", "frontend/scripts/",
-    "agent/runtime/tests/", "docs/bugs/fixtures/",
+    "docs/bugs/fixtures/",
 )
 FENCED_JSON = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
@@ -86,17 +86,12 @@ def _safe_relative_path(value: str) -> str:
     if not normalized or normalized.startswith("/") or ".." in normalized.split("/"):
         raise QAPlanError(f"Invalid QA test path: {value!r}")
     if not any(normalized.startswith(root) for root in TEST_ROOTS):
-        raise QAPlanError(f"QA may only add tests or fixtures, got {normalized!r}")
+        raise QAPlanError(f"QA may only write tests or fixtures, got {normalized!r}")
     valid_test_source = (
         normalized.startswith("src/test/")
-        and normalized.endswith(("Test.java", "Tests.java", "TestCase.java"))
     ) or (
         normalized.startswith(("frontend/src/", "frontend/scripts/"))
         and normalized.endswith((".spec.ts", ".spec.mjs"))
-    ) or (
-        normalized.startswith("agent/runtime/tests/")
-        and Path(normalized).name.startswith("test_")
-        and normalized.endswith(".py")
     )
     valid_fixture = normalized.startswith("docs/bugs/fixtures/") and Path(normalized).suffix.lower() in (
         ".json", ".csv", ".txt", ".yaml", ".yml", ".xml", ".md", ".dat"
@@ -145,7 +140,7 @@ def validate_plan(raw: dict, story_id: str, owned_test_paths=()) -> dict:
         raise QAPlanError("QA plan references a different story.")
 
     for field in ("acceptance_checks", "invariants", "test_levels", "existing_tests_reviewed",
-                  "test_specifications", "external_sources", "clarifications"):
+                  "test_specifications", "external_sources", "clarifications", "interface_contract"):
         if not isinstance(plan.get(field, []), list):
             raise QAPlanError(f"QA plan field {field} must be a list.")
     for field in ("rationale", "coverage_review"):
@@ -154,7 +149,10 @@ def validate_plan(raw: dict, story_id: str, owned_test_paths=()) -> dict:
 
     specs = plan.get("test_specifications", [])
     if status == "READY" and not specs and not plan.get("prepared_test_paths"):
-        raise QAPlanError("READY requires prepared executable tests or precise test specifications.")
+        raise QAPlanError("READY requires QA-prepared tests or specified checks against existing tests.")
+    if (status == "READY" and not plan.get("prepared_test_paths")
+            and not owned_test_paths and not plan.get("existing_tests_reviewed")):
+        raise QAPlanError("READY requires QA-prepared tests or identified existing tests; specifications cannot delegate test authorship to coding.")
     if status == "NO_TESTS_NEEDED" and not plan["rationale"].strip():
         raise QAPlanError("NO_TESTS_NEEDED requires a justification.")
     if status == "NEEDS_USER" and not plan.get("clarifications"):
@@ -178,7 +176,7 @@ def validate_plan(raw: dict, story_id: str, owned_test_paths=()) -> dict:
             raise QAPlanError("prepared_test_paths entries must be strings.")
         paths.add(_safe_relative_path(value))
     if not paths.issubset(owned):
-        raise QAPlanError("prepared_test_paths may only name files created by QA; describe existing tests instead.")
+        raise QAPlanError("prepared_test_paths may only name files created or updated by QA; describe unchanged existing tests instead.")
     if status == "NO_TESTS_NEEDED" and owned:
         raise QAPlanError("NO_TESTS_NEEDED cannot create acceptance test files.")
     plan["prepared_test_paths"] = sorted(paths)
@@ -187,6 +185,52 @@ def validate_plan(raw: dict, story_id: str, owned_test_paths=()) -> dict:
     plan["qa_model"] = config.QA_MODEL
     plan["qa_reasoning_effort"] = config.QA_REASONING_EFFORT
     return plan
+
+
+INTERFACE_DEVIATIONS_HEADING = "## Interface Deviations"
+
+
+def parse_interface_deviations(result_text: str) -> list[str]:
+    """Deviations the coder reported between QA's interface contract and what it built."""
+    lines, inside = [], False
+    for line in result_text.splitlines():
+        if line.strip().startswith("#"):
+            inside = line.strip().lower() == INTERFACE_DEVIATIONS_HEADING.lower()
+            continue
+        item = line.strip().lstrip("-*").strip()
+        if inside and item and item.lower().rstrip(".") not in ("none", "n/a", "keine"):
+            lines.append(item)
+    return lines
+
+
+def snapshot_test_files() -> dict[str, bytes]:
+    """Bytes of every QA-writable test file, to detect writes by the coding agent."""
+    snapshot = {}
+    for name in _git_paths():
+        path = config.REPO_ROOT / name
+        if _allowed_new_test(name) and path.is_file():
+            try:
+                snapshot[name] = path.read_bytes()
+            except OSError:
+                continue
+    return snapshot
+
+
+def revert_test_changes(before: dict[str, bytes]) -> list[str]:
+    """Undo test-file writes made since ``before``; return the affected paths."""
+    after = snapshot_test_files()
+    touched = []
+    for name in sorted(set(before) | set(after)):
+        if before.get(name) == after.get(name):
+            continue
+        touched.append(name)
+        path = config.REPO_ROOT / name
+        if name in before:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(before[name])
+        else:
+            path.unlink(missing_ok=True)
+    return touched
 
 
 def _git_paths() -> set[str]:
@@ -221,12 +265,11 @@ def _allowed_new_test(path: str) -> bool:
 
 def enforce_test_only_changes(before: dict[str, bytes], after: dict[str, bytes], owned=()) -> tuple[list[str], list[str]]:
     """Restore forbidden writes and return changed/new QA test paths and violations."""
-    owned = set(owned)
     before_names, after_names = set(before), set(after)
     changed = {name for name in before_names & after_names if before[name] != after[name]}
     deleted = before_names - after_names
     added = after_names - before_names
-    allowed_modified = {name for name in changed if name in owned}
+    allowed_modified = {name for name in changed if _allowed_new_test(name)}
     allowed_added = {name for name in added if _allowed_new_test(name)}
     violations = sorted((changed - allowed_modified) | deleted | (added - allowed_added))
 
@@ -275,6 +318,11 @@ the existing tests before deciding what verification is needed.
 Story path: {story_path.relative_to(config.REPO_ROOT).as_posix()}
 Story ID: {story_id_from_content(story_content, story_path.stem)}
 
+Approved test/fixture roots: {", ".join(TEST_ROOTS)}.
+The dedicated src/test tree includes test helpers and resources. Colocated
+frontend tests use .spec.ts/.spec.mjs. The automated flow develops the application
+only: never write tests for the workflow, agent runtime or orchestration code.
+
 Story text:
 --- BEGIN STORY ---
 {story_content}
@@ -284,11 +332,18 @@ QA-owned test files from an interrupted earlier QA session (reuse or finish
 these; do not duplicate them): {existing}
 
 Responsibilities:
-- Map acceptance criteria, business rules and cross-component invariants to
-  executable tests or precise expected-result test specifications.
+- Fix an interface contract: the exact class, method, signature, DTO field,
+  route and data-test hook names your tests use (`interface_contract`). The
+  coder must use them verbatim; the tests are written before the production
+  code exists.
+- Own all test design and authorship, including implementation-specific and
+  infrastructure tests of the application. Map the story's requirements to appropriate
+  executable tests, reusing sufficient existing checks.
 - Inspect existing tests first and avoid duplication. Prefer tests across
   complete behavior/results where required, not only implementation internals.
-- Write acceptance/regression tests before implementation when practical.
+- Create or update all required tests before implementation. Do not delegate
+  test writing through specifications to the coding agent. If a missing production
+  interface prevents compilation or execution, record that limitation accurately.
   Run prepared tests before implementation and report PASS, EXPECTED_FAILURE,
   or NOT_RUN. For EXPECTED_FAILURE include evidence that it fails on the
   behavior assertion, not because compilation, fixtures or environment broke.
@@ -303,9 +358,12 @@ Responsibilities:
   and whether it is an external fact or an application requirement. Tests must
   use stable fixtures, never live API calls.
 
-Write ONLY new test/fixture files under existing test roots. Do not edit or
-delete existing files, application code, stories, architecture/docs, or agent
-instructions. The harness enforces this boundary. Do not write the persistent
+Write ONLY test/fixture files under the approved test roots, including updates
+to existing tests. Do not delete tests or edit application code, stories,
+architecture/docs, or agent instructions. Test changes must follow requirements,
+not merely make an implementation pass. The harness enforces the file boundary.
+Mark READY only with required tests prepared or sufficient existing tests identified;
+unfinished test authorship is not a coding-agent task. Do not write the persistent
 plan yourself; return it in the final JSON so Python can validate and persist it.
 
 Output exactly one fenced JSON object with:
@@ -317,8 +375,9 @@ Output exactly one fenced JSON object with:
  "invariants":["..."],
  "test_levels":["unit|integration|property|contract|ui|end_to_end"],
  "existing_tests_reviewed":["path and what it covers"],
- "prepared_test_paths":["new paths, including resumed QA-owned files"],
- "test_specifications":["precise test and independently established expected result"],
+ "interface_contract":["exact names/signatures/routes/hooks the prepared tests rely on"],
+ "prepared_test_paths":["created or updated paths, including resumed QA-owned files"],
+ "test_specifications":["precise prepared/existing or manual check and independently established expected result; no test-writing delegation"],
  "pre_implementation_verification":{{"status":"EXPECTED_FAILURE|PASS|NOT_RUN","command":"...","failure_evidence":"..."}},
  "coverage_review":"...",
  "external_sources":[{{"url":"...","verified_fact":"...","fact_type":"external|product"}}],
@@ -336,11 +395,22 @@ INDEPENDENT QA PLAN — REQUIRED CONTRACT
 =======================================
 The following plan was prepared before implementation. Treat its acceptance
 checks, invariants and QA-owned tests as binding verification requirements.
-Do not modify, delete, skip, weaken or rewrite QA-owned tests or this plan.
+QA alone designs, writes and maintains ALL tests and fixtures. Do not create,
+modify, delete, skip, weaken or rewrite tests, fixtures or this plan, including
+implementation-specific tests.
 If a QA expectation appears wrong, preserve it, document the evidence in
 CLAUDE_RESULT.md, and request independent review; do not silently change it.
-You may add implementation-specific tests. Run required prepared tests and
-report their exact command and result. Passing tests alone do not establish
+Implement production behavior to satisfy the QA-defined story exit criteria.
+Use every name in the plan's interface_contract verbatim. If one cannot be used
+(the design genuinely needs another name or signature), implement your design,
+stop, and list each mismatch ("test expects X, production offers Y") as bullets
+under a `## Interface Deviations` heading in CLAUDE_RESULT.md. Do not touch the
+tests: Python hands the deviation to QA to align names, imports and setup. Any
+test file you change is reverted by Python.
+Run the required tests and report exact commands and results. Missing or faulty
+tests and expectation changes belong to QA, including after a CI failure;
+report the evidence instead of writing or repairing tests yourself.
+Passing tests alone do not establish
 completion; verify the end-to-end behavior and invariants too.
 
 QA plan JSON:
@@ -492,16 +562,24 @@ def make_legacy_plan(story_path: Path) -> dict:
     return plan
 
 
-def execute_preparation(story_path: Path, correction_feedback: str = "") -> dict:
+def execute_preparation(story_path: Path, correction_feedback: str = "", *, test_repair: dict | None = None) -> dict:
     """One guarded QA run; callers own bounded retry and capacity waiting."""
     story_content = story_path.read_text(encoding="utf-8")
     sid = story_id_from_content(story_content, story_path.stem)
+    previous_plan = load_plan(story_path) if test_repair else None
+    if (test_repair and previous_plan
+            and previous_plan.get("test_repair", {}).get("request_id") == test_repair["request_id"]
+            and previous_plan.get("status") in ("READY", "NEEDS_USER")
+            and plan_tests_unchanged(previous_plan)[0]):
+        return previous_plan
     state = {}
     try:
         state = json.loads(config.QA_STATE_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         pass
     owned = state.get("owned_test_paths", []) if state.get("story_id") == sid else []
+    if test_repair and previous_plan:
+        owned = sorted(set(owned) | set(previous_plan.get("prepared_test_paths", [])))
     try:
         before = snapshot_files()
     except Exception as exc:
@@ -514,6 +592,28 @@ def execute_preparation(story_path: Path, correction_feedback: str = "") -> dict
     runner_error = None
     code = None
     prompt = build_qa_prompt(story_path, story_content, owned)
+    if test_repair and test_repair.get("source") == "interface_deviation":
+        prompt += (
+            "\n\nINTERFACE ALIGNMENT ONLY: the coder reported that the implemented interface differs "
+            "from your contract. Adapt only names, signatures, imports, setup and fixtures of the "
+            "affected tests to the implemented interface. Do not change expected values or the meaning "
+            "of any assertion; if the deviation changes behavior, say so in the plan instead. "
+            "Update interface_contract to the final names.\n"
+        )
+    if test_repair:
+        prompt += (
+            "\n\nQA APPLICATION TEST REPAIR — THE IMPLEMENTATION ALREADY EXISTS\n"
+            "An independent read-only QA review, not the coder, approved this test work.\n"
+            "Review the requirements and evidence again. Correct only application tests/fixtures\n"
+            "needed for the findings below; preserve all production code.\n"
+            "Never weaken expectations merely to accept the implementation. Record the\n"
+            "requirement/evidence for each correction and run the relevant focused checks.\n"
+            "Return the complete updated plan, preserving previously prepared tests.\n"
+            "If the requirements need a human decision, return NEEDS_USER.\n"
+            "The earlier pre-implementation timing instructions do not apply: check the current\n"
+            "implementation now. The full CI result for a new commit is checked after publication.\n"
+            + json.dumps({"approved_request": test_repair, "previous_plan": previous_plan}, ensure_ascii=False)
+        )
     if correction_feedback:
         prompt += (
             "\n\nCORRECTION REQUIRED FROM THE PREVIOUS INVALID QA PLAN:\n"
@@ -550,7 +650,23 @@ def execute_preparation(story_path: Path, correction_feedback: str = "") -> dict
     if code != 0:
         raise QARunnerError(f"QA agent exited with code {code}")
     raw = parse_plan(messages)
+    if test_repair:
+        if raw.get("status") not in ("READY", "NEEDS_USER"):
+            raise QAPlanError("A test repair must produce READY or NEEDS_USER, not discard required tests.")
+        raw["test_repair"] = test_repair
+        raw["post_implementation_reviews"] = (previous_plan or {}).get("post_implementation_reviews", [])
+        raw["post_implementation_review_required"] = True
+        raw["post_implementation_review_reason"] = "Independently recheck the QA test corrections against the implementation."
     return save_plan(story_path, raw, owned_test_paths=sorted(set(owned) | set(qa_tests)))
+
+
+def execute_test_repair(story_path: Path, request: dict, correction_feedback: str = "") -> dict:
+    """One guarded application-test correction; the cycle persists and bounds retries."""
+    review = request.get("review", {})
+    if (review.get("decision") != "REVISE_TESTS" or not review.get("evidence")
+            or not review.get("actionable_items") or not request.get("request_id")):
+        raise QAPlanError("Application test repair requires an evidenced independent QA decision.")
+    return execute_preparation(story_path, correction_feedback, test_repair=request)
 
 
 def record_failure(story_path: Path, category: str, message: str, *, model_retries: int) -> Path:
@@ -599,6 +715,17 @@ def run_conditional_review(story_path: Path, plan: dict, evaluation: dict | None
         "No evaluator result was provided; review this implementation independently."
         if evaluation is None else json.dumps(evaluation, indent=2)
     )
+    ci_failure = bool(evaluation and evaluation.get("source") == "ci_failure")
+    gate_context = (
+        "GitHub CI has failed for the published commit shown below. Inspect the failing\n"
+        "application tests, fixtures, requirements and production code. A red test does not\n"
+        "establish that the test is wrong. Distinguish valid tests exposing production defects\n"
+        "from tests whose expectations, setup or coverage need correction. Workflow-related\n"
+        "tests are outside this review. APPROVE cannot turn the failed commit green.\n"
+        if ci_failure else
+        "The harness publishes and checks GitHub CI only after this review and evaluation.\n"
+        "Do not require that future CI result as a pre-acceptance condition.\n"
+    )
     prompt = f"""STORY QA POST-IMPLEMENTATION REVIEW
 
 Inspect the repository read-only. Check this story's acceptance criteria and
@@ -607,13 +734,23 @@ whether prepared QA tests remain present and meaningful, relevant tests pass
 based on available evidence, and any plan deviation is justified. Passing
 tests alone do not prove the feature works.
 
-The harness publishes the change and waits for GitHub Actions only after this
-review and the Evaluator accept it, so no CI result for this story exists yet.
-Never require one: a "CI is green" criterion is verified by the harness
-afterwards. Checks the implementation reports running locally (live smoke
+{gate_context}
+Checks the implementation reports running locally (live smoke
 runs, outputs not stored in the repository) are evidence to weigh. If a claim
 you cannot verify matters, return RETRY with a concrete actionable item, not
 NEEDS_USER. NEEDS_USER is only for a product decision the story leaves open.
+
+If the plan's test_repair.source is "interface_deviation", additionally verify that the
+tests only had names, imports or setup aligned and that no expected value or assertion
+meaning changed; otherwise return REVISE_TESTS with that evidence.
+You alone decide whether application tests are logically correct. The coder's
+claim is evidence to investigate, never authorization to change a test.
+Return RETRY with concrete production-code deficiencies when the tests are valid.
+Return REVISE_TESTS only when requirements/evidence establish a missing or faulty
+application test/fixture. Supply evidence and specific test corrections in actionable_items.
+Do not mix production-code instructions into REVISE_TESTS: production is evaluated again
+after test corrections. REVISE_TESTS schedules a separate guarded, writing QA invocation;
+this review remains read-only.
 
 Story: {story_path.relative_to(config.REPO_ROOT).as_posix()}
 QA plan:
@@ -622,14 +759,14 @@ Evaluator result or review context:
 {evaluation_context}
 
 Return exactly one fenced JSON object:
-{{"decision":"APPROVE|RETRY|NEEDS_USER","reason":"...","evidence":[...],"actionable_items":[...]}}
+{{"decision":"APPROVE|RETRY|REVISE_TESTS|NEEDS_USER","reason":"...","evidence":[...],"actionable_items":[...]}}
 """
     messages: list[str] = []
     code = run_qa(prompt, messages, read_only=True)
     if code != 0:
         raise QAPlanError(f"QA review exited with code {code}")
     raw = parse_plan(messages)
-    if raw.get("decision") not in ("APPROVE", "RETRY", "NEEDS_USER"):
+    if raw.get("decision") not in ("APPROVE", "RETRY", "REVISE_TESTS", "NEEDS_USER"):
         raise QAPlanError("QA review returned an invalid decision.")
     if not isinstance(raw.get("reason"), str):
         raise QAPlanError("QA review reason must be text.")
@@ -637,6 +774,10 @@ Return exactly one fenced JSON object:
         raise QAPlanError("QA review evidence must be a list.")
     if not isinstance(raw.get("actionable_items", []), list):
         raise QAPlanError("QA review actionable_items must be a list.")
+    if raw["decision"] == "REVISE_TESTS" and (
+            not any(isinstance(item, str) and item.strip() for item in raw.get("evidence", []))
+            or not any(isinstance(item, str) and item.strip() for item in raw.get("actionable_items", []))):
+        raise QAPlanError("REVISE_TESTS requires evidence and specific application-test corrections.")
     return raw
 
 

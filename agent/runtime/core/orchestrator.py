@@ -179,8 +179,9 @@ def _evaluate_preserving_completed_attempt(
             if review_required and qa_plan and not evaluation.get("qa_post_review"):
                 review = qa_agent.run_conditional_review(story_path=get_active_story_path(), plan=qa_plan,
                                                         evaluation=evaluation)
-                items, gates = drop_post_acceptance_gates(_as_text_list(review.get("actionable_items")))
-                if gates and review["decision"] != "APPROVE" and not items:
+                items, gates = (drop_post_acceptance_gates(_as_text_list(review.get("actionable_items")))
+                                if review["decision"] in ("RETRY", "NEEDS_USER") else ([], []))
+                if gates and review["decision"] in ("RETRY", "NEEDS_USER") and not items:
                     # Only post-acceptance gates were missing: the pipeline checks them next.
                     review = {**review, "decision": "APPROVE", "actionable_items": [],
                               "reason": review.get("reason", "") + " (Post-acceptance gates are "
@@ -189,7 +190,11 @@ def _evaluate_preserving_completed_attempt(
                     review = {**review, "actionable_items": items}
                 qa_agent.record_review(qa_plan, review)
                 evaluation["qa_post_review"] = review
-                if review["decision"] == "RETRY":
+                if (review["decision"] == "REVISE_TESTS"
+                        and evaluation.get("decision") not in ("BLOCKED", "NEEDS_USER")):
+                    evaluation["decision"] = "RETRY"
+                    evaluation["qa_test_repair"] = review
+                elif review["decision"] == "RETRY":
                     items = review.get("actionable_items") or [review.get("reason", "QA review found an unmet requirement.")]
                     evaluation["decision"] = "RETRY"
                     evaluation["actionable_retry_items"] = list(dict.fromkeys(
@@ -260,8 +265,9 @@ def build_retry_prompt(
             + "\n\nTreat this as the primary deficiency. Fix the substance "
               "rather than restating the criterion: make the behaviour hold "
               "where the story requires it, reachable by the caller or user "
-              "the story is about, and covered by a test that would fail if "
-              "the behaviour were removed. Stay inside this story's scope.\n"
+              "the story is about. Satisfy the QA-defined checks. If a test "
+              "is missing, report it for QA to write; do not write or change "
+              "tests yourself. Stay inside this story's scope.\n"
         )
 
     return f"""Continue the active story.
@@ -385,9 +391,9 @@ Fix the cause of these failures, and only these.
 - Reproduce each failing test locally with the narrowest command that covers
   it (a single test class or test name), never the full suite: CI owns the
   full regression run.
-- A failing test is evidence about the code first. Do not delete, skip or
-  weaken a test to make the pipeline green; if a test itself is genuinely
-  wrong, say why in your result.
+- Fix production-code causes. QA alone writes and maintains every test and
+  fixture; do not add, edit, delete, skip or weaken one. If a test or expectation
+  is wrong or missing, report evidence for QA to resolve instead.
 - Remember CI runs on Linux against an empty, disposable PostgreSQL database
   and a placeholder GW2 API key -- a test that depends on your local machine's
   data, paths, display or network is the defect.

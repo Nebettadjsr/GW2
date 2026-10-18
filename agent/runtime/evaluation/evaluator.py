@@ -180,6 +180,12 @@ from the plan, verification is insufficient, or critical behavior warrants
 independent post-implementation QA. Include `qa_review_reason`. Passing tests
 alone do not establish completion.
 
+QA exclusively decides test design and authors/maintains every test and fixture.
+Do not send test-writing or test-repair work back to the coding agent, including
+implementation-specific tests or CI test defects. Identify those as QA work and
+request QA review/preparation; a read-only QA review cannot itself edit tests.
+Coding-agent corrections concern production behavior and satisfying QA checks.
+
 If the story's purpose is achieved, say so. Do not invent a shortfall to look
 rigorous, and do not treat a different-but-equivalent implementation choice as
 a shortfall.

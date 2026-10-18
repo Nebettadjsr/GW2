@@ -13,7 +13,7 @@ from agent.runtime.qa import qa_agent
 from agent.runtime.runners import local_planner_runner
 from agent.runtime.support import config
 from agent.runtime.support.capacity import ModelCapacityUnavailable
-from agent.runtime.tests import REAL_QA_PREPARATION, REAL_RUN_QA
+from agent.runtime.tests import REAL_QA_PREPARATION, REAL_QA_TEST_REPAIR, REAL_RUN_QA
 from agent.runtime.human import user_decisions
 from agent.runtime.support import daily_log
 
@@ -73,6 +73,30 @@ class QAPlanValidationTest(unittest.TestCase):
         value = raw_plan(test_specifications=[])
         with self.assertRaises(qa_agent.QAPlanError):
             qa_agent.validate_plan(value, "STORY-QA-001")
+
+    def test_ready_cannot_delegate_unwritten_tests_through_specifications(self):
+        value = raw_plan(existing_tests_reviewed=[], prepared_test_paths=[])
+        with self.assertRaisesRegex(qa_agent.QAPlanError, "cannot delegate test authorship"):
+            qa_agent.validate_plan(value, "STORY-QA-001")
+
+    def test_qa_can_maintain_existing_tests_and_test_fixtures_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = ("src/test/java/ExistingTest.java", "src/test/resources/expected.json",
+                     "frontend/src/Existing.spec.ts", "src/main/java/App.java")
+            before = {name: b"original" for name in paths}
+            after = {name: b"updated" for name in paths}
+            for name in paths:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(after[name])
+            with patch.object(config, "REPO_ROOT", root):
+                owned, violations = qa_agent.enforce_test_only_changes(before, after)
+            self.assertEqual(owned, sorted(paths[:3]))
+            self.assertEqual(violations, [paths[3]])
+            self.assertEqual((root / paths[3]).read_bytes(), b"original")
+            for name in paths[:3]:
+                self.assertEqual((root / name).read_bytes(), b"updated")
 
     def test_expected_red_requires_behavior_failure_evidence(self):
         value = raw_plan(pre_implementation_verification={"status": "EXPECTED_FAILURE", "command": "pytest test.py", "failure_evidence": ""})
@@ -186,6 +210,25 @@ class QAPreparationPersistenceTest(unittest.TestCase):
         self.assertTrue((self.root / "agent/qa-plans/QA-STORY-QA-001.json").is_file())
         self.assertTrue((self.root / "agent/runtime/artifacts/qa-tests" / self.test_file).is_file())
 
+    def test_qa_update_to_existing_test_is_persisted_and_protected_from_coding(self):
+        self.test_path.write_text("old expectation", encoding="utf-8")
+
+        def prepare(_prompt, messages):
+            self.test_path.write_text("requirement-based expectation", encoding="utf-8")
+            value = raw_plan(prepared_test_paths=[self.test_file])
+            messages.append("```json\n" + json.dumps(value) + "\n```")
+            return 0
+
+        with patch.object(qa_agent, "execute_preparation", REAL_QA_PREPARATION), \
+                patch.object(qa_agent, "run_qa", side_effect=prepare):
+            plan = qa_agent.execute_preparation(self.story)
+        self.assertIn(self.test_file, plan["prepared_test_paths"])
+        self.assertIn(self.test_file, plan["protected_test_hashes"])
+        self.test_path.write_text("coding agent changed this", encoding="utf-8")
+        restored = qa_agent.restore_protected_tests(plan)
+        self.assertIn(self.test_file, restored)
+        self.assertEqual(self.test_path.read_text(encoding="utf-8"), "requirement-based expectation")
+
     def test_orchestrator_log_appends_during_qa_are_not_misclassified_as_agent_writes(self):
         logs = self.root / "agent/logs"
         logs.mkdir(parents=True)
@@ -196,7 +239,7 @@ class QAPreparationPersistenceTest(unittest.TestCase):
             tee = daily_log.ConsoleTee(io.StringIO())
             print("QA runner transcript line", file=tee)
             output.append("""```json
-{"status":"READY","story_id":"STORY-QA-001","rationale":"Story-specific checks.","acceptance_checks":[],"invariants":[],"test_levels":["unit"],"existing_tests_reviewed":[],"prepared_test_paths":[],"test_specifications":["Check the required observable result."],"pre_implementation_verification":{"status":"NOT_RUN"},"coverage_review":"Reviewed.","external_sources":[],"clarifications":[],"post_implementation_review_required":false}
+{"status":"READY","story_id":"STORY-QA-001","rationale":"Story-specific checks.","acceptance_checks":[],"invariants":[],"test_levels":["unit"],"existing_tests_reviewed":["Existing story checks cover the required observable result."],"prepared_test_paths":[],"test_specifications":["Check the required observable result."],"pre_implementation_verification":{"status":"NOT_RUN"},"coverage_review":"Reviewed.","external_sources":[],"clarifications":[],"post_implementation_review_required":false}
 ```""")
             return 0
 
@@ -266,6 +309,122 @@ class QAPreparationPersistenceTest(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertEqual(plan["prepared_test_paths"], [self.test_file])
 
+    def test_application_repair_updates_protected_tests_and_reuses_saved_result_on_restart(self):
+        self.test_path.write_text("old expectation", encoding="utf-8")
+        original = raw_plan(prepared_test_paths=[self.test_file])
+        qa_agent.save_plan(self.story, original, owned_test_paths=[self.test_file])
+        request = {"request_id": "repair-1", "source": "ci_failure", "verification": {"report": "wrong fixture"},
+                   "review": {"decision": "REVISE_TESTS", "reason": "Expected value contradicts spec.",
+                              "evidence": ["Spec defines zero."], "actionable_items": ["Correct expected value."]}}
+
+        def repair(prompt, messages):
+            self.assertIn("QA APPLICATION TEST REPAIR", prompt)
+            self.assertIn("wrong fixture", prompt)
+            self.test_path.write_text("requirement-based expectation", encoding="utf-8")
+            messages.append("```json\n" + json.dumps(original) + "\n```")
+            return 0
+
+        with patch.object(qa_agent, "execute_preparation", REAL_QA_PREPARATION), \
+                patch.object(qa_agent, "run_qa", side_effect=repair) as writer:
+            plan = REAL_QA_TEST_REPAIR(self.story, request)
+            restored = REAL_QA_TEST_REPAIR(self.story, json.loads(json.dumps(request)))
+        writer.assert_called_once()
+        self.assertEqual(restored["test_repair"]["request_id"], "repair-1")
+        self.assertTrue(plan["post_implementation_review_required"])
+        self.test_path.write_text("coder changed test", encoding="utf-8")
+        qa_agent.restore_protected_tests(plan)
+        self.assertEqual(self.test_path.read_text(encoding="utf-8"), "requirement-based expectation")
+
+    def test_application_repair_restores_production_and_workflow_test_writes(self):
+        source = self.root / "src/main/java/App.java"
+        workflow_test = self.root / "workflow_service/test_engine.py"  # the flow never edits itself
+        for path in (source, workflow_test):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("protected", encoding="utf-8")
+        request = {"request_id": "repair-2", "source": "evaluation",
+                   "review": {"decision": "REVISE_TESTS", "evidence": ["Spec mismatch"],
+                              "actionable_items": ["Correct application fixture."]}}
+
+        def repair(_prompt, _messages):
+            source.write_text("forbidden production edit", encoding="utf-8")
+            workflow_test.write_text("forbidden workflow edit", encoding="utf-8")
+            return 0
+
+        with patch.object(qa_agent, "execute_preparation", REAL_QA_PREPARATION), \
+                patch.object(qa_agent, "run_qa", side_effect=repair):
+            with self.assertRaises(qa_agent.QAFileProtectionError):
+                REAL_QA_TEST_REPAIR(self.story, request)
+        self.assertEqual(source.read_text(encoding="utf-8"), "protected")
+        self.assertEqual(workflow_test.read_text(encoding="utf-8"), "protected")
+
+    def test_interface_alignment_repair_is_restricted_to_names_and_setup(self):
+        original = raw_plan(prepared_test_paths=[self.test_file])
+        self.test_path.write_text("old", encoding="utf-8")
+        qa_agent.save_plan(self.story, original, owned_test_paths=[self.test_file])
+        request = {"request_id": "iface-1", "source": "interface_deviation",
+                   "review": {"decision": "REVISE_TESTS", "evidence": ["test expects Foo.bar"],
+                              "actionable_items": ["Align names."]}}
+        prompts = []
+
+        def repair(prompt, messages):
+            prompts.append(prompt)
+            self.test_path.write_text("aligned", encoding="utf-8")
+            messages.append("```json\n" + json.dumps(original) + "\n```")
+            return 0
+
+        with patch.object(qa_agent, "execute_preparation", REAL_QA_PREPARATION),                 patch.object(qa_agent, "run_qa", side_effect=repair):
+            REAL_QA_TEST_REPAIR(self.story, request)
+        self.assertIn("INTERFACE ALIGNMENT ONLY", prompts[0])
+        self.assertIn("Do not change expected values", prompts[0])
+
+    def test_implementation_contract_tells_the_coder_how_to_report_interface_deviations(self):
+        text = qa_agent.implementation_contract(raw_plan())
+        self.assertIn("interface_contract", text)
+        self.assertIn(qa_agent.INTERFACE_DEVIATIONS_HEADING, text)
+
+    def test_workflow_and_agent_runtime_tests_are_not_qa_writable(self):
+        for path in ("workflow_service/test_engine.py", "agent/runtime/tests/test_story.py"):
+            with self.assertRaises(qa_agent.QAPlanError):
+                qa_agent.validate_plan(raw_plan(prepared_test_paths=[path]), "STORY-QA-001", [path])
+
+    def test_interface_contract_must_be_a_list(self):
+        with self.assertRaises(qa_agent.QAPlanError):
+            qa_agent.validate_plan(raw_plan(interface_contract="Foo.bar()"), "STORY-QA-001")
+        plan = qa_agent.validate_plan(raw_plan(interface_contract=["Foo.bar(int): int"]), "STORY-QA-001")
+        self.assertEqual(plan["interface_contract"], ["Foo.bar(int): int"])
+
+    def test_interface_deviations_are_read_only_from_their_own_section(self):
+        text = "\n".join(["# Result", "- not a deviation", "## Interface Deviations",
+                          "- test expects Foo.bar, production offers Foo.baz", "* ctor takes two args",
+                          "## Next", "- unrelated"])
+        self.assertEqual(qa_agent.parse_interface_deviations(text),
+                         ["test expects Foo.bar, production offers Foo.baz", "ctor takes two args"])
+        self.assertEqual(qa_agent.parse_interface_deviations("## Interface Deviations\nNone.\n"), [])
+        self.assertEqual(qa_agent.parse_interface_deviations("no sections at all"), [])
+
+    def test_test_files_written_by_the_coder_are_reverted(self):
+        edited, added = self.root / "src/test/java/EditedTest.java", self.root / "src/test/java/AddedTest.java"
+        edited.parent.mkdir(parents=True, exist_ok=True)
+        edited.write_text("original", encoding="utf-8")
+        with patch.object(qa_agent, "_git_paths", side_effect=lambda: {
+                p for p in ("src/test/java/EditedTest.java", "src/test/java/AddedTest.java")
+                if (self.root / p).exists()}):
+            before = qa_agent.snapshot_test_files()
+            edited.write_text("coder edit", encoding="utf-8")
+            added.write_text("coder test", encoding="utf-8")
+            touched = qa_agent.revert_test_changes(before)
+        self.assertEqual(touched, ["src/test/java/AddedTest.java", "src/test/java/EditedTest.java"])
+        self.assertEqual(edited.read_text(encoding="utf-8"), "original")
+        self.assertFalse(added.exists())
+
+    def test_coder_request_does_not_authorize_test_repair(self):
+        request = {"request_id": "repair-3", "review": {"decision": "RETRY", "evidence": ["coder claim"],
+                                                         "actionable_items": ["weaken test"]}}
+        with patch.object(qa_agent, "run_qa") as writer:
+            with self.assertRaises(qa_agent.QAPlanError):
+                REAL_QA_TEST_REPAIR(self.story, request)
+        writer.assert_not_called()
+
     def test_clarification_uses_standard_product_owner_decision(self):
         plan = raw_plan(
             status="NEEDS_USER", rationale="The product expectation is unresolved.",
@@ -301,5 +460,35 @@ class ConditionalReviewPromptTest(unittest.TestCase):
             review = REAL_RUN_CONDITIONAL_REVIEW(story_path=story, plan={"story_id": "STORY-T-001"})
 
         self.assertEqual(review["decision"], "APPROVE")
-        self.assertIn("no CI result for this story exists yet", prompts[0])
+        self.assertIn("Do not require that future CI result as a pre-acceptance condition", prompts[0])
         self.assertIn("NEEDS_USER is only for a product decision", prompts[0])
+
+    def test_ci_review_reads_failure_evidence_and_can_request_test_corrections(self):
+        from agent.runtime.tests import REAL_RUN_CONDITIONAL_REVIEW
+
+        def review(prompt, messages, read_only):
+            self.assertTrue(read_only)
+            self.assertIn("GitHub CI has failed", prompt)
+            self.assertNotIn("Do not require that future CI result", prompt)
+            self.assertIn("failing assertion", prompt)
+            messages.append('```json\n{"decision":"REVISE_TESTS","reason":"Spec mismatch",'
+                            '"evidence":["Spec defines zero"],"actionable_items":["Correct expected value"]}\n```')
+            return 0
+
+        with patch.object(qa_agent, "run_qa", side_effect=review):
+            result = REAL_RUN_CONDITIONAL_REVIEW(
+                config.REPO_ROOT / "agent/stories/STORY-T-001-x.md", {},
+                evaluation={"source": "ci_failure", "verification": {"report": "failing assertion"}})
+        self.assertEqual(result["decision"], "REVISE_TESTS")
+
+    def test_test_correction_without_independent_evidence_is_rejected(self):
+        from agent.runtime.tests import REAL_RUN_CONDITIONAL_REVIEW
+
+        def review(_prompt, messages, read_only):
+            messages.append('```json\n{"decision":"REVISE_TESTS","reason":"Coder dislikes test",'
+                            '"evidence":[],"actionable_items":["Change test"]}\n```')
+            return 0
+
+        with patch.object(qa_agent, "run_qa", side_effect=review):
+            with self.assertRaisesRegex(qa_agent.QAPlanError, "requires evidence"):
+                REAL_RUN_CONDITIONAL_REVIEW(config.REPO_ROOT / "agent/stories/STORY-T-001-x.md", {})

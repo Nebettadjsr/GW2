@@ -107,7 +107,7 @@ class QAGateTest(unittest.TestCase):
     def test_evaluator_rejection_gets_conditional_read_only_qa_review(self):
         plan = ready_plan(prepared=True)
         retry = {"decision": "RETRY", "reason": "Missing invariant.", "actionable_retry_items": ["verify invariant"]}
-        review = {"decision": "RETRY", "reason": "Integration boundary is unverified.", "actionable_items": ["add an integration assertion"]}
+        review = {"decision": "RETRY", "reason": "Integration behavior is incorrect.", "actionable_items": ["fix the production integration boundary"]}
         with patch.object(orchestrator, "_evaluate_with_local_retries", return_value=retry), \
                 patch.object(qa_agent, "run_conditional_review", return_value=review) as qa_review, \
                 patch.object(qa_agent, "record_review"), \
@@ -116,8 +116,34 @@ class QAGateTest(unittest.TestCase):
                 "story", "result", 0, True, qa_plan=plan
             )
         self.assertEqual(result["decision"], "RETRY")
-        self.assertIn("add an integration assertion", result["actionable_retry_items"])
+        self.assertIn("fix the production integration boundary", result["actionable_retry_items"])
         qa_review.assert_called_once()
+
+    def test_only_qa_test_verdict_requests_writing_without_sending_test_items_to_coder(self):
+        plan = ready_plan(prepared=True)
+        verdict = {"decision": "RETRY", "reason": "Check test expectation.", "actionable_retry_items": []}
+        review = {"decision": "REVISE_TESTS", "reason": "Expected value contradicts the requirement.",
+                  "evidence": ["The spec defines zero."], "actionable_items": ["Correct the expected value."]}
+        with patch.object(orchestrator, "_evaluate_with_local_retries", return_value=verdict), \
+                patch.object(qa_agent, "run_conditional_review", return_value=review), \
+                patch.object(qa_agent, "record_review"), \
+                patch.object(orchestrator, "get_active_story_path", return_value=self.story):
+            result = orchestrator._evaluate_preserving_completed_attempt("story", "result", 0, True, qa_plan=plan)
+        self.assertEqual(result["qa_test_repair"], review)
+        self.assertEqual(result["actionable_retry_items"], [])
+
+    def test_test_repair_does_not_override_a_genuine_product_decision(self):
+        plan = ready_plan(prepared=True)
+        verdict = {"decision": "NEEDS_USER", "reason": "Product policy is unspecified."}
+        review = {"decision": "REVISE_TESTS", "reason": "Also missing a test.",
+                  "evidence": ["No assertion for the selected policy."], "actionable_items": ["Add policy test."]}
+        with patch.object(orchestrator, "_evaluate_with_local_retries", return_value=verdict), \
+                patch.object(qa_agent, "run_conditional_review", return_value=review), \
+                patch.object(qa_agent, "record_review"), \
+                patch.object(orchestrator, "get_active_story_path", return_value=self.story):
+            result = orchestrator._evaluate_preserving_completed_attempt("story", "result", 0, True, qa_plan=plan)
+        self.assertEqual(result["decision"], "NEEDS_USER")
+        self.assertNotIn("qa_test_repair", result)
 
     def test_resolved_product_decision_requeues_qa_blocked_story(self):
         plans = self.root / "plans"

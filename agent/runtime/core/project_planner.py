@@ -326,10 +326,11 @@ current-phase roadmap section, agent/PROJECT_STATE.md, the backlog index, the
 supplied requests and the decision summaries.
 
 The backlog index below is generated from agent/stories/BACKLOG.md. It lists
-every story ID and filename in the project, so it is sufficient to detect a
-duplicate story, to see the queue in priority order, and to see what the
-current milestone already covers. Completed entries are compacted; the full
-text of any story is in its own file.
+the current milestone's stories, so it is sufficient to see the queue in
+priority order and what the current milestone already covers. Closed
+milestones are archived under agent/stories/archive/ and summarized in
+docs/ROADMAP.md; the index ends with the highest story number used per area.
+Completed entries are compacted; the full text of any story is in its own file.
 
 Targeted reads, only when a specific detail actually decides something:
 - a single story file under agent/stories/ (or agent/stories/archive/)
@@ -338,8 +339,6 @@ Targeted reads, only when a specific detail actually decides something:
   docs/TARGET_ARCHITECTURE.md, docs/DOMAIN_SPEC.md, docs/TEST_STRATEGY.md,
   docs/QUALITY_METRICS.md, docs/bugs/README.md, docs/bugs/BUG-REPORT-TEMPLATE.md,
   or one bug record under docs/bugs/
-- one named section of agent/stories/BACKLOG.md, when a completed entry's
-narrative is the evidence you need
 
 UNRESOLVED CLAUDE IMPLEMENTATION FOLLOW-UP FINDINGS
 ===================================================
@@ -401,7 +400,7 @@ dependencies) from the story file itself:
 
 A story is named by filename or story ID. A new story whose dependencies are
 not yet DONE is listed under Blocked automatically and requeued once they are.
-`## Active`, `## Done`, `## User` and `## Archived` are never yours to change.
+`## Active`, `## Done` and `## User` are never yours to change.
 
 Before you finish, validate your own output -- a result that fails validation
 is discarded together with every change this pass made:
@@ -420,7 +419,7 @@ When Phase {phase_number} is not complete and new stories are justified:
 - place each canonical file directly under agent/stories/;
 - use filename STORY-<AREA>-<NUMBER>-short-name.md;
 - list each new story as an `add_to_do` backlog action, in execution-priority order;
-- never modify ## Active or ## Archived.
+- never modify ## Active.
 
 Each new story must contain these `##` headings in this exact order:
 1. Story ID
@@ -628,8 +627,8 @@ PROJECT STATE
 
 {project_state}
 
-BACKLOG INDEX (agent/stories/BACKLOG.md; COMPLETE LIST OF STORY IDS)
-====================================================================
+BACKLOG INDEX (agent/stories/BACKLOG.md; CURRENT MILESTONE)
+==========================================================
 
 {backlog_index}
 

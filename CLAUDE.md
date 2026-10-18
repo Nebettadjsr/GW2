@@ -115,34 +115,32 @@ PostgreSQL password is not a material security finding.
 
 ## Testing
 
-Before changing behavior, review the applicable business rules and cross-component invariants.
-Add meaningful tests for new or modified behavior; confirmed bug fixes require a regression test
-based on the observed failure and expected requirement. Verify complete calculation results and
-relevant integration points when behavior crosses components. Expected values must be independently
-established, not copied from the implementation under test. Use jqwik properties for generated
-recursive, allocation, boundary, shared-dependency, and settings-combination cases where useful;
-record failing seeds for reproduction. Consult the bug registry lifecycle when a production defect
-is confirmed. Do not weaken tests to force a pass unless requirements changed.
+QA owns all test design, authorship and maintenance: acceptance, regression, unit, integration,
+property and UI tests of the application, including implementation-specific tests and test
+fixtures. QA decides what needs testing, the appropriate scope/layer, and expected results under
+`docs/TEST_STRATEGY.md`. Do not create, edit, delete, skip or weaken tests or fixtures yourself.
 
 Before implementation, read the persistent plan in `agent/qa-plans/` and follow
 its test specifications and expected results. Do not edit, remove, skip or weaken
-QA-owned tests or the plan. If an expectation is wrong, preserve it and document
-the evidence for independent review. Add implementation-specific tests as
-needed, and report the exact commands/results for prepared tests.
+tests or the plan. Implement production behavior so the story's QA-defined exit criteria are met.
+If a test is missing, an expectation appears wrong, or a test needs maintenance, report the evidence
+for QA to resolve; a name or signature in QA's `interface_contract` that you cannot use goes under
+`## Interface Deviations` in `CLAUDE_RESULT.md` and QA aligns the tests. Python reverts any test file you
+write. Do not implement a test specification or an evaluator's test-writing request yourself.
 
-Run applicable tests and builds, inspect line/branch coverage in affected modules/packages, and
-report unresolved quality gaps. Aim for at least 90% in affected areas; the project-wide 90% KPI
-is initially a CI warning, not a build gate. Never pad tests or manipulate measurement scope.
-Infrastructure-only stories may omit application-test changes when explicitly constrained, but
-must still verify the coverage/reporting tools and existing suites. See `TEST_STRATEGY.md` §26
-and `CODING_GUIDELINES.md` §6.1 for methodology.
+Run the QA-required tests/builds needed to verify your implementation and report exact commands,
+results and unresolved blockers. Fix production-code defects exposed by tests. QA owns coverage
+assessment and any additional tests, including infrastructure-only stories. The project-wide 90%
+KPI remains a CI warning, not permission to change tests or measurement scope. After publication,
+the pipeline must satisfy the applicable CI gates; a test defect goes back to QA rather than being
+rewritten by the coding agent. See `TEST_STRATEGY.md` §26–27 and §36.
 
 **Run only the tests that cover what you are changing** — one test, one class, at most the
 directly related suite. Do not run the full backend/frontend/harness suite locally: GitHub
 Actions is the authoritative full-regression gate and runs it on the pushed commit
 (`TEST_STRATEGY.md` §20, §36). Report the exact commands you ran and their real output.
-Exception: a change with genuinely unbounded blast radius (shared fixture, build/dependency,
-repository-wide rename) is worth a broad local run before it is pushed.
+QA may require a broader local check for a change with genuinely unbounded blast radius
+(shared fixture, build/dependency, repository-wide rename). Follow the QA-defined scope.
 
 Layers the gate cannot run stay local and explicit when a story touches them: TestFX UI
 verification (§32, needs a real desktop), browser smoke scripts (§12.2), real-database `*IT`

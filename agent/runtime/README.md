@@ -79,7 +79,9 @@ for this implementation was GPT-6 Luna with medium effort; a historical runtime
 measurement records a Planner run on GPT-6 Astra, a session-level setting not
 pinned by this repository.
 
-QA writes new tests or permanent fixtures only in approved test roots. Python
+QA exclusively designs, writes and maintains all tests and permanent fixtures,
+including existing tests, in approved application test roots (never workflow or
+agent-runtime code). Python
 compares the complete tracked and visible-untracked file snapshot around each
 QA run, buffers the harness's own append-only log writes until the
 snapshot is checked, restores forbidden writes without overwriting a newer
@@ -95,6 +97,15 @@ the evaluator, which can trigger independent QA review. The evaluator checks
 whether the plan was implemented, not merely whether tests pass. Evaluator
 rejection, a stated plan deviation, a test-integrity finding, insufficient
 verification, or a QA plan marked critical triggers a read-only QA review.
+
+That review can return `REVISE_TESTS` with requirement-based evidence and concrete
+application-test corrections. The workflow service then schedules `qa_repair`, a
+separate writing QA invocation limited to application tests and fixtures. It saves
+the updated plan and snapshots before returning to evaluation. Story-relevant
+application CI failures first enter `qa_review`; valid tests exposing production
+defects return to Claude, while independently approved test defects enter the
+same QA writing path. Test corrections
+have a separate bounded counter, and saved requests/plans support restart recovery.
 
 An invalid QA plan may be retried up to `MAX_QA_ATTEMPTS_PER_STORY` times, with
 the validation error supplied as corrective feedback. File-protection,
@@ -501,10 +512,14 @@ What is compacted, and what is guaranteed to survive it:
 
 - **Backlog index.** `## Active`/`## To Do`/`## Blocked` keep BACKLOG's own
   order (the To Do order is the execution priority) and their descriptions.
-  `## Done`/`## Archived` become one line per story:
-  `ID | filename | status | milestone | title`. Every story ID and filename in
-  the project is present, so duplicate detection and milestone-coverage review
-  need nothing else; status, milestone and dependencies come from each story
+  `## Done` becomes one line per story:
+  `ID | filename | status | milestone | title`. BACKLOG.md holds the current
+  milestone only: closing a milestone archives its DONE and SUPERSEDED stories
+  (and any earlier milestone's) to `agent/stories/archive/milestone-NN/` and
+  drops their rows. Instead of listing that history, the index ends with the
+  highest story number per area, archived files included, and the harness
+  rejects a new story whose ID collides with any story file. Status, milestone
+  and dependencies come from each story
   file, not from backlog prose, and every prerequisite identifier
   (`STORY-*`, `UD-*`, `AR-*`) is listed in full even when the surrounding prose
   is summarized. A per-milestone status roll-up is derived at the end. A

@@ -65,9 +65,9 @@ Touch only what you must. Clean up only your own mess.
 
 Define success criteria. Loop until verified. Never mark something done without proving it.
 
-- Turn vague asks into verifiable goals: "add validation" → write tests for invalid input,
-  then make them pass; "fix the bug" → write a test that reproduces it, then make it pass;
-  "refactor X" → tests pass before and after.
+- Turn vague asks into verifiable goals. QA defines and writes the necessary checks:
+  invalid-input tests for validation, regression tests for confirmed defects, and appropriate
+  refactoring checks. The coding agent changes production code to satisfy those checks.
 - For multi-step work, state a brief plan first (step → how you'll verify it), and check in
   before implementing anything non-trivial (3+ steps or an architectural decision). For
   larger stories, track it in `tasks/todo.md` with checkable items; mark items off as you go.
@@ -110,14 +110,14 @@ explicit way to say so (e.g. `Optional<T>` in Java).
 
 ## 6.1 Testing and quality evidence
 
-Follow `docs/TEST_STRATEGY.md` for test selection and the permanent coverage KPI. Before changing
-behavior, review its normative business rules and relevant invariants. New or modified behavior
-needs meaningful automated tests; confirmed defect fixes need a regression test reproducing the
-observed failure. Check cross-component behavior when correctness spans boundaries, and derive
-expected values independently from the implementation. Run the applicable tests/builds, inspect
-coverage for affected modules and critical branches, and report unresolved gaps. The 90% line and
-branch target is a warning target, not permission to pad tests or omit production code from
-measurement.
+QA alone decides test selection, scope, layers and expected results under `docs/TEST_STRATEGY.md`,
+and writes and maintains all test code and fixtures. This includes implementation-specific and
+tests of the application. QA covers new or modified behavior, confirmed-defect regressions,
+relevant invariants and integration boundaries, and assesses coverage without padding it.
+The coding agent must satisfy the story's QA-defined exit criteria, run the required focused
+checks and builds, and report results and blockers. It may fix production defects, but must send
+missing tests, test defects and expectation changes back to QA. Passing the applicable CI gates
+after publication remains required. The 90% line/branch target remains a warning target.
 
 ## 7. Java 25 Specific
 

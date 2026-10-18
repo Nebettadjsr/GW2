@@ -16,12 +16,15 @@ BACKLOG = """# Backlog
 
 ## To Do
 
-## Done
+## Superseded
 
-Completed current-milestone story details remain in their canonical files.
+- STORY-T-006 | STORY-T-006-replaced.md | SUPERSEDED | milestone-05 | deps: None
+
+## Done
 
 - STORY-T-001 | STORY-T-001-done.md | DONE | milestone-05 | First finished story
 - STORY-T-002 | STORY-T-002-older.md | DONE | milestone-04 | Older milestone story
+- STORY-T-007 | STORY-T-007-later.md | DONE | milestone-06 | Later milestone story
 
 ## Archived
 
@@ -52,6 +55,8 @@ class ArchiveMilestoneTest(unittest.TestCase):
             "STORY-T-003-open.md": story("TODO"),
             "STORY-T-004-active.md": story("DONE"),
             "STORY-T-005-untagged.md": "# Story\n\n## Status\n\nDONE\n",
+            "STORY-T-006-replaced.md": story("SUPERSEDED"),
+            "STORY-T-007-later.md": story("DONE", "milestone-06"),
         }
         for name, content in files.items():
             (self.stories / name).write_text(content, encoding="utf-8")
@@ -61,31 +66,34 @@ class ArchiveMilestoneTest(unittest.TestCase):
                             "BACKLOG_FILE": self.backlog, "CURRENT_STORY_FILE": self.pointer}.items():
             stack.enter_context(patch.object(story_archive, name, value))
 
-    def test_only_done_stories_of_the_milestone_are_moved_never_the_active_one(self):
+    def test_finished_stories_up_to_the_milestone_move_to_their_own_folder(self):
+        # Regression: only DONE stories of exactly the closed milestone
+        # moved, so an older milestone's late finisher and every
+        # SUPERSEDED story stayed in BACKLOG.md for good.
         result = story_archive.archive_milestone_stories("milestone-05")
 
-        self.assertEqual(result["archived"], ["STORY-T-001-done.md"])
+        self.assertEqual(result["archived"],
+                         ["STORY-T-001-done.md", "STORY-T-002-older.md", "STORY-T-006-replaced.md"])
         self.assertEqual(result["skipped_active"], ["STORY-T-004-active.md"])
-        self.assertEqual(result["skipped_other_milestone"], ["STORY-T-002-older.md"])
+        self.assertEqual(result["skipped_other_milestone"], ["STORY-T-007-later.md"])
         self.assertEqual(result["skipped_not_done"], ["STORY-T-003-open.md"])
         self.assertEqual(result["skipped_no_milestone"], ["STORY-T-005-untagged.md"])
         self.assertTrue((self.archive / "milestone-05" / "STORY-T-001-done.md").is_file())
+        self.assertTrue((self.archive / "milestone-04" / "STORY-T-002-older.md").is_file())
+        self.assertTrue((self.archive / "milestone-05" / "STORY-T-006-replaced.md").is_file())
         self.assertFalse((self.stories / "STORY-T-001-done.md").exists())
 
-    def test_compact_done_row_moves_under_its_milestone_heading(self):
-        # Regression: only backticked rows were recognised, so compact
-        # `ID | file | ...` rows stayed in Done pointing at moved files.
+    def test_archived_rows_leave_the_backlog_and_the_history_index_is_dropped(self):
         story_archive.archive_milestone_stories("milestone-05")
         backlog = self.backlog.read_text(encoding="utf-8")
-        done, archived = backlog.split("## Done")[1].split("## Archived")
 
-        self.assertNotIn("STORY-T-001-done.md", done)
-        self.assertIn("STORY-T-002-older.md", done)
-        milestone_05 = archived.split("### Milestone 05")[1]
-        self.assertIn("STORY-T-000-earlier.md", milestone_05)
-        self.assertIn("- STORY-T-001 | STORY-T-001-done.md | DONE | milestone-05 | First finished story",
-                      milestone_05)
-        self.assertEqual(backlog.count("STORY-T-001-done.md"), 1)
+        for name in ("STORY-T-001-done.md", "STORY-T-002-older.md", "STORY-T-006-replaced.md",
+                     "STORY-T-000-earlier.md"):
+            self.assertNotIn(name, backlog)
+        self.assertNotIn("## Archived", backlog)
+        self.assertIn("- STORY-T-007 | STORY-T-007-later.md | DONE | milestone-06", backlog)
+        self.assertIn("STORY-T-004-active.md", backlog.split("## To Do")[0])
+        self.assertIn("## Superseded\n\n## Done", backlog)
 
     def test_an_existing_archived_file_is_never_overwritten(self):
         target = self.archive / "milestone-05"
@@ -94,24 +102,19 @@ class ArchiveMilestoneTest(unittest.TestCase):
 
         result = story_archive.archive_milestone_stories("milestone-05")
 
-        self.assertEqual((result["archived"], result["conflicts"]), ([], ["STORY-T-001-done.md"]))
+        self.assertEqual(result["conflicts"], ["STORY-T-001-done.md"])
+        self.assertNotIn("STORY-T-001-done.md", result["archived"])
         self.assertEqual((target / "STORY-T-001-done.md").read_text(encoding="utf-8"), "already archived")
-        self.assertFalse(result["backlog_updated"])
+        self.assertTrue((self.stories / "STORY-T-001-done.md").is_file())
+        self.assertIn("STORY-T-001-done.md", self.backlog.read_text(encoding="utf-8"))
 
-    def test_a_new_milestone_heading_is_created_and_none_placeholder_replaced(self):
-        content = "## Done\n\n- `STORY-T-009-x.md`\n\n## Archived\n\n_(none)_\n"
+    def test_legacy_rows_are_dropped_and_sections_after_archived_survive(self):
+        content = ("## Done\n\n- `STORY-T-009-x.md`\n- `STORY-T-011-z.md`\n\n"
+                   "## Archived\n\n### Milestone 01\n\n- `STORY-T-008-w.md`\n\n## Notes\n\nkeep\n")
 
-        updated = story_archive.update_backlog_for_archive(content, "milestone-06", ["STORY-T-009-x.md"])
+        updated = story_archive.update_backlog_for_archive(content, ["STORY-T-009-x.md"])
 
-        self.assertNotIn("_(none)_", updated)
-        self.assertIn("### Milestone 06\n\n- `STORY-T-009-x.md`", updated)
-        self.assertNotIn("STORY-T-009-x.md", updated.split("## Archived")[0])
-
-    def test_an_archived_story_missing_from_done_still_gets_an_archive_row(self):
-        updated = story_archive.update_backlog_for_archive("## Done\n\n", "milestone-07", ["STORY-T-010-y.md"])
-
-        self.assertIn("## Archived", updated)
-        self.assertIn("- `STORY-T-010-y.md`", updated.split("### Milestone 07")[1])
+        self.assertEqual(updated, "## Done\n\n- `STORY-T-011-z.md`\n\n## Notes\n\nkeep\n")
 
     def test_invalid_slugs_and_archive_listing(self):
         for bad in ("milestone-5", "../milestone-05", "phase-05"):
@@ -123,7 +126,7 @@ class ArchiveMilestoneTest(unittest.TestCase):
         self.assertEqual(story_archive.list_archived_story_files(), [])
         story_archive.archive_milestone_stories("milestone-05")
         self.assertEqual([path.name for path in story_archive.list_archived_story_files("milestone-05")],
-                         ["STORY-T-001-done.md"])
+                         ["STORY-T-001-done.md", "STORY-T-006-replaced.md"])
         self.assertTrue(story_archive.is_archived_path(self.archive / "milestone-05" / "STORY-T-001-done.md"))
 
 

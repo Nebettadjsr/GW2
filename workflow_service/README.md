@@ -77,10 +77,12 @@ It preserves the current worktree, token and state file.
 | `plan` | Codex background work, as the old orchestrator did it: answers one actionable architect request, or else runs the project planner. See *When Codex plans* below. | `run_architect_pass`, `run_planning_pass` |
 | `select` | Re-queues stories whose interventions or QA decisions were resolved, logs any backlog inconsistency, and activates the first eligible `## To Do` story. If the queue is empty it stops and names any architect request no model can advance. | `select_next_story`, `set_active_story` |
 | `qa` | Reuses a READY/NO_TESTS_NEEDED plan, otherwise runs QA preparation with its correction retries. | `_ensure_preimplementation_qa` |
-| `implement` | Runs Claude with the story prompt or the pending retry/CI-fix prompt. QA tests, the QA plan, and lifecycle files are restored afterwards. The step records the paths Claude changed. | `run_claude_attempt` |
-| `evaluate` | Runs the Evaluator plus the conditional QA review. A RETRY returns to `implement` with a retry prompt. | `_evaluate_preserving_completed_attempt` |
+| `qa_review` | Independently classifies a story-relevant application CI failure: production-code defect, test correction, product question or no actionable correction. Read-only. | `run_conditional_review` |
+| `qa_repair` | Applies only QA-approved application test/fixture corrections, saves the refreshed plan and protected snapshots, then returns to evaluation. Production code is protected. Also entered straight from `evaluate` when the coder reported `## Interface Deviations` (names, signatures, imports and setup only, before the Evaluator runs). | `execute_test_repair` |
+| `implement` | Runs Claude with the story prompt or the pending retry/CI-fix prompt. QA tests, the QA plan, and lifecycle files are restored afterwards. The step records the paths Claude changed, reverts any test file Claude wrote (reported as an integrity finding) and records its `## Interface Deviations`. | `run_claude_attempt` |
+| `evaluate` | Runs the Evaluator plus conditional independent QA review. Production deficiencies return to `implement`; an evidenced QA `REVISE_TESTS` verdict schedules `qa_repair`. | `_evaluate_preserving_completed_attempt` |
 | `publish` | Commits only the story's changed paths (plus story, backlog, pointer and QA artifacts) and pushes. Records the SHA. | `commit_and_push` |
-| `ci` | Waits for GitHub Actions on the **published SHA**, so later commits on top don't matter. Only the application jobs decide; a failing agent-runtime job becomes a `workflow_warnings` entry. A FAILED result returns to `implement` with the failure report. | `wait_for_commit` |
+| `ci` | Waits for GitHub Actions on the **published SHA**. Existing application-job and workflow-warning rules remain unchanged. Story-relevant failures go to `qa_review` before any coding retry; unrelated failures stop for investigation. | `wait_for_commit` |
 | `finalize` | Marks the story DONE, moves it to `## Done`, clears the pointer, commits and pushes that, then fast-forwards `master` to `agent/dev`. If `master` moved meanwhile that push is refused (a `workflow_warnings` entry) and the next sync and story carry both. | `finalize_completed_story`, `publish_to_maintainer_branch` |
 
 Budgets come from `agent/runtime/support/config.py`: `MAX_RETRIES_PER_STORY`, `MAX_CI_FIX_ATTEMPTS`
@@ -92,6 +94,13 @@ or on a QA Product Owner decision, the service does three things:
 3. It clears the pointer.
 
 The next run then picks other work.
+
+QA test corrections have a separate two-round story limit and do not consume
+Claude's production-code retry counters. Invalid QA output gets one correction
+attempt; technical QA failures block with a failure report. Capacity waits retain
+the pending request. A saved QA decision and a validated repair plan are reused
+after interruption. Corrected tests always pass through evaluation and a new
+publication/CI cycle; an earlier red commit is never accepted by a QA approval.
 
 ### When Codex plans
 

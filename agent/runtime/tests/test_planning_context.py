@@ -224,6 +224,18 @@ class BacklogIndexTest(unittest.TestCase):
         for path in self.paths:
             self.assertIn(path.name, self.index)
 
+    def test_highest_story_number_per_area_covers_unlisted_archived_files(self):
+        archived = self.write("STORY-WEB-031-old.md", **{
+            "Story ID": "STORY-WEB-031", "Status": "DONE",
+            "Milestone": "milestone-03", "Title": "Archived and not in BACKLOG",
+        })
+        facts = context.story_facts([*self.paths, archived])
+
+        index = context.backlog_index(BACKLOG, facts)
+
+        self.assertNotIn("STORY-WEB-031-old.md", index)
+        self.assertTrue(index.rstrip().endswith("API-009, DOM-022, WEB-031"), index[-200:])
+
     def test_completed_narrative_is_replaced_by_one_indexed_line(self):
         self.assertNotIn("repeats the acceptance criteria", self.index)
 

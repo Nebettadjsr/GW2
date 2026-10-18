@@ -71,7 +71,7 @@ Operations that belong to the harness alone, and that no model role performs:
 - activating a story, and clearing `agent/CURRENT_STORY.md`;
 - moving a story's entry between BACKLOG sections, and setting the Status that
   a completion, block or interruption implies;
-- `## Active`, `## Done` and `## Archived` in `agent/stories/BACKLOG.md`.
+- `## Active` and `## Done` in `agent/stories/BACKLOG.md`.
 
 `agent/stories/BACKLOG.md` is an index read by code, written only by the
 harness. The planner never edits it: it requests additions, moves and
@@ -92,7 +92,7 @@ Authoritative owners (what belongs in each document):
 - `agent/stories/BACKLOG.md`
     - executable story queue
     - story priority
-    - Active / To Do / Blocked / Done / Archived grouping
+    - Active / To Do / Blocked / User / Superseded / Done grouping, current milestone only
 
 - `agent/stories/STORY-*.md`
     - story scope
@@ -456,15 +456,15 @@ the shell.
     - resolved requests disappear from this section; retain their canonical files and evidence
 
 - `## Superseded`
-    - stories replaced by another contract
+    - stories replaced by another contract, in the current milestone
 
 - `## Done`
     - completed stories in the current, not-yet-archived milestone
 
-- `## Archived`
-    - historical index
-    - harness-owned
-    - planning never writes here
+BACKLOG.md indexes the current milestone only. When a milestone closes, the harness moves every
+DONE and SUPERSEDED story of it (and of any earlier milestone) to
+`agent/stories/archive/milestone-NN/` and drops its row. Closed milestones are summarized in
+`docs/ROADMAP.md`; the backlog index ends with the highest story number used per area.
 
 The planner never selects or activates the next story.
 
@@ -542,7 +542,6 @@ The planner must not:
 - select or activate another story;
 - move/delete/archive story files;
 - write BACKLOG `## Active`;
-- write BACKLOG `## Archived`;
 - create future-phase work;
 - invent repository facts;
 - treat a file under `agent/product-owner-requests/` as an executable story or add it to BACKLOG `## To Do`;
@@ -668,7 +667,10 @@ Rules:
 - New stories start with `Status: TODO`.
 - Every story uses the current milestone.
 - `Required Tests` may be `None` only when genuinely not applicable.
-- `Required Tests` names the tests that must exist and pass. Neither it nor
+- `Required Tests` records verification obligations and relevant behavior; QA decides the
+  concrete test design and exclusively writes or maintains the tests. Never assign test
+  authorship or test maintenance to the coding agent, including for infrastructure stories.
+  The coding agent must satisfy the QA-defined checks. Neither `Required Tests` nor
   `Definition of Done` may require a full local regression run: the GitHub CI gate
   owns the complete suites and a story is not complete until that gate is green
   (`docs/TEST_STRATEGY.md` §36). The pipeline publishes and runs that gate only after
@@ -677,13 +679,14 @@ Rules:
   (verified by the pipeline after acceptance)". Where a story touches a layer the gate cannot run
   — TestFX UI verification, a browser smoke script, a real-database `*IT` check —
   name that check explicitly, because nothing else will run it.
-- For implementation stories, consult `docs/TEST_STRATEGY.md` and include applicable tests for
-  changed behavior, business invariants, confirmed-bug regressions, and affected integration
-  boundaries. Include verification of relevant coverage reports and unresolved quality gaps in
-  the Definition of Done. A test is `None` only when the work is genuinely infrastructure/docs
-  only or behavior cannot reasonably be tested; explain the exception.
+- For implementation stories, identify changed behavior, business invariants, confirmed-bug
+  regressions and integration boundaries that need verification. QA chooses the concrete cases,
+  layers, commands and test implementation under `docs/TEST_STRATEGY.md`; the Planner does not
+  prescribe extra test-writing work to Claude. QA assesses coverage and unresolved testing gaps.
+  State genuine exceptions with a reason; QA determines whether existing checks suffice or
+  `NO_TESTS_NEEDED` applies.
 - Make each story's acceptance criteria, expected outcomes, relevant data/settings and boundaries
-  explicit enough for independent QA to write pre-implementation checks. Do not pre-decide its QA
+  explicit enough for independent QA to write all required checks. Do not pre-decide its QA
   plan or turn an unresolved product question into an assumed answer; QA uses the normal Product
   Owner decision mechanism when clarification is needed.
 - `Dependencies` may be `None`.
@@ -779,7 +782,7 @@ Only report a milestone transition when the supplied current phase's exit criter
 
 The historical Phase 3 performance gate is satisfied and Phase 3 is closed; do not apply its former hold to later phases. For any future performance acceptance gate, follow the current phase criteria and the project-owner acceptance recorded in its canonical story.
 
-The planner never moves story files and never edits BACKLOG `## Archived`.
+The planner never moves story files.
 
 The harness performs archiving after validating the transition.
 

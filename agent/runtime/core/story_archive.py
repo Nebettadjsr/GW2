@@ -12,13 +12,13 @@ from agent.runtime.core.story_state import (
 # ============================================================
 # Milestone-based story archiving
 #
-# Archiving moves DONE stories out of agent/stories/ into
-# agent/stories/archive/<milestone-slug>/ once a roadmap milestone
+# Archiving moves DONE and SUPERSEDED stories out of agent/stories/
+# into agent/stories/archive/<milestone-slug>/ once a roadmap milestone
 # transition has been confirmed (never on an individual story
 # reaching DONE). This module only ever MOVES files -- it never
 # deletes history -- and only ever archives a story whose OWN
-# canonical file states both Status: DONE and a matching "## Milestone"
-# value. Milestone membership is never inferred from a filename or
+# canonical file states a finished Status and a "## Milestone" value
+# no later than the closed one. Milestone membership is never inferred from a filename or
 # from general project/roadmap context.
 #
 # Milestone slug convention: "milestone-NN", where NN is the current
@@ -157,15 +157,25 @@ def _current_active_story_filename() -> str | None:
 # Eligibility / archiving
 # ============================================================
 
+FINISHED_STATUSES = ("DONE", "SUPERSEDED")
+
+
+def _milestone_number(slug: str) -> int:
+    return int(slug.strip().rsplit("-", 1)[1])
+
+
 def get_archivable_stories(
     milestone_slug: str
 ) -> dict:
     """
     Deterministically re-derive, from each story file's own Status and
     Milestone sections, which stories directly under agent/stories/
-    (never agent/stories/archive/) are eligible for the given
-    milestone. Never trusts a planning run's own claim about which
-    stories belong to a milestone.
+    (never agent/stories/archive/) are finished history once the given
+    milestone closes: every DONE or SUPERSEDED story of that milestone
+    or an earlier one. Earlier milestones are included so a story that
+    was finished or retired after its own milestone was archived does
+    not linger in BACKLOG.md for good. Never trusts a planning run's own
+    claim about which stories belong to a milestone.
     """
 
     if not is_valid_milestone_slug(milestone_slug):
@@ -173,6 +183,7 @@ def get_archivable_stories(
             f"Invalid milestone slug: {milestone_slug!r}"
         )
 
+    closed = _milestone_number(milestone_slug)
     active_story_filename = _current_active_story_filename()
 
     eligible = []
@@ -203,23 +214,21 @@ def get_archivable_stories(
             content
         )
 
-        if classify_story_status(status_text) != "DONE":
+        if classify_story_status(status_text) not in FINISHED_STATUSES:
             skipped_not_done.append(path.name)
             continue
 
-        story_milestone = extract_milestone(
-            content
-        )
+        story_milestone = (extract_milestone(content) or "").strip()
 
-        if story_milestone is None:
+        if not is_valid_milestone_slug(story_milestone):
             skipped_no_milestone.append(path.name)
             continue
 
-        if story_milestone.strip() != milestone_slug:
+        if _milestone_number(story_milestone) > closed:
             skipped_other_milestone.append(path.name)
             continue
 
-        eligible.append(path)
+        eligible.append((path, story_milestone))
 
     return {
         "eligible": eligible,
@@ -234,19 +243,16 @@ def archive_milestone_stories(
     milestone_slug: str
 ) -> dict:
     """
-    Move every DONE story explicitly tagged with the given milestone
-    from agent/stories/ into agent/stories/archive/<milestone_slug>/,
-    then update BACKLOG.md's "## Archived" section to match. Never
-    overwrites an existing archived file (a name collision is recorded
-    as a conflict and that file is left where it is); never archives
-    the currently active story; never deletes anything.
+    Move every finished story of the given milestone or an earlier one
+    (see get_archivable_stories) from agent/stories/ into
+    agent/stories/archive/<its own milestone>/, then drop their rows
+    from BACKLOG.md. Never overwrites an existing archived file (a name
+    collision is recorded as a conflict and that file is left where it
+    is); never archives the currently active story; never deletes
+    anything.
     """
 
     breakdown = get_archivable_stories(
-        milestone_slug
-    )
-
-    target_dir = resolve_archive_dir(
         milestone_slug
     )
 
@@ -254,13 +260,10 @@ def archive_milestone_stories(
     conflicts = []
     errors = []
 
-    if breakdown["eligible"]:
-        target_dir.mkdir(
-            parents=True,
-            exist_ok=True
+    for path, story_milestone in breakdown["eligible"]:
+        target_dir = resolve_archive_dir(
+            story_milestone
         )
-
-    for path in breakdown["eligible"]:
         destination = target_dir / path.name
 
         if destination.exists():
@@ -270,6 +273,10 @@ def archive_milestone_stories(
             continue
 
         try:
+            target_dir.mkdir(
+                parents=True,
+                exist_ok=True
+            )
             shutil.move(
                 str(path),
                 str(destination)
@@ -291,7 +298,6 @@ def archive_milestone_stories(
 
         updated_content = update_backlog_for_archive(
             backlog_content,
-            milestone_slug,
             archived
         )
 
@@ -316,24 +322,20 @@ def archive_milestone_stories(
 
 
 # ============================================================
-# BACKLOG.md "## Archived" bookkeeping
+# BACKLOG.md bookkeeping
 #
-# Deliberately narrow, purpose-built text surgery (not a generic
-# Markdown editor): move each archived filename's existing bullet line
-# out of "## Done" and into "## Archived" / "### Milestone N", keeping
-# whatever description text that bullet already had (still an index
-# entry, never full story content).
+# BACKLOG.md indexes the current milestone only. An archived story's
+# row leaves "## Done" or "## Superseded" and is not written anywhere
+# else: agent/stories/archive/milestone-NN/ is the record of a closed
+# milestone, and duplicate story IDs are checked against those files
+# directly. The historical "## Archived" index is dropped on the first
+# archive that finds one.
 # ============================================================
 
-def _milestone_number_from_slug(
-    milestone_slug: str
-) -> str:
-    match = re.search(
-        r"(\d+)\s*$",
-        milestone_slug
-    )
-
-    return match.group(1) if match else milestone_slug
+ARCHIVED_SECTION_PATTERN = re.compile(
+    r"^##[ \t]*Archived[ \t]*\n.*?(?=^##\s|\Z)",
+    re.DOTALL | re.IGNORECASE | re.MULTILINE,
+)
 
 
 def _entry_filename(line: str) -> str | None:
@@ -347,7 +349,6 @@ def _entry_filename(line: str) -> str | None:
 
 def update_backlog_for_archive(
     backlog_content: str,
-    milestone_slug: str,
     archived_filenames: list
 ) -> str:
     if not archived_filenames:
@@ -355,105 +356,25 @@ def update_backlog_for_archive(
 
     content = backlog_content
 
-    moved_lines = []
-
-    done_span = find_section_span(
-        content,
-        "Done"
-    )
-
-    if done_span is not None:
-        start, end = done_span
-        done_body = content[start:end]
-
-        remaining_lines = []
-
-        for line in done_body.splitlines(keepends=True):
-            if _entry_filename(line) in archived_filenames:
-                moved_lines.append(
-                    line.rstrip("\n")
-                )
-            else:
-                remaining_lines.append(
-                    line
-                )
-
-        content = (
-            content[:start]
-            + "".join(remaining_lines)
-            + content[end:]
-        )
-
-    # Any archived filename that had no matching bullet in "## Done"
-    # (e.g. BACKLOG.md was already out of sync) still gets a bare
-    # index entry, so the archive doesn't silently go undocumented.
-    already_moved_filenames = {_entry_filename(line) for line in moved_lines}
-
-    for filename in archived_filenames:
-        if filename not in already_moved_filenames:
-            moved_lines.append(
-                f"- `{filename}`"
-            )
-
-    milestone_number = _milestone_number_from_slug(
-        milestone_slug
-    )
-    milestone_heading = f"Milestone {milestone_number}"
-
-    archived_span = find_section_span(
-        content,
-        "Archived"
-    )
-
-    if archived_span is None:
-        content = content.rstrip("\n") + "\n\n## Archived\n\n"
-        archived_span = find_section_span(
+    for heading in ("Done", "Superseded"):
+        span = find_section_span(
             content,
-            "Archived"
+            heading
         )
 
-    start, end = archived_span
-    archived_body = content[start:end]
+        if span is None:
+            continue
 
-    # Matches the "_(none)_" placeholder style already used by the
-    # other BACKLOG.md sections (Active, Blocked, ...) -- drop it once
-    # there is real content to put in its place.
-    if archived_body.strip().lower() in ("_(none)_", "(none)", ""):
-        archived_body = ""
-
-    subsection_pattern = re.compile(
-        rf"(###\s*{re.escape(milestone_heading)}\b[^\n]*\n)(.*?)"
-        rf"(?=\n###\s|\Z)",
-        re.DOTALL | re.IGNORECASE,
-    )
-
-    sub_match = subsection_pattern.search(
-        archived_body
-    )
-
-    lines_block = "\n".join(moved_lines) + "\n"
-
-    if sub_match:
-        new_sub_body = (
-            sub_match.group(2).rstrip("\n")
-            + "\n" + lines_block
+        start, end = span
+        body = "".join(
+            line
+            for line in content[start:end].splitlines(keepends=True)
+            if _entry_filename(line) not in archived_filenames
         )
+        content = content[:start] + body + content[end:]
 
-        new_archived_body = (
-            archived_body[:sub_match.start(2)]
-            + new_sub_body
-            + archived_body[sub_match.end(2):]
-        )
-    else:
-        addition = f"\n### {milestone_heading}\n\n{lines_block}"
-        new_archived_body = (
-            archived_body.rstrip("\n") + "\n" + addition
-        )
+    content = ARCHIVED_SECTION_PATTERN.sub("", content)
+    # A removed row leaves its section's blank lines behind.
+    content = re.sub(r"\n{3,}", "\n\n", content)
 
-    content = (
-        content[:start]
-        + new_archived_body
-        + content[end:]
-    )
-
-    return content
+    return content.rstrip("\n") + "\n"
