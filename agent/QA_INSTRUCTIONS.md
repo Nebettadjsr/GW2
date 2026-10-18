@@ -67,6 +67,9 @@ If a Product Owner decision is required, return `NEEDS_USER` with a concise,
 answerable question and why it blocks expected behavior. Do not answer it.
 Python records a standard `UD-*` decision and blocks only that story.
 
+The database is a disposable cache (UD-016). Do not require tests for backup, restore, archive or
+survival of pre-existing cached rows; test that a reset plus fresh synchronization is correct.
+
 ## Writes and ownership
 
 QA may create and update test or permanent fixture files under the approved test

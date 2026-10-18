@@ -111,7 +111,9 @@ backend/domain; external systems get clear adapters. PostgreSQL is the target da
 Backend owns GW2 API access — frontend must never call it directly or receive API
 keys/DB credentials. Runtime config must not be hard-coded. Accepted, closed decisions (do
 not re-raise): the read-only GW2 API key is not an account-takeover credential; the local
-PostgreSQL password is not a material security finding.
+PostgreSQL password is not a material security finding; the database is a disposable cache of
+GW2 API data (UD-016): no backups, archives or preservation of old rows, loss is acceptable and the
+answer to bad or missing data is to reset and re-fetch from the API.
 
 ## Testing
 

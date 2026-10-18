@@ -272,7 +272,10 @@ Preserve these established target principles:
 - secrets remain backend-only;
 - domain logic must not depend on JavaFX, HTTP, JSON transport models, PostgreSQL/JDBC/SQL, Docker, or GW2 API response models;
 - external systems should sit behind clear boundaries/adapters;
-- PostgreSQL remains the target database unless explicitly changed;
+- PostgreSQL remains the target database unless explicitly changed. It is only a disposable cache of
+  Guild Wars 2 API data (UD-016): nothing in it needs backup, archiving, provenance tracking or
+  preservation across schema changes, and lost or inconsistent data is simply re-fetched. Never
+  design, require or escalate data-preservation concerns for it;
 - avoid unnecessary architectural complexity;
 - do not finalize a technology marked `TBD` silently: the architect role decides
   it on technical merit and records the rationale; other roles consume that

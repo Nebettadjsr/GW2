@@ -186,6 +186,9 @@ implementation-specific tests or CI test defects. Identify those as QA work and
 request QA review/preparation; a read-only QA review cannot itself edit tests.
 Coding-agent corrections concern production behavior and satisfying QA checks.
 
+The database is only a disposable cache of GW2 API data (UD-016): never demand backup, archive,
+preservation or recovery of existing rows; a reset plus re-synchronization is always acceptable.
+
 If the story's purpose is achieved, say so. Do not invent a shortfall to look
 rigorous, and do not treat a different-but-equivalent implementation choice as
 a shortfall.

@@ -331,6 +331,9 @@ Story text:
 QA-owned test files from an interrupted earlier QA session (reuse or finish
 these; do not duplicate them): {existing}
 
+The database is only a disposable cache of GW2 API data (UD-016): do not specify tests for backup,
+archive or survival of old rows; test reset plus fresh synchronization instead.
+
 Responsibilities:
 - Fix an interface contract: the exact class, method, signature, DTO field,
   route and data-test hook names your tests use (`interface_contract`). The
@@ -740,6 +743,8 @@ runs, outputs not stored in the repository) are evidence to weigh. If a claim
 you cannot verify matters, return RETRY with a concrete actionable item, not
 NEEDS_USER. NEEDS_USER is only for a product decision the story leaves open.
 
+The database is only a disposable cache of GW2 API data (UD-016): never require preservation,
+backup or recovery of existing rows; a reset plus fresh synchronization is acceptable.
 If the plan's test_repair.source is "interface_deviation", additionally verify that the
 tests only had names, imports or setup aligned and that no expected value or assertion
 meaning changed; otherwise return REVISE_TESTS with that evidence.
