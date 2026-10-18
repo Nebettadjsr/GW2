@@ -19,7 +19,7 @@ The web application is not yet a hosted multi-user service. There is no account 
 
 The backend can be started from the repository root with `./mvnw spring-boot:run` (Windows: `mvnw.cmd spring-boot:run`). It listens on port 8080 by default. Run the browser development server from `frontend/` with `npm ci` and `npm run dev`; Vite uses port 5173 and forwards `/api` requests to the backend.
 
-PostgreSQL must be available and configured using the environment settings in `.env.example`; `GW2_API_KEY` supplies the current local account key. The database schema is not yet managed through a versioned migration tool. This is a development setup, not a packaged deployment. No Docker Compose deployment or hosted runtime is implemented.
+PostgreSQL must be available and configured using the environment settings in `.env.example`; `GW2_API_KEY` supplies the current local account key. Schema creation and upgrades are managed by a versioned Flyway chain that every retained entry point — the backend, the JavaFX application and the standalone icon-metadata command — validates before anything reaches the database; an existing manually created schema is reported for explicit, operator-invoked adoption rather than migrated by startup, and a database whose adoption did not finish is refused instead of served. This is a development setup, not a packaged deployment. No Docker Compose deployment or hosted runtime is implemented.
 
 The Maven wrapper and `pom.xml` manage Java dependencies. Frontend dependencies use `frontend/package.json` and its lockfile. Main Java code and tests use Maven's `src/main/java` and `src/test/java` layout.
 
@@ -43,7 +43,7 @@ System Status is an administrative diagnostics and maintenance page. It shows cu
 
 ## Persistence and generated data
 
-The current PostgreSQL schema has shared item and recipe facts, TP tradeable IDs and cached quotes, plus account/character facts for bank, material storage, recipes, crafting capabilities, character inventory and consumed Luck. Principal tables are:
+The pre-migration PostgreSQL schema the running features read and write has shared item and recipe facts, TP tradeable IDs and cached quotes, plus account/character facts for bank, material storage, recipes, crafting capabilities, character inventory and consumed Luck. Principal tables are:
 
 | Scope | Tables | Contents |
 | --- | --- | --- |
@@ -54,7 +54,7 @@ The current PostgreSQL schema has shared item and recipe facts, TP tradeable IDs
 | Identity-aware account data | `account_luck` | Consumed Luck keyed by stable GW2 account GUID; this is an exception to older single-account tables. |
 | Account source freshness | `account_sync_state` | Successful completion time for each synchronized account source, including sources with empty API results. |
 
-Database creation and most schema upkeep still use manually applied SQL scripts; the Luck and account freshness tables have narrow idempotent schema checks. Material Storage tables are also created idempotently by the material sync and read paths. `src/main/resources/db/manual/account_sync_state.sql` and `material_storage.sql` are available for operators applying changes directly. There is no general versioned migration system. Account browser reads use a configurable 15-minute default max age and schedule stale-source refreshes asynchronously; ordinary reads never advance freshness.
+An empty or already-migrated database gets its schema from the versioned migration chain, which also adds the account registry and GUID-scoped account tables. A database still carrying the manually created schema keeps the tables above and the narrow idempotent checks for the Luck, account freshness and Material Storage tables, and `src/main/resources/db/manual/*.sql` remains available for operators applying changes directly to it; those bootstraps stop writing schema once a database is migrated. Which objects exist in which state, the supported legacy inventory and the operator procedure are in [Current Architecture](CURRENT_ARCHITECTURE.md) section 8.1. Account browser reads use a configurable 15-minute default max age and schedule stale-source refreshes asynchronously; ordinary reads never advance freshness.
 
 The crafting graph is derived from recipe data and shared across the current installation. If its cache is missing, first use creates the baseline graph; scheduled/manual global refresh rebuilds it only after successfully persisted recipe changes. System Status does not currently expose a standalone graph-rebuild action. TP prices and global game metadata are shared data; account records are not yet tenant-scoped.
 
@@ -68,13 +68,14 @@ Frontend pages present operation loading, completion, and failure states. Backen
 
 Backend tests run with `./mvnw test`; JaCoCo reports are generated with `./mvnw test jacoco:report`. Frontend checks are run from `frontend/`: `npm test`, `npm run test:coverage`, `npm run type-check`, and `npm run build`; browser smoke commands are documented in [Test Strategy](TEST_STRATEGY.md). The existing Python agent-runtime unittest suite is also run through pytest-cov for coverage without rewriting its tests. GitHub Actions provides the push/PR CI gate and combined coverage KPI summary. Coverage below the 90% target is reported as a warning, not a build failure. Optional integration and live API checks have prerequisites and are not equivalent to the default deterministic suite.
 
-The Python workflow service (`workflow_service/`) runs Planner when planning is due, an applicable Architect pass, pre-coding QA, coding, evaluation, publication, CI and finalization. QA is pinned to Codex GPT-6 Luna with medium reasoning effort; Planner, Architect, and Evaluator continue to inherit the configured local Codex model and reasoning effort. Durable QA plans are stored in `agent/qa-plans/`; transient results are stored under ignored `agent/runtime/artifacts/`. Local service state stores tasks, story phases, scheduling checkpoints, and budget settings/readings. This summary describes the source implementation as of 2026-10-17; migration of the running installation is separate. Invocation, failure, retry and restart behavior are documented in [the service guide](../workflow_service/README.md).
+The Python workflow service (`workflow_service/`) runs Planner when planning is due, an applicable Architect pass, pre-coding QA, coding, evaluation, publication, CI and finalization, with separate QA diagnosis and test-correction phases when needed. QA is pinned to Codex GPT-6 Luna with medium reasoning effort; Planner, Architect, and Evaluator continue to inherit the configured local Codex model and reasoning effort. Durable QA plans are stored in `agent/qa-plans/`; transient results are stored under ignored `agent/runtime/artifacts/`. Local service state stores tasks, story phases, scheduling checkpoints, budget settings/readings, Claude session/process recovery fields, and a bounded persistent activity feed. Status responses expose stopped-step context, open human requests and retry/correction counters. The optional [Grafana workflow dashboard](../agent/docker/grafana/README.md) is provisioned from `agent/docker/grafana/`, separately from the application stack. This describes the merged source implementation; migration of the running installation is separate. Invocation, failure, retry and restart behavior are documented in [the service guide](../workflow_service/README.md).
 
 ## Current limitations
 
 - One local account/API key; account state and credential handling are not multi-user or tenant-isolated.
 - Authentication and browser API-key handling are not implemented.
-- PostgreSQL schema setup/upgrades remain manual; a migration tool is undecided.
+- Account access is unavailable on a migrated database: the versioned account schema exists, but the scoped repositories, synchronization and HTTP boundary that use it are not implemented, so the unscoped legacy account paths are deliberately disabled there and only global data is served. An unmigrated database keeps working as before, which is why legacy adoption stays an explicit operator action.
+- Legacy account data other than identity-aware Luck cannot be associated with an account: the unscoped schema proves no ownership, so it is preserved in the restricted archive and recorded as unresolved, awaiting either later evidence or a fresh synchronization.
 - The backend/frontend/PostgreSQL stack is not containerized or deployed.
 - JavaFX remains in the repository while the browser migration and acceptance work continue.
 - Refresh status is process-local, not durable telemetry. Multiple backend replicas would require shared coordination for global scheduled work and refresh deduplication.

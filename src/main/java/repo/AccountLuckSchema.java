@@ -23,6 +23,11 @@ public final class AccountLuckSchema {
     }
 
     public static void ensure(Connection con) throws SQLException {
+        // On a migrated database the Flyway-owned, GUID-keyed account_luck_total replaces this table,
+        // so this bootstrap has nothing to apply and must not write schema (STORY-INFRA-004). Reads
+        // and writes of legacy Luck still fail closed there: the table is not in the live schema, and
+        // every account path is refused at its source marker by ManagedSchema.
+        if (ManagedSchema.isManaged(con)) return;
         String ddl;
         try (var stream = AccountLuckSchema.class.getResourceAsStream(RESOURCE)) {
             if (stream == null) throw new SQLException("Missing account Luck schema resource: " + RESOURCE);

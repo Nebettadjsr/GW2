@@ -29,6 +29,13 @@ public final class Db {
             con.setSchema(testSchema);
         }
 
+        // This is the one runtime database access boundary, so it is where the restricted runtime
+        // role is applied (STORY-INFRA-004): on a database that holds a preserved legacy archive
+        // every runtime statement runs as a role with no privilege on that archive, so even a
+        // schema-qualified read of a preserved table is denied by PostgreSQL itself. Where no
+        // archive and therefore no such role exists, nothing changes.
+        RuntimeAccessRole.restrict(con);
+
         return con;
     }
 }

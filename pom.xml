@@ -66,6 +66,24 @@
             <version>${postgresql.version}</version>
         </dependency>
 
+        <!--
+            STORY-INFRA-004 (ADR-010, TARGET_ARCHITECTURE.md §7.3): versioned PostgreSQL schema
+            management. Both artifacts are version-managed by the spring-boot-dependencies BOM
+            imported above (Flyway 12.4.0 for Spring Boot 4.1.1), so the engine and its PostgreSQL
+            module cannot drift apart from each other or from the Spring Boot line - PostgreSQL
+            support is a separate Flyway dependency and is pinned nowhere else in this POM.
+            Open-source edition only: the backend uses versioned SQL, history, validate and
+            migrate, and no paid feature, CLI installation or service.
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-base</artifactId>

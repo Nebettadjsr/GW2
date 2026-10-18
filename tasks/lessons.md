@@ -661,3 +661,63 @@ Then close the chain positively — once the recorder is up, require a `200` thr
 preview → recorder → backend, and treat the recorded per-phase request count as the proof that your
 recorder answered the measured calls. A failure with zero recorded backend requests is a topology
 fault, not a slow page.
+
+## An owner is not denied by revoking PUBLIC or hiding a schema from the search path
+
+If the credential that must *not* read some data also owns it, every grant and search-path argument
+you can make is irrelevant: a PostgreSQL owner keeps access to what it owns, and a schema-qualified
+name needs no search path.
+
+**Why:** `STORY-INFRA-004` claimed archive isolation from `REVOKE ALL … FROM PUBLIC`, a comment on
+the archive schema and the archive being outside every runtime search path, and asserted exactly
+those three facts. All three were true and the archive was still fully readable with the runtime
+credential, because adoption had moved tables that credential owns. The test passed because it
+asserted the mechanism rather than the denial.
+
+**How to apply:** when a requirement is "X cannot reach Y", write the read X would actually make —
+schema-qualified, through the same code path X uses — and require the database's own refusal
+(`SQLState 42501`), not the absence of a grant. If the owner is the thing being denied, the only
+boundary is a different role: create a privilege-less role, apply `SET ROLE` at the single access
+boundary every caller passes through, and keep the owning session for the migration/archive work
+that must still reconcile the data. State the residual limitation (a superuser session can
+`RESET ROLE`) instead of implying the boundary is absolute.
+
+## A guarantee belongs on the path that can violate it, not only where it is checked
+
+Validating something inside the operation that creates it leaves every path that *arrives after* the
+operation unprotected — including the one that only ever reads.
+
+**Why:** `STORY-INFRA-004`'s adoption reconciled live, archive and ledger contents before finishing,
+and that was reported as "cutover is blocked until reconciliation succeeds". But Flyway commits the
+versioned chain in the middle of the cutover, so a crash or a reconciliation failure after that
+commit left a managed database that ordinary startup accepted as current, with the preserved dataset
+unaccounted for. The same gap let a retained standalone entry point reach data on a schema no
+process had validated.
+
+**How to apply:** for each guarantee, name the caller or user it must hold for and enforce it there.
+Persist a marker in the same transaction as the check it stands for (`reconciled_at` beside the
+import, not in schema history, which is true the moment the chain commits), read it on the serving
+path before the state is even classified, and route *every* retained entry point through the one
+gate — then test startup after an injected interruption and after an injected failure, plus a resume
+that makes the refusal stop, so "refused" is distinguishable from "broken".
+
+## Idempotent is not the same as "a row is already there"
+
+`ON CONFLICT … DO NOTHING` makes a step rerunnable, and that is exactly why it hides the one case
+that matters: it cannot tell the step's own earlier work from different data somebody else left in
+the destination.
+
+**Why:** `STORY-INFRA-004`'s adoption imported the proven Luck row with `ON CONFLICT DO NOTHING` so
+a resumed cutover would not fail on its own earlier insert. An adoption interrupted after the
+versioned chain was committed could then be resumed while `account_luck_total` held a *different*
+value or original fetch time for that GUID: the insert did nothing, the archived source was recorded
+`ASSOCIATED` anyway, and reconciliation — which counted ledger rows and checksummed the archive but
+never compared the live values — marked the import reconciled. Preserved data was silently replaced
+by unexplained data, and the cutover reported success.
+
+**How to apply:** when a write must survive a rerun, read the destination first and branch on all
+three cases — empty (write), identical to the source (accept the earlier work), different (refuse,
+leave it untouched, and record the conflict as its own outcome rather than as success). Then verify
+the same thing again where completion is declared, comparing *values and timestamps*, not counts or
+existence, and treat a destination row the operation cannot explain as a conflict too. A completion
+marker must never be written on the strength of what the step intended to do.

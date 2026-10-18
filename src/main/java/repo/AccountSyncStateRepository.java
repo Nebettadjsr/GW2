@@ -16,7 +16,15 @@ public final class AccountSyncStateRepository {
     public static final String LUCK = "LUCK";
     public static final String CHARACTERS = "CHARACTERS";
 
+    /**
+     * Creates the legacy marker table on a pre-migration database, and refuses to run at all on a
+     * migrated one (STORY-INFRA-004): there, the scoped {@code account_source_state} relation is
+     * Flyway-owned and every account source is keyed by its verified account GUID. Because every
+     * account read and every account writer passes through a marker, this is the one place the whole
+     * unscoped account surface is gated.
+     */
     public static void ensure(Connection con) throws SQLException {
+        ManagedSchema.rejectUnscopedAccountAccess(con, "account_sync_state");
         try (var statement = con.createStatement()) {
             statement.execute("CREATE TABLE IF NOT EXISTS account_sync_state (source text PRIMARY KEY, fetched_at timestamptz NOT NULL)");
         }

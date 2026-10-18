@@ -8,8 +8,10 @@ import infra.icons.FilesystemIconStore;
 import infra.icons.HttpIconImageFetcher;
 import infra.icons.IconAcquisition;
 import infra.icons.IconSourcePolicy;
+import infra.schema.SchemaGate;
 import parser.ItemParser;
 import repo.Db;
+import repo.ManagedSchema;
 import util.DbBind;
 
 import java.nio.file.Path;
@@ -46,9 +48,23 @@ public final class IconSync {
      * cover, and how many of those have no {@code items} row at all, and calls neither the GW2 API nor
      * any write.
      *
+     * <p>It is a retained entry point, so it passes the same versioned-schema gate as the backend
+     * and JavaFX entry points before anything here can reach the database (STORY-INFRA-004,
+     * TARGET_ARCHITECTURE.md §7.3). The gate is the first statement, ahead of the argument handling
+     * and every {@link Db#open()} call below, so a schema this process has not validated - an
+     * unreconciled legacy adoption, an edited applied migration, a failed history - refuses the
+     * command instead of letting it read or write.
+     *
+     * <p>Only the global {@code items} metadata is written, but the ids it covers are selected over
+     * the legacy unscoped account tables, so on an <em>upgraded</em> database the command is
+     * explicitly disabled by {@link ManagedSchema#rejectUnscopedAccountAccess} rather than left to
+     * fail on a missing relation. Against an unmigrated legacy database it runs exactly as before.
+     *
      * <p>Invocation is documented in {@code docs/CURRENT_ARCHITECTURE.md} §5.14.
      */
     public static void main(String[] args) throws Exception {
+        System.out.println(SchemaGate.runStartupGate().diagnostics());
+
         if (args.length > 0 && DRY_RUN.equals(args[0])) {
             reportCoverage();
             return;
@@ -379,8 +395,18 @@ public final class IconSync {
      * id an account or recipe row refers to is discovered even when no metadata row was ever created
      * for it (STORY-SYNC-004). Nothing here filters by tradeability, so a referenced nontradeable item
      * is covered like any other.
+     *
+     * <p>Three of those families - {@code account_bank}, {@code account_materials} and
+     * {@code character_items} - are the legacy <em>unscoped</em> account tables, so this selection is
+     * an unscoped runtime path and must not run against the upgraded account schema (STORY-INFRA-004,
+     * TARGET_ARCHITECTURE.md §7.2-7.3). On a managed database it is therefore refused explicitly, with
+     * the diagnostic that says so, instead of failing on a missing relation; the scoped replacement
+     * arrives with the account-access stories. On an unmigrated database nothing changes.
      */
     static List<Integer> referencedOrUnknownItemIds(Connection con) throws SQLException {
+
+        ManagedSchema.rejectUnscopedAccountAccess(con,
+                "IconSync item-id selection over account_bank/account_materials/character_items");
 
         String sql = """
         SELECT item_id FROM (

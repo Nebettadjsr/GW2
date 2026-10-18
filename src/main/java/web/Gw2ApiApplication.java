@@ -21,6 +21,7 @@ import application.icons.IconDelivery;
 import infra.icons.FilesystemIconStore;
 import infra.icons.HttpIconImageFetcher;
 import infra.icons.IconAcquisition;
+import infra.schema.SchemaGate;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.beans.factory.annotation.Value;
@@ -53,7 +54,15 @@ import java.util.function.Supplier;
 @EnableScheduling
 public class Gw2ApiApplication {
 
+    /**
+     * The schema gate runs before {@link SpringApplication#run} on purpose (STORY-INFRA-004,
+     * TARGET_ARCHITECTURE.md 7.3): at this point no bean, scheduler, background task or repository
+     * exists yet, so there is no path by which anything could reach the database before its schema
+     * has been validated and migrated. A refusal propagates out of {@code main} and the process never
+     * serves.
+     */
     public static void main(String[] args) {
+        System.out.println(SchemaGate.runStartupGate().diagnostics());
         SpringApplication.run(Gw2ApiApplication.class, args);
     }
 

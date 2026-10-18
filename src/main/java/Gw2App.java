@@ -23,6 +23,7 @@ import javafx.scene.layout.Region;
 import application.AccountRefreshService;
 import application.GlobalDataRefreshService;
 import application.InitialSetupService;
+import infra.schema.SchemaGate;
 
 
 public class Gw2App extends Application {
@@ -31,8 +32,16 @@ public class Gw2App extends Application {
 
     private Scene homeScene;
 
+    /**
+     * The retained JavaFX entry point passes the same versioned-schema gate as the backend entry
+     * point before any view, timer or application service can reach the database (STORY-INFRA-004,
+     * TARGET_ARCHITECTURE.md §7.3). A refusal propagates out of {@code start}, so this interface
+     * cannot run against a schema it has not validated. The test seams below deliberately do not
+     * gate: they substitute controlled services and never touch a real database.
+     */
     @Override
     public void start(Stage stage) {
+        System.out.println(SchemaGate.runStartupGate().diagnostics());
         start(stage, new AccountRefreshService(), new GlobalDataRefreshService(), new InitialSetupService());
     }
 

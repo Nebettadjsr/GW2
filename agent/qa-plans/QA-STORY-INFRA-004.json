@@ -1,0 +1,138 @@
+{
+  "status": "READY",
+  "story_id": "STORY-INFRA-004",
+  "rationale": "This is a high-risk PostgreSQL migration and data-preservation change. The acceptance criteria and TARGET_ARCHITECTURE sections 7.2–7.4 establish expected behavior, so no Product Owner clarification is needed. No migration acceptance tests exist yet, and preparing them before implementation is not feasible because the production migration chain and adoption API do not exist. The story requires precise real-PostgreSQL test specifications; run those against isolated databases after implementation.",
+  "acceptance_checks": [
+    {
+      "criterion": "1. Flyway initialization gate and schema-writer ownership",
+      "expected": "The production Flyway engine and PostgreSQL module are dependency-managed compatibly; startup validates and migrates before repository, task, or scheduler access. Retained entry points use the same gate or are disabled. Automatic baseline, clean, and checksum repair are off, and migrated objects have no competing schema writers.",
+      "verification": "With isolated PostgreSQL, exercise Spring/backend startup and every retained entry point against empty, valid, failed, and checksum-mismatched schema states. Verify no repository/task/scheduler work is accessible before successful validation and inspect Flyway configuration and migrated-object writers."
+    },
+    {
+      "criterion": "2. Versioned account schema",
+      "expected": "The migrated schema implements the global/account classification and GUID registry, account-scoped composite keys and foreign keys, character-child ownership, explicit inventory slot/null uniqueness semantics, account/source generations and completion times, and nullable historical activity stored as UTC instants. No credentials, credential hashes, sessions, or application-user identities are stored in these tables.",
+      "verification": "Apply the production chain to an empty isolated PostgreSQL database. Inspect catalog constraints and column types; exercise cross-account inserts, character-child ownership, duplicate slot/null cases, source generation/completion, nullable activity, and forbidden credential fields."
+    },
+    {
+      "criterion": "3. Explicit legacy preflight and convergence",
+      "expected": "Documented fingerprints and optional variants match implementation evidence. Only explicit preflight/adoption accepts supported non-empty schemas; unknown drift, invalid schemas, or preservation failure block cutover with actionable diagnostics and no deletion. Empty and supported adopted schemas converge to the same validated live schema.",
+      "verification": "Run the production chain against empty and each documented supported fingerprint/variant in isolated databases. Compare resulting live schema catalogs. Exercise unknown/malformed drift and assert adoption rejects it without changing source data or deleting objects."
+    },
+    {
+      "criterion": "4. Preservation, archive isolation, and cutover prerequisites",
+      "expected": "Legacy account records, relations, timestamps, ambiguous/invalid records, and stable import manifests are retained in a restricted archive and provenance ledger; global data remains shared and intact. Runtime access cannot expose archived account data. Adoption requires stopped old writers and a restorable backup.",
+      "verification": "Seed representative legacy fixtures with relationships, timestamps, invalid/orphaned rows, ambiguous duplicate slots, global records, and empty tables. Reconcile source, archive, ledger, and live contents. Verify runtime roles/search paths/repositories cannot read archived account records and adoption preflight rejects missing writer-stop or backup evidence."
+    },
+    {
+      "criterion": "5. Provenance and history rules",
+      "expected": "Valid identity-aware Luck ownership is preserved; malformed or conflicting Luck records are quarantined. Other source ownership is never inferred from configured keys, Luck GUIDs, names, nonempty tables, or first login. Unresolved association is explicit. Migration performs no upstream calls and fabricates no activity or completion history.",
+      "verification": "Use deterministic database fixtures for valid, malformed, and conflicting Luck rows and unscoped bank/material/recipe/character rows. Assert only valid Luck retains its proven GUID; all unsupported associations remain explicitly unresolved and archived, with absent historical completion/activity still absent. Assert the migration path has no upstream client invocation."
+    },
+    {
+      "criterion": "6. Transactional retry, reconciliation, and operator recovery",
+      "expected": "PostgreSQL migrations are transactional; injected failure rolls back the failing migration consistently, retry preserves data and history, applied versions are immutable, and checksum mismatch is not repaired automatically. Reconciliation passes before serving. Operator instructions cover backup/restore using a compatible application version and safe resume; unscoped paths cannot run against the upgraded schema.",
+      "verification": "Inject deterministic failure after preservation has begun, assert failing-version DDL/data/history rollback and preservation of prior committed versions, then retry and reconcile. Alter an applied migration checksum and assert startup/adoption fails without repair. Verify old unscoped paths are gated/disabled and operator instructions describe recovery and resume."
+    }
+  ],
+  "invariants": [
+    "Every live account-owned row has a non-null verified GUID referencing the account registry.",
+    "Account-owned uniqueness includes account scope; character children cannot reference another account's character.",
+    "Duplicate inventory slot behavior, including NULL semantics, is enforced explicitly by database constraints.",
+    "Global data remains shared and unchanged by account adoption.",
+    "Every legacy account record remains accounted for in live data or the restricted archive and provenance ledger; ambiguous records are never silently dropped or assigned.",
+    "Archive data is not reachable through runtime account repositories or runtime database access.",
+    "Ownership is based only on source-specific historical provenance; current credentials, Luck identity, names, table contents, and first login do not prove ownership of other sources.",
+    "Migration does not call upstream APIs or create historical activity/completion evidence.",
+    "A failed migration leaves consistent schema history and data; retry is safe, and applied migration versions are immutable.",
+    "Cutover is blocked until preservation and integrity reconciliation succeed, old writers are stopped, and a restorable backup is established."
+  ],
+  "test_levels": [
+    "integration",
+    "contract"
+  ],
+  "existing_tests_reviewed": [
+    "src/test/java/repo/AccountLuckRepositoryTest.java — tests the existing Luck schema helper and repository shape; it does not exercise Flyway, adoption, archive preservation, or the new account schema.",
+    "src/test/java/repo/InventoryRepositoryOwnedInventoryTest.java and src/test/java/repo/InventoryRepositoryBoundMaterialTest.java — exercise current inventory repository behavior on PostgreSQL fixtures; they do not verify migrated ownership constraints or legacy preservation.",
+    "src/test/java/sync/CharacterSyncTest.java and src/test/java/sync/AccountSyncTest.java — exercise current sync writes against manually created PostgreSQL schemas; they do not cover migration/adoption.",
+    "src/test/java/repo/RecipeRepositoryTest.java and src/test/java/repo/MaterialStorageRepositoryTest.java — exercise current repository schema fixtures; they do not cover the production migration chain.",
+    "src/test/java/web/Gw2ApiApplicationBootTest.java — covers current backend boot behavior; it does not verify Flyway gating.",
+    "src/test/java/repo/tp/TpPriceRepositoryTest.java and src/test/java/sync/TpSyncTest.java — use real PostgreSQL for scoped fixture checks, but do not verify production migrations.",
+    "docs/TEST_STRATEGY.md sections 19, 26.1, 31.2, and 36 — require real isolated PostgreSQL for persistence boundaries, deterministic fixtures, appropriate default-suite selection, and explicit reporting for checks outside CI."
+  ],
+  "prepared_test_paths": [],
+  "test_specifications": [
+    "Add a default-suite real-PostgreSQL integration test using the production Flyway chain on a fresh isolated database. Assert the complete expected migrated schema and that a second startup validates without changing migration history or data.",
+    "For each implementation-supported legacy fingerprint and optional variant, create the schema from checked-in deterministic SQL fixtures, insert related global/account records and original timestamps, run explicit adoption and the production migration chain, then reconcile source counts/content/relations against live rows, archive rows, and import-ledger manifest entries. Assert empty and adopted databases converge on the same live schema.",
+    "Test account constraints by inserting two GUIDs and same natural IDs in both scopes; confirm cross-scope isolation, reject children whose account GUID does not match their parent character, and prove intended duplicate inventory slot/null behavior with valid and invalid pairs.",
+    "Test archival isolation through the actual runtime database role/access boundary and repository/search-path configuration; runtime reads must return no archived account rows while migration/archive access can reconcile them. Confirm shared global fixtures remain intact.",
+    "Test provenance fixtures: preserve a valid identity-aware Luck row with original value/time; quarantine malformed or conflicting Luck rows; retain unscoped bank/material/recipe/character rows as unresolved regardless of configured-key or name-like fixture data. Assert no upstream request and no fabricated activity/source completion marker.",
+    "Test unsupported table/column/type/constraint drift and invalid schema preflight. Adoption must produce actionable diagnostics and leave all preflight source objects/data unchanged; verify no automatic baseline occurs.",
+    "Inject deterministic failure during a transactional migration after preservation writes begin. Assert the failing version's data/DDL/history effects roll back, prior committed versions remain recorded, the original dataset remains reconcilable, and retry succeeds without duplicate import or loss.",
+    "Modify the checksum of an applied migration in a disposable test resource/database and assert validation/startup fails without automatic repair. Verify applied migration files are treated as immutable by adding corrections only as later versions.",
+    "Exercise startup and retained JavaFX/backend entry points against the upgraded schema; each must pass the migration/validation gate before data access or be explicitly disabled. Verify no legacy schema helper or runtime path writes migrated objects outside Flyway.",
+    "For operator documentation, review the stated backup/restore, compatible-version, stopped-writer, and resume procedure against the tested failure/retry path; this is a focused documentation check alongside executable migration tests."
+  ],
+  "pre_implementation_verification": {
+    "status": "NOT_RUN",
+    "command": "No production migration chain or adoption test exists to execute before implementation. After implementation, run the focused migration integration tests with the repository's Maven test command and isolated PostgreSQL service; explicitly name any PostgreSQL migration check excluded from the default `*Test` selection.",
+    "failure_evidence": "No expected-red result is claimed. Existing PostgreSQL tests construct their own legacy-shaped schemas and do not invoke a production migration chain, so running them would not verify this story's acceptance behavior."
+  },
+  "coverage_review": "No local coverage report was found in the checkout. docs/QUALITY_METRICS.md records a provisional 2026-10-03 Java backend snapshot of 58.09% line and 52.72% branch coverage overall; this is not a current migration-module measurement. The affected migration/adoption module does not yet exist, so its package coverage is unavailable. After implementation, review its measured line/branch report and critical preflight, failure, retry, and reconciliation branches without changing measurement scope or inventing a baseline.",
+  "external_sources": [],
+  "clarifications": [],
+  "post_implementation_review_required": true,
+  "post_implementation_review_reason": "Independent review is required because this story changes production schema and adopts legacy data. QA could not execute pre-implementation behavior tests because the migration/adoption paths do not yet exist. Review the implementation's supported fingerprints against actual schema evidence, migration and failure/retry behavior on isolated PostgreSQL, full live/archive/ledger reconciliation, runtime archive isolation, and coverage evidence before acceptance.",
+  "schema_version": 1,
+  "qa_model": "gpt-6-luna",
+  "qa_reasoning_effort": "medium",
+  "story_contract_sha256": "ca283d51de7ce13091fcd5db773607587ba1cdefe19e615809d32d3345b6463e",
+  "user_decision_ids": [],
+  "protected_test_hashes": {},
+  "post_implementation_reviews": [
+    {
+      "decision": "RETRY",
+      "reason": "The prepared QA tests are present and meaningful for much of the migration, schema, preservation, provenance, and transaction behavior, but the unresolved cutover and archive isolation gaps violate acceptance criteria and are not covered by adequate tests. Existing reports provide pass evidence for the named migration tests, but do not establish the missing guarantees.",
+      "evidence": [
+        "The QA plan has no protected test paths and specifies real PostgreSQL integration checks; the implementation adds migration-chain, ownership-constraint, adoption, transactionality, and managed-path tests. Their *Test.java names match Surefire's configured includes.",
+        "Existing Surefire XML reports contain test cases for the adoption checks and Flyway validation and migration activity. No tests were run during this review; the available repository log records implementation and evaluator start, not test results.",
+        "SchemaGate recognizes a Flyway history table as MANAGED and runs migrations and validation, but does not require adoption provenance or reconciliation to have completed. The reconciliation-failure test retries adoption; it does not test startup refusal after interruption or failed reconciliation.",
+        "restrictArchive revokes privileges from PUBLIC only. The archive isolation test checks unqualified lookup, search_path, and PUBLIC ACLs; it does not attempt a schema-qualified archive read using runtime credentials. This does not establish archive denial at the runtime database access boundary.",
+        "IconSync.main calls database-backed reportCoverage or syncItemIconUrls directly without SchemaGate. The desktop and backend startup paths do call the gate.",
+        "The review context reports migration test and local smoke evidence, but these claims do not resolve the startup, archive-access, or retained-entry-point gaps."
+      ],
+      "actionable_items": [
+        "Make serving startup reject an interrupted or unreconciled adoption; add tests for startup after interruption and after reconciliation failure.",
+        "Enforce archive denial for runtime credentials at the database access boundary and test a schema-qualified archive read using those credentials, while confirming authorized migration/archive access can reconcile data.",
+        "Route IconSync.main through the shared initialization gate or disable it against upgraded databases; test that it cannot access data before successful validation."
+      ]
+    },
+    {
+      "decision": "RETRY",
+      "reason": "The reported Luck conflict remains possible: adoption ignores an existing account_luck_total row on conflict, then records the archived row as ASSOCIATED. Reconciliation checks archive contents and Luck ledger counts, but does not verify that associated live Luck values and timestamps match the archive before marking the import reconciled. The available test report shows 11 LegacySchemaAdoptionTest cases with zero failures, but there is no regression test for this interrupted-adoption conflict; tests were not run during this review.",
+      "evidence": [
+        "In LegacySchemaAdoption.java, importLuck inserts account_luck_total with ON CONFLICT (account_id) DO NOTHING and unconditionally adds an ASSOCIATED outcome.",
+        "reconcileBeforeServing verifies archive checksums, Luck ledger row counts, and account registry references, but does not compare associated Luck values or fetched_at timestamps with the archived source.",
+        "LegacySchemaAdoptionTest covers ordinary adoption, rollback/retry, and reconciliation failures, but has no test that interrupts adoption, changes a live Luck value or timestamp, and resumes.",
+        "The existing Surefire XML report records 11 LegacySchemaAdoptionTest cases with zero failures or errors; this is prior report evidence, not a test run performed for this review."
+      ],
+      "actionable_items": [
+        "Detect conflicting live Luck destinations on adoption and resume. Preserve existing live data, do not record the source as successfully associated, and keep cutover blocked until the conflict is resolved.",
+        "Compare associated live Luck values and original timestamps with archived rows before marking reconciliation complete.",
+        "Add a real-PostgreSQL regression test that interrupts adoption after migration, inserts a conflicting live Luck value or timestamp for the archived GUID, and resumes; assert the conflict outcome and blocked cutover, while retaining successful identical-data retry coverage."
+      ]
+    },
+    {
+      "decision": "RETRY",
+      "reason": "The retained IconSync entry point can access data without a managed schema. SchemaGate returns normally for LEGACY_UNMANAGED, and IconSync.main proceeds to report or sync. The regression test explicitly expects it to run against that schema. This conflicts with the acceptance criterion that retained entry points pass the initialization gate before data access or are disabled. Other reviewed recovery, archive isolation, and Luck-conflict fixes have meaningful regression coverage; available Surefire reports show those migration tests passed previously, but tests were not run during this review.",
+      "evidence": [
+        "src/main/java/infra/schema/SchemaGate.java returns a LEGACY_UNMANAGED result without migration or validation.",
+        "src/main/java/sync/IconSync.java continues to report or sync after printing the gate result.",
+        "src/test/java/infra/schema/CutoverGateAndArchiveIsolationTest.java::theRetainedIconSyncEntryPointStillRunsAgainstAnUnmigratedLegacyDatabase asserts that IconSync runs and reads data in the legacy state.",
+        "Available Surefire XML reports show passing cutover/archive, adoption, transactionality, migration-chain, ownership-constraint, and managed-path tests, including interrupted-adoption and Luck-conflict regressions."
+      ],
+      "actionable_items": [
+        "Make IconSync refuse data access when the gate reports LEGACY_UNMANAGED, or explicitly disable that entry point for the legacy schema. Update the regression test to assert refusal before any database-backed report or sync, while retaining coverage for successful access after managed-schema validation."
+      ]
+    }
+  ]
+}
