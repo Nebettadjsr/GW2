@@ -28,4 +28,6 @@ State labels and colors use `dashboard-state.jq`. After changing that projection
 
 The QA box distinguishes preparation (`qa`), CI diagnosis (`qa_review`) and test correction (`qa_repair`). The stop-reason panel and recent events retain the last stopped story even after its active pointer is cleared. Open `UI-*` interventions and `UD-*` decisions appear with their explicit story associations and repository paths; they are not all necessarily blocking the current story. A service that does not expose request details is labeled as needing an update, rather than reporting that no requests exist. Deploy service changes in the agent worktree separately; provisioning Grafana does not upgrade or restart the workflow service.
 
+All panels share the Canvas panel's single `/cycle` query through Grafana's Dashboard data source. Each five-second refresh fetches one snapshot per open dashboard; panels filter its status, event and request rows locally. This reads cached budget status and does not invoke agents. Successful status GETs log at DEBUG after the service is updated; failed requests and control actions remain visible at normal log levels.
+
 See the [workflow service guide](../../../workflow_service/README.md) for execution and recovery.

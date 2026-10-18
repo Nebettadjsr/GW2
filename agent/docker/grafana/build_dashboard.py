@@ -67,6 +67,49 @@ def add_status_panels(dashboard):
     return dashboard
 
 
+def share_queries(dashboard):
+    """Fetch one snapshot; Dashboard datasource consumers select their own rows locally."""
+    panels = {p['id']: p for p in dashboard['panels']}
+    source = panels[4]
+    target = source['targets'][0]
+    projection = (ROOT / 'dashboard-state.jq').read_text(encoding='utf-8')
+    target['root_selector'] = '. as $snapshot | (' + projection + '''
+      | map(. + {row_type: "status"})) +
+      [ (($snapshot.active_cycle // $snapshot.last_cycle).history // [] | reverse | .[:30])[] |
+        {row_type: "event", event_at: .at, event_step: .step, event_outcome: .outcome} ] +
+      [ ($snapshot.human_requests.open // [])[] |
+        {row_type: "request", request_id: .id, request_kind: .kind,
+         request_stories: (.story_ids | join(", ")), request_reason: .reason, request_path: .path} ] +
+      [ ($snapshot.human_requests.errors // [])[] |
+        {row_type: "request", request_id: "Read error", request_kind: "error",
+         request_stories: "", request_reason: ., request_path: ""} ]'''
+    table_fields = {
+        5: [('event_at', 'Time'), ('event_step', 'Stage'), ('event_outcome', 'Outcome')],
+        12: [('request_id', 'Request'), ('request_kind', 'Type'), ('request_stories', 'Stories'),
+             ('request_reason', 'Reason / decision needed'), ('request_path', 'Repository path')],
+    }
+    extra_columns = [{'selector': name, 'text': title, 'type': 'string'}
+                     for name, title in [('row_type', 'row_type')] + table_fields[5] + table_fields[12]]
+    target['columns'] = [column for column in target['columns']
+                         if column['selector'] not in {c['selector'] for c in extra_columns}] + extra_columns
+    shared = {'type': 'datasource', 'uid': '-- Dashboard --'}
+    for identifier in (1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12):
+        panel = panels[identifier]
+        row_type = 'event' if identifier == 5 else 'request' if identifier == 12 else 'status'
+        transforms = [{'id': 'filterByValue', 'options': {
+            'type': 'include', 'match': 'all', 'filters': [
+                {'fieldName': 'row_type', 'config': {'id': 'equal', 'options': {'value': row_type}}}]}}]
+        if identifier in table_fields:
+            transforms.append({'id': 'filterFieldsByName', 'options': {
+                'include': {'names': [title for _, title in table_fields[identifier]]}}})
+        panel['transformations'] = transforms + [t for t in panel.get('transformations', []) if t not in transforms]
+        if identifier != 4:
+            panel['datasource'] = copy.deepcopy(shared)
+            panel['targets'] = [{'datasource': copy.deepcopy(shared), 'panelId': 4,
+                                 'refId': 'A', 'withTransforms': False}]
+    return dashboard
+
+
 if __name__ == "__main__":
     dashboard = json.loads(PATH.read_text(encoding="utf-8-sig"))
-    PATH.write_text(json.dumps(update_queries(add_status_panels(dashboard)), indent=2) + "\n", encoding="utf-8")
+    PATH.write_text(json.dumps(share_queries(update_queries(add_status_panels(dashboard))), indent=2) + "\n", encoding="utf-8")

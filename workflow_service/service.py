@@ -425,6 +425,19 @@ def make_handler(service: WorkflowService):
         def log_message(self, format_string: str, *args) -> None:
             logging.info("%s - %s", self.client_address[0], format_string % args)
 
+        def log_request(self, code="-", size="-") -> None:
+            path = urlparse(self.path).path
+            status_read = (path in {"/health", "/cycle", "/budget"} or path.startswith("/tasks/"))
+            status = int(code) if str(code).isdigit() else 0
+            if self.command == "GET" and status_read and 200 <= status < 300:
+                log = logging.debug
+            else:
+                log = logging.warning if status >= 400 else logging.info
+            log('%s - "%s" %s %s', self.client_address[0], self.requestline, code, size)
+
+        def log_error(self, format_string: str, *args) -> None:
+            logging.error("%s - %s", self.client_address[0], format_string % args)
+
         def _send(self, status: int, payload: dict) -> None:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             self.send_response(status)

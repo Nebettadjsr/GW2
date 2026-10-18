@@ -5,7 +5,7 @@ import unittest
 import copy
 
 import jq
-from build_dashboard import update_queries, add_status_panels
+from build_dashboard import update_queries, add_status_panels, share_queries
 
 QUERY = jq.compile(Path(__file__).with_name("dashboard-state.jq").read_text(encoding="utf-8"))
 
@@ -24,6 +24,30 @@ def state(**changes):
 
 
 class DashboardStateTests(unittest.TestCase):
+    def test_shared_snapshot_contains_status_history_and_request_rows(self):
+        dashboard = json.loads((Path(__file__).with_name('dashboards') / 'workflow-overview.json').read_text(encoding='utf-8'))
+        dashboard = share_queries(update_queries(dashboard))
+        direct = [(p['id'], t) for p in dashboard['panels'] for t in p['targets']
+                  if t['datasource']['uid'] == 'gw2-workflow-state']
+        self.assertEqual(len(direct), 1)
+        self.assertEqual(direct[0][0], 4)
+        fixture = {'active_cycle': {'phase': 'implement', 'history': [
+            {'step': 'qa', 'outcome': 'READY', 'at': 'now'}]},
+            'human_requests': {'open': [{'id': 'UD-007', 'kind': 'decision',
+                'story_ids': ['STORY-T-001'], 'reason': 'Choose a rule', 'path': 'agent/user-decisions/UD-007.md'}],
+                'errors': ['Unreadable UI-009.md']}}
+        rows = jq.compile(direct[0][1]['root_selector']).input_value(fixture).first()
+        self.assertEqual([row['row_type'] for row in rows], ['status', 'event', 'request', 'request'])
+        self.assertEqual(rows[1]['event_outcome'], 'READY')
+        self.assertEqual(rows[2]['request_id'], 'UD-007')
+        self.assertEqual(rows[3]['request_kind'], 'error')
+        for panel in dashboard['panels']:
+            if panel['id'] != 4:
+                self.assertEqual(panel['targets'][0]['panelId'], 4)
+                self.assertFalse(panel['targets'][0]['withTransforms'])
+        before = copy.deepcopy(dashboard)
+        self.assertEqual(share_queries(update_queries(dashboard)), before)
+
     def test_status_panel_install_does_not_repeat_or_override_later_ui_edits(self):
         dashboard = json.loads((Path(__file__).with_name('dashboards') / 'workflow-overview.json').read_text(encoding='utf-8'))
         first = add_status_panels(dashboard)

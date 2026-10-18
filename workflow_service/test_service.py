@@ -649,6 +649,26 @@ class ServiceHttpTests(unittest.TestCase):
         with urlopen(request, timeout=5) as response:
             return json.loads(response.read())
 
+    def test_status_polling_logs_at_debug_but_failures_and_writes_remain_visible(self):
+        with mock.patch.object(service.logging, 'debug') as debug, \
+                mock.patch.object(service.logging, 'info') as info, \
+                mock.patch.object(service.logging, 'warning') as warning:
+            self.get('/cycle')
+            self.get('/health')
+            self.get('/budget')
+            self.assertEqual(debug.call_count, 3)
+            info.assert_not_called()
+            warning.assert_not_called()
+            request = Request(f'http://127.0.0.1:{self.server.server_port}/cycle',
+                              headers={'Authorization': 'Bearer wrong'})
+            with self.assertRaises(HTTPError) as error:
+                urlopen(request, timeout=5)
+            self.assertEqual(error.exception.code, 401)
+            warning.assert_called_once()
+            with mock.patch.object(self.service, 'check_budget', return_value={'claude_allowed': True}):
+                self.post('/budget', {})
+            info.assert_called_once()
+
     def test_finished_steps_are_written_to_the_decision_log_and_inspectable(self):
         with mock.patch.dict(cycle.STEPS, {"ci": self.fake_ci}):
             _, task = self.post("/cycle/step", {"callback_url": self.callback, "budget": {"mode": "auto"}})
