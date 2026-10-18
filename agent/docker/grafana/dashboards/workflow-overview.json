@@ -81,7 +81,7 @@
         }
       },
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 12,
         "x": 0,
         "y": 0
@@ -269,7 +269,7 @@
           "format": "table",
           "parser": "jq-backend",
           "refId": "A",
-          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Sync maintainer\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
+          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Checking Git for updates\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
           "source": "url",
           "type": "json",
           "url": "http://172.29.240.1:8765/cycle",
@@ -304,7 +304,7 @@
         }
       },
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 6,
         "x": 12,
         "y": 0
@@ -492,7 +492,7 @@
           "format": "table",
           "parser": "jq-backend",
           "refId": "A",
-          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Sync maintainer\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
+          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Checking Git for updates\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
           "source": "url",
           "type": "json",
           "url": "http://172.29.240.1:8765/cycle",
@@ -527,7 +527,7 @@
         }
       },
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 6,
         "x": 18,
         "y": 0
@@ -715,7 +715,7 @@
           "format": "table",
           "parser": "jq-backend",
           "refId": "A",
-          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Sync maintainer\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
+          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Checking Git for updates\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
           "source": "url",
           "type": "json",
           "url": "http://172.29.240.1:8765/cycle",
@@ -750,10 +750,10 @@
         }
       },
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 12,
         "x": 0,
-        "y": 4
+        "y": 3
       },
       "id": 6,
       "options": {
@@ -938,7 +938,7 @@
           "format": "table",
           "parser": "jq-backend",
           "refId": "A",
-          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Sync maintainer\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
+          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Checking Git for updates\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
           "source": "url",
           "type": "json",
           "url": "http://172.29.240.1:8765/cycle",
@@ -973,10 +973,10 @@
         }
       },
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 8,
         "x": 12,
-        "y": 4
+        "y": 3
       },
       "id": 7,
       "options": {
@@ -1161,7 +1161,7 @@
           "format": "table",
           "parser": "jq-backend",
           "refId": "A",
-          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Sync maintainer\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
+          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Checking Git for updates\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
           "source": "url",
           "type": "json",
           "url": "http://172.29.240.1:8765/cycle",
@@ -1234,10 +1234,10 @@
         }
       },
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 20,
-        "y": 4
+        "y": 3
       },
       "id": 8,
       "options": {
@@ -1422,7 +1422,7 @@
           "format": "table",
           "parser": "jq-backend",
           "refId": "A",
-          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Sync maintainer\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
+          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Checking Git for updates\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
           "source": "url",
           "type": "json",
           "url": "http://172.29.240.1:8765/cycle",
@@ -1460,7 +1460,7 @@
         "h": 3,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 6
       },
       "id": 10,
       "options": {
@@ -1645,7 +1645,7 @@
           "format": "table",
           "parser": "jq-backend",
           "refId": "A",
-          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Sync maintainer\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
+          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Checking Git for updates\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
           "source": "url",
           "type": "json",
           "url": "http://172.29.240.1:8765/cycle",
@@ -2057,15 +2057,15 @@
         ]
       },
       "gridPos": {
-        "h": 23,
+        "h": 8,
         "w": 24,
         "x": 0,
-        "y": 14
+        "y": 9
       },
       "id": 4,
       "options": {
         "infinitePan": true,
-        "inlineEditing": false,
+        "inlineEditing": true,
         "panZoom": true,
         "root": {
           "background": {
@@ -2106,6 +2106,7 @@
                 "size": 16,
                 "text": {
                   "field": "sync_label",
+                  "fixed": "Checking Git for updates",
                   "mode": "field"
                 },
                 "valign": "middle"
@@ -2126,19 +2127,11 @@
                     "x": 1,
                     "y": 0
                   },
-                  "sourceOriginal": {
-                    "x": 220,
-                    "y": 105
-                  },
                   "target": {
                     "x": -1,
                     "y": 0
                   },
-                  "targetName": "review",
-                  "targetOriginal": {
-                    "x": 280.0000190734863,
-                    "y": 106
-                  }
+                  "targetName": "review"
                 }
               ],
               "constraint": {
@@ -2148,9 +2141,8 @@
               "name": "sync",
               "placement": {
                 "height": 70,
-                "left": 40,
-                "rotation": 0,
-                "top": 70,
+                "left": 32,
+                "top": 34,
                 "width": 180
               },
               "type": "rectangle"
@@ -2198,19 +2190,11 @@
                     "x": 1,
                     "y": 0
                   },
-                  "sourceOriginal": {
-                    "x": 460.0000190734863,
-                    "y": 105
-                  },
                   "target": {
                     "x": -1,
                     "y": 0
                   },
-                  "targetName": "plan",
-                  "targetOriginal": {
-                    "x": 520.0000190734863,
-                    "y": 106
-                  }
+                  "targetName": "plan"
                 }
               ],
               "constraint": {
@@ -2220,9 +2204,8 @@
               "name": "review",
               "placement": {
                 "height": 70,
-                "left": 280,
-                "rotation": 0,
-                "top": 70,
+                "left": 272,
+                "top": 34,
                 "width": 180
               },
               "type": "rectangle"
@@ -2270,19 +2253,11 @@
                     "x": 1,
                     "y": 0
                   },
-                  "sourceOriginal": {
-                    "x": 700.0000190734863,
-                    "y": 105
-                  },
                   "target": {
                     "x": -1,
                     "y": 0
                   },
-                  "targetName": "select",
-                  "targetOriginal": {
-                    "x": 760.0000190734863,
-                    "y": 106
-                  }
+                  "targetName": "select"
                 }
               ],
               "constraint": {
@@ -2292,9 +2267,8 @@
               "name": "plan",
               "placement": {
                 "height": 70,
-                "left": 520,
-                "rotation": 0,
-                "top": 70,
+                "left": 512,
+                "top": 34,
                 "width": 180
               },
               "type": "rectangle"
@@ -2339,22 +2313,14 @@
                     "min": 1
                   },
                   "source": {
-                    "x": 0,
-                    "y": -1
-                  },
-                  "sourceOriginal": {
-                    "x": 850.0000190734863,
-                    "y": 140
+                    "x": 1,
+                    "y": 0
                   },
                   "target": {
-                    "x": 0,
-                    "y": 1
+                    "x": -1,
+                    "y": 0
                   },
-                  "targetName": "qa",
-                  "targetOriginal": {
-                    "x": 851.0000190734863,
-                    "y": 260
-                  }
+                  "targetName": "qa"
                 }
               ],
               "constraint": {
@@ -2364,9 +2330,8 @@
               "name": "select",
               "placement": {
                 "height": 70,
-                "left": 760,
-                "rotation": 0,
-                "top": 70,
+                "left": 752,
+                "top": 34,
                 "width": 180
               },
               "type": "rectangle"
@@ -2411,22 +2376,14 @@
                     "min": 1
                   },
                   "source": {
-                    "x": -1,
-                    "y": 0
-                  },
-                  "sourceOriginal": {
-                    "x": 760.0000190734863,
-                    "y": 295
+                    "x": 0,
+                    "y": -1
                   },
                   "target": {
-                    "x": 1,
-                    "y": 0
+                    "x": 0,
+                    "y": 1
                   },
-                  "targetName": "implement",
-                  "targetOriginal": {
-                    "x": 700.0000190734863,
-                    "y": 296
-                  }
+                  "targetName": "implement"
                 }
               ],
               "constraint": {
@@ -2436,9 +2393,8 @@
               "name": "qa",
               "placement": {
                 "height": 70,
-                "left": 760,
-                "rotation": 0,
-                "top": 260,
+                "left": 992,
+                "top": 34,
                 "width": 180
               },
               "type": "rectangle"
@@ -2486,19 +2442,11 @@
                     "x": -1,
                     "y": 0
                   },
-                  "sourceOriginal": {
-                    "x": 520.0000190734863,
-                    "y": 295
-                  },
                   "target": {
                     "x": 1,
                     "y": 0
                   },
-                  "targetName": "evaluate",
-                  "targetOriginal": {
-                    "x": 460.0000190734863,
-                    "y": 296
-                  }
+                  "targetName": "evaluate"
                 }
               ],
               "constraint": {
@@ -2508,10 +2456,9 @@
               "name": "implement",
               "placement": {
                 "height": 70,
-                "left": 520,
-                "rotation": 0,
-                "top": 260,
-                "width": 180
+                "left": 982,
+                "top": 140,
+                "width": 200
               },
               "type": "rectangle"
             },
@@ -2558,19 +2505,11 @@
                     "x": -1,
                     "y": 0
                   },
-                  "sourceOriginal": {
-                    "x": 280.0000190734863,
-                    "y": 295
-                  },
                   "target": {
                     "x": 1,
                     "y": 0
                   },
-                  "targetName": "publish",
-                  "targetOriginal": {
-                    "x": 220,
-                    "y": 296
-                  }
+                  "targetName": "publish"
                 }
               ],
               "constraint": {
@@ -2580,9 +2519,8 @@
               "name": "evaluate",
               "placement": {
                 "height": 70,
-                "left": 280,
-                "rotation": 0,
-                "top": 260,
+                "left": 752,
+                "top": 140,
                 "width": 180
               },
               "type": "rectangle"
@@ -2627,22 +2565,14 @@
                     "min": 1
                   },
                   "source": {
-                    "x": 0,
-                    "y": -1
-                  },
-                  "sourceOriginal": {
-                    "x": 130,
-                    "y": 330
+                    "x": -1,
+                    "y": 0
                   },
                   "target": {
-                    "x": 0,
-                    "y": 1
+                    "x": 1,
+                    "y": 0
                   },
-                  "targetName": "ci",
-                  "targetOriginal": {
-                    "x": 131,
-                    "y": 450.00006103515625
-                  }
+                  "targetName": "ci"
                 }
               ],
               "constraint": {
@@ -2652,9 +2582,8 @@
               "name": "publish",
               "placement": {
                 "height": 70,
-                "left": 40,
-                "rotation": 0,
-                "top": 260,
+                "left": 512,
+                "top": 140,
                 "width": 180
               },
               "type": "rectangle"
@@ -2699,22 +2628,14 @@
                     "min": 1
                   },
                   "source": {
-                    "x": 1,
-                    "y": 0
-                  },
-                  "sourceOriginal": {
-                    "x": 220,
-                    "y": 485.00006103515625
-                  },
-                  "target": {
                     "x": -1,
                     "y": 0
                   },
-                  "targetName": "finalize",
-                  "targetOriginal": {
-                    "x": 280.0000190734863,
-                    "y": 486.00006103515625
-                  }
+                  "target": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "targetName": "finalize"
                 }
               ],
               "constraint": {
@@ -2724,9 +2645,8 @@
               "name": "ci",
               "placement": {
                 "height": 70,
-                "left": 40,
-                "rotation": 0,
-                "top": 450,
+                "left": 272,
+                "top": 140,
                 "width": 180
               },
               "type": "rectangle"
@@ -2765,192 +2685,11 @@
               "name": "finalize",
               "placement": {
                 "height": 70,
-                "left": 280,
-                "rotation": 0,
-                "top": 450,
+                "left": 32,
+                "top": 140,
                 "width": 180
               },
               "type": "rectangle"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "transparent"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "left",
-                "color": {
-                  "fixed": "#CBD5E1"
-                },
-                "size": 15,
-                "text": {
-                  "fixed": "Between stories: sync and review when due; planning or architecture when triggered",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "between-stories",
-              "placement": {
-                "height": 40,
-                "left": 40,
-                "top": 12,
-                "width": 920
-              },
-              "type": "text"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "transparent"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "left",
-                "color": {
-                  "fixed": "#CBD5E1"
-                },
-                "size": 15,
-                "text": {
-                  "fixed": "Current story: QA -> coding -> evaluation -> publication",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "execution",
-              "placement": {
-                "height": 40,
-                "left": 40,
-                "top": 195,
-                "width": 920
-              },
-              "type": "text"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "transparent"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "left",
-                "color": {
-                  "fixed": "#CBD5E1"
-                },
-                "size": 15,
-                "text": {
-                  "fixed": "QA covers preparation, CI review and test correction. Test corrections return to evaluation; production fixes return to implementation.",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "retry-notes",
-              "placement": {
-                "height": 100,
-                "left": 520,
-                "top": 420,
-                "width": 420
-              },
-              "type": "text"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "transparent"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "left",
-                "color": {
-                  "fixed": "#CBD5E1"
-                },
-                "size": 14,
-                "text": {
-                  "fixed": "Filled blue: running | Filled amber: waiting | Green border: completed | Red: current error",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "legend",
-              "placement": {
-                "height": 45,
-                "left": 40,
-                "top": 560,
-                "width": 920
-              },
-              "type": "text"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "transparent"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "left",
-                "color": {
-                  "fixed": "#CBD5E1"
-                },
-                "size": 14,
-                "text": {
-                  "fixed": "Earlier failures and revision requests stay in the event history; they do not mark an inactive step red.",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "scope",
-              "placement": {
-                "height": 45,
-                "left": 40,
-                "top": 610,
-                "width": 920
-              },
-              "type": "text"
             }
           ],
           "name": "workflow",
@@ -3181,7 +2920,7 @@
           "format": "table",
           "parser": "jq-backend",
           "refId": "A",
-          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Sync maintainer\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
+          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Checking Git for updates\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
           "source": "url",
           "type": "json",
           "url": "http://172.29.240.1:8765/cycle",
@@ -3200,16 +2939,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "footer": {
-              "reducers": []
-            },
-            "inspect": false
-          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -3226,82 +2955,10 @@
         }
       },
       "gridPos": {
-        "h": 9,
+        "h": 3,
         "w": 24,
         "x": 0,
-        "y": 37
-      },
-      "id": 5,
-      "options": {
-        "cellHeight": "sm",
-        "showHeader": true
-      },
-      "pluginVersion": "13.2.4",
-      "targets": [
-        {
-          "columns": [
-            {
-              "selector": "at",
-              "text": "Time",
-              "type": "string"
-            },
-            {
-              "selector": "step",
-              "text": "Stage",
-              "type": "string"
-            },
-            {
-              "selector": "outcome",
-              "text": "Outcome",
-              "type": "string"
-            }
-          ],
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "gw2-workflow-state"
-          },
-          "format": "table",
-          "parser": "jq-backend",
-          "refId": "A",
-          "root_selector": "((.active_cycle // .last_cycle).history // []) | reverse | .[:30]",
-          "source": "url",
-          "type": "json",
-          "url": "http://172.29.240.1:8765/cycle",
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "title": "Recent events - current or last stopped story",
-      "type": "table"
-    },
-    {
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "gw2-workflow-state"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        }
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 11,
-        "w": 24,
-        "h": 3
+        "y": 17
       },
       "id": 11,
       "options": {
@@ -3486,7 +3143,7 @@
           "format": "table",
           "parser": "jq-backend",
           "refId": "A",
-          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Sync maintainer\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
+          "root_selector": ". as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Checking Git for updates\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n",
           "source": "url",
           "type": "json",
           "url": "http://172.29.240.1:8765/cycle",
@@ -3531,10 +3188,92 @@
         }
       },
       "gridPos": {
-        "x": 0,
-        "y": 46,
+        "h": 9,
         "w": 24,
-        "h": 7
+        "x": 0,
+        "y": 20
+      },
+      "id": 5,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "pluginVersion": "13.2.4",
+      "targets": [
+        {
+          "columns": [
+            {
+              "selector": "at",
+              "text": "Time",
+              "type": "string"
+            },
+            {
+              "selector": "step",
+              "text": "Stage",
+              "type": "string"
+            },
+            {
+              "selector": "outcome",
+              "text": "Outcome",
+              "type": "string"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "gw2-workflow-state"
+          },
+          "format": "table",
+          "parser": "jq-backend",
+          "refId": "A",
+          "root_selector": "((.active_cycle // .last_cycle).history // []) | reverse | .[:30]",
+          "source": "url",
+          "type": "json",
+          "url": "http://172.29.240.1:8765/cycle",
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "Recent events - current or last stopped story",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "gw2-workflow-state"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 29
       },
       "id": 12,
       "options": {

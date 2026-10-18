@@ -64,7 +64,7 @@ def pct($value): if $value == null then "?" else ($value | tostring) + "%" end;
     elif $fresh and $b.claude_allowed == true then "AVAILABLE"
     elif $fresh and $b.claude_allowed == false then "BLOCKED" else "UNKNOWN" end),
   budget_time: ("Checked: " + ($b.checked_at // "unknown") + " | Next share: " + ($usage.next_unlock // "unknown") + " (service local time)"),
-  sync: stage("sync"), sync_label: stage_label("sync"; "Sync maintainer"),
+  sync: stage("sync"), sync_label: stage_label("sync"; "Checking Git for updates"),
   review: stage("review"), review_label: stage_label("review"; "Review incoming docs"),
   plan: stage("plan"), plan_label: stage_label("plan"; "Plan / Architect"),
   select: stage("select"), select_label: stage_label("select"; "Select story"),
