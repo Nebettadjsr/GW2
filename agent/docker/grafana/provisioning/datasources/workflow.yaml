@@ -1,0 +1,15 @@
+apiVersion: 1
+datasources:
+  - name: GW2 Workflow State
+    uid: gw2-workflow-state
+    type: yesoreyeram-infinity-datasource
+    access: proxy
+    editable: false
+    jsonData:
+      auth_method: bearerToken
+      allowedHosts:
+        - $GW2_WORKFLOW_SERVICE_URL
+      customHealthCheckEnabled: true
+      customHealthCheckUrl: $GW2_WORKFLOW_SERVICE_URL/health
+    secureJsonData:
+      bearerToken: $GW2_WORKFLOW_TOKEN

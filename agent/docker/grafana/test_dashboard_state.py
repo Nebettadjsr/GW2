@@ -2,8 +2,10 @@
 import json
 from pathlib import Path
 import unittest
+import copy
 
 import jq
+from build_dashboard import update_queries
 
 QUERY = jq.compile(Path(__file__).with_name("dashboard-state.jq").read_text(encoding="utf-8"))
 
@@ -22,6 +24,22 @@ def state(**changes):
 
 
 class DashboardStateTests(unittest.TestCase):
+    def test_query_update_preserves_ui_edits_and_history(self):
+        path = Path(__file__).with_name('dashboards') / 'workflow-overview.json'
+        dashboard = json.loads(path.read_text(encoding='utf-8'))
+        dashboard['panels'][0]['title'] = 'Maintainer custom title'
+        dashboard['panels'][0]['gridPos']['h'] = 8
+        before = copy.deepcopy(dashboard)
+        updated = update_queries(dashboard)
+        for old, new in zip(before['panels'], updated['panels']):
+            if old['type'] == 'table':
+                self.assertEqual(old, new)
+            else:
+                old.pop('targets', None)
+                clean = {key: value for key, value in new.items() if key != 'targets'}
+                self.assertEqual(old, clean)
+        self.assertEqual(len(before['panels']), len(updated['panels']))
+
     def test_budget_wait_does_not_report_historical_retry_as_failure(self):
         result = state()
         self.assertEqual(result["activity"], "WAITING FOR CLAUDE BUDGET")

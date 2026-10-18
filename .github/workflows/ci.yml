@@ -159,6 +159,9 @@ jobs:
       - name: Install Python test and coverage tools
         run: python -m pip install -r requirements-dev.txt
 
+      - name: Check workflow dashboard state and layout preservation
+        run: python -m unittest discover -s agent/docker/grafana -p test_dashboard_state.py -v
+
       # Offline contract/flow tests. tests/__init__.py makes every model
       # runner, git push and GitHub API call raise, so this job can never
       # start a model, push a commit or reach the network. workflow_service

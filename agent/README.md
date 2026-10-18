@@ -32,4 +32,4 @@ The reading guides below live in **`agent/docs/`**. Role instructions in `agent/
 | [agent/docs/WORKFLOW_DIAGRAMS.md](docs/WORKFLOW_DIAGRAMS.md) | Milestone execution, human testing and feedback, decision authority, and failures. |
 | [agent/docs/EVOLUTION.md](docs/EVOLUTION.md) | The maintainer's account and a few supporting Git snapshots. |
 
-For operation and code details, use the [workflow service guide](../workflow_service/README.md) and [runtime guide](runtime/README.md).
+For operation and code details, use the [workflow service guide](../workflow_service/README.md) and [runtime guide](runtime/README.md). The [workflow Docker setup](docker/README.md) provisions Grafana with the saved dashboard; it belongs to the agent tooling, separate from the GW2 application.

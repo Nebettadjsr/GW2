@@ -10,7 +10,8 @@ frontend/coverage/
 .coverage
 .pytest_cache/
 workflow_service/__pycache__/
-workflow_monitor/__pycache__/
+agent/docker/grafana/__pycache__/
+agent/docker/grafana/.local/
 .github/scripts/__pycache__/
 agent/runtime/.coverage
 agent/runtime/coverage.xml

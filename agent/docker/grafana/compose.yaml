@@ -1,0 +1,36 @@
+name: gw2-workflow-monitor
+
+services:
+  grafana:
+    # Verified from the installed binary: Grafana 13.2.4. Keep this digest pinned.
+    image: grafana/grafana@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
+    container_name: ${GW2_GRAFANA_CONTAINER_NAME:-gw2-grafana}
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/workflow-entrypoint.sh"]
+    environment:
+      GF_PLUGINS_PREINSTALL_SYNC: yesoreyeram-infinity-datasource@4.1.1
+      GW2_WORKFLOW_SERVICE_URL: ${GW2_WORKFLOW_SERVICE_URL:-http://172.29.240.1:8765}
+    ports:
+      - "127.0.0.1:${GW2_GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./entrypoint.sh:/workflow-entrypoint.sh:ro
+      - ./provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./.local/dashboards:/var/lib/grafana/workflow-dashboards:ro
+    secrets:
+      - workflow-service-token
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+
+secrets:
+  workflow-service-token:
+    file: ${GW2_WORKFLOW_TOKEN_FILE:?Use start.ps1 to select the workflow service token file}
+
+volumes:
+  grafana-data:
+    name: ${GW2_GRAFANA_VOLUME:-gw2-workflow-grafana-data}

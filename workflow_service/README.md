@@ -6,6 +6,8 @@ This Python service schedules development work, executes one stage at a time, an
 in `agent/runtime/`. These are Python modules, not agents. See the
 [architecture overview](../agent/docs/ARCHITECTURE.md#what-the-python-parts-do) for an example.
 
+For the read-only Grafana view, use the [agent workflow Docker setup](../agent/docker/grafana/README.md). Its container and saved dashboard are separate from the GW2 application's deployment; the service runs independently of them.
+
 ## Start the service
 
 After deploying this code to the dedicated agent worktree:

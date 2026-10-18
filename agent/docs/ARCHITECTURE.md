@@ -37,7 +37,7 @@ For example, the scheduling code asks the service to advance the work. The cycle
 
 The [run-control diagram](WORKFLOW_DIAGRAMS.md#starting-continuing-and-stopping-a-run) shows when work starts and stops. The [operating guide](../../workflow_service/README.md) owns schedule, configuration and deployment details.
 
-Grafana provides workflow visualization. It better serves the maintainer's need to see the development process after n8n proved to add technical overhead without providing the desired view.
+Grafana provides workflow visualization. It better serves the maintainer's need to see the development process after n8n proved to add technical overhead without providing the desired view. Its [pinned Docker setup](../docker/grafana/README.md) lives under `agent/docker/` and provisions the saved dashboard on startup. It reads service status; it does not execute stages or own recovery state, and it is separate from the GW2 application's deployment.
 
 ## Why the responsibilities are separate
 
