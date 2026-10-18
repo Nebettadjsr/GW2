@@ -669,6 +669,21 @@ class ServiceHttpTests(unittest.TestCase):
                 self.post('/budget', {})
             info.assert_called_once()
 
+    def test_step_captures_narration_and_stopping_failure_without_changing_the_result(self):
+        def narrated_failure(record, context):
+            service.activity_stream.emit('Codex / qa', 'Checking the expected behavior.')
+            raise RuntimeError('Verification failed')
+
+        task = self.service.store.create(kind='step', step='qa_review', story_id='STORY-T-001')
+        record = self.service.store.active_cycle()
+        with mock.patch.dict(cycle.STEPS, {'qa_review': narrated_failure}):
+            self.service._run_step(task['id'], record)
+        result = self.get('/cycle')
+        self.assertEqual(result['last_task']['outcome'], 'error')
+        self.assertEqual([row['kind'] for row in result['activity']], ['system', 'message', 'error'])
+        self.assertEqual(result['activity'][1]['text'], 'Checking the expected behavior.')
+        self.assertIn('Verification failed', result['activity'][-1]['text'])
+
     def test_finished_steps_are_written_to_the_decision_log_and_inspectable(self):
         with mock.patch.dict(cycle.STEPS, {"ci": self.fake_ci}):
             _, task = self.post("/cycle/step", {"callback_url": self.callback, "budget": {"mode": "auto"}})

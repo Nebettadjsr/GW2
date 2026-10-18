@@ -9,6 +9,22 @@ from workflow_service import service, status
 
 
 class StatusTests(unittest.TestCase):
+    def test_activity_is_bounded_deduplicated_and_survives_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'tasks.json'
+            store = service.Store(path)
+            task = store.create(kind='step', step='implement', story_id='STORY-T-001')
+            event = dict(role='Claude / implementer', text='Updating results.', kind='message', event_id='m1')
+            store.append_activity(task['id'], **event)
+            store.append_activity(task['id'], **event)
+            self.assertEqual(len(store.activity), 1)
+            for index in range(service.MAX_ACTIVITY + 5):
+                store.append_activity(task['id'], role='qa', text=f'Check {index}', kind='summary')
+            self.assertEqual(len(store.activity), service.MAX_ACTIVITY)
+            restored = service.Store(path)
+            self.assertEqual(restored.activity, store.activity)
+            self.assertEqual(restored.activity[-1]['story_id'], 'STORY-T-001')
+
     def test_open_requests_include_ids_paths_and_only_explicit_story_associations(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

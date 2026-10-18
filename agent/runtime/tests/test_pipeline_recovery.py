@@ -216,9 +216,12 @@ class EvaluatorIsReadOnlyTest(unittest.TestCase):
             self.assertIn("CONTEXT DISCIPLINE", prompt)
 
     def test_captured_agent_messages_are_how_a_verdict_comes_back(self):
+        from agent.runtime.support import activity
         messages = []
+        narration = []
 
-        with patch.object(local_planner_runner, "find_codex",
+        with activity.observe(lambda **row: narration.append(row)), \
+             patch.object(local_planner_runner, "find_codex",
                           return_value="codex"), \
              patch.object(local_planner_runner.subprocess, "Popen",
                           return_value=_fake_codex_process([
@@ -243,6 +246,8 @@ class EvaluatorIsReadOnlyTest(unittest.TestCase):
         )
 
         self.assertEqual(exit_code, 0)
+        self.assertEqual([row['text'] for row in narration], ['thinking'])
+        self.assertEqual(narration[0]['kind'], 'summary')
         # Only agent messages, and the verdict survives intact.
         self.assertEqual(len(messages), 1)
         self.assertEqual(

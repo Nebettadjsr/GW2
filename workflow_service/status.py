@@ -50,6 +50,7 @@ def latest_event(task: dict | None, control: dict) -> dict:
     if control.get("outcome") and (not task or timestamp(stopped_at) >= timestamp(task.get("created_at"))):
         matching = task if task and task.get("task_id") == control.get("task_id") else {}
         return {"outcome": control["outcome"], "reason": control.get("reason") or "",
+                "at": stopped_at, "task_id": control.get('task_id'),
                 "step": matching.get("step") if matching.get("outcome") == control["outcome"] else None,
                 "story_id": matching.get("story_id"),
                 "phase": matching.get("phase"),

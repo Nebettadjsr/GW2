@@ -8,6 +8,7 @@ import jq
 from build_dashboard import update_queries, add_status_panels, share_queries
 
 QUERY = jq.compile(Path(__file__).with_name("dashboard-state.jq").read_text(encoding="utf-8"))
+FEED = jq.compile(Path(__file__).with_name("dashboard-activity.jq").read_text(encoding="utf-8"))
 
 
 def state(**changes):
@@ -24,21 +25,22 @@ def state(**changes):
 
 
 class DashboardStateTests(unittest.TestCase):
-    def test_shared_snapshot_contains_status_history_and_request_rows(self):
+    def test_shared_snapshot_contains_status_activity_and_request_rows(self):
         dashboard = json.loads((Path(__file__).with_name('dashboards') / 'workflow-overview.json').read_text(encoding='utf-8'))
         dashboard = share_queries(update_queries(dashboard))
         direct = [(p['id'], t) for p in dashboard['panels'] for t in p['targets']
                   if t['datasource']['uid'] == 'gw2-workflow-state']
         self.assertEqual(len(direct), 1)
         self.assertEqual(direct[0][0], 4)
-        fixture = {'active_cycle': {'phase': 'implement', 'history': [
-            {'step': 'qa', 'outcome': 'READY', 'at': 'now'}]},
+        fixture = {'active_cycle': {'phase': 'implement', 'history': []},
+            'activity': [{'at': 'now', 'role': 'Codex / qa', 'kind': 'summary',
+                          'text': 'Checking the expected behavior.', 'story_id': 'STORY-T-001'}],
             'human_requests': {'open': [{'id': 'UD-007', 'kind': 'decision',
                 'story_ids': ['STORY-T-001'], 'reason': 'Choose a rule', 'path': 'agent/user-decisions/UD-007.md'}],
                 'errors': ['Unreadable UI-009.md']}}
         rows = jq.compile(direct[0][1]['root_selector']).input_value(fixture).first()
-        self.assertEqual([row['row_type'] for row in rows], ['status', 'event', 'request', 'request'])
-        self.assertEqual(rows[1]['event_outcome'], 'READY')
+        self.assertEqual([row['row_type'] for row in rows], ['status', 'activity', 'request', 'request'])
+        self.assertEqual(rows[1]['activity_text'], 'Checking the expected behavior.')
         self.assertEqual(rows[2]['request_id'], 'UD-007')
         self.assertEqual(rows[3]['request_kind'], 'error')
         for panel in dashboard['panels']:
@@ -47,6 +49,24 @@ class DashboardStateTests(unittest.TestCase):
                 self.assertFalse(panel['targets'][0]['withTransforms'])
         before = copy.deepcopy(dashboard)
         self.assertEqual(share_queries(update_queries(dashboard)), before)
+
+    def test_stop_error_is_pinned_above_newer_narration_and_not_duplicated(self):
+        fixture = {'activity': [
+            {'task_id': 'failed', 'kind': 'error', 'text': 'Disk full', 'role': 'Workflow'},
+            {'task_id': 'other', 'kind': 'message', 'text': 'A more recent note', 'role': 'QA'}],
+            'latest_event': {'task_id': 'failed', 'outcome': 'error', 'step': 'qa_review',
+                             'proceed': False, 'reason': 'Disk full'}}
+        rows = FEED.input_value(fixture).first()
+        self.assertEqual(rows[0]['activity_kind'], 'ERROR')
+        self.assertIn('Disk full', rows[0]['activity_text'])
+        self.assertEqual(rows[1]['activity_text'], 'A more recent note')
+        self.assertEqual(len(rows), 2)
+        fixture['running_task'] = {'status': 'running'}
+        self.assertEqual(FEED.input_value(fixture).first()[0]['activity_text'], 'A more recent note')
+
+    def test_legacy_service_is_explicit_and_empty_new_feed_does_not_invent_progress(self):
+        self.assertIn('updated workflow service', FEED.input_value({}).first()[0]['activity_text'])
+        self.assertEqual(FEED.input_value({'activity': []}).first(), [])
 
     def test_status_panel_install_does_not_repeat_or_override_later_ui_edits(self):
         dashboard = json.loads((Path(__file__).with_name('dashboards') / 'workflow-overview.json').read_text(encoding='utf-8'))

@@ -27,6 +27,7 @@ if str(REPOSITORY) not in sys.path:
 
 from workflow_service import claude_budget, cycle as dev_cycle, status as status_view  # noqa: E402
 from agent.runtime.core import backlog_writer  # noqa: E402
+from agent.runtime.support import activity as activity_stream  # noqa: E402
 from agent.runtime.support.capacity import ModelCapacityUnavailable  # noqa: E402
 from agent.runtime.support.daily_log import log_line  # noqa: E402
 
@@ -40,6 +41,7 @@ CALLBACK_RETRY_DELAYS = (0, 0.25, 0.5, 1, 2, 4, 8)
 RESTART_EXIT_CODE = 3
 ACTIVE_STATUSES = {"queued", "running"}
 BUDGET_REFRESH_SECONDS = 15 * 60
+MAX_ACTIVITY = 200
 
 
 def utc_now() -> str:
@@ -79,6 +81,7 @@ class Store:
         self.active: str | None = data.get("active")
         self.planning: dict = data.get("planning", {})
         self.control: dict = data.get("control", data.get("runner", {}))
+        self.activity: list[dict] = data.get("activity", [])[-MAX_ACTIVITY:]
         self.budget: dict = data.get("budget") or {
             "settings": claude_budget.settings_from(None),
             "checked_at": None, "result": None, "error": None,
@@ -98,7 +101,8 @@ class Store:
             temporary = self.path.with_suffix(self.path.suffix + ".tmp")
             temporary.write_text(json.dumps(
                 {"tasks": self.tasks, "cycles": self.cycles, "active": self.active,
-                 "planning": self.planning, "budget": self.budget, "control": self.control},
+                 "planning": self.planning, "budget": self.budget, "control": self.control,
+                 "activity": self.activity},
                 ensure_ascii=False), encoding="utf-8")
             os.replace(temporary, self.path)
 
@@ -114,6 +118,21 @@ class Store:
                 self.control.update(task_id=task["id"], steps=self.control.get("steps", 0) + 1)
             self.save()
             return dict(task)
+
+    def append_activity(self, task_id: str, *, role: str, text: str, kind: str, event_id=None) -> None:
+        with self.lock:
+            task = self.tasks[task_id]
+            identity = f'{task_id}:{event_id}' if event_id else None
+            if identity and any(row.get('event_id') == identity for row in self.activity):
+                return
+            if self.activity and all(self.activity[-1].get(key) == value for key, value in
+                                     [('task_id', task_id), ('role', role), ('text', text), ('kind', kind)]):
+                return
+            self.activity.append({'at': utc_now(), 'task_id': task_id, 'step': task.get('step'),
+                                  'story_id': task.get('story_id'), 'role': role, 'kind': kind,
+                                  'text': text[:activity_stream.MAX_TEXT], 'event_id': identity})
+            self.activity = self.activity[-MAX_ACTIVITY:]
+            self.save()
 
     def update(self, task_id: str, **values) -> dict:
         with self.lock:
@@ -180,6 +199,7 @@ class WorkflowService:
                 "latest_event": status_view.latest_event(last, control),
                 "last_step_request_at": self.last_step_request_at,
                 "control": control,
+                "activity": self.store.activity,
             })
         snapshot.update(budget=self.budget_state(), human_requests=status_view.human_requests(REPOSITORY))
         return snapshot
@@ -307,6 +327,12 @@ class WorkflowService:
         return cycle
 
     def _run_step(self, task_id: str, cycle: dict | None) -> None:
+        with activity_stream.observe(lambda **event: self.store.append_activity(task_id, **event)):
+            task = self.store.get(task_id)
+            activity_stream.emit('Workflow', f"Starting {task['step']}.", kind='system')
+            self._execute_step(task_id, cycle)
+
+    def _execute_step(self, task_id: str, cycle: dict | None) -> None:
         task = self.store.get(task_id)
         step = task["step"]
         logging.info("Running step %s for %s", step, task.get("story_id") or "next story")
@@ -345,6 +371,11 @@ class WorkflowService:
         self.store.update(task_id, status=status, error=error,
                           story_id=cycle["story_id"] if cycle else None,
                           result={**result, "phase": cycle["phase"] if cycle else None})
+        stopped = result.get('proceed') is not True
+        failed = status == 'failed' or (stopped and re.search(
+            r'fail|error|conflict|missing|orphan|loop_guard', result['outcome'], re.I))
+        kind = 'error' if failed else 'waiting' if stopped else 'system'
+        activity_stream.emit('Workflow', f"{step}: {result['outcome']}. " + (result.get('reason') or ''), kind=kind)
         logging.info("Step %s finished: %s", step, result["outcome"])
         # The decision trail the old orchestrator kept in agent/logs.
         log_line(f"Pipeline {step} [{(cycle or {}).get('story_id', 'no active story')}]: "

@@ -75,8 +75,7 @@ def share_queries(dashboard):
     projection = (ROOT / 'dashboard-state.jq').read_text(encoding='utf-8')
     target['root_selector'] = '. as $snapshot | (' + projection + '''
       | map(. + {row_type: "status"})) +
-      [ (($snapshot.active_cycle // $snapshot.last_cycle).history // [] | reverse | .[:30])[] |
-        {row_type: "event", event_at: .at, event_step: .step, event_outcome: .outcome} ] +
+      ($snapshot | (''' + (ROOT / 'dashboard-activity.jq').read_text(encoding='utf-8') + ''')) +
       [ ($snapshot.human_requests.open // [])[] |
         {row_type: "request", request_id: .id, request_kind: .kind,
          request_stories: (.story_ids | join(", ")), request_reason: .reason, request_path: .path} ] +
@@ -84,7 +83,8 @@ def share_queries(dashboard):
         {row_type: "request", request_id: "Read error", request_kind: "error",
          request_stories: "", request_reason: ., request_path: ""} ]'''
     table_fields = {
-        5: [('event_at', 'Time'), ('event_step', 'Stage'), ('event_outcome', 'Outcome')],
+        5: [('activity_at', 'Time'), ('activity_role', 'Agent'), ('activity_kind', 'Kind'),
+            ('activity_text', 'Message'), ('activity_story', 'Story')],
         12: [('request_id', 'Request'), ('request_kind', 'Type'), ('request_stories', 'Stories'),
              ('request_reason', 'Reason / decision needed'), ('request_path', 'Repository path')],
     }
@@ -94,8 +94,10 @@ def share_queries(dashboard):
                          if column['selector'] not in {c['selector'] for c in extra_columns}] + extra_columns
     shared = {'type': 'datasource', 'uid': '-- Dashboard --'}
     for identifier in (1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12):
+        if identifier not in panels:
+            continue
         panel = panels[identifier]
-        row_type = 'event' if identifier == 5 else 'request' if identifier == 12 else 'status'
+        row_type = 'activity' if identifier == 5 else 'request' if identifier == 12 else 'status'
         transforms = [{'id': 'filterByValue', 'options': {
             'type': 'include', 'match': 'all', 'filters': [
                 {'fieldName': 'row_type', 'config': {'id': 'equal', 'options': {'value': row_type}}}]}}]
@@ -110,6 +112,42 @@ def share_queries(dashboard):
     return dashboard
 
 
+def add_activity_feed(dashboard):
+    """Replace the two old panels without changing the maintainer's remaining layout."""
+    panels = {p['id']: p for p in dashboard['panels']}
+    if 10 in panels:
+        removed = panels[10]['gridPos']
+        dashboard['panels'] = [p for p in dashboard['panels'] if p['id'] != 10]
+        for panel in dashboard['panels']:
+            if panel['gridPos']['y'] >= removed['y'] + removed['h']:
+                panel['gridPos']['y'] -= removed['h']
+        feed = panels[5]
+        feed['title'] = 'Agent activity - latest first; stopping errors stay on top'
+        feed['description'] = 'Agent narration and emitted summaries, without tool commands or file output. Not a full internal reasoning trace.'
+        # Keep messages readable and color errors across the row.
+        feed['fieldConfig']['overrides'] = [
+            {'matcher': {'id': 'byName', 'options': 'Kind'}, 'properties': [
+                {'id': 'custom.width', 'value': 100},
+                {'id': 'custom.cellOptions', 'value': {'type': 'color-background', 'applyToRow': True}},
+                {'id': 'mappings', 'value': [{'type': 'value', 'options': {
+                    'ERROR': {'color': '#F2495C', 'text': 'ERROR'},
+                    'WAITING': {'color': '#FFB357', 'text': 'WAITING'},
+                    'MESSAGE': {'color': '#5794F2', 'text': 'MESSAGE'},
+                    'SUMMARY': {'color': '#5794F2', 'text': 'SUMMARY'},
+                    'SYSTEM': {'color': '#64748B', 'text': 'SYSTEM'}}}]}]},
+            {'matcher': {'id': 'byName', 'options': 'Message'}, 'properties': [
+                {'id': 'custom.cellOptions', 'value': {'type': 'auto', 'wrapText': True}}]},
+            {'matcher': {'id': 'byName', 'options': 'Time'}, 'properties': [
+                {'id': 'custom.width', 'value': 170}, {'id': 'unit', 'value': 'dateTimeAsLocal'}]},
+            {'matcher': {'id': 'byName', 'options': 'Agent'}, 'properties': [
+                {'id': 'custom.width', 'value': 180}]},
+            {'matcher': {'id': 'byName', 'options': 'Story'}, 'properties': [
+                {'id': 'custom.width', 'value': 150}]}]
+        feed['options']['sortBy'] = []  # Preserve the pinned alert, then newest messages.
+        feed['transformations'] = []
+    return dashboard
+
+
 if __name__ == "__main__":
     dashboard = json.loads(PATH.read_text(encoding="utf-8-sig"))
-    PATH.write_text(json.dumps(share_queries(update_queries(add_status_panels(dashboard))), indent=2) + "\n", encoding="utf-8")
+    PATH.write_text(json.dumps(share_queries(update_queries(add_activity_feed(add_status_panels(dashboard)))), indent=2) + "\n", encoding="utf-8")

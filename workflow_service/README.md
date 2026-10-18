@@ -10,6 +10,8 @@ For the read-only Grafana view, use the [agent workflow Docker setup](../agent/d
 
 `GET /cycle` includes the active work, latest terminal step, last affected cycle and a selected execution event. A newer manual step supersedes a previous scheduled stop; the last task's reason remains available after blocking clears the active pointer. `human_requests` lists open `UI-*` and `UD-*` records, repository paths, explicit story references and any read errors. These are read-only observations, not changes to scheduling or recovery. Deploy this service version to expose the added fields; updating Grafana alone does not change the live service.
 
+`activity` contains the latest 200 progress entries, persisted in the same `tasks.json` file. Each has a timestamp, role, kind, task, step, story and text (up to 1,000 characters). Scoped runner observers forward Claude narration and Codex messages/emitted summaries, excluding tool events, raw thinking blocks, code blocks and structured result JSON. Step starts, outcomes and failures add system entries. An observer failure is logged without failing the agent attempt. The original console and operational logs are preserved; no additional model calls are made. Grafana displays the newest 60 entries and independently pins the current stop reason, so retention cannot discard that alert.
+
 ## Start the service
 
 After deploying this code to the dedicated agent worktree:

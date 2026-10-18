@@ -8,6 +8,7 @@ import signal
 import subprocess
 import sys
 import time
+from agent.runtime.support import activity
 
 from agent.runtime.support.config import (
     AGENT_PROCESS_FLAGS,
@@ -358,6 +359,7 @@ def run_claude_attempt(
         if isinstance(event, dict):
             seen_session = event.get("session_id") or seen_session
             started_work = started_work or event.get("type") == "assistant"
+            activity.claude_event(event)
         text = _render_event(event) if isinstance(event, dict) else raw
         if text:
             output_lines.append(text)

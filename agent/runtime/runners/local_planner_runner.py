@@ -137,6 +137,8 @@ def _handle_json_event(
         event: dict,
         role: str = "planner",
 ) -> None:
+    from agent.runtime.support import activity
+    activity.codex_event(event, role)
 
     event_type = event.get("type")
 

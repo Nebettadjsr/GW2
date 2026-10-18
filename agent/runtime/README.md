@@ -388,6 +388,12 @@ changed. This is what guarantees Codex never touches the active story and
 never becomes a second writer of workflow state -- the service runs one step at
 a time, so exactly one process writes workflow state, by construction.
 
+## Agent activity feed
+
+[`support/activity.py`](support/activity.py) provides an optional observer scoped to the current task/thread. The Claude and Codex runners forward emitted narration and summaries before console formatting, while excluding tool calls/results, raw thinking blocks and machine-readable verdicts. This does not change model prompts, verdict capture, process control or console output. Monitoring failures do not fail model execution.
+
+The workflow service records those messages alongside stage starts and outcomes in its bounded, persistent activity list. Grafana uses it for the short activity feed; the [service guide](../../workflow_service/README.md) owns retention and API details. It is a progress view, not an agent transcript or evidence that a story's criteria passed.
+
 ## Daily operational log
 
 `agent/logs/` holds one append-only file per calendar day, named by date

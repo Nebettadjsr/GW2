@@ -32,6 +32,22 @@ def fake_process(output: str = "", returncode: int = 0):
 
 
 class ClaudeRunnerTest(unittest.TestCase):
+    def test_running_stream_publishes_narration_without_changing_attempt_output(self):
+        from agent.runtime.support import activity
+        events = [
+            {'type': 'assistant', 'message': {'id': 'm1', 'content': [
+                {'type': 'text', 'text': 'I am updating the results.'},
+                {'type': 'tool_use', 'name': 'Bash', 'input': {'command': 'mvn test'}}]}},
+            {'type': 'result', 'is_error': False}]
+        process = fake_process('\n'.join(json.dumps(event) for event in events))
+        rows = []
+        with patch.object(claude_runner, 'find_claude', return_value='claude.exe'), \
+                patch.object(claude_runner.subprocess, 'Popen', return_value=process), \
+                redirect_stdout(io.StringIO()), activity.observe(lambda **row: rows.append(row)):
+            result = claude_runner.run_claude_attempt('Implement')
+        self.assertEqual([row['text'] for row in rows], ['I am updating the results.'])
+        self.assertIn('mvn test', result.output)  # Existing console/tool behavior is preserved.
+        self.assertEqual(result.exit_code, 0)
 
     def test_unrepresentable_model_output_does_not_abort_completed_attempt(self):
         class Cp1252Console(io.StringIO):
