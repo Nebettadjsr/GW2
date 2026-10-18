@@ -26,4 +26,6 @@ This prompts for Grafana credentials and updates `dashboards/workflow-overview.j
 
 State labels and colors use `dashboard-state.jq`. After changing that projection, run `python agent/docker/grafana/build_dashboard.py`; it updates queries while preserving the saved layout. Run its state scenarios with `python -m unittest discover -s agent/docker/grafana -p test_dashboard_state.py` (requires the Python `jq` package).
 
+The QA box distinguishes preparation (`qa`), CI diagnosis (`qa_review`) and test correction (`qa_repair`). The stop-reason panel and recent events retain the last stopped story even after its active pointer is cleared. Open `UI-*` interventions and `UD-*` decisions appear with their explicit story associations and repository paths; they are not all necessarily blocking the current story. A service that does not expose request details is labeled as needing an update, rather than reporting that no requests exist. Deploy service changes in the agent worktree separately; provisioning Grafana does not upgrade or restart the workflow service.
+
 See the [workflow service guide](../../../workflow_service/README.md) for execution and recovery.

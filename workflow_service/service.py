@@ -25,7 +25,7 @@ REPOSITORY = Path(__file__).resolve().parent.parent
 if str(REPOSITORY) not in sys.path:
     sys.path.insert(0, str(REPOSITORY))
 
-from workflow_service import claude_budget, cycle as dev_cycle  # noqa: E402  (needs the repository on sys.path)
+from workflow_service import claude_budget, cycle as dev_cycle, status as status_view  # noqa: E402
 from agent.runtime.core import backlog_writer  # noqa: E402
 from agent.runtime.support.capacity import ModelCapacityUnavailable  # noqa: E402
 from agent.runtime.support.daily_log import log_line  # noqa: E402
@@ -153,6 +153,7 @@ def public_task(task: dict) -> dict:
     """Public task identity, status and the step's result fields."""
     view = {"task_id": task["id"], "status": task["status"], "kind": task.get("kind"),
             "step": task.get("step"), "story_id": task.get("story_id"), "error": task.get("error")}
+    view.update(created_at=task.get("created_at"), updated_at=task.get("updated_at"))
     result = task.get("result")
     if isinstance(result, dict):
         view.update(result)
@@ -163,6 +164,26 @@ def public_task(task: dict) -> dict:
 
 
 class WorkflowService:
+    def cycle_status(self) -> dict:
+        """Include terminal work even after blocking clears the active-story pointer."""
+        with self.store.lock:
+            tasks = [t for t in self.store.tasks.values() if t.get("kind") == "step"
+                     and t.get("status") not in ACTIVE_STATUSES]
+            task = max(tasks, key=lambda t: t.get("created_at", ""), default=None)
+            last = public_task(task) if task else None
+            control = copy.deepcopy(self.store.control)
+            snapshot = copy.deepcopy({
+                "active_cycle": self.store.active_cycle(),
+                "running_task": public_task(running) if (running := self.store.running()) else None,
+                "last_task": last,
+                "last_cycle": self.store.cycles.get(last.get("story_id")) if last else None,
+                "latest_event": status_view.latest_event(last, control),
+                "last_step_request_at": self.last_step_request_at,
+                "control": control,
+            })
+        snapshot.update(budget=self.budget_state(), human_requests=status_view.human_requests(REPOSITORY))
+        return snapshot
+
     def __init__(self, store: Store, token: str, callback_origin: str = "http://localhost:5678",
                  claude_command: tuple[str, ...] = (str(CLAUDE_EXECUTABLE),),
                  codex_command: tuple[str, ...] | None = None):
@@ -434,12 +455,7 @@ def make_handler(service: WorkflowService):
             elif not self._authorized():
                 return
             elif path == "/cycle":
-                running = service.store.running()
-                self._send(200, {"active_cycle": service.store.active_cycle(),
-                                 "running_task": public_task(running) if running else None,
-                                 "last_step_request_at": service.last_step_request_at,
-                                 "control": copy.deepcopy(service.store.control),
-                                 "budget": service.budget_state()})
+                self._send(200, service.cycle_status())
             elif path == "/budget":
                 self._send(200, service.budget_state())
             elif path.startswith("/tasks/") and (task := service.store.get(path.removeprefix("/tasks/"))):

@@ -8,6 +8,8 @@ in `agent/runtime/`. These are Python modules, not agents. See the
 
 For the read-only Grafana view, use the [agent workflow Docker setup](../agent/docker/grafana/README.md). Its container and saved dashboard are separate from the GW2 application's deployment; the service runs independently of them.
 
+`GET /cycle` includes the active work, latest terminal step, last affected cycle and a selected execution event. A newer manual step supersedes a previous scheduled stop; the last task's reason remains available after blocking clears the active pointer. `human_requests` lists open `UI-*` and `UD-*` records, repository paths, explicit story references and any read errors. These are read-only observations, not changes to scheduling or recovery. Deploy this service version to expose the added fields; updating Grafana alone does not change the live service.
+
 ## Start the service
 
 After deploying this code to the dedicated agent worktree:

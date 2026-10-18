@@ -43,9 +43,15 @@ flowchart TB
     Q --> C[Implementer changes code]
     C --> E[Evaluator inspects code against story and QA plan]
     E -->|Actionable correction within budget| C
+    E -->|Independent QA authorizes test correction| QT[QA corrects application tests]
+    C -. Reported interface deviations before evaluation .-> QT
+    QT --> E
     E -->|Accepted| PUB[Harness commits and pushes story scope]
     PUB --> CI[Check application CI for published commit]
-    CI -->|Relevant failure within budget| C
+    CI -->|Application failure| QR[Read-only QA diagnoses failure]
+    QR -->|Production defect within budget| C
+    QR -->|Test defect with evidence| QT
+    QR -->|Missing product rule| UD[Open User Decision; block affected story]
     CI -->|Passed or verification unavailable and skipped| D[Harness marks DONE and publishes lifecycle updates]
     D --> INT[Attempt fast-forward publication to master]
     D -. Available features .-> TEST[Human tests features; reports bugs and new ideas]
@@ -59,6 +65,8 @@ flowchart TB
 ```
 
 DONE is a harness transition, not the Evaluator's own file edit. CI verification can be explicitly skipped when unavailable; the code does not make a passing CI result unconditional. A rejected push to `master` leaves a warning and the completed story on `agent/dev`. Neither a milestone transition nor a branch push means the application has been deployed.
+
+QA owns all application tests. Its CI diagnosis (`qa_review`) and authorized test correction (`qa_repair`) are separate service phases. Corrections return to evaluation before publication; application CI failures do not automatically send the coder back to change tests. The Grafana QA box uses the active phase to distinguish preparation, CI review and test correction. Workflow tooling tests remain separate from application acceptance.
 
 ## Human testing and scope changes
 

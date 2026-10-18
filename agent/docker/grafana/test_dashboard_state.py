@@ -5,7 +5,7 @@ import unittest
 import copy
 
 import jq
-from build_dashboard import update_queries
+from build_dashboard import update_queries, add_status_panels
 
 QUERY = jq.compile(Path(__file__).with_name("dashboard-state.jq").read_text(encoding="utf-8"))
 
@@ -24,6 +24,61 @@ def state(**changes):
 
 
 class DashboardStateTests(unittest.TestCase):
+    def test_status_panel_install_does_not_repeat_or_override_later_ui_edits(self):
+        dashboard = json.loads((Path(__file__).with_name('dashboards') / 'workflow-overview.json').read_text(encoding='utf-8'))
+        first = add_status_panels(dashboard)
+        first['panels'][0]['title'] = 'Custom title'
+        before = copy.deepcopy(first)
+        self.assertEqual(add_status_panels(first), before)
+
+    def test_new_qa_phases_highlight_the_existing_qa_box(self):
+        for step, label in [('qa_review', 'QA: CI review'), ('qa_repair', 'QA: test correction')]:
+            with self.subTest(step=step):
+                result = state(running_task={'status': 'running', 'step': step})
+                self.assertEqual(result['qa'], 1)
+                self.assertIn(label, result['qa_label'])
+                self.assertEqual(result['saved_phase'], step)
+
+    def test_blocked_story_retains_failed_stage_reason_and_request_reference(self):
+        result = state(active_cycle=None,
+                       last_cycle={'story_id': 'STORY-T-001', 'phase': 'blocked', 'history': []},
+                       latest_event={'outcome': 'blocked', 'step': 'qa_repair', 'proceed': False,
+                                     'reason': 'Need a product rule'},
+                       human_requests={'open': [{'id': 'UD-007', 'story_ids': ['STORY-T-001'],
+                                                  'path': 'agent/user-decisions/UD-007-rule.md'}]})
+        self.assertEqual(result['qa'], 4)
+        self.assertIn('WAITING: HUMAN', result['qa_label'])
+        self.assertEqual(result['detail'], 'Need a product rule')
+        self.assertIn('UD-007', result['request_notice'])
+
+    def test_manual_error_overrides_old_budget_reason(self):
+        result = state(latest_event={'outcome': 'error', 'step': 'qa_review', 'proceed': False,
+                                     'reason': 'Invalid QA response'})
+        self.assertEqual(result['detail'], 'Invalid QA response')
+        self.assertEqual(result['qa'], 3)
+        self.assertEqual(result['implement'], 0)
+
+    def test_unclassified_stop_is_stopped_rather_than_idle(self):
+        result = state(latest_event={'outcome': 'ci_unconfirmed', 'proceed': False,
+                                     'step': 'ci', 'reason': 'Cannot establish CI verdict'})
+        self.assertTrue(result['activity'].startswith('STOPPED'))
+        self.assertEqual(result['saved_phase'], 'ci')
+
+    def test_retryable_manual_result_does_not_mark_the_next_qa_stage_failed(self):
+        result = state(active_cycle={'phase': 'qa_review', 'history': []},
+                       latest_event={'outcome': 'FAILED', 'proceed': True, 'step': 'ci'})
+        self.assertEqual(result['activity'], 'PAUSED / AWAITING RUN')
+        self.assertEqual(result['qa'], 4)
+        self.assertEqual(result['ci'], 0)
+
+    def test_successful_qa_diagnosis_leaving_ci_red_does_not_mark_qa_failed(self):
+        result = state(active_cycle={'phase': 'ci', 'history': []},
+                       latest_event={'outcome': 'ci_still_failed', 'proceed': False,
+                                     'step': 'qa_review', 'reason': 'QA found no correction; recheck CI.'})
+        self.assertEqual(result['ci'], 3)
+        self.assertEqual(result['qa'], 0)
+        self.assertEqual(result['saved_phase'], 'ci')
+
     def test_query_update_preserves_ui_edits_and_history(self):
         path = Path(__file__).with_name('dashboards') / 'workflow-overview.json'
         dashboard = json.loads(path.read_text(encoding='utf-8'))
