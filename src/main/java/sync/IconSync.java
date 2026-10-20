@@ -49,6 +49,11 @@ public final class IconSync {
      * <p>Invocation is documented in {@code docs/CURRENT_ARCHITECTURE.md} §5.14.
      */
     public static void main(String[] args) throws Exception {
+        // A retained entry point, so it passes the same startup schema gate as the backend and the
+        // JavaFX application before it opens a connection (STORY-INFRA-004, §7.3: every retained
+        // entry point uses this gate or is disabled against the upgraded database).
+        infra.db.SchemaInitializer.initializeRuntimeDatabase();
+
         if (args.length > 0 && DRY_RUN.equals(args[0])) {
             reportCoverage();
             return;
@@ -381,6 +386,11 @@ public final class IconSync {
      * is covered like any other.
      */
     static List<Integer> referencedOrUnknownItemIds(Connection con) throws SQLException {
+
+        // Three of the seven referenced families are account-owned on a migrated database, so this
+        // selection would read across accounts there (STORY-INFRA-004). Refused with an actionable
+        // diagnostic rather than silently widened or narrowed.
+        repo.ManagedSchema.rejectUnscopedAccountAccess(con, "icon-metadata item selection without an account scope");
 
         String sql = """
         SELECT item_id FROM (

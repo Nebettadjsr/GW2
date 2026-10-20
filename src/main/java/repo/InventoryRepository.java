@@ -37,6 +37,10 @@ public class InventoryRepository {
      * (docs/TEST_STRATEGY.md §31.2) without going through production connection config.
      */
     public Map<Integer, Integer> loadOwnedInventory(Connection con) throws SQLException {
+        // Aggregates owned quantity across account_materials, account_bank and character_items, all
+        // of which carry a verified account GUID on a migrated database (STORY-INFRA-004): summing
+        // them without a scope would mix accounts, so the unscoped path is refused there.
+        ManagedSchema.rejectUnscopedAccountAccess(con, "owned inventory without an account scope");
         Map<Integer, Integer> inv = new HashMap<>();
 
         // materials storage
@@ -120,6 +124,7 @@ public class InventoryRepository {
      * caller-supplied connection (see {@link #loadOwnedInventory(Connection)} for why).
      */
     public Map<Integer, OwnedQuantity> loadOwnedInventoryForCharacter(Connection con, String selectedCharacterName) throws SQLException {
+        ManagedSchema.rejectUnscopedAccountAccess(con, "owned inventory without an account scope");
         Map<Integer, Integer> sellable = new HashMap<>();
         Map<Integer, Integer> bound = new HashMap<>();
 
@@ -237,6 +242,7 @@ public class InventoryRepository {
      * caller-supplied connection (see {@link #loadOwnedInventory(Connection)} for why).
      */
     public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con, Set<String> characterNames) throws SQLException {
+        ManagedSchema.rejectUnscopedAccountAccess(con, "owned inventory without an account scope");
         Map<Integer, Integer> sellable = new HashMap<>();
         Map<Integer, Integer> accountBound = new HashMap<>();
         Map<String, Map<Integer, Integer>> characterBound = new HashMap<>();

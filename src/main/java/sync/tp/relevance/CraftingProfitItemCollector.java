@@ -139,6 +139,10 @@ FROM relevant_tradeable
     }
 
     public Set<Integer> collect(Connection con) throws Exception {
+        // Relevance is derived from account and character recipe knowledge, which is account-owned
+        // on a migrated database, so this selection needs a scope it does not have yet
+        // (STORY-INFRA-004, TARGET_ARCHITECTURE.md §7.2).
+        repo.ManagedSchema.rejectUnscopedAccountAccess(con, "Profit price relevance without an account scope");
         Set<Integer> itemIds = new HashSet<>();
 
         try (PreparedStatement ps = con.prepareStatement(SQL);
@@ -153,6 +157,7 @@ FROM relevant_tradeable
     }
 
     public Coverage coverage(Connection con) throws SQLException {
+        repo.ManagedSchema.rejectUnscopedAccountAccess(con, "Profit price coverage without an account scope");
         try (PreparedStatement ps = con.prepareStatement(COVERAGE_SQL);
              ResultSet rs = ps.executeQuery()) {
 

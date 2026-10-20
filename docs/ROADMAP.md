@@ -299,14 +299,14 @@ Phase 5. The browser/backend contract and web frontend should exist before intro
 - Profit and Discovery use one globally shared Trading Post cache. Feature calculations refresh only their required missing or stale IDs on demand; fresh quotes are reused for ten minutes. No full-catalog timer runs. Multi-user requests must continue to share this cache.
 - Apply the same multi-user concurrency review to other global refresh/synchronization operations: coalesce, schedule, cache or otherwise centralize work where many users could otherwise trigger the same global operation at once. Account-specific refreshes remain scoped to the requesting account.
 - Track account activity (for example `last_seen_at` and/or `last_successful_sync_at`) so inactive account-specific data can be identified. Define a retention/cleanup policy for stale account data, but only introduce automatic deletion/cleaner execution when measured storage/database impact makes cleanup worthwhile. The concrete inactivity period remains an explicit decision at that point; cleanup must never delete shared global data.
-- Define a migration path for the existing single-user database/account data into the new account-scoped model without discarding valid existing data.
+- Define a cutover path from the existing single-user database to the account-scoped model: reset disposable cached data and repopulate each verified account through fresh GW2 API synchronization (UD-016; `TARGET_ARCHITECTURE.md` §7.4).
 - Existing authoritative domain calculations remain account-agnostic where possible; user/account scoping belongs at the API/application/persistence boundaries and must not duplicate domain rules.
 
 ### High-Level Stories
 
 - Decide and document the stable account identity, browser-side GW2 API-key handling, and whether separate application authentication is required.
 - Separate persistence into shared/global data and account-scoped data, adding stable account ownership keys/relations where required.
-- Migrate the existing single-user data into the account-scoped schema.
+- Reset the existing single-user cache at schema cutover and repopulate account-scoped data through fresh synchronization.
 - Make account sync resolve the supplied GW2 API key to the stable GW2 account identity and reuse existing data for replacement keys.
 - Add cross-account isolation tests covering repositories, application services and HTTP endpoints.
 - Keep Trading Post prices in a shared on-demand cache, refreshing only missing/stale required IDs; no full-catalog timer is planned while this remains a single backend instance.

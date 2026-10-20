@@ -1,0 +1,164 @@
+{
+  "status": "READY",
+  "story_id": "STORY-INFRA-004",
+  "rationale": "Added the missing rollback assertion to the existing PostgreSQL integration test: after the injected migration fails, qa_injected_failure must not exist. The retry assertion remains. The focused test command could not start because mvnw.cmd requires the unavailable powershell executable, so the corrected test has no fresh passing run evidence.",
+  "acceptance_checks": [
+    {
+      "criterion": "Initialize and validate the production Flyway migration chain before runtime work.",
+      "expected": "An empty schema receives the full versioned chain; global catalog tables remain account-independent; account source state starts empty; baseline, clean and repair policies remain disabled.",
+      "verification": "SchemaInitializerPostgresTest.emptySchemaRunsCompleteChainAndLeavesAccountSourcesUnobserved and unknownSchemaIsResetButAutomaticBaselineAndCleanAreDisabled."
+    },
+    {
+      "criterion": "Create the constrained global/account schema with GUID ownership and character-child ownership.",
+      "expected": "Distinct accounts may use the same account-local key; duplicate keys within one account fail; a character child cannot reference another account's character; nullable inventory location components have explicit uniqueness behavior.",
+      "verification": "SchemaInitializerPostgresTest.accountOwnershipAndCharacterCompositeOwnershipAreDatabaseEnforced and inventoryNullableLocationsHaveExplicitDuplicateAndNullSemantics."
+    },
+    {
+      "criterion": "Reset unmanaged legacy or unrecognized schemas, then apply the full chain without fabricating synchronization history.",
+      "expected": "Legacy rows are dropped; account_bank is recreated with account_id and the composite account_id/slot primary key; account_registry and account_source_state exist empty.",
+      "verification": "SchemaInitializerPostgresTest.unmanagedLegacyTablesAreExplicitlyResetBeforeTheFullChain and unknownSchemaIsResetButAutomaticBaselineAndCleanAreDisabled."
+    },
+    {
+      "criterion": "Failed managed migrations and checksum mismatches fail closed without resetting the managed schema.",
+      "expected": "A failed version leaves no partial history or qa_injected_failure table; managed tables remain; retry succeeds using recorded history; checksum mismatch does not trigger reset.",
+      "verification": "SchemaInitializerPostgresTest.failedMigrationDoesNotResetManagedSchemaAndRetryResumesHistory and checksumMismatchFailsClosedAndDoesNotResetManagedSchema."
+    }
+  ],
+  "invariants": [
+    "Schema creation or reset does not fabricate an account or successful source completion.",
+    "Account-owned rows require a registry GUID, and character-owned rows reference a character under the same GUID.",
+    "Account-local uniqueness includes account scope.",
+    "Global catalog structure is shared and does not carry account_id.",
+    "Inventory bag/equipment null location components do not permit duplicate logical locations.",
+    "Only explicit unmanaged-schema reset drops legacy cache tables; ordinary managed migration failure and checksum mismatch never reset them.",
+    "Credentials, sessions, and API history are outside the schema contract."
+  ],
+  "test_levels": [
+    "integration"
+  ],
+  "existing_tests_reviewed": [
+    "src/test/java/infra/db/SchemaInitializerPostgresTest.java — production-chain PostgreSQL integration checks; updated the failed migration test to assert transactional rollback removes qa_injected_failure while retaining the retry check.",
+    "src/test/java/repo/DbTest.java — shared JDBC connection helper, not schema initialization or migration coverage.",
+    "src/test/java/repo/AccountSyncStateRepositoryTest.java — current singleton source marker, not account-scoped generations or Flyway.",
+    "src/test/java/sync/CharacterRosterPublicationTest.java — existing character publication against a test-created schema, not the production migration chain.",
+    "src/test/java/repo/CharacterSelectionCraftingPlanIntegrationTest.java — PostgreSQL repository integration using a test-created schema, not production migrations.",
+    "src/test/java/web/Gw2ApiApplicationBootTest.java — existing application boot coverage, not migration reset and history invariants."
+  ],
+  "interface_contract": [
+    "infra.db.SchemaInitializer.initialize(javax.sql.DataSource)",
+    "infra.db.SchemaInitializer.initialize(javax.sql.DataSource, java.lang.String failureInjectionSql) — deterministic transactional migration failure injection used only by tests.",
+    "infra.db.SchemaInitializer.configuration() returns infra.db.SchemaInitializer.MigrationPolicy.",
+    "infra.db.SchemaInitializer.MigrationPolicy.baselineOnMigrate(): boolean",
+    "infra.db.SchemaInitializer.MigrationPolicy.cleanDisabled(): boolean",
+    "infra.db.SchemaInitializer.MigrationPolicy.repairOnMigrate(): boolean",
+    "Production schema tables: account_registry(account_id UUID), account_source_state(account_id, source, generation, completed_at), account_bank(account_id, slot, item_id), characters(account_id, character_id, name), character_crafting(account_id, character_id, discipline, rating), character_items(account_id, character_id, location, bag_index, slot_index, equipment_slot, item_id, count), items.",
+    "Flyway history table: flyway_schema_history."
+  ],
+  "prepared_test_paths": [
+    "src/test/java/infra/db/SchemaInitializerPostgresTest.java"
+  ],
+  "test_specifications": [
+    "Run SchemaInitializerPostgresTest against real PostgreSQL using a uniquely named disposable schema per test.",
+    "On an empty schema, assert the production chain creates account_registry, account_source_state, items and Flyway history, with no account/source rows and no legacy singleton account_sync_state.",
+    "Seed unscoped account_bank with a row and a conflicting items table; initialize through the production gate; assert account_bank is recreated with account_id and composite account_id/slot primary key, contains no seeded legacy rows, and account_registry/account_source_state remain empty.",
+    "Insert two GUIDs with the same bank slot and verify both persist; duplicate one GUID/slot and verify PostgreSQL rejects it.",
+    "Insert characters for two accounts; verify a character_crafting child with a mismatched account GUID is rejected.",
+    "Verify duplicate BAG location and duplicate EQUIPMENT slot are rejected even when other location columns are NULL.",
+    "Verify account_source_state starts empty and rejects a generation-zero completion marker.",
+    "Inject a deterministic failed migration after the managed schema exists; verify history is unchanged, qa_injected_failure does not exist after rollback, managed tables remain, and retry succeeds from recorded history.",
+    "Change a successful Flyway checksum and verify initialization fails without resetting account_registry.",
+    "Seed an unrecognized schema, verify explicit reset followed by full migration, and assert baseline, clean, and repair settings remain disabled."
+  ],
+  "pre_implementation_verification": {
+    "status": "NOT_RUN",
+    "command": ".\\mvnw.cmd -B -ntp -Dtest=infra.db.SchemaInitializerPostgresTest test",
+    "failure_evidence": "The focused command did not start Maven. Windows reported that powershell could not be found, followed by: \"Cannot start maven from wrapper\". No behavior-level result was obtained."
+  },
+  "coverage_review": "Previously supplied implementation evidence reports infra.db at 79.17% line and 65.38% branch coverage, SchemaInitializer at 68/86 lines and 17/26 branches, and repo.ManagedSchema at 6/7 lines and 1/2 branches. The prior full-suite run reported 62.52% project line and 55.35% branch coverage against the 90% KPI warning target. Those measurements predate this assertion correction; no fresh report was generated because Maven could not start.",
+  "external_sources": [],
+  "clarifications": [],
+  "post_implementation_review_required": true,
+  "post_implementation_review_reason": "Independently recheck the QA test corrections against the implementation.",
+  "test_repair": {
+    "request_id": "a47c1415-9b4f-4f90-9f28-a2f6031f2fcb",
+    "source": "evaluation",
+    "review": {
+      "decision": "REVISE_TESTS",
+      "reason": "The corrected legacy-reset test is present and meaningful: it verifies the recreated account-scoped account_bank key, dropped legacy rows, and empty account/source tables. However, the prepared test still omits a rollback assertion explicitly required by the QA plan. The available Surefire report predates the correction and records the old, now-fixed assertion failure, so it provides no passing evidence for the corrected test.",
+      "evidence": [
+        "src/test/java/infra/db/SchemaInitializerPostgresTest.java now checks the recreated scoped account_bank table and verifies it contains no legacy rows; account_registry and account_source_state remain empty.",
+        "The failedMigrationDoesNotResetManagedSchemaAndRetryResumesHistory test checks unchanged Flyway history, retained account_registry, and successful retry, but never asserts that qa_injected_failure was rolled back.",
+        "The QA plan’s test specification explicitly requires verifying that the injected test table does not remain after the failed migration.",
+        "target/surefire-reports/infra.db.SchemaInitializerPostgresTest.txt reports the former failure at line 80, before the corrected test’s current checks; it does not establish that the corrected tests pass."
+      ],
+      "actionable_items": [
+        "In failedMigrationDoesNotResetManagedSchemaAndRetryResumesHistory, assert that qa_injected_failure does not exist after the injected migration fails, alongside the existing history and managed-table checks. Keep the retry assertion.",
+        "Run the focused SchemaInitializerPostgresTest against real PostgreSQL after the correction and retain its report so the corrected test result can be independently reviewed."
+      ]
+    },
+    "invalid_attempts": 0
+  },
+  "post_implementation_reviews": [
+    {
+      "decision": "REVISE_TESTS",
+      "reason": "The protected QA test contains a faulty legacy-reset assertion. The production migration intentionally recreates account_bank with account-scoped ownership after dropping the old unscoped table, but the test requires account_bank to be absent. The focused report shows this is the sole failure; the other seven tests pass. The test file still matches the protected hash.",
+      "evidence": [
+        "The QA plan and interface contract require account_bank(account_id, slot, item_id) in the post-reset schema.",
+        "V2__account_registry_and_scoped_account_data.sql creates account_bank with PRIMARY KEY (account_id, slot).",
+        "SchemaInitializerPostgresTest.unmanagedLegacyTablesAreExplicitlyResetBeforeTheFullChain asserts tableExists(\"account_bank\") is false at line 80, contradicting the required post-reset schema.",
+        "target/surefire-reports/infra.db.SchemaInitializerPostgresTest.txt reports 8 tests, 1 failure, 0 errors, 0 skipped. The sole failure is that assertion; seven tests pass.",
+        "The SHA-256 of src/test/java/infra/db/SchemaInitializerPostgresTest.java matches the protected hash in the QA plan."
+      ],
+      "actionable_items": [
+        "In unmanagedLegacyTablesAreExplicitlyResetBeforeTheFullChain, replace the assertion that account_bank is absent with checks that the recreated account_bank has account_id and the account-scoped key, and that it contains no rows from the seeded legacy table. Keep asserting that account_registry and account_source_state are empty. Preserve the existing test's purpose of proving legacy rows were dropped and the full chain was applied."
+      ]
+    },
+    {
+      "decision": "REVISE_TESTS",
+      "reason": "The corrected legacy-reset test is present and meaningful: it verifies the recreated account-scoped account_bank key, dropped legacy rows, and empty account/source tables. However, the prepared test still omits a rollback assertion explicitly required by the QA plan. The available Surefire report predates the correction and records the old, now-fixed assertion failure, so it provides no passing evidence for the corrected test.",
+      "evidence": [
+        "src/test/java/infra/db/SchemaInitializerPostgresTest.java now checks the recreated scoped account_bank table and verifies it contains no legacy rows; account_registry and account_source_state remain empty.",
+        "The failedMigrationDoesNotResetManagedSchemaAndRetryResumesHistory test checks unchanged Flyway history, retained account_registry, and successful retry, but never asserts that qa_injected_failure was rolled back.",
+        "The QA plan’s test specification explicitly requires verifying that the injected test table does not remain after the failed migration.",
+        "target/surefire-reports/infra.db.SchemaInitializerPostgresTest.txt reports the former failure at line 80, before the corrected test’s current checks; it does not establish that the corrected tests pass."
+      ],
+      "actionable_items": [
+        "In failedMigrationDoesNotResetManagedSchemaAndRetryResumesHistory, assert that qa_injected_failure does not exist after the injected migration fails, alongside the existing history and managed-table checks. Keep the retry assertion.",
+        "Run the focused SchemaInitializerPostgresTest against real PostgreSQL after the correction and retain its report so the corrected test result can be independently reviewed."
+      ]
+    },
+    {
+      "decision": "RETRY",
+      "reason": "The corrected PostgreSQL tests are present and their assertions match the story and QA plan, but there is no passing run evidence for the current version. The available Surefire report predates the corrections and records the old legacy-reset assertion failure.",
+      "evidence": [
+        "The legacy-reset test now verifies that account_bank is recreated with account_id and an account-scoped primary key, legacy rows are gone, and account_registry and account_source_state are empty.",
+        "The migration-failure test now checks that history is unchanged, qa_injected_failure was rolled back, managed tables remain, and retry succeeds.",
+        "The test file SHA-256 matches the QA plan's protected hash.",
+        "The available Surefire report records 8 tests with 1 failure: the former assertion that account_bank should be absent after reset. It does not verify the corrected test."
+      ],
+      "actionable_items": [
+        "Run SchemaInitializerPostgresTest against real PostgreSQL with the corrected test file and retain the fresh Surefire report for review."
+      ]
+    },
+    {
+      "decision": "APPROVE",
+      "reason": "The protected PostgreSQL integration tests are present, meaningful, and the current focused report shows all eight passing. Their assertions cover the story’s migration, account-ownership, legacy-reset, rollback, checksum, and fail-closed invariants; the corrections preserve the intended assertions.",
+      "evidence": [
+        "The test file’s SHA-256 matches the QA plan’s protected hash: 061c90ad00f0cb3c560432c89457208faf650350cb7c01cf2c5f3efb755ee614.",
+        "The current Surefire text and XML reports show 8 tests, 0 failures, 0 errors, and 0 skipped; the report includes the corrected legacy-reset and failed-migration test cases.",
+        "The legacy-reset test verifies account_bank is recreated with account_id and a composite account/slot key, seeded rows are dropped, and account/source registries remain empty.",
+        "The failed-migration test verifies history is unchanged, qa_injected_failure is rolled back, managed tables remain, and retry succeeds.",
+        "The production migrations define account-scoped keys and ownership constraints, generation checks, and NULLS NOT DISTINCT inventory-slot uniqueness; the initializer and managed-schema guard implement reset and fail-closed behavior."
+      ],
+      "actionable_items": []
+    }
+  ],
+  "schema_version": 1,
+  "qa_model": "gpt-6-luna",
+  "qa_reasoning_effort": "medium",
+  "story_contract_sha256": "f8507ec13f7c54237fa33037752cff7c841a9de3c4d0c8e4c5ad8badf4cd52d9",
+  "user_decision_ids": [],
+  "protected_test_hashes": {
+    "src/test/java/infra/db/SchemaInitializerPostgresTest.java": "061c90ad00f0cb3c560432c89457208faf650350cb7c01cf2c5f3efb755ee614"
+  }
+}

@@ -165,6 +165,10 @@ public final class AccountSync {
         }
 
         try (Connection con = Db.open()) {
+            // Unlike the bank and account-recipe publications below, this one's first write is the
+            // unscoped account_materials upsert rather than a source marker, so the migrated-schema
+            // refusal is stated here explicitly (STORY-INFRA-004).
+            repo.ManagedSchema.rejectUnscopedAccountAccess(con, "account_materials without an account scope");
             MaterialStorageSchema.ensure(con);
             con.setAutoCommit(false);
             try {

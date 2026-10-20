@@ -42,6 +42,8 @@ public final class DiscoveryItemCollector {
         """ + TpPriceFreshness.STALE_SQL_PREDICATE;
 
     public Set<Integer> collect(Connection con) throws Exception {
+        // "Not yet unlocked" is an account-owned fact on a migrated database (STORY-INFRA-004).
+        repo.ManagedSchema.rejectUnscopedAccountAccess(con, "Discovery price relevance without an account scope");
         Set<Integer> itemIds = new HashSet<>();
         try (PreparedStatement ps = con.prepareStatement(SQL);
              ResultSet rs = ps.executeQuery()) {

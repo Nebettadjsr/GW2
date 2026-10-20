@@ -28,12 +28,16 @@ public class CharacterRepository {
         String sql = "SELECT name FROM characters ORDER BY name";
 
         List<String> out = new ArrayList<>();
-        try (Connection con = Db.open();
-             PreparedStatement ps = con.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
+        try (Connection con = Db.open()) {
+            // A character name is unique within an account, not globally, so this roster read has
+            // no meaning without an account scope on a migrated database (STORY-INFRA-004).
+            ManagedSchema.rejectUnscopedAccountAccess(con, "characters without an account scope");
+            try (PreparedStatement ps = con.prepareStatement(sql);
+                 ResultSet rs = ps.executeQuery()) {
 
-            while (rs.next()) {
-                out.add(rs.getString("name"));
+                while (rs.next()) {
+                    out.add(rs.getString("name"));
+                }
             }
         }
         return out;
@@ -51,6 +55,7 @@ public class CharacterRepository {
      * (TARGET_ARCHITECTURE.md §9.1: readers must not mix input generations).
      */
     public List<DiscRow> loadAllCharacterCrafting(Connection con) throws SQLException {
+        ManagedSchema.rejectUnscopedAccountAccess(con, "character_crafting without an account scope");
         String sql = """
             SELECT c.name AS char_name, cc.discipline, cc.rating, cc.is_active
             FROM character_crafting cc
