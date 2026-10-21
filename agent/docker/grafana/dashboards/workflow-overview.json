@@ -1003,7 +1003,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 11
+        "y": 13
       },
       "id": 4,
       "options": {
@@ -1986,7 +1986,7 @@
         "h": 3,
         "w": 24,
         "x": 0,
-        "y": 19
+        "y": 21
       },
       "id": 11,
       "options": {
@@ -2190,7 +2190,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 22
+        "y": 24
       },
       "id": 5,
       "options": {
@@ -2284,7 +2284,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 31
+        "y": 33
       },
       "id": 12,
       "options": {
@@ -2439,185 +2439,496 @@
         "uid": "-- Dashboard --"
       },
       "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            {
-              "type": "regex",
-              "options": {
-                "pattern": "PAUSE",
-                "result": {
-                  "color": "#FFB357"
-                }
-              }
-            },
-            {
-              "type": "regex",
-              "options": {
-                "pattern": "^RUNNING",
-                "result": {
-                  "color": "#5794F2"
-                }
-              }
-            }
-          ],
-          "actions": [
-            {
-              "type": "infinity",
-              "title": "Pause - finish this step, then hold",
-              "oneClick": false,
-              "style": {
-                "backgroundColor": "#FFB357"
-              },
-              "infinity": {
-                "method": "POST",
-                "url": "http://172.29.240.1:8765/control",
-                "datasourceUid": "gw2-workflow-state",
-                "queryParams": [],
-                "headers": [
-                  [
-                    "Content-Type",
-                    "application/json"
-                  ]
-                ],
-                "body": "{\"action\": \"pause\"}"
-              }
-            },
-            {
-              "type": "infinity",
-              "title": "Resume the held run",
-              "oneClick": false,
-              "style": {
-                "backgroundColor": "#73BF69"
-              },
-              "infinity": {
-                "method": "POST",
-                "url": "http://172.29.240.1:8765/control",
-                "datasourceUid": "gw2-workflow-state",
-                "queryParams": [],
-                "headers": [
-                  [
-                    "Content-Type",
-                    "application/json"
-                  ]
-                ],
-                "body": "{\"action\": \"resume\"}"
-              }
-            },
-            {
-              "type": "infinity",
-              "title": "Start a run now (clears the hold)",
-              "oneClick": false,
-              "style": {
-                "backgroundColor": "#73BF69"
-              },
-              "infinity": {
-                "method": "POST",
-                "url": "http://172.29.240.1:8765/control",
-                "datasourceUid": "gw2-workflow-state",
-                "queryParams": [],
-                "headers": [
-                  [
-                    "Content-Type",
-                    "application/json"
-                  ]
-                ],
-                "body": "{\"action\": \"start\"}"
-              }
-            },
-            {
-              "type": "infinity",
-              "title": "ABORT - kill Claude and Codex now, then hold",
-              "oneClick": false,
-              "confirmation": "Kill every Claude and Codex process the workflow started? The interrupted step reruns after Resume.",
-              "style": {
-                "backgroundColor": "#F2495C"
-              },
-              "infinity": {
-                "method": "POST",
-                "url": "http://172.29.240.1:8765/control",
-                "datasourceUid": "gw2-workflow-state",
-                "queryParams": [],
-                "headers": [
-                  [
-                    "Content-Type",
-                    "application/json"
-                  ]
-                ],
-                "body": "{\"action\": \"abort\"}"
-              }
-            },
-            {
-              "type": "infinity",
-              "title": "Schedule: automatic",
-              "oneClick": false,
-              "style": {
-                "backgroundColor": "#5794F2"
-              },
-              "infinity": {
-                "method": "POST",
-                "url": "http://172.29.240.1:8765/control",
-                "datasourceUid": "gw2-workflow-state",
-                "queryParams": [],
-                "headers": [
-                  [
-                    "Content-Type",
-                    "application/json"
-                  ]
-                ],
-                "body": "{\"action\": \"auto\"}"
-              }
-            },
-            {
-              "type": "infinity",
-              "title": "Schedule: manual (clock never starts runs)",
-              "oneClick": false,
-              "style": {
-                "backgroundColor": "#5794F2"
-              },
-              "infinity": {
-                "method": "POST",
-                "url": "http://172.29.240.1:8765/control",
-                "datasourceUid": "gw2-workflow-state",
-                "queryParams": [],
-                "headers": [
-                  [
-                    "Content-Type",
-                    "application/json"
-                  ]
-                ],
-                "body": "{\"action\": \"manual\"}"
-              }
-            }
-          ]
-        },
+        "defaults": {},
         "overrides": []
       },
       "gridPos": {
         "x": 0,
         "y": 8,
         "w": 24,
-        "h": 3
+        "h": 5
       },
       "id": 14,
       "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "percentChangeColorMode": "standard",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "/^control_state$/",
-          "values": false
+        "infinitePan": false,
+        "inlineEditing": false,
+        "panZoom": false,
+        "showAdvancedTypes": false,
+        "zoomToContent": true,
+        "tooltip": {
+          "mode": "none",
+          "disableForOneClick": true
         },
-        "showPercentChange": false,
-        "text": {
-          "valueSize": 22
-        },
-        "textMode": "value",
-        "wideLayout": true
+        "root": {
+          "type": "frame",
+          "name": "controls",
+          "background": {
+            "color": {
+              "fixed": "transparent"
+            }
+          },
+          "border": {
+            "color": {
+              "fixed": "transparent"
+            }
+          },
+          "constraint": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "placement": {
+            "left": 0,
+            "top": 0,
+            "width": 1000,
+            "height": 124
+          },
+          "elements": [
+            {
+              "name": "state",
+              "type": "rectangle",
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "config": {
+                "align": "left",
+                "valign": "middle",
+                "size": 22,
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "text": {
+                  "mode": "field",
+                  "field": "control_state",
+                  "fixed": "Operator controls"
+                }
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "placement": {
+                "left": 0,
+                "top": 0,
+                "width": 1000,
+                "height": 44
+              }
+            },
+            {
+              "name": "pause",
+              "type": "rectangle",
+              "actions": [
+                {
+                  "type": "infinity",
+                  "title": "Pause - finish step, then hold",
+                  "oneClick": true,
+                  "infinity": {
+                    "method": "POST",
+                    "datasourceUid": "gw2-workflow-state",
+                    "queryParams": [],
+                    "url": "http://172.29.240.1:8765/control",
+                    "headers": [
+                      [
+                        "Content-Type",
+                        "application/json"
+                      ]
+                    ],
+                    "body": "{\"action\": \"pause\"}"
+                  }
+                }
+              ],
+              "background": {
+                "color": {
+                  "fixed": "#B7791F"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#B7791F"
+                },
+                "radius": 10,
+                "width": 2
+              },
+              "config": {
+                "align": "center",
+                "valign": "middle",
+                "size": 13,
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "Pause\nfinish step, then hold"
+                }
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "placement": {
+                "left": 0,
+                "top": 54,
+                "width": 136,
+                "height": 64
+              }
+            },
+            {
+              "name": "resume",
+              "type": "rectangle",
+              "actions": [
+                {
+                  "type": "infinity",
+                  "title": "Resume - the held run",
+                  "oneClick": true,
+                  "infinity": {
+                    "method": "POST",
+                    "datasourceUid": "gw2-workflow-state",
+                    "queryParams": [],
+                    "url": "http://172.29.240.1:8765/control",
+                    "headers": [
+                      [
+                        "Content-Type",
+                        "application/json"
+                      ]
+                    ],
+                    "body": "{\"action\": \"resume\"}"
+                  }
+                }
+              ],
+              "background": {
+                "color": {
+                  "fixed": "#2F855A"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#2F855A"
+                },
+                "radius": 10,
+                "width": 2
+              },
+              "config": {
+                "align": "center",
+                "valign": "middle",
+                "size": 13,
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "Resume\nthe held run"
+                }
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "placement": {
+                "left": 144,
+                "top": 54,
+                "width": 136,
+                "height": 64
+              }
+            },
+            {
+              "name": "start",
+              "type": "rectangle",
+              "actions": [
+                {
+                  "type": "infinity",
+                  "title": "Start run - now, clears hold",
+                  "oneClick": true,
+                  "infinity": {
+                    "method": "POST",
+                    "datasourceUid": "gw2-workflow-state",
+                    "queryParams": [],
+                    "url": "http://172.29.240.1:8765/control",
+                    "headers": [
+                      [
+                        "Content-Type",
+                        "application/json"
+                      ]
+                    ],
+                    "body": "{\"action\": \"start\"}"
+                  }
+                }
+              ],
+              "background": {
+                "color": {
+                  "fixed": "#2F855A"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#2F855A"
+                },
+                "radius": 10,
+                "width": 2
+              },
+              "config": {
+                "align": "center",
+                "valign": "middle",
+                "size": 13,
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "Start run\nnow, clears hold"
+                }
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "placement": {
+                "left": 288,
+                "top": 54,
+                "width": 136,
+                "height": 64
+              }
+            },
+            {
+              "name": "abort",
+              "type": "rectangle",
+              "actions": [
+                {
+                  "type": "infinity",
+                  "title": "ABORT - kill Claude + Codex",
+                  "oneClick": true,
+                  "confirmation": "Kill every Claude and Codex process the workflow started? The interrupted step reruns after Resume.",
+                  "infinity": {
+                    "method": "POST",
+                    "datasourceUid": "gw2-workflow-state",
+                    "queryParams": [],
+                    "url": "http://172.29.240.1:8765/control",
+                    "headers": [
+                      [
+                        "Content-Type",
+                        "application/json"
+                      ]
+                    ],
+                    "body": "{\"action\": \"abort\"}"
+                  }
+                }
+              ],
+              "background": {
+                "color": {
+                  "fixed": "#C53030"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#C53030"
+                },
+                "radius": 10,
+                "width": 2
+              },
+              "config": {
+                "align": "center",
+                "valign": "middle",
+                "size": 13,
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "ABORT\nkill Claude + Codex"
+                }
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "placement": {
+                "left": 432,
+                "top": 54,
+                "width": 136,
+                "height": 64
+              }
+            },
+            {
+              "name": "auto",
+              "type": "rectangle",
+              "actions": [
+                {
+                  "type": "infinity",
+                  "title": "Schedule - automatic",
+                  "oneClick": true,
+                  "infinity": {
+                    "method": "POST",
+                    "datasourceUid": "gw2-workflow-state",
+                    "queryParams": [],
+                    "url": "http://172.29.240.1:8765/control",
+                    "headers": [
+                      [
+                        "Content-Type",
+                        "application/json"
+                      ]
+                    ],
+                    "body": "{\"action\": \"auto\"}"
+                  }
+                }
+              ],
+              "background": {
+                "color": {
+                  "fixed": "#2B6CB0"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#2B6CB0"
+                },
+                "radius": 10,
+                "width": 2
+              },
+              "config": {
+                "align": "center",
+                "valign": "middle",
+                "size": 13,
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "Schedule\nautomatic"
+                }
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "placement": {
+                "left": 576,
+                "top": 54,
+                "width": 136,
+                "height": 64
+              }
+            },
+            {
+              "name": "manual",
+              "type": "rectangle",
+              "actions": [
+                {
+                  "type": "infinity",
+                  "title": "Schedule - manual",
+                  "oneClick": true,
+                  "infinity": {
+                    "method": "POST",
+                    "datasourceUid": "gw2-workflow-state",
+                    "queryParams": [],
+                    "url": "http://172.29.240.1:8765/control",
+                    "headers": [
+                      [
+                        "Content-Type",
+                        "application/json"
+                      ]
+                    ],
+                    "body": "{\"action\": \"manual\"}"
+                  }
+                }
+              ],
+              "background": {
+                "color": {
+                  "fixed": "#2B6CB0"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#2B6CB0"
+                },
+                "radius": 10,
+                "width": 2
+              },
+              "config": {
+                "align": "center",
+                "valign": "middle",
+                "size": 13,
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "Schedule\nmanual"
+                }
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "placement": {
+                "left": 720,
+                "top": 54,
+                "width": 136,
+                "height": 64
+              }
+            },
+            {
+              "name": "launch",
+              "type": "rectangle",
+              "actions": [
+                {
+                  "type": "infinity",
+                  "title": "Open workflow - window",
+                  "oneClick": true,
+                  "infinity": {
+                    "method": "POST",
+                    "datasourceUid": "gw2-workflow-state",
+                    "queryParams": [],
+                    "url": "http://172.29.240.1:8766/launch",
+                    "headers": [
+                      [
+                        "Content-Type",
+                        "application/json"
+                      ]
+                    ],
+                    "body": "{}"
+                  }
+                }
+              ],
+              "background": {
+                "color": {
+                  "fixed": "#6B46C1"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#6B46C1"
+                },
+                "radius": 10,
+                "width": 2
+              },
+              "config": {
+                "align": "center",
+                "valign": "middle",
+                "size": 13,
+                "color": {
+                  "fixed": "#FFFFFF"
+                },
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "Open workflow\nwindow"
+                }
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "placement": {
+                "left": 864,
+                "top": 54,
+                "width": 136,
+                "height": 64
+              }
+            }
+          ]
+        }
       },
       "pluginVersion": "13.2.4",
       "targets": [
@@ -2631,7 +2942,7 @@
           "withTransforms": false
         }
       ],
-      "title": "Operator controls - click for pause / resume / abort / schedule",
+      "title": "Operator controls - click a button (Abort asks first)",
       "transformations": [
         {
           "id": "filterByValue",
@@ -2652,8 +2963,8 @@
           }
         }
       ],
-      "type": "stat",
-      "description": "Commands go through the workflow data source to POST /control. Pause holds after the current step; abort also kills the agent processes. Needs the updated service."
+      "type": "canvas",
+      "description": "Buttons call POST /control through the workflow data source; \"Open workflow window\" calls the supervisor. Pause holds after the current step; abort also kills the agents."
     }
   ],
   "preload": false,

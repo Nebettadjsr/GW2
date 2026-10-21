@@ -63,6 +63,11 @@ the service kills agents an earlier process left registered. `ctl kill-leftovers
 without the service and refuses while it is running (use `abort` then). `--now` clears a persisted
 hold.
 
+`workflow_service\start-supervisor.cmd` runs a tiny launcher on port 8766 (same token and host). Its only
+endpoint, `POST /launch`, opens `start-service.cmd` in a new console unless the service already
+answers; it takes no arguments from the caller. The Grafana *Open workflow window* button uses it.
+Put a shortcut to the file in `shell:startup` so it exists after every login.
+
 Ctrl+C stops scheduling and waits for the current task to finish. A force-kill has weaker
 recovery: startup marks its task interrupted and retries the saved phase. Model calls, file
 changes and Git operations are not one transaction; inspect uncertain side effects after a

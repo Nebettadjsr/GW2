@@ -33,11 +33,19 @@ foreach ($panel in $dashboard.panels) {
         }
     }
 }
-# Operator-control actions are sent by the data source, which holds the token, to this service.
+# Operator-control actions are sent by the data source, which holds the token. Control commands go to
+# the workflow service; "launch" goes to the supervisor beside it (port 8766) that can open its window.
+$supervisorUri = [UriBuilder]$serviceRoot
+$supervisorUri.Port = 8766
+$supervisorRoot = $supervisorUri.Uri.GetLeftPart('Authority')
 foreach ($panel in $dashboard.panels) {
-    foreach ($action in $panel.fieldConfig.defaults.actions) {
-        if ($action.type -eq 'infinity' -and $action.infinity.datasourceUid -eq 'gw2-workflow-state') {
-            $action.infinity.url = $serviceRoot + '/control'
+    foreach ($element in $panel.options.root.elements) {
+        foreach ($action in $element.actions) {
+            if ($action.type -eq 'infinity' -and $action.infinity.datasourceUid -eq 'gw2-workflow-state') {
+                $path = ([Uri]$action.infinity.url).AbsolutePath
+                $root = if ($path -eq '/launch') { $supervisorRoot } else { $serviceRoot }
+                $action.infinity.url = $root + $path
+            }
         }
     }
 }
@@ -50,6 +58,7 @@ $null = New-Item -ItemType Directory -Force -Path $dashboardDir
 $settings = @{
     GW2_WORKFLOW_TOKEN_FILE = $tokenPath
     GW2_WORKFLOW_SERVICE_URL = $serviceRoot
+    GW2_WORKFLOW_SUPERVISOR_URL = $supervisorRoot
     GW2_GRAFANA_PORT = [string]$Port
     GW2_GRAFANA_CONTAINER_NAME = $ContainerName
     GW2_GRAFANA_VOLUME = $DataVolume

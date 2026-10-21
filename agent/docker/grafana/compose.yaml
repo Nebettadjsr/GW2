@@ -10,6 +10,7 @@ services:
     environment:
       GF_PLUGINS_PREINSTALL_SYNC: yesoreyeram-infinity-datasource@4.1.1
       GW2_WORKFLOW_SERVICE_URL: ${GW2_WORKFLOW_SERVICE_URL:-http://172.29.240.1:8765}
+      GW2_WORKFLOW_SUPERVISOR_URL: ${GW2_WORKFLOW_SUPERVISOR_URL:-http://172.29.240.1:8766}
     ports:
       - "127.0.0.1:${GW2_GRAFANA_PORT:-3000}:3000"
     volumes:

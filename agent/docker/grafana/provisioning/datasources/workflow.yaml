@@ -9,6 +9,7 @@ datasources:
       auth_method: bearerToken
       allowedHosts:
         - $GW2_WORKFLOW_SERVICE_URL
+        - $GW2_WORKFLOW_SUPERVISOR_URL
       customHealthCheckEnabled: true
       customHealthCheckUrl: $GW2_WORKFLOW_SERVICE_URL/health
     secureJsonData:
