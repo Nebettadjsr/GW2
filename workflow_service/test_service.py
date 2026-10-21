@@ -530,6 +530,7 @@ class ServiceHttpTests(unittest.TestCase):
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.shutdown)
         self.release = threading.Event()
+        self.entered_ci = threading.Event()
         pointer = mock.patch.object(cycle, "pointer_story", return_value=cycle.REPO_ROOT / STORY_FILE)
         pointer.start()
         self.addCleanup(pointer.stop)
@@ -558,6 +559,7 @@ class ServiceHttpTests(unittest.TestCase):
             time.sleep(0.02)
 
     def fake_ci(self, record, _checkpoint):
+        self.entered_ci.set()
         self.release.wait(5)
         record["phase"] = "finalize"
         return cycle.StepResult("PASSED", True)
@@ -613,6 +615,8 @@ class ServiceHttpTests(unittest.TestCase):
     def test_restart_marks_a_running_step_interrupted_so_the_next_run_repeats_it(self):
         with mock.patch.dict(cycle.STEPS, {"ci": self.fake_ci}):
             _, task = self.post("/cycle/step", {"callback_url": self.callback})
+            # Reading while the step thread still saves can hit a Windows replace race.
+            self.assertTrue(self.entered_ci.wait(5))
             restarted = service.Store(self.state)
             self.release.set()
         self.assertEqual(restarted.get(task["task_id"])["status"], "interrupted")

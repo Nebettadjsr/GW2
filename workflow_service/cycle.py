@@ -357,6 +357,7 @@ def step_implement(cycle: dict, context: StepContext) -> StepResult:
     lifecycle = story_state.snapshot_story_lifecycle(story_path)
     integrity = qa_agent.restore_protected_tests(plan)
     tests_before = qa_agent.snapshot_test_files()
+    deferred = None
     try:
         try:
             attempt = run_claude_attempt(prompt, label=f"Implementation {cycle['story_id']}",
@@ -367,10 +368,15 @@ def step_implement(cycle: dict, context: StepContext) -> StepResult:
                 clear_claude_session(cycle)
                 cycle["claude_session_id"] = str(uuid.uuid4())
                 full = cycle["prompt"] or orchestrator._prepare_implementation_prompt(story_path)[0]
-                attempt = run_claude_attempt(CONTINUATION + full.removeprefix(CONTINUATION)
-                                             if interrupted else full,
-                                             label=f"Implementation {cycle['story_id']}",
-                                             session_id=cycle["claude_session_id"], on_start=record_pid)
+                # Every Claude start is gated, including this one inside a running step.
+                again = claude_budget.status(context.budget_settings)
+                if not again["claude_allowed"]:
+                    deferred = StepResult("waiting_for_claude_budget", False, again["reason"], budget=again)
+                else:
+                    attempt = run_claude_attempt(CONTINUATION + full.removeprefix(CONTINUATION)
+                                                 if interrupted else full,
+                                                 label=f"Implementation {cycle['story_id']}",
+                                                 session_id=cycle["claude_session_id"], on_start=record_pid)
             # A session that produced any output exists on disk and must be resumed, not recreated.
             cycle.update(claude_session_started=cycle.get("claude_session_started", False) or bool(attempt.output),
                          claude_session_tokens=attempt.context_tokens or cycle.get("claude_session_tokens", 0))
@@ -390,10 +396,15 @@ def step_implement(cycle: dict, context: StepContext) -> StepResult:
                if not path.startswith("agent/logs/")}
     cycle["publish_paths"] = sorted(set(cycle["publish_paths"]) | changed)
 
+    if deferred is not None:
+        # Nothing further started; the pending prompt is rebuilt when the gate reopens.
+        story_state.set_story_unfinished(story_path)
+        return deferred
     if attempt.exit_code != 0:
         story_state.set_story_unfinished(story_path)
         # Claude's wording for an exhausted limit changes; /usage is authoritative.
-        if attempt.capacity_exhausted or not claude_budget.status(context.budget_settings)["claude_allowed"]:
+        # The window is deliberately not part of this: a real failure just before it closes still counts.
+        if attempt.capacity_exhausted or not (lambda b: b.get("usage_allowed", b["claude_allowed"]))(claude_budget.status(context.budget_settings)):
             return StepResult("capacity_exhausted", False,
                               "Claude ran out of capacity; rerun the pipeline once it is available.")
         cycle["failed_runs"] += 1

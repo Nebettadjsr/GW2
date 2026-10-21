@@ -13,6 +13,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
+from workflow_service import claude_budget
 from workflow_service.service import ACTIVE_STATUSES, WorkflowService, Busy, main, utc_now
 
 MAX_STEPS = 200
@@ -51,9 +52,10 @@ class StateLease:
             self.file = None
 
 
-def scheduled_slot(now: datetime) -> str | None:
-    """Start hourly at :35, 17:35 through 06:35, local time."""
-    if now.minute == 35 and (now.hour >= 17 or now.hour <= 6):
+def scheduled_slot(now: datetime, settings: dict | None = None) -> str | None:
+    """Start hourly at the window's start minute (default :35) while the Claude window is open."""
+    settings = claude_budget.settings_from(settings)
+    if now.minute == int(settings["window_start"].split(":")[1]) and claude_budget.window_open(settings, now):
         return now.strftime("%Y-%m-%dT%H:%M%z")
     return None
 
@@ -98,6 +100,11 @@ class WorkflowControl:
                     return
             if stop.is_set():
                 return
+            if self.store.control.get("hold"):
+                # Pause/abort: the current step is over; nothing new starts until resumed.
+                if self.store.control.get("status") != "paused":
+                    self.record(status="paused")
+                return
             # An interrupted task retries through the engine's existing recovery;
             # it is an execution attempt and still counts toward the run limit.
             if self.store.control.get("steps", 0) >= MAX_STEPS:
@@ -118,14 +125,24 @@ class WorkflowControl:
         self.service.automatic_execution = True
         self.record(enabled=True)
         immediate = run_now
+        if run_now:
+            self.record(hold=False)  # an explicit start overrides a persisted pause
         try:
             while not stop.is_set():
-                slot = scheduled_slot(self.clock())
-                due = slot is not None and slot != self.store.control.get("last_schedule_slot")
+                settings = self.service.budget_settings
+                slot = scheduled_slot(self.clock(), settings)
+                due = (slot is not None and slot != self.store.control.get("last_schedule_slot")
+                       and self.store.control.get("schedule", "auto") == "auto")
                 # Consume a busy schedule tick without queuing a second run.
                 if due:
                     self.record(last_schedule_slot=slot)
-                if self.store.control.get("active") or immediate or due:
+                if self.store.control.get("start_requested"):
+                    self.record(start_requested=False)
+                    immediate = True
+                held = self.store.control.get("hold")
+                if held and self.store.control.get("active") and self.store.control.get("status") != "paused":
+                    self.record(status="paused")
+                if not held and (self.store.control.get("active") or immediate or due):
                     if not self.store.control.get("active"):
                         self.begin()
                     immediate = False
@@ -135,7 +152,7 @@ class WorkflowControl:
                         logging.exception("Workflow driver failed; inspect the saved state before retrying")
                         self.finish("driver_error", f"{type(error).__name__}: {error}")
                     # A long run may have crossed this minute's scheduled start.
-                    slot = scheduled_slot(self.clock())
+                    slot = scheduled_slot(self.clock(), settings)
                     if slot:
                         self.record(last_schedule_slot=slot)
                     if once:
@@ -153,5 +170,8 @@ if __name__ == "__main__":
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--now", action="store_true", help="Run immediately, then keep the nightly schedule.")
     group.add_argument("--once", action="store_true", help="Run immediately and exit when the run stops.")
+    parser.add_argument("--ignore-window", action="store_true",
+                        help="Allow Claude to start outside the daily window for this process only.")
     args = parser.parse_args()
+    claude_budget.WINDOW_OVERRIDE = args.ignore_window
     main(run_workflow=True, run_now=args.now, once=args.once)

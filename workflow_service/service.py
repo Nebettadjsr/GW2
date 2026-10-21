@@ -27,7 +27,7 @@ if str(REPOSITORY) not in sys.path:
 
 from workflow_service import claude_budget, cycle as dev_cycle, status as status_view  # noqa: E402
 from agent.runtime.core import backlog_writer  # noqa: E402
-from agent.runtime.support import activity as activity_stream  # noqa: E402
+from agent.runtime.support import activity as activity_stream, processes  # noqa: E402
 from agent.runtime.support.capacity import ModelCapacityUnavailable  # noqa: E402
 from agent.runtime.support.daily_log import log_line  # noqa: E402
 
@@ -42,6 +42,7 @@ RESTART_EXIT_CODE = 3
 ACTIVE_STATUSES = {"queued", "running"}
 BUDGET_REFRESH_SECONDS = 15 * 60
 MAX_ACTIVITY = 200
+CONTROL_ACTIONS = ("pause", "resume", "start", "abort", "auto", "manual")
 
 
 def utc_now() -> str:
@@ -203,6 +204,7 @@ class WorkflowService:
                 "last_step_request_at": self.last_step_request_at,
                 "control": control,
                 "activity": self.store.activity,
+                "agent_processes": processes.entries(),
                 "sync_review": self.store.planning.get('review'),
                 "retry_limits": {
                     'coding': dev_cycle.MAX_RETRIES_PER_STORY,
@@ -258,6 +260,8 @@ class WorkflowService:
         state["refresh_interval_seconds"] = BUDGET_REFRESH_SECONDS
         state["claude_allowed"] = bool(
             not state["stale"] and not state["error"] and (state["result"] or {}).get("claude_allowed")
+            # The window is a function of the clock, so a cached reading may not outlive it.
+            and claude_budget.window_open(claude_budget.settings_from(state["settings"]), datetime.now())
         )
         return state
 
@@ -361,6 +365,15 @@ class WorkflowService:
         except ModelCapacityUnavailable as exc:  # A scheduling pause, not a failure.
             result = dev_cycle.StepResult("model_capacity_exhausted", False, f"{exc}; the next run retries.")
             status, error = "completed", None
+        except processes.StepAborted:
+            # Not a failure: no retry budget, history entry or result. Resuming reruns the step
+            # from its checkpoint (an implementation continues its Claude session).
+            if cycle is not None:
+                self.store.save_cycle(cycle)
+            self.store.update(task_id, status="interrupted", error="Aborted by the operator.")
+            activity_stream.emit('Workflow', f"{step}: aborted by the operator; resume to rerun it.", kind='waiting')
+            log_line(f"Pipeline {step} [{(cycle or {}).get('story_id', 'no active story')}]: aborted by the operator")
+            return
         except Exception as exc:  # The step reruns on the next pipeline run.
             logging.exception("Step %s failed", step)
             result = dev_cycle.StepResult("error", False, f"{type(exc).__name__}: {exc}")
@@ -397,6 +410,33 @@ class WorkflowService:
         self.deliver_callback(task_id)
         if result.get("restart"):
             self.restart()
+
+    def control_command(self, action) -> dict:
+        """Operator control. ``pause`` holds after the current step; ``abort`` also kills the agent
+        processes now. Both persist, so a restart stays held until ``resume``/``start``."""
+        if action not in CONTROL_ACTIONS:
+            raise ValueError(f"action must be one of: {', '.join(CONTROL_ACTIONS)}.")
+        with self.store.lock:
+            control = self.store.control
+            if action in ("pause", "abort"):
+                control["hold"] = True
+                if control.get("active"):
+                    control["status"] = "paused"
+            elif action in ("resume", "start"):
+                control["hold"] = False
+                if control.get("active"):
+                    control["status"] = "running"
+                if action == "start":
+                    control["start_requested"] = True
+            else:
+                control["schedule"] = action
+            control["updated_at"] = utc_now()
+            self.store.save()
+            snapshot = copy.deepcopy(control)
+        # Outside the store lock: killing waits on the processes' own teardown.
+        killed = processes.abort_all() if action == "abort" else []
+        log_line(f"Operator command: {action}" + (f" (stopped {len(killed)} agent process(es))" if killed else ""))
+        return {"control": snapshot, "stopped_processes": killed}
 
     def restart(self) -> None:
         """Exit once this response is out; start-service.cmd starts the merged code."""
@@ -521,7 +561,7 @@ def make_handler(service: WorkflowService):
 
         def do_POST(self) -> None:
             path = urlparse(self.path).path
-            if path not in ("/cycle/step", "/tasks", "/budget"):
+            if path not in ("/cycle/step", "/tasks", "/budget", "/control"):
                 self._send(404, {"error": "Not found."})
                 return
             try:
@@ -537,6 +577,12 @@ def make_handler(service: WorkflowService):
                     self._send(200, service.check_budget(body.get("budget")))
                 except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as error:
                     self._send(400 if isinstance(error, ValueError) else 500, {"error": str(error)})
+                return
+            if path == "/control":
+                try:
+                    self._send(200, service.control_command(body.get("action")))
+                except ValueError as error:
+                    self._send(400, {"error": str(error)})
                 return
             if service.automatic_execution:
                 self._send(409, {"error": "Automatic workflow execution is active; external task starts are disabled."})
@@ -606,6 +652,11 @@ def main(*, run_workflow: bool = False, run_now: bool = False, once: bool = Fals
     lease = StateLease(state_file)
     try:
         lease.acquire()
+        # Agents an earlier service left running must not write beside this one.
+        registry = state_file.with_suffix(".processes.json")
+        for entry in processes.sweep_stale(registry):
+            logging.warning("Stopped leftover %s process %s from an earlier service.", entry["role"], entry["pid"])
+        processes.configure(registry)
         service = WorkflowService(Store(state_file), token,
                         callback_origin=os.environ.get("GW2_N8N_CALLBACK_ORIGIN", "http://localhost:5678"))
     except BaseException:

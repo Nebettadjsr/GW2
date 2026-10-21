@@ -33,6 +33,14 @@ foreach ($panel in $dashboard.panels) {
         }
     }
 }
+# Operator-control actions are sent by the data source, which holds the token, to this service.
+foreach ($panel in $dashboard.panels) {
+    foreach ($action in $panel.fieldConfig.defaults.actions) {
+        if ($action.type -eq 'infinity' -and $action.infinity.datasourceUid -eq 'gw2-workflow-state') {
+            $action.infinity.url = $serviceRoot + '/control'
+        }
+    }
+}
 $dashboardDir = Join-Path $PSScriptRoot '.local/dashboards'
 $null = New-Item -ItemType Directory -Force -Path $dashboardDir
 [IO.File]::WriteAllText((Join-Path $dashboardDir 'workflow-overview.json'),

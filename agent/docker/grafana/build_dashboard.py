@@ -11,7 +11,7 @@ STAGES = "sync review plan select qa implement evaluate publish ci finalize".spl
 def update_queries(dashboard):
     projection = (ROOT / "dashboard-state.jq").read_text(encoding="utf-8")
     strings = ["activity", "story", "saved_phase", "detail", "weekly", "session",
-               "budget_status", "budget_time", "request_notice", "retry_label"] + [s + "_label" for s in STAGES]
+               "budget_status", "budget_time", "request_notice", "retry_label", "control_state"] + [s + "_label" for s in STAGES]
     for panel in dashboard["panels"]:
         for target in panel.get("targets", []):
             if (target.get("datasource", {}).get("uid") != "gw2-workflow-state"
@@ -93,7 +93,7 @@ def share_queries(dashboard):
     target['columns'] = [column for column in target['columns']
                          if column['selector'] not in {c['selector'] for c in extra_columns}] + extra_columns
     shared = {'type': 'datasource', 'uid': '-- Dashboard --'}
-    for identifier in (1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13):
+    for identifier in (1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14):
         if identifier not in panels:
             continue
         panel = panels[identifier]
@@ -178,6 +178,52 @@ def add_retry_panel(dashboard):
     return dashboard
 
 
+CONTROL_URL = 'http://172.29.240.1:8765/control'  # start.ps1 rewrites the host for the local copy
+OPERATOR_ACTIONS = [
+    # (action, title, colour, confirmation)
+    ('pause', 'Pause - finish this step, then hold', '#FFB357', None),
+    ('resume', 'Resume the held run', '#73BF69', None),
+    ('start', 'Start a run now (clears the hold)', '#73BF69', None),
+    ('abort', 'ABORT - kill Claude and Codex now, then hold', '#F2495C',
+     'Kill every Claude and Codex process the workflow started? The interrupted step reruns after Resume.'),
+    ('auto', 'Schedule: automatic', '#5794F2', None),
+    ('manual', 'Schedule: manual (clock never starts runs)', '#5794F2', None),
+]
+
+
+def add_operator_controls(dashboard):
+    """A stat panel whose click menu sends the pause/abort/schedule commands through the data source."""
+    if any(p['id'] == 14 for p in dashboard['panels']):
+        return dashboard
+    panels = {p['id']: p for p in dashboard['panels']}
+    top = panels[4]['gridPos']['y']
+    for panel in dashboard['panels']:
+        if panel['gridPos']['y'] >= top:
+            panel['gridPos']['y'] += 3
+    panel = copy.deepcopy(panels[13])
+    panel.update(id=14, title='Operator controls - click for pause / resume / abort / schedule',
+                 gridPos={'x': 0, 'y': top, 'w': 24, 'h': 3},
+                 description='Commands go through the workflow data source to POST /control. Pause holds after the '
+                             'current step; abort also kills the agent processes. Needs the updated service.')
+    panel['options']['reduceOptions']['fields'] = '/^control_state$/'
+    panel['options']['text'] = {'valueSize': 22}
+    panel['fieldConfig'] = {'defaults': {
+        'mappings': [
+            {'type': 'regex', 'options': {'pattern': 'PAUSE', 'result': {'color': '#FFB357'}}},
+            {'type': 'regex', 'options': {'pattern': '^RUNNING', 'result': {'color': '#5794F2'}}}],
+        'actions': [
+            {'type': 'infinity', 'title': title, 'oneClick': False,
+             **({'confirmation': confirmation} if confirmation else {}),
+             'style': {'backgroundColor': colour},
+             'infinity': {'method': 'POST', 'url': CONTROL_URL, 'datasourceUid': 'gw2-workflow-state',
+                          'queryParams': [], 'headers': [['Content-Type', 'application/json']],
+                          'body': json.dumps({'action': action})}}
+            for action, title, colour, confirmation in OPERATOR_ACTIONS]},
+        'overrides': []}
+    dashboard['panels'].append(panel)
+    return dashboard
+
+
 if __name__ == "__main__":
     dashboard = json.loads(PATH.read_text(encoding="utf-8-sig"))
-    PATH.write_text(json.dumps(share_queries(update_queries(add_retry_panel(add_activity_feed(add_status_panels(dashboard))))), indent=2) + "\n", encoding="utf-8")
+    PATH.write_text(json.dumps(share_queries(update_queries(add_operator_controls(add_retry_panel(add_activity_feed(add_status_panels(dashboard)))))), indent=2) + "\n", encoding="utf-8")

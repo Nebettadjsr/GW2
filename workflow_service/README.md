@@ -27,14 +27,41 @@ exit when the run stops. `start-workflow.cmd` remains an alias. With environment
 loaded, the Python entry point is `python -m workflow_service.control`.
 
 The schedule starts hourly at `:35`, from `17:35` through `06:35`, using the host's local
-timezone. It does not cut off an active run at the end of that window. Busy starts are skipped;
-starts missed while the service is off are not replayed.
+timezone. Busy starts are skipped; starts missed while the service is off are not replayed.
+
+The same window (`window_start`/`window_end` in the budget settings, both inclusive) gates **every
+Claude start**: first attempts, evaluator retries, CI fixes and the session re-creation inside a
+running step. Each checks it together with the weekly and 5h limits before invoking Claude, and a
+closed window returns `waiting_for_claude_budget`, which stops the run until the next in-window
+slot. A Claude already running is never cut off when the window closes, and Codex steps ignore the
+window. `control --ignore-window` lifts it for that process only; nothing persists the override.
 
 Each run continues only while completed tasks return `proceed: true`, up to 200 step attempts.
 Waiting polls do not consume attempts. A budget wait, empty queue, decision or error stops the
 run until a later start. The `control` record persists the task identity, attempt count, consumed
 schedule slot and stop reason. An unfinished run resumes on restart, including outside the start
 window. A sync that changes workflow Python code requests a process restart through the launcher.
+
+## Pause, abort and manual mode
+
+State lives in the `control` record, so it survives restarts and appears in `GET /cycle`
+(`control.hold`, `control.schedule`, `agent_processes`). Send commands with
+`POST /control {"action": ...}` or `workflow_service\ctl.cmd <action>`:
+
+| Action | Effect |
+| --- | --- |
+| `pause` | Finish the current step, then hold. A held service starts nothing, even after a restart or on a schedule slot. |
+| `resume` | Clear the hold; an unfinished run continues. |
+| `start` | Clear the hold and begin a run now if none is active. |
+| `abort` | Hold, then kill every Claude and Codex process tree the service registered. The step is marked `interrupted` with no retry spent and no history entry; after `resume` it reruns from its checkpoint (an implementation continues its Claude session). |
+| `auto` / `manual` | Whether the clock may start runs. Manual runs start only with `start` or `--now`. |
+
+Registered processes are tracked by PID and start time in `<state>.processes.json`, never found by
+name, so interactive Claude sessions are untouched. Git operations are not registered, and an
+abort cannot interrupt a step that waits on GitHub CI; it holds when that step returns. At startup
+the service kills agents an earlier process left registered. `ctl kill-leftovers` does the same
+without the service and refuses while it is running (use `abort` then). `--now` clears a persisted
+hold.
 
 Ctrl+C stops scheduling and waits for the current task to finish. A force-kill has weaker
 recovery: startup marks its task interrupted and retries the saved phase. Model calls, file

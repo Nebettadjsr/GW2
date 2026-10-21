@@ -10,6 +10,9 @@ USAGE = ("Current session: {session}% used · resets Oct 9, 11:40pm (Europe/Berl
 
 
 def status(now, weekly=0, session=0, **settings):
+    # The weekly/session rules are tested independently of the daily start window.
+    settings.setdefault("window_start", "00:00")
+    settings.setdefault("window_end", "23:59")
     return claude_budget.status(settings, now=now, usage_text=USAGE.format(weekly=weekly, session=session))
 
 

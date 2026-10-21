@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import threading
 
+from agent.runtime.support import processes
 from agent.runtime.support.config import AGENT_PROCESS_FLAGS, REPO_ROOT
 from agent.runtime.support.capacity import ModelCapacityUnavailable
 
@@ -502,6 +503,8 @@ def run_codex(
         creationflags=AGENT_PROCESS_FLAGS,
     )
 
+    processes.register(process.pid, "codex")
+
     stderr_thread = threading.Thread(
         target=_drain_stderr,
         args=(process.stderr,),
@@ -556,6 +559,7 @@ def run_codex(
     process.stdout.close()
 
     return_code = process.wait()
+    processes.finish(process.pid)  # raises StepAborted when an operator abort killed it
 
     stderr_thread.join(
         timeout=1

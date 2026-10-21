@@ -15,7 +15,8 @@
 (if $busy then $r.step elif $outcome == "queue_empty" then null
  elif $stopped and $outcome == "ci_still_failed" then "ci"
  elif $stopped then ($event.step // (if $s.latest_event != null then "control" else $c.phase end)) else $c.phase end) as $focus |
-(if $busy then (if $r.status == "queued" then "QUEUED" else "RUNNING" end)
+(if $busy then (if $r.status == "queued" then "QUEUED" elif $control.hold == true then "RUNNING / PAUSE REQUESTED" else "RUNNING" end)
+ elif $control.hold == true then "PAUSED / HOLDING"
  elif $control.active == true then "ADVANCING"
  elif $event.status == "interrupted" then "INTERRUPTED / AWAITING RECOVERY"
  elif $budget_unknown then "BUDGET CHECK NEEDED"
@@ -57,6 +58,10 @@ def pct($value): if $value == null then "?" else ($value | tostring) + "%" end;
     else ((($s.human_requests.open // []) | map(.id + " [" + (.story_ids | join(", ")) + "]") | join(" | ")) as $requests |
       (if $requests == "" then "No open human requests." else $requests end) +
       (if ($s.human_requests.errors // [] | length) > 0 then " | Some request files could not be read; see request status below." else "" end)) end),
+  control_state: ((if $control.hold == true then (if $busy then "PAUSE REQUESTED - finishing " + ($r.step // "step") else "PAUSED - holding" end)
+      elif $control.active == true then "RUNNING" else "IDLE" end)
+    + " | schedule: " + ($control.schedule // "auto")
+    + (if (($s.agent_processes // []) | length) > 0 then " | agents: " + (($s.agent_processes | map(.role)) | join(", ")) else "" end)),
   weekly: (pct($usage.weekly_used_percent) + " used / " + pct($usage.weekly_cap_percent) + " allowed"),
   session: (pct($usage.session_used_percent) + " used / " + pct($usage.session_limit_percent) + " start threshold"),
   budget_status: (if $b.error != null then "ERROR: " + ($b.error | tostring)

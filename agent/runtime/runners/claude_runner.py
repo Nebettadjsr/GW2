@@ -8,7 +8,7 @@ import signal
 import subprocess
 import sys
 import time
-from agent.runtime.support import activity
+from agent.runtime.support import activity, processes
 
 from agent.runtime.support.config import (
     AGENT_PROCESS_FLAGS,
@@ -336,6 +336,7 @@ def run_claude_attempt(
         creationflags=AGENT_PROCESS_FLAGS,
     )
 
+    processes.register(process.pid, "claude")
     if on_start is not None:
         on_start(process.pid)
 
@@ -394,6 +395,8 @@ def run_claude_attempt(
     print(
         "========================================\n"
     )
+
+    processes.finish(process.pid)  # raises StepAborted when an operator abort killed it
 
     output = "\n".join(output_lines)
     return ClaudeAttempt(
