@@ -492,3 +492,13 @@ class ConditionalReviewPromptTest(unittest.TestCase):
         with patch.object(qa_agent, "run_qa", side_effect=review):
             with self.assertRaisesRegex(qa_agent.QAPlanError, "requires evidence"):
                 REAL_RUN_CONDITIONAL_REVIEW(config.REPO_ROOT / "agent/stories/STORY-T-001-x.md", {})
+
+
+class QAInterfaceDesignOwnershipTest(unittest.TestCase):
+    """A missing production interface is QA's design task, never a Product Owner question."""
+
+    def test_prompt_makes_interface_design_qa_owned_and_forbids_needs_user_for_it(self):
+        story = config.REPO_ROOT / "agent" / "stories" / "STORY-T-001-x.md"
+        prompt = qa_agent.build_qa_prompt(story, "story text", [])
+        self.assertIn("Technical design is yours, not the Product Owner's", prompt)
+        self.assertIn("Never return NEEDS_USER because an interface is absent", prompt)

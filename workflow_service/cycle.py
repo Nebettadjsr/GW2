@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import time
 import uuid
+import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, NamedTuple
@@ -42,6 +44,7 @@ from agent.runtime.runners.claude_runner import process_start_time, run_claude_a
 from agent.runtime.support import git_sync, github_ci
 from agent.runtime.support import activity
 from agent.runtime.support.config import (
+    ARTIFACTS_DIR,
     AGENT_BRANCH, BACKLOG_FILE, CLAUDE_RESULT_FILE, CURRENT_STORY_FILE, MAX_CI_FIX_ATTEMPTS,
     MAX_CLAUDE_FAILED_RUNS_PER_STORY, MAX_RETRIES_PER_STORY, MAX_QA_TEST_REPAIRS_PER_STORY, REPO_ROOT,
 )
@@ -91,10 +94,40 @@ def _story_path(cycle: dict) -> Path:
     return REPO_ROOT / cycle["story_file"]
 
 
+CARRIED_PATHS_FILE = ARTIFACTS_DIR / "CARRIED_PUBLISH_PATHS.json"
+
+
+def _carried_paths() -> dict[str, list[str]]:
+    try:
+        value = json.loads(CARRIED_PATHS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(value, dict):
+        return {}
+    return {key: [p for p in paths if isinstance(p, str)]
+            for key, paths in value.items() if isinstance(paths, list)}
+
+
+def _store_carried(story_id: str, paths) -> None:
+    """Remember (or, with no paths, forget) the work a story left unpublished.
+
+    A blocked story's files stay dirty in the working tree. When the story is activated again its
+    run baseline contains them, so without this record they would never be committed.
+    """
+    carried = _carried_paths()
+    if paths:
+        carried[story_id] = sorted(set(paths))
+    else:
+        carried.pop(story_id, None)
+    CARRIED_PATHS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CARRIED_PATHS_FILE.write_text(json.dumps(carried, indent=1), encoding="utf-8")
+
+
 def new_cycle(story_path: Path) -> dict:
     content = read_file(story_path)
+    story_id = story_state.extract_story_id(content) or story_path.stem
     return {
-        "story_id": story_state.extract_story_id(content) or story_path.stem,
+        "story_id": story_id,
         "story_file": _relative(story_path),
         "phase": "qa",
         "retry_count": 0,
@@ -110,7 +143,7 @@ def new_cycle(story_path: Path) -> dict:
         "claude_pid": None,
         "claude_pid_started": None,
         "implement_started": False,
-        "publish_paths": [],
+        "publish_paths": _carried_paths().get(story_id, []),
         "published_sha": None,
         "history": [],
     }
@@ -135,6 +168,7 @@ def _block(cycle: dict, reason: str, claude_output: str = "") -> StepResult:
 
 def _stop_blocked(cycle: dict, reason: str) -> StepResult:
     story_state.clear_active_story()
+    _store_carried(cycle["story_id"], cycle["publish_paths"])
     cycle["phase"] = "blocked"
     return StepResult("blocked", False, reason)
 
@@ -310,6 +344,26 @@ def _reported_interface_deviations() -> list[str]:
         return []
 
 
+def _path_hash(path: str) -> str | None:
+    target = REPO_ROOT / path
+    return hashlib.sha256(target.read_bytes()).hexdigest() if target.is_file() else None
+
+
+def _content_hashes(paths) -> dict[str, str | None]:
+    return {path: _path_hash(path) for path in paths}
+
+
+def _changed_since(baseline: set[str], hashes: dict, current: set[str]) -> set[str]:
+    """Paths this run touched: new dirty paths, plus baseline paths whose content changed.
+
+    A file already dirty when the run began (e.g. ``pom.xml`` left by a blocked story) is
+    still this story's work once the run edits it; comparing paths alone would drop it from
+    the commit. A baseline without recorded hashes (an older run) keeps the path-only rule.
+    """
+    return (current - baseline) | {path for path in current & baseline
+                                   if path in hashes and _path_hash(path) != hashes[path]}
+
+
 def step_implement(cycle: dict, context: StepContext) -> StepResult:
     story_path = _story_path(cycle)
     plan = qa_agent.load_plan(story_path)
@@ -337,8 +391,9 @@ def step_implement(cycle: dict, context: StepContext) -> StepResult:
         if resume:
             prompt = CONTINUATION  # the session already holds the full prompt
     else:
+        dirty = git_sync.working_tree_paths()
         cycle.update(implement_started=True, prompt=prompt,
-                     run_baseline=sorted(git_sync.working_tree_paths()),
+                     run_baseline=sorted(dirty), run_baseline_hashes=_content_hashes(dirty),
                      result_hash_before=file_hash(CLAUDE_RESULT_FILE))
     if resume:
         prompt = RESUME_NOTE + prompt
@@ -346,6 +401,7 @@ def step_implement(cycle: dict, context: StepContext) -> StepResult:
         clear_claude_session(cycle)
         cycle["claude_session_id"] = str(uuid.uuid4())
     baseline = set(cycle["run_baseline"])
+    baseline_hashes = cycle.get("run_baseline_hashes") or {}
     context.checkpoint()  # an interrupted run must resume with this baseline and session
 
     def record_pid(pid: int) -> None:
@@ -392,7 +448,7 @@ def step_implement(cycle: dict, context: StepContext) -> StepResult:
             plan_file.write_bytes(plan_snapshot)
             integrity.append(_relative(plan_file))
 
-    changed = {path for path in git_sync.working_tree_paths() - baseline
+    changed = {path for path in _changed_since(baseline, baseline_hashes, git_sync.working_tree_paths())
                if not path.startswith("agent/logs/")}
     cycle["publish_paths"] = sorted(set(cycle["publish_paths"]) | changed)
 
@@ -503,6 +559,7 @@ def step_publish(cycle: dict, _context: StepContext) -> StepResult:
     if push["status"] not in ("PUSHED", "UP_TO_DATE"):
         return StepResult(push["status"], False,
                           f"Publication failed: {push['reason']}. Fix it and rerun; the step is retried.")
+    _store_carried(cycle["story_id"], [])
     cycle.update(phase="ci", published_sha=push["sha"])
     return StepResult("published", True, sha=push["sha"], paths=paths)
 
