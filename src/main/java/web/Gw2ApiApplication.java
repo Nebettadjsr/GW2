@@ -54,6 +54,11 @@ import java.util.function.Supplier;
 public class Gw2ApiApplication {
 
     public static void main(String[] args) {
+        // The startup schema gate runs before the Spring context exists, so no repository, task or
+        // scheduler can reach the database before the versioned chain is validated or applied, and
+        // the process stops here when it cannot be (STORY-INFRA-004, TARGET_ARCHITECTURE.md §7.3).
+        infra.db.SchemaInitializer.initializeRuntimeDatabase();
+
         SpringApplication.run(Gw2ApiApplication.class, args);
     }
 
