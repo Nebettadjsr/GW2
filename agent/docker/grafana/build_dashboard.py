@@ -178,49 +178,79 @@ def add_retry_panel(dashboard):
     return dashboard
 
 
-CONTROL_URL = 'http://172.29.240.1:8765/control'  # start.ps1 rewrites the host for the local copy
+SERVICE_URL = 'http://172.29.240.1:8765'  # start.ps1 rewrites these hosts in the local copy
+SUPERVISOR_URL = 'http://172.29.240.1:8766'
 OPERATOR_ACTIONS = [
-    # (action, title, colour, confirmation)
-    ('pause', 'Pause - finish this step, then hold', '#FFB357', None),
-    ('resume', 'Resume the held run', '#73BF69', None),
-    ('start', 'Start a run now (clears the hold)', '#73BF69', None),
-    ('abort', 'ABORT - kill Claude and Codex now, then hold', '#F2495C',
+    # (name, label, colour, confirmation, url path on the service, body)
+    ('pause', 'Pause\nfinish step, then hold', '#B7791F', None),
+    ('resume', 'Resume\nthe held run', '#2F855A', None),
+    ('start', 'Start run\nnow, clears hold', '#2F855A', None),
+    ('abort', 'ABORT\nkill Claude + Codex', '#C53030',
      'Kill every Claude and Codex process the workflow started? The interrupted step reruns after Resume.'),
-    ('auto', 'Schedule: automatic', '#5794F2', None),
-    ('manual', 'Schedule: manual (clock never starts runs)', '#5794F2', None),
+    ('auto', 'Schedule\nautomatic', '#2B6CB0', None),
+    ('manual', 'Schedule\nmanual', '#2B6CB0', None),
+    ('launch', 'Open workflow\nwindow', '#6B46C1', None),
 ]
 
 
+def operator_action(name, label, confirmation):
+    """An Infinity action: the data source sends it server-side with its own bearer token."""
+    launch = name == 'launch'
+    return {'type': 'infinity', 'title': label.replace('\n', ' - '), 'oneClick': True,
+            **({'confirmation': confirmation} if confirmation else {}),
+            'infinity': {'method': 'POST', 'datasourceUid': 'gw2-workflow-state', 'queryParams': [],
+                         'url': SUPERVISOR_URL + '/launch' if launch else SERVICE_URL + '/control',
+                         'headers': [['Content-Type', 'application/json']],
+                         'body': '{}' if launch else json.dumps({'action': name})}}
+
+
 def add_operator_controls(dashboard):
-    """A stat panel whose click menu sends the pause/abort/schedule commands through the data source."""
-    if any(p['id'] == 14 for p in dashboard['panels']):
-        return dashboard
+    """A canvas of one-click buttons (stat panels do not offer actions) above the workflow canvas."""
     panels = {p['id']: p for p in dashboard['panels']}
+    if panels.get(14, {}).get('type') == 'canvas':
+        return dashboard
+    if 14 in panels:  # replace the first, stat-based version
+        old = panels[14]['gridPos']
+        dashboard['panels'] = [p for p in dashboard['panels'] if p['id'] != 14]
+        for panel in dashboard['panels']:
+            if panel['gridPos']['y'] >= old['y'] + old['h']:
+                panel['gridPos']['y'] -= old['h']
     top = panels[4]['gridPos']['y']
+    height = 5
     for panel in dashboard['panels']:
         if panel['gridPos']['y'] >= top:
-            panel['gridPos']['y'] += 3
-    panel = copy.deepcopy(panels[13])
-    panel.update(id=14, title='Operator controls - click for pause / resume / abort / schedule',
-                 gridPos={'x': 0, 'y': top, 'w': 24, 'h': 3},
-                 description='Commands go through the workflow data source to POST /control. Pause holds after the '
-                             'current step; abort also kills the agent processes. Needs the updated service.')
-    panel['options']['reduceOptions']['fields'] = '/^control_state$/'
-    panel['options']['text'] = {'valueSize': 22}
-    panel['fieldConfig'] = {'defaults': {
-        'mappings': [
-            {'type': 'regex', 'options': {'pattern': 'PAUSE', 'result': {'color': '#FFB357'}}},
-            {'type': 'regex', 'options': {'pattern': '^RUNNING', 'result': {'color': '#5794F2'}}}],
-        'actions': [
-            {'type': 'infinity', 'title': title, 'oneClick': False,
-             **({'confirmation': confirmation} if confirmation else {}),
-             'style': {'backgroundColor': colour},
-             'infinity': {'method': 'POST', 'url': CONTROL_URL, 'datasourceUid': 'gw2-workflow-state',
-                          'queryParams': [], 'headers': [['Content-Type', 'application/json']],
-                          'body': json.dumps({'action': action})}}
-            for action, title, colour, confirmation in OPERATOR_ACTIONS]},
-        'overrides': []}
-    dashboard['panels'].append(panel)
+            panel['gridPos']['y'] += height
+    width, gap = 136, 8
+    elements = [{
+        'name': 'state', 'type': 'rectangle',
+        'background': {'color': {'fixed': 'transparent'}}, 'border': {'color': {'fixed': 'transparent'}},
+        'config': {'align': 'left', 'valign': 'middle', 'size': 22, 'color': {'fixed': '#FFFFFF'},
+                   'text': {'mode': 'field', 'field': 'control_state', 'fixed': 'Operator controls'}},
+        'constraint': {'horizontal': 'left', 'vertical': 'top'},
+        'placement': {'left': 0, 'top': 0, 'width': 1000, 'height': 44}}]
+    for index, (name, label, colour, confirmation) in enumerate(OPERATOR_ACTIONS):
+        elements.append({
+            'name': name, 'type': 'rectangle',
+            'actions': [operator_action(name, label, confirmation)],
+            'background': {'color': {'fixed': colour}},
+            'border': {'color': {'fixed': colour}, 'radius': 10, 'width': 2},
+            'config': {'align': 'center', 'valign': 'middle', 'size': 13, 'color': {'fixed': '#FFFFFF'},
+                       'text': {'mode': 'fixed', 'fixed': label}},
+            'constraint': {'horizontal': 'left', 'vertical': 'top'},
+            'placement': {'left': index * (width + gap), 'top': 54, 'width': width, 'height': 64}})
+    canvas = copy.deepcopy(panels[4])
+    canvas.update(id=14, title='Operator controls - click a button (Abort asks first)',
+                  gridPos={'x': 0, 'y': top, 'w': 24, 'h': height},
+                  description='Buttons call POST /control through the workflow data source; "Open workflow window" '
+                              'calls the supervisor. Pause holds after the current step; abort also kills the agents.')
+    canvas['options'] = {
+        'infinitePan': False, 'inlineEditing': False, 'panZoom': False, 'showAdvancedTypes': False,
+        'zoomToContent': True, 'tooltip': {'mode': 'none', 'disableForOneClick': True},
+        'root': {'type': 'frame', 'name': 'controls', 'background': {'color': {'fixed': 'transparent'}},
+                 'border': {'color': {'fixed': 'transparent'}}, 'constraint': {'horizontal': 'left', 'vertical': 'top'},
+                 'placement': {'left': 0, 'top': 0, 'width': 1000, 'height': 124}, 'elements': elements}}
+    canvas['fieldConfig'] = {'defaults': {}, 'overrides': []}
+    dashboard['panels'].append(canvas)
     return dashboard
 
 

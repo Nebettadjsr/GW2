@@ -38,17 +38,22 @@ class DashboardStateTests(unittest.TestCase):
                          ("PAUSED / HOLDING", "PAUSED - holding | schedule: auto"))
         self.assertEqual(state()["control_state"], "IDLE | schedule: auto")
 
-    def test_operator_panel_posts_to_the_control_endpoint_through_the_data_source(self):
-        from build_dashboard import add_operator_controls
+    def test_operator_buttons_are_one_click_canvas_actions_sent_through_the_data_source(self):
         panels = json.loads((Path(__file__).parent / "dashboards/workflow-overview.json").read_text("utf-8"))["panels"]
         panel = next(p for p in panels if p["id"] == 14)
-        actions = {json.loads(a["infinity"]["body"])["action"]: a for a in panel["fieldConfig"]["defaults"]["actions"]}
-        self.assertEqual(set(actions), {"pause", "resume", "start", "abort", "auto", "manual"})
-        self.assertIn("confirmation", actions["abort"])
-        for action in actions.values():
-            self.assertEqual((action["type"], action["infinity"]["method"], action["infinity"]["datasourceUid"]),
-                             ("infinity", "POST", "gw2-workflow-state"))
+        self.assertEqual(panel["type"], "canvas")  # stat panels offer no actions
+        buttons = {e["name"]: e["actions"][0] for e in panel["options"]["root"]["elements"] if e.get("actions")}
+        self.assertEqual(set(buttons), {"pause", "resume", "start", "abort", "auto", "manual", "launch"})
+        self.assertIn("confirmation", buttons["abort"])
+        for name, action in buttons.items():
+            self.assertEqual((action["type"], action["infinity"]["method"], action["infinity"]["datasourceUid"],
+                              action["oneClick"]), ("infinity", "POST", "gw2-workflow-state", True))
             self.assertNotIn("Authorization", json.dumps(action))  # the data source holds the token
+            if name != "launch":
+                self.assertTrue(action["infinity"]["url"].endswith(":8765/control"))
+                self.assertEqual(json.loads(action["infinity"]["body"]), {"action": name})
+        self.assertTrue(buttons["launch"]["infinity"]["url"].endswith(":8766/launch"))
+        self.assertEqual(panel["options"]["root"]["elements"][0]["config"]["text"]["field"], "control_state")
 
     def test_retry_counter_distinguishes_current_rework_from_old_totals(self):
         base = {'retry_limits': {'coding': 2, 'ci': 2, 'qa': 2, 'claude': 1},
