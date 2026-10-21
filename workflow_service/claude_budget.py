@@ -8,6 +8,11 @@ weekly limit: on Wednesday after 17:30, five shares (~71 %) are unlocked.
 
 In ``manual`` mode ``manual_cap_percent`` replaces the computed cap. The 5h
 session limit is checked separately so Claude is never started near its end.
+
+Claude may also only be *started* inside the daily window ``window_start`` to
+``window_end`` (minute resolution, both inclusive, wrapping midnight). The
+window gates every start -- first attempts, retries and CI fixes alike -- and
+never interrupts a Claude that is already running. Codex ignores it.
 """
 
 from __future__ import annotations
@@ -20,7 +25,11 @@ from agent.runtime.runners.claude_runner import parse_claude_usage, read_claude_
 from agent.runtime.support.config import CLAUDE_USAGE_LIMIT_PERCENT
 
 DEFAULTS = {"mode": "auto", "allowance_windows": 10, "windows_per_full_week": 10,
-            "unlock_time": "17:30", "manual_cap_percent": 100}
+            "unlock_time": "17:30", "manual_cap_percent": 100,
+            "window_start": "17:35", "window_end": "06:35"}
+# Set by ``control --ignore-window`` for the life of one process; never persisted.
+WINDOW_OVERRIDE = False
+_CLOCK = re.compile(r"([01]?\d|2[0-3]):[0-5]\d")
 _WEEKLY_RESET = re.compile(
     r"^Current week[^\n]*?resets\s+(?:([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),\s*)?"
     r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)", re.IGNORECASE | re.MULTILINE)
@@ -47,10 +56,31 @@ def settings_from(raw: dict | None) -> dict:
         raise ValueError("allowance_windows must be >= 0 and windows_per_full_week > 0.")
     if not 0 <= settings["manual_cap_percent"] <= 100:
         raise ValueError("manual_cap_percent must be between 0 and 100.")
-    if not re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", str(settings["unlock_time"]).strip()):
-        raise ValueError("unlock_time must look like 17:30.")
-    settings["unlock_time"] = str(settings["unlock_time"]).strip()
+    for key in ("unlock_time", "window_start", "window_end"):
+        if not _CLOCK.fullmatch(str(settings[key]).strip()):
+            raise ValueError(f"{key} must look like 17:30.")
+        settings[key] = str(settings[key]).strip()
     return settings
+
+
+def _minutes(clock: str) -> int:
+    hour, minute = map(int, clock.split(":"))
+    return hour * 60 + minute
+
+
+def window_open(settings: dict, now: datetime) -> bool:
+    """Whether Claude may be started at ``now`` (the start and end minutes are inclusive)."""
+    if WINDOW_OVERRIDE:
+        return True
+    start, end = _minutes(settings["window_start"]), _minutes(settings["window_end"])
+    minute = now.hour * 60 + now.minute
+    return start <= minute <= end if start <= end else minute >= start or minute <= end
+
+
+def next_window_start(settings: dict, now: datetime) -> datetime:
+    hour, minute = map(int, settings["window_start"].split(":"))
+    start = datetime.combine(now.date(), time(hour, minute))
+    return start if start > now else start + timedelta(days=1)
 
 
 def weekly_reset(usage_text: str, now: datetime) -> datetime:
@@ -102,7 +132,11 @@ def status(raw_settings: dict | None, now: datetime | None = None, usage_text: s
         cap = settings["manual_cap_percent"]
     session_ok = usage.session_used_percent < CLAUDE_USAGE_LIMIT_PERCENT
     weekly_ok = usage.weekly_used_percent < cap
-    if not weekly_ok:
+    in_window = window_open(settings, now)
+    if not in_window:
+        reason = (f"Outside the Claude window {settings['window_start']}-{settings['window_end']}; "
+                  f"no new Claude starts until {next_window_start(settings, now):%a %H:%M}.")
+    elif not weekly_ok:
         reason = (f"Weekly Claude budget reached: {usage.weekly_used_percent}% used of {cap:.0f}% allowed "
                   f"({settings['mode']}). " + (f"Next share unlocks {next_unlock:%a %H:%M}."
                                                if settings["mode"] == "auto" else "Raise manual_cap_percent or switch to auto."))
@@ -113,7 +147,10 @@ def status(raw_settings: dict | None, now: datetime | None = None, usage_text: s
         reason = f"Claude may run: {usage.weekly_used_percent}% of {cap:.0f}% weekly budget used."
     return {
         "mode": settings["mode"],
-        "claude_allowed": session_ok and weekly_ok,
+        "claude_allowed": session_ok and weekly_ok and in_window,
+        "usage_allowed": session_ok and weekly_ok,
+        "window_open": in_window,
+        "window": f"{settings['window_start']}-{settings['window_end']}",
         "weekly_used_percent": usage.weekly_used_percent,
         "weekly_cap_percent": round(cap, 1),
         "shares_unlocked": shares,

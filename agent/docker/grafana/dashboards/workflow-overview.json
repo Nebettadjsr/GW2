@@ -1003,7 +1003,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 11
       },
       "id": 4,
       "options": {
@@ -1706,6 +1706,11 @@
               "type": "string"
             },
             {
+              "selector": "control_state",
+              "text": "control_state",
+              "type": "string"
+            },
+            {
               "selector": "sync_label",
               "text": "sync_label",
               "type": "string"
@@ -1923,7 +1928,7 @@
           "format": "table",
           "parser": "jq-backend",
           "refId": "A",
-          "root_selector": ". as $snapshot | (. as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Checking Git for updates\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n\n      | map(. + ($snapshot | ((.active_cycle // {}) as $c | (.running_task // {}) as $r |\n(.retry_limits // {}) as $limits |\n($r.step // $c.phase // (if .sync_review != null then \"review\" else \"idle\" end)) as $phase |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($c.retry_count // 0) as $coding | ($c.ci_fix_attempts // 0) as $ci |\n($c.qa_repair_attempts // 0) as $qa | ($c.failed_runs // 0) as $failed |\n(($c.history // []) | map(select(.outcome == \"RETRY\" or .outcome == \"ci_production_retry\" or .outcome == \"qa_tests_corrected\")) | last | .outcome) as $route |\ndef count($n; $limit): ($n | tostring) + (if $limit != null then \" / \" + ($limit | tostring) else \"\" end);\ndef retry_row($text): {retry_label: (if $busy then $text else \"Pending: \" + $text end), retry_active: 1};\nif $busy and $r.current_retry != null then\n  retry_row($r.current_retry.stage + \" \u2014 retry \" + count($r.current_retry.number; $r.current_retry.limit))\nelif ($phase == \"qa_review\" or $phase == \"qa_repair\") and ($c.qa_action.invalid_attempts // 0) > 0 then\n  retry_row(\"QA response correction \u2014 retry \" + count($c.qa_action.invalid_attempts; $limits.qa_response))\nelif $phase == \"qa_repair\" and $qa > 0 then\n  retry_row(\"QA test correction \u2014 round \" + count($qa; $limits.qa))\nelif $phase == \"implement\" and $failed > 0 then\n  retry_row(\"Claude process recovery \u2014 retry \" + count($failed; $limits.claude))\nelif $phase == \"review\" and (.sync_review.attempts // 0) > 0 then\n  (if $busy then (.sync_review.attempts - 1) else .sync_review.attempts end) as $retry |\n  if $retry > 0 then retry_row(\"Documentation review \u2014 retry \" + count($retry; $limits.sync_review))\n  else {retry_label: \"No retry reported\", retry_active: 0} end\nelif $phase == \"evaluate\" and $route == \"qa_tests_corrected\" and $qa > 0 then\n  retry_row(\"Evaluation after QA correction \u2014 round \" + count($qa; $limits.qa))\nelif ([\"implement\", \"evaluate\", \"publish\", \"ci\"] | index($phase)) != null and ($coding > 0 or $ci > 0) then\n  (if $route == \"ci_production_retry\" or ($coding == 0 and $ci > 0) then\n    \"CI production fix \" + count($ci; $limits.ci)\n   elif $route == null and $coding > 0 and $ci > 0 then\n    \"Rework: coding revisions \" + ($coding | tostring) + \"; CI fixes \" + ($ci | tostring)\n   else \"Implementation revision \" + count($coding; $limits.coding) end) as $round |\n  retry_row($phase + \" \u2014 \" + $round)\nelse {retry_label: \"No retry reported\", retry_active: 0} end\n)) + {row_type: \"status\"})) +\n      ($snapshot | (. as $snapshot |\n(.latest_event // {outcome: .control.outcome, reason: .control.reason, proceed: false}) as $event |\n(.running_task.status == \"running\" or .running_task.status == \"queued\" or .control.active == true) as $running |\n(($running | not) and $event.proceed == false and ($event.outcome // \"\") != \"\" and $event.outcome != \"queue_empty\") as $stopped |\n(if $stopped then [ {\n  row_type: \"activity\", activity_at: ($event.at // $event.updated_at // $snapshot.control.finished_at),\n  activity_role: (\"Workflow / \" + ($event.step // \"control\")),\n  activity_kind: (if ($event.outcome | test(\"fail|error|conflict|missing|orphan|loop_guard|unknown\"; \"i\")) then \"ERROR\" else \"WAITING\" end),\n  activity_story: ($event.story_id // $snapshot.last_cycle.story_id // $snapshot.active_cycle.story_id // \"Between stories\"),\n  activity_text: (\"Stopped (\" + $event.outcome + \"): \" + ([$event.error, $event.reason, \"No reason recorded.\"] | map(select(. != null and . != \"\")) | first))\n} ] else [] end) +\n[ (.activity // [] | reverse | .[:60])[] |\n  select(($stopped and .task_id == $event.task_id and (.kind == \"error\" or .kind == \"waiting\")) | not) |\n  {row_type: \"activity\", activity_at: .at, activity_role: .role,\n   activity_kind: (.kind | ascii_upcase), activity_text: .text,\n   activity_story: (.story_id // \"Between stories\")} ] +\n(if .activity == null then [{row_type: \"activity\", activity_at: null, activity_role: \"Workflow\",\n  activity_kind: \"SYSTEM\", activity_story: \"\", activity_text: \"Activity feed available after the updated workflow service is deployed.\"}]\n else [] end)\n)) +\n      [ ($snapshot.human_requests.open // [])[] |\n        {row_type: \"request\", request_id: .id, request_kind: .kind,\n         request_stories: (.story_ids | join(\", \")), request_reason: .reason, request_path: .path} ] +\n      [ ($snapshot.human_requests.errors // [])[] |\n        {row_type: \"request\", request_id: \"Read error\", request_kind: \"error\",\n         request_stories: \"\", request_reason: ., request_path: \"\"} ]",
+          "root_selector": ". as $snapshot | (. as $s | (.control // {}) as $control |\n(.latest_event // {outcome: $control.outcome, reason: $control.reason}) as $event |\n(.active_cycle // (if .last_cycle.phase == \"blocked\" or $event.proceed == false then .last_cycle else null end) // {}) as $c |\n(.running_task // {}) as $r | (.budget // {}) as $b | ($b.result // {}) as $usage |\n($c.history // []) as $h | ($h[-1] // {}) as $last |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($event.outcome // $last.outcome // \"\") as $outcome |\n($b.stale == false and $b.error == null and $b.result != null) as $fresh |\n($outcome == \"waiting_for_claude_budget\" and ($fresh | not)) as $budget_unknown |\n($outcome == \"waiting_for_claude_budget\" and $fresh and $b.claude_allowed == false) as $budget_wait |\n($outcome | test(\"NEEDS_USER|blocked\"; \"i\")) as $human_wait |\n(($event.status == \"failed\") or (($event.proceed != true) and ($outcome | test(\"fail|error|conflict|loop_guard|missing|orphan|timeout|unknown\"; \"i\")))) as $error |\n($busy or $control.active == true) as $advancing |\n(($advancing | not) and ($event.proceed == false or $error or $human_wait)) as $stopped |\n(if $busy then $r.step elif $outcome == \"queue_empty\" then null\n elif $stopped and $outcome == \"ci_still_failed\" then \"ci\"\n elif $stopped then ($event.step // (if $s.latest_event != null then \"control\" else $c.phase end)) else $c.phase end) as $focus |\n(if $busy then (if $r.status == \"queued\" then \"QUEUED\" elif $control.hold == true then \"RUNNING / PAUSE REQUESTED\" else \"RUNNING\" end)\n elif $control.hold == true then \"PAUSED / HOLDING\"\n elif $control.active == true then \"ADVANCING\"\n elif $event.status == \"interrupted\" then \"INTERRUPTED / AWAITING RECOVERY\"\n elif $budget_unknown then \"BUDGET CHECK NEEDED\"\n elif $budget_wait then \"WAITING FOR CLAUDE BUDGET\"\n elif $outcome == \"waiting_for_claude_budget\" then \"BUDGET AVAILABLE / AWAITING RUN\"\n elif $outcome == \"queue_empty\" then \"IDLE / QUEUE EMPTY\"\n elif ($outcome | test(\"capacity_exhausted\"; \"i\")) then \"WAITING FOR MODEL CAPACITY\"\n elif $human_wait then \"WAITING FOR HUMAN / \" + $outcome\n elif $error then \"STOPPED / ERROR\"\n elif $stopped then \"STOPPED / \" + (if $outcome == \"\" then ($event.status // \"awaiting run\") else $outcome end)\n elif $c.phase then \"PAUSED / AWAITING RUN\"\n else \"IDLE\" end) as $activity |\n(if $advancing then 1 elif $error then 3 elif $focus then 4 else 0 end) as $activity_color |\ndef group($id): if ([\"qa\", \"qa_review\", \"qa_repair\"] | index($id)) != null then \"qa\" else $id end;\ndef completed($value): ([\"activated\", \"READY\", \"NO_TESTS_NEEDED\", \"implemented\", \"COMPLETE\", \"published\", \"PASSED\", \"done\", \"qa_tests_corrected\", \"ci_production_retry\", \"qa_test_repair_requested\"] | index($value)) != null;\ndef stage($id):\n  ($h | map(select(group(.step) == $id)) | last // {}) as $previous |\n  if group($focus) == $id then $activity_color\n  elif completed($previous.outcome // \"\") then 2 else 0 end;\ndef stage_label($id; $name):\n  if group($focus) == $id then $name + \"\\n\" +\n    (if $busy then (if $r.status == \"queued\" then \"QUEUED\" else \"RUNNING\" end)\n     elif $control.active then \"NEXT\" elif $human_wait then \"WAITING: HUMAN\"\n     elif $error then \"STOPPED / ERROR\" elif $budget_wait then \"WAITING: BUDGET\"\n     elif $budget_unknown then \"CHECK BUDGET\" elif $stopped then \"STOPPED\" else \"WAITING\" end)\n  elif stage($id) == 2 then $name + \"\\nCOMPLETED\"\n  elif ($h | any(.step == $id and .outcome == \"RETRY\")) then $name + \"\\nREVISION REQUESTED\"\n  else $name end;\ndef pct($value): if $value == null then \"?\" else ($value | tostring) + \"%\" end;\n(if group($focus) == \"qa\" then $focus else ($h | map(select(group(.step) == \"qa\")) | last | .step) end) as $qa_step |\n[{\n  activity: $activity, activity_color: $activity_color,\n  story: ($c.story_id // $r.story_id // $event.story_id // \"No active story\"),\n  saved_phase: ($focus // \"None\"),\n  detail: (if $busy then \"Executing \" + ($r.step // \"task\")\n    elif $budget_wait or $budget_unknown then ($usage.reason // $event.reason // \"Budget reading unavailable\")\n    else ([$event.error, $event.reason, $s.last_task.reason, $last.outcome, \"No active run\"] | map(select(. != null and . != \"\")) | first) end),\n  request_notice: (if $s.human_requests == null then \"Human request details require the updated workflow service.\"\n    else ((($s.human_requests.open // []) | map(.id + \" [\" + (.story_ids | join(\", \")) + \"]\") | join(\" | \")) as $requests |\n      (if $requests == \"\" then \"No open human requests.\" else $requests end) +\n      (if ($s.human_requests.errors // [] | length) > 0 then \" | Some request files could not be read; see request status below.\" else \"\" end)) end),\n  control_state: ((if $control.hold == true then (if $busy then \"PAUSE REQUESTED - finishing \" + ($r.step // \"step\") else \"PAUSED - holding\" end)\n      elif $control.active == true then \"RUNNING\" else \"IDLE\" end)\n    + \" | schedule: \" + ($control.schedule // \"auto\")\n    + (if (($s.agent_processes // []) | length) > 0 then \" | agents: \" + (($s.agent_processes | map(.role)) | join(\", \")) else \"\" end)),\n  weekly: (pct($usage.weekly_used_percent) + \" used / \" + pct($usage.weekly_cap_percent) + \" allowed\"),\n  session: (pct($usage.session_used_percent) + \" used / \" + pct($usage.session_limit_percent) + \" start threshold\"),\n  budget_status: (if $b.error != null then \"ERROR: \" + ($b.error | tostring)\n    elif $b.stale == true then \"STALE / permission unknown\"\n    elif $fresh and $b.claude_allowed == true then \"AVAILABLE\"\n    elif $fresh and $b.claude_allowed == false then \"BLOCKED\" else \"UNKNOWN\" end),\n  budget_time: (\"Checked: \" + ($b.checked_at // \"unknown\") + \" | Next share: \" + ($usage.next_unlock // \"unknown\") + \" (service local time)\"),\n  sync: stage(\"sync\"), sync_label: stage_label(\"sync\"; \"Checking Git for updates\"),\n  review: stage(\"review\"), review_label: stage_label(\"review\"; \"Review incoming docs\"),\n  plan: stage(\"plan\"), plan_label: stage_label(\"plan\"; \"Plan / Architect\"),\n  select: stage(\"select\"), select_label: stage_label(\"select\"; \"Select story\"),\n  qa: stage(\"qa\"), qa_label: stage_label(\"qa\"; (if $qa_step == \"qa_review\" then \"QA: CI review\" elif $qa_step == \"qa_repair\" then \"QA: test correction\" else \"QA: preparation\" end)),\n  implement: stage(\"implement\"), implement_label: stage_label(\"implement\"; \"Implementation\"),\n  evaluate: stage(\"evaluate\"), evaluate_label: stage_label(\"evaluate\"; \"Evaluation\"),\n  publish: stage(\"publish\"), publish_label: stage_label(\"publish\"; \"Publish story\"),\n  ci: stage(\"ci\"), ci_label: stage_label(\"ci\"; \"Application CI\"),\n  finalize: stage(\"finalize\"), finalize_label: stage_label(\"finalize\"; \"Finalize story\")\n}]\n\n      | map(. + ($snapshot | ((.active_cycle // {}) as $c | (.running_task // {}) as $r |\n(.retry_limits // {}) as $limits |\n($r.step // $c.phase // (if .sync_review != null then \"review\" else \"idle\" end)) as $phase |\n($r.status == \"running\" or $r.status == \"queued\") as $busy |\n($c.retry_count // 0) as $coding | ($c.ci_fix_attempts // 0) as $ci |\n($c.qa_repair_attempts // 0) as $qa | ($c.failed_runs // 0) as $failed |\n(($c.history // []) | map(select(.outcome == \"RETRY\" or .outcome == \"ci_production_retry\" or .outcome == \"qa_tests_corrected\")) | last | .outcome) as $route |\ndef count($n; $limit): ($n | tostring) + (if $limit != null then \" / \" + ($limit | tostring) else \"\" end);\ndef retry_row($text): {retry_label: (if $busy then $text else \"Pending: \" + $text end), retry_active: 1};\nif $busy and $r.current_retry != null then\n  retry_row($r.current_retry.stage + \" \u2014 retry \" + count($r.current_retry.number; $r.current_retry.limit))\nelif ($phase == \"qa_review\" or $phase == \"qa_repair\") and ($c.qa_action.invalid_attempts // 0) > 0 then\n  retry_row(\"QA response correction \u2014 retry \" + count($c.qa_action.invalid_attempts; $limits.qa_response))\nelif $phase == \"qa_repair\" and $qa > 0 then\n  retry_row(\"QA test correction \u2014 round \" + count($qa; $limits.qa))\nelif $phase == \"implement\" and $failed > 0 then\n  retry_row(\"Claude process recovery \u2014 retry \" + count($failed; $limits.claude))\nelif $phase == \"review\" and (.sync_review.attempts // 0) > 0 then\n  (if $busy then (.sync_review.attempts - 1) else .sync_review.attempts end) as $retry |\n  if $retry > 0 then retry_row(\"Documentation review \u2014 retry \" + count($retry; $limits.sync_review))\n  else {retry_label: \"No retry reported\", retry_active: 0} end\nelif $phase == \"evaluate\" and $route == \"qa_tests_corrected\" and $qa > 0 then\n  retry_row(\"Evaluation after QA correction \u2014 round \" + count($qa; $limits.qa))\nelif ([\"implement\", \"evaluate\", \"publish\", \"ci\"] | index($phase)) != null and ($coding > 0 or $ci > 0) then\n  (if $route == \"ci_production_retry\" or ($coding == 0 and $ci > 0) then\n    \"CI production fix \" + count($ci; $limits.ci)\n   elif $route == null and $coding > 0 and $ci > 0 then\n    \"Rework: coding revisions \" + ($coding | tostring) + \"; CI fixes \" + ($ci | tostring)\n   else \"Implementation revision \" + count($coding; $limits.coding) end) as $round |\n  retry_row($phase + \" \u2014 \" + $round)\nelse {retry_label: \"No retry reported\", retry_active: 0} end\n)) + {row_type: \"status\"})) +\n      ($snapshot | (. as $snapshot |\n(.latest_event // {outcome: .control.outcome, reason: .control.reason, proceed: false}) as $event |\n(.running_task.status == \"running\" or .running_task.status == \"queued\" or .control.active == true) as $running |\n(($running | not) and $event.proceed == false and ($event.outcome // \"\") != \"\" and $event.outcome != \"queue_empty\") as $stopped |\n(if $stopped then [ {\n  row_type: \"activity\", activity_at: ($event.at // $event.updated_at // $snapshot.control.finished_at),\n  activity_role: (\"Workflow / \" + ($event.step // \"control\")),\n  activity_kind: (if ($event.outcome | test(\"fail|error|conflict|missing|orphan|loop_guard|unknown\"; \"i\")) then \"ERROR\" else \"WAITING\" end),\n  activity_story: ($event.story_id // $snapshot.last_cycle.story_id // $snapshot.active_cycle.story_id // \"Between stories\"),\n  activity_text: (\"Stopped (\" + $event.outcome + \"): \" + ([$event.error, $event.reason, \"No reason recorded.\"] | map(select(. != null and . != \"\")) | first))\n} ] else [] end) +\n[ (.activity // [] | reverse | .[:60])[] |\n  select(($stopped and .task_id == $event.task_id and (.kind == \"error\" or .kind == \"waiting\")) | not) |\n  {row_type: \"activity\", activity_at: .at, activity_role: .role,\n   activity_kind: (.kind | ascii_upcase), activity_text: .text,\n   activity_story: (.story_id // \"Between stories\")} ] +\n(if .activity == null then [{row_type: \"activity\", activity_at: null, activity_role: \"Workflow\",\n  activity_kind: \"SYSTEM\", activity_story: \"\", activity_text: \"Activity feed available after the updated workflow service is deployed.\"}]\n else [] end)\n)) +\n      [ ($snapshot.human_requests.open // [])[] |\n        {row_type: \"request\", request_id: .id, request_kind: .kind,\n         request_stories: (.story_ids | join(\", \")), request_reason: .reason, request_path: .path} ] +\n      [ ($snapshot.human_requests.errors // [])[] |\n        {row_type: \"request\", request_id: \"Read error\", request_kind: \"error\",\n         request_stories: \"\", request_reason: ., request_path: \"\"} ]",
           "source": "url",
           "type": "json",
           "url": "http://172.29.240.1:8765/cycle",
@@ -1981,7 +1986,7 @@
         "h": 3,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 19
       },
       "id": 11,
       "options": {
@@ -2185,7 +2190,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 19
+        "y": 22
       },
       "id": 5,
       "options": {
@@ -2279,7 +2284,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 31
       },
       "id": 12,
       "options": {
@@ -2427,6 +2432,228 @@
       ],
       "type": "stat",
       "description": "Current task validation retry or active story rework round. Budget polling does not consume retries. Limits are shown only when exposed by the service."
+    },
+    {
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "regex",
+              "options": {
+                "pattern": "PAUSE",
+                "result": {
+                  "color": "#FFB357"
+                }
+              }
+            },
+            {
+              "type": "regex",
+              "options": {
+                "pattern": "^RUNNING",
+                "result": {
+                  "color": "#5794F2"
+                }
+              }
+            }
+          ],
+          "actions": [
+            {
+              "type": "infinity",
+              "title": "Pause - finish this step, then hold",
+              "oneClick": false,
+              "style": {
+                "backgroundColor": "#FFB357"
+              },
+              "infinity": {
+                "method": "POST",
+                "url": "http://172.29.240.1:8765/control",
+                "datasourceUid": "gw2-workflow-state",
+                "queryParams": [],
+                "headers": [
+                  [
+                    "Content-Type",
+                    "application/json"
+                  ]
+                ],
+                "body": "{\"action\": \"pause\"}"
+              }
+            },
+            {
+              "type": "infinity",
+              "title": "Resume the held run",
+              "oneClick": false,
+              "style": {
+                "backgroundColor": "#73BF69"
+              },
+              "infinity": {
+                "method": "POST",
+                "url": "http://172.29.240.1:8765/control",
+                "datasourceUid": "gw2-workflow-state",
+                "queryParams": [],
+                "headers": [
+                  [
+                    "Content-Type",
+                    "application/json"
+                  ]
+                ],
+                "body": "{\"action\": \"resume\"}"
+              }
+            },
+            {
+              "type": "infinity",
+              "title": "Start a run now (clears the hold)",
+              "oneClick": false,
+              "style": {
+                "backgroundColor": "#73BF69"
+              },
+              "infinity": {
+                "method": "POST",
+                "url": "http://172.29.240.1:8765/control",
+                "datasourceUid": "gw2-workflow-state",
+                "queryParams": [],
+                "headers": [
+                  [
+                    "Content-Type",
+                    "application/json"
+                  ]
+                ],
+                "body": "{\"action\": \"start\"}"
+              }
+            },
+            {
+              "type": "infinity",
+              "title": "ABORT - kill Claude and Codex now, then hold",
+              "oneClick": false,
+              "confirmation": "Kill every Claude and Codex process the workflow started? The interrupted step reruns after Resume.",
+              "style": {
+                "backgroundColor": "#F2495C"
+              },
+              "infinity": {
+                "method": "POST",
+                "url": "http://172.29.240.1:8765/control",
+                "datasourceUid": "gw2-workflow-state",
+                "queryParams": [],
+                "headers": [
+                  [
+                    "Content-Type",
+                    "application/json"
+                  ]
+                ],
+                "body": "{\"action\": \"abort\"}"
+              }
+            },
+            {
+              "type": "infinity",
+              "title": "Schedule: automatic",
+              "oneClick": false,
+              "style": {
+                "backgroundColor": "#5794F2"
+              },
+              "infinity": {
+                "method": "POST",
+                "url": "http://172.29.240.1:8765/control",
+                "datasourceUid": "gw2-workflow-state",
+                "queryParams": [],
+                "headers": [
+                  [
+                    "Content-Type",
+                    "application/json"
+                  ]
+                ],
+                "body": "{\"action\": \"auto\"}"
+              }
+            },
+            {
+              "type": "infinity",
+              "title": "Schedule: manual (clock never starts runs)",
+              "oneClick": false,
+              "style": {
+                "backgroundColor": "#5794F2"
+              },
+              "infinity": {
+                "method": "POST",
+                "url": "http://172.29.240.1:8765/control",
+                "datasourceUid": "gw2-workflow-state",
+                "queryParams": [],
+                "headers": [
+                  [
+                    "Content-Type",
+                    "application/json"
+                  ]
+                ],
+                "body": "{\"action\": \"manual\"}"
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 24,
+        "h": 3
+      },
+      "id": 14,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^control_state$/",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 22
+        },
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.2.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          },
+          "panelId": 4,
+          "refId": "A",
+          "withTransforms": false
+        }
+      ],
+      "title": "Operator controls - click for pause / resume / abort / schedule",
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "row_type",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "status"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "type": "stat",
+      "description": "Commands go through the workflow data source to POST /control. Pause holds after the current step; abort also kills the agent processes. Needs the updated service."
     }
   ],
   "preload": false,

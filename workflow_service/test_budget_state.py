@@ -20,6 +20,7 @@ class BudgetStateTests(unittest.TestCase):
         self.service = service.WorkflowService(service.Store(self.path), "t" * 40)
         self.probe = mock.patch.object(service.claude_budget, "status",
                                        return_value={"claude_allowed": True, "reason": "capacity available"}).start()
+        mock.patch.object(service.claude_budget, "window_open", return_value=True).start()
         self.addCleanup(mock.patch.stopall)
 
     def test_old_state_gains_budget_without_losing_cycle_or_planner_progress(self):

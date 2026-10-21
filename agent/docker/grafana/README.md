@@ -34,4 +34,6 @@ The retry/correction counter identifies the current validation retry or story re
 
 All panels share the Canvas panel's single `/cycle` query through Grafana's Dashboard data source. Each five-second refresh fetches one snapshot per open dashboard; panels filter its status, activity and request rows locally. This reads cached budget status and does not invoke agents. Successful status GETs log at DEBUG after the service is updated; failed requests and control actions remain visible at normal log levels.
 
+The **Operator controls** panel shows hold state, schedule mode and any running agent processes. Clicking it opens a menu with Pause, Resume, Start, Abort (with confirmation), Schedule automatic and Schedule manual. Each action is sent by the Infinity data source (server-side, with its bearer token) as `POST /control`; the token is never in the dashboard. `start.ps1` points the actions at the configured service URL in the local copy. Requires the updated workflow service; see *Pause, abort and manual mode* in the workflow service guide. `workflow_service\ctl.cmd` offers the same commands without Grafana.
+
 See the [workflow service guide](../../../workflow_service/README.md) for execution and recovery.
