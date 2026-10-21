@@ -225,6 +225,8 @@ class WorkflowService:
         if origin.scheme != "http" or origin.hostname not in {"localhost", "127.0.0.1", "::1"} or origin.path:
             raise ValueError("GW2_N8N_CALLBACK_ORIGIN must be a local HTTP origin, for example http://localhost:5678.")
         self.store = store
+        # The persisted schedule decides whether Claude is released from the window and the budget.
+        claude_budget.RELEASED = store.control.get("schedule") == "manual"
         self.token = token
         self.callback_origin = callback_origin.rstrip("/")
         self.claude_command = claude_command
@@ -258,7 +260,7 @@ class WorkflowService:
             datetime.now(timezone.utc) - datetime.fromisoformat(checked_at)
         ).total_seconds() >= BUDGET_REFRESH_SECONDS
         state["refresh_interval_seconds"] = BUDGET_REFRESH_SECONDS
-        state["claude_allowed"] = bool(
+        state["claude_allowed"] = claude_budget.RELEASED or bool(
             not state["stale"] and not state["error"] and (state["result"] or {}).get("claude_allowed")
             # The window is a function of the clock, so a cached reading may not outlive it.
             and claude_budget.window_open(claude_budget.settings_from(state["settings"]), datetime.now())
@@ -430,6 +432,7 @@ class WorkflowService:
                     control["start_requested"] = True
             else:
                 control["schedule"] = action
+                claude_budget.RELEASED = action == "manual"
             control["updated_at"] = utc_now()
             self.store.save()
             snapshot = copy.deepcopy(control)

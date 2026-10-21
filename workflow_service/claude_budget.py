@@ -29,6 +29,9 @@ DEFAULTS = {"mode": "auto", "allowance_windows": 10, "windows_per_full_week": 10
             "window_start": "17:35", "window_end": "06:35"}
 # Set by ``control --ignore-window`` for the life of one process; never persisted.
 WINDOW_OVERRIDE = False
+# Set by the service while the operator has switched the schedule to "manual": Claude may start
+# whatever the clock or the budget says. Only Claude's own capacity error still stops a run.
+RELEASED = False
 _CLOCK = re.compile(r"([01]?\d|2[0-3]):[0-5]\d")
 _WEEKLY_RESET = re.compile(
     r"^Current week[^\n]*?resets\s+(?:([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),\s*)?"
@@ -133,7 +136,9 @@ def status(raw_settings: dict | None, now: datetime | None = None, usage_text: s
     session_ok = usage.session_used_percent < CLAUDE_USAGE_LIMIT_PERCENT
     weekly_ok = usage.weekly_used_percent < cap
     in_window = window_open(settings, now)
-    if not in_window:
+    if RELEASED:
+        reason = "Released by the operator (schedule: manual); the window and the budget are not enforced."
+    elif not in_window:
         reason = (f"Outside the Claude window {settings['window_start']}-{settings['window_end']}; "
                   f"no new Claude starts until {next_window_start(settings, now):%a %H:%M}.")
     elif not weekly_ok:
@@ -147,7 +152,8 @@ def status(raw_settings: dict | None, now: datetime | None = None, usage_text: s
         reason = f"Claude may run: {usage.weekly_used_percent}% of {cap:.0f}% weekly budget used."
     return {
         "mode": settings["mode"],
-        "claude_allowed": session_ok and weekly_ok and in_window,
+        "claude_allowed": RELEASED or (session_ok and weekly_ok and in_window),
+        "released": RELEASED,
         "usage_allowed": session_ok and weekly_ok,
         "window_open": in_window,
         "window": f"{settings['window_start']}-{settings['window_end']}",

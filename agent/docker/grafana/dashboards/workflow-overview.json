@@ -2759,7 +2759,7 @@
               "actions": [
                 {
                   "type": "infinity",
-                  "title": "Schedule - automatic",
+                  "title": "Schedule automatic - clock + budget apply",
                   "oneClick": true,
                   "infinity": {
                     "method": "POST",
@@ -2797,7 +2797,7 @@
                 },
                 "text": {
                   "mode": "fixed",
-                  "fixed": "Schedule\nautomatic"
+                  "fixed": "Schedule automatic\nclock + budget apply"
                 }
               },
               "constraint": {
@@ -2817,7 +2817,7 @@
               "actions": [
                 {
                   "type": "infinity",
-                  "title": "Schedule - manual",
+                  "title": "Schedule manual - Claude released",
                   "oneClick": true,
                   "infinity": {
                     "method": "POST",
@@ -2855,7 +2855,7 @@
                 },
                 "text": {
                   "mode": "fixed",
-                  "fixed": "Schedule\nmanual"
+                  "fixed": "Schedule manual\nClaude released"
                 }
               },
               "constraint": {
