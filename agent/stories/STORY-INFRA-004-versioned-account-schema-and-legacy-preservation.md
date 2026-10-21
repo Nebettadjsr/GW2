@@ -8,7 +8,7 @@ Introduce versioned account schema and reset legacy cache
 
 ## Status
 
-UNFINISHED
+DONE
 
 ## Milestone
 

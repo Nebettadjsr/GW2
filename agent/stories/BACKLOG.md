@@ -13,7 +13,6 @@ below stay in the plain form.
 
 ## Active
 
-- STORY-INFRA-004 | STORY-INFRA-004-versioned-account-schema-and-legacy-preservation.md | TODO | milestone-06 | deps: None
 
 ## To Do
 
@@ -31,6 +30,7 @@ below stay in the plain form.
 ## Superseded
 
 ## Done
+- STORY-INFRA-004 | STORY-INFRA-004-versioned-account-schema-and-legacy-preservation.md | DONE | milestone-06 | Introduce versioned account schema and reset legacy cache
 
 ## Numbering Convention
 
