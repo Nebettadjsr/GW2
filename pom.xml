@@ -66,6 +66,23 @@
             <version>${postgresql.version}</version>
         </dependency>
 
+        <!--
+            STORY-INFRA-004 (ADR-010, TARGET_ARCHITECTURE.md §7.3): versioned PostgreSQL schema
+            management. Both artifacts are version-managed by the spring-boot-dependencies BOM
+            imported above, so the engine and its PostgreSQL module cannot drift apart from each
+            other or from the Spring Boot line - PostgreSQL support is a separate Flyway dependency
+            and is pinned nowhere else in this POM. Open-source edition only: the backend uses
+            versioned SQL, history, validate and migrate, and no paid feature, CLI or service.
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-base</artifactId>
@@ -118,6 +135,18 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+            STORY-API-010: MockMvc auto-configuration for full-context HTTP contract tests. Spring
+            Boot 4 moved it out of spring-boot-test-autoconfigure (which the starter already brings)
+            into this module, as org.springframework.boot.webmvc.test.autoconfigure - verified
+            against the 4.1.1 artifact. Version managed by the spring-boot-dependencies BOM.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
 

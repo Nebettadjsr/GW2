@@ -27,6 +27,9 @@ public class MaterialStorageRepository {
     }
 
     public List<MaterialStorageRow> loadMaterialStorage(Connection con) throws SQLException {
+        // The join below reads account_materials without an account GUID, and the singleton
+        // account_materials_sync marker no longer exists on a migrated database (STORY-INFRA-004).
+        ManagedSchema.rejectUnscopedAccountAccess(con, "material storage without an account scope");
         MaterialStorageSchema.ensure(con);
         try (PreparedStatement sync = con.prepareStatement("SELECT fetched_at FROM account_materials_sync WHERE id = 1");
              ResultSet synced = sync.executeQuery()) {

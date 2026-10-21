@@ -19,7 +19,7 @@ The web application is not yet a hosted multi-user service. There is no account 
 
 The backend can be started from the repository root with `./mvnw spring-boot:run` (Windows: `mvnw.cmd spring-boot:run`). It listens on port 8080 by default. Run the browser development server from `frontend/` with `npm ci` and `npm run dev`; Vite uses port 5173 and forwards `/api` requests to the backend.
 
-PostgreSQL must be available and configured using the environment settings in `.env.example`; `GW2_API_KEY` supplies the current local account key. The database schema is not yet managed through a versioned migration tool. This is a development setup, not a packaged deployment. No Docker Compose deployment or hosted runtime is implemented.
+PostgreSQL must be available and configured using the environment settings in `.env.example`; `GW2_API_KEY` supplies the current local account key. The database schema is created and upgraded by the versioned Flyway chain the startup schema gate applies; starting any entry point against an empty database is enough to create it, and against a legacy or unrecognized schema the gate resets the cache first. This is a development setup, not a packaged deployment. No Docker Compose deployment or hosted runtime is implemented.
 
 The Maven wrapper and `pom.xml` manage Java dependencies. Frontend dependencies use `frontend/package.json` and its lockfile. Main Java code and tests use Maven's `src/main/java` and `src/test/java` layout.
 
@@ -54,7 +54,7 @@ The current PostgreSQL schema has shared item and recipe facts, TP tradeable IDs
 | Identity-aware account data | `account_luck` | Consumed Luck keyed by stable GW2 account GUID; this is an exception to older single-account tables. |
 | Account source freshness | `account_sync_state` | Successful completion time for each synchronized account source, including sources with empty API results. |
 
-Database creation and most schema upkeep still use manually applied SQL scripts; the Luck and account freshness tables have narrow idempotent schema checks. Material Storage tables are also created idempotently by the material sync and read paths. `src/main/resources/db/manual/account_sync_state.sql` and `material_storage.sql` are available for operators applying changes directly. There is no general versioned migration system. Account browser reads use a configurable 15-minute default max age and schedule stale-source refreshes asynchronously; ordinary reads never advance freshness.
+The table list above is the unmigrated schema the retained runtime paths read and write. Database creation and upgrades are now owned by a versioned Flyway chain applied by a startup schema gate that every retained entry point runs before any repository, task or scheduler: an empty schema receives the complete chain, a managed schema is validated and brought forward, and a legacy or unrecognized schema is reset — its cached tables dropped and the chain applied to the emptied schema — because the database is a disposable cache of GW2 API data. A migrated database has the GUID-scoped account schema instead of the unscoped tables above: `account_registry` and `account_source_state` replace the identity-less account keys and the singleton `account_sync_state` marker, every account-owned row carries the verified account GUID, and the remaining unscoped paths are refused there rather than served. After a reset every account source is missing until fresh synchronization; the scoped repositories and publication that make a migrated database usable for account data are not implemented yet. The legacy idempotent schema checks remain in place for an unmigrated database, and `src/main/resources/db/manual/account_sync_state.sql` and `material_storage.sql` stay available for operators of one. Account browser reads use a configurable 15-minute default max age and schedule stale-source refreshes asynchronously; ordinary reads never advance freshness.
 
 The crafting graph is derived from recipe data and shared across the current installation. If its cache is missing, first use creates the baseline graph; scheduled/manual global refresh rebuilds it only after successfully persisted recipe changes. System Status does not currently expose a standalone graph-rebuild action. TP prices and global game metadata are shared data; account records are not yet tenant-scoped.
 
@@ -74,7 +74,7 @@ The Python workflow service (`workflow_service/`) runs Planner when planning is 
 
 - One local account/API key; account state and credential handling are not multi-user or tenant-isolated.
 - Authentication and browser API-key handling are not implemented.
-- PostgreSQL schema setup/upgrades remain manual; a migration tool is undecided.
+- A migrated database serves global data only: the scoped account repositories, publication and browser credential flow that make its GUID-keyed account schema usable are not implemented, so the retained unscoped account paths are refused there.
 - The backend/frontend/PostgreSQL stack is not containerized or deployed.
 - JavaFX remains in the repository while the browser migration and acceptance work continue.
 - Refresh status is process-local, not durable telemetry. Multiple backend replicas would require shared coordination for global scheduled work and refresh deduplication.

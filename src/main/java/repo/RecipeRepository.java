@@ -304,6 +304,9 @@ public class RecipeRepository {
     }
 
     private Set<Integer> loadAccountUnlockedRecipeIds(Connection con) throws SQLException {
+        // Recipe knowledge is account-owned, so reading every row of account_recipes on a migrated
+        // database would answer with another account's unlocks (STORY-INFRA-004).
+        ManagedSchema.rejectUnscopedAccountAccess(con, "account_recipes without an account scope");
         Set<Integer> ids = new HashSet<>();
         String sql = "SELECT recipe_id FROM account_recipes";
         try (PreparedStatement ps = con.prepareStatement(sql);
@@ -314,6 +317,7 @@ public class RecipeRepository {
     }
 
     private Set<Integer> loadAnyCharacterUnlockedRecipeIds(Connection con) throws SQLException {
+        ManagedSchema.rejectUnscopedAccountAccess(con, "character_recipes without an account scope");
         Set<Integer> ids = new HashSet<>();
         String sql = "SELECT DISTINCT recipe_id FROM character_recipes";
         try (PreparedStatement ps = con.prepareStatement(sql);

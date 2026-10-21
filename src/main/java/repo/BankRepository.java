@@ -51,6 +51,10 @@ public class BankRepository {
      * (docs/TEST_STRATEGY.md §31.2), mirroring {@link InventoryRepository}'s existing pattern.
      */
     public List<BankSlotRow> loadBankSlots(Connection con) throws SQLException {
+        // Reads every account's bank slots on a migrated database, which account isolation forbids
+        // (STORY-INFRA-004, TARGET_ARCHITECTURE.md §7.2). The scoped replacement arrives with the
+        // account-access stories; until then this is unavailable rather than cross-account.
+        ManagedSchema.rejectUnscopedAccountAccess(con, "account_bank without an account scope");
         String sql = """
             SELECT b.slot, b.item_id, b.count, i.icon_path, i.icon_url, i.rarity
             FROM account_bank b

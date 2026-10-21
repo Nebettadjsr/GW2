@@ -312,6 +312,11 @@ public class Gw2App extends Application {
 
 
     public static void main(String[] args) {
+        // Same startup schema gate as the backend, ahead of the JavaFX launch so no view controller
+        // or per-view timer can open a connection before the versioned chain is validated or
+        // applied (STORY-INFRA-004, TARGET_ARCHITECTURE.md §7.3).
+        infra.db.SchemaInitializer.initializeRuntimeDatabase();
+
         launch(args);
     }
 }
