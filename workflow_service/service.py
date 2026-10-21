@@ -99,13 +99,16 @@ class Store:
     def save(self) -> None:
         with self.lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = self.path.with_suffix(self.path.suffix + ".tmp")
-            temporary.write_text(json.dumps(
-                {"tasks": self.tasks, "cycles": self.cycles, "active": self.active,
-                 "planning": self.planning, "budget": self.budget, "control": self.control,
-                 "activity": self.activity},
-                ensure_ascii=False), encoding="utf-8")
-            os.replace(temporary, self.path)
+            temporary = self.path.with_name(f"{self.path.name}.{uuid.uuid4().hex}.tmp")
+            try:
+                temporary.write_text(json.dumps(
+                    {"tasks": self.tasks, "cycles": self.cycles, "active": self.active,
+                     "planning": self.planning, "budget": self.budget, "control": self.control,
+                     "activity": self.activity},
+                    ensure_ascii=False), encoding="utf-8")
+                os.replace(temporary, self.path)
+            finally:
+                temporary.unlink(missing_ok=True)
 
     def create(self, *, track_control: bool = False, **fields) -> dict:
         with self.lock:
