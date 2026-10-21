@@ -151,6 +151,47 @@
         "The production migrations define account-scoped keys and ownership constraints, generation checks, and NULLS NOT DISTINCT inventory-slot uniqueness; the initializer and managed-schema guard implement reset and fail-closed behavior."
       ],
       "actionable_items": []
+    },
+    {
+      "decision": "RETRY",
+      "reason": "The CI failure is a production build defect in the published commit: it contains Flyway imports and implementation, but its pom.xml does not declare the Flyway dependencies. The focused PostgreSQL tests are present and meaningful, and the retained current-tree report shows all eight passing, but that cannot make the published commit compile.",
+      "evidence": [
+        "At published SHA 8d3121d, pom.xml imports Spring Boot 4.1.1's dependency BOM but has no org.flywaydb dependencies; SchemaInitializer.java at that SHA imports Flyway classes. This matches CI's missing org.flywaydb packages and related compile errors.",
+        "The current working tree's pom.xml adds flyway-core and flyway-database-postgresql, but those additions are uncommitted and therefore do not establish that the published SHA had them.",
+        "The prepared PostgreSQL test remains present and meaningful: it checks the full migration chain, ownership constraints, legacy reset, rollback, checksum failure, and disabled baseline/clean/repair policies. The current retained Surefire report records 8 tests with 0 failures, 0 errors, and 0 skipped.",
+        "The QA plan's test-repair source is evaluation, not interface_deviation; no interface-deviation assertion review is required.",
+        "The supplied CI result reports compilation errors, not application test failures. The linked GitHub run could not be fetched here, so the specific compiler annotations are taken from the supplied CI report."
+      ],
+      "actionable_items": [
+        "Ensure the Flyway engine and PostgreSQL module dependencies are included in the published build at compatible managed versions, then publish a corrected commit and rerun the required backend CI check."
+      ],
+      "request_id": "4e42fc7c-6035-4b10-85e9-d930d0202e1b"
+    },
+    {
+      "decision": "RETRY",
+      "reason": "The prepared PostgreSQL tests are present, meaningful, and supported by a passing focused report. However, the publishable HTTP entry point still starts Spring without the schema gate, so the story’s startup acceptance criterion is unmet. The working-tree gate is in a modified file that the supplied evaluation says the publication mechanism excludes; the tracked architecture documentation also claims that entry point is gated.",
+      "evidence": [
+        "The protected test hash matches the QA plan, and the retained Surefire report records 8 tests with 0 failures, 0 errors, and 0 skipped.",
+        "The report and test assertions cover the migration chain, ownership constraints, legacy reset, rollback and retry, checksum mismatch, and migration policy.",
+        "HEAD:src/main/java/web/Gw2ApiApplication.java calls SpringApplication.run directly; it has no SchemaInitializer call. The working-tree file adds the gate but is modified and also contains untracked STORY-API-010 wiring.",
+        "HEAD:docs/CURRENT_ARCHITECTURE.md says the gate is the first statement of web.Gw2ApiApplication.main, contradicting the tracked entry point.",
+        "The supplied evaluator evidence says the path-based publication mechanism excludes the modified entry point. No future CI result is required for this review."
+      ],
+      "actionable_items": [
+        "Make the HTTP entry point’s schema-gate call part of the publishable implementation without including unrelated unfinished account-access code.",
+        "Align the tracked current architecture and runtime documentation with the publishable startup behavior."
+      ]
+    },
+    {
+      "decision": "APPROVE",
+      "reason": "The newly published HTTP startup wiring satisfies the startup acceptance criterion, and the prepared PostgreSQL tests remain present and meaningful with retained passing evidence.",
+      "evidence": [
+        "At HEAD 6eae86d, web.Gw2ApiApplication.main calls SchemaInitializer.initializeRuntimeDatabase() before SpringApplication.run, so schema validation and migration run before the Spring context starts.",
+        "initializeRuntimeDatabase delegates to the production initializer using the runtime data source; migration failures propagate before Spring startup.",
+        "SchemaInitializerPostgresTest still contains the planned migration, ownership, reset, rollback/retry, checksum, and policy assertions. The retained Surefire report records 8 tests, 0 failures, 0 errors, and 0 skipped.",
+        "The working-tree edits to Gw2ApiApplication add account-access wiring; the committed startup gate remains present and precedes Spring startup."
+      ],
+      "actionable_items": []
     }
   ],
   "schema_version": 1,

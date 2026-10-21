@@ -661,3 +661,37 @@ Then close the chain positively — once the recorder is up, require a `200` thr
 preview → recorder → backend, and treat the recorded per-phase request count as the proof that your
 recorder answered the measured calls. A failure with zero recorded backend requests is a topology
 fault, not a slow page.
+
+## Verify what the commit contains, not what the working tree compiles
+
+A green local build says nothing about the published commit. `STORY-INFRA-004` shipped
+`infra.db.SchemaInitializer` with its `org.flywaydb` imports but not the `pom.xml` that declared
+Flyway, so CI stopped in `maven-compiler-plugin:compile` with `package org.flywaydb.core does not
+exist` before reaching a single test, while the same tree compiled and passed locally.
+
+**Why:** the harness stages `working_tree_paths() - run_baseline`, and `run_baseline` is the set of
+*paths* already dirty when the implementation step starts. `pom.xml` was dirty before the story began
+(a blocked STORY-API-010 had edited the same file), so it could never enter the changed set — no
+number of further attempts could publish it, and each attempt failed CI identically. The same
+mechanism silently withheld `web/Gw2ApiApplication.java`, which left the HTTP entry point ungated in
+the published build.
+
+**How to apply:** when a story adds a dependency, a resource or a wiring call, check it is actually in
+the commit — `git show --stat <sha>` against the list of files the change needed. If a file the
+implementation depends on was already dirty before the story started, assume it will not be published
+and say so. To reproduce a publication gap, build the commit, not the tree: `git worktree add
+--detach <tmp> <sha>` outside the repository, run the narrowest command that covers the failure
+(`test-compile` when the job never reached a test), then apply only the missing file there and re-run.
+Remove the worktree afterwards. A published commit whose compile fails on a symbol the local tree
+resolves is always this, never a code defect.
+
+**Naming the gap is not closing it.** The same story was rejected a second time for reporting the
+ungated `web/Gw2ApiApplication.java` as "outside what this story can correct" — because the file also
+held a blocked story's uncommitted beans, which import three entirely untracked packages, so
+committing the working-tree version would not compile. The two halves of a file are separable: build
+the content you need (`git show HEAD:<path>` plus your change only), `git hash-object -w` it,
+`git update-index --cacheinfo 100644,<blob>,<path>`, then `git commit` — the index is committed while
+the working tree is never written to, so the other story's edits stay dirty and unpublished. Verify
+both sides (`git show --stat <sha>` = your lines only, `git diff --stat -- <path>` = theirs only),
+then prove the commit rather than the tree: compile it in a detached worktree and run the shipped
+entry point from there. A claim about publishable behavior needs evidence produced on the commit.
