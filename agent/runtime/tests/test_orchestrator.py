@@ -23,6 +23,7 @@ from agent.runtime.core import orchestrator
 from agent.runtime.core import story_archive
 from agent.runtime.core import story_state
 from agent.runtime.human import user_interventions
+from agent.runtime.qa import qa_agent
 
 
 def story_with_id(
@@ -271,6 +272,32 @@ class RequeueResolvedInterventionsTest(OrchestratorInterventionTestCase):
             story_state.parse_backlog_section(backlog, "To Do"),
             [filename],
         )
+
+    def test_resolution_is_recorded_once_as_user_guidance_in_the_story_contract(self):
+        filename = "STORY-DOM-015-x.md"
+        story_path = self.write_story(
+            filename,
+            story_with_id("STORY-DOM-015", "## Status\n\nBLOCKED\n", dependencies_text="None."),
+        )
+        before = story_path.read_text(encoding="utf-8")
+        self.write_backlog(blocked=[filename])
+        self.write_intervention("UI-001-STORY-DOM-015.md", "STORY-DOM-015", "RESOLVED")
+
+        with patch.object(orchestrator, "log_line"):
+            orchestrator.requeue_resolved_interventions()
+            content = story_path.read_text(encoding="utf-8")
+            self.assertIn("## User Guidance", content)
+            self.assertIn("### UI-001 (UI-001-STORY-DOM-015.md)", content)
+            self.assertIn("Done.", content)
+            self.assertIn("Granted access.", content)
+            if "## Result" in content:
+                self.assertLess(content.index("## User Guidance"), content.index("## Result"))
+            self.assertNotEqual(qa_agent.story_contract_sha256(before), qa_agent.story_contract_sha256(content))
+
+            # A later pass (e.g. after a second block) must not duplicate the same answer.
+            self.assertFalse(orchestrator._record_user_guidance(
+                story_path, {"file": "UI-001-STORY-DOM-015.md", "id": "UI-001"}))
+        self.assertEqual(story_path.read_text(encoding="utf-8").count("### UI-001"), 1)
 
     def test_requeue_transition_restamps_canonical_backlog_entry(self):
         filename = "STORY-DOM-015-x.md"

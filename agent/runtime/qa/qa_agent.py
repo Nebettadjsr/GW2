@@ -592,11 +592,12 @@ def make_legacy_plan(story_path: Path) -> dict:
     return plan
 
 
-def execute_preparation(story_path: Path, correction_feedback: str = "", *, test_repair: dict | None = None) -> dict:
+def execute_preparation(story_path: Path, correction_feedback: str = "", *, test_repair: dict | None = None,
+                        contract_revision: bool = False) -> dict:
     """One guarded QA run; callers own bounded retry and capacity waiting."""
     story_content = story_path.read_text(encoding="utf-8")
     sid = story_id_from_content(story_content, story_path.stem)
-    previous_plan = load_plan(story_path) if test_repair else None
+    previous_plan = load_plan(story_path) if (test_repair or contract_revision) else None
     if (test_repair and previous_plan
             and previous_plan.get("test_repair", {}).get("request_id") == test_repair["request_id"]
             and previous_plan.get("status") in ("READY", "NEEDS_USER")
@@ -608,7 +609,7 @@ def execute_preparation(story_path: Path, correction_feedback: str = "", *, test
     except (OSError, json.JSONDecodeError):
         pass
     owned = state.get("owned_test_paths", []) if state.get("story_id") == sid else []
-    if test_repair and previous_plan:
+    if previous_plan:
         owned = sorted(set(owned) | set(previous_plan.get("prepared_test_paths", [])))
     # A file QA deleted earlier is no longer an owned test.
     owned = [path for path in owned if (config.REPO_ROOT / path).is_file()]
@@ -646,6 +647,17 @@ def execute_preparation(story_path: Path, correction_feedback: str = "", *, test
             "The earlier pre-implementation timing instructions do not apply: check the current\n"
             "implementation now. The full CI result for a new commit is checked after publication.\n"
             + json.dumps({"approved_request": test_repair, "previous_plan": previous_plan}, ensure_ascii=False)
+        )
+    elif contract_revision:
+        prompt += (
+            "\n\nQA PLAN REVISION — THE STORY CONTRACT CHANGED SINCE YOUR PREVIOUS PLAN\n"
+            "Compare the story above with your previous plan below, in particular any `## User Guidance`\n"
+            "section: those are the Product Owner's answers to earlier interventions and are binding.\n"
+            "Add or update the tests and fixtures the changed contract requires, keep previously\n"
+            "prepared tests that still apply, and record every technical decision the guidance leaves\n"
+            "to QA (for example whether a production test seam is needed) in interface_contract and\n"
+            "test_specifications. Return the complete updated plan.\n"
+            + json.dumps({"previous_plan": previous_plan}, ensure_ascii=False)
         )
     if correction_feedback:
         prompt += (

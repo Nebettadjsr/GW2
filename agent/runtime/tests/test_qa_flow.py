@@ -50,6 +50,28 @@ class QAGateTest(unittest.TestCase):
                 result = orchestrator._ensure_preimplementation_qa(self.story)
             self.assertEqual(result["status"], plan["status"])
 
+    def test_ready_plan_for_the_current_contract_is_reused(self):
+        plan = ready_plan(prepared=True)
+        plan["story_contract_sha256"] = qa_agent.story_contract_sha256(self.story.read_text(encoding="utf-8"))
+        with patch.object(qa_agent, "load_plan", return_value=plan), \
+                patch.object(qa_agent, "restore_protected_tests", return_value=[]), \
+                patch.object(qa_agent, "execute_preparation") as run:
+            self.assertIs(orchestrator._ensure_preimplementation_qa(self.story), plan)
+        run.assert_not_called()
+
+    def test_ready_plan_for_a_changed_contract_is_revised_by_qa(self):
+        plan = ready_plan(prepared=True)
+        plan["story_contract_sha256"] = qa_agent.story_contract_sha256(self.story.read_text(encoding="utf-8"))
+        self.story.write_text(self.story.read_text(encoding="utf-8")
+                              + "\n## User Guidance\n\n### UI-001\n\nAdd test T1.\n", encoding="utf-8")
+        revised = dict(plan, rationale="Revised for the user guidance.")
+        with patch.object(qa_agent, "load_plan", return_value=plan), \
+                patch.object(qa_agent, "execute_preparation", return_value=revised) as run, \
+                patch.object(qa_agent, "clear_state"), \
+                patch.object(orchestrator, "log_line"):
+            self.assertIs(orchestrator._ensure_preimplementation_qa(self.story), revised)
+        self.assertTrue(run.call_args.kwargs["contract_revision"])
+
     def test_clarification_blocks_only_story_until_product_owner_answers(self):
         plan = ready_plan()
         plan.update(status="NEEDS_USER", clarifications=["Which result is required?"], user_decision_ids=["UD-041"])
