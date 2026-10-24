@@ -71,6 +71,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         env:
           CLAUDE_BRANCH: ${{ steps.prepare.outputs.branch_name }}
+          GW2_RUN_REPORT: ${{ runner.temp }}/gw2-claude-report.md
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
@@ -81,6 +82,10 @@ jobs:
             Implement or finish that one issue on the checked-out story branch.
             If this branch already has a PR, address its review and CI feedback as part of this issue.
             Run narrow checks and report the exact results. Do not start another issue.
+            Before finishing, write a concise Markdown implementation report to the file named by
+            GW2_RUN_REPORT. Include changes, acceptance-criteria evidence, exact checks run and
+            results, changed or weakened assertions with reasons, local-only checks still needed,
+            and any unresolved gap. Do not put secrets in the report or commit the report file.
             Leave committing, pushing, and PR creation to the workflow steps after this action.
           claude_args: |
             --max-turns 12
@@ -117,28 +122,35 @@ jobs:
             gh issue edit "$ISSUE_NUMBER" --remove-label needs-rework
           fi
 
-      - name: Open story PR
-        if: steps.claude.outputs.conclusion == 'success' && steps.prepare.outputs.existing_pr == 'false'
+      - name: Publish PR evidence
+        if: steps.claude.outputs.conclusion == 'success'
         env:
           GH_TOKEN: ${{ secrets.GW2_AUTOMATION_TOKEN }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
           BRANCH_NAME: ${{ steps.prepare.outputs.branch_name }}
+          EXISTING_PR: ${{ steps.prepare.outputs.existing_pr }}
+          RUN_REPORT: ${{ runner.temp }}/gw2-claude-report.md
         shell: bash
         run: |
           set -euo pipefail
           test -n "$GH_TOKEN"
-          cat > "$RUNNER_TEMP/claude-pr-body.md" <<EOF
-          Closes #$ISSUE_NUMBER
-
-          ## Scope
-
-          One manually authorized Claude run for issue #$ISSUE_NUMBER.
-          Review the issue and Actions run for acceptance criteria and verification.
-
-          ## Review
-
-          Merge only after green CI and a satisfactory Codex review.
-          EOF
-          gh pr create --head "$BRANCH_NAME" --base master \
-            --title "Implement issue #$ISSUE_NUMBER" \
-            --body-file "$RUNNER_TEMP/claude-pr-body.md"
+          body="$RUNNER_TEMP/claude-pr-body.md"
+          {
+            printf 'Closes #%s\n\n' "$ISSUE_NUMBER"
+            printf '## Implementation report\n\n'
+            if [[ -s "$RUN_REPORT" ]]; then
+              cat "$RUN_REPORT"
+            else
+              printf 'Claude did not supply a run report. Reviewers must request acceptance and check evidence.\n'
+            fi
+            printf '\n## Workflow evidence\n\n'
+            printf -- '- Claude run: https://github.com/%s/actions/runs/%s\n' "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+            printf -- '- CI and Codex review: check this PR before merging.\n'
+          } > "$body"
+          if [[ "$EXISTING_PR" == 'true' ]]; then
+            gh pr comment "$BRANCH_NAME" --body-file "$body"
+          else
+            gh pr create --head "$BRANCH_NAME" --base master \
+              --title "Implement issue #$ISSUE_NUMBER" \
+              --body-file "$body"
+          fi

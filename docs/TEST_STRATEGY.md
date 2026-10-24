@@ -1013,8 +1013,8 @@ A smaller set of high-value tests is preferable to a large number of shallow tes
 
 # 26. Coverage KPI and Reports
 
-Test coverage is a permanent software-quality KPI for the Java backend, TypeScript frontend,
-and Python agent runtime. The long-term target is at least **90% line and branch coverage**,
+Test coverage is a permanent software-quality KPI for the Java backend and TypeScript frontend.
+The long-term target is at least **90% line and branch coverage**,
 maintained as consistently as possible. Coverage below target is a warning and does not fail
 the build.
 
@@ -1032,12 +1032,6 @@ Developers and AI agents can generate reports locally:
 - Frontend: `cd frontend && npm ci && npm run test:coverage`; HTML at
   `frontend/coverage/index.html`, machine-readable summary at
   `frontend/coverage/coverage-summary.json`.
-- Python agent runtime: install `requirements-dev.txt`, then run
-  `python -m pytest agent/runtime/tests --import-mode=importlib
-  -o consider_namespace_packages=true --cov-config=.coveragerc
-  --cov=agent.runtime --cov-branch
-  --cov-report=term-missing --cov-report=html:agent/runtime/htmlcov
-  --cov-report=xml:agent/runtime/coverage.xml`; HTML is in `agent/runtime/htmlcov`.
 - Combined local KPI: `python .github/scripts/publish_coverage_kpi.py`; this writes
   `quality-reports/coverage-kpi.md` and `quality-reports/coverage-kpi.json`.
 
@@ -1339,7 +1333,7 @@ attempt.
 
 ## 36.2 What the gate runs
 
-Three jobs, in parallel, on every pushed commit and every pull request:
+Two test jobs, in parallel, on every pushed commit and every pull request, followed by a coverage report job:
 
 - **Backend** — `./mvnw -B -ntp test` on `ubuntu-latest`,
   against a `postgres:17` service container. Surefire's default patterns still
@@ -1349,8 +1343,6 @@ Three jobs, in parallel, on every pushed commit and every pull request:
 - **Frontend** — `npm ci`, then `npm test` (Vitest, with Vitest's own
   `github-actions` reporter added so failures become annotations), then
   `npm run build`, which type-checks first (§12.1).
-- **Agent runtime** — `python -m unittest discover -s agent/runtime/tests -t .`,
-  the offline harness contract tests.
 
 ## 36.3 Required services and configuration
 
@@ -1386,11 +1378,11 @@ layer passed". It is the regression gate, not the whole strategy.
 ## 36.5 What "verified" means for a story
 
 The PR head must have green backend and frontend CI checks and a completed Codex
-review before an automated merge. A red or missing required check holds the PR.
+review before a merge. A red or missing required check holds the PR.
 The implementing agent fixes relevant failures on the same branch and CI reruns
 on the new head. Local-only checks required by the issue need recorded evidence;
-their absence cannot be inferred away from green CI. The legacy agent-runtime
-job is transitional and is not a product acceptance gate.
+their absence cannot be inferred away from green CI. Merges are supervised until
+a reliable automatic Codex review gate is enforced.
 
 A story's Definition of Done must not demand a full local regression run. Where
 it needs test evidence, it names the tests that must exist and pass, and the gate

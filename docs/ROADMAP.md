@@ -269,7 +269,7 @@ Phase 4. The frontend needs stable backend APIs for backend-owned workflows. Sma
 - (Done) Crafting Profit and backend-authoritative resolution details are available in the browser.
 - (Done) Crafting Discovery is available in the browser.
 - (Done) Bank, Materials, and frontend-owned Ectoplasm Salvage workflows are available in the browser.
-- (Done) The shared refresh workflow and System Status page are implemented; remaining Phase 5 stories are listed in `agent/stories/BACKLOG.md`.
+- (Done) The shared refresh workflow and System Status page are implemented; current work is tracked in GitHub issues.
 - (Done and continuing) Frontend component and browser smoke coverage is tracked in the canonical stories and `TEST_STRATEGY.md`.
 - (Done) The obsolete backend-owned Ectoplasm calculation route was removed; the browser calculation is canonical.
 - Finish browser coverage and acceptance. JavaFX removal is permitted from this phase onward but is not required to close it; Phase 9 still owns completing it.

@@ -1,11 +1,8 @@
-"""Turn a failed CI job's test reports into a few compact GitHub annotations.
+"""Turn a failed CI job's test reports into compact GitHub annotations.
 
-The orchestrator reads these annotations through the public checks API and
-hands them to Claude as the failure report (agent/runtime/support/github_ci.py).
-That is the whole reason this script exists: without it the only machine-readable
-record of a failure is the raw job log, and feeding whole CI logs into a model
-prompt is exactly what the new workflow is meant to avoid. Nothing here decides
-whether the job failed -- the test command already did that.
+Nothing here decides whether the job failed; the test command already did that.
+Annotations keep the failing cases visible to reviewers and implementing agents
+without requiring them to read the entire job log.
 
 Usage:
     summarize_test_failures.py --label "Backend (Maven)" --junit target/surefire-reports
@@ -35,9 +32,8 @@ UNITTEST_FAILURE = re.compile(r"^(FAIL|ERROR):\s+(.+)$")
 def escape_message(value: str) -> str:
     """Escaping for a workflow command's message.
 
-    Only these three are decoded again by the runner. A real run showed why
-    that distinction matters: escaping ':' and ',' here left literal "%3A"
-    and "%2C" in the annotation the orchestrator reads back.
+    GitHub workflow commands decode these three escapes in message text.
+    Colons and commas are left intact so annotations stay readable.
     """
 
     return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")

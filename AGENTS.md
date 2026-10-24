@@ -1,6 +1,6 @@
 # Repository instructions
 
-GW2 is moving to a GitHub issue and pull-request workflow. The previous Python story harness and its role files are historical until decommissioned. Current work is selected from GitHub issues, not `agent/CURRENT_STORY.md` or `agent/stories/BACKLOG.md`.
+GW2 uses GitHub issues, branches, pull requests, CI, and Codex review for development. The previous Python story harness is preserved by the `pre-github-flow` tag. Select current work from GitHub issues.
 
 ## Work contract
 
