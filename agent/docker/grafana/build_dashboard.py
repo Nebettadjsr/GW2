@@ -187,8 +187,8 @@ OPERATOR_ACTIONS = [
     ('start', 'Start run\nnow, clears hold', '#2F855A', None),
     ('abort', 'ABORT\nkill Claude + Codex', '#C53030',
      'Kill every Claude and Codex process the workflow started? The interrupted step reruns after Resume.'),
-    ('auto', 'Schedule\nautomatic', '#2B6CB0', None),
-    ('manual', 'Schedule\nmanual', '#2B6CB0', None),
+    ('auto', 'Schedule automatic\nclock + budget apply', '#2B6CB0', None),
+    ('manual', 'Schedule manual\nClaude released', '#2B6CB0', None),
     ('launch', 'Open workflow\nwindow', '#6B46C1', None),
 ]
 
@@ -208,6 +208,13 @@ def add_operator_controls(dashboard):
     """A canvas of one-click buttons (stat panels do not offer actions) above the workflow canvas."""
     panels = {p['id']: p for p in dashboard['panels']}
     if panels.get(14, {}).get('type') == 'canvas':
+        # Keep the saved layout; only refresh what each button says and does.
+        defined = {name: (label, confirmation) for name, label, _colour, confirmation in OPERATOR_ACTIONS}
+        for element in panels[14]['options']['root']['elements']:
+            if element.get('name') in defined:
+                label, confirmation = defined[element['name']]
+                element['config']['text']['fixed'] = label
+                element['actions'] = [operator_action(element['name'], label, confirmation)]
         return dashboard
     if 14 in panels:  # replace the first, stat-based version
         old = panels[14]['gridPos']

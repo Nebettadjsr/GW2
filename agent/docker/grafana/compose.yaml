@@ -9,6 +9,8 @@ services:
     entrypoint: ["/bin/sh", "/workflow-entrypoint.sh"]
     environment:
       GF_PLUGINS_PREINSTALL_SYNC: yesoreyeram-infinity-datasource@4.1.1
+      # Without this toggle Grafana drops every `infinity` panel action, so the operator buttons do nothing.
+      GF_FEATURE_TOGGLES_ENABLE: vizActionsAuth
       GW2_WORKFLOW_SERVICE_URL: ${GW2_WORKFLOW_SERVICE_URL:-http://172.29.240.1:8765}
       GW2_WORKFLOW_SUPERVISOR_URL: ${GW2_WORKFLOW_SUPERVISOR_URL:-http://172.29.240.1:8766}
     ports:

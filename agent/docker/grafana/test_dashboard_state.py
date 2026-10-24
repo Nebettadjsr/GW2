@@ -38,6 +38,10 @@ class DashboardStateTests(unittest.TestCase):
                          ("PAUSED / HOLDING", "PAUSED - holding | schedule: auto"))
         self.assertEqual(state()["control_state"], "IDLE | schedule: auto")
 
+    def test_grafana_enables_the_toggle_that_infinity_actions_need(self):
+        compose = (Path(__file__).parent / "compose.yaml").read_text("utf-8")
+        self.assertRegex(compose, r"GF_FEATURE_TOGGLES_ENABLE:\s*vizActionsAuth")
+
     def test_operator_buttons_are_one_click_canvas_actions_sent_through_the_data_source(self):
         panels = json.loads((Path(__file__).parent / "dashboards/workflow-overview.json").read_text("utf-8"))["panels"]
         panel = next(p for p in panels if p["id"] == 14)

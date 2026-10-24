@@ -350,8 +350,15 @@ Responsibilities:
   Run prepared tests before implementation and report PASS, EXPECTED_FAILURE,
   or NOT_RUN. For EXPECTED_FAILURE include evidence that it fails on the
   behavior assertion, not because compilation, fixtures or environment broke.
-- If requirements are genuinely ambiguous, return NEEDS_USER and formulate a
+- If the story leaves a PRODUCT behavior genuinely open, return NEEDS_USER and formulate a
   concrete Product Owner question. Do not invent product behavior.
+  Technical design is yours, not the Product Owner's: when the story fixes the behavior but the
+  production classes, interfaces, method signatures, DTO fields, packages or test seams do not
+  exist yet, design them in line with docs/TARGET_ARCHITECTURE.md and the ADRs, list them in
+  `interface_contract`, and write the tests against them. They cannot compile until the coder
+  adds them; report that as pre_implementation_verification NOT_RUN or EXPECTED_FAILURE with the
+  missing-symbol evidence. Never return NEEDS_USER because an interface is absent or its shape
+  is undecided.
 - For documentation-only/low-risk work, return NO_TESTS_NEEDED with a specific
   reason. Never add tests only to raise coverage.
 - Review coverage in affected modules/packages from existing reports if
@@ -612,7 +619,7 @@ def execute_preparation(story_path: Path, correction_feedback: str = "", *, test
             "Never weaken expectations merely to accept the implementation. Record the\n"
             "requirement/evidence for each correction and run the relevant focused checks.\n"
             "Return the complete updated plan, preserving previously prepared tests.\n"
-            "If the requirements need a human decision, return NEEDS_USER.\n"
+            "If the story leaves a PRODUCT behavior open, return NEEDS_USER; interface and design choices are yours to make.\n"
             "The earlier pre-implementation timing instructions do not apply: check the current\n"
             "implementation now. The full CI result for a new commit is checked after publication.\n"
             + json.dumps({"approved_request": test_repair, "previous_plan": previous_plan}, ensure_ascii=False)

@@ -54,7 +54,7 @@ State lives in the `control` record, so it survives restarts and appears in `GET
 | `resume` | Clear the hold; an unfinished run continues. |
 | `start` | Clear the hold and begin a run now if none is active. |
 | `abort` | Hold, then kill every Claude and Codex process tree the service registered. The step is marked `interrupted` with no retry spent and no history entry; after `resume` it reruns from its checkpoint (an implementation continues its Claude session). |
-| `auto` / `manual` | Whether the clock may start runs. Manual runs start only with `start` or `--now`. |
+| `auto` / `manual` | `auto`: the clock starts runs, and the Claude window and budget apply. `manual`: runs start only with `start`, `resume` or `--now`, and Claude is **released**: every Claude start is allowed whatever the window or the weekly/5h budget says, until you switch back to `auto` or pause. Claude's own capacity error still stops a run. The mode is persisted. (Not to be confused with the budget `mode` below.) |
 
 Registered processes are tracked by PID and start time in `<state>.processes.json`, never found by
 name, so interactive Claude sessions are untouched. Git operations are not registered, and an

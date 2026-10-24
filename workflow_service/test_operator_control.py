@@ -190,5 +190,44 @@ class HoldTests(unittest.TestCase):
         run.assert_not_called()
 
 
+class ManualReleaseTests(unittest.TestCase):
+    def setUp(self):
+        self.addCleanup(setattr, claude_budget, "RELEASED", False)
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.path = Path(directory.name) / "tasks.json"
+        self.service = service.WorkflowService(service.Store(self.path), "t" * 40)
+        patcher = mock.patch.object(service, "log_line")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def closed_and_over_budget(self):
+        used = USAGE.replace("Current session: 0%", "Current session: 99%").replace("week (all models): 0%", "week (all models): 99%")
+        return claude_budget.status(None, now=datetime(2026, 10, 7, 12, 0), usage_text=used)
+
+    def test_manual_schedule_releases_claude_from_window_and_budget_and_auto_restores_them(self):
+        blocked = self.closed_and_over_budget()
+        self.assertFalse(blocked["claude_allowed"])
+        self.service.control_command("manual")
+        released = self.closed_and_over_budget()
+        self.assertTrue(released["claude_allowed"])
+        self.assertTrue(released["released"])
+        self.assertFalse(released["usage_allowed"])  # a real capacity failure is still recognised
+        self.assertIn("Released by the operator", released["reason"])
+        self.service.control_command("auto")
+        self.assertFalse(self.closed_and_over_budget()["claude_allowed"])
+
+    def test_budget_state_follows_the_release_even_without_a_fresh_reading(self):
+        self.assertFalse(self.service.budget_state()["claude_allowed"])
+        self.service.control_command("manual")
+        self.assertTrue(self.service.budget_state()["claude_allowed"])
+
+    def test_a_restart_keeps_the_persisted_schedule(self):
+        self.service.control_command("manual")
+        claude_budget.RELEASED = False
+        service.WorkflowService(service.Store(self.path), "t" * 40)
+        self.assertTrue(claude_budget.RELEASED)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,5 @@
 # Test and coverage tooling for the agent workflow, including Grafana state queries.
-# psutil: the agent-process registry identifies processes by OS start time.
+# psutil: the agent-process registry (agent/runtime/support/processes.py) identifies processes by start time.
 pytest==9.1.0
 pytest-cov==7.1.0
 coverage==7.16.2
