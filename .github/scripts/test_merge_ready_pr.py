@@ -104,6 +104,36 @@ class MergeGateTest(unittest.TestCase):
         with patch.object(gate, "pages", return_value=[{"number": 42, "head": {"sha": SHA}}]):
             self.assertEqual([42], gate.candidate_numbers("workflow_run", run, REPO))
 
+    def test_confirmed_merge_closes_story_issue(self):
+        pr, issue, _, _, _ = fixtures()
+        calls = []
+
+        def fake_api(path, *, method="GET", data=None):
+            calls.append((path, method, data))
+            if path == "pulls/42" and method == "GET":
+                return pr
+            if path == "issues/42" and method == "GET":
+                return issue
+            if path.endswith("/check-runs?per_page=100"):
+                return {"check_runs": []}
+            if path == "pulls/42/merge" and method == "PUT":
+                return {"merged": True, "sha": SHA}
+            if path == "issues/42" and method == "PATCH":
+                return {"state": "closed"}
+            self.fail(f"Unexpected API call: {path} {method}")
+
+        with patch.dict(gate.os.environ, {"GITHUB_EVENT_NAME": "workflow_run", "GITHUB_EVENT_PATH": "unused",
+                                          "GITHUB_REPOSITORY": REPO}), \
+                patch.object(gate.Path, "read_text", return_value="{}"), \
+                patch.object(gate, "candidate_numbers", return_value=[42]), \
+                patch.object(gate, "pages", return_value=[]), \
+                patch.object(gate, "ready_reason", return_value=None), \
+                patch.object(gate, "api", side_effect=fake_api):
+            gate.main()
+
+        self.assertLess(calls.index(("pulls/42/merge", "PUT", {"sha": SHA, "merge_method": "squash"})),
+                        calls.index(("issues/42", "PATCH", {"state": "closed", "state_reason": "completed"})))
+
 
 if __name__ == "__main__":
     unittest.main()

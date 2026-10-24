@@ -209,6 +209,10 @@ def main() -> None:
             raise
         if not result.get("merged"):
             raise RuntimeError(f"PR #{number}: GitHub did not confirm a merge")
+        # An API merge does not reliably apply the PR body's "Closes #N"
+        # directive. Close the story explicitly so the selector cannot run it
+        # again after a successful merge.
+        api(f"issues/{issue_number}", method="PATCH", data={"state": "closed", "state_reason": "completed"})
         print(f"PR #{number}: merged at {result['sha']}")
 
 
