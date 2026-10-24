@@ -29,4 +29,28 @@ public class AccountRefreshGateway {
     public void syncCharacterCraftingAndRecipes() throws Exception {
         CharacterSync.syncCharactersCraftingAndRecipes();
     }
+
+    // The account-scoped sequences (STORY-APP-015). Each fetches outside the database transaction
+    // and then publishes that one source atomically, so a failure in one leaves the others' already
+    // committed publications intact.
+
+    public void syncAccountBank(model.AccountScope scope) throws Exception {
+        AccountSync.syncAccountBank(scope);
+    }
+
+    public void syncAccountMaterials(model.AccountScope scope) throws Exception {
+        AccountSync.syncAccountMaterials(scope);
+    }
+
+    public void syncAccountRecipes(model.AccountScope scope) throws Exception {
+        AccountSync.syncAccountRecipes(scope);
+    }
+
+    public void syncAccountLuck(model.AccountScope scope) throws Exception {
+        AccountSync.syncAccountLuck(scope);
+    }
+
+    public void syncCharacterCraftingAndRecipes(model.AccountScope scope) throws Exception {
+        CharacterSync.syncCharactersCraftingAndRecipes(scope);
+    }
 }

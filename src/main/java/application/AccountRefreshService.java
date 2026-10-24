@@ -1,7 +1,9 @@
 package application;
 
+import model.AccountScope;
 import sync.AccountRefreshGateway;
 import repo.AccountSyncStateRepository;
+import java.util.List;
 import java.util.Set;
 import java.time.Instant;
 
@@ -75,6 +77,59 @@ public class AccountRefreshService {
         if (sources.contains(AccountSyncStateRepository.RECIPES)) gateway.syncAccountRecipes();
         if (sources.contains(AccountSyncStateRepository.LUCK)) gateway.syncAccountLuck();
         if (sources.contains(AccountSyncStateRepository.CHARACTERS)) gateway.syncCharacterCraftingAndRecipes();
+    }
+
+    /**
+     * Refreshes the requested sources for one account (STORY-APP-015).
+     *
+     * <p>Unlike the unscoped {@link #refreshSources(Set)} above, a failing source does not
+     * short-circuit the rest: each source is fetched and published independently, so one that
+     * succeeds commits its own data, generation and completion even when another fails
+     * (TARGET_ARCHITECTURE.md §7.2 "Successful sources may commit even when another source fails").
+     * The first failure is then thrown with the remaining ones attached, so nothing is swallowed and
+     * no whole-account completion is fabricated from a partial run.
+     *
+     * <p>The fixed order is the one the unscoped sequences already used; it carries no dependency
+     * between sources, since every publication is its own transaction.
+     */
+    public void refreshSources(AccountScope scope, Set<String> sources) throws Exception {
+        List<ScopedStep> steps = List.of(
+                new ScopedStep(AccountSyncStateRepository.BANK, () -> gateway.syncAccountBank(scope)),
+                new ScopedStep(AccountSyncStateRepository.MATERIALS, () -> gateway.syncAccountMaterials(scope)),
+                new ScopedStep(AccountSyncStateRepository.RECIPES, () -> gateway.syncAccountRecipes(scope)),
+                new ScopedStep(AccountSyncStateRepository.LUCK, () -> gateway.syncAccountLuck(scope)),
+                new ScopedStep(AccountSyncStateRepository.CHARACTERS,
+                        () -> gateway.syncCharacterCraftingAndRecipes(scope)));
+
+        Exception firstFailure = null;
+        for (ScopedStep step : steps) {
+            if (!sources.contains(step.source())) continue;
+            try {
+                step.run().run();
+            } catch (Exception failure) {
+                if (firstFailure == null) firstFailure = failure;
+                else firstFailure.addSuppressed(failure);
+            }
+        }
+        if (firstFailure != null) throw firstFailure;
+        markRefreshed("account sources " + sources);
+    }
+
+    /** Refreshes every account source this service knows, for one account (STORY-APP-015). */
+    public void refreshAll(AccountScope scope) throws Exception {
+        refreshSources(scope, Set.of(
+                AccountSyncStateRepository.BANK,
+                AccountSyncStateRepository.MATERIALS,
+                AccountSyncStateRepository.RECIPES,
+                AccountSyncStateRepository.LUCK,
+                AccountSyncStateRepository.CHARACTERS));
+    }
+
+    /** One requested source and the gateway call that publishes it. */
+    private record ScopedStep(String source, Step run) {}
+
+    private interface Step {
+        void run() throws Exception;
     }
 
     private void markRefreshed(String scope) {

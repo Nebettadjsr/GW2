@@ -6,6 +6,7 @@ import model.CharacterCraftingRow;
 import model.CharacterInfo;
 import model.CharacterItemRow;
 import model.CharacterRecipeRow;
+import model.AccountScope;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -66,6 +67,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * GW2 API are never reached.
  */
 class CharacterRosterPublicationTest {
+
+    private static final AccountScope ACCOUNT = AccountScope.of("10000000-0000-0000-0000-000000000001");
 
     private static final Instant GENERATION_ONE = Instant.parse("2026-10-12T09:00:00Z");
     private static final Instant GENERATION_TWO = Instant.parse("2026-10-12T10:00:00Z");
@@ -173,7 +176,7 @@ class CharacterRosterPublicationTest {
                 character(HELD_CHARACTER, 500));
         Thread refresh = new Thread(() -> {
             try {
-                CharacterSync.publishRoster(writer, generationTwo, GENERATION_TWO);
+                CharacterSync.publishRoster(writer, ACCOUNT, generationTwo, GENERATION_TWO);
             } catch (Exception thrown) {
                 failure.set(thrown);
             }
@@ -181,7 +184,7 @@ class CharacterRosterPublicationTest {
         refresh.start();
         awaitWaitingOnTheLock(writerPid);
 
-        try (ProfitInputSession session = ProfitInputSession.open()) {
+        try (ProfitInputSession session = ProfitInputSession.open(ACCOUNT)) {
             assertEquals(GENERATION_ONE, capturedMarker(session),
                     "a mid-write refresh must not advance the marker a calculation reads");
             assertEquals(Map.of("Scribe Ana", 400, "Scribe Bo", 300), capturedRatings(session),
@@ -193,7 +196,7 @@ class CharacterRosterPublicationTest {
         writer.close();
         assertNull(failure.get(), "the released refresh must publish normally");
 
-        try (ProfitInputSession session = ProfitInputSession.open()) {
+        try (ProfitInputSession session = ProfitInputSession.open(ACCOUNT)) {
             assertEquals(GENERATION_TWO, capturedMarker(session),
                     "once it commits, the data and its version appear together");
             assertEquals(Map.of("Scribe Ana", 450, "Scribe Bo", 300, HELD_CHARACTER, 500),
@@ -220,7 +223,7 @@ class CharacterRosterPublicationTest {
                     "the publish must fail rather than commit half a generation");
         }
 
-        try (ProfitInputSession session = ProfitInputSession.open()) {
+        try (ProfitInputSession session = ProfitInputSession.open(ACCOUNT)) {
             assertEquals(GENERATION_ONE, capturedMarker(session),
                     "a failed refresh must not advance the completion marker");
             assertEquals(Map.of("Scribe Ana", 400, "Scribe Bo", 300), capturedRatings(session),
@@ -232,7 +235,7 @@ class CharacterRosterPublicationTest {
 
     @Test
     void oneCaptureCannotMixGenerationsNoMatterWhatPublishesWhileItReads() throws Exception {
-        try (ProfitInputSession session = ProfitInputSession.open()) {
+        try (ProfitInputSession session = ProfitInputSession.open(ACCOUNT)) {
             assertEquals(GENERATION_ONE, capturedMarker(session));
             assertEquals(Map.of("Scribe Ana", 400, "Scribe Bo", 300), capturedRatings(session));
 
@@ -244,7 +247,7 @@ class CharacterRosterPublicationTest {
                     "nor read the newer rows under the older marker");
         }
 
-        try (ProfitInputSession session = ProfitInputSession.open()) {
+        try (ProfitInputSession session = ProfitInputSession.open(ACCOUNT)) {
             assertEquals(GENERATION_TWO, capturedMarker(session));
             assertEquals(Map.of("Scribe Ana", 450, "Scribe Bo", 350), capturedRatings(session));
         }
@@ -273,7 +276,7 @@ class CharacterRosterPublicationTest {
     private void publish(Instant version, List<CharacterSync.CharPayload> payloads) throws Exception {
         try (Connection writer = connect()) {
             writer.setSchema(schema);
-            CharacterSync.publishRoster(writer, payloads, version);
+            CharacterSync.publishRoster(writer, ACCOUNT, payloads, version);
         }
     }
 

@@ -1,5 +1,6 @@
 package application;
 
+import model.AccountScope;
 import repo.CharacterRepository;
 
 import java.sql.SQLException;
@@ -50,5 +51,22 @@ public class CharacterSelectionService {
      */
     public List<String> getCharacterNames() throws SQLException {
         return charRepo.loadAllCharacterNames();
+    }
+
+    /**
+     * One account's crafting-discipline rows (STORY-APP-015). The scope is passed in by the boundary
+     * that authorized the request; this use case has no account of its own to fall back to.
+     */
+    public List<CharacterRepository.DiscRow> getCraftingCharacterOptions(AccountScope scope) throws SQLException {
+        return charRepo.loadAllCharacterCrafting(scope);
+    }
+
+    /**
+     * One account's character names (STORY-APP-015). A character name identifies a character only
+     * within its account, so the selected character a later binding-aware inventory read uses must
+     * be chosen from this account's own roster.
+     */
+    public List<String> getCharacterNames(AccountScope scope) throws SQLException {
+        return charRepo.loadAllCharacterNames(scope);
     }
 }

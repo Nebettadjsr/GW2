@@ -24,6 +24,237 @@ import java.time.Instant;
 public final class AccountSync {
     private AccountSync() {}
 
+    private static final repo.AccountSourcePublication PUBLICATION = new repo.AccountSourcePublication();
+
+    /**
+     * Fetches and publishes one account's bank (STORY-APP-015).
+     *
+     * <p>The upstream call and the parse happen first and outside any transaction, so a slow or
+     * failing GW2 API never holds a database transaction open
+     * (TARGET_ARCHITECTURE.md §7.2). Only once the whole payload is in hand does
+     * {@link repo.AccountSourcePublication} open the transaction that replaces the rows, removes the
+     * ones this run did not refresh, advances the {@code BANK} generation and records the account's
+     * successful-sync activity - all or nothing.
+     */
+    public static void syncAccountBank(model.AccountScope scope) throws Exception {
+        List<BankSlot> rows = fetchBankSlots();
+        try (Connection con = Db.open()) {
+            publishBank(con, scope, rows, Instant.now());
+        }
+    }
+
+    /** Publishes already-fetched bank slots; see {@link #syncAccountBank(model.AccountScope)}. */
+    static repo.AccountSourcePublication.Published publishBank(Connection con,
+                                                               model.AccountScope scope,
+                                                               List<BankSlot> rows,
+                                                               Instant completedAt) throws Exception {
+        return PUBLICATION.publish(con, scope, AccountSyncStateRepository.BANK, completedAt,
+                (tx, owner, runTs) -> upsertScopedAccountBank(tx, owner, rows, runTs));
+    }
+
+    /** Fetches and publishes one account's material storage; see {@link #syncAccountBank(model.AccountScope)}. */
+    public static void syncAccountMaterials(model.AccountScope scope) throws Exception {
+        List<MaterialStack> rows = fetchMaterialStacks();
+        try (Connection con = Db.open()) {
+            publishMaterials(con, scope, rows, Instant.now());
+        }
+    }
+
+    /**
+     * Publishes already-fetched material stacks. Writes no {@code account_materials_sync} row: that
+     * singleton is retired as a runtime authority in favour of this account's {@code MATERIALS} row
+     * in {@code account_source_state} (TARGET_ARCHITECTURE.md §7.2).
+     */
+    static repo.AccountSourcePublication.Published publishMaterials(Connection con,
+                                                                    model.AccountScope scope,
+                                                                    List<MaterialStack> rows,
+                                                                    Instant completedAt) throws Exception {
+        return PUBLICATION.publish(con, scope, AccountSyncStateRepository.MATERIALS, completedAt,
+                (tx, owner, runTs) -> upsertScopedAccountMaterials(tx, owner, rows, runTs));
+    }
+
+    /** Fetches and publishes one account's recipe unlocks; see {@link #syncAccountBank(model.AccountScope)}. */
+    public static void syncAccountRecipes(model.AccountScope scope) throws Exception {
+        List<Integer> ids = fetchAccountRecipeIds();
+        try (Connection con = Db.open()) {
+            publishRecipes(con, scope, ids, Instant.now());
+        }
+    }
+
+    /** Publishes already-fetched account recipe ids; see {@link #syncAccountBank(model.AccountScope)}. */
+    static repo.AccountSourcePublication.Published publishRecipes(Connection con,
+                                                                  model.AccountScope scope,
+                                                                  List<Integer> ids,
+                                                                  Instant completedAt) throws Exception {
+        return PUBLICATION.publish(con, scope, AccountSyncStateRepository.RECIPES, completedAt,
+                (tx, owner, runTs) -> upsertScopedAccountRecipes(tx, owner, ids, runTs));
+    }
+
+    /**
+     * Fetches and publishes one account's consumed Luck; see
+     * {@link #syncAccountBank(model.AccountScope)}.
+     *
+     * <p>The upstream {@code /v2/account} identifier is validated against {@code scope} before
+     * anything is written: a key that resolves to a different account must not write under the
+     * caller's GUID, and the publication is refused rather than silently rescoped.
+     */
+    public static void syncAccountLuck(model.AccountScope scope) throws Exception {
+        JsonNode account = Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account");
+        String upstreamAccountId = parseAccountId(account);
+        if (!scope.id().equalsIgnoreCase(upstreamAccountId)) {
+            throw new IllegalStateException(
+                    "The supplied credential resolves to a different Guild Wars 2 account than the"
+                            + " requested scope, so no account data was written");
+        }
+        long consumedLuck = parseConsumedLuck(Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account/luck"));
+        try (Connection con = Db.open()) {
+            publishLuck(con, scope, consumedLuck, Instant.now());
+        }
+    }
+
+    /** Publishes already-fetched consumed Luck; see {@link #syncAccountLuck(model.AccountScope)}. */
+    static repo.AccountSourcePublication.Published publishLuck(Connection con,
+                                                               model.AccountScope scope,
+                                                               long consumedLuck,
+                                                               Instant completedAt) throws Exception {
+        return PUBLICATION.publish(con, scope, AccountSyncStateRepository.LUCK, completedAt,
+                (tx, owner, runTs) -> new AccountLuckRepository()
+                        .save(tx, owner, consumedLuck, runTs.toInstant()));
+    }
+
+    private static void upsertScopedAccountBank(Connection con, model.AccountScope scope,
+                                                List<BankSlot> rows, Timestamp runTs) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("""
+                INSERT INTO account_bank
+                  (account_id, slot, item_id, count, binding, bound_to, charges, stats_id, stats_attrs, fetched_at)
+                VALUES
+                  (?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
+                ON CONFLICT (account_id, slot) DO UPDATE SET
+                  item_id     = EXCLUDED.item_id,
+                  count       = EXCLUDED.count,
+                  binding     = EXCLUDED.binding,
+                  bound_to    = EXCLUDED.bound_to,
+                  charges     = EXCLUDED.charges,
+                  stats_id    = EXCLUDED.stats_id,
+                  stats_attrs = EXCLUDED.stats_attrs::jsonb,
+                  fetched_at  = EXCLUDED.fetched_at
+                """)) {
+            for (BankSlot row : rows) {
+                ps.setObject(1, scope.accountId());
+                ps.setInt(2, row.slot());
+                DbBind.setIntOrNull(ps, 3, row.itemId());
+                DbBind.setIntOrNull(ps, 4, row.count());
+                DbBind.setStringOrNull(ps, 5, row.binding());
+                DbBind.setStringOrNull(ps, 6, row.boundTo());
+                DbBind.setIntOrNull(ps, 7, row.charges());
+                DbBind.setIntOrNull(ps, 8, row.statsId());
+                DbBind.setStringOrNull(ps, 9, row.statsAttrsJson());
+                ps.setTimestamp(10, runTs);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+        deleteStale(con, scope, "account_bank", runTs);
+    }
+
+    private static void upsertScopedAccountMaterials(Connection con, model.AccountScope scope,
+                                                     List<MaterialStack> rows, Timestamp runTs) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("""
+                INSERT INTO account_materials (account_id, item_id, category, count, binding, fetched_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT (account_id, item_id) DO UPDATE SET
+                  category   = EXCLUDED.category,
+                  count      = EXCLUDED.count,
+                  binding    = EXCLUDED.binding,
+                  fetched_at = EXCLUDED.fetched_at
+                """)) {
+            for (MaterialStack row : rows) {
+                ps.setObject(1, scope.accountId());
+                ps.setInt(2, row.itemId());
+                ps.setInt(3, row.category());
+                ps.setInt(4, row.count());
+                DbBind.setStringOrNull(ps, 5, row.binding());
+                ps.setTimestamp(6, runTs);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+        deleteStale(con, scope, "account_materials", runTs);
+    }
+
+    private static void upsertScopedAccountRecipes(Connection con, model.AccountScope scope,
+                                                   List<Integer> ids, Timestamp runTs) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("""
+                INSERT INTO account_recipes (account_id, recipe_id, fetched_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT (account_id, recipe_id) DO UPDATE SET fetched_at = EXCLUDED.fetched_at
+                """)) {
+            for (Integer id : ids) {
+                ps.setObject(1, scope.accountId());
+                ps.setInt(2, id);
+                ps.setTimestamp(3, runTs);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+        deleteStale(con, scope, "account_recipes", runTs);
+    }
+
+    /**
+     * Removes the rows this run did not refresh, for this account only.
+     *
+     * <p>A stale-row delete is exactly as dangerous as an unscoped read: without the account
+     * predicate it would drop every other account's rows as "not refreshed by this run". The table
+     * name is one of this class's own three literals, never caller input.
+     */
+    private static void deleteStale(Connection con, model.AccountScope scope, String table, Timestamp runTs)
+            throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement(
+                "DELETE FROM " + table + " WHERE account_id = ? AND fetched_at < ?")) {
+            ps.setObject(1, scope.accountId());
+            ps.setTimestamp(2, runTs);
+            ps.executeUpdate();
+        }
+    }
+
+    private static List<BankSlot> fetchBankSlots() throws Exception {
+        JsonNode root = Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account/bank");
+        if (root == null || !root.isArray()) {
+            throw new RuntimeException("Unexpected JSON (bank): not an array");
+        }
+        List<BankSlot> rows = new ArrayList<>(root.size());
+        for (int slot = 0; slot < root.size(); slot++) {
+            rows.add(BankParser.parseSlot(slot, root.get(slot)));
+        }
+        return rows;
+    }
+
+    private static List<MaterialStack> fetchMaterialStacks() throws Exception {
+        JsonNode root = Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account/materials");
+        if (root == null || !root.isArray()) {
+            throw new RuntimeException("Unexpected JSON (materials): not an array");
+        }
+        List<MaterialStack> rows = new ArrayList<>(root.size());
+        for (JsonNode entry : root) {
+            MaterialStack row = MaterialParser.parse(entry);
+            if (row != null) rows.add(row);
+        }
+        return rows;
+    }
+
+    private static List<Integer> fetchAccountRecipeIds() throws Exception {
+        JsonNode root = Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account/recipes");
+        if (root == null || !root.isArray()) {
+            throw new RuntimeException("Unexpected JSON (account/recipes): not an array");
+        }
+        List<Integer> ids = new ArrayList<>(root.size());
+        for (JsonNode idNode : root) {
+            Integer id = RecipeIdParser.parse(idNode);
+            if (id != null && id > 0) ids.add(id);
+        }
+        return ids;
+    }
+
     /**
      * Fetches consumed Luck for the API key's stable account ID. The GW2 endpoint requires
      * account, progression and unlocks permissions; getAuth applies the same status/error policy
