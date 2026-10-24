@@ -1,7 +1,7 @@
 # Coding Guidelines
 
-Binding rules for generated/edited code across this project — the Java client/backend and the
-Python agent orchestrator (`agent/runtime/`) alike. Sections 1–6 apply to any language used
+Binding rules for generated/edited code across this project — the Java backend, Vue frontend,
+and GitHub workflow code alike. Sections 1–6 apply to any language used
 here; Section 7 is Java 25 specific. Goal: maintainable, clearly structured code, no spaghetti,
 no unverified "done."
 
@@ -28,16 +28,13 @@ the codebase it will be shared with, and — only when directly relevant, not as
 scan — whether it conflicts with clearly related planned work. Prefer the approach that
 minimizes conflicts with other in-flight/planned work and minimizes refactor work later, not
 necessarily the fastest one to write now. State the reasoning and any assumption made in the
-story result/report.
+  PR description or review discussion.
 
 If a simpler approach than the one requested exists (local or cross-cutting), say so in the
 report and use it, rather than building the more complex thing just because it was implied.
 
-Reserve stopping the story (marking it BLOCKED per CLAUDE.md, with the conflict reported) for
-genuine blockers only: the Definition of Done is actually contradictory or unspecified, or
-every available approach risks materially wrong or hard-to-reverse changes to shared state.
-This should be rare — most ambiguity gets resolved by picking the best-reasoned option and
-documenting why, not by stopping.
+Use `needs-decision` for a genuine missing Product Owner decision or a contradiction in the
+issue's acceptance criteria. Resolve ordinary implementation choices with a reason in the PR.
 
 ## 2. Simplicity First
 
@@ -65,12 +62,11 @@ Touch only what you must. Clean up only your own mess.
 
 Define success criteria. Loop until verified. Never mark something done without proving it.
 
-- Turn vague asks into verifiable goals. QA defines and writes the necessary checks:
+- Turn vague asks into verifiable goals. The implementing agent writes meaningful checks:
   invalid-input tests for validation, regression tests for confirmed defects, and appropriate
-  refactoring checks. The coding agent changes production code to satisfy those checks.
-- For multi-step work, state a brief plan first (step → how you'll verify it), and check in
-  before implementing anything non-trivial (3+ steps or an architectural decision). For
-  larger stories, track it in `tasks/todo.md` with checkable items; mark items off as you go.
+  refactoring checks, alongside the production change.
+- For multi-step work, state a brief plan (step → how you'll verify it) and keep progress
+  visible in the issue or PR. Ask for human input only for a genuine product decision.
 - If something goes sideways mid-task, stop and re-plan rather than pushing through.
 - Given a bug report or failing CI: reproduce from the logs/errors/failing test yourself and
   resolve it — don't wait to be told how.
@@ -110,14 +106,12 @@ explicit way to say so (e.g. `Optional<T>` in Java).
 
 ## 6.1 Testing and quality evidence
 
-QA alone decides test selection, scope, layers and expected results under `docs/TEST_STRATEGY.md`,
-and writes and maintains all test code and fixtures. This includes implementation-specific and
-tests of the application. QA covers new or modified behavior, confirmed-defect regressions,
-relevant invariants and integration boundaries, and assesses coverage without padding it.
-The coding agent must satisfy the story's QA-defined exit criteria, run the required focused
-checks and builds, and report results and blockers. It may fix production defects, but must send
-missing tests, test defects and expectation changes back to QA. Passing the applicable CI gates
-after publication remains required. The 90% line/branch target remains a warning target.
+The implementing agent chooses test scope and expected results under `docs/TEST_STRATEGY.md`,
+and writes and maintains the tests and fixtures needed for its issue. Cover changed behavior,
+confirmed defects, relevant invariants, and integration boundaries without padding coverage.
+Run focused checks and builds, report exact results, and explain any changed or weakened
+assertion in the PR. The reviewer checks the test diff and acceptance evidence. Passing the
+required CI checks on the PR head remains necessary. The 90% line/branch target is a warning.
 
 ## 7. Java 25 Specific
 
@@ -143,27 +137,13 @@ after publication remains required. The 90% line/branch target remains a warning
 
 ## 8. Workflow Mechanics
 
-**Planning:** for non-trivial tasks (3+ steps or an architectural decision), state a short
-plan and check in before implementing — see Section 4.
+**Planning:** for non-trivial issues, state a short plan and verification approach in the
+issue or PR. Keep choices proportional to the issue and its dependencies.
 
-**Subagents:** offload research, exploration, and parallel analysis to subagents to keep the
-main context window clean. One task per subagent, for focused execution.
+**Version control:** one issue gets one branch and pull request. Commit and push reviewable
+steps on that branch. Never include scratch files, generated output, or unrelated work. The PR
+contains the exact diff under review. Changes requested are fixed on the same branch; CI and
+Codex review rerun on the new head. Required checks and review must pass before merge.
 
-**Version control:** the development pipeline owns committing and pushing. When the
-evaluator accepts a story, the bridge stages the story's own changes, commits them as
-`implemented <STORY-ID>: <title>`, pushes it, and waits for the GitHub CI gate
-(`docs/TEST_STRATEGY.md` §36). One commit per verified story, not one per file
-touched — so do not commit during implementation, and never push, unless a human
-explicitly asks for it. A commit is a verification point, not a save button.
-
-Two consequences worth keeping in mind while implementing:
-
-- whatever is in the working tree when a story completes gets committed, so leave
-  no scratch files, and never disable a `.gitignore` rule to get something in;
-- a red pipeline comes back to you as a short list of failing tests, and is fixed
-  under `TEST_STRATEGY.md` §21 like any other failure — reproduce the named tests
-  locally with the narrowest command that covers them (§20), fix the cause, and
-  the harness pushes again.
-
-Self-improvement (updating `tasks/lessons.md` after a correction, reviewing it at session
-start) is defined in `CLAUDE.md`, not here.
+**Follow-up work:** record a small nonblocking correction as a linked issue. A missing
+acceptance criterion, concrete defect, or unresolved Product Owner decision holds the PR.
