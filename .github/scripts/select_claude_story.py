@@ -100,6 +100,9 @@ def select_story(issues: list[dict], pulls: list[dict]) -> tuple[dict | None, di
         ].removeprefix("https://api.github.com/repos/"):
             reasons.append(f"#{number}: open PR is from a fork and cannot be continued here")
             continue
+        if linked is not None and linked["base"]["ref"] != "master":
+            reasons.append(f"#{number}: open PR does not target master")
+            continue
         if "needs-rework" in labels and linked is None:
             reasons.append(f"#{number}: needs-rework label has no open PR")
             continue

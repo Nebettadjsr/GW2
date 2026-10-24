@@ -49,6 +49,7 @@ class StorySelectionTest(unittest.TestCase):
         pull = {
             "state": "open",
             "head": {"repo": {"full_name": "Nebettadjsr/GW2"}, "ref": "story/2-old-format"},
+            "base": {"ref": "master"},
             "body": "Closes #2",
         }
         chosen, linked, reasons = select_story(stories, [pull])
@@ -61,17 +62,23 @@ class StorySelectionTest(unittest.TestCase):
         pull = {
             "state": "open",
             "head": {"repo": {"full_name": "Nebettadjsr/GW2"}, "ref": "fix/review-feedback"},
+            "base": {"ref": "master"},
             "body": "Closes #3",
         }
         selected, linked, _ = select_story(stories, [pull])
         self.assertEqual(selected["number"], 3)
         self.assertEqual(linked["head"]["ref"], "fix/review-feedback")
+        pull["base"]["ref"] = "integration"
+        next_story, _, reasons = select_story(stories, [pull])
+        self.assertEqual(next_story["number"], 2)
+        self.assertIn("does not target master", reasons[0])
 
     def test_fork_pr_blocks_duplicate_run(self):
         stories = [issue(2, labels=["auto", "needs-rework"])]
         pull = {
             "state": "open",
             "head": {"repo": {"full_name": "someone/GW2"}, "ref": "fix/account-ui"},
+            "base": {"ref": "master"},
             "body": "Closes #2",
         }
         selected, linked, reasons = select_story(stories, [pull])
