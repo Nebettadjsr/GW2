@@ -1,16 +1,31 @@
 # Claude GitHub Action setup and limits
 
 The repository's `.github/workflows/claude.yml` uses the owner's Claude Pro
-subscription. It runs only when **Nebettadjsr** selects **Actions → Claude
-implementation → Run workflow**, leaves the branch set to **master**, enters one
-open story issue number, and clicks **Run workflow**. Each click authorizes one
-run for that issue. Issue labels, comments, pushes, and schedules do not start
-Claude. There is no time-of-day gate; the owner can choose when to spend usage.
+subscription. It runs only when **Nebettadjsr** selects **Actions → Run next
+ready story with Claude → Run workflow**, leaves the branch set to **master**,
+and clicks **Run workflow**. No issue number is required. Each click authorizes
+one run. Issue labels, comments, pushes, and schedules do not start Claude.
+There is no time-of-day gate; the owner can choose when to spend usage.
 
-For an issue with an existing open story PR, another manual run continues its
-branch. Otherwise, the run creates a story branch and PR. The workflow does not
-merge the PR or automatically retry on CI or review feedback. Codex reviews the
-PR separately, and the owner can inspect the result before starting another run.
+The button checks open GitHub stories. A story labeled `auto` is eligible when
+its listed dependencies are closed with linked PRs merged into `master`, and
+it has no `pairing`, `needs-decision` or `blocked` label. An open PR is selected only when
+Codex has marked its issue
+`needs-rework`; such PRs take priority over new stories. Otherwise the oldest
+eligible issue is selected. The workflow reports the choice or the reason
+nothing is ready in the Actions run summary. With no ready story, it stops
+before accessing the Claude token. The `auto` label means a planning session
+has prepared the story for unattended implementation; `pairing` means local
+supervision is required. After a rework run publishes its branch, the workflow
+clears `needs-rework` while CI and Codex review the new commit. It does not
+merge or automatically retry a PR.
+
+To inspect the queue before pressing the button, use GitHub Issues filtered by
+[`auto`](https://github.com/Nebettadjsr/GW2/issues?q=is%3Aissue+is%3Aopen+label%3Aauto),
+[`pairing`](https://github.com/Nebettadjsr/GW2/issues?q=is%3Aissue+is%3Aopen+label%3Apairing),
+or [`needs-decision`](https://github.com/Nebettadjsr/GW2/issues?q=is%3Aissue+is%3Aopen+label%3Aneeds-decision).
+The Actions run summary shows the selected issue and why any earlier `auto`
+issues were skipped.
 
 ## One-time setup
 
