@@ -57,6 +57,6 @@ jobs:
 
       - name: Publish verdict and gate merge
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.GW2_AUTOMATION_TOKEN }}
           AUTO_MERGE_ENABLED: ${{ vars.GW2_AUTO_MERGE_ENABLED }}
         run: python trusted/.github/scripts/complete_codex_review.py codex-review-result.json

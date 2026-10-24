@@ -40,6 +40,46 @@ class CodexReviewTests(unittest.TestCase):
         self.assertIn("account scope is ignored", comment)
         self.assertIn("Review round: 2/3", comment)
 
+    def test_auto_changes_requested_triggers_claude_on_same_pr(self):
+        head = "a" * 40
+        event = {"pull_request": {"number": 18, "head": {"sha": head}, "body": "Closes #9"}}
+        verdict = {
+            "verdict": "changes_requested",
+            "summary": "One criterion is missing.",
+            "blocking_findings": ["Add the unavailable state"],
+            "followups": [],
+        }
+        calls = []
+
+        def fake_api(method, path, token, payload=None):
+            calls.append((method, path, payload))
+            if path.endswith("/pulls/18"):
+                return {"head": {"sha": head}, "state": "open", "labels": []}
+            if "/comments?" in path:
+                return []
+            if path.endswith("/issues/9"):
+                return {"labels": [{"name": "auto"}]}
+            return {}
+
+        with TemporaryDirectory() as directory:
+            event_path = Path(directory) / "event.json"
+            result_path = Path(directory) / "result.json"
+            event_path.write_text(json.dumps(event), encoding="utf-8")
+            result_path.write_text(json.dumps(verdict), encoding="utf-8")
+            environment = {
+                "GITHUB_EVENT_PATH": str(event_path),
+                "GITHUB_REPOSITORY": "Nebettadjsr/GW2",
+                "GITHUB_TOKEN": "fixture-token",
+            }
+            with patch.dict(os.environ, environment), patch.object(
+                complete_codex_review, "api", side_effect=fake_api
+            ), patch("sys.argv", ["gate", str(result_path)]):
+                self.assertEqual(complete_codex_review.main(), 1)
+        comments = [payload["body"] for method, path, payload in calls if method == "POST" and path.endswith("/comments")]
+        self.assertEqual(len(comments), 1)
+        self.assertIn("@claude", comments[0])
+        self.assertIn("Add the unavailable state", comments[0])
+
     def test_stale_head_cannot_publish_approval_or_enable_merge(self):
         head = "a" * 40
         event = {
