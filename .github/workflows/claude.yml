@@ -1,0 +1,42 @@
+name: Claude implementation
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: claude-implementation
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  implement:
+    if: >-
+      (github.event_name == 'issues' && github.event.label.name == 'auto' && github.actor == 'Nebettadjsr') ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+       github.event.comment.user.login == 'Nebettadjsr' && contains(github.event.comment.body, '@claude'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Implement issue or address PR feedback
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          label_trigger: auto
+          trigger_phrase: '@claude'
+          branch_prefix: 'story/'
+          branch_name_template: 'story/{{entityNumber}}-{{description}}'
+          claude_args: |
+            --max-turns 30
+            --allowedTools Read,Edit,Write,Glob,Grep,Bash
