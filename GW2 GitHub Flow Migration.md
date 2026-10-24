@@ -2,6 +2,16 @@ GW2 · Workflow migration · Approach 2
 
 # From the Python pipeline to a GitHub pull-request flow
 
+**Implementation update (24 Oct 2026):** The owner starts one Claude story through
+the manual GitHub Actions button; there is no schedule or time-of-day gate.
+Two GitHub-hosted Claude pilots succeeded. The Python service and its CI job
+were retired after those pilots. The implemented review gate uses a third
+workflow, `review-merge.yml`, because native Codex posts its review state as a
+PR comment and CI completion can happen before or after that comment. The gate
+checks both against the current PR head before an eligible auto story merges.
+The original phases below remain the migration rationale; current status lives
+in GitHub issue #17 and its PRs.
+
 Each story becomes a GitHub issue. Each attempt becomes a pull request worked on by one Claude Code session. CI and one reviewer are the gates. The custom service, its state files and its role boundaries go away.
 
 ## Why

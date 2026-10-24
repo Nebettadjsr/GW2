@@ -1381,8 +1381,9 @@ The PR head must have green backend and frontend CI checks and a completed Codex
 review before a merge. A red or missing required check holds the PR.
 The implementing agent fixes relevant failures on the same branch and CI reruns
 on the new head. Local-only checks required by the issue need recorded evidence;
-their absence cannot be inferred away from green CI. Merges are supervised until
-a reliable automatic Codex review gate is enforced.
+their absence cannot be inferred away from green CI. The review-merge workflow
+requires a current clean Codex summary and explicit no-pending-local-checks
+evidence for an automatic Claude story merge; other PRs are supervised.
 
 A story's Definition of Done must not demand a full local regression run. Where
 it needs test evidence, it names the tests that must exist and pass, and the gate

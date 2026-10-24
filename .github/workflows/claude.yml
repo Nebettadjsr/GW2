@@ -86,6 +86,8 @@ jobs:
             GW2_RUN_REPORT. Include changes, acceptance-criteria evidence, exact checks run and
             results, changed or weakened assertions with reasons, local-only checks still needed,
             and any unresolved gap. Do not put secrets in the report or commit the report file.
+            For an automatic merge, include standalone lines exactly
+            `Local-only checks still needed: none` and `Unresolved gaps: none` only when true.
             Leave committing, pushing, and PR creation to the workflow steps after this action.
           claude_args: |
             --max-turns 12

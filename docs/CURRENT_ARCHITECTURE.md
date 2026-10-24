@@ -31,7 +31,7 @@ The browser UI is the sole supported product interface. The legacy JavaFX applic
 
 The primary direction is browser -> HTTP -> application -> domain/repository/API adapters. Domain calculation code remains free of UI, HTTP, SQL/JDBC, and GW2 response-model dependencies. There is no second presentation entry point.
 
-The development workflow is separate from the deployed application. GitHub issues are the work queue. The manually triggered Claude Action selects one ready `auto` issue, works on a dedicated branch, and opens a pull request. Pairing issues are worked locally on the same branch/PR model. The CI workflow runs Maven and Vitest, publishes application coverage, and native Codex review comments on the PR. Merges are supervised while a reliable automatic review gate is being established. The retired Python service is preserved at the `pre-github-flow` tag.
+The development workflow is separate from the deployed application. GitHub issues are the work queue. The manually triggered Claude Action selects one ready `auto` issue, works on a dedicated branch, and opens a pull request. Pairing issues are worked locally on the same branch/PR model. The CI workflow runs Maven and Vitest, publishes application coverage, and native Codex review comments on the PR. The review-merge workflow checks the exact PR head, linked auto issue, CI and Codex state before an eligible Claude story can merge; other PRs remain supervised. The retired Python service is preserved at the `pre-github-flow` tag.
 
 ## 4. Browser API and workflows
 
