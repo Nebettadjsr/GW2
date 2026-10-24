@@ -137,6 +137,50 @@ class CodexReviewTests(unittest.TestCase):
         self.assertTrue(any(path.endswith("/labels") for _, path, _ in calls))
         self.assertTrue(any("Needs Decision" in payload["body"] for _, path, payload in calls if path.endswith("/comments")))
 
+    def test_auto_issue_enables_merge_after_approval(self):
+        head = "a" * 40
+        event = {"pull_request": {"number": 18, "head": {"sha": head}, "body": "Closes #9"}}
+        verdict = {"verdict": "approved", "summary": "Criteria met.", "blocking_findings": [], "followups": []}
+        calls = []
+
+        def fake_api(method, path, token, payload=None):
+            calls.append((method, path, payload))
+            if path.endswith("/pulls/18"):
+                return {"head": {"sha": head}, "state": "open", "labels": [], "node_id": "PR_node"}
+            if "/comments?" in path:
+                return []
+            if path.endswith("/issues/9"):
+                return {"labels": [{"name": "auto"}]}
+            return {}
+
+        with TemporaryDirectory() as directory:
+            event_path = Path(directory) / "event.json"
+            result_path = Path(directory) / "result.json"
+            event_path.write_text(json.dumps(event), encoding="utf-8")
+            result_path.write_text(json.dumps(verdict), encoding="utf-8")
+            environment = {
+                "GITHUB_EVENT_PATH": str(event_path),
+                "GITHUB_REPOSITORY": "Nebettadjsr/GW2",
+                "GITHUB_TOKEN": "fixture-token",
+                "AUTO_MERGE_ENABLED": "true",
+            }
+            with patch.dict(os.environ, environment), patch.object(
+                complete_codex_review, "api", side_effect=fake_api
+            ), patch("sys.argv", ["gate", str(result_path)]):
+                self.assertEqual(complete_codex_review.main(), 0)
+        self.assertTrue(any(path == "/graphql" for _, path, _ in calls))
+
+    def test_existing_followup_issue_is_reused(self):
+        head = "a" * 40
+        existing_body = f"<!-- gw2-codex-followup pr:18 head:{head} index:0 -->"
+        with patch.object(
+            complete_codex_review,
+            "api",
+            return_value=[{"body": existing_body, "html_url": "https://github.com/Nebettadjsr/GW2/issues/40"}],
+        ):
+            found = complete_codex_review.existing_followups("Nebettadjsr/GW2", 18, head, "fixture-token")
+        self.assertEqual(found, {0: "https://github.com/Nebettadjsr/GW2/issues/40"})
+
 
 if __name__ == "__main__":
     unittest.main()

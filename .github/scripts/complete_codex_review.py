@@ -41,6 +41,21 @@ def previous_heads(comments: list[dict]) -> set[str]:
     return heads
 
 
+def existing_followups(repository: str, number: int, head: str, token: str) -> dict[int, str]:
+    found = {}
+    prefix = f"<!-- gw2-codex-followup pr:{number} head:{head} index:"
+    for page in range(1, 11):
+        issues = api("GET", f"/repos/{repository}/issues?state=all&per_page=100&page={page}", token)
+        for issue in issues:
+            body = issue.get("body") or ""
+            match = re.search(re.escape(prefix) + r"(\d+) -->", body)
+            if match:
+                found[int(match.group(1))] = issue["html_url"]
+        if len(issues) < 100:
+            break
+    return found
+
+
 def format_comment(verdict: dict, head: str, round_number: int, followup_urls: list[str]) -> str:
     lines = [marker(head), f"## Codex review: {verdict['verdict'].replace('_', ' ').title()}", "", verdict["summary"], ""]
     if verdict["blocking_findings"]:
@@ -70,9 +85,10 @@ def main() -> int:
         raise ValueError("Incomplete reviewer result")
     if verdict["verdict"] == "approved" and verdict["blocking_findings"]:
         raise ValueError("Reviewer approved with blocking findings")
-    if verdict["verdict"] == "approved" and not re.search(
+    issue_match = re.search(
         r"(?im)\b(?:closes|fixes|resolves|part of)\s+#\d+\b", original_pr.get("body") or ""
-    ):
+    )
+    if verdict["verdict"] == "approved" and not issue_match:
         raise ValueError("Cannot approve a PR without a linked issue")
 
     current = api("GET", f"/repos/{repository}/pulls/{number}", token)
@@ -88,14 +104,22 @@ def main() -> int:
 
     followup_urls = []
     if verdict["verdict"] == "approved":
-        for item in verdict.get("followups", [])[:3]:
+        existing = existing_followups(repository, number, head, token) if verdict.get("followups") else {}
+        for index, item in enumerate(verdict.get("followups", [])[:3]):
             if not item.get("title") or not item.get("body"):
                 raise ValueError("Follow-up issue needs a title and body")
+            if index in existing:
+                followup_urls.append(existing[index])
+                continue
             issue = api(
                 "POST",
                 f"/repos/{repository}/issues",
                 token,
-                {"title": item["title"], "body": item["body"] + f"\n\nFollow-up from #{number} at `{head}`."},
+                {
+                    "title": item["title"],
+                    "body": item["body"] + f"\n\nFollow-up from #{number} at `{head}`.\n"
+                    f"<!-- gw2-codex-followup pr:{number} head:{head} index:{index} -->",
+                },
             )
             followup_urls.append(issue["html_url"])
 
@@ -103,14 +127,21 @@ def main() -> int:
         api("POST", f"/repos/{repository}/issues/{number}/labels", token, {"labels": ["needs-decision"]})
 
     body = format_comment(verdict, head, round_number, followup_urls)
-    api("POST", f"/repos/{repository}/issues/{number}/comments", token, {"body": body})
+    previous_comment = next((item for item in comments if marker(head) in (item.get("body") or "")), None)
+    if previous_comment:
+        api("PATCH", f"/repos/{repository}/issues/comments/{previous_comment['id']}", token, {"body": body})
+    else:
+        api("POST", f"/repos/{repository}/issues/{number}/comments", token, {"body": body})
 
     if verdict["verdict"] != "approved":
         print(f"Codex requested {verdict['verdict']} on PR #{number}")
         return 1
 
     labels = {item["name"] for item in current.get("labels", [])}
-    if "auto" in labels and os.environ.get("AUTO_MERGE_ENABLED") == "true":
+    linked_number = int(re.search(r"#(\d+)", issue_match.group(0)).group(1))
+    linked = api("GET", f"/repos/{repository}/issues/{linked_number}", token)
+    labels.update(item["name"] for item in linked.get("labels", []))
+    if "auto" in labels and "needs-decision" not in labels and os.environ.get("AUTO_MERGE_ENABLED") == "true":
         mutation = {
             "query": "mutation($id: ID!) { enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: SQUASH}) { pullRequest { number } } }",
             "variables": {"id": current["node_id"]},
