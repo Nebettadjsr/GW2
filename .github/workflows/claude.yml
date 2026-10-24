@@ -25,13 +25,24 @@ jobs:
        github.event.comment.user.login == 'Nebettadjsr' && contains(github.event.comment.body, '@claude'))
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      # Subscription-only: never fall back to Console/API billing.
+      ANTHROPIC_API_KEY: ''
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
 
+      - name: Verify Claude gate rules
+        run: python -m unittest discover -s .github/scripts -p test_claude_gate.py
+
+      - name: Check Claude start window
+        id: window
+        run: python .github/scripts/claude_gate.py --github-output "$GITHUB_OUTPUT"
+
       - name: Implement issue or address PR feedback
         id: claude
+        if: steps.window.outputs.allowed == 'true'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
