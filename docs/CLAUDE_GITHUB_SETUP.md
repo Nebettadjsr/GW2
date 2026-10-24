@@ -30,26 +30,25 @@ within the Pro subscription allowance. Check that setting under Claude
 **Settings → Usage**. Claude's five-hour and weekly limits are shared with
 Claude Chat, so repository automation and personal use draw from the same pool.
 
-## Preflight before each Claude start
+## Start window and usage limits
 
 The workflow accepts only the owner's triggers and runs one invocation at a
 time. Before installing or invoking the Claude action, it checks the Berlin
-start window: **17:35 through 06:35**. Inside that window it runs the token-free
-`claude -p /usage` command using the OAuth secret. It starts implementation only
-when the five-hour session is below **90%** and the weekly use is below the
-daily-unlocking share calculated by `.github/scripts/claude_gate.py`. One seventh
-of the weekly allowance unlocks at **17:30 Berlin time** each day; unused shares
-carry until the account's next weekly reset. An unreadable usage response or
-failed probe prevents Claude from starting.
+start window: **17:35 through 06:35**. The window uses the Europe/Berlin time zone,
+including daylight saving changes. Outside the window the workflow does not
+access the OAuth secret or start Claude.
 
 The `--max-turns 30` argument and 90-minute job timeout bound each attempt, but
-they are not token limits. The preflight cannot reserve capacity for a whole
-run or account for Claude use started elsewhere after it checks. Anthropic's
-own account limits are the final stop. With Usage credits disabled, reaching a
-limit pauses work instead of charging for overage.
+they are not token limits. The `claude setup-token` credential can make model
+requests but cannot read the account's `/usage` percentages on a clean runner,
+so the GitHub workflow cannot enforce the former 90% five-hour or
+daily-unlocking weekly budget checks. Anthropic's own five-hour and weekly
+limits are the final stop. With Usage credits disabled, reaching a limit pauses
+work instead of charging for overage. During supervised operation, Codex can
+check `/usage` on this computer's signed-in Claude CLI before triggering work.
 
-For now, a trigger outside the window or above the usage cap is skipped. It is
-visible in the Actions run log and must be retriggered after the gate opens.
+For now, a trigger outside the window is skipped. It is visible in the Actions
+run log and must be retriggered after the gate opens.
 Scheduled resumption should be added only after a live action run confirms the
 OAuth and PR publication path; the two supervised local pilots did not exercise
 the GitHub-hosted action.
