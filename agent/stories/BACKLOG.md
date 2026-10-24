@@ -13,7 +13,6 @@ below stay in the plain form.
 
 ## Active
 
-- STORY-UI-004 | STORY-UI-004-remove-legacy-javafx-application.md | TODO | milestone-06 | deps: None
 
 ## To Do
 - STORY-PERF-005 | STORY-PERF-005-application-resource-benchmarks.md | TODO | milestone-06 | deps: None
@@ -35,6 +34,7 @@ below stay in the plain form.
 
 ## Done
 - STORY-INFRA-004 | STORY-INFRA-004-versioned-account-schema-and-legacy-preservation.md | DONE | milestone-06 | Introduce versioned account schema and reset legacy cache
+- STORY-UI-004 | STORY-UI-004-remove-legacy-javafx-application.md | DONE | milestone-06 | Remove the legacy JavaFX application and exclusive presentation code
 
 ## Numbering Convention
 

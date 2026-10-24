@@ -8,7 +8,7 @@ Remove the legacy JavaFX application and exclusive presentation code
 
 ## Status
 
-TODO
+DONE
 
 ## Milestone
 
