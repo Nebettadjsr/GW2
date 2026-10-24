@@ -1,12 +1,7 @@
-name: Claude implementation
+name: Run next ready story with Claude
 
 on:
   workflow_dispatch:
-    inputs:
-      issue_number:
-        description: 'Open story issue number to implement or continue'
-        required: true
-        type: string
 
 concurrency:
   group: claude-implementation
@@ -15,7 +10,7 @@ concurrency:
 permissions:
   contents: write
   pull-requests: read
-  issues: read
+  issues: write
   id-token: write
   actions: write
 
@@ -32,11 +27,21 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate story and prepare branch
-        id: prepare
+      - name: Verify story selection rules
+        run: python -m unittest discover -s .github/scripts -p test_select_claude_story.py
+
+      - name: Select next ready story
+        id: select
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: python .github/scripts/select_claude_story.py
+
+      - name: Validate story and prepare branch
+        id: prepare
+        if: steps.select.outputs.issue_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
         shell: bash
         run: |
           set -euo pipefail
@@ -66,6 +71,7 @@ jobs:
 
       - name: Implement one story
         id: claude
+        if: steps.select.outputs.issue_number != ''
         uses: anthropics/claude-code-action@v1
         env:
           CLAUDE_BRANCH: ${{ steps.prepare.outputs.branch_name }}
@@ -74,7 +80,7 @@ jobs:
           additional_permissions: |
             actions: read
           prompt: |
-            Work on GitHub issue #${{ inputs.issue_number }} in ${{ github.repository }} only.
+            Work on GitHub issue #${{ steps.select.outputs.issue_number }} in ${{ github.repository }} only.
             Read the full issue, its acceptance criteria, and relevant repository instructions.
             Implement or finish that one issue on the checked-out story branch.
             If this branch already has a PR, address its review and CI feedback as part of this issue.
@@ -90,6 +96,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BRANCH_NAME: ${{ steps.prepare.outputs.branch_name }}
           EXISTING_PR: ${{ steps.prepare.outputs.existing_pr }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
         shell: bash
         run: |
           set -euo pipefail
@@ -98,7 +105,7 @@ jobs:
           if ! git diff --cached --quiet; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git commit -m "Implement issue #${{ inputs.issue_number }}"
+            git commit -m "Implement issue #${{ steps.select.outputs.issue_number }}"
           fi
           if [[ "$EXISTING_PR" == 'false' ]] && [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/master)" ]]; then
             echo 'Claude made no changes; no PR was opened.' >&2
@@ -111,13 +118,14 @@ jobs:
           # workflow_dispatch is the documented exception to that suppression.
           if [[ "$EXISTING_PR" == 'true' ]]; then
             gh workflow run ci.yml --ref "$BRANCH_NAME"
+            gh issue edit "$ISSUE_NUMBER" --remove-label needs-rework
           fi
 
       - name: Open story PR
         if: steps.claude.outputs.conclusion == 'success' && steps.prepare.outputs.existing_pr == 'false'
         env:
           GH_TOKEN: ${{ secrets.GW2_AUTOMATION_TOKEN }}
-          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
           BRANCH_NAME: ${{ steps.prepare.outputs.branch_name }}
         shell: bash
         run: |
