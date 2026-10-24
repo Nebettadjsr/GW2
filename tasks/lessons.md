@@ -868,3 +868,32 @@ ambiguous (a `503` from a synthetic upstream, a status the test accepts three of
 assertions executed and why that is the criterion, instead of letting the status line carry the
 claim. And when the previous attempt predicted a red CI job on a defect QA has since fixed, withdraw
 the prediction explicitly rather than leaving it in the artifact.
+
+## Never put a state-changing git command inside a diagnostic one-liner
+
+A `git stash`, `reset`, `checkout` or `merge` chained into a command meant to *look* at something
+runs with the same lack of review as the `ls` beside it.
+
+**Why:** while checking whether a test failure was caused by my edits, a `git stash -q` slipped into
+the agent worktree's diagnostic command and stashed every uncommitted change in `GW2-agent`: a
+story's staged deletions, two other stories' work and the harness fix itself. It was restored with
+`git stash pop --index` minutes later, but only because nothing else ran in between.
+
+**How to apply:** run diagnostics with read-only commands only (`git diff --stat`, `git status`,
+`git log`). Any command that changes the worktree, index or refs goes in its own call, after looking
+at what it will touch. If one runs by mistake, restore it before doing anything else
+(`git stash pop --index` keeps the staged state) and compare `git status` against the earlier listing.
+
+## Never edit the agent worktree while a step is running
+
+QA's file guard snapshots the whole worktree before a QA run and attributes every difference
+afterwards to QA. A maintainer edit made during the run is reverted and counted as a QA violation.
+
+**Why:** a harness fix to `qa_agent.py` was written into `GW2-agent` while STORY-UI-004's QA repair
+was running. The guard reverted it, reported "QA modified forbidden files", and blocked the story
+on a technical QA failure that QA never caused.
+
+**How to apply:** check `python -m workflow_service.ctl status` first. Edit only when no step is
+running (or after `pause` has let the step finish); otherwise make the change in the maintainer
+checkout and let the sync bring it in. After editing workflow Python, restart the service, since it
+keeps the code it started with.
