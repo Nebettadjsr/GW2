@@ -1,19 +1,12 @@
 # GW2 Tool — Test Strategy
 
-## Orchestrated story QA
+## GitHub issue and pull-request verification
 
-QA is the sole author and maintainer of all test code and fixtures, including acceptance, regression, unit, integration, property, UI, implementation-specific tests of the application. QA decides what and how to test under this strategy and the story's requirements. Existing test coverage can be reused; low-risk work may receive `NO_TESTS_NEEDED` with a specific justification. The orchestrator prepares a persistent QA plan before coding. QA must prepare required test code rather than delegate its implementation through a specification. If requirements need a Product Owner decision, QA uses the existing `UD-*` flow. See [`agent/QA_INSTRUCTIONS.md`](../agent/QA_INSTRUCTIONS.md) and [`agent/qa-plans/README.md`](../agent/qa-plans/README.md).
-
-The coding agent implements production behavior to satisfy the QA-defined story exit criteria. It runs the required checks and reports exact results, but does not create, modify, delete, skip or weaken tests or fixtures. Missing tests, test defects and changed expectations return to QA; they are not coding-agent repair work. A test expectation may change only with documented evidence and independent review. The evaluator checks acceptance behavior, integration points, invariants, coverage and plan adherence; a green suite alone does not establish completion. Conditional independent QA review runs when needed. Post-publication CI remains the full regression gate. Throughout this document, instructions to add, update or design tests apply to QA; instructions to run required checks and fix production behavior apply to the coding agent as well.
+The implementing agent authors and maintains production code, tests, and fixtures together to meet the issue's acceptance criteria. Existing coverage can be reused; a low-risk change may need no new test when the PR states why. Changed or weakened assertions require an evidence-backed reason in the PR. CI runs the default backend and frontend suites. Codex reviews the issue, behavior, documentation, and test diff; a green suite alone does not establish completion. Questions requiring a Product Owner decision stay on the issue or PR with `needs-decision`.
 
 ## 1. Purpose
 
-Application failures discovered in evaluation or story-relevant CI are classified
-by independent QA. Valid tests exposing production defects return to the coder.
-An evidenced `REVISE_TESTS` verdict schedules a guarded QA writing phase for
-application tests/fixtures only, followed by evaluation and publication/CI again.
-The automated flow never works on itself, so workflow tests are outside this routing. Red CI for an old
-commit cannot be accepted merely because QA approved or corrected a test.
+Application failures discovered in review or CI are investigated against the issue and current code. Fix production defects and incorrect tests on the same PR branch, with reasons visible in the diff or PR discussion. CI and review must evaluate the current head commit; an older green result does not verify a newer revision.
 
 This document defines the testing strategy for the GW2 Tool.
 
@@ -1069,8 +1062,8 @@ Do not create meaningless tests solely to increase coverage percentage.
 
 ## 26.1 Test quality rules for implementation work
 
-QA owns test authorship and decides the required checks. The coding agent satisfies
-those checks and reports evidence; the rules below do not authorize it to change tests.
+The implementing agent owns test design and authorship for its issue. The reviewer checks
+whether the tests establish the acceptance behavior, especially at integration boundaries.
 
 - Review the applicable domain rules and express critical cross-component business rules as
   invariants over complete outputs.
@@ -1095,23 +1088,21 @@ Do not create retrospective records for historical defects as part of unrelated 
 
 ---
 
-# 27. Claude Code Testing Rules
+# 27. Implementing Agent Testing Rules
 
-For tasks involving behavior changes, Claude must:
+For tasks involving behavior changes, the implementing agent must:
 
 1. read `docs/DOMAIN_SPEC.md`,
 2. read this document,
-3. read the QA plan and relevant tests to understand the story's exit criteria,
-4. implement production behavior that satisfies those criteria without writing or changing tests,
-5. run the QA-required focused checks (§20), not the whole regression suite,
-6. report exact commands, real results and any test defect or missing check for QA to resolve.
+3. read the issue's acceptance criteria and relevant tests,
+4. implement production behavior and meaningful tests together,
+5. run focused checks (§20), leaving the complete regression suite to CI,
+6. report exact commands, real results, and any unresolved verification gap in the PR.
 
 For pure UI styling or documentation-only changes, domain test execution is not automatically required.
 
-Claude must not:
+The implementing agent must not:
 
-- create or modify any test code or fixture, including implementation-specific tests,
-- choose additional test scope or change expected results; QA owns those decisions,
 - delete failing tests merely to make a build green,
 - weaken assertions without justification,
 - introduce live external API dependencies into normal tests,
@@ -1119,7 +1110,7 @@ Claude must not:
 - run the complete regression suite locally as routine verification — that is the CI gate's job (§20, §36),
 - treat a green targeted run as proof that nothing else broke; the gate decides that.
 
-A CI failure comes back as a short list of failing tests (§36). Claude reproduces the relevant failure and fixes production-code defects. If the test, fixture or expected result is wrong, Claude reports evidence for QA; only QA changes it. Missing product intent still requires the normal human decision. The applicable post-publication CI gates must pass before finalization; deleting, skipping or weakening a test merely to make CI green is not an acceptable fix.
+A CI failure is investigated on the current PR branch. The implementing agent fixes production defects and maintains incorrect tests or fixtures with an evidence-backed explanation. Missing product intent still requires a human decision. Required CI checks must pass on the PR head; deleting, skipping, or weakening a test merely to make CI green is not an acceptable fix.
 
 ---
 
@@ -1313,7 +1304,7 @@ Concretely:
 - Conversely, a change that does alter UI-observable behavior does not need it re-verified at every other layer beyond what already covers the underlying calculation — Layer 5 exists to check that the UI correctly reflects a result, not to re-prove the result itself (§12, §32 already establish this for the frontend generally).
 - §31.5's "choose the lowest layer that proves the behavior" already governs which layer to use; this section governs how much test volume is appropriate once that layer is chosen. Prefer one clear, well-named test (§16, §22, §23) over several overlapping ones asserting the same fact.
 - Heavier layers (Layer 2 PostgreSQL integration, Layer 4 live smoke, Layer 5 TestFX) cost real setup/runtime/review effort disproportionate to most changes; reach for them only when the change's own risk genuinely requires that layer's specific guarantee (real SQL semantics, real external API shape, real UI wiring), not as a default upgrade from a cheaper layer that already proves the point.
-- This does not relax any existing minimum: QA must provide appropriate automated verification for domain behavior and named regression tests for confirmed defects (§16). It constrains the upper bound of QA's test design; the coding agent fulfills that design without writing tests.
+- This does not relax any existing minimum: the implementing agent provides appropriate automated verification for domain behavior and named regression tests for confirmed defects (§16). Keep test volume proportional to risk.
 
 ---
 
@@ -1390,9 +1381,9 @@ is, what it runs, what it cannot run, and what "verified" therefore means.
 
 | Where | Runs | Authoritative for |
 |---|---|---|
-| Local (Claude, during implementation) | the narrowest scope covering the change: one test, one class, at most the directly related suite (§20) | that the change under construction behaves as intended |
-| GitHub Actions (`.github/workflows/ci.yml`) | the complete default suites: `./mvnw test`, the frontend `npm test` plus type-check/build, and the `agent/runtime` harness tests | that nothing else in the repository broke |
-| Local, explicitly invoked by a human | Layer 4 live GW2 API smoke (§31.4), Layer 5 TestFX UI verification (§32), the browser smoke scripts (§12.2), real-database `*IT` equivalence/performance checks (§34, §35.2) | the things the gate cannot run at all — see §36.4 |
+| Local (implementing agent, during implementation) | the narrowest scope covering the change: one test, one class, at most the directly related suite (§20) | that the change under construction behaves as intended |
+| GitHub Actions (`.github/workflows/ci.yml`) | the complete default suites: `./mvnw test` and the frontend `npm test` plus type-check/build; the legacy harness job remains only until decommission | that the default product suites pass on the PR head |
+| Local, explicitly invoked during pairing | Layer 4 live GW2 API smoke (§31.4), the browser smoke scripts (§12.2), real-database `*IT` equivalence/performance checks (§34, §35.2) | the things the gate cannot run at all — see §36.4 |
 
 Neither side's scope is reduced by this split: the gate runs the same commands the
 developer runs, with the same test selection. What changed is *who pays for the
@@ -1431,9 +1422,8 @@ Three jobs, in parallel, on every pushed commit and every pull request:
 - **Database credentials** in the workflow are the service container's own,
   reachable only from that job for its lifetime. They are configuration, not
   secrets, and no secret of any kind is required by the gate today.
-- **No GitHub token is required** for the orchestrator to read the result of a
-  public repository's run. A token may be supplied through the environment purely
-  to raise the API rate limit; it is never written to a file or a log.
+- **The CI jobs require no application secret.** Agent workflows use their own scoped
+  GitHub and model credentials; those are not application test inputs.
 
 ## 36.4 What the gate deliberately cannot verify
 
@@ -1454,19 +1444,12 @@ layer passed". It is the regression gate, not the whole strategy.
 
 ## 36.5 What "verified" means for a story
 
-The development pipeline (`workflow_service/README.md`) commits and pushes a story once
-the evaluator accepts it, then waits for that commit's CI conclusion. Only the
-application jobs decide; a failing agent-runtime job is reported as an
-agent-workflow warning and never holds a story:
-
-- **green** — the story completes normally;
-- **red** — the failing tests, and only those, come back to Claude as a bounded
-  failure report; it fixes them, the harness pushes again, and the gate re-runs.
-  After a small number of failed attempts the story is blocked for a human
-  instead of looping;
-- **undetermined** (no run appeared, a cancelled run, an unreadable API, a
-  rejected push) — never treated as a pass; the story keeps its step and the
-  next pipeline run checks again.
+The PR head must have green backend and frontend CI checks and a completed Codex
+review before an automated merge. A red or missing required check holds the PR.
+The implementing agent fixes relevant failures on the same branch and CI reruns
+on the new head. Local-only checks required by the issue need recorded evidence;
+their absence cannot be inferred away from green CI. The legacy agent-runtime
+job is transitional and is not a product acceptance gate.
 
 A story's Definition of Done must not demand a full local regression run. Where
 it needs test evidence, it names the tests that must exist and pass, and the gate
