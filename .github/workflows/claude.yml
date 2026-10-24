@@ -47,8 +47,10 @@ jobs:
             exit 1
           }
           prefix="story/issue-${ISSUE_NUMBER}-run-"
+          legacy_prefix="story/${ISSUE_NUMBER}-"
           existing_branch="$(gh pr list --base master --state open --limit 100 --json headRefName |
-            jq -r --arg prefix "$prefix" '[.[] | select(.headRefName | startswith($prefix))] |
+            jq -r --arg prefix "$prefix" --arg legacy "$legacy_prefix" \
+              '[.[] | select(.headRefName | (startswith($prefix) or startswith($legacy)))] |
               if length > 1 then error("Multiple open PRs for this issue") else .[0].headRefName // empty end')"
           if [[ -n "$existing_branch" ]]; then
             git fetch origin "$existing_branch"
