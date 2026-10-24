@@ -14,10 +14,14 @@ permissions:
   issues: write
 
 jobs:
-  review:
-    name: Codex review
+  analyze:
+    name: Codex analysis
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+    outputs:
+      verdict: ${{ steps.codex.outputs.final-message }}
     steps:
       - name: Check out trusted gate code
         uses: actions/checkout@v5
@@ -47,13 +51,40 @@ jobs:
         run: python trusted/.github/scripts/prepare_codex_review.py review-prompt.md
 
       - name: Run read-only Codex review
+        id: codex
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           permission-profile: ':read-only'
           prompt-file: review-prompt.md
           output-schema-file: trusted/.github/codex-review-schema.json
-          output-file: codex-review-result.json
+
+  publish:
+    name: Codex review
+    if: always()
+    needs: analyze
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Check out trusted gate code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          persist-credentials: false
+
+      - name: Require completed Codex analysis
+        env:
+          ANALYSIS_STATUS: ${{ needs.analyze.result }}
+          REVIEW_RESULT: ${{ needs.analyze.outputs.verdict }}
+        shell: bash
+        run: |
+          test "$ANALYSIS_STATUS" = success
+          test -n "$REVIEW_RESULT"
+          printf '%s' "$REVIEW_RESULT" > codex-review-result.json
 
       - name: Publish verdict and gate merge
         env:
