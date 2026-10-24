@@ -1,6 +1,8 @@
 package application;
 
 import craft.CraftingSettings;
+import model.AccountScope;
+import repo.AccountSourceStateRepository;
 import repo.DiscChoice;
 
 import java.sql.SQLException;
@@ -8,6 +10,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -59,6 +62,7 @@ public class CachedCraftingProfitService {
     private final ProfitInputSession.Factory sessions;
     private final Function<ProfitInputSession, CraftingProfitService> profitServices;
     private final CalculationInputVersions.AccountSourceVersionReader accountVersions;
+    private final CalculationInputVersions.AccountSourceStateReader accountSourceStates;
     private final CalculationInputVersions.PriceCoverageReader priceCoverage;
     private final AccountRefreshCoordinator accountRefresh;
     private final TradingPostRefreshCoordinator priceRefresh;
@@ -75,9 +79,30 @@ public class CachedCraftingProfitService {
                                        BackgroundTasks tasks,
                                        Clock clock,
                                        Duration accountMaxAge) {
+        this(sessions, profitServices, accountVersions,
+                new CalculationInputVersions.DatabaseAccountSourceStateReader(), priceCoverage,
+                accountRefresh, priceRefresh, tasks, clock, accountMaxAge);
+    }
+
+    /**
+     * The same use case with the account-scoped marker reader stated explicitly (STORY-APP-015):
+     * {@link #profit(AccountScope, DiscChoice, CraftingSettings)} captures through it, while the
+     * unscoped entry points keep using {@code accountVersions}.
+     */
+    public CachedCraftingProfitService(ProfitInputSession.Factory sessions,
+                                       Function<ProfitInputSession, CraftingProfitService> profitServices,
+                                       CalculationInputVersions.AccountSourceVersionReader accountVersions,
+                                       CalculationInputVersions.AccountSourceStateReader accountSourceStates,
+                                       CalculationInputVersions.PriceCoverageReader priceCoverage,
+                                       AccountRefreshCoordinator accountRefresh,
+                                       TradingPostRefreshCoordinator priceRefresh,
+                                       BackgroundTasks tasks,
+                                       Clock clock,
+                                       Duration accountMaxAge) {
         this.sessions = sessions;
         this.profitServices = profitServices;
         this.accountVersions = accountVersions;
+        this.accountSourceStates = accountSourceStates;
         this.priceCoverage = priceCoverage;
         this.accountRefresh = accountRefresh;
         this.priceRefresh = priceRefresh;
@@ -153,12 +178,86 @@ public class CachedCraftingProfitService {
         return new ResolutionOutcome(detail, consistency, describe(requestId, captured, detail != null));
     }
 
+    /**
+     * One account's table calculation (STORY-APP-015), the scoped form of
+     * {@link #profit(DiscChoice, CraftingSettings)}.
+     *
+     * <p>Same three steps in the same order, with the account carried through all of them: the
+     * capture reads that account's markers and the calculation reads that account's rows, both from
+     * the one snapshot {@code sessions.open(scope)} pinned, and the freshness envelope reports the
+     * generations that capture actually saw rather than whatever has been published since.
+     */
+    public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings) throws Exception {
+        String requestId = UUID.randomUUID().toString();
+        CalculationInputVersions captured;
+        CraftingProfitService.ProfitData data = null;
+
+        try (ProfitInputSession session = sessions.open(scope)) {
+            captured = capture(session, scope);
+            if (captured.usable()) {
+                data = profitServices.apply(session).reload(choice, settings);
+            }
+        }
+
+        return new ProfitOutcome(data, describe(requestId, captured, data != null));
+    }
+
+    /**
+     * One account's resolution detail (STORY-APP-015), the scoped form of
+     * {@link #resolution(int, DiscChoice, CraftingSettings, String)}.
+     *
+     * <p>The consistency verdict is scoped by construction: the captured identity includes the
+     * account, so a calculation id established for a different account can never read as
+     * {@code FRESH_CALCULATION} here.
+     */
+    public ResolutionOutcome resolution(AccountScope scope,
+                                        int recipeId,
+                                        DiscChoice choice,
+                                        CraftingSettings settings,
+                                        String basedOnCalculationId) throws Exception {
+        String requestId = UUID.randomUUID().toString();
+        CalculationInputVersions captured;
+        CraftingResolutionDetail detail = null;
+
+        try (ProfitInputSession session = sessions.open(scope)) {
+            captured = capture(session, scope);
+            if (captured.usable()) {
+                detail = profitServices.apply(session).resolveDetail(recipeId, choice, settings);
+            }
+        }
+
+        String consistency = basedOnCalculationId == null
+                || basedOnCalculationId.equals(captured.calculationId())
+                ? CONSISTENCY_FRESH_CALCULATION
+                : CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS;
+
+        return new ResolutionOutcome(detail, consistency, describe(requestId, captured, detail != null));
+    }
+
     private CalculationInputVersions capture(ProfitInputSession session) throws SQLException {
         Instant evaluatedAt = clock.instant();
         Map<String, Instant> versions = accountVersions.read(
                 session.connection(), CalculationInputVersions.REQUIRED_ACCOUNT_SOURCES);
         CalculationFreshness.PriceCoverage coverage = priceCoverage.read(session.connection());
         return new CalculationInputVersions(versions, coverage, accountMaxAge, evaluatedAt);
+    }
+
+    /** The scoped capture: this account's markers and generations, plus the shared quote coverage. */
+    private CalculationInputVersions capture(ProfitInputSession session, AccountScope scope) throws SQLException {
+        Instant evaluatedAt = clock.instant();
+        Map<String, AccountSourceStateRepository.SourceState> states = accountSourceStates.read(
+                session.connection(), scope, CalculationInputVersions.REQUIRED_ACCOUNT_SOURCES);
+
+        Map<String, Instant> versions = new LinkedHashMap<>();
+        Map<String, Long> generations = new LinkedHashMap<>();
+        states.forEach((source, state) -> {
+            versions.put(source, state.completedAt());
+            generations.put(source, state.generation());
+        });
+
+        CalculationFreshness.PriceCoverage coverage = priceCoverage.read(session.connection(), scope);
+        return new CalculationInputVersions(scope.id(), versions, generations, coverage, accountMaxAge,
+                evaluatedAt);
     }
 
     /**

@@ -102,6 +102,239 @@ public final class CharacterSync {
         }
     }
 
+    /**
+     * Fetches and publishes one account's whole roster (STORY-APP-015).
+     *
+     * <p>Every character is fetched and parsed first, outside any transaction, exactly as the
+     * unscoped sequence above does - then the complete roster is published in one transaction.
+     *
+     * <p>A validated empty roster <em>is</em> published, like every other source
+     * (TARGET_ARCHITECTURE.md §7.2 "a successful empty or unchanged source has a valid marker and
+     * advances its generation"): a key that lost its {@code characters} permission is not an empty
+     * list, it is an HTTP 403 that {@link #fetchCharacterNames()} throws on, and a body that is not
+     * an array is rejected by the parser. So an empty {@code /v2/characters} array means this account
+     * owns no characters, and the account's character source is then legitimately empty and current.
+     *
+     * <p>Conversely, a character the roster named whose detail response cannot be parsed is a
+     * validation failure, not an absent character - publishing the rest would delete it as stale - so
+     * it aborts the whole publication before the transaction opens and leaves the last-good roster,
+     * generation and marker untouched.
+     */
+    public static void syncCharactersCraftingAndRecipes(model.AccountScope scope) throws Exception {
+        List<String> names = fetchCharacterNames();
+
+        List<CharPayload> payloads = new ArrayList<>(names.size());
+        for (String name : names) {
+            JsonNode cNode = fetchCharacterDetails(name);
+            CharacterInfo info = CharacterParser.parseInfo(cNode);
+            if (info == null) {
+                throw new IllegalStateException(
+                        "Unreadable character detail for '" + name + "'; roster not published");
+            }
+
+            payloads.add(new CharPayload(
+                    info,
+                    CharacterCraftingParser.parse(CharacterParser.craftingNode(cNode)),
+                    CharacterRecipesParser.parse(CharacterParser.recipesNode(cNode)),
+                    characterItems(cNode)));
+        }
+
+        try (Connection con = Db.open()) {
+            publishRoster(con, scope, payloads, java.time.Instant.now());
+        }
+    }
+
+    /**
+     * Publishes one account's roster and every character's payload as one source
+     * (TARGET_ARCHITECTURE.md §7.2 "The character source includes the roster and all character
+     * payloads as one publication").
+     *
+     * <p>Three things the account scope changes relative to the unscoped
+     * {@link #publishRoster(Connection, List, java.time.Instant)}:
+     *
+     * <ul>
+     *   <li>the roster upsert conflicts on {@code (account_id, name)}, because a character name is
+     *       unique within an account and not globally, and it returns the surrogate id that the
+     *       composite {@code (account_id, character_id)} parent key makes meaningful only together
+     *       with that account;</li>
+     *   <li>every child write and every stale-row delete carries both halves of that key, so no
+     *       statement can reach a character owned by another account - which the schema's composite
+     *       foreign key independently refuses;</li>
+     *   <li>characters this run did not refresh are deleted for this account, which is what makes
+     *       the roster a replacement rather than an accumulation. Their crafting, recipe and
+     *       inventory rows go with them through {@code ON DELETE CASCADE}. An empty {@code payloads}
+     *       is therefore an ordinary replacement by an empty roster, and still advances the
+     *       generation and records the marker, because the publication succeeded.</li>
+     * </ul>
+     */
+    static repo.AccountSourcePublication.Published publishRoster(Connection con,
+                                                                 model.AccountScope scope,
+                                                                 List<CharPayload> payloads,
+                                                                 java.time.Instant completedAt) throws Exception {
+        return new repo.AccountSourcePublication().publish(
+                con, scope, AccountSyncStateRepository.CHARACTERS, completedAt,
+                (tx, owner, runTs) -> {
+                    for (CharPayload p : payloads) {
+                        long characterId = upsertScopedCharacter(tx, owner, p.info(), runTs);
+                        replaceScopedCrafting(tx, owner, characterId, p.crafting(), runTs);
+                        replaceScopedRecipes(tx, owner, characterId, p.recipes(), runTs);
+                        replaceScopedItems(tx, owner, characterId, p.items(), runTs);
+                    }
+                    deleteStaleCharacters(tx, owner, runTs);
+                });
+    }
+
+    private static List<model.CharacterItemRow> characterItems(JsonNode cNode) {
+        List<model.CharacterItemRow> itemRows = new ArrayList<>();
+        itemRows.addAll(CharacterItemsParser.parseBags(CharacterParser.bagsNode(cNode)));
+        itemRows.addAll(CharacterItemsParser.parseEquipment(CharacterParser.equipmentNode(cNode)));
+        return itemRows;
+    }
+
+    private static long upsertScopedCharacter(Connection con, model.AccountScope scope,
+                                              CharacterInfo c, Timestamp runTs) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("""
+                INSERT INTO characters
+                  (account_id, name, profession, race, gender, level, created_at_gw, fetched_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?::timestamptz, ?)
+                ON CONFLICT (account_id, name) DO UPDATE SET
+                  profession    = EXCLUDED.profession,
+                  race          = EXCLUDED.race,
+                  gender        = EXCLUDED.gender,
+                  level         = EXCLUDED.level,
+                  created_at_gw = EXCLUDED.created_at_gw,
+                  fetched_at    = EXCLUDED.fetched_at
+                RETURNING character_id
+                """)) {
+            ps.setObject(1, scope.accountId());
+            DbBind.setStringOrNull(ps, 2, c.name());
+            DbBind.setStringOrNull(ps, 3, c.profession());
+            DbBind.setStringOrNull(ps, 4, c.race());
+            DbBind.setStringOrNull(ps, 5, c.gender());
+            DbBind.setIntOrNull(ps, 6, c.level());
+            DbBind.setStringOrNull(ps, 7, c.createdIso());
+            ps.setTimestamp(8, runTs);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) throw new SQLException("Upsert character failed (no RETURNING row)");
+                return rs.getLong(1);
+            }
+        }
+    }
+
+    private static void replaceScopedCrafting(Connection con, model.AccountScope scope, long characterId,
+                                              List<model.CharacterCraftingRow> rows, Timestamp runTs)
+            throws SQLException {
+        if (rows != null && !rows.isEmpty()) {
+            try (PreparedStatement ps = con.prepareStatement("""
+                    INSERT INTO character_crafting
+                      (account_id, character_id, discipline, rating, is_active, fetched_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (account_id, character_id, discipline) DO UPDATE SET
+                      rating     = EXCLUDED.rating,
+                      is_active  = EXCLUDED.is_active,
+                      fetched_at = EXCLUDED.fetched_at
+                    """)) {
+                for (var row : rows) {
+                    ps.setObject(1, scope.accountId());
+                    ps.setLong(2, characterId);
+                    ps.setString(3, row.discipline());
+                    ps.setInt(4, row.rating());
+                    ps.setBoolean(5, row.active());
+                    ps.setTimestamp(6, runTs);
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+            }
+        }
+        deleteStaleChildren(con, scope, "character_crafting", characterId, runTs);
+    }
+
+    private static void replaceScopedRecipes(Connection con, model.AccountScope scope, long characterId,
+                                             List<model.CharacterRecipeRow> rows, Timestamp runTs)
+            throws SQLException {
+        if (rows != null && !rows.isEmpty()) {
+            try (PreparedStatement ps = con.prepareStatement("""
+                    INSERT INTO character_recipes (account_id, character_id, recipe_id, fetched_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT (account_id, character_id, recipe_id) DO UPDATE SET
+                      fetched_at = EXCLUDED.fetched_at
+                    """)) {
+                for (var row : rows) {
+                    ps.setObject(1, scope.accountId());
+                    ps.setLong(2, characterId);
+                    ps.setInt(3, row.recipeId());
+                    ps.setTimestamp(4, runTs);
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+            }
+        }
+        deleteStaleChildren(con, scope, "character_recipes", characterId, runTs);
+    }
+
+    private static void replaceScopedItems(Connection con, model.AccountScope scope, long characterId,
+                                           List<model.CharacterItemRow> rows, Timestamp runTs)
+            throws SQLException {
+        if (rows != null && !rows.isEmpty()) {
+            // The conflict target names the unique constraint rather than the column list, because
+            // the migrated constraint is UNIQUE NULLS NOT DISTINCT: inferring it from columns would
+            // not express that one bag or equipment slot holds at most one row whichever of its
+            // location components are NULL (STORY-INFRA-004, TARGET_ARCHITECTURE.md §7.2).
+            try (PreparedStatement ps = con.prepareStatement("""
+                    INSERT INTO character_items
+                      (account_id, character_id, location, bag_index, slot_index, equipment_slot,
+                       item_id, count, binding, bound_to, fetched_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT ON CONSTRAINT uq_character_items_slot DO UPDATE SET
+                      item_id    = EXCLUDED.item_id,
+                      count      = EXCLUDED.count,
+                      binding    = EXCLUDED.binding,
+                      bound_to   = EXCLUDED.bound_to,
+                      fetched_at = EXCLUDED.fetched_at
+                    """)) {
+                for (var row : rows) {
+                    ps.setObject(1, scope.accountId());
+                    ps.setLong(2, characterId);
+                    ps.setString(3, row.location());
+                    DbBind.setIntOrNull(ps, 4, row.bagIndex());
+                    DbBind.setIntOrNull(ps, 5, row.slotIndex());
+                    DbBind.setStringOrNull(ps, 6, row.equipmentSlot());
+                    ps.setInt(7, row.itemId());
+                    // count is NOT NULL DEFAULT 1; the API omits "count" for a singular item.
+                    ps.setInt(8, row.count() != null ? row.count() : 1);
+                    DbBind.setStringOrNull(ps, 9, row.binding());
+                    DbBind.setStringOrNull(ps, 10, row.boundTo());
+                    ps.setTimestamp(11, runTs);
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+            }
+        }
+        deleteStaleChildren(con, scope, "character_items", characterId, runTs);
+    }
+
+    /** The table name is one of this class's own three literals, never caller input. */
+    private static void deleteStaleChildren(Connection con, model.AccountScope scope, String table,
+                                            long characterId, Timestamp runTs) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("DELETE FROM " + table
+                + " WHERE account_id = ? AND character_id = ? AND fetched_at < ?")) {
+            ps.setObject(1, scope.accountId());
+            ps.setLong(2, characterId);
+            ps.setTimestamp(3, runTs);
+            ps.executeUpdate();
+        }
+    }
+
+    private static void deleteStaleCharacters(Connection con, model.AccountScope scope, Timestamp runTs)
+            throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement(
+                "DELETE FROM characters WHERE account_id = ? AND fetched_at < ?")) {
+            ps.setObject(1, scope.accountId());
+            ps.setTimestamp(2, runTs);
+            ps.executeUpdate();
+        }
+    }
+
     public static List<String> fetchCharacterNames() throws Exception {
         String url = "https://api.guildwars2.com/v2/characters";
         JsonNode root = Gw2ApiClient.getAuth(url);

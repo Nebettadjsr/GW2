@@ -1,0 +1,124 @@
+{
+  "status": "READY",
+  "story_id": "STORY-APP-015",
+  "rationale": "Aligned the character publication and snapshot test calls to the implemented account-scoped interfaces while preserving their assertions. The focused tests could not run because the Maven wrapper could not find `powershell` in this environment.",
+  "acceptance_checks": [
+    {
+      "criterion": "3–5. Scoped character publication and calculation snapshots remain atomic and consistent.",
+      "expected": "Snapshots see the previous complete character generation during an uncommitted publication, and the new generation only after commit; failed publication preserves the last-good roster and marker.",
+      "verification": "CharacterRosterPublicationTest calls `CharacterSync.publishRoster(Connection, AccountScope, List<CharacterSync.CharPayload>, Instant)` and opens snapshots with `ProfitInputSession.open(AccountScope)`."
+    },
+    {
+      "criterion": "1–2. Account-owned persistence is isolated by explicit account identity, including character children.",
+      "expected": "Overlapping identifiers and scoped deletes leave the other account’s data intact; a child cannot reference a character absent from its account.",
+      "verification": "AccountScopedSchemaTest applies production migrations in an isolated PostgreSQL schema and checks overlapping source rows, scoped deletes, and foreign-child rejection."
+    }
+  ],
+  "invariants": [
+    "No account-owned row, aggregate, deletion, or source marker may affect another account.",
+    "Character child ownership is determined by the composite account and character identity.",
+    "A source marker records successful publication, including a successful empty publication; reads never create freshness.",
+    "A failed publication leaves the prior complete source data and marker visible.",
+    "A calculation snapshot reads one account’s rows and markers from one repeatable-read view.",
+    "Shared item, recipe graph, and Trading Post data remain global.",
+    "Account creation, last-seen, and successful-sync times use UTC; updates are monotonic and missing history stays unknown.",
+    "Domain calculations receive scoped data and do not depend on persistence or authentication infrastructure."
+  ],
+  "test_levels": [
+    "integration",
+    "contract"
+  ],
+  "existing_tests_reviewed": [
+    "src/test/java/repo/AccountScopedSchemaTest.java — production migration schema, overlapping account keys, character-child ownership, reset markers and activity.",
+    "src/test/java/sync/CharacterRosterPublicationTest.java — publication visibility, rollback, and snapshot consistency; updated to use account-scoped publication and snapshot interfaces.",
+    "src/test/java/repo/AccountSyncStateRepositoryTest.java — missing and explicitly marked source completion state, including empty source markers.",
+    "src/test/java/repo/BankRepositoryTest.java and src/test/java/repo/MaterialStorageRepositoryTest.java — repository read behavior against PostgreSQL.",
+    "src/test/java/repo/InventoryRepositoryOwnedInventoryTest.java and src/test/java/repo/InventoryRepositoryBoundMaterialTest.java — owned inventory and bound-material input behavior.",
+    "src/test/java/craft/RecipeKnowledgePolicyTest.java — recipe knowledge domain policy."
+  ],
+  "interface_contract": [
+    "Existing test seam: repo.AccountScopedSchemaTest, using production Flyway location `classpath:db/migration` and the account-owned tables.",
+    "Scoped publication: `sync.CharacterSync.publishRoster(Connection, model.AccountScope, List<CharacterSync.CharPayload>, Instant)`.",
+    "Scoped snapshot: `application.ProfitInputSession.open(model.AccountScope)` and `application.CalculationInputVersions`.",
+    "Character reads: connection-taking query methods on `repo.CharacterRepository`."
+  ],
+  "prepared_test_paths": [
+    "src/test/java/repo/AccountScopedSchemaTest.java",
+    "src/test/java/sync/CharacterRosterPublicationTest.java"
+  ],
+  "test_specifications": [
+    "AccountScopedSchemaTest applies production migrations in an isolated uniquely named schema, seeds both accounts with overlapping source and character identifiers, deletes account A’s rows, and asserts account B’s values and source marker remain. It verifies invalid child references are rejected and reset schemas have no fabricated markers or activity.",
+    "CharacterRosterPublicationTest deterministically holds a scoped character publication mid-write and checks snapshots see the old complete roster until commit; it also checks partial failure preserves the prior roster and marker.",
+    "AccountSyncStateRepositoryTest verifies absent markers remain absent until explicitly marked and that successful empty sources can have a completion marker.",
+    "Existing recipe-knowledge and inventory tests provide stable domain expectations; scoped application inputs still require post-implementation review."
+  ],
+  "pre_implementation_verification": {
+    "status": "NOT_RUN",
+    "command": ".\\mvnw.cmd -o \"-Dtest=CharacterRosterPublicationTest,AccountScopedSchemaTest\" test",
+    "failure_evidence": "The wrapper reported that `powershell` could not be found and could not start Maven. The aligned tests did not compile or execute."
+  },
+  "coverage_review": "The prior focused JaCoCo report showed low coverage in the scope and publication classes, with gaps in empty/unchanged generations, source independence, writer concurrency, monotonic activity, and multi-source snapshot generation capture. These remain review items. QUALITY_METRICS.md treats the 90% line and branch figures as warning KPIs, not build gates; no new coverage figures are claimed.",
+  "external_sources": [],
+  "clarifications": [],
+  "post_implementation_review_required": true,
+  "post_implementation_review_reason": "Independently recheck the QA test corrections against the implementation.",
+  "test_repair": {
+    "request_id": "1b09683e-3be3-42e1-af05-db419060f7a7",
+    "source": "interface_deviation",
+    "review": {
+      "decision": "REVISE_TESTS",
+      "reason": "The coder reported interface deviations from QA's contract.",
+      "evidence": [
+        "None. Every name in the QA plan's `interface_contract` is used as given: the production Flyway",
+        "location `classpath:db/migration` and all ten named tables, `sync.CharacterSync.publishRoster`,",
+        "`application.ProfitInputSession`, `application.CalculationInputVersions` and the connection-taking",
+        "`repo.CharacterRepository` query methods. `recordAuthorizedUse` keeps its name and signature; only its",
+        "statement changed."
+      ],
+      "actionable_items": [
+        "Align names, signatures, imports and setup of the affected tests to the implemented interface; do not change expected values."
+      ]
+    },
+    "invalid_attempts": 0
+  },
+  "post_implementation_reviews": [
+    {
+      "decision": "RETRY",
+      "reason": "The prepared schema test is present and its SHA-256 matches the protected hash. The repaired assertions match the production schema: the bank assertion reads `count`, and the foreign-child case uses a character ID absent from the child account. However, reachable production paths still violate acceptance criteria 3 and 6, and the character publication test exercises unscoped interfaces rather than the scoped contract.",
+      "evidence": [
+        "The current `AccountScopedSchemaTest.java` hash matches the plan’s protected hash: `94af691d175abae875cbb9c2272a184cbac685dfba6a2225d52195946bc4ad5c`; its corrected assertions are present.",
+        "The available Surefire report records two failures from an earlier run of `AccountScopedSchemaTest`; it does not establish that the current corrected file passes.",
+        "The available Surefire report records `CharacterRosterPublicationTest`: 3 tests run, 0 failures. That test creates its own unscoped schema and calls `CharacterSync.publishRoster(Connection, ...)` and `ProfitInputSession.open()` without account scope, so it does not verify scoped publication or snapshot behavior.",
+        "`CharacterSync.syncCharactersCraftingAndRecipes()` returns when fetched names are empty and again when parsed payloads are empty, before calling publication; a successful empty roster therefore cannot advance its source generation.",
+        "`ProfitInputSession.open(AccountScope)` calls `recordAuthorizedUse` and ignores its boolean result. `AccountRegistryRepository.recordAuthorizedUse` only updates an existing registry row, so a successful scoped use for an unregistered account does not record last-seen activity."
+      ],
+      "actionable_items": [
+        "Publish a validated empty character roster through the scoped publication transaction so its marker and generation advance atomically; keep validation failures from publishing.",
+        "Ensure a successful authorized scoped snapshot registers or otherwise reuses the verified account before recording monotonic last-seen activity.",
+        "Update or add PostgreSQL-backed tests that exercise the scoped publication and snapshot interfaces, including empty roster publication and successful activity for an unregistered account; run them and provide current results."
+      ]
+    },
+    {
+      "decision": "REVISE_TESTS",
+      "reason": "The prepared character publication test still does not verify scoped publication against the production schema. Its reported pass does not establish the scoped contract because the fixture creates legacy tables instead of applying production migrations.",
+      "evidence": [
+        "CharacterRosterPublicationTest.java matches its protected SHA-256: fba9a45c40d8a8f6d8d61586e3036e3b6cce4c0cdce44fade43f1e58d0ba7616, so the prepared assertions and expected values remain unchanged.",
+        "The test calls scoped publishRoster and ProfitInputSession.open(AccountScope), but its setup creates legacy characters and child tables and only calls AccountSyncStateRepository.ensure; it does not apply production migrations or create the account registry and scoped ownership schema required by those paths.",
+        "Surefire reports 3 passing CharacterRosterPublicationTest tests and 4 passing AccountScopedSchemaTest tests, but the character report cannot validate the scoped contract while its fixture uses the legacy schema. AccountScopedSchemaTest does apply production migrations and checks schema isolation.",
+        "AccountSync.fetchMaterialStacks and fetchAccountRecipeIds still skip entries rejected by their parsers and return the remaining rows for publication. This is a production concern for the subsequent implementation review, so it is not included as a test-repair action."
+      ],
+      "actionable_items": [
+        "Repair CharacterRosterPublicationTest setup to apply the production Flyway migrations in its isolated schema, then run the scoped publication and snapshot assertions against that schema. Preserve the existing expected values and assertion meanings; include scoped activity verification if required by the QA plan."
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "qa_model": "gpt-6-luna",
+  "qa_reasoning_effort": "medium",
+  "story_contract_sha256": "a50790943197f1689e840b942439ce6bc80e98a8b14c8a202227b9ab149b5282",
+  "user_decision_ids": [],
+  "protected_test_hashes": {
+    "src/test/java/repo/AccountScopedSchemaTest.java": "94af691d175abae875cbb9c2272a184cbac685dfba6a2225d52195946bc4ad5c",
+    "src/test/java/sync/CharacterRosterPublicationTest.java": "fba9a45c40d8a8f6d8d61586e3036e3b6cce4c0cdce44fade43f1e58d0ba7616"
+  }
+}

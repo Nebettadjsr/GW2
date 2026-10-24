@@ -8,7 +8,7 @@ Establish validated account sessions and access context
 
 ## Status
 
-BLOCKED
+TODO
 
 ## Milestone
 
@@ -120,7 +120,7 @@ is corrected.
 
 ## Blockers
 
-Blocked on user intervention (see agent/user-interventions/UI-008-STORY-API-010.md).
+None.
 
 ## Follow-up Findings
 

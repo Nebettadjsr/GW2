@@ -1,0 +1,6 @@
+{
+  "id": "ABCDE02B-8888-FEBA-1234-DE98765C7DEF",
+  "name": "FixtureKey",
+  "permissions": ["account", "characters", "inventories", "wallet"],
+  "type": "APIKey"
+}

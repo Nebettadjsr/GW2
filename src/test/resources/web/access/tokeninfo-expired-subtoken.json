@@ -1,0 +1,7 @@
+{
+  "id": "ABCDE02B-8888-FEBA-1234-DE98765C7DEF",
+  "permissions": ["account", "inventories"],
+  "type": "Subtoken",
+  "expires_at": "2020-01-01T00:00:00Z",
+  "urls": ["/v2/account", "/v2/account/bank"]
+}

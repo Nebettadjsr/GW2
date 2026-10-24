@@ -43,6 +43,76 @@ public class CharacterRepository {
         return out;
     }
 
+    /**
+     * One account's character names, ordered by name (STORY-APP-015).
+     *
+     * <p>A character name is unique within an account, never globally
+     * (TARGET_ARCHITECTURE.md §7.2), so this is the only form of the roster read that has a defined
+     * answer on the versioned schema: two accounts may both own a character called "Shared Name" and
+     * each sees only its own.
+     */
+    public List<String> loadAllCharacterNames(model.AccountScope scope) throws SQLException {
+        try (Connection con = Db.open()) {
+            return loadAllCharacterNames(con, scope);
+        }
+    }
+
+    /** @see #loadAllCharacterNames(model.AccountScope) */
+    public List<String> loadAllCharacterNames(Connection con, model.AccountScope scope) throws SQLException {
+        ManagedSchema.requireManagedAccountSchema(con, "characters");
+        List<String> out = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement(
+                "SELECT name FROM characters WHERE account_id = ? ORDER BY name")) {
+            ps.setObject(1, scope.accountId());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(rs.getString("name"));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * One account's per-character discipline ratings (STORY-APP-015).
+     *
+     * <p>The join to the roster carries the account GUID in both halves, matching the composite
+     * {@code (account_id, character_id)} parent key: joining on {@code character_id} alone would let
+     * a child row find a character owned by another account, which the schema's composite foreign
+     * key already forbids on write and this scoping forbids on read.
+     */
+    public List<DiscRow> loadAllCharacterCrafting(model.AccountScope scope) throws SQLException {
+        try (Connection con = Db.open()) {
+            return loadAllCharacterCrafting(con, scope);
+        }
+    }
+
+    /** @see #loadAllCharacterCrafting(model.AccountScope) */
+    public List<DiscRow> loadAllCharacterCrafting(Connection con, model.AccountScope scope) throws SQLException {
+        ManagedSchema.requireManagedAccountSchema(con, "character_crafting");
+        String sql = """
+            SELECT c.name AS char_name, cc.discipline, cc.rating, cc.is_active
+            FROM character_crafting cc
+            JOIN characters c
+              ON c.account_id = cc.account_id AND c.character_id = cc.character_id
+            WHERE cc.account_id = ?
+            ORDER BY cc.discipline, cc.rating DESC, c.name
+        """;
+
+        List<DiscRow> out = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setObject(1, scope.accountId());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(new DiscRow(
+                            rs.getString("char_name"),
+                            rs.getString("discipline"),
+                            rs.getInt("rating"),
+                            rs.getBoolean("is_active")));
+                }
+            }
+        }
+        return out;
+    }
+
     public List<DiscRow> loadAllCharacterCrafting() throws SQLException {
         try (Connection con = Db.open()) {
             return loadAllCharacterCrafting(con);
