@@ -8,8 +8,8 @@
 # system, no reduced scope. The only additions are a report summarizer that
 # turns a failure into a handful of compact annotations (so the orchestrator can
 # return a short failure report to Claude without shipping whole CI logs into a
-# model prompt) and, for the backend, the JavaFX platform override and the
-# PostgreSQL service the local developer machine already provides.
+# model prompt) and, for the backend, the PostgreSQL service the local
+# developer machine already provides.
 name: CI
 
 on:
@@ -83,11 +83,9 @@ jobs:
           GW2_API_KEY: ci-placeholder-no-live-api-calls
           ICON_CACHE_DIR: ${{ runner.temp }}/gw2-icons
         # The default Surefire run: *Test classes only. *IT classes (Layer 4
-        # live GW2 API smoke, Layer 5 TestFX, real-database perf/equivalence
+        # live GW2 API smoke, real-database perf/equivalence
         # checks) stay excluded by their naming convention, exactly as locally.
-        # javafx.platform overrides the pom's Windows default; no test in this
-        # suite loads a JavaFX native library.
-        run: ./mvnw -B -ntp test jacoco:report -Djavafx.platform=linux
+        run: ./mvnw -B -ntp test jacoco:report
 
       - name: Summarize failing tests
         if: failure()
