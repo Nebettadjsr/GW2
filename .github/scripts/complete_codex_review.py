@@ -56,7 +56,7 @@ def existing_followups(repository: str, number: int, head: str, token: str) -> d
     return found
 
 
-def format_comment(verdict: dict, head: str, round_number: int, followup_urls: list[str]) -> str:
+def format_comment(verdict: dict, head: str, round_number: int, followup_urls: list[str], retry: bool = False) -> str:
     lines = [marker(head), f"## Codex review: {verdict['verdict'].replace('_', ' ').title()}", "", verdict["summary"], ""]
     if verdict["blocking_findings"]:
         lines.extend(["### Blocking findings", ""])
@@ -66,6 +66,8 @@ def format_comment(verdict: dict, head: str, round_number: int, followup_urls: l
         lines.extend(["### Nonblocking follow-ups", ""])
         lines.extend(f"- {url}" for url in followup_urls)
         lines.append("")
+    if retry:
+        lines.extend(["@claude Please fix the blocking findings above on this PR branch, run the relevant tests, and report the result.", ""])
     lines.append(f"Review round: {round_number}/3. Head: `{head}`.")
     return "\n".join(lines)
 
@@ -126,7 +128,12 @@ def main() -> int:
     if verdict["verdict"] == "needs_decision":
         api("POST", f"/repos/{repository}/issues/{number}/labels", token, {"labels": ["needs-decision"]})
 
-    body = format_comment(verdict, head, round_number, followup_urls)
+    labels = {item["name"] for item in current.get("labels", [])}
+    linked_number = int(re.search(r"#(\d+)", issue_match.group(0)).group(1)) if issue_match else None
+    linked = api("GET", f"/repos/{repository}/issues/{linked_number}", token) if linked_number else {}
+    labels.update(item["name"] for item in linked.get("labels", []))
+    retry = verdict["verdict"] == "changes_requested" and "auto" in labels and round_number < 3
+    body = format_comment(verdict, head, round_number, followup_urls, retry)
     previous_comment = next((item for item in comments if marker(head) in (item.get("body") or "")), None)
     if previous_comment:
         api("PATCH", f"/repos/{repository}/issues/comments/{previous_comment['id']}", token, {"body": body})
@@ -137,10 +144,6 @@ def main() -> int:
         print(f"Codex requested {verdict['verdict']} on PR #{number}")
         return 1
 
-    labels = {item["name"] for item in current.get("labels", [])}
-    linked_number = int(re.search(r"#(\d+)", issue_match.group(0)).group(1))
-    linked = api("GET", f"/repos/{repository}/issues/{linked_number}", token)
-    labels.update(item["name"] for item in linked.get("labels", []))
     if "auto" in labels and "needs-decision" not in labels and os.environ.get("AUTO_MERGE_ENABLED") == "true":
         mutation = {
             "query": "mutation($id: ID!) { enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: SQUASH}) { pullRequest { number } } }",
