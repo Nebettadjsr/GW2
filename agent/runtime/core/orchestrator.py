@@ -860,7 +860,11 @@ def requeue_resolved_interventions() -> None:
             )
             continue
 
-        _record_user_guidance(story_path, item)
+        # Every resolved answer for this story, not just this one: once requeued, the
+        # story is no longer BLOCKED and later resolved items would be skipped above.
+        for resolved in list_interventions():
+            if resolved["status"] == "RESOLVED" and resolved["story_id"] == item["story_id"]:
+                _record_user_guidance(story_path, resolved)
 
         clear_story_blocked(
             story_path

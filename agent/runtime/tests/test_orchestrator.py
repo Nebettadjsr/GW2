@@ -299,6 +299,22 @@ class RequeueResolvedInterventionsTest(OrchestratorInterventionTestCase):
                 story_path, {"file": "UI-001-STORY-DOM-015.md", "id": "UI-001"}))
         self.assertEqual(story_path.read_text(encoding="utf-8").count("### UI-001"), 1)
 
+    def test_every_resolved_intervention_of_a_story_reaches_its_guidance(self):
+        filename = "STORY-DOM-015-x.md"
+        story_path = self.write_story(
+            filename,
+            story_with_id("STORY-DOM-015", "## Status\n\nBLOCKED\n", dependencies_text="None."),
+        )
+        self.write_backlog(blocked=[filename])
+        self.write_intervention("UI-001-STORY-DOM-015.md", "STORY-DOM-015", "RESOLVED")
+        self.write_intervention("UI-002-STORY-DOM-015.md", "STORY-DOM-015", "RESOLVED")
+
+        with patch.object(orchestrator, "log_line"):
+            orchestrator.requeue_resolved_interventions()
+        content = story_path.read_text(encoding="utf-8")
+        self.assertEqual(content.count("### UI-001"), 1)
+        self.assertEqual(content.count("### UI-002"), 1)
+
     def test_requeue_transition_restamps_canonical_backlog_entry(self):
         filename = "STORY-DOM-015-x.md"
         backlog = (
