@@ -1701,8 +1701,8 @@ Luck costs. Displayed results include Trading Post selling fees while raw price
 quotations remain distinguishable from net sale proceeds.
 
 The obsolete JavaFX `EctoView` and the former backend-owned Ecto calculation flow
-are not architectural requirements and may be removed. This decision remains
-scoped to Ectoplasm Salvage.
+are not requirements; see `TARGET_ARCHITECTURE.md` section 4.2. This decision
+remains scoped to Ectoplasm Salvage.
 
 **Status:** DECIDED
 
