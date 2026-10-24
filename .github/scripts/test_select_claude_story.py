@@ -37,9 +37,12 @@ class StorySelectionTest(unittest.TestCase):
         merged = {
             "state": "closed", "merged_at": "2026-10-24T12:00:00Z",
             "head": {"repo": {"full_name": "Nebettadjsr/GW2"}, "ref": "story/1-legacy"},
+            "base": {"repo": {"full_name": "Nebettadjsr/GW2"}, "ref": "master"},
             "body": "Closes #1",
         }
         self.assertEqual(select_story(stories, [merged])[0]["number"], 2)
+        merged["base"]["ref"] = "integration"
+        self.assertIsNone(select_story(stories, [merged])[0])
 
     def test_existing_pr_and_decision_prevent_repeat(self):
         stories = [issue(2, labels=["auto"]), issue(3, labels=["auto", "needs-decision"])]
@@ -63,6 +66,18 @@ class StorySelectionTest(unittest.TestCase):
         selected, linked, _ = select_story(stories, [pull])
         self.assertEqual(selected["number"], 3)
         self.assertEqual(linked["head"]["ref"], "fix/review-feedback")
+
+    def test_fork_pr_blocks_duplicate_run(self):
+        stories = [issue(2, labels=["auto", "needs-rework"])]
+        pull = {
+            "state": "open",
+            "head": {"repo": {"full_name": "someone/GW2"}, "ref": "fix/account-ui"},
+            "body": "Closes #2",
+        }
+        selected, linked, reasons = select_story(stories, [pull])
+        self.assertIsNone(selected)
+        self.assertIsNone(linked)
+        self.assertIn("from a fork", reasons[0])
 
 
 if __name__ == "__main__":

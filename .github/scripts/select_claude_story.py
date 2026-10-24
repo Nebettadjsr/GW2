@@ -38,10 +38,6 @@ def linked_prs(issue: dict, pulls: list[dict]) -> list[dict]:
     for pull in pulls:
         if pull["state"] != "open":
             continue
-        if (pull.get("head", {}).get("repo") or {}).get("full_name") != issue["repository_url"].removeprefix(
-            "https://api.github.com/repos/"
-        ):
-            continue
         if pull["head"]["ref"].startswith(prefixes) or str(number) in PR_CLOSES.findall(
             pull.get("body") or ""
         ):
@@ -57,6 +53,10 @@ def dependency_merged(dependency: str, by_id: dict[str, dict], pulls: list[dict]
     prefixes = (f"story/issue-{number}-run-", f"story/{number}-")
     return any(
         pull.get("merged_at")
+        and pull["base"]["ref"] == "master"
+        and pull["base"]["repo"]["full_name"] == issue["repository_url"].removeprefix(
+            "https://api.github.com/repos/"
+        )
         and (
             pull["head"]["ref"].startswith(prefixes)
             or str(number) in PR_CLOSES.findall(pull.get("body") or "")
@@ -95,6 +95,11 @@ def select_story(issues: list[dict], pulls: list[dict]) -> tuple[dict | None, di
             reasons.append(f"#{number}: multiple open PRs match this story")
             continue
         linked = matching[0] if matching else None
+        if linked is not None and (linked.get("head", {}).get("repo") or {}).get("full_name") != issue[
+            "repository_url"
+        ].removeprefix("https://api.github.com/repos/"):
+            reasons.append(f"#{number}: open PR is from a fork and cannot be continued here")
+            continue
         if "needs-rework" in labels and linked is None:
             reasons.append(f"#{number}: needs-rework label has no open PR")
             continue
