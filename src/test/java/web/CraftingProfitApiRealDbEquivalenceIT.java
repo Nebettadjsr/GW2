@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import repo.DiscChoice;
-import util.CoinUtils;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -58,7 +57,7 @@ class CraftingProfitApiRealDbEquivalenceIT {
         assertEquivalent("default All (empty request body)",
                 "{}",
                 DiscChoice.all(),
-                new CraftingSettings(true, false, CoinUtils.parseToCopper("1g"), false, false, false));
+                new CraftingSettings(true, false, 10000, false, false, false));
     }
 
     @Test
@@ -69,7 +68,7 @@ class CraftingProfitApiRealDbEquivalenceIT {
                                       "listingSell": true, "listingBuy": true,
                                       "allowDailyCrafts": false}}""",
                 DiscChoice.all(),
-                new CraftingSettings(true, true, CoinUtils.parseToCopper("10g"), true, true, false));
+                new CraftingSettings(true, true, 100000, true, true, false));
     }
 
     private void assertEquivalent(String label, String requestBody, DiscChoice choice, CraftingSettings settings)

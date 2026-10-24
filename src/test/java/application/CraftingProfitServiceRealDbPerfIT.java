@@ -16,7 +16,6 @@ import repo.InventoryRepository;
 import repo.ItemRepository;
 import repo.RecipeRepository;
 import repo.tp.TpPriceRepository;
-import util.CoinUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -47,7 +46,7 @@ class CraftingProfitServiceRealDbPerfIT {
         CraftingSettings settings = new CraftingSettings(
                 true,   // use own mats (view default)
                 false,  // allow buying (view default)
-                CoinUtils.parseToCopper("1g"),
+                10000,
                 false,  // instant sell (view default)
                 false,  // instant buy (view default)
                 true    // daily items treated as buy (view default)

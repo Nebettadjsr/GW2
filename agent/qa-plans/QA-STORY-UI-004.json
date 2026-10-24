@@ -320,6 +320,21 @@
         "The current architecture and runtime documents describe the web/backend runtime and identify remaining JavaFX build configuration. The story reports successful clean test compilation of 222 production and 120 test sources and the focused 210-test run; PostgreSQL-dependent integration checks are explicitly excluded without a coverage claim."
       ],
       "actionable_items": []
+    },
+    {
+      "decision": "REVISE_TESTS",
+      "reason": "The failed CI check is a test-compilation failure caused by test sources still referencing production classes removed by this commit. Those tests cannot validate the delivered implementation as written, and the retained crafting checks also still import the deleted CoinUtils utility. This is test-suite repair work, not evidence of a production defect.",
+      "evidence": [
+        "At commit 7047bf4, the production sources for application.EctoSalvageService, ecto.EctoSalvageCalculator, application.InitialSetupService, sync.IconSyncGateway, and util.CoinUtils are deleted, but their test sources remain. The retained EctoSalvageServiceTest, EctoSalvageCalculatorTest, and InitialSetupServiceTest reference those removed types.",
+        "Three retained crafting checks still import and call util.CoinUtils: CraftingProfitInputCaptureEquivalenceIT, CraftingProfitServiceRealDbPerfIT, and CraftingProfitApiRealDbEquivalenceIT. The story and QA plan specify preserving their settings as 1g = 10000 copper and 10g = 100000 copper.",
+        "The QA plan reports a later clean compilation and passing focused run, but that evidence does not match the published commit’s test sources: the published tree still contains these references. The supplied CI annotations show compilation errors and no test failures."
+      ],
+      "actionable_items": [
+        "Retire the tests for removed production subjects: src/test/java/application/EctoSalvageServiceTest.java, src/test/java/ecto/EctoSalvageCalculatorTest.java, and src/test/java/application/InitialSetupServiceTest.java.",
+        "Update the three retained crafting test files to remove CoinUtils imports and use the specified copper values directly, preserving their existing expected behavior and assertions.",
+        "Reconcile the QA plan with the published test tree and record clean test compilation plus relevant suite results after these corrections."
+      ],
+      "request_id": "210f8437-74e9-4b85-9931-902910a56476"
     }
   ]
 }

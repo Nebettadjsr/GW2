@@ -9,7 +9,6 @@ import repo.CraftingGraphCache;
 import repo.DiscChoice;
 import repo.ItemRepository;
 import repo.RecipeRepository;
-import util.CoinUtils;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,7 +50,7 @@ class CraftingProfitInputCaptureEquivalenceIT {
             throws Exception {
         assertEquivalent("default All",
                 DiscChoice.all(),
-                new CraftingSettings(true, false, CoinUtils.parseToCopper("1g"), false, false, false));
+                new CraftingSettings(true, false, 10000, false, false, false));
     }
 
     @Test
@@ -59,7 +58,7 @@ class CraftingProfitInputCaptureEquivalenceIT {
             throws Exception {
         assertEquivalent("All, buying enabled at 10g, listing prices",
                 DiscChoice.all(),
-                new CraftingSettings(true, true, CoinUtils.parseToCopper("10g"), true, true, true));
+                new CraftingSettings(true, true, 100000, true, true, true));
     }
 
     private void assertEquivalent(String label, DiscChoice choice, CraftingSettings settings)
