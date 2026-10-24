@@ -20,6 +20,7 @@ REQUIRED_CHECKS = {"Backend tests (Maven)", "Frontend tests (Vitest)", "Coverage
 BOT_LOGIN = "chatgpt-codex-connector[bot]"
 REVIEW_MARKER = "<!-- codex-pull-request-review-summary -->"
 REVIEW_STATE = re.compile(r"<!-- codex-review-state:v1 (\{.*?\}) -->", re.DOTALL)
+RUN_REPORT = re.compile(r"<!-- gw2-claude-run-report:v1 head=([0-9a-f]{40}) -->")
 ISSUE_LINK = re.compile(r"\b(?:closes|fixes|resolves)\s+#([1-9][0-9]*)\b", re.IGNORECASE)
 STORY_TITLE = re.compile(r"^STORY-[A-Z]+-[0-9]+\b")
 
@@ -119,6 +120,21 @@ def checks_green(checks: list[dict]) -> bool:
     )
 
 
+def report_for_head(pr: dict, comments: list[dict], repository: str) -> str | None:
+    head_sha = pr["head"]["sha"]
+    owner = repository.split("/", 1)[0]
+    for comment in reversed(comments):
+        if (comment.get("user") or {}).get("login") != owner:
+            continue
+        body = comment.get("body") or ""
+        marker = RUN_REPORT.search(body)
+        if marker and marker.group(1) == head_sha:
+            return body
+    body = pr.get("body") or ""
+    marker = RUN_REPORT.search(body)
+    return body if marker and marker.group(1) == head_sha else None
+
+
 def ready_reason(pr: dict, issue: dict, comments: list[dict], checks: list[dict], files: list[dict], repository: str) -> str | None:
     if pr.get("state") != "open" or pr.get("draft") or pr.get("base", {}).get("ref") != "master":
         return "PR is closed, draft, or targets another branch"
@@ -139,18 +155,19 @@ def ready_reason(pr: dict, issue: dict, comments: list[dict], checks: list[dict]
     if not branch.startswith(f"story/issue-{number}-run-"):
         return "PR is not on the Claude story branch"
     protected = {"AGENTS.md", "CLAUDE.md", "GW2 GitHub Flow Migration.md"}
-    if any(file.get("filename", "").startswith(".github/") or file.get("filename") in protected
-           for file in files):
+    if any(path.startswith(".github/") or path in protected
+           for file in files for path in (file.get("filename") or "", file.get("previous_filename") or "")):
         return "PR changes development automation or agent instructions"
     body = pr.get("body") or ""
     linked = ISSUE_LINK.findall(body)
     if linked != [str(number)]:
         return "PR must close exactly its linked story"
-    if "## Implementation report" not in body or "Claude did not supply a run report" in body:
-        return "PR lacks a Claude implementation report"
-    if not re.search(r"^Local-only checks still needed: none$", body, re.MULTILINE):
+    report = report_for_head(pr, comments, repository)
+    if not report or "## Implementation report" not in report or "Claude did not supply a run report" in report:
+        return "PR lacks a Claude implementation report for this head commit"
+    if not re.search(r"^Local-only checks still needed: none$", report, re.MULTILINE):
         return "PR still needs local-only checks or lacks their status"
-    if not re.search(r"^Unresolved gaps: none$", body, re.MULTILINE):
+    if not re.search(r"^Unresolved gaps: none$", report, re.MULTILINE):
         return "PR has an unresolved gap or lacks its status"
     if not checks_green(checks):
         return "required CI checks are missing, pending, or red"

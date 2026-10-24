@@ -138,6 +138,7 @@ jobs:
           test -n "$GH_TOKEN"
           body="$RUNNER_TEMP/claude-pr-body.md"
           {
+            printf '<!-- gw2-claude-run-report:v1 head=%s -->\n' "$(git rev-parse HEAD)"
             printf 'Closes #%s\n\n' "$ISSUE_NUMBER"
             printf '## Implementation report\n\n'
             if [[ -s "$RUN_REPORT" ]]; then

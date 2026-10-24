@@ -16,7 +16,7 @@ def fixtures():
         "state": "open", "draft": False,
         "base": {"ref": "master", "repo": {"full_name": REPO}},
         "head": {"ref": "story/issue-42-run-100-1", "sha": SHA, "repo": {"full_name": REPO}},
-        "body": "Closes #42\n\n## Implementation report\n\nLocal-only checks still needed: none\nUnresolved gaps: none\n",
+        "body": f"<!-- gw2-claude-run-report:v1 head={SHA} -->\nCloses #42\n\n## Implementation report\n\nLocal-only checks still needed: none\nUnresolved gaps: none\n",
         "labels": [],
     }
     issue = {"number": 42, "state": "open", "title": "STORY-TEST-011: Verify quotes", "labels": [{"name": "auto"}]}
@@ -68,6 +68,24 @@ class MergeGateTest(unittest.TestCase):
         pr, issue, comments, checks, files = fixtures()
         files.append({"filename": ".github/workflows/ci.yml"})
         self.assertIn("development automation", gate.ready_reason(pr, issue, comments, checks, files, REPO))
+        pr, issue, comments, checks, files = fixtures()
+        files.append({"filename": "archive/ci.yml", "previous_filename": ".github/workflows/ci.yml"})
+        self.assertIn("development automation", gate.ready_reason(pr, issue, comments, checks, files, REPO))
+
+    def test_rework_uses_latest_report_for_current_head(self):
+        pr, issue, comments, checks, files = fixtures()
+        comments.append({"user": {"login": "Nebettadjsr"},
+                         "body": f"<!-- gw2-claude-run-report:v1 head={SHA} -->\n## Implementation report\n\nLocal-only checks still needed: browser smoke\nUnresolved gaps: none"})
+        self.assertIn("local-only", gate.ready_reason(pr, issue, comments, checks, files, REPO))
+        comments[-1]["body"] = comments[-1]["body"].replace("browser smoke", "none")
+        self.assertIsNone(gate.ready_reason(pr, issue, comments, checks, files, REPO))
+
+    def test_report_from_previous_head_cannot_authorize_merge(self):
+        pr, issue, comments, checks, files = fixtures()
+        pr["head"]["sha"] = "b" * 40
+        for check in checks:
+            check["status"] = "completed"
+        self.assertIn("implementation report", gate.ready_reason(pr, issue, comments, checks, files, REPO))
 
     def test_lookalike_comment_from_other_user_cannot_approve(self):
         pr, issue, comments, checks, files = fixtures()
