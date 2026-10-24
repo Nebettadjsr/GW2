@@ -28,7 +28,8 @@ public final class FilesystemIconStore implements IconStore {
 
     /**
      * The versioned subdirectory the keyed entries live in. Separate from the legacy
-     * {@code items/{itemId}.png} files, which stay usable for JavaFX (§12.1).
+     * {@code items/{itemId}.png} files an earlier desktop download left behind, which nothing reads
+     * any more (§12.1).
      */
     public static final String ASSETS_DIRECTORY = "assets-v1";
 
@@ -42,11 +43,6 @@ public final class FilesystemIconStore implements IconStore {
      */
     public FilesystemIconStore(Path iconCacheDir) {
         this.assetsRoot = iconCacheDir.toAbsolutePath().normalize().resolve(ASSETS_DIRECTORY);
-    }
-
-    /** The directory the keyed entries live in; diagnostics and the desktop path update use it. */
-    public Path assetsRoot() {
-        return assetsRoot;
     }
 
     @Override

@@ -6,10 +6,10 @@ This is a factual snapshot of the application and developer runtime, checked aga
 
 ## Runtime and technology
 
-The repository currently contains two user interfaces:
+The repository contains one user interface:
 
-- The Vue 3 / TypeScript browser application is the active, canonical product UI, served during development by Vite and backed by the Spring Boot HTTP application.
-- The Java 25 / JavaFX desktop UI remains in the source tree as a legacy/local interface. It has not yet been removed and is not the target UI.
+- The Vue 3 / TypeScript browser application is the active, canonical and only product UI, served during development by Vite and backed by the Spring Boot HTTP application.
+- The Java 25 / JavaFX desktop UI has been removed: its entry point, views and stylesheet, the application and utility classes those views were the only caller of, and its 31 desktop-only test and fixture files (`STORY-UI-004`). Only its build and configuration declarations remain; see [Current Architecture, section 9](CURRENT_ARCHITECTURE.md).
 
 The backend is Java 25, Maven and Spring Boot 4.1.1. It owns the HTTP API, application services, the Crafting Profit and Discovery domain calculations, persistence, and Guild Wars 2 API access. PostgreSQL stores shared game/economy data and the current single account's state. The browser does not call ArenaNet directly. Ectoplasm Salvage is a documented exception: its calculation runs in the browser using backend-provided data.
 
@@ -62,7 +62,7 @@ The crafting graph is derived from recipe data and shared across the current ins
 
 Long-running web synchronization uses Spring-managed application task submission and task status APIs. Duplicate identical work is prevented within the running backend process. Account freshness checks share the `ACCOUNT_SYNC` operation; an active run is reused only for the sources it is actually refreshing, and sources it omits stay outstanding until a run covers them, so a narrower active task is never reported as having refreshed them. Account writes remain non-overlapping, and the shared price refresh is coordinated separately. The global scheduler catches/reports failures so a failed execution does not prevent later scheduled runs. This is single-process coordination, not a distributed job system; multi-replica coordination is intentionally future work.
 
-Frontend pages present operation loading, completion, and failure states. Backend task history and refresh timestamps are in memory rather than durable operational telemetry. The legacy JavaFX UI retains its own compatibility workflows and is not the model for web scheduling.
+Frontend pages present operation loading, completion, and failure states. Backend task history and refresh timestamps are in memory rather than durable operational telemetry.
 
 ## Build and verification
 
@@ -76,7 +76,7 @@ The Python workflow service (`workflow_service/`) runs Planner when planning is 
 - Authentication and browser API-key handling are not implemented.
 - A migrated database serves global data only: the scoped account repositories, publication and browser credential flow that make its GUID-keyed account schema usable are not implemented, so the retained unscoped account paths are refused there.
 - The backend/frontend/PostgreSQL stack is not containerized or deployed.
-- JavaFX remains in the repository while the browser migration and acceptance work continue.
+- JavaFX build and configuration declarations remain in `pom.xml` and the CI backend job after the desktop UI's removal — the `org.openjfx` dependencies and plugin, the `javafx.*` properties, the `main.class` property that still names the deleted entry point, the `org.testfx:testfx-junit5` test dependency and the `-Djavafx.platform=linux` CI flag. No production or test source uses them.
 - Refresh status is process-local, not durable telemetry. Multiple backend replicas would require shared coordination for global scheduled work and refresh deduplication.
 - Hosting provider is undecided. Cloudflare-related infrastructure is only a possible future option, not a decision.
 

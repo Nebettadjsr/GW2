@@ -4,15 +4,11 @@ import api.BatchUtils;
 import api.Gw2ApiClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import infra.icons.FilesystemIconStore;
-import infra.icons.HttpIconImageFetcher;
-import infra.icons.IconAcquisition;
 import infra.icons.IconSourcePolicy;
 import parser.ItemParser;
 import repo.Db;
 import util.DbBind;
 
-import java.nio.file.Path;
 import java.sql.Array;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -21,11 +17,9 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 public final class IconSync {
@@ -41,17 +35,17 @@ public final class IconSync {
      * control is required").
      *
      * <p>It runs {@link #syncItemIconUrls()} only - no image is downloaded and no local icon directory
-     * is needed - so a backend-only machine can repair missing metadata without the JavaFX first-setup
-     * flow and without a browser control. {@code --dry-run} reports how many items the refresh would
+     * is needed - so a backend-only machine can repair missing metadata without a browser control.
+     * {@code --dry-run} reports how many items the refresh would
      * cover, and how many of those have no {@code items} row at all, and calls neither the GW2 API nor
      * any write.
      *
      * <p>Invocation is documented in {@code docs/CURRENT_ARCHITECTURE.md} §5.14.
      */
     public static void main(String[] args) throws Exception {
-        // A retained entry point, so it passes the same startup schema gate as the backend and the
-        // JavaFX application before it opens a connection (STORY-INFRA-004, §7.3: every retained
-        // entry point uses this gate or is disabled against the upgraded database).
+        // A retained entry point, so it passes the same startup schema gate as the backend before it
+        // opens a connection (STORY-INFRA-004, §7.3: every retained entry point uses this gate or is
+        // disabled against the upgraded database).
         infra.db.SchemaInitializer.initializeRuntimeDatabase();
 
         if (args.length > 0 && DRY_RUN.equals(args[0])) {
@@ -78,9 +72,6 @@ public final class IconSync {
             System.out.println("  of which have no items row at all: " + withoutRow);
         }
     }
-
-    private record IconUpdate(int itemId, String iconPath) {}
-    private static final int ICON_FLUSH_BATCH = SyncConstants.HTTP_IDS_BATCH;
 
     /**
      * Upsert, because a referenced item may have no {@code items} row at all (STORY-SYNC-004): account
@@ -153,9 +144,8 @@ public final class IconSync {
      * selection no longer starts from the {@code items} table, so a referenced id whose metadata row
      * was never created is discovered and the row is created from the canonical response.
      *
-     * <p>This is metadata only. No image is downloaded and no local directory is needed, so it is
-     * usable on a machine that never runs the desktop icon download; the web image endpoint repairs
-     * its own binaries on demand and never triggers this call.
+     * <p>This is metadata only. No image is downloaded and no local directory is needed; the web image
+     * endpoint repairs its own binaries on demand and never triggers this call.
      */
     public static void syncItemIconUrls() throws Exception {
 
@@ -417,106 +407,4 @@ public final class IconSync {
         return ids;
     }
 
-    /**
-     * Explicit desktop icon download (TARGET_ARCHITECTURE.md §12.1): gives every item with retained
-     * metadata and no local file a shared, source-keyed image in
-     * {@code <iconBaseDir>/assets-v1} and points {@code items.icon_path} at it.
-     *
-     * <p>It writes through the same cache adapter, key and publication protocol the web image endpoint
-     * uses, so the two never maintain independent download stores: whatever either side published is a
-     * hit for the other, and a re-run downloads nothing that is already committed. The path is recorded
-     * only after publication, and only for the source the item currently retains.
-     *
-     * <p>Legacy {@code items/{itemId}.png} files are left in place and stay usable by JavaFX; see
-     * {@link DesktopIconAdoption} for why their bytes are not adopted without evidence. No mass
-     * migration or redownload happens here.
-     */
-    public static void syncItemIconsToDisk(Path iconBaseDir) throws Exception {
-
-        FilesystemIconStore store = new FilesystemIconStore(iconBaseDir);
-        DesktopIconAdoption adoption = new DesktopIconAdoption(
-                iconBaseDir, store, new IconAcquisition(store, new HttpIconImageFetcher()));
-
-        String selectSql = """
-    SELECT item_id, icon_url
-    FROM items
-    WHERE icon_url IS NOT NULL
-      AND (icon_path IS NULL OR icon_path = '')
-    ORDER BY item_id
-    """;
-
-        String updateSql = """
-    UPDATE items
-    SET icon_path = ?
-    WHERE item_id = ?
-    """;
-
-        record IconJob(int itemId, String iconUrl) {}
-        List<IconJob> jobs = new ArrayList<>();
-
-        try (Connection con = Db.open();
-             PreparedStatement psSelect = con.prepareStatement(selectSql);
-             ResultSet rs = psSelect.executeQuery()) {
-
-            while (rs.next()) {
-
-                int itemId = rs.getInt("item_id");
-                String iconUrl = rs.getString("icon_url");
-
-                if (iconUrl == null || iconUrl.isBlank()) continue;
-
-                jobs.add(new IconJob(itemId, iconUrl));
-            }
-        }
-
-        System.out.println("Icon jobs to process: " + jobs.size());
-        if (jobs.isEmpty()) return;
-
-        List<IconUpdate> updates = new ArrayList<>();
-        Map<DesktopIconAdoption.Outcome, Integer> outcomes = new EnumMap<>(DesktopIconAdoption.Outcome.class);
-
-        for (IconJob job : jobs) {
-
-            DesktopIconAdoption.Adoption result = adoption.adopt(job.itemId(), job.iconUrl());
-            outcomes.merge(result.outcome(), 1, Integer::sum);
-
-            if (result.file() != null) {
-                updates.add(new IconUpdate(job.itemId(), result.file().toString()));
-            }
-
-            if (updates.size() >= ICON_FLUSH_BATCH) {
-
-                flushIconPathUpdates(updateSql, updates);
-                updates.clear();
-
-                System.out.println("Icon progress: " + outcomes);
-            }
-        }
-
-        flushIconPathUpdates(updateSql, updates);
-
-        System.out.println("✅ Item icons synced into " + store.assetsRoot() + " " + outcomes);
-    }
-
-    private static void flushIconPathUpdates(String updateSql, List<IconUpdate> updates) throws SQLException {
-
-        if (updates == null || updates.isEmpty()) return;
-
-        try (Connection con = Db.open();
-             PreparedStatement psUpdate = con.prepareStatement(updateSql)) {
-
-            con.setAutoCommit(false);
-
-            for (IconUpdate u : updates) {
-
-                psUpdate.setString(1, u.iconPath());
-                psUpdate.setInt(2, u.itemId());
-
-                psUpdate.addBatch();
-            }
-
-            psUpdate.executeBatch();
-            con.commit();
-        }
-    }
 }

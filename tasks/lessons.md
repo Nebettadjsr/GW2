@@ -695,3 +695,151 @@ the working tree is never written to, so the other story's edits stay dirty and 
 both sides (`git show --stat <sha>` = your lines only, `git diff --stat -- <path>` = theirs only),
 then prove the commit rather than the tree: compile it in a detached worktree and run the shipped
 entry point from there. A claim about publishable behavior needs evidence produced on the commit.
+
+## A "deliberate deviation" in a follow-up finding is an unmet criterion, not a disclosure
+
+Recording that a rule does not hold on some path does not satisfy the rule. If a criterion says
+"every successful source publishes", a source that deliberately does not publish fails it however
+carefully the exception is written up — and the write-up is what tells the evaluator exactly where to
+look. Verify the premise of such an exception against the code that would raise it before accepting
+it as a constraint.
+
+**Why:** `STORY-APP-015` shipped `CharacterSync.syncCharactersCraftingAndRecipes(scope)` with an early
+return on an empty roster, justified in F003 as "an empty `/v2/characters` response is
+indistinguishable from a key that lost the `characters` permission". It is not: a lost permission is
+HTTP 403, and `Gw2ApiClient.getAuth` → `HttpStatus.requireOkOrPartial` throws on anything but 200/206,
+while a non-array body is rejected by `CharacterNamesParser`. So the two cases were already
+distinguishable one call away, and the story was rejected for exactly the criterion F003 named. The
+same attempt also reported, as F001, that an authorized read for an unregistered account records no
+activity — a second criterion failing on a reachable path, disclosed instead of fixed.
+
+**How to apply:** before writing "deliberate deviation" or "the access boundary would have to make X
+observable", follow the call one level down and check what the adapter actually does with the
+indistinguishable case; an exception that survives that check belongs in the story text as a conflict
+to report *before* implementing, not in a findings list afterwards. Treat every finding that names an
+acceptance criterion as work in scope. And when no QA test reaches the path, prove the behaviour with
+a disposable probe outside the repository that drives the production entry point — overriding only the
+upstream adapter on the classpath, never editing a shipped file — then re-run it against a compiled
+copy with your change reverted and quote both outputs. A hard-coded-URL static client like
+`Gw2ApiClient` is why that override is needed; say so rather than claiming the path is unverifiable.
+
+## Deleting a test file is a QA write, even when a story's criterion orders the deletion
+
+`src/test/` is QA-owned for *removal* as much as for authorship. A story that retires production code
+whose only remaining callers are tests cannot be finished by the coding role alone: deleting those
+tests is reverted and logged as an integrity violation, and excluding them in `pom.xml` is prohibited
+test-skipping. Removing the production class while its test survives breaks `test-compile`, which
+takes the whole suite — and the CI gate — down with it.
+
+**Why:** `STORY-UI-004` AC3 says to remove the desktop-only test code, and its QA plan expected
+"JavaFX-only tests are removed as part of implementation". An attempt deleted the 31 default-package
+and `uiverify` JavaFX tests; `qa_agent.revert_test_changes` (called from `cycle.py`) restored all 31
+byte-for-byte from `HEAD`, leaving a tree whose production classes were gone and whose tests still
+referenced them, so `./mvnw -o test-compile` failed and not one test in the project could run —
+including the two the plan required.
+
+**How to apply:** before deleting production code, list the *test* files that reference it, not just
+the production consumers. If any exist, the story needs a QA deletion pass, so finish the production
+side, verify the invariants directly (compile the tree, run the real entry point, inspect
+`target/classes`) and block with the exact file list, the equivalent retained coverage for each, and
+the enforcement code path that proves the deletion is not yours to make. Also check the index: a
+previous attempt's staged test deletion can survive a worktree revert, so `git reset -- src/test`
+rather than let a commit carry a deletion the harness already undid. **Correction to the paragraph above: a class kept alive only by a test is not "retained".** That
+sentence previously read "classes kept alive only by a QA test — `EctoSalvageService`,
+`InitialSetupService`, `CoinUtils` here — are retained and reported, never deleted to tidy up the
+inventory", and the evaluator rejected the invocation that followed it: "desktop-exclusive application
+and utility code remains in production source after its only runtime callers were removed". A test is
+not a consumer. When a story's criterion is to remove the paths a retired UI exclusively used, the
+subject-only-reachable-from-its-own-test case is exactly what the criterion is about, and reporting it
+as a deliberate retention is the "deliberate deviation is an unmet criterion" pattern again. Delete the
+production class, then hand QA the file list — per file, say whether it is a **retirement** (the
+subject is gone) or a **retarget** (the test covers retained behavior and merely borrowed the helper;
+`CoinUtils.parseToCopper("1g")` → `10000` in three retained Crafting Profit `*IT`s). The distinction is
+the part QA cannot derive from a compiler error, and omitting it risks losing coverage of behavior the
+story was supposed to preserve. Distinguish "exclusively supporting" from "same neighbourhood": delete
+the seam that exists only for the deleted class (`sync.IconSyncGateway`, whose javadoc says so), keep
+the one with a live consumer (`api.tp.EctoLivePriceGateway` → `ItemReadService` → the browser's
+item-detail route) however desktop its name sounds, and leave a *method* of a retained, ADR-documented
+subsystem (`IconSync.syncItemIconsToDisk`) as a finding — removing that is a design decision, not
+cleanup.
+
+**A broken `test-compile` blocks Maven, not the test.** Reporting "the required tests cannot run" because
+some *other* test file fails to compile is a statement about the build tool. `STORY-UI-004` was rejected
+for having no recorded result on `LegacyJavaFxRemovalTest`/`Gw2ApiApplicationBootTest` while 31 un-retired
+desktop tests broke `default-testCompile` — and both tests were runnable the whole time:
+`javac -cp "target/classes;<test classpath>" -sourcepath src/test/java -d <tmp outside the repo>
+<the two test sources>` compiles them **unmodified** (implicit compilation pulls in only what they
+reference, so the broken files are never read), and
+`java -cp "<tmp>;src\test\resources;target\classes;<classpath>;junit-platform-launcher;junit-platform-console"
+org.junit.platform.console.ConsoleLauncher execute --select-class=…` runs them on the same engine Surefire
+drives. Build the classpath with `dependency:build-classpath -DincludeScope=test` and filter out the jars
+whose absence you are claiming (here all `javafx-*`/`testfx-*`), so the run is stronger evidence than
+Surefire's would have been. Two traps: the classpath is a **Windows** path list, so `/tmp/...` and
+`/c/Users/...` from Git Bash silently yield `ClassNotFoundException: …ConsoleLauncher` — use `cygpath -w`;
+and a lone `junit-platform-console` jar is not the standalone fat jar, so add `junit-platform-launcher`
+and `junit-platform-reporting` from `~/.m2` explicitly. State in the Result that Maven still fails and why,
+quote both outputs, and keep the blocker — but never leave an acceptance criterion unevidenced because the
+default command is unavailable.
+
+**Documentation written while blocked becomes false the moment another role unblocks it.** Every sentence
+of the form "X is still present, so Y fails" is dated. When the next invocation of the same story starts,
+re-run the command before re-reading your own prose: `STORY-UI-004` was rejected a third time not for any
+production defect but because `CURRENT_ARCHITECTURE.md` §9 and `CURRENT_STATE_SPEC.md` still said the 31
+desktop tests existed and broke `test-compile` — QA had retired them in between, and
+`./mvnw -o clean test-compile` plus the plan's own
+`-Dtest=LegacyJavaFxRemovalTest,Gw2ApiApplicationBootTest test` both passed on the first try. The
+hand-off text can carry the stale claim too (here it listed "the normal Maven compilation failure" as a
+fact to reconcile), so verify the premise of a handed-back deficiency rather than restating it.
+
+**How to apply:** when a story blocks on another role's work, write the blocked state in the Result (which
+the next cycle rewrites) and keep the owned documents to what is true regardless — or expect to revisit
+every such sentence. On re-entry, `git status` + the one command the old text names, before any edit; a
+finding that asserts a mechanism is missing (`F005`: "no routing path asks QA to delete") needs the same
+re-check, since the proof it was wrong is that the deletion happened.
+
+**"It belongs to a documented subsystem" does not make an uncalled desktop method retained behavior.**
+This corrects the lesson three paragraphs above, which concluded that leaving `IconSync.syncItemIconsToDisk`
+as a finding was right because removing a *method* of an ADR-documented subsystem is a design decision.
+The evaluator rejected `STORY-UI-004` a fourth time for exactly that method: an entry point with no
+production caller, whose own javadoc called itself the desktop download, is a desktop-only path however
+well documented the subsystem around it is. The ADR documented *browser* icon delivery and happened to
+mention the desktop writer; a mention is not a consumer. The test that settles it is the call graph, not
+the prose: ask who invokes this method today, and whether any browser or API request can reach it. Here
+nothing did, and `items.icon_path` — the only thing it wrote — was already excluded from every HTTP
+response by design, so the removal could not change browser behavior.
+
+**How to apply:** when a story says "remove paths used solely by the retired UI", resolve each candidate
+at method granularity by caller, not by file or subsystem membership, and distinguish the halves of a
+mixed class (`IconSync`'s metadata refresh has two live consumers; its disk download had none). Keep
+every type the remaining consumers touch — all fourteen `infra.icons`/`application.icons` types had one —
+and do not narrow a shared record or interface the retained tests construct just because one component of
+it became unread. If an ADR's context names what you delete, that is a finding for the architect, not a
+reason to keep dead code.
+
+## "Nothing to compile — all classes are up to date" is the absence of evidence
+
+When the handed-back deficiency is *"record whether the build passes now"*, the recorded run must be one
+that actually compiled something. Maven's incremental check answers `BUILD SUCCESS` from a stale
+`target/` without reading a single source, so it cannot tell you whether the tree compiles after a file
+was deleted — the very question being asked.
+
+**Why:** `STORY-UI-004`'s last deficiency was that no record established whether `test-compile` succeeds
+after `DesktopIconAdoptionTest` was retired. The first `./mvnw -o test-compile` printed
+`Nothing to compile - all classes are up to date.` and exit 0. Reporting that would have restated the
+earlier invocation's unverified claim in new words. `./mvnw -o clean test-compile` is what produced the
+real answer: `Compiling 222 source files … Compiling 120 source files … BUILD SUCCESS`.
+
+**How to apply:** for any compile claim after a deletion, run `clean` first and quote the `Compiling N
+source files` lines, not only `BUILD SUCCESS` — the counts are what show the tree was actually read.
+The same rule applies to a suite: name the classes explicitly rather than using a wildcard like
+`*Icon*`, which silently sweeps in `*IT` real-database checks this environment cannot run and turns
+unrelated errors into your story's failures.
+
+**And reconcile the records the deficiency names, in the documents you own.** The QA plan is QA/harness
+owned (`config.DOCUMENT_OWNERSHIP`), so "update the QA plan" is discharged by listing, in
+`CLAUDE_RESULT.md`, each stale plan *field* by name with the fact that replaces it
+(`pre_implementation_verification.status`, `test_repair.review.reason`, `removed_test_paths`), not by
+editing the JSON and not by a general remark that the plan is out of date. Mark every superseded
+paragraph of a long Result explicitly instead of deleting it: a blocked-state narrative still explains
+why a removal was made, but a reader must not have to guess which half of the file describes the tree
+in front of them.

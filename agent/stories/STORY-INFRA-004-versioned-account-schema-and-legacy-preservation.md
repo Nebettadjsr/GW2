@@ -385,6 +385,18 @@ arms of the reset, the reset's rollback path, the `current_schema()` null guard 
 failure-injection off-path. QA owns whether any of those warrants a test. No coverage KPI baseline was
 changed and the measurement scope was not altered.
 
+## Follow-up Findings Disposition
+
+F001: DISMISSED — The unused nullable metadata column is optional schema cleanup, not an unmet Phase 6 requirement; `docs/TARGET_ARCHITECTURE.md` §7.2 requires shared item metadata and `agent/user-decisions/UD-016-database-is-a-disposable-cache.md` permits cache reset rather than preservation work.
+
+F002: DEFERRED — `docs/KNOWN_PROBLEMS.md` KP-22 and `docs/CURRENT_ARCHITECTURE.md` §5 contain the relevant icon-refresh account; the stale §5.14 cross-reference is documentation drift outside the Phase 6 account-isolation work and can be corrected with the next owner update to those documents.
+
+F003: ALREADY COVERED — `agent/stories/STORY-API-010-validated-account-access-foundation.md` owns the keyed-operation test and remains blocked on `agent/user-interventions/UI-008-STORY-API-010.md`.
+
+F004: DISMISSED — This is a `workflow_service` publication issue outside the Phase 6 application backlog; `agent/product-owner-requests/Request-013-raise-backend-test-coverage.md` separates agent-workflow problems from application stories.
+
+F005: ALREADY COVERED — `agent/stories/STORY-API-010-validated-account-access-foundation.md` owns publication of the access facility documented in `docs/CURRENT_ARCHITECTURE.md` §7–8 and is blocked on `agent/user-interventions/UI-008-STORY-API-010.md`.
+
 ## Follow-up Findings
 
 F001: `items.level` is written and read by no production path — `ItemSync` and `IconSync` persist

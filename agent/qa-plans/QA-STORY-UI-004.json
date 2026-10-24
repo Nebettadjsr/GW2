@@ -1,0 +1,325 @@
+{
+  "status": "READY",
+  "story_id": "STORY-UI-004",
+  "rationale": "The current tree contains the retained JavaFX-removal and backend boot checks, and DesktopIconAdoptionTest is absent. The story reports successful clean test compilation and 210 passing tests after that retirement. I attempted the clean compilation locally, but the Maven wrapper could not start because powershell is unavailable; that is an environment failure, not a behavior-level test result. No test or fixture changes were needed for this repair.",
+  "acceptance_checks": [
+    {
+      "criterion": "AC1: Inventory JavaFX views, entry points, resources, and direct dependencies; identify consumers of retained components.",
+      "expected": "The implementation documents the retired JavaFX paths and identifies consumers of retained shared components.",
+      "verification": "Review the implementation inventory, relevant callers, and docs/CURRENT_ARCHITECTURE.md."
+    },
+    {
+      "criterion": "AC2: Remove JavaFX-only production paths while retaining shared behavior.",
+      "expected": "Desktop-only production paths are removed; retained backend and browser behavior remains covered.",
+      "verification": "Review retained service, API, and browser icon tests listed in the focused suite results."
+    },
+    {
+      "criterion": "AC3: Remove desktop-only tests and fixtures without losing retained behavior coverage.",
+      "expected": "The 31 previously retired desktop test and fixture paths and src/test/java/sync/DesktopIconAdoptionTest.java are absent; retained crafting checks preserve their copper settings.",
+      "verification": "Confirm the retired paths are absent, inspect the retained crafting checks, and review the story's reported clean test compilation and focused suite results."
+    },
+    {
+      "criterion": "AC4: Ensure no production path starts JavaFX or requires a desktop display.",
+      "expected": "The classpath assertion confirms Gw2App.class is absent, and the backend boot test confirms embedded server startup and route wiring.",
+      "verification": "Run web.LegacyJavaFxRemovalTest and web.Gw2ApiApplicationBootTest; the story reports both included in the 210-test run."
+    },
+    {
+      "criterion": "AC5: Document the delivered runtime and identify JavaFX build/configuration remnants.",
+      "expected": "Current architecture and runtime documentation match the web/backend runtime and identify remaining cleanup for STORY-INFRA-005.",
+      "verification": "Review docs/CURRENT_ARCHITECTURE.md and docs/CURRENT_STATE_SPEC.md."
+    }
+  ],
+  "invariants": [
+    "The browser remains the sole supported UI.",
+    "Retained backend calculations and application behavior remain available through browser/API consumers.",
+    "The three retained crafting checks preserve their existing settings: 1g is 10000 copper and 10g is 100000 copper.",
+    "No coverage claim is inferred from missing or unavailable reports."
+  ],
+  "test_levels": [
+    "integration",
+    "contract"
+  ],
+  "existing_tests_reviewed": [
+    "src/test/java/web/LegacyJavaFxRemovalTest.java — asserts that Gw2App.class is absent from the class loader; unchanged and protected by the recorded hash.",
+    "src/test/java/web/Gw2ApiApplicationBootTest.java — starts the embedded server and checks route wiring.",
+    "src/test/java/application/CraftingProfitInputCaptureEquivalenceIT.java — retained equivalence scenarios use copper values directly.",
+    "src/test/java/application/CraftingProfitServiceRealDbPerfIT.java — retained crafting settings use the 1g copper value directly.",
+    "src/test/java/web/CraftingProfitApiRealDbEquivalenceIT.java — retained API equivalence scenarios use copper values directly.",
+    "src/test/java/web/CraftingProfitApiControllerTest.java and src/test/java/web/CraftingDiscoveryApiControllerTest.java — cover retained crafting API behavior.",
+    "src/test/java/web/GlobalSyncApiControllerTest.java and src/test/java/web/AccountAccessContractTest.java — cover synchronization and account-access contracts.",
+    "src/test/java/web/ItemReadApiControllerTest.java, src/test/java/web/PriceRefreshApiControllerTest.java, src/test/java/application/ItemReadServiceTest.java, and the three application TradingPost refresh tests — cover retained item and price-refresh behavior.",
+    "src/test/java/web/ItemIconApiControllerTest.java, src/test/java/application/icons/IconDeliveryTest.java, src/test/java/application/icons/ItemIconUrlsTest.java, src/test/java/infra/icons/FilesystemIconStoreTest.java, src/test/java/infra/icons/HttpIconImageFetcherTest.java, src/test/java/infra/icons/IconAcquisitionTest.java, src/test/java/infra/icons/IconImageBytesTest.java, src/test/java/infra/icons/IconSourcePolicyTest.java, and src/test/java/sync/IconSyncMetadataTest.java — cover retained browser icon delivery and metadata synchronization.",
+    "src/test/java/sync/DesktopIconAdoptionTest.java — retired because its production subject sync.DesktopIconAdoption and its only production caller were removed; retained browser icon delivery tests cover the supported path.",
+    "src/test/java/application/ItemReadServiceTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/application/TradingPostCoverageCoordinationTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/application/TradingPostPriceRefreshServiceTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/application/TradingPostRefreshCoordinatorTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/application/icons/IconDeliveryTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/application/icons/ItemIconUrlsTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/infra/icons/FilesystemIconStoreTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/infra/icons/HttpIconImageFetcherTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/infra/icons/IconAcquisitionTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/infra/icons/IconImageBytesTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/infra/icons/IconSourcePolicyTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/sync/IconSyncMetadataTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/web/AccountAccessContractTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/web/CraftingDiscoveryApiControllerTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/web/CraftingProfitApiControllerTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/web/GlobalSyncApiControllerTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/web/Gw2ApiApplicationBootTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/web/ItemIconApiControllerTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/web/ItemReadApiControllerTest.java (listed as prepared, but not written by QA)",
+    "src/test/java/web/PriceRefreshApiControllerTest.java (listed as prepared, but not written by QA)"
+  ],
+  "interface_contract": [
+    "web.LegacyJavaFxRemovalTest.productionClasspathDoesNotContainTheLegacyJavaFxApplicationEntryPoint()",
+    "web.Gw2ApiApplicationBootTest.applicationStartsAndExposesTheCraftingControllersOverAnEmbeddedServer()"
+  ],
+  "prepared_test_paths": [
+    "src/test/java/web/LegacyJavaFxRemovalTest.java"
+  ],
+  "test_specifications": [
+    "Retired tests for EctoSalvageService, EctoSalvageCalculator, InitialSetupService, and DesktopIconAdoption because their production subjects were removed and no retained behavior depends on those subjects.",
+    "Retained crafting equivalence and performance checks; replaced CoinUtils.parseToCopper(\"1g\") with 10000 and CoinUtils.parseToCopper(\"10g\") with 100000, preserving the expected copper settings.",
+    "The story reports `./mvnw -o clean test-compile` compiled 222 production and 120 test source files successfully after DesktopIconAdoptionTest was retired.",
+    "The story reports a focused Surefire run of the 21 named suites, including LegacyJavaFxRemovalTest and Gw2ApiApplicationBootTest, with 210 tests, 0 failures, 0 errors, and 0 skipped.",
+    "The focused reported run covers backend boot and route wiring, retained crafting and account/API behavior, item and price refresh behavior, and retained browser icon delivery and metadata synchronization.",
+    "Real-database `*IT` checks were not included in the reported focused run because they require PostgreSQL; no result is claimed for them.",
+    "Manual review: compare the implementation inventory and retained consumers with the current architecture documentation."
+  ],
+  "pre_implementation_verification": {
+    "status": "NOT_RUN",
+    "command": ".\\mvnw.cmd -o clean test-compile",
+    "failure_evidence": "Attempted locally with JAVA_HOME=C:\\Users\\Administrator\\.jdks\\openjdk-25.0.1. The Maven wrapper exited before Maven started: `The command \"powershell\" is either misspelled or could not be found` / `Cannot start maven from wrapper`. This is an environment failure, not a behavior-level expected failure. The story separately reports a successful clean test compilation and focused 210-test run after the final test retirement; those are reported results, not locally rerun results."
+  },
+  "coverage_review": "No current JaCoCo report was available, so no coverage percentage is claimed. The story reports retained API, service, and browser icon suites passing after the retirement. DesktopIconAdoptionTest exclusively tested the removed desktop adoption path; browser icon delivery and metadata behavior remain covered by the reviewed retained suites.",
+  "external_sources": [],
+  "clarifications": [],
+  "post_implementation_review_required": true,
+  "post_implementation_review_reason": "Independently recheck the QA test corrections against the implementation.",
+  "test_repair": {
+    "request_id": "c90f24ba-e921-4f31-b10f-530b91989b9c",
+    "source": "evaluation",
+    "review": {
+      "decision": "REVISE_TESTS",
+      "reason": "The implementation and retained checks are supported by the story’s current-tree evidence, but the QA plan has not been reconciled with that evidence or the final test retirement. The plan still records compilation as NOT_RUN and does not include the retirement of DesktopIconAdoptionTest; its prepared-test list also omits the boot test named in the acceptance checks. The story reports a clean test compilation and 210 passing tests after the retirement, but the plan remains the QA record being reviewed.",
+      "evidence": [
+        "Confirmed src/test/java/web/LegacyJavaFxRemovalTest.java and src/test/java/web/Gw2ApiApplicationBootTest.java are present, while src/test/java/sync/DesktopIconAdoptionTest.java is absent. The three retained crafting tests use the specified copper values, and the protected classpath test’s SHA-256 matches the plan.",
+        "The story records `./mvnw -o clean test-compile` compiling 222 production and 120 test sources successfully, followed by 210 tests with zero failures, errors, or skips, including both acceptance-check classes. These are recorded results; I did not rerun tests.",
+        "The QA plan still has `pre_implementation_verification.status` set to `NOT_RUN`, lists only LegacyJavaFxRemovalTest under prepared tests, and its removed-test inventory omits DesktopIconAdoptionTest. Its final review therefore does not reflect the current tree and reported verification."
+      ],
+      "actionable_items": [
+        "Update agent/qa-plans/QA-STORY-UI-004.json to record the final retirement of DesktopIconAdoptionTest, reconcile the retired-test inventory, and record the current clean test-compilation and relevant-suite results with their scope. Include the boot check in the prepared-test inventory if it remains an acceptance check."
+      ]
+    },
+    "invalid_attempts": 0
+  },
+  "removed_test_paths": [
+    "src/test/java/BankViewIT.java",
+    "src/test/java/CraftingBlockedRowsTest.java",
+    "src/test/java/CraftingDiscoveryViewAutoRefreshIT.java",
+    "src/test/java/CraftingDiscoveryViewSelectorIT.java",
+    "src/test/java/CraftingDiscoveryViewTpRefreshIT.java",
+    "src/test/java/CraftingProfitCoordinatedScopeTest.java",
+    "src/test/java/CraftingProfitEquivalenceRealDbIT.java",
+    "src/test/java/CraftingProfitTotalProfitPresentationTest.java",
+    "src/test/java/CraftingProfitTotalSellValuePresentationTest.java",
+    "src/test/java/CraftingProfitViewAutoRefreshIT.java",
+    "src/test/java/CraftingProfitViewScopeChangeTest.java",
+    "src/test/java/CraftingProfitViewSelectorIT.java",
+    "src/test/java/CraftingProfitViewTpRefreshIT.java",
+    "src/test/java/EctoSalvageViewIT.java",
+    "src/test/java/Gw2AppFirstSetupIT.java",
+    "src/test/java/Gw2AppSyncAccountIT.java",
+    "src/test/java/Gw2AppSyncGlobalDataIT.java",
+    "src/test/java/MaterialsViewIT.java",
+    "src/test/java/StackQuantityFormatterTest.java",
+    "src/test/java/uiverify/CraftingDiscoveryViewBlockedRowIT.java",
+    "src/test/java/uiverify/CraftingDiscoveryViewRefreshPreservationIT.java",
+    "src/test/java/uiverify/CraftingProfitCoordinatedScopeIT.java",
+    "src/test/java/uiverify/CraftingProfitPageLoadRealDbPerfIT.java",
+    "src/test/java/uiverify/CraftingProfitViewBlockedRowIT.java",
+    "src/test/java/uiverify/CraftingProfitViewErrorStatusIT.java",
+    "src/test/java/uiverify/CraftingProfitViewRefreshPreservationIT.java",
+    "src/test/java/uiverify/CraftingProfitViewSmokeIT.java",
+    "src/test/java/uiverify/CraftingUiTestFixtures.java",
+    "src/test/java/uiverify/EctoFeeNoticeSmokeIT.java",
+    "src/test/java/uiverify/FxCompatibilityPrototypeIT.java",
+    "src/test/java/uiverify/JavaFxUiSupport.java"
+  ],
+  "schema_version": 1,
+  "qa_model": "gpt-6-luna",
+  "qa_reasoning_effort": "medium",
+  "story_contract_sha256": "e74ce598bed9532e20d87475593f05455fb47af3547404d99c82c926780abd63",
+  "user_decision_ids": [],
+  "protected_test_hashes": {
+    "src/test/java/web/LegacyJavaFxRemovalTest.java": "d9bc33e33e126c431a223f177b32452d5cb5c8d5a515322a5b038a7b88cc9ae3"
+  },
+  "post_implementation_reviews": [
+    {
+      "decision": "REVISE_TESTS",
+      "reason": "The JavaFX removal assertion is intact, but 31 desktop-only test and fixture files still reference removed production classes, so Maven test compilation fails before the planned checks can run. QA must remove those obsolete test subjects and fixtures before this story can be evaluated.",
+      "evidence": [
+        "The story identifies 19 default-package desktop tests and 12 uiverify test/fixture files that remain; repository search confirms references to deleted classes such as Gw2App, CraftingProfitController, and CraftingProfitView.",
+        "The QA plan lists only LegacyJavaFxRemovalTest as prepared and records the focused Maven run as NOT_RUN. The implementation report says test-compile fails on unresolved removed classes; it provides no successful result for either planned check.",
+        "LegacyJavaFxRemovalTest retains its protected SHA-256 hash and asserts that Gw2App.class is absent. This confirms the interface-deviation repair did not change its expected value or assertion meaning.",
+        "The plan claims retained backend and browser tests cover shared behavior, but those checks are not runnable through the reported test-compile failure."
+      ],
+      "actionable_items": [
+        "Remove the 31 obsolete desktop-only test and fixture files enumerated in the story’s AC3 blocking-condition list; do not weaken or alter assertions in retained backend/browser tests to bypass compilation.",
+        "Review the retained behavior coverage after removal, then run the planned LegacyJavaFxRemovalTest and Gw2ApiApplicationBootTest plus relevant retained API and frontend checks. Update the QA plan with the actual results and any coverage loss for retained behavior."
+      ]
+    },
+    {
+      "decision": "RETRY",
+      "reason": "The production removal is supported by the implementation report’s clean compile and JavaFX-free backend smoke run, but AC3 remains unmet: desktop-only test files and fixtures identified by the story are still present. The planned classpath and boot tests have no recorded passing result, so acceptance is not yet supported by test evidence.",
+      "evidence": [
+        "The story enumerates 31 orphaned desktop test and fixture files. This review confirmed representative files still exist: src/test/java/BankViewIT.java, src/test/java/StackQuantityFormatterTest.java, src/test/java/uiverify/JavaFxUiSupport.java, and src/test/java/uiverify/CraftingUiTestFixtures.java.",
+        "The QA plan still records the focused Maven command as NOT_RUN because the wrapper could not find PowerShell. It lists the classpath assertion and backend boot integration test, but provides no passing results.",
+        "The implementation report describes a clean production compile and a live backend start with JavaFX jars removed, including a successful status route response. That is useful production evidence, but it does not establish that the prepared tests or retained test suite pass.",
+        "The prepared LegacyJavaFxRemovalTest still asserts that Gw2App.class is absent. The boot test still checks that an embedded port was bound and crafting controllers were wired. No changed expected value or assertion meaning is evident in the inspected test bodies."
+      ],
+      "actionable_items": [
+        "Have QA retire the 31 desktop-only test and fixture files listed in the story, preserving retained tests that cover shared behavior.",
+        "Run the planned LegacyJavaFxRemovalTest and Gw2ApiApplicationBootTest, plus relevant retained backend/API and frontend checks; update the QA plan with actual outcomes and review coverage of retained behavior."
+      ]
+    },
+    {
+      "decision": "REVISE_TESTS",
+      "reason": "AC3 remains unmet: 31 desktop-only tests and fixtures for removed JavaFX production classes are still present. The prepared classpath assertion remains unchanged, and the story reports successful isolated runs of the planned checks and retained API/browser suites, but those runs do not complete the required test retirement.",
+      "evidence": [
+        "Confirmed that src/test/java/BankViewIT.java and src/test/java/StackQuantityFormatterTest.java remain alongside all 12 files under src/test/java/uiverify/. The story identifies 31 orphaned desktop test and fixture files and records that none were removed or modified.",
+        "The QA plan still records its focused Maven run as NOT_RUN because the wrapper could not find PowerShell; the story separately reports 9 focused tests, 67 retained API/contract tests, and 15 frontend tests passing in isolated runs.",
+        "The SHA-256 hash of src/test/java/web/LegacyJavaFxRemovalTest.java matches the QA plan’s protected hash. Its expected assertion was not changed for the interface_deviation repair.",
+        "The story says normal Maven test compilation remains blocked by the orphaned desktop test sources, leaving AC3 and the story’s Definition of Done incomplete."
+      ],
+      "actionable_items": [
+        "In the QA-owned test process, remove the 31 obsolete desktop-only test and fixture files enumerated in the story, while preserving meaningful checks for retained shared behavior.",
+        "Update the QA plan with the retired paths and coverage review, then record results for the planned classpath and backend boot checks and relevant retained backend/API and frontend checks through the available test workflow."
+      ]
+    },
+    {
+      "decision": "RETRY",
+      "reason": "The 31 desktop test and fixture paths are absent, and the prepared JavaFX-removal assertion remains intact. The story reports passing isolated runs of the classpath and backend boot checks, retained API/contract tests, and browser tests, but the project Maven test command still fails during test compilation. AC5 is also unmet: current documentation still says the retired desktop tests are present and prevent test compilation.",
+      "evidence": [
+        "All 31 paths listed in the QA plan are absent; spot checks confirmed the former BankViewIT, StackQuantityFormatterTest, JavaFxUiSupport, and CraftingUiTestFixtures paths are absent.",
+        "src/test/java/web/LegacyJavaFxRemovalTest.java remains and asserts that Gw2App.class is absent. Gw2ApiApplicationBootTest.java remains and checks embedded server startup and retained route wiring.",
+        "The story reports 9 focused tests, 67 retained API/contract tests, and 15 frontend tests passing in isolated runs. It also reports that the normal Maven test command fails during test compilation; the QA plan still records its focused Maven verification as NOT_RUN.",
+        "docs/CURRENT_ARCHITECTURE.md section 9 says the desktop test layer remains and causes test compilation to fail. docs/CURRENT_STATE_SPEC.md says desktop test code is present and JavaFX test declarations remain."
+      ],
+      "actionable_items": [
+        "Update docs/CURRENT_ARCHITECTURE.md and docs/CURRENT_STATE_SPEC.md to reflect that the 31 desktop test and fixture files have been removed; retain only verified statements about remaining JavaFX build/configuration declarations.",
+        "Reconcile the QA plan and story result with the current repository state and test evidence, including the isolated focused-test results and the normal Maven compilation failure, so they no longer describe the retired tests as present."
+      ]
+    },
+    {
+      "decision": "RETRY",
+      "reason": "AC2 and the Definition of Done remain unmet: production code used only by retired JavaFX flows is still present. The story reports passing focused backend, API, and browser checks, but those results do not resolve this production-code gap.",
+      "evidence": [
+        "The story’s AC2 requires removal of adapters and utilities used solely by retired JavaFX paths.",
+        "Repository search found no production callers for application.EctoSalvageService, application.InitialSetupService, or util.CoinUtils. Their remaining references are tests or documentation.",
+        "The story and docs/CURRENT_ARCHITECTURE.md explicitly acknowledge that these classes lost their last production consumer but were retained because tests still cover them. Test coverage alone does not establish a production use.",
+        "The prepared JavaFX-removal test still asserts that Gw2App.class is absent. The story reports the focused removal and backend boot checks passed under Maven, along with retained API and frontend checks."
+      ],
+      "actionable_items": [
+        "Remove the production paths used only by the retired desktop flows, including application.EctoSalvageService, application.InitialSetupService, and util.CoinUtils, plus any exclusively supporting production code. Preserve components with actual backend consumers.",
+        "Reconcile affected documentation with the resulting production inventory, then review and run relevant retained tests and update the QA evidence."
+      ]
+    },
+    {
+      "decision": "REVISE_TESTS",
+      "reason": "The prepared JavaFX removal and backend boot checks remain meaningful and reportedly pass in isolated runs, as do 102 retained API and service tests. However, the retained Maven test sources do not compile against the removed production classes, so the test suite is not yet reviewable as a whole.",
+      "evidence": [
+        "The story reports `./mvnw -o test-compile` fails on six QA-owned test files. Three tests target deleted classes (`EctoSalvageServiceTest`, `EctoSalvageCalculatorTest`, and `InitialSetupServiceTest`); three retained crafting tests still import deleted `util.CoinUtils`.",
+        "The three retained crafting tests are identified as behavior checks to keep, with specific replacements for the removed parser calls: 1g → 10000 copper and 10g → 100000 copper. The two tests for deleted Ectoplasm subjects and the setup seam have no remaining production subject.",
+        "The story reports the protected `LegacyJavaFxRemovalTest` hash is unchanged, and isolated runs of that test, the backend boot test, and 102 relevant retained API/service tests pass. Those runs do not establish that Maven test compilation or the complete suite passes."
+      ],
+      "actionable_items": [
+        "In the QA-owned test process, retire the tests for deleted Ectoplasm and initial-setup subjects, and update the three retained crafting tests to remove `util.CoinUtils` imports and use the specified copper values without changing their expected behavior.",
+        "Update the QA plan with the corrected test inventory and actual results, then run test compilation and the relevant retained suites through the project test workflow."
+      ]
+    },
+    {
+      "decision": "RETRY",
+      "reason": "The prepared tests remain present and meaningful: the classpath test asserts Gw2App is absent, and the boot test checks embedded server startup and route wiring. The implementation report records successful isolated runs of those checks and 102 retained backend/API tests. However, AC2 remains unmet because a resource used exclusively by the retired JavaFX home screen is still packaged. The full Maven test compilation also remains unverified; the report records a failure before test compilation due to Java security configuration access.",
+      "evidence": [
+        "src/test/java/web/LegacyJavaFxRemovalTest.java still asserts that Gw2App.class is absent; src/test/java/web/Gw2ApiApplicationBootTest.java checks server startup and retained route wiring.",
+        "The implementation report records 9 focused tests and 102 retained backend/API tests passing in isolated runs; these are reported results, not independently rerun in this read-only review.",
+        "src/main/resources/images/logo.png exists, and docs/CURRENT_ARCHITECTURE.md states it was loaded by the removed home screen and is no longer read by code.",
+        "The QA plan records Maven test compilation as unverified because Java was denied access to its security configuration."
+      ],
+      "actionable_items": [
+        "Remove src/main/resources/images/logo.png and reconcile its inventory in docs/CURRENT_ARCHITECTURE.md.",
+        "Update QA evidence to state the actual Maven test-compilation limitation and retain the isolated test results with their scope clearly identified."
+      ]
+    },
+    {
+      "decision": "RETRY",
+      "reason": "AC2 remains unmet: production code still contains an uncalled desktop-only icon download and legacy-file adoption path. The QA-owned test for that path also remains, while retained browser icon coverage is present.",
+      "evidence": [
+        "src/main/java/sync/IconSync.java still defines syncItemIconsToDisk(Path), documented as an explicit desktop icon download. The method uses DesktopIconAdoption and updates items.icon_path; repository search found no production caller.",
+        "src/main/java/sync/DesktopIconAdoption.java exists solely to support that path, and src/test/java/sync/DesktopIconAdoptionTest.java tests its desktop publication and legacy-file behavior.",
+        "Retained browser icon coverage exists in src/test/java/web/ItemIconApiControllerTest.java and application icon delivery tests; frontend icon behavior is also covered by crafting and account screen tests.",
+        "The supplied QA plan does not report results for DesktopIconAdoptionTest or a retirement/replacement review for that test. The reported isolated test runs are implementation-reported evidence, not independently verified in this read-only review."
+      ],
+      "actionable_items": [
+        "Remove syncItemIconsToDisk and production code used solely by it, including DesktopIconAdoption, while preserving shared browser icon delivery components.",
+        "Retire DesktopIconAdoptionTest because its production subject is removed; retain and review browser icon delivery tests for the shared behavior.",
+        "Reconcile current architecture documentation and update the QA plan with the test retirement, retained browser icon coverage, and available verification results."
+      ]
+    },
+    {
+      "decision": "RETRY",
+      "reason": "The remaining test targets a production subject removed by this story, so AC3 is unmet and the current test sources do not compile. Retained browser icon coverage exists, but it does not make the desktop adoption test applicable or compile.",
+      "evidence": [
+        "src/test/java/sync/DesktopIconAdoptionTest.java remains and constructs sync.DesktopIconAdoption; the story says that production class and its desktop-only caller were removed.",
+        "The story reports that `./mvnw -o test-compile` fails on this test alone. The QA plan still does not record the final test retirement or verification results.",
+        "Retained browser icon behavior is covered by tests including src/test/java/web/ItemIconApiControllerTest.java. The desktop adoption test exercises legacy-file adoption and disk publication, a separate removed path.",
+        "The protected LegacyJavaFxRemovalTest remains meaningful and unchanged. No evidence establishes that test compilation succeeds after the reported blocker."
+      ],
+      "actionable_items": [
+        "In the QA-owned test process, retire src/test/java/sync/DesktopIconAdoptionTest.java because its production subject has been removed; review retained browser icon tests for the behavior that remains supported.",
+        "Update the QA plan with the retirement and coverage review, then run test compilation and the planned focused checks through the available test workflow and record actual results."
+      ]
+    },
+    {
+      "decision": "RETRY",
+      "reason": "The implementation and retained checks appear consistent with the story, but the QA plan and story result have not been reconciled with the final test retirement and available verification evidence. The plan still records test compilation as NOT_RUN, while the story says compilation failed on DesktopIconAdoptionTest; that test is now absent. The current tree therefore has no clear record establishing whether test compilation succeeds after the last change.",
+      "evidence": [
+        "The classpath assertion remains present and its SHA-256 matches the plan’s protected hash. Gw2ApiApplicationBootTest still checks embedded server startup and route wiring.",
+        "All three retained crafting checks use the specified copper values and no longer depend on CoinUtils. DesktopIconAdoptionTest and its production subject are absent.",
+        "The architecture and runtime documentation describe the removed JavaFX paths, desktop tests, and remaining build/configuration declarations.",
+        "The QA plan still records test compilation as NOT_RUN and does not include the final DesktopIconAdoptionTest retirement or its effect on compilation. The story’s Result and verification text still describe that test as the sole compilation blocker.",
+        "The evaluator reports isolated passing focused and retained tests, but those results are not reconciled into the QA plan, and the supplied evidence does not establish test compilation after the final test removal."
+      ],
+      "actionable_items": [
+        "Reconcile the QA plan and story result with the current tree: record DesktopIconAdoptionTest’s retirement and update the stale compilation-blocker statements.",
+        "Record whether test compilation and the relevant retained suites pass after that retirement. If compilation remains unavailable, state the exact failure and scope; do not infer a passing result from the earlier isolated runs."
+      ]
+    },
+    {
+      "decision": "RETRY",
+      "reason": "The implementation and retained checks are supported by the story’s current-tree evidence, but the QA plan has not been reconciled with that evidence or the final test retirement. The plan still records compilation as NOT_RUN and does not include the retirement of DesktopIconAdoptionTest; its prepared-test list also omits the boot test named in the acceptance checks. The story reports a clean test compilation and 210 passing tests after the retirement, but the plan remains the QA record being reviewed.",
+      "evidence": [
+        "Confirmed src/test/java/web/LegacyJavaFxRemovalTest.java and src/test/java/web/Gw2ApiApplicationBootTest.java are present, while src/test/java/sync/DesktopIconAdoptionTest.java is absent. The three retained crafting tests use the specified copper values, and the protected classpath test’s SHA-256 matches the plan.",
+        "The story records `./mvnw -o clean test-compile` compiling 222 production and 120 test sources successfully, followed by 210 tests with zero failures, errors, or skips, including both acceptance-check classes. These are recorded results; I did not rerun tests.",
+        "The QA plan still has `pre_implementation_verification.status` set to `NOT_RUN`, lists only LegacyJavaFxRemovalTest under prepared tests, and its removed-test inventory omits DesktopIconAdoptionTest. Its final review therefore does not reflect the current tree and reported verification."
+      ],
+      "actionable_items": [
+        "Update agent/qa-plans/QA-STORY-UI-004.json to record the final retirement of DesktopIconAdoptionTest, reconcile the retired-test inventory, and record the current clean test-compilation and relevant-suite results with their scope. Include the boot check in the prepared-test inventory if it remains an acceptance check."
+      ]
+    },
+    {
+      "decision": "APPROVE",
+      "reason": "The current implementation, retained tests, and reported verification satisfy the story. The QA plan accurately records that local Maven execution was unavailable and distinguishes that from the story’s reported successful clean compilation and focused test run. No product decision remains open.",
+      "evidence": [
+        "The prepared LegacyJavaFxRemovalTest is present, asserts that Gw2App.class is absent, and its SHA-256 matches the protected hash in the QA plan.",
+        "Gw2ApiApplicationBootTest is present and checks embedded server startup, controller wiring, and route mappings. The story reports that both checks ran in the focused 210-test Surefire run, with zero failures, errors, or skips; these are recorded results, not independently rerun results.",
+        "All 31 paths in the plan’s retired-test inventory and the separately identified DesktopIconAdoptionTest are absent. The removed desktop icon path has no remaining production class or method, while browser icon delivery tests remain.",
+        "The three retained crafting checks use the specified 10000 and 100000 copper settings. No expected assertion change is evident; test_repair.source is evaluation, so the interface_deviation-specific unchanged-assertion rule does not apply.",
+        "The current architecture and runtime documents describe the web/backend runtime and identify remaining JavaFX build configuration. The story reports successful clean test compilation of 222 production and 120 test sources and the focused 210-test run; PostgreSQL-dependent integration checks are explicitly excluded without a coverage claim."
+      ],
+      "actionable_items": []
+    }
+  ]
+}

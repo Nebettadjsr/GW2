@@ -11,7 +11,7 @@ The target is a small, maintainable web application that is easy to test, safe t
 # 2. Architectural Goals
 
 1. Separate shared domain/application logic from UI, persistence, and external APIs.
-2. Use the browser frontend as the canonical user interface; the legacy JavaFX UI is not part of the target architecture.
+2. Use the browser frontend as the sole supported user interface. JavaFX and other desktop UI frameworks are not planned application components.
 3. Keep PostgreSQL as persistent storage and isolate it behind repository/adaptor boundaries.
 4. Keep Guild Wars 2 API communication in the backend.
 5. Keep authoritative shared calculations in the backend unless an explicit feature-local exception is documented.
@@ -178,6 +178,8 @@ Guild Wars 2 JSON structures and SQL/JDBC concerns must not leak into domain log
 
 One shared PostgreSQL database serves the hosted application. A separate database per user/account is not part of the target architecture.
 
+**The database is a disposable cache (UD-016).** Every row is fetched from the Guild Wars 2 API and nothing in it is secret or irreplaceable. There are no database backups, archives, provenance ledgers or preservation guarantees across schema changes. Missing, inconsistent or lost data is repaired by resetting the affected cached tables (or the whole schema) and re-synchronizing from the API, never by recovery, reconciliation or an ownership investigation. Correctness of current behavior (account isolation, scoping, transactional publication of fresh data) still applies; only preservation of old data is out of scope.
+
 Persistent data distinguishes:
 
 - global/shared data, including Guild Wars 2 item/recipe metadata and Trading Post data,
@@ -187,13 +189,53 @@ Account-scoped records are keyed by the stable Guild Wars 2 account identity, no
 
 Account isolation is enforced by backend/application/persistence boundaries. Domain calculations should remain account-agnostic where practical and receive already-scoped input data.
 
-Schema creation and upgrades must eventually use a repeatable, versioned migration mechanism. The specific migration technology is selected with the backend framework.
+Schema creation and upgrades use Flyway with versioned PostgreSQL SQL migrations. Sections 7.2-7.4 own the persistence and migration contract; ADR-010 records the technology alternatives and rationale. This is target architecture, not a claim that the existing manual schema has been migrated.
 
 ## 7.1 Account data retention
 
 Persist enough activity information to identify long-inactive account data. Do not introduce automatic deletion without evidence that stale data causes meaningful storage, performance, or operational cost.
 
 If cleanup becomes justified, explicitly decide the inactivity threshold, affected records, cleanup frequency, retained identity data, and concurrency protection. Cleanup must never remove global/shared data merely because one account is inactive.
+
+Persist account creation time, `last_seen_at` for successfully authorized account use, and `last_successful_sync_at` for successful source publication, using UTC instants (`timestamptz`). Missing legacy activity remains unknown, never a fabricated historical visit. Update activity monotonically so concurrent requests cannot move it backwards. Failed proof, rejected cross-account requests and task polling failures do not advance activity; ordinary authorized reads may advance activity but never freshness. Per-source completion times remain the freshness authority; the account-wide sync time means only that some source succeeded. These fields permit later inactivity analysis without selecting a threshold or adding a cleaner.
+
+## 7.2 Account ownership and publication
+
+Use an account registry with a PostgreSQL `uuid` primary key equal to the verified `/v2/account` GUID. Display names are optional descriptive metadata. Credentials, credential hashes, sessions and application-user identities are not registry keys or durable registry fields. Concurrent registration of the same GUID is idempotent.
+
+Persistence ownership is classified as follows:
+
+| Scope | Records and relations |
+| --- | --- |
+| Global | Items and icon metadata, recipes and ingredients, material category/catalog order, TP-tradeable IDs and TP quotes. The crafting graph contains shared recipe structure; account recipe knowledge never partitions it. Global source versions/status remain global. |
+| Account | Bank slots, material quantities, account recipe unlocks, Luck, character roster and each character's crafting disciplines, recipe unlocks and inventory/equipment. Account source completion/version rows and activity belong to the same account. |
+| Account-derived process state | Input snapshots, calculation/result/detail caches, refresh demands, task ownership and task associations carry the verified GUID under section 8.1. This does not require making task history or calculation results durable. |
+
+Every live account-owned table has a non-null account GUID referencing the registry. Account-owned uniqueness includes that GUID: bank `(account_id, slot)`, materials `(account_id, item_id)`, account recipes `(account_id, recipe_id)`, and Luck `(account_id)`. Character names are unique within an account, not a global ownership proof. Character surrogate IDs may be retained, with a unique `(account_id, character_id)` parent key. Character child rows carry the account GUID and use a composite foreign key to that parent; child uniqueness/upserts include account and the appropriate discipline, recipe or inventory location key. Preserve existing inventory slot/null semantics explicitly rather than relying on nullable columns to enforce uniqueness. No child may refer to a character owned by another account. Existing bound-item names remain domain input, not authorization or identity evidence.
+
+All account repository operations require explicit trusted scope, including joins, existence checks, aggregates, stale-row deletion, upserts and marker access. No multi-user overload defaults to the configured/last-used account. Account indexes lead with account GUID where needed for scoped access. Enforce ownership through scoped queries plus database keys/foreign keys; PostgreSQL row-level security is not required for this single backend boundary. Keep recipe-knowledge and other domain decisions in their existing domain policies, receiving already-scoped data.
+
+Use one durable source-state relation keyed by `(account_id, source)` for bank, materials, account recipes, characters and Luck. A successful publication records `completed_at` and an account/source-local monotonically increasing generation. No marker means missing; a completed empty payload has a marker and is usable. A generation advances only when that source publishes, including a successful unchanged/empty response; timestamps alone are not generation identifiers. Retire the singleton `account_materials_sync` as a runtime authority after importing only proven material completion evidence. Source schemas and identifiers remain application/persistence concerns.
+
+Fetch and validate a source outside the database transaction, then publish all of its replacements/upserts/stale-row removals, generation/completion marker and account sync activity in one transaction. The character source includes the roster and all character payloads as one publication. Serialize writers per account under section 9.1; legacy promotion uses the same exclusion boundary. Failed fetch/validation/commit leaves last-good rows, version and completion unchanged. Successful sources may commit even when another source fails; there is no fabricated whole-account completion. Preserve the existing `REPEATABLE READ` calculation-input transaction across scoped rows, markers and shared inputs. Freshness envelopes identify the captured account and source generations, never later live markers. No transaction spans upstream calls and no extra domain calculation rules are introduced.
+
+## 7.3 Versioned schema lifecycle
+
+Use the open-source Flyway Java engine with its PostgreSQL support module, integrated into backend initialization before repositories, tasks or schedulers can run. Pin compatible dependencies with the Spring Boot dependency management in use and verify Java/PostgreSQL compatibility when implementing and upgrading. Use only the ordinary versioned SQL, history, validation and migration capabilities; no paid feature, new service, CLI installation or recurring subscription is required. Keep migrations under the backend's `db/migration` resources. Applied migrations are immutable; corrections are new versions. All runtime entry points retained during transition must use this gate or be disabled against the upgraded database.
+
+Flyway becomes the sole schema writer: replace repository/startup `CREATE TABLE IF NOT EXISTS` and manual setup paths when their schema enters migration ownership. Validate history/checksums and fail startup on incompatible or failed schema state. Keep automatic baselining disabled; Flyway's destructive clean stays off and the explicit reset of section 7.4 is the only way cached data is dropped. An empty database executes the complete versioned chain; an existing non-empty database is never silently declared current.
+
+A database that already contains unmanaged legacy tables is not adopted: the startup gate resets the cache, dropping the legacy cached tables and applying the complete versioned chain to an empty schema (section 7.4). A drifted or unrecognized schema is reset the same way; no schema fingerprint, preservation or ownership inference is required. Reset happens only as this explicit gate action, never as a silent response to an ordinary failed migration or a checksum mismatch on a managed schema.
+
+Use transactional PostgreSQL DDL/data migrations for this cutover; avoid operations that require nontransactional execution. Migration failure rolls back the failing migration; earlier committed versions remain recorded and retries resume from that history. Do not automatically repair checksums or edit applied migrations to force progress. The recovery boundary is the cache reset of section 7.4, not a backup; ordinary changes move forward through new versions. The old unscoped application must not run against the new schema.
+
+## 7.4 Legacy data reset
+
+Because the database is a disposable cache (UD-016), legacy unscoped records are not migrated, archived or reconciled, and their ownership is never inferred. When the gate finds legacy unmanaged tables, or an unrecognized schema, it stops legacy writers and scheduled work, drops the cached tables, applies the complete migration chain and starts with an empty live account dataset. The first credential validated through the backend boundary creates or reuses its verified account and populates every source by fresh synchronization from the GW2 API. Until a source has been synchronized it is simply missing and refreshes on demand under the existing freshness rules; an empty table is not a successful empty synchronization.
+
+No backup, import manifest, provenance ledger, restricted archive schema, runtime-role separation for archived data, or reconciliation step is required, and none of them gates the cutover. Account creation and activity timestamps start from the reset; missing history stays unknown.
+
+Verification follows `TEST_STRATEGY.md` and `QUALITY_METRICS.md`: real isolated PostgreSQL runs the production migration chain for empty and supported legacy schemas and proves scoped constraints, transactional publication, snapshot consistency, and that a legacy schema is reset to the empty-schema result. Survival of pre-existing cached rows is deliberately not tested. Controlled offline upstream fixtures cover identity and failed/partial validation; application and HTTP boundaries cover scope propagation under section 8.1. QA independently owns the concrete story plan. Keep existing domain invariants and coverage/reporting requirements; this decision changes no measured baseline.
 
 ---
 
@@ -210,11 +252,77 @@ For the target multi-user deployment:
 - replacing a key for the same account must not create duplicate account data,
 - logs/errors must not unnecessarily record API keys.
 
-The exact browser-side key-storage mechanism is a later security/implementation decision.
+Browser key retention and credential transport follow section 8.2; ADR-009 records the storage alternatives and rationale.
 
-The initial preferred identity direction is to determine whether possession of a valid Guild Wars 2 API key plus its resolved stable account identity is sufficient. Separate username/password or third-party authentication must not be added without a concrete requirement.
+Validated GW2 API-key possession is sufficient application identity for Phase 6. There is no separate application user, password, identity provider, or account-linking model. The resulting principal represents access to one GW2 account, not proof of a particular person's identity. Section 8.1 owns the access contract; ADR-008 records the rationale.
 
 The current local/single-user application may continue using `GW2_API_KEY` from local environment configuration during migration.
+
+## 8.1 Validated account access
+
+### Identity proof and session lifetime
+
+The backend establishes access only after successful HTTPS calls to `/v2/account` and `/v2/tokeninfo` using the same transient key. The canonical account identity is the account response's persistent `id` GUID; neither its display name, the token-info identifier, a key hash, nor an identifier supplied by the browser establishes account identity. Validate the response shapes and required identity permission before issuing access. Capture the key's permissions and any expiry/endpoint restrictions from token info; effective access must never exceed them. Replacement keys resolving to the same GUID reuse that account's dataset without transferring privileges from an earlier key.
+
+Issue a fresh opaque session identifier generated with a cryptographically secure random source (at least 128 bits of entropy). Keep only its verifier and immutable principal (account GUID, effective grants/restrictions, validation time and expiry) in bounded process memory, without the GW2 key. Use a host-only, HttpOnly, Secure, SameSite=Strict session cookie in deployed HTTPS; permit non-Secure transport only for explicit localhost development. Do not accept session identifiers from URLs or caller-provided account fields. Protect state-changing browser requests, including session establishment, with same-origin/CSRF validation. Session establishment and account responses use `Cache-Control: no-store`; neither keys nor session identifiers belong in logs, error text, URLs or shared HTTP caches.
+
+Sessions expire absolutely 15 minutes after successful upstream validation, or at an earlier credential expiry. Reads, polling and refresh success do not extend them. Renewal requires presenting the key and repeating validation; there is no refresh token or durable session store. Logout revokes the session server-side; expiry, eviction and backend restart require a new proof. A valid session can authorize cached reads while ArenaNet is unavailable. New proof or renewal cannot succeed during that outage, and an expired session cannot fall back to cached identity. This bounded lease deliberately permits up to 15 minutes of cached access after an upstream key revocation not yet observed by the application; immediate external revocation detection is not promised. A definitive upstream invalid-credential response for a credential used with a session revokes that session immediately; a transient upstream failure does not. The duration is an engineering choice balancing revocation delay and upstream traffic, not a measured performance result.
+
+### Request and application scope
+
+Every account read, calculation, account synchronization admission, account status view and account task/result lookup requires a live session. Authorization precedes account lookup, cache access, calculation and task admission. Required grants are defined by each operation's account input sources and their upstream permissions/restrictions; cached rows synchronized with a more privileged key do not bypass the presenting session's grants. A calculation needs authorization for all account sources it consumes, including a cached result or detail. Freshness and authorization are independent checks: fresh persisted data never proves access, and a live session never proves freshness.
+
+The HTTP boundary resolves the session to a trusted immutable account context and passes it explicitly to application use cases. Application ports/adapters require that scope for account reads/writes; each nested resource (including a selected character), source marker, snapshot, account-dependent cache and result generation belongs to it. Browser account IDs may only be consistency assertions and must match the resolved context; they never select an authorized account. There is no default/last-used/configured account fallback in multi-user routes. Avoid mutable process-wide current-account state or request-thread state inherited implicitly by workers. Domain rules receive scoped data without sessions, API keys or authentication dependencies. Pure global-data use cases remain account-independent.
+
+Account-specific upstream work additionally requires a transient key supplied for that operation: a session is not an upstream credential. Revalidate the supplied key's identity and operation grants before admission; it must resolve to the session's GUID. Insufficient permission or a mismatched account is rejected before work or writes. Hold the key only in the admitted operation's private memory until completion/failure, never in task metadata, status, persisted queues or results, and release references on every terminal path. Cached calculations needing no account refresh require no GW2 key. If stale-while-revalidate needs account work but no key was supplied, return the authorized usable result with an explicit credential-required refresh state (or pending/no-result when no usable input exists); do not claim a task was admitted or silently use another caller's key. Supplying a key and retrying follows the existing bounded recovery contract in section 9.1. Section 8.2 defines browser key retention and transport.
+
+### Failures and asynchronous access
+
+Missing, unknown or expired sessions and definitively invalid keys map to 401; authenticated requests lacking operation grants or supplying a mismatched account/key map to 403. Upstream validation unavailability maps to a safe retryable 503 (including upstream rate limiting with bounded retry guidance), not successful access. Malformed validation responses fail closed. Authorization failures disclose no account existence, content or freshness. A foreign, expired or unknown account-task identifier returns the same 404 after session authentication; task IDs are references, never bearer credentials.
+
+At admission, capture the verified account GUID and required operation grants in the task. The worker uses that immutable scope for all persistence and result publication, regardless of later browser account changes, logout or session expiry. An admitted operation may finish after its session ends; that grants no further HTTP access. Status, result, error, history/listing and System Status projections all enforce the requesting live session's account and the task's required grants. Another adequately authorized session for the same GUID, including one proved with a replacement key, may observe retained work. Account scope is preserved on success and failure alike; task errors expose no raw upstream response or secrets.
+
+Coalesce account work only within the same verified account, never across accounts or keys of unknown identity. Any additional demand must independently pass grant checks and may use the active task's credential only when that credential covers the added sources; otherwise wait/recheck and admit separately with a validated suitable credential. Shared TP/global tasks remain globally coordinated, but their public status contains only global execution facts. Account-derived requested item sets, caller identities and calculation associations remain in scoped request context and never appear in shared task/history payloads. Expose only the requesting account's task associations in freshness envelopes and diagnostics.
+
+### Verification boundaries
+
+Preserve `TEST_STRATEGY.md` and `QUALITY_METRICS.md`: application invariants cover scope propagation and no unauthorized work; HTTP contracts cover authorization/failure mapping and successive/concurrent request isolation; real PostgreSQL integration verifies account query/write isolation and stable-identity reuse. Controlled upstream fixtures verify identity, grants and failed proof; normal tests require no live GW2 API. Async verification uses the real in-process facility with controlled work, covering account ownership on admission, execution and observation. QA owns the concrete plan; this decision neither supplies test cases nor changes coverage baselines or reporting requirements.
+
+---
+
+## 8.2 Browser credential lifecycle and transport
+
+### Storage and lifetime
+
+Retain the GW2 API key only in private JavaScript memory for the current document. A small credential holder owns it outside serializable/reactive application stores; the entry field is masked and cleared after submission. Never place it in localStorage, sessionStorage, IndexedDB, cookies, Cache Storage, service-worker queues, history/router state, URLs, telemetry, console output or persisted application snapshots. No remember-key option or application-managed encrypted key vault is introduced.
+
+SPA route changes retain the key. Reload, document navigation, a new/duplicated tab, tab close and browser restart require entry again; no tab copies or requests another tab's key. Clear references, entry fields and account state on pagehide; a back/forward-cache restore starts at the credential gate and requires new proof. Do not rely on unload delivery or garbage collection for secure erasure. Memory retention reduces application-controlled persistence, but cannot prevent active XSS, privileged extensions, browser/OS memory capture or user-controlled password-manager storage. Keep the key out of general frontend state and diagnostic tooling and apply normal XSS defenses; memory is not an XSS security boundary.
+
+The key lifetime is separate from section 8.1's backend lease. While the document retains a key, a serialized renewal may repeat upstream proof when that lease expires; it does not extend the old session. Without a key, even a surviving cookie does not automatically restore browser account state: require entry and fresh proof. A definitive invalid-key response clears the key and account state. Lease expiry alone can retain the key for renewal; transient validation failure can retain a candidate in memory for explicit retry, without restoring old account data. An authorization/grant failure does not by itself prove the key invalid.
+
+### Clear, replace and stale answers
+
+Clear key/logout immediately drops the key and all account-derived browser state and requests server-side session revocation. Local clearing succeeds even offline; if revocation cannot reach the server, the old cookie may remain usable until the existing lease expires. Do not claim offline logout revoked the server lease. Clearing does not delete persisted account records or cancel already admitted backend work.
+
+Submitting a replacement first invalidates the previous browser context and releases the old key; it then validates the candidate. Failed proof leaves the account view empty. Even a replacement resolving to the same GUID requires a fresh session and reloading under its effective grants. It reuses the backend dataset through section 8.1, never the previous browser authorization or result state.
+
+Maintain a monotonically changing local credential generation. Clear, replacement, logout and loss of authorized context advance it before asynchronous work can commit. Capture it with every proof, read, calculation, detail, polling, retry and renewal chain; accept a completion only for the current generation and validated access context. Abort obsolete requests and stop timers/polling, but also reject their success, error and cleanup callbacks: cancellation alone is insufficient. Clear account rows, details, selected character, account-source settings, freshness, task associations and account-dependent caches. Only global metadata and settings independent of account identity may survive. A late A response cannot repopulate B, or a later A generation.
+
+### Shared-cookie tab coordination
+
+The section 8.1 cookie is shared within its browser cookie scope; memory-only key retention does not make authentication tab-local. On proof/renewal return a fresh non-secret access-context identifier bound to that exact server session and effective grants, distinct from the secret cookie identifier. Keep it in document memory. Every subsequent account request, including logout and task polling, supplies it in `X-Account-Context`; compare it with the authenticated session before account work or disclosure. Missing/mismatched context fails closed (403 after session authentication), with no account data. This identifier is a consistency assertion, never an independent credential or browser-selected principal. Account responses identify their access context so the browser can reject mismatched answers.
+
+Use same-origin BroadcastChannel notifications containing only an invalidation event to clear other live tabs on clear/replacement and session rotation. Never broadcast keys, cookies or account contents. A notified tab drops its key and account state and waits for explicit entry; it must not automatically re-prove its old key and switch the shared cookie back. Mask account content while suspended and verify the existing context before resuming account display/work. Notifications improve prompt clearing; server context checks and local generation checks remain mandatory if delivery is delayed or absent. A context mismatch clears the local view and requires explicit entry, without automatically logging out another tab's session. Concurrent proof responses can still replace the shared cookie out of order; a stale response cannot commit browser state and any resulting context mismatch requires fresh proof rather than silently adopting that cookie's account. Independent simultaneous accounts in tabs sharing cookies are not promised; separate browser profiles provide separate cookie scopes.
+
+### Credential transport boundary
+
+Send the key in the dedicated `X-GW2-API-Key` request header only for session proof/renewal and explicit account-specific operations that may call GW2. Do not attach it through a blanket HTTP interceptor, or to global data, cached-only reads, polling, status or logout. If a cached read reports credential-required refresh, the browser may issue the explicit keyed operation within section 9.1's bounded recovery; do not turn a cached-page response into an upstream-validation prerequisite. The browser uses same-origin `/api` routes, HTTPS outside explicit localhost development, and refuses redirects for keyed requests. Preserve section 8.1's cookie, origin/CSRF and authorization checks; a custom header alone is not authorization.
+
+The HTTP adapter extracts the credential into private transient operation input, separate from domain data and public DTOs. No echo in responses, exception text, task status, request dumps or tracing. Redact the credential header in application, proxy and observability configuration; disable credential request capture. Credential-bearing requests and all account responses use `Cache-Control: no-store` and bypass application/service-worker caches and offline replay. Only the backend adapter contacts GW2; its outbound authentication and errors require the same redaction. Release references on every terminal path as required by section 8.1. This establishes no new durable credential/session store or service.
+
+### Verification ownership
+
+Preserve `TEST_STRATEGY.md` sections 12 and 31 and `QUALITY_METRICS.md`: frontend state verification covers lifecycle and superseded answers, real-browser evidence covers document/tab/cookie behavior, and backend HTTP/application verification covers context checks and secret handling. Existing real PostgreSQL isolation requirements remain applicable; mocked browser evidence does not prove persistence isolation. QA independently prepares the concrete plan. No coverage baseline or test-layer requirement changes here.
 
 ---
 
@@ -251,7 +359,7 @@ Each successful result carries an application/HTTP freshness envelope alongside 
 
 Cached input capture must use last-successfully-published source data. Readers must not combine partially written refresh data with an old successful marker or mix input generations during one calculation. The application/adapters must retain a last-good read view while refreshing and publish a source's data and successful version together; a bounded immutable application snapshot is sufficient for this single-process runtime where existing persistence writes are incremental. This does not require durable result history or a database-wide transaction spanning upstream calls. A failed source refresh leaves its last-good view and marker intact. Summary and resolution detail must use compatible input versions and calculation settings per section 10.2; a detail calculated against newer inputs must be identified as such and associated with a matching updated row, rather than presented as the explanation of an older provisional row.
 
-Account refresh and TP refresh remain separate operations in the existing asynchronous in-process task facility. Preserve at most one unfinished ACCOUNT_SYNC task per backend process. When an existing account task has insufficient scope, await its terminal state and recheck the caller's required sources; admit successive work for the remaining sources without concurrent account writes. Do not treat that task's success as success for sources it did not refresh. TP work uses independent shared operation coordination: coalesce concurrent required-ID demands, reuse quotes younger than ten minutes, and after active work finishes recheck any uncovered missing/stale IDs and admit remaining work. Profit and Discovery retain one TP repository and fetch mechanism; no feature-specific TP cache or distributed platform is introduced.
+Account refresh and TP refresh remain separate operations in the existing asynchronous in-process task facility. In Phase 6, preserve at most one unfinished ACCOUNT_SYNC task per verified account per backend process, applying section 8.1's credential and visibility rules. Account coordination, accumulated demands and completion markers must all carry that account scope; different accounts do not share an exclusion key. When an existing account task has insufficient scope, await its terminal state and recheck the caller's required sources; admit successive work for the remaining sources without concurrent writes for that account. Do not treat that task's success as success for sources it did not refresh. TP work uses independent shared operation coordination: coalesce concurrent required-ID demands, reuse quotes younger than ten minutes, and after active work finishes recheck any uncovered missing/stale IDs and admit remaining work. Profit and Discovery retain one TP repository and fetch mechanism; no feature-specific TP cache or distributed platform is introduced.
 
 The browser polls advertised task status and automatically resubmits the calculation with the current settings when relevant refresh work succeeds. The backend rechecks required-source and TP coverage on each resubmission; changed account inputs can change relevant TP IDs and require further refresh before a final result is ready. Keep cached calculations synchronous unless representative measurement establishes that calculation itself needs a task under UD-007. Do not introduce stored server-side calculation jobs merely to replace the browser's HTTP request. A result is final only when its captured required account inputs and TP coverage are confirmed fresh and the calculation on those inputs has completed. Known unavailable TP prices remain explicit domain states; only a successful authoritative fetch outcome may establish that unavailability, rather than an absent cache entry being declared fresh.
 
@@ -358,7 +466,7 @@ Existing code should be:
 - refactored when coupling prevents safe reuse,
 - replaced or removed when obsolete, incorrect, or more expensive to isolate than replace.
 
-The browser frontend is now the canonical user interface. Obsolete JavaFX UI code, tests, resources, dependencies, and support code with no remaining consumer may be removed. Shared domain/application/backend functionality must not be removed merely because JavaFX also used it.
+The browser frontend is the sole supported user interface. Remove the obsolete JavaFX UI code, tests, resources, dependencies, entry points and support code with no remaining consumer during Phase 6, before its health review. Preserve shared domain/application/backend functionality used by the browser; desktop-only features do not require replacement web features unless the product specification requires them. Do not introduce a replacement desktop framework or retain a desktop compatibility layer.
 
 The obsolete backend-owned Ecto calculation path may likewise be removed while preserving the frontend-owned Ecto behavior defined in section 4.2.
 
@@ -389,12 +497,15 @@ Review workflow and story disposition belong in the agent/planning documentation
 - **Frontend:** Vue 3 + TypeScript, strict type checking; see ADR-001.
 - **Backend:** Java 25 and Spring Boot; see resolved `UD-006`.
 - **Database:** PostgreSQL.
+- **Schema migrations:** Flyway with versioned PostgreSQL SQL migrations; sections 7.3-7.4 and ADR-010.
 - **Runtime packaging:** frontend, backend, and PostgreSQL containers; Docker Compose for the initial small deployment.
 - **Shared business-logic ownership:** backend/domain/application layers, with the explicit frontend-owned Ecto Salvage exception in section 4.2.
-- **Canonical UI:** browser frontend; JavaFX is obsolete and removable.
+- **Supported UI:** browser frontend only; JavaFX and a replacement desktop UI are not planned.
 - **GW2 API ownership:** backend adapter boundary; browsers do not call ArenaNet directly.
 - **Multi-user persistence:** one shared database with shared global data and account-scoped data keyed by stable Guild Wars 2 account identity.
 - **Per-user GW2 API keys:** browser-held and supplied transiently when required; not durable server-side application data.
+- **Application identity/access:** validated GW2-key possession with bounded account sessions; section 8.1 and ADR-008. No separate application authentication infrastructure.
+- **Browser key storage/transport:** document-memory-only retention, explicit keyed requests and generation/context checks; section 8.2 and ADR-009.
 - **Global metadata checks:** backend-owned scheduled ID-list checks; implementation default six hours, configurable by environment.
 - **Trading Post prices:** globally shared on-demand freshness cache, ten-minute TTL; no full-catalog timer.
 - **Hosting portability:** no unnecessary provider-specific dependency.
@@ -402,10 +513,7 @@ Review workflow and story disposition belong in the agent/planning documentation
 
 ## To Be Decided
 
-- Database migration tool.
 - Reverse proxy, if required by deployment.
-- Browser-side GW2 API-key storage mechanism.
-- Whether API-key possession plus stable GW2 account identity is sufficient application identity or separate authentication is required.
 - Inactive-account retention threshold, only if measured impact justifies automatic cleanup.
 - Hosting provider.
 
@@ -420,6 +528,14 @@ Subsequent asynchronous account/TP refresh and the calculation/rendering that re
 Verification must distinguish fresh caches, expired account inputs, expired TP quotes, both expired, overlapping insufficient-scope account work, missing inputs, and failure/timeout recovery. Include representative real-data startup and repeat navigation with the default All scope and recorded effective settings; favorable fresh-cache measurements alone cannot establish the updated contract. Preserve economic and domain invariants across provisional and refreshed results. Detailed test and measurement methodology belongs in `TEST_STRATEGY.md`; implementation QA independently supplies bounded story plans.
 
 Reproducible measured compliance covering the required scenarios, together with the required quality gates, is sufficient for Phase 5 performance acceptance under UD-013. There is no additional manual Product Owner acceptance gate. Historical fresh-cache evidence does not accept the new stale-while-revalidate behavior or close unresolved measurements. Phase closure still requires the bounded health review in section 21 and planner disposition of blocking findings.
+
+## Application resource measurements
+
+Measure the target application's actual process memory (idle and peak), operation CPU time, workload CPU utilization, HTTP p95 latency and throughput, database size/reads/writes/connections, network traffic, and background-job duration, CPU, memory and frequency where technically measurable. Use representative crafting, account/global synchronization, price refresh, database, HTTP, idle and concurrent workloads with comparable fixture and environment metadata. Record unavailable measurements explicitly rather than estimating them. These measurements inform eventual free-tier or low-cost hosting decisions; keep deployment portable and provider-independent, with no provider selected.
+
+Run a lightweight dedicated GitHub Actions performance workflow on normal development activity and manually on demand. Display results and diagnostics in its job summary, retain useful detailed artifacts, and identify commit, timestamp, workload and environment. Compare only compatible prior measurements. The workflow and missing or failed benchmarks are informational: they do not affect functional/security gates, pull requests, merges or story acceptance. No daily/nightly schedule or additional monitoring service is required.
+
+Before containers exist, measure application processes and database activity only. When container infrastructure is introduced, extend the measurements to actual container resource use, startup-to-readiness time and image size. Label process and container measurements distinctly; do not introduce containers solely for measurement.
 
 ---
 

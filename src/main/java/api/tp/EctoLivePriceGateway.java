@@ -14,12 +14,11 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Live, unsynchronized GW2 Trading Post price lookup for the Ectoplasm Salvage use case
- * (STORY-APP-003): a direct call to {@code /v2/commerce/prices}, distinct from the DB-backed
- * {@code repo.tp.TpPriceRepository} the Crafting flows use. Moved out of {@code EctoView}
- * unchanged so {@code application.EctoSalvageService} depends on this seam instead of the view
- * performing its own HTTP/JSON handling; a fake subclass substitutes for it in application-layer
- * tests (TARGET_ARCHITECTURE.md §25).
+ * Live, unsynchronized GW2 Trading Post price lookup: a direct call to
+ * {@code /v2/commerce/prices}, distinct from the DB-backed {@code repo.tp.TpPriceRepository} the
+ * Crafting flows use. Its remaining consumer is {@code application.ItemReadService}, which serves
+ * the browser's item-detail route; a fake subclass substitutes for it in application-layer tests
+ * (TARGET_ARCHITECTURE.md §25).
  */
 public class EctoLivePriceGateway {
 

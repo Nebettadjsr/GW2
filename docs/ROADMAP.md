@@ -301,6 +301,8 @@ Phase 5. The browser/backend contract and web frontend should exist before intro
 - Track account activity (for example `last_seen_at` and/or `last_successful_sync_at`) so inactive account-specific data can be identified. Define a retention/cleanup policy for stale account data, but only introduce automatic deletion/cleaner execution when measured storage/database impact makes cleanup worthwhile. The concrete inactivity period remains an explicit decision at that point; cleanup must never delete shared global data.
 - Define a cutover path from the existing single-user database to the account-scoped model: reset disposable cached data and repopulate each verified account through fresh GW2 API synchronization (UD-016; `TARGET_ARCHITECTURE.md` §7.4).
 - Existing authoritative domain calculations remain account-agnostic where possible; user/account scoping belongs at the API/application/persistence boundaries and must not duplicate domain rules.
+- Complete removal of the obsolete JavaFX desktop UI, its exclusive code/resources/tests, entry points and build/runtime dependencies before the Phase 6 health review. Preserve shared backend and specified browser behavior; update current architecture and runtime/testing documentation to reflect the removal.
+- Begin application performance and resource measurement before the Phase 6 health review. A dedicated, automatically and manually runnable GitHub Actions workflow reports representative process, HTTP, database and background-operation measurements with workload/environment metadata; missing or failed benchmarks remain visible and nonblocking. Container-specific measurements wait until containers exist (`TARGET_ARCHITECTURE.md` §17, Application resource measurements).
 
 ### High-Level Stories
 
@@ -312,6 +314,8 @@ Phase 5. The browser/backend contract and web frontend should exist before intro
 - Keep Trading Post prices in a shared on-demand cache, refreshing only missing/stale required IDs; no full-catalog timer is planned while this remains a single backend instance.
 - Review other global refresh operations for duplicate multi-user triggering and centralize/coalesce them where appropriate.
 - Add account activity tracking and document the deferred evidence-based stale-account cleanup policy.
+- Remove the obsolete JavaFX application and its exclusive build, runtime and test infrastructure, preserving shared backend consumers.
+- Establish initial nonblocking application performance measurements and make their first results available to the Phase 6 health review.
 
 ---
 

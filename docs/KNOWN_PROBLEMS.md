@@ -2,7 +2,7 @@
 
 ## 1. Purpose and maintenance rule
 
-This document is the **current open-problem register**. Findings explicitly limited to JavaFX refer to the legacy desktop interface and should not be read as browser behavior. for defects, architectural risks, ambiguities, technical debt, and incomplete functionality that still apply to the repository.
+This document is the **current open-problem register** for defects, architectural risks, ambiguities, technical debt, and incomplete functionality that still apply to the repository. The legacy JavaFX desktop interface no longer exists (`STORY-UI-004`), so the findings that were limited to it have been removed from this register rather than carried forward; the browser is the only interface a finding here can describe.
 
 Use it as current-state input, not as a historical changelog:
 
@@ -68,47 +68,20 @@ No finding in this document by itself authorizes an implementation change. Norma
 
 ## 3. Crafting presentation and explanation risks
 
-### KP-08 — Legacy JavaFX shopping-list prices follow the sell toggle (CH-13)
-
-
-**Observed fact (legacy JavaFX):** both JavaFX shopping lists read `rbListingSell` and call `itemSellUnit` when pricing items to buy. The browser shopping list displays the selected acquisition price and backend purchase total. The engine uses `settings.listingBuy` instead. With both modes set to instant, the list displays the buy-order bid while the planner purchases at the sell-offer ask; changing the output sell mode changes displayed acquisition prices.
-
-**Inferred risk:** the purchase breakdown disagrees with required cash/budget despite identical quantities (DOMAIN_SPEC §20). **Recommendation:** render purchase-side quotes from the same calculation snapshot/mode as the plan.
-
-
-### KP-09 — Legacy JavaFX monetary presentation loses signs and mislabels total purchase cost (CH-14)
-
-
-**Observed fact (legacy JavaFX):** `formatSigned` calls `format(Math.abs(copper))`, stripping the minus sign. Ecto profit cells have the same white styling for positive/negative values; crafting tables use color but also lose the textual sign. Profit's Buy Cost tooltip says “ONE craft” while the supplied `CraftResult.buyCostCopper` is total plan cost. Discovery likewise displays that total in its table but uses `missingToBuyOne` in the detail list.
-
-**Inferred risk:** losses appear as positive Ecto profits, and readers cannot reconcile table cash costs with the single-craft explanation. **Recommendation:** correct presentation against existing domain values/units, without inventing a new economic model.
-
-**Partly resolved (`STORY-DOM-024`).** The Ectoplasm half is fixed at the call site, not in `CoinUtils`: `EctoView.fillProfitGrid` now formats its four cells with `CoinUtils.format`, which keeps the minus sign, so a salvage loss reads as a loss (`EctoSalvageViewIT` asserts the rendered `-0g 8s 73c`). `formatSigned` itself is unchanged and still strips the sign, and the crafting-table styling and the two Buy Cost labelling problems above are untouched.
-
-**Disposition (2026-10-03): resolved by removal, not by repair.** The story that carried the remaining JavaFX half (`STORY-UI-003`) is SUPERSEDED: the Product Owner declared the legacy JavaFX UI obsolete and removable, and `docs/ROADMAP.md` §2 now permits that removal from Phase 5 onward. The defect below is still present in the legacy views - `CoinUtils.formatSigned` still strips the sign, and `CraftingProfitView` still contains a signed/unsigned conditional whose branches are identical - and it is retained here as legacy-interface debt until those views are deleted. The browser presentation is unaffected. Do not open new JavaFX-only presentation work against this entry.
-
-
-### KP-11 — Legacy JavaFX `MaxBuy UI=...` debug text still appears transiently
-
-**Observed fact (legacy JavaFX):** `CraftingProfitView.reloadTable` still writes a transient `"MaxBuy UI=..."` developer/debug string to the shared status label at the start of reload. The separate loaded-row/counter diagnostic previously tracked here was removed by `STORY-UI-002`; this remaining text was explicitly outside that story's scope.
-
-**Inferred risk:** implementation/debug state leaks into normal user-facing presentation.
-
-**Recommendation:** remove the transient debug presentation while preserving genuine user-facing status/error messages.
-
+No open finding. KP-08, KP-09 and KP-11 described the legacy JavaFX shopping lists, monetary formatting and a transient debug label; `STORY-UI-004` deleted those views, and the browser presentation they were contrasted against was never affected. The story files retain the history.
 
 ---
 
 ## 4. Synchronization, persistence, cache, and data-freshness risks
 
-### KP-12 — Legacy JavaFX account refresh can publish inconsistent inventory snapshots (CH-04)
+### KP-12 — Account refresh can publish inconsistent inventory snapshots across sources (CH-04)
 
 
-**Observed fact:** bank/material/character steps fetch and commit independently; inventory reads use separate statements without a common snapshot transaction. Each home sync button disables only itself, so setup/global/account jobs can overlap, including with a navigated view's auto-refresh. The legacy JavaFX Profit timer refreshes materials and recipes only but reports “Auto-refreshed Bank + Materials”; the calculation still reads stored bank and character inventory.
+**Observed fact:** bank/material/character steps fetch and commit independently; inventory reads use separate statements without a common snapshot transaction.
 
 **Inferred risk:** moving a stack from bank to material storage can leave its old bank quantity alongside its refreshed storage quantity in Profit indefinitely until a full account refresh; even full refresh has intermediate mixed snapshots. Concurrent runs can publish older fetches after newer ones. This is an application-created consistency problem, distinct from accepted GW2 API lag (DOMAIN_SPEC §39). **Recommendation:** define coherent account snapshot publication/refresh ownership and accurate freshness reporting; preserve or explicitly decide refresh scope.
 
-**Scope reduced (STORY-APP-014), not closed:** the browser Crafting Profit path now reads every input through one `REPEATABLE READ` snapshot and each account source publishes its rows and completion marker in one transaction, so that path can no longer read part of a refresh under an older marker or mix generations within one calculation, and a failed refresh leaves the previous generation intact. Account writes are also serialized through one coordinator with accurate per-source freshness reporting. What remains is the cross-source question this entry names — a generation is per source, so bank and material storage can still be current as of different instants — plus the legacy JavaFX reads and timer wording, which were not changed.
+**Scope reduced (STORY-APP-014), not closed:** the browser Crafting Profit path now reads every input through one `REPEATABLE READ` snapshot and each account source publishes its rows and completion marker in one transaction, so that path can no longer read part of a refresh under an older marker or mix generations within one calculation, and a failed refresh leaves the previous generation intact. Account writes are also serialized through one coordinator with accurate per-source freshness reporting. What remains is the cross-source question this entry names: a generation is per source, so bank and material storage can still be current as of different instants.
 
 
 ### KP-13 — Removed characters remain eligible and keep phantom inventory (CH-05)
@@ -143,46 +116,14 @@ No finding in this document by itself authorizes an implementation change. Norma
 **Inferred risk:** refresh can report success while an item that no longer has a quote retains an old price used by calculations; missing IDs can also be retried repeatedly without recording the absence. **Recommendation:** distinguish confirmed absence from transient failure and define its persisted quote state.
 
 
-### KP-19 — Legacy JavaFX crafting reloads race on shared result state (CH-01)
-
-
-**Observed fact:** every trigger starts a new thread against the same controller/service. There is no cancellation, generation check or serialized publication. Settings controls are read from those workers, rather than captured together on the JavaFX thread. Budget typing can launch a job for each edit. Discovery now uses one combined character/discipline scope; settings and refresh controls can still launch overlapping JavaFX reloads. Service caches are assigned field by field, while the FX row-selection handler also reads them and replaces the result map during lazy enrichment.
-
-**Inferred risk:** redundant database/parallel-planner work, older results overwriting newer selections, mixed settings/caches, and row details belonging to a different reload. This remains after the specific Profit initial-load fix. **Recommendation:** address request ownership, FX input snapshots and coherent result publication together.
-
-
-### KP-20 — Legacy JavaFX crafting schedulers outlive window closure (CH-02)
-
-
-**Observed fact:** both views create `Executors.newSingleThreadScheduledExecutor()` with the default non-daemon thread factory. Shutdown occurs only on Back or reopening that same view; `Gw2App` has no `stop()`/window-close cleanup. Reload and TP threads are not tracked or cancelled on departure, and their queued `runLater` success callbacks can still reload the detached view. The static `autoRefreshTask` retains its captured view/controller even after Back.
-
-**Inferred risk:** closing the application from a crafting page can leave the JVM and periodic account synchronization running; leaving a page does not reliably end its work. **Recommendation:** tie scheduler/jobs/callback validity to the view/application lifecycle. No shutdown experiment was run.
-
-
-### KP-21 — Legacy JavaFX Bank/Materials navigation blocks the UI; Materials conceals load failure (CH-03)
-
-
-**Observed fact:** navigation calls the view synchronously; before setting the new scene, the view calls its application service through to JDBC connection/query/result loading on the JavaFX Application Thread. The extraction changed ownership, not execution timing. Materials catches the load exception, prints it, and returns `List.of()`, presenting the same empty page as genuinely empty storage.
-
-**Inferred risk:** database connection/query delays freeze navigation and all UI interaction; a storage-load failure looks like missing possessions. **Recommendation:** separately handle background loading and an explicit Materials failure state. This does not reopen the resolved hardcoded-connection issue in §2.2.
-
-
 ### KP-22 — Missing icon data hides occupied slots and cannot always be repaired (CH-10)
 
 
-**Observed fact:** Bank renders a null `iconPath` using the exact empty-slot branch before displaying count/item identity; Materials likewise returns an empty-looking tile before count rendering. IconSync selects only rows whose stored `icon_path` is NULL/empty: it does not check the existence of already-recorded files. Moving/deleting the icon directory or changing `ICON_CACHE_DIR` leaves these rows excluded from repair. Account sync does not populate metadata/icons for newly seen account-only items; setup's item population is driven by recipe items.
+**Observed fact:** IconSync selects only rows whose stored `icon_path` is NULL/empty: it does not check the existence of already-recorded files. Moving/deleting the icon directory or changing `ICON_CACHE_DIR` leaves these rows excluded from repair. Account sync does not populate metadata/icons for newly seen account-only items; setup's item population is driven by recipe items.
 
 **Inferred risk:** real possessions look absent when metadata/downloads are missing, and rerunning icon sync cannot repair nonempty paths pointing at missing files. **Recommendation:** separate possession display from icon availability and make cache repair account for stale paths.
 
-**Status: partially resolved — the metadata half only.** `STORY-SYNC-004` closed "account sync does not populate metadata for newly seen account-only items": the explicit metadata refresh now discovers referenced ids from the reference families rather than from the `items` table and creates the missing rows, and it was executed against the real user database (see `CURRENT_ARCHITECTURE.md` §5.14 for the behavior and the measured before/after coverage). On the web clients possession display was already separate from icon availability — `STORY-WEB-010`'s `ItemIcon` renders count and identity beside a neutral fallback, and empty slots stay empty — so on that path the symptom this entry describes no longer occurs. **Still open, and deliberately not claimed resolved:** the JavaFX Bank/Materials rendering that treats a null `icon_path` as the empty-slot branch, and the stale-path problem — `syncItemIconsToDisk` still selects on `icon_path IS NULL OR = ''` and does not check whether a recorded file still exists, so a moved or deleted icon directory still leaves those rows out of repair. No evidence was gathered for either; `STORY-SYNC-004` changed neither.
-
-
-### KP-23 — Legacy JavaFX optional Ecto icons can suppress a successful calculation (CH-11)
-
-
-**Observed fact:** the worker calculates price scenarios first, then synchronously requests icon metadata before publishing any values. Non-200 icon responses are tolerated, but an IOException, interrupted send or malformed icon response escapes to the shared catch, which reports “Failed to load prices.” The already successful scenarios are discarded. The metadata request has no configured timeout.
-
-**Inferred risk:** a presentation-only failure/delay leaves the price/profit page empty or loading despite valid prices. **Recommendation:** independently publish calculation success and handle optional icon loading/failure.
+**Status: resolved.** `STORY-SYNC-004` closed "account sync does not populate metadata for newly seen account-only items": the explicit metadata refresh now discovers referenced ids from the reference families rather than from the `items` table and creates the missing rows, and it was executed against the real user database (see `CURRENT_ARCHITECTURE.md` §5.14 for the behavior and the measured before/after coverage). On the web clients possession display was already separate from icon availability — `STORY-WEB-010`'s `ItemIcon` renders count and identity beside a neutral fallback, and empty slots stay empty — so on that path the symptom this entry describes no longer occurs. **Resolved by removal, not by repair:** the stale-path problem was a property of `syncItemIconsToDisk`, which selected on `icon_path IS NULL OR = ''` and never checked whether a recorded file still existed. `STORY-UI-004` deleted that desktop-only download with `sync.DesktopIconAdoption`, so no production path records or re-reads `items.icon_path` any more and there is no stale-path selection left to repair; the condition it described cannot occur. The browser serves icons from the keyed `assets-v1` cache and repairs a miss on demand, which never consults `icon_path`. The JavaFX Bank/Materials rendering half of this entry went away with those views (`STORY-UI-004`).
 
 
 ---
@@ -207,18 +148,11 @@ No finding in this document by itself authorizes an implementation change. Norma
 
 ### KP-25 — Orphaned production code remains (CH-E4)
 
-**Observed fact:** `api/Gw2PriceFetch.java` has no production callers since its former caller `Main.java` was deleted. `model/Price.java` is used only by that orphaned helper. `CraftingDiscoveryView#buildSearchBlob` has no production entry call; the live workflow uses `CraftingDiscoveryController.prepareRows -> buildSearchBlob`. `craft.ResolvedNeedMapper#toNode` likewise has no production entry call; the live detail chain uses `RecipeTreeBuilder` instead. The browser-owned Ectoplasm screen also leaves `frontend/src/api/ectoApi.ts` and `frontend/src/ecto/useEctoSalvage.ts` unreferenced after the backend calculation route was removed. The 2026-09-23 production-code audit found no FXML/controller binding, reflective lookup, or service registration for these symbols.
+**Observed fact:** `api/Gw2PriceFetch.java` has no production callers since its former caller `Main.java` was deleted. `model/Price.java` is used only by that orphaned helper. `craft.ResolvedNeedMapper#toNode` likewise has no production entry call; the live detail chain uses `RecipeTreeBuilder` instead. The browser-owned Ectoplasm screen also leaves `frontend/src/api/ectoApi.ts` and `frontend/src/ecto/useEctoSalvage.ts` unreferenced after the backend calculation route was removed. The 2026-09-23 production-code audit found no FXML/controller binding, reflective lookup, or service registration for these symbols. The three orphans the JavaFX view deletion created — `application.InitialSetupService`, `application.EctoSalvageService` and `util.CoinUtils` — were themselves removed by `STORY-UI-004`, together with `ecto.EctoSalvageCalculator` and `sync.IconSyncGateway`, so they are no longer part of this problem; the same story then removed the desktop icon download the last of those left without a caller (`sync.IconSync.syncItemIconsToDisk` and `sync.DesktopIconAdoption`), so it is not part of this problem either.
 
 **Inferred risk:** obsolete competing implementations remain available to be mistaken for live behavior or modified without effect.
 
 **Recommendation:** reassess production reachability when this area is next touched and retire confirmed-dead paths, or intentionally reuse the mapper through normal planned work if that is the chosen design.
-
-### KP-26 — Legacy JavaFX API-key Save control is a placeholder
-
-**Observed fact:** the API-key `TextField` / `Save` button in `Gw2App.createHomeScene()` only updates a status label; it does not persist the entered key. `AppConfig.API_KEY` remains the actual source of the key.
-
-**Recommendation:** either implement the intended configuration flow through normal planning or remove/replace the misleading control.
-
 
 ---
 
@@ -247,18 +181,10 @@ These findings concern the repository's agent/runtime implementation. They remai
 
 ## 9. Platform and performance follow-up
 
-### KP-29 — Startup stylesheet lookup has the wrong resource case (CH-20)
-
-
-**Observed fact:** startup looks up `/styles/dark-scroll.css` and immediately applies `Objects.requireNonNull`, while the tracked resource directory is `Styles`. No resource-renaming configuration was found. Windows directory execution can mask this difference; a case-sensitive classpath/JAR lookup does not.
-
-**Inferred risk:** startup fails at stylesheet loading when resources are resolved case-sensitively. **Recommendation:** verify the packaged resource lookup and align its case in separately authorized work. No packaging/build execution was performed.
-
-
 ### KP-30 — Full-catalog work persists for narrow crafting scopes (CH-21; follow-up required)
 
 
-**Observed fact:** each reload parses the entire graph cache, constructs its output index, collects all graph item IDs and loads all those items/quotes. The planner constructs another output index and evaluates every global recipe before the controller keeps visible rows; the controller builds another index for search text. Even a selected discipline uses an unrestricted ingredient-table load for its recipe query. These paths were traced, not inferred from method names.
+**Observed fact:** each reload parses the entire graph cache, constructs its output index, collects all graph item IDs and loads all those items/quotes. The planner constructs another output index and evaluates every global recipe before the caller keeps visible rows. Even a selected discipline uses an unrestricted ingredient-table load for its recipe query. These paths were traced, not inferred from method names.
 
 **Inferred risk requiring measurement:** avoidable graph/collection construction and forbidden-root simulation may materially affect narrow scopes and rapid repeated reloads; transitive ingredient/valuation needs mean simply restricting everything to visible rows would be unsafe. **Recommendation:** profile this concrete chain only if pursued, separating necessary dependency closure from redundant roots/indexes. This is not a claim that the accepted seven-second Profit gate has regressed, nor authorization to accelerate the deferred Discovery performance work.
 
