@@ -25,14 +25,21 @@ class StorySelectionTest(unittest.TestCase):
             issue(3, labels=["auto"]),
             issue(4, labels=["auto"]),
         ]
-        chosen, reasons = select_story(stories, [])
+        chosen, linked, reasons = select_story(stories, [])
         self.assertEqual(chosen["number"], 3)
-        self.assertIn("#2: dependency open", reasons[0])
+        self.assertIsNone(linked)
+        self.assertIn("#2: dependency lacks merged completion", reasons[0])
 
-    def test_closed_dependency_allows_story(self):
+    def test_closed_dependency_needs_merged_pr(self):
         stories = [issue(1, state="closed"), issue(2, labels=["auto"], deps="STORY-WEB-001")]
         self.assertEqual(dependencies(stories[1]), {"STORY-WEB-001"})
-        self.assertEqual(select_story(stories, [])[0]["number"], 2)
+        self.assertIsNone(select_story(stories, [])[0])
+        merged = {
+            "state": "closed", "merged_at": "2026-10-24T12:00:00Z",
+            "head": {"repo": {"full_name": "Nebettadjsr/GW2"}, "ref": "story/1-legacy"},
+            "body": "Closes #1",
+        }
+        self.assertEqual(select_story(stories, [merged])[0]["number"], 2)
 
     def test_existing_pr_and_decision_prevent_repeat(self):
         stories = [issue(2, labels=["auto"]), issue(3, labels=["auto", "needs-decision"])]
@@ -41,18 +48,21 @@ class StorySelectionTest(unittest.TestCase):
             "head": {"repo": {"full_name": "Nebettadjsr/GW2"}, "ref": "story/2-old-format"},
             "body": "Closes #2",
         }
-        chosen, reasons = select_story(stories, [pull])
+        chosen, linked, reasons = select_story(stories, [pull])
         self.assertIsNone(chosen)
+        self.assertIsNone(linked)
         self.assertEqual(len(reasons), 2)
 
     def test_review_rework_precedes_new_story(self):
         stories = [issue(2, labels=["auto"]), issue(3, labels=["auto", "needs-rework"])]
         pull = {
             "state": "open",
-            "head": {"repo": {"full_name": "Nebettadjsr/GW2"}, "ref": "story/3-old-format"},
+            "head": {"repo": {"full_name": "Nebettadjsr/GW2"}, "ref": "fix/review-feedback"},
             "body": "Closes #3",
         }
-        self.assertEqual(select_story(stories, [pull])[0]["number"], 3)
+        selected, linked, _ = select_story(stories, [pull])
+        self.assertEqual(selected["number"], 3)
+        self.assertEqual(linked["head"]["ref"], "fix/review-feedback")
 
 
 if __name__ == "__main__":

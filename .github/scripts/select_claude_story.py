@@ -31,9 +31,10 @@ def dependencies(issue: dict) -> set[str]:
     return set(re.findall(r"STORY-[A-Z]+-\d+", source))
 
 
-def linked_pr(issue: dict, pulls: list[dict]) -> bool:
+def linked_prs(issue: dict, pulls: list[dict]) -> list[dict]:
     number = issue["number"]
     prefixes = (f"story/issue-{number}-run-", f"story/{number}-")
+    matches = []
     for pull in pulls:
         if pull["state"] != "open":
             continue
@@ -41,14 +42,30 @@ def linked_pr(issue: dict, pulls: list[dict]) -> bool:
             "https://api.github.com/repos/"
         ):
             continue
-        if pull["head"]["ref"].startswith(prefixes):
-            return True
-        if str(number) in PR_CLOSES.findall(pull.get("body") or ""):
-            return True
-    return False
+        if pull["head"]["ref"].startswith(prefixes) or str(number) in PR_CLOSES.findall(
+            pull.get("body") or ""
+        ):
+            matches.append(pull)
+    return matches
 
 
-def select_story(issues: list[dict], pulls: list[dict]) -> tuple[dict | None, list[str]]:
+def dependency_merged(dependency: str, by_id: dict[str, dict], pulls: list[dict]) -> bool:
+    issue = by_id.get(dependency)
+    if issue is None or issue["state"] != "closed" or issue.get("state_reason") == "not_planned":
+        return False
+    number = issue["number"]
+    prefixes = (f"story/issue-{number}-run-", f"story/{number}-")
+    return any(
+        pull.get("merged_at")
+        and (
+            pull["head"]["ref"].startswith(prefixes)
+            or str(number) in PR_CLOSES.findall(pull.get("body") or "")
+        )
+        for pull in pulls
+    )
+
+
+def select_story(issues: list[dict], pulls: list[dict]) -> tuple[dict | None, dict | None, list[str]]:
     stories = [issue for issue in issues if "pull_request" not in issue and story_id(issue)]
     by_id = {story_id(issue): issue for issue in stories}
     reasons = []
@@ -69,19 +86,23 @@ def select_story(issues: list[dict], pulls: list[dict]) -> tuple[dict | None, li
         if re.search(r"^Migration status:\s*BLOCKED\b", issue.get("body") or "", re.MULTILINE):
             reasons.append(f"#{number}: issue body still says BLOCKED")
             continue
-        unmet = [dep for dep in sorted(dependencies(issue)) if dep not in by_id or by_id[dep]["state"] != "closed"]
+        unmet = [dep for dep in sorted(dependencies(issue)) if not dependency_merged(dep, by_id, pulls)]
         if unmet:
-            reasons.append(f"#{number}: dependency open or missing ({', '.join(unmet)})")
+            reasons.append(f"#{number}: dependency lacks merged completion ({', '.join(unmet)})")
             continue
-        has_pr = linked_pr(issue, pulls)
-        if "needs-rework" in labels and not has_pr:
+        matching = linked_prs(issue, pulls)
+        if len(matching) > 1:
+            reasons.append(f"#{number}: multiple open PRs match this story")
+            continue
+        linked = matching[0] if matching else None
+        if "needs-rework" in labels and linked is None:
             reasons.append(f"#{number}: needs-rework label has no open PR")
             continue
-        if has_pr and "needs-rework" not in labels:
+        if linked is not None and "needs-rework" not in labels:
             reasons.append(f"#{number}: an open PR already exists")
             continue
-        return issue, reasons
-    return None, reasons
+        return issue, linked, reasons
+    return None, None, reasons
 
 
 def github_pages(path: str) -> list[dict]:
@@ -109,8 +130,8 @@ def github_pages(path: str) -> list[dict]:
 
 def main() -> None:
     issues = github_pages("issues?state=all&per_page=100")
-    pulls = github_pages("pulls?state=open&per_page=100")
-    selected, reasons = select_story(issues, pulls)
+    pulls = github_pages("pulls?state=all&per_page=100")
+    selected, linked, reasons = select_story(issues, pulls)
     summary = Path(os.environ["GITHUB_STEP_SUMMARY"])
     output = Path(os.environ["GITHUB_OUTPUT"])
     open_stories = [
@@ -134,6 +155,8 @@ def main() -> None:
         number = selected["number"]
         with output.open("a", encoding="utf-8") as stream:
             stream.write(f"issue_number={number}\n")
+            if linked is not None:
+                stream.write(f"pr_branch={linked['head']['ref']}\n")
         message = f"Selected [issue #{number}](https://github.com/{os.environ['GITHUB_REPOSITORY']}/issues/{number}).\n"
     else:
         message = f"No ready `auto` story. Claude did not run. Open `auto` stories: {auto_count}.\n"

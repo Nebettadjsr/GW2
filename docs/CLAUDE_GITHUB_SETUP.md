@@ -8,8 +8,9 @@ one run. Issue labels, comments, pushes, and schedules do not start Claude.
 There is no time-of-day gate; the owner can choose when to spend usage.
 
 The button checks open GitHub stories. A story labeled `auto` is eligible when
-its listed dependencies are closed and it has no `pairing`, `needs-decision` or
-`blocked` label. An open PR is selected only when Codex has marked its issue
+its listed dependencies are closed with linked merged PRs and it has no
+`pairing`, `needs-decision` or `blocked` label. An open PR is selected only when
+Codex has marked its issue
 `needs-rework`; such PRs take priority over new stories. Otherwise the oldest
 eligible issue is selected. The workflow reports the choice or the reason
 nothing is ready in the Actions run summary. With no ready story, it stops

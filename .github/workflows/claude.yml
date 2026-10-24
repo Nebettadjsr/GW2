@@ -42,6 +42,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+          EXISTING_BRANCH: ${{ steps.select.outputs.pr_branch }}
         shell: bash
         run: |
           set -euo pipefail
@@ -51,19 +52,14 @@ jobs:
             echo 'The number must identify an open issue, not a PR.' >&2
             exit 1
           }
-          prefix="story/issue-${ISSUE_NUMBER}-run-"
-          legacy_prefix="story/${ISSUE_NUMBER}-"
-          existing_branch="$(gh pr list --base master --state open --limit 100 --json headRefName |
-            jq -r --arg prefix "$prefix" --arg legacy "$legacy_prefix" \
-              '[.[] | select(.headRefName | (startswith($prefix) or startswith($legacy)))] |
-              if length > 1 then error("Multiple open PRs for this issue") else .[0].headRefName // empty end')"
-          if [[ -n "$existing_branch" ]]; then
-            git fetch origin "$existing_branch"
-            git switch -c "$existing_branch" FETCH_HEAD
-            branch_name="$existing_branch"
+          if [[ -n "$EXISTING_BRANCH" ]]; then
+            git check-ref-format --branch "$EXISTING_BRANCH"
+            git fetch origin "$EXISTING_BRANCH"
+            git switch -c "$EXISTING_BRANCH" FETCH_HEAD
+            branch_name="$EXISTING_BRANCH"
             echo 'existing_pr=true' >> "$GITHUB_OUTPUT"
           else
-            branch_name="${prefix}${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            branch_name="story/issue-${ISSUE_NUMBER}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
             git switch -c "$branch_name"
             echo 'existing_pr=false' >> "$GITHUB_OUTPUT"
           fi
