@@ -15,6 +15,7 @@ permissions:
   pull-requests: write
   issues: write
   id-token: write
+  actions: read
 
 jobs:
   implement:
@@ -30,6 +31,7 @@ jobs:
           persist-credentials: false
 
       - name: Implement issue or address PR feedback
+        id: claude
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -37,6 +39,42 @@ jobs:
           trigger_phrase: '@claude'
           branch_prefix: 'story/'
           branch_name_template: 'story/{{entityNumber}}-{{description}}'
+          additional_permissions: |
+            actions: read
           claude_args: |
             --max-turns 30
             --allowedTools Read,Edit,Write,Glob,Grep,Bash
+            --append-system-prompt "For an auto issue, implement its acceptance criteria, write meaningful tests, run narrow checks, and report exact checks and any changed assertions. For a PR comment, address blocking findings on the existing PR branch."
+
+      - name: Open issue implementation PR
+        if: github.event_name == 'issues' && steps.claude.outputs.conclusion == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GW2_AUTOMATION_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          BRANCH_NAME: ${{ steps.claude.outputs.branch_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          test -n "$BRANCH_NAME"
+          if gh pr view "$BRANCH_NAME" --json number >/dev/null 2>&1; then
+            exit 0
+          fi
+          cat > "$RUNNER_TEMP/claude-pr-body.md" <<EOF
+          Closes #$ISSUE_NUMBER
+
+          ## Acceptance criteria
+
+          See issue #$ISSUE_NUMBER and the Claude implementation comment for the criterion-by-criterion result.
+
+          ## Changes and tests
+
+          The implementation comment records narrow local checks, test changes, and any removed or weakened assertions. Maven and Vitest run on this PR.
+
+          ## Review notes
+
+          Codex reviews the issue, diff, tests, and recorded verification before merge.
+          EOF
+          gh pr create --head "$BRANCH_NAME" --base master \
+            --title "Implement issue #$ISSUE_NUMBER" \
+            --body-file "$RUNNER_TEMP/claude-pr-body.md"
