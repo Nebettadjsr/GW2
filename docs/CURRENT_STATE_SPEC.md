@@ -9,7 +9,7 @@ This is a factual snapshot of the application and developer runtime, checked aga
 The repository contains one user interface:
 
 - The Vue 3 / TypeScript browser application is the active, canonical and only product UI, served during development by Vite and backed by the Spring Boot HTTP application.
-- The Java 25 / JavaFX desktop UI has been removed: its entry point, views and stylesheet, the application and utility classes those views were the only caller of, and its 31 desktop-only test and fixture files (`STORY-UI-004`). Only its build and configuration declarations remain; see [Current Architecture, section 9](CURRENT_ARCHITECTURE.md).
+- The Java 25 / JavaFX desktop UI has been removed: its entry point, views and stylesheet, the application and utility classes those views were the only caller of, and its 31 desktop-only test and fixture files (`STORY-UI-004`). Its build and test infrastructure (the `org.openjfx` dependencies and plugin, the `javafx.*` and `main.class` properties, the TestFX dependency and the CI `javafx.platform` flag) was removed by `STORY-INFRA-005`; see [Current Architecture, section 9](CURRENT_ARCHITECTURE.md).
 
 The backend is Java 25, Maven and Spring Boot 4.1.1. It owns the HTTP API, application services, the Crafting Profit and Discovery domain calculations, persistence, and Guild Wars 2 API access. PostgreSQL stores shared game/economy data and the current single account's state. The browser does not call ArenaNet directly. Ectoplasm Salvage is a documented exception: its calculation runs in the browser using backend-provided data.
 
@@ -76,7 +76,6 @@ The Python workflow service (`workflow_service/`) runs Planner when planning is 
 - Authentication and browser API-key handling are not implemented.
 - A migrated database serves global data only: the browser credential flow that would resolve a session into an account scope is not implemented, so the retained unscoped account paths are refused there. The global workflows themselves do run: icon-metadata selection and the Profit/Discovery price refresh each have a global half that reads only shared items, recipes, the material catalog and the shared quote cache, and the unscoped bank read a global path passes through returns no rows rather than refusing. Account-derived inputs require an explicit scope and no default account is inferred, so bank, materials, characters, Crafting Profit, Discovery and Luck stay unavailable until that flow lands.
 - The backend/frontend/PostgreSQL stack is not containerized or deployed.
-- JavaFX build and configuration declarations remain in `pom.xml` and the CI backend job after the desktop UI's removal — the `org.openjfx` dependencies and plugin, the `javafx.*` properties, the `main.class` property that still names the deleted entry point, the `org.testfx:testfx-junit5` test dependency and the `-Djavafx.platform=linux` CI flag. No production or test source uses them.
 - Refresh status is process-local, not durable telemetry. Multiple backend replicas would require shared coordination for global scheduled work and refresh deduplication.
 - Hosting provider is undecided. Cloudflare-related infrastructure is only a possible future option, not a decision.
 
