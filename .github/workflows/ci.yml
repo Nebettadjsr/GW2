@@ -1,15 +1,10 @@
 # Authoritative full-regression gate (docs/TEST_STRATEGY.md §36).
 #
-# Claude runs only targeted tests locally; this workflow runs the complete
-# suites against the pushed commit, and agent/runtime's orchestrator waits for
-# its result before a story counts as verified.
+# Claude runs targeted checks; this workflow runs the complete application
+# suites against each pushed commit and pull request.
 #
-# Every job runs the repository's own existing test command -- no parallel test
-# system, no reduced scope. The only additions are a report summarizer that
-# turns a failure into a handful of compact annotations (so the orchestrator can
-# return a short failure report to Claude without shipping whole CI logs into a
-# model prompt) and, for the backend, the PostgreSQL service the local
-# developer machine already provides.
+# Every test job runs the repository's own command. The backend also uses an
+# isolated PostgreSQL service. Failure annotations keep the checks readable.
 name: CI
 
 on:
@@ -19,9 +14,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # Deliberately NOT cancel-in-progress: the orchestrator waits for the run of
-  # one specific commit, and cancelling a superseded run would turn its wait
-  # into an unverifiable outcome instead of a pass or a fail.
+  # Keep each commit's result available for PR review and coverage comparison.
   group: ci-${{ github.ref }}
   cancel-in-progress: false
 
@@ -142,63 +135,10 @@ jobs:
           path: frontend/coverage
           if-no-files-found: warn
 
-  agent-runtime:
-    name: Agent runtime tests (pytest-cov)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
-      - name: Install Python test and coverage tools
-        run: python -m pip install -r requirements-dev.txt
-
-      - name: Check workflow dashboard state and layout preservation
-        run: python -m unittest discover -s agent/docker/grafana -p test_dashboard_state.py -v
-
-      # Offline contract/flow tests. tests/__init__.py makes every model
-      # runner, git push and GitHub API call raise, so this job can never
-      # start a model, push a commit or reach the network. workflow_service
-      # (the workflow service and its scheduling code) imports
-      # the same guards. This job is not
-      # part of a story's CI verdict: agent-workflow failures are reported
-      # by the pipeline as workflow warnings and never block a story.
-      - name: Run workflow service and harness tests with coverage
-        run: >-
-          python -m pytest agent/runtime/tests workflow_service -q
-          --import-mode=importlib -o consider_namespace_packages=true
-          --cov-config=.coveragerc
-          --cov=agent.runtime --cov=workflow_service --cov-branch
-          --cov-report=term-missing
-          --cov-report=html:agent/runtime/htmlcov
-          --cov-report=xml:agent/runtime/coverage.xml
-          --junitxml=agent/runtime/pytest-results.xml
-
-      - name: Summarize failing tests
-        if: failure()
-        run: >-
-          python .github/scripts/summarize_test_failures.py
-          --label "Agent runtime (unittest)"
-          --junit agent/runtime
-
-      - name: Upload Python coverage reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-coverage
-          path: |
-            agent/runtime/htmlcov
-            agent/runtime/coverage.xml
-          if-no-files-found: warn
-
   coverage-kpi:
     name: Coverage KPI report
     runs-on: ubuntu-latest
-    needs: [backend, frontend, agent-runtime]
+    needs: [backend, frontend]
     if: always()
     steps:
       - uses: actions/checkout@v5
@@ -221,19 +161,11 @@ jobs:
           name: frontend-coverage
           path: coverage-input/frontend-coverage
 
-      - name: Download Python coverage report
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          name: python-coverage
-          path: coverage-input/python-coverage
-
       - name: Generate combined coverage KPI
         run: >-
           python .github/scripts/publish_coverage_kpi.py
           --java coverage-input/java-coverage/jacoco.xml
           --frontend coverage-input/frontend-coverage/coverage-summary.json
-          --python coverage-input/python-coverage/coverage.xml
           --revision "${{ github.sha }}"
           --output coverage-kpi
 

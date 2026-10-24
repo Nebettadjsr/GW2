@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Combine Java, TypeScript, and agent-runtime coverage reports for CI."""
+"""Combine Java and TypeScript application coverage reports for CI."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
-import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -64,35 +63,6 @@ def jacoco(path: Path) -> tuple[Counts, dict[str, Counts]]:
         int(counters.get("BRANCH", {}).get("covered", 0)),
         int(counters.get("BRANCH", {}).get("covered", 0)) + int(counters.get("BRANCH", {}).get("missed", 0)),
     )
-    return total, packages
-
-
-def cobertura(path: Path) -> tuple[Counts, dict[str, Counts]]:
-    root = ET.parse(path).getroot()
-    packages: dict[str, Counts] = {}
-    for package in root.findall("./packages/package"):
-        files: dict[str, Counts] = {}
-        for source in package.findall("./classes/class"):
-            filename = source.get("filename", "unknown")
-            line_valid = line_covered = branch_valid = branch_covered = 0
-            for line in source.findall("./lines/line"):
-                line_valid += 1
-                line_covered += int(line.get("hits", 0)) > 0
-                condition = line.get("condition-coverage", "")
-                if condition:
-                    match = re.search(r"\((\d+)/(\d+)\)", condition)
-                    if match:
-                        branch_covered += int(match.group(1))
-                        branch_valid += int(match.group(2))
-            files[filename] = Counts(line_covered, line_valid, branch_covered, branch_valid)
-        package_total = Counts()
-        for counts in files.values():
-            package_total = package_total.plus(counts)
-        if package_total.lines_valid or package_total.branches_valid:
-            packages[package.get("name", "unknown")] = package_total
-    total = Counts()
-    for counts in packages.values():
-        total = total.plus(counts)
     return total, packages
 
 
@@ -159,7 +129,6 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--java", type=Path, default=Path("target/site/jacoco/jacoco.xml"))
     parser.add_argument("--frontend", type=Path, default=Path("frontend/coverage/coverage-summary.json"))
-    parser.add_argument("--python", type=Path, default=Path("agent/runtime/coverage.xml"))
     parser.add_argument("--output", type=Path, default=Path("quality-reports"))
     parser.add_argument("--revision", default=os.environ.get("GITHUB_SHA"))
     args = parser.parse_args()
@@ -167,7 +136,6 @@ def main() -> None:
     modules = [
         read_module("Java backend", args.java, jacoco),
         read_module("Frontend TypeScript", args.frontend, vitest),
-        read_module("Python agent runtime", args.python, cobertura),
     ]
     combined = Counts()
     for module in modules:

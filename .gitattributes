@@ -1,2 +1,1 @@
 *.cmd text eol=crlf
-agent/docker/grafana/entrypoint.sh text eol=lf

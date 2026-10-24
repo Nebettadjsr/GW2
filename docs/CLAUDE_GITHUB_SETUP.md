@@ -18,7 +18,9 @@ before accessing the Claude token. The `auto` label means a planning session
 has prepared the story for unattended implementation; `pairing` means local
 supervision is required. After a rework run publishes its branch, the workflow
 clears `needs-rework` while CI and Codex review the new commit. It does not
-merge or automatically retry a PR.
+merge or automatically retry a PR. Claude writes a temporary run report with
+its changes, checks, and gaps. The workflow places it in a new PR or adds it
+as a comment on a rework PR; a missing report is shown explicitly for review.
 
 To inspect the queue before pressing the button, use GitHub Issues filtered by
 [`auto`](https://github.com/Nebettadjsr/GW2/issues?q=is%3Aissue+is%3Aopen+label%3Aauto),
@@ -38,7 +40,8 @@ issues were skipped.
 4. Create a fine-grained GitHub personal access token restricted to
    **Nebettadjsr/GW2**, with **Pull requests** read/write permission. Store it
    as a second Actions repository secret named `GW2_AUTOMATION_TOKEN`. The
-   workflow uses it only to open a PR so that PR CI runs automatically.
+   workflow uses it to open a PR or comment with run evidence so that PR CI
+   and review run automatically.
 
 Never paste token values in an issue, PR, chat, or committed file.
 

@@ -2,8 +2,8 @@
 
 ## Test coverage KPI
 
-Test coverage is a permanent KPI for the Maven Java backend, Vue/TypeScript frontend, and
-Python agent runtime. The long-term target is **at least 90% line and branch coverage** in each
+Test coverage is a permanent KPI for the Maven Java backend and Vue/TypeScript frontend.
+The long-term target is **at least 90% line and branch coverage** in each
 relevant area. It is a warning target and is not currently a build gate.
 
 The GitHub Actions `Coverage KPI report` job publishes a combined summary to the workflow run
@@ -11,25 +11,26 @@ and the `coverage-reports` artifact. It reports each language/module and package
 well as a weighted aggregate over measured lines and branches. Missing reports are marked
 unavailable. Aggregation never fills unavailable coverage with zero or estimates.
 
-The Python area covers the whole agent workflow: `agent/runtime` and `workflow_service`
-(its `test_*` files excluded like the runtime's tests). Service coverage was added on 2026-10-10,
-before the package was renamed. Snapshots
-taken before that date measured `agent/runtime` only.
+The retired Python harness is not part of current application coverage. Its last
+measured values remain below as historical evidence for the pre-migration snapshot.
 
 Coverage is a minimum signal, not proof of correctness. Review affected modules and critical
 branches individually. Do not pad tests, omit legitimate source files, or change measurement
 scope to improve the number. Exceptions for generated or impractical-to-unit-test code must be
 specific and documented in `docs/TEST_STRATEGY.md` and the report configuration.
 
-## Clean CI baseline
+## Pre-migration clean CI snapshot
 
-Authoritative snapshot, measured from CI run
+Measured from CI run
 [40096904227](https://github.com/Nebettadjsr/GW2/actions/runs/40096904227) on clean `master`
 commit `459f728cdf12fcfed23809d3b1b42d400d4e5fd5`. All four jobs (Maven, Vitest, pytest-cov,
 Coverage KPI report) succeeded. Values come from the run's `coverage-reports` artifact
 (ID `12561400964`): `coverage-kpi/coverage-kpi.json` and `.md`, cross-checked against the raw
 `coverage-input/java-coverage/jacoco.xml`. The artifact does not carry test counts, so none are
-listed here. The 90% target remains an informational warning KPI, not a build gate.
+listed here. Java and frontend package figures remain valid evidence for that commit. The Python
+and three-area combined figures record the retired harness and are not current CI targets. A new
+two-area combined baseline must come from the first successful CI run after harness removal.
+The 90% target remains an informational warning KPI, not a build gate.
 
 | Area | Line | Branch | Gap to 90% line / branch |
 |---|---:|---:|---:|
@@ -123,6 +124,6 @@ HTML reports remain in the tool-specific output directories.
 
 ### Refreshing the baseline
 
-The clean baseline above is replaced only by a later successful CI run on a clean commit: record
+The snapshot above is replaced only by a later successful CI run on a clean commit: record
 the run link, exact commit SHA, and the `coverage-reports` artifact values, and mark the old
 snapshot as retired.
