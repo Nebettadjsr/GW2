@@ -7,7 +7,7 @@ This document is the realistic path from the repository's **actual current state
 It is written for two audiences:
 
 - a human maintainer deciding what to work on next,
-- a planning/orchestrator AI that selects a story, hands it to Claude Code, and evaluates the result without the full conversation history behind this document.
+- an interactive planning session that turns Product Owner requests and roadmap work into GitHub issues, with implementation and review tracked on pull requests.
 
 This document contains **no dates and no time estimates**. Sequencing is based on dependencies and risk, not a schedule.
 
