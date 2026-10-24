@@ -517,3 +517,11 @@ F007: `web.ItemIconApiRealDbIT` (local real-database check) errors in two of thr
 `application.BankContentsService.getBankContents` → `repo.BankRepository.loadBankSlots` still reads
 `account_bank` without an account scope, which the STORY-INFRA-004 schema gate rejects. Either the bank read
 or the IT needs to move to the account-scoped path (STORY-APP-015 scope).
+
+## Follow-up Findings Disposition
+
+F001: DEFERRED — `docs/KNOWN_PROBLEMS.md` KP-25 records these unreachable browser modules; removing them is optional cleanup outside Phase 6 account isolation.
+F003: DISMISSED — the retained files are brand assets, not JavaFX-exclusive resources; `STORY-INFRA-005` already covers obsolete desktop-only resources.
+F004: DISMISSED — historical test javadoc is harmless; QA owns those retained tests and the finding does not identify a behavior defect.
+F005: DISMISSED — this concerns the agent workflow, which the Phase 6 application backlog does not change.
+F007: FOLLOW-UP STORY — STORY-SYNC-007

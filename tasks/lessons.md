@@ -843,3 +843,28 @@ editing the JSON and not by a general remark that the plan is out of date. Mark 
 paragraph of a long Result explicitly instead of deleting it: a blocked-state narrative still explains
 why a removal was made, but a reader must not have to guess which half of the file describes the tree
 in front of them.
+
+## Prove which revision of a test you ran, by its hash, not by its name
+
+A run recorded against the fixtures that existed when you were blocked is not evidence about the
+fixtures QA replaced them with. The command line looks identical in both cases, so the Result must
+pin the file identity — and the QA plan already publishes `protected_test_hashes` for exactly that.
+
+**Why:** `STORY-SYNC-007` was handed back with its production split judged correct. Its Result quoted
+`VersionedGlobalOperationsTest` erroring four times in `@BeforeEach` and `ItemIconApiRealDbIT`
+passing with `0 bank slots` — both true of the files at the time, both about files QA had since
+revised. Re-running the current ones took one command each and they passed first try
+(`Tests run: 4, Failures: 0, Errors: 0`; `3 bank slots, … sampling 3`), so the whole rejection was
+about the age of the evidence, not about any code.
+
+**How to apply:** on re-entry, `sha256sum` each `prepared_test_paths` entry and show the digests
+equal the plan's `protected_test_hashes` beside the run output; a mismatch means you are either
+reading a stale file or have modified a QA-owned one. Re-check the *premise* of a blocker before
+restating it: a QA-reported `pre_implementation_verification` failure can be an artifact of its own
+launch path — here `mvnw.cmd` died on a missing `powershell` while `./mvnw` from the Bash tool, with
+`JAVA_HOME` already in the environment, runs fine — so "the wrapper could not start Maven" is never
+inherited as a reason a test cannot be run. When a passing run leaves an assertion's *outcome*
+ambiguous (a `503` from a synthetic upstream, a status the test accepts three of), say which
+assertions executed and why that is the criterion, instead of letting the status line carry the
+claim. And when the previous attempt predicted a red CI job on a defect QA has since fixed, withdraw
+the prediction explicitly rather than leaving it in the artifact.

@@ -2,17 +2,27 @@ package web;
 
 import application.BankContentsService;
 import application.icons.ItemIconUrls;
+import model.AccountScope;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import repo.BankRepository;
+import repo.Db;
+import repo.EnvConfig;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -40,13 +50,57 @@ class ItemIconApiRealDbIT {
     private static final int SAMPLE_LIMIT = 3;
     private static final String FOREIGN_KEY =
             "0000000000000000000000000000000000000000000000000000000000000000";
+    private static final String RETAINED_SOURCE =
+            "https://render.guildwars2.com/file/1111111111111111111111111111111111111111111111111111111111111111/19721.png";
+
+    private final String schema = "test_item_icon_real_db_" + UUID.randomUUID().toString().replace("-", "");
+    private final UUID accountId = UUID.randomUUID();
+
+    @BeforeEach
+    void createDisposableManagedSchemaWithScopedBankRows() throws Exception {
+        try (Connection con = DriverManager.getConnection(EnvConfig.require("DATABASE_URL"),
+                EnvConfig.require("DATABASE_USER"), EnvConfig.require("DATABASE_PASSWORD"));
+             Statement statement = con.createStatement()) {
+            statement.execute("CREATE SCHEMA " + schema);
+        }
+        System.setProperty(Db.TEST_SCHEMA_PROPERTY, schema);
+        Flyway.configure().dataSource(EnvConfig.require("DATABASE_URL"), EnvConfig.require("DATABASE_USER"),
+                        EnvConfig.require("DATABASE_PASSWORD"))
+                .schemas(schema).defaultSchema(schema).locations("classpath:db/migration").load().migrate();
+        try (Connection con = DriverManager.getConnection(EnvConfig.require("DATABASE_URL"),
+                EnvConfig.require("DATABASE_USER"), EnvConfig.require("DATABASE_PASSWORD"))) {
+            con.setSchema(schema);
+            try (Statement statement = con.createStatement()) {
+                statement.execute("INSERT INTO items(item_id, name, icon_url) VALUES "
+                        + "(19721, 'icon fixture one', '" + RETAINED_SOURCE + "'), "
+                        + "(19722, 'icon fixture two', '" + RETAINED_SOURCE + "'), "
+                        + "(19723, 'icon fixture three', '" + RETAINED_SOURCE + "')");
+                statement.execute("INSERT INTO account_registry(account_id) VALUES ('" + accountId + "')");
+                statement.execute("INSERT INTO account_bank(account_id, slot, item_id, count) VALUES "
+                        + "('" + accountId + "', 0, 19721, 1), ('" + accountId + "', 1, 19722, 1), "
+                        + "('" + accountId + "', 2, 19723, 1)");
+            }
+        }
+    }
+
+    @AfterEach
+    void dropDisposableManagedSchema() throws Exception {
+        System.clearProperty(Db.TEST_SCHEMA_PROPERTY);
+        try (Connection con = DriverManager.getConnection(EnvConfig.require("DATABASE_URL"),
+                EnvConfig.require("DATABASE_USER"), EnvConfig.require("DATABASE_PASSWORD"));
+             Statement statement = con.createStatement()) {
+            statement.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+        }
+    }
 
     @LocalServerPort
     private int port;
 
     @Test
     void theUrlsTheRealBankReadEmitsAreAnsweredWithTheDocumentedHeaders() throws Exception {
-        List<BankRepository.BankSlotRow> slots = new BankContentsService().getBankContents();
+        List<BankRepository.BankSlotRow> slots = new BankContentsService()
+                .getBankContents(new AccountScope(accountId));
+        assertEquals(3, slots.size(), "the disposable fixture must exercise representative bank rows");
 
         List<String> sampled = new ArrayList<>();
         int withMetadata = 0;
@@ -83,17 +137,15 @@ class ItemIconApiRealDbIT {
 
     @Test
     void aForeignKeyForARealItemIsANotFoundWithoutRedirectOrUpstreamUrl() throws Exception {
-        List<BankRepository.BankSlotRow> slots = new BankContentsService().getBankContents();
+        List<BankRepository.BankSlotRow> slots = new BankContentsService()
+                .getBankContents(new AccountScope(accountId));
         Integer itemId = slots.stream()
                 .filter(slot -> slot.itemId() != null)
                 .map(BankRepository.BankSlotRow::itemId)
                 .findFirst()
                 .orElse(null);
 
-        if (itemId == null) {
-            System.out.println("no bank item available to probe with a foreign key");
-            return;
-        }
+        assertNotNull(itemId, "the disposable fixture must supply a bank item for the foreign-key probe");
 
         HttpResponse<byte[]> response = get("/api/items/" + itemId + "/icon/" + FOREIGN_KEY + ".png", null);
 

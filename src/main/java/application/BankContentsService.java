@@ -1,5 +1,6 @@
 package application;
 
+import model.AccountScope;
 import repo.BankRepository;
 
 import java.sql.SQLException;
@@ -28,8 +29,21 @@ public class BankContentsService {
         this.bankRepo = bankRepo;
     }
 
-    /** Every bank slot ordered by slot number; empty when the account has no bank rows. */
+    /**
+     * Every bank slot ordered by slot number; empty when the account has no bank rows, and also
+     * empty on the versioned database, where this scopeless read has no account to report
+     * (STORY-SYNC-007, see {@link BankRepository#loadBankSlots()}).
+     */
     public List<BankRepository.BankSlotRow> getBankContents() throws SQLException {
         return bankRepo.loadBankSlots();
+    }
+
+    /**
+     * One account's bank slots (STORY-APP-015). The scope is a required argument rather than
+     * something this use case resolves: it is passed in by the boundary that authorized the request,
+     * so there is no configured, last-used or default account it could fall back to.
+     */
+    public List<BankRepository.BankSlotRow> getBankContents(AccountScope scope) throws SQLException {
+        return bankRepo.loadBankSlots(scope);
     }
 }

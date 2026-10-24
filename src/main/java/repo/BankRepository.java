@@ -38,9 +38,63 @@ public class BankRepository {
                               String iconUrl,
                               String rarity) {}
 
-    /** Reads every bank slot using the shared {@link Db#open()} connection configuration. */
+    /**
+     * One account's bank slots, ordered by slot (STORY-APP-015).
+     *
+     * <p>The same query as the unscoped {@link #loadBankSlots(Connection)} with the owning account
+     * added to the {@code WHERE} clause: slots are keyed {@code (account_id, slot)}, so two accounts
+     * both holding slot 3 are two rows and only this account's is read. The {@code items} join stays
+     * global - item metadata and icons are shared data, not account data.
+     */
+    public List<BankSlotRow> loadBankSlots(model.AccountScope scope) throws SQLException {
+        try (Connection con = Db.open()) {
+            return loadBankSlots(con, scope);
+        }
+    }
+
+    /** @see #loadBankSlots(model.AccountScope) */
+    public List<BankSlotRow> loadBankSlots(Connection con, model.AccountScope scope) throws SQLException {
+        ManagedSchema.requireManagedAccountSchema(con, "account_bank");
+        String sql = """
+            SELECT b.slot, b.item_id, b.count, i.icon_path, i.icon_url, i.rarity
+            FROM account_bank b
+            LEFT JOIN items i ON i.item_id = b.item_id
+            WHERE b.account_id = ?
+            ORDER BY b.slot
+        """;
+
+        List<BankSlotRow> out = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setObject(1, scope.accountId());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(rowOf(rs));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Reads every bank slot using the shared {@link Db#open()} connection configuration.
+     *
+     * <p>The entry point for a caller that holds no {@link model.AccountScope}, which on the
+     * versioned database means it has no account to read: it returns no rows rather than reading
+     * across accounts (STORY-SYNC-007). Nothing is inferred - not a configured, last-used or only
+     * registered account - and no row of any account is exposed, so a global workflow that merely
+     * passes an account input along (the item-icon read path) stays usable while scope resolution is
+     * introduced by its own story.
+     *
+     * <p>An empty result here is the absence of a scope, <em>not</em> a claim that this account's
+     * bank is empty or that its synchronization succeeded: completion stays recorded per source in
+     * {@code account_source_state}, where no row means the source is missing. The scoped
+     * {@link #loadBankSlots(model.AccountScope)} is the only path that reports an account's actual
+     * slots.
+     *
+     * <p>On a pre-cutover database nothing changes: the unscoped query below is this installation's
+     * only bank read and keeps returning its rows.
+     */
     public List<BankSlotRow> loadBankSlots() throws SQLException {
         try (Connection con = Db.open()) {
+            if (ManagedSchema.isManaged(con)) return List.of();
             return loadBankSlots(con);
         }
     }
@@ -66,17 +120,18 @@ public class BankRepository {
         try (PreparedStatement ps = con.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
 
-            while (rs.next()) {
-                int slot = rs.getInt("slot");
-                Integer itemId  = (Integer) rs.getObject("item_id");
-                Integer count   = (Integer) rs.getObject("count");
-                String iconPath = rs.getString("icon_path");
-                String iconUrl  = rs.getString("icon_url");
-                String rarity   = rs.getString("rarity");
-
-                out.add(new BankSlotRow(slot, itemId, count, iconPath, iconUrl, rarity));
-            }
+            while (rs.next()) out.add(rowOf(rs));
         }
         return out;
+    }
+
+    private static BankSlotRow rowOf(ResultSet rs) throws SQLException {
+        return new BankSlotRow(
+                rs.getInt("slot"),
+                (Integer) rs.getObject("item_id"),
+                (Integer) rs.getObject("count"),
+                rs.getString("icon_path"),
+                rs.getString("icon_url"),
+                rs.getString("rarity"));
     }
 }

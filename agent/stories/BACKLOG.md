@@ -13,16 +13,18 @@ below stay in the plain form.
 
 ## Active
 
+- STORY-SYNC-007 | STORY-SYNC-007-restore-global-operations-after-schema-reset.md | TODO | milestone-06 | deps: STORY-INFRA-004
 
 ## To Do
-- STORY-PERF-005 | STORY-PERF-005-application-resource-benchmarks.md | TODO | milestone-06 | deps: None
+- STORY-WEB-036 | STORY-WEB-036-show-account-data-unavailable-state.md | TODO | milestone-06 | deps: STORY-INFRA-004
 - STORY-API-010 | STORY-API-010-validated-account-access-foundation.md | TODO | milestone-06 | deps: None
+- STORY-INFRA-005 | STORY-INFRA-005-remove-javafx-build-and-test-remnants.md | TODO | milestone-06 | deps: STORY-UI-004
+- STORY-PERF-005 | STORY-PERF-005-application-resource-benchmarks.md | TODO | milestone-06 | deps: None
 
 ## Blocked
 - STORY-SYNC-006 | STORY-SYNC-006-account-scoped-refresh-and-task-ownership.md | BLOCKED | milestone-06 | deps: STORY-API-010, STORY-APP-015
 - STORY-API-011 | STORY-API-011-enforce-account-isolation-across-http-workflows.md | BLOCKED | milestone-06 | deps: STORY-API-010, STORY-APP-015, STORY-SYNC-006
 - STORY-WEB-035 | STORY-WEB-035-memory-only-account-credential-lifecycle.md | BLOCKED | milestone-06 | deps: STORY-API-011
-- STORY-INFRA-005 | STORY-INFRA-005-remove-javafx-build-and-test-remnants.md | BLOCKED | milestone-06 | deps: STORY-UI-004
 - STORY-PERF-006 | STORY-PERF-006-nonblocking-performance-workflow.md | BLOCKED | milestone-06 | deps: STORY-PERF-005
 - STORY-APP-015 | STORY-APP-015-account-scoped-repositories-and-publication.md | BLOCKED | milestone-06 | deps: STORY-INFRA-004
 

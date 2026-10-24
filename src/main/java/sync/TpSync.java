@@ -5,6 +5,7 @@ import api.tp.TpPriceApi;
 import com.fasterxml.jackson.databind.JsonNode;
 import parser.TpPriceParser;
 import repo.Db;
+import repo.ManagedSchema;
 import sync.tp.relevance.CraftingProfitItemCollector;
 import sync.tp.relevance.DiscoveryItemCollector;
 import util.DbBind;
@@ -179,18 +180,33 @@ public final class TpSync {
         ps.addBatch();
     }
 
+    /**
+     * The Profit price refresh: fetch the stale or missing quotes the Profit selection requires.
+     *
+     * <p>Carries no account scope, so on the versioned database it asks for the global selection
+     * (STORY-SYNC-007): the shared crafting graph and the shared quote cache, with no account row
+     * entering the demand and no account inferred. On a pre-cutover database the selection derived
+     * from the stored recipe knowledge is unchanged.
+     *
+     * <p>Required-ID-only either way - both selections apply the same ten-minute freshness filter,
+     * so this refetches nothing a previous refresh already covered, and neither variant walks the
+     * Trading Post catalog.
+     */
     public static void syncTpPricesForProfit() throws Exception {
         Set<Integer> itemIds;
         try (Connection con = Db.open()) {
-            itemIds = new CraftingProfitItemCollector().collect(con);
+            CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
+            itemIds = ManagedSchema.isManaged(con) ? collector.collectGlobal(con) : collector.collect(con);
         }
         syncTpPrices(itemIds);
     }
 
+    /** The Discovery price refresh; globally selected without a scope exactly as {@link #syncTpPricesForProfit()}. */
     public static void syncTpPricesForDiscovery() throws Exception {
         Set<Integer> itemIds;
         try (Connection con = Db.open()) {
-            itemIds = new DiscoveryItemCollector().collect(con);
+            DiscoveryItemCollector collector = new DiscoveryItemCollector();
+            itemIds = ManagedSchema.isManaged(con) ? collector.collectGlobal(con) : collector.collect(con);
         }
         syncTpPrices(itemIds);
     }

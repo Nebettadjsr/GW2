@@ -26,6 +26,12 @@ import sync.tp.TpPriceFreshness;
  * different item set than the refresh would fetch (TARGET_ARCHITECTURE.md §9.1). Because relevance
  * is derived from account and character recipe knowledge, changed account inputs change the required
  * set, which is what keeps a result provisional until the newly required ids are covered.
+ *
+ * <p>Since STORY-SYNC-007 the definition exists in three variants that differ only in which recipes
+ * count as craftable: every account's knowledge (the legacy unscoped one), one account's knowledge,
+ * and the shared crafting graph itself for the global selection that needs no account at all. The
+ * item derivation, the tradeability join, the shared quote cache and the ten-minute freshness policy
+ * are the same in all three.
  */
 public final class CraftingProfitItemCollector {
 
@@ -39,11 +45,9 @@ public final class CraftingProfitItemCollector {
      * the aggregate counts and instants cannot distinguish one interior quote changing from nothing
      * changing, and a calculation that read a different quote is a different calculation.
      */
-    static final String RELEVANT_TRADEABLE_ITEMS = """
+    private static final String RELEVANT_TRADEABLE_ITEMS_TEMPLATE = """
 WITH craftable_recipes AS (
-  SELECT recipe_id FROM account_recipes
-  UNION
-  SELECT DISTINCT recipe_id FROM character_recipes
+%1$s
 ),
 relevant_items AS (
   SELECT r.output_item_id AS item_id
@@ -67,10 +71,59 @@ relevant_tradeable AS (
 )
 """;
 
-    private static final String SQL = RELEVANT_TRADEABLE_ITEMS + """
+    /** Recipe knowledge across every account, the source the unscoped definition reads. */
+    private static final String ALL_ACCOUNTS_RECIPE_KNOWLEDGE = """
+  SELECT recipe_id FROM account_recipes
+  UNION
+  SELECT DISTINCT recipe_id FROM character_recipes""";
+
+    /** One account's recipe knowledge; two bind parameters, both that account's GUID. */
+    private static final String SCOPED_RECIPE_KNOWLEDGE = """
+  SELECT recipe_id FROM account_recipes WHERE account_id = ?
+  UNION
+  SELECT DISTINCT recipe_id FROM character_recipes WHERE account_id = ?""";
+
+    /**
+     * The shared crafting graph itself (STORY-SYNC-007), which is what "craftable" means with no
+     * account in play: {@code recipes}/{@code recipe_ingredients} are global reference data and
+     * account recipe knowledge never partitions them (V2 migration comment on
+     * {@code account_recipes}), so this reads no account table and needs no scope.
+     */
+    private static final String EVERY_SHARED_RECIPE = "  SELECT recipe_id FROM recipes";
+
+    /** The unscoped relevance definition, refused on a migrated database. */
+    static final String RELEVANT_TRADEABLE_ITEMS =
+            RELEVANT_TRADEABLE_ITEMS_TEMPLATE.formatted(ALL_ACCOUNTS_RECIPE_KNOWLEDGE);
+
+    /**
+     * The same definition for one account (STORY-APP-015): only this account's recipe knowledge
+     * decides which items are relevant, so one account's unlocks can neither widen nor narrow
+     * another's required item set - while the shared quote cache the set is measured against stays
+     * global and is reused by every account.
+     *
+     * <p>Two bind parameters, both the account GUID, in the order the two unlock sources appear.
+     */
+    static final String SCOPED_RELEVANT_TRADEABLE_ITEMS =
+            RELEVANT_TRADEABLE_ITEMS_TEMPLATE.formatted(SCOPED_RECIPE_KNOWLEDGE);
+
+    /**
+     * The same definition over shared data only (STORY-SYNC-007): no account row enters it, so the
+     * selection is identical for every caller and for no caller at all, and an empty account
+     * registry neither empties it nor makes it infer an account.
+     */
+    static final String GLOBAL_RELEVANT_TRADEABLE_ITEMS =
+            RELEVANT_TRADEABLE_ITEMS_TEMPLATE.formatted(EVERY_SHARED_RECIPE);
+
+    private static final String SELECT_STALE = """
 SELECT item_id FROM relevant_tradeable tp
 WHERE
 """ + TpPriceFreshness.STALE_SQL_PREDICATE;
+
+    private static final String SQL = RELEVANT_TRADEABLE_ITEMS + SELECT_STALE;
+
+    private static final String SCOPED_SQL = SCOPED_RELEVANT_TRADEABLE_ITEMS + SELECT_STALE;
+
+    private static final String GLOBAL_SQL = GLOBAL_RELEVANT_TRADEABLE_ITEMS + SELECT_STALE;
 
     /**
      * The coverage report, including {@code quote_version}: one digest over every relevant item's
@@ -80,7 +133,7 @@ WHERE
      * fingerprint identical data identically. {@code string_agg} over no rows is {@code NULL}, which
      * is the empty required set's version.
      */
-    private static final String COVERAGE_SQL = RELEVANT_TRADEABLE_ITEMS + """
+    private static final String COVERAGE_SELECT = """
 SELECT COUNT(*) AS required,
        COUNT(*) FILTER (WHERE fetched_at IS NOT NULL
                           AND fetched_at >= now() - interval '%d minutes') AS fresh,
@@ -100,6 +153,10 @@ SELECT COUNT(*) AS required,
              ',' ORDER BY item_id)) AS quote_version
 FROM relevant_tradeable
 """.formatted(TpPriceFreshness.TTL.toMinutes(), TpPriceFreshness.TTL.toMinutes());
+
+    private static final String COVERAGE_SQL = RELEVANT_TRADEABLE_ITEMS + COVERAGE_SELECT;
+
+    private static final String SCOPED_COVERAGE_SQL = SCOPED_RELEVANT_TRADEABLE_ITEMS + COVERAGE_SELECT;
 
     /**
      * How much of the Profit-relevant tradeable item set the stored quote cache currently answers.
@@ -156,11 +213,76 @@ FROM relevant_tradeable
         return itemIds;
     }
 
+    /**
+     * The Profit-relevant item ids whose stored quote is stale or absent, over shared data only
+     * (STORY-SYNC-007).
+     *
+     * <p>The global half of the split: it reads the shared crafting graph and the shared quote
+     * cache, so the Trading Post price refresh runs on a migrated, empty-account database with no
+     * verified credential and without inferring one. Only the required set differs from
+     * {@link #collect(Connection, model.AccountScope)} - the ten-minute freshness policy and the
+     * required-ID-only filter are the same {@code SELECT_STALE}, so a quote this selection already
+     * refreshed is reused by every account demand instead of being refetched per account.
+     */
+    public Set<Integer> collectGlobal(Connection con) throws Exception {
+        Set<Integer> itemIds = new HashSet<>();
+        try (PreparedStatement ps = con.prepareStatement(GLOBAL_SQL);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) itemIds.add(rs.getInt(1));
+        }
+        return itemIds;
+    }
+
     public Coverage coverage(Connection con) throws SQLException {
         repo.ManagedSchema.rejectUnscopedAccountAccess(con, "Profit price coverage without an account scope");
-        try (PreparedStatement ps = con.prepareStatement(COVERAGE_SQL);
-             ResultSet rs = ps.executeQuery()) {
+        try (PreparedStatement ps = con.prepareStatement(COVERAGE_SQL)) {
+            return coverageOf(ps);
+        }
+    }
 
+    /**
+     * One account's Profit-relevant item ids whose stored quote is stale or absent (STORY-APP-015).
+     *
+     * <p>The scoped twin of {@link #collect(Connection)}: the relevance definition is the same
+     * template, so the set a refresh fetches for this account and the set
+     * {@link #coverage(Connection, model.AccountScope)} measures still cannot diverge.
+     */
+    public Set<Integer> collect(Connection con, model.AccountScope scope) throws Exception {
+        repo.ManagedSchema.requireManagedAccountSchema(con, "Profit price relevance");
+        Set<Integer> itemIds = new HashSet<>();
+        try (PreparedStatement ps = con.prepareStatement(SCOPED_SQL)) {
+            bindScope(ps, scope);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) itemIds.add(rs.getInt(1));
+            }
+        }
+        return itemIds;
+    }
+
+    /**
+     * How much of <em>this account's</em> Profit-relevant item set the shared quote cache answers
+     * (STORY-APP-015).
+     *
+     * <p>Only the required set is account-derived. The quotes themselves, their freshness policy and
+     * the {@code quote_version} digest are global, so two accounts requiring the same item read the
+     * same quote and the same version - which is what keeps the shared cache reusable across
+     * accounts instead of being refetched per account.
+     */
+    public Coverage coverage(Connection con, model.AccountScope scope) throws SQLException {
+        repo.ManagedSchema.requireManagedAccountSchema(con, "Profit price coverage");
+        try (PreparedStatement ps = con.prepareStatement(SCOPED_COVERAGE_SQL)) {
+            bindScope(ps, scope);
+            return coverageOf(ps);
+        }
+    }
+
+    private static void bindScope(PreparedStatement ps, model.AccountScope scope) throws SQLException {
+        ps.setObject(1, scope.accountId());
+        ps.setObject(2, scope.accountId());
+    }
+
+    private static Coverage coverageOf(PreparedStatement ps) throws SQLException {
+        try (ResultSet rs = ps.executeQuery()) {
             if (!rs.next()) return Coverage.unknown();
             return new Coverage(
                     rs.getInt("required"),

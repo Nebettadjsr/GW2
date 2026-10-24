@@ -61,7 +61,7 @@ public final class IconSync {
 
         try (Connection con = Db.open()) {
 
-            List<Integer> ids = referencedOrUnknownItemIds(con);
+            List<Integer> ids = metadataRefreshSelection(con);
 
             int withoutRow = 0;
             for (List<Integer> batch : BatchUtils.chunk(ids, SyncConstants.HTTP_IDS_BATCH)) {
@@ -144,6 +144,9 @@ public final class IconSync {
      * selection no longer starts from the {@code items} table, so a referenced id whose metadata row
      * was never created is discovered and the row is created from the canonical response.
      *
+     * <p>On the versioned database the three account-owned families are left out, because this entry
+     * point carries no account scope (STORY-SYNC-007); see {@link #metadataRefreshSelection}.
+     *
      * <p>This is metadata only. No image is downloaded and no local directory is needed; the web image
      * endpoint repairs its own binaries on demand and never triggers this call.
      */
@@ -184,7 +187,7 @@ public final class IconSync {
     static MetadataRepair repairItemIconMetadata(Connection con, ItemMetadataSource source)
             throws Exception {
 
-        List<Integer> ids = referencedOrUnknownItemIds(con);
+        List<Integer> ids = metadataRefreshSelection(con);
 
         System.out.println("Items to refresh icon metadata for: " + ids.size());
 
@@ -367,6 +370,91 @@ public final class IconSync {
     }
 
     /**
+     * What one unscoped icon-metadata refresh covers on the database in front of it.
+     *
+     * <p>On the versioned database the mixed selection is reduced to its global half
+     * (STORY-SYNC-007): the shared item, recipe and material-catalog references need no account, so
+     * global icon metadata stays available with no verified credential, while the three
+     * account-owned families stay behind {@link #accountReferencedItemIds} rather than being read
+     * across accounts. No account is inferred - an unscoped caller simply contributes no account
+     * reference, including when the account registry is empty.
+     *
+     * <p>On a pre-cutover database nothing changes: the one unscoped union
+     * {@link #referencedOrUnknownItemIds} has always run there keeps running, so an existing
+     * installation's bank, material and inventory items are still covered until the gate upgrades it.
+     */
+    private static List<Integer> metadataRefreshSelection(Connection con) throws SQLException {
+        return repo.ManagedSchema.isManaged(con)
+                ? globalReferencedOrUnknownItemIds(con)
+                : referencedOrUnknownItemIds(con);
+    }
+
+    /**
+     * The global half of the selection: shared recipe and material-catalog references, plus any item
+     * that still has no metadata at all.
+     *
+     * <p>Reads no account table, so it requires no {@code model.AccountScope} and is refused by
+     * nothing - this is the selection that keeps the icon-metadata refresh usable on a migrated,
+     * empty-account database (STORY-SYNC-007, docs/ROADMAP.md Phase 6). Like the unscoped union it
+     * reads the referenced families directly rather than through {@code items}, so a referenced id
+     * with no metadata row is still discovered, and it filters by no tradeability source.
+     */
+    static List<Integer> globalReferencedOrUnknownItemIds(Connection con) throws SQLException {
+
+        return selectItemIds(con, """
+        SELECT item_id FROM (
+            SELECT item_id FROM items WHERE icon_url IS NULL
+            UNION SELECT item_id FROM material_category_items
+            UNION SELECT output_item_id FROM recipes WHERE output_item_id IS NOT NULL
+            UNION SELECT item_id FROM recipe_ingredients WHERE item_id IS NOT NULL
+        ) referenced
+        ORDER BY item_id
+        """);
+    }
+
+    /**
+     * The account half of the selection for one verified account (STORY-SYNC-007): the item ids this
+     * account's bank slots, material storage and character inventories refer to.
+     *
+     * <p>Every family is keyed by the account GUID, so another account's rows can neither widen nor
+     * narrow this selection, while the metadata the refresh then writes stays shared global data -
+     * two accounts referring to the same item ask for the same {@code items} row.
+     *
+     * <p>Requires the versioned account schema: on a pre-migration database there is no account GUID
+     * to scope by, which {@code requireManagedAccountSchema} says instead of failing on a missing
+     * column.
+     */
+    static List<Integer> accountReferencedItemIds(Connection con, model.AccountScope scope)
+            throws SQLException {
+
+        repo.ManagedSchema.requireManagedAccountSchema(con, "icon-metadata account item selection");
+
+        String sql = """
+        SELECT item_id FROM (
+            SELECT item_id FROM account_bank WHERE account_id = ? AND item_id IS NOT NULL
+            UNION SELECT item_id FROM account_materials WHERE account_id = ?
+            UNION SELECT item_id FROM character_items WHERE account_id = ?
+        ) referenced
+        ORDER BY item_id
+        """;
+
+        List<Integer> ids = new ArrayList<>();
+
+        try (PreparedStatement ps = con.prepareStatement(sql)) {
+
+            for (int parameter = 1; parameter <= 3; parameter++)
+                ps.setObject(parameter, scope.accountId());
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next())
+                    ids.add(rs.getInt(1));
+            }
+        }
+
+        return ids;
+    }
+
+    /**
      * The items whose icon metadata is worth holding: everything an item-bearing view can reference,
      * plus anything still missing metadata entirely.
      *
@@ -382,7 +470,7 @@ public final class IconSync {
         // diagnostic rather than silently widened or narrowed.
         repo.ManagedSchema.rejectUnscopedAccountAccess(con, "icon-metadata item selection without an account scope");
 
-        String sql = """
+        return selectItemIds(con, """
         SELECT item_id FROM (
             SELECT item_id FROM items WHERE icon_url IS NULL
             UNION SELECT item_id FROM account_bank WHERE item_id IS NOT NULL
@@ -393,7 +481,11 @@ public final class IconSync {
             UNION SELECT item_id FROM recipe_ingredients WHERE item_id IS NOT NULL
         ) referenced
         ORDER BY item_id
-        """;
+        """);
+    }
+
+    /** Runs one parameterless item-id selection, in the order the statement itself established. */
+    private static List<Integer> selectItemIds(Connection con, String sql) throws SQLException {
 
         List<Integer> ids = new ArrayList<>();
 
