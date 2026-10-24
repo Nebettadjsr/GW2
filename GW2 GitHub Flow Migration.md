@@ -73,7 +73,8 @@ week 2
 
 ### One reviewer
 
-- Connect the repository to Codex and enable native automatic GitHub reviews, using the ChatGPT plan's review allowance. Root `AGENTS.md` gives Codex concise checks for acceptance criteria, test changes, and domain boundaries. No OpenAI API key is needed for this route.
+- Connect the repository to Codex and enable native automatic GitHub reviews for all PRs, triggered on every push so a repair receives a fresh review. Use the ChatGPT plan's review allowance. Root `AGENTS.md` gives Codex concise checks for acceptance criteria, test changes, and domain boundaries. No OpenAI API key is needed for this route.
+- Keep the separate automatic Security Review off during the initial pilots; it consumes Codex allowance or credits, and normal Code Review can already identify security findings. Revisit it after measuring pilot usage and review quality.
 - For blocking findings, trigger Claude again on the same PR branch with `@claude`. After three unsuccessful rounds, label the PR `needs-decision` for a human decision.
 - Supervise merges while testing whether native review exposes a reliable machine-readable completion and blocking signal. Enable auto-merge only after that gate is proven; CI remains required throughout.
 
