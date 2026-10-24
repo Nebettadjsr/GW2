@@ -8,7 +8,7 @@ Remove JavaFX dependencies and remaining desktop build infrastructure
 
 ## Status
 
-BLOCKED
+TODO
 
 ## Milestone
 
@@ -63,4 +63,4 @@ Not started.
 
 ## Blockers
 
-Waiting on dependencies: depends on STORY-UI-004, which is not DONE (currently TODO)
+None.

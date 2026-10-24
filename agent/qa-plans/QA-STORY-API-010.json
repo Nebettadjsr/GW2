@@ -1,0 +1,190 @@
+{
+  "status": "READY",
+  "story_id": "STORY-API-010",
+  "rationale": "Added QA-owned deterministic session and keyed-operation tests, plus an HTTP check for distinct account contexts and rejection before the guard's authorized response. The Spring Boot 4 AutoConfigureMockMvc import correction is retained without changing existing assertions. Focused execution was blocked because the Maven wrapper cannot find powershell and Maven is unavailable. The new keyed-operation tests specify that a fabricated or revoked session context is rejected before key proof, as required by the review findings and story contract.",
+  "acceptance_checks": [
+    {
+      "criterion": "AC1: Proof validates /v2/account and /v2/tokeninfo using the same transient key and uses the account GUID as identity.",
+      "expected": "Only valid proof returns access; malformed or invalid proof fails closed; replacement keys retain their own grants.",
+      "verification": "Existing offline account and token-info fixtures remain available; AccountAccessContractTest exercises proof via the fixture adapter. Live upstream behavior is not tested."
+    },
+    {
+      "criterion": "AC2: Sessions are opaque, bounded, process-local, and have an absolute 15-minute lease or earlier credential expiry.",
+      "expected": "Reads do not extend the lease; credential expiry caps the lease; capacity eviction, rotation, and logout behave as specified.",
+      "verification": "AccountSessionsTest uses a controlled Clock to check expiry, earlier credential expiry, bounded capacity and oldest-proof eviction, session/context rotation, and logout."
+    },
+    {
+      "criterion": "AC3: Proof, renewal, context, and logout HTTP contracts enforce origin/CSRF and cookie policy.",
+      "expected": "Proof returns a non-secret context and host-only HttpOnly SameSite=Strict cookie; state-changing requests validate origin; responses use no-store.",
+      "verification": "Existing AccountAccessContractTest checks cookie and cache headers, foreign and missing Origin rejection, renewal, and logout."
+    },
+    {
+      "criterion": "AC4: Account work requires a live session and matching context; caller account IDs are assertions only.",
+      "expected": "Missing sessions receive 401; context, account, and grant mismatches receive 403 before authorized account handling; A and B contexts remain distinct.",
+      "verification": "AccountAccessContractTest checks missing session, account and grant assertions, cross-session rejection, and distinct authorized context response headers."
+    },
+    {
+      "criterion": "AC5: Operation grants and transient keyed operations are validated before upstream admission.",
+      "expected": "A matching live context and key may proceed; fabricated/revoked contexts, identity mismatches, and insufficient grants are rejected. Definitive invalid credentials revoke the session; transient failures do not.",
+      "verification": "AccountAccessServiceKeyedOperationTest exercises successful admission, grant rejection before proof, fabricated/revoked context rejection before proof, identity and credential-grant mismatch, and invalid versus transient failure revocation behavior."
+    },
+    {
+      "criterion": "AC6: Keys remain transient and responses/errors do not expose credentials.",
+      "expected": "Credential material is absent from public proof output and cookie; account responses use no-store.",
+      "verification": "Existing AccountAccessContractTest checks that the fixture key and account GUID are absent from proof output and that proof responses use no-store."
+    },
+    {
+      "criterion": "AC7: Cached authorization can continue during upstream outage, renewal cannot succeed during outage, and logout requires matching context.",
+      "expected": "A live lease remains valid across transient proof failure; a mismatched context cannot revoke another session.",
+      "verification": "AccountAccessServiceKeyedOperationTest checks transient failure leaves the session live; AccountAccessContractTest checks mismatched-context logout leaves the session usable."
+    }
+  ],
+  "invariants": [
+    "Only the verified account GUID establishes account identity.",
+    "A replacement key cannot inherit grants from a prior key.",
+    "A session never stores or substitutes for a GW2 API key.",
+    "Session expiry is absolute and is not extended by reads or polling.",
+    "Credential expiry caps session expiry when earlier than the lease.",
+    "Caller-supplied account identifiers cannot select authorization scope.",
+    "A request or keyed operation must match the exact live session context before work or upstream admission.",
+    "Authorization failures disclose no account existence, contents, freshness, or credentials.",
+    "The database is a disposable cache; no backup or old-row survival behavior is tested."
+  ],
+  "test_levels": [
+    "unit",
+    "integration",
+    "contract"
+  ],
+  "existing_tests_reviewed": [
+    "src/test/java/web/AccountAccessContractTest.java — proof, cookie and origin policy, context matching, logout, account/grant assertions, and safe proof errors; retained and extended.",
+    "src/test/java/web/AccountSyncApiControllerTest.java — account synchronization HTTP behavior; no session or context coverage.",
+    "src/test/java/web/AccountLuckApiControllerTest.java — account-Luck endpoint behavior; no session or context coverage.",
+    "src/test/java/web/AccountDataFreshnessInterceptorTest.java — freshness boundary behavior; no account-session coverage.",
+    "src/test/java/web/Gw2ApiApplicationBootTest.java — application wiring and route mapping; no session proof coverage."
+  ],
+  "interface_contract": [
+    "application.access.AccountSessions(Clock clock, int capacity)",
+    "AccountSessions.establish(AccountProof proof), resolve(String sessionId, String assertedContext), revoke(String sessionId), and size()",
+    "application.access.AccountProof(String accountId, Set<AccountGrant> grants, Set<String> endpointRestrictions, Instant credentialExpiresAt)",
+    "application.access.AccountAccessService(AccountProofPort proof, AccountSessions sessions)",
+    "AccountAccessService.authorizeKeyedOperation(String sessionId, AccountContext context, String apiKey, AccountOperation operation)",
+    "AccountAccessService.AccountMismatchException, AccountAccessService.InsufficientGrantsException, InvalidCredentialException, and ProofUnavailableException",
+    "POST /api/session accepts the GW2 key only in X-GW2-API-Key and requires Origin validation.",
+    "POST /api/session/renew accepts the session cookie, X-Account-Context, and X-GW2-API-Key.",
+    "POST /api/session/logout requires the session cookie, X-Account-Context, and Origin validation.",
+    "Account requests use the GW2_SESSION cookie and X-Account-Context header.",
+    "Proof response JSON exposes a non-secret string field named accessContext.",
+    "GET /api/account/luck and GET /api/account/bank are protected account-operation examples.",
+    "Protected account requests may accept accountId only as a consistency assertion."
+  ],
+  "prepared_test_paths": [
+    "src/test/java/application/access/AccountAccessServiceKeyedOperationTest.java",
+    "src/test/java/application/access/AccountSessionsTest.java",
+    "src/test/java/web/AccountAccessContractTest.java",
+    "src/test/resources/web/access/account-response.json",
+    "src/test/resources/web/access/tokeninfo-expired-subtoken.json",
+    "src/test/resources/web/access/tokeninfo-response.json"
+  ],
+  "test_specifications": [
+    "AccountSessionsTest advances a controlled clock to verify reads do not extend the 15-minute lease and that an earlier credential expiry terminates access.",
+    "AccountSessionsTest inserts beyond capacity and checks the oldest session is evicted while the store remains bounded.",
+    "AccountSessionsTest verifies fresh session and context identifiers across issuance, and that logout revokes only the selected session.",
+    "AccountAccessServiceKeyedOperationTest verifies a matching session, context, key identity, and grants admit a keyed LUCK_READ.",
+    "AccountAccessServiceKeyedOperationTest verifies insufficient session grants prevent proof-port invocation; fabricated context and revoked session are expected to fail before proof.",
+    "AccountAccessServiceKeyedOperationTest verifies account mismatch and insufficient credential grants reject admission.",
+    "AccountAccessServiceKeyedOperationTest verifies definitive invalid credentials revoke the session, while a retryable ProofUnavailableException leaves it live.",
+    "AccountAccessContractTest verifies separate account sessions receive distinct authorized X-Account-Context values and that a B cookie paired with A context is rejected with 403 and no-store.",
+    "Existing HTTP contract checks remain for cookie/cache policy, origin validation, malformed proof, account/grant assertions, logout matching, and unauthenticated access."
+  ],
+  "pre_implementation_verification": {
+    "status": "NOT_RUN",
+    "command": "mvn '-Dtest=AccountSessionsTest,AccountAccessServiceKeyedOperationTest,AccountAccessContractTest' test -Djavafx.platform=win; fallback: .\\mvnw.cmd '-Dtest=AccountSessionsTest,AccountAccessServiceKeyedOperationTest,AccountAccessContractTest' test -Djavafx.platform=win",
+    "failure_evidence": "Maven was unavailable in PATH. The wrapper could not start because the powershell command was unavailable. No test compilation or behavior result was obtained."
+  },
+  "coverage_review": "An existing JaCoCo report is present under target/site/jacoco, but no fresh report was produced for these additions because tests could not run. Coverage for the affected application.access and web.access code therefore remains unverified. QUALITY_METRICS.md sets a long-term 90% line and branch warning target, not a build gate; no new percentage or baseline is claimed.",
+  "external_sources": [
+    {
+      "url": "https://wiki.guildwars2.com/wiki/API%3A2/account",
+      "verified_fact": "The account response contains a persistent account GUID in id; account name may change and is not the stable identity.",
+      "fact_type": "external"
+    },
+    {
+      "url": "https://wiki.guildwars2.com/wiki/API%3A2/tokeninfo",
+      "verified_fact": "Token info includes permissions and may include expiry and URL restrictions; checked-in fixtures provide offline response examples.",
+      "fact_type": "external"
+    },
+    {
+      "url": "https://wiki.guildwars2.com/wiki/API%3A2",
+      "verified_fact": "The GW2 API documents HTTP 429 rate limiting.",
+      "fact_type": "external"
+    }
+  ],
+  "clarifications": [],
+  "post_implementation_review_required": true,
+  "post_implementation_review_reason": "Independently recheck the QA test corrections against the implementation.",
+  "test_repair": {
+    "request_id": "42d5b195-32ea-460f-954d-a14bbda6b675",
+    "source": "evaluation",
+    "review": {
+      "decision": "REVISE_TESTS",
+      "reason": "The prepared HTTP contract test is meaningful for the cases it covers, but required deterministic session and keyed-operation coverage is missing. The source=interface_deviation repair is limited to the Spring Boot 4 AutoConfigureMockMvc import; the QA plan says assertion meaning was unchanged, and the current test and fixture hashes match the protected hashes. No test run evidence is available: the plan records that neither the Maven wrapper nor Maven could run.",
+      "evidence": [
+        "AccountAccessContractTest covers proof cookie/cache policy, origin rejection, cross-session context rejection, logout context matching, account and grant assertions, malformed proof, and unauthenticated access. Its SHA-256 matches the QA plan’s protected hash.",
+        "The account and token-info fixture hashes also match the protected hashes. The corrected import is org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc. The repair rationale records an import-only correction; no expected value or assertion meaning change is indicated.",
+        "Search of src/test/java and src/test/resources found no tests for AccountSessions, AccountAccessService.authorizeKeyedOperation, controlled session expiry or credential-expiry caps, and no controlled application-work test proving rejection occurs before work.",
+        "The story’s Required Tests explicitly require deterministic session tests and a controlled application-work path. The QA plan leaves those as post-implementation review items, and the current tests do not supply them."
+      ],
+      "actionable_items": [
+        "Add QA-owned deterministic tests for absolute session expiry, earlier credential-expiry capping, bounded capacity and eviction, rotation, logout, and read-based non-extension using controlled time.",
+        "Add tests for authorizeKeyedOperation covering a live session with matching context, stale or fabricated session/context rejection, key identity and grant mismatches, and definitive invalid-key revocation versus transient failure.",
+        "Add a controlled application-work test that proves authorization rejection invokes no account work and that account contexts remain isolated across sessions. Preserve expected behavior and assertion meaning while adding this coverage."
+      ]
+    },
+    "invalid_attempts": 0
+  },
+  "post_implementation_reviews": [
+    {
+      "decision": "REVISE_TESTS",
+      "reason": "The prepared HTTP contract test is meaningful for the cases it covers, but required deterministic session and keyed-operation coverage is missing. The source=interface_deviation repair is limited to the Spring Boot 4 AutoConfigureMockMvc import; the QA plan says assertion meaning was unchanged, and the current test and fixture hashes match the protected hashes. No test run evidence is available: the plan records that neither the Maven wrapper nor Maven could run.",
+      "evidence": [
+        "AccountAccessContractTest covers proof cookie/cache policy, origin rejection, cross-session context rejection, logout context matching, account and grant assertions, malformed proof, and unauthenticated access. Its SHA-256 matches the QA plan’s protected hash.",
+        "The account and token-info fixture hashes also match the protected hashes. The corrected import is org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc. The repair rationale records an import-only correction; no expected value or assertion meaning change is indicated.",
+        "Search of src/test/java and src/test/resources found no tests for AccountSessions, AccountAccessService.authorizeKeyedOperation, controlled session expiry or credential-expiry caps, and no controlled application-work test proving rejection occurs before work.",
+        "The story’s Required Tests explicitly require deterministic session tests and a controlled application-work path. The QA plan leaves those as post-implementation review items, and the current tests do not supply them."
+      ],
+      "actionable_items": [
+        "Add QA-owned deterministic tests for absolute session expiry, earlier credential-expiry capping, bounded capacity and eviction, rotation, logout, and read-based non-extension using controlled time.",
+        "Add tests for authorizeKeyedOperation covering a live session with matching context, stale or fabricated session/context rejection, key identity and grant mismatches, and definitive invalid-key revocation versus transient failure.",
+        "Add a controlled application-work test that proves authorization rejection invokes no account work and that account contexts remain isolated across sessions. Preserve expected behavior and assertion meaning while adding this coverage."
+      ]
+    },
+    {
+      "decision": "REVISE_TESTS",
+      "reason": "The prepared session and keyed-operation tests are present, meaningful, and match their protected hashes, but the story’s required controlled application-work test is still missing. Available evidence does not establish that authorization rejection prevents account work or that account A and B remain isolated through actual application work. The focused suite has no recorded passing run; the QA plan says Maven and its wrapper could not run.",
+      "evidence": [
+        "SHA-256 hashes for all six protected test and fixture files match the QA plan.",
+        "AccountSessionsTest uses a controlled clock for lease behavior, credential expiry, capacity, eviction, rotation, and logout.",
+        "AccountAccessServiceKeyedOperationTest checks successful admission, grant and identity mismatches, rejection of fabricated or revoked session contexts before proof, and invalid versus transient proof failures.",
+        "AccountAccessContractTest checks distinct contexts and rejects a cookie/context mismatch at the HTTP guard, but its fixture mode returns the authorized response from the interceptor; it does not invoke controlled application work.",
+        "The story’s Required Tests explicitly require a controlled application-work path that proves rejection invokes no work and account A and B remain distinct.",
+        "The QA plan records that the targeted tests could not run because Maven was unavailable and the wrapper could not find PowerShell. No passing result is available."
+      ],
+      "actionable_items": [
+        "Add a controlled application-work test that sends account A and B through the actual session/context resolver and work boundary, verifies each reaches only its own account scope, and verifies rejected requests invoke no account work. Retain the existing HTTP guard contract checks."
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "qa_model": "gpt-6-luna",
+  "qa_reasoning_effort": "medium",
+  "story_contract_sha256": "3de89cf1b15ba063d38d44d016a3e607124d1b1161ab79aa3834497b9da2b068",
+  "user_decision_ids": [],
+  "protected_test_hashes": {
+    "src/test/java/application/access/AccountAccessServiceKeyedOperationTest.java": "599204f849d3694771b5e5c50649b2152f16295d5d8cd38fa042b02e8126fb3f",
+    "src/test/java/application/access/AccountSessionsTest.java": "f5ff7ab5c248d245152313cb5234b4cd8fe6ac6b5c2a88b3184b2f5e23e72b0a",
+    "src/test/java/web/AccountAccessContractTest.java": "ce9264a230fb0e481a1294b464a6037398ab2aaaa6e729ddbf9fea2c6f534a51",
+    "src/test/resources/web/access/account-response.json": "80e63711ed3ec923087ad1312ffaf28f43e2ce4c8e8334d66bbac5a4c8a6d1c1",
+    "src/test/resources/web/access/tokeninfo-expired-subtoken.json": "8b0e07c32ef041a8d18ceb9b76b118b1eb0e56908933c3527fd6c1c019474c2d",
+    "src/test/resources/web/access/tokeninfo-response.json": "54a991ec049471af841d794fd4e5b48b625b81e2c2c043798054e7e58f9b8704"
+  }
+}
