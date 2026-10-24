@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import complete_codex_review
 from complete_codex_review import format_comment, previous_heads
-from prepare_codex_review import linked_issue
+from prepare_codex_review import issue_comments, linked_issue
 
 
 class CodexReviewTests(unittest.TestCase):
@@ -17,6 +17,20 @@ class CodexReviewTests(unittest.TestCase):
         self.assertEqual(linked_issue("Closes #42"), 42)
         self.assertEqual(linked_issue("Part of #17"), 17)
         self.assertIsNone(linked_issue("No issue linked"))
+
+    def test_review_context_includes_recent_issue_discussion(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        comments = [{"user": {"login": "claude[bot]"}, "body": "Maven tests passed."}]
+        with patch("prepare_codex_review.urlopen", return_value=FakeResponse()), patch(
+            "prepare_codex_review.json.load", return_value=comments
+        ):
+            self.assertIn("Maven tests passed.", issue_comments("owner/repo", 9, "fixture-token"))
 
     def test_review_rounds_count_distinct_head_commits(self):
         one = "a" * 40
