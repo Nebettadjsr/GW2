@@ -40,7 +40,7 @@ from agent.runtime.support.daily_log import (
     log_line,
     print_status,
 )
-from agent.runtime.support.files import read_file, write_json
+from agent.runtime.support.files import find_section_span, read_file, write_json
 from agent.runtime.qa import qa_agent
 from agent.runtime.core.story_state import (
     build_story_index,
@@ -695,7 +695,14 @@ def _block_story_for_qa_failure(
 def _ensure_preimplementation_qa(story_path: Path, wait_for_qa=None) -> dict | None:
     """Run QA before coding; correct invalid plans and hold technical failures."""
     plan = qa_agent.load_plan(story_path)
-    if plan and plan.get("status") in ("READY", "NO_TESTS_NEEDED"):
+    revise_contract = bool(
+        plan and plan.get("status") in ("READY", "NO_TESTS_NEEDED") and plan.get("story_contract_sha256")
+        and plan["story_contract_sha256"] != qa_agent.story_contract_sha256(read_file(story_path)))
+    if revise_contract:
+        # The requirements changed since QA planned (planner edit or recorded user guidance):
+        # a plan for the old contract would send the coder after stale tests.
+        log_line(f"Story contract changed since QA planned {story_path.name}; QA revises its plan.")
+    if plan and plan.get("status") in ("READY", "NO_TESTS_NEEDED") and not revise_contract:
         changed = qa_agent.restore_protected_tests(plan)
         if changed:
             log_line("Restored QA-owned tests before coding: " + ", ".join(changed))
@@ -708,14 +715,15 @@ def _ensure_preimplementation_qa(story_path: Path, wait_for_qa=None) -> dict | N
 
     correction_feedback = ""
     model_retries = 0
+    revision = {"contract_revision": True} if revise_contract else {}
     while True:
         try:
             if correction_feedback:
                 plan = qa_agent.execute_preparation(
-                    story_path, correction_feedback=correction_feedback
+                    story_path, correction_feedback=correction_feedback, **revision
                 )
             else:
-                plan = qa_agent.execute_preparation(story_path)
+                plan = qa_agent.execute_preparation(story_path, **revision)
         except ModelCapacityUnavailable:
             if wait_for_qa is None:
                 raise
@@ -756,6 +764,49 @@ def _ensure_preimplementation_qa(story_path: Path, wait_for_qa=None) -> dict | N
         qa_agent.clear_state()
         log_line(f"QA preparation complete for {plan['story_id']}: {plan['status']}.")
         return plan
+
+
+_UNFILLED = {"", "todo", "none", "none."}
+
+
+def _record_user_guidance(story_path: Path, item: dict) -> bool:
+    """Copy a resolved intervention's answer into the story's contract, once.
+
+    Without this the answer stays in the intervention file, the requeued story
+    reuses its old READY QA plan, and neither QA nor the coder ever sees it. Being
+    part of the contract, the section changes the story's contract hash, which
+    sends QA back to revise its plan before coding.
+    """
+    from agent.runtime.human import user_interventions
+    try:
+        resolution = read_file(user_interventions.USER_INTERVENTIONS_DIR / item["file"])
+    except OSError:
+        return False
+    parts = [(extract_section(resolution, heading) or "").strip()
+             for heading in ("User Resolution", "Resolution Notes")]
+    parts = [part for part in parts if part.casefold() not in _UNFILLED]
+    if not parts:
+        return False
+    content = read_file(story_path)
+    marker = f"### {item['id']}"
+    if marker in content:
+        return False
+    entry = f"{marker} ({item['file']})\n\n" + "\n\n".join(parts) + "\n"
+    if find_section_span(content, "User Guidance") is not None:
+        start, end = find_section_span(content, "User Guidance")
+        content = content[:end].rstrip("\n") + "\n\n" + entry + "\n" + content[end:].lstrip("\n")
+    else:
+        section = ("## User Guidance\n\nAnswers the Product Owner gave to interventions on this story. "
+                   "They are part of the work order for QA and implementation.\n\n" + entry + "\n")
+        result = find_section_span(content, "Result")
+        if result is None:
+            content = content.rstrip("\n") + "\n\n" + section
+        else:
+            heading_start = content.rfind("## Result", 0, result[0])
+            content = content[:heading_start] + section + content[heading_start:]
+    story_path.write_text(content, encoding="utf-8")
+    log_line(f"Recorded {item['id']} resolution in {story_path.name} '## User Guidance'.")
+    return True
 
 
 def requeue_resolved_interventions() -> None:
@@ -808,6 +859,8 @@ def requeue_resolved_interventions() -> None:
                 + "; ".join(unsatisfied),
             )
             continue
+
+        _record_user_guidance(story_path, item)
 
         clear_story_blocked(
             story_path
