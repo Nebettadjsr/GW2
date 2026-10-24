@@ -82,7 +82,7 @@ def main() -> int:
     comments = api("GET", f"/repos/{repository}/issues/{number}/comments?per_page=100", token)
     heads = previous_heads(comments)
     round_number = len(heads) + (head not in heads)
-    if round_number > 3 and verdict["verdict"] != "approved":
+    if round_number >= 3 and verdict["verdict"] != "approved":
         verdict["verdict"] = "needs_decision"
         verdict["summary"] += " Three distinct review rounds have been used; human disposition is needed."
 

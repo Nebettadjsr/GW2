@@ -98,6 +98,45 @@ class CodexReviewTests(unittest.TestCase):
                     complete_codex_review.main()
             api_mock.assert_not_called()
 
+    def test_third_unsuccessful_round_requires_human_decision(self):
+        head = "c" * 40
+        event = {"pull_request": {"number": 18, "head": {"sha": head}, "body": "Closes #17"}}
+        verdict = {
+            "verdict": "changes_requested",
+            "summary": "Criterion 2 is missing.",
+            "blocking_findings": ["Criterion 2"],
+            "followups": [],
+        }
+        calls = []
+
+        def fake_api(method, path, token, payload=None):
+            calls.append((method, path, payload))
+            if path.endswith("/pulls/18"):
+                return {"head": {"sha": head}, "state": "open", "labels": []}
+            if "/comments?" in path:
+                return [
+                    {"body": "<!-- gw2-codex-review head:" + "a" * 40 + " -->"},
+                    {"body": "<!-- gw2-codex-review head:" + "b" * 40 + " -->"},
+                ]
+            return {}
+
+        with TemporaryDirectory() as directory:
+            event_path = Path(directory) / "event.json"
+            result_path = Path(directory) / "result.json"
+            event_path.write_text(json.dumps(event), encoding="utf-8")
+            result_path.write_text(json.dumps(verdict), encoding="utf-8")
+            environment = {
+                "GITHUB_EVENT_PATH": str(event_path),
+                "GITHUB_REPOSITORY": "Nebettadjsr/GW2",
+                "GITHUB_TOKEN": "fixture-token",
+            }
+            with patch.dict(os.environ, environment), patch.object(
+                complete_codex_review, "api", side_effect=fake_api
+            ), patch("sys.argv", ["gate", str(result_path)]):
+                self.assertEqual(complete_codex_review.main(), 1)
+        self.assertTrue(any(path.endswith("/labels") for _, path, _ in calls))
+        self.assertTrue(any("Needs Decision" in payload["body"] for _, path, payload in calls if path.endswith("/comments")))
+
 
 if __name__ == "__main__":
     unittest.main()
