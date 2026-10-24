@@ -25,13 +25,45 @@ jobs:
        github.event.comment.user.login == 'Nebettadjsr' && contains(github.event.comment.body, '@claude'))
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      # Subscription-only: never fall back to Console/API billing.
+      ANTHROPIC_API_KEY: ''
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
 
+      - name: Verify Claude gate rules
+        run: python -m unittest discover -s .github/scripts -p test_claude_gate.py
+
+      - name: Check Claude start window
+        id: window
+        run: python .github/scripts/claude_gate.py window --github-output "$GITHUB_OUTPUT"
+
+      - name: Set up Node for subscription usage check
+        if: steps.window.outputs.allowed == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Check Claude subscription usage
+        id: budget
+        if: steps.window.outputs.allowed == 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ''
+          TZ: Europe/Berlin
+        run: |
+          test -n "$CLAUDE_CODE_OAUTH_TOKEN"
+          npm install --global @anthropic-ai/claude-code
+          timeout 45s claude -p /usage > "$RUNNER_TEMP/claude-usage.txt"
+          python .github/scripts/claude_gate.py usage \
+            --usage-file "$RUNNER_TEMP/claude-usage.txt" \
+            --github-output "$GITHUB_OUTPUT"
+
       - name: Implement issue or address PR feedback
         id: claude
+        if: steps.budget.outputs.allowed == 'true'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
