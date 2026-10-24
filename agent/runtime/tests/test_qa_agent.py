@@ -129,6 +129,18 @@ class QAPlanValidationTest(unittest.TestCase):
             self.assertEqual(source.read_text(encoding="utf-8"), "safe")
             self.assertTrue(test.exists())
 
+    def test_test_only_guard_allows_deleting_tests_but_restores_deleted_production_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            before = {"src/test/java/OldViewIT.java": b"old", "src/main/java/App.java": b"safe"}
+            with patch.object(config, "REPO_ROOT", root):
+                _, violations = qa_agent.enforce_test_only_changes(before, {})
+                removed = qa_agent.removed_test_paths(before, {})
+            self.assertEqual(violations, ["src/main/java/App.java"])
+            self.assertEqual(removed, ["src/test/java/OldViewIT.java"])
+            self.assertFalse((root / "src/test/java/OldViewIT.java").exists())
+            self.assertEqual((root / "src/main/java/App.java").read_bytes(), b"safe")
+
     def test_test_only_guard_preserves_a_concurrent_change_instead_of_overwriting_it(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -209,6 +221,13 @@ class QAPreparationPersistenceTest(unittest.TestCase):
         )
         self.assertTrue((self.root / "agent/qa-plans/QA-STORY-QA-001.json").is_file())
         self.assertTrue((self.root / "agent/runtime/artifacts/qa-tests" / self.test_file).is_file())
+
+    def test_listed_test_qa_did_not_write_is_reclassified_not_rejected(self):
+        plan = qa_agent.validate_plan(
+            raw_plan(prepared_test_paths=["src/test/java/Untouched.java", "src/test/java/Written.java"]),
+            "STORY-QA-001", ["src/test/java/Written.java"])
+        self.assertEqual(plan["prepared_test_paths"], ["src/test/java/Written.java"])
+        self.assertTrue(any("src/test/java/Untouched.java" in item for item in plan["existing_tests_reviewed"]))
 
     def test_qa_update_to_existing_test_is_persisted_and_protected_from_coding(self):
         self.test_path.write_text("old expectation", encoding="utf-8")
@@ -400,6 +419,9 @@ class QAPreparationPersistenceTest(unittest.TestCase):
         self.assertEqual(qa_agent.parse_interface_deviations(text),
                          ["test expects Foo.bar, production offers Foo.baz", "ctor takes two args"])
         self.assertEqual(qa_agent.parse_interface_deviations("## Interface Deviations\nNone.\n"), [])
+        self.assertEqual(qa_agent.parse_interface_deviations(
+            "## Interface Deviations\n\nNone. Every name in the contract is used as given,\n"
+            "`Foo.bar` included.\n"), [])
         self.assertEqual(qa_agent.parse_interface_deviations("no sections at all"), [])
 
     def test_test_files_written_by_the_coder_are_reverted(self):

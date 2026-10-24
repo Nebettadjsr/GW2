@@ -175,8 +175,14 @@ def validate_plan(raw: dict, story_id: str, owned_test_paths=()) -> dict:
         if not isinstance(value, str):
             raise QAPlanError("prepared_test_paths entries must be strings.")
         paths.add(_safe_relative_path(value))
-    if not paths.issubset(owned):
-        raise QAPlanError("prepared_test_paths may only name files created or updated by QA; describe unchanged existing tests instead.")
+    # The harness, not the model, knows which files QA wrote. A listed path QA did not write
+    # (unchanged or deleted) is reclassified as reviewed instead of failing the whole plan.
+    unowned = sorted(paths - owned)
+    if unowned:
+        reviewed = list(plan.get("existing_tests_reviewed", []))
+        plan["existing_tests_reviewed"] = reviewed + [
+            f"{path} (listed as prepared, but not written by QA)" for path in unowned]
+        paths &= owned
     if status == "NO_TESTS_NEEDED" and owned:
         raise QAPlanError("NO_TESTS_NEEDED cannot create acceptance test files.")
     plan["prepared_test_paths"] = sorted(paths)
@@ -198,8 +204,11 @@ def parse_interface_deviations(result_text: str) -> list[str]:
             inside = line.strip().lower() == INTERFACE_DEVIATIONS_HEADING.lower()
             continue
         item = line.strip().lstrip("-*").strip()
-        if inside and item and item.lower().rstrip(".") not in ("none", "n/a", "keine"):
+        if inside and item:
             lines.append(item)
+    # A section that opens with "None" (often followed by an explanation) reports no deviation.
+    if lines and re.match(r"(none|n/a|keine)\b", lines[0].strip("*_` ").lower()):
+        return []
     return lines
 
 
@@ -271,7 +280,10 @@ def enforce_test_only_changes(before: dict[str, bytes], after: dict[str, bytes],
     added = after_names - before_names
     allowed_modified = {name for name in changed if _allowed_new_test(name)}
     allowed_added = {name for name in added if _allowed_new_test(name)}
-    violations = sorted((changed - allowed_modified) | deleted | (added - allowed_added))
+    # QA may delete test files: a story that removes production code leaves tests of that code
+    # that can only be retired by their owner. Deleting anything outside the test roots stays a violation.
+    allowed_deleted = {name for name in deleted if _allowed_new_test(name)}
+    violations = sorted((changed - allowed_modified) | (deleted - allowed_deleted) | (added - allowed_added))
 
     for name in changed - allowed_modified:
         path = config.REPO_ROOT / name
@@ -280,7 +292,7 @@ def enforce_test_only_changes(before: dict[str, bytes], after: dict[str, bytes],
             violations.append(f"{name} (preserved newer concurrent change; not restored)")
             continue
         path.write_bytes(before[name])
-    for name in deleted:
+    for name in deleted - allowed_deleted:
         path = config.REPO_ROOT / name
         if path.exists():
             violations.append(f"{name} (preserved recreated file; not overwritten)")
@@ -299,6 +311,11 @@ def enforce_test_only_changes(before: dict[str, bytes], after: dict[str, bytes],
 
     qa_tests = sorted(allowed_added | allowed_modified)
     return qa_tests, violations
+
+
+def removed_test_paths(before: dict[str, bytes], after: dict[str, bytes]) -> list[str]:
+    """Test files QA deleted between two snapshots."""
+    return sorted(name for name in set(before) - set(after) if _allowed_new_test(name))
 
 
 def build_qa_prompt(story_path: Path, story_content: str, owned_test_paths=()) -> str:
@@ -369,7 +386,10 @@ Responsibilities:
   use stable fixtures, never live API calls.
 
 Write ONLY test/fixture files under the approved test roots, including updates
-to existing tests. Do not delete tests or edit application code, stories,
+to existing tests. You may delete a test or fixture only when the story removes the
+production subject it exclusively verifies (for example a retired UI); first check
+that no retained behavior loses coverage, and describe each deletion in the plan.
+Never delete a test merely because it fails. Do not edit application code, stories,
 architecture/docs, or agent instructions. Test changes must follow requirements,
 not merely make an implementation pass. The harness enforces the file boundary.
 Mark READY only with required tests prepared or sufficient existing tests identified;
@@ -590,6 +610,8 @@ def execute_preparation(story_path: Path, correction_feedback: str = "", *, test
     owned = state.get("owned_test_paths", []) if state.get("story_id") == sid else []
     if test_repair and previous_plan:
         owned = sorted(set(owned) | set(previous_plan.get("prepared_test_paths", [])))
+    # A file QA deleted earlier is no longer an owned test.
+    owned = [path for path in owned if (config.REPO_ROOT / path).is_file()]
     try:
         before = snapshot_files()
     except Exception as exc:
@@ -598,6 +620,7 @@ def execute_preparation(story_path: Path, correction_feedback: str = "", *, test
         ) from exc
     messages: list[str] = []
     qa_tests = []
+    removed: list[str] = []
     violations = []
     runner_error = None
     code = None
@@ -642,6 +665,7 @@ def execute_preparation(story_path: Path, correction_feedback: str = "", *, test
             try:
                 after = snapshot_files()
                 qa_tests, violations = enforce_test_only_changes(before, after, owned)
+                removed = removed_test_paths(before, after) if not violations else []
             except Exception as exc:
                 raise QAInfrastructureError(
                     f"Could not verify or safely restore QA workspace changes: {type(exc).__name__}: {exc}"
@@ -667,6 +691,8 @@ def execute_preparation(story_path: Path, correction_feedback: str = "", *, test
         raw["post_implementation_reviews"] = (previous_plan or {}).get("post_implementation_reviews", [])
         raw["post_implementation_review_required"] = True
         raw["post_implementation_review_reason"] = "Independently recheck the QA test corrections against the implementation."
+    if removed or (previous_plan or {}).get("removed_test_paths"):
+        raw["removed_test_paths"] = sorted(set(removed) | set((previous_plan or {}).get("removed_test_paths", [])))
     return save_plan(story_path, raw, owned_test_paths=sorted(set(owned) | set(qa_tests)))
 
 
@@ -760,6 +786,9 @@ claim is evidence to investigate, never authorization to change a test.
 Return RETRY with concrete production-code deficiencies when the tests are valid.
 Return REVISE_TESTS only when requirements/evidence establish a missing or faulty
 application test/fixture. Supply evidence and specific test corrections in actionable_items.
+Any remaining work on test files or fixtures — adding, correcting, or deleting a test whose
+production subject was removed — is REVISE_TESTS, never RETRY: RETRY goes to the coder, who
+may not touch tests, so a test-only RETRY can never be satisfied.
 Do not mix production-code instructions into REVISE_TESTS: production is evaluated again
 after test corrections. REVISE_TESTS schedules a separate guarded, writing QA invocation;
 this review remains read-only.

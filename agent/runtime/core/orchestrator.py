@@ -11,6 +11,7 @@ from pathlib import Path
 import time
 import json
 import hashlib
+import re
 from agent.runtime.support import activity
 
 from agent.runtime.support.config import (
@@ -148,6 +149,15 @@ def _as_text_list(value) -> list[str]:
     return [str(item) for item in value or [] if str(item).strip()]
 
 
+_QA_OWNED_WORK = re.compile(r"agent/qa-plans/|\bQA plan\b|QA-owned test|src/test/|\.spec\.(ts|mjs)\b", re.IGNORECASE)
+_PRODUCTION_WORK = re.compile(r"src/main/|frontend/src/(?!.*\.spec\.)|\bproduction (code|class|path)", re.IGNORECASE)
+
+
+def _names_only_qa_owned_work(item: str) -> bool:
+    """True when an actionable item names QA-owned artifacts and nothing the coder owns."""
+    return bool(_QA_OWNED_WORK.search(item)) and not _PRODUCTION_WORK.search(item)
+
+
 def _evaluate_preserving_completed_attempt(
         story_content: str,
         result_content: str,
@@ -190,10 +200,18 @@ def _evaluate_preserving_completed_attempt(
                                         "verified by the pipeline after acceptance: " + "; ".join(gates) + ")"}
                 elif gates:
                     review = {**review, "actionable_items": items}
+                if (review["decision"] == "RETRY" and review.get("actionable_items")
+                        and all(_names_only_qa_owned_work(item) for item in review["actionable_items"])):
+                    # A RETRY goes to the coder, who may not touch tests or the QA plan, so QA-only
+                    # work labelled RETRY could never be satisfied; route it to the QA repair instead.
+                    review = {**review, "decision": "REVISE_TESTS",
+                              "evidence": review.get("evidence") or [review.get("reason", "")]}
                 qa_agent.record_review(qa_plan, review)
                 evaluation["qa_post_review"] = review
+                # An evaluator BLOCKED that QA answers with REVISE_TESTS is test work QA can do,
+                # not a human block; only a product decision outranks the test repair.
                 if (review["decision"] == "REVISE_TESTS"
-                        and evaluation.get("decision") not in ("BLOCKED", "NEEDS_USER")):
+                        and evaluation.get("decision") != "NEEDS_USER"):
                     evaluation["decision"] = "RETRY"
                     evaluation["qa_test_repair"] = review
                 elif review["decision"] == "RETRY":

@@ -552,6 +552,7 @@ def step_publish(cycle: dict, _context: StepContext) -> StepResult:
     if plan:
         candidates.add(_relative(qa_agent.plan_path(plan["story_id"])))
         candidates.update(plan.get("prepared_test_paths", []))
+        candidates.update(plan.get("removed_test_paths", []))
     # Only dirty paths can be staged; everything else is already committed.
     paths = sorted(candidates & git_sync.working_tree_paths())
     push = git_sync.commit_and_push(
@@ -692,7 +693,8 @@ def step_qa_repair(cycle: dict, context: StepContext) -> StepResult:
         return _stop_blocked(cycle, "QA test correction needs a Product Owner decision.")
     if plan["status"] != "READY":
         return _qa_routing_failure(cycle, context, qa_agent.QAPlanError("Test correction did not produce READY."))
-    cycle["publish_paths"] = sorted(set(cycle["publish_paths"]) | set(plan.get("prepared_test_paths", [])))
+    cycle["publish_paths"] = sorted(set(cycle["publish_paths"]) | set(plan.get("prepared_test_paths", []))
+                                    | set(plan.get("removed_test_paths", [])))
     cycle.setdefault("qa_repair_history", []).append({
         "request_id": action["request_id"], "source": action["source"],
         "reason": action["review"]["reason"], "paths": plan.get("prepared_test_paths", [])})

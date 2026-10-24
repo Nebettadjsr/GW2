@@ -132,6 +132,47 @@ class QAGateTest(unittest.TestCase):
         self.assertEqual(result["qa_test_repair"], review)
         self.assertEqual(result["actionable_retry_items"], [])
 
+    def test_evaluator_block_that_qa_can_resolve_routes_to_test_repair(self):
+        plan = ready_plan(prepared=True)
+        verdict = {"decision": "BLOCKED", "reason": "Obsolete tests must be removed through QA.",
+                   "qa_review_required": True}
+        review = {"decision": "REVISE_TESTS", "reason": "Tests of deleted classes remain.",
+                  "evidence": ["OldViewIT references a removed class."], "actionable_items": ["Remove OldViewIT."]}
+        with patch.object(orchestrator, "_evaluate_with_local_retries", return_value=verdict), \
+                patch.object(qa_agent, "run_conditional_review", return_value=review), \
+                patch.object(qa_agent, "record_review"), \
+                patch.object(orchestrator, "get_active_story_path", return_value=self.story):
+            result = orchestrator._evaluate_preserving_completed_attempt("story", "result", 0, True, qa_plan=plan)
+        self.assertEqual(result["decision"], "RETRY")
+        self.assertEqual(result["qa_test_repair"], review)
+
+    def test_qa_retry_naming_only_qa_owned_work_routes_to_test_repair(self):
+        plan = ready_plan(prepared=True)
+        verdict = {"decision": "RETRY", "reason": "Purpose achieved; QA record is stale.", "actionable_retry_items": []}
+        review = {"decision": "RETRY", "reason": "The QA plan is stale.",
+                  "actionable_items": ["Update agent/qa-plans/QA-STORY-QA-001.json with the final results.",
+                                       "In the QA-owned test process, retire src/test/java/OldViewIT.java."]}
+        with patch.object(orchestrator, "_evaluate_with_local_retries", return_value=verdict), \
+                patch.object(qa_agent, "run_conditional_review", return_value=review), \
+                patch.object(qa_agent, "record_review"), \
+                patch.object(orchestrator, "get_active_story_path", return_value=self.story):
+            result = orchestrator._evaluate_preserving_completed_attempt("story", "result", 0, True, qa_plan=plan)
+        self.assertEqual(result["qa_test_repair"]["decision"], "REVISE_TESTS")
+        self.assertEqual(result["actionable_retry_items"], [])
+
+    def test_qa_retry_with_production_work_still_goes_to_the_coder(self):
+        plan = ready_plan(prepared=True)
+        verdict = {"decision": "RETRY", "reason": "Defect.", "actionable_retry_items": []}
+        review = {"decision": "RETRY", "reason": "Defect.",
+                  "actionable_items": ["Fix src/main/java/App.java and update the QA plan afterwards."]}
+        with patch.object(orchestrator, "_evaluate_with_local_retries", return_value=verdict), \
+                patch.object(qa_agent, "run_conditional_review", return_value=review), \
+                patch.object(qa_agent, "record_review"), \
+                patch.object(orchestrator, "get_active_story_path", return_value=self.story):
+            result = orchestrator._evaluate_preserving_completed_attempt("story", "result", 0, True, qa_plan=plan)
+        self.assertNotIn("qa_test_repair", result)
+        self.assertIn("Fix src/main/java/App.java and update the QA plan afterwards.", result["actionable_retry_items"])
+
     def test_test_repair_does_not_override_a_genuine_product_decision(self):
         plan = ready_plan(prepared=True)
         verdict = {"decision": "NEEDS_USER", "reason": "Product policy is unspecified."}
