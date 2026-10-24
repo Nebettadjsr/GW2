@@ -13,7 +13,6 @@ below stay in the plain form.
 
 ## Active
 
-- STORY-SYNC-007 | STORY-SYNC-007-restore-global-operations-after-schema-reset.md | TODO | milestone-06 | deps: STORY-INFRA-004
 
 ## To Do
 - STORY-WEB-036 | STORY-WEB-036-show-account-data-unavailable-state.md | TODO | milestone-06 | deps: STORY-INFRA-004
@@ -37,6 +36,7 @@ below stay in the plain form.
 ## Done
 - STORY-INFRA-004 | STORY-INFRA-004-versioned-account-schema-and-legacy-preservation.md | DONE | milestone-06 | Introduce versioned account schema and reset legacy cache
 - STORY-UI-004 | STORY-UI-004-remove-legacy-javafx-application.md | DONE | milestone-06 | Remove the legacy JavaFX application and exclusive presentation code
+- STORY-SYNC-007 | STORY-SYNC-007-restore-global-operations-after-schema-reset.md | DONE | milestone-06 | Restore global operations on the versioned database
 
 ## Numbering Convention
 

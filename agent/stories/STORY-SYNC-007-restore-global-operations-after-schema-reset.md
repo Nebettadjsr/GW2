@@ -8,7 +8,7 @@ Restore global operations on the versioned database
 
 ## Status
 
-UNFINISHED
+DONE
 
 ## Milestone
 
