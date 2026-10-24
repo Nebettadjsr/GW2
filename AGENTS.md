@@ -24,4 +24,10 @@ The backend owns authoritative business logic and GW2 API access. The frontend d
 
 CI runs the Maven and Vitest suites. Real-database `*IT`, browser smoke, and live GW2 API checks require explicit local evidence when an issue depends on them. Explain removed or weakened assertions in the PR. Never invent test results. Preserve unrelated maintainer edits, keep diffs focused, and stop any process you start.
 
+## Code Review Rules
+
+- Compare a PR with its linked issue and the owning product documents. Flag a missing acceptance criterion when it changes observable behavior; cite the criterion and the conflicting code or test.
+- Flag removed, skipped, or weakened assertions when they leave required behavior unverified and the PR gives no sound reason or replacement evidence.
+- Flag new frontend calculations of authoritative domain results, direct frontend calls to the Guild Wars 2 API, or exposed backend secrets. The backend owns those responsibilities, except for the documented Ectoplasm Salvage calculation.
+
 Repository files are UTF-8. On Windows, use `apply_patch` for edits containing non-ASCII text; PowerShell 5.1 may corrupt characters piped into another program.

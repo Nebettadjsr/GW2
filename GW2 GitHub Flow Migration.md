@@ -10,7 +10,7 @@ In the week up to 24 Oct 2026 the pipeline delivered one story (STORY-UI-004). T
 
 ## Target flow
 
-PO request / idea └─ planning session (you + Claude, interactive) ──► GitHub issue \[label: auto | pairing\] │ auto ─► Claude Code GitHub Action ─► branch story/\<n>-slug ─► PR pairing ─► you + Claude Code locally ─► same branch / PR │ CI (ci.yml: Maven + Vitest) + one reviewer │ changes requested ─► "@claude fix …" on the PR (same branch) green + approved ─► you merge (auto-merge later)
+PO request / idea └─ planning session (you + Codex, interactive) ──► GitHub issue \[label: auto | pairing\] │ auto ─► Claude Code GitHub Action ─► branch story/\<n>-slug ─► PR pairing ─► you + Claude Code locally ─► same branch / PR │ CI (ci.yml: Maven + Vitest) + native Codex GitHub review │ changes requested ─► "@claude fix …" on the PR (same branch) green + reviewed ─► supervised merge until a reliable review gate is proven
 
 State lives only in GitHub: issue open or closed, PR open or merged, CI green or red. A failed attempt is a closed PR, not a jammed queue.
 
@@ -73,18 +73,18 @@ week 2
 
 ### One reviewer
 
-- Add a review step on every PR. Either a second Claude run with a review-only prompt, or Codex as reviewer. The reviewer checks the acceptance criteria, the domain spec and the test diff, then approves or requests changes with concrete items.
-- Requested changes trigger the agent again on the same branch. Cap it at three rounds, then label the PR `needs-decision`, which notifies you.
-- Keep merging by hand for the first two weeks. Switch on auto-merge for `auto` PRs once the reviewer has been trustworthy.
+- Connect the repository to Codex and enable native automatic GitHub reviews, using the ChatGPT plan's review allowance. Root `AGENTS.md` gives Codex concise checks for acceptance criteria, test changes, and domain boundaries. No OpenAI API key is needed for this route.
+- For blocking findings, trigger Claude again on the same PR branch with `@claude`. After three unsuccessful rounds, label the PR `needs-decision` for a human decision.
+- Supervise merges while testing whether native review exposes a reliable machine-readable completion and blocking signal. Enable auto-merge only after that gate is proven; CI remains required throughout.
 
-**Done when:** a PR goes from opened to approved without you, and a deliberately broken PR is stopped by the reviewer or CI.
+**Done when:** a PR receives a native Codex review without a manual trigger, and a deliberately broken PR is held for correction by CI or the supervised review process.
 
 Phase 4\
 week 2–3
 
 ### Planning and pairing
 
-- Planning becomes a short interactive Claude Code session, for example weekly: read open `po-request` issues and the roadmap, then create or split issues and label them `auto` or `pairing`. A slash command can hold the trimmed planner rules.
+- Planning becomes a short interactive Codex session, for example weekly: read open `po-request` issues and the roadmap, then create or split issues and label them `auto` or `pairing`. The connected GitHub tool writes the issues; no model API key is required.
 - Do the `pairing` stories (account isolation, sessions, real-database work) in focused local sessions, on the same branch and PR model.
 - Local-only checks (real-database `*IT`, browser smoke scripts, live GW2 API) are listed in the PR template and run in the pairing session. GitHub-hosted runners cannot run them.
 
