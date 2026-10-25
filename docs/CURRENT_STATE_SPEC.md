@@ -17,11 +17,11 @@ The app is not hosted yet. Account HTTP workflows now validate browser-supplied 
 
 ## Local development and configuration
 
-The backend can be started from the repository root with `./mvnw spring-boot:run` (Windows: `mvnw.cmd spring-boot:run`). It listens on port 8080 by default. Run the browser development server from `frontend/` with `npm ci` and `npm run dev`; Vite uses port 5173 and forwards `/api` requests to the backend.
+The backend can be started from `backend/` with `./mvnw spring-boot:run` (Windows: `mvnw.cmd spring-boot:run`); `repo.EnvConfig` reads `.env` from the working directory and, when run from `backend/` with no `.env` there, from the repository root. IDE run configurations use `backend/` as the working directory. It listens on port 8080 by default. Run the browser development server from `frontend/` with `npm ci` and `npm run dev`; Vite uses port 5173 and forwards `/api` requests to the backend.
 
 Configure PostgreSQL through the environment settings in .env.example. Enter the read-only GW2 key in the connection panel on the System Status page; sessionStorage retains it across navigation/reload, and the backend receives it transiently for proof/upstream work. Local GW2_API_KEY configuration may remain for retained entry points, but scoped HTTP routes never fall back to it. Flyway owns schema lifecycle; disposable cached data is reset/re-fetched under UD-016. Vite preserves the browser host through its proxy for normal same-origin checks. `docker compose up --build` starts the local frontend/backend/PostgreSQL stack with its own database and named cache volumes (`CURRENT_ARCHITECTURE.md`, Docker Compose stack); there is no hosted deployment.
 
-The Maven wrapper and `pom.xml` manage Java dependencies. Frontend dependencies use `frontend/package.json` and its lockfile. Main Java code and tests use Maven's `src/main/java` and `src/test/java` layout.
+The Maven wrapper and `backend/pom.xml` manage Java dependencies. Frontend dependencies use `frontend/package.json` and its lockfile. Main Java code and tests use Maven's `backend/src/main/java` and `backend/src/test/java` layout. Repository layout: `backend/` (Maven module: `pom.xml`, `mvnw`, `.mvn`, `src`), `frontend/` (Vue app), `docker/backend/` and `docker/frontend/` (Dockerfiles, their `*.dockerignore` and the Nginx template), root `compose.yaml` (conventional Compose entrypoint), `scripts/` (container smokes), `docs/`.
 
 ## Current user workflows
 
@@ -70,7 +70,7 @@ Frontend pages present operation loading, completion, and failure states. Backen
 
 ## Build and verification
 
-Backend tests run with `./mvnw test`; JaCoCo reports are generated with `./mvnw test jacoco:report`. Frontend checks are run from `frontend/`: `npm test`, `npm run test:coverage`, `npm run type-check`, and `npm run build`; browser smoke commands are documented in [Test Strategy](TEST_STRATEGY.md). GitHub Actions provides the push/PR CI gate and combined Java/frontend coverage KPI summary. Coverage below the 90% target is reported as a warning, not a build failure. Optional integration and live API checks have prerequisites and are not equivalent to the default deterministic suite.
+Backend tests run with `./mvnw test` in `backend/`; JaCoCo reports are generated with `./mvnw test jacoco:report` (output under `backend/target/site/jacoco`). Frontend checks are run from `frontend/`: `npm test`, `npm run test:coverage`, `npm run type-check`, and `npm run build`; browser smoke commands are documented in [Test Strategy](TEST_STRATEGY.md). GitHub Actions provides the push/PR CI gate and combined Java/frontend coverage KPI summary. Coverage below the 90% target is reported as a warning, not a build failure. Optional integration and live API checks have prerequisites and are not equivalent to the default deterministic suite.
 
 Development uses GitHub issues, PRs, Maven/Vitest CI and native Codex review. Each explicit Claude workflow dispatch selects one ready auto issue; the normal turn limit is 40 (configurable) and the job bound is 45 minutes. An authorized supervisor may dispatch/review subsequent runs. There is no usage-percentage gate or independent background supervisor. Small nonblocking follow-ups may be recorded by review. The retired Python service is recoverable at pre-github-flow.
 

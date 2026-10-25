@@ -121,6 +121,9 @@ class CharacterSyncTest {
         if (value != null && !value.isBlank()) return value;
 
         Path path = Path.of(".env");
+        if (!Files.exists(path) && Files.exists(Path.of("pom.xml")) && Files.exists(Path.of("..", ".env"))) {
+            path = Path.of("..", ".env"); // backend/ working directory, repository-root .env
+        }
         if (Files.exists(path)) {
             try {
                 for (String line : Files.readAllLines(path)) {

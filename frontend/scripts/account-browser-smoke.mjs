@@ -18,7 +18,7 @@
  * It asserts no domain value and establishes no performance (TEST_STRATEGY / TARGET_ARCHITECTURE 33).
  *
  * Prerequisites, both started by hand:
- *   1. the backend    — `./mvnw spring-boot:run` in the repository root
+ *   1. the backend    — `./mvnw spring-boot:run` in backend/
  *   2. the dev server — `npm run dev` in `frontend/` (it proxies `/api` to the backend)
  *
  * Usage:  npm run smoke:account
@@ -487,6 +487,6 @@ run().catch((error) => {
   // compared, and this says which routes the browser had reached by then and what they answered,
   // without the icon requests growing the report (STORY-WEB-031).
   console.error(`Backend calls observed: ${summarizeBackendCalls(apiCalls)}`)
-  console.error('Are both the backend (./mvnw spring-boot:run) and the dev server (npm run dev) running?')
+  console.error('Are both the backend (cd backend && ./mvnw spring-boot:run) and the dev server (npm run dev) running?')
   process.exitCode = 1
 })

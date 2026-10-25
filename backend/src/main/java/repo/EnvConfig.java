@@ -13,7 +13,10 @@ import java.util.Optional;
  * Real process environment variables take priority; a ".env" file in the
  * working directory (same cwd-relative convention already used elsewhere
  * in this project, e.g. crafting_graph_cache.json) is used as a fallback
- * for local development. See .env.example for the expected keys.
+ * for local development. When the working directory is the Maven module root
+ * ({@code backend/}, recognised by its pom.xml) and has no .env of its own, the
+ * repository-root .env is used, so the maintainer's existing configuration keeps
+ * working after the move into backend/. See .env.example for the expected keys.
  */
 public final class EnvConfig {
 
@@ -25,7 +28,7 @@ public final class EnvConfig {
         return lookup(key).orElseThrow(() -> new IllegalStateException(
                 "Missing required configuration value: " + key +
                         ". Set it as an environment variable, or add it to a .env file " +
-                        "in the project root (see .env.example)."
+                        "in the project root or backend/ (see .env.example)."
         ));
     }
 
@@ -45,10 +48,21 @@ public final class EnvConfig {
         return Optional.of(value);
     }
 
+    /** The .env to read for the given working directory: its own, else the repository root's from backend/. */
+    static Path locateDotEnv(Path workingDir) {
+        Path own = workingDir.resolve(".env");
+        if (Files.exists(own) || !Files.exists(workingDir.resolve("pom.xml"))) {
+            return own;
+        }
+        Path parent = workingDir.toAbsolutePath().normalize().getParent();
+        Path root = parent == null ? null : parent.resolve(".env");
+        return root != null && Files.exists(root) ? root : own;
+    }
+
     private static Map<String, String> loadDotEnvFile() {
         Map<String, String> values = new HashMap<>();
 
-        Path path = Path.of(".env");
+        Path path = locateDotEnv(Path.of(""));
         if (!Files.exists(path)) {
             return values;
         }

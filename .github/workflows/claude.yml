@@ -52,10 +52,11 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
+          cache-dependency-path: backend/pom.xml
 
       - name: Prepare test runtime
         run: |
-          chmod +x ./mvnw
+          chmod +x backend/mvnw
           printf 'ICON_CACHE_DIR=%s/gw2-icons\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Validate run allowance
