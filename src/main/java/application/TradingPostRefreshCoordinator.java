@@ -123,6 +123,41 @@ public class TradingPostRefreshCoordinator {
         }
     }
 
+    /**
+     * Brings the variant's quotes up to date before a calculation reads them, on the caller's
+     * thread, and returns only when that has completed (or throws the failure unchanged). This is
+     * the entry for calculations that must keep their synchronous result/error contract: they may
+     * not be answered from missing or stale quotes, so the demand cannot merely be scheduled.
+     *
+     * <p>It still goes through the one coordinator: the upstream work is the shared service's,
+     * whose methods exclude every other run (manual, scheduled-by-demand or another calculation),
+     * so a call arriving behind another run recomputes its required ids afterwards and fetches only
+     * what is still missing or older than ten minutes. A manual run of the same variant that is in
+     * flight is told to take one recheck pass, so ids this demand adds are covered there too.
+     */
+    public void refreshAndAwait(Variant variant) throws Exception {
+        State state = states.get(variant);
+        synchronized (this) {
+            if (state.draining) state.demanded = true;
+        }
+        try {
+            refreshFor(variant);
+        } catch (Exception failure) {
+            synchronized (this) {
+                state.lastFailure = new CalculationFreshness.RefreshFailure(
+                        CalculationFreshness.RefreshKind.TRADING_POST, null,
+                        "PRICE_REFRESH_FAILED",
+                        "Trading Post price refresh failed; the previously fetched quotes are unchanged",
+                        true);
+            }
+            throw failure;
+        }
+        synchronized (this) {
+            state.completedPasses++;
+            state.lastFailure = null;
+        }
+    }
+
     private void refreshFor(Variant variant) throws Exception {
         switch (variant) {
             case PROFIT -> refresh.refreshForProfit();
