@@ -72,4 +72,26 @@ class CharacterDetailValidationTest {
         rejected(",\"crafting\":[{\"discipline\":\"Chef\",\"rating\":4294967297}],\"recipes\":[],\"bags\":[],\"equipment\":[]");
         rejected(",\"crafting\":[],\"recipes\":[],\"bags\":[],\"equipment\":[{\"id\":1,\"slot\":\"Helm\",\"count\":null}]");
     }
+
+    @Test
+    void incompleteOrMalformedTopLevelMetadataIsRejected() throws Exception {
+        String[] bad = {
+                "{\"name\":\"Aria\",\"race\":\"Human\",\"gender\":\"Male\",\"level\":80,\"created\":\"2020-01-01T00:00:00Z\"",
+                "{\"name\":\"Aria\",\"profession\":\"Guardian\",\"gender\":\"Male\",\"level\":80,\"created\":\"2020-01-01T00:00:00Z\"",
+                "{\"name\":\"Aria\",\"profession\":\"Guardian\",\"race\":\"Human\",\"level\":80,\"created\":\"2020-01-01T00:00:00Z\"",
+                "{\"name\":\"Aria\",\"profession\":\"Guardian\",\"race\":\"Human\",\"gender\":\"Male\",\"created\":\"2020-01-01T00:00:00Z\"",
+                "{\"name\":\"Aria\",\"profession\":\"Guardian\",\"race\":\"Human\",\"gender\":\"Male\",\"level\":80",
+                "{\"name\":\"Aria\",\"profession\":7,\"race\":\"Human\",\"gender\":\"Male\",\"level\":80,\"created\":\"2020-01-01T00:00:00Z\"",
+                "{\"name\":\"Aria\",\"profession\":\"Guardian\",\"race\":\"Human\",\"gender\":\"\",\"level\":80,\"created\":\"2020-01-01T00:00:00Z\"",
+                "{\"name\":\"Aria\",\"profession\":\"Guardian\",\"race\":\"Human\",\"gender\":\"Male\",\"level\":\"80\",\"created\":\"2020-01-01T00:00:00Z\"",
+                "{\"name\":\"Aria\",\"profession\":\"Guardian\",\"race\":\"Human\",\"gender\":\"Male\",\"level\":0,\"created\":\"2020-01-01T00:00:00Z\"",
+                "{\"name\":\"Aria\",\"profession\":\"Guardian\",\"race\":\"Human\",\"gender\":\"Male\",\"level\":80,\"created\":\"yesterday\"",
+                "{\"name\":\"Aria\",\"profession\":\"Guardian\",\"race\":\"Human\",\"gender\":\"Male\",\"level\":80,\"created\":12345",
+        };
+        for (String head : bad) {
+            JsonNode n = M.readTree(head + ALL + "}");
+            assertThrows(IllegalStateException.class,
+                    () -> CharacterSync.requireConsistentDetail("Aria", CharacterParser.parseInfo(n), n), head);
+        }
+    }
 }

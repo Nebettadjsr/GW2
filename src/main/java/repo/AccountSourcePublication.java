@@ -63,7 +63,9 @@ public final class AccountSourcePublication {
      * One source's already-fetched, already-validated rows, written inside the publication
      * transaction.
      *
-     * <p>{@code runTs} is the transaction's own {@code now()}, taken once and passed to every
+     * <p>{@code runTs} is {@code clock_timestamp()} read once after the account writer lock is held (not
+     * {@code now()}, which is fixed at transaction start and so predates a queued writer's lock wait,
+     * letting rows its predecessor stamped later survive the stale-row delete), taken once and passed to every
      * statement, so "the rows this run refreshed" and "the rows it did not" are decidable by a
      * single value: an upsert stamps {@code fetched_at = runTs} and the matching stale-row delete
      * removes this account's rows with an older stamp. Taking it from the database rather than the
@@ -152,9 +154,9 @@ public final class AccountSourcePublication {
     }
 
     private static Timestamp transactionNow(Connection con) throws SQLException {
-        try (PreparedStatement ps = con.prepareStatement("SELECT now()");
+        try (PreparedStatement ps = con.prepareStatement("SELECT clock_timestamp()");
              ResultSet rs = ps.executeQuery()) {
-            if (!rs.next()) throw new SQLException("SELECT now() returned no row");
+            if (!rs.next()) throw new SQLException("SELECT clock_timestamp() returned no row");
             return rs.getTimestamp(1);
         }
     }

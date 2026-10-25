@@ -271,6 +271,42 @@ class AccountSourcePublicationTest {
     }
 
     @Test
+    void aWriterQueuedBeforeThePredecessorWroteStillRemovesTheRowsThePredecessorStamped() throws Exception {
+        CountDownLatch holding = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (Connection first = connect(); Connection second = connect()) {
+            first.setSchema(schema);
+            second.setSchema(schema);
+            var firstWriter = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return at(T1).publish(first, A, "bank", (c, s, ts) -> {
+                        holding.countDown();
+                        if (!release.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("not released");
+                        upsertBank(c, s, ts, 2); // written after the second writer's transaction began
+                    });
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            assertTrue(holding.await(30, TimeUnit.SECONDS));
+            var secondWriter = CompletableFuture.supplyAsync(() -> {
+                try {
+                    // a successful empty replacement: it writes nothing and removes stale rows
+                    return at(T2).publish(second, A, "bank", (c, s, ts) -> deleteStale(c, "account_bank", s, ts));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            awaitBlockedWriter();
+            release.countDown();
+            firstWriter.get(30, TimeUnit.SECONDS);
+            assertEquals(2, secondWriter.get(30, TimeUnit.SECONDS).generation());
+        }
+        assertTrue(new BankRepository().loadBankSlots(admin, A).isEmpty(),
+                "the queued empty replacement must remove the predecessor's rows");
+    }
+
+    @Test
     void accountsWhoseGuidsFoldToTheSameBitsDoNotSerialize() throws Exception {
         // msb^lsb is identical for both, so any 32/64-bit XOR-folded lock key would collide
         AccountScope collider = new AccountScope(new java.util.UUID(

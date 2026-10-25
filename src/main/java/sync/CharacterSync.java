@@ -203,6 +203,18 @@ public final class CharacterSync {
             throw new IllegalStateException("Character detail for '" + requestedName
                     + "' names '" + info.name() + "'; roster not published");
         }
+        for (String field : new String[] {"profession", "race", "gender"}) {
+            JsonNode v = cNode.get(field);
+            if (v == null || !v.isTextual() || v.asText().isBlank()) throw malformedMeta(requestedName, field);
+        }
+        if (!positiveInt(cNode.get("level"))) throw malformedMeta(requestedName, "level");
+        JsonNode created = cNode.get("created");
+        if (created == null || !created.isTextual()) throw malformedMeta(requestedName, "created");
+        try {
+            java.time.OffsetDateTime.parse(created.asText());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw malformedMeta(requestedName, "created");
+        }
         for (String section : new String[] {"crafting", "recipes", "bags", "equipment"}) {
             JsonNode n = cNode.get(section);
             if (n == null || !n.isArray()) {
@@ -233,6 +245,11 @@ public final class CharacterSync {
                 throw malformed(requestedName, "equipment");
             }
         }
+    }
+
+    private static IllegalStateException malformedMeta(String name, String field) {
+        return new IllegalStateException("Character detail for '" + name + "' has a missing or malformed '"
+                + field + "' field; roster not published");
     }
 
     private static IllegalStateException malformed(String name, String section) {
