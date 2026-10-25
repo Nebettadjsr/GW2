@@ -199,7 +199,7 @@ public class CachedCraftingProfitService {
             }
         }
 
-        return new ProfitOutcome(data, describe(requestId, captured, data != null));
+        return new ProfitOutcome(data, describeScoped(requestId, captured, data != null));
     }
 
     /**
@@ -231,7 +231,7 @@ public class CachedCraftingProfitService {
                 ? CONSISTENCY_FRESH_CALCULATION
                 : CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS;
 
-        return new ResolutionOutcome(detail, consistency, describe(requestId, captured, detail != null));
+        return new ResolutionOutcome(detail, consistency, describeScoped(requestId, captured, detail != null));
     }
 
     private CalculationInputVersions capture(ProfitInputSession session) throws SQLException {
@@ -258,6 +258,41 @@ public class CachedCraftingProfitService {
         CalculationFreshness.PriceCoverage coverage = priceCoverage.read(session.connection(), scope);
         return new CalculationInputVersions(scope.id(), versions, generations, coverage, accountMaxAge,
                 evaluatedAt);
+    }
+
+    /**
+     * The scoped envelope: describes the captured account and generations, and admits no refresh
+     * work. The existing coordinators run the unscoped sequences, so admitting through them from an
+     * account-scoped calculation would silently invoke legacy work; the credential-aware scoped
+     * coordinator belongs to issue #11. Outstanding needs are reported as a failure instead.
+     */
+    private CalculationFreshness describeScoped(String requestId,
+                                                CalculationInputVersions captured,
+                                                boolean resultAvailable) {
+        List<CalculationFreshness.RefreshFailure> failures = new ArrayList<>();
+        if (!captured.sourcesNeedingRefresh().isEmpty()) {
+            failures.add(new CalculationFreshness.RefreshFailure(CalculationFreshness.RefreshKind.ACCOUNT,
+                    null, "SCOPED_REFRESH_NOT_ADMITTED",
+                    "Account sources " + captured.sourcesNeedingRefresh()
+                            + " need a refresh, which scoped calculations do not start", true));
+        }
+        if (!captured.coverage().covered()) {
+            failures.add(new CalculationFreshness.RefreshFailure(CalculationFreshness.RefreshKind.TRADING_POST,
+                    null, "SCOPED_REFRESH_NOT_ADMITTED",
+                    "Trading Post quotes need a refresh, which scoped calculations do not start", true));
+        }
+        return new CalculationFreshness(
+                requestId,
+                captured.calculationId(),
+                captured.evaluatedAt(),
+                !resultAvailable || !captured.confirmedCurrent(),
+                resultAvailable,
+                captured.accountSources(),
+                captured.coverage(),
+                List.of(),
+                List.copyOf(failures),
+                captured.accountId(),
+                captured.accountGenerations());
     }
 
     /**

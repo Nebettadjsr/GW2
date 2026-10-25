@@ -237,7 +237,10 @@ public final class AccountSync {
         List<MaterialStack> rows = new ArrayList<>(root.size());
         for (JsonNode entry : root) {
             MaterialStack row = MaterialParser.parse(entry);
-            if (row != null) rows.add(row);
+            if (row == null) {
+                throw new RuntimeException("Unexpected JSON (materials): malformed entry; nothing published");
+            }
+            rows.add(row);
         }
         return rows;
     }
@@ -250,7 +253,10 @@ public final class AccountSync {
         List<Integer> ids = new ArrayList<>(root.size());
         for (JsonNode idNode : root) {
             Integer id = RecipeIdParser.parse(idNode);
-            if (id != null && id > 0) ids.add(id);
+            if (id == null || id <= 0) {
+                throw new RuntimeException("Unexpected JSON (account/recipes): malformed id; nothing published");
+            }
+            ids.add(id);
         }
         return ids;
     }

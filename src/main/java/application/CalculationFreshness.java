@@ -34,6 +34,8 @@ import java.util.Set;
  * @param accountSources per-source state of the sources this feature requires
  * @param tradingPost    coverage of the feature-relevant tradeable item set
  * @param outstandingWork refresh work known to be unfinished for these inputs
+ * @param accountId      the account whose snapshot was captured, null for an unscoped envelope
+ * @param sourceGenerations the per-source generations the capture actually read (scoped only)
  * @param failures       bounded, actionable recovery information for refresh work that failed or
  *                       whose task this process can no longer identify
  */
@@ -45,7 +47,27 @@ public record CalculationFreshness(String requestId,
                                    List<SourceFreshness> accountSources,
                                    PriceCoverage tradingPost,
                                    List<OutstandingRefresh> outstandingWork,
-                                   List<RefreshFailure> failures) {
+                                   List<RefreshFailure> failures,
+                                   String accountId,
+                                   java.util.Map<String, Long> sourceGenerations) {
+
+    public CalculationFreshness {
+        sourceGenerations = sourceGenerations == null ? java.util.Map.of() : java.util.Map.copyOf(sourceGenerations);
+    }
+
+    /** An unscoped envelope: it names no account and no source generations. */
+    public CalculationFreshness(String requestId,
+                                String calculationId,
+                                Instant evaluatedAt,
+                                boolean provisional,
+                                boolean resultAvailable,
+                                List<SourceFreshness> accountSources,
+                                PriceCoverage tradingPost,
+                                List<OutstandingRefresh> outstandingWork,
+                                List<RefreshFailure> failures) {
+        this(requestId, calculationId, evaluatedAt, provisional, resultAvailable, accountSources,
+                tradingPost, outstandingWork, failures, null, null);
+    }
 
     /**
      * A required source's state relative to the configured account TTL.

@@ -110,7 +110,17 @@ public class Gw2ApiApplication {
             BackgroundTasks tasks,
             @Value("${gw2.account-data.max-age-ms:900000}") long accountMaxAgeMs) {
         return new CachedCraftingProfitService(
-                ProfitInputSession::open,
+                new ProfitInputSession.Factory() {
+                    @Override
+                    public ProfitInputSession open() throws java.sql.SQLException {
+                        return ProfitInputSession.open();
+                    }
+
+                    @Override
+                    public ProfitInputSession open(model.AccountScope scope) throws java.sql.SQLException {
+                        return ProfitInputSession.open(scope);
+                    }
+                },
                 session -> new CraftingProfitService(graphCache, session),
                 new CalculationInputVersions.DatabaseAccountSourceVersionReader(),
                 new CalculationInputVersions.DatabasePriceCoverageReader(),
