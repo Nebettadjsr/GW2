@@ -19,7 +19,8 @@ import java.util.Set;
 public enum AccountOperation {
 
     /** Consumed Luck, stored from {@code /v2/account/luck}. */
-    LUCK_READ(Set.of(AccountGrant.ACCOUNT), Set.of("/v2/account/luck")),
+    LUCK_READ(Set.of(AccountGrant.ACCOUNT, AccountGrant.PROGRESSION, AccountGrant.UNLOCKS),
+            Set.of("/v2/account/luck")),
 
     /** Account bank slots, stored from {@code /v2/account/bank}. */
     BANK_READ(Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES), Set.of("/v2/account/bank")),
@@ -30,9 +31,9 @@ public enum AccountOperation {
 
     /** A full account refresh: every account source this application publishes. */
     ACCOUNT_REFRESH(Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES, AccountGrant.CHARACTERS,
-            AccountGrant.UNLOCKS),
+            AccountGrant.UNLOCKS, AccountGrant.PROGRESSION),
             Set.of("/v2/account", "/v2/account/bank", "/v2/account/materials", "/v2/account/recipes",
-                    "/v2/characters"));
+                    "/v2/account/luck", "/v2/characters"));
 
     private final Set<AccountGrant> requiredGrants;
     private final Set<String> upstreamEndpoints;

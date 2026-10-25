@@ -147,5 +147,31 @@ class AccountAccessContractTest {
         return new Proof(new jakarta.servlet.http.Cookie("GW2_SESSION", value), context);
     }
 
+    @Test
+    void matrixParametersAndEncodedSegmentsCannotBypassSessionOrGrantChecks() throws Exception {
+        var restricted = prove("fixture-key-restricted");
+        var full = prove("fixture-key-a");
+        for (String path : java.util.List.of("/api/account;x=1/bank", "/api/account/bank;x=1",
+                "/api/%61ccount/bank")) {
+            var uri = java.net.URI.create(path);
+            http.perform(get(uri)).andExpect(status().isUnauthorized());
+            http.perform(get(uri).cookie(restricted.cookie())
+                            .header("X-Account-Context", restricted.context()))
+                    .andExpect(status().isForbidden());
+            http.perform(get(uri).cookie(full.cookie()).header("X-Account-Context", full.context()))
+                    .andExpect(status().isOk());
+        }
+        http.perform(get("/gw2/api/account/bank").contextPath("/gw2"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void identityOnlyReplacementKeyCannotReadCachedLuck() throws Exception {
+        var restricted = prove("fixture-key-restricted");
+        http.perform(get("/api/account/luck").cookie(restricted.cookie())
+                        .header("X-Account-Context", restricted.context()))
+                .andExpect(status().isForbidden());
+    }
+
     private record Proof(jakarta.servlet.http.Cookie cookie, String context) {}
 }

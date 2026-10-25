@@ -11,6 +11,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.util.ServletRequestPathUtils;
+import org.springframework.http.server.PathContainer;
 import tools.jackson.databind.ObjectMapper;
 import web.dto.ApiErrorResponse;
 import web.dto.SessionAccessResponse;
@@ -72,7 +74,8 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws IOException {
-        if (!request.getRequestURI().startsWith(ACCOUNT_PATH_PREFIX)) return true;
+        String path = authorizationPath(request);
+        if (!path.startsWith(ACCOUNT_PATH_PREFIX)) return true;
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
         if (!enforce) return true;
 
@@ -90,7 +93,7 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
         if (!context.assertsSameAccount(assertedAccountId(request))) {
             return deny(response, HttpStatus.FORBIDDEN);
         }
-        AccountOperation operation = operationFor(request.getRequestURI());
+        AccountOperation operation = operationFor(path);
         if (operation != null && !context.permits(operation)) {
             return deny(response, HttpStatus.FORBIDDEN);
         }
@@ -102,6 +105,19 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
             return false;
         }
         return true;
+    }
+
+    /** Use the same decoded segments without matrix parameters that Spring maps to controllers. */
+    private static String authorizationPath(HttpServletRequest request) {
+        var parsed = ServletRequestPathUtils.hasParsedRequestPath(request)
+                ? ServletRequestPathUtils.getParsedRequestPath(request)
+                : ServletRequestPathUtils.parseAndCache(request);
+        StringBuilder path = new StringBuilder();
+        for (var element : parsed.pathWithinApplication().elements()) {
+            path.append(element instanceof PathContainer.PathSegment segment
+                    ? segment.valueToMatch() : element.value());
+        }
+        return path.toString();
     }
 
     /**

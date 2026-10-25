@@ -15,8 +15,9 @@ class AccountAccessServiceKeyedOperationTest {
     @Test
     void admitsMatchingLiveSessionAndKey() throws Exception {
         var sessions = new AccountSessions(Clock.fixed(NOW, ZoneOffset.UTC), 4);
-        var issued = sessions.establish(proof("account-a", Set.of(AccountGrant.ACCOUNT)));
-        var service = new AccountAccessService(key -> proof("account-a", Set.of(AccountGrant.ACCOUNT)), sessions);
+        var grants = Set.of(AccountGrant.ACCOUNT, AccountGrant.PROGRESSION, AccountGrant.UNLOCKS);
+        var issued = sessions.establish(proof("account-a", grants));
+        var service = new AccountAccessService(key -> proof("account-a", grants), sessions);
 
         assertDoesNotThrow(() -> service.authorizeKeyedOperation(issued.sessionId(), issued.context(), "transient",
                 AccountOperation.LUCK_READ));
@@ -71,13 +72,14 @@ class AccountAccessServiceKeyedOperationTest {
     @Test
     void invalidCredentialRevokesSessionButTransientFailureDoesNot() throws Exception {
         var sessions = new AccountSessions(Clock.fixed(NOW, ZoneOffset.UTC), 4);
-        var invalidSession = sessions.establish(proof("account-a", Set.of(AccountGrant.ACCOUNT)));
+        var grants = Set.of(AccountGrant.ACCOUNT, AccountGrant.PROGRESSION, AccountGrant.UNLOCKS);
+        var invalidSession = sessions.establish(proof("account-a", grants));
         var invalid = new AccountAccessService(key -> { throw new InvalidCredentialException("invalid"); }, sessions);
         assertThrows(InvalidCredentialException.class, () -> invalid.authorizeKeyedOperation(
                 invalidSession.sessionId(), invalidSession.context(), "key", AccountOperation.LUCK_READ));
         assertFalse(sessions.resolve(invalidSession.sessionId(), invalidSession.context().accessContext()).authenticated());
 
-        var transientSession = sessions.establish(proof("account-a", Set.of(AccountGrant.ACCOUNT)));
+        var transientSession = sessions.establish(proof("account-a", grants));
         var unavailable = new AccountAccessService(key -> { throw new ProofUnavailableException("offline", java.time.Duration.ofSeconds(5)); }, sessions);
         assertThrows(ProofUnavailableException.class, () -> unavailable.authorizeKeyedOperation(
                 transientSession.sessionId(), transientSession.context(), "key", AccountOperation.LUCK_READ));
@@ -134,5 +136,48 @@ class AccountAccessServiceKeyedOperationTest {
 
     private static AccountProof proof(String id, Set<AccountGrant> grants) {
         return new AccountProof(id, grants, Set.of(), null);
+    }
+
+    @Test
+    void everyLuckPermissionIsRequiredBeforeProvingAnOperationKey() {
+        for (var missing : Set.of(AccountGrant.ACCOUNT, AccountGrant.PROGRESSION, AccountGrant.UNLOCKS)) {
+            var grants = java.util.EnumSet.of(AccountGrant.ACCOUNT, AccountGrant.PROGRESSION, AccountGrant.UNLOCKS);
+            grants.remove(missing);
+            var sessions = new AccountSessions(Clock.fixed(NOW, ZoneOffset.UTC), 4);
+            var issued = sessions.establish(proof("account-a", grants));
+            var calls = new java.util.concurrent.atomic.AtomicInteger();
+            var service = new AccountAccessService(key -> {
+                calls.incrementAndGet();
+                return proof("account-a", grants);
+            }, sessions);
+            assertThrows(AccountAccessService.InsufficientGrantsException.class,
+                    () -> service.authorizeKeyedOperation(issued.sessionId(), issued.context(), "key",
+                            AccountOperation.LUCK_READ), "missing " + missing);
+            assertEquals(0, calls.get());
+        }
+    }
+
+    @Test
+    void fullRefreshRejectsMissingLuckPermissionOrEndpointBeforeUpstreamProof() {
+        var full = Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES, AccountGrant.CHARACTERS,
+                AccountGrant.UNLOCKS, AccountGrant.PROGRESSION);
+        var withoutProgression = java.util.EnumSet.copyOf(full);
+        withoutProgression.remove(AccountGrant.PROGRESSION);
+        var sessions = new AccountSessions(Clock.fixed(NOW, ZoneOffset.UTC), 4);
+        var narrowGrants = sessions.establish(proof("account-a", withoutProgression));
+        var narrowUrls = sessions.establish(new AccountProof("account-a", full,
+                Set.of("/v2/account", "/v2/account/bank", "/v2/account/materials",
+                        "/v2/account/recipes", "/v2/characters"), null));
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        var service = new AccountAccessService(key -> {
+            calls.incrementAndGet();
+            return proof("account-a", full);
+        }, sessions);
+        for (var issued : java.util.List.of(narrowGrants, narrowUrls)) {
+            assertThrows(AccountAccessService.InsufficientGrantsException.class,
+                    () -> service.authorizeKeyedOperation(issued.sessionId(), issued.context(), "key",
+                            AccountOperation.ACCOUNT_REFRESH));
+        }
+        assertEquals(0, calls.get());
     }
 }
