@@ -1,5 +1,6 @@
 package application;
 
+import api.Gw2ApiClient;
 import application.access.AccountAccessService;
 import application.access.AccountContext;
 import application.access.AccountGrant;
@@ -21,6 +22,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * Account-keyed, credential-aware admission and execution of account refreshes (STORY-SYNC-006,
@@ -101,21 +103,38 @@ public class ScopedAccountRefreshCoordinator {
     /** Holds a transient key; {@link #clear()} is called on every terminal path. */
     static final class Credential {
         private volatile String key;
+        private volatile Runnable revoker;
 
-        Credential(String key) {
+        Credential(String key, Runnable revoker) {
             this.key = key;
+            this.revoker = revoker;
         }
 
-        AccountSync.AuthFetcher fetcher(Function<String, AccountSync.AuthFetcher> factory) {
+        /**
+         * A definitive rejection is classified where it happens, so it is seen even when another
+         * source failed first and the rejection only survives as a suppressed failure. It revokes
+         * only the originating session; ordinary outages and malformed payloads do not.
+         */
+        AccountSync.AuthFetcher fetcher(Function<String, AccountSync.AuthFetcher> factory,
+                                        Predicate<Throwable> rejection) {
             return url -> {
                 String current = key;
                 if (current == null) throw new IllegalStateException("the operation credential has been released");
-                return factory.apply(current).get(url);
+                try {
+                    return factory.apply(current).get(url);
+                } catch (Exception | Error failure) {
+                    if (rejection.test(failure)) {
+                        Runnable revoke = revoker;
+                        if (revoke != null) revoke.run();
+                    }
+                    throw failure;
+                }
             };
         }
 
         void clear() {
             key = null;
+            revoker = null;
         }
 
         boolean cleared() {
@@ -165,6 +184,7 @@ public class ScopedAccountRefreshCoordinator {
     private final BackgroundTasks tasks;
     private final AccountAccessService access;
     private final Function<String, AccountSync.AuthFetcher> fetcherFactory;
+    private final Predicate<Throwable> rejection;
 
     private final Map<UUID, Run> active = new HashMap<>();
     private final Map<UUID, Run> history = new HashMap<>();
@@ -173,6 +193,15 @@ public class ScopedAccountRefreshCoordinator {
     public ScopedAccountRefreshCoordinator(AccountRefreshService refresh, BackgroundTasks tasks,
                                            AccountAccessService access,
                                            Function<String, AccountSync.AuthFetcher> fetcherFactory) {
+        this(refresh, tasks, access, fetcherFactory, Gw2ApiClient::isAuthRejection);
+    }
+
+    /** {@code rejection} classifies a definitive "this key is invalid" upstream answer. */
+    public ScopedAccountRefreshCoordinator(AccountRefreshService refresh, BackgroundTasks tasks,
+                                           AccountAccessService access,
+                                           Function<String, AccountSync.AuthFetcher> fetcherFactory,
+                                           Predicate<Throwable> rejection) {
+        this.rejection = rejection;
         this.refresh = refresh;
         this.tasks = tasks;
         this.access = access;
@@ -222,7 +251,7 @@ public class ScopedAccountRefreshCoordinator {
             }
 
             Run fresh = new Run();
-            fresh.credential = new Credential(apiKey);
+            fresh.credential = new Credential(apiKey, access.revocationOf(sessionId));
             fresh.covered.addAll(sources);
             fresh.outstanding.addAll(sources);
             active.put(scope.accountId(), fresh);
@@ -279,7 +308,7 @@ public class ScopedAccountRefreshCoordinator {
 
     /** The draining run; everything it needs was captured at admission. */
     private void drain(AccountScope scope, Run run) throws Exception {
-        AccountSync.AuthFetcher fetcher = run.credential.fetcher(fetcherFactory);
+        AccountSync.AuthFetcher fetcher = run.credential.fetcher(fetcherFactory, rejection);
         try {
             while (true) {
                 Set<String> batch;

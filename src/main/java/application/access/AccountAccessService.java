@@ -95,6 +95,14 @@ public final class AccountAccessService {
     }
 
     /**
+     * A server-owned capability that revokes only the presented session, for a worker that later
+     * learns the admitted key was definitively rejected. It holds no raw session identifier.
+     */
+    public Runnable revocationOf(String sessionId) {
+        return sessions.revocationOf(sessionId);
+    }
+
+    /**
      * Admits an account operation that will call GW2 with a caller-supplied transient key
      * (TARGET_ARCHITECTURE.md §8.1: "a session is not an upstream credential").
      *

@@ -76,6 +76,30 @@ class Gw2ApiClientTransientKeyTest {
     }
 
     @Test
+    void only401And403AreClassifiedAsDefinitiveKeyRejection() {
+        for (int rejected : new int[] {401, 403}) {
+            status = rejected;
+            body = "{\"text\":\"upstream-error-secret\"}";
+            Exception failure = assertThrows(Gw2ApiClient.AuthRejectedException.class,
+                    () -> Gw2ApiClient.getAuth(url(), "transient-key"));
+            assertTrue(Gw2ApiClient.isAuthRejection(failure));
+            assertTrue(Gw2ApiClient.isAuthRejection(new Exception("first", new RuntimeException(failure))));
+            Exception first = new RuntimeException("other source failed first");
+            first.addSuppressed(failure);
+            assertTrue(Gw2ApiClient.isAuthRejection(first));
+        }
+        for (int transientStatus : new int[] {404, 429, 500, 503}) {
+            status = transientStatus;
+            Exception failure = assertThrows(RuntimeException.class, () -> Gw2ApiClient.getAuth(url(), "transient-key"));
+            assertFalse(Gw2ApiClient.isAuthRejection(failure), "HTTP " + transientStatus);
+        }
+        status = 200;
+        body = "upstream-json-secret {not json";
+        Exception malformed = assertThrows(java.io.IOException.class, () -> Gw2ApiClient.getAuth(url(), "transient-key"));
+        assertFalse(Gw2ApiClient.isAuthRejection(malformed));
+    }
+
+    @Test
     void malformedJsonDoesNotQuoteThePayloadInTheErrorOrOutput() {
         body = "upstream-json-secret {not json";
 
