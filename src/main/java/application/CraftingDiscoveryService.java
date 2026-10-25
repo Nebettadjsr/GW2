@@ -260,7 +260,7 @@ public class CraftingDiscoveryService {
         CalculationInputs inputs =
                 loadCalculationInputs(oneCraftSettings, characterName(choice), candidates.allRecipes());
 
-        Map<Integer, CraftResult> results = planner.evaluateAllSingleCraft(
+        Map<Integer, CraftResult> results = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).evaluateAllSingleCraft(
                 candidates.allRecipes(), inputs.sellableInventory(), inputs.boundInventory(),
                 inputs.tp(), oneCraftSettings, candidates.usableRecipeIds());
 
@@ -306,11 +306,11 @@ public class CraftingDiscoveryService {
         CalculationInputs inputs =
                 loadCalculationInputs(oneCraftSettings, characterName(choice), candidates.allRecipes());
 
-        CraftResult row = planner.evaluateSingleCraft(
+        CraftResult row = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).evaluateSingleCraft(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
                 inputs.boundInventory(), inputs.tp(), oneCraftSettings, candidates.usableRecipeIds());
 
-        SingleCraftExplanation explanation = new SingleCraftExplainer().explainIndividual(
+        SingleCraftExplanation explanation = new SingleCraftExplainer(ItemRepository.vendorValues(inputs.items())).explainIndividual(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
                 inputs.boundInventory(), inputs.tp(), oneCraftSettings, candidates.usableRecipeIds());
 

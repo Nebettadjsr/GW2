@@ -10,8 +10,11 @@ The code is under `src/test/java/perf`. It starts the real Spring Boot applicati
 application services, scoped repositories, the production Flyway chain, the shared crafting graph cache) against
 a disposable, uniquely named PostgreSQL schema that it drops afterwards. Only the outside edges are fixtures:
 the account proof port, the upstream account GETs, and the global-data and Trading Post price refresh gateways.
-No GW2 key, network access or populated database is needed. Fixture version: `perf-fixtures-1`
+No GW2 key, network access or populated database is needed. Fixture version: `perf-fixtures-2`
 (raw materials, a binary tree of Chef recipes, deterministic prices, bank/material/recipe/Luck responses).
+Version 2 also substitutes the account item-metadata upstream edge introduced by normal icon repair;
+synthetic IDs receive no public metadata, so no ArenaNet request is made by account synchronization.
+Reports from version 1 are not compared with this fixture version.
 
 | Workload | Boundary exercised |
 |---|---|

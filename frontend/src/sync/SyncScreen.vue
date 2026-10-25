@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { systemApi, type GlobalSystemStatus } from '@/api/systemApi'
+import { connection } from '@/api/accountSession'
+import ConnectionPanel from '@/account/ConnectionPanel.vue'
 import PageHeader from '@/shell/PageHeader.vue'
 import type { SyncOperationKey } from './operations'
 import { useSharedSyncOperations } from './provideSyncOperations'
@@ -12,7 +14,11 @@ const systemStatus = ref<GlobalSystemStatus | null>(null)
 const systemStatusError = ref<string | null>(null)
 const systemStatusLoaded = ref(false)
 
+const isConnected = computed(() => connection.phase === 'connected')
+
+/** The status read is account-scoped, so it is neither requested nor reported on before a key is connected. */
 async function loadSystemStatus(): Promise<void> {
+  if (!isConnected.value) return
   try {
     systemStatus.value = await systemApi.readStatus()
     systemStatusError.value = null
@@ -24,6 +30,14 @@ async function loadSystemStatus(): Promise<void> {
 }
 
 let statusTimer: ReturnType<typeof setInterval> | null = null
+watch(isConnected, (connected) => {
+  if (connected) void loadSystemStatus()
+  else {
+    systemStatus.value = null
+    systemStatusError.value = null
+    systemStatusLoaded.value = false
+  }
+})
 onMounted(() => {
   void loadSystemStatus()
   statusTimer = setInterval(() => void loadSystemStatus(), 5000)
@@ -90,6 +104,13 @@ function operation(key: SyncOperationKey): SyncOperationView {
   <div class="system-status-page">
     <PageHeader heading="System Status" />
 
+    <ConnectionPanel />
+
+    <p v-if="!isConnected" class="meta" role="status" data-test="status-needs-connection">
+      Connect an API key to see account data and run refreshes.
+    </p>
+
+    <template v-else>
     <p v-if="!systemStatusLoaded" class="meta" role="status">Loading status…</p>
     <p v-else-if="systemStatusError" class="notice notice--error" role="alert">
       Status unavailable: {{ systemStatusError }}
@@ -234,6 +255,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
         </dl>
       </article>
     </section>
+    </template>
 
     <p class="meta process-note">Status timestamps reset when the backend restarts.</p>
   </div>

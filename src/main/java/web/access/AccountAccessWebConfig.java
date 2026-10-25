@@ -34,6 +34,6 @@ public class AccountAccessWebConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(interceptor).addPathPatterns("/api/account/**", "/api/crafting/profit", "/api/crafting/profit/resolution",
-                "/api/crafting/selector-options", "/api/sync/account", "/api/crafting/discovery", "/api/crafting/discovery/resolution", "/api/sync/account/crafting-profit");
+                "/api/crafting/selector-options", "/api/sync/account", "/api/crafting/discovery", "/api/crafting/discovery/resolution", "/api/sync/account/crafting-profit", "/api/sync/account/luck");
     }
 }

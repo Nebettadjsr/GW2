@@ -29,6 +29,7 @@ import java.util.Set;
 public class PlanState {
 
     public final Map<Integer, Integer> inventory;
+    private final Map<Integer, Integer> initialSellableInventory;
 
     /**
      * Owned quantity that is account-bound or soulbound-and-usable-by-the-selected-character
@@ -98,6 +99,7 @@ public class PlanState {
                       Map<Integer, Integer> accountBoundInventory,
                       Map<String, Map<Integer, Integer>> characterBoundInventory) {
         this.inventory = new HashMap<>(sellableInventory);
+        this.initialSellableInventory = Map.copyOf(sellableInventory);
         this.boundInventory = new HashMap<>(accountBoundInventory);
         this.characterBoundInventory = new HashMap<>();
         for (var e : characterBoundInventory.entrySet()) {
@@ -113,6 +115,7 @@ public class PlanState {
      */
     public PlanState(PlanState other) {
         this.inventory = new HashMap<>(other.inventory);
+        this.initialSellableInventory = other.initialSellableInventory;
         this.boundInventory = new HashMap<>(other.boundInventory);
         this.characterBoundInventory = new HashMap<>();
         for (var e : other.characterBoundInventory.entrySet()) {
@@ -309,6 +312,11 @@ public class PlanState {
         setValue(SELLABLE, itemId, null, left > 0 ? left : ABSENT);
 
         return used;
+    }
+
+    /** Cumulative consumption follows the journalled inventory, including speculative rollback. */
+    public int consumedSellableQuantity(int itemId) {
+        return initialSellableInventory.getOrDefault(itemId, 0) - inventory.getOrDefault(itemId, 0);
     }
 
     private int consumeBoundInventory(int itemId, int qtyWanted) {

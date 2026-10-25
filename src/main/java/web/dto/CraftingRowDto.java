@@ -49,6 +49,9 @@ import java.util.List;
  *                            null when that item's retained metadata is absent or not an accepted
  *                            source. Display metadata only: it never affects craftability, a result's
  *                            availability or any economic value
+ * @param unvaluedOwnedInput true when an owned sellable input had no Trading Post value, crafting
+ *                            cost or vendor value (DOMAIN_SPEC.md 11.2); its cost was taken as 0 only
+ *                            because it could not be valued, so the profit is not a confident figure
  */
 public record CraftingRowDto(int recipeId,
                              int outputItemId,
@@ -70,5 +73,6 @@ public record CraftingRowDto(int recipeId,
                              List<MissingItemDto> missingToBuy,
                              List<MissingItemDto> missingToBuyOne,
                              List<String> ingredientNames,
-                             String iconUrl) {
+                             String iconUrl,
+                             boolean unvaluedOwnedInput) {
 }

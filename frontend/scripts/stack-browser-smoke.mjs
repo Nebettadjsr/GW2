@@ -37,12 +37,20 @@ try {
   for (const id of DESTINATIONS) {
     await page.locator(`[data-test="nav-${id}"]`).click()
     await page.waitForFunction((hash) => location.hash === hash, `#/${id}`)
+    if (id === 'synchronization') {
+      await page.waitForSelector('[data-test="connection-panel"]')
+    } else {
+      await page.waitForSelector('[data-test="connection-needed-link"]')
+      if (await page.locator('[data-test="connection-panel"]').count()) throw new Error(`key form repeated on ${id}`)
+    }
   }
   console.log(`  ok   navigated to ${DESTINATIONS.length} destinations`)
+  await page.locator('[data-test="nav-synchronization"]').click()
   await page.waitForSelector('[data-test="connection-panel"]')
   const status = (await page.locator('[data-test="connection-status"]').innerText()).trim()
   console.log(`  ok   connection panel visible — status: ${status}`)
   if ((await page.locator('[data-test="api-key-input"]').count()) === 0) throw new Error('no key entry field offered')
+  if ((await page.locator('[data-test="api-key-input"]').getAttribute('type')) !== 'password') throw new Error('key entry is not masked')
   console.log('  ok   key entry offered in the browser (no key entered)')
   await page.waitForTimeout(1000)
   const foreign = apiResponses.filter((r) => r.origin !== origin)

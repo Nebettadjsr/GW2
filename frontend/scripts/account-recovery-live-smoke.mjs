@@ -25,7 +25,9 @@ page.on('response', (response) => {
   }
 })
 try {
-  await page.goto(process.env.GW2_FRONTEND_URL ?? 'http://127.0.0.1:5173')
+  const baseUrl = process.env.GW2_FRONTEND_URL ?? 'http://127.0.0.1:5173'
+  // Key entry lives only on System Status; the other pages offer a link to it (STORY-FIX-004).
+  await page.goto(`${baseUrl}/#/synchronization`)
   const input = page.locator('[data-test="api-key-input"]')
   assert.equal(await input.getAttribute('type'), 'password')
   await input.fill(key)
@@ -35,6 +37,7 @@ try {
   assert.equal((await proved).status(), 200, 'live account proof must succeed')
   await page.waitForFunction(() => document.querySelector('[data-test="connection-status"]')?.textContent
     ?.includes('Connected to your Guild Wars 2 account.'))
+  await page.locator('a[href="#/crafting"]').click()
   await page.waitForFunction(() => !!document.querySelector('[data-test="refresh-data-and-results"], [data-test="bootstrap-failed"]'))
   assert.equal(await page.locator('[data-test="bootstrap-failed"]').count(), 0, 'initial scoped sync must succeed')
   stage = 'explicit fresh synchronization and Profit calculation'
@@ -53,7 +56,9 @@ try {
   assert.ok(calls.some((call) => call.path === '/api/crafting/selector-options' && call.status === 200))
   assert.ok(calls.some((call) => call.path === '/api/crafting/profit' && call.status === 200))
   assert.ok(!await page.locator('body').innerText().then((text) => /account_sync_state|DATA_STORE_UNAVAILABLE/.test(text)))
+  await page.locator('a[href="#/synchronization"]').click()
   assert.equal(await input.inputValue(), '')
+  await page.locator('a[href="#/crafting"]').click()
   assert.equal(await page.locator('[data-test="results-region"]').count(), 1)
   if (process.env.GW2_SMOKE_CACHED_ACCESS === '1') {
     stage = 'cached live result remains visible during controlled refresh proof outage'
@@ -109,6 +114,7 @@ try {
   if (process.env.GW2_SMOKE_SCREENSHOT) await page.screenshot({ path: process.env.GW2_SMOKE_SCREENSHOT })
   stage = 'reload retains the key and reconnects'
   await page.reload()
+  await page.locator('a[href="#/synchronization"]').click()
   await page.waitForFunction(() => document.querySelector('[data-test="connection-status"]')?.textContent
     ?.includes('Connected to your Guild Wars 2 account.'))
   assert.equal(await page.evaluate(() => sessionStorage.getItem('gw2.apiKey')), key)
@@ -119,6 +125,7 @@ try {
     await response
   }
   stage = 'disconnect clears browser account data and retained key'
+  await page.locator('a[href="#/synchronization"]').click()
   await page.locator('[data-test="disconnect"]').click()
   await page.waitForFunction(() => document.querySelector('[data-test="connection-status"]')?.textContent?.includes('Not connected.'))
   assert.equal(await page.evaluate(() => sessionStorage.getItem('gw2.apiKey')), null)

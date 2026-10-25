@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { getJson } from '@/api/http'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { ApiRequestError, getJson } from '@/api/http'
+import { startLuckRefresh, syncApi } from '@/api/syncApi'
 import { formatCopper } from '@/crafting/formatCopper'
 import ItemIcon from '@/items/ItemIcon.vue'
 import TradingPostPriceDisclaimer from '@/items/TradingPostPriceDisclaimer.vue'
@@ -182,6 +183,18 @@ const prices = ref<Map<number, ItemPrice>>(new Map())
 const accountLuck = ref<AccountLuckResponse | null>(null)
 const loading = ref(true)
 const loadError = ref<string | null>(null)
+/** Why Luck is not shown: never published for this account, or the read itself failed. */
+const luckProblem = ref<'missing' | 'failed' | null>(null)
+const luckRefreshing = ref(false)
+const luckRefreshError = ref<string | null>(null)
+const LUCK_POLL_MS = 1_000
+const LUCK_MAX_POLLS = 60
+const LUCK_ADMISSION_RETRIES = 3
+const LUCK_RECOVERY_BUDGET_MS = 60_000
+let luckAutoTried = false
+let unmounted = false
+let luckCycle = 0
+let cancelLuckRefresh: (() => void) | null = null
 
 const selectedMethodId = ref(defaultMethod.id)
 const selectedToolId = ref(defaultMethod.defaultToolId)
@@ -435,6 +448,7 @@ async function loadPage(): Promise<void> {
     pricesPromise,
     luckPromise
   ])
+  if (unmounted) return
 
   const errors: string[] = []
 
@@ -452,15 +466,128 @@ async function loadPage(): Promise<void> {
 
   if (luckResult.status === 'fulfilled') {
     accountLuck.value = luckResult.value
+    luckProblem.value = null
+  } else if (luckResult.reason instanceof ApiRequestError && luckResult.reason.status === 404) {
+    // Never published: not zero Luck. Cached data (if any) stays; otherwise offer a Luck-only refresh.
+    luckProblem.value = 'missing'
   } else {
+    luckProblem.value = 'failed'
     errors.push('Account Luck could not be read.')
   }
 
   loadError.value = errors.length > 0 ? errors.join(' ') : null
   loading.value = false
+
+  if (luckProblem.value === 'missing' && !luckAutoTried) {
+    luckAutoTried = true
+    await refreshLuck()
+  }
+}
+
+/** One bounded Luck-only refresh: start the task, poll it, then re-read the stored Luck once. */
+async function refreshLuck(): Promise<void> {
+  if (unmounted || luckRefreshing.value) return
+  luckRefreshing.value = true
+  luckRefreshError.value = null
+  const cycle = ++luckCycle
+  let timer = 0
+  const stopped = new Promise<never>((_, reject) => {
+    cancelLuckRefresh = () => {
+      luckCycle += 1
+      reject(new Error('The page was closed.'))
+    }
+    timer = window.setTimeout(() => {
+      luckCycle += 1
+      reject(new Error('The refresh is taking longer than expected. It may still be running.'))
+    }, LUCK_RECOVERY_BUDGET_MS)
+  })
+  try {
+    await Promise.race([recoverLuck(cycle), stopped])
+  } catch (cause) {
+    if (unmounted) return
+    luckRefreshError.value = `Account Luck could not be refreshed: ${
+      cause instanceof Error ? cause.message : String(cause)
+    }`
+  } finally {
+    window.clearTimeout(timer)
+    cancelLuckRefresh = null
+    luckRefreshing.value = false
+  }
+}
+
+function requireLuckCycle(cycle: number): void {
+  if (unmounted || cycle !== luckCycle) throw new Error('This Luck refresh is no longer active.')
+}
+
+async function recoverLuck(cycle: number): Promise<void> {
+  for (let attempt = 0; attempt <= LUCK_ADMISSION_RETRIES; attempt += 1) {
+    requireLuckCycle(cycle)
+    const accepted = await startLuckRefresh()
+    requireLuckCycle(cycle)
+    if (accepted.coversRequest === false) {
+      // The blocker may need grants this Luck-only session does not have. Its status is not ours.
+      const seconds = accepted.retryAfterSeconds ?? 1
+      const delay = Number.isFinite(seconds) && seconds > 0
+        ? Math.min(seconds * 1_000, LUCK_RECOVERY_BUDGET_MS) : LUCK_POLL_MS
+      if (attempt < LUCK_ADMISSION_RETRIES) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, delay))
+      }
+      continue
+    }
+    let done = false
+    for (let poll = 0; poll < LUCK_MAX_POLLS && !done && !unmounted; poll += 1) {
+      let status
+      try {
+        status = await syncApi.readTaskStatus(accepted.statusUrl)
+      } catch (cause) {
+        // A full refresh can cover Luck while its task needs grants this session does not have.
+        if (!(cause instanceof ApiRequestError) || (cause.status !== 403 && cause.status !== 404)) throw cause
+        await readLuckAfterSharedTask(cycle)
+        return
+      }
+      requireLuckCycle(cycle)
+      if (status.state === 'SUCCEEDED') {
+        done = true
+      } else if (status.state === 'FAILED') {
+        throw new Error(status.failure?.message ?? 'The refresh failed.')
+      } else {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, LUCK_POLL_MS))
+      }
+    }
+    requireLuckCycle(cycle)
+    if (!done) throw new Error('The refresh is taking longer than expected.')
+    const loaded = await getJson<AccountLuckResponse>('/account/luck')
+    requireLuckCycle(cycle)
+    accountLuck.value = loaded
+    luckProblem.value = null
+    return
+  }
+  throw new Error('Another refresh kept running, so Luck was not refreshed. Try again.')
+}
+
+/** A covered shared task need not be observable; only a successful authorized source read proves Luck. */
+async function readLuckAfterSharedTask(cycle: number): Promise<void> {
+  for (let poll = 0; poll < LUCK_MAX_POLLS; poll += 1) {
+    requireLuckCycle(cycle)
+    try {
+      const loaded = await getJson<AccountLuckResponse>('/account/luck')
+      requireLuckCycle(cycle)
+      accountLuck.value = loaded
+      luckProblem.value = null
+      return
+    } catch (cause) {
+      if (!(cause instanceof ApiRequestError) || cause.status !== 404) throw cause
+    }
+    await new Promise<void>((resolve) => window.setTimeout(resolve, LUCK_POLL_MS))
+  }
+  throw new Error('Luck is still unavailable from the shared refresh. Try again.')
 }
 
 onMounted(loadPage)
+onBeforeUnmount(() => {
+  unmounted = true
+  cancelLuckRefresh?.()
+})
 </script>
 
 <template>
@@ -810,6 +937,26 @@ onMounted(loadPage)
               In-game Magic Find includes other bonuses. Only Magic Find from consumed Luck is shown here.
             </p>
           </div>
+        </div>
+
+        <div
+          v-if="!accountLuck && luckProblem === 'missing'"
+          class="notice notice--warning"
+          role="status"
+          data-test="ecto-luck-missing"
+        >
+          <p>
+            {{ luckRefreshing
+              ? 'Refreshing your consumed Luck…'
+              : 'Your consumed Luck has not been loaded yet. It is not zero; it is unknown until refreshed.' }}
+          </p>
+          <p v-if="luckRefreshError" data-test="ecto-luck-refresh-error">{{ luckRefreshError }}</p>
+          <button
+            type="button"
+            data-test="ecto-luck-refresh"
+            :disabled="luckRefreshing"
+            @click="refreshLuck"
+          >{{ luckRefreshError ? 'Retry' : 'Refresh Luck' }}</button>
         </div>
 
         <div v-if="accountLuck" class="stack account-luck" data-test="ecto-account-luck">

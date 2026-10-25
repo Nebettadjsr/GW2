@@ -17,6 +17,12 @@ const requests: RecordedRequest[] = []
 let luckAnswer: unknown = accountLuck
 let pricesAnswer: unknown = itemPrices
 let priceFailure = false
+let luckStored = true
+let taskState: 'SUCCEEDED' | 'FAILED' = 'SUCCEEDED'
+let admissionCoverage: boolean[] = []
+let lastAdmissionCovered = true
+let stallAdmission = false
+let taskLookupDenied = false
 let wrapper: VueWrapper | null = null
 
 function jsonResponse(body: unknown): Response {
@@ -66,6 +72,12 @@ beforeEach(() => {
   luckAnswer = accountLuck
   pricesAnswer = itemPrices
   priceFailure = false
+  luckStored = true
+  taskState = 'SUCCEEDED'
+  admissionCoverage = []
+  lastAdmissionCovered = true
+  stallAdmission = false
+  taskLookupDenied = false
   vi.stubGlobal('fetch', vi.fn((input: string, init?: RequestInit) => {
     requests.push({ method: init?.method ?? 'GET', url: input })
     const url = new URL(input, 'http://test.local')
@@ -75,7 +87,28 @@ beforeEach(() => {
         ? Promise.reject(new Error('prices unavailable'))
         : Promise.resolve(jsonResponse(pricesAnswer))
     }
-    if (url.pathname === '/api/account/luck') return Promise.resolve(jsonResponse(luckAnswer))
+    if (url.pathname === '/api/account/luck') {
+      return luckStored
+        ? Promise.resolve(jsonResponse(luckAnswer))
+        : Promise.resolve(new Response(
+          JSON.stringify({ error: 'CREDENTIAL_REQUIRED', message: 'Luck is not synchronized' }),
+          { status: 404, headers: { 'Content-Type': 'application/json' } }
+        ))
+    }
+    if (url.pathname === '/api/sync/account/luck') {
+      if (stallAdmission) return new Promise<Response>(() => {})
+      lastAdmissionCovered = admissionCoverage.shift() ?? true
+      return Promise.resolve(jsonResponse({ taskId: 'luck-1', operation: 'ACCOUNT_SYNC', statusUrl: '/api/sync/tasks/luck-1', coversRequest: lastAdmissionCovered, retryAfterSeconds: lastAdmissionCovered ? undefined : 10 }))
+    }
+    if (url.pathname === '/api/sync/tasks/luck-1') {
+      if (!lastAdmissionCovered || taskLookupDenied) return Promise.resolve(new Response('{}', { status: 404 }))
+      if (taskState === 'SUCCEEDED' && lastAdmissionCovered) luckStored = true
+      return Promise.resolve(jsonResponse(
+        taskState === 'FAILED'
+          ? { taskId: 'luck-1', operation: 'ACCOUNT_SYNC', state: 'FAILED', failure: { message: 'upstream down' } }
+          : { taskId: 'luck-1', operation: 'ACCOUNT_SYNC', state: 'SUCCEEDED' }
+      ))
+    }
     throw new Error(`Obsolete or unexpected request: ${input}`)
   }))
 })
@@ -84,6 +117,7 @@ afterEach(() => {
   wrapper?.unmount()
   wrapper = null
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 describe('EctoSalvageScreen', () => {
@@ -276,5 +310,121 @@ describe('EctoSalvageScreen', () => {
     expect(open.find('.account-summary').text()).toContain('300%')
     expect(open.find('.account-summary').text()).toContain('Maximum')
     expect((open.find('.luck-progress__bar').element as HTMLElement).style.width).toBe('100%')
+  })
+
+  it('recovers never-published Luck with one Luck-only refresh, then shows the stored Luck', async () => {
+    luckStored = false
+    const open = await openScreen()
+
+    const posts = requests.filter(({ method }) => method === 'POST').map(({ url }) => url)
+    expect(posts).toEqual(['/api/sync/account/luck'])
+    expect(requests.map(({ url }) => url)).not.toContain('/api/sync/account/crafting-profit')
+    expect(open.find('[data-test="ecto-luck-missing"]').exists()).toBe(false)
+    expect(ungrouped(open.find('[data-test="ecto-account-luck"]'))).toContain(String(14_134))
+  })
+
+  it('reports failed Luck recovery as unknown (never zero) and retries on request', async () => {
+    luckStored = false
+    taskState = 'FAILED'
+    const open = await openScreen()
+
+    expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(false)
+    expect(open.find('[data-test="ecto-luck-missing"]').text()).toContain('upstream down')
+    expect(open.find('[data-test="ecto-luck-missing"]').text()).toContain('unknown')
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(1)
+
+    taskState = 'SUCCEEDED'
+    await open.find('[data-test="ecto-luck-refresh"]').trigger('click')
+    await flushPromises()
+
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(2)
+    expect(open.find('[data-test="ecto-luck-missing"]').exists()).toBe(false)
+    expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(true)
+  })
+
+  it('retries admission after the advertised delay without observing an inaccessible Profit task', async () => {
+    vi.useFakeTimers()
+    luckStored = false
+    admissionCoverage = [false, true]
+    const open = await openScreen()
+    await vi.advanceTimersByTimeAsync(9_999)
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    await flushPromises()
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(2)
+    expect(requests.filter(({ url }) => url.startsWith('/api/sync/tasks/'))).toHaveLength(1)
+    expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(true)
+  })
+
+  it('stops repeated uncovered admissions and offers retry without inventing Luck', async () => {
+    vi.useFakeTimers()
+    luckStored = false
+    admissionCoverage = [false, false, false, false, false]
+    const open = await openScreen()
+    await vi.advanceTimersByTimeAsync(40_000)
+    await flushPromises()
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(4)
+    expect(requests.some(({ url }) => url.startsWith('/api/sync/tasks/'))).toBe(false)
+    expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(false)
+    expect(open.find('[data-test="ecto-luck-refresh-error"]').text()).toContain('Another refresh kept running')
+  })
+
+  it('ends the visible recovery budget even when admission never answers', async () => {
+    vi.useFakeTimers()
+    luckStored = false
+    stallAdmission = true
+    const open = await openScreen()
+    expect(open.find('[data-test="ecto-luck-refresh"]').attributes('disabled')).toBeDefined()
+    await vi.advanceTimersByTimeAsync(60_000)
+    await flushPromises()
+    expect(open.find('[data-test="ecto-luck-refresh-error"]').text()).toContain('may still be running')
+    expect(open.find('[data-test="ecto-luck-refresh"]').attributes('disabled')).toBeUndefined()
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(1)
+  })
+
+  it('does not start Luck work when an initial missing-data read resolves after leaving', async () => {
+    const base = vi.mocked(fetch).getMockImplementation()!
+    let release!: (response: Response) => void
+    const held = new Promise<Response>((resolve) => { release = resolve })
+    vi.stubGlobal('fetch', vi.fn((input: string, init?: RequestInit) =>
+      input === '/api/account/luck' ? held : base(input, init)))
+    const open = await openScreen()
+    open.unmount()
+    wrapper = null
+    release(new Response(JSON.stringify({ error: 'CREDENTIAL_REQUIRED', message: 'missing' }),
+      { status: 404, headers: { 'Content-Type': 'application/json' } }))
+    await flushPromises()
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(0)
+  })
+
+  it('does not continue polling when a timed-out admission answers late', async () => {
+    vi.useFakeTimers()
+    luckStored = false
+    const base = vi.mocked(fetch).getMockImplementation()!
+    let release!: (response: Response) => void
+    const held = new Promise<Response>((resolve) => { release = resolve })
+    vi.stubGlobal('fetch', vi.fn((input: string, init?: RequestInit) =>
+      input === '/api/sync/account/luck' ? held : base(input, init)))
+    const open = await openScreen()
+    await vi.advanceTimersByTimeAsync(60_000)
+    release(jsonResponse({ taskId: 'luck-1', statusUrl: '/api/sync/tasks/luck-1' }))
+    await flushPromises()
+    expect(requests.some(({ url }) => url.startsWith('/api/sync/tasks/'))).toBe(false)
+    expect(open.find('[data-test="ecto-luck-refresh-error"]').text()).toContain('may still be running')
+  })
+
+  it('reads authorized Luck published by a covered full task whose status needs broader grants', async () => {
+    vi.useFakeTimers()
+    luckStored = false
+    taskLookupDenied = true
+    const open = await openScreen()
+    expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(false)
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(1)
+    luckStored = true // The other session's full refresh publishes this source.
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushPromises()
+    expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(true)
+    expect(requests.filter(({ url }) => url.startsWith('/api/sync/tasks/'))).toHaveLength(1)
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(1)
   })
 })

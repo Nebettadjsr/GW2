@@ -1,5 +1,6 @@
 package craft;
 
+import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -10,6 +11,48 @@ public class CraftingResolver {
 
     private final Map<Integer, Integer> directBuyUnitCache = new HashMap<>();
     private final Map<Integer, Integer> directSellUnitCache = new HashMap<>();
+    private final Map<Integer, OwnedValue> ownedValueCache = new HashMap<>();
+
+    /** Exact unit value: keep recipe batch fractions until the consumed quantity is known. */
+    private record OwnedValue(BigInteger copper, BigInteger units) implements Comparable<OwnedValue> {
+        static final OwnedValue ZERO = of(0);
+
+        OwnedValue {
+            BigInteger divisor = copper.gcd(units);
+            copper = copper.divide(divisor);
+            units = units.divide(divisor);
+        }
+
+        static OwnedValue of(int copper) {
+            return new OwnedValue(BigInteger.valueOf(Math.max(copper, 0)), BigInteger.ONE);
+        }
+
+        OwnedValue add(OwnedValue other) {
+            return new OwnedValue(copper.multiply(other.units).add(other.copper.multiply(units)),
+                    units.multiply(other.units));
+        }
+
+        OwnedValue times(int quantity) {
+            return new OwnedValue(copper.multiply(BigInteger.valueOf(quantity)), units);
+        }
+
+        OwnedValue per(int quantity) {
+            return new OwnedValue(copper, units.multiply(BigInteger.valueOf(quantity)));
+        }
+
+        boolean isZero() { return copper.signum() == 0; }
+
+        int costOf(int quantity) {
+            // Round the complete consumed quantity up once, never each intermediate unit.
+            BigInteger total = copper.multiply(BigInteger.valueOf(quantity));
+            return total.add(units).subtract(BigInteger.ONE).divide(units)
+                    .min(BigInteger.valueOf(Integer.MAX_VALUE)).intValueExact();
+        }
+
+        @Override public int compareTo(OwnedValue other) {
+            return copper.multiply(other.units).compareTo(other.copper.multiply(units));
+        }
+    }
 
     /**
      * When true, every resolved requirement additionally records the explanation facts a semantic
@@ -76,14 +119,22 @@ public class CraftingResolver {
             int usedFromInventory = consumption.total();
             result.setQtyFromInventory(usedFromInventory);
 
-            int sellUnit = resolveDirectSellUnit(itemId, ctx.tp, ctx.settings);
+            int sellUnit = consumption.usedSellable() > 0 ? resolveDirectSellUnit(itemId, ctx.tp, ctx.settings) : 0;
             int oppCost = consumption.usedSellable() * sellUnit;
+            boolean unvalued = false;
+            if (consumption.usedSellable() > 0 && sellUnit <= 0) {
+                OwnedValue fallback = resolveOwnedFallbackValue(itemId, ctx);
+                int consumed = state.consumedSellableQuantity(itemId);
+                oppCost = fallback.costOf(consumed) - fallback.costOf(consumed - consumption.usedSellable());
+                unvalued = fallback.isZero();
+            }
             result.setOpportunityCostCopper(oppCost);
 
-            if (tracing && consumption.usedSellable() > 0 && sellUnit <= 0) {
+            if (unvalued) {
                 // DOMAIN_SPEC.md section 11.2: this quantity was valued at zero because no value
                 // could be established for it, which is not the same as it being free.
-                result.traceForWrite().markUnvaluedNonTradable();
+                result.setUnvaluedOwnedInput(true);
+                if (tracing) result.traceForWrite().markUnvaluedNonTradable();
             }
 
             remaining -= usedFromInventory;
@@ -177,6 +228,7 @@ public class CraftingResolver {
             result.setQtyBlocked(chosenNeed.getQtyBlocked());
             result.setBuyCostCopper(result.getBuyCostCopper() + chosenNeed.getBuyCostCopper());
             result.setOpportunityCostCopper(result.getOpportunityCostCopper() + chosenNeed.getOpportunityCostCopper());
+            if (chosenNeed.hasUnvaluedOwnedInput()) result.setUnvaluedOwnedInput(true);
 
             if (chosenNeed.getBlockedReason() != BlockedReason.NONE) {
                 result.setBlockedReason(chosenNeed.getBlockedReason());
@@ -478,6 +530,51 @@ public class CraftingResolver {
 
         directBuyUnitCache.put(itemId, result);
         return result;
+    }
+
+    /**
+     * DOMAIN_SPEC.md 11.2's fallback for an owned item without a usable Trading Post side:
+     * calculated crafting cost, then vendor sell value. Zero means unvalued, never free.
+     */
+    private OwnedValue resolveOwnedFallbackValue(int itemId, PlannerContext ctx) {
+        OwnedValue cached = ownedValueCache.get(itemId);
+        if (cached != null) return cached;
+        OwnedValue value = fallbackValue(itemId, ctx, new HashSet<>());
+        ownedValueCache.put(itemId, value);
+        return value;
+    }
+
+    /** Crafting cost, else vendor value, else 0. */
+    private OwnedValue fallbackValue(int itemId, PlannerContext ctx, Set<Integer> visiting) {
+        OwnedValue crafted = craftingUnitValue(itemId, ctx, visiting);
+        if (!crafted.isZero()) return crafted;
+        return OwnedValue.of(ctx.vendorValues.getOrDefault(itemId, 0));
+    }
+
+    /** Compare real purchase/crafting routes recursively; vendor sell values are not buy offers. */
+    private OwnedValue craftingUnitValue(int itemId, PlannerContext ctx, Set<Integer> visiting) {
+        if (!visiting.add(itemId)) return OwnedValue.ZERO;
+        try {
+            OwnedValue best = OwnedValue.ZERO;
+            for (Recipe recipe : ctx.recipesByOutput.getOrDefault(itemId, List.of())) {
+                OwnedValue total = OwnedValue.ZERO;
+                boolean valued = true;
+                for (Ingredient ing : recipe.ingredients) {
+                    OwnedValue unit = OwnedValue.of(resolveDirectBuyUnit(ing.itemId, ctx.tp, ctx.settings));
+                    OwnedValue crafted = craftingUnitValue(ing.itemId, ctx, visiting);
+                    if (!crafted.isZero() && (unit.isZero() || crafted.compareTo(unit) < 0)) unit = crafted;
+                    if (unit.isZero()) unit = OwnedValue.of(ctx.vendorValues.getOrDefault(ing.itemId, 0));
+                    if (unit.isZero()) { valued = false; break; }
+                    total = total.add(unit.times(ing.count));
+                }
+                if (!valued || recipe.outputCount <= 0) continue;
+                OwnedValue unitCost = total.per(recipe.outputCount);
+                if (!unitCost.isZero() && (best.isZero() || unitCost.compareTo(best) < 0)) best = unitCost;
+            }
+            return best;
+        } finally {
+            visiting.remove(itemId);
+        }
     }
 
     public int resolveDirectSellUnit(

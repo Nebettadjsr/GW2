@@ -63,7 +63,7 @@ final class CraftingRowMapper {
                     false, null, null, null, null, null, null, null, null, null,
                     toQuote(tp.get(recipe.outputItemId)), List.of(), List.of(),
                     ingredientNames(recipe, items),
-                    iconUrl(recipe.outputItemId, items));
+                    iconUrl(recipe.outputItemId, items), false);
         }
 
         return new CraftingRowDto(
@@ -87,7 +87,8 @@ final class CraftingRowMapper {
                 toMissing(result.missingToBuy, result.materialPurchaseCosts, items, tp),
                 toMissing(result.missingToBuyOne, result.materialPurchaseCostsOne, items, tp),
                 ingredientNames(recipe, items),
-                iconUrl(recipe.outputItemId, items));
+                iconUrl(recipe.outputItemId, items),
+                result.unvaluedOwnedInput);
     }
 
     /** Sorted by item id purely so the response is stable; the domain's maps are unordered. */
