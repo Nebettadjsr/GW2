@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -75,6 +76,27 @@ public class CraftingGraphCache {
             cachedGraph = snapshot;
             return snapshot;
         }
+    }
+
+    /**
+     * The full recipe graph as seen by a caller-pinned (REPEATABLE READ) connection. A null connection
+     * is the shared cached graph. Otherwise the graph is read through that connection and is neither
+     * taken from nor stored in the shared cache, so a concurrent global recipe refresh cannot mix a
+     * newer graph with the older visible-recipe rows the same snapshot already read.
+     */
+    public CraftingGraph loadForSnapshot(Connection con) throws IOException, SQLException {
+        if (con == null) return load();
+        List<Recipe> recipes = recipeRepo.loadAllRecipes(con);
+        Set<Integer> itemIds = new java.util.HashSet<>();
+        for (Recipe recipe : recipes) {
+            itemIds.add(recipe.outputItemId);
+            recipe.ingredients.forEach(ingredient -> itemIds.add(ingredient.itemId));
+        }
+        Map<Integer, String> itemNames = new java.util.HashMap<>();
+        itemRepo.loadItems(con, itemIds).forEach((itemId, item) -> {
+            if (item.name != null) itemNames.put(itemId, item.name);
+        });
+        return new CraftingGraph(recipes, itemNames);
     }
 
     public synchronized CraftingGraph rebuild() throws IOException, SQLException {

@@ -13,6 +13,7 @@ import craft.Recipe;
 import craft.RecipeTreeBuilder;
 import craft.SingleCraftExplainer;
 import craft.SingleCraftExplanation;
+import model.AccountScope;
 import repo.CharacterRepository;
 import repo.CraftingGraphCache;
 import repo.DiscChoice;
@@ -228,17 +229,20 @@ public class CraftingProfitService {
 
     private Candidates loadCandidates(DiscChoice choice) throws SQLException {
         Connection con = session.connection();
+        AccountScope scope = session.scope();
         List<Recipe> visibleRecipes;
         if (choice == null || choice.kind == DiscChoice.Kind.ALL) {
-            visibleRecipes = con == null ? recipeRepo.loadRecipes("All") : recipeRepo.loadRecipes(con, "All");
+            visibleRecipes = con == null ? recipeRepo.loadRecipes("All")
+                    : scope == null ? recipeRepo.loadRecipes(con, "All")
+                    : recipeRepo.loadRecipes(con, scope, "All");
         } else if (choice.kind == DiscChoice.Kind.DISCIPLINE_ONLY) {
-            visibleRecipes = con == null
-                    ? recipeRepo.loadRecipes(choice.discipline)
-                    : recipeRepo.loadRecipes(con, choice.discipline);
+            visibleRecipes = con == null ? recipeRepo.loadRecipes(choice.discipline)
+                    : scope == null ? recipeRepo.loadRecipes(con, choice.discipline)
+                    : recipeRepo.loadRecipes(con, scope, choice.discipline);
         } else { // CHAR_DISCIPLINE
-            visibleRecipes = con == null
-                    ? recipeRepo.loadRecipesForCharacter(choice.charName, choice.discipline)
-                    : recipeRepo.loadRecipesForCharacter(con, choice.charName, choice.discipline);
+            visibleRecipes = con == null ? recipeRepo.loadRecipesForCharacter(choice.charName, choice.discipline)
+                    : scope == null ? recipeRepo.loadRecipesForCharacter(con, choice.charName, choice.discipline)
+                    : recipeRepo.loadRecipesForCharacter(con, scope, choice.charName, choice.discipline);
         }
 
         Set<Integer> allowedRecipeIds = visibleRecipes.stream()
@@ -247,7 +251,7 @@ public class CraftingProfitService {
 
         CraftingGraph graph;
         try {
-            graph = graphCache.load();
+            graph = graphCache.loadForSnapshot(con);
         } catch (Exception e) {
             throw new RuntimeException("Failed to load crafting graph cache", e);
         }
@@ -281,9 +285,12 @@ public class CraftingProfitService {
         Map<String, Map<Integer, Integer>> characterBoundInv = Map.of();
         if (settings.useOwnMats && !roster.isEmpty()) {
             Set<String> names = roster.stream().map(CharacterCraftingProfile::name).collect(Collectors.toSet());
+            AccountScope scope = session.scope();
             InventoryRepository.CoordinatedInventory inv = con == null
                     ? invRepo.loadOwnedInventoryForCharacters(names)
-                    : invRepo.loadOwnedInventoryForCharacters(con, names);
+                    : scope == null
+                            ? invRepo.loadOwnedInventoryForCharacters(con, names)
+                            : invRepo.loadOwnedInventoryForCharacters(con, scope, names);
             sellableInv = inv.sellable();
             accountBoundInv = inv.accountBound();
             characterBoundInv = inv.characterBound();
@@ -302,9 +309,12 @@ public class CraftingProfitService {
     private List<CharacterCraftingProfile> buildCoordinatedRoster(DiscChoice choice) throws SQLException {
         Connection con = session.connection();
         Map<String, Map<String, Integer>> ratingByCharacter = new HashMap<>();
+        AccountScope scope = session.scope();
         List<CharacterRepository.DiscRow> craftingRows = con == null
                 ? charRepo.loadAllCharacterCrafting()
-                : charRepo.loadAllCharacterCrafting(con);
+                : scope == null
+                        ? charRepo.loadAllCharacterCrafting(con)
+                        : charRepo.loadAllCharacterCrafting(con, scope);
         for (CharacterRepository.DiscRow row : craftingRows) {
             ratingByCharacter.computeIfAbsent(row.charName, k -> new HashMap<>()).put(row.discipline, row.rating);
         }

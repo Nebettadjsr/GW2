@@ -1,5 +1,7 @@
 package application;
 
+import model.AccountScope;
+import repo.AccountSourceStateRepository;
 import repo.AccountSyncStateRepository;
 import sync.tp.relevance.CraftingProfitItemCollector;
 
@@ -49,9 +51,49 @@ public final class CalculationInputVersions {
     /** Reads how much of the feature-relevant tradeable item set the shared quote cache answers. */
     public interface PriceCoverageReader {
         CalculationFreshness.PriceCoverage read(Connection con) throws SQLException;
+
+        /**
+         * The same report for one account's required item set (STORY-APP-015).
+         *
+         * <p>Only the <em>required set</em> is account-derived - it comes from this account's recipe
+         * knowledge. The quotes themselves stay global and shared, so two accounts requiring the same
+         * item read the same quote and the same version.
+         *
+         * <p>The default delegates to the connection-only read, which is right for the in-memory
+         * fakes application-layer tests supply: they answer from their own state and ignore the
+         * connection entirely. The one implementation that reaches the database,
+         * {@link DatabasePriceCoverageReader}, overrides it - because there the unscoped query is
+         * refused on the versioned account schema rather than quietly answering for every account.
+         */
+        default CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope) throws SQLException {
+            return read(con);
+        }
     }
 
+    /**
+     * Reads one account's source markers, completion instant <em>and</em> generation
+     * (STORY-APP-015, TARGET_ARCHITECTURE.md §7.2 "Freshness envelopes identify the captured account
+     * and source generations, never later live markers").
+     *
+     * <p>Separate from {@link AccountSourceVersionReader} because a generation is what a completion
+     * instant cannot be: two publications of an unchanged payload may record the same instant, and a
+     * timestamp is explicitly not a generation identifier - so the captured identity has to carry
+     * the number the publication advanced.
+     */
+    public interface AccountSourceStateReader {
+        /**
+         * @param con    the calculation's pinned connection; never null for a scoped session
+         * @param scope  the account whose markers are read
+         * @return state per source; a source with no successful publication is absent
+         */
+        Map<String, AccountSourceStateRepository.SourceState> read(Connection con,
+                                                                   AccountScope scope,
+                                                                   Set<String> sources) throws SQLException;
+    }
+
+    private final String accountId;
     private final Map<String, Instant> accountVersions;
+    private final Map<String, Long> accountGenerations;
     private final CalculationFreshness.PriceCoverage coverage;
     private final Duration accountMaxAge;
     private final Instant evaluatedAt;
@@ -60,10 +102,37 @@ public final class CalculationInputVersions {
                                     CalculationFreshness.PriceCoverage coverage,
                                     Duration accountMaxAge,
                                     Instant evaluatedAt) {
+        this(null, accountVersions, Map.of(), coverage, accountMaxAge, evaluatedAt);
+    }
+
+    /**
+     * The captured versions of one account's inputs (STORY-APP-015).
+     *
+     * @param accountId          the account this capture belongs to, or null for an unscoped capture
+     * @param accountGenerations the generation actually read per source, for the sources that had one
+     */
+    public CalculationInputVersions(String accountId,
+                                    Map<String, Instant> accountVersions,
+                                    Map<String, Long> accountGenerations,
+                                    CalculationFreshness.PriceCoverage coverage,
+                                    Duration accountMaxAge,
+                                    Instant evaluatedAt) {
+        this.accountId = accountId;
         this.accountVersions = Map.copyOf(accountVersions);
+        this.accountGenerations = Map.copyOf(accountGenerations);
         this.coverage = coverage;
         this.accountMaxAge = accountMaxAge;
         this.evaluatedAt = evaluatedAt;
+    }
+
+    /** The account this capture belongs to, or null when it was taken through an unscoped session. */
+    public String accountId() {
+        return accountId;
+    }
+
+    /** The generation each required source had when this capture read it. */
+    public Map<String, Long> accountGenerations() {
+        return accountGenerations;
     }
 
     public CalculationFreshness.PriceCoverage coverage() {
@@ -140,8 +209,13 @@ public final class CalculationInputVersions {
      */
     public String calculationId() {
         StringBuilder material = new StringBuilder();
+        // The account is part of the identity, not metadata beside it: two accounts whose sources
+        // happen to have completed at the same instants are different input generations, and a
+        // detail computed for one must never be reported as explaining the other's row.
+        material.append("account=").append(accountId).append(';');
         for (String source : orderedSources()) {
-            material.append(source).append('=').append(accountVersions.get(source)).append(';');
+            material.append(source).append('=').append(accountVersions.get(source))
+                    .append('#').append(accountGenerations.get(source)).append(';');
         }
         material.append("tp.required=").append(coverage.requiredItems()).append(';')
                 .append("tp.fresh=").append(coverage.freshItems()).append(';')
@@ -168,6 +242,27 @@ public final class CalculationInputVersions {
             return hex.toString();
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 is required by the Java platform", impossible);
+        }
+    }
+
+    /**
+     * Reads one account's markers through {@code repo.AccountSourceStateRepository} (STORY-APP-015).
+     *
+     * <p>One statement for every required source, issued on the calculation's own connection, so
+     * every marker comes from the same point of the same snapshot as the data. A pure {@code SELECT}:
+     * capturing freshness never creates it.
+     */
+    public static final class DatabaseAccountSourceStateReader implements AccountSourceStateReader {
+
+        private final AccountSourceStateRepository markers = new AccountSourceStateRepository();
+
+        @Override
+        public Map<String, AccountSourceStateRepository.SourceState> read(Connection con,
+                                                                          AccountScope scope,
+                                                                          Set<String> sources)
+                throws SQLException {
+            if (con == null) return Map.of();
+            return markers.readAll(con, scope, sources);
         }
     }
 
@@ -198,7 +293,16 @@ public final class CalculationInputVersions {
         @Override
         public CalculationFreshness.PriceCoverage read(Connection con) throws SQLException {
             if (con == null) return CalculationFreshness.PriceCoverage.none();
-            CraftingProfitItemCollector.Coverage coverage = collector.coverage(con);
+            return map(collector.coverage(con));
+        }
+
+        @Override
+        public CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope) throws SQLException {
+            if (con == null) return CalculationFreshness.PriceCoverage.none();
+            return map(collector.coverage(con, scope));
+        }
+
+        private static CalculationFreshness.PriceCoverage map(CraftingProfitItemCollector.Coverage coverage) {
             return new CalculationFreshness.PriceCoverage(
                     coverage.requiredItems(),
                     coverage.freshItems(),

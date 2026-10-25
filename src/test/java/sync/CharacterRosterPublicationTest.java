@@ -6,6 +6,8 @@ import model.CharacterCraftingRow;
 import model.CharacterInfo;
 import model.CharacterItemRow;
 import model.CharacterRecipeRow;
+import model.AccountScope;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -67,6 +69,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class CharacterRosterPublicationTest {
 
+    private static final AccountScope ACCOUNT = AccountScope.of("10000000-0000-0000-0000-000000000001");
+
     private static final Instant GENERATION_ONE = Instant.parse("2026-10-12T09:00:00Z");
     private static final Instant GENERATION_TWO = Instant.parse("2026-10-12T10:00:00Z");
 
@@ -86,55 +90,18 @@ class CharacterRosterPublicationTest {
             statement.execute("CREATE SCHEMA " + schema);
         }
         admin.setSchema(schema);
-        AccountSyncStateRepository.ensure(admin);
-
-        try (Statement statement = admin.createStatement()) {
-            statement.execute("""
-                CREATE TABLE characters (
-                    character_id  BIGSERIAL PRIMARY KEY,
-                    name          TEXT NOT NULL UNIQUE,
-                    profession    TEXT,
-                    race          TEXT,
-                    gender        TEXT,
-                    level         INTEGER,
-                    created_at_gw TIMESTAMPTZ,
-                    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-                )
-                """);
-            statement.execute("""
-                CREATE TABLE character_crafting (
-                    character_id BIGINT NOT NULL REFERENCES characters(character_id) ON DELETE CASCADE,
-                    discipline   TEXT NOT NULL,
-                    rating       INTEGER NOT NULL DEFAULT 0,
-                    is_active    BOOLEAN NOT NULL DEFAULT false,
-                    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-                    PRIMARY KEY (character_id, discipline)
-                )
-                """);
-            statement.execute("""
-                CREATE TABLE character_recipes (
-                    character_id BIGINT NOT NULL REFERENCES characters(character_id) ON DELETE CASCADE,
-                    recipe_id    INTEGER NOT NULL,
-                    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-                    PRIMARY KEY (character_id, recipe_id)
-                )
-                """);
-            statement.execute("""
-                CREATE TABLE character_items (
-                    character_id   BIGINT NOT NULL REFERENCES characters(character_id) ON DELETE CASCADE,
-                    location       TEXT NOT NULL,
-                    bag_index      INTEGER,
-                    slot_index     INTEGER,
-                    equipment_slot TEXT,
-                    item_id        INTEGER NOT NULL,
-                    count          INTEGER NOT NULL DEFAULT 1,
-                    binding        TEXT,
-                    bound_to       TEXT,
-                    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-                    CONSTRAINT uq_character_items_slot UNIQUE
-                        (character_id, location, bag_index, slot_index, equipment_slot)
-                )
-                """);
+        Flyway.configure()
+                .dataSource(EnvConfig.require("DATABASE_URL"), EnvConfig.require("DATABASE_USER"),
+                        EnvConfig.require("DATABASE_PASSWORD"))
+                .schemas(schema)
+                .defaultSchema(schema)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+        try (PreparedStatement ps = admin.prepareStatement(
+                "INSERT INTO account_registry (account_id) VALUES (?::uuid) ON CONFLICT DO NOTHING")) {
+            ps.setString(1, "10000000-0000-0000-0000-000000000001");
+            ps.executeUpdate();
         }
 
         System.setProperty(Db.TEST_SCHEMA_PROPERTY, schema);
@@ -173,7 +140,7 @@ class CharacterRosterPublicationTest {
                 character(HELD_CHARACTER, 500));
         Thread refresh = new Thread(() -> {
             try {
-                CharacterSync.publishRoster(writer, generationTwo, GENERATION_TWO);
+                CharacterSync.publishRoster(writer, ACCOUNT, generationTwo, java.time.Clock.fixed(GENERATION_TWO, java.time.ZoneOffset.UTC));
             } catch (Exception thrown) {
                 failure.set(thrown);
             }
@@ -181,7 +148,7 @@ class CharacterRosterPublicationTest {
         refresh.start();
         awaitWaitingOnTheLock(writerPid);
 
-        try (ProfitInputSession session = ProfitInputSession.open()) {
+        try (ProfitInputSession session = ProfitInputSession.open(ACCOUNT)) {
             assertEquals(GENERATION_ONE, capturedMarker(session),
                     "a mid-write refresh must not advance the marker a calculation reads");
             assertEquals(Map.of("Scribe Ana", 400, "Scribe Bo", 300), capturedRatings(session),
@@ -193,7 +160,7 @@ class CharacterRosterPublicationTest {
         writer.close();
         assertNull(failure.get(), "the released refresh must publish normally");
 
-        try (ProfitInputSession session = ProfitInputSession.open()) {
+        try (ProfitInputSession session = ProfitInputSession.open(ACCOUNT)) {
             assertEquals(GENERATION_TWO, capturedMarker(session),
                     "once it commits, the data and its version appear together");
             assertEquals(Map.of("Scribe Ana", 450, "Scribe Bo", 300, HELD_CHARACTER, 500),
@@ -216,11 +183,11 @@ class CharacterRosterPublicationTest {
         try (Connection writer = connect()) {
             writer.setSchema(schema);
             assertThrows(Exception.class,
-                    () -> CharacterSync.publishRoster(writer, doomed, GENERATION_TWO),
+                    () -> CharacterSync.publishRoster(writer, ACCOUNT, doomed, java.time.Clock.fixed(GENERATION_TWO, java.time.ZoneOffset.UTC)),
                     "the publish must fail rather than commit half a generation");
         }
 
-        try (ProfitInputSession session = ProfitInputSession.open()) {
+        try (ProfitInputSession session = ProfitInputSession.open(ACCOUNT)) {
             assertEquals(GENERATION_ONE, capturedMarker(session),
                     "a failed refresh must not advance the completion marker");
             assertEquals(Map.of("Scribe Ana", 400, "Scribe Bo", 300), capturedRatings(session),
@@ -232,7 +199,7 @@ class CharacterRosterPublicationTest {
 
     @Test
     void oneCaptureCannotMixGenerationsNoMatterWhatPublishesWhileItReads() throws Exception {
-        try (ProfitInputSession session = ProfitInputSession.open()) {
+        try (ProfitInputSession session = ProfitInputSession.open(ACCOUNT)) {
             assertEquals(GENERATION_ONE, capturedMarker(session));
             assertEquals(Map.of("Scribe Ana", 400, "Scribe Bo", 300), capturedRatings(session));
 
@@ -244,7 +211,7 @@ class CharacterRosterPublicationTest {
                     "nor read the newer rows under the older marker");
         }
 
-        try (ProfitInputSession session = ProfitInputSession.open()) {
+        try (ProfitInputSession session = ProfitInputSession.open(ACCOUNT)) {
             assertEquals(GENERATION_TWO, capturedMarker(session));
             assertEquals(Map.of("Scribe Ana", 450, "Scribe Bo", 350), capturedRatings(session));
         }
@@ -253,15 +220,15 @@ class CharacterRosterPublicationTest {
     // ---------- the production capture path ----------
 
     private static Instant capturedMarker(ProfitInputSession session) throws Exception {
-        Map<String, Instant> versions = new CalculationInputVersions.DatabaseAccountSourceVersionReader()
-                .read(session.connection(), Set.of(AccountSyncStateRepository.CHARACTERS));
-        return versions.get(AccountSyncStateRepository.CHARACTERS);
+        var versions = new CalculationInputVersions.DatabaseAccountSourceStateReader()
+                .read(session.connection(), ACCOUNT, Set.of(AccountSyncStateRepository.CHARACTERS));
+        return versions.get(AccountSyncStateRepository.CHARACTERS).completedAt();
     }
 
     private static Map<String, Integer> capturedRatings(ProfitInputSession session) throws Exception {
         Map<String, Integer> ratings = new LinkedHashMap<>();
         for (CharacterRepository.DiscRow row
-                : new CharacterRepository().loadAllCharacterCrafting(session.connection())) {
+                : new CharacterRepository().loadAllCharacterCrafting(session.connection(), ACCOUNT)) {
             ratings.put(row.charName, row.rating);
         }
         return ratings;
@@ -273,7 +240,26 @@ class CharacterRosterPublicationTest {
     private void publish(Instant version, List<CharacterSync.CharPayload> payloads) throws Exception {
         try (Connection writer = connect()) {
             writer.setSchema(schema);
-            CharacterSync.publishRoster(writer, payloads, version);
+            CharacterSync.publishRoster(writer, ACCOUNT, payloads, java.time.Clock.fixed(version, java.time.ZoneOffset.UTC));
+        }
+    }
+
+    @Test
+    void successfulEmptyRosterRemovesChildrenAndAdvancesItsGeneration() throws Exception {
+        publish(GENERATION_TWO, List.of());
+        assertEquals(List.of(), characterNames());
+        try (var snapshot = ProfitInputSession.open(ACCOUNT)) {
+            var marker = new repo.AccountSourceStateRepository()
+                    .read(snapshot.connection(), ACCOUNT, AccountSyncStateRepository.CHARACTERS).orElseThrow();
+            assertEquals(2, marker.generation());
+            assertEquals(GENERATION_TWO, marker.completedAt());
+            for (String table : List.of("character_crafting", "character_recipes", "character_items")) {
+                try (var statement = snapshot.connection().createStatement();
+                     var rows = statement.executeQuery("SELECT count(*) FROM " + table)) {
+                    assertTrue(rows.next());
+                    assertEquals(0, rows.getInt(1));
+                }
+            }
         }
     }
 

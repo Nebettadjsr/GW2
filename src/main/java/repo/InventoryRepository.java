@@ -12,6 +12,128 @@ import java.util.Set;
 public class InventoryRepository {
 
     /**
+     * The three account-owned pools the owned quantity is summed from, each scoped by its account
+     * GUID (STORY-APP-015). {@code account_materials} has no {@code bound_to} column, so its rows
+     * can only be unbound or account-bound, never soulbound - the {@code NULL} literal keeps the
+     * three result shapes identical so one row loop can classify all of them.
+     */
+    private static final String[] SCOPED_POOL_QUERIES = {
+            """
+            SELECT item_id, count, binding, NULL AS bound_to
+            FROM account_materials
+            WHERE account_id = ? AND item_id IS NOT NULL
+            """,
+            """
+            SELECT item_id, count, binding, bound_to
+            FROM account_bank
+            WHERE account_id = ? AND item_id IS NOT NULL
+            """,
+            """
+            SELECT item_id, count, binding, bound_to
+            FROM character_items
+            WHERE account_id = ? AND item_id IS NOT NULL
+            """
+    };
+
+    /**
+     * One account's total owned quantity per item (STORY-APP-015), the scoped form of
+     * {@link #loadOwnedInventory(Connection)}.
+     *
+     * <p>Same pool definition as the unscoped version - material storage plus bank plus every
+     * character's bags and equipment (DOMAIN_SPEC.md DQ-006), binding deliberately not filtered -
+     * with the owning account added to each of the three reads. Summing them without that scope is
+     * what would mix two accounts' quantities into one number.
+     */
+    public Map<Integer, Integer> loadOwnedInventory(Connection con, model.AccountScope scope) throws SQLException {
+        ManagedSchema.requireManagedAccountSchema(con, "owned inventory");
+        Map<Integer, Integer> inv = new HashMap<>();
+        forEachScopedRow(con, scope, (itemId, count, binding, boundTo) -> inv.merge(itemId, count, Integer::sum));
+        return inv;
+    }
+
+    /**
+     * One account's owned quantity split by binding usability for {@code selectedCharacterName}
+     * (STORY-APP-015), the scoped form of
+     * {@link #loadOwnedInventoryForCharacter(Connection, String)}.
+     *
+     * <p>The binding rules themselves are unchanged and stay in {@link #classifyOwnedRow}: scoping
+     * decides which rows are read, not how they are classified. A character name only has meaning
+     * within its account, which is why the selected character must be resolved inside the same
+     * scope.
+     */
+    public Map<Integer, OwnedQuantity> loadOwnedInventoryForCharacter(model.AccountScope scope,
+                                                                      String selectedCharacterName)
+            throws SQLException {
+        try (Connection con = repo.Db.open()) {
+            return loadOwnedInventoryForCharacter(con, scope, selectedCharacterName);
+        }
+    }
+
+    /** @see #loadOwnedInventoryForCharacter(model.AccountScope, String) */
+    public Map<Integer, OwnedQuantity> loadOwnedInventoryForCharacter(Connection con,
+                                                                      model.AccountScope scope,
+                                                                      String selectedCharacterName)
+            throws SQLException {
+        ManagedSchema.requireManagedAccountSchema(con, "owned inventory");
+        Map<Integer, Integer> sellable = new HashMap<>();
+        Map<Integer, Integer> bound = new HashMap<>();
+        forEachScopedRow(con, scope, (itemId, count, binding, boundTo) ->
+                classifyOwnedRow(itemId, count, binding, boundTo, selectedCharacterName, sellable, bound));
+        return combine(sellable, bound);
+    }
+
+    /**
+     * One account's three-way coordinated inventory split (STORY-APP-015), the scoped form of
+     * {@link #loadOwnedInventoryForCharacters(Connection, Set)}.
+     */
+    public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con,
+                                                                model.AccountScope scope,
+                                                                Set<String> characterNames)
+            throws SQLException {
+        ManagedSchema.requireManagedAccountSchema(con, "owned inventory");
+        Map<Integer, Integer> sellable = new HashMap<>();
+        Map<Integer, Integer> accountBound = new HashMap<>();
+        Map<String, Map<Integer, Integer>> characterBound = new HashMap<>();
+        forEachScopedRow(con, scope, (itemId, count, binding, boundTo) ->
+                classifyCoordinatedRow(itemId, count, binding, boundTo, characterNames,
+                        sellable, accountBound, characterBound));
+        return new CoordinatedInventory(sellable, accountBound, characterBound);
+    }
+
+    /** One owned row as every pool reports it. */
+    private interface OwnedRowHandler {
+        void accept(int itemId, int count, String binding, String boundTo);
+    }
+
+    private static void forEachScopedRow(Connection con, model.AccountScope scope, OwnedRowHandler handler)
+            throws SQLException {
+        for (String sql : SCOPED_POOL_QUERIES) {
+            try (PreparedStatement ps = con.prepareStatement(sql)) {
+                ps.setObject(1, scope.accountId());
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        handler.accept(rs.getInt("item_id"), rs.getInt("count"),
+                                rs.getString("binding"), rs.getString("bound_to"));
+                    }
+                }
+            }
+        }
+    }
+
+    private static Map<Integer, OwnedQuantity> combine(Map<Integer, Integer> sellable,
+                                                       Map<Integer, Integer> bound) {
+        Set<Integer> itemIds = new HashSet<>();
+        itemIds.addAll(sellable.keySet());
+        itemIds.addAll(bound.keySet());
+
+        Map<Integer, OwnedQuantity> result = new HashMap<>();
+        for (int itemId : itemIds) {
+            result.put(itemId, new OwnedQuantity(sellable.getOrDefault(itemId, 0), bound.getOrDefault(itemId, 0)));
+        }
+        return result;
+    }
+
+    /**
      * "use mats from Bank" checked:
      * - include account_bank items + account_materials
      * unchecked:

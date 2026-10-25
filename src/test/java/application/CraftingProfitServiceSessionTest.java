@@ -267,6 +267,11 @@ class CraftingProfitServiceSessionTest {
         public CraftingGraph load() {
             return new CraftingGraph(List.of(RECIPE));
         }
+
+        @Override
+        public CraftingGraph loadForSnapshot(java.sql.Connection con) {
+            return load();
+        }
     }
 
     /** Identity is all this needs to supply: the repositories above only record that they got it. */
