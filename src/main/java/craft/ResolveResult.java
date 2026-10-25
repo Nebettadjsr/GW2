@@ -20,6 +20,10 @@ public class ResolveResult {
         return root.getOpportunityCostCopper();
     }
 
+    public boolean hasUnvaluedOwnedInput() {
+        return root.hasUnvaluedOwnedInput();
+    }
+
     public int getEffectiveCostCopper() {
         return root.getEffectiveCostCopper();
     }

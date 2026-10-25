@@ -17,6 +17,9 @@ public class ResolvedNeed {
     private int buyCostCopper;
     private int opportunityCostCopper;
 
+    /** An owned sellable quantity here (or below) could not be valued at all (DOMAIN_SPEC.md 11.2). */
+    private boolean unvaluedOwnedInput;
+
     private AcquisitionMode mode = AcquisitionMode.BLOCKED;
     private BlockedReason blockedReason = BlockedReason.NONE;
 
@@ -160,6 +163,15 @@ public class ResolvedNeed {
     public void addCostsFromChild(ResolvedNeed child) {
         this.buyCostCopper += child.getBuyCostCopper();
         this.opportunityCostCopper += child.getOpportunityCostCopper();
+        this.unvaluedOwnedInput |= child.unvaluedOwnedInput;
+    }
+
+    public boolean hasUnvaluedOwnedInput() {
+        return unvaluedOwnedInput;
+    }
+
+    public void setUnvaluedOwnedInput(boolean unvaluedOwnedInput) {
+        this.unvaluedOwnedInput = unvaluedOwnedInput;
     }
 
     public boolean isFullySatisfied() {

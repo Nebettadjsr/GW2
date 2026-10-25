@@ -138,7 +138,7 @@ public class CraftingProfitService {
         Candidates candidates = loadCandidates(choice);
         CalculationInputs inputs = loadCalculationInputs(choice, settings, candidates.allRecipes());
 
-        Map<Integer, CraftResult> resultsByRecipeId = planner.evaluateAllCoordinated(
+        Map<Integer, CraftResult> resultsByRecipeId = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).evaluateAllCoordinated(
                 candidates.allRecipes(), inputs.sellableInventory(), inputs.accountBoundInventory(),
                 inputs.characterBoundInventory(), inputs.roster(), inputs.tp(), settings,
                 candidates.allowedRecipeIds());
@@ -178,12 +178,12 @@ public class CraftingProfitService {
 
         CalculationInputs inputs = loadCalculationInputs(choice, settings, candidates.allRecipes());
 
-        CraftResult row = planner.evaluateOneCoordinated(
+        CraftResult row = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).evaluateOneCoordinated(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
                 inputs.accountBoundInventory(), inputs.characterBoundInventory(), inputs.roster(),
                 inputs.tp(), settings, candidates.allowedRecipeIds());
 
-        SingleCraftExplanation explanation = new SingleCraftExplainer().explainCoordinatedResult(
+        SingleCraftExplanation explanation = new SingleCraftExplainer(ItemRepository.vendorValues(inputs.items())).explainCoordinatedResult(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
                 inputs.accountBoundInventory(), inputs.characterBoundInventory(), inputs.roster(),
                 inputs.tp(), settings, candidates.allowedRecipeIds(), row.craftableCount);

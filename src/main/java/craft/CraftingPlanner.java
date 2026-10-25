@@ -14,6 +14,23 @@ import java.util.stream.Collectors;
 public class CraftingPlanner {
 
     private final CostEvaluator costEvaluator = new CostEvaluator();
+    private final Map<Integer, Integer> vendorValues;
+
+    public CraftingPlanner() {
+        this(Map.of());
+    }
+
+    private CraftingPlanner(Map<Integer, Integer> vendorValues) {
+        this.vendorValues = vendorValues;
+    }
+
+    /**
+     * A planner that values untradeable owned materials with these vendor sell values
+     * (DOMAIN_SPEC.md 11.2 step 2), keyed by item id; non-positive values mean "no vendor value".
+     */
+    public CraftingPlanner withVendorValues(Map<Integer, Integer> vendorValues) {
+        return vendorValues.equals(this.vendorValues) ? this : new CraftingPlanner(Map.copyOf(vendorValues));
+    }
 
     public Map<Integer, CraftResult> evaluateAll(List<Recipe> recipes,
                                                  Map<Integer, Integer> inventory,
@@ -31,7 +48,7 @@ public class CraftingPlanner {
                                                             CraftingSettings settings,
                                                             Set<Integer> allowedRecipeIds) {
         Map<Integer, List<Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
-        PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds);
+        PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds).withVendorValues(vendorValues);
         return recipes.parallelStream().collect(Collectors.toConcurrentMap(
                 r -> r.recipeId,
                 r -> evaluateOneRecipeNew(r, new PlanState(sellableInventory, boundInventory), ctx,
@@ -55,7 +72,7 @@ public class CraftingPlanner {
                                                  Set<Integer> allowedRecipeIds) {
 
         Map<Integer, List<Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
-        PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds);
+        PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds).withVendorValues(vendorValues);
 
         // Every recipe's simulation only reads shared/immutable inputs (ctx, sellableInventory,
         // boundInventory) and writes to its own fresh PlanState/RecipeSimulator, so recipes are
@@ -91,7 +108,7 @@ public class CraftingPlanner {
 
         Map<Integer, List<Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
         PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
-                roster);
+                roster).withVendorValues(vendorValues);
 
         // See evaluateAll(...)'s parallelization note: identical independence argument applies
         // here, including for the coordinated per-character trial paths, since each recipe still
@@ -123,7 +140,7 @@ public class CraftingPlanner {
                                    Set<Integer> allowedRecipeIds) {
 
         PlannerContext ctx = new PlannerContext(
-                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds);
+                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds).withVendorValues(vendorValues);
 
         return evaluateOneRecipeNew(
                 recipe, new PlanState(sellableInventory, boundInventory), ctx, new RecipeSimulator());
@@ -138,7 +155,7 @@ public class CraftingPlanner {
                                            CraftingSettings settings,
                                            Set<Integer> allowedRecipeIds) {
         PlannerContext ctx = new PlannerContext(
-                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds);
+                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds).withVendorValues(vendorValues);
         return evaluateOneRecipeNew(recipe, new PlanState(sellableInventory, boundInventory), ctx,
                 new RecipeSimulator(new CraftingResolver(), 1, true));
     }
@@ -160,7 +177,7 @@ public class CraftingPlanner {
             Set<Integer> allowedRecipeIds) {
 
         PlannerContext ctx = new PlannerContext(
-                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster);
+                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues);
 
         return evaluateOneRecipeNew(
                 recipe,
@@ -232,7 +249,7 @@ public class CraftingPlanner {
         int totalProfit = totalSellValue - feeOne * sim.getCraftCount()
                 - sim.getBuyCostTotal() - sim.getOpportunityCostTotal();
 
-        return new CraftResult(
+        CraftResult result = new CraftResult(
                 recipe.outputItemId,
                 recipe.disciplinesText,
                 sim.getCraftCount(),
@@ -250,6 +267,8 @@ public class CraftingPlanner {
                 purchaseCosts,
                 purchaseCostsOne
         );
+        result.unvaluedOwnedInput = sim.hasUnvaluedOwnedInput();
+        return result;
     }
 
     private Map<Integer, MaterialPurchaseCost> purchaseCosts(Map<Integer, Integer> missing,

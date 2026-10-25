@@ -10,6 +10,7 @@ public class CraftingResolver {
 
     private final Map<Integer, Integer> directBuyUnitCache = new HashMap<>();
     private final Map<Integer, Integer> directSellUnitCache = new HashMap<>();
+    private final Map<Integer, Integer> ownedValueCache = new HashMap<>();
 
     /**
      * When true, every resolved requirement additionally records the explanation facts a semantic
@@ -76,14 +77,15 @@ public class CraftingResolver {
             int usedFromInventory = consumption.total();
             result.setQtyFromInventory(usedFromInventory);
 
-            int sellUnit = resolveDirectSellUnit(itemId, ctx.tp, ctx.settings);
+            int sellUnit = consumption.usedSellable() > 0 ? resolveOwnedUnitValue(itemId, ctx) : 0;
             int oppCost = consumption.usedSellable() * sellUnit;
             result.setOpportunityCostCopper(oppCost);
 
-            if (tracing && consumption.usedSellable() > 0 && sellUnit <= 0) {
+            if (consumption.usedSellable() > 0 && sellUnit <= 0) {
                 // DOMAIN_SPEC.md section 11.2: this quantity was valued at zero because no value
                 // could be established for it, which is not the same as it being free.
-                result.traceForWrite().markUnvaluedNonTradable();
+                result.setUnvaluedOwnedInput(true);
+                if (tracing) result.traceForWrite().markUnvaluedNonTradable();
             }
 
             remaining -= usedFromInventory;
@@ -177,6 +179,7 @@ public class CraftingResolver {
             result.setQtyBlocked(chosenNeed.getQtyBlocked());
             result.setBuyCostCopper(result.getBuyCostCopper() + chosenNeed.getBuyCostCopper());
             result.setOpportunityCostCopper(result.getOpportunityCostCopper() + chosenNeed.getOpportunityCostCopper());
+            if (chosenNeed.hasUnvaluedOwnedInput()) result.setUnvaluedOwnedInput(true);
 
             if (chosenNeed.getBlockedReason() != BlockedReason.NONE) {
                 result.setBlockedReason(chosenNeed.getBlockedReason());
@@ -478,6 +481,47 @@ public class CraftingResolver {
 
         directBuyUnitCache.put(itemId, result);
         return result;
+    }
+
+    /**
+     * Unit opportunity cost of an owned, sellable item. The usable Trading Post sell-side price
+     * when there is one; otherwise DOMAIN_SPEC.md 11.2's fallback order: the item's calculated
+     * crafting cost, then its vendor sell value. 0 means "could not be valued", never "free".
+     */
+    int resolveOwnedUnitValue(int itemId, PlannerContext ctx) {
+        int tpValue = resolveDirectSellUnit(itemId, ctx.tp, ctx.settings);
+        if (tpValue > 0) return tpValue;
+        Integer cached = ownedValueCache.get(itemId);
+        if (cached != null) return cached;
+        int value = fallbackValue(itemId, ctx, new HashSet<>());
+        ownedValueCache.put(itemId, value);
+        return value;
+    }
+
+    /** Crafting cost, else vendor value, else 0; {@code visiting} breaks recipe cycles. */
+    private int fallbackValue(int itemId, PlannerContext ctx, Set<Integer> visiting) {
+        if (!visiting.add(itemId)) return 0;
+        try {
+            int best = 0;
+            for (Recipe recipe : ctx.recipesByOutput.getOrDefault(itemId, List.of())) {
+                long total = 0;
+                boolean valued = true;
+                for (Ingredient ing : recipe.ingredients) {
+                    int unit = resolveDirectBuyUnit(ing.itemId, ctx.tp, ctx.settings);
+                    if (unit <= 0) unit = fallbackValue(ing.itemId, ctx, visiting);
+                    if (unit <= 0) { valued = false; break; }
+                    total += (long) unit * ing.count;
+                }
+                if (!valued || recipe.outputCount <= 0) continue;
+                int unitCost = (int) Math.min(Integer.MAX_VALUE, (total + recipe.outputCount - 1) / recipe.outputCount);
+                if (unitCost > 0 && (best == 0 || unitCost < best)) best = unitCost;
+            }
+            if (best > 0) return best;
+            Integer vendor = ctx.vendorValues.get(itemId);
+            return vendor == null ? 0 : Math.max(vendor, 0);
+        } finally {
+            visiting.remove(itemId);
+        }
     }
 
     public int resolveDirectSellUnit(

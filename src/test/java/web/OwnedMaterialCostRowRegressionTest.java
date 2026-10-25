@@ -14,6 +14,8 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * STORY-FIX-001 regression: owned sellable materials carry their Trading Post opportunity cost
@@ -112,5 +114,69 @@ class OwnedMaterialCostRowRegressionTest {
         assertEquals(730, row.profitCopper());
         assertEquals(1460, row.totalProfitCopper());
         assertEquals(2000, row.totalSellValueCopper());
+    }
+
+    // ---- DOMAIN_SPEC.md 11.2: a sellable owned item with no usable Trading Post side -------------
+
+    private static final int OUTPUT2 = 300;
+    private static final int RAW = 400;
+    private static final int REFINED = 500;
+
+    /** Instant-sell side missing (null) for the owned item, as for an item with only buy orders. */
+    private static final Map<Integer, PriceQuote> NO_SELL_SIDE_TP = Map.of(
+            OUTPUT2, new PriceQuote(1000, 1200),
+            REFINED, new PriceQuote(null, null),
+            RAW, new PriceQuote(10, 20));
+
+    private static final CraftingSettings OWN_ONLY = new CraftingSettings(true, false, 0, false, false, false);
+
+    private static CraftResult resultWith(Map<Integer, PriceQuote> tp, List<Recipe> recipes,
+                                          Map<Integer, Integer> vendorValues,
+                                          Map<Integer, Integer> sellable) {
+        return new CraftingPlanner().withVendorValues(vendorValues)
+                .evaluateAll(recipes, sellable, Map.of(), tp, OWN_ONLY, Set.of(2)).get(2);
+    }
+
+    private static final List<Recipe> NEEDS_REFINED = List.of(
+            new Recipe(2, OUTPUT2, 1, 0, "Artificer", List.of(new Ingredient(REFINED, 2))),
+            // Refined is crafted from 3 raw (buy side 20c each) per 1 refined: crafting cost 60c.
+            new Recipe(3, REFINED, 1, 0, "Artificer", List.of(new Ingredient(RAW, 3))));
+
+    @Test
+    void ownedItemWithoutTpQuoteIsValuedByItsCraftingCostNotZero() {
+        CraftResult r = resultWith(NO_SELL_SIDE_TP, NEEDS_REFINED, Map.of(), Map.of(REFINED, 2));
+
+        // 2 refined x (3 raw x 20c) = 120c opportunity cost. 1000 - 150 fee - 120.
+        assertEquals(1, r.craftableCount);
+        assertEquals(120, r.matsSellValueCopper);
+        assertEquals(730, r.profitCopper);
+        assertFalse(r.unvaluedOwnedInput);
+    }
+
+    @Test
+    void ownedItemWithoutTpQuoteOrRecipeFallsBackToVendorValue() {
+        List<Recipe> noRefinedRecipe = List.of(NEEDS_REFINED.get(0));
+        CraftResult r = resultWith(NO_SELL_SIDE_TP, noRefinedRecipe, Map.of(REFINED, 25), Map.of(REFINED, 2));
+
+        // 2 x 25c vendor value = 50c. 1000 - 150 - 50.
+        assertEquals(50, r.matsSellValueCopper);
+        assertEquals(800, r.profitCopper);
+        assertFalse(r.unvaluedOwnedInput);
+    }
+
+    @Test
+    void ownedItemWithNoValueAtAllIsFlaggedUnvaluedNotSilentlyFree() {
+        List<Recipe> noRefinedRecipe = List.of(NEEDS_REFINED.get(0));
+        CraftResult r = resultWith(NO_SELL_SIDE_TP, noRefinedRecipe, Map.of(), Map.of(REFINED, 2));
+
+        assertEquals(0, r.matsSellValueCopper);
+        assertTrue(r.unvaluedOwnedInput);
+        assertTrue(CraftingRowMapper.toRow(noRefinedRecipe.get(0), r, Map.of(), NO_SELL_SIDE_TP)
+                .unvaluedOwnedInput());
+    }
+
+    @Test
+    void tradeableOwnedItemWithUsableQuoteIsNotFlagged() throws Exception {
+        assertFalse(row(Map.of(MATERIAL, 3), Map.of(), SETTINGS).unvaluedOwnedInput());
     }
 }

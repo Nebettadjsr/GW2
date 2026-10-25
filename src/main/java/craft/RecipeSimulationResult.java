@@ -18,6 +18,7 @@ public class RecipeSimulationResult {
 
     private int buyCostTotal;
     private int opportunityCostTotal;
+    private boolean unvaluedOwnedInput;
 
     private BlockedReason blockedReason = BlockedReason.NONE;
 
@@ -83,6 +84,14 @@ public class RecipeSimulationResult {
 
     public void addBuyCost(int value) {
         buyCostTotal += value;
+    }
+
+    public boolean hasUnvaluedOwnedInput() {
+        return unvaluedOwnedInput;
+    }
+
+    public void markUnvaluedOwnedInput() {
+        unvaluedOwnedInput = true;
     }
 
     public int getOpportunityCostTotal() {

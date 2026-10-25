@@ -39,6 +39,13 @@ public class CraftResult {
     public final BlockedReason blockedReason;
     public final Node tree;
 
+    /**
+     * True when an owned sellable input consumed by an accepted craft had no Trading Post value, no
+     * crafting cost and no vendor value (DOMAIN_SPEC.md 11.2). Its cost was taken as 0 only because
+     * it could not be modelled, so the profit figures are not a confident result.
+     */
+    public boolean unvaluedOwnedInput;
+
     public CraftResult(int outputItemId, String discipline, int craftableCount,
                        Map<Integer, Integer> missingToBuy,
                        Map<Integer, Integer> missingToBuyOne,

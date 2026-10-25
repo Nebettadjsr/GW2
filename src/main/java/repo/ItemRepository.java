@@ -20,12 +20,29 @@ public class ItemRepository {
          */
         public final String iconUrl;
 
+        /** Vendor sell value in copper; 0 when unknown or none (DOMAIN_SPEC.md 11.2 step 2). */
+        public final int vendorValue;
+
         public ItemInfo(int itemId, String name, String iconPath, String iconUrl) {
+            this(itemId, name, iconPath, iconUrl, 0);
+        }
+
+        public ItemInfo(int itemId, String name, String iconPath, String iconUrl, int vendorValue) {
+            this.vendorValue = vendorValue;
             this.itemId = itemId;
             this.name = name;
             this.iconPath = iconPath;
             this.iconUrl = iconUrl;
         }
+    }
+
+    /** Positive vendor sell values by item id, for the domain's untradeable-material fallback. */
+    public static Map<Integer, Integer> vendorValues(Map<Integer, ItemInfo> items) {
+        Map<Integer, Integer> out = new HashMap<>();
+        for (ItemInfo info : items.values()) {
+            if (info.vendorValue > 0) out.put(info.itemId, info.vendorValue);
+        }
+        return out;
     }
 
     public Map<Integer, ItemInfo> loadItems(Set<Integer> itemIds) throws SQLException {
@@ -45,7 +62,7 @@ public class ItemRepository {
         if (itemIds.isEmpty()) return out;
 
         String sql = """
-            SELECT item_id, name, icon_path, icon_url
+            SELECT item_id, name, icon_path, icon_url, vendor_value
             FROM items
             WHERE item_id = ANY(?)
         """;
@@ -61,7 +78,7 @@ public class ItemRepository {
                     String name = rs.getString("name");
                     String iconPath = rs.getString("icon_path");
                     String iconUrl = rs.getString("icon_url");
-                    out.put(id, new ItemInfo(id, name, iconPath, iconUrl));
+                    out.put(id, new ItemInfo(id, name, iconPath, iconUrl, rs.getInt("vendor_value")));
                 }
             }
         }

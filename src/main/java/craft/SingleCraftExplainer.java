@@ -28,6 +28,17 @@ import java.util.Set;
  */
 public final class SingleCraftExplainer {
 
+    private final Map<Integer, Integer> vendorValues;
+
+    public SingleCraftExplainer() {
+        this(Map.of());
+    }
+
+    /** An explainer valuing untradeable owned materials with these vendor values (DOMAIN_SPEC.md 11.2). */
+    public SingleCraftExplainer(Map<Integer, Integer> vendorValues) {
+        this.vendorValues = Map.copyOf(vendorValues);
+    }
+
     /**
      * Explains one craft on the individual-character path used by Crafting Discovery
      * (CURRENT_ARCHITECTURE.md section 5.2), whose inputs match
@@ -50,7 +61,7 @@ public final class SingleCraftExplainer {
                                                    ) {
 
         PlannerContext ctx = new PlannerContext(
-                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds);
+                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds).withVendorValues(vendorValues);
 
         return explain(recipe, ctx, new PlanState(sellableInventory, boundInventory), 1);
     }
@@ -75,7 +86,7 @@ public final class SingleCraftExplainer {
                                                     ) {
 
         PlannerContext ctx = new PlannerContext(
-                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster);
+                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues);
 
         return explain(recipe, ctx,
                 new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory), 1);
@@ -100,7 +111,7 @@ public final class SingleCraftExplainer {
             int countedCrafts
     ) {
         PlannerContext ctx = new PlannerContext(
-                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster);
+                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues);
         return explain(recipe, ctx,
                 new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory),
                 Math.max(1, countedCrafts));
