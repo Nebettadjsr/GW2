@@ -227,6 +227,7 @@ class SyncFetchPublicationTest {
     @Test
     void recipeSync_unchangedCatalogFetchesNothingFurtherAndWritesNothing() throws Exception {
         exec("INSERT INTO recipes (recipe_id, type) VALUES (1, 'Keep'), (2, 'Keep')");
+        exec("INSERT INTO recipe_catalog_publication (complete) VALUES (TRUE)");
         RecipeSync.fetcher = url -> {
             urls.add(url);
             if (url.endsWith("/v2/recipes")) return json("[1,2]");
@@ -274,6 +275,42 @@ class SyncFetchPublicationTest {
         assertThrows(IOException.class, RecipeSync::syncAllRecipesGlobalSafe);
         assertEquals("1,2,3", scalar("SELECT string_agg(recipe_id::text, ',' ORDER BY recipe_id) FROM recipes"));
         assertEquals("0", scalar("SELECT count(*) FROM recipe_ingredients"));
+    }
+
+    @Test
+    void recipeSync_retryWithUnchangedIdsAfterItemFailureCompletesItemsAndIngredients() throws Exception {
+        RecipeSync.fetcher = url -> recipesFixture(url);
+        ItemSync.fetcher = url -> { throw new IOException("items down"); };
+        assertThrows(IOException.class, RecipeSync::syncAllRecipesGlobalSafe);
+        assertEquals("1,2", scalar("SELECT string_agg(recipe_id::text, ',' ORDER BY recipe_id) FROM recipes"));
+        assertEquals("0", scalar("SELECT count(*) FROM items"));
+
+        ItemSync.fetcher = RecipeSync.fetcher::get;
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe(), "incomplete catalog must report changed so the graph refreshes");
+
+        assertEquals("1:10:4,2:11:1",
+                scalar("SELECT string_agg(recipe_id||':'||item_id||':'||count, ',' ORDER BY recipe_id) FROM recipe_ingredients"));
+        assertEquals("10,11,20,21", scalar("SELECT string_agg(item_id::text, ',' ORDER BY item_id) FROM items"));
+
+        urls.clear();
+        RecipeSync.fetcher = url -> { urls.add(url); if (url.endsWith("/v2/recipes")) return json("[1,2]"); throw new AssertionError(url); };
+        assertFalse(RecipeSync.syncAllRecipesGlobalSafe(), "completed catalog takes the fast path");
+        assertEquals(1, urls.size());
+    }
+
+    @Test
+    void recipeSync_retryWithUnchangedIdsAfterIngredientFailureCompletesIngredients() throws Exception {
+        RecipeSync.fetcher = url -> recipesFixture(url);
+        ItemSync.fetcher = RecipeSync.fetcher::get;
+        failInsertOf("recipe_ingredients", "recipe_id", 2);
+        assertThrows(java.sql.SQLException.class, RecipeSync::syncAllRecipesGlobalSafe);
+        assertEquals("1,2", scalar("SELECT string_agg(recipe_id::text, ',' ORDER BY recipe_id) FROM recipes"));
+        assertEquals("0", scalar("SELECT count(*) FROM recipe_ingredients WHERE recipe_id=2"));
+
+        exec("DROP TRIGGER reject_recipe_ingredients ON recipe_ingredients");
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
+        assertEquals("1:10:4,2:11:1",
+                scalar("SELECT string_agg(recipe_id||':'||item_id||':'||count, ',' ORDER BY recipe_id) FROM recipe_ingredients"));
     }
 
     // ------------------------------------------------------------------ TpSync
