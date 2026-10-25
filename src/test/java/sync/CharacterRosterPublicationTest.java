@@ -7,6 +7,7 @@ import model.CharacterInfo;
 import model.CharacterItemRow;
 import model.CharacterRecipeRow;
 import model.AccountScope;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -89,55 +90,18 @@ class CharacterRosterPublicationTest {
             statement.execute("CREATE SCHEMA " + schema);
         }
         admin.setSchema(schema);
-        AccountSyncStateRepository.ensure(admin);
-
-        try (Statement statement = admin.createStatement()) {
-            statement.execute("""
-                CREATE TABLE characters (
-                    character_id  BIGSERIAL PRIMARY KEY,
-                    name          TEXT NOT NULL UNIQUE,
-                    profession    TEXT,
-                    race          TEXT,
-                    gender        TEXT,
-                    level         INTEGER,
-                    created_at_gw TIMESTAMPTZ,
-                    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-                )
-                """);
-            statement.execute("""
-                CREATE TABLE character_crafting (
-                    character_id BIGINT NOT NULL REFERENCES characters(character_id) ON DELETE CASCADE,
-                    discipline   TEXT NOT NULL,
-                    rating       INTEGER NOT NULL DEFAULT 0,
-                    is_active    BOOLEAN NOT NULL DEFAULT false,
-                    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-                    PRIMARY KEY (character_id, discipline)
-                )
-                """);
-            statement.execute("""
-                CREATE TABLE character_recipes (
-                    character_id BIGINT NOT NULL REFERENCES characters(character_id) ON DELETE CASCADE,
-                    recipe_id    INTEGER NOT NULL,
-                    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-                    PRIMARY KEY (character_id, recipe_id)
-                )
-                """);
-            statement.execute("""
-                CREATE TABLE character_items (
-                    character_id   BIGINT NOT NULL REFERENCES characters(character_id) ON DELETE CASCADE,
-                    location       TEXT NOT NULL,
-                    bag_index      INTEGER,
-                    slot_index     INTEGER,
-                    equipment_slot TEXT,
-                    item_id        INTEGER NOT NULL,
-                    count          INTEGER NOT NULL DEFAULT 1,
-                    binding        TEXT,
-                    bound_to       TEXT,
-                    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-                    CONSTRAINT uq_character_items_slot UNIQUE
-                        (character_id, location, bag_index, slot_index, equipment_slot)
-                )
-                """);
+        Flyway.configure()
+                .dataSource(EnvConfig.require("DATABASE_URL"), EnvConfig.require("DATABASE_USER"),
+                        EnvConfig.require("DATABASE_PASSWORD"))
+                .schemas(schema)
+                .defaultSchema(schema)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+        try (PreparedStatement ps = admin.prepareStatement(
+                "INSERT INTO account_registry (account_id) VALUES (?::uuid) ON CONFLICT DO NOTHING")) {
+            ps.setString(1, "10000000-0000-0000-0000-000000000001");
+            ps.executeUpdate();
         }
 
         System.setProperty(Db.TEST_SCHEMA_PROPERTY, schema);
