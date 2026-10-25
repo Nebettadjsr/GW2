@@ -124,7 +124,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p container-perf-out
-          python3 scripts/container_measure.py --output-dir container-perf-out \
+          python3 scripts/container_measure.py --strict --output-dir container-perf-out \
             --id "r${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --commit "$GITHUB_SHA" \
             --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2>&1 | tee container-perf-out/container.log
 

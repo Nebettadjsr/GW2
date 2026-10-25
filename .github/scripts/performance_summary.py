@@ -47,6 +47,10 @@ def incompatibility(current: dict, previous: dict) -> str | None:
         if current.get(key) != previous.get(key):
             return f"{key} differs ({previous.get(key)!r} -> {current.get(key)!r})"
     cur_env, prev_env = current.get("environment") or {}, previous.get("environment") or {}
+    if current.get("measurementScope") == "container-stack":
+        for key in ("engineVersion", "enginePlatform", "postgresImageId", "backendRuntimeBaseLayers", "frontendRuntimeBaseLayers"):
+            if any(env.get(key) in (None, "unknown", []) for env in (cur_env, prev_env)):
+                return f"runtime metadata unavailable ({key})"
     changed = sorted(k for k in set(cur_env) | set(prev_env) if cur_env.get(k) != prev_env.get(k))
     if changed:
         return "environment differs (" + ", ".join(changed) + ")"

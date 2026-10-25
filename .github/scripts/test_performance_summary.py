@@ -90,7 +90,8 @@ def container_report(commit="c1", value=5.0, workload="container-workload-1", pg
     return {
         "schemaVersion": "container-1", "commit": commit, "timestamp": "2026-01-01T00:00:00Z",
         "fixtureVersion": workload, "workloadVersion": workload, "measurementScope": "container-stack",
-        "environment": {"engineVersion": "28.0.4", "postgresImageId": pg},
+        "environment": {"engineVersion": "28.0.4", "enginePlatform": "linux/amd64", "postgresImageId": pg,
+                        "backendRuntimeBaseLayers": ["sha256:jre"], "frontendRuntimeBaseLayers": ["sha256:nginx"]},
         "images": {"backend": {"id": backend, "sizeBytes": 100}, "frontend": {"id": "sha256:f", "sizeBytes": None}},
         "notMeasured": ["account synchronization is not measured in container mode"],
         "cpuUnit": "percent of one core", "diagnostics": list(diagnostics),
@@ -143,6 +144,15 @@ class ContainerSummaryTest(unittest.TestCase):
         self.assertIn("incompatible", text)
         self.assertNotIn("%)", text)
 
+    def test_changed_or_unknown_application_runtime_base_is_not_compared(self):
+        for key in ("backendRuntimeBaseLayers", "frontendRuntimeBaseLayers"):
+            for value in (["different-base"], "unknown"):
+                previous = container_report("c0")
+                previous["environment"][key] = value
+                _, text, _ = run_container(container_report(), previous)
+                self.assertIn("incompatible", text)
+                self.assertNotIn("%)", text)
+
     def test_missing_container_report_exits_zero_and_keeps_log(self):
         code, text, meta = run_container(None, outcome="failure")
         self.assertEqual(0, code)
@@ -187,6 +197,27 @@ class ContainerHelperTest(unittest.TestCase):
         self.assertIsNone(cpu["value"])
         self.assertTrue(cpu["unavailableReason"])
         self.assertTrue(any("no docker stats samples" in d for d in m.diagnostics))
+
+    def test_unlabelled_existing_volume_is_rejected_without_starting_or_cleaning_stack(self):
+        from unittest.mock import patch
+        from types import SimpleNamespace
+        args = SimpleNamespace(id="collision", output_dir=".", commit="c", timestamp="t")
+        m = self.cm.Measurement(args)
+        calls = []
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            exists = cmd[1:3] == ["volume", "inspect"] and cmd[-1].endswith("_gw2-icons")
+            return SimpleNamespace(returncode=0 if "ls" in cmd or exists else 1, stdout="", stderr="")
+        try:
+            with patch.object(self.cm, "run", fake_run):
+                with self.assertRaisesRegex(SystemExit, "already exists"):
+                    m.go()
+                m.cleanup()
+            self.assertFalse(m.started)
+            self.assertFalse(any("compose" in c or "rmi" in c for c in calls))
+        finally:
+            if m.work.exists():
+                m.cleanup_work()
 
 
 class WorkflowConfigTest(unittest.TestCase):

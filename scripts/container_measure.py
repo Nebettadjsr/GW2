@@ -124,10 +124,11 @@ class Measurement:
         self.env_extra: dict = {}
         self.base_url = ""
         self.started = False
+        self.password = f"measure-{os.getpid()}-{time.time_ns()}"
 
     def dc(self, *a, timeout=900):
         env = dict(os.environ, GW2_STACK_HTTP_PORT="", GW2_STACK_HTTP_BIND="127.0.0.1",
-                   GW2_STACK_DB_PASSWORD=f"measure-{os.getpid()}-{int(time.time())}")
+                   GW2_STACK_DB_PASSWORD=self.password)
         for k in ("DATABASE_URL", "DATABASE_USER", "DATABASE_PASSWORD", "GW2_API_KEY"):
             env.pop(k, None)
         override = self.work / "measure.yaml"
@@ -140,14 +141,37 @@ class Measurement:
         for kind in ("container", "network", "volume"):
             cmd = ["docker", kind, "ls", "-aq" if kind == "container" else "-q",
                    "--filter", f"label=com.docker.compose.project={self.project}"]
-            if run(cmd).stdout.strip():
+            result = run(cmd)
+            if result.returncode:
+                raise RuntimeError(f"cannot check owned {kind} resources: {result.stderr.strip()}")
+            if result.stdout.strip():
                 raise SystemExit(f"project {self.project} already has {kind} resources; choose another --id")
+        # Compose can adopt an unlabelled volume with an expected name. Reject it before up/down -v.
+        for kind, names in (("network", [f"{self.project}_default"]),
+                            ("volume", [f"{self.project}_gw2-postgres", f"{self.project}_gw2-icons"]),
+                            ("image", [f"{self.project}-{s}" for s in BUILT])):
+            for name in names:
+                if run(["docker", kind, "inspect", name]).returncode == 0:
+                    raise SystemExit(f"{kind} {name} already exists; choose another --id")
 
     def cleanup(self):
-        if self.started or self.project:
-            self.dc("down", "-v", "--remove-orphans", timeout=300)
-            run(["docker", "rmi", *(f"{self.project}-{s}" for s in BUILT)])
-        shutil.rmtree(self.work, ignore_errors=True)
+        if self.started:
+            result = self.dc("down", "-v", "--remove-orphans", timeout=300)
+            if result.returncode:
+                self.diagnostics.append("owned stack cleanup failed: " + result.stderr[-400:])
+            for s in BUILT:
+                name = f"{self.project}-{s}"
+                if run(["docker", "image", "inspect", name]).returncode == 0:
+                    result = run(["docker", "rmi", name])
+                    if result.returncode:
+                        self.diagnostics.append(f"owned image cleanup failed for {s}: " + result.stderr[-400:])
+        self.cleanup_work()
+
+    def cleanup_work(self):
+        target = self.work.resolve()
+        if target.parent != Path(tempfile.gettempdir()).resolve() or not target.name.startswith("gw2-cmeasure."):
+            raise RuntimeError("unexpected temporary cleanup path")
+        shutil.rmtree(target)
 
     def container_ids(self) -> dict[str, str]:
         ids = {}
@@ -175,6 +199,12 @@ class Measurement:
             self.images[s] = {"id": parts[0], "sizeBytes": int(parts[1]), "architecture": parts[2],
                               "os": parts[3], "tags": parts[4],
                               "role": "provenance (changes with code)" if s in BUILT else "runtime base"}
+            if s in BUILT:
+                # Each current runtime Dockerfile adds exactly two filesystem layers to its base:
+                # backend user/directory setup + jar COPY; frontend template COPY + dist COPY.
+                # Keep these application layers out of runtime-base compatibility checks.
+                layers = d.get("RootFS", {}).get("Layers", [])
+                self.images[s]["runtimeBaseLayers"] = layers[:-2] if len(layers) > 2 else None
 
     def timed_sampling(self, ids, label, seconds, traffic=None):
         """Sample docker stats until `seconds` elapse (each call blocks ~1-2 s); drive traffic if given."""
@@ -267,13 +297,16 @@ class Measurement:
                "trafficUrls": list(self.args.paths)}
         pg = self.images.get("postgres", {})
         env["postgresImageId"] = pg.get("id") or "unknown"
+        for s in BUILT:
+            env[f"{s}RuntimeBaseLayers"] = self.images.get(s, {}).get("runtimeBaseLayers") or "unknown"
         return env
 
     def go(self):
         self.preflight()
         t0 = time.perf_counter()
-        cp = self.dc("up", "-d", "--build", "--wait", "--wait-timeout", str(self.args.timeout))
+        # Preflight has ruled out existing resources. Own partial startup even if Compose times out.
         self.started = True
+        cp = self.dc("up", "-d", "--build", "--wait", "--wait-timeout", str(self.args.timeout))
         up_ms = (time.perf_counter() - t0) * 1000
         ids = self.container_ids()
         if cp.returncode or set(ids) != set(SERVICES):
@@ -365,10 +398,12 @@ def main(argv=None) -> int:
         except Exception:
             pass
     finally:
-        if m.started:
+        try:
             m.cleanup()
-        else:
-            shutil.rmtree(m.work, ignore_errors=True)
+        except Exception as error:
+            m.diagnostics.append(f"cleanup failed: {error!r}")
+        if m.diagnostics:
+            m.write({})
     failed = failed or bool(m.diagnostics)
     print("diagnostics:", *(m.diagnostics or ["none"]), sep="\n  ")
     return 1 if (args.strict and failed) else 0

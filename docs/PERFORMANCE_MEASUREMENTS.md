@@ -122,7 +122,7 @@ Scope `container-stack`, separate from the application-process report above and 
 `gw2-cmeasure-<id>` on an ephemeral loopback port with a throwaway database password and an isolated, disposable
 PostgreSQL volume; it never reads a maintainer `.env`, `DATABASE_*` or `GW2_API_KEY`, and on exit runs
 `compose down -v` for that project and removes only its two built images. It refuses to start if the project already has
-containers, networks or volumes.
+containers, networks or volumes, or any expected-name network, volume or built image (including unlabelled leftovers).
 
 ```
 python3 scripts/container_measure.py --output-dir container-perf-out [--id <lowercase-id>] [--idle-seconds 20] [--traffic-seconds 30] [--strict]
@@ -133,7 +133,7 @@ workload `container-workload-1`) and `container-resources.md`. Without `--strict
 measurement fails; failures appear in `diagnostics`. `.github/scripts/performance_summary.py --container` renders it.
 
 Recorded: actual image ids and Docker-reported sizes per service (application image ids are provenance and are *not*
-a comparison condition; the PostgreSQL image id is), one `up --build --wait` time to all-services-healthy (includes the
+a comparison condition; the PostgreSQL image id and application runtime base layers are), one `up --build --wait` time to all-services-healthy (includes the
 image build, so cache state changes it; per-service readiness is not reported), idle and `http_global` Docker stats
 peaks/means (CPU, memory) per service, client-side request count, errors, p95, throughput and body bytes for sequential
 GETs of `/`, `/api/system/status` and `/api/crafting/ingredient-search?query=wood` through the frontend proxy, and
@@ -141,7 +141,9 @@ post-traffic `pg_database_size` and connection count from inside the postgres co
 
 Limits: CPU is Docker's percent of one core (above 100 on several cores) and memory is `docker stats` usage; both are
 ~1 s-spaced point samples taken by an `docker stats --no-stream` call that takes seconds, so "peak" is an observed
-sample maximum and only a few samples exist per window. The client shares the host with the stack. Network and block
+sample maximum and only a few samples exist per window. The sequential traffic client pauses while each Docker sample is collected;
+reported throughput includes those pauses and describes this light polling workload, not maximum request throughput.
+The client shares the host with the stack. Network and block
 I/O counters and per-service readiness are not measured. Account sync, crafting profit/discovery and live-upstream
 workloads are not measured in container mode (no GW2 key, no proof bypass); the application-process fixture reports
 cover those. A global-read workload is not evidence about the seven-second crafting requirement, container resource limits
@@ -151,7 +153,11 @@ Workflow: the same Performance job runs the container step after the application
 `continue-on-error` steps and artifact `container-performance-<commit>-<run id>` (`container-resources.json/.md`,
 `container.log`, `summary.md`, `metadata.json`) and a "Container performance" job-summary section. Deltas appear only
 against the latest earlier completed `master` container report with identical `schemaVersion`, `workloadVersion`,
-`measurementScope` and `environment` (engine/OS/architecture/CPU/memory, workload parameters, PostgreSQL image id);
+`measurementScope` and `environment` (engine/OS/architecture/CPU/memory, workload parameters, PostgreSQL image id and runtime base layers);
 otherwise the reason is stated. Failure, missing report or an unavailable metric never fails CI or a merge.
+The workflow uses `--strict` inside a nonblocking step so a failed measurement has an explicit failure outcome.
+Runtime base layers come from actual image inspection, excluding the two application filesystem layers in each current
+Dockerfile (backend: user/directory setup and jar; frontend: template and dist). Update this boundary if those Dockerfiles
+add or remove filesystem layers; unknown runtime metadata prevents comparison.
 
 Earlier ad-hoc observations: `scripts/container-smoke.sh` prints `image_bytes`, `build_ms` and `startup_to_readiness_ms` for a single image; they are not part of the informational reports.
