@@ -251,7 +251,7 @@ public class CraftingProfitService {
 
         CraftingGraph graph;
         try {
-            graph = graphCache.load();
+            graph = graphCache.loadForSnapshot(con);
         } catch (Exception e) {
             throw new RuntimeException("Failed to load crafting graph cache", e);
         }

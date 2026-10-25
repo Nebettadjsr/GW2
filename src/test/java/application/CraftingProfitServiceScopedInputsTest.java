@@ -64,6 +64,31 @@ class CraftingProfitServiceScopedInputsTest {
         assertFalse(data.resultsByRecipeId().values().stream().anyMatch(x -> x.craftableCount == 2));
     }
 
+    /**
+     * Criterion 5: the full graph comes from the pinned snapshot, not the shared cache. The shared
+     * cache here already holds a graph from a concurrent global refresh (recipe 7 now needs 1 of item
+     * 200); the pinned connection still sees the older rows (2 of item 200) the visible recipes came from.
+     */
+    @Test
+    void graphIsReadThroughThePinnedSnapshotNotTheSharedCache() throws Exception {
+        Recipe refreshed = new Recipe(7, 100, 1, 100, "Artificer", List.of(new Ingredient(200, 1)));
+        CraftingGraphCache cache = new CraftingGraphCache(new RecipeRepository() {
+            @Override public List<Recipe> loadAllRecipes(Connection con) {
+                return List.of(RECIPE);
+            }
+        }, new Items()) {
+            @Override public CraftingGraph load() {
+                return new CraftingGraph(List.of(refreshed));
+            }
+        };
+        var svc = new CraftingProfitService(new ScopedRecipes(), new ScopedInventory(), new Quotes(), new Items(),
+                new ScopedCharacters(), cache, new CraftingPlanner(), scopedSession(A));
+
+        CraftResult r = svc.reload(DiscChoice.all(), settings()).resultsByRecipeId().get(7);
+
+        assertEquals(2, r.craftableCount, "5 owned / 2 per craft from the snapshot graph, not 5 from the refreshed one");
+    }
+
     // ---------- fixtures ----------
 
     private static CraftingProfitService service(AccountScope scope) {
@@ -134,6 +159,9 @@ class CraftingProfitServiceScopedInputsTest {
         }
         @Override public CraftingGraph load() {
             return new CraftingGraph(List.of(RECIPE));
+        }
+        @Override public CraftingGraph loadForSnapshot(Connection con) {
+            return load();
         }
     }
 }
