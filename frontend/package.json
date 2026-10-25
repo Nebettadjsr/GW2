@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "smoke:browser": "node scripts/browser-smoke.mjs",
     "smoke:sync": "node scripts/sync-browser-smoke.mjs",
+    "smoke:stack": "node scripts/stack-browser-smoke.mjs",
     "smoke:layout": "node scripts/layout-browser-smoke.mjs",
     "smoke:profit": "node scripts/profit-browser-smoke.mjs",
     "smoke:profit:refresh": "node scripts/profit-refresh-browser-smoke.mjs",

@@ -11,7 +11,11 @@ server {
 
     location /api/ {
         # No URI part: path and query are forwarded unchanged.
-        proxy_pass ${GW2_BACKEND_ORIGIN};
+        # Docker's embedded DNS refreshes the service address after backend-only recreation.
+        resolver 127.0.0.11 valid=5s ipv6=off;
+        resolver_timeout 5s;
+        set $gw2_backend ${GW2_BACKEND_ORIGIN};
+        proxy_pass $gw2_backend;
         # The browser's own Host (including a nonstandard published port) is what the backend's
         # same-origin guard compares with Origin. $host would drop the port; the default would send
         # the upstream's own name.
