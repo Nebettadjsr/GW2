@@ -56,14 +56,6 @@ No finding in this document by itself authorizes an implementation change. Norma
 **Inferred risk:** overstated materials/cash and understated craftability, contrary to DOMAIN_SPEC §17/DQ-009. For the specified six-produced/five-needed example the remaining one never reaches the next requirement. **Recommendation:** preserve produced surplus and its cost ownership across branches/batches, including speculative rollback; do not credit terminal surplus as extra profit.
 
 
-### KP-06 — Non-tradable valuation fallback is absent from the calculation path (CH-17)
-
-
-**Observed fact:** sellable-pool owned quantity is valued as quantity times direct TP sell price; a missing quote becomes zero. Although synchronization stores `items.vendor_value`, the calculation's item projection does not load it, and no recursive/vendor valuation fallback or explicit unvalued-nontradable state reaches the result/tree. Bound quantities' deliberate exemption from normal TP opportunity cost is separate and remains accepted.
-
-**Inferred risk:** a non-tradable quantity reaching the ordinary owned pool receives zero without the recursive→vendor→explicit-unvalued distinction required by DOMAIN_SPEC §11.2/DQ-008. **Recommendation:** assess the current ingestion/classification and valuation contract together; do not substitute invented TP prices or silently treat unknown value as free.
-
-
 ---
 
 ## 3. Crafting presentation and explanation risks
@@ -77,27 +69,16 @@ No open finding. KP-08, KP-09 and KP-11 described the legacy JavaFX shopping lis
 ### KP-12 — Account refresh can publish inconsistent inventory snapshots across sources (CH-04)
 
 
-**Observed fact:** bank/material/character steps fetch and commit independently; inventory reads use separate statements without a common snapshot transaction.
+**Observed fact:** bank/material/character sources fetch and publish separately under one account coordinator. Each source publishes atomically, and Crafting Profit captures its inputs in one `REPEATABLE READ` transaction. These guarantees do not make the upstream bank and material-storage responses represent one instant: their published source generations can still differ in age.
 
 **Inferred risk:** moving a stack from bank to material storage can leave its old bank quantity alongside its refreshed storage quantity in Profit indefinitely until a full account refresh; even full refresh has intermediate mixed snapshots. Concurrent runs can publish older fetches after newer ones. This is an application-created consistency problem, distinct from accepted GW2 API lag (DOMAIN_SPEC §39). **Recommendation:** define coherent account snapshot publication/refresh ownership and accurate freshness reporting; preserve or explicitly decide refresh scope.
-
-**Scope reduced (STORY-APP-014), not closed:** the browser Crafting Profit path now reads every input through one `REPEATABLE READ` snapshot and each account source publishes its rows and completion marker in one transaction, so that path can no longer read part of a refresh under an older marker or mix generations within one calculation, and a failed refresh leaves the previous generation intact. Account writes are also serialized through one coordinator with accurate per-source freshness reporting. What remains is the cross-source question this entry names: a generation is per source, so bank and material storage can still be current as of different instants.
-
-
-### KP-13 — Removed characters remain eligible and keep phantom inventory (CH-05)
-
-
-**Observed fact:** synchronization upserts only names returned by the current account response. It deletes stale child rows only for characters processed in that run and returns immediately for an empty name list. It never removes characters absent from the response. Readers have no current-roster/freshness filter.
-
-**Inferred risk:** deleting/renaming a character, or changing the configured account against the same database, leaves obsolete characters, ratings and items selectable/consumable; coordinated plans can use a nonexistent crafter. **Recommendation:** reconcile removed roster members after a successful authoritative roster fetch, preserving failure safety.
-
 
 ### KP-14 — Global/setup synchronization downloads data already available (CH-06)
 
 
-**Observed fact:** the first recipe pass downloads every recipe batch and already parses its ingredients to collect item IDs. After item synchronization it downloads the identical recipe batches again to persist ingredients. During setup, ItemSync parses each item's `iconUrl` but omits it from the items upsert; the following IconSync queries missing URLs and downloads those item payloads again.
+**Observed fact:** the first recipe pass downloads every recipe batch and already parses its ingredients to collect item IDs. After item synchronization it downloads the identical recipe batches again to persist ingredients.
 
-**Inferred risk:** an extra complete recipe-detail pass and, on fresh setup, an extra item-detail pass, with additional network latency/rate-limit exposure and repeated parsing. The FK-required recipe→item→ingredient write order does not require re-fetching the payloads. **Recommendation:** retain/reuse the fetched facts while preserving that ordering. No duration was measured.
+**Inferred risk:** an extra complete recipe-detail pass adds network latency/rate-limit exposure and repeated parsing. The FK-required recipe→item→ingredient write order does not require re-fetching the payloads. **Recommendation:** retain/reuse the fetched facts while preserving that ordering. No duration was measured.
 
 
 ### KP-16 — Graph cache has neither freshness validation nor atomic replacement (CH-08)
