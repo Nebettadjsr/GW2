@@ -31,7 +31,11 @@ public final class RecipeSync {
         try (Connection con = Db.open(); PreparedStatement ps = con.prepareStatement("SELECT recipe_id FROM recipes"); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) localIds.add(rs.getInt(1));
         }
-        if (!IdListDiff.between(localIds, remoteIds).changed()) return false;
+        if (!IdListDiff.between(localIds, remoteIds).changed() && isPublicationComplete()) return false;
+
+        // Recipe batches commit before items/ingredients are fetched (no transaction spans HTTP),
+        // so record the unfinished state first; only a full run marks it complete again.
+        markPublication(false);
 
         Set<Integer> neededItemIds = new HashSet<>();
 
@@ -101,7 +105,28 @@ public final class RecipeSync {
 
         syncRecipeIngredients(ids);
         removeDeletedRecipes(remoteIds);
+        markPublication(true);
         return true;
+    }
+
+    private static boolean isPublicationComplete() throws SQLException {
+        try (Connection con = Db.open();
+             PreparedStatement ps = con.prepareStatement("SELECT complete FROM recipe_catalog_publication");
+             ResultSet rs = ps.executeQuery()) {
+            return rs.next() && rs.getBoolean(1);
+        }
+    }
+
+    private static void markPublication(boolean complete) throws SQLException {
+        try (Connection con = Db.open();
+             PreparedStatement ps = con.prepareStatement("""
+                     INSERT INTO recipe_catalog_publication (singleton, complete, updated_at)
+                     VALUES (TRUE, ?, now())
+                     ON CONFLICT (singleton) DO UPDATE SET complete = EXCLUDED.complete, updated_at = now()
+                     """)) {
+            ps.setBoolean(1, complete);
+            ps.executeUpdate();
+        }
     }
 
     private static void removeDeletedRecipes(Set<Integer> remoteIds) throws SQLException {
