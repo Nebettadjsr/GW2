@@ -110,7 +110,7 @@ No open finding. KP-08, KP-09 and KP-11 described the legacy JavaFX shopping lis
 
 ### KP-32 — Global recipe change detection misses edits under unchanged IDs
 
-**Observed fact:** `RecipeSync.syncAllRecipesGlobalSafe()` compares the remote recipe ID set with the local `recipes.recipe_id` set and returns without detail requests when the sets match. Recipe detail fields and ingredients are therefore not checked for in-place changes unless some recipe ID is also added or removed.
+**Observed fact:** `RecipeSync.syncAllRecipesGlobalSafe()` compares the remote recipe ID set with the local `recipes.recipe_id` set and returns without detail requests when the sets match and the catalog publication marker is complete. Incomplete publication is retried, but a completed catalog's recipe detail fields and ingredients are not checked for in-place changes unless some recipe ID is also added or removed.
 
 **Inferred risk:** an ArenaNet edit to an existing recipe's output, discipline, or ingredients can remain stale locally, and the crafting graph will not rebuild for that edit. The current six-hour job detects catalog membership changes, not full recipe freshness.
 

@@ -58,8 +58,8 @@ Phase 3  Backend / Application-Service Extraction (complete; milestone-03 archiv
 Phase 4  Backend HTTP API                       (complete; milestone-04 archived)
 Phase 5  Browser Frontend Completion             (complete, 2026-10-17 — see §9)
 Phase 6  Multi-User / Account Isolation         (complete; bounded review #63 and PR #73)
-Phase 7  Containerized Runtime and Database Migration (current; backend image delivered in #72)
-Phase 8  Deployment / Runtime Configuration     (not started)
+Phase 7  Containerized Runtime and Database Migration (complete, 2026-10-25; review #82)
+Phase 8  Deployment / Runtime Configuration     (next; not started)
 Phase 9  Final Cleanup / JavaFX Removal         (final review later; JavaFX removal already delivered)
 ```
 
@@ -333,11 +333,16 @@ Phase 5. The browser/backend contract and web frontend should exist before intro
 
 ## 11. Phase 7 — Containerized Runtime and Database Migration
 
-**Status: In progress.** #72 / PR #74 delivered the backend image and isolated
-fresh/reused-schema Docker verification. #75 records the frontend runtime/API
-forwarding decision; #76 implements it after acceptance. Compose integration,
-full-stack container measurements and the bounded phase review remain open.
-Hosting/public TLS stay undecided until deployment work needs them.
+**Status: Complete — 2026-10-25.** Review #82 and supervisor/planner disposition
+accepted backend/frontend images (#72/#76), the selected proxy runtime (#75),
+the three-service Compose stack (#78), backend/Docker organization (#88), and
+actual container resource reporting (#79). Fresh-schema, managed restart, proxy
+and DNS replacement checks passed. A fresh isolated stack then synchronized live
+ArenaNet data and passed browser proof, account refresh, Profit, Bank, Materials,
+reload and disconnect without manual SQL. No exit criterion is transferred.
+Known domain/cache and coverage follow-ups remain explicitly nonblocking for
+container packaging; this is not a declaration that the app has no bugs.
+Hosting/public TLS stay undecided until Phase 8 needs them.
 
 The versioned schema lifecycle was delivered during Phase 6 (STORY-INFRA-004, ADR-010). This phase packages that selected lifecycle; it does not reopen the Flyway choice or require another manual-SQL conversion.
 
@@ -351,21 +356,21 @@ Phase 6. Containerization should package the intended multi-user/account-isolate
 
 ### Exit Criteria
 
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
+- **(Done)** Bounded PROJECT HEALTH REVIEW and explicit supervisor/planner disposition recorded in #82 (`TARGET_ARCHITECTURE.md` §21).
 - **(Done)** Flyway is selected (`TARGET_ARCHITECTURE.md` §7.3 and §16, ADR-010).
 - **(Done)** Versioned migrations and the managed schema gate replace manual table setup; fresh/reset scoped schemas are covered by the production-chain integration checks.
-- Backend, frontend, and PostgreSQL each run in their own container.
-- `docker compose up` starts all three (`TARGET_ARCHITECTURE.md` §12).
-- PostgreSQL is not required to be exposed outside the internal Docker network (`TARGET_ARCHITECTURE.md` §12).
-- A fresh environment can create the schema and run the application end-to-end without manually pasting SQL into `psql`.
+- **(Done)** Backend, frontend, and PostgreSQL each run in their own container.
+- **(Done)** `docker compose up` starts all three (`TARGET_ARCHITECTURE.md` §12).
+- **(Done)** PostgreSQL and backend have no published host port; only the frontend is exposed (`TARGET_ARCHITECTURE.md` §12).
+- **(Done)** Fresh environment creates the versioned schema and completes the live browser workflow without manual SQL; evidence and limits in #82.
 
 ### High-Level Stories
 
 - (Done) Select Flyway and implement the versioned schema lifecycle.
 - (Done) Write and verify the backend Dockerfile (#72).
 - (Done) Write and verify the frontend Dockerfile (#76).
-- Write `docker-compose.yml` wiring frontend/backend/PostgreSQL on an internal network.
-- Verify a fresh `docker compose up` reproduces a working environment from nothing.
+- (Done) `compose.yaml` wires frontend/backend/PostgreSQL on an internal network (#78).
+- (Done) Verify a fresh `docker compose up` reproduces a working environment from nothing (#82).
 
 ---
 

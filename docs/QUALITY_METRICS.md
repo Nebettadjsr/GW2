@@ -21,32 +21,25 @@ specific and documented in `docs/TEST_STRATEGY.md` and the report configuration.
 
 ## Current clean CI baseline
 
-Measured on clean `master` commit `f2fea26157e4767865006ee9b3f5d3342ab8654d` in
-[CI run 40107414677](https://github.com/Nebettadjsr/GW2/actions/runs/40107414677),
-after the GW2 API boundary test pilot and issue-closure fix. All three jobs succeeded. The
-`coverage-reports` artifact (ID `12565690292`) contains the raw JaCoCo and
+Measured on clean `master` commit `f4f090425fe9d5e0282765b159e8af28bd0cf530` in
+[CI run 40201040601](https://github.com/Nebettadjsr/GW2/actions/runs/40201040601),
+after the reported app fixes and coverage slices #90–93. All required CI jobs succeeded. The
+`coverage-reports` artifact (ID `12601669352`) contains the raw JaCoCo and
 Vitest reports and `coverage-kpi/coverage-kpi.json`. The KPI remains warning-only.
 
 | Area | Line | Branch | Gap to 90% line / branch |
 |---|---:|---:|---:|
-| Java backend | 79.84% (4016/5030) | 68.31% (1526/2234) | 10.16 pp / 21.69 pp |
-| Frontend TypeScript | 95.50% (1572/1646) | 87.49% (1357/1551) | 0 pp / 2.51 pp |
-| **Combined (weighted)** | **83.70% (5588/6676)** | **76.17% (2883/3785)** | **6.30 pp / 13.83 pp** |
+| Java backend | 86.85% (6087/7009) | 76.70% (2505/3266) | 3.15 pp / 13.30 pp |
+| Frontend TypeScript | 98.18% (2054/2092) | 91.12% (1745/1915) | 0 pp / 0 pp |
+| **Combined (weighted)** | **89.45% (8141/9101)** | **82.03% (4250/5181)** | **0.55 pp / 7.97 pp** |
 
-For the open backend coverage request #21, the same artifact measures `sync`
-at 43.08% line / 36.67% branch, `repo` at 76.09% / 57.92%, `parser` at
-63.25% / 41.96%, `api.tp` at 3.49% / 0%, `api` at 31.65% / 73.33%, and
-`model` at 45.16% / 33.33%. The artifact has the complete package breakdown.
-These measurements include the tests merged in #36 and #40. The baseline is a measured
-snapshot, not a requirement to reach 90% in one story.
-
-STORY-COV-001 (#90, on master 87dbd74): deterministic loopback-server tests of
-`api.tp.TpPriceApi` and `EctoLivePriceGateway` (local run of those two test classes only, JaCoCo
-`api/tp`) moved `api.tp` from 3/86 lines (3.49%) and 0/68 branches to 93/93 lines (100%) and
-63/68 branches (92.65%). The 5 remaining missed branches are all in `TpPriceApi` and are
-defensive null guards (`root == null`, `p != null`, `n != null`) that `readJson` of a real
-body can never produce with a non-null JSON tree. The full-suite CI counters for the whole backend
-are not re-measured here; the `api.tp` row below is the pre-change CI baseline.
+For open backend coverage request #21, remaining gaps include `sync` at 72.85% line /
+70.97% branch, `repo` at 86.75% / 74.24%, `application` at 86.71% / 71.38%,
+`web.access` at 82.32% / 55.15%, and `model` at 58.06% / 50.00%. `api.tp`
+now meets the target at 100% / 92.65%. The artifact contains the complete breakdown.
+The frontend aggregate meets the target; individual areas still include `sync` at 89.72%
+branches and several settings/view components below 90%. No source scope or exclusion was
+changed to obtain these values. The parent request remains open for remaining relevant gaps.
 
 ## Pre-migration clean CI snapshot
 
