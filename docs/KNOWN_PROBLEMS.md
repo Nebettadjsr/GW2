@@ -65,12 +65,12 @@ No open finding. KP-08, KP-09 and KP-11 described the legacy JavaFX shopping lis
 **Inferred risk:** an extra complete recipe-detail pass adds network latency/rate-limit exposure and repeated parsing. The FK-required recipe→item→ingredient write order does not require re-fetching the payloads. **Recommendation:** retain/reuse the fetched facts while preserving that ordering. No duration was measured.
 
 
-### KP-16 — Graph cache has neither freshness validation nor atomic replacement (CH-08)
+### KP-16 — Persisted graph cache lacks source validation and corrupt-file recovery (CH-08)
 
 
-**Observed fact:** `load()` accepts any existing working-directory cache without checking its stored key, age or source database. Setup updates recipes without rebuilding/invalidation. Rebuild deletes the old file before querying the database and writes JSON directly to the final path; reads/rebuilds are not coordinated. A corrupt existing file is parsed repeatedly rather than treated as rebuildable derived data.
+**Observed fact:** `CraftingGraphCache.load()` accepts an existing working-directory cache without checking its stored key, age or source database. A corrupt existing file is parsed repeatedly rather than treated as rebuildable derived data. Current code coordinates load/rebuild/invalidation within each cache instance and writes through a temporary file with atomic replacement where supported (replacement fallback otherwise); a failed database rebuild leaves the previous file intact. Pinned database-snapshot graph reads bypass this shared file.
 
-**Inferred risk:** stale recipes after setup/database changes; concurrent navigation can read partial JSON or initiate another rebuild during the deletion gap; failed writes can leave a persistent load failure. **Recommendation:** address cache identity/invalidation and safe publication as one lifecycle issue. File caching itself remains an allowed architectural choice.
+**Inferred risk:** file-backed graph consumers can use stale recipes after a database/source change that is not accompanied by invalidation, and corrupt derived data can cause persistent read failures. **Recommendation:** validate cache source identity and recover from corrupt derived data. Do not reintroduce the already-corrected delete-before-rebuild or direct-final-file-write claims. File caching remains an allowed architectural choice.
 
 
 ### KP-17 — Trading Post 404 responses preserve old usable quotes (CH-09)
@@ -116,6 +116,3 @@ No open finding. KP-08, KP-09 and KP-11 described the legacy JavaFX shopping lis
 
 **Recommendation:** retain the cheap ID-list gate while a future decision defines an affordable way to detect in-place detail changes; do not describe the current check as detecting every upstream recipe-data edit.
 
-### KP-33 — Interrupted recipe publication skipped by unchanged IDs (resolved by #105)
-
-**Observed fact:** recipe batches commit before item and ingredient synchronization. Migration V3 adds `recipe_catalog_publication`; `RecipeSync` marks it incomplete before publishing and complete after ingredients and deletions finish. The ID-equality fast path now requires the complete marker, so a retry after an item or ingredient failure resumes and reports changed (graph refresh runs). Verified by `SyncFetchPublicationTest` against an isolated PostgreSQL schema. KP-32 (in-place edit detection under unchanged IDs) is unchanged.

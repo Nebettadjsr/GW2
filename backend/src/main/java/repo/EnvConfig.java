@@ -38,9 +38,14 @@ public final class EnvConfig {
     }
 
     private static Optional<String> lookup(String key) {
-        String value = System.getenv(key);
+        return resolve(System.getenv(key), DOTENV, key);
+    }
+
+    /** Process value first; a missing or blank one falls back to the .env value; blank everywhere is absent. */
+    static Optional<String> resolve(String processValue, Map<String, String> dotEnv, String key) {
+        String value = processValue;
         if (value == null || value.isBlank()) {
-            value = DOTENV.get(key);
+            value = dotEnv.get(key);
         }
         if (value == null || value.isBlank()) {
             return Optional.empty();
@@ -60,9 +65,12 @@ public final class EnvConfig {
     }
 
     private static Map<String, String> loadDotEnvFile() {
+        return parseDotEnv(locateDotEnv(Path.of("")));
+    }
+
+    static Map<String, String> parseDotEnv(Path path) {
         Map<String, String> values = new HashMap<>();
 
-        Path path = locateDotEnv(Path.of(""));
         if (!Files.exists(path)) {
             return values;
         }
