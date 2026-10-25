@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { STORAGE_KEY } from '@/api/accountSession'
 import { ApiRequestError } from '@/api/http'
 import type { SyncApi } from '@/api/syncApi'
@@ -11,12 +11,14 @@ import {
   FakeCraftingApi,
   deferred,
   discoveryRows,
+  discoveryResolutionResponse,
   echoedDiscoveryResponse,
   finalFreshness,
   profitResponse,
   profitableRow,
   provisionalFreshness
 } from './fixtures'
+import { DISCOVERY_REFRESH_MAX_POLLS } from '../useCraftingDiscovery'
 
 /**
  * STORY-WEB-037: cached calculations are keyless reads. The page renders the usable cached result
@@ -44,13 +46,14 @@ function task(state: string): SyncTaskStatus {
   return { taskId: 'k1', operation: 'ACCOUNT_SYNC', state, submittedAt: 'x', startedAt: null, finishedAt: null, failure: null }
 }
 
-interface Sync extends SyncApi { started: number; reads: string[] }
+interface Sync extends SyncApi { started: number; fullStarted: number; reads: string[] }
 
 function syncApi(start: () => Promise<SyncTaskAccepted>, state = 'SUCCEEDED'): Sync {
   const sync: Sync = {
     started: 0,
+    fullStarted: 0,
     reads: [],
-    startAccountSync: () => { sync.started += 1; return start() },
+    startAccountSync: () => { sync.fullStarted += 1; return start() },
     startProfitDataRefresh: () => { sync.started += 1; return start() },
     startGlobalSync: () => Promise.reject(new Error('unexpected')),
     startPriceRefresh: () => Promise.reject(new Error('unexpected')),
@@ -62,7 +65,10 @@ function syncApi(start: () => Promise<SyncTaskAccepted>, state = 'SUCCEEDED'): S
 const profits = (w: ReturnType<typeof mount>) => w.findAll('[data-test="total-profit"]').map((e) => e.text())
 
 beforeEach(() => window.sessionStorage.setItem(STORAGE_KEY, 'KEY-A'))
-afterEach(() => window.sessionStorage.clear())
+afterEach(() => {
+  window.sessionStorage.clear()
+  vi.useRealTimers()
+})
 
 describe('Profit: keyless read, then a keyed refresh behind the cached result', () => {
   function profitApi(): FakeCraftingApi {
@@ -121,6 +127,20 @@ describe('Profit: keyless read, then a keyed refresh behind the cached result', 
     expect(profits(wrapper)).toEqual(['+12s 34c'])
     expect(wrapper.text()).toContain('no GW2 API key is connected')
   })
+
+  it('does not poll an old account admission after its workspace is removed', async () => {
+    const admission = deferred<SyncTaskAccepted>()
+    const sync = syncApi(() => admission.promise)
+    const api = profitApi()
+    const wrapper = mount(CraftingProfitScreen, { props: { api, refreshApi: sync, refreshClock: instantClock } })
+    await flushPromises()
+    expect(sync.started).toBe(1)
+    wrapper.unmount()
+    admission.resolve(accepted)
+    await flushPromises()
+    expect(sync.reads).toEqual([])
+    expect(api.profitRequests).toHaveLength(1)
+  })
 })
 
 describe('Discovery: keyless read, then a keyed refresh behind the cached result', () => {
@@ -144,6 +164,7 @@ describe('Discovery: keyless read, then a keyed refresh behind the cached result
     await flushPromises()
 
     expect(sync.started).toBe(1)
+    expect(sync.fullStarted).toBe(0)
     expect(wrapper.findAll('[data-test="discovery-row"]')).toHaveLength(1)
     expect(api.discoveryRequests).toHaveLength(1)
 
@@ -162,5 +183,69 @@ describe('Discovery: keyless read, then a keyed refresh behind the cached result
     expect(wrapper.findAll('[data-test="discovery-row"]')).toHaveLength(1)
     expect(wrapper.find('[data-test="discovery-refresh-notice"]').text()).toContain('your key are kept')
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe('KEY-A')
+  })
+
+  it('replaces a selected cached detail when background recalculation changes its row', async () => {
+    const admission = deferred<SyncTaskAccepted>()
+    const detail = deferred<ReturnType<typeof discoveryResolutionResponse>>()
+    const api = discoveryApi()
+    api.discoveryResolutionHandler = (request, i) => i === 0
+      ? Promise.resolve(discoveryResolutionResponse(request, { row: cached }))
+      : detail.promise
+    const wrapper = mount(CraftingDiscoveryScreen, { props: { api, refreshApi: syncApi(() => admission.promise) } })
+    await flushPromises()
+    await wrapper.find('[data-test="discovery-select-row"]').trigger('click')
+    await flushPromises()
+    expect(api.discoveryResolutionRequests).toHaveLength(1)
+    expect(wrapper.find('[data-test="resolution-tree"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="discovery-detail-profit"]').text()).toBe('+12s 34c')
+    admission.resolve(accepted)
+    await flushPromises()
+    expect(api.discoveryResolutionRequests).toHaveLength(2)
+    expect(wrapper.find('[data-test="resolution-tree"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="resolution-loading"]').exists()).toBe(true)
+    detail.resolve(discoveryResolutionResponse(api.discoveryResolutionRequests[1]!, { row: refreshed }))
+    await flushPromises()
+    expect(wrapper.find('[data-test="resolution-tree"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="discovery-detail-profit"]').text()).toBe('+43s 21c')
+  })
+
+  it('keeps cached rows after a bounded wait and stops polling', async () => {
+    vi.useFakeTimers()
+    const api = discoveryApi()
+    const sync = syncApi(() => Promise.resolve(accepted), 'RUNNING')
+    const wrapper = mount(CraftingDiscoveryScreen, { props: { api, refreshApi: sync } })
+    await flushPromises()
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    expect(sync.reads).toHaveLength(DISCOVERY_REFRESH_MAX_POLLS)
+    expect(api.discoveryRequests).toHaveLength(1)
+    expect(wrapper.findAll('[data-test="discovery-row"]')).toHaveLength(1)
+    expect(wrapper.find('[data-test="discovery-refresh-notice"]').text()).toContain('did not finish in time')
+    wrapper.unmount()
+  })
+
+  it('stops a sleeping poll when its account workspace is removed', async () => {
+    vi.useFakeTimers()
+    const api = discoveryApi()
+    const sync = syncApi(() => Promise.resolve(accepted), 'RUNNING')
+    const wrapper = mount(CraftingDiscoveryScreen, { props: { api, refreshApi: sync } })
+    await flushPromises()
+    expect(sync.reads).toHaveLength(1)
+    wrapper.unmount()
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    expect(sync.reads).toHaveLength(1)
+    expect(api.discoveryRequests).toHaveLength(1)
+  })
+
+  it('does not treat a non-covering admission as a completed refresh', async () => {
+    const api = discoveryApi()
+    const sync = syncApi(() => Promise.resolve({ ...accepted, coversRequest: false }))
+    const wrapper = mount(CraftingDiscoveryScreen, { props: { api, refreshApi: sync } })
+    await flushPromises()
+    expect(sync.reads).toEqual([])
+    expect(api.discoveryRequests).toHaveLength(1)
+    expect(wrapper.find('[data-test="discovery-refresh-notice"]').text()).toContain('has not started')
   })
 })

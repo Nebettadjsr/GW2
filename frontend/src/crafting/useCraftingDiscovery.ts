@@ -1,4 +1,4 @@
-import { computed, ref, shallowRef, type ComputedRef, type Ref } from 'vue'
+import { computed, onScopeDispose, ref, shallowRef, type ComputedRef, type Ref } from 'vue'
 import type { CraftingApi } from '@/api/craftingApi'
 import type {
   CraftingDiscoveryRequest,
@@ -51,6 +51,8 @@ export interface CraftingDiscoveryState {
   effectiveScope: Ref<EffectiveDiscoveryScope | null>
   isLoading: Ref<boolean>
   hasResult: Ref<boolean>
+  /** Changes whenever a calculation is applied, including a background refresh of the same scope. */
+  resultVersion: Ref<number>
   requestError: Ref<string | null>
   selectorError: Ref<string | null>
   /** Whether a complete, valid scope can be submitted at all. */
@@ -75,6 +77,7 @@ export function useCraftingDiscovery(
   const effectiveScope = ref<EffectiveDiscoveryScope | null>(null)
   const isLoading = ref(false)
   const hasResult = ref(false)
+  const resultVersion = ref(0)
   const requestError = ref<string | null>(null)
   const selectorError = ref<string | null>(null)
   const refreshNotice = ref<string | null>(null)
@@ -85,6 +88,11 @@ export function useCraftingDiscovery(
    * current selection's results.
    */
   let newestRequestId = 0
+  let disposed = false
+  onScopeDispose(() => {
+    disposed = true
+    newestRequestId += 1
+  })
 
   /** The currently selected character/discipline option, or null when no option is available. */
   const selectedScope = computed<DiscoveryScopeOption | null>(
@@ -97,6 +105,7 @@ export function useCraftingDiscovery(
     selectorError.value = null
     try {
       const loaded = await api.loadSelectorOptions()
+      if (disposed) return
       const options = buildDiscoveryScopeOptions(loaded)
       scopeOptions.value = options
       // A selection the backend no longer offers falls back to the first entry it does offer; with no
@@ -105,12 +114,14 @@ export function useCraftingDiscovery(
         selectedScopeId.value = options[0]?.id ?? null
       }
     } catch (cause) {
+      if (disposed) return
       selectorError.value = describeFailure(cause)
     }
   }
 
   /** Keep the selected option when still available; otherwise use the first available character/discipline. */
   async function requestDiscovery(): Promise<void> {
+    if (disposed) return
     const scope = selectedScope.value
     if (scope === null) {
       // Nothing valid to ask: the route requires a complete scope, so no request is sent and no
@@ -194,6 +205,7 @@ export function useCraftingDiscovery(
   }
 
   function apply(response: CraftingDiscoveryResponse): void {
+    resultVersion.value += 1
     effectiveScope.value = response.scope
     settings.value = response.settings
     // No usable result (HTTP 202 / PENDING): the inputs are still being synchronized. Never present
@@ -225,6 +237,7 @@ export function useCraftingDiscovery(
     effectiveScope,
     isLoading,
     hasResult,
+    resultVersion,
     requestError,
     selectorError,
     canCalculate,

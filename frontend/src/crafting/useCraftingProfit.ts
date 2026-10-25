@@ -1,4 +1,4 @@
-import { computed, ref, shallowRef, type ComputedRef, type Ref } from 'vue'
+import { computed, onScopeDispose, ref, shallowRef, type ComputedRef, type Ref } from 'vue'
 import type { CraftingApi } from '@/api/craftingApi'
 import { ApiRequestError } from '@/api/http'
 import {
@@ -181,6 +181,12 @@ export function useCraftingProfit(api: CraftingApi, refresh: ProfitRefreshPorts)
    * next checkpoint instead of writing into a context that moved on.
    */
   let activeCycle = 0
+  let disposed = false
+  onScopeDispose(() => {
+    disposed = true
+    newestRequestId += 1
+    abandonRecovery()
+  })
 
   const selectedScope = computed<ScopeOption | null>(
     () => scopeOptions.value.find((option) => option.id === selectedScopeId.value) ?? null
@@ -194,6 +200,7 @@ export function useCraftingProfit(api: CraftingApi, refresh: ProfitRefreshPorts)
     selectorError.value = null
     try {
       const loaded = await api.loadSelectorOptions()
+      if (disposed) return
       const options = buildScopeOptions(loaded)
       scopeOptions.value = options
       // A selection the backend no longer offers falls back to its documented default entry.
@@ -220,6 +227,7 @@ export function useCraftingProfit(api: CraftingApi, refresh: ProfitRefreshPorts)
     foreground: boolean,
     cycle?: number
   ): Promise<RequestOutcome> {
+    if (disposed) return { kind: 'superseded' }
     const requestId = ++newestRequestId
     if (foreground) isLoading.value = true
 

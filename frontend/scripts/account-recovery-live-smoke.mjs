@@ -3,6 +3,7 @@
  * Start the backend and Vite, then supply GW2_API_KEY in the environment and run:
  *   node scripts/account-recovery-live-smoke.mjs
  * Optional: GW2_FRONTEND_URL (default http://127.0.0.1:5173), GW2_SMOKE_TIMEOUT_MS.
+ * GW2_SMOKE_CACHED_ACCESS=1 adds a controlled stale-envelope/admission-outage check over live rows.
  * Refreshes this account's disposable cache. Never prints credentials or response bodies.
  */
 import assert from 'node:assert/strict'
@@ -20,7 +21,7 @@ let stage = 'open key entry'
 page.on('response', (response) => {
   const url = new URL(response.url())
   if (url.pathname.startsWith('/api/') && !url.pathname.includes('/icon/')) {
-    calls.push({ path: url.pathname, status: response.status() })
+    calls.push({ path: url.pathname, status: response.status(), sendsKey: response.request().headers()['x-gw2-api-key'] !== undefined })
   }
 })
 try {
@@ -54,6 +55,57 @@ try {
   assert.ok(!await page.locator('body').innerText().then((text) => /account_sync_state|DATA_STORE_UNAVAILABLE/.test(text)))
   assert.equal(await input.inputValue(), '')
   assert.equal(await page.locator('[data-test="results-region"]').count(), 1)
+  if (process.env.GW2_SMOKE_CACHED_ACCESS === '1') {
+    stage = 'cached live result remains visible during controlled refresh proof outage'
+    const proofCount = calls.filter((call) => call.path === '/api/session').length
+    let releaseAdmission
+    let markAdmissionStarted
+    const heldAdmission = new Promise((resolve) => { releaseAdmission = resolve })
+    const admissionStarted = new Promise((resolve) => { markAdmissionStarted = resolve })
+    let injected = false
+    const profitRoute = async (route) => {
+      const response = await route.fetch()
+      assert.equal(response.status(), 200)
+      const answer = await response.json()
+      assert.ok(answer.rows.length > 0, 'live cache must contain a calculated result')
+      if (!injected) {
+        injected = true
+        // Keep the real calculation unchanged; control only freshness/admission to reproduce outage.
+        answer.freshness = { ...answer.freshness, provisional: true, outstandingWork: [], failures: [{
+          kind: 'ACCOUNT', taskId: null, taskStatusUrl: null, code: 'CREDENTIAL_REQUIRED',
+          message: 'Controlled browser check: account refresh required', retryable: true
+        }] }
+      }
+      await route.fulfill({ response, json: answer })
+    }
+    const refreshRoute = async (route) => {
+      markAdmissionStarted()
+      await heldAdmission
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({
+        error: 'PROOF_UNAVAILABLE', message: 'Controlled browser check: temporary upstream outage'
+      }) })
+    }
+    await page.route('**/api/crafting/profit', profitRoute)
+    await page.route('**/api/sync/account/crafting-profit', refreshRoute)
+    await page.locator('[data-test="refresh-data-and-results"]').click()
+    await admissionStarted
+    await page.locator('[data-test="stale-data-indicator"]').waitFor()
+    const visibleRows = await page.locator('[data-test="total-profit"]').allTextContents()
+    assert.ok(visibleRows.length > 0, 'cached rows render before held refresh admission answers')
+    releaseAdmission()
+    await page.locator('[data-test="refresh-failed"]').waitFor()
+    assert.deepEqual(await page.locator('[data-test="total-profit"]').allTextContents(), visibleRows)
+    assert.equal(await page.evaluate(() => sessionStorage.getItem('gw2.apiKey')), key)
+    assert.equal(calls.filter((call) => call.path === '/api/session').length, proofCount,
+      'live cached reads must not re-prove the key')
+    assert.ok(calls.filter((call) => call.path.startsWith('/api/crafting/profit')).every((call) => !call.sendsKey))
+    await page.unroute('**/api/crafting/profit', profitRoute)
+    await page.unroute('**/api/sync/account/crafting-profit', refreshRoute)
+    const retried = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/crafting/profit' && response.status() === 200)
+    await page.locator('[data-test="refresh-retry"]').click()
+    await retried
+    await page.waitForFunction(() => !document.querySelector('[data-test="refresh-failed"]'))
+  }
   if (process.env.GW2_SMOKE_SCREENSHOT) await page.screenshot({ path: process.env.GW2_SMOKE_SCREENSHOT })
   stage = 'reload retains the key and reconnects'
   await page.reload()
@@ -74,7 +126,7 @@ try {
   console.log(JSON.stringify({ result: 'passed', upstream: 'live ArenaNet', stages: [
     'masked entry', 'account proof', 'fresh synchronization', 'selector options', 'Profit calculation',
     'reload retention', 'Bank', 'Materials', 'disconnect'
-  ], requests: calls }, null, 2))
+  ], cachedAccessWithControlledOutage: process.env.GW2_SMOKE_CACHED_ACCESS === '1', requests: calls }, null, 2))
 } catch (error) {
   console.error(JSON.stringify({ result: 'failed', stage, errorType: error?.name ?? 'Error', requests: calls }, null, 2))
   process.exitCode = 1
