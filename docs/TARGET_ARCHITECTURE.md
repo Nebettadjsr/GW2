@@ -497,7 +497,7 @@ Review workflow and story disposition belong in the agent/planning documentation
 - **Database:** PostgreSQL.
 - **Schema migrations:** Flyway with versioned PostgreSQL SQL migrations; sections 7.3-7.4 and ADR-010.
 - **Runtime packaging:** frontend, backend, and PostgreSQL containers; Docker Compose for the initial small deployment.
-- **Frontend container runtime (ADR-011; runtime not yet delivered):** Nginx serves the built static assets and forwards `/api/` to the backend on the internal network, preserving the original `Host` (with port), `Origin`, cookies and key/context headers so the backend's existing same-origin checks apply unchanged. Scope is internal forwarding only, not hosting or public TLS.
+- **Frontend container runtime (ADR-011; delivered as an image in #76, not yet in a Compose stack):** Nginx serves the built static assets and forwards `/api/` to the backend on the internal network, preserving the original `Host` (with port), `Origin`, cookies and key/context headers so the backend's existing same-origin checks apply unchanged. Scope is internal forwarding only, not hosting or public TLS.
 - **Shared business-logic ownership:** backend/domain/application layers, with the explicit frontend-owned Ecto Salvage exception in section 4.2.
 - **Supported UI:** browser frontend only; JavaFX and a replacement desktop UI are not planned.
 - **GW2 API ownership:** backend adapter boundary; browsers do not call ArenaNet directly.

@@ -1,0 +1,38 @@
+# Static frontend + same-origin /api forwarding (ADR-011). Rendered by the Nginx image's
+# envsubst entrypoint; only ${GW2_BACKEND_ORIGIN} is substituted.
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Never log request headers (X-GW2-API-Key is a credential); the default format has none.
+    server_tokens off;
+
+    location /api/ {
+        # No URI part: path and query are forwarded unchanged.
+        proxy_pass ${GW2_BACKEND_ORIGIN};
+        # The browser's own Host (including a nonstandard published port) is what the backend's
+        # same-origin guard compares with Origin. $host would drop the port; the default would send
+        # the upstream's own name.
+        proxy_set_header Host $http_host;
+        # Origin, Cookie, X-GW2-API-Key, X-Account-Context and the body pass unchanged by default;
+        # Set-Cookie returns unchanged. No X-Forwarded-* (the backend does not trust them), no CORS.
+        proxy_http_version 1.1;
+    }
+
+    # A missing hashed asset is a 404, never the HTML shell.
+    location /assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+
+    location / {
+        try_files $uri /index.html;
+        add_header Cache-Control "no-cache";
+    }
+}

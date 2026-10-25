@@ -363,7 +363,7 @@ Phase 6. Containerization should package the intended multi-user/account-isolate
 
 - (Done) Select Flyway and implement the versioned schema lifecycle.
 - (Done) Write and verify the backend Dockerfile (#72).
-- Write and verify the frontend Dockerfile (#76, after #75).
+- (Done) Write and verify the frontend Dockerfile (#76).
 - Write `docker-compose.yml` wiring frontend/backend/PostgreSQL on an internal network.
 - Verify a fresh `docker compose up` reproduces a working environment from nothing.
 
