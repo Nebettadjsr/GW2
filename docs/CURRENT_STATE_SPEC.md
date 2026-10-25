@@ -2,7 +2,7 @@
 
 ## Purpose and authority
 
-This runtime snapshot was updated for scoped account recovery on 2026-10-25. DOMAIN_SPEC owns product rules; CURRENT_ARCHITECTURE describes source boundaries; TARGET_ARCHITECTURE records selected design; ROADMAP owns sequencing.
+This runtime snapshot was updated for scoped account recovery and the container runtime on 2026-10-25. DOMAIN_SPEC owns product rules; CURRENT_ARCHITECTURE describes source boundaries; TARGET_ARCHITECTURE records selected design; ROADMAP owns sequencing.
 
 ## Runtime and technology
 
@@ -73,6 +73,8 @@ Frontend pages present operation loading, completion, and failure states. Backen
 Backend tests run with `./mvnw test` in `backend/`; JaCoCo reports are generated with `./mvnw test jacoco:report` (output under `backend/target/site/jacoco`). Frontend checks are run from `frontend/`: `npm test`, `npm run test:coverage`, `npm run type-check`, and `npm run build`; browser smoke commands are documented in [Test Strategy](TEST_STRATEGY.md). GitHub Actions provides the push/PR CI gate and combined Java/frontend coverage KPI summary. Coverage below the 90% target is reported as a warning, not a build failure. Optional integration and live API checks have prerequisites and are not equivalent to the default deterministic suite.
 
 Development uses GitHub issues, PRs, Maven/Vitest CI and native Codex review. Each explicit Claude workflow dispatch selects one ready auto issue; the normal turn limit is 40 (configurable) and the job bound is 45 minutes. An authorized supervisor may dispatch/review subsequent runs. There is no usage-percentage gate or independent background supervisor. Small nonblocking follow-ups may be recorded by review. The retired Python service is recoverable at pre-github-flow.
+
+The informational Performance workflow publishes separate application-process and three-container resource reports, including CPU/memory observations, HTTP/database figures, startup and image sizes where measured. Failures and unavailable metrics remain visible and nonblocking; container global-read samples do not establish crafting capacity. [Performance Measurements](PERFORMANCE_MEASUREMENTS.md) owns invocation, units, workload versions and comparison limits; GitHub run artifacts hold the measurements.
 
 ## Current limitations
 
