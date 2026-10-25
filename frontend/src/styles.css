@@ -659,3 +659,7 @@ legend {
 .account-bootstrap--failed {
   color: var(--color-danger, #b3261e);
 }
+
+.account-needed {
+  margin: var(--space-4) 0;
+}

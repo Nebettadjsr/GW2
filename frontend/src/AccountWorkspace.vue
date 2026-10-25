@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { connection } from './api/accountSession'
-import ConnectionPanel from './account/ConnectionPanel.vue'
 import { useAccountBootstrap } from './account/useAccountBootstrap'
 import BankScreen from './account/BankScreen.vue'
 import MaterialsScreen from './account/MaterialsScreen.vue'
@@ -35,6 +34,8 @@ const route = useHashRoute()
 const sync = provideSyncOperations()
 const bootstrap = useAccountBootstrap()
 const isConnected = computed(() => connection.phase === 'connected')
+const isConnecting = computed(() => connection.phase === 'restoring' || connection.phase === 'connecting')
+const onSystemStatus = computed(() => route.current.value.id === 'synchronization')
 
 onMounted(() => {
   if (isConnected.value) void bootstrap.run()
@@ -83,9 +84,22 @@ watch(
   />
 
   <main id="main-content" ref="main" class="page">
-    <ConnectionPanel />
+    <!--
+      The API-key controls live only on System Status (STORY-FIX-004), which therefore renders whether
+      or not an account is connected — a direct URL or reload while disconnected must still reach it.
+      Every other destination needs the account and points to System Status instead of repeating the form.
+    -->
+    <SyncScreen v-if="onSystemStatus" />
 
-    <template v-if="isConnected">
+    <p v-else-if="!isConnected" class="account-needed" role="status" data-test="connection-needed">
+      <template v-if="isConnecting">Checking your GW2 API key…</template>
+      <template v-else>
+        This page needs your Guild Wars 2 account.
+        <a href="#/synchronization" data-test="connection-needed-link">Connect an API key in System Status</a>.
+      </template>
+    </p>
+
+    <template v-else>
     <p v-if="bootstrap.phase.value === 'syncing'" class="account-bootstrap" role="status" data-test="bootstrap-syncing">
       Synchronizing your account data for the first time. This can take a minute.
     </p>
@@ -117,7 +131,6 @@ watch(
     -->
     <EctoSalvageScreen v-if="route.current.value.id === 'ecto'" />
 
-    <SyncScreen v-else-if="route.current.value.id === 'synchronization'" />
     <BankScreen v-else-if="route.current.value.id === 'bank'" />
     <MaterialsScreen v-else-if="route.current.value.id === 'materials'" />
     </template>

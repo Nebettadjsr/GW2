@@ -300,7 +300,7 @@ UD-016 separately governs disposable cached database content. Preserve current a
 
 ### Simple key entry and retention
 
-Provide a masked API-key field, a clear connection state, and explicit replace/disconnect actions. Use browser sessionStorage for the supplied key so ordinary reloads do not require re-entry; keep application credential access centralized. Browser storage is accepted without an encryption vault or separate application login. Durable remember-me storage is not required for recovery. The backend continues to receive the key as transient request/operation input; no server-side key vault is needed.
+Provide a masked API-key field, a clear connection state, and explicit replace/disconnect actions, placed on the System Status page only; other pages link to it when a connection is needed. Use browser sessionStorage for the supplied key so ordinary reloads do not require re-entry; keep application credential access centralized. Browser storage is accepted without an encryption vault or separate application login. Durable remember-me storage is not required for recovery. The backend continues to receive the key as transient request/operation input; no server-side key vault is needed.
 
 Restore a stored key through the backend's account proof before loading account data. Remove it on explicit disconnect or definitive invalid-key rejection. A temporary ArenaNet outage may retain it for retry. Navigation must not require entry again. Tab close follows ordinary browser sessionStorage lifetime, without a secure-erasure promise.
 

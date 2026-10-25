@@ -54,11 +54,17 @@ function backend(path: string, init: RequestInit | undefined): Response {
   return json({ error: 'NOT_FOUND', message: path }, 404)
 }
 
-async function open(): Promise<VueWrapper> {
+async function open(hash = '#/synchronization'): Promise<VueWrapper> {
+  window.history.replaceState(null, '', `/${hash}`)
   const App = (await import('../../App.vue')).default
   wrapper = mount(App, { attachTo: document.body })
   await flushPromises()
   return wrapper
+}
+
+async function goTo(app: VueWrapper, destination: string): Promise<void> {
+  await app.find(`[data-test="nav-${destination}"]`).trigger('click')
+  await flushPromises()
 }
 
 async function enterKey(app: VueWrapper, key: string): Promise<void> {
@@ -68,6 +74,7 @@ async function enterKey(app: VueWrapper, key: string): Promise<void> {
 }
 
 beforeEach(() => {
+  window.sessionStorage.clear()
   seen = []
   keyAccepted = () => true
   selectorPublished = true
@@ -75,7 +82,6 @@ beforeEach(() => {
   bankFor = () => bankWithEmptySlots
   resetAccountSession()
   installAccountSession()
-  window.history.replaceState(null, '', '/#/bank')
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
     seen.push({ path: input, method: init?.method ?? 'GET', headers: { ...(init?.headers as Record<string, string>) } })
     return backend(input, init)
@@ -95,28 +101,71 @@ describe('account connection flow', () => {
     const app = await open()
 
     expect(app.find('[data-test="api-key-input"]').attributes('type')).toBe('password')
+    expect(app.find('[data-test="page-heading"]').text()).toBe('System Status')
     expect(app.find('[data-test="bank-loading"]').exists()).toBe(false)
     expect(seen).toHaveLength(0)
+  })
+
+  it('offers only a link to System Status, not the key form, on the other destinations while disconnected', async () => {
+    for (const hash of ['#/crafting', '#/discovery', '#/ecto', '#/bank', '#/materials']) {
+      const app = await open(hash)
+      expect(app.find('[data-test="api-key-input"]').exists()).toBe(false)
+      expect(app.find('[data-test="connection-panel"]').exists()).toBe(false)
+      expect(app.find('[data-test="connection-needed-link"]').attributes('href')).toBe('#/synchronization')
+      expect(seen).toHaveLength(0)
+      app.unmount()
+      wrapper = null
+    }
+  })
+
+  it('reaches System Status from that link, enters a key there and returns to the feature without reconnecting', async () => {
+    const app = await open('#/bank')
+    expect(app.find('[data-test="connection-needed-link"]').attributes('href')).toBe('#/synchronization')
+    await goTo(app, 'synchronization')
+    await enterKey(app, 'KEY-A')
+    const proofs = () => seen.filter((request) => request.path === '/api/session').length
+    expect(proofs()).toBe(1)
+
+    await goTo(app, 'bank')
+    await goTo(app, 'synchronization')
+    await goTo(app, 'bank')
+
+    expect(app.find('[data-test="api-key-input"]').exists()).toBe(false)
+    expect(proofs()).toBe(1)
+  })
+
+  it('keeps the key form out of every connected destination except System Status', async () => {
+    const app = await open()
+    await enterKey(app, 'KEY-A')
+    expect(app.find('[data-test="disconnect"]').exists()).toBe(true)
+
+    for (const destination of ['crafting', 'discovery', 'ecto', 'bank', 'materials']) {
+      await goTo(app, destination)
+      expect(app.find('[data-test="connection-panel"]').exists()).toBe(false)
+    }
   })
 
   it('proves the entered key, retains it, then loads account data with the access context', async () => {
     const app = await open()
 
     await enterKey(app, 'KEY-A')
+    expect(app.find('[data-test="connection-status"]').text()).toMatch(/Connected/)
+    await goTo(app, 'bank')
 
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe('KEY-A')
-    expect(app.find('[data-test="connection-status"]').text()).toMatch(/Connected/)
     const paths = seen.map((request) => request.path)
     expect(paths.indexOf('/api/session')).toBe(0)
     expect(paths).toContain('/api/account/bank')
     expect(seen.find((request) => request.path === '/api/account/bank')?.headers['X-Account-Context']).toBe('ctx-KEY-A')
+    await goTo(app, 'synchronization')
     expect((app.find('[data-test="api-key-input"]').element as HTMLInputElement).value).toBe('')
   })
 
   it('restores a retained key after a reload by proving it before any account read', async () => {
     window.sessionStorage.setItem(STORAGE_KEY, 'KEY-A')
 
-    const app = await open()
+    const app = await open('#/bank')
+    await goTo(app, 'synchronization')
 
     expect(app.find('[data-test="connection-status"]').text()).toMatch(/Connected/)
     const paths = seen.map((request) => request.path)
@@ -129,6 +178,7 @@ describe('account connection flow', () => {
     const app = await open()
 
     await enterKey(app, 'KEY-A')
+    await goTo(app, 'bank')
 
     const paths = seen.map((request) => request.path)
     expect(paths).toContain('/api/sync/account/crafting-profit')
@@ -141,9 +191,12 @@ describe('account connection flow', () => {
     bankFor = (context) => (context === 'ctx-KEY-A' ? { ...bankWithEmptySlots, slots: bankWithEmptySlots.slots.map((slot, index) => (index === 0 ? { ...slot, count: 987 } : slot)) } : bankWithEmptySlots)
     const app = await open()
     await enterKey(app, 'KEY-A')
+    await goTo(app, 'bank')
     expect(app.text()).toContain('987')
 
+    await goTo(app, 'synchronization')
     await enterKey(app, 'KEY-B')
+    await goTo(app, 'bank')
 
     expect(app.text()).not.toContain('987')
     expect(seen.filter((request) => request.path === '/api/account/bank').map((r) => r.headers['X-Account-Context']))
