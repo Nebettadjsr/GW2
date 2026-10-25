@@ -18,7 +18,9 @@ jobs:
   merge:
     if: >-
       (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
+       (github.event.workflow_run.conclusion == 'success' ||
+        github.event.workflow_run.conclusion == 'failure' ||
+        github.event.workflow_run.conclusion == 'timed_out') &&
        startsWith(github.event.workflow_run.head_branch, 'story/issue-')) ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request &&

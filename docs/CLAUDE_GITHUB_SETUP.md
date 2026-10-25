@@ -20,7 +20,12 @@ before accessing the Claude token. The `auto` label means a planning session
 has prepared the story for unattended implementation; `pairing` means local
 supervision is required. After a rework run publishes its branch, the workflow
 clears `needs-rework` while CI and Codex review the new commit. It does not
-automatically retry a PR. Claude writes a temporary run report with
+automatically retry a PR. The GitHub review/CI gate restores `needs-rework` when
+the current commit has a completed Codex finding, failed CI, or a run report
+listing unresolved gaps or remaining checks. The next button press resumes that
+PR. Old-commit failures cannot requeue newer work. Java 25 and disposable
+PostgreSQL are supplied so Claude can run the required isolated database tests.
+Claude writes a temporary run report with
 its changes, checks, and gaps. The workflow places it in a new PR or adds it
 as a comment on a rework PR; a missing report is shown explicitly for review.
 
@@ -39,6 +44,13 @@ To inspect the queue before pressing the button, use GitHub Issues filtered by
 or [`needs-decision`](https://github.com/Nebettadjsr/GW2/issues?q=is%3Aissue+is%3Aopen+label%3Aneeds-decision).
 The Actions run summary shows the selected issue and why any earlier `auto`
 issues were skipped.
+
+Planning sessions prepare and label the milestone's dependent stories in advance.
+The selector automatically unlocks each one when its prerequisites have merged;
+no per-click planning message is needed. The gate maintains review/rework state
+without invoking a model or starting Claude. It cannot invent new stories or make
+Product Owner decisions: a new planning session is needed when the prepared
+milestone queue is exhausted or a material requirements question arises.
 
 ## One-time setup
 
