@@ -83,3 +83,31 @@ not measured until container infrastructure exists and must be reported under a 
 - Fixture data is synthetic and the global/price refresh gateways bypass upstream fetching and parsing, so
   those workloads understate real refresh cost. Runs on shared CI runners are noisy.
 - Nothing here is a measurement of hosting capacity.
+
+## Automatic reporting in GitHub Actions
+
+`.github/workflows/performance.yml` (job "Performance report (informational)") runs on every push, pull request
+and manually (`workflow_dispatch`); there is no schedule. It runs `ApplicationResourceBenchmarkIT` and
+`ApplicationBenchmarkBoundaryIT` against a job-local PostgreSQL service with a placeholder key, no live ArenaNet
+access and no display. `ci.yml` never runs them.
+
+- It is not a required check and must stay out of `.github/scripts/merge_ready_pr.py` `REQUIRED_CHECKS` and branch
+  protection. The job and measuring steps are `continue-on-error`, and `.github/scripts/performance_summary.py`
+  always exits 0, so a benchmark failure, setup failure or missing report never fails CI or a merge.
+- The job summary lists every KPI, each unavailable KPI with its reason, benchmark diagnostics, and (when the
+  benchmark step failed) the tail of the Maven log. If no valid report exists, the summary says so and still
+  records commit, run and outcome.
+- Artifact `application-performance-<commit>-<run id>` (30 days) holds `application-resources.json/.md`,
+  `maven.log`, `summary.md` and `metadata.json` (commit, timestamp, workloads, fixture version, environment,
+  run URL, benchmark outcome). The artifact store is the only history; there is no separate database.
+- Deltas appear only against the latest earlier completed `master` run's report, and only if `schemaVersion`,
+  `fixtureVersion`, `measurementScope` and the whole `environment` (which includes the benchmark sizes, runner,
+  Java, PostgreSQL and CPU/heap figures) are identical. Otherwise the summary states why no comparison is shown
+  (no history, expired artifact, or the differing fields). Deltas are never a pass/fail result.
+- Limits: measurements are application-process, not container; hosted runners are shared and noisy, so small
+  changes are not meaningful. Artifacts expire, so the first compatible comparison may be absent.
+- Phase 6 health review: read the latest `master` run's summary and artifact as the starting evidence.
+
+Controlled checks: `python -m unittest discover -s .github/scripts` (`test_performance_summary.py` covers
+compatible/incompatible/absent history, unavailable KPIs, missing and corrupt reports, and the workflow's
+trigger and nonblocking configuration).
