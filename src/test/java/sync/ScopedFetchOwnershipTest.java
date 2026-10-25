@@ -154,6 +154,32 @@ class ScopedFetchOwnershipTest {
     }
 
     @Test
+    void incompleteDetailPreservesSeededRosterChildrenAndMarker() throws Exception {
+        AccountScope scope = AccountScope.of(A);
+        String detail = "{\"name\":\"Ana\",\"profession\":\"Guardian\",\"race\":\"Human\","
+                + "\"gender\":\"Female\",\"level\":80,\"created\":\"2020-01-01T00:00:00Z\","
+                + "\"crafting\":[{\"discipline\":\"Artificer\",\"rating\":400}],"
+                + "\"recipes\":[77],\"bags\":[],\"equipment\":[]}";
+        AccountSync.AuthFetcher good = url -> url.endsWith("/characters/Ana")
+                ? JSON.readTree(detail) : credentialOf(A, "[\"Ana\"]").get(url);
+        CharacterSync.syncCharactersCraftingAndRecipes(scope, good);
+        var states = new repo.AccountSourceStateRepository();
+        var before = states.read(admin, scope, repo.AccountSyncStateRepository.CHARACTERS).orElseThrow();
+        var registry = new repo.AccountRegistryRepository();
+        var activityBefore = registry.find(admin, scope).orElseThrow();
+        AccountSync.AuthFetcher incomplete = url -> url.endsWith("/characters/Ana")
+                ? JSON.readTree(detail.replace("\"profession\":\"Guardian\",", ""))
+                : credentialOf(A, "[\"Ana\"]").get(url);
+        assertThrows(IllegalStateException.class,
+                () -> CharacterSync.syncCharactersCraftingAndRecipes(scope, incomplete));
+        assertEquals(before, states.read(admin, scope, repo.AccountSyncStateRepository.CHARACTERS).orElseThrow());
+        assertEquals(activityBefore, registry.find(admin, scope).orElseThrow());
+        assertEquals(1, count("SELECT count(*) FROM characters WHERE name = 'Ana' AND profession = 'Guardian'"));
+        assertEquals(1, count("SELECT count(*) FROM character_crafting WHERE rating = 400"));
+        assertEquals(1, count("SELECT count(*) FROM character_recipes WHERE recipe_id = 77"));
+    }
+
+    @Test
     void strictParserKeepsValidNamesAndRejectsAnythingElse() throws Exception {
         assertEquals(List.of("Ana", "Bo"), CharacterNamesParser.parseStrict(JSON.readTree("[\"Ana\",\"Bo\"]")));
         assertTrue(CharacterNamesParser.parseStrict(JSON.readTree("[]")).isEmpty());

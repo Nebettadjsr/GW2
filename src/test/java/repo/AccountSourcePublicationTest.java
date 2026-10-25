@@ -277,6 +277,13 @@ class AccountSourcePublicationTest {
         try (Connection first = connect(); Connection second = connect()) {
             first.setSchema(schema);
             second.setSchema(schema);
+            // Begin the queued writer's transaction before its predecessor captures a row stamp.
+            // Merely queuing it after the predecessor's payload starts would let the old now()
+            // implementation pass: that predecessor already captured an earlier transaction time.
+            second.setAutoCommit(false);
+            try (Statement begin = second.createStatement(); ResultSet ignored = begin.executeQuery("SELECT now()")) {
+                assertTrue(ignored.next());
+            }
             var firstWriter = CompletableFuture.supplyAsync(() -> {
                 try {
                     return at(T1).publish(first, A, "bank", (c, s, ts) -> {
