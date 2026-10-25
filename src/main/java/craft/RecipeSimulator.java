@@ -4,6 +4,9 @@ import java.util.Map;
 
 public class RecipeSimulator {
 
+    /** UD-003 / DOMAIN_SPEC.md section 28: accepted maximum across all simulation phases. */
+    static final int MAX_CRAFTS = 250;
+
     private final CraftingResolver resolver;
 
     /**
@@ -59,6 +62,9 @@ public class RecipeSimulator {
             RecipeSimulationResult result
                               ) {
         while (true) {
+            if (result.getCraftCount() >= MAX_CRAFTS) {
+                break;
+            }
             if (acceptedCraftLimit > 0 && result.getCraftCount() >= acceptedCraftLimit) {
                 break;
             }
@@ -108,7 +114,7 @@ public class RecipeSimulator {
 
             root.accumulateBoughtItems(result.getTotalMissingToBuy());
 
-            if (result.getCraftCount() >= 250) {
+            if (result.getCraftCount() >= MAX_CRAFTS) {
                 break;
             }
         }

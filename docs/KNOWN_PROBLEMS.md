@@ -32,22 +32,6 @@ No finding in this document by itself authorizes an implementation change. Norma
 
 **Recommendation:** assess candidate pruning and multi-recipe ranking together. Any correction should compare valid candidates using the authoritative effective-cost semantics rather than treating direct ingredient purchase cost as a safe lower bound.
 
-### KP-03 — Two-phase simulation can exceed the agreed 250-craft maximum (CH-E3)
-
-**Observed fact:** UD-003 / `DOMAIN_SPEC.md` §28 defines the 250-craft maximum as intentional, but `src/main/java/craft/RecipeSimulator.java#simulateRecipe` can exceed it. With own materials and buying enabled, phase 1 can finish at 250 crafts; phase 2 still enters `simulatePhase`. Its limit check occurs after resolving, committing, and incrementing another craft, so an affordable next craft can produce 251.
-
-**Inferred risk:** the implementation can consume and report one additional batch beyond the accepted maximum.
-
-**Recommendation:** enforce the existing maximum across both phases without reopening the cap policy.
-
-### KP-04 — A requested recipe can be counted without executing that recipe (CH-15)
-
-
-**Observed fact:** `resolveOneCraft(recipe, ...)` passes only the output item ID/quantity into the generic resolver (after coordinated eligibility checks). That resolver first consumes owned output items, so an already owned finished item can satisfy a “craft” without any recipe ingredients. If crafting is needed it selects a recipe again by output ID, not necessarily the requested recipe whose ID/count/revenue the planner reports.
-
-**Inferred risk:** craftable counts include existing finished stock; multiple recipes for the same output can show another recipe's cost/requirements under the requested recipe's identity. DOMAIN_SPEC §28 asks how often the recipe can be executed, not how many outputs can be supplied from inventory. **Recommendation:** distinguish execution of the requested root recipe from acquisition of its ingredients.
-
-
 ### KP-05 — Intermediate crafting surplus is discarded instead of reused (CH-16)
 
 
