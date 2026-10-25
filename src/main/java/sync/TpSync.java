@@ -201,6 +201,28 @@ public final class TpSync {
         syncTpPrices(itemIds);
     }
 
+    /**
+     * The Profit price refresh for one authorized account's calculation (STORY-API-011): the stale or
+     * missing quotes that account's required item set needs, into the same shared quote cache and
+     * under the same ten-minute policy as the global selection.
+     */
+    public static void syncTpPricesForProfit(model.AccountScope scope) throws Exception {
+        Set<Integer> itemIds;
+        try (Connection con = Db.open()) {
+            itemIds = new CraftingProfitItemCollector().collect(con, scope);
+        }
+        syncTpPrices(itemIds);
+    }
+
+    /** The Discovery counterpart of {@link #syncTpPricesForProfit(model.AccountScope)}. */
+    public static void syncTpPricesForDiscovery(model.AccountScope scope) throws Exception {
+        Set<Integer> itemIds;
+        try (Connection con = Db.open()) {
+            itemIds = new DiscoveryItemCollector().collect(con, scope);
+        }
+        syncTpPrices(itemIds);
+    }
+
     /** The Discovery price refresh; globally selected without a scope exactly as {@link #syncTpPricesForProfit()}. */
     public static void syncTpPricesForDiscovery() throws Exception {
         Set<Integer> itemIds;

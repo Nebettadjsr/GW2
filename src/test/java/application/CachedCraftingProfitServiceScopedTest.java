@@ -46,11 +46,13 @@ class CachedCraftingProfitServiceScopedTest {
     };
     private final TradingPostPriceRefreshGateway countingPriceGateway = new TradingPostPriceRefreshGateway() {
         @Override public void syncTpPricesForProfit() { legacyCalls.incrementAndGet(); }
+        @Override public void syncTpPricesForProfit(AccountScope scope) { requiredScopes.add(scope); }
     };
 
     private Instant completedAt = EXPIRED_AT;
     private boolean covered = false;
     private final List<AccountScope> opened = new ArrayList<>();
+    private final List<AccountScope> requiredScopes = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     @Test
     void scopedEnvelopeNamesAccountAndGenerationsAndAdmitsNoLegacyRefresh() throws Exception {
@@ -65,17 +67,18 @@ class CachedCraftingProfitServiceScopedTest {
             assertEquals(5L, freshness.sourceGenerations().get(source), source);
         }
         assertTrue(freshness.provisional());
-        assertTrue(freshness.outstandingWork().isEmpty());
-        assertEquals(2, freshness.failures().size());
-        assertEquals(1, freshness.failures().stream()
-                .filter(f -> f.code().equals(CachedCraftingProfitService.CREDENTIAL_REQUIRED)
-                        && f.kind() == CalculationFreshness.RefreshKind.ACCOUNT).count(),
+        assertEquals(1, freshness.outstandingWork().size());
+        assertEquals(CalculationFreshness.RefreshKind.TRADING_POST, freshness.outstandingWork().get(0).kind(),
+                "only the shared, key-free quote refresh is admitted");
+        assertEquals(1, freshness.failures().size());
+        assertTrue(freshness.failures().stream()
+                .anyMatch(f -> f.code().equals(CachedCraftingProfitService.CREDENTIAL_REQUIRED)
+                        && f.kind() == CalculationFreshness.RefreshKind.ACCOUNT),
                 "a stale account source with no key is reported as credential-required");
-        assertEquals(1, freshness.failures().stream()
-                .filter(f -> f.code().equals("SCOPED_REFRESH_NOT_ADMITTED")
-                        && f.kind() == CalculationFreshness.RefreshKind.TRADING_POST).count());
         assertEquals(0, legacyCalls.get(), "no unscoped refresh work may run from a scoped path");
-        assertEquals(0, tasks.admitted.size(), "no task may be admitted from a scoped path");
+        tasks.run(tasks.admitted.get(0).id());
+        assertEquals(1, tasks.admitted.size(), "no account task may be admitted without a key");
+        assertEquals(List.of(scope), requiredScopes, "quote demand is the requesting account's required ids");
     }
 
     @Test

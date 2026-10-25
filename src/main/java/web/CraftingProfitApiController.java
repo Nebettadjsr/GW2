@@ -76,8 +76,12 @@ public class CraftingProfitApiController {
 
         CraftingProfitApiMapper.Effective effective = CraftingProfitApiMapper.toEffective(request);
 
-        CachedCraftingProfitService.ProfitOutcome outcome = profitService.profit(
-                RequestAccountContext.scopeOf(http), effective.toDiscChoice(), effective.toCraftingSettings());
+        var keyed = keyedAdmission(http);
+        CachedCraftingProfitService.ProfitOutcome outcome = keyed == null
+                ? profitService.profit(RequestAccountContext.scopeOf(http), effective.toDiscChoice(),
+                        effective.toCraftingSettings())
+                : profitService.profit(RequestAccountContext.scopeOf(http), effective.toDiscChoice(),
+                        effective.toCraftingSettings(), keyed);
 
         if (!outcome.hasResult()) {
             return ResponseEntity.status(HttpStatus.ACCEPTED)
@@ -113,9 +117,13 @@ public class CraftingProfitApiController {
         CraftingProfitApiMapper.Effective effective = CraftingProfitApiMapper.toEffective(
                 CraftingResolutionMapper.requireCalculation(body.calculation()));
 
-        CachedCraftingProfitService.ResolutionOutcome outcome = profitService.resolution(
-                RequestAccountContext.scopeOf(http), recipeId, effective.toDiscChoice(), effective.toCraftingSettings(),
-                body.basedOnCalculationId());
+        var keyed = keyedAdmission(http);
+        CachedCraftingProfitService.ResolutionOutcome outcome = keyed == null
+                ? profitService.resolution(RequestAccountContext.scopeOf(http), recipeId,
+                        effective.toDiscChoice(), effective.toCraftingSettings(), body.basedOnCalculationId())
+                : profitService.resolution(RequestAccountContext.scopeOf(http), recipeId,
+                        effective.toDiscChoice(), effective.toCraftingSettings(), body.basedOnCalculationId(),
+                        keyed);
 
         CraftingProfitResolutionResponse.CalculationDto calculation =
                 new CraftingProfitResolutionResponse.CalculationDto(effective.scope(), effective.settings());
@@ -144,5 +152,16 @@ public class CraftingProfitApiController {
                 CraftingResolutionMapper.treeStatus(detail),
                 CraftingResolutionMapper.profitTreeBasis(detail),
                 CraftingResolutionMapper.toTree(detail)));
+    }
+
+    /**
+     * The transient proof a request carries, if any. A request without {@code X-GW2-API-Key} is a
+     * pure cached read: it needs no key and admits no account refresh (STORY-API-011).
+     */
+    private static CachedCraftingProfitService.KeyedAdmission keyedAdmission(HttpServletRequest http) {
+        String key = web.access.AccountAccessHttp.presentedApiKey(http);
+        if (key == null) return null;
+        return new CachedCraftingProfitService.KeyedAdmission(RequestAccountContext.required(http),
+                web.access.AccountAccessHttp.presentedSessionId(http).orElseThrow(), key);
     }
 }

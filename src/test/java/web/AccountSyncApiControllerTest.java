@@ -114,8 +114,35 @@ class AccountSyncApiControllerTest {
                 .andExpect(jsonPath("$.operation").value("ACCOUNT_SYNC"))
                 .andReturn().getResponse().getContentAsString();
         awaitRuns(1);
-        assertEquals(A + ":[BANK, CHARACTERS, LUCK, MATERIALS, RECIPES]", runs.get(0));
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, LUCK, MATERIALS]", runs.get(0));
         assertFalse(body.contains("key-a"), "the response never carries the key");
+    }
+
+    /**
+     * Restores the coverage dropped when the account trigger became scoped: GLOBAL_SYNC and the
+     * account operation are different admission keys, so an unfinished global task never blocks a
+     * keyed account refresh, and the two stay separately identifiable through the one status route.
+     */
+    @Test
+    void anUnfinishedGlobalTaskDoesNotBlockTheKeyedAccountTrigger() throws Exception {
+        var release = new java.util.concurrent.CountDownLatch(1);
+        try {
+            String globalId = tasks.submit("GLOBAL_SYNC", () -> release.await());
+            var s = session(A, "key-a");
+            String body = mvc.perform(trigger("/api/sync/account", s, "key-a"))
+                    .andExpect(status().isAccepted())
+                    .andExpect(jsonPath("$.operation").value("ACCOUNT_SYNC"))
+                    .andReturn().getResponse().getContentAsString();
+            awaitRuns(1);
+            String accountId = com.jayway.jsonpath.JsonPath.read(body, "$.taskId");
+            org.junit.jupiter.api.Assertions.assertNotEquals(globalId, accountId);
+            mvc.perform(authorized(get("/api/sync/tasks/" + globalId), s))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.operation").value("GLOBAL_SYNC"))
+                    .andExpect(jsonPath("$.state").value("RUNNING"));
+        } finally {
+            release.countDown();
+        }
     }
 
     @Test
@@ -123,7 +150,7 @@ class AccountSyncApiControllerTest {
         var s = session(A, "key-a");
         mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-a")).andExpect(status().isAccepted());
         awaitRuns(1);
-        assertEquals(A + ":[BANK, CHARACTERS, MATERIALS, RECIPES]", runs.get(0));
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, MATERIALS]", runs.get(0));
     }
 
     @Test

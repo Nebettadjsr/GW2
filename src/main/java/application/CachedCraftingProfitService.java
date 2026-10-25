@@ -72,6 +72,24 @@ public class CachedCraftingProfitService {
     private final BackgroundTasks tasks;
     private final Clock clock;
     private final Duration accountMaxAge;
+    private ScopedAccountRefreshCoordinator scopedRefresh;
+
+    /**
+     * Binds the credential-aware coordinator keyed requests admit through (STORY-API-011). Without
+     * it, a request that carries a key is treated exactly like one that carries none.
+     */
+    public CachedCraftingProfitService withScopedRefresh(ScopedAccountRefreshCoordinator coordinator) {
+        this.scopedRefresh = coordinator;
+        return this;
+    }
+
+    /**
+     * The caller's transient proof for a keyed calculation: the trusted context, the presented
+     * session and the key. Never stored; handed only to {@link ScopedAccountRefreshCoordinator}.
+     */
+    public record KeyedAdmission(application.access.AccountContext context, String sessionId, String apiKey) {
+        @Override public String toString() { return "KeyedAdmission[context=" + context + ", apiKey=<redacted>]"; }
+    }
 
     public CachedCraftingProfitService(ProfitInputSession.Factory sessions,
                                        Function<ProfitInputSession, CraftingProfitService> profitServices,
@@ -191,6 +209,11 @@ public class CachedCraftingProfitService {
      * generations that capture actually saw rather than whatever has been published since.
      */
     public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings) throws Exception {
+        return profit(scope, choice, settings, null);
+    }
+
+    public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings,
+                                KeyedAdmission keyed) throws Exception {
         String requestId = UUID.randomUUID().toString();
         CalculationInputVersions captured;
         CraftingProfitService.ProfitData data = null;
@@ -202,7 +225,7 @@ public class CachedCraftingProfitService {
             }
         }
 
-        return new ProfitOutcome(data, describeScoped(requestId, captured, data != null));
+        return new ProfitOutcome(data, describeScoped(requestId, captured, data != null, scope, keyed));
     }
 
     /**
@@ -218,6 +241,15 @@ public class CachedCraftingProfitService {
                                         DiscChoice choice,
                                         CraftingSettings settings,
                                         String basedOnCalculationId) throws Exception {
+        return resolution(scope, recipeId, choice, settings, basedOnCalculationId, null);
+    }
+
+    public ResolutionOutcome resolution(AccountScope scope,
+                                        int recipeId,
+                                        DiscChoice choice,
+                                        CraftingSettings settings,
+                                        String basedOnCalculationId,
+                                        KeyedAdmission keyed) throws Exception {
         String requestId = UUID.randomUUID().toString();
         CalculationInputVersions captured;
         CraftingResolutionDetail detail = null;
@@ -234,7 +266,7 @@ public class CachedCraftingProfitService {
                 ? CONSISTENCY_FRESH_CALCULATION
                 : CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS;
 
-        return new ResolutionOutcome(detail, consistency, describeScoped(requestId, captured, detail != null));
+        return new ResolutionOutcome(detail, consistency, describeScoped(requestId, captured, detail != null, scope, keyed));
     }
 
     private CalculationInputVersions capture(ProfitInputSession session) throws SQLException {
@@ -272,19 +304,39 @@ public class CachedCraftingProfitService {
      */
     private CalculationFreshness describeScoped(String requestId,
                                                 CalculationInputVersions captured,
-                                                boolean resultAvailable) {
+                                                boolean resultAvailable,
+                                                AccountScope scope,
+                                                KeyedAdmission keyed) {
         List<CalculationFreshness.RefreshFailure> failures = new ArrayList<>();
-        if (!captured.sourcesNeedingRefresh().isEmpty()) {
-            failures.add(new CalculationFreshness.RefreshFailure(CalculationFreshness.RefreshKind.ACCOUNT,
-                    null, CREDENTIAL_REQUIRED,
-                    "Account sources " + captured.sourcesNeedingRefresh()
-                            + " need a refresh; no GW2 key was supplied, so none was admitted", true));
-        }
         List<CalculationFreshness.OutstandingRefresh> outstanding = new ArrayList<>();
+        Set<String> needing = captured.sourcesNeedingRefresh();
+        if (!needing.isEmpty()) {
+            if (keyed == null || scopedRefresh == null) {
+                failures.add(new CalculationFreshness.RefreshFailure(CalculationFreshness.RefreshKind.ACCOUNT,
+                        null, CREDENTIAL_REQUIRED,
+                        "Account sources " + needing
+                                + " need a refresh; no GW2 key was supplied, so none was admitted", true));
+            } else {
+                try {
+                    ScopedAccountRefreshCoordinator.Admission admission = scopedRefresh.require(
+                            keyed.context(), keyed.sessionId(), keyed.apiKey(), needing);
+                    outstanding.add(new CalculationFreshness.OutstandingRefresh(
+                            CalculationFreshness.RefreshKind.ACCOUNT, admission.sources(), admission.taskId(),
+                            stateOf(admission.taskId()), admission.reuse()));
+                } catch (ScopedAccountRefreshCoordinator.Rejected rejected) {
+                    // Nothing was admitted; the authorized cached result is still returned.
+                    failures.add(new CalculationFreshness.RefreshFailure(CalculationFreshness.RefreshKind.ACCOUNT,
+                            null, "REFRESH_NOT_ADMITTED_" + rejected.reason(),
+                            "The supplied GW2 key could not be used to refresh " + needing
+                                    + "; none was admitted", rejected.reason()
+                                    == ScopedAccountRefreshCoordinator.Reason.UPSTREAM_UNAVAILABLE));
+                }
+            }
+        }
         if (!captured.coverage().covered()) {
             // Trading Post quotes are shared, account-free data and need no key, so the on-demand
             // shared refresh is admitted exactly as for the unscoped calculation.
-            TradingPostRefreshCoordinator.Admission admission = priceRefresh.requireProfitCoverage();
+            TradingPostRefreshCoordinator.Admission admission = priceRefresh.requireProfitCoverage(scope);
             outstanding.add(new CalculationFreshness.OutstandingRefresh(
                     CalculationFreshness.RefreshKind.TRADING_POST, Set.of(), admission.taskId(),
                     stateOf(admission.taskId()), admission.reuse()));

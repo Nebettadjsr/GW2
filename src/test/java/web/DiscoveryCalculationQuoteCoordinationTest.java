@@ -144,6 +144,12 @@ class DiscoveryCalculationQuoteCoordinationTest {
         volatile Exception failure;
         private boolean held;
 
+        /** The route now demands the requesting account's required ids; the fixture's id set is the same. */
+        @Override
+        public void syncTpPricesForDiscovery(model.AccountScope scope) throws Exception {
+            syncTpPricesForDiscovery();
+        }
+
         @Override
         public void syncTpPricesForDiscovery() throws Exception {
             if (failure != null) throw failure;

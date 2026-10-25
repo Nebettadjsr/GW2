@@ -209,7 +209,7 @@ public class ScopedAccountRefreshCoordinator {
     }
 
     /** The grant-bearing operation that reads one source; null for an unknown source. */
-    static AccountOperation operationFor(String source) {
+    public static AccountOperation operationFor(String source) {
         return switch (source) {
             case AccountSyncStateRepository.BANK -> AccountOperation.BANK_READ;
             case AccountSyncStateRepository.MATERIALS -> AccountOperation.MATERIAL_STORAGE_READ;

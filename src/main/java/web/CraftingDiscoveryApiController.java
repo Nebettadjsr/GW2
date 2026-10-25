@@ -60,8 +60,8 @@ public class CraftingDiscoveryApiController {
     }
 
     /** Shared Discovery demand coordination; still completes before the calculation reads quotes. */
-    private void refreshQuotes() throws Exception {
-        if (priceRefresh != null) priceRefresh.refreshAndAwait(TradingPostRefreshCoordinator.Variant.DISCOVERY);
+    private void refreshQuotes(model.AccountScope scope) throws Exception {
+        if (priceRefresh != null) priceRefresh.refreshAndAwait(TradingPostRefreshCoordinator.Variant.DISCOVERY, scope);
     }
 
     /**
@@ -82,7 +82,7 @@ public class CraftingDiscoveryApiController {
             @RequestBody(required = false) CraftingDiscoveryRequest request) throws Exception {
 
         CraftingDiscoveryApiMapper.Effective effective = CraftingDiscoveryApiMapper.toEffective(request);
-        refreshQuotes();
+        refreshQuotes(RequestAccountContext.scopeOf(http));
 
         CraftingDiscoveryService.DiscoveryData data = discoveryServiceFactory.get()
                 .forScope(RequestAccountContext.scopeOf(http))
@@ -120,7 +120,7 @@ public class CraftingDiscoveryApiController {
         int recipeId = CraftingResolutionMapper.requireRecipeId(body.recipeId());
         CraftingDiscoveryApiMapper.Effective effective = CraftingDiscoveryApiMapper.toEffective(
                 CraftingResolutionMapper.requireCalculation(body.calculation()));
-        refreshQuotes();
+        refreshQuotes(RequestAccountContext.scopeOf(http));
 
         CraftingResolutionDetail detail = CraftingResolutionMapper.requireInCalculation(
                 discoveryServiceFactory.get().forScope(RequestAccountContext.scopeOf(http)).resolveDetail(

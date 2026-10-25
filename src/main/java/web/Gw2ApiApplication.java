@@ -98,6 +98,17 @@ public class Gw2ApiApplication {
                 key -> url -> api.Gw2ApiClient.getAuth(url, key));
     }
 
+    /** Production reader behind the System Status own-account projection; connects only when called. */
+    @Bean
+    public SystemStatusApiController.AccountStateReader accountStateReader() {
+        return (scope, sources) -> {
+            try (java.sql.Connection con = repo.Db.open()) {
+                repo.ManagedSchema.requireManagedAccountSchema(con, "account status");
+                return new repo.AccountSourceStateRepository().readAll(con, scope, sources);
+            }
+        };
+    }
+
     /** Shared Trading Post demand coordination, deliberately separate from the account one. */
     @Bean
     public TradingPostRefreshCoordinator tradingPostRefreshCoordinator(
@@ -120,6 +131,7 @@ public class Gw2ApiApplication {
             CraftingGraphCache graphCache,
             AccountRefreshCoordinator accountRefreshCoordinator,
             TradingPostRefreshCoordinator tradingPostRefreshCoordinator,
+            ScopedAccountRefreshCoordinator scopedAccountRefreshCoordinator,
             BackgroundTasks tasks,
             @Value("${gw2.account-data.max-age-ms:900000}") long accountMaxAgeMs) {
         return new CachedCraftingProfitService(
@@ -141,7 +153,7 @@ public class Gw2ApiApplication {
                 tradingPostRefreshCoordinator,
                 tasks,
                 Clock.systemUTC(),
-                Duration.ofMillis(accountMaxAgeMs));
+                Duration.ofMillis(accountMaxAgeMs)).withScopedRefresh(scopedAccountRefreshCoordinator);
     }
 
     /**

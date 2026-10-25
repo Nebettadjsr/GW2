@@ -31,4 +31,13 @@ public class TradingPostPriceRefreshService {
     public synchronized void refreshForProfit() throws Exception {
         gateway.syncTpPricesForProfit();
     }
+
+    /** Required-ID refresh for one account's calculation; same shared cache and exclusion as the global one. */
+    public synchronized void refreshForDiscovery(model.AccountScope scope) throws Exception {
+        gateway.syncTpPricesForDiscovery(scope);
+    }
+
+    public synchronized void refreshForProfit(model.AccountScope scope) throws Exception {
+        gateway.syncTpPricesForProfit(scope);
+    }
 }
