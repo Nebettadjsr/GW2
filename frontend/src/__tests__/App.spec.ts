@@ -264,12 +264,16 @@ describe('App shell', () => {
     const selectedRecipe = open.find('[data-test="discovery-detail-name"]').text()
     expect(pathsOf('/api/crafting/discovery/resolution')).toHaveLength(1)
 
+    await navigateTo(open, 'synchronization')
+    expect(open.find('[data-test="api-key-input"]').exists()).toBe(true)
     await navigateTo(open, 'crafting')
 
+    // Opening System Status did not destroy either crafting cache or re-post a calculation.
     // Opening Discovery did not re-post Profit's calculation, and returning to Profit does not
     // re-post it either: the two screens are independent kept-alive boundaries.
     expect(pathsOf('/api/crafting/profit')).toHaveLength(profitCalculations)
 
+    await navigateTo(open, 'synchronization')
     await navigateTo(open, 'discovery')
 
     // The Discovery selection survived the trip with no second table calculation; only the detail is
@@ -359,6 +363,7 @@ describe('App shell', () => {
     const calculationsBefore = pathsOf('/api/crafting/profit').length
 
     await navigateTo(open, 'bank')
+    await navigateTo(open, 'synchronization')
     await navigateTo(open, 'crafting')
 
     expect(pathsOf('/api/crafting/profit')).toHaveLength(calculationsBefore)

@@ -9,6 +9,7 @@ import CraftingProfitScreen from './crafting/CraftingProfitScreen.vue'
 import EctoSalvageScreen from './ecto/EctoSalvageScreen.vue'
 import { DESTINATIONS, type DestinationId } from './shell/destinations'
 import SiteHeader from './shell/SiteHeader.vue'
+import PageHeader from './shell/PageHeader.vue'
 import { useHashRoute } from './shell/useHashRoute'
 import { provideSyncOperations } from './sync/provideSyncOperations'
 import SyncScreen from './sync/SyncScreen.vue'
@@ -91,19 +92,22 @@ watch(
     -->
     <SyncScreen v-if="onSystemStatus" />
 
-    <p v-else-if="!isConnected" class="account-needed" role="status" data-test="connection-needed">
+    <section v-if="!onSystemStatus && !isConnected" class="account-needed">
+    <PageHeader :heading="route.current.value.label" />
+    <p role="status" data-test="connection-needed">
       <template v-if="isConnecting">Checking your GW2 API key…</template>
       <template v-else>
         This page needs your Guild Wars 2 account.
         <a href="#/synchronization" data-test="connection-needed-link">Connect an API key in System Status</a>.
       </template>
     </p>
+    </section>
 
-    <template v-else>
-    <p v-if="bootstrap.phase.value === 'syncing'" class="account-bootstrap" role="status" data-test="bootstrap-syncing">
+    <template v-if="isConnected">
+    <p v-if="!onSystemStatus && bootstrap.phase.value === 'syncing'" class="account-bootstrap" role="status" data-test="bootstrap-syncing">
       Synchronizing your account data for the first time. This can take a minute.
     </p>
-    <p v-else-if="bootstrap.phase.value === 'failed'" class="account-bootstrap account-bootstrap--failed" role="alert" data-test="bootstrap-failed">
+    <p v-else-if="!onSystemStatus && bootstrap.phase.value === 'failed'" class="account-bootstrap account-bootstrap--failed" role="alert" data-test="bootstrap-failed">
       {{ bootstrap.error.value }}
       <button type="button" @click="bootstrap.run()">Try again</button>
     </p>

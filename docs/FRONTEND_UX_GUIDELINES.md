@@ -18,6 +18,12 @@ Separate global navigation, page actions, calculation filters/settings, primary 
 
 Use consistent placement and labels for navigation, refresh, settings, status and details across pages. Navigation must not accidentally submit a calculation or synchronization operation. Within-session navigation should preserve useful controls and unfinished synchronization tracking; a return must not silently re-submit an operation or imply that leaving cancelled backend work. Do not imply persistence across a browser reload when none exists.
 
+GW2 API key entry, replacement and disconnect controls belong on System Status only. Keep that page
+reachable while disconnected and on direct navigation/reload. Other account-dependent pages retain
+their page heading and show a concise link to System Status when a connection is needed; do not
+repeat the key form above every page. Opening System Status must preserve the crafting screens'
+cached controls/results and must not submit another calculation.
+
 ## 3. Layout and responsive behavior
 
 Use the restrained dark, Guild Wars 2-inspired visual identity in section 9, with readable typography, consistent spacing and clear group boundaries. Favor clarity over decoration, hierarchy over raw density, and user-relevant information over diagnostic data. Visual polish is part of the intended result; it must support rather than obscure the data.

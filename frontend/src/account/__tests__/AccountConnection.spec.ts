@@ -111,6 +111,7 @@ describe('account connection flow', () => {
       const app = await open(hash)
       expect(app.find('[data-test="api-key-input"]').exists()).toBe(false)
       expect(app.find('[data-test="connection-panel"]').exists()).toBe(false)
+      expect(app.findAll('[data-test="page-heading"]')).toHaveLength(1)
       expect(app.find('[data-test="connection-needed-link"]').attributes('href')).toBe('#/synchronization')
       expect(seen).toHaveLength(0)
       app.unmount()
