@@ -30,27 +30,29 @@ public class AccountRefreshGateway {
         CharacterSync.syncCharactersCraftingAndRecipes();
     }
 
-    // The account-scoped sequences (STORY-APP-015). Each fetches outside the database transaction
-    // and then publishes that one source atomically, so a failure in one leaves the others' already
+    // The account-scoped sequences (STORY-APP-015, STORY-SYNC-006). Each fetches outside the
+    // database transaction with the supplied operation credential - never the deployment key - and
+    // then publishes that one source atomically, so a failure in one leaves the others' already
     // committed publications intact.
 
-    public void syncAccountBank(model.AccountScope scope) throws Exception {
-        AccountSync.syncAccountBank(scope);
+    public void syncAccountBank(model.AccountScope scope, AccountSync.AuthFetcher fetcher) throws Exception {
+        AccountSync.syncAccountBank(scope, fetcher);
     }
 
-    public void syncAccountMaterials(model.AccountScope scope) throws Exception {
-        AccountSync.syncAccountMaterials(scope);
+    public void syncAccountMaterials(model.AccountScope scope, AccountSync.AuthFetcher fetcher) throws Exception {
+        AccountSync.syncAccountMaterials(scope, fetcher);
     }
 
-    public void syncAccountRecipes(model.AccountScope scope) throws Exception {
-        AccountSync.syncAccountRecipes(scope);
+    public void syncAccountRecipes(model.AccountScope scope, AccountSync.AuthFetcher fetcher) throws Exception {
+        AccountSync.syncAccountRecipes(scope, fetcher);
     }
 
-    public void syncAccountLuck(model.AccountScope scope) throws Exception {
-        AccountSync.syncAccountLuck(scope);
+    public void syncAccountLuck(model.AccountScope scope, AccountSync.AuthFetcher fetcher) throws Exception {
+        AccountSync.syncAccountLuck(scope, fetcher);
     }
 
-    public void syncCharacterCraftingAndRecipes(model.AccountScope scope) throws Exception {
-        CharacterSync.syncCharactersCraftingAndRecipes(scope);
+    public void syncCharacterCraftingAndRecipes(model.AccountScope scope, AccountSync.AuthFetcher fetcher)
+            throws Exception {
+        CharacterSync.syncCharactersCraftingAndRecipes(scope, fetcher);
     }
 }

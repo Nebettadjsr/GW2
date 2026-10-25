@@ -41,6 +41,15 @@ public final class BackgroundTaskServiceTasks implements BackgroundTasks {
     }
 
     @Override
+    public String submit(String operation, String exclusionKey, Work work) throws OperationAlreadyRunning {
+        try {
+            return tasks.submit(operation, exclusionKey, work::run);
+        } catch (TaskAlreadyRunningException existing) {
+            throw new OperationAlreadyRunning(operation, existing.existingTaskId());
+        }
+    }
+
+    @Override
     public Optional<Status> find(String taskId) {
         return tasks.find(taskId).map(BackgroundTaskServiceTasks::toStatus);
     }

@@ -30,6 +30,15 @@ public interface BackgroundTasks {
      */
     String submit(String operation, Work work) throws OperationAlreadyRunning;
 
+    /**
+     * Like {@link #submit(String, Work)} but exclusion is per {@code exclusionKey} while the task is
+     * still reported under {@code operation}, so independent owners progress concurrently.
+     */
+    default String submit(String operation, String exclusionKey, Work work) throws OperationAlreadyRunning {
+        if (operation.equals(exclusionKey)) return submit(operation, work);
+        throw new UnsupportedOperationException("keyed exclusion is not supported by this facility");
+    }
+
     /** The task's last reported state, or empty when this process can no longer identify it. */
     Optional<Status> find(String taskId);
 

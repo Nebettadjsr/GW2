@@ -29,6 +29,12 @@ public enum AccountOperation {
     MATERIAL_STORAGE_READ(Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES),
             Set.of("/v2/account/materials")),
 
+    /** Account recipe unlocks, stored from {@code /v2/account/recipes}. */
+    RECIPES_READ(Set.of(AccountGrant.ACCOUNT, AccountGrant.UNLOCKS), Set.of("/v2/account/recipes")),
+
+    /** The character roster and every character payload, stored from {@code /v2/characters}. */
+    CHARACTERS_READ(Set.of(AccountGrant.ACCOUNT, AccountGrant.CHARACTERS), Set.of("/v2/characters")),
+
     /** A full account refresh: every account source this application publishes. */
     ACCOUNT_REFRESH(Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES, AccountGrant.CHARACTERS,
             AccountGrant.UNLOCKS, AccountGrant.PROGRESSION),

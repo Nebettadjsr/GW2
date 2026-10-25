@@ -38,13 +38,13 @@ public final class AccountSync {
      * ones this run did not refresh, advances the {@code BANK} generation and records the account's
      * successful-sync activity - all or nothing.
      */
-    public static void syncAccountBank(model.AccountScope scope) throws Exception {
-        syncAccountBank(scope, Gw2ApiClient::getAuth);
+    public static void syncAccountBank(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+        syncAccountBankImpl(scope, fetcher);
     }
 
-    /** Fetch seam: the configured-key GET, replaceable by an offline fake in tests. */
+    /** Fetch seam: an authenticated GET bound to one credential, replaceable by an offline fake. */
     @FunctionalInterface
-    interface AuthFetcher {
+    public interface AuthFetcher {
         JsonNode get(String url) throws Exception;
     }
 
@@ -62,7 +62,7 @@ public final class AccountSync {
         }
     }
 
-    static void syncAccountBank(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+    static void syncAccountBankImpl(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
         requireCredentialOwner(scope, fetcher);
         List<BankSlot> rows = parseBankSlots(fetcher.get("https://api.guildwars2.com/v2/account/bank"));
         try (Connection con = Db.open()) {
@@ -80,11 +80,11 @@ public final class AccountSync {
     }
 
     /** Fetches and publishes one account's material storage; see {@link #syncAccountBank(model.AccountScope)}. */
-    public static void syncAccountMaterials(model.AccountScope scope) throws Exception {
-        syncAccountMaterials(scope, Gw2ApiClient::getAuth);
+    public static void syncAccountMaterials(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+        syncAccountMaterialsImpl(scope, fetcher);
     }
 
-    static void syncAccountMaterials(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+    static void syncAccountMaterialsImpl(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
         requireCredentialOwner(scope, fetcher);
         List<MaterialStack> rows = parseMaterialStacks(fetcher.get("https://api.guildwars2.com/v2/account/materials"));
         try (Connection con = Db.open()) {
@@ -106,11 +106,11 @@ public final class AccountSync {
     }
 
     /** Fetches and publishes one account's recipe unlocks; see {@link #syncAccountBank(model.AccountScope)}. */
-    public static void syncAccountRecipes(model.AccountScope scope) throws Exception {
-        syncAccountRecipes(scope, Gw2ApiClient::getAuth);
+    public static void syncAccountRecipes(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+        syncAccountRecipesImpl(scope, fetcher);
     }
 
-    static void syncAccountRecipes(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+    static void syncAccountRecipesImpl(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
         requireCredentialOwner(scope, fetcher);
         List<Integer> ids = parseAccountRecipeIds(fetcher.get("https://api.guildwars2.com/v2/account/recipes"));
         try (Connection con = Db.open()) {
@@ -135,11 +135,11 @@ public final class AccountSync {
      * anything is written: a key that resolves to a different account must not write under the
      * caller's GUID, and the publication is refused rather than silently rescoped.
      */
-    public static void syncAccountLuck(model.AccountScope scope) throws Exception {
-        syncAccountLuck(scope, Gw2ApiClient::getAuth);
+    public static void syncAccountLuck(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+        syncAccountLuckImpl(scope, fetcher);
     }
 
-    static void syncAccountLuck(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+    static void syncAccountLuckImpl(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
         requireCredentialOwner(scope, fetcher);
         long consumedLuck = parseConsumedLuck(fetcher.get("https://api.guildwars2.com/v2/account/luck"));
         try (Connection con = Db.open()) {

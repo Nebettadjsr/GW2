@@ -69,13 +69,22 @@ public class BackgroundTaskService implements AutoCloseable {
      * @throws TaskAlreadyRunningException if {@code operation} still has an unfinished task
      */
     public String submit(String operation, TaskBody body) {
+        return submit(operation, operation, body);
+    }
+
+    /**
+     * Admits a task whose exclusion is keyed separately from its reported operation, so one
+     * operation kind can run once per owner (STORY-SYNC-006: one unfinished ACCOUNT_SYNC per
+     * account). The exclusion key is never reported; only {@code operation} is.
+     */
+    public String submit(String operation, String exclusionKey, TaskBody body) {
         MutableTask task;
         synchronized (this) {
-            unfinishedTaskId(operation).ifPresent(existing -> {
+            unfinishedTaskId(exclusionKey).ifPresent(existing -> {
                 throw new TaskAlreadyRunningException(operation, existing);
             });
             evictOldestTerminalRecords();
-            task = new MutableTask(UUID.randomUUID().toString(), operation, Instant.now());
+            task = new MutableTask(UUID.randomUUID().toString(), operation, exclusionKey, Instant.now());
             tasks.put(task.id, task);
         }
         executor.execute(() -> run(task, body));
@@ -129,7 +138,7 @@ public class BackgroundTaskService implements AutoCloseable {
 
     private Optional<String> unfinishedTaskId(String operation) {
         return tasks.values().stream()
-                .filter(task -> task.operation.equals(operation) && !task.state.isTerminal())
+                .filter(task -> task.exclusionKey.equals(operation) && !task.state.isTerminal())
                 .map(task -> task.id)
                 .findFirst();
     }
@@ -151,6 +160,7 @@ public class BackgroundTaskService implements AutoCloseable {
 
         private final String id;
         private final String operation;
+        private final String exclusionKey;
         private final Instant submittedAt;
 
         private TaskState state = TaskState.PENDING;
@@ -158,9 +168,10 @@ public class BackgroundTaskService implements AutoCloseable {
         private Instant finishedAt;
         private Exception failure;
 
-        MutableTask(String id, String operation, Instant submittedAt) {
+        MutableTask(String id, String operation, String exclusionKey, Instant submittedAt) {
             this.id = id;
             this.operation = operation;
+            this.exclusionKey = exclusionKey;
             this.submittedAt = submittedAt;
         }
 

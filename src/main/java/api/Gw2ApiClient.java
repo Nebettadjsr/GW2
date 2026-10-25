@@ -39,6 +39,23 @@ public final class Gw2ApiClient {
         return sendJsonStrict(req, url);
     }
 
+    /**
+     * Authenticated GET with a caller-supplied transient key (STORY-SYNC-006). Never reads the
+     * deployment key; the key is used for this request only and appears in no message.
+     */
+    public static JsonNode getAuth(String url, String apiKey) throws IOException, InterruptedException {
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("no transient credential is available for this request");
+        }
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer " + apiKey.trim())
+                .GET()
+                .build();
+        return sendJsonStrict(req, url);
+    }
+
     // -----------------------
     // "Raw response" helpers (caller decides policy)
     // -----------------------
