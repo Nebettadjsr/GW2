@@ -1028,7 +1028,7 @@ module/package must also be reviewed so one well-covered area cannot hide a crit
 Developers and AI agents can generate reports locally:
 
 - Java: `./mvnw test jacoco:report` (Windows: `mvnw.cmd test jacoco:report`); HTML at
-  `target/site/jacoco/index.html`, XML at `target/site/jacoco/jacoco.xml`.
+  `backend/target/site/jacoco/index.html`, XML at `backend/target/site/jacoco/jacoco.xml` (Maven runs in `backend/`).
 - Frontend: `cd frontend && npm ci && npm run test:coverage`; HTML at
   `frontend/coverage/index.html`, machine-readable summary at
   `frontend/coverage/coverage-summary.json`.

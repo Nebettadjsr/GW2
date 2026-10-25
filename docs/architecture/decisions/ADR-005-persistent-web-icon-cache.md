@@ -102,6 +102,6 @@ result, new story or Product Owner request closure is claimed.
 - [TARGET_ARCHITECTURE section 12.1](../../TARGET_ARCHITECTURE.md#121-web-presentation-assets-and-product-requirements): normative contract.
 - [Request-005](../../../agent/product-owner-requests/Request-005-changeArchitect-desicion.md): revised product intent.
 - [CURRENT_ARCHITECTURE](../../CURRENT_ARCHITECTURE.md), sections 5.4, 5.11 and 5.12; [ROADMAP](../../ROADMAP.md), Phase 5.
-- Read-only inspection: src/main/java/sync/IconSync.java, IconSyncGateway.java and src/main/java/repo/AppConfig.java.
+- Read-only inspection: backend/src/main/java/sync/IconSync.java, IconSyncGateway.java and backend/src/main/java/repo/AppConfig.java.
 - [GW2 render service](https://wiki.guildwars2.com/wiki/API%3ARender_service): signature/file-ID paths and PNG/JPG formats, checked via indexed official wiki on 2026-09-25; direct fetch unavailable. No live upstream headers or availability verified.
 - [RFC 9111](https://www.rfc-editor.org/rfc/rfc9111.html): HTTP freshness, validation and no-store; [RFC 8246](https://www.rfc-editor.org/rfc/rfc8246.html): immutable semantics. Checked 2026-09-25. TTL and disk retention are project choices.

@@ -14,7 +14,7 @@
  * recipe and calculation evidence only, never account inventories or credentials.
  *
  * Prerequisites, both started by hand:
- *   1. the backend    — `./mvnw spring-boot:run` in the repository root
+ *   1. the backend    — `./mvnw spring-boot:run` in backend/
  *   2. the dev server — `npm run dev` in `frontend/` (it proxies `/api` to the backend)
  *
  * Usage:  npm run smoke:discovery:live

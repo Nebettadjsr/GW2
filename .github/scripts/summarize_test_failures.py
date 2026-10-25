@@ -5,7 +5,7 @@ Annotations keep the failing cases visible to reviewers and implementing agents
 without requiring them to read the entire job log.
 
 Usage:
-    summarize_test_failures.py --label "Backend (Maven)" --junit target/surefire-reports
+    summarize_test_failures.py --label "Backend (Maven)" --junit backend/target/surefire-reports
     summarize_test_failures.py --label "Agent runtime" --unittest-log runtime-tests.log
 
 Reads JUnit XML (Surefire and Vitest write the same shape) and/or a plain

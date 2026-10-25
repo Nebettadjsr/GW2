@@ -76,12 +76,14 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
+          cache-dependency-path: backend/pom.xml
 
       # The repository is developed on Windows with core.filemode=false, so the
       # wrapper's executable bit cannot be relied on to survive a checkout on
       # Linux (a run failed here with exit 126 before this step existed). The
       # bit is also set in the index; this keeps the job working either way.
       - name: Make the Maven wrapper executable
+        working-directory: backend
         run: chmod +x ./mvnw
 
       - name: Run backend test suite
@@ -98,6 +100,7 @@ jobs:
         # The default Surefire run: *Test classes only. *IT classes (Layer 4
         # live GW2 API smoke, real-database perf/equivalence
         # checks) stay excluded by their naming convention, exactly as locally.
+        working-directory: backend
         run: ./mvnw -B -ntp test jacoco:report
 
       - name: Summarize failing tests
@@ -105,14 +108,14 @@ jobs:
         run: >-
           python .github/scripts/summarize_test_failures.py
           --label "Backend (Maven)"
-          --junit target/surefire-reports
+          --junit backend/target/surefire-reports
 
       - name: Upload Java coverage reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: java-coverage
-          path: target/site/jacoco
+          path: backend/target/site/jacoco
           if-no-files-found: warn
 
   frontend:
