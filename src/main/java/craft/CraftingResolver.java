@@ -80,7 +80,32 @@ public class CraftingResolver {
             return new ResolveResult(blockedNeed(recipe.outputItemId, recipe.outputCount,
                     BlockedReason.RECIPE_NOT_ALLOWED, recipe, null));
         }
-        ResolvedNeed root = resolveNeed(recipe.outputItemId, recipe.outputCount, ctx, state, false, null, null);
+        if (!ctx.allowedRecipeIds.contains(recipe.recipeId)) {
+            return new ResolveResult(blockedNeed(recipe.outputItemId, recipe.outputCount,
+                    BlockedReason.RECIPE_NOT_ALLOWED, recipe, null));
+        }
+        // DOMAIN_SPEC.md sections 28/30: the root is one execution of exactly this recipe. Owned or
+        // bought finished output and alternative recipes for the same output never satisfy it; only
+        // its ingredients go through ordinary owned/buy/craft acquisition.
+        int mark = state.mark();
+        ResolvedNeed craftNeed = tryCraft(recipe.outputItemId, recipe.outputCount, ctx, state, null, recipe);
+        // Same node shape as an ordinary requirement resolved by crafting, so rows and trees agree.
+        ResolvedNeed root = new ResolvedNeed(recipe.outputItemId, recipe.outputCount);
+        if (craftNeed.getQtyBlocked() > 0) {
+            state.rollbackTo(mark);
+            if (tracing) root.traceForWrite().setCraftAttempt(craftNeed);
+            root.setQtyBlocked(recipe.outputCount);
+            root.setBlockedReason(craftNeed.getBlockedReason());
+            root.determineMode();
+            return new ResolveResult(root);
+        }
+        if (tracing) root.traceForWrite().setCraftAttempt(craftNeed);
+        root.setQtyCrafted(craftNeed.getQtyCrafted());
+        root.setBuyCostCopper(craftNeed.getBuyCostCopper());
+        root.setOpportunityCostCopper(craftNeed.getOpportunityCostCopper());
+        if (craftNeed.hasUnvaluedOwnedInput()) root.setUnvaluedOwnedInput(true);
+        for (ResolvedNeed child : craftNeed.getChildren()) root.addChild(child);
+        root.determineMode();
         return new ResolveResult(root);
     }
 
@@ -274,7 +299,19 @@ public class CraftingResolver {
             PlanState state,
             String parentDiscipline
                                  ) {
-        Recipe recipe = firstRecipeFor(itemId, ctx, parentDiscipline);
+        return tryCraft(itemId, qtyRequested, ctx, state, parentDiscipline, null);
+    }
+
+    /** @param fixedRecipe when non-null, the only recipe that may be executed (root craft). */
+    private ResolvedNeed tryCraft(
+            int itemId,
+            int qtyRequested,
+            PlannerContext ctx,
+            PlanState state,
+            String parentDiscipline,
+            Recipe fixedRecipe
+                                 ) {
+        Recipe recipe = fixedRecipe != null ? fixedRecipe : firstRecipeFor(itemId, ctx, parentDiscipline);
         if (recipe == null) {
             if (hasOnlyDisallowedRecipes(itemId, ctx)) {
                 return blockedNeed(itemId, qtyRequested, BlockedReason.RECIPE_NOT_ALLOWED);
