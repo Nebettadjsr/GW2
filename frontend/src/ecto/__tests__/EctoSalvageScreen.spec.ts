@@ -17,6 +17,8 @@ const requests: RecordedRequest[] = []
 let luckAnswer: unknown = accountLuck
 let pricesAnswer: unknown = itemPrices
 let priceFailure = false
+let luckStored = true
+let taskState: 'SUCCEEDED' | 'FAILED' = 'SUCCEEDED'
 let wrapper: VueWrapper | null = null
 
 function jsonResponse(body: unknown): Response {
@@ -66,6 +68,8 @@ beforeEach(() => {
   luckAnswer = accountLuck
   pricesAnswer = itemPrices
   priceFailure = false
+  luckStored = true
+  taskState = 'SUCCEEDED'
   vi.stubGlobal('fetch', vi.fn((input: string, init?: RequestInit) => {
     requests.push({ method: init?.method ?? 'GET', url: input })
     const url = new URL(input, 'http://test.local')
@@ -75,7 +79,25 @@ beforeEach(() => {
         ? Promise.reject(new Error('prices unavailable'))
         : Promise.resolve(jsonResponse(pricesAnswer))
     }
-    if (url.pathname === '/api/account/luck') return Promise.resolve(jsonResponse(luckAnswer))
+    if (url.pathname === '/api/account/luck') {
+      return luckStored
+        ? Promise.resolve(jsonResponse(luckAnswer))
+        : Promise.resolve(new Response(
+          JSON.stringify({ error: 'CREDENTIAL_REQUIRED', message: 'Luck is not synchronized' }),
+          { status: 404, headers: { 'Content-Type': 'application/json' } }
+        ))
+    }
+    if (url.pathname === '/api/sync/account/luck') {
+      return Promise.resolve(jsonResponse({ taskId: 'luck-1', operation: 'ACCOUNT_SYNC', statusUrl: '/api/sync/tasks/luck-1' }))
+    }
+    if (url.pathname === '/api/sync/tasks/luck-1') {
+      if (taskState === 'SUCCEEDED') luckStored = true
+      return Promise.resolve(jsonResponse(
+        taskState === 'FAILED'
+          ? { taskId: 'luck-1', operation: 'ACCOUNT_SYNC', state: 'FAILED', failure: { message: 'upstream down' } }
+          : { taskId: 'luck-1', operation: 'ACCOUNT_SYNC', state: 'SUCCEEDED' }
+      ))
+    }
     throw new Error(`Obsolete or unexpected request: ${input}`)
   }))
 })
@@ -276,5 +298,35 @@ describe('EctoSalvageScreen', () => {
     expect(open.find('.account-summary').text()).toContain('300%')
     expect(open.find('.account-summary').text()).toContain('Maximum')
     expect((open.find('.luck-progress__bar').element as HTMLElement).style.width).toBe('100%')
+  })
+
+  it('recovers never-published Luck with one Luck-only refresh, then shows the stored Luck', async () => {
+    luckStored = false
+    const open = await openScreen()
+
+    const posts = requests.filter(({ method }) => method === 'POST').map(({ url }) => url)
+    expect(posts).toEqual(['/api/sync/account/luck'])
+    expect(requests.map(({ url }) => url)).not.toContain('/api/sync/account/crafting-profit')
+    expect(open.find('[data-test="ecto-luck-missing"]').exists()).toBe(false)
+    expect(ungrouped(open.find('[data-test="ecto-account-luck"]'))).toContain(String(14_134))
+  })
+
+  it('reports failed Luck recovery as unknown (never zero) and retries on request', async () => {
+    luckStored = false
+    taskState = 'FAILED'
+    const open = await openScreen()
+
+    expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(false)
+    expect(open.find('[data-test="ecto-luck-missing"]').text()).toContain('upstream down')
+    expect(open.find('[data-test="ecto-luck-missing"]').text()).toContain('unknown')
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(1)
+
+    taskState = 'SUCCEEDED'
+    await open.find('[data-test="ecto-luck-refresh"]').trigger('click')
+    await flushPromises()
+
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(2)
+    expect(open.find('[data-test="ecto-luck-missing"]').exists()).toBe(false)
+    expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(true)
   })
 })

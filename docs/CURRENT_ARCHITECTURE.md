@@ -180,6 +180,7 @@ Every account-dependent route is guarded by `web.access.AccountAccessInterceptor
 | `POST /api/crafting/discovery`, `/discovery/resolution` | `CRAFTING_PROFIT_READ` | scoped via `CraftingDiscoveryService.forScope`; character assertions must belong to the account |
 | `GET /api/crafting/selector-options` | `CHARACTERS_READ` | scoped character read |
 | `POST /api/sync/account`, `/api/sync/account/crafting-profit` | `ACCOUNT_REFRESH` / `CRAFTING_PROFIT_READ` | origin check, `X-GW2-API-Key` required (`400 CREDENTIAL_REQUIRED` otherwise); admitted through `ScopedAccountRefreshCoordinator` |
+| `POST /api/sync/account/luck` | `LUCK_READ` (Account, Progression, Unlocks grants only) | as above; admits only the Luck source. Ecto Salvage calls it once automatically (and on Refresh/Retry) when `GET /api/account/luck` answers 404 for a never-published Luck; Profit bootstrap never includes it |
 | `GET /api/sync/tasks/{id}` | live session + grants of the task's sources | account tasks: foreign/unknown ids give the same `404`; global tasks stay global |
 | `GET /api/system/status` | optional session | global execution/price-cache facts always; `accountLastRefreshedAt`/`accountRefreshScope` only for a live, context-matching session and only for sources its grants permit; a presented bad session gets 401/403 |
 

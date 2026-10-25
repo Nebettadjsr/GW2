@@ -190,6 +190,32 @@ class AccountSyncApiControllerTest {
     }
 
     @Test
+    void theLuckRefreshRunsOnlyLuckAndNeedsOnlyLuckGrants() throws Exception {
+        AccountProof luckOnly = new AccountProof(A,
+                Set.of(AccountGrant.ACCOUNT, AccountGrant.PROGRESSION, AccountGrant.UNLOCKS), Set.of(), null);
+        keys.put("key-luck", luckOnly);
+        var s = sessions.establish(luckOnly);
+        mvc.perform(trigger("/api/sync/account/luck", s, "key-luck"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.coversRequest").value(true));
+        awaitRuns(1);
+        assertEquals(A + ":[LUCK]", runs.get(0));
+        // The same grants cannot start the Profit refresh: Luck-only recovery does not widen access.
+        mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-luck")).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void theLuckRefreshRejectsAMissingKeyAndRequestFields() throws Exception {
+        var s = session(A, "key-a");
+        mvc.perform(trigger("/api/sync/account/luck", s, null))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("CREDENTIAL_REQUIRED"));
+        mvc.perform(trigger("/api/sync/account/luck", s, "key-a").content("{\"accountId\":\"x\"}"))
+                .andExpect(status().is4xxClientError());
+        assertTrue(runs.isEmpty());
+    }
+
+    @Test
     void aMissingKeyAdmitsNothingAndUsesNoConfiguredCredential() throws Exception {
         var s = session(A, "key-a");
         mvc.perform(trigger("/api/sync/account", s, null))
