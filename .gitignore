@@ -18,6 +18,7 @@ agent/runtime/
 coverage-input/
 coverage-kpi/
 quality-reports/
+container-perf-out/
 .jqwik-database*
 
 # OS junk
