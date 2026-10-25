@@ -16,6 +16,9 @@ public final class ItemSync {
 
     private ItemSync() {}
 
+    /** Test seam: upstream fetch. Production keeps the real HTTP client. */
+    static volatile PublicArrayFetcher fetcher = Gw2ApiClient::getPublicArray;
+
     private static final String ITEM_SQL = """
         INSERT INTO items (item_id, name, type, rarity, vendor_value, fetched_at, icon_url)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -45,7 +48,7 @@ public final class ItemSync {
                 if (idsParam.isBlank()) continue;
 
                 String url = "https://api.guildwars2.com/v2/items?ids=" + idsParam;
-                JsonNode root = Gw2ApiClient.getPublicArray(url);
+                JsonNode root = fetcher.get(url);
 
                 List<ItemParser.ItemRow> rows = new ArrayList<>(root.size());
 

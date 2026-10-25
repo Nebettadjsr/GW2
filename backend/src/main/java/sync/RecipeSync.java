@@ -14,9 +14,12 @@ public final class RecipeSync {
 
     private RecipeSync() {}
 
+    /** Test seam: upstream fetch. Production keeps the real HTTP client. */
+    static volatile PublicArrayFetcher fetcher = Gw2ApiClient::getPublicArray;
+
     public static boolean syncAllRecipesGlobalSafe() throws Exception {
 
-        JsonNode idsRoot = Gw2ApiClient.getPublicArray(
+        JsonNode idsRoot = fetcher.get(
                 "https://api.guildwars2.com/v2/recipes");
 
         List<Integer> ids = IdListParser.parseIntArray(idsRoot, "recipes");
@@ -43,7 +46,7 @@ public final class RecipeSync {
                 if (idsParam.isBlank()) continue;
 
                 String url = "https://api.guildwars2.com/v2/recipes?ids=" + idsParam;
-                JsonNode root = Gw2ApiClient.getPublicArray(url);
+                JsonNode root = fetcher.get(url);
 
                 List<RecipeParser.RecipeRow> rows = new ArrayList<>(root.size());
 
@@ -179,7 +182,7 @@ public final class RecipeSync {
 
                 String url = "https://api.guildwars2.com/v2/recipes?ids=" + idsParam;
 
-                JsonNode root = Gw2ApiClient.getPublicArray(url);
+                JsonNode root = fetcher.get(url);
 
                 List<RecipeParser.IngredientRow> ingRows = new ArrayList<>();
 

@@ -18,6 +18,25 @@ public final class TpSync {
 
     private TpSync() {}
 
+    /** Test seam: the Trading Post upstream. Production delegates to {@link TpPriceApi}. */
+    interface TpUpstream {
+        TpPriceApi.BatchResult fetchBatch(List<Integer> batch) throws Exception;
+        JsonNode fetchSingle(int itemId) throws Exception;
+        Set<Integer> fetchAllTradeableItemIds() throws Exception;
+    }
+
+    static volatile TpUpstream upstream = new TpUpstream() {
+        @Override public TpPriceApi.BatchResult fetchBatch(List<Integer> batch) throws Exception {
+            return TpPriceApi.fetchBatch(batch);
+        }
+        @Override public JsonNode fetchSingle(int itemId) throws Exception {
+            return TpPriceApi.fetchSingle(itemId);
+        }
+        @Override public Set<Integer> fetchAllTradeableItemIds() throws Exception {
+            return TpPriceApi.fetchAllTradeableItemIds();
+        }
+    };
+
     public static void syncTpPrices(Set<Integer> itemIds) throws Exception {
 
         // NOTE (TP refresh scope):
@@ -116,7 +135,7 @@ public final class TpSync {
     private static List<TpPrice> fetchTpBatchParsed(List<Integer> batch)
             throws Exception {
 
-        TpPriceApi.BatchResult br = TpPriceApi.fetchBatch(batch);
+        TpPriceApi.BatchResult br = upstream.fetchBatch(batch);
 
         List<TpPrice> out = new ArrayList<>();
 
@@ -124,7 +143,7 @@ public final class TpSync {
 
             for (int id : batch) {
 
-                JsonNode one = TpPriceApi.fetchSingle(id);
+                JsonNode one = upstream.fetchSingle(id);
                 if (one == null) continue;
 
                 TpPrice q = TpPriceParser.parse(one);
@@ -148,7 +167,7 @@ public final class TpSync {
 
                 if (returned.contains(id)) continue;
 
-                JsonNode one = TpPriceApi.fetchSingle(id);
+                JsonNode one = upstream.fetchSingle(id);
                 if (one == null) continue;
 
                 TpPrice q = TpPriceParser.parse(one);
@@ -235,7 +254,7 @@ public final class TpSync {
 
     public static boolean syncTpTradeableItems() throws Exception {
         System.out.println("Fetching TP tradeable id list...");
-        Set<Integer> ids = TpPriceApi.fetchAllTradeableItemIds();
+        Set<Integer> ids = upstream.fetchAllTradeableItemIds();
         System.out.println("Tradeable TP ids: " + ids.size());
 
         Set<Integer> local = new HashSet<>();
