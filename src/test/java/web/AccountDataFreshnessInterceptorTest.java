@@ -122,7 +122,13 @@ class AccountDataFreshnessInterceptorTest {
         assertStaleFor("/api/account/luck", Set.of(AccountSyncStateRepository.LUCK));
         assertStaleFor("/api/crafting/discovery", CRAFTING_SOURCES);
         assertStaleFor("/api/crafting/discovery/resolution", CRAFTING_SOURCES);
-        assertStaleFor("/api/crafting/selector-options", Set.of(AccountSyncStateRepository.CHARACTERS));
+    }
+
+    @Test
+    void selectorOptionsIsNoLongerGatedHereBecauseItReadsTheScopedCachedPath() throws Exception {
+        assertTrue(preHandle("/api/crafting/selector-options"),
+                "STORY-API-011: the unscoped account_sync_state read must not run for this route");
+        assertEquals(List.of(), tasks.operations);
     }
 
     @Test
@@ -158,10 +164,10 @@ class AccountDataFreshnessInterceptorTest {
     void theNarrowSelectorOptionsSyncEndsUpRefreshingTheFourSourcesDiscoveryDemanded() {
         markAll(Instant.now().minus(Duration.ofMinutes(20)));
 
-        // 1. Selector options: CHARACTERS only. One ACCOUNT_SYNC is admitted and not yet run.
+        // 1. Bank: BANK only. One ACCOUNT_SYNC is admitted and not yet run.
         AccountDataStaleException narrow = assertThrows(AccountDataStaleException.class,
-                () -> preHandle("/api/crafting/selector-options"));
-        assertEquals(Set.of(AccountSyncStateRepository.CHARACTERS), narrow.sources());
+                () -> preHandle("/api/account/bank"));
+        assertEquals(Set.of(AccountSyncStateRepository.BANK), narrow.sources());
         assertEquals(List.of(AccountRefreshCoordinator.OPERATION), tasks.operations);
 
         // 2. Discovery, while that task is unfinished: it needs all four sources. Before this story

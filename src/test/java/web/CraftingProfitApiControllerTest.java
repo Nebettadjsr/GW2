@@ -63,6 +63,10 @@ class CraftingProfitApiControllerTest {
     private static final String INGOT_ICON_URL =
             "/api/items/200/icon/9247ad5f6cd4702a0c12724f8a90235191e8831a61be53d54a138b86e3984f8d.jpg";
 
+    private static final application.access.AccountContext ACCOUNT_CONTEXT = new application.access.AccountContext(
+            "11111111-2222-3333-4444-555555555555", java.util.Set.of(), java.util.Set.of(), "ctx-1",
+            java.time.Instant.parse("2099-01-01T00:00:00Z"));
+
     private RecordingServiceFactory factory;
     private MockMvc mockMvc;
 
@@ -71,6 +75,8 @@ class CraftingProfitApiControllerTest {
         factory = new RecordingServiceFactory();
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new CraftingProfitApiController(factory))
+                .defaultRequest(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/")
+                        .requestAttr(web.access.RequestAccountContext.ATTRIBUTE, ACCOUNT_CONTEXT))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
     }
@@ -759,6 +765,23 @@ class CraftingProfitApiControllerTest {
 
         RecordingServiceFactory() {
             super(null, null, null, null, null, null, null, null, null);
+        }
+
+        // The routes call the scoped entry points (STORY-API-011); the recorded behaviour is the
+        // same ordinary calculation, so the scoped forms delegate to the established fakes.
+        @Override
+        public ProfitOutcome profit(model.AccountScope scope, DiscChoice choice, CraftingSettings settings)
+                throws Exception {
+            assertEquals(ACCOUNT_CONTEXT.accountId(), scope.id().toString());
+            return profit(choice, settings);
+        }
+
+        @Override
+        public ResolutionOutcome resolution(model.AccountScope scope, int recipeId, DiscChoice choice,
+                                            CraftingSettings settings, String basedOnCalculationId)
+                throws Exception {
+            assertEquals(ACCOUNT_CONTEXT.accountId(), scope.id().toString());
+            return resolution(recipeId, choice, settings, basedOnCalculationId);
         }
 
         void next(java.util.function.Consumer<StubProfitService> configure) {

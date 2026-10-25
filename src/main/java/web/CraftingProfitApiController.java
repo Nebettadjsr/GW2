@@ -3,6 +3,7 @@ package web;
 import application.CachedCraftingProfitService;
 import application.CraftingResolutionDetail;
 import craft.CraftingSettings;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import repo.DiscChoice;
+import web.access.RequestAccountContext;
 import web.dto.CraftingProfitRequest;
 import web.dto.CraftingProfitResolutionRequest;
 import web.dto.CraftingProfitResolutionResponse;
@@ -69,12 +71,13 @@ public class CraftingProfitApiController {
      */
     @PostMapping(path = "/profit", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<CraftingProfitResponse> profit(
-            @RequestBody(required = false) CraftingProfitRequest request) throws Exception {
+            @RequestBody(required = false) CraftingProfitRequest request,
+            HttpServletRequest http) throws Exception {
 
         CraftingProfitApiMapper.Effective effective = CraftingProfitApiMapper.toEffective(request);
 
         CachedCraftingProfitService.ProfitOutcome outcome = profitService.profit(
-                effective.toDiscChoice(), effective.toCraftingSettings());
+                RequestAccountContext.scopeOf(http), effective.toDiscChoice(), effective.toCraftingSettings());
 
         if (!outcome.hasResult()) {
             return ResponseEntity.status(HttpStatus.ACCEPTED)
@@ -102,7 +105,8 @@ public class CraftingProfitApiController {
      */
     @PostMapping(path = "/profit/resolution", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<CraftingProfitResolutionResponse> profitResolution(
-            @RequestBody(required = false) CraftingProfitResolutionRequest request) throws Exception {
+            @RequestBody(required = false) CraftingProfitResolutionRequest request,
+            HttpServletRequest http) throws Exception {
 
         CraftingProfitResolutionRequest body = CraftingResolutionMapper.requireBody(request);
         int recipeId = CraftingResolutionMapper.requireRecipeId(body.recipeId());
@@ -110,7 +114,7 @@ public class CraftingProfitApiController {
                 CraftingResolutionMapper.requireCalculation(body.calculation()));
 
         CachedCraftingProfitService.ResolutionOutcome outcome = profitService.resolution(
-                recipeId, effective.toDiscChoice(), effective.toCraftingSettings(),
+                RequestAccountContext.scopeOf(http), recipeId, effective.toDiscChoice(), effective.toCraftingSettings(),
                 body.basedOnCalculationId());
 
         CraftingProfitResolutionResponse.CalculationDto calculation =

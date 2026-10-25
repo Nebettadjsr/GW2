@@ -71,7 +71,6 @@ public final class AccountDataFreshnessInterceptor implements HandlerInterceptor
         if (path.equals("/api/crafting/discovery") || path.equals("/api/crafting/discovery/resolution"))
             return Set.of(AccountSyncStateRepository.BANK, AccountSyncStateRepository.MATERIALS,
                     AccountSyncStateRepository.RECIPES, AccountSyncStateRepository.CHARACTERS);
-        if (path.equals("/api/crafting/selector-options")) return Set.of(AccountSyncStateRepository.CHARACTERS);
         return Set.of();
     }
 }

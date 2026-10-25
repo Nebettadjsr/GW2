@@ -16,7 +16,8 @@ import java.util.Optional;
  */
 public final class RequestAccountContext {
 
-    private static final String ATTRIBUTE = RequestAccountContext.class.getName();
+    /** Public so an offline HTTP test can publish the context the guard would have resolved. */
+    public static final String ATTRIBUTE = RequestAccountContext.class.getName();
 
     private RequestAccountContext() {}
 
@@ -28,6 +29,14 @@ public final class RequestAccountContext {
     public static Optional<AccountContext> of(HttpServletRequest request) {
         Object context = request.getAttribute(ATTRIBUTE);
         return context instanceof AccountContext scope ? Optional.of(scope) : Optional.empty();
+    }
+
+    /**
+     * The persistence scope of the authorized request. The identifier comes only from the session the
+     * guard resolved, never from a request field, so it cannot be a caller-chosen account.
+     */
+    public static model.AccountScope scopeOf(HttpServletRequest request) {
+        return model.AccountScope.of(java.util.UUID.fromString(required(request).accountId()));
     }
 
     /** For a route that must not run unscoped; the guard has already answered the caller if absent. */

@@ -49,6 +49,9 @@ public class CachedCraftingProfitService {
     /** Default account TTL, matching the configured HTTP freshness policy. */
     public static final Duration DEFAULT_ACCOUNT_MAX_AGE = Duration.ofMinutes(15);
 
+    /** A cached read that needs a refresh but carries no GW2 key: reported, never admitted (STORY-API-011). */
+    public static final String CREDENTIAL_REQUIRED = "CREDENTIAL_REQUIRED";
+
     /** The detail explains the same input generation the caller's row was computed from. */
     public static final String CONSISTENCY_FRESH_CALCULATION = "FRESH_CALCULATION";
 
@@ -262,7 +265,8 @@ public class CachedCraftingProfitService {
 
     /**
      * The scoped envelope: describes the captured account and generations, and admits no refresh
-     * work. The existing coordinators run the unscoped sequences, so admitting through them from an
+     * work. A needed account refresh is reported as {@link #CREDENTIAL_REQUIRED}: a cached read
+     * carries no GW2 key, so nothing is admitted and no configured credential is used. The existing coordinators run the unscoped sequences, so admitting through them from an
      * account-scoped calculation would silently invoke legacy work; the credential-aware scoped
      * coordinator belongs to issue #11. Outstanding needs are reported as a failure instead.
      */
@@ -272,9 +276,9 @@ public class CachedCraftingProfitService {
         List<CalculationFreshness.RefreshFailure> failures = new ArrayList<>();
         if (!captured.sourcesNeedingRefresh().isEmpty()) {
             failures.add(new CalculationFreshness.RefreshFailure(CalculationFreshness.RefreshKind.ACCOUNT,
-                    null, "SCOPED_REFRESH_NOT_ADMITTED",
+                    null, CREDENTIAL_REQUIRED,
                     "Account sources " + captured.sourcesNeedingRefresh()
-                            + " need a refresh, which scoped calculations do not start", true));
+                            + " need a refresh; no GW2 key was supplied, so none was admitted", true));
         }
         if (!captured.coverage().covered()) {
             failures.add(new CalculationFreshness.RefreshFailure(CalculationFreshness.RefreshKind.TRADING_POST,

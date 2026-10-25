@@ -67,7 +67,13 @@ class CachedCraftingProfitServiceScopedTest {
         assertTrue(freshness.provisional());
         assertTrue(freshness.outstandingWork().isEmpty());
         assertEquals(2, freshness.failures().size());
-        assertTrue(freshness.failures().stream().allMatch(f -> f.code().equals("SCOPED_REFRESH_NOT_ADMITTED")));
+        assertEquals(1, freshness.failures().stream()
+                .filter(f -> f.code().equals(CachedCraftingProfitService.CREDENTIAL_REQUIRED)
+                        && f.kind() == CalculationFreshness.RefreshKind.ACCOUNT).count(),
+                "a stale account source with no key is reported as credential-required");
+        assertEquals(1, freshness.failures().stream()
+                .filter(f -> f.code().equals("SCOPED_REFRESH_NOT_ADMITTED")
+                        && f.kind() == CalculationFreshness.RefreshKind.TRADING_POST).count());
         assertEquals(0, legacyCalls.get(), "no unscoped refresh work may run from a scoped path");
         assertEquals(0, tasks.admitted.size(), "no task may be admitted from a scoped path");
     }

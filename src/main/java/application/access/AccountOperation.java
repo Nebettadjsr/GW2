@@ -41,6 +41,15 @@ public enum AccountOperation {
     CHARACTERS_READ(Set.of(AccountGrant.ACCOUNT, AccountGrant.CHARACTERS, AccountGrant.INVENTORIES),
             Set.of("/v2/characters")),
 
+    /**
+     * Crafting Profit's account inputs: bank, material storage, recipe unlocks and the character
+     * roster. Luck is deliberately absent - Profit never consumes it (DOMAIN_SPEC), so a key without
+     * {@code progression} may still use Profit.
+     */
+    CRAFTING_PROFIT_READ(Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES, AccountGrant.CHARACTERS,
+            AccountGrant.UNLOCKS),
+            Set.of("/v2/account/bank", "/v2/account/materials", "/v2/account/recipes", "/v2/characters")),
+
     /** A full account refresh: every account source this application publishes. */
     ACCOUNT_REFRESH(Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES, AccountGrant.CHARACTERS,
             AccountGrant.UNLOCKS, AccountGrant.PROGRESSION),

@@ -75,9 +75,12 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws IOException {
         String path = authorizationPath(request);
-        if (!path.startsWith(ACCOUNT_PATH_PREFIX)) return true;
+        boolean craftingRoute = isScopedCraftingRoute(path);
+        if (!path.startsWith(ACCOUNT_PATH_PREFIX) && !craftingRoute) return true;
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
-        if (!enforce) return true;
+        // The crafting routes have no unscoped implementation left to fall back to (the versioned
+        // schema refuses it), so the guard is not optional for them.
+        if (!enforce && !craftingRoute) return true;
 
         var presented = AccountAccessHttp.presentedSessionId(request);
         if (presented.isEmpty()) return deny(response, HttpStatus.UNAUTHORIZED);
@@ -107,6 +110,12 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
         return true;
     }
 
+    /** The account-dependent crafting routes (STORY-API-011); other crafting routes are global. */
+    private static boolean isScopedCraftingRoute(String path) {
+        return path.equals("/api/crafting/profit") || path.equals("/api/crafting/profit/resolution")
+                || path.equals("/api/crafting/selector-options");
+    }
+
     /** Use the same decoded segments without matrix parameters that Spring maps to controllers. */
     private static String authorizationPath(HttpServletRequest request) {
         var parsed = ServletRequestPathUtils.hasParsedRequestPath(request)
@@ -130,6 +139,8 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
             case "/api/account/luck" -> AccountOperation.LUCK_READ;
             case "/api/account/bank" -> AccountOperation.BANK_READ;
             case "/api/account/materials" -> AccountOperation.MATERIAL_STORAGE_READ;
+            case "/api/crafting/profit", "/api/crafting/profit/resolution" -> AccountOperation.CRAFTING_PROFIT_READ;
+            case "/api/crafting/selector-options" -> AccountOperation.CHARACTERS_READ;
             default -> null;
         };
     }

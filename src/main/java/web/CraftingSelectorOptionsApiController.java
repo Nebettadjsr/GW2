@@ -1,11 +1,13 @@
 package web;
 
 import application.CharacterSelectionService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import repo.CharacterRepository;
+import web.access.RequestAccountContext;
 import web.dto.CraftingSelectorOptionsResponse;
 
 import java.sql.SQLException;
@@ -57,9 +59,9 @@ public class CraftingSelectorOptionsApiController {
      * character is substituted, and the {@code All} and generic discipline entries are unaffected.
      */
     @GetMapping(path = "/selector-options", produces = MediaType.APPLICATION_JSON_VALUE)
-    public CraftingSelectorOptionsResponse selectorOptions() throws SQLException {
+    public CraftingSelectorOptionsResponse selectorOptions(HttpServletRequest http) throws SQLException {
         List<CraftingSelectorOptionsResponse.CharacterOptionDto> characterOptions =
-                toCharacterOptions(characterSelectionService.getCraftingCharacterOptions());
+                toCharacterOptions(characterSelectionService.getCraftingCharacterOptions(RequestAccountContext.scopeOf(http)));
 
         return new CraftingSelectorOptionsResponse(
                 CraftingProfitApiMapper.DEFAULT_SCOPE_KIND,
