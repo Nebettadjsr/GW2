@@ -405,6 +405,34 @@ class AccountSourcePublicationTest {
 
     // ---- fixtures ---------------------------------------------------------------------------
 
+    @Test
+    void graphKeepsThePinnedRecipeGenerationAfterAnotherConnectionCommitsARefresh() throws Exception {
+        update(admin, "INSERT INTO items (item_id, name) VALUES (100, 'Output'), (200, 'Ingredient')");
+        update(admin, "INSERT INTO recipes (recipe_id, output_item_id, output_item_count, min_rating) VALUES (7, 100, 1, 0)");
+        update(admin, "INSERT INTO recipe_ingredients (recipe_id, item_id, count) VALUES (7, 200, 2)");
+        CraftingGraphCache cache = new CraftingGraphCache(new RecipeRepository());
+        try (Connection snapshot = connect(); Connection writer = connect()) {
+            snapshot.setSchema(schema);
+            writer.setSchema(schema);
+            snapshot.setAutoCommit(false);
+            snapshot.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+            assertEquals(2, new RecipeRepository().loadAllRecipes(snapshot).getFirst().ingredients.getFirst().count);
+            writer.setAutoCommit(false);
+            update(writer, "UPDATE recipe_ingredients SET count = 1 WHERE recipe_id = 7");
+            update(writer, "INSERT INTO recipes (recipe_id, output_item_id, output_item_count, min_rating) VALUES (8, 100, 1, 0)");
+            writer.commit();
+            var pinned = cache.loadForSnapshot(snapshot).getRecipes();
+            assertEquals(1, pinned.size(), "the graph cannot see the newly committed recipe");
+            assertEquals(2, pinned.getFirst().ingredients.getFirst().count,
+                    "the graph must agree with the ingredients captured before refresh");
+            var current = cache.loadForSnapshot(writer).getRecipes();
+            assertEquals(2, current.size());
+            assertEquals(1, current.stream().filter(recipe -> recipe.recipeId == 7).findFirst().orElseThrow()
+                    .ingredients.getFirst().count);
+            snapshot.rollback();
+        }
+    }
+
     /** Publishes every source family for one account with the given distinguishing values. */
     private void publishAll(AccountScope scope, int bank, int material, long luck, int rating, int bag)
             throws Exception {
