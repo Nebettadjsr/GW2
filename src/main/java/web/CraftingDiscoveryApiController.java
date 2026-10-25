@@ -74,14 +74,17 @@ public class CraftingDiscoveryApiController {
     }
 
     /** What the account-input check decided: the envelope to report and whether a result is possible. */
-    private record InputGate(DiscoveryFreshnessDto freshness, boolean pending) {
+    private record InputGate(DiscoveryFreshnessDto freshness, boolean pending,
+                             java.util.Set<String> needing,
+                             application.access.AccountAccessService.KeyedProof proof) {
     }
 
     /**
      * Validates the optional key proof and the selected character, then classifies the account's
      * Discovery inputs: missing = pending/no result, expired = usable and reported STALE. A request
-     * with a key admits the scoped refresh the inputs need; without one nothing is admitted and the
-     * refresh is reported {@code CREDENTIAL_REQUIRED} (no configured credential is ever used).
+     * with a key prepares the scoped refresh the inputs need; admission follows calculation (or
+     * occurs immediately for pending/no-result). Without a key, refresh is reported
+     * {@code CREDENTIAL_REQUIRED}; no configured credential is ever used.
      */
     private InputGate gate(HttpServletRequest http, CraftingDiscoveryService service, DiscChoice choice)
             throws Exception {
@@ -98,20 +101,23 @@ public class CraftingDiscoveryApiController {
 
         CraftingDiscoveryService.InputState state = service.inputState();
         var needing = state.needingRefresh();
-        if (needing.isEmpty()) return new InputGate(null, false);
+        if (needing.isEmpty()) return new InputGate(null, false, needing, proof);
 
-        String refresh = application.ScopedSourceGate.CREDENTIAL_REQUIRED;
-        String taskId = null;
-        if (keyed) {
-            var admission = accountRefresh.require(RequestAccountContext.required(http),
-                    web.access.AccountAccessHttp.presentedSessionId(http).orElseThrow(), key, needing, proof);
-            refresh = admission.reuse();
-            taskId = admission.taskId();
-        }
         boolean pending = !state.missing().isEmpty();
         return new InputGate(new DiscoveryFreshnessDto(
                 pending ? DiscoveryFreshnessDto.PENDING : DiscoveryFreshnessDto.STALE,
-                (pending ? state.missing() : state.stale()).stream().sorted().toList(), refresh, taskId), pending);
+                (pending ? state.missing() : state.stale()).stream().sorted().toList(),
+                application.ScopedSourceGate.CREDENTIAL_REQUIRED, null), pending, needing, proof);
+    }
+
+    /** Admit only after usable inputs have been calculated; pending requests have no inputs to race. */
+    private DiscoveryFreshnessDto admitRefresh(HttpServletRequest http, InputGate inputs) {
+        if (inputs.freshness() == null || inputs.proof() == null) return inputs.freshness();
+        var admission = accountRefresh.require(RequestAccountContext.required(http),
+                web.access.AccountAccessHttp.presentedSessionId(http).orElseThrow(),
+                web.access.AccountAccessHttp.presentedApiKey(http), inputs.needing(), inputs.proof());
+        return new DiscoveryFreshnessDto(inputs.freshness().status(), inputs.freshness().sources(),
+                admission.reuse(), admission.taskId());
     }
 
     /** Shared Discovery demand coordination; still completes before the calculation reads quotes. */
@@ -139,7 +145,7 @@ public class CraftingDiscoveryApiController {
         CraftingDiscoveryApiMapper.Effective effective = CraftingDiscoveryApiMapper.toEffective(request);
         var service = discoveryServiceFactory.get().forScope(RequestAccountContext.scopeOf(http));
         InputGate inputs = gate(http, service, effective.toDiscChoice());
-        if (inputs.pending()) return pendingTable(effective, service, inputs.freshness());
+        if (inputs.pending()) return pendingTable(effective, service, admitRefresh(http, inputs));
         refreshQuotes(RequestAccountContext.scopeOf(http));
 
         CraftingDiscoveryService.DiscoveryData data;
@@ -151,8 +157,9 @@ public class CraftingDiscoveryApiController {
         }
 
         CraftingDiscoveryResponse body = CraftingDiscoveryApiMapper.toResponse(effective, data);
-        return ResponseEntity.ok(inputs.freshness() == null ? body : new CraftingDiscoveryResponse(
-                body.scope(), body.settings(), body.rowCount(), body.rows(), inputs.freshness()));
+        DiscoveryFreshnessDto freshness = admitRefresh(http, inputs);
+        return ResponseEntity.ok(freshness == null ? body : new CraftingDiscoveryResponse(
+                body.scope(), body.settings(), body.rowCount(), body.rows(), freshness));
     }
 
     private ResponseEntity<CraftingDiscoveryResponse> pendingTable(
@@ -198,7 +205,7 @@ public class CraftingDiscoveryApiController {
                 effective.scope(), effective.settings());
         if (inputs.pending()) {
             service.recordAuthorizedUse();
-            return pendingResolution(recipeId, calculation, inputs.freshness());
+            return pendingResolution(recipeId, calculation, admitRefresh(http, inputs));
         }
         refreshQuotes(RequestAccountContext.scopeOf(http));
 
@@ -221,7 +228,7 @@ public class CraftingDiscoveryApiController {
                 CraftingResolutionMapper.treeStatus(detail),
                 CraftingResolutionMapper.TREE_BASIS_SINGLE_OUTPUT_REQUIREMENT,
                 CraftingResolutionMapper.toDiscoveryTree(detail),
-                inputs.freshness()));
+                admitRefresh(http, inputs)));
     }
 
     private static ResponseEntity<CraftingDiscoveryResolutionResponse> pendingResolution(

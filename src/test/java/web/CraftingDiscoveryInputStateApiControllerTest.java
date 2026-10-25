@@ -143,6 +143,11 @@ class CraftingDiscoveryInputStateApiControllerTest {
     @Test
     void aSuppliedKeyAdmitsTheScopedRefreshForTheNeededSources() throws Exception {
         stub.state = new CraftingDiscoveryService.InputState(Set.of(), Set.of("BANK", "MATERIALS"));
+        stub.beforeCalculation = () -> {
+            var scope = model.AccountScope.of(java.util.UUID.fromString(A));
+            assertTrue(!coordinator.isActive(scope) && coordinator.lastRefreshedSources(scope).isEmpty(),
+                    "this request must calculate before its refresh can publish replacement inputs");
+        };
 
         String taskId = com.jayway.jsonpath.JsonPath.read(
                 mvc.perform(request("/api/crafting/discovery", true).content(BODY))
@@ -172,6 +177,7 @@ class CraftingDiscoveryInputStateApiControllerTest {
         int reloads;
         int details;
         int activity;
+        Runnable beforeCalculation = () -> { };
 
         Stub() {
             super(null, null, null, null, null, null);
@@ -184,6 +190,7 @@ class CraftingDiscoveryInputStateApiControllerTest {
 
         @Override
         public DiscoveryData reload(DiscChoice choice, CraftingSettings settings) throws SQLException {
+            beforeCalculation.run();
             reloads++;
             return new DiscoveryData(List.of(), List.of(), Map.of(), Map.of(), Map.of());
         }
