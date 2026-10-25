@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -197,7 +198,7 @@ class AccountSourcePublicationTest {
                     throw new RuntimeException(e);
                 }
             });
-            awaitAdvisoryLockWaiter();
+            awaitBlockedWriter();
             assertFalse(secondWriter.isDone(), "same-account writer must queue behind the first");
 
             // an unrelated account publishes while A's first writer still holds its transaction open
@@ -212,6 +213,40 @@ class AccountSourcePublicationTest {
         assertEquals(3, new BankRepository().loadBankSlots(admin, A).get(0).count());
         assertEquals(2, states.read(admin, A, "bank").orElseThrow().generation());
         assertEquals(7, new BankRepository().loadBankSlots(admin, B).get(0).count());
+    }
+
+    @Test
+    void accountsWhoseGuidsFoldToTheSameBitsDoNotSerialize() throws Exception {
+        // msb^lsb is identical for both, so any 32/64-bit XOR-folded lock key would collide
+        AccountScope collider = new AccountScope(new java.util.UUID(
+                A.accountId().getMostSignificantBits() ^ 0x5A5AL, A.accountId().getLeastSignificantBits() ^ 0x5A5AL));
+        assertNotEquals(A.accountId(), collider.accountId());
+        assertNotEquals(AccountSourcePublication.writerLockKey(A), AccountSourcePublication.writerLockKey(collider));
+        CountDownLatch holding = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (Connection first = connect(); Connection second = connect()) {
+            first.setSchema(schema);
+            second.setSchema(schema);
+            var firstWriter = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return publication.publish(first, A, "bank", T1, (c, s, ts) -> {
+                        upsertBank(c, s, ts, 2);
+                        holding.countDown();
+                        if (!release.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("not released");
+                    });
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            assertTrue(holding.await(30, TimeUnit.SECONDS));
+            var other = publication.publish(second, collider, "bank", T1, (c, s, ts) -> upsertBank(c, s, ts, 9));
+            assertEquals(1, other.generation());
+            assertFalse(firstWriter.isDone());
+            release.countDown();
+            assertEquals(1, firstWriter.get(30, TimeUnit.SECONDS).generation());
+        }
+        assertEquals(2, new BankRepository().loadBankSlots(admin, A).get(0).count());
+        assertEquals(9, new BankRepository().loadBankSlots(admin, collider).get(0).count());
     }
 
     @Test
@@ -316,8 +351,8 @@ class AccountSourcePublicationTest {
         }
     }
 
-    /** Waits until PostgreSQL reports a backend blocked on an advisory lock; no sleep-and-hope. */
-    private void awaitAdvisoryLockWaiter() throws Exception {
+    /** Waits until PostgreSQL reports a backend blocked on a lock; no sleep-and-hope. */
+    private void awaitBlockedWriter() throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         while (System.nanoTime() < deadline) {
             try (Statement s = admin.createStatement();

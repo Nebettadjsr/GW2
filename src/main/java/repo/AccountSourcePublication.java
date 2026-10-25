@@ -8,7 +8,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.UUID;
 
 /**
  * The transaction that publishes one account source (STORY-APP-015, TARGET_ARCHITECTURE.md §7.2
@@ -41,14 +40,6 @@ import java.util.UUID;
  * {@code autoCommit(false)} and ends the transaction itself.
  */
 public final class AccountSourcePublication {
-
-    /**
-     * Distinguishes this class's advisory locks from any other two-key advisory lock in the
-     * application. PostgreSQL's two-{@code int} and single-{@code bigint} lock spaces are already
-     * separate, so a {@code pg_advisory_lock(bigint)} taken elsewhere (a test gate, for instance)
-     * cannot collide with these either.
-     */
-    private static final int LOCK_NAMESPACE = 0x47_57_32_01; // "GW2" + 1
 
     private final AccountRegistryRepository registry = new AccountRegistryRepository();
     private final AccountSourceStateRepository sourceState = new AccountSourceStateRepository();
@@ -112,26 +103,36 @@ public final class AccountSourcePublication {
      * Takes this account's writer lock for the rest of the transaction.
      *
      * <p>{@code pg_advisory_xact_lock} rather than a session lock, so commit and rollback both
-     * release it and no path can leak it. The key is derived from the GUID rather than taken on the
-     * registry row, because the lock must also cover the first publication - the one that inserts
-     * that row. A hash collision between two accounts would only make them serialize with each
-     * other, never let a writer through or mix their data.
+     * release it and no path can leak it. It is not a lock on the registry row, because the lock
+     * must also cover the first publication - the one that inserts that row - and because a row lock
+     * would make every ordinary authorized read (which updates {@code last_seen_at}) wait for a
+     * running publication. The key is a 64-bit digest of the whole GUID; see {@link #writerLockKey}.
      */
     private static void lockAccount(Connection con, AccountScope scope) throws SQLException {
-        try (PreparedStatement ps = con.prepareStatement("SELECT pg_advisory_xact_lock(?, ?)")) {
-            ps.setInt(1, LOCK_NAMESPACE);
-            ps.setInt(2, writerLockKey(scope));
+        try (PreparedStatement ps = con.prepareStatement("SELECT pg_advisory_xact_lock(?)")) {
+            ps.setLong(1, writerLockKey(scope));
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
             }
         }
     }
 
-    /** Both halves of the GUID folded into the one {@code int} the second lock key accepts. */
-    static int writerLockKey(AccountScope scope) {
-        UUID id = scope.accountId();
-        long folded = id.getMostSignificantBits() ^ id.getLeastSignificantBits();
-        return (int) (folded ^ (folded >>> 32));
+    /**
+     * The first 64 bits of SHA-256 over all 128 bits of the GUID. A fold such as {@code msb ^ lsb}
+     * collides for trivially constructed distinct GUIDs; a cryptographic digest does not, and a
+     * residual 64-bit collision could only make two accounts queue behind each other - it can never
+     * let a writer through or mix their data.
+     */
+    static long writerLockKey(AccountScope scope) {
+        try {
+            java.nio.ByteBuffer id = java.nio.ByteBuffer.allocate(16)
+                    .putLong(scope.accountId().getMostSignificantBits())
+                    .putLong(scope.accountId().getLeastSignificantBits());
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(id.array());
+            return java.nio.ByteBuffer.wrap(digest).getLong();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required by every Java runtime", e);
+        }
     }
 
     private static Timestamp transactionNow(Connection con) throws SQLException {

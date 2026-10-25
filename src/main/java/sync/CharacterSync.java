@@ -203,6 +203,41 @@ public final class CharacterSync {
                         + "' lacks a '" + section + "' array; roster not published");
             }
         }
+        for (JsonNode row : cNode.get("crafting")) {
+            if (row == null || !row.isObject() || !row.path("discipline").isTextual()
+                    || row.path("discipline").asText().isBlank() || !row.path("rating").isIntegralNumber()) {
+                throw malformed(requestedName, "crafting");
+            }
+        }
+        for (JsonNode id : cNode.get("recipes")) {
+            if (id == null || !id.isIntegralNumber() || id.asInt() <= 0) throw malformed(requestedName, "recipes");
+        }
+        for (JsonNode bag : cNode.get("bags")) {
+            if (bag == null || bag.isNull()) continue; // an unequipped bag slot
+            JsonNode inv = bag.get("inventory");
+            if (!bag.isObject() || inv == null || !inv.isArray()) throw malformed(requestedName, "bags");
+            for (JsonNode slot : inv) {
+                if (!validItem(slot, true)) throw malformed(requestedName, "bags");
+            }
+        }
+        for (JsonNode item : cNode.get("equipment")) {
+            if (!validItem(item, false) || item == null || item.isNull()
+                    || !item.path("slot").isTextual() || item.path("slot").asText().isBlank()) {
+                throw malformed(requestedName, "equipment");
+            }
+        }
+    }
+
+    private static IllegalStateException malformed(String name, String section) {
+        return new IllegalStateException("Character detail for '" + name + "' has a malformed '"
+                + section + "' entry; roster not published");
+    }
+
+    /** An empty inventory slot (null) is valid; any other slot must be an object with an integral id. */
+    private static boolean validItem(JsonNode n, boolean nullAllowed) {
+        if (n == null || n.isNull()) return nullAllowed;
+        return n.isObject() && n.path("id").isIntegralNumber() && n.path("id").canConvertToInt()
+                && (!n.has("count") || n.get("count").isNull() || n.get("count").isIntegralNumber());
     }
 
     private static List<model.CharacterItemRow> characterItems(JsonNode cNode) {

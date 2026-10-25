@@ -31,4 +31,15 @@ class AccountSyncScopedPayloadTest {
                     () -> AccountSync.parseMaterialStacks(Gw2ApiClient.readJson(json)), json);
         }
     }
+
+    @Test
+    void malformedBankSlotAfterValidSlotRejectsWholePayloadButNullSlotsAreEmpties() throws Exception {
+        var m = new com.fasterxml.jackson.databind.ObjectMapper();
+        var ok = AccountSync.parseBankSlots(m.readTree("[{\"id\":1,\"count\":2},null]"));
+        org.junit.jupiter.api.Assertions.assertEquals(2, ok.size());
+        for (String bad : new String[] {"[{\"id\":1,\"count\":2},{\"count\":5}]", "[{\"id\":1},\"x\"]", "[{\"id\":\"a\"}]"}) {
+            org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class,
+                    () -> AccountSync.parseBankSlots(m.readTree(bad)), bad);
+        }
+    }
 }

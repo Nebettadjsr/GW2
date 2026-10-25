@@ -38,4 +38,26 @@ class CharacterDetailValidationTest {
         assertThrows(IllegalStateException.class,
                 () -> CharacterSync.requireConsistentDetail("Aria", CharacterParser.parseInfo(n), n));
     }
+
+    private static void rejected(String extra) throws Exception {
+        JsonNode n = detail("Aria", extra);
+        assertThrows(IllegalStateException.class,
+                () -> CharacterSync.requireConsistentDetail("Aria", CharacterParser.parseInfo(n), n));
+    }
+
+    @Test
+    void malformedNestedEntriesAreRejectedInsteadOfSkipped() throws Exception {
+        rejected(",\"crafting\":[{\"discipline\":\"Cook\",\"rating\":400},{\"rating\":3}],\"recipes\":[],\"bags\":[],\"equipment\":[]");
+        rejected(",\"crafting\":[],\"recipes\":[5,\"x\"],\"bags\":[],\"equipment\":[]");
+        rejected(",\"crafting\":[],\"recipes\":[],\"bags\":[{\"inventory\":[{\"id\":1},{\"count\":2}]}],\"equipment\":[]");
+        rejected(",\"crafting\":[],\"recipes\":[],\"bags\":[{\"size\":20}],\"equipment\":[]");
+        rejected(",\"crafting\":[],\"recipes\":[],\"bags\":[],\"equipment\":[{\"id\":1,\"slot\":\"Helm\"},{\"id\":2}]");
+    }
+
+    @Test
+    void validEmptyArraysAndEmptyInventorySlotsAreAccepted() throws Exception {
+        JsonNode n = detail("Aria", ",\"crafting\":[{\"discipline\":\"Cook\",\"rating\":400,\"active\":true}],\"recipes\":[5],"
+                + "\"bags\":[null,{\"inventory\":[null,{\"id\":1,\"count\":3}]}],\"equipment\":[{\"id\":2,\"slot\":\"Helm\"}]");
+        assertDoesNotThrow(() -> CharacterSync.requireConsistentDetail("Aria", CharacterParser.parseInfo(n), n));
+    }
 }

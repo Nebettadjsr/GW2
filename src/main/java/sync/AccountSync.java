@@ -227,9 +227,18 @@ public final class AccountSync {
         }
         List<BankSlot> rows = new ArrayList<>(root.size());
         for (int slot = 0; slot < root.size(); slot++) {
-            rows.add(BankParser.parseSlot(slot, root.get(slot)));
+            JsonNode entry = root.get(slot);
+            if (entry != null && !entry.isNull()
+                    && (!entry.isObject() || !isInt(entry.get("id")) || (entry.has("count") && !isInt(entry.get("count"))))) {
+                throw new RuntimeException("Unexpected JSON (bank): malformed slot " + slot + "; nothing published");
+            }
+            rows.add(BankParser.parseSlot(slot, entry));
         }
         return rows;
+    }
+
+    private static boolean isInt(JsonNode n) {
+        return n != null && n.isIntegralNumber() && n.canConvertToInt();
     }
 
     private static List<MaterialStack> fetchMaterialStacks() throws Exception {
