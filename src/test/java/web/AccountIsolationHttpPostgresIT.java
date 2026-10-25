@@ -68,6 +68,8 @@ class AccountIsolationHttpPostgresIT {
     static final String ACCOUNT_C = "CCCCCCCC-1111-2222-3333-444444444444";
     static final ObjectMapper JSON = new ObjectMapper();
     static final AtomicBoolean UPSTREAM_OUTAGE = new AtomicBoolean();
+    /** Makes the proof port (not source fetching) unavailable, as a validation outage would. */
+    static final AtomicBoolean PROOF_OUTAGE = new AtomicBoolean();
     static final String SCHEMA = "it_isolation_" + UUID.randomUUID().toString().replace("-", "");
 
     @LocalServerPort int port;
@@ -112,7 +114,17 @@ class AccountIsolationHttpPostgresIT {
         AccountProofPort itProofPort() {
             Set<AccountGrant> all = Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES, AccountGrant.CHARACTERS,
                     AccountGrant.UNLOCKS, AccountGrant.PROGRESSION, AccountGrant.TRADINGPOST);
-            return key -> switch (key) {
+            return key -> {
+                if (PROOF_OUTAGE.get()) {
+                    throw new application.access.ProofUnavailableException("simulated proof outage",
+                            java.time.Duration.ofSeconds(7));
+                }
+                return proofFor(key, all);
+            };
+        }
+
+        static AccountProof proofFor(String key, Set<AccountGrant> all) throws InvalidCredentialException {
+            return switch (key) {
                 case "key-a", "key-a-2" -> new AccountProof(ACCOUNT_A, all, Set.of(), null);
                 case "key-b" -> new AccountProof(ACCOUNT_B, all, Set.of(), null);
                 case "key-c" -> new AccountProof(ACCOUNT_C, all, Set.of(), null);
@@ -384,50 +396,147 @@ class AccountIsolationHttpPostgresIT {
                 .path("count").asInt(), "the stale rows are A's own");
     }
 
+    /** Disposable owned-roster fixture: A owns Aria, B owns Bela, both Chef 400. Idempotent. */
+    void seedRosters() throws Exception {
+        try (Connection c = connect(); Statement st = c.createStatement()) {
+            st.execute("SET search_path TO " + SCHEMA);
+            for (String[] row : new String[][] {{ACCOUNT_A, "Aria"}, {ACCOUNT_B, "Bela"}}) {
+                String id = row[0].toLowerCase();
+                st.execute("INSERT INTO account_registry (account_id) VALUES ('" + id + "') ON CONFLICT DO NOTHING");
+                st.execute("INSERT INTO characters (account_id, name, profession) VALUES ('" + id + "', '" + row[1]
+                        + "', 'Guardian') ON CONFLICT DO NOTHING");
+                st.execute("INSERT INTO character_crafting (account_id, character_id, discipline, rating, is_active) "
+                        + "SELECT account_id, character_id, 'Chef', 400, true FROM characters WHERE account_id = '"
+                        + id + "' AND name = '" + row[1] + "' ON CONFLICT DO NOTHING");
+            }
+        }
+    }
+
+    static String seenSql(String account) {
+        return "SELECT floor(extract(epoch FROM last_seen_at) * 1000) FROM account_registry WHERE account_id = '"
+                + account.toLowerCase() + "'";
+    }
+
+    static String discoveryBody(String character) {
+        return "{\"scope\":{\"characterName\":\"" + character + "\",\"discipline\":\"Chef\",\"rating\":400}}";
+    }
+
     @Test @Order(10)
-    void foreignOrUnknownCharactersAreRefusedBeforeQuotesActivityOrCalculation() throws Exception {
+    void ownedCharactersAreServedPerAccountWhileForeignAndNonexistentOnesAreRefusedBeforeAnyWork() throws Exception {
         Session a = login("key-a");
-        long seenBefore = scalar("SELECT floor(extract(epoch FROM last_seen_at) * 1000) FROM account_registry "
-                + "WHERE account_id = '" + ACCOUNT_A.toLowerCase() + "'");
+        Session b = login("key-b");
+        sync(a, "key-a", "/api/sync/account");
+        sync(b, "key-b", "/api/sync/account");
+        seedRosters();
+
+        // Positive A/B: each account's own character is accepted on the table and resolution routes.
+        for (Object[] own : new Object[][] {{a, "Aria"}, {b, "Bela"}}) {
+            Session s = (Session) own[0];
+            String body = discoveryBody((String) own[1]);
+            Resp table = send("POST", "/api/crafting/discovery", s, null, body, null);
+            assertEquals(200, table.status(), own[1] + " table: " + table.body());
+            assertEquals(s.context(), table.header("X-Account-Context"));
+            Resp detail = send("POST", "/api/crafting/discovery/resolution", s, null,
+                    "{\"recipeId\":7,\"calculation\":" + body + "}", null);
+            assertNotEquals(403, detail.status(), own[1] + " resolution: " + detail.body());
+            assertTrue(detail.status() < 500, own[1] + " resolution: " + detail.body());
+        }
+        JsonNode selA = send("GET", "/api/crafting/selector-options", a, null, null, null).json();
+        JsonNode selB = send("GET", "/api/crafting/selector-options", b, null, null, null).json();
+        assertTrue(selA.toString().contains("Aria") && !selA.toString().contains("Bela"), selA.toString());
+        assertTrue(selB.toString().contains("Bela") && !selB.toString().contains("Aria"), selB.toString());
+
+        // Foreign (B's Bela asserted by A) and nonexistent characters are refused identically.
+        long seenBefore = scalar(seenSql(ACCOUNT_A));
         long quotesBefore = scalar("SELECT count(*) FROM tp_prices");
-        String body = "{\"scope\":{\"characterName\":\"Somebody Else\","
-                + "\"discipline\":\"Chef\",\"rating\":400}}";
-        Resp table = send("POST", "/api/crafting/discovery", a, null, body, null);
-        assertEquals(403, table.status(), table.body());
-        Resp detail = send("POST", "/api/crafting/discovery/resolution", a, null,
-                "{\"recipeId\":7,\"calculation\":" + body + "}", null);
-        assertEquals(403, detail.status(), detail.body());
-        assertEquals(table.json().path("error").asText(), detail.json().path("error").asText());
-        assertFalse(table.body().contains("Somebody Else"));
-        assertEquals(seenBefore, scalar("SELECT floor(extract(epoch FROM last_seen_at) * 1000) FROM account_registry "
-                + "WHERE account_id = '" + ACCOUNT_A.toLowerCase() + "'"), "rejection advances no activity");
+        long tasksBefore = scalar("SELECT count(*) FROM account_source_state");
+        String firstError = null;
+        for (String refused : new String[] {"Bela", "Nobody Atall"}) {
+            String body = discoveryBody(refused);
+            Resp table = send("POST", "/api/crafting/discovery", a, null, body, null);
+            Resp detail = send("POST", "/api/crafting/discovery/resolution", a, null,
+                    "{\"recipeId\":7,\"calculation\":" + body + "}", null);
+            assertEquals(403, table.status(), refused + table.body());
+            assertEquals(403, detail.status(), refused + detail.body());
+            assertEquals(table.body(), detail.body(), "same refusal on both routes");
+            assertFalse(table.body().contains(refused));
+            if (firstError == null) firstError = table.body();
+            assertEquals(firstError, table.body(), "foreign and nonexistent are indistinguishable");
+        }
+        assertEquals(seenBefore, scalar(seenSql(ACCOUNT_A)), "rejection advances no activity");
         assertEquals(quotesBefore, scalar("SELECT count(*) FROM tp_prices"), "rejection starts no quote work");
+        assertEquals(tasksBefore, scalar("SELECT count(*) FROM account_source_state"));
+        // Authorized use does advance activity (never freshness).
+        assertEquals(200, send("POST", "/api/crafting/discovery", a, null, discoveryBody("Aria"), null).status());
+        assertTrue(scalar(seenSql(ACCOUNT_A)) >= seenBefore);
     }
 
     @Test @Order(11)
-    void keyedProfitRejectsForeignOriginInvalidKeyAndMismatchWithoutActivityOrCalculation() throws Exception {
-        Session a;
-        String seen = "SELECT floor(extract(epoch FROM last_seen_at) * 1000) FROM account_registry WHERE account_id = '"
-                + ACCOUNT_A.toLowerCase() + "'";
-        login("key-a");
-        long before = scalar(seen);
+    void keyedProfitRejectsEachCaseExactlyOnIndependentSessionsWithoutActivityOrWork() throws Exception {
+        seedRosters();
+        long before = scalar(seenSql(ACCOUNT_A));
+        long sourcesBefore = scalar("SELECT count(*) FROM account_source_state");
+        long quotesBefore = scalar("SELECT count(*) FROM tp_prices");
         for (String path : new String[] {"/api/crafting/profit", "/api/crafting/profit/resolution"}) {
             String body = path.endsWith("resolution") ? "{\"recipeId\":7,\"calculation\":{}}" : "{}";
-            // A definitive invalid-key rejection revokes the session, so each route proves on its own.
-            a = login("key-a");
+            Session foreignOriginSession = login("key-a");
             HttpRequest foreign = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
                     .header("Origin", "https://evil.example").header("Content-Type", "application/json")
-                    .header("Cookie", a.cookie()).header("X-Account-Context", a.context())
+                    .header("Cookie", foreignOriginSession.cookie())
+                    .header("X-Account-Context", foreignOriginSession.context())
                     .header("X-GW2-API-Key", "key-a").POST(HttpRequest.BodyPublishers.ofString(body)).build();
             assertEquals(403, HttpClient.newHttpClient().send(foreign, HttpResponse.BodyHandlers.ofString())
                     .statusCode(), path + " foreign origin");
-            assertEquals(401, send("POST", path, a, "not-a-key", body, null).status(), path + " invalid key");
-            int otherKey = send("POST", path, a, "key-b", body, null).status();
-            assertTrue(otherKey == 401 || otherKey == 403, path + " another account's key: " + otherKey);
-            int narrow = send("POST", path, a, "key-a-narrow", body, null).status();
-            assertTrue(narrow == 401 || narrow == 403, path + " lower-grant key: " + narrow);
+
+            // Mismatch and lower grant each use their own live session, so they cannot be masked by a revocation.
+            assertEquals(403, send("POST", path, login("key-a"), "key-b", body, null).status(),
+                    path + " another account's key");
+            assertEquals(403, send("POST", path, login("key-a"), "key-a-narrow", body, null).status(),
+                    path + " lower-grant key");
+            assertEquals(401, send("POST", path, login("key-a"), "not-a-key", body, null).status(),
+                    path + " invalid key");
+
+            // A controlled PROOF outage: safe retryable 503 with bounded Retry-After, session kept live.
+            Session live = login("key-a");
+            PROOF_OUTAGE.set(true);
+            try {
+                Resp outage = send("POST", path, live, "key-a", body, null);
+                assertEquals(503, outage.status(), path + outage.body());
+                long retryAfter = Long.parseLong(outage.header("Retry-After"));
+                assertTrue(retryAfter > 0 && retryAfter <= 300, path + " bounded Retry-After " + retryAfter);
+                assertEquals("PROOF_UNAVAILABLE", outage.json().path("error").asText(), path);
+                assertFalse(outage.body().contains("key-a"));
+                // The lease is still live, so a keyless cached read keeps working during the proof outage.
+                assertEquals(200, send("GET", "/api/account/bank", live, null, null, null).status());
+            } finally {
+                PROOF_OUTAGE.set(false);
+            }
+            assertEquals(200, send("GET", "/api/account/bank", live, null, null, null).status(),
+                    "a proof outage never revokes the session");
         }
-        assertEquals(before, scalar(seen), "rejected proof advances no activity");
+        // Reads above are authorized use (activity may advance); only rejected proof/scope must not.
+        assertTrue(scalar(seenSql(ACCOUNT_A)) >= before);
+        assertEquals(sourcesBefore, scalar("SELECT count(*) FROM account_source_state"), "no admission");
+        assertEquals(quotesBefore, scalar("SELECT count(*) FROM tp_prices"), "no quote work");
         UPSTREAM_OUTAGE.set(false);
+    }
+
+    @Test @Order(12)
+    void rejectedProofAndScopeAdvanceNoActivityAtAll() throws Exception {
+        seedRosters();
+        Session a = login("key-a");
+        long before = scalar(seenSql(ACCOUNT_A));
+        Thread.sleep(20);
+        send("POST", "/api/crafting/profit", a, "key-b", "{}", null);
+        send("POST", "/api/crafting/profit", a, "key-a-narrow", "{}", null);
+        PROOF_OUTAGE.set(true);
+        try {
+            assertEquals(503, send("POST", "/api/crafting/profit", a, "key-a", "{}", null).status());
+        } finally {
+            PROOF_OUTAGE.set(false);
+        }
+        send("POST", "/api/crafting/discovery", a, null, discoveryBody("Bela"), null);
+        send("POST", "/api/crafting/profit", a, null, "{}", "stale-tab-context");
+        assertEquals(before, scalar(seenSql(ACCOUNT_A)), "rejected proof/scope advance no activity");
     }
 }

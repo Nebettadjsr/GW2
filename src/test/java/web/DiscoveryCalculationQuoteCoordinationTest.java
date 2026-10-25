@@ -53,10 +53,34 @@ class DiscoveryCalculationQuoteCoordinationTest {
     private final ExecutorService callers = Executors.newFixedThreadPool(2);
     private final List<Set<Integer>> coveredWhenCalculationStarted = Collections.synchronizedList(new ArrayList<>());
 
-    private final Supplier<CraftingDiscoveryService> factory = () -> {
-        coveredWhenCalculationStarted.add(Set.copyOf(store.quotes.keySet()));
-        throw new IllegalStateException("calculation reached");
+    /** Character validation passes; the calculation itself records the covered quotes and stops. */
+    private final CraftingDiscoveryService reaching = new CraftingDiscoveryService() {
+        @Override
+        public CraftingDiscoveryService forScope(model.AccountScope scope) {
+            return this;
+        }
+
+        @Override
+        public void verifySelectedCharacter(repo.DiscChoice choice) {
+        }
+
+        @Override
+        public DiscoveryData reload(repo.DiscChoice choice, craft.CraftingSettings settings) {
+            return reached();
+        }
+
+        @Override
+        public application.CraftingResolutionDetail resolveDetail(int recipeId, repo.DiscChoice choice,
+                craft.CraftingSettings settings) {
+            return reached();
+        }
+
+        private <T> T reached() {
+            coveredWhenCalculationStarted.add(Set.copyOf(store.quotes.keySet()));
+            throw new IllegalStateException("calculation reached");
+        }
     };
+    private final Supplier<CraftingDiscoveryService> factory = () -> reaching;
 
     private static org.springframework.mock.web.MockHttpServletRequest http() {
         var request = new org.springframework.mock.web.MockHttpServletRequest();
