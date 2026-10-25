@@ -413,7 +413,10 @@ export interface CraftingDiscoveryResponse {
   scope: EffectiveDiscoveryScope
   settings: EffectiveDiscoverySettings
   rowCount: number
-  rows: CraftingRow[]
+  /** Null on HTTP 202: the account's inputs are missing, so nothing was calculated. */
+  rows: CraftingRow[] | null
+  /** `PENDING` (no usable result) or `STALE` (usable result, refresh outstanding). */
+  freshness?: { status: string; sources?: string[]; refresh?: string; taskId?: string } | null
 }
 
 /** Compact response from the cached static ingredient-dependency search. */
@@ -465,6 +468,11 @@ export interface SelectorOptions {
   disciplines: string[]
   characterOptionCount: number
   characterOptions: CharacterOption[]
+  /**
+   * Set by this client when the backend answered 202: the account's characters were never
+   * synchronized. The list is then empty because the data is missing, not because there are none.
+   */
+  pending?: boolean
 }
 
 /**
@@ -535,6 +543,11 @@ export interface SyncTaskAccepted {
   operation: string
   /** Path of this task's status resource, as advertised by the backend rather than rebuilt here. */
   statusUrl: string
+  /** How the request was admitted or joined; informational. */
+  admission?: string
+  /** False when the referenced task is a narrower earlier run: its success is not this refresh. */
+  coversRequest?: boolean
+  retryAfterSeconds?: number
 }
 
 /** Response body of `GET /api/sync/tasks/{taskId}` (`CURRENT_ARCHITECTURE.md` 5.7). */

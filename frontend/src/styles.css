@@ -635,3 +635,27 @@ legend {
     width: 100%;
   }
 }
+
+/* API-key entry and connection state (account workspace). */
+.connection-panel {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.connection-panel__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.connection-panel__form input {
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+
+.connection-panel__error,
+.account-bootstrap--failed {
+  color: var(--color-danger, #b3261e);
+}

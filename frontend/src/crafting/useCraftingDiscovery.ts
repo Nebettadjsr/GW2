@@ -122,9 +122,18 @@ export function useCraftingDiscovery(api: CraftingApi): CraftingDiscoveryState {
   }
 
   function apply(response: CraftingDiscoveryResponse): void {
-    rows.value = response.rows
     effectiveScope.value = response.scope
     settings.value = response.settings
+    // No usable result (HTTP 202 / PENDING): the inputs are still being synchronized. Never present
+    // that as a completed calculation with an empty list.
+    if (response.rows === null || response.rows === undefined) {
+      rows.value = []
+      hasResult.value = false
+      requestError.value =
+        'Account data for this character is still being synchronized, so nothing was calculated yet. Reload in a moment.'
+      return
+    }
+    rows.value = response.rows
     hasResult.value = true
   }
 

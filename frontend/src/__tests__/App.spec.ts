@@ -8,6 +8,8 @@ import {
   profitResponse,
   selectorOptions
 } from '@/crafting/__tests__/fixtures'
+import { connectKey, installAccountSession, resetAccountSession } from '@/api/accountSession'
+import { installAccountTransport } from '@/api/http'
 import { accountLuck, itemMetadata, itemPrices, METADATA_IDS } from '@/ecto/__tests__/currentEctoFixtures'
 
 /**
@@ -112,7 +114,14 @@ function currentDestination(open: VueWrapper): string | undefined {
   return open.find('[aria-current="page"]').attributes('data-test')
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // The shell shows account areas only for a connected key: prove one before the recorded requests start.
+  resetAccountSession()
+  installAccountSession()
+  vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
+    accessContext: 'ctx-test', expiresAt: '2099-01-01T00:00:00Z', grants: ['account']
+  })))
+  await connectKey('TEST-KEY-0000')
   requested.length = 0
   bankAnswer = Promise.resolve(bankWithEmptySlots)
   window.history.replaceState(null, '', '/')
@@ -129,6 +138,8 @@ afterEach(() => {
   // Unmounted so no tracked task keeps a timer alive past the test that started it.
   wrapper?.unmount()
   wrapper = null
+  installAccountTransport(null)
+  resetAccountSession()
   vi.unstubAllGlobals()
 })
 
