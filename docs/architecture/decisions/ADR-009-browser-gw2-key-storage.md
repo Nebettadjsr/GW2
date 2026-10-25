@@ -2,7 +2,7 @@
 
 ## Status
 
-ACCEPTED
+SUPERSEDED by Product Owner decision [UD-018](../../../agent/user-decisions/UD-018-proportionate-gw2-key-handling.md), 2026-10-25. TARGET_ARCHITECTURE section 8.2 now selects simple browser session retention and proportionate handling. The original rationale below is historical, not a requirement for current work.
 
 ## Context
 
