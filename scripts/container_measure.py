@@ -223,7 +223,10 @@ class Measurement:
                         remaining = deadline - time.perf_counter()
                         if stop.is_set() or remaining <= 0:
                             return
-                        code, size, ms = http_get(url, timeout=min(10, remaining))
+                        # Stop admitting requests at the deadline, but let the last in-flight
+                        # request use its normal timeout. A near-zero remaining window must not
+                        # create an artificial HTTP failure. The measured wall time includes drain.
+                        code, size, ms = http_get(url, timeout=10)
                         http["requests"] += 1
                         key = f"{url.split('/', 3)[-1] or '/'}={code}"
                         http["codes"][key] = http["codes"].get(key, 0) + 1
