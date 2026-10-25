@@ -14,6 +14,13 @@ import json
 import re
 from pathlib import Path
 
+CONTAINER_SCOPE_NOTE = (
+    "Container measurements (`container-stack`) are Docker-reported figures for the owned three-service "
+    "Compose stack (frontend, backend, PostgreSQL) under a global-read workload. They are not crafting, "
+    "account-sync or live-upstream performance, not hosting capacity, and not comparable with the "
+    "application-process section above."
+)
+
 SCOPE_NOTE = (
     "Measurements are for the application JVM process (`application-process`), not a container; "
     "they include the in-process load client and fixture writers. Shared runners are noisy and "
@@ -36,7 +43,7 @@ def load(path: Path | None) -> tuple[dict | None, str | None]:
 
 def incompatibility(current: dict, previous: dict) -> str | None:
     """Why the two reports must not be compared, or None when they may be."""
-    for key in ("schemaVersion", "fixtureVersion", "measurementScope"):
+    for key in ("schemaVersion", "fixtureVersion", "measurementScope", "workloadVersion"):
         if current.get(key) != previous.get(key):
             return f"{key} differs ({previous.get(key)!r} -> {current.get(key)!r})"
     cur_env, prev_env = current.get("environment") or {}, previous.get("environment") or {}
@@ -93,15 +100,18 @@ def metadata(report: dict | None, args) -> dict:
         "runUrl": args.run_url,
         "benchmarkOutcome": args.outcome,
         "reportAvailable": report is not None,
+        "workloadVersion": (report or {}).get("workloadVersion"),
+        "images": (report or {}).get("images"),
     }
 
 
-def render(report, problem, previous, previous_problem, args) -> tuple[str, dict]:
-    lines = ["## Application performance (informational, nonblocking)", ""]
+def render(report, problem, previous, previous_problem, args, container=False) -> tuple[str, dict]:
+    title = "Container performance" if container else "Application performance"
+    lines = [f"## {title} (informational, nonblocking)", ""]
     lines.append(f"- Commit: `{args.commit}`")
     lines.append(f"- Trigger: {args.event or 'unknown'}; run: {args.run_url or 'n/a'}")
     lines.append(f"- Benchmark step outcome: **{args.outcome}**")
-    lines.append(f"- {SCOPE_NOTE}")
+    lines.append(f"- {CONTAINER_SCOPE_NOTE if container else SCOPE_NOTE}")
     lines.append("")
     if args.setup_log and Path(args.setup_log).is_file():
         tail = Path(args.setup_log).read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
@@ -117,6 +127,15 @@ def render(report, problem, previous, previous_problem, args) -> tuple[str, dict
               f"schema: `{report.get('schemaVersion')}`"]
     env = report.get("environment") or {}
     lines += [f"- Environment: " + ", ".join(f"{k}={v}" for k, v in env.items()), ""]
+    if container:
+        lines += ["### Images (provenance; application image ids change with code)", "",
+                  "| Service | Image id | Size (bytes) |", "|---|---|---|"]
+        for svc, img in (report.get("images") or {}).items():
+            size = img.get("sizeBytes")
+            lines.append(f"| {cell(svc)} | `{cell(img.get('id'))}` | {size if size is not None else 'unavailable'} |")
+        lines += ["", "Image sizes are on-disk Docker sizes, not memory or capacity evidence.",
+                  f"CPU unit: {report.get('cpuUnit', 'unknown')}.", ""]
+        lines += ["**Not measured in container mode:**", ""] + [f"- {n}" for n in report.get("notMeasured", [])] + [""]
 
     if previous is None:
         lines += [f"**Comparison:** no previous report to compare ({previous_problem}).", ""]
@@ -149,10 +168,11 @@ def render(report, problem, previous, previous_problem, args) -> tuple[str, dict
                     change = "new"
             lines.append(f"| {cell(mname)} | {cell(value)} | {cell(metric.get('unit') or '')} | {cell(change)} |")
         lines.append("")
-        for diag in workload.get("diagnostics", []):
+        for diag in ([] if container else workload.get("diagnostics", [])):
             diagnostics.append((name, diag))
     lines += ["### Benchmark errors and diagnostics", ""]
-    lines += [f"- `{n}`: {d}" for n, d in diagnostics] or ["None reported."]
+    lines += [f"- `{n}`: {d}" for n, d in diagnostics] or ([] if container and report.get("diagnostics") else ["None reported."])
+    lines += [f"- {d}" for d in report.get("diagnostics", [])]
     lines += ["", "### Unavailable KPIs", ""]
     lines += [f"- `{n}` / `{m}`: {r}" for n, m, r in unavailable] or ["None."]
     return "\n".join(lines) + "\n", metadata(report, args)
@@ -174,13 +194,16 @@ def main(argv=None) -> int:
     parser.add_argument("--run-url", default="")
     parser.add_argument("--outcome", default="unknown")
     parser.add_argument("--setup-log")
+    parser.add_argument("--container", action="store_true",
+                        help="render a container-stack report (distinct section and title)")
     args = parser.parse_args(argv)
     try:
         report, problem = load(args.report)
         previous, previous_problem = load(args.previous)
-        text, meta = render(report, problem, previous, previous_problem, args)
+        text, meta = render(report, problem, previous, previous_problem, args, args.container)
     except Exception as error:  # informational: never fail the workflow
-        text = ("## Application performance (informational, nonblocking)\n\n"
+        text = (("## Container performance" if args.container else "## Application performance")
+                + " (informational, nonblocking)\n\n"
                 f"Summary generation failed: {error!r}. This does not fail CI.\n")
         meta = {"commit": args.commit, "reportAvailable": False, "benchmarkOutcome": args.outcome,
                 "summaryError": repr(error)}
