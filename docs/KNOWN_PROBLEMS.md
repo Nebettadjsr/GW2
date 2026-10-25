@@ -116,6 +116,3 @@ No open finding. KP-08, KP-09 and KP-11 described the legacy JavaFX shopping lis
 
 **Recommendation:** retain the cheap ID-list gate while a future decision defines an affordable way to detect in-place detail changes; do not describe the current check as detecting every upstream recipe-data edit.
 
-### KP-33 — Interrupted recipe publication skipped by unchanged IDs (resolved by #105)
-
-**Observed fact:** recipe batches commit before item and ingredient synchronization. Migration V3 adds `recipe_catalog_publication`; `RecipeSync` marks it incomplete before publishing and complete after ingredients and deletions finish. The ID-equality fast path now requires the complete marker, so a retry after an item or ingredient failure resumes and reports changed (graph refresh runs). Verified by `SyncFetchPublicationTest` against an isolated PostgreSQL schema. KP-32 (in-place edit detection under unchanged IDs) is unchanged.
