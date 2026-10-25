@@ -303,7 +303,26 @@ public class ScopedAccountRefreshCoordinator {
         }
         records.removeIf(r -> r.taskId().equals(taskId));
         records.addLast(new TaskRecord(taskId, scope.id(), mergedGrants, mergedSources));
-        while (records.size() > RETAINED_RECORDS) records.removeFirst();
+        pruneTerminalRecords();
+    }
+
+    /** Active ownership must outlive any history cap, just as active tasks do in the facility. */
+    private void pruneTerminalRecords() {
+        int terminal = 0;
+        for (TaskRecord record : records) {
+            if (tasks.find(record.taskId()).map(BackgroundTasks.Status::terminal).orElse(true)) terminal++;
+        }
+        var oldest = records.iterator();
+        while (terminal > RETAINED_RECORDS && oldest.hasNext()) {
+            TaskRecord record = oldest.next();
+            if (tasks.find(record.taskId()).map(BackgroundTasks.Status::terminal).orElse(true)) {
+                oldest.remove();
+                UUID owner = UUID.fromString(record.accountId());
+                Run retained = history.get(owner);
+                if (retained != null && record.taskId().equals(retained.taskId)) history.remove(owner);
+                terminal--;
+            }
+        }
     }
 
     /** The draining run; everything it needs was captured at admission. */
@@ -371,6 +390,7 @@ public class ScopedAccountRefreshCoordinator {
      * unknown).
      */
     public synchronized Optional<TaskRecord> observe(AccountContext context, String taskId) {
+        pruneTerminalRecords();
         for (TaskRecord record : records) {
             if (record.taskId().equals(taskId) && record.accountId().equalsIgnoreCase(context.accountId())
                     && context.grants().containsAll(record.requiredGrants())
