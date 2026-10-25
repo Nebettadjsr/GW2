@@ -59,7 +59,8 @@ class PriceRefreshApiControllerTest {
         refreshService = new ControlledPriceRefreshService();
         taskService = new BackgroundTaskService();
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new PriceRefreshApiController(refreshService, taskService),
+                .standaloneSetup(new PriceRefreshApiController(new application.TradingPostRefreshCoordinator(refreshService,
+                        new BackgroundTaskServiceTasks(taskService))),
                         new SyncTaskApiController(taskService))
                 .setControllerAdvice(new SyncApiExceptionHandler())
                 .build();
@@ -234,9 +235,12 @@ class PriceRefreshApiControllerTest {
                                 + "; query its status instead of starting another"));
 
         assertEquals(1, refreshService.profit().calls(),
-                "the refused request must not start a second profit refresh");
+                "the refused request must not start a second profit refresh while one is in flight");
         refreshService.profit().release();
         assertEquals("SUCCEEDED", awaitTerminalState(statusUrl));
+        // The refused demand is not lost: the shared coordinator gives the finished run exactly one
+        // recheck pass, which fetches only what is still uncovered (STORY-SYNC-006).
+        assertEquals(2, refreshService.profit().calls());
     }
 
     /**

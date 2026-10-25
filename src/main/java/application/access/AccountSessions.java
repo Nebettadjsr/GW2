@@ -123,6 +123,20 @@ public final class AccountSessions {
         return byVerifier.remove(verifierOf(sessionId)) != null;
     }
 
+    /**
+     * A private capability that revokes exactly this session later without keeping the raw
+     * identifier: it captures only the stored verifier.
+     */
+    public Runnable revocationOf(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) return () -> { };
+        String verifier = verifierOf(sessionId);
+        return () -> {
+            synchronized (this) {
+                byVerifier.remove(verifier);
+            }
+        };
+    }
+
     /** Live entry count, for bounded-storage verification; never exposes a session identifier. */
     public synchronized int size() {
         purgeExpired(clock.instant());

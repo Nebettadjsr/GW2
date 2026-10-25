@@ -1,7 +1,7 @@
 package web;
 
 import application.CraftingDiscoveryService;
-import application.TradingPostPriceRefreshService;
+import application.TradingPostRefreshCoordinator;
 import application.CraftingResolutionDetail;
 import org.springframework.beans.factory.annotation.Autowired;
 import craft.CraftingSettings;
@@ -44,7 +44,7 @@ import java.util.function.Supplier;
 public class CraftingDiscoveryApiController {
 
     private final Supplier<CraftingDiscoveryService> discoveryServiceFactory;
-    private final TradingPostPriceRefreshService priceRefreshService;
+    private final TradingPostRefreshCoordinator priceRefresh;
 
     public CraftingDiscoveryApiController(Supplier<CraftingDiscoveryService> discoveryServiceFactory) {
         this(discoveryServiceFactory, null);
@@ -52,9 +52,14 @@ public class CraftingDiscoveryApiController {
 
     @Autowired
     public CraftingDiscoveryApiController(Supplier<CraftingDiscoveryService> discoveryServiceFactory,
-                                          TradingPostPriceRefreshService priceRefreshService) {
+                                          TradingPostRefreshCoordinator priceRefresh) {
         this.discoveryServiceFactory = discoveryServiceFactory;
-        this.priceRefreshService = priceRefreshService;
+        this.priceRefresh = priceRefresh;
+    }
+
+    /** Shared Discovery demand coordination; still completes before the calculation reads quotes. */
+    private void refreshQuotes() throws Exception {
+        if (priceRefresh != null) priceRefresh.refreshAndAwait(TradingPostRefreshCoordinator.Variant.DISCOVERY);
     }
 
     /**
@@ -74,7 +79,7 @@ public class CraftingDiscoveryApiController {
             @RequestBody(required = false) CraftingDiscoveryRequest request) throws Exception {
 
         CraftingDiscoveryApiMapper.Effective effective = CraftingDiscoveryApiMapper.toEffective(request);
-        if (priceRefreshService != null) priceRefreshService.refreshForDiscovery();
+        refreshQuotes();
 
         CraftingDiscoveryService.DiscoveryData data = discoveryServiceFactory.get()
                 .reload(effective.toDiscChoice(), effective.toCraftingSettings());
@@ -110,7 +115,7 @@ public class CraftingDiscoveryApiController {
         int recipeId = CraftingResolutionMapper.requireRecipeId(body.recipeId());
         CraftingDiscoveryApiMapper.Effective effective = CraftingDiscoveryApiMapper.toEffective(
                 CraftingResolutionMapper.requireCalculation(body.calculation()));
-        if (priceRefreshService != null) priceRefreshService.refreshForDiscovery();
+        refreshQuotes();
 
         CraftingResolutionDetail detail = CraftingResolutionMapper.requireInCalculation(
                 discoveryServiceFactory.get().resolveDetail(

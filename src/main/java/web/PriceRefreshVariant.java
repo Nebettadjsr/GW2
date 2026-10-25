@@ -1,7 +1,7 @@
 package web;
 
 import application.TradingPostPriceRefreshService;
-import web.task.BackgroundTaskService;
+import application.TradingPostRefreshCoordinator;
 
 import java.util.Arrays;
 import java.util.stream.Collectors;
@@ -60,14 +60,11 @@ enum PriceRefreshVariant {
         return operation;
     }
 
-    /**
-     * The task body for this variant: exactly one call of the corresponding existing use-case
-     * method, and never the other one.
-     */
-    BackgroundTaskService.TaskBody bodyOf(TradingPostPriceRefreshService service) {
+    /** The coordinator variant that admits and coalesces this request. */
+    TradingPostRefreshCoordinator.Variant coordinatorVariant() {
         return switch (this) {
-            case PROFIT -> service::refreshForProfit;
-            case DISCOVERY -> service::refreshForDiscovery;
+            case PROFIT -> TradingPostRefreshCoordinator.Variant.PROFIT;
+            case DISCOVERY -> TradingPostRefreshCoordinator.Variant.DISCOVERY;
         };
     }
 

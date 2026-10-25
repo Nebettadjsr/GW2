@@ -18,7 +18,7 @@ import java.util.Optional;
  */
 final class FakeBackgroundTasks implements BackgroundTasks {
 
-    record Admitted(String id, String operation, Work work) {
+    record Admitted(String id, String operation, String exclusion, Work work) {
     }
 
     final List<Admitted> admitted = new ArrayList<>();
@@ -35,15 +35,20 @@ final class FakeBackgroundTasks implements BackgroundTasks {
 
     @Override
     public String submit(String operation, Work work) throws OperationAlreadyRunning {
+        return submit(operation, operation, work);
+    }
+
+    @Override
+    public String submit(String operation, String exclusionKey, Work work) throws OperationAlreadyRunning {
         String id;
         synchronized (this) {
             for (Admitted task : admitted) {
-                if (task.operation().equals(operation) && !isTerminal(task.id())) {
+                if (task.exclusion().equals(exclusionKey) && !isTerminal(task.id())) {
                     throw new OperationAlreadyRunning(operation, task.id());
                 }
             }
             id = operation + "#" + (admitted.size() + 1);
-            admitted.add(new Admitted(id, operation, work));
+            admitted.add(new Admitted(id, operation, exclusionKey, work));
             states.put(id, "RUNNING");
             if (!autoRun) return id;
         }

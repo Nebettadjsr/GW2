@@ -281,12 +281,12 @@ Phase 4. The frontend needs stable backend APIs for backend-owned workflows. Sma
 **Status: In progress.** The versioned account schema and disposable-cache reset are
 implemented (STORY-INFRA-004), and global-only operations were restored
 (STORY-SYNC-007). Account pages are not yet usable on the migrated schema:
-validated access (#8) and scoped persistence (#15) remain unfinished, followed
-by scoped refresh (#11), HTTP enforcement (#12), and browser credentials (#13).
+validated access (#8) and scoped persistence (#15) are merged; the recovery chain
+that remains is scoped refresh (#11), HTTP enforcement (#12), and browser
+credentials (#13).
 The unavailable-state presentation (#7) is a separate usability task and does
-not restore account reads by itself. These are the current critical path. Saved
-implementation work for #8 and #15 is now in PRs #46 and #47 for manual Claude
-completion, CI and Codex review; neither PR is accepted yet. On the migrated
+not restore account reads by itself. These are the current critical path. Scoped
+refresh (#11) is in PR #57 and is not accepted yet. On the migrated
 schema, Crafting Profit and selector options currently return
 `DATA_STORE_UNAVAILABLE` because retained unscoped calls reach the disabled
 `account_sync_state` path. Account refresh and HTTP integration must remove that

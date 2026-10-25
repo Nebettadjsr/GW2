@@ -2,6 +2,7 @@ package application;
 
 import model.AccountScope;
 import sync.AccountRefreshGateway;
+import sync.AccountSync;
 import repo.AccountSyncStateRepository;
 import java.util.List;
 import java.util.Set;
@@ -92,14 +93,15 @@ public class AccountRefreshService {
      * <p>The fixed order is the one the unscoped sequences already used; it carries no dependency
      * between sources, since every publication is its own transaction.
      */
-    public void refreshSources(AccountScope scope, Set<String> sources) throws Exception {
+    public void refreshSources(AccountScope scope, Set<String> sources, AccountSync.AuthFetcher fetcher)
+            throws Exception {
         List<ScopedStep> steps = List.of(
-                new ScopedStep(AccountSyncStateRepository.BANK, () -> gateway.syncAccountBank(scope)),
-                new ScopedStep(AccountSyncStateRepository.MATERIALS, () -> gateway.syncAccountMaterials(scope)),
-                new ScopedStep(AccountSyncStateRepository.RECIPES, () -> gateway.syncAccountRecipes(scope)),
-                new ScopedStep(AccountSyncStateRepository.LUCK, () -> gateway.syncAccountLuck(scope)),
+                new ScopedStep(AccountSyncStateRepository.BANK, () -> gateway.syncAccountBank(scope, fetcher)),
+                new ScopedStep(AccountSyncStateRepository.MATERIALS, () -> gateway.syncAccountMaterials(scope, fetcher)),
+                new ScopedStep(AccountSyncStateRepository.RECIPES, () -> gateway.syncAccountRecipes(scope, fetcher)),
+                new ScopedStep(AccountSyncStateRepository.LUCK, () -> gateway.syncAccountLuck(scope, fetcher)),
                 new ScopedStep(AccountSyncStateRepository.CHARACTERS,
-                        () -> gateway.syncCharacterCraftingAndRecipes(scope)));
+                        () -> gateway.syncCharacterCraftingAndRecipes(scope, fetcher)));
 
         Exception firstFailure = null;
         for (ScopedStep step : steps) {
@@ -116,13 +118,13 @@ public class AccountRefreshService {
     }
 
     /** Refreshes every account source this service knows, for one account (STORY-APP-015). */
-    public void refreshAll(AccountScope scope) throws Exception {
+    public void refreshAll(AccountScope scope, AccountSync.AuthFetcher fetcher) throws Exception {
         refreshSources(scope, Set.of(
                 AccountSyncStateRepository.BANK,
                 AccountSyncStateRepository.MATERIALS,
                 AccountSyncStateRepository.RECIPES,
                 AccountSyncStateRepository.LUCK,
-                AccountSyncStateRepository.CHARACTERS));
+                AccountSyncStateRepository.CHARACTERS), fetcher);
     }
 
     /** One requested source and the gateway call that publishes it. */

@@ -39,6 +39,62 @@ public final class Gw2ApiClient {
         return sendJsonStrict(req, url);
     }
 
+    /**
+     * GW2 definitively rejected the supplied key (HTTP 401/403). Carries only the request target and
+     * status; 429, 5xx, transport failures and malformed payloads are never this type.
+     */
+    public static final class AuthRejectedException extends RuntimeException {
+        public AuthRejectedException(String url, int status) {
+            super("GET " + url + " failed: HTTP " + status, null, false, false);
+        }
+    }
+
+    /** True when {@code failure}, its causes or its suppressed failures include a definitive key rejection. */
+    public static boolean isAuthRejection(Throwable failure) {
+        return isAuthRejection(failure, 0);
+    }
+
+    private static boolean isAuthRejection(Throwable t, int depth) {
+        if (t == null || depth > 16) return false;
+        if (t instanceof AuthRejectedException) return true;
+        if (t.getCause() != t && isAuthRejection(t.getCause(), depth + 1)) return true;
+        for (Throwable s : t.getSuppressed()) {
+            if (isAuthRejection(s, depth + 1)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Authenticated GET with a caller-supplied transient key (STORY-SYNC-006). Never reads the
+     * deployment key; the key is used for this request only and appears in no message.
+     */
+    public static JsonNode getAuth(String url, String apiKey) throws IOException, InterruptedException {
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("no transient credential is available for this request");
+        }
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer " + apiKey.trim())
+                .GET()
+                .build();
+        HttpResponse<String> res = CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
+        // Unlike sendJsonStrict, nothing of the response body is printed or carried into an
+        // exception: only the request target and the status code, which classify the failure safely.
+        if (!HttpStatus.isOkOrPartial(res.statusCode())) {
+            if (res.statusCode() == 401 || res.statusCode() == 403) {
+                throw new AuthRejectedException(url, res.statusCode());
+            }
+            throw new RuntimeException("GET " + url + " failed: HTTP " + res.statusCode());
+        }
+        try {
+            return MAPPER.readTree(res.body());
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            // Jackson's message quotes the offending payload text; drop it and the cause.
+            throw new IOException("GET " + url + " returned malformed JSON");
+        }
+    }
+
     // -----------------------
     // "Raw response" helpers (caller decides policy)
     // -----------------------
