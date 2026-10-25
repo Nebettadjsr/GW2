@@ -20,7 +20,7 @@ final class TpHttpTestServer implements AutoCloseable {
     final List<String> requests = new ArrayList<>();
 
     TpHttpTestServer() throws IOException {
-        server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        server = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 0);
         server.createContext("/", ex -> {
             Reply r;
             synchronized (this) {
