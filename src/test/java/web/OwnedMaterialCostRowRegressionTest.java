@@ -214,4 +214,40 @@ class OwnedMaterialCostRowRegressionTest {
         assertEquals(50, result.matsSellValueCopper);
         assertFalse(result.unvaluedOwnedInput);
     }
+
+    @Test
+    void batchValueIsRoundedAfterMultiplyingConsumedQuantity() {
+        List<Recipe> recipes = List.of(
+                new Recipe(2, OUTPUT2, 1, 0, "Artificer", List.of(new Ingredient(REFINED, 5))),
+                new Recipe(3, REFINED, 5, 0, "Artificer", List.of(new Ingredient(RAW, 2))));
+        CraftResult result = resultWith(Map.of(OUTPUT2, new PriceQuote(1000, 1200),
+                RAW, new PriceQuote(1, 1)), recipes, Map.of(), Map.of(REFINED, 5));
+        // Five owned units replace a batch costing 2c, not five independently rounded 1c units.
+        assertEquals(2, result.matsSellValueCopper);
+        assertEquals(848, result.profitCopper);
+    }
+
+    @Test
+    void fractionalValueSurvivesMultipleRecipeLevels() {
+        List<Recipe> recipes = List.of(
+                new Recipe(2, OUTPUT2, 1, 0, "Artificer", List.of(new Ingredient(REFINED, 15))),
+                new Recipe(3, REFINED, 3, 0, "Artificer", List.of(new Ingredient(RAW, 1))),
+                new Recipe(4, RAW, 5, 0, "Artificer", List.of(new Ingredient(600, 2))));
+        CraftResult result = resultWith(Map.of(OUTPUT2, new PriceQuote(1000, 1200),
+                600, new PriceQuote(1, 1)), recipes, Map.of(), Map.of(REFINED, 15));
+        assertEquals(2, result.matsSellValueCopper);
+        assertFalse(result.unvaluedOwnedInput);
+    }
+
+    @Test
+    void separateAcceptedCraftsShareTheConsumedBatchValue() {
+        List<Recipe> recipes = List.of(
+                new Recipe(2, OUTPUT2, 1, 0, "Artificer", List.of(new Ingredient(REFINED, 1))),
+                new Recipe(3, REFINED, 5, 0, "Artificer", List.of(new Ingredient(RAW, 2))));
+        CraftResult result = resultWith(Map.of(OUTPUT2, new PriceQuote(1000, 1200),
+                RAW, new PriceQuote(1, 1)), recipes, Map.of(), Map.of(REFINED, 5));
+        assertEquals(5, result.craftableCount);
+        assertEquals(2, result.totalMatsSellValueCopper);
+        assertEquals(4248, result.totalProfitCopper);
+    }
 }
