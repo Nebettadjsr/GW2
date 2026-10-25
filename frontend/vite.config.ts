@@ -22,7 +22,8 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': {
           target: env.GW2_BACKEND_ORIGIN ?? 'http://localhost:8080',
-          changeOrigin: true
+          // Preserve the browser host so backend same-origin checks also work in development.
+          changeOrigin: false
         }
       }
     },
@@ -31,7 +32,7 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': {
           target: env.GW2_BACKEND_ORIGIN ?? 'http://localhost:8080',
-          changeOrigin: true
+          changeOrigin: false
         }
       }
     },

@@ -142,7 +142,7 @@ describe('invalid key versus transient failure', () => {
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBeNull()
   })
 
-  it('keeps a connected account when a replacement key is refused', async () => {
+  it('clears the old account and rejected candidate when replacement proof fails', async () => {
     handler = () => proof('ctx-a')
     await connectKey('KEY-A')
     const generation = connection.generation
@@ -150,8 +150,15 @@ describe('invalid key versus transient failure', () => {
 
     expect(await connectKey('KEY-B')).toBe(false)
 
-    expect(connection.phase).toBe('connected')
-    expect(connection.generation).toBe(generation)
+    expect(connection.phase).toBe('disconnected')
+    expect(connection.generation).toBeGreaterThan(generation)
+    expect(window.sessionStorage.getItem(STORAGE_KEY)).toBeNull()
+  })
+
+  it('retains a first-entry candidate when proof is temporarily unavailable', async () => {
+    handler = () => UNAVAILABLE()
+    expect(await connectKey('KEY-A')).toBe(false)
+    expect(connection.phase).toBe('unavailable')
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe('KEY-A')
   })
 })
@@ -204,6 +211,31 @@ describe('lease renewal and context mismatch', () => {
 })
 
 describe('replacement and disconnect', () => {
+  it('does not reconnect when a submitted key proof finishes after disconnect', async () => {
+    let complete: (response: Response) => void = () => undefined
+    handler = () => new Promise<Response>((resolve) => { complete = resolve })
+    const connecting = connectKey('KEY-A')
+    await disconnect()
+    complete(proof('ctx-a'))
+    expect(await connecting).toBe(false)
+    expect(connection.phase).toBe('disconnected')
+    expect(window.sessionStorage.getItem(STORAGE_KEY)).toBeNull()
+  })
+
+  it('ignores an old restored-key rejection after a different account connects', async () => {
+    let completeOld: (response: Response) => void = () => undefined
+    window.sessionStorage.setItem(STORAGE_KEY, 'KEY-A')
+    handler = (call) => call.headers['X-GW2-API-Key'] === 'KEY-A'
+      ? new Promise<Response>((resolve) => { completeOld = resolve })
+      : proof('ctx-b')
+    const restoring = restoreConnection()
+    expect(await connectKey('KEY-B')).toBe(true)
+    completeOld(INVALID())
+    await restoring
+    expect(connection.phase).toBe('connected')
+    expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe('KEY-B')
+  })
+
   it('changes the generation on replacement and drops a late reply of the previous account', async () => {
     let releaseOld: (response: Response) => void = () => undefined
     handler = (call) => {

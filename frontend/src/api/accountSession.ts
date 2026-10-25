@@ -64,6 +64,7 @@ let inflight: Promise<void> | null = null
 /* ------------------------------------------------------------------------- key storage --- */
 
 function readKey(): string | null {
+  if (memoryKey !== null) return memoryKey
   try {
     return window.sessionStorage.getItem(STORAGE_KEY) ?? memoryKey
   } catch {
@@ -163,16 +164,19 @@ function establish(restoring: boolean): Promise<void> {
   const key = readKey()
   if (key === null) return Promise.reject(keyRequired())
   const hadLease = connection.phase === 'connected'
+  const generation = connection.generation
   if (!hadLease) connection.phase = restoring ? 'restoring' : 'connecting'
   const run = (async () => {
     try {
-      adopt(await proveKey(key))
-      if (readKey() !== key) return
+      const proven = await proveKey(key)
+      if (generation !== connection.generation || readKey() !== key) return
+      adopt(proven)
       if (!hadLease) connection.generation += 1
       connection.phase = 'connected'
       connection.error = null
       connection.errorIsDefinitive = false
     } catch (error) {
+      if (generation !== connection.generation || readKey() !== key) return
       if (isDefinitiveRejection(error)) {
         reject(error)
       } else if (!(hadLease && leaseIsLive())) {
@@ -184,9 +188,10 @@ function establish(restoring: boolean): Promise<void> {
       throw error
     }
   })()
-  inflight = run.finally(() => {
-    inflight = null
+  const pending = run.finally(() => {
+    if (inflight === pending) inflight = null
   })
+  inflight = pending
   // A caller that only wants the side effect must not leave an unhandled rejection behind.
   inflight.catch(() => undefined)
   return inflight
@@ -223,9 +228,9 @@ export async function retryConnection(): Promise<void> {
 }
 
 /**
- * Connects, or replaces the connected account's key. The new key is proven first, so a refused
- * replacement leaves the current connection exactly as it was. Success changes the generation, which
- * makes every screen discard the previous account's rows, selection and tasks.
+ * Connects or replaces the account, clearing old account state before proof. Transient failures keep
+ * the candidate for retry; definitive rejection forgets it. Late proof replies cannot reconnect a
+ * disconnected or replaced account.
  */
 export async function connectKey(rawKey: string): Promise<boolean> {
   const key = rawKey.trim()
@@ -239,22 +244,28 @@ export async function connectKey(rawKey: string): Promise<boolean> {
     connection.errorIsDefinitive = true
     return false
   }
-  const wasConnected = connection.phase === 'connected'
-  if (!wasConnected) connection.phase = 'connecting'
+  const generation = ++connection.generation
+  inflight = null
+  lease = null
+  connection.grants = []
+  writeKey(key)
+  connection.phase = 'connecting'
   connection.error = null
   connection.logoutNotice = null
   try {
     const proven = await proveKey(key)
-    writeKey(key)
+    if (generation !== connection.generation) return false
     adopt(proven)
     connection.generation += 1
     connection.phase = 'connected'
     connection.errorIsDefinitive = false
     return true
   } catch (error) {
+    if (generation !== connection.generation) return false
     connection.error = describeProofFailure(error)
     connection.errorIsDefinitive = isDefinitiveRejection(error)
-    if (!wasConnected) connection.phase = readKey() !== null && !connection.errorIsDefinitive ? 'unavailable' : 'disconnected'
+    if (connection.errorIsDefinitive) removeKey()
+    connection.phase = connection.errorIsDefinitive ? 'disconnected' : 'unavailable'
     return false
   }
 }
@@ -268,6 +279,7 @@ export async function disconnect(): Promise<void> {
   removeKey()
   lease = null
   connection.generation += 1
+  inflight = null
   connection.phase = 'disconnected'
   connection.error = null
   connection.errorIsDefinitive = false

@@ -1,5 +1,5 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BankContents } from '@/api/types'
 import { deferred, bankWithEmptySlots, materialStorage } from '@/account/__tests__/accountFixtures'
 import {
@@ -38,6 +38,10 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 const SYNC_TASK_ID = 'task-account-1'
+
+// Compile the Vue tree outside the first assertion's budget. On a cold Windows run, timing out the
+// dynamic import before mount finishes can leave an untracked app alive for subsequent tests.
+beforeAll(async () => { await import('../App.vue') }, 30_000)
 
 async function answer(path: string, init?: RequestInit): Promise<Response> {
   if (path === '/api/crafting/selector-options') return jsonResponse(selectorOptions)
