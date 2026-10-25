@@ -474,6 +474,37 @@ class IconSyncMetadataTest {
         assertEquals(ECTO_URL, iconUrlOf(10));
     }
 
+    // ---------------------------------------------------------------- account publication repair
+
+    /** STORY-FIX-002: Bank-only ids with no row or a null icon get canonical icons without a global refresh. */
+    @Test
+    void repairMissingMetadataFillsOnlyAccountIdsWithoutIconSource() throws Exception {
+        try (Statement st = con.createStatement()) {
+            st.execute("INSERT INTO items (item_id, name, icon_url) VALUES (20, 'Has icon', '" + ECTO_URL + "')");
+            st.execute("INSERT INTO items (item_id, name) VALUES (30, 'Null icon')");
+        }
+        FixtureMetadataSource upstream = new FixtureMetadataSource();
+        upstream.knows(itemJson(10, "No row", "Armor", "Rare", 1, LOG_URL));
+        upstream.knows(itemJson(30, "Null icon", "Armor", "Rare", 1, LOG_URL));
+
+        java.util.Set<Integer> failed = IconSync.repairMissingMetadata(con, java.util.Arrays.asList(10, 20, 30, null, 10), upstream);
+
+        assertTrue(failed.isEmpty());
+        assertEquals(List.of(List.of(10, 30)), upstream.requestedBatches());
+        assertEquals(LOG_URL, singleStringColumn("SELECT icon_url FROM items WHERE item_id = 10"));
+        assertEquals(LOG_URL, singleStringColumn("SELECT icon_url FROM items WHERE item_id = 30"));
+        assertEquals(ECTO_URL, singleStringColumn("SELECT icon_url FROM items WHERE item_id = 20"));
+    }
+
+    @Test
+    void repairMissingMetadataReportsUnavailableBatchWithoutThrowing() throws Exception {
+        FixtureMetadataSource upstream = new FixtureMetadataSource();
+        upstream.failsForBatchContaining(10);
+
+        assertEquals(java.util.Set.of(10), IconSync.repairMissingMetadata(con, List.of(10), upstream));
+        assertFalse(itemRowExists(10));
+    }
+
     // ---------------------------------------------------------------- fixture
 
     /** A controlled stand-in for the GW2 items endpoint: it answers from a fixed catalogue. */

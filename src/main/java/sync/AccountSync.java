@@ -67,6 +67,7 @@ public final class AccountSync {
         List<BankSlot> rows = parseBankSlots(fetcher.get("https://api.guildwars2.com/v2/account/bank"));
         try (Connection con = Db.open()) {
             publishBank(con, scope, rows, java.time.Clock.systemUTC());
+            IconSync.repairMissingMetadata(con, rows.stream().map(BankSlot::itemId).toList());
         }
     }
 
@@ -89,6 +90,7 @@ public final class AccountSync {
         List<MaterialStack> rows = parseMaterialStacks(fetcher.get("https://api.guildwars2.com/v2/account/materials"));
         try (Connection con = Db.open()) {
             publishMaterials(con, scope, rows, java.time.Clock.systemUTC());
+            IconSync.repairMissingMetadata(con, rows.stream().map(MaterialStack::itemId).toList());
         }
     }
 

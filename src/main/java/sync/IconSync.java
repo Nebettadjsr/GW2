@@ -259,6 +259,64 @@ public final class IconSync {
                                   withoutSource, rejectedSource, batchesFailed, idsLeftUnrequested);
     }
 
+    /**
+     * Completes metadata for item ids an account publication just stored (STORY-FIX-002): ids with no
+     * {@code items} row or no {@code icon_url} are fetched from the canonical items endpoint and written
+     * through the ordinary metadata upsert, so a first or later account sync needs no separate global
+     * refresh. Ids that already carry an icon source cost no upstream call.
+     *
+     * <p>Best effort and bounded: an unavailable batch is reported and left for the next sync or the
+     * on-demand read repair; it never fails or rolls back the already committed account publication.
+     *
+     * @return the ids whose metadata request failed
+     */
+    static Set<Integer> repairMissingMetadata(Connection con, Collection<Integer> itemIds,
+                                              ItemMetadataSource source) throws Exception {
+
+        Set<Integer> failed = new LinkedHashSet<>();
+        Set<Integer> wanted = new java.util.TreeSet<>();
+        for (Integer id : itemIds)
+            if (id != null) wanted.add(id);
+        if (wanted.isEmpty()) return failed;
+
+        Set<Integer> hasIcon = new HashSet<>();
+        try (PreparedStatement ps = con.prepareStatement(
+                "SELECT item_id FROM items WHERE item_id = ANY(?) AND icon_url IS NOT NULL")) {
+            ps.setArray(1, con.createArrayOf("int", wanted.toArray()));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) hasIcon.add(rs.getInt(1));
+            }
+        }
+        wanted.removeAll(hasIcon);
+
+        for (List<Integer> batch : BatchUtils.chunk(new ArrayList<>(wanted), SyncConstants.HTTP_IDS_BATCH)) {
+            try {
+                JsonNode root = source.fetchByIds(batch);
+                Set<Integer> requested = new HashSet<>(batch);
+                Set<Integer> returned = new HashSet<>();
+                List<ItemParser.ItemRow> rows = new ArrayList<>();
+                for (JsonNode item : root) {
+                    ItemParser.ItemRow row = ItemParser.parse(item);
+                    if (row != null && requested.contains(row.itemId()) && returned.add(row.itemId())) rows.add(row);
+                }
+                applyItemMetadata(con, rows);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw interrupted;
+            } catch (Exception unavailable) {
+                failed.addAll(batch);
+                System.out.println("Icon metadata unavailable for " + batch.size()
+                                           + " account item(s), left for a later sync: " + unavailable);
+            }
+        }
+        return failed;
+    }
+
+    /** Live-endpoint form of {@link #repairMissingMetadata(Connection, Collection, ItemMetadataSource)}. */
+    public static void repairMissingMetadata(Connection con, Collection<Integer> itemIds) throws Exception {
+        repairMissingMetadata(con, itemIds, IconSync::fetchItemMetadata);
+    }
+
     /** The live metadata adapter: the same public GW2 items endpoint every other sync uses. */
     private static JsonNode fetchItemMetadata(List<Integer> itemIds) throws Exception {
 

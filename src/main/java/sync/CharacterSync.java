@@ -146,6 +146,8 @@ public final class CharacterSync {
 
         try (Connection con = Db.open()) {
             publishRoster(con, scope, payloads, java.time.Clock.systemUTC());
+            IconSync.repairMissingMetadata(con, payloads.stream()
+                    .flatMap(p -> p.items().stream()).map(model.CharacterItemRow::itemId).toList());
         }
     }
 
