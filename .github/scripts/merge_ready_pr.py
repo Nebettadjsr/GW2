@@ -202,10 +202,9 @@ def rework_reason(pr: dict, issue: dict, comments: list[dict], checks: list[dict
            and check.get("status") == "completed"
            and check.get("conclusion") in {"failure", "timed_out"} for check in checks):
         return "current CI failed"
-    report = report_for_head(pr, comments, repository)
-    if report and (not re.search(r"^Local-only checks still needed: none$", report, re.MULTILINE)
-                   or not re.search(r"^Unresolved gaps: none$", report, re.MULTILINE)):
-        return "current implementation report lists incomplete verification or gaps"
+    # A missing live/local check is supervisor work, not evidence that another coding run helps.
+    # ready_reason still blocks incomplete reports; actual remaining implementation is queued
+    # explicitly by the supervisor or through the definitive CI/review failures above.
     return None
 
 
