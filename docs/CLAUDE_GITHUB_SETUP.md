@@ -35,13 +35,15 @@ its changes, checks, and gaps. The workflow places it in a new PR or adds it
 as a comment on a rework PR; a missing report is shown explicitly for review.
 
 The separate `review-merge.yml` workflow may squash-merge a Claude story PR
-after the current head has green Maven, Vitest, and coverage checks and the
+after the current head has green Maven, Vitest, coverage, and workflow checks and the
 native Codex review summary reports a completed review with no findings for
 that same head. It requires a linked open `auto` story, a same-repository Claude
 story branch, a run report, and explicit statements that no local-only checks
 or unresolved gaps remain. `pairing`, `needs-decision`, `blocked`, and
 `needs-rework` hold the merge. Other PRs still need a supervised merge. A
 new commit invalidates the prior review and CI evidence until both repeat.
+The workflow check uses actionlint to validate GitHub expression contexts and
+action inputs/outputs as well as YAML syntax, and runs the workflow helper tests.
 
 To inspect the queue before pressing the button, use GitHub Issues filtered by
 [`auto`](https://github.com/Nebettadjsr/GW2/issues?q=is%3Aissue+is%3Aopen+label%3Aauto),

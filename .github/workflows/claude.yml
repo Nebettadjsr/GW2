@@ -41,7 +41,6 @@ jobs:
       DATABASE_USER: gw2ci
       DATABASE_PASSWORD: gw2ci
       GW2_API_KEY: ci-placeholder-no-live-api-calls
-      ICON_CACHE_DIR: ${{ runner.temp }}/gw2-icons
     steps:
       - uses: actions/checkout@v5
         with:
@@ -54,8 +53,10 @@ jobs:
           java-version: '25'
           cache: maven
 
-      - name: Prepare Maven wrapper
-        run: chmod +x ./mvnw
+      - name: Prepare test runtime
+        run: |
+          chmod +x ./mvnw
+          printf 'ICON_CACHE_DIR=%s/gw2-icons\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Validate run allowance
         id: limits
@@ -163,7 +164,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish story branch
-        if: steps.claude.outputs.conclusion == 'success'
+        if: steps.claude.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH_NAME: ${{ steps.prepare.outputs.branch_name }}
@@ -194,7 +195,7 @@ jobs:
           fi
 
       - name: Publish PR evidence
-        if: steps.claude.outputs.conclusion == 'success'
+        if: steps.claude.outcome == 'success'
         env:
           GH_TOKEN: ${{ secrets.GW2_AUTOMATION_TOKEN }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}

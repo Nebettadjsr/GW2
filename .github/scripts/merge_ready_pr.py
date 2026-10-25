@@ -16,7 +16,7 @@ import urllib.request
 from pathlib import Path
 
 
-REQUIRED_CHECKS = {"Backend tests (Maven)", "Frontend tests (Vitest)", "Coverage KPI report"}
+REQUIRED_CHECKS = {"Backend tests (Maven)", "Frontend tests (Vitest)", "Coverage KPI report", "Workflow checks"}
 BOT_LOGIN = "chatgpt-codex-connector[bot]"
 REVIEW_MARKER = "<!-- codex-pull-request-review-summary -->"
 REVIEW_STATE = re.compile(r"<!-- codex-review-state:v1 (\{.*?\}) -->", re.DOTALL)
