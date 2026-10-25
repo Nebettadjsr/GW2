@@ -122,6 +122,11 @@ public final class CharacterSync {
      */
     public static void syncCharactersCraftingAndRecipes(model.AccountScope scope, AccountSync.AuthFetcher fetcher)
             throws Exception {
+        syncCharactersCraftingAndRecipes(scope, fetcher, ids -> {});
+    }
+
+    static void syncCharactersCraftingAndRecipes(model.AccountScope scope, AccountSync.AuthFetcher fetcher,
+                                                IconSync.ItemMetadataRepair metadata) throws Exception {
         AccountSync.requireCredentialOwner(scope, fetcher);
         List<String> names = CharacterNamesParser.parseStrict(fetcher.get("https://api.guildwars2.com/v2/characters"));
 
@@ -144,10 +149,10 @@ public final class CharacterSync {
                     characterItems(cNode)));
         }
 
+        metadata.repair(payloads.stream().flatMap(p -> p.items().stream())
+                .map(model.CharacterItemRow::itemId).toList());
         try (Connection con = Db.open()) {
             publishRoster(con, scope, payloads, java.time.Clock.systemUTC());
-            IconSync.repairMissingMetadata(con, payloads.stream()
-                    .flatMap(p -> p.items().stream()).map(model.CharacterItemRow::itemId).toList());
         }
     }
 

@@ -63,11 +63,16 @@ public final class AccountSync {
     }
 
     static void syncAccountBankImpl(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+        syncAccountBankImpl(scope, fetcher, ids -> {});
+    }
+
+    static void syncAccountBankImpl(model.AccountScope scope, AuthFetcher fetcher, IconSync.ItemMetadataRepair metadata)
+            throws Exception {
         requireCredentialOwner(scope, fetcher);
         List<BankSlot> rows = parseBankSlots(fetcher.get("https://api.guildwars2.com/v2/account/bank"));
+        metadata.repair(rows.stream().map(BankSlot::itemId).toList());
         try (Connection con = Db.open()) {
             publishBank(con, scope, rows, java.time.Clock.systemUTC());
-            IconSync.repairMissingMetadata(con, rows.stream().map(BankSlot::itemId).toList());
         }
     }
 
@@ -86,11 +91,16 @@ public final class AccountSync {
     }
 
     static void syncAccountMaterialsImpl(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+        syncAccountMaterialsImpl(scope, fetcher, ids -> {});
+    }
+
+    static void syncAccountMaterialsImpl(model.AccountScope scope, AuthFetcher fetcher, IconSync.ItemMetadataRepair metadata)
+            throws Exception {
         requireCredentialOwner(scope, fetcher);
         List<MaterialStack> rows = parseMaterialStacks(fetcher.get("https://api.guildwars2.com/v2/account/materials"));
+        metadata.repair(rows.stream().map(MaterialStack::itemId).toList());
         try (Connection con = Db.open()) {
             publishMaterials(con, scope, rows, java.time.Clock.systemUTC());
-            IconSync.repairMissingMetadata(con, rows.stream().map(MaterialStack::itemId).toList());
         }
     }
 

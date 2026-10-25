@@ -16,27 +16,27 @@ public final class ItemSync {
 
     private ItemSync() {}
 
-    public static void syncItemsByIds(Set<Integer> itemIds) throws Exception {
-
-        if (itemIds == null || itemIds.isEmpty()) return;
-
-        String itemSql = """
-        INSERT INTO items (item_id, name, type, rarity, vendor_value, fetched_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+    private static final String ITEM_SQL = """
+        INSERT INTO items (item_id, name, type, rarity, vendor_value, fetched_at, icon_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (item_id) DO UPDATE SET
           name = EXCLUDED.name,
           type = EXCLUDED.type,
           rarity = EXCLUDED.rarity,
           vendor_value = EXCLUDED.vendor_value,
-          fetched_at = EXCLUDED.fetched_at
+          fetched_at = EXCLUDED.fetched_at,
+          icon_url = COALESCE(EXCLUDED.icon_url, items.icon_url)
         """;
+
+    public static void syncItemsByIds(Set<Integer> itemIds) throws Exception {
+
+        if (itemIds == null || itemIds.isEmpty()) return;
 
         List<Integer> idsList = new ArrayList<>(itemIds);
 
         int done = 0;
 
         try (Connection con = Db.open();
-             PreparedStatement ps = con.prepareStatement(itemSql);
              PreparedStatement psNow = con.prepareStatement("SELECT now()")) {
 
             for (List<Integer> batch : BatchUtils.chunk(idsList, SyncConstants.HTTP_IDS_BATCH)) {
@@ -66,22 +66,7 @@ public final class ItemSync {
                         runTs = rs.getTimestamp(1);
                     }
 
-                    ps.clearBatch();
-
-                    for (var r : rows) {
-
-                        ps.setInt(1, r.itemId());
-                        DbBind.setStringOrNull(ps, 2, r.name());
-                        DbBind.setStringOrNull(ps, 3, r.type());
-                        DbBind.setStringOrNull(ps, 4, r.rarity());
-
-                        ps.setInt(5, r.vendorValue() == null ? 0 : r.vendorValue());
-                        ps.setTimestamp(6, runTs);
-
-                        ps.addBatch();
-                    }
-
-                    ps.executeBatch();
+                    upsertItems(con, rows, runTs);
                     con.commit();
 
                 } catch (Exception ex) {
@@ -97,6 +82,23 @@ public final class ItemSync {
                                            + " / "
                                            + idsList.size());
             }
+        }
+    }
+
+    /** Shared by normal recipe-item synchronization and its real-database regression checks. */
+    static void upsertItems(Connection con, List<ItemParser.ItemRow> rows, Timestamp runTs) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement(ITEM_SQL)) {
+            for (var row : rows) {
+                ps.setInt(1, row.itemId());
+                DbBind.setStringOrNull(ps, 2, row.name());
+                DbBind.setStringOrNull(ps, 3, row.type());
+                DbBind.setStringOrNull(ps, 4, row.rarity());
+                ps.setInt(5, row.vendorValue() == null ? 0 : row.vendorValue());
+                ps.setTimestamp(6, runTs);
+                DbBind.setStringOrNull(ps, 7, row.iconUrl());
+                ps.addBatch();
+            }
+            ps.executeBatch();
         }
     }
 }

@@ -110,6 +110,11 @@ public final class IconSync {
         JsonNode fetchByIds(List<Integer> itemIds) throws Exception;
     }
 
+    @FunctionalInterface
+    interface ItemMetadataRepair {
+        void repair(Collection<Integer> ids) throws Exception;
+    }
+
     /**
      * What one repair run covered and what it could not resolve, so the remaining fallbacks can be
      * classified instead of merely counted (STORY-SYNC-004 acceptance criterion 6).
@@ -281,10 +286,12 @@ public final class IconSync {
 
         Set<Integer> hasIcon = new HashSet<>();
         try (PreparedStatement ps = con.prepareStatement(
-                "SELECT item_id FROM items WHERE item_id = ANY(?) AND icon_url IS NOT NULL")) {
+                "SELECT item_id, icon_url FROM items WHERE item_id = ANY(?) AND icon_url IS NOT NULL")) {
             ps.setArray(1, con.createArrayOf("int", wanted.toArray()));
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) hasIcon.add(rs.getInt(1));
+                while (rs.next()) {
+                    if (IconSourcePolicy.accept(rs.getString(2)).isPresent()) hasIcon.add(rs.getInt(1));
+                }
             }
         }
         wanted.removeAll(hasIcon);
@@ -292,6 +299,7 @@ public final class IconSync {
         for (List<Integer> batch : BatchUtils.chunk(new ArrayList<>(wanted), SyncConstants.HTTP_IDS_BATCH)) {
             try {
                 JsonNode root = source.fetchByIds(batch);
+                if (root == null || !root.isArray()) throw new IllegalArgumentException("Item metadata must be an array");
                 Set<Integer> requested = new HashSet<>(batch);
                 Set<Integer> returned = new HashSet<>();
                 List<ItemParser.ItemRow> rows = new ArrayList<>();
@@ -318,7 +326,7 @@ public final class IconSync {
     }
 
     /** The live metadata adapter: the same public GW2 items endpoint every other sync uses. */
-    private static JsonNode fetchItemMetadata(List<Integer> itemIds) throws Exception {
+    static JsonNode fetchItemMetadata(List<Integer> itemIds) throws Exception {
 
         String idsParam = BatchUtils.idsParam(itemIds);
 

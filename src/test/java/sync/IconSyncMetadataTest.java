@@ -505,6 +505,33 @@ class IconSyncMetadataTest {
         assertFalse(itemRowExists(10));
     }
 
+    @Test
+    void ordinaryItemSyncStoresFirstIconUpdatesItAndPreservesItWhenAbsent() throws Exception {
+        var first = new ItemParser.ItemRow(900, "Recipe output", "CraftingMaterial", "Basic", 7, LOG_URL);
+        ItemSync.upsertItems(con, List.of(first), java.sql.Timestamp.from(java.time.Instant.now()));
+        assertEquals(LOG_URL, iconUrlOf(900));
+        assertEquals("7", singleStringColumn("SELECT vendor_value FROM items WHERE item_id = 900"));
+        var changed = new ItemParser.ItemRow(900, "Recipe output", "CraftingMaterial", "Basic", 8, ECTO_URL);
+        ItemSync.upsertItems(con, List.of(changed), java.sql.Timestamp.from(java.time.Instant.now()));
+        assertEquals(ECTO_URL, iconUrlOf(900));
+        var missing = new ItemParser.ItemRow(900, "Recipe output", "CraftingMaterial", "Basic", 8, null);
+        ItemSync.upsertItems(con, List.of(missing), java.sql.Timestamp.from(java.time.Instant.now()));
+        assertEquals(ECTO_URL, iconUrlOf(900));
+    }
+
+    @Test
+    void invalidStoredSourceIsRepairedAndMalformedResponseIsRetryable() throws Exception {
+        try (Statement st = con.createStatement()) {
+            st.execute("INSERT INTO items (item_id, icon_url) VALUES (30, '" + REJECTED_URL + "')");
+        }
+        FixtureMetadataSource upstream = new FixtureMetadataSource();
+        upstream.knows(itemJson(30, "Repair", "Armor", "Rare", 1, LOG_URL));
+        assertTrue(IconSync.repairMissingMetadata(con, List.of(30), upstream).isEmpty());
+        assertEquals(LOG_URL, iconUrlOf(30));
+        assertEquals(Set.of(40), IconSync.repairMissingMetadata(con, List.of(40),
+                ids -> JsonNodeFactory.instance.objectNode()));
+    }
+
     // ---------------------------------------------------------------- fixture
 
     /** A controlled stand-in for the GW2 items endpoint: it answers from a fixed catalogue. */
