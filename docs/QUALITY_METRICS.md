@@ -21,23 +21,23 @@ specific and documented in `docs/TEST_STRATEGY.md` and the report configuration.
 
 ## Current clean CI baseline
 
-Measured on clean `master` commit `91502e6f9cc67daa7f064ca2a3699e734283a235` in
-[CI run 40104561656](https://github.com/Nebettadjsr/GW2/actions/runs/40104561656),
-after retirement of the Python harness. All three jobs succeeded. The
-`coverage-reports` artifact (ID `12564346676`) contains the raw JaCoCo and
+Measured on clean `master` commit `f2fea26157e4767865006ee9b3f5d3342ab8654d` in
+[CI run 40107414677](https://github.com/Nebettadjsr/GW2/actions/runs/40107414677),
+after the GW2 API boundary test pilot and issue-closure fix. All three jobs succeeded. The
+`coverage-reports` artifact (ID `12565690292`) contains the raw JaCoCo and
 Vitest reports and `coverage-kpi/coverage-kpi.json`. The KPI remains warning-only.
 
 | Area | Line | Branch | Gap to 90% line / branch |
 |---|---:|---:|---:|
-| Java backend | 79.48% (3998/5030) | 67.41% (1506/2234) | 10.52 pp / 22.59 pp |
+| Java backend | 79.84% (4016/5030) | 68.31% (1526/2234) | 10.16 pp / 21.69 pp |
 | Frontend TypeScript | 95.50% (1572/1646) | 87.49% (1357/1551) | 0 pp / 2.51 pp |
-| **Combined (weighted)** | **83.43% (5570/6676)** | **75.64% (2863/3785)** | **6.57 pp / 14.36 pp** |
+| **Combined (weighted)** | **83.70% (5588/6676)** | **76.17% (2883/3785)** | **6.30 pp / 13.83 pp** |
 
 For the open backend coverage request #21, the same artifact measures `sync`
 at 43.08% line / 36.67% branch, `repo` at 76.09% / 57.92%, `parser` at
-63.25% / 41.96%, `api.tp` at 3.49% / 0%, `api` at 8.86% / 6.67%, and
+63.25% / 41.96%, `api.tp` at 3.49% / 0%, `api` at 31.65% / 73.33%, and
 `model` at 45.16% / 33.33%. The artifact has the complete package breakdown.
-These measurements include the tests merged in #36. The baseline is a measured
+These measurements include the tests merged in #36 and #40. The baseline is a measured
 snapshot, not a requirement to reach 90% in one story.
 
 ## Pre-migration clean CI snapshot
