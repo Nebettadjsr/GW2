@@ -3,7 +3,7 @@
 # frontend images, starts disposable PostgreSQL, backend and frontend containers on a private network
 # (only the frontend publishes a port, on a random nonstandard loopback port), and checks static
 # assets, proxied reads, keyless refusal and the same-origin session boundary. A second frontend
-# fronting a controlled Nginx echo upstream verifies header/cookie/body/path forwarding without
+# fronting a controlled Node echo upstream verifies header/cookie/body/path forwarding without
 # ArenaNet. Needs Docker, Bash, curl, GNU date; no GW2 key. Only resources created here (unique
 # gw2-fsmoke-<id> names, tracked by immutable ID) are removed, anonymous volumes included.
 set -euo pipefail
@@ -17,19 +17,23 @@ NS="gw2-fsmoke-$ID"
 BACK_IMAGE="$NS-backend:latest"
 FRONT_IMAGE="$NS-frontend:latest"
 PG_IMAGE="${GW2_SMOKE_PG_IMAGE:-postgres:17}"
-ECHO_IMAGE="${GW2_SMOKE_ECHO_IMAGE:-nginxinc/nginx-unprivileged:stable-alpine}"
+ECHO_IMAGE="${GW2_SMOKE_ECHO_IMAGE:-node:22-alpine}"
 SCHEMA="smoke_${ID//-/_}"
 TIMEOUT="${GW2_SMOKE_TIMEOUT_SECONDS:-120}"
 DB_PASSWORD="smoke-$RANDOM$RANDOM"
 PG_ID='' BACK_ID='' FRONT_ID='' ECHO_ID='' FRONT2_ID='' NETWORK_ID=''
 BACK_IMG_CREATED=false FRONT_IMG_CREATED=false
-WORK=$(mktemp -d)
 
 for img in "$BACK_IMAGE" "$FRONT_IMAGE"; do
   if docker image inspect "$img" >/dev/null 2>&1; then
     echo "Image $img already exists; choose another GW2_SMOKE_ID" >&2; exit 1
   fi
 done
+
+TEMP_ROOT=$(cd "${TMPDIR:-/tmp}" && pwd -P)
+WORK=$(mktemp -d "$TEMP_ROOT/gw2-fsmoke.XXXXXXXX")
+WORK=$(cd "$WORK" && pwd -P)
+[[ "$WORK" == "$TEMP_ROOT"/gw2-fsmoke.* ]] || { echo 'Unexpected temporary path' >&2; exit 1; }
 
 cleanup() {
   for c in "$FRONT2_ID" "$ECHO_ID" "$FRONT_ID" "$BACK_ID" "$PG_ID"; do
@@ -43,6 +47,7 @@ cleanup() {
 trap cleanup EXIT
 
 now_ms() { date +%s%3N; }
+curl() { command curl --connect-timeout 2 --max-time 5 "$@"; }
 fail() {
   echo "FAIL: $*" >&2
   for n in app front; do docker logs "$NS-$n" 2>&1 | tail -20 >&2 || true; done
@@ -92,7 +97,8 @@ FRONT_ID=$(docker run -d --name "$NS-front" --network "$NS" -p 127.0.0.1::8080 \
 PORT=$(docker port "$NS-front" 8080/tcp | head -1 | sed 's/.*://')
 BASE="http://127.0.0.1:$PORT"
 code=''
-for _ in $(seq $((TIMEOUT * 5))); do
+deadline=$(( $(now_ms) + TIMEOUT * 1000 ))
+while [ "$(now_ms)" -lt "$deadline" ]; do
   [ "$(docker inspect -f '{{.State.Running}}' "$NS-front")" = true ] || fail "frontend exited"
   code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/system/status" || true)
   [ "$code" = 200 ] && break
@@ -127,33 +133,45 @@ echo "session proof, foreign Origin -> $foreign; no Origin -> $noorigin"
 [ "$foreign" = 403 ] && [ "$noorigin" = 403 ] || fail "foreign or missing Origin must be refused with 403"
 
 echo "== forwarding semantics against a controlled echo upstream (no ArenaNet)"
-cat > "$WORK/echo.conf" <<'CONF'
-server {
-    listen 8080;
-    location / {
-        add_header Set-Cookie "GW2_SESSION=echo; Path=/; HttpOnly; SameSite=Strict" always;
-        add_header Content-Type text/plain always;
-        return 218 "method=$request_method uri=$request_uri host=$http_host origin=$http_origin cookie=$http_cookie key=$http_x_gw2_api_key ctx=$http_x_account_context\n";
-    }
-}
-CONF
-ECHO_ID=$(docker create --name "$NS-echo" --network "$NS" "$ECHO_IMAGE")
-docker cp "$WORK/echo.conf" "$NS-echo:/etc/nginx/conf.d/default.conf"
+cat > "$WORK/echo.mjs" <<'FIXTURE'
+import { createServer } from 'node:http'
+createServer(async (request, response) => {
+  const chunks = []
+  for await (const chunk of request) chunks.push(chunk)
+  const body = Buffer.concat(chunks).toString('utf8')
+  const h = request.headers
+  response.writeHead(218, {
+    'Set-Cookie': 'GW2_SESSION=echo; Path=/; HttpOnly; SameSite=Strict',
+    'Content-Type': 'text/plain'
+  })
+  response.end(`method=${request.method} uri=${request.url} host=${h.host} origin=${h.origin} cookie=${h.cookie} key=${h['x-gw2-api-key']} ctx=${h['x-account-context']} body=${body}\n`)
+}).listen(8080, '0.0.0.0')
+FIXTURE
+ECHO_ID=$(MSYS_NO_PATHCONV=1 docker create --name "$NS-echo" --network "$NS" --entrypoint node "$ECHO_IMAGE" /tmp/echo.mjs)
+# Git Bash converts the host source path, but the container destination must stay a Linux path.
+MSYS2_ARG_CONV_EXCL="$NS-echo:" docker cp "$WORK/echo.mjs" "$NS-echo:/tmp/echo.mjs"
 docker start "$NS-echo" >/dev/null
 FRONT2_ID=$(docker run -d --name "$NS-front2" --network "$NS" -p 127.0.0.1::8080 \
   -e GW2_BACKEND_ORIGIN="http://$NS-echo:8080" "$FRONT_IMAGE")
 PORT2=$(docker port "$NS-front2" 8080/tcp | head -1 | sed 's/.*://')
-for _ in $(seq $((TIMEOUT * 5))); do
-  curl -s -o /dev/null "http://127.0.0.1:$PORT2/api/ping" && break; sleep 0.2
+deadline=$(( $(now_ms) + TIMEOUT * 1000 ))
+echo_status=''
+while [ "$(now_ms)" -lt "$deadline" ]; do
+  [ "$(docker inspect -f '{{.State.Running}}' "$NS-echo")" = true ] || fail "echo fixture exited"
+  [ "$(docker inspect -f '{{.State.Running}}' "$NS-front2")" = true ] || fail "fixture frontend exited"
+  echo_status=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT2/api/ping" || true)
+  [ "$echo_status" = 218 ] && break
+  sleep 0.2
 done
+[ "$echo_status" = 218 ] || fail "echo fixture did not become ready"
 out=$(curl -s -D "$WORK/h2" -X POST -H "Origin: http://127.0.0.1:$PORT2" -H 'Cookie: GW2_SESSION=abc' \
   -H 'X-GW2-API-Key: smoke-not-a-real-key' -H 'X-Account-Context: ctx-1' --data 'body=1' \
   "http://127.0.0.1:$PORT2/api/session/renew?a=1&b=two")
 echo "echo: $out"
-want="method=POST uri=/api/session/renew?a=1&b=two host=127.0.0.1:$PORT2 origin=http://127.0.0.1:$PORT2 cookie=GW2_SESSION=abc key=smoke-not-a-real-key ctx=ctx-1"
+want="method=POST uri=/api/session/renew?a=1&b=two host=127.0.0.1:$PORT2 origin=http://127.0.0.1:$PORT2 cookie=GW2_SESSION=abc key=smoke-not-a-real-key ctx=ctx-1 body=body=1"
 [ "$out" = "$want" ] || fail "forwarded request differs; wanted: $want"
 grep -qi '^HTTP/1.1 218' "$WORK/h2" || fail "upstream status not preserved"
 grep -qi '^set-cookie: GW2_SESSION=echo; Path=/; HttpOnly; SameSite=Strict' "$WORK/h2" || fail "Set-Cookie not preserved"
-echo "forwarding: status 218, path/query, Host with port, Origin, Cookie, key, context, Set-Cookie preserved"
+echo "forwarding: status 218, path/query/body, Host with port, Origin, Cookie, key, context, Set-Cookie preserved"
 docker logs "$NS-front2" 2>&1 | grep -q 'smoke-not-a-real-key' && fail "key value appeared in proxy logs"
 echo "PASS"
