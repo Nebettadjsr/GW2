@@ -84,6 +84,54 @@ class AccountAccessServiceKeyedOperationTest {
         assertTrue(sessions.resolve(transientSession.sessionId(), transientSession.context().accessContext()).authenticated());
     }
 
+    @Test
+    void liveLeaseKeepsAuthorizingDuringOutageButRenewalFailsAndExpiryIsNotRescued() throws Exception {
+        var time = new java.util.concurrent.atomic.AtomicReference<>(NOW);
+        Clock clock = new Clock() {
+            @Override public ZoneOffset getZone() { return ZoneOffset.UTC; }
+            @Override public Clock withZone(java.time.ZoneId zone) { return this; }
+            @Override public Instant instant() { return time.get(); }
+        };
+        var sessions = new AccountSessions(clock, 4);
+        var issued = sessions.establish(proof("account-a", Set.of(AccountGrant.ACCOUNT)));
+        var service = new AccountAccessService(key -> {
+            throw new ProofUnavailableException("down", java.time.Duration.ofSeconds(5));
+        }, sessions);
+
+        time.set(NOW.plusSeconds(600));
+        assertTrue(service.resolve(issued.sessionId(), issued.context().accessContext()).authenticated());
+        assertThrows(ProofUnavailableException.class, () -> service.renew(issued.sessionId(),
+                issued.context().accessContext(), "key"));
+        assertTrue(service.resolve(issued.sessionId(), issued.context().accessContext()).authenticated());
+
+        time.set(NOW.plusSeconds(15 * 60));
+        assertEquals(AccountSessions.Outcome.EXPIRED,
+                service.resolve(issued.sessionId(), issued.context().accessContext()).outcome());
+    }
+
+    @Test
+    void accountAndBResolveDistinctlyAndRejectionInvokesNoAccountWork() {
+        var sessions = new AccountSessions(Clock.fixed(NOW, ZoneOffset.UTC), 4);
+        var a = sessions.establish(proof("account-a", Set.of(AccountGrant.ACCOUNT)));
+        var b = sessions.establish(proof("account-b", Set.of(AccountGrant.ACCOUNT)));
+        var service = new AccountAccessService(key -> proof("account-a", Set.of(AccountGrant.ACCOUNT)), sessions);
+        var work = new java.util.ArrayList<String>();
+        java.util.function.BiConsumer<String, String> request = (cookie, context) -> {
+            var r = service.resolve(cookie, context);
+            if (r.authenticated()) work.add(r.context().accountId());
+        };
+
+        request.accept(a.sessionId(), a.context().accessContext());
+        request.accept(b.sessionId(), b.context().accessContext());
+        assertEquals(java.util.List.of("account-a", "account-b"), work);
+
+        request.accept(b.sessionId(), a.context().accessContext());
+        request.accept(a.sessionId(), b.context().accessContext());
+        request.accept(null, a.context().accessContext());
+        request.accept(a.sessionId(), null);
+        assertEquals(2, work.size());
+    }
+
     private static AccountProof proof(String id, Set<AccountGrant> grants) {
         return new AccountProof(id, grants, Set.of(), null);
     }
