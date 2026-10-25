@@ -111,35 +111,10 @@ No open finding. KP-08, KP-09 and KP-11 described the legacy JavaFX shopping lis
 ### KP-17 — Trading Post 404 responses preserve old usable quotes (CH-09)
 
 
-**Observed fact:** after a 404 batch or a missing ID in a 206 batch, single-item 404 returns null. `fetchTpBatchParsed` skips that ID, unlike an explicit `TpPrice.noData` quote which writes NULLs. Any existing database quote stays unchanged; readers do not check age or current tradeability.
+**Observed fact:** after a 404 batch or a missing ID in a 206 batch, single-item 404 returns null. `fetchTpBatchParsed` skips that ID, unlike an explicit `TpPrice.noData` quote which writes NULLs. Any existing quote stays unchanged in low-level storage/readers. Profit now separately reports its age in the freshness envelope, but a confirmed upstream absence is still not recorded as such.
 
 **Inferred risk:** refresh can report success while an item that no longer has a quote retains an old price used by calculations; missing IDs can also be retried repeatedly without recording the absence. **Recommendation:** distinguish confirmed absence from transient failure and define its persisted quote state.
 
-
-### KP-22 — Missing icon data hides occupied slots and cannot always be repaired (CH-10)
-
-
-**Observed fact:** IconSync selects only rows whose stored `icon_path` is NULL/empty: it does not check the existence of already-recorded files. Moving/deleting the icon directory or changing `ICON_CACHE_DIR` leaves these rows excluded from repair. Account sync does not populate metadata/icons for newly seen account-only items; setup's item population is driven by recipe items.
-
-**Inferred risk:** real possessions look absent when metadata/downloads are missing, and rerunning icon sync cannot repair nonempty paths pointing at missing files. **Recommendation:** separate possession display from icon availability and make cache repair account for stale paths.
-
-**Status: resolved.** `STORY-SYNC-004` closed "account sync does not populate metadata for newly seen account-only items": the explicit metadata refresh now discovers referenced ids from the reference families rather than from the `items` table and creates the missing rows, and it was executed against the real user database (see `CURRENT_ARCHITECTURE.md` §5.14 for the behavior and the measured before/after coverage). On the web clients possession display was already separate from icon availability — `STORY-WEB-010`'s `ItemIcon` renders count and identity beside a neutral fallback, and empty slots stay empty — so on that path the symptom this entry describes no longer occurs. **Resolved by removal, not by repair:** the stale-path problem was a property of `syncItemIconsToDisk`, which selected on `icon_path IS NULL OR = ''` and never checked whether a recorded file still existed. `STORY-UI-004` deleted that desktop-only download with `sync.DesktopIconAdoption`, so no production path records or re-reads `items.icon_path` any more and there is no stale-path selection left to repair; the condition it described cannot occur. The browser serves icons from the keyed `assets-v1` cache and repairs a miss on demand, which never consults `icon_path`. The JavaFX Bank/Materials rendering half of this entry went away with those views (`STORY-UI-004`).
-
-
----
-
-## 6. HTTP boundary and deployment risk
-
-### KP-24 — The unauthenticated HTTP boundary exposes account reads and write-triggering operations
-
-
-**Inferred risk:** unauthenticated callers can consume the account's GW2 API rate budget and cause database writes, not only read account-derived data. The task facility's one-unfinished-task-per-operation admission rule limits this to one sync per operation at a time, which bounds the effect but is a concurrency control, not an access control — and since the operation keys are independent by design, an account sync, a global sync and both price-refresh variants can be started concurrently by the same unauthenticated caller. The number of independently startable write operations therefore grows with each trigger added; four is the current count. The unauthenticated *read* surface grew too: a caller reaching the port can now enumerate the account's bank slots and material stacks directly (`STORY-API-007`), where previously it could only obtain crafting results derived from them. No credential is exposed by those routes — they return item ids, quantities and display metadata only.
-
-**Recommendation:** keep the API bound to a local single-user deployment until §20 is decided, and revisit before any non-local deployment or before adding further write-triggering routes. `STORY-API-003` deliberately did not introduce authentication — that is an undecided architecture question (§20), not an implementation detail.
-
-**Status: Open.** Newly recorded by `STORY-API-003`; extends, rather than replaces, `STORY-API-001`'s recorded no-authentication limitation. Re-confirmed and widened by `STORY-API-004` and again by `STORY-API-005`, each of which, like the first, deliberately did not introduce authentication, §20 still being undecided. With Phase 4's sync/refresh routes now complete, this section's recommendation to revisit before further write-triggering routes is addressed to whatever adds the next one; `STORY-API-008` added none, and likewise did not introduce authentication.
-
----
 
 
 ---
@@ -167,12 +142,6 @@ No open finding. KP-08, KP-09 and KP-11 described the legacy JavaFX shopping lis
 
 
 ---
-
-## 9. Open domain/UX clarification
-
-### KP-31 - Discovery had two independent character authorities (resolved)
-
-**Resolved:** the Discovery API now accepts only its character/discipline scope and settings. The selected character supplies both candidate eligibility and binding-aware inventory; the page has one selector and no inventory-character fallback. The regression is covered by application, API and frontend tests.
 
 ### KP-32 — Global recipe change detection misses edits under unchanged IDs
 
