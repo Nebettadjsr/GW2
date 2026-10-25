@@ -469,7 +469,7 @@ abstract class ApplicationBenchmarkHarness {
 
     private static List<Metric> connectionMetrics(long openPeak, long activePeak) {
         String boundary = "database-wide pg_stat_activity (client backends of the test database, not only this schema), "
-                + "sampled; the probe's own connections are excluded, other clients of the database are not";
+                + "sampled; each query excludes its own connection, concurrent probes and other database clients are included";
         return List.of(
                 openPeak >= 0 ? Metric.of("db_connections_open_peak", openPeak, "connections",
                         boundary + "; counts every state including idle, sampled every 25 ms (lower bound)")
@@ -500,7 +500,7 @@ abstract class ApplicationBenchmarkHarness {
             List<Double> lat = new ArrayList<>(rec.latenciesMillis);
             out.add(Metric.of("http_latency_p95", Stats.p95(lat), "ms", boundary + ", nearest-rank over " + lat.size() + " requests"));
             out.add(Metric.of("http_throughput", Stats.throughputPerSecond(rec.requests.get(), wallNanos), "requests/second",
-                    "all requests over the workload wall time"));
+                    "recorded workload requests over wall time; background-task polling is excluded"));
         }
         out.add(Metric.of("http_requests", rec.requests.get(), "requests", boundary));
         out.add(Metric.of("http_errors", rec.errors.get(), "requests", "non-2xx responses"));

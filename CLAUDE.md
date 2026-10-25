@@ -25,7 +25,7 @@ Read the owning document before changing its subject. Update current documentati
 
 ## Domain and architecture
 
-The backend owns authoritative business logic. The frontend does not call the GW2 API directly, and secrets stay backend-only. Domain logic must not depend on JavaFX, HTTP, JSON transport models, PostgreSQL/JDBC/SQL, Docker, or GW2 API response models. External systems use clear adapters. PostgreSQL is a disposable cache of GW2 API data under UD-016; missing or inconsistent data is re-fetched. Ectoplasm Salvage has the explicit browser calculation exception in `docs/TARGET_ARCHITECTURE.md` section 4.2 and `docs/DOMAIN_SPEC.md`.
+The backend owns authoritative business logic and GW2 API access. Server deployment secrets remain backend-only; browser-held read-only GW2 keys follow UD-018 and `docs/TARGET_ARCHITECTURE.md` section 8.2. Use proportionate handling: ordinary browser retention, account separation and basic hygiene, without adding high-sensitivity credential infrastructure. Domain logic must not depend on JavaFX, HTTP, JSON transport models, PostgreSQL/JDBC/SQL, Docker, or GW2 API response models. External systems use clear adapters. PostgreSQL is a disposable cache of GW2 API data under UD-016; missing or inconsistent data is re-fetched. Ectoplasm Salvage has the explicit browser calculation exception in `docs/TARGET_ARCHITECTURE.md` section 4.2 and `docs/DOMAIN_SPEC.md`.
 
 Do not silently choose a technology that `docs/TARGET_ARCHITECTURE.md` marks TBD. Preserve existing behavior unless the issue or authoritative spec changes it. Prefer incremental changes with clear responsibility boundaries.
 
