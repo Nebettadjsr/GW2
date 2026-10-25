@@ -1,5 +1,5 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BankContents } from '@/api/types'
 import { deferred, bankWithEmptySlots, materialStorage } from '@/account/__tests__/accountFixtures'
 import {
@@ -8,6 +8,8 @@ import {
   profitResponse,
   selectorOptions
 } from '@/crafting/__tests__/fixtures'
+import { connectKey, installAccountSession, resetAccountSession } from '@/api/accountSession'
+import { installAccountTransport } from '@/api/http'
 import { accountLuck, itemMetadata, itemPrices, METADATA_IDS } from '@/ecto/__tests__/currentEctoFixtures'
 
 /**
@@ -36,6 +38,10 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 const SYNC_TASK_ID = 'task-account-1'
+
+// Compile the Vue tree outside the first assertion's budget. On a cold Windows run, timing out the
+// dynamic import before mount finishes can leave an untracked app alive for subsequent tests.
+beforeAll(async () => { await import('../App.vue') }, 30_000)
 
 async function answer(path: string, init?: RequestInit): Promise<Response> {
   if (path === '/api/crafting/selector-options') return jsonResponse(selectorOptions)
@@ -112,7 +118,14 @@ function currentDestination(open: VueWrapper): string | undefined {
   return open.find('[aria-current="page"]').attributes('data-test')
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // The shell shows account areas only for a connected key: prove one before the recorded requests start.
+  resetAccountSession()
+  installAccountSession()
+  vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
+    accessContext: 'ctx-test', expiresAt: '2099-01-01T00:00:00Z', grants: ['account']
+  })))
+  await connectKey('TEST-KEY-0000')
   requested.length = 0
   bankAnswer = Promise.resolve(bankWithEmptySlots)
   window.history.replaceState(null, '', '/')
@@ -129,6 +142,8 @@ afterEach(() => {
   // Unmounted so no tracked task keeps a timer alive past the test that started it.
   wrapper?.unmount()
   wrapper = null
+  installAccountTransport(null)
+  resetAccountSession()
   vi.unstubAllGlobals()
 })
 

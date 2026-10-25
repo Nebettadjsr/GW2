@@ -28,6 +28,13 @@ export const STATUS_POLL_INTERVAL_MS = 3_000
  */
 export const MAX_STATUS_POLLS = 600
 
+/**
+ * How often one trigger may follow "a narrower earlier run is active" before giving up. A 202 with
+ * `coversRequest: false` names a task that does not refresh everything requested: its success is
+ * waited for, then the original request is repeated — never reported as this request's success.
+ */
+export const MAX_COVER_RETRIES = 3
+
 const TERMINAL_STATES: readonly string[] = ['SUCCEEDED', 'FAILED']
 
 /** What the panel renders for one operation. Every lifecycle fact comes from `status`. */
@@ -67,6 +74,9 @@ interface OperationRuntime {
   timer: ReturnType<typeof setTimeout> | null
   statusUrl: string | null
   remainingPolls: number
+  /** The tracked task is a narrower run; the original request must be repeated after it ends. */
+  awaitingCover: boolean
+  coverRetriesLeft: number
 }
 
 export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
@@ -76,7 +86,9 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
     token: 0,
     timer: null,
     statusUrl: null,
-    remainingPolls: 0
+    remainingPolls: 0,
+    awaitingCover: false,
+    coverRetriesLeft: MAX_COVER_RETRIES
   }))
   let isDisposed = false
 
@@ -98,6 +110,7 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
     try {
       const accepted = await runtime.operation.submit(api)
       if (isStale(runtime, token)) return
+      runtime.coverRetriesLeft = MAX_COVER_RETRIES
       track(runtime, accepted, token)
     } catch (cause) {
       if (isStale(runtime, token)) return
@@ -125,6 +138,7 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
     runtime.view.taskId = accepted.taskId
     runtime.view.isTracking = true
     runtime.statusUrl = accepted.statusUrl
+    runtime.awaitingCover = accepted.coversRequest === false
     runtime.remainingPolls = MAX_STATUS_POLLS
     void readStatus(runtime, token)
   }
@@ -144,6 +158,10 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
       runtime.view.status = status
       runtime.view.lookupError = null
       if (TERMINAL_STATES.includes(status.state)) {
+        if (runtime.awaitingCover) {
+          await repeatRequest(runtime, token)
+          return
+        }
         runtime.view.isTracking = false
         return
       }
@@ -152,6 +170,27 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
     } catch (cause) {
       if (isStale(runtime, token)) return
       stopTracking(runtime, describeFailure(cause), isUnresolvableTask(cause))
+    }
+  }
+
+  /** The narrower run ended; submit the original request again, within the retry bound. */
+  async function repeatRequest(runtime: OperationRuntime, token: number): Promise<void> {
+    if (runtime.coverRetriesLeft <= 0) {
+      stopTracking(runtime, COVER_BOUND_MESSAGE, false)
+      return
+    }
+    runtime.coverRetriesLeft -= 1
+    runtime.awaitingCover = false
+    try {
+      const accepted = await runtime.operation.submit(api)
+      if (isStale(runtime, token)) return
+      runtime.view.status = null
+      track(runtime, accepted, token)
+    } catch (cause) {
+      if (isStale(runtime, token)) return
+      runtime.view.isTracking = false
+      runtime.view.submissionError = describeFailure(cause)
+      runtime.view.isAdmissionUnknown = isTransportFailure(cause)
     }
   }
 
@@ -224,6 +263,9 @@ function createView(operation: SyncOperation): SyncOperationView {
     }
   })
 }
+
+const COVER_BOUND_MESSAGE =
+  'A smaller refresh kept running, so the requested full refresh did not start. Try again in a moment.'
 
 function boundReachedMessage(): string {
   return `This client stopped polling after ${MAX_STATUS_POLLS} status lookups.`

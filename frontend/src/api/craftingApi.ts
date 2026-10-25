@@ -39,8 +39,16 @@ export interface CraftingApi {
 }
 
 export const craftingApi: CraftingApi = {
-  loadSelectorOptions(): Promise<SelectorOptions> {
-    return getJson<SelectorOptions>('/crafting/selector-options')
+  /**
+   * HTTP 202 means the characters were never synchronized: the body carries no character list. That is
+   * reported as `pending` with an empty list, so it can never read as "this account has no characters".
+   */
+  async loadSelectorOptions(): Promise<SelectorOptions> {
+    const loaded = await getJson<SelectorOptions>('/crafting/selector-options')
+    if (loaded.characterOptions === null || loaded.characterOptions === undefined) {
+      return { ...loaded, characterOptions: [], characterOptionCount: 0, pending: true }
+    }
+    return loaded
   },
 
   /** An empty `request` asks the backend for its own documented default scope and settings. */

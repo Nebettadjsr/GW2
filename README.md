@@ -133,6 +133,8 @@ npm run dev
 
 Open **http://localhost:5173**. During development, Vite forwards `/api` requests to the backend.
 
+**3. Connect your account:** enter your read-only GW2 API key in the **GW2 API key** panel. The app validates it and synchronizes missing account data. It keeps the key through navigation and reload in browser session storage; **Disconnect** clears it. No server-side GW2 key is required for browser use.
+
 ## Testing
 
 Run backend tests from the repository root:
@@ -168,7 +170,7 @@ Bug reports, feature requests and contributions are welcome. Use [GitHub Issues]
 
 ## Guild Wars 2 API keys
 
-The current local setup uses a locally configured API key. The planned multi-user application will accept each user's key for account-specific access and use it transiently rather than storing it in the application database. Do not commit API keys to the repository or include them in public bug reports.
+Enter your key in the browser connection panel. The backend validates the account identity, separates its cached data by the stable account GUID, and receives the key transiently for ArenaNet calls. Browser session storage is intentionally sufficient for these low-risk read-only game-data tokens; see [UD-018](agent/user-decisions/UD-018-proportionate-gw2-key-handling.md). No key vault or separate app login is needed. Cached game data is disposable and can be fetched again (UD-016). Do not commit keys or deliberately include them in logs or public bug reports.
 
 ## Disclaimer
 

@@ -280,17 +280,15 @@ Phase 4. The frontend needs stable backend APIs for backend-owned workflows. Sma
 
 **Status: In progress.** The versioned account schema and disposable-cache reset are
 implemented (STORY-INFRA-004), and global-only operations were restored
-(STORY-SYNC-007). Account pages are not yet usable on the migrated schema:
-validated access (#8) and scoped persistence (#15) are merged; the recovery chain
-that remains is scoped refresh (#11), HTTP enforcement (#12), and browser
-credentials (#13).
-The unavailable-state presentation (#7) is a separate usability task and does
-not restore account reads by itself. These are the current critical path. Scoped
-refresh (#11) is in PR #57 and is not accepted yet. On the migrated
-schema, Crafting Profit and selector options currently return
-`DATA_STORE_UNAVAILABLE` because retained unscoped calls reach the disabled
-`account_sync_state` path. Account refresh and HTTP integration must remove that
-path for authorized requests before the browser can become usable again.
+(STORY-SYNC-007). The scoped account recovery chain is now integrated:
+validated access (#8), scoped persistence (#15), scoped refresh (#11) and HTTP
+integration (#12, PR #58) are merged. Browser credentials (#13, PR #61) complete
+the recovery path. Its branch passed a local Chrome/live-ArenaNet check: completed
+full sync, selectors, loaded Profit, Bank/Materials, reload retention and disconnect.
+Final merge requires CI/review; this does not close the whole Phase 6 milestone.
+Temporary unavailable-state issue #7 is superseded by #13. Normal scoped HTTP
+paths no longer reach legacy account_sync_state. UD-018 selects simple browser
+session retention without advanced credential hardening.
 Independent coverage work remains queued behind the account recovery path.
 
 ### Objective
