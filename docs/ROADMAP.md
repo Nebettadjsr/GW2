@@ -284,10 +284,14 @@ implemented (STORY-INFRA-004), and global-only operations were restored
 validated access (#8) and scoped persistence (#15) remain unfinished, followed
 by scoped refresh (#11), HTTP enforcement (#12), and browser credentials (#13).
 The unavailable-state presentation (#7) is a separate usability task and does
-not restore account reads by itself. These are the current critical path; their
-`pairing` route requires local integration evidence before merging. Small
-independent CI-only work may proceed through the `auto` queue without delaying
-this path.
+not restore account reads by itself. These are the current critical path. Saved
+implementation work for #8 and #15 is now in PRs #46 and #47 for manual Claude
+completion, CI and Codex review; neither PR is accepted yet. On the migrated
+schema, Crafting Profit and selector options currently return
+`DATA_STORE_UNAVAILABLE` because retained unscoped calls reach the disabled
+`account_sync_state` path. Account refresh and HTTP integration must remove that
+path for authorized requests before the browser can become usable again.
+Independent coverage work remains queued behind the account recovery path.
 
 ### Objective
 
