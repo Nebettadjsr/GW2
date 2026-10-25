@@ -35,10 +35,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class CraftingSelectorOptionsApiControllerTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final java.util.UUID ACCOUNT_ID = java.util.UUID.fromString("11111111-2222-3333-4444-555555555555");
 
     private MockMvc mockMvcFor(StubCharacterSelectionService service) {
         return MockMvcBuilders
                 .standaloneSetup(new CraftingSelectorOptionsApiController(service))
+                .defaultRequest(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/")
+                        .requestAttr(web.access.RequestAccountContext.ATTRIBUTE, new application.access.AccountContext(
+                                ACCOUNT_ID.toString(), java.util.Set.of(), java.util.Set.of(), "ctx-1",
+                                java.time.Instant.parse("2099-01-01T00:00:00Z"))))
                 .setControllerAdvice(new CraftingSelectorOptionsApiExceptionHandler())
                 .build();
     }
@@ -223,6 +228,15 @@ class CraftingSelectorOptionsApiControllerTest {
             if (sqlFailure != null) throw sqlFailure;
             if (runtimeFailure != null) throw runtimeFailure;
             return rows;
+        }
+
+        final List<model.AccountScope> scopes = new java.util.ArrayList<>();
+
+        @Override
+        public List<CharacterRepository.DiscRow> getCraftingCharacterOptions(model.AccountScope scope)
+                throws SQLException {
+            scopes.add(scope);
+            return getCraftingCharacterOptions();
         }
 
         @Override

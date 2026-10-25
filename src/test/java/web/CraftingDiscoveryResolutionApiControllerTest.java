@@ -81,6 +81,7 @@ class CraftingDiscoveryResolutionApiControllerTest {
         factory = new RecordingServiceFactory();
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new CraftingDiscoveryApiController(factory))
+                .defaultRequest(AuthorizedRequests.defaultRequest())
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
     }
@@ -477,6 +478,11 @@ class CraftingDiscoveryResolutionApiControllerTest {
 
         StubDiscoveryService() {
             super(null, null, null, null, null, null);
+        }
+
+        @Override
+        public CraftingDiscoveryService forScope(model.AccountScope scope) {
+            return this;
         }
 
         @Override

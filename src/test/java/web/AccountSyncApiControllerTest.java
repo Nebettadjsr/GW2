@@ -1,21 +1,33 @@
 package web;
 
 import application.AccountRefreshService;
+import application.BackgroundTasks;
+import application.ScopedAccountRefreshCoordinator;
+import application.access.AccountAccessService;
+import application.access.AccountGrant;
+import application.access.AccountProof;
+import application.access.AccountSessions;
+import application.access.InvalidCredentialException;
 import com.jayway.jsonpath.JsonPath;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import web.access.AccountAccessHttp;
+import web.access.RequestAccountContext;
 import web.task.BackgroundTaskService;
 
+import java.time.Clock;
 import java.time.Duration;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
-import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -27,263 +39,224 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * HTTP contract tests for the account-sync trigger (STORY-API-003, TEST_STRATEGY.md §11 and §35):
- * asynchronous acceptance, validation before anything is scheduled, exactly-once delegation to the
- * existing use case, and the refusal of overlapping syncs.
- *
- * <p>The application service is replaced by a controlled subclass of the real
- * {@link AccountRefreshService} through the controller's own constructor seam, so no GW2 API call and
- * no database write happens here. The step order, persistence and short-circuiting inside
- * {@code refreshAll()} stay covered by {@code application.AccountRefreshServiceTest} and are
- * deliberately not restated at this boundary.
- *
- * <p>The status route is registered alongside the trigger because the trigger's central promise — that
- * it returns while the work is still running and hands back a path that already answers — can only be
- * demonstrated by following that path. The real task facility is used rather than a stub, since the
- * asynchrony is the thing under test.
+ * HTTP contract for the keyed account-refresh triggers and the account-task status route
+ * (STORY-API-011, SYNC-006). The real coordinator, task facility and access service are used; only
+ * the upstream (key proof and the refresh body) are offline stand-ins, so nothing reaches GW2.
  */
 class AccountSyncApiControllerTest {
 
+    private static final String A = "11111111-2222-3333-4444-555555555555";
+    private static final String B = "99999999-2222-3333-4444-555555555555";
+    private static final Set<AccountGrant> ALL = Set.of(AccountGrant.values());
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
-    private ControlledAccountRefreshService refreshService;
-    private BackgroundTaskService taskService;
-    private MockMvc mockMvc;
-
-    @BeforeEach
-    void setUp() {
-        refreshService = new ControlledAccountRefreshService();
-        taskService = new BackgroundTaskService();
-        mockMvc = MockMvcBuilders
-                .standaloneSetup(new AccountSyncApiController(refreshService, taskService),
-                        new SyncTaskApiController(taskService))
-                .setControllerAdvice(new SyncApiExceptionHandler())
-                .build();
-    }
+    private final BackgroundTaskService tasks = new BackgroundTaskService();
+    private final AccountSessions sessions = new AccountSessions(Clock.systemUTC(), 8);
+    private final Map<String, AccountProof> keys = new ConcurrentHashMap<>();
+    private final List<String> runs = new CopyOnWriteArrayList<>();
+    private volatile java.util.concurrent.CountDownLatch holdFirstRun;
+    private final AccountAccessService access = new AccountAccessService(key -> {
+        AccountProof proof = keys.get(key);
+        if (proof == null) throw new InvalidCredentialException("rejected");
+        return proof;
+    }, sessions);
+    private final AccountRefreshService refresh = new AccountRefreshService() {
+        @Override
+        public void refreshSources(model.AccountScope scope, Set<String> sources,
+                                   sync.AccountSync.AuthFetcher fetcher) throws Exception {
+            runs.add(scope.id() + ":" + new java.util.TreeSet<>(sources));
+            var hold = holdFirstRun;
+            if (hold != null) {
+                holdFirstRun = null;
+                hold.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            }
+        }
+    };
+    private final ScopedAccountRefreshCoordinator coordinator = new ScopedAccountRefreshCoordinator(
+            refresh, new BackgroundTaskServiceTasks(tasks), access, key -> url -> null);
+    private final MockMvc mvc = MockMvcBuilders
+            .standaloneSetup(new AccountSyncApiController(coordinator, new AccountAccessHttp("")),
+                    new SyncTaskApiController(tasks, access, coordinator))
+            .setControllerAdvice(new SyncApiExceptionHandler())
+            .build();
 
     @AfterEach
-    void tearDown() {
-        refreshService.release();
-        taskService.close();
+    void close() {
+        tasks.close();
     }
 
-    // ---------- acceptance ----------
-
-    @Test
-    void anAcceptedRequestReturns202WithTheTaskIdentifierAndItsStatusPath() throws Exception {
-        String body = mockMvc.perform(post("/api/sync/account"))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.taskId").isString())
-                .andExpect(jsonPath("$.operation").value("ACCOUNT_SYNC"))
-                .andReturn().getResponse().getContentAsString();
-
-        String taskId = JsonPath.read(body, "$.taskId");
-        String statusUrl = JsonPath.read(body, "$.statusUrl");
-        assertEquals("/api/sync/tasks/" + taskId, statusUrl);
-        // Acceptance carries no outcome at all - there is nothing in it a caller could misread as
-        // "the synchronization succeeded".
-        assertFalse(body.contains("SUCCEEDED"), "the acceptance body must not report an outcome: " + body);
+    private AccountSessions.Issued session(String account, String key) {
+        AccountProof proof = new AccountProof(account, ALL, Set.of(), null);
+        keys.put(key, proof);
+        return sessions.establish(proof);
     }
 
-    @Test
-    void theAdvertisedStatusPathIsAlsoReturnedAsTheLocationHeader() throws Exception {
-        mockMvc.perform(post("/api/sync/account"))
-                .andExpect(status().isAccepted())
-                .andExpect(header().string("Location", startsWith("/api/sync/tasks/")));
+    /** What the guard does for an authorized request: the published context plus the cookie. */
+    private static MockHttpServletRequestBuilder authorized(MockHttpServletRequestBuilder builder,
+                                                            AccountSessions.Issued s) {
+        return builder.cookie(new Cookie(AccountAccessHttp.SESSION_COOKIE, s.sessionId()))
+                .header(AccountAccessHttp.ACCESS_CONTEXT_HEADER, s.context().accessContext())
+                .requestAttr(RequestAccountContext.ATTRIBUTE, s.context());
     }
 
-    @Test
-    void anEmptyJsonObjectBodyIsAcceptedToo() throws Exception {
-        mockMvc.perform(post("/api/sync/account")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.taskId").isString());
+    private static MockHttpServletRequestBuilder trigger(String path, AccountSessions.Issued s, String key) {
+        var builder = authorized(post(path), s).header("Origin", "http://localhost")
+                .contentType(MediaType.APPLICATION_JSON);
+        return key == null ? builder : builder.header(AccountAccessHttp.API_KEY_HEADER, key);
     }
 
-    // ---------- validation, before anything is scheduled ----------
-
-    @Test
-    void anUnexpectedRequestFieldIsRejectedAndNothingIsScheduled() throws Exception {
-        mockMvc.perform(post("/api/sync/account")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"scope\": \"ALL\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
-                .andExpect(jsonPath("$.message").value(
-                        "POST /api/sync/account accepts no request fields; send no body or an empty JSON object"));
-
-        assertNothingWasScheduled();
-    }
-
-    @Test
-    void anUnreadableBodyIsRejectedAndNothingIsScheduled() throws Exception {
-        mockMvc.perform(post("/api/sync/account")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{not json"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("MALFORMED_REQUEST"));
-
-        assertNothingWasScheduled();
-    }
-
-    // ---------- asynchrony ----------
-
-    @Test
-    void theTriggerReturnsWhileTheUseCaseCallIsStillBlockedAndTheStatusStaysQueryable() throws Exception {
-        refreshService.blockUntilReleased();
-
-        String accepted = mockMvc.perform(post("/api/sync/account"))
-                .andExpect(status().isAccepted())
-                .andReturn().getResponse().getContentAsString();
-        String statusUrl = JsonPath.read(accepted, "$.statusUrl");
-
-        // The request completed; the use case has not. Both facts are checked before releasing it.
-        assertTrue(refreshService.awaitEntered(), "refreshAll() must have been entered on another thread");
-        mockMvc.perform(get(statusUrl))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.state").value("RUNNING"))
-                .andExpect(jsonPath("$.startedAt").isString())
-                .andExpect(jsonPath("$.finishedAt").doesNotExist())
-                .andExpect(jsonPath("$.failure").doesNotExist());
-
-        refreshService.release();
-
-        assertEquals("SUCCEEDED", awaitTerminalState(statusUrl));
-        assertEquals(1, refreshService.refreshAllCalls());
-    }
-
-    // ---------- delegation and overlapping requests ----------
-
-    @Test
-    void eachAcceptedTaskDelegatesToTheExistingUseCaseExactlyOnce() throws Exception {
-        String firstStatusUrl = accept();
-        assertEquals("SUCCEEDED", awaitTerminalState(firstStatusUrl));
-        assertEquals(1, refreshService.refreshAllCalls());
-
-        String secondStatusUrl = accept();
-        assertEquals("SUCCEEDED", awaitTerminalState(secondStatusUrl));
-        assertEquals(2, refreshService.refreshAllCalls());
-        assertNotEquals(firstStatusUrl, secondStatusUrl, "each task must be separately identifiable");
-    }
-
-    @Test
-    void profitWorkflowUsesTheExistingAccountTaskKeyAndNarrowRefreshUseCase() throws Exception {
-        String statusUrl = mockMvc.perform(post("/api/sync/account/crafting-profit"))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.operation").value("ACCOUNT_SYNC"))
-                .andReturn().getResponse().getHeader("Location");
-
-        assertEquals("SUCCEEDED", awaitTerminalState(statusUrl));
-        assertEquals(1, refreshService.profitRefreshCalls());
-        assertEquals(0, refreshService.refreshAllCalls());
-    }
-
-    @Test
-    void aSecondTriggerWhileTheFirstIsUnfinishedIsRefusedWithoutDelegatingAgain() throws Exception {
-        refreshService.blockUntilReleased();
-        String statusUrl = accept();
-        assertTrue(refreshService.awaitEntered());
-        String runningTaskId = statusUrl.substring(statusUrl.lastIndexOf('/') + 1);
-
-        mockMvc.perform(post("/api/sync/account"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("SYNC_ALREADY_RUNNING"))
-                .andExpect(jsonPath("$.message").value(
-                        "A ACCOUNT_SYNC task is already in progress as task " + runningTaskId
-                                + "; query its status instead of starting another"));
-
-        assertEquals(1, refreshService.refreshAllCalls(),
-                "the refused request must not start a second synchronization");
-        refreshService.release();
-        assertEquals("SUCCEEDED", awaitTerminalState(statusUrl));
-    }
-
-    @Test
-    void aNewSyncIsAcceptedOnceThePreviousOneFinished() throws Exception {
-        String firstStatusUrl = accept();
-        assertEquals("SUCCEEDED", awaitTerminalState(firstStatusUrl));
-
-        mockMvc.perform(post("/api/sync/account")).andExpect(status().isAccepted());
-    }
-
-    private String accept() throws Exception {
-        String body = mockMvc.perform(post("/api/sync/account"))
-                .andExpect(status().isAccepted())
-                .andReturn().getResponse().getContentAsString();
-        return JsonPath.read(body, "$.statusUrl");
-    }
-
-    /**
-     * A rejected request must leave no task behind. Zero delegations proves nothing ran; a following
-     * request being accepted rather than refused with 409 proves nothing was admitted either, since an
-     * admitted task would still be unfinished.
-     */
-    private void assertNothingWasScheduled() throws Exception {
-        assertEquals(0, refreshService.refreshAllCalls(),
-                "a rejected request must not reach the application service");
-        mockMvc.perform(post("/api/sync/account")).andExpect(status().isAccepted());
-    }
-
-    private String awaitTerminalState(String statusUrl) throws Exception {
+    private void awaitRuns(int expected) throws Exception {
         long deadline = System.nanoTime() + TIMEOUT.toNanos();
-        while (System.nanoTime() < deadline) {
-            String body = mockMvc.perform(get(statusUrl))
-                    .andExpect(status().isOk())
-                    .andReturn().getResponse().getContentAsString();
-            String state = JsonPath.read(body, "$.state");
-            if ("SUCCEEDED".equals(state) || "FAILED".equals(state)) {
-                return state;
-            }
-            Thread.sleep(1);
-        }
-        throw new AssertionError(statusUrl + " did not reach a terminal state within " + TIMEOUT);
+        while (runs.size() < expected && System.nanoTime() < deadline) Thread.sleep(10);
+        assertEquals(expected, runs.size());
+    }
+
+    @Test
+    void aFullSyncBehindAProfitOnlyRunIsNotReportedAsThatRunsSuccessAndIsAdmittedAfterTheRecheck() throws Exception {
+        var release = new java.util.concurrent.CountDownLatch(1);
+        holdFirstRun = release;
+        var s = session(A, "key-a");
+        String profitTask = com.jayway.jsonpath.JsonPath.read(
+                mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-a"))
+                        .andExpect(status().isAccepted())
+                        .andExpect(jsonPath("$.admission").value("ADMITTED"))
+                        .andExpect(jsonPath("$.coversRequest").value(true))
+                        .andReturn().getResponse().getContentAsString(), "$.taskId");
+        awaitRuns(1);
+
+        new Thread(() -> {
+            try { Thread.sleep(200); } catch (InterruptedException ignored) { /* test ends */ }
+            release.countDown();
+        }).start();
+        String body = mvc.perform(trigger("/api/sync/account", s, "key-a"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.admission").value("ADMITTED"))
+                .andExpect(jsonPath("$.coversRequest").value(true))
+                .andReturn().getResponse().getContentAsString();
+
+        assertNotEquals(profitTask, com.jayway.jsonpath.JsonPath.read(body, "$.taskId"),
+                "the full sync has its own task; the narrower one is not advertised as it");
+        awaitRuns(2);
+        assertTrue(runs.get(1).contains("LUCK"), "Luck, uncovered by the Profit-only run, was admitted");
+    }
+
+    @Test
+    void aKeyedFullRefreshIsAdmittedForTheSessionAccountOnly() throws Exception {
+        var s = session(A, "key-a");
+        String body = mvc.perform(trigger("/api/sync/account", s, "key-a"))
+                .andExpect(status().isAccepted())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string(AccountAccessHttp.ACCESS_CONTEXT_HEADER, s.context().accessContext()))
+                .andExpect(jsonPath("$.operation").value("ACCOUNT_SYNC"))
+                .andReturn().getResponse().getContentAsString();
+        awaitRuns(1);
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, LUCK, MATERIALS]", runs.get(0));
+        assertFalse(body.contains("key-a"), "the response never carries the key");
     }
 
     /**
-     * The real use case with its one entry point overridden: counts calls, and can be made to block so
-     * the test controls whether the work is still in flight.
+     * Restores the coverage dropped when the account trigger became scoped: GLOBAL_SYNC and the
+     * account operation are different admission keys, so an unfinished global task never blocks a
+     * keyed account refresh, and the two stay separately identifiable through the one status route.
      */
-    private static final class ControlledAccountRefreshService extends AccountRefreshService {
-
-        private final AtomicInteger refreshAllCalls = new AtomicInteger();
-        private final AtomicInteger profitRefreshCalls = new AtomicInteger();
-        private final CountDownLatch entered = new CountDownLatch(1);
-        private final CountDownLatch released = new CountDownLatch(1);
-        private volatile boolean blocking;
-
-        @Override
-        public void refreshAll() throws Exception {
-            refreshAllCalls.incrementAndGet();
-            entered.countDown();
-            if (blocking && !released.await(TIMEOUT.toSeconds(), TimeUnit.SECONDS)) {
-                throw new AssertionError("blocked refreshAll() was never released");
-            }
+    @Test
+    void anUnfinishedGlobalTaskDoesNotBlockTheKeyedAccountTrigger() throws Exception {
+        var release = new java.util.concurrent.CountDownLatch(1);
+        try {
+            String globalId = tasks.submit("GLOBAL_SYNC", () -> release.await());
+            var s = session(A, "key-a");
+            String body = mvc.perform(trigger("/api/sync/account", s, "key-a"))
+                    .andExpect(status().isAccepted())
+                    .andExpect(jsonPath("$.operation").value("ACCOUNT_SYNC"))
+                    .andReturn().getResponse().getContentAsString();
+            awaitRuns(1);
+            String accountId = com.jayway.jsonpath.JsonPath.read(body, "$.taskId");
+            org.junit.jupiter.api.Assertions.assertNotEquals(globalId, accountId);
+            mvc.perform(authorized(get("/api/sync/tasks/" + globalId), s))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.operation").value("GLOBAL_SYNC"))
+                    .andExpect(jsonPath("$.state").value("RUNNING"));
+        } finally {
+            release.countDown();
         }
+    }
 
-        @Override
-        public void refreshCraftingProfitData() {
-            profitRefreshCalls.incrementAndGet();
-        }
+    @Test
+    void theProfitRefreshExcludesLuck() throws Exception {
+        var s = session(A, "key-a");
+        mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-a")).andExpect(status().isAccepted());
+        awaitRuns(1);
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, MATERIALS]", runs.get(0));
+    }
 
-        void blockUntilReleased() {
-            blocking = true;
-        }
+    @Test
+    void aMissingKeyAdmitsNothingAndUsesNoConfiguredCredential() throws Exception {
+        var s = session(A, "key-a");
+        mvc.perform(trigger("/api/sync/account", s, null))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("CREDENTIAL_REQUIRED"));
+        Thread.sleep(100);
+        assertTrue(runs.isEmpty());
+        assertFalse(coordinator.isActive(model.AccountScope.of(A)));
+    }
 
-        boolean awaitEntered() throws InterruptedException {
-            return entered.await(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
-        }
+    @Test
+    void anInvalidOrForeignKeyAdmitsNothing() throws Exception {
+        var s = session(A, "key-a");
+        keys.put("key-b", new AccountProof(B, ALL, Set.of(), null));
+        mvc.perform(trigger("/api/sync/account", s, "unknown"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("INVALID_CREDENTIAL"));
+        var s2 = session(A, "key-a2");
+        mvc.perform(trigger("/api/sync/account", s2, "key-b")).andExpect(status().isForbidden());
+        Thread.sleep(100);
+        assertTrue(runs.isEmpty());
+    }
 
-        void release() {
-            released.countDown();
-        }
+    @Test
+    void aRequestWithoutASameOriginHeaderIsRejectedBeforeAnyWork() throws Exception {
+        var s = session(A, "key-a");
+        mvc.perform(authorized(post("/api/sync/account"), s).header(AccountAccessHttp.API_KEY_HEADER, "key-a"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("ORIGIN_REJECTED"));
+        Thread.sleep(100);
+        assertTrue(runs.isEmpty());
+    }
 
-        int refreshAllCalls() {
-            return refreshAllCalls.get();
-        }
+    @Test
+    void anUnexpectedBodyFieldIsRejectedBeforeAdmission() throws Exception {
+        var s = session(A, "key-a");
+        mvc.perform(trigger("/api/sync/account", s, "key-a").content("{\"accountId\":\"" + B + "\"}"))
+                .andExpect(status().isBadRequest());
+        Thread.sleep(100);
+        assertTrue(runs.isEmpty());
+    }
 
-        int profitRefreshCalls() {
-            return profitRefreshCalls.get();
-        }
+    @Test
+    void accountTasksAreObservableOnlyByTheOwningAccount() throws Exception {
+        var a = session(A, "key-a");
+        var b = session(B, "key-b");
+        String body = mvc.perform(trigger("/api/sync/account", a, "key-a"))
+                .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString();
+        awaitRuns(1);
+        String path = JsonPath.read(body, "$.statusUrl");
+        String unknown = "/api/sync/tasks/00000000-0000-0000-0000-000000000000";
+
+        mvc.perform(authorized(get(path), a)).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"));
+        // Foreign and unknown identifiers are indistinguishable once authenticated.
+        String foreign = mvc.perform(authorized(get(path), b)).andExpect(status().isNotFound())
+                .andReturn().getResponse().getContentAsString();
+        String missing = mvc.perform(authorized(get(unknown), b)).andExpect(status().isNotFound())
+                .andReturn().getResponse().getContentAsString();
+        assertEquals(missing, foreign);
+        // A replacement session for the same GUID may observe retained work.
+        var replacement = session(A, "key-a-replacement");
+        mvc.perform(authorized(get(path), replacement)).andExpect(status().isOk());
+        // No session at all is 401, never the task.
+        mvc.perform(get(path)).andExpect(status().isUnauthorized());
+        // Expired/revoked session: no status access.
+        access.logout(a.sessionId());
+        mvc.perform(authorized(get(path), a)).andExpect(status().isUnauthorized());
     }
 }

@@ -44,6 +44,11 @@ public class CraftingDiscoveryService {
     private final ItemRepository itemRepo;
     private final CraftingGraphCache graphCache;
     private final CraftingPlanner planner;
+    /** The authorized account of this request-local instance, or null for the retained unscoped path. */
+    private final model.AccountScope scope;
+    private java.time.Clock clock = java.time.Clock.systemUTC();
+    /** Account max age; null means published inputs are never reported stale. */
+    private java.time.Duration accountMaxAge;
 
     // Scoped to the most recent reload(); backs getResultByRecipeId/itemName/itemSellUnit so a
     // stale cache from an earlier reload() - or one skipped by the "no missing recipes" early
@@ -81,12 +86,147 @@ public class CraftingDiscoveryService {
                                     ItemRepository itemRepo,
                                     CraftingGraphCache graphCache,
                                     CraftingPlanner planner) {
+        this(recipeRepo, invRepo, tpRepo, itemRepo, graphCache, planner, null);
+    }
+
+    private CraftingDiscoveryService(RecipeRepository recipeRepo,
+                                     InventoryRepository invRepo,
+                                     TpPriceRepository tpRepo,
+                                     ItemRepository itemRepo,
+                                     CraftingGraphCache graphCache,
+                                     CraftingPlanner planner,
+                                     model.AccountScope scope) {
+        this.scope = scope;
         this.recipeRepo = recipeRepo;
         this.invRepo = invRepo;
         this.tpRepo = tpRepo;
         this.itemRepo = itemRepo;
         this.graphCache = graphCache;
         this.planner = planner;
+    }
+
+    /**
+     * A fresh request-local service bound to one authorized account (STORY-API-011). Account inputs
+     * (recipe knowledge, characters, inventory) are then read only through that scope; the domain
+     * calculation is unchanged and receives the already-scoped ordinary inputs.
+     */
+    public CraftingDiscoveryService forScope(model.AccountScope scope) {
+        CraftingDiscoveryService bound = new CraftingDiscoveryService(recipeRepo, invRepo, tpRepo, itemRepo,
+                graphCache, planner, java.util.Objects.requireNonNull(scope));
+        bound.clock = clock;
+        bound.accountMaxAge = accountMaxAge;
+        return bound;
+    }
+
+    /** Sets the account freshness policy used to classify published inputs as stale. */
+    public CraftingDiscoveryService withFreshness(java.time.Clock clock, java.time.Duration accountMaxAge) {
+        this.clock = clock;
+        this.accountMaxAge = accountMaxAge;
+        return this;
+    }
+
+    /** The account sources one Discovery calculation consumes. */
+    public static final java.util.Set<String> SOURCES = java.util.Set.of(
+            repo.AccountSyncStateRepository.BANK, repo.AccountSyncStateRepository.MATERIALS,
+            repo.AccountSyncStateRepository.RECIPES, repo.AccountSyncStateRepository.CHARACTERS);
+
+    /**
+     * Source state of the account's Discovery inputs: {@code missing} were never published (no
+     * calculation is possible), {@code stale} were published but expired (still usable).
+     */
+    public record InputState(java.util.Set<String> missing, java.util.Set<String> stale) {
+        public java.util.Set<String> needingRefresh() {
+            java.util.Set<String> all = new java.util.TreeSet<>(missing);
+            all.addAll(stale);
+            return all;
+        }
+    }
+
+    /** Reads the markers only (no rows, no activity). The retained unscoped service reports nothing needed. */
+    public InputState inputState() throws SQLException {
+        if (scope == null) return new InputState(java.util.Set.of(), java.util.Set.of());
+        java.util.Set<String> missing = new java.util.TreeSet<>();
+        java.util.Set<String> stale = new java.util.TreeSet<>();
+        try (java.sql.Connection con = repo.Db.open()) {
+            repo.ManagedSchema.requireManagedAccountSchema(con, "account-scoped Discovery");
+            var states = new repo.AccountSourceStateRepository();
+            java.time.Instant now = clock.instant();
+            for (String source : SOURCES) {
+                var state = states.read(con, scope, source);
+                if (state.isEmpty()) missing.add(source);
+                else if (accountMaxAge != null && state.get().completedAt().plus(accountMaxAge).isBefore(now)) {
+                    stale.add(source);
+                }
+            }
+        }
+        return new InputState(missing, stale);
+    }
+
+    /** Records ordinary authorized use (activity only, never freshness) for a request that calculated nothing. */
+    public void recordAuthorizedUse() throws SQLException {
+        if (scope == null) return;
+        try (java.sql.Connection con = repo.Db.open()) {
+            new repo.AccountRegistryRepository().recordAuthorizedUse(con, scope, clock.instant());
+        }
+    }
+
+    /** The account's stored inputs are missing: a keyed sync must publish them first. */
+    public static final class AccountInputsUnavailableException extends RuntimeException {
+        public AccountInputsUnavailableException() {
+            super("account inputs have not been synchronized");
+        }
+    }
+
+    /** The selected character is not on the authorized account's roster; nothing was calculated. */
+    public static final class CharacterNotOwnedException extends RuntimeException {
+        public CharacterNotOwnedException() {
+            super("selected character is not on the authorized account");
+        }
+    }
+
+    /**
+     * Validates, before any quote, source or calculation work and without recording activity, that
+     * the selected character belongs to this account. A no-op for the retained unscoped service.
+     */
+    public void verifySelectedCharacter(DiscChoice choice) throws SQLException {
+        requireCharacterScope(choice);
+        if (scope == null) return;
+        try (java.sql.Connection con = repo.Db.open()) {
+            repo.ManagedSchema.requireManagedAccountSchema(con, "account-scoped Discovery");
+            // A never-published roster has nothing to compare with: that is the pending case.
+            if (new repo.AccountSourceStateRepository()
+                    .read(con, scope, repo.AccountSyncStateRepository.CHARACTERS).isEmpty()) return;
+            if (!new repo.CharacterRepository().loadAllCharacterNames(con, scope).contains(choice.charName)) {
+                throw new CharacterNotOwnedException();
+            }
+        }
+    }
+
+    /**
+     * Opens the scoped connection, records authorized use (activity only, never freshness) and
+     * refuses unless every source Discovery consumes has been published for this account.
+     */
+    private java.sql.Connection openScoped(String charName, boolean recordUse) throws SQLException {
+        java.sql.Connection con = repo.Db.open();
+        try {
+            repo.ManagedSchema.requireManagedAccountSchema(con, "account-scoped Discovery");
+            var states = new repo.AccountSourceStateRepository();
+            for (String source : List.of(repo.AccountSyncStateRepository.BANK,
+                    repo.AccountSyncStateRepository.MATERIALS, repo.AccountSyncStateRepository.RECIPES,
+                    repo.AccountSyncStateRepository.CHARACTERS)) {
+                if (states.read(con, scope, source).isEmpty()) throw new AccountInputsUnavailableException();
+            }
+            if (!new repo.CharacterRepository().loadAllCharacterNames(con, scope).contains(charName)) {
+                throw new CharacterNotOwnedException();
+            }
+            if (recordUse) {
+                new repo.AccountRegistryRepository().recordAuthorizedUse(con, scope, clock.instant());
+            }
+            return con;
+        } catch (SQLException | RuntimeException failure) {
+            try { con.close(); } catch (SQLException ignored) { /* original failure wins */ }
+            throw failure;
+        }
     }
 
     /** Data loaded and computed for one reload() invocation, handed back to the presentation layer. */
@@ -251,7 +391,17 @@ public class CraftingDiscoveryService {
 
         List<Recipe> allRecipes = graph.getRecipes();
 
-        List<Integer> missingIds = recipeRepo.loadMissingDiscoverableRecipeIdsForCharacter(charName, discipline);
+        List<Integer> missingIds;
+        Set<Integer> knownIds;
+        if (scope == null) {
+            missingIds = recipeRepo.loadMissingDiscoverableRecipeIdsForCharacter(charName, discipline);
+            knownIds = missingIds.isEmpty() ? Set.of() : recipeRepo.loadKnownRecipeIds();
+        } else {
+            try (java.sql.Connection con = openScoped(charName, true)) {
+                missingIds = recipeRepo.loadMissingDiscoverableRecipeIdsForCharacter(con, scope, charName, discipline);
+                knownIds = missingIds.isEmpty() ? Set.of() : recipeRepo.loadKnownRecipeIds(con, scope);
+            }
+        }
 
         if (missingIds.isEmpty()) {
             return Candidates.noMissingRecipes();
@@ -273,7 +423,6 @@ public class CraftingDiscoveryService {
                 .map(r -> r.recipeId)
                 .collect(Collectors.toSet());
 
-        Set<Integer> knownIds = recipeRepo.loadKnownRecipeIds();
         Set<Integer> usableRecipeIds = allRecipes.stream()
                 .filter(r -> r.minRating <= maxLevel)
                 .filter(r -> supportsDiscipline(r.disciplinesText, discipline))
@@ -298,7 +447,8 @@ public class CraftingDiscoveryService {
 
         if (settings.useOwnMats) {
             Map<Integer, InventoryRepository.OwnedQuantity> owned =
-                    invRepo.loadOwnedInventoryForCharacter(selectedCharacterName);
+                    scope == null ? invRepo.loadOwnedInventoryForCharacter(selectedCharacterName)
+                            : invRepo.loadOwnedInventoryForCharacter(scope, selectedCharacterName);
 
             Map<Integer, Integer> sellable = new HashMap<>();
             Map<Integer, Integer> bound = new HashMap<>();

@@ -11,7 +11,8 @@ import application.CraftingDiscoveryService;
 import application.CraftingProfitService;
 import application.ProfitInputSession;
 import application.TradingPostRefreshCoordinator;
-import application.CurrentAccountLuckService;
+import application.AccountLuckService;
+import application.ScopedAccountRefreshCoordinator;
 import application.GlobalDataRefreshService;
 import application.MaterialStorageService;
 import application.ItemReadService;
@@ -85,6 +86,29 @@ public class Gw2ApiApplication {
         return new AccountRefreshCoordinator(refresh, tasks);
     }
 
+    /**
+     * The account-keyed refresh coordinator the HTTP routes admit through (STORY-API-011). Its only
+     * credential is the transient key admitted with a run: the fetcher factory binds that key to
+     * every upstream GET and never consults the deployment key.
+     */
+    @Bean
+    public ScopedAccountRefreshCoordinator scopedAccountRefreshCoordinator(
+            AccountRefreshService refresh, BackgroundTasks tasks, AccountAccessService access) {
+        return new ScopedAccountRefreshCoordinator(refresh, tasks, access,
+                key -> url -> api.Gw2ApiClient.getAuth(url, key));
+    }
+
+    /** Production reader behind the System Status own-account projection; connects only when called. */
+    @Bean
+    public SystemStatusApiController.AccountStateReader accountStateReader() {
+        return (scope, sources) -> {
+            try (java.sql.Connection con = repo.Db.open()) {
+                repo.ManagedSchema.requireManagedAccountSchema(con, "account status");
+                return new repo.AccountSourceStateRepository().readAll(con, scope, sources);
+            }
+        };
+    }
+
     /** Shared Trading Post demand coordination, deliberately separate from the account one. */
     @Bean
     public TradingPostRefreshCoordinator tradingPostRefreshCoordinator(
@@ -107,6 +131,7 @@ public class Gw2ApiApplication {
             CraftingGraphCache graphCache,
             AccountRefreshCoordinator accountRefreshCoordinator,
             TradingPostRefreshCoordinator tradingPostRefreshCoordinator,
+            ScopedAccountRefreshCoordinator scopedAccountRefreshCoordinator,
             BackgroundTasks tasks,
             @Value("${gw2.account-data.max-age-ms:900000}") long accountMaxAgeMs) {
         return new CachedCraftingProfitService(
@@ -128,7 +153,8 @@ public class Gw2ApiApplication {
                 tradingPostRefreshCoordinator,
                 tasks,
                 Clock.systemUTC(),
-                Duration.ofMillis(accountMaxAgeMs));
+                Duration.ofMillis(accountMaxAgeMs)).withScopedRefresh(scopedAccountRefreshCoordinator)
+                .withCharacterRoster(scope -> new repo.CharacterRepository().loadAllCharacterNames(scope));
     }
 
     /**
@@ -138,8 +164,11 @@ public class Gw2ApiApplication {
      * earlier one's data.
      */
     @Bean
-    public Supplier<CraftingDiscoveryService> craftingDiscoveryServiceFactory(CraftingGraphCache graphCache) {
-        return () -> new CraftingDiscoveryService(graphCache);
+    public Supplier<CraftingDiscoveryService> craftingDiscoveryServiceFactory(
+            CraftingGraphCache graphCache,
+            @Value("${gw2.account-data.max-age-ms:900000}") long accountMaxAgeMs) {
+        return () -> new CraftingDiscoveryService(graphCache)
+                .withFreshness(Clock.systemUTC(), Duration.ofMillis(accountMaxAgeMs));
     }
 
     /** Shared immutable catalog snapshot for calculations, ingredient search and refresh invalidation. */
@@ -238,11 +267,12 @@ public class Gw2ApiApplication {
         return new MaterialStorageService();
     }
 
+    /** Scoped Luck read; the progression is global, the stored consumed Luck is the account's. */
     @Bean
-    public CurrentAccountLuckService currentAccountLuckService(
+    public AccountLuckService accountLuckService(
             @Value("${gw2.account-luck.schema-init:true}") boolean initializeSchema) throws SQLException {
         if (initializeSchema) AccountLuckSchema.ensure();
-        return new CurrentAccountLuckService();
+        return new AccountLuckService();
     }
 
     @Bean
@@ -280,6 +310,13 @@ public class Gw2ApiApplication {
     @Bean
     public AccountAccessService accountAccessService(AccountProofPort proof, AccountSessions sessions) {
         return new AccountAccessService(proof, sessions);
+    }
+
+    /** Source-state handling for the keyless account reads (STORY-API-011). */
+    @Bean
+    public application.ScopedSourceGate scopedSourceGate(
+            @Value("${gw2.account-data.max-age-ms:900000}") long accountMaxAgeMs) {
+        return application.ScopedSourceGate.database(Clock.systemUTC(), Duration.ofMillis(accountMaxAgeMs));
     }
 
     /** The transport rules the session routes and the account guard must apply identically. */

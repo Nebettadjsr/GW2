@@ -10,6 +10,16 @@ package web.dto;
  * @param taskId    identifier to poll
  * @param operation operation the accepted task runs
  * @param statusUrl path of the status endpoint for {@code taskId}
+ * @param admission how the demand was admitted (account sync only), e.g. {@code ADMITTED} or {@code WAITING_FOR_ACTIVE_TASK}
+ * @param coversRequest false when {@code taskId} is an earlier, narrower run that does <em>not</em> refresh every
+ *                      requested source: its success is not a successful sync of this request; retry afterwards
+ * @param retryAfterSeconds suggested delay before repeating the request when {@code coversRequest} is false
  */
-public record SyncTaskAcceptedResponse(String taskId, String operation, String statusUrl) {
+@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+public record SyncTaskAcceptedResponse(String taskId, String operation, String statusUrl,
+                                       String admission, Boolean coversRequest, Integer retryAfterSeconds) {
+
+    public SyncTaskAcceptedResponse(String taskId, String operation, String statusUrl) {
+        this(taskId, operation, statusUrl, null, null, null);
+    }
 }

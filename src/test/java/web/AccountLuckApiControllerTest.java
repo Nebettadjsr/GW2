@@ -1,16 +1,11 @@
 package web;
 
 import application.AccountLuckService;
-import application.CurrentAccountLuckService;
-import application.CurrentAccountLuckService.AccountIdentityUnavailableException;
-import application.CurrentAccountLuckService.AccountLuckNotSyncedException;
-import application.CurrentAccountLuckService.AccountLuckSyncUnavailableException;
 import luck.MagicFindProgression;
 import model.AccountLuck;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import java.sql.SQLException;
 import java.time.Instant;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -22,10 +17,13 @@ class AccountLuckApiControllerTest {
     void returnsResolvedCurrentAccountWithoutAcceptingAnAccountId() throws Exception {
         var status = new AccountLuckService(null, MagicFindProgression.canonical()).resolve(
                 new AccountLuck("account-a", 14_500, Instant.parse("2026-09-29T00:00:00Z")));
-        var service = new CurrentAccountLuckService(null, null) {
-            @Override public AccountLuckService.AccountLuckStatus currentStatus() { return status; }
+        var service = new AccountLuckService(null, MagicFindProgression.canonical()) {
+            @Override public java.util.Optional<AccountLuckStatus> getStatus(model.AccountScope scope) {
+                return java.util.Optional.of(status);
+            }
         };
         var mvc = MockMvcBuilders.standaloneSetup(new AccountLuckApiController(service))
+                .defaultRequest(AuthorizedRequests.defaultRequest())
                 .setControllerAdvice(new AccountLuckApiExceptionHandler()).build();
 
         mvc.perform(get("/api/account/luck"))
@@ -51,10 +49,13 @@ class AccountLuckApiControllerTest {
     void reportsTheCapAsTheCurrentThresholdWithoutInventingANextOne() throws Exception {
         var status = new AccountLuckService(null, MagicFindProgression.canonical()).resolve(
                 new AccountLuck("account-a", 4_295_450, Instant.parse("2026-09-29T00:00:00Z")));
-        var service = new CurrentAccountLuckService(null, null) {
-            @Override public AccountLuckService.AccountLuckStatus currentStatus() { return status; }
+        var service = new AccountLuckService(null, MagicFindProgression.canonical()) {
+            @Override public java.util.Optional<AccountLuckStatus> getStatus(model.AccountScope scope) {
+                return java.util.Optional.of(status);
+            }
         };
         MockMvcBuilders.standaloneSetup(new AccountLuckApiController(service))
+                .defaultRequest(AuthorizedRequests.defaultRequest())
                 .setControllerAdvice(new AccountLuckApiExceptionHandler()).build()
                 .perform(get("/api/account/luck"))
                 .andExpect(status().isOk())
@@ -66,38 +67,17 @@ class AccountLuckApiControllerTest {
     }
 
     @Test
-    void mapsMissingSyncAndIdentityFailure() throws Exception {
-        var missing = new CurrentAccountLuckService(null, null) {
-            @Override public AccountLuckService.AccountLuckStatus currentStatus() {
-                throw new AccountLuckNotSyncedException();
+    void reportsCredentialRequiredWhenNoLuckWasPublishedForTheAccount() throws Exception {
+        var missing = new AccountLuckService(null, MagicFindProgression.canonical()) {
+            @Override public java.util.Optional<AccountLuckStatus> getStatus(model.AccountScope scope) {
+                return java.util.Optional.empty();
             }
         };
         MockMvcBuilders.standaloneSetup(new AccountLuckApiController(missing))
+                .defaultRequest(AuthorizedRequests.defaultRequest())
                 .setControllerAdvice(new AccountLuckApiExceptionHandler()).build()
                 .perform(get("/api/account/luck"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("ACCOUNT_LUCK_NOT_SYNCED"));
-
-        var identityFailure = new CurrentAccountLuckService(null, null) {
-            @Override public AccountLuckService.AccountLuckStatus currentStatus() throws SQLException, AccountIdentityUnavailableException {
-                throw new AccountIdentityUnavailableException(new IllegalStateException());
-            }
-        };
-        MockMvcBuilders.standaloneSetup(new AccountLuckApiController(identityFailure))
-                .setControllerAdvice(new AccountLuckApiExceptionHandler()).build()
-                .perform(get("/api/account/luck"))
-                .andExpect(status().isBadGateway())
-                .andExpect(jsonPath("$.error").value("ACCOUNT_IDENTITY_UNAVAILABLE"));
-
-        var syncFailure = new CurrentAccountLuckService(null, null) {
-            @Override public AccountLuckService.AccountLuckStatus currentStatus() throws AccountLuckSyncUnavailableException {
-                throw new AccountLuckSyncUnavailableException(new IllegalStateException());
-            }
-        };
-        MockMvcBuilders.standaloneSetup(new AccountLuckApiController(syncFailure))
-                .setControllerAdvice(new AccountLuckApiExceptionHandler()).build()
-                .perform(get("/api/account/luck"))
-                .andExpect(status().isBadGateway())
-                .andExpect(jsonPath("$.error").value("ACCOUNT_LUCK_SYNC_UNAVAILABLE"));
+                .andExpect(jsonPath("$.error").value("CREDENTIAL_REQUIRED"));
     }
 }

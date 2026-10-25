@@ -17,4 +17,12 @@ public class TradingPostPriceRefreshGateway {
     public void syncTpPricesForProfit() throws Exception {
         TpSync.syncTpPricesForProfit();
     }
+
+    public void syncTpPricesForDiscovery(model.AccountScope scope) throws Exception {
+        TpSync.syncTpPricesForDiscovery(scope);
+    }
+
+    public void syncTpPricesForProfit(model.AccountScope scope) throws Exception {
+        TpSync.syncTpPricesForProfit(scope);
+    }
 }

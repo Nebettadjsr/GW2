@@ -53,10 +53,42 @@ class DiscoveryCalculationQuoteCoordinationTest {
     private final ExecutorService callers = Executors.newFixedThreadPool(2);
     private final List<Set<Integer>> coveredWhenCalculationStarted = Collections.synchronizedList(new ArrayList<>());
 
-    private final Supplier<CraftingDiscoveryService> factory = () -> {
-        coveredWhenCalculationStarted.add(Set.copyOf(store.quotes.keySet()));
-        throw new IllegalStateException("calculation reached");
+    /** Character validation passes; the calculation itself records the covered quotes and stops. */
+    private final CraftingDiscoveryService reaching = new CraftingDiscoveryService() {
+        @Override
+        public CraftingDiscoveryService forScope(model.AccountScope scope) {
+            return this;
+        }
+
+        @Override
+        public void verifySelectedCharacter(repo.DiscChoice choice) {
+        }
+
+        @Override
+        public DiscoveryData reload(repo.DiscChoice choice, craft.CraftingSettings settings) {
+            return reached();
+        }
+
+        @Override
+        public application.CraftingResolutionDetail resolveDetail(int recipeId, repo.DiscChoice choice,
+                craft.CraftingSettings settings) {
+            return reached();
+        }
+
+        private <T> T reached() {
+            coveredWhenCalculationStarted.add(Set.copyOf(store.quotes.keySet()));
+            throw new IllegalStateException("calculation reached");
+        }
     };
+    private final Supplier<CraftingDiscoveryService> factory = () -> reaching;
+
+    private static org.springframework.mock.web.MockHttpServletRequest http() {
+        var request = new org.springframework.mock.web.MockHttpServletRequest();
+        request.setAttribute(web.access.RequestAccountContext.ATTRIBUTE, new application.access.AccountContext(
+                AuthorizedRequests.ACCOUNT_ID.toString(), Set.of(), Set.of(), "ctx-1",
+                java.time.Instant.parse("2099-01-01T00:00:00Z")));
+        return request;
+    }
 
     @AfterEach
     void close() {
@@ -68,14 +100,14 @@ class DiscoveryCalculationQuoteCoordinationTest {
     @Test
     void tableRouteWaitsForOverlappingManualRunThenCoversIdsAddedMeanwhile() throws Exception {
         assertCalculationWaits(new CraftingDiscoveryApiController(factory, coordinator),
-                c -> c.discovery(REQUEST));
+                c -> c.discovery(http(), REQUEST));
     }
 
     @Test
     void resolutionRouteWaitsForOverlappingManualRunThenCoversIdsAddedMeanwhile() throws Exception {
         var body = new CraftingDiscoveryResolutionRequest(7, REQUEST);
         assertCalculationWaits(new CraftingDiscoveryApiController(factory, coordinator),
-                c -> c.discoveryResolution(body));
+                c -> c.discoveryResolution(http(), body));
     }
 
     private interface Call {
@@ -117,7 +149,7 @@ class DiscoveryCalculationQuoteCoordinationTest {
         store.discoveryIds.add(1);
         var controller = new CraftingDiscoveryApiController(factory, coordinator);
 
-        Exception thrown = assertThrows(Exception.class, () -> controller.discovery(REQUEST));
+        Exception thrown = assertThrows(Exception.class, () -> controller.discovery(http(), REQUEST));
         assertSame(store.failure, thrown);
         assertTrue(coveredWhenCalculationStarted.isEmpty());
         assertTrue(coordinator.lastFailure(TradingPostRefreshCoordinator.Variant.DISCOVERY).isPresent());
@@ -135,6 +167,12 @@ class DiscoveryCalculationQuoteCoordinationTest {
         volatile boolean holdFirstFetch;
         volatile Exception failure;
         private boolean held;
+
+        /** The route now demands the requesting account's required ids; the fixture's id set is the same. */
+        @Override
+        public void syncTpPricesForDiscovery(model.AccountScope scope) throws Exception {
+            syncTpPricesForDiscovery();
+        }
 
         @Override
         public void syncTpPricesForDiscovery() throws Exception {

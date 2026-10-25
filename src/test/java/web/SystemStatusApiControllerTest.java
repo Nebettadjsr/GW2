@@ -14,7 +14,7 @@ class SystemStatusApiControllerTest {
     void exposesProcessLocalGlobalRefreshStatus() throws Exception {
         var service = new GlobalDataRefreshService();
         MockMvc mvc = standaloneSetup(new SystemStatusApiController(service,
-                new application.AccountRefreshService(), new application.TradingPostPriceCacheStatusService(
+                new application.TradingPostPriceCacheStatusService(
                 new repo.tp.TpPriceRepository() {
                     @Override public CacheStatus cacheStatus() {
                         return new CacheStatus(0, 0, null);
@@ -28,5 +28,46 @@ class SystemStatusApiControllerTest {
                 .andExpect(jsonPath("$.accountLastRefreshedAt").doesNotExist())
                 .andExpect(jsonPath("$.cachedPriceItems").value(0))
                 .andExpect(jsonPath("$.stalePriceItems").value(0));
+    }
+
+    @Test
+    void projectsOnlyTheAuthorizedAccountsGrantLimitedFreshnessAndRejectsBadProof() throws Exception {
+        var sessions = new application.access.AccountSessions(java.time.Clock.systemUTC(), 4);
+        var access = new application.access.AccountAccessService(key -> { throw new application.access.InvalidCredentialException("no"); }, sessions);
+        var issued = sessions.establish(new application.access.AccountProof("11111111-2222-3333-4444-555555555555",
+                java.util.Set.of(application.access.AccountGrant.ACCOUNT, application.access.AccountGrant.INVENTORIES), java.util.Set.of(), null));
+        var seen = new java.util.ArrayList<java.util.Set<String>>();
+        var done = java.time.Instant.parse("2026-10-25T10:00:00Z");
+        var activity = new java.util.ArrayList<String>();
+        var gate = new application.ScopedSourceGate((scope, source) -> java.util.Optional.empty(),
+                (scope, at) -> activity.add(scope.id()), java.time.Clock.systemUTC(), java.time.Duration.ofMinutes(15));
+        MockMvc mvc = standaloneSetup(new SystemStatusApiController(new GlobalDataRefreshService(),
+                new application.TradingPostPriceCacheStatusService(new repo.tp.TpPriceRepository() {
+                    @Override public CacheStatus cacheStatus() { return new CacheStatus(0, 0, null); }
+                }), access, (scope, sources) -> {
+                    seen.add(sources);
+                    var states = new java.util.LinkedHashMap<String, repo.AccountSourceStateRepository.SourceState>();
+                    for (String s : sources) states.put(s, new repo.AccountSourceStateRepository.SourceState(s, 1, done));
+                    return states;
+                }, gate)).build();
+
+        var cookie = new jakarta.servlet.http.Cookie(web.access.AccountAccessHttp.SESSION_COOKIE, issued.sessionId());
+        mvc.perform(get("/api/system/status").cookie(cookie)
+                        .header(web.access.AccountAccessHttp.ACCESS_CONTEXT_HEADER, issued.context().accessContext()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accountLastRefreshedAt").exists())
+                .andExpect(jsonPath("$.accountRefreshScope").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("LUCK"))));
+        org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of("11111111-2222-3333-4444-555555555555"), activity,
+                "ordinary authorized use is recorded as activity");
+        org.junit.jupiter.api.Assertions.assertFalse(seen.get(0).contains("LUCK"), "ungranted sources are not projected");
+
+        mvc.perform(get("/api/system/status").cookie(cookie).header(
+                        web.access.AccountAccessHttp.ACCESS_CONTEXT_HEADER, "stale"))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/system/status").cookie(new jakarta.servlet.http.Cookie(
+                        web.access.AccountAccessHttp.SESSION_COOKIE, "unknown")))
+                .andExpect(status().isUnauthorized());
+        org.junit.jupiter.api.Assertions.assertEquals(1, activity.size(), "rejected proof records no activity");
     }
 }

@@ -1,11 +1,13 @@
 package web;
 
 import application.CharacterSelectionService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import repo.CharacterRepository;
+import web.access.RequestAccountContext;
 import web.dto.CraftingSelectorOptionsResponse;
 
 import java.sql.SQLException;
@@ -44,8 +46,17 @@ public class CraftingSelectorOptionsApiController {
 
     private final CharacterSelectionService characterSelectionService;
 
+    private final application.ScopedSourceGate gate;
+
     public CraftingSelectorOptionsApiController(CharacterSelectionService characterSelectionService) {
+        this(characterSelectionService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public CraftingSelectorOptionsApiController(CharacterSelectionService characterSelectionService,
+                                                application.ScopedSourceGate gate) {
         this.characterSelectionService = characterSelectionService;
+        this.gate = gate;
     }
 
     /**
@@ -57,15 +68,25 @@ public class CraftingSelectorOptionsApiController {
      * character is substituted, and the {@code All} and generic discipline entries are unaffected.
      */
     @GetMapping(path = "/selector-options", produces = MediaType.APPLICATION_JSON_VALUE)
-    public CraftingSelectorOptionsResponse selectorOptions() throws SQLException {
-        List<CraftingSelectorOptionsResponse.CharacterOptionDto> characterOptions =
-                toCharacterOptions(characterSelectionService.getCraftingCharacterOptions());
+    public org.springframework.http.ResponseEntity<CraftingSelectorOptionsResponse> selectorOptions(
+            HttpServletRequest http) throws SQLException {
+        var scope = RequestAccountContext.scopeOf(http);
+        var read = application.ScopedSourceGate.through(gate, scope, repo.AccountSyncStateRepository.CHARACTERS,
+                () -> characterSelectionService.getCraftingCharacterOptions(scope));
+        var freshness = gate == null ? null : web.dto.AccountSourceFreshnessDto.of(read);
+        if (!read.hasData()) {
+            // Characters never published: pending. The account-independent entries stay valid.
+            return org.springframework.http.ResponseEntity.accepted().body(new CraftingSelectorOptionsResponse(
+                    CraftingProfitApiMapper.DEFAULT_SCOPE_KIND, GENERIC_DISCIPLINES, null, null, freshness));
+        }
+        List<CraftingSelectorOptionsResponse.CharacterOptionDto> characterOptions = toCharacterOptions(read.data());
 
-        return new CraftingSelectorOptionsResponse(
+        return org.springframework.http.ResponseEntity.ok(new CraftingSelectorOptionsResponse(
                 CraftingProfitApiMapper.DEFAULT_SCOPE_KIND,
                 GENERIC_DISCIPLINES,
                 characterOptions.size(),
-                characterOptions);
+                characterOptions,
+                freshness));
     }
 
     /** Field-for-field copy, preserving the service's order; no filtering, sorting or defaulting. */

@@ -57,12 +57,12 @@ class SyncTaskApiControllerTest {
 
     @Test
     void aRunningTaskIsReportedAsRunningWithNoFinishTimeAndNoFailure() throws Exception {
-        String taskId = submitBlockedTask("ACCOUNT_SYNC");
+        String taskId = submitBlockedTask("GLOBAL_SYNC");
 
         mockMvc.perform(get("/api/sync/tasks/" + taskId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.taskId").value(taskId))
-                .andExpect(jsonPath("$.operation").value("ACCOUNT_SYNC"))
+                .andExpect(jsonPath("$.operation").value("GLOBAL_SYNC"))
                 .andExpect(jsonPath("$.state").value("RUNNING"))
                 .andExpect(jsonPath("$.submittedAt").isString())
                 .andExpect(jsonPath("$.startedAt").isString())
@@ -72,7 +72,7 @@ class SyncTaskApiControllerTest {
 
     @Test
     void aSucceededTaskIsReportedAsSucceededWithAFinishTimeAndNoFailure() throws Exception {
-        String taskId = submitAndAwaitTerminal("ACCOUNT_SYNC", () -> {
+        String taskId = submitAndAwaitTerminal("GLOBAL_SYNC", () -> {
         });
 
         mockMvc.perform(get("/api/sync/tasks/" + taskId))
@@ -84,7 +84,7 @@ class SyncTaskApiControllerTest {
 
     @Test
     void aFailedTaskIsReportedAsFailedAndSaysCompletedStepsWereNotRolledBack() throws Exception {
-        String taskId = submitAndAwaitTerminal("ACCOUNT_SYNC", () -> {
+        String taskId = submitAndAwaitTerminal("GLOBAL_SYNC", () -> {
             throw new IOException("GW2 API returned 503 for /v2/characters, connection to 10.1.2.3 refused");
         });
 
@@ -106,7 +106,7 @@ class SyncTaskApiControllerTest {
 
     @Test
     void aDataStoreFailureKeepsTheCodeTheCalculationRoutesAlreadyUseForIt() throws Exception {
-        String taskId = submitAndAwaitTerminal("ACCOUNT_SYNC", () -> {
+        String taskId = submitAndAwaitTerminal("GLOBAL_SYNC", () -> {
             throw new SQLException("connection to jdbc:postgresql://localhost:5432/gw2 refused");
         });
 
@@ -121,13 +121,13 @@ class SyncTaskApiControllerTest {
 
     @Test
     void concurrentTasksAreIndependentlyIdentifiableThroughTheirOwnIdentifiers() throws Exception {
-        String blockedTaskId = submitBlockedTask("ACCOUNT_SYNC");
+        String blockedTaskId = submitBlockedTask("GLOBAL_SYNC");
         String failedTaskId = submitAndAwaitTerminal("OTHER_SYNC", () -> {
             throw new IOException("simulated failure");
         });
 
         mockMvc.perform(get("/api/sync/tasks/" + blockedTaskId))
-                .andExpect(jsonPath("$.operation").value("ACCOUNT_SYNC"))
+                .andExpect(jsonPath("$.operation").value("GLOBAL_SYNC"))
                 .andExpect(jsonPath("$.state").value("RUNNING"));
         mockMvc.perform(get("/api/sync/tasks/" + failedTaskId))
                 .andExpect(jsonPath("$.operation").value("OTHER_SYNC"))

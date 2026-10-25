@@ -202,50 +202,6 @@ class GlobalSyncApiControllerTest {
         mockMvc.perform(post("/api/sync/global")).andExpect(status().isAccepted());
     }
 
-    /**
-     * The documented interaction with the other task type: {@code GLOBAL_SYNC} and
-     * {@code ACCOUNT_SYNC} are different admission keys, so an unfinished global sync refuses only
-     * another global sync — the account trigger is unaffected, and the two tasks stay separately
-     * identifiable through the one shared status route.
-     */
-    @Test
-    void anUnfinishedGlobalSyncDoesNotBlockTheAccountTrigger() throws Exception {
-        ControlledAccountRefreshService accountService = new ControlledAccountRefreshService();
-        MockMvc bothTriggers = MockMvcBuilders
-                .standaloneSetup(new GlobalSyncApiController(refreshService, taskService),
-                        new AccountSyncApiController(accountService, taskService),
-                        new SyncTaskApiController(taskService))
-                .setControllerAdvice(new SyncApiExceptionHandler())
-                .build();
-
-        refreshService.blockUntilReleased();
-        String globalBody = bothTriggers.perform(post("/api/sync/global"))
-                .andExpect(status().isAccepted())
-                .andReturn().getResponse().getContentAsString();
-        assertTrue(refreshService.awaitEntered());
-
-        String accountBody = bothTriggers.perform(post("/api/sync/account"))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.operation").value("ACCOUNT_SYNC"))
-                .andReturn().getResponse().getContentAsString();
-
-        String globalStatusUrl = JsonPath.read(globalBody, "$.statusUrl");
-        String accountStatusUrl = JsonPath.read(accountBody, "$.statusUrl");
-        assertNotEquals(globalStatusUrl, accountStatusUrl, "the two tasks must be separately identifiable");
-
-        // The account sync runs to completion while the global one is still held at its latch.
-        assertEquals("SUCCEEDED", awaitTerminalState(bothTriggers, accountStatusUrl));
-        assertEquals(1, accountService.refreshAllCalls());
-        bothTriggers.perform(get(accountStatusUrl))
-                .andExpect(jsonPath("$.operation").value("ACCOUNT_SYNC"));
-        bothTriggers.perform(get(globalStatusUrl))
-                .andExpect(jsonPath("$.operation").value("GLOBAL_SYNC"))
-                .andExpect(jsonPath("$.state").value("RUNNING"));
-
-        refreshService.release();
-        assertEquals("SUCCEEDED", awaitTerminalState(globalStatusUrl));
-    }
-
     // ---------- failure, reported by the shared status route ----------
 
     @Test
@@ -361,21 +317,6 @@ class GlobalSyncApiControllerTest {
 
         void release() {
             released.countDown();
-        }
-
-        int refreshAllCalls() {
-            return refreshAllCalls.get();
-        }
-    }
-
-    /** Counts account-sync delegations, for the cross-operation independence check only. */
-    private static final class ControlledAccountRefreshService extends AccountRefreshService {
-
-        private final AtomicInteger refreshAllCalls = new AtomicInteger();
-
-        @Override
-        public void refreshAll() {
-            refreshAllCalls.incrementAndGet();
         }
 
         int refreshAllCalls() {

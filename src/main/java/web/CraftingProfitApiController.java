@@ -3,6 +3,7 @@ package web;
 import application.CachedCraftingProfitService;
 import application.CraftingResolutionDetail;
 import craft.CraftingSettings;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import repo.DiscChoice;
+import web.access.RequestAccountContext;
 import web.dto.CraftingProfitRequest;
 import web.dto.CraftingProfitResolutionRequest;
 import web.dto.CraftingProfitResolutionResponse;
@@ -55,8 +57,12 @@ public class CraftingProfitApiController {
 
     private final CachedCraftingProfitService profitService;
 
-    public CraftingProfitApiController(CachedCraftingProfitService profitService) {
+    private final web.access.AccountAccessHttp accessHttp;
+
+    public CraftingProfitApiController(CachedCraftingProfitService profitService,
+                                       web.access.AccountAccessHttp accessHttp) {
         this.profitService = profitService;
+        this.accessHttp = accessHttp;
     }
 
     /**
@@ -69,12 +75,18 @@ public class CraftingProfitApiController {
      */
     @PostMapping(path = "/profit", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<CraftingProfitResponse> profit(
-            @RequestBody(required = false) CraftingProfitRequest request) throws Exception {
+            @RequestBody(required = false) CraftingProfitRequest request,
+            HttpServletRequest http) throws Exception {
 
         CraftingProfitApiMapper.Effective effective = CraftingProfitApiMapper.toEffective(request);
 
-        CachedCraftingProfitService.ProfitOutcome outcome = profitService.profit(
-                effective.toDiscChoice(), effective.toCraftingSettings());
+        requireSameOriginWhenKeyed(http);
+        var keyed = keyedAdmission(http);
+        CachedCraftingProfitService.ProfitOutcome outcome = keyed == null
+                ? profitService.profit(RequestAccountContext.scopeOf(http), effective.toDiscChoice(),
+                        effective.toCraftingSettings())
+                : profitService.profit(RequestAccountContext.scopeOf(http), effective.toDiscChoice(),
+                        effective.toCraftingSettings(), keyed);
 
         if (!outcome.hasResult()) {
             return ResponseEntity.status(HttpStatus.ACCEPTED)
@@ -102,16 +114,22 @@ public class CraftingProfitApiController {
      */
     @PostMapping(path = "/profit/resolution", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<CraftingProfitResolutionResponse> profitResolution(
-            @RequestBody(required = false) CraftingProfitResolutionRequest request) throws Exception {
+            @RequestBody(required = false) CraftingProfitResolutionRequest request,
+            HttpServletRequest http) throws Exception {
 
+        requireSameOriginWhenKeyed(http);
         CraftingProfitResolutionRequest body = CraftingResolutionMapper.requireBody(request);
         int recipeId = CraftingResolutionMapper.requireRecipeId(body.recipeId());
         CraftingProfitApiMapper.Effective effective = CraftingProfitApiMapper.toEffective(
                 CraftingResolutionMapper.requireCalculation(body.calculation()));
 
-        CachedCraftingProfitService.ResolutionOutcome outcome = profitService.resolution(
-                recipeId, effective.toDiscChoice(), effective.toCraftingSettings(),
-                body.basedOnCalculationId());
+        var keyed = keyedAdmission(http);
+        CachedCraftingProfitService.ResolutionOutcome outcome = keyed == null
+                ? profitService.resolution(RequestAccountContext.scopeOf(http), recipeId,
+                        effective.toDiscChoice(), effective.toCraftingSettings(), body.basedOnCalculationId())
+                : profitService.resolution(RequestAccountContext.scopeOf(http), recipeId,
+                        effective.toDiscChoice(), effective.toCraftingSettings(), body.basedOnCalculationId(),
+                        keyed);
 
         CraftingProfitResolutionResponse.CalculationDto calculation =
                 new CraftingProfitResolutionResponse.CalculationDto(effective.scope(), effective.settings());
@@ -140,5 +158,27 @@ public class CraftingProfitApiController {
                 CraftingResolutionMapper.treeStatus(detail),
                 CraftingResolutionMapper.profitTreeBasis(detail),
                 CraftingResolutionMapper.toTree(detail)));
+    }
+
+    /**
+     * A keyed calculation admits account work, so it is a state change: the established same-origin
+     * check ({@link web.access.AccountAccessHttp#isSameOrigin}) runs before any proof or admission.
+     * A keyless request is a pure cached read and needs no origin evidence.
+     */
+    private void requireSameOriginWhenKeyed(HttpServletRequest http) {
+        if (web.access.AccountAccessHttp.presentedApiKey(http) != null && !accessHttp.isSameOrigin(http)) {
+            throw new ForeignOriginException();
+        }
+    }
+
+    /**
+     * The transient proof a request carries, if any. A request without {@code X-GW2-API-Key} is a
+     * pure cached read: it needs no key and admits no account refresh (STORY-API-011).
+     */
+    private static CachedCraftingProfitService.KeyedAdmission keyedAdmission(HttpServletRequest http) {
+        String key = web.access.AccountAccessHttp.presentedApiKey(http);
+        if (key == null) return null;
+        return new CachedCraftingProfitService.KeyedAdmission(RequestAccountContext.required(http),
+                web.access.AccountAccessHttp.presentedSessionId(http).orElseThrow(), key);
     }
 }

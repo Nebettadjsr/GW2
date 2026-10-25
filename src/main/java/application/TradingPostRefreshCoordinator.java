@@ -70,6 +70,10 @@ public class TradingPostRefreshCoordinator {
     /** Coordination state of one variant; guarded by the coordinator's monitor. */
     private static final class State {
         boolean demanded;
+        /** Explicit global/manual demand, tracked apart from scoped demand so neither hides the other. */
+        boolean globalDemanded;
+        /** Accounts whose required item sets were demanded; empty means the global selection. */
+        final java.util.Set<model.AccountScope> scopes = new java.util.LinkedHashSet<>();
         boolean draining;
         String activeTaskId;
         int completedPasses;
@@ -100,8 +104,25 @@ public class TradingPostRefreshCoordinator {
      * on it. A demand raised while that variant's run is in flight earns exactly one recheck pass.
      */
     public synchronized Admission require(Variant variant) {
+        return require(variant, null);
+    }
+
+    /** Profit coverage for one authorized account's required item set (STORY-API-011). */
+    public Admission requireProfitCoverage(model.AccountScope scope) {
+        return require(Variant.PROFIT, scope);
+    }
+
+    /**
+     * As {@link #require(Variant)}, but the run's required ids are those of {@code scope}'s
+     * calculation instead of the no-account global selection. The task, the exclusion key, the
+     * coalescing and the shared quote cache stay one per variant: demands from several accounts
+     * accumulate into the same run, which fetches each account's still-stale ids once.
+     */
+    public synchronized Admission require(Variant variant, model.AccountScope scope) {
         State state = states.get(variant);
         state.demanded = true;
+        if (scope != null) state.scopes.add(scope);
+        else state.globalDemanded = true;
         if (state.draining) {
             return new Admission(state.activeTaskId, REUSE_COALESCED_INTO_ACTIVE_RUN);
         }
@@ -136,12 +157,21 @@ public class TradingPostRefreshCoordinator {
      * flight is told to take one recheck pass, so ids this demand adds are covered there too.
      */
     public void refreshAndAwait(Variant variant) throws Exception {
+        refreshAndAwait(variant, null);
+    }
+
+    /** The same synchronous refresh limited to {@code scope}'s required ids (null = global selection). */
+    public void refreshAndAwait(Variant variant, model.AccountScope scope) throws Exception {
         State state = states.get(variant);
         synchronized (this) {
-            if (state.draining) state.demanded = true;
+            if (state.draining) {
+                state.demanded = true;
+                if (scope != null) state.scopes.add(scope);
+                else state.globalDemanded = true;
+            }
         }
         try {
-            refreshFor(variant);
+            refreshFor(variant, scope);
         } catch (Exception failure) {
             synchronized (this) {
                 state.lastFailure = new CalculationFreshness.RefreshFailure(
@@ -158,23 +188,30 @@ public class TradingPostRefreshCoordinator {
         }
     }
 
-    private void refreshFor(Variant variant) throws Exception {
+    private void refreshFor(Variant variant, model.AccountScope scope) throws Exception {
         switch (variant) {
-            case PROFIT -> refresh.refreshForProfit();
-            case DISCOVERY -> refresh.refreshForDiscovery();
+            case PROFIT -> { if (scope == null) refresh.refreshForProfit(); else refresh.refreshForProfit(scope); }
+            case DISCOVERY -> { if (scope == null) refresh.refreshForDiscovery(); else refresh.refreshForDiscovery(scope); }
         }
     }
 
     private void drain(Variant variant, State state) throws Exception {
         try {
             while (true) {
+                java.util.List<model.AccountScope> pass;
+                boolean global;
                 synchronized (this) {
                     if (!state.demanded) return;
                     state.demanded = false;
+                    global = state.globalDemanded || state.scopes.isEmpty();
+                    state.globalDemanded = false;
+                    pass = new java.util.ArrayList<>(state.scopes);
+                    state.scopes.clear();
                 }
 
                 try {
-                    refreshFor(variant);
+                    if (global) refreshFor(variant, null);
+                    for (model.AccountScope scope : pass) refreshFor(variant, scope);
                     synchronized (this) {
                         state.completedPasses++;
                         state.lastFailure = null;

@@ -137,6 +137,52 @@ class AccountAccessContractTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    /**
+     * STORY-API-011: the account-dependent crafting routes sit behind the same guard as the
+     * {@code /api/account/**} reads, with the same non-disclosing answers, and a rejected request
+     * never reaches the controller or the freshness gate.
+     */
+    @Test
+    void craftingProfitResolutionAndSelectorRoutesRequireASessionMatchingContextAndGrants() throws Exception {
+        var a = prove("fixture-key-a");
+        var b = prove("fixture-key-b");
+        var restricted = prove("fixture-key-restricted");
+        for (String path : new String[] {"/api/crafting/profit", "/api/crafting/profit/resolution"}) {
+            http.perform(post(path).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(header().string("Cache-Control", containsString("no-store")));
+            http.perform(post(path).contentType(MediaType.APPLICATION_JSON).content("{}")
+                            .cookie(a.cookie()).header("X-Account-Context", b.context()))
+                    .andExpect(status().isForbidden());
+            http.perform(post(path).contentType(MediaType.APPLICATION_JSON).content("{}")
+                            .cookie(restricted.cookie()).header("X-Account-Context", restricted.context()))
+                    .andExpect(status().isForbidden());
+            http.perform(post(path).contentType(MediaType.APPLICATION_JSON).content("{}")
+                            .param("accountId", ACCOUNT_B)
+                            .cookie(a.cookie()).header("X-Account-Context", a.context()))
+                    .andExpect(status().isForbidden());
+            http.perform(post(path).contentType(MediaType.APPLICATION_JSON).content("{}")
+                            .cookie(a.cookie()).header("X-Account-Context", a.context()))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("X-Account-Context", a.context()));
+        }
+        String path = "/api/crafting/selector-options";
+        http.perform(get(path)).andExpect(status().isUnauthorized());
+        http.perform(get(path).cookie(b.cookie()).header("X-Account-Context", a.context()))
+                .andExpect(status().isForbidden());
+        http.perform(get(path).cookie(b.cookie()).header("X-Account-Context", b.context()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Account-Context", b.context()))
+                .andExpect(header().string("Cache-Control", containsString("no-store")));
+    }
+
+    @Test
+    void globalCraftingRoutesStayAccountIndependent() throws Exception {
+        http.perform(get("/api/crafting/ingredient-search").param("q", "ore"))
+                .andExpect(result -> org.junit.jupiter.api.Assertions.assertNotEquals(
+                        401, result.getResponse().getStatus(), "a global lookup must not demand a session"));
+    }
+
     private Proof prove(String key) throws Exception {
         var response = http.perform(post("/api/session").header("Origin", ORIGIN)
                         .header("X-GW2-API-Key", key))

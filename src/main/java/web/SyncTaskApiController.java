@@ -1,6 +1,14 @@
 package web;
 
+import application.ScopedAccountRefreshCoordinator;
+import application.access.AccountAccessService;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import web.access.AccountAccessHttp;
+import web.dto.ApiErrorResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,9 +35,20 @@ public class SyncTaskApiController {
     static final String TASKS_PATH = "/api/sync/tasks";
 
     private final BackgroundTaskService taskService;
+    private final AccountAccessService access;
+    private final ScopedAccountRefreshCoordinator coordinator;
 
+    /** Global-task lookup only: with no account facility, every account task is reported unknown. */
     public SyncTaskApiController(BackgroundTaskService taskService) {
+        this(taskService, null, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SyncTaskApiController(BackgroundTaskService taskService, AccountAccessService access,
+                                 ScopedAccountRefreshCoordinator coordinator) {
         this.taskService = taskService;
+        this.access = access;
+        this.coordinator = coordinator;
     }
 
     /** Path of the status resource for {@code taskId}; the triggers hand this to the caller. */
@@ -46,10 +65,35 @@ public class SyncTaskApiController {
      * this process cannot resolve (see {@link UnknownTaskException}).
      */
     @GetMapping(path = "/{taskId}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public SyncTaskStatusResponse status(@PathVariable("taskId") String taskId) {
+    public ResponseEntity<?> status(@PathVariable("taskId") String taskId, HttpServletRequest request) {
         TaskSnapshot task = taskService.find(taskId)
                 .orElseThrow(() -> new UnknownTaskException(taskId));
 
-        return SyncTaskStatusMapper.toResponse(task);
+        if (!ScopedAccountRefreshCoordinator.OPERATION.equals(task.operation())) {
+            return ResponseEntity.ok(SyncTaskStatusMapper.toResponse(task));
+        }
+        // An account task: only a live, context-matched session whose grants cover the task's
+        // sources may observe it. Foreign and unknown identifiers are indistinguishable (404).
+        if (access == null || coordinator == null) throw new UnknownTaskException(taskId);
+        var presented = AccountAccessHttp.presentedSessionId(request);
+        if (presented.isEmpty()) return denied(HttpStatus.UNAUTHORIZED, "SESSION_REQUIRED");
+        var resolution = access.resolve(presented.get(), AccountAccessHttp.assertedAccessContext(request));
+        switch (resolution.outcome()) {
+            case NO_SESSION, EXPIRED -> { return denied(HttpStatus.UNAUTHORIZED, "SESSION_REQUIRED"); }
+            case CONTEXT_MISMATCH -> { return denied(HttpStatus.FORBIDDEN, "ACCOUNT_ACCESS_DENIED"); }
+            case AUTHENTICATED -> { /* ownership checked below */ }
+        }
+        var context = resolution.context();
+        if (coordinator.observe(context, taskId).isEmpty()) throw new UnknownTaskException(taskId);
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header(AccountAccessHttp.ACCESS_CONTEXT_HEADER, context.accessContext())
+                .body(SyncTaskStatusMapper.toResponse(task));
+    }
+
+    private static ResponseEntity<ApiErrorResponse> denied(HttpStatus status, String code) {
+        return ResponseEntity.status(status).header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(new ApiErrorResponse(code, status == HttpStatus.UNAUTHORIZED
+                        ? "Prove a GW2 API key to continue"
+                        : "This session is not authorized for this account operation"));
     }
 }
