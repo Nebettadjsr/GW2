@@ -6,6 +6,8 @@ ready story with Claude → Run workflow**, leaves the branch set to **master**,
 and clicks **Run workflow**. No issue number is required. Each click authorizes
 one run. Issue labels, comments, pushes, and schedules do not start Claude.
 There is no time-of-day gate; the owner can choose when to spend usage.
+After a workflow fix, start a new run with this button on `master`.
+GitHub's **Re-run jobs** repeats the original run's commit and workflow version.
 
 The button checks open GitHub stories. A story labeled `auto` is eligible when
 its listed dependencies are closed with linked PRs merged into `master`, and
