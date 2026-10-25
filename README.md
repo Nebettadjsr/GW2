@@ -105,7 +105,7 @@ The frontend communicates with the Spring Boot API over HTTP. Application servic
 
 ## Running locally
 
-The project currently uses a development-oriented, single-user setup rather than a packaged release.
+Run the development servers below, or use the three-container stack described in `docs/CURRENT_ARCHITECTURE.md`.
 
 **Requirements:** Java 25, PostgreSQL, Node.js/npm and a Guild Wars 2 API key with the permissions required for account synchronization. The PostgreSQL schema and runtime configuration must be set up for your environment; consult the repository configuration and development documentation.
 
@@ -119,6 +119,7 @@ cd backend
 On Windows PowerShell:
 
 ```powershell
+cd backend
 .\mvnw.cmd spring-boot:run
 ```
 
@@ -134,7 +135,7 @@ npm run dev
 
 Open **http://localhost:5173**. During development, Vite forwards `/api` requests to the backend.
 
-**3. Connect your account:** enter your read-only GW2 API key in the **GW2 API key** panel. The app validates it and synchronizes missing account data. It keeps the key through navigation and reload in browser session storage; **Disconnect** clears it. No server-side GW2 key is required for browser use.
+**3. Connect your account:** open **System Status** and enter your read-only GW2 API key in the **GW2 API key** panel. The app validates it and synchronizes missing account data. It keeps the key through navigation and reload in browser session storage; **Disconnect** clears it. No server-side GW2 key is required for browser use.
 
 ## Testing
 
