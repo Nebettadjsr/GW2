@@ -35,7 +35,7 @@ Consequences, binding for every role:
    scoped data. They need not prove that any pre-existing cached row survived.
 6. This does not relax correctness of *current* behavior: account isolation, scoping and
    transactional publication of fresh data still apply. Only preservation of old data is dropped.
-7. Not affected: secrets. API keys are still never stored (TARGET_ARCHITECTURE section 8).
+7. API-key handling is governed separately by UD-018 and TARGET_ARCHITECTURE section 8.2. The former blanket ban on browser key storage is superseded; do not infer high-sensitivity credential requirements from this cache decision.
 
 ## Blocks
 

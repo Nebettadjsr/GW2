@@ -16,6 +16,8 @@ milestone-06
 
 ## Goal
 
+> Historical contract superseded by Product Owner decision UD-018 on 2026-10-25. The live implementation contract is GitHub issue #13. Use TARGET_ARCHITECTURE section 8.2 for simple sessionStorage retention; the memory-only and advanced lifecycle requirements below are historical. This note does not change historical execution status.
+
 Let users prove GW2 account access with a document-memory-only key and use isolated account workflows without stale responses or shared-cookie tab changes exposing another account's state.
 
 ## Authoritative Source Documents / Sections
