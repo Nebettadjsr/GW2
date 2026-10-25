@@ -286,7 +286,7 @@ Coalesce account work only within the same verified account, never across accoun
 
 ### Verification boundaries
 
-Preserve `TEST_STRATEGY.md` and `QUALITY_METRICS.md`: application invariants cover scope propagation and no unauthorized work; HTTP contracts cover authorization/failure mapping and successive/concurrent request isolation; real PostgreSQL integration verifies account query/write isolation and stable-identity reuse. Controlled upstream fixtures verify identity, grants and failed proof; normal tests require no live GW2 API. Async verification uses the real in-process facility with controlled work, covering account ownership on admission, execution and observation. QA owns the concrete plan; this decision neither supplies test cases nor changes coverage baselines or reporting requirements.
+Preserve `TEST_STRATEGY.md` and `QUALITY_METRICS.md`: application invariants cover scope propagation and no unauthorized work; HTTP contracts cover authorization/failure mapping and successive/concurrent request isolation; real PostgreSQL integration verifies account query/write isolation and stable-identity reuse. Controlled upstream fixtures verify identity, grants and failed proof; normal tests require no live GW2 API. Async verification uses the real in-process facility with controlled work, covering account ownership on admission, execution and observation. In the current GitHub flow implementers supply meaningful tests and independent Codex review checks the issue, specification and evidence; the retired harness's exclusive QA-ownership stage is not required. This does not change coverage baselines or reporting requirements.
 
 ---
 

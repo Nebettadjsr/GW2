@@ -335,6 +335,8 @@ Phase 5. The browser/backend contract and web frontend should exist before intro
 
 ## 11. Phase 7 — Containerized Runtime and Database Migration
 
+The versioned schema lifecycle was delivered during Phase 6 (STORY-INFRA-004, ADR-010). This phase packages that selected lifecycle; it does not reopen the Flyway choice or require another manual-SQL conversion.
+
 ### Objective
 
 Move from manually-run local services to the target three-container model (frontend, backend, PostgreSQL) with reproducible schema management, per `TARGET_ARCHITECTURE.md` §3, §7, and §12.
@@ -346,8 +348,8 @@ Phase 6. Containerization should package the intended multi-user/account-isolate
 ### Exit Criteria
 
 - Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
-- **Explicit decision made** on the database migration tool (`TARGET_ARCHITECTURE.md` §16 lists it as to be decided).
-- The manually-executed `src/PostgreSQL Query to create DB` script is replaced by versioned, repeatable migrations (`TARGET_ARCHITECTURE.md` §16).
+- **(Done)** Flyway is selected (`TARGET_ARCHITECTURE.md` §7.3 and §16, ADR-010).
+- **(Done)** Versioned migrations and the managed schema gate replace manual table setup; fresh/reset scoped schemas are covered by the production-chain integration checks.
 - Backend, frontend, and PostgreSQL each run in their own container.
 - `docker compose up` starts all three (`TARGET_ARCHITECTURE.md` §12).
 - PostgreSQL is not required to be exposed outside the internal Docker network (`TARGET_ARCHITECTURE.md` §12).
@@ -355,8 +357,7 @@ Phase 6. Containerization should package the intended multi-user/account-isolate
 
 ### High-Level Stories
 
-- Decide and document the database migration tool.
-- Convert the manual SQL setup script into versioned migrations.
+- (Done) Select Flyway and implement the versioned schema lifecycle.
 - Write a backend Dockerfile.
 - Write a frontend Dockerfile (once Phase 5 exists).
 - Write `docker-compose.yml` wiring frontend/backend/PostgreSQL on an internal network.
@@ -394,7 +395,7 @@ Phase 7. Deployment configuration only matters once there is something container
 
 ### Objective
 
-Retire whatever remains of the JavaFX desktop UI, and any code it alone still uses — consistent with `TARGET_ARCHITECTURE.md` §14 (existing code is reused when sound, replaced when superseded, not thrown away speculatively).
+Confirm final cleanup and retire any remaining obsolete paths, consistent with `TARGET_ARCHITECTURE.md` §14. JavaFX source/resources and build dependencies are already removed (STORY-UI-004 / STORY-INFRA-005); do not recreate removal work or require obsolete desktop-only features to be reimplemented.
 
 The JavaFX UI is already superseded by the browser frontend, so removal work may happen in any phase from Phase 5 onward (see §2). This phase is not a gate holding that work back; it is where the remaining items below are confirmed finished, and it closes immediately if earlier phases already did them.
 
@@ -405,19 +406,17 @@ Phase 5 (frontend functional parity) and Phase 8 (a deployable system users can 
 ### Exit Criteria
 
 - Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
-- Every JavaFX view's functionality is confirmed present in the web frontend (explicit parity checklist, not an assumption).
-- JavaFX views, controllers in the default package, and the `Gw2App` entry point are removed.
-- `Main.java` (superseded by the unified Ecto application service from Phase 3) is removed.
-- JavaFX Maven dependencies and the `javafx-maven-plugin` are removed from `pom.xml`.
+- Verify the specified browser feature workflows against `DOMAIN_SPEC.md`; obsolete desktop-only features are not new product requirements.
+- **(Done)** JavaFX views/controllers and the `Gw2App` entry point are removed.
+- **(Done)** The obsolete `Main.java` entry point is removed.
+- **(Done)** JavaFX Maven dependencies and plugin are removed.
 - No class remains in the default (unnamed) Java package.
 - `CLAUDE.md`, `docs/CURRENT_STATE_SPEC.md`, and `docs/CURRENT_ARCHITECTURE.md` are updated to describe the web-only architecture.
 
 ### High-Level Stories
 
-- Build and confirm a feature-parity checklist between JavaFX views and the web frontend (Bank, Materials, Ecto, Crafting Profit, Crafting Discovery, System Status and workflow-driven refresh).
-- Remove JavaFX views/controllers and the `Gw2App` entry point.
-- Remove `Main.java` and any other now-fully-superseded legacy code.
-- Remove JavaFX dependencies and the `javafx-maven-plugin` from `pom.xml`.
+- Verify the specified browser workflows and review remaining confirmed obsolete code.
+- (Done) Remove JavaFX views/controllers, entry points and build dependencies.
 - Update project documentation to reflect the web-only architecture.
 
 ---
