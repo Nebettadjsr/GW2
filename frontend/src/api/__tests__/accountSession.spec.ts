@@ -164,6 +164,28 @@ describe('invalid key versus transient failure', () => {
 })
 
 describe('lease renewal and context mismatch', () => {
+  it('does not replay an old account action after another account connects during renewal', async () => {
+    let releaseRenewal: (response: Response) => void = () => undefined
+    let proofsA = 0
+    handler = (call) => {
+      if (call.path === '/api/session') {
+        if (call.headers['X-GW2-API-Key'] === 'KEY-B') return proof('ctx-b')
+        if (++proofsA === 1) return proof('ctx-a')
+        return new Promise<Response>((resolve) => { releaseRenewal = resolve })
+      }
+      return json({ error: 'SESSION_REQUIRED', message: 'Prove' }, 401)
+    }
+    await connectKey('KEY-A')
+    const action = postJson('/sync/account', {})
+    const outcome = action.catch((error: { code: string }) => error.code)
+    await vi.waitFor(() => expect(proofsA).toBe(2))
+    await connectKey('KEY-B')
+    releaseRenewal(proof('ctx-a'))
+    expect(await outcome).toBe('SESSION_REQUIRED')
+    expect(calls.filter((call) => call.path === '/api/sync/account')
+      .map((call) => call.headers['X-GW2-API-Key'])).toEqual(['KEY-A'])
+  })
+
   it('renews with the retained key when the backend reports the session gone, then retries once', async () => {
     let session = 0
     let reads = 0

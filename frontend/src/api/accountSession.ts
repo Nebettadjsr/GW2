@@ -338,7 +338,7 @@ const transport: AccountTransport = {
     if (!lapsed && !mismatched) return false
     lease = null
     await establish(false)
-    return true
+    return transport.isCurrent(ticket)
   }
 }
 
