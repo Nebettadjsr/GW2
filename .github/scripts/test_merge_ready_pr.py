@@ -45,13 +45,23 @@ class MergeGateTest(unittest.TestCase):
         comments[0]["body"] = comments[0]["body"].replace("b" * 40, SHA).replace('"status": "completed"', '"status": "running"')
         self.assertIsNone(gate.rework_reason(pr, issue, comments, checks, REPO))
 
-    def test_ci_failure_and_incomplete_current_report_requeue_existing_work(self):
+    def test_ci_failure_requeues_existing_work(self):
         pr, issue, comments, checks, _ = fixtures()
         checks[0]["conclusion"] = "failure"
         self.assertIn("CI", gate.rework_reason(pr, issue, comments, checks, REPO))
         checks[0]["conclusion"] = "success"
-        pr["body"] = pr["body"].replace("Unresolved gaps: none", "Unresolved gaps: activity unverified")
-        self.assertIn("report", gate.rework_reason(pr, issue, comments, checks, REPO))
+        self.assertIsNone(gate.rework_reason(pr, issue, comments, checks, REPO))
+
+    def test_report_gaps_block_merge_without_automatically_requeuing_coding(self):
+        for original, replacement in (
+            ("Local-only checks still needed: none", "Local-only checks still needed: browser smoke"),
+            ("Unresolved gaps: none", "Unresolved gaps: activity unverified"),
+        ):
+            with self.subTest(report=replacement):
+                pr, issue, comments, checks, files = fixtures()
+                pr["body"] = pr["body"].replace(original, replacement)
+                self.assertIsNone(gate.rework_reason(pr, issue, comments, checks, REPO))
+                self.assertIsNotNone(gate.ready_reason(pr, issue, comments, checks, files, REPO))
         pr["head"]["sha"] = "b" * 40
         self.assertIsNone(gate.rework_reason(pr, issue, comments, checks, REPO))
 
