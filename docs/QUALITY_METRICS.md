@@ -40,6 +40,14 @@ at 43.08% line / 36.67% branch, `repo` at 76.09% / 57.92%, `parser` at
 These measurements include the tests merged in #36 and #40. The baseline is a measured
 snapshot, not a requirement to reach 90% in one story.
 
+STORY-COV-001 (#90, on master 87dbd74): deterministic loopback-server tests of
+`api.tp.TpPriceApi` and `EctoLivePriceGateway` (local run of those two test classes only, JaCoCo
+`api/tp`) moved `api.tp` from 3/86 lines (3.49%) and 0/68 branches to 93/93 lines (100%) and
+63/68 branches (92.65%). The 5 remaining missed branches are all in `TpPriceApi` and are
+defensive null guards (`root == null`, `p != null`, `n != null`) that `readJson` of a real
+body can never produce with a non-null JSON tree. The full-suite CI counters for the whole backend
+are not re-measured here; the `api.tp` row below is the pre-change CI baseline.
+
 ## Pre-migration clean CI snapshot
 
 Measured from CI run

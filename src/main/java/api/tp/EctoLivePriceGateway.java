@@ -25,12 +25,25 @@ public class EctoLivePriceGateway {
     private static final HttpClient CLIENT = HttpClient.newHttpClient();
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    private final HttpClient client;
+    private final String base;
+
+    public EctoLivePriceGateway() {
+        this(CLIENT, "https://api.guildwars2.com");
+    }
+
+    /** Test seam: a client and endpoint base for deterministic local transport. */
+    EctoLivePriceGateway(HttpClient client, String base) {
+        this.client = client;
+        this.base = base;
+    }
+
     public Map<Integer, PriceQuote> fetchQuotes(int... itemIds) throws Exception {
         String idsParam = Arrays.stream(itemIds)
                 .mapToObj(String::valueOf)
                 .collect(Collectors.joining(","));
 
-        String url = "https://api.guildwars2.com/v2/commerce/prices?ids=" + idsParam;
+        String url = base + "/v2/commerce/prices?ids=" + idsParam;
 
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -38,7 +51,7 @@ public class EctoLivePriceGateway {
                 .GET()
                 .build();
 
-        HttpResponse<String> res = CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
         if (res.statusCode() != 200 && res.statusCode() != 206) {
             throw new RuntimeException("TP price fetch failed: HTTP " + res.statusCode());
         }
