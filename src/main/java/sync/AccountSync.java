@@ -218,7 +218,10 @@ public final class AccountSync {
     }
 
     private static List<BankSlot> fetchBankSlots() throws Exception {
-        JsonNode root = Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account/bank");
+        return parseBankSlots(Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account/bank"));
+    }
+
+    static List<BankSlot> parseBankSlots(JsonNode root) {
         if (root == null || !root.isArray()) {
             throw new RuntimeException("Unexpected JSON (bank): not an array");
         }
@@ -230,7 +233,10 @@ public final class AccountSync {
     }
 
     private static List<MaterialStack> fetchMaterialStacks() throws Exception {
-        JsonNode root = Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account/materials");
+        return parseMaterialStacks(Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account/materials"));
+    }
+
+    static List<MaterialStack> parseMaterialStacks(JsonNode root) {
         if (root == null || !root.isArray()) {
             throw new RuntimeException("Unexpected JSON (materials): not an array");
         }
@@ -246,7 +252,10 @@ public final class AccountSync {
     }
 
     private static List<Integer> fetchAccountRecipeIds() throws Exception {
-        JsonNode root = Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account/recipes");
+        return parseAccountRecipeIds(Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account/recipes"));
+    }
+
+    static List<Integer> parseAccountRecipeIds(JsonNode root) {
         if (root == null || !root.isArray()) {
             throw new RuntimeException("Unexpected JSON (account/recipes): not an array");
         }
