@@ -278,6 +278,29 @@ class SyncFetchPublicationTest {
 
     // ------------------------------------------------------------------ TpSync
 
+    @Test
+    void recipeSync_missingOutputAndInvalidIngredientsDoNotRequestItemZero() throws Exception {
+        RecipeSync.fetcher = url -> url.endsWith("/v2/recipes") ? json("[1]")
+                : json("[{\"id\":1,\"ingredients\":[{\"item_id\":0,\"count\":1}]}]");
+        ItemSync.fetcher = url -> { throw new AssertionError("no valid item IDs to fetch: " + url); };
+
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
+        assertEquals("0", scalar("SELECT count(*) FROM items"));
+        assertEquals("0", scalar("SELECT count(*) FROM recipe_ingredients"));
+        assertEquals("0", scalar("SELECT output_item_id FROM recipes WHERE recipe_id=1"));
+    }
+
+    @Test
+    void tpSync_malformedSinglePayloadIsSkippedForBothFallbackModes() throws Exception {
+        tp(b -> new TpPriceApi.BatchResult(404, null, Set.of()), id -> json("{\"text\":\"missing id\"}"));
+        TpSync.syncTpPrices(Set.of(1));
+        assertEquals("0", scalar("SELECT count(*) FROM tp_prices"));
+
+        tp(b -> ok(206, "[]"), id -> json("{\"text\":\"missing id\"}"));
+        TpSync.syncTpPrices(Set.of(1));
+        assertEquals("0", scalar("SELECT count(*) FROM tp_prices"));
+    }
+
     private static String quote(int id, int buyQty, int buyUnit, int sellQty, int sellUnit) {
         return "{\"id\":" + id + ",\"buys\":{\"quantity\":" + buyQty + ",\"unit_price\":" + buyUnit
                 + "},\"sells\":{\"quantity\":" + sellQty + ",\"unit_price\":" + sellUnit + "}}";
