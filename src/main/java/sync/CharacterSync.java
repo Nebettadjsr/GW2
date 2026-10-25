@@ -121,11 +121,18 @@ public final class CharacterSync {
      * generation and marker untouched.
      */
     public static void syncCharactersCraftingAndRecipes(model.AccountScope scope) throws Exception {
-        List<String> names = fetchCharacterNames();
+        syncCharactersCraftingAndRecipes(scope, Gw2ApiClient::getAuth);
+    }
+
+    static void syncCharactersCraftingAndRecipes(model.AccountScope scope, AccountSync.AuthFetcher fetcher)
+            throws Exception {
+        AccountSync.requireCredentialOwner(scope, fetcher);
+        List<String> names = CharacterNamesParser.parseStrict(fetcher.get("https://api.guildwars2.com/v2/characters"));
 
         List<CharPayload> payloads = new ArrayList<>(names.size());
         for (String name : names) {
-            JsonNode cNode = fetchCharacterDetails(name);
+            String enc = URLEncoder.encode(name, StandardCharsets.UTF_8).replace("+", "%20");
+            JsonNode cNode = fetcher.get("https://api.guildwars2.com/v2/characters/" + enc);
             CharacterInfo info = CharacterParser.parseInfo(cNode);
             if (info == null) {
                 throw new IllegalStateException(

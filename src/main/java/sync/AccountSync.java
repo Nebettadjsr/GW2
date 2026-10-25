@@ -37,7 +37,32 @@ public final class AccountSync {
      * successful-sync activity - all or nothing.
      */
     public static void syncAccountBank(model.AccountScope scope) throws Exception {
-        List<BankSlot> rows = fetchBankSlots();
+        syncAccountBank(scope, Gw2ApiClient::getAuth);
+    }
+
+    /** Fetch seam: the configured-key GET, replaceable by an offline fake in tests. */
+    @FunctionalInterface
+    interface AuthFetcher {
+        JsonNode get(String url) throws Exception;
+    }
+
+    /**
+     * Proves the credential behind {@code fetcher} belongs to {@code scope} before any source data
+     * is fetched or published. An unavailable, malformed or different account id refuses the whole
+     * publication; the scope is never rewritten to the upstream id and no default account is used.
+     */
+    static void requireCredentialOwner(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+        String upstreamAccountId = parseAccountId(fetcher.get("https://api.guildwars2.com/v2/account"));
+        if (!scope.id().equalsIgnoreCase(upstreamAccountId)) {
+            throw new IllegalStateException(
+                    "The supplied credential resolves to a different Guild Wars 2 account than the"
+                            + " requested scope, so no account data was written");
+        }
+    }
+
+    static void syncAccountBank(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+        requireCredentialOwner(scope, fetcher);
+        List<BankSlot> rows = parseBankSlots(fetcher.get("https://api.guildwars2.com/v2/account/bank"));
         try (Connection con = Db.open()) {
             publishBank(con, scope, rows, Instant.now());
         }
@@ -54,7 +79,12 @@ public final class AccountSync {
 
     /** Fetches and publishes one account's material storage; see {@link #syncAccountBank(model.AccountScope)}. */
     public static void syncAccountMaterials(model.AccountScope scope) throws Exception {
-        List<MaterialStack> rows = fetchMaterialStacks();
+        syncAccountMaterials(scope, Gw2ApiClient::getAuth);
+    }
+
+    static void syncAccountMaterials(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+        requireCredentialOwner(scope, fetcher);
+        List<MaterialStack> rows = parseMaterialStacks(fetcher.get("https://api.guildwars2.com/v2/account/materials"));
         try (Connection con = Db.open()) {
             publishMaterials(con, scope, rows, Instant.now());
         }
@@ -75,7 +105,12 @@ public final class AccountSync {
 
     /** Fetches and publishes one account's recipe unlocks; see {@link #syncAccountBank(model.AccountScope)}. */
     public static void syncAccountRecipes(model.AccountScope scope) throws Exception {
-        List<Integer> ids = fetchAccountRecipeIds();
+        syncAccountRecipes(scope, Gw2ApiClient::getAuth);
+    }
+
+    static void syncAccountRecipes(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+        requireCredentialOwner(scope, fetcher);
+        List<Integer> ids = parseAccountRecipeIds(fetcher.get("https://api.guildwars2.com/v2/account/recipes"));
         try (Connection con = Db.open()) {
             publishRecipes(con, scope, ids, Instant.now());
         }
@@ -99,14 +134,12 @@ public final class AccountSync {
      * caller's GUID, and the publication is refused rather than silently rescoped.
      */
     public static void syncAccountLuck(model.AccountScope scope) throws Exception {
-        JsonNode account = Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account");
-        String upstreamAccountId = parseAccountId(account);
-        if (!scope.id().equalsIgnoreCase(upstreamAccountId)) {
-            throw new IllegalStateException(
-                    "The supplied credential resolves to a different Guild Wars 2 account than the"
-                            + " requested scope, so no account data was written");
-        }
-        long consumedLuck = parseConsumedLuck(Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account/luck"));
+        syncAccountLuck(scope, Gw2ApiClient::getAuth);
+    }
+
+    static void syncAccountLuck(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+        requireCredentialOwner(scope, fetcher);
+        long consumedLuck = parseConsumedLuck(fetcher.get("https://api.guildwars2.com/v2/account/luck"));
         try (Connection con = Db.open()) {
             publishLuck(con, scope, consumedLuck, Instant.now());
         }
