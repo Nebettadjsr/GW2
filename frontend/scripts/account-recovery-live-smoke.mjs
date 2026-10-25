@@ -79,7 +79,9 @@ try {
   console.error(JSON.stringify({ result: 'failed', stage, errorType: error?.name ?? 'Error', requests: calls }, null, 2))
   process.exitCode = 1
 } finally {
-  await browser.close()
+  // Browser-driver shutdown can stall on Windows even after the browser has gone away.
+  // Bound cleanup so an otherwise completed one-shot check does not keep the shell alive.
+  await Promise.race([browser.close(), new Promise((resolve) => setTimeout(resolve, 10_000))])
 }
 // This is a one-shot CLI; do not leave browser-driver handles keeping its shell alive.
 process.exit(process.exitCode ?? 0)
