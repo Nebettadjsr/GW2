@@ -13,6 +13,18 @@ import java.util.Set;
 
 public final class TpPriceApi {
 
+    private static final String PRODUCTION_BASE = "https://api.guildwars2.com";
+
+    /** Test seam: sleeps between 429 retries. */
+    @FunctionalInterface
+    interface Sleeper {
+        void sleep(long millis) throws InterruptedException;
+    }
+
+    // Test seams (package-private): endpoint base and retry sleeper. Production keeps the defaults.
+    static volatile String base = PRODUCTION_BASE;
+    static volatile Sleeper sleeper = Thread::sleep;
+
     private TpPriceApi() {}
 
     public record BatchResult(
@@ -28,7 +40,7 @@ public final class TpPriceApi {
         String idsParam = BatchUtils.idsParam(batch);
         if (idsParam.isBlank()) return new BatchResult(200, null, Set.of());
 
-        String url = "https://api.guildwars2.com/v2/commerce/prices?ids=" + idsParam;
+        String url = base + "/v2/commerce/prices?ids=" + idsParam;
 
         HttpResponse<String> res = getWithRetry429(url);
         int code = res.statusCode();
@@ -56,7 +68,7 @@ public final class TpPriceApi {
 
     /** Fetch /v2/commerce/prices/<id> and return parsed JSON object, or null if 404 */
     public static JsonNode fetchSingle(int itemId) throws IOException, InterruptedException {
-        String url = "https://api.guildwars2.com/v2/commerce/prices/" + itemId;
+        String url = base + "/v2/commerce/prices/" + itemId;
 
         HttpResponse<String> res = getWithRetry429(url);
         int code = res.statusCode();
@@ -81,7 +93,7 @@ public final class TpPriceApi {
             HttpStatus.logWarn(429, "TP rate limit hit for " + url);
             // 429: honor Retry-After if present, else exponential backoff
             long sleepMs = retryAfterMs(res, attempt);
-            Thread.sleep(sleepMs);
+            sleeper.sleep(sleepMs);
         }
 
         // last attempt
@@ -117,7 +129,7 @@ public final class TpPriceApi {
     }
 
     public static Set<Integer> fetchAllTradeableItemIds() throws IOException, InterruptedException {
-        String url = "https://api.guildwars2.com/v2/commerce/prices";
+        String url = base + "/v2/commerce/prices";
 
         HttpResponse<String> res = getWithRetry429(url);
         int code = res.statusCode();
