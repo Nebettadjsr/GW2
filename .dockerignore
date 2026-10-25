@@ -1,0 +1,11 @@
+# Keep the build context to what the image build needs: mvnw, .mvn, pom.xml and src.
+**
+!mvnw
+!pom.xml
+!.mvn/wrapper/maven-wrapper.properties
+!src/**
+# Never copy local state, even under src
+**/.env
+**/.env.*
+**/*.log
+**/target

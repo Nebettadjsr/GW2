@@ -111,3 +111,7 @@ access and no display. `ci.yml` never runs them.
 Controlled checks: `python -m unittest discover -s .github/scripts` (`test_performance_summary.py` covers
 compatible/incompatible/absent history, unavailable KPIs, missing and corrupt reports, and the workflow's
 trigger and nonblocking configuration).
+
+## Container measurements (STORY-INFRA-006)
+
+Separate from the application-process measurements above. `scripts/container-smoke.sh` prints `image_bytes`, `build_ms` and `startup_to_readiness_ms` (container start to the first 200 from `/api/system/status`, new and reused schema). They are observations from one run on a shared machine, not limits or gates, and are not part of the informational application report.
