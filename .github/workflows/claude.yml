@@ -19,16 +19,57 @@ jobs:
     if: github.actor == 'Nebettadjsr' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: gw2ci
+          POSTGRES_PASSWORD: gw2ci
+          POSTGRES_DB: gw2ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     env:
       # Use the Claude subscription; do not fall back to Console/API billing.
       ANTHROPIC_API_KEY: ''
+      CLAUDE_MAX_TURNS: ${{ vars.CLAUDE_MAX_TURNS || '40' }}
+      DATABASE_URL: jdbc:postgresql://localhost:5432/gw2ci
+      DATABASE_USER: gw2ci
+      DATABASE_PASSWORD: gw2ci
+      GW2_API_KEY: ci-placeholder-no-live-api-calls
+      ICON_CACHE_DIR: ${{ runner.temp }}/gw2-icons
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
 
-      - name: Verify story selection rules
-        run: python -m unittest discover -s .github/scripts -p test_select_claude_story.py
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Prepare Maven wrapper
+        run: chmod +x ./mvnw
+
+      - name: Validate run allowance
+        id: limits
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CLAUDE_MAX_TURNS" =~ ^([1-9]|[1-9][0-9]|100)$ ]] || {
+            echo 'CLAUDE_MAX_TURNS must be an integer from 1 to 100.' >&2
+            exit 1
+          }
+          echo "max_turns=$CLAUDE_MAX_TURNS" >> "$GITHUB_OUTPUT"
+          cp .github/scripts/save_claude_recovery.py "$RUNNER_TEMP/save_claude_recovery.py"
+
+      - name: Verify workflow helpers
+        run: python -m unittest discover -s .github/scripts
 
       - name: Select next ready story
         id: select
@@ -82,6 +123,11 @@ jobs:
             Implement or finish that one issue on the checked-out story branch.
             If this branch already has a PR, address its review and CI feedback as part of this issue.
             Run narrow checks and report the exact results. Do not start another issue.
+            Java 25 and disposable PostgreSQL are available with the CI environment variables.
+            Run required database checks against isolated test schemas, never the public schema.
+            This run allows ${{ steps.limits.outputs.max_turns }} turns. Batch related reads,
+            focus on the remaining acceptance gaps, and write the run report before lengthy checks.
+            Keep that report updated so an interrupted attempt can be recovered.
             Before finishing, write a concise Markdown implementation report to the file named by
             GW2_RUN_REPORT. Include changes, acceptance-criteria evidence, exact checks run and
             results, changed or weakened assertions with reasons, local-only checks still needed,
@@ -90,8 +136,24 @@ jobs:
             `Local-only checks still needed: none` and `Unresolved gaps: none` only when true.
             Leave committing, pushing, and PR creation to the workflow steps after this action.
           claude_args: |
-            --max-turns 12
+            --max-turns ${{ steps.limits.outputs.max_turns }}
             --allowedTools Read,Edit,Write,Glob,Grep,Bash
+
+      - name: Save interrupted implementation
+        if: ${{ failure() && steps.claude.outcome == 'failure' }}
+        env:
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+          GW2_RUN_REPORT: ${{ runner.temp }}/gw2-claude-report.md
+        run: python "$RUNNER_TEMP/save_claude_recovery.py"
+
+      - name: Upload interrupted implementation
+        if: ${{ failure() && steps.claude.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-recovery-${{ steps.select.outputs.issue_number }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/claude-recovery
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Publish story branch
         if: steps.claude.outputs.conclusion == 'success'
