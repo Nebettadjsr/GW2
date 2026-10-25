@@ -75,7 +75,8 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws IOException {
         String path = authorizationPath(request);
-        boolean craftingRoute = isScopedCraftingRoute(path);
+        boolean craftingRoute = isScopedCraftingRoute(path) || isScopedAccountRead(path)
+                || isScopedAccountSync(path);
         if (!path.startsWith(ACCOUNT_PATH_PREFIX) && !craftingRoute) return true;
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
         // The crafting routes have no unscoped implementation left to fall back to (the versioned
@@ -110,10 +111,25 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
         return true;
     }
 
+    static boolean isDiscoveryRoute(String path) {
+        return path.equals("/api/crafting/discovery") || path.equals("/api/crafting/discovery/resolution");
+    }
+
+    /** Keyed account refresh triggers; they admit work only for a verified, granted session. */
+    static boolean isScopedAccountSync(String path) {
+        return path.equals("/api/sync/account") || path.equals("/api/sync/account/crafting-profit");
+    }
+
+    /** Account reads that read only scoped storage and so cannot run without a resolved scope. */
+    private static boolean isScopedAccountRead(String path) {
+        return path.equals("/api/account/bank") || path.equals("/api/account/materials")
+                || path.equals("/api/account/luck");
+    }
+
     /** The account-dependent crafting routes (STORY-API-011); other crafting routes are global. */
     private static boolean isScopedCraftingRoute(String path) {
         return path.equals("/api/crafting/profit") || path.equals("/api/crafting/profit/resolution")
-                || path.equals("/api/crafting/selector-options");
+                || path.equals("/api/crafting/selector-options") || isDiscoveryRoute(path);
     }
 
     /** Use the same decoded segments without matrix parameters that Spring maps to controllers. */
@@ -141,6 +157,9 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
             case "/api/account/materials" -> AccountOperation.MATERIAL_STORAGE_READ;
             case "/api/crafting/profit", "/api/crafting/profit/resolution" -> AccountOperation.CRAFTING_PROFIT_READ;
             case "/api/crafting/selector-options" -> AccountOperation.CHARACTERS_READ;
+            case "/api/crafting/discovery", "/api/crafting/discovery/resolution" -> AccountOperation.CRAFTING_PROFIT_READ;
+            case "/api/sync/account" -> AccountOperation.ACCOUNT_REFRESH;
+            case "/api/sync/account/crafting-profit" -> AccountOperation.CRAFTING_PROFIT_READ;
             default -> null;
         };
     }

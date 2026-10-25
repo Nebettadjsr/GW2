@@ -280,10 +280,17 @@ public class CachedCraftingProfitService {
                     "Account sources " + captured.sourcesNeedingRefresh()
                             + " need a refresh; no GW2 key was supplied, so none was admitted", true));
         }
+        List<CalculationFreshness.OutstandingRefresh> outstanding = new ArrayList<>();
         if (!captured.coverage().covered()) {
-            failures.add(new CalculationFreshness.RefreshFailure(CalculationFreshness.RefreshKind.TRADING_POST,
-                    null, "SCOPED_REFRESH_NOT_ADMITTED",
-                    "Trading Post quotes need a refresh, which scoped calculations do not start", true));
+            // Trading Post quotes are shared, account-free data and need no key, so the on-demand
+            // shared refresh is admitted exactly as for the unscoped calculation.
+            TradingPostRefreshCoordinator.Admission admission = priceRefresh.requireProfitCoverage();
+            outstanding.add(new CalculationFreshness.OutstandingRefresh(
+                    CalculationFreshness.RefreshKind.TRADING_POST, Set.of(), admission.taskId(),
+                    stateOf(admission.taskId()), admission.reuse()));
+            priceRefresh.lastFailure().ifPresent(failures::add);
+            unknownTask(CalculationFreshness.RefreshKind.TRADING_POST, admission.taskId())
+                    .ifPresent(failures::add);
         }
         return new CalculationFreshness(
                 requestId,
@@ -293,7 +300,7 @@ public class CachedCraftingProfitService {
                 resultAvailable,
                 captured.accountSources(),
                 captured.coverage(),
-                List.of(),
+                List.copyOf(outstanding),
                 List.copyOf(failures),
                 captured.accountId(),
                 captured.accountGenerations());

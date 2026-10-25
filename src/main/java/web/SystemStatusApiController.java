@@ -1,7 +1,6 @@
 package web;
 
 import application.GlobalDataRefreshService;
-import application.AccountRefreshService;
 import application.TradingPostPriceCacheStatusService;
 import java.time.Instant;
 import java.sql.SQLException;
@@ -14,14 +13,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/system")
 public class SystemStatusApiController {
     private final GlobalDataRefreshService globalDataRefreshService;
-    private final AccountRefreshService accountRefreshService;
     private final TradingPostPriceCacheStatusService priceCacheStatusService;
 
     public SystemStatusApiController(GlobalDataRefreshService globalDataRefreshService,
-                                     AccountRefreshService accountRefreshService,
                                      TradingPostPriceCacheStatusService priceCacheStatusService) {
         this.globalDataRefreshService = globalDataRefreshService;
-        this.accountRefreshService = accountRefreshService;
         this.priceCacheStatusService = priceCacheStatusService;
     }
 
@@ -42,7 +38,8 @@ public class SystemStatusApiController {
         }
         return new SystemStatus(global.running(), global.lastCheckedAt(), global.lastChangedAt(),
                 global.lastRecipeSyncAt(), global.lastGraphRebuildAt(), global.lastFailure(),
-                accountRefreshService.lastRefreshedAt(), accountRefreshService.lastRefreshScope(),
+                null, null, // account freshness/scope are account-derived: never in global diagnostics
+
                 cachedPriceItems, stalePriceItems, newestPriceFetchedAt, priceCacheError);
     }
 

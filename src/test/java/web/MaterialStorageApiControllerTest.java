@@ -50,6 +50,7 @@ class MaterialStorageApiControllerTest {
     private MockMvc mockMvcFor(StubMaterialStorageService service) {
         return MockMvcBuilders
                 .standaloneSetup(new MaterialStorageApiController(service))
+                .defaultRequest(AuthorizedRequests.defaultRequest())
                 .setControllerAdvice(new AccountReadApiExceptionHandler())
                 .build();
     }
@@ -243,6 +244,11 @@ class MaterialStorageApiControllerTest {
             if (sqlFailure != null) throw sqlFailure;
             if (runtimeFailure != null) throw runtimeFailure;
             return categories;
+        }
+
+        @Override
+        public List<MaterialCategory> getMaterialStorage(model.AccountScope scope) throws SQLException {
+            return getMaterialStorage();
         }
     }
 }

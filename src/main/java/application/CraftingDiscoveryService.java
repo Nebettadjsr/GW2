@@ -44,6 +44,8 @@ public class CraftingDiscoveryService {
     private final ItemRepository itemRepo;
     private final CraftingGraphCache graphCache;
     private final CraftingPlanner planner;
+    /** The authorized account of this request-local instance, or null for the retained unscoped path. */
+    private final model.AccountScope scope;
 
     // Scoped to the most recent reload(); backs getResultByRecipeId/itemName/itemSellUnit so a
     // stale cache from an earlier reload() - or one skipped by the "no missing recipes" early
@@ -81,12 +83,62 @@ public class CraftingDiscoveryService {
                                     ItemRepository itemRepo,
                                     CraftingGraphCache graphCache,
                                     CraftingPlanner planner) {
+        this(recipeRepo, invRepo, tpRepo, itemRepo, graphCache, planner, null);
+    }
+
+    private CraftingDiscoveryService(RecipeRepository recipeRepo,
+                                     InventoryRepository invRepo,
+                                     TpPriceRepository tpRepo,
+                                     ItemRepository itemRepo,
+                                     CraftingGraphCache graphCache,
+                                     CraftingPlanner planner,
+                                     model.AccountScope scope) {
+        this.scope = scope;
         this.recipeRepo = recipeRepo;
         this.invRepo = invRepo;
         this.tpRepo = tpRepo;
         this.itemRepo = itemRepo;
         this.graphCache = graphCache;
         this.planner = planner;
+    }
+
+    /**
+     * A fresh request-local service bound to one authorized account (STORY-API-011). Account inputs
+     * (recipe knowledge, characters, inventory) are then read only through that scope; the domain
+     * calculation is unchanged and receives the already-scoped ordinary inputs.
+     */
+    public CraftingDiscoveryService forScope(model.AccountScope scope) {
+        return new CraftingDiscoveryService(recipeRepo, invRepo, tpRepo, itemRepo, graphCache, planner,
+                java.util.Objects.requireNonNull(scope));
+    }
+
+    /** The account's stored inputs are missing: a keyed sync must publish them first. */
+    public static final class AccountInputsUnavailableException extends RuntimeException {
+        public AccountInputsUnavailableException() {
+            super("account inputs have not been synchronized");
+        }
+    }
+
+    /**
+     * Opens the scoped connection, records authorized use (activity only, never freshness) and
+     * refuses unless every source Discovery consumes has been published for this account.
+     */
+    private java.sql.Connection openScoped() throws SQLException {
+        java.sql.Connection con = repo.Db.open();
+        try {
+            repo.ManagedSchema.requireManagedAccountSchema(con, "account-scoped Discovery");
+            var states = new repo.AccountSourceStateRepository();
+            for (String source : List.of(repo.AccountSyncStateRepository.BANK,
+                    repo.AccountSyncStateRepository.MATERIALS, repo.AccountSyncStateRepository.RECIPES,
+                    repo.AccountSyncStateRepository.CHARACTERS)) {
+                if (states.read(con, scope, source).isEmpty()) throw new AccountInputsUnavailableException();
+            }
+            new repo.AccountRegistryRepository().recordAuthorizedUse(con, scope, java.time.Instant.now());
+            return con;
+        } catch (SQLException | RuntimeException failure) {
+            try { con.close(); } catch (SQLException ignored) { /* original failure wins */ }
+            throw failure;
+        }
     }
 
     /** Data loaded and computed for one reload() invocation, handed back to the presentation layer. */
@@ -251,7 +303,17 @@ public class CraftingDiscoveryService {
 
         List<Recipe> allRecipes = graph.getRecipes();
 
-        List<Integer> missingIds = recipeRepo.loadMissingDiscoverableRecipeIdsForCharacter(charName, discipline);
+        List<Integer> missingIds;
+        Set<Integer> knownIds;
+        if (scope == null) {
+            missingIds = recipeRepo.loadMissingDiscoverableRecipeIdsForCharacter(charName, discipline);
+            knownIds = missingIds.isEmpty() ? Set.of() : recipeRepo.loadKnownRecipeIds();
+        } else {
+            try (java.sql.Connection con = openScoped()) {
+                missingIds = recipeRepo.loadMissingDiscoverableRecipeIdsForCharacter(con, scope, charName, discipline);
+                knownIds = missingIds.isEmpty() ? Set.of() : recipeRepo.loadKnownRecipeIds(con, scope);
+            }
+        }
 
         if (missingIds.isEmpty()) {
             return Candidates.noMissingRecipes();
@@ -273,7 +335,6 @@ public class CraftingDiscoveryService {
                 .map(r -> r.recipeId)
                 .collect(Collectors.toSet());
 
-        Set<Integer> knownIds = recipeRepo.loadKnownRecipeIds();
         Set<Integer> usableRecipeIds = allRecipes.stream()
                 .filter(r -> r.minRating <= maxLevel)
                 .filter(r -> supportsDiscipline(r.disciplinesText, discipline))
@@ -298,7 +359,8 @@ public class CraftingDiscoveryService {
 
         if (settings.useOwnMats) {
             Map<Integer, InventoryRepository.OwnedQuantity> owned =
-                    invRepo.loadOwnedInventoryForCharacter(selectedCharacterName);
+                    scope == null ? invRepo.loadOwnedInventoryForCharacter(selectedCharacterName)
+                            : invRepo.loadOwnedInventoryForCharacter(scope, selectedCharacterName);
 
             Map<Integer, Integer> sellable = new HashMap<>();
             Map<Integer, Integer> bound = new HashMap<>();

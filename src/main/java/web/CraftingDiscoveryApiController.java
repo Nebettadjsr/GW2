@@ -5,7 +5,9 @@ import application.TradingPostRefreshCoordinator;
 import application.CraftingResolutionDetail;
 import org.springframework.beans.factory.annotation.Autowired;
 import craft.CraftingSettings;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
+import web.access.RequestAccountContext;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -76,12 +78,14 @@ public class CraftingDiscoveryApiController {
      */
     @PostMapping(path = "/discovery", produces = MediaType.APPLICATION_JSON_VALUE)
     public CraftingDiscoveryResponse discovery(
+            HttpServletRequest http,
             @RequestBody(required = false) CraftingDiscoveryRequest request) throws Exception {
 
         CraftingDiscoveryApiMapper.Effective effective = CraftingDiscoveryApiMapper.toEffective(request);
         refreshQuotes();
 
         CraftingDiscoveryService.DiscoveryData data = discoveryServiceFactory.get()
+                .forScope(RequestAccountContext.scopeOf(http))
                 .reload(effective.toDiscChoice(), effective.toCraftingSettings());
 
         return CraftingDiscoveryApiMapper.toResponse(effective, data);
@@ -109,6 +113,7 @@ public class CraftingDiscoveryApiController {
      */
     @PostMapping(path = "/discovery/resolution", produces = MediaType.APPLICATION_JSON_VALUE)
     public CraftingDiscoveryResolutionResponse discoveryResolution(
+            HttpServletRequest http,
             @RequestBody(required = false) CraftingDiscoveryResolutionRequest request) throws Exception {
 
         CraftingDiscoveryResolutionRequest body = CraftingResolutionMapper.requireBody(request);
@@ -118,7 +123,7 @@ public class CraftingDiscoveryApiController {
         refreshQuotes();
 
         CraftingResolutionDetail detail = CraftingResolutionMapper.requireInCalculation(
-                discoveryServiceFactory.get().resolveDetail(
+                discoveryServiceFactory.get().forScope(RequestAccountContext.scopeOf(http)).resolveDetail(
                         recipeId, effective.toDiscChoice(), effective.toCraftingSettings()));
 
         return new CraftingDiscoveryResolutionResponse(

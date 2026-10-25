@@ -53,6 +53,7 @@ class BankContentsApiControllerTest {
     private MockMvc mockMvcFor(StubBankContentsService service) {
         return MockMvcBuilders
                 .standaloneSetup(new BankContentsApiController(service))
+                .defaultRequest(AuthorizedRequests.defaultRequest())
                 .setControllerAdvice(new AccountReadApiExceptionHandler())
                 .build();
     }
@@ -228,6 +229,11 @@ class BankContentsApiControllerTest {
             if (sqlFailure != null) throw sqlFailure;
             if (runtimeFailure != null) throw runtimeFailure;
             return rows;
+        }
+
+        @Override
+        public List<BankRepository.BankSlotRow> getBankContents(model.AccountScope scope) throws SQLException {
+            return getBankContents();
         }
     }
 }

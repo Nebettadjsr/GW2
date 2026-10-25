@@ -58,6 +58,14 @@ class DiscoveryCalculationQuoteCoordinationTest {
         throw new IllegalStateException("calculation reached");
     };
 
+    private static org.springframework.mock.web.MockHttpServletRequest http() {
+        var request = new org.springframework.mock.web.MockHttpServletRequest();
+        request.setAttribute(web.access.RequestAccountContext.ATTRIBUTE, new application.access.AccountContext(
+                AuthorizedRequests.ACCOUNT_ID.toString(), Set.of(), Set.of(), "ctx-1",
+                java.time.Instant.parse("2099-01-01T00:00:00Z")));
+        return request;
+    }
+
     @AfterEach
     void close() {
         store.release.countDown();
@@ -68,14 +76,14 @@ class DiscoveryCalculationQuoteCoordinationTest {
     @Test
     void tableRouteWaitsForOverlappingManualRunThenCoversIdsAddedMeanwhile() throws Exception {
         assertCalculationWaits(new CraftingDiscoveryApiController(factory, coordinator),
-                c -> c.discovery(REQUEST));
+                c -> c.discovery(http(), REQUEST));
     }
 
     @Test
     void resolutionRouteWaitsForOverlappingManualRunThenCoversIdsAddedMeanwhile() throws Exception {
         var body = new CraftingDiscoveryResolutionRequest(7, REQUEST);
         assertCalculationWaits(new CraftingDiscoveryApiController(factory, coordinator),
-                c -> c.discoveryResolution(body));
+                c -> c.discoveryResolution(http(), body));
     }
 
     private interface Call {
@@ -117,7 +125,7 @@ class DiscoveryCalculationQuoteCoordinationTest {
         store.discoveryIds.add(1);
         var controller = new CraftingDiscoveryApiController(factory, coordinator);
 
-        Exception thrown = assertThrows(Exception.class, () -> controller.discovery(REQUEST));
+        Exception thrown = assertThrows(Exception.class, () -> controller.discovery(http(), REQUEST));
         assertSame(store.failure, thrown);
         assertTrue(coveredWhenCalculationStarted.isEmpty());
         assertTrue(coordinator.lastFailure(TradingPostRefreshCoordinator.Variant.DISCOVERY).isPresent());

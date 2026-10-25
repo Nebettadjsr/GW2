@@ -11,7 +11,8 @@ import application.CraftingDiscoveryService;
 import application.CraftingProfitService;
 import application.ProfitInputSession;
 import application.TradingPostRefreshCoordinator;
-import application.CurrentAccountLuckService;
+import application.AccountLuckService;
+import application.ScopedAccountRefreshCoordinator;
 import application.GlobalDataRefreshService;
 import application.MaterialStorageService;
 import application.ItemReadService;
@@ -83,6 +84,18 @@ public class Gw2ApiApplication {
     public AccountRefreshCoordinator accountRefreshCoordinator(AccountRefreshService refresh,
                                                                BackgroundTasks tasks) {
         return new AccountRefreshCoordinator(refresh, tasks);
+    }
+
+    /**
+     * The account-keyed refresh coordinator the HTTP routes admit through (STORY-API-011). Its only
+     * credential is the transient key admitted with a run: the fetcher factory binds that key to
+     * every upstream GET and never consults the deployment key.
+     */
+    @Bean
+    public ScopedAccountRefreshCoordinator scopedAccountRefreshCoordinator(
+            AccountRefreshService refresh, BackgroundTasks tasks, AccountAccessService access) {
+        return new ScopedAccountRefreshCoordinator(refresh, tasks, access,
+                key -> url -> api.Gw2ApiClient.getAuth(url, key));
     }
 
     /** Shared Trading Post demand coordination, deliberately separate from the account one. */
@@ -238,11 +251,12 @@ public class Gw2ApiApplication {
         return new MaterialStorageService();
     }
 
+    /** Scoped Luck read; the progression is global, the stored consumed Luck is the account's. */
     @Bean
-    public CurrentAccountLuckService currentAccountLuckService(
+    public AccountLuckService accountLuckService(
             @Value("${gw2.account-luck.schema-init:true}") boolean initializeSchema) throws SQLException {
         if (initializeSchema) AccountLuckSchema.ensure();
-        return new CurrentAccountLuckService();
+        return new AccountLuckService();
     }
 
     @Bean

@@ -1,34 +1,37 @@
 package web;
 
 import application.AccountLuckService;
-import application.CurrentAccountLuckService;
-import application.CurrentAccountLuckService.AccountIdentityUnavailableException;
-import application.CurrentAccountLuckService.AccountLuckSyncUnavailableException;
+import application.CurrentAccountLuckService.AccountLuckNotSyncedException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import web.access.RequestAccountContext;
 import web.dto.AccountLuckResponse;
 
 import java.sql.SQLException;
 import java.util.List;
 
-/** Read of the configured key's account. No account ID or GW2 key is accepted from the browser. */
+/**
+ * Read of the authorized session's stored Luck. No account ID or GW2 key is accepted from the browser,
+ * and no configured credential is used: a missing row is reported, never fetched.
+ */
 @RestController
 @RequestMapping("/api/account")
 public class AccountLuckApiController {
-    private final CurrentAccountLuckService currentAccountLuck;
+    private final AccountLuckService luckService;
 
-    public AccountLuckApiController(CurrentAccountLuckService currentAccountLuck) {
-        this.currentAccountLuck = currentAccountLuck;
+    public AccountLuckApiController(AccountLuckService luckService) {
+        this.luckService = luckService;
     }
 
     @GetMapping(path = "/luck", produces = MediaType.APPLICATION_JSON_VALUE)
     public AccountLuckResponse luck(HttpServletRequest request)
-            throws SQLException, AccountIdentityUnavailableException, AccountLuckSyncUnavailableException {
+            throws SQLException {
         if (!request.getParameterMap().isEmpty()) throw new ApiValidationException("Account Luck accepts no query parameters");
-        AccountLuckService.AccountLuckStatus status = currentAccountLuck.currentStatus();
+        AccountLuckService.AccountLuckStatus status = luckService.getStatus(RequestAccountContext.scopeOf(request))
+                .orElseThrow(AccountLuckNotSyncedException::new);
         var progress = status.progress();
         List<AccountLuckResponse.TargetDto> targets = List.of(
                 target("PLUS_5", status.targets().get(0)),

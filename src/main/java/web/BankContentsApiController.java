@@ -2,11 +2,13 @@ package web;
 
 import application.BankContentsService;
 import application.icons.ItemIconUrls;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import repo.BankRepository;
+import web.access.RequestAccountContext;
 import web.dto.BankContentsResponse;
 
 import java.sql.SQLException;
@@ -43,8 +45,9 @@ public class BankContentsApiController {
      * substituted, and there is no 404 case.
      */
     @GetMapping(path = "/bank", produces = MediaType.APPLICATION_JSON_VALUE)
-    public BankContentsResponse bankContents() throws SQLException {
-        List<BankContentsResponse.BankSlotDto> slots = toSlots(bankContentsService.getBankContents());
+    public BankContentsResponse bankContents(HttpServletRequest request) throws SQLException {
+        List<BankContentsResponse.BankSlotDto> slots =
+                toSlots(bankContentsService.getBankContents(RequestAccountContext.scopeOf(request)));
         return new BankContentsResponse(slots.size(), slots);
     }
 

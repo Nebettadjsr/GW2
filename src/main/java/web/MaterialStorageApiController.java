@@ -2,11 +2,13 @@ package web;
 
 import application.MaterialStorageService;
 import application.icons.ItemIconUrls;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import repo.MaterialStorageRepository.MaterialStorageRow;
+import web.access.RequestAccountContext;
 import web.dto.MaterialStorageResponse;
 
 import java.sql.SQLException;
@@ -44,9 +46,9 @@ public class MaterialStorageApiController {
      * successful account-material sync the read fails instead of presenting an empty inventory.
      */
     @GetMapping(path = "/materials", produces = MediaType.APPLICATION_JSON_VALUE)
-    public MaterialStorageResponse materialStorage() throws SQLException {
+    public MaterialStorageResponse materialStorage(HttpServletRequest request) throws SQLException {
         List<MaterialStorageResponse.MaterialCategoryDto> categories =
-                toCategories(materialStorageService.getMaterialStorage());
+                toCategories(materialStorageService.getMaterialStorage(RequestAccountContext.scopeOf(request)));
 
         return new MaterialStorageResponse(categories.size(), categories);
     }

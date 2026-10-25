@@ -63,6 +63,14 @@ public class ApiExceptionHandler {
                         "Request body could not be read as JSON matching the crafting request contract"));
     }
 
+    /** Authorized account, but its inputs were never published: a keyed sync must run first. */
+    @ExceptionHandler(application.CraftingDiscoveryService.AccountInputsUnavailableException.class)
+    public ResponseEntity<ApiErrorResponse> handleInputsUnavailable() {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).header("Cache-Control", "no-store")
+                .body(new ApiErrorResponse("CREDENTIAL_REQUIRED",
+                        "Prove a GW2 API key and sync account data to use Discovery"));
+    }
+
     /** The database backing the calculation could not be read. */
     @ExceptionHandler(SQLException.class)
     public ResponseEntity<ApiErrorResponse> handleSqlFailure(SQLException e) {

@@ -14,7 +14,7 @@ class SystemStatusApiControllerTest {
     void exposesProcessLocalGlobalRefreshStatus() throws Exception {
         var service = new GlobalDataRefreshService();
         MockMvc mvc = standaloneSetup(new SystemStatusApiController(service,
-                new application.AccountRefreshService(), new application.TradingPostPriceCacheStatusService(
+                new application.TradingPostPriceCacheStatusService(
                 new repo.tp.TpPriceRepository() {
                     @Override public CacheStatus cacheStatus() {
                         return new CacheStatus(0, 0, null);

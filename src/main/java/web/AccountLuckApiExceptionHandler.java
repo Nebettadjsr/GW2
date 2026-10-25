@@ -24,7 +24,7 @@ public class AccountLuckApiExceptionHandler {
     @ExceptionHandler(AccountLuckNotSyncedException.class)
     public ResponseEntity<ApiErrorResponse> notSynced() {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiErrorResponse(
-                "ACCOUNT_LUCK_NOT_SYNCED", "Sync account data to load consumed Luck"));
+                "CREDENTIAL_REQUIRED", "Prove a GW2 API key and sync account data to load consumed Luck"));
     }
 
     @ExceptionHandler(SQLException.class)
