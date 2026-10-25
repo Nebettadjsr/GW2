@@ -57,10 +57,10 @@ Phase 2  Domain Isolation / Decoupling          (complete, 2026-09-21 — see §
 Phase 3  Backend / Application-Service Extraction (complete; milestone-03 archived)
 Phase 4  Backend HTTP API                       (complete; milestone-04 archived)
 Phase 5  Browser Frontend Completion             (complete, 2026-10-17 — see §9)
-Phase 6  Multi-User / Account Isolation         (current; account-scoped cutover in progress)
-Phase 7  Containerized Runtime and Database Migration (not started; PostgreSQL is already used locally)
+Phase 6  Multi-User / Account Isolation         (complete; bounded review #63 and PR #73)
+Phase 7  Containerized Runtime and Database Migration (current; backend image delivered in #72)
 Phase 8  Deployment / Runtime Configuration     (not started)
-Phase 9  Final Cleanup / JavaFX Removal         (not started; removal is already permitted earlier — see §2)
+Phase 9  Final Cleanup / JavaFX Removal         (final review later; JavaFX removal already delivered)
 ```
 
 Every new or revised phase must retain the PROJECT HEALTH REVIEW exit requirement, with execution and findings governed by `TARGET_ARCHITECTURE.md` §21. Schedule the review near exit, after milestone implementation; planner/user disposition of blocking findings precedes closure. Phase 1 uses the existing `STORY-QUALITY-001` ("Review Phase 1 project health before milestone completion").
@@ -333,9 +333,11 @@ Phase 5. The browser/backend contract and web frontend should exist before intro
 
 ## 11. Phase 7 — Containerized Runtime and Database Migration
 
-**Status: Ready to start.** #72 packages the backend first; frontend packaging,
-Compose integration and actual container measurements follow. Hosting and a
-deployment proxy remain separate technical/deployment choices when needed.
+**Status: In progress.** #72 / PR #74 delivered the backend image and isolated
+fresh/reused-schema Docker verification. #75 records the frontend runtime/API
+forwarding decision; #76 implements it after acceptance. Compose integration,
+full-stack container measurements and the bounded phase review remain open.
+Hosting/public TLS stay undecided until deployment work needs them.
 
 The versioned schema lifecycle was delivered during Phase 6 (STORY-INFRA-004, ADR-010). This phase packages that selected lifecycle; it does not reopen the Flyway choice or require another manual-SQL conversion.
 
@@ -360,8 +362,8 @@ Phase 6. Containerization should package the intended multi-user/account-isolate
 ### High-Level Stories
 
 - (Done) Select Flyway and implement the versioned schema lifecycle.
-- Write a backend Dockerfile.
-- Write a frontend Dockerfile (once Phase 5 exists).
+- (Done) Write and verify the backend Dockerfile (#72).
+- Write and verify the frontend Dockerfile (#76, after #75).
 - Write `docker-compose.yml` wiring frontend/backend/PostgreSQL on an internal network.
 - Verify a fresh `docker compose up` reproduces a working environment from nothing.
 

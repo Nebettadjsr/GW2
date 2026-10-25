@@ -430,6 +430,10 @@ The application must remain portable to a normal Docker-capable host. A home ser
 
 Cloudflare-related hosting is another possible future option to evaluate; neither Cloudflare nor any specific Cloudflare product is selected. Hosting remains undecided until the deployment phase.
 
+### Frontend runtime and `/api` forwarding (ADR-011)
+
+The frontend container is one Nginx process serving the built Vue assets (with `index.html` fallback for browser navigation) and forwarding `/api/` to the backend over the internal network. It must pass the browser's `Host` unchanged (including a nonstandard port), `Origin`, `Cookie`/`Set-Cookie`, `X-GW2-API-Key` and `X-Account-Context`, because the backend's origin and cookie checks derive from them. It publishes the single public port; backend and PostgreSQL stay internal. This decision does not select a hosting provider or public TLS/edge, and no such runtime exists until the implementation story delivers it.
+
 Do not introduce Kubernetes, microservices, or additional supporting services without a concrete requirement.
 
 ---
@@ -493,6 +497,7 @@ Review workflow and story disposition belong in the agent/planning documentation
 - **Database:** PostgreSQL.
 - **Schema migrations:** Flyway with versioned PostgreSQL SQL migrations; sections 7.3-7.4 and ADR-010.
 - **Runtime packaging:** frontend, backend, and PostgreSQL containers; Docker Compose for the initial small deployment.
+- **Frontend container runtime (ADR-011; runtime not yet delivered):** Nginx serves the built static assets and forwards `/api/` to the backend on the internal network, preserving the original `Host` (with port), `Origin`, cookies and key/context headers so the backend's existing same-origin checks apply unchanged. Scope is internal forwarding only, not hosting or public TLS.
 - **Shared business-logic ownership:** backend/domain/application layers, with the explicit frontend-owned Ecto Salvage exception in section 4.2.
 - **Supported UI:** browser frontend only; JavaFX and a replacement desktop UI are not planned.
 - **GW2 API ownership:** backend adapter boundary; browsers do not call ArenaNet directly.
@@ -507,7 +512,7 @@ Review workflow and story disposition belong in the agent/planning documentation
 
 ## To Be Decided
 
-- Reverse proxy, if required by deployment.
+- Public TLS/edge proxy, if required by deployment (separate from the internal frontend-to-backend forwarding selected in ADR-011).
 - Inactive-account retention threshold, only if measured impact justifies automatic cleanup.
 - Hosting provider.
 
