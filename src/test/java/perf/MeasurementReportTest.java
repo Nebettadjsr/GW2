@@ -121,4 +121,41 @@ class MeasurementReportTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new MeasurementReport("c", Instant.now(), null, Map.of()));
     }
+
+    @Test
+    void peakSamplerNeverLetsASmallerRacingObservationOverwriteALargerOne() throws Exception {
+        java.util.concurrent.atomic.AtomicLong source = new java.util.concurrent.atomic.AtomicLong(1);
+        try (ProcessProbe.PeakSampler sampler = new ProcessProbe.PeakSampler("race", source::get, 1)) {
+            Thread[] readers = new Thread[4];
+            for (int t = 0; t < readers.length; t++) {
+                readers[t] = new Thread(() -> { for (int i = 0; i < 2000; i++) sampler.peak(); });
+                readers[t].start();
+            }
+            source.set(1_000);
+            Thread.sleep(20);
+            source.set(3);
+            for (Thread r : readers) r.join();
+            assertEquals(1_000, sampler.peak());
+        }
+    }
+
+    @Test
+    void databaseProbeFailureYieldsUnitedUnavailableKpisAndADiagnosticInsteadOfThrowing() {
+        DatabaseProbe broken = new DatabaseProbe("jdbc:postgresql://127.0.0.1:1/none", "u", "p", "s");
+        java.util.List<Metric> out = new java.util.ArrayList<>();
+        java.util.List<String> diagnostics = new java.util.ArrayList<>();
+        DatabaseMetrics.collect(broken, null, 0, out, diagnostics);
+        assertFalse(diagnostics.isEmpty(), "the failure is visible as a diagnostic");
+        for (String name : List.of("db_rows_inserted", "db_rows_read", "db_transactions_committed", "db_storage_total",
+                "db_storage_indexes", "db_network_bytes")) {
+            Metric m = out.stream().filter(x -> x.name().equals(name)).findFirst().orElseThrow();
+            assertFalse(m.available(), name);
+            assertFalse(m.unit().isBlank(), name + " keeps a unit");
+            assertFalse(m.unavailableReason().isBlank(), name);
+        }
+        // The resulting workload is a valid, serialisable report rather than an exception.
+        MeasurementReport report = new MeasurementReport("c", Instant.now(), "f", Map.of());
+        report.add(new MeasurementReport.Workload("w", "d", "b", 1, out, List.of(), diagnostics));
+        assertTrue(report.toJson().toString().contains("unavailableReason"));
+    }
 }

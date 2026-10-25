@@ -74,12 +74,25 @@ public final class DatabaseProbe {
         }
     }
 
-    /** Connections to this database other than the probe's own, at this instant. */
+    /** Client connections (any state, including idle) to this database other than the probe's own, at this instant. */
     public long connections() throws SQLException {
         try (Connection c = DriverManager.getConnection(url, user, password);
              PreparedStatement ps = c.prepareStatement("""
                      SELECT count(*) FROM pg_stat_activity
                      WHERE datname = current_database() AND pid <> pg_backend_pid() AND backend_type = 'client backend'""");
+             ResultSet rs = ps.executeQuery()) {
+            rs.next();
+            return rs.getLong(1);
+        }
+    }
+
+    /** Client connections of this database that are executing a statement (state 'active') right now. */
+    public long activeConnections() throws SQLException {
+        try (Connection c = DriverManager.getConnection(url, user, password);
+             PreparedStatement ps = c.prepareStatement("""
+                     SELECT count(*) FROM pg_stat_activity
+                     WHERE datname = current_database() AND pid <> pg_backend_pid() AND backend_type = 'client backend'
+                       AND state = 'active'""");
              ResultSet rs = ps.executeQuery()) {
             rs.next();
             return rs.getLong(1);

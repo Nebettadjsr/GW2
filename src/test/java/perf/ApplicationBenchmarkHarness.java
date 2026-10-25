@@ -277,9 +277,9 @@ abstract class ApplicationBenchmarkHarness {
         java.nio.file.Path graphFile = java.nio.file.Files.createTempFile("perf-crafting-graph", ".json");
         java.nio.file.Files.delete(graphFile);
         System.setProperty(CraftingGraphCache.TEST_CACHE_FILE_PROPERTY, graphFile.toString());
-        createSchema(s);
-        System.setProperty(Db.TEST_SCHEMA_PROPERTY, SCHEMA);
         try {
+            createSchema(s);
+            System.setProperty(Db.TEST_SCHEMA_PROPERTY, SCHEMA);
             login();
             MeasurementReport report = new MeasurementReport(commit(), Instant.now(), FIXTURE_VERSION, environment(s));
             report.add(measure("idle", "Application idle: no requests, no tasks.",
@@ -299,6 +299,7 @@ abstract class ApplicationBenchmarkHarness {
                     "HTTP accept to task SUCCEEDED; the refresh gateway is a fixture that writes " + (s.rawItems() + s.largeRecipes())
                             + " price rows through JDBC, so upstream fetch/parse cost is excluded.", 1,
                     rec -> asyncTask(rec, "POST", "/api/prices/refresh", "{\"variant\":\"PROFIT\"}")));
+            seedRoster(); // outside any measured window: both profit cases need the same owned crafting roster
             report.add(measure("profit_small",
                     "Crafting Profit (All scope, account roster) over " + s.smallRecipes() + " recipes; first call, then repeats with changed settings.",
                     "HTTP POST /api/crafting/profit through service, calculation and JSON serialization.", s.profitRepeats() + 1,
@@ -307,7 +308,7 @@ abstract class ApplicationBenchmarkHarness {
                     "Global data refresh (POST /api/sync/global) that adds the remaining recipes and rebuilds the crafting graph.",
                     "HTTP accept to task SUCCEEDED including real graph rebuild; the upstream fetch is a fixture that writes "
                             + s.largeRecipes() + " recipes through JDBC.", 1,
-                    rec -> { seedRoster(); asyncTask(rec, "POST", "/api/sync/global", "{}"); }));
+                    rec -> asyncTask(rec, "POST", "/api/sync/global", "{}")));
             report.add(measure("profit_large",
                     "Crafting Profit (All scope, account roster) over " + s.largeRecipes() + " recipes; first call, then repeats with changed settings.",
                     "Same as profit_small.", s.profitRepeats() + 1, rec -> profit(rec, s.profitRepeats())));
@@ -381,6 +382,7 @@ abstract class ApplicationBenchmarkHarness {
         final AtomicInteger requests = new AtomicInteger();
         final List<String> diagnostics = java.util.Collections.synchronizedList(new ArrayList<>());
         final List<Double> jobMillis = java.util.Collections.synchronizedList(new ArrayList<>());
+        final List<Double> repoLatenciesMillis = java.util.Collections.synchronizedList(new ArrayList<>());
         final List<Metric> extra = java.util.Collections.synchronizedList(new ArrayList<>());
     }
 
@@ -404,7 +406,10 @@ abstract class ApplicationBenchmarkHarness {
              ProcessProbe.PeakSampler rss = new ProcessProbe.PeakSampler("rss", ProcessProbe::rssBytes, 20);
              ProcessProbe.PeakSampler conns = new ProcessProbe.PeakSampler("db-connections", () -> {
                  try { return db.connections(); } catch (Exception e) { return -1; }
-             }, 25)) {
+             }, 25);
+             ProcessProbe.PeakSampler active = new ProcessProbe.PeakSampler("db-active-connections", () -> {
+                 try { return db.activeConnections(); } catch (Exception e) { return -1; }
+             }, 10)) {
             try {
                 body.run(rec);
             } catch (Throwable t) {
@@ -413,8 +418,9 @@ abstract class ApplicationBenchmarkHarness {
             long wallNanos = System.nanoTime() - wall0;
             long cpu1 = ProcessProbe.cpuNanos();
             collectProcess(metrics, cpu0, cpu1, wallNanos, heap.peak(), rss.peak(), name.equals("idle"));
-            metrics.add(connectionsMetric(conns.peak()));
+            metrics.addAll(connectionMetrics(conns.peak(), active.peak()));
             collectHttp(metrics, rec, wallNanos);
+            collectRepository(metrics, rec, wallNanos);
             metrics.addAll(rec.extra);
             if (!rec.jobMillis.isEmpty()) {
                 metrics.add(Metric.of("background_job_duration", rec.jobMillis.stream().mapToDouble(Double::doubleValue).sum()
@@ -426,7 +432,7 @@ abstract class ApplicationBenchmarkHarness {
                 metrics.add(frequency());
             }
         }
-        collectDatabase(metrics, rec, dbBefore);
+        DatabaseMetrics.collect(db, dbBefore, DatabaseProbe.SETTLE_MILLIS, metrics, rec.diagnostics);
         return new MeasurementReport.Workload(name, description, boundary, iterations, metrics, limits, rec.diagnostics);
     }
 
@@ -461,10 +467,28 @@ abstract class ApplicationBenchmarkHarness {
                 : Metric.unavailable("peak_rss", "bytes", boundary, "/proc/self/status is not available on this platform"));
     }
 
-    private static Metric connectionsMetric(long peak) {
-        return peak >= 0 ? Metric.of("db_connections_peak", peak, "connections",
-                "client connections to the test database sampled every 25 ms; the application opens one per call (no pool), so 'active' equals this peak")
-                : Metric.unavailable("db_connections_peak", "connections", "database", "pg_stat_activity could not be read");
+    private static List<Metric> connectionMetrics(long openPeak, long activePeak) {
+        String boundary = "database-wide pg_stat_activity (client backends of the test database, not only this schema), "
+                + "sampled; the probe's own connections are excluded, other clients of the database are not";
+        return List.of(
+                openPeak >= 0 ? Metric.of("db_connections_open_peak", openPeak, "connections",
+                        boundary + "; counts every state including idle, sampled every 25 ms (lower bound)")
+                        : Metric.unavailable("db_connections_open_peak", "connections", "database", "pg_stat_activity could not be read"),
+                activePeak >= 0 ? Metric.of("db_connections_active_peak", activePeak, "connections",
+                        boundary + "; only state 'active', point samples every 10 ms so short statements are mostly missed (lower bound)")
+                        : Metric.unavailable("db_connections_active_peak", "connections", "database", "pg_stat_activity could not be read"));
+    }
+
+    private static void collectRepository(List<Metric> out, Recorder rec, long wallNanos) {
+        if (rec.repoLatenciesMillis.isEmpty()) {
+            return;
+        }
+        List<Double> lat = new ArrayList<>(rec.repoLatenciesMillis);
+        String boundary = "repository call (JDBC, no HTTP), one round = TP quotes + item metadata";
+        out.add(Metric.of("repository_read_latency_p95", Stats.p95(lat), "ms", boundary + ", nearest-rank over " + lat.size() + " rounds"));
+        out.add(Metric.of("repository_read_throughput", Stats.throughputPerSecond(lat.size(), wallNanos), "rounds/second",
+                boundary + ", over the workload wall time"));
+        out.add(Metric.of("repository_read_rounds", lat.size(), "rounds", boundary));
     }
 
     private static void collectHttp(List<Metric> out, Recorder rec, long wallNanos) {
@@ -484,34 +508,6 @@ abstract class ApplicationBenchmarkHarness {
                 "HTTP request bodies received by the application; headers and TCP overhead excluded"));
         out.add(Metric.of("network_egress", rec.bytesIn.get(), "bytes",
                 "HTTP response bodies sent by the application; headers and TCP overhead excluded"));
-    }
-
-    private void collectDatabase(List<Metric> out, Recorder rec, DatabaseProbe.Counters before) {
-        String boundary = "test schema " + "(pg_stat_all_tables)";
-        try {
-            Thread.sleep(DatabaseProbe.SETTLE_MILLIS);
-            if (before != null) {
-                DatabaseProbe.Counters d = db.counters().minus(before);
-                out.add(Metric.of("db_rows_inserted", d.rowsInserted(), "rows", boundary));
-                out.add(Metric.of("db_rows_updated", d.rowsUpdated(), "rows", boundary));
-                out.add(Metric.of("db_rows_deleted", d.rowsDeleted(), "rows", boundary));
-                out.add(Metric.of("db_rows_read", d.rowsRead(), "rows", boundary + ", sequential scan rows + index fetches"));
-                out.add(Metric.of("db_transactions_committed", d.transactionsCommitted(), "transactions",
-                        "whole test database (pg_stat_database)"));
-            } else {
-                for (String n : List.of("db_rows_inserted", "db_rows_updated", "db_rows_deleted", "db_rows_read")) {
-                    out.add(Metric.unavailable(n, "rows", boundary, "baseline counters could not be read"));
-                }
-            }
-            DatabaseProbe.Storage st = db.storage();
-            out.add(Metric.of("db_storage_total", st.totalBytes(), "bytes", boundary + ", tables + indexes + TOAST at workload end"));
-            out.add(Metric.of("db_storage_indexes", st.indexBytes(), "bytes", boundary + ", at workload end"));
-        } catch (Exception e) {
-            rec.diagnostics.add("database statistics unavailable: " + e);
-            out.add(Metric.unavailable("db_statistics", "", boundary, e.getClass().getSimpleName()));
-        }
-        out.add(Metric.unavailable("db_network_bytes", "bytes", "JDBC wire",
-                "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead"));
     }
 
     // ================================================================ workload bodies
@@ -582,8 +578,17 @@ abstract class ApplicationBenchmarkHarness {
             String body = "{\"settings\":{\"maxBuyCopper\":" + (10_000 + i) + "}}";
             HttpResponse<String> r = send("POST", "/api/crafting/profit", body, false, rec);
             if (r.statusCode() == 200) {
-                int rows = JSON.readTree(r.body()).path("rows").size();
-                if (i == 0) rec.extra.add(Metric.of("result_rows", rows, "rows", "rows in the first response"));
+                JsonNode rows = JSON.readTree(r.body()).path("rows");
+                if (i == 0) {
+                    int craftable = 0;
+                    for (JsonNode row : rows) if (row.path("craftableCount").asInt(0) > 0) craftable++;
+                    rec.extra.add(Metric.of("result_rows", rows.size(), "rows", "rows in the first response"));
+                    rec.extra.add(Metric.of("craftable_rows", craftable, "rows",
+                            "rows of the first response whose calculation crafted at least one item (craftableCount > 0)"));
+                    if (craftable == 0) {
+                        rec.diagnostics.add("profit calculated " + rows.size() + " rows but none is craftable: the workload did not exercise crafting");
+                    }
+                }
             } else if (i == 0) {
                 throw new IllegalStateException("profit not served: " + r.statusCode() + " " + r.body());
             }
@@ -608,8 +613,7 @@ abstract class ApplicationBenchmarkHarness {
         for (int i = 0; i < rounds; i++) {
             long t = System.nanoTime();
             cached = tp.loadTpQuotes(ids).size() + items.loadItems(ids).size();
-            rec.latenciesMillis.add(Stats.nanosToMillis(System.nanoTime() - t));
-            rec.requests.incrementAndGet();
+            rec.repoLatenciesMillis.add(Stats.nanosToMillis(System.nanoTime() - t));
         }
         rec.extra.add(Metric.of("rows_returned_per_round", cached, "rows", "quotes + items returned by the last round"));
     }

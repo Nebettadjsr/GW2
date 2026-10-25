@@ -68,7 +68,7 @@ public final class ProcessProbe {
      */
     public static final class PeakSampler implements AutoCloseable {
         private final LongSupplier source;
-        private volatile long peak = -1;
+        private final java.util.concurrent.atomic.AtomicLong peak = new java.util.concurrent.atomic.AtomicLong(-1);
         private volatile boolean running = true;
         private final Thread thread;
 
@@ -91,8 +91,8 @@ public final class ProcessProbe {
 
         private void observe() {
             try {
-                long v = source.getAsLong();
-                if (v > peak) peak = v;
+                // called from the sampler and reader threads: keep the larger value atomically
+                peak.accumulateAndGet(source.getAsLong(), Math::max);
             } catch (RuntimeException ignored) {
                 // a failed sample is simply not a sample
             }
@@ -101,7 +101,7 @@ public final class ProcessProbe {
         /** Peak observed so far, or -1 when no sample ever succeeded. */
         public long peak() {
             observe();
-            return peak;
+            return peak.get();
         }
 
         @Override

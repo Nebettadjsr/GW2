@@ -53,12 +53,28 @@ class ApplicationBenchmarkBoundaryTest extends ApplicationBenchmarkHarness {
         assertTrue(value(workload(report, "global_refresh"), "db_rows_inserted") >= 24);
         assertEquals(0, value(workload(report, "profit_small"), "http_errors"));
         assertTrue(value(workload(report, "profit_small"), "result_rows") > 0);
+        // Rows alone prove nothing (all could be RECIPE_NOT_ALLOWED): real crafts must have been calculated.
+        assertTrue(value(workload(report, "profit_small"), "craftable_rows") > 0);
+        assertTrue(value(workload(report, "profit_large"), "craftable_rows")
+                >= value(workload(report, "profit_small"), "craftable_rows"));
         assertTrue(value(workload(report, "profit_large"), "result_rows")
                 >= value(workload(report, "profit_small"), "result_rows"));
 
         assertEquals(8, value(workload(report, "http_typical"), "http_requests"));
         assertEquals(8, value(workload(report, "http_concurrent"), "http_requests"));
-        assertTrue(value(workload(report, "database_reads"), "db_rows_read") > 0);
+        MeasurementReport.Workload reads = workload(report, "database_reads");
+        assertTrue(value(reads, "db_rows_read") > 0);
+        assertEquals(2, value(reads, "repository_read_rounds"));
+        assertTrue(value(reads, "repository_read_latency_p95") >= 0);
+        assertTrue(value(reads, "repository_read_throughput") > 0);
+        // A no-HTTP workload carries no HTTP KPIs; HTTP workloads carry no repository KPIs.
+        assertTrue(reads.metrics().stream().noneMatch(m -> m.name().startsWith("http_") || m.name().startsWith("network_")));
+        assertTrue(workload(report, "http_typical").metrics().stream().noneMatch(m -> m.name().startsWith("repository_")));
+        assertTrue(value(workload(report, "http_typical"), "http_latency_p95") > 0);
+        for (MeasurementReport.Workload w : report.workloads()) {
+            assertTrue(w.metrics().stream().anyMatch(m -> m.name().equals("db_connections_open_peak")), w.name());
+            assertTrue(w.metrics().stream().anyMatch(m -> m.name().equals("db_connections_active_peak")), w.name());
+        }
 
         // Every workload carries the process KPIs; idle reports no HTTP at all.
         for (MeasurementReport.Workload w : report.workloads()) {

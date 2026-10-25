@@ -51,8 +51,16 @@ not measured until container infrastructure exists and must be reported under a 
   Throughput is requests over workload wall time. Profit and sync workloads have few samples; read p95 as indicative.
 - Database rows inserted/updated/deleted/read come from `pg_stat_all_tables` for the test schema after a
   1.3 s settle (PostgreSQL publishes statistics with a delay). Storage is tables plus indexes plus TOAST at the
-  end of each workload. Connections are sampled every 25 ms per database; the application opens one per call
-  (no pool), so active and peak coincide.
+  end of each workload. Connection KPIs are database-wide
+  (`pg_stat_activity`, not per schema; other clients of the database and probe interference are not excluded):
+  `db_connections_open_peak` counts every client connection in any state (sampled every 25 ms), and
+  `db_connections_active_peak` counts only state `active` (point samples every 10 ms, so short statements are
+  mostly missed). Both are lower bounds; the application opens a connection per call (no pool).
+- `database_reads` runs repository calls without HTTP, so it reports `repository_read_latency_p95`,
+  `repository_read_throughput` and `repository_read_rounds`, never `http_*` or `network_*` KPIs. A database
+  probe failure yields unavailable KPIs (with unit and reason) plus a diagnostic, not a number or an exception.
+- The profit workloads run after an owned Chef character is seeded outside any measured window and report
+  `craftable_rows`; a diagnostic is raised if no row actually crafted.
 - Network ingress/egress is HTTP body bytes only. JDBC wire bytes and upstream traffic are marked unavailable
   (offline fixtures send nothing upstream; there are no per-process network counters without OS tooling).
 - Background-job duration is accept-to-terminal-state. Per-job CPU and memory are unavailable because tasks
