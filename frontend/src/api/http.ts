@@ -120,7 +120,11 @@ async function sendJsonAttempt<T>(path: string, init: RequestInit, mayRecover: b
     }
     throw error
   }
-  return (await response.json()) as T
+  const body = (await response.json()) as T
+  if (transport !== null && ticket !== null && !transport.isCurrent(ticket)) {
+    throw new ApiRequestError('The account changed while this response was downloading.', ACCOUNT_CHANGED_CODE, null)
+  }
+  return body
 }
 
 export async function toRequestError(response: Response): Promise<ApiRequestError> {

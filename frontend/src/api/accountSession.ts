@@ -60,6 +60,8 @@ interface Lease {
 let lease: Lease | null = null
 let memoryKey: string | null = null
 let inflight: Promise<void> | null = null
+/** Changes on account intent, independently of workspace remounts after restoring a lease. */
+let accountEpoch = 0
 
 /* ------------------------------------------------------------------------- key storage --- */
 
@@ -146,6 +148,7 @@ function adopt(proven: Proven): void {
 
 /** The key was refused for good: forget it and ask for a new one. */
 function reject(error: unknown): void {
+  accountEpoch += 1
   removeKey()
   lease = null
   connection.generation += 1
@@ -245,6 +248,7 @@ export async function connectKey(rawKey: string): Promise<boolean> {
     return false
   }
   const generation = ++connection.generation
+  accountEpoch += 1
   inflight = null
   lease = null
   connection.grants = []
@@ -275,6 +279,7 @@ export async function connectKey(rawKey: string): Promise<boolean> {
  * end its session. A failed logout is reported; it is never presented as success.
  */
 export async function disconnect(): Promise<void> {
+  accountEpoch += 1
   const context = lease?.accessContext ?? null
   removeKey()
   lease = null
@@ -302,6 +307,7 @@ export async function disconnect(): Promise<void> {
 
 const transport: AccountTransport = {
   async begin(sendKey: boolean): Promise<AccountRequestTicket> {
+    const epoch = accountEpoch
     if (inflight !== null) await inflight.catch(() => undefined)
     if (connection.phase === 'disconnected') throw keyRequired()
     if (connection.phase === 'unavailable' || connection.phase === 'restoring' || connection.phase === 'connecting') {
@@ -312,6 +318,9 @@ const transport: AccountTransport = {
       } catch (error) {
         if (!leaseIsLive()) throw error
       }
+    }
+    if (epoch !== accountEpoch) {
+      throw new ApiRequestError('The account changed before this request started.', 'ACCOUNT_CHANGED', null)
     }
     const key = readKey()
     if (lease === null || key === null) throw keyRequired()
@@ -349,6 +358,7 @@ export function installAccountSession(): void {
 
 /** Test support: back to a pristine, disconnected module without touching the transport. */
 export function resetAccountSession(): void {
+  accountEpoch = 0
   removeKey()
   lease = null
   inflight = null

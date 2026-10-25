@@ -164,6 +164,26 @@ describe('invalid key versus transient failure', () => {
 })
 
 describe('lease renewal and context mismatch', () => {
+  it('does not submit an action under a replacement account after preflight renewal', async () => {
+    let release: (response: Response) => void = () => undefined
+    let proofsA = 0
+    handler = (call) => {
+      if (call.path === '/api/session') {
+        if (call.headers['X-GW2-API-Key'] === 'KEY-B') return proof('ctx-b')
+        if (++proofsA === 1) return proof('ctx-a', new Date(Date.now() + 10_000).toISOString())
+        return new Promise<Response>((resolve) => { release = resolve })
+      }
+      return json({})
+    }
+    await connectKey('KEY-A')
+    const outcome = postJson('/sync/account', {}).catch((error: { code: string }) => error.code)
+    await vi.waitFor(() => expect(proofsA).toBe(2))
+    await connectKey('KEY-B')
+    release(proof('ctx-a'))
+    expect(await outcome).toBe('ACCOUNT_CHANGED')
+    expect(calls.filter((call) => call.path === '/api/sync/account')).toHaveLength(0)
+  })
+
   it('does not replay an old account action after another account connects during renewal', async () => {
     let releaseRenewal: (response: Response) => void = () => undefined
     let proofsA = 0
@@ -233,6 +253,23 @@ describe('lease renewal and context mismatch', () => {
 })
 
 describe('replacement and disconnect', () => {
+  it('drops the old response when its body finishes downloading after replacement', async () => {
+    let releaseBody: (body: unknown) => void = () => undefined
+    let readingBody = false
+    handler = (call) => {
+      if (call.path === '/api/session') return proof(call.headers['X-GW2-API-Key'] === 'KEY-A' ? 'ctx-a' : 'ctx-b')
+      const response = json({})
+      response.json = () => new Promise((resolve) => { readingBody = true; releaseBody = resolve })
+      return response
+    }
+    await connectKey('KEY-A')
+    const outcome = getJson('/account/bank').catch((error: { code: string }) => error.code)
+    await vi.waitFor(() => expect(readingBody).toBe(true))
+    await connectKey('KEY-B')
+    releaseBody({ owner: 'A' })
+    expect(await outcome).toBe('ACCOUNT_CHANGED')
+  })
+
   it('does not reconnect when a submitted key proof finishes after disconnect', async () => {
     let complete: (response: Response) => void = () => undefined
     handler = () => new Promise<Response>((resolve) => { complete = resolve })

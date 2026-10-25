@@ -1,4 +1,5 @@
-import { ref } from 'vue'
+import { getCurrentScope, onScopeDispose, ref } from 'vue'
+import { connection } from '@/api/accountSession'
 import { ApiRequestError } from '@/api/http'
 import { craftingApi } from '@/api/craftingApi'
 import { syncApi } from '@/api/syncApi'
@@ -23,20 +24,29 @@ export function useAccountBootstrap(sleep: (ms: number) => Promise<void> = defau
   const phase = ref<BootstrapPhase>('checking')
   const error = ref<string | null>(null)
   let running = false
+  let disposed = false
+  if (getCurrentScope()) onScopeDispose(() => { disposed = true })
+
+  function requireCurrent(generation: number): void {
+    if (disposed || generation !== connection.generation) throw new Error('The account changed.')
+  }
 
   async function run(): Promise<void> {
     if (running) return
+    const generation = connection.generation
     running = true
     phase.value = 'checking'
     error.value = null
     try {
       const options = await craftingApi.loadSelectorOptions()
+      requireCurrent(generation)
       if (options.pending) {
         phase.value = 'syncing'
-        await refreshAccountData()
+        await refreshAccountData(generation)
       }
       phase.value = 'ready'
     } catch (cause) {
+      if (disposed || generation !== connection.generation) return
       error.value = describe(cause)
       phase.value = 'failed'
     } finally {
@@ -44,19 +54,23 @@ export function useAccountBootstrap(sleep: (ms: number) => Promise<void> = defau
     }
   }
 
-  async function refreshAccountData(): Promise<void> {
+  async function refreshAccountData(generation: number): Promise<void> {
     for (let attempt = 0; attempt <= BOOTSTRAP_MAX_COVER_RETRIES; attempt += 1) {
+      requireCurrent(generation)
       const accepted = await syncApi.startProfitDataRefresh()
-      await awaitTask(accepted)
+      requireCurrent(generation)
+      await awaitTask(accepted, generation)
       // A narrower earlier run does not stand in for this refresh: wait for it, then ask again.
       if (accepted.coversRequest !== false) return
     }
     throw new Error('Another refresh kept running, so the account synchronization did not start. Try again.')
   }
 
-  async function awaitTask(accepted: SyncTaskAccepted): Promise<void> {
+  async function awaitTask(accepted: SyncTaskAccepted, generation: number): Promise<void> {
     for (let poll = 0; poll < BOOTSTRAP_MAX_POLLS; poll += 1) {
+      requireCurrent(generation)
       const status = await syncApi.readTaskStatus(accepted.statusUrl)
+      requireCurrent(generation)
       if (status.state === 'SUCCEEDED') return
       if (status.state === 'FAILED') {
         throw new Error(
