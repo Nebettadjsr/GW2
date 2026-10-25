@@ -29,6 +29,7 @@ Thumbs.db
 
 # Environment configuration (contains secrets; .env.example stays tracked)
 .env
+compose.env
 
 # Derived/rebuildable data (auto-rebuilt by craft.CraftingGraphCache.load() when absent)
 crafting_graph_cache.json

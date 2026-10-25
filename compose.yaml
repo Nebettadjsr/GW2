@@ -1,0 +1,67 @@
+# Local three-container stack (STORY-INFRA-008): PostgreSQL, Java backend, Nginx frontend.
+#   docker compose up --build        (then open http://127.0.0.1:8088)
+# Stack settings use GW2_STACK_* names only and are listed in compose.env.example. The backend gets
+# exactly the variables below, so a maintainer's root .env (DATABASE_URL, credentials, GW2_API_KEY)
+# is never forwarded and this stack never connects to a maintainer database. Not a hosted deployment.
+name: gw2
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: gw2
+      POSTGRES_USER: gw2
+      POSTGRES_PASSWORD: ${GW2_STACK_DB_PASSWORD:-gw2-local-only}
+    volumes:
+      - gw2-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gw2 -d gw2 -h 127.0.0.1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+
+  backend:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/gw2
+      DATABASE_USER: gw2
+      DATABASE_PASSWORD: ${GW2_STACK_DB_PASSWORD:-gw2-local-only}
+      ICON_CACHE_DIR: /app/data/icons
+    volumes:
+      # Empty named volumes copy the image's gw2-owned directory, so the non-root user can write.
+      - gw2-icons:/app/data/icons
+    healthcheck:
+      # The real API readiness endpoint, probed without curl (not in the JRE image).
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /api/system/status HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200'"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 10s
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      GW2_BACKEND_ORIGIN: http://backend:8080
+    ports:
+      # The only published port. Empty GW2_STACK_HTTP_PORT (set, not unset) picks an ephemeral port.
+      - "${GW2_STACK_HTTP_BIND:-127.0.0.1}:${GW2_STACK_HTTP_PORT-8088}:8080"
+    healthcheck:
+      # Through the proxy to the real backend API.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/system/status"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  gw2-postgres:
+  gw2-icons:
