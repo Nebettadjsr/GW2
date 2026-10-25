@@ -56,8 +56,8 @@ Phase 1  Domain Stabilization                   (complete — milestone-01 archi
 Phase 2  Domain Isolation / Decoupling          (complete, 2026-09-21 — see §6)
 Phase 3  Backend / Application-Service Extraction (complete; milestone-03 archived)
 Phase 4  Backend HTTP API                       (complete; milestone-04 archived)
-Phase 5  Browser Frontend Completion             (current; browser implementation and acceptance work in progress)
-Phase 6  Multi-User / Account Isolation         (not started)
+Phase 5  Browser Frontend Completion             (complete, 2026-10-17 — see §9)
+Phase 6  Multi-User / Account Isolation         (current; account-scoped cutover in progress)
 Phase 7  Containerized Runtime and Database Migration (not started; PostgreSQL is already used locally)
 Phase 8  Deployment / Runtime Configuration     (not started)
 Phase 9  Final Cleanup / JavaFX Removal         (not started; removal is already permitted earlier — see §2)
@@ -278,6 +278,17 @@ Phase 4. The frontend needs stable backend APIs for backend-owned workflows. Sma
 
 ## 10. Phase 6 — Multi-User / Account Isolation
 
+**Status: In progress.** The versioned account schema and disposable-cache reset are
+implemented (STORY-INFRA-004), and global-only operations were restored
+(STORY-SYNC-007). Account pages are not yet usable on the migrated schema:
+validated access (#8) and scoped persistence (#15) remain unfinished, followed
+by scoped refresh (#11), HTTP enforcement (#12), and browser credentials (#13).
+The unavailable-state presentation (#7) is a separate usability task and does
+not restore account reads by itself. These are the current critical path; their
+`pairing` route requires local integration evidence before merging. Small
+independent CI-only work may proceed through the `auto` queue without delaying
+this path.
+
 ### Objective
 
 Convert the web application from the current single-account-per-instance assumption to a shared multi-user deployment model before containerization/deployment hardens the runtime around the old assumption. One application instance and one PostgreSQL database should support multiple GW2 accounts while preserving strict account-data isolation and sharing genuinely global GW2 data.
@@ -411,6 +422,9 @@ Phase 5 (frontend functional parity) and Phase 8 (a deployable system users can 
 
 ## 14. Status
 
-This roadmap reflects the repository state inspected on 2026-09-30. Phase 5 is current; Phases 0–4 are complete. `agent/PROJECT_STATE.md` is the continuity pointer for planning runs.
+Phase 5 closed on 2026-10-17; Phase 6 is current. GitHub issues and merged PRs
+carry live story state. The account-scoped critical path and its current cutover
+limitation are summarized in §10; the historical `agent/PROJECT_STATE.md`
+pointer is no longer maintained by the retired Python harness.
 
 It should be revisited whenever a phase's exit criteria are fully met, or when a new domain/architecture decision materially changes what a later phase requires.
