@@ -101,6 +101,7 @@ jobs:
             git check-ref-format --branch "$EXISTING_BRANCH"
             git fetch origin "$EXISTING_BRANCH"
             git switch -c "$EXISTING_BRANCH" FETCH_HEAD
+            recovery_base=$(git rev-parse HEAD)
             # Include merged prerequisites and the current workflow before Claude starts.
             # A conflict stops preparation before any model usage is consumed.
             git fetch origin master
@@ -110,9 +111,11 @@ jobs:
           else
             branch_name="story/issue-${ISSUE_NUMBER}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
             git switch -c "$branch_name"
+            recovery_base=$(git rev-parse HEAD)
             echo 'existing_pr=false' >> "$GITHUB_OUTPUT"
           fi
           echo "branch_name=$branch_name" >> "$GITHUB_OUTPUT"
+          echo "recovery_base=$recovery_base" >> "$GITHUB_OUTPUT"
 
       - name: Implement one story
         id: claude
@@ -147,23 +150,8 @@ jobs:
             --max-turns ${{ steps.limits.outputs.max_turns }}
             --allowedTools Read,Edit,Write,Glob,Grep,Bash
 
-      - name: Save interrupted implementation
-        if: ${{ failure() && steps.claude.outcome == 'failure' }}
-        env:
-          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
-          GW2_RUN_REPORT: ${{ runner.temp }}/gw2-claude-report.md
-        run: python "$RUNNER_TEMP/save_claude_recovery.py"
-
-      - name: Upload interrupted implementation
-        if: ${{ failure() && steps.claude.outcome == 'failure' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: claude-recovery-${{ steps.select.outputs.issue_number }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/claude-recovery
-          retention-days: 7
-          if-no-files-found: error
-
       - name: Publish story branch
+        id: publish_branch
         if: steps.claude.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -195,6 +183,7 @@ jobs:
           fi
 
       - name: Publish PR evidence
+        id: publish_pr
         if: steps.claude.outcome == 'success'
         env:
           GH_TOKEN: ${{ secrets.GW2_AUTOMATION_TOKEN }}
@@ -227,3 +216,23 @@ jobs:
               --title "Implement issue #$ISSUE_NUMBER" \
               --body-file "$body"
           fi
+
+
+      - name: Save interrupted implementation
+        id: recovery
+        if: ${{ failure() && (steps.claude.outcome == 'failure' || steps.publish_branch.outcome == 'failure' || steps.publish_pr.outcome == 'failure') }}
+        env:
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+          GW2_RUN_REPORT: ${{ runner.temp }}/gw2-claude-report.md
+          CLAUDE_RECOVERY_BASE: ${{ steps.prepare.outputs.recovery_base }}
+          RECOVERY_STAGE: ${{ steps.publish_pr.outcome == 'failure' && 'PR publication' || steps.publish_branch.outcome == 'failure' && 'branch publication' || 'implementation' }}
+        run: python "$RUNNER_TEMP/save_claude_recovery.py"
+
+      - name: Upload interrupted implementation
+        if: ${{ failure() && steps.recovery.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-recovery-${{ steps.select.outputs.issue_number }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/claude-recovery
+          retention-days: 7
+          if-no-files-found: error
