@@ -536,7 +536,15 @@ async function recoverLuck(cycle: number): Promise<void> {
     }
     let done = false
     for (let poll = 0; poll < LUCK_MAX_POLLS && !done && !unmounted; poll += 1) {
-      const status = await syncApi.readTaskStatus(accepted.statusUrl)
+      let status
+      try {
+        status = await syncApi.readTaskStatus(accepted.statusUrl)
+      } catch (cause) {
+        // A full refresh can cover Luck while its task needs grants this session does not have.
+        if (!(cause instanceof ApiRequestError) || (cause.status !== 403 && cause.status !== 404)) throw cause
+        await readLuckAfterSharedTask(cycle)
+        return
+      }
       requireLuckCycle(cycle)
       if (status.state === 'SUCCEEDED') {
         done = true
@@ -555,6 +563,24 @@ async function recoverLuck(cycle: number): Promise<void> {
     return
   }
   throw new Error('Another refresh kept running, so Luck was not refreshed. Try again.')
+}
+
+/** A covered shared task need not be observable; only a successful authorized source read proves Luck. */
+async function readLuckAfterSharedTask(cycle: number): Promise<void> {
+  for (let poll = 0; poll < LUCK_MAX_POLLS; poll += 1) {
+    requireLuckCycle(cycle)
+    try {
+      const loaded = await getJson<AccountLuckResponse>('/account/luck')
+      requireLuckCycle(cycle)
+      accountLuck.value = loaded
+      luckProblem.value = null
+      return
+    } catch (cause) {
+      if (!(cause instanceof ApiRequestError) || cause.status !== 404) throw cause
+    }
+    await new Promise<void>((resolve) => window.setTimeout(resolve, LUCK_POLL_MS))
+  }
+  throw new Error('Luck is still unavailable from the shared refresh. Try again.')
 }
 
 onMounted(loadPage)
