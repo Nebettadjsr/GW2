@@ -6,6 +6,8 @@ ready story with Claude → Run workflow**, leaves the branch set to **master**,
 and clicks **Run workflow**. No issue number is required. Each click authorizes
 one run. Issue labels, comments, pushes, and schedules do not start Claude.
 There is no time-of-day gate; the owner can choose when to spend usage.
+After a workflow fix, start a new run with this button on `master`.
+GitHub's **Re-run jobs** repeats the original run's commit and workflow version.
 
 The button checks open GitHub stories. A story labeled `auto` is eligible when
 its listed dependencies are closed with linked PRs merged into `master`, and
@@ -56,8 +58,10 @@ Never paste token values in an issue, PR, chat, or committed file.
 
 ## Usage limits
 
-One run at a time is allowed. Each run has at most **12 Claude turns** and a
-**45-minute** job timeout. These are bounds per run, not token or subscription
+One run at a time is allowed. Each run defaults to **40 Claude turns** and a
+**45-minute** job timeout. Change the `CLAUDE_MAX_TURNS` repository **variable**
+(Settings → Secrets and variables → Actions → Variables) to an integer from 1
+to 100 to override the turn allowance. This is not a secret. These are bounds per run, not token or subscription
 budget limits. GitHub's `claude setup-token` credential cannot read the
 subscription's usage percentages on a clean runner, so this workflow cannot
 enforce a five-hour or weekly percentage threshold. Anthropic's own plan limits
@@ -68,3 +72,11 @@ Keep **Usage credits** disabled if the intent is to remain strictly within the
 Pro subscription allowance. Claude's five-hour and weekly limits are shared
 with Claude Chat and local Claude Code. Reaching a plan limit pauses work when
 credits are disabled.
+
+If Claude fails or exhausts its turns, the run remains failed and no code or
+acceptance report is published to the PR. The run's **Artifacts** section keeps
+a `claude-recovery-<issue>-<attempt>` artifact for seven days with a binary Git
+patch (including new non-ignored files), its base commit, and the run report if
+Claude wrote one. A planning session can recover those edits before the next
+manually authorized attempt. No automatic retry starts, and a hard cancellation
+or lost runner can prevent recovery capture.
