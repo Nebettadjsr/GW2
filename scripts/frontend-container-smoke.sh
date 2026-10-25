@@ -59,9 +59,9 @@ expect() { # expect <description> <actual> <expected>
 }
 
 echo "== build images"
-t0=$(now_ms); docker build -q -t "$BACK_IMAGE" . >/dev/null; BACK_IMG_CREATED=true
+t0=$(now_ms); docker build -q -f docker/backend/Dockerfile -t "$BACK_IMAGE" backend >/dev/null; BACK_IMG_CREATED=true
 echo "backend_build_ms=$(( $(now_ms) - t0 ))"
-t0=$(now_ms); docker build -q -t "$FRONT_IMAGE" frontend >/dev/null; FRONT_IMG_CREATED=true
+t0=$(now_ms); docker build -q -f docker/frontend/Dockerfile -t "$FRONT_IMAGE" . >/dev/null; FRONT_IMG_CREATED=true
 echo "frontend_build_ms=$(( $(now_ms) - t0 ))"
 echo "frontend_image_bytes=$(docker image inspect "$FRONT_IMAGE" --format '{{.Size}}')"
 echo "frontend_runtime_user=$(docker run --rm --entrypoint id "$FRONT_IMAGE" -un)"

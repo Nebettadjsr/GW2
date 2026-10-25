@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
-# Java 25 backend runtime image (STORY-INFRA-006). Build: docker build -t gw2-backend .
+# Java 25 backend runtime image (STORY-INFRA-006). Build (context is backend/):
+#   docker build -f docker/backend/Dockerfile -t gw2-backend backend
 # Ordinary base images: the Eclipse Temurin official Docker Hub images, JDK for the build stage and
 # JRE for the runtime stage, both on the Java 25 LTS line the project compiles for (maven.compiler.release=25).
 # The tag follows Temurin's patch releases; pass --build-arg to pin a digest for a bit-exact rebuild.

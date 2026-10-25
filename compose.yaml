@@ -23,7 +23,9 @@ services:
     restart: unless-stopped
 
   backend:
-    build: .
+    build:
+      context: ./backend
+      dockerfile: ../docker/backend/Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,7 +47,9 @@ services:
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
     depends_on:
       backend:
         condition: service_healthy

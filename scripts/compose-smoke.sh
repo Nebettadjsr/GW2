@@ -47,7 +47,9 @@ WORK=$(mktemp -d "$TEMP_ROOT/gw2-cstack.XXXXXXXX")
 WORK=$(cd "$WORK" && pwd -P)
 [[ "$WORK" == "$TEMP_ROOT"/gw2-cstack.* ]] || { echo 'Unexpected temporary path' >&2; exit 1; }
 
+HOLDER=''
 cleanup() {
+  [ -z "$HOLDER" ] || docker rm -f "$HOLDER" >/dev/null 2>&1 || true
   dc down -v --remove-orphans >/dev/null 2>&1 || true
   # Compose names built images <project>-<service>; the shared postgres image is never removed.
   docker rmi "$PROJECT-backend" "$PROJECT-frontend" >/dev/null 2>&1 || true
@@ -130,14 +132,17 @@ echo "== backend address change and backend-only recreation without frontend res
 old_backend=$(dc ps -q backend)
 old_frontend=$(dc ps -q frontend)
 old_frontend_started=$(docker inspect -f '{{.State.StartedAt}}' "$old_frontend")
-# On this fresh three-service network addresses are allocated PostgreSQL, backend, frontend.
-# Move the backend two slots forward (the next unused address) so a same-IP recreation cannot hide
-# stale Nginx DNS. Reconnecting the existing container keeps its process and data unchanged.
+# Occupy the released address with a temporary owned container. Automatic allocation works on
+# engines that reject --ip on default-IPAM networks. The backend process and data stay unchanged.
 old_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$old_backend")
-moved_ip="${old_ip%.*}.$(( ${old_ip##*.} + 2 ))"
 docker network disconnect "${PROJECT}_default" "$old_backend"
-docker network connect --ip "$moved_ip" --alias backend "${PROJECT}_default" "$old_backend"
+HOLDER=$(docker run -d --network "${PROJECT}_default" --entrypoint sh "$PROJECT-frontend" -c 'sleep 300')
+docker network connect --alias backend "${PROJECT}_default" "$old_backend"
+moved_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$old_backend")
+[ "$moved_ip" != "$old_ip" ] || fail "backend reconnect did not change its IP"
 wait_proxy
+docker rm -f "$HOLDER" >/dev/null
+HOLDER=''
 dc up -d --no-deps --force-recreate --wait --wait-timeout "$TIMEOUT" backend >/dev/null || fail "backend recreation failed"
 [ "$(dc ps -q backend)" != "$old_backend" ] || fail "backend was not recreated"
 new_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$(dc ps -q backend)")

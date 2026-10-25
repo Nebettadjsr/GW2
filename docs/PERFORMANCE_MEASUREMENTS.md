@@ -6,7 +6,7 @@ informational: they never gate a story, merge, pull request or CI run, and they 
 
 ## What is measured
 
-The code is under `src/test/java/perf`. It starts the real Spring Boot application (real HTTP, controllers,
+The code is under `backend/src/test/java/perf`. It starts the real Spring Boot application (real HTTP, controllers,
 application services, scoped repositories, the production Flyway chain, the shared crafting graph cache) against
 a disposable, uniquely named PostgreSQL schema that it drops afterwards. Only the outside edges are fixtures:
 the account proof port, the upstream account GETs, and the global-data and Trading Post price refresh gateways.
@@ -30,11 +30,12 @@ Reports from version 1 are not compared with this fixture version.
 ## Reproduce
 
 ```
+cd backend
 export DATABASE_URL=jdbc:postgresql://localhost:5432/<disposable db> DATABASE_USER=... DATABASE_PASSWORD=... GW2_API_KEY=placeholder
 ./mvnw test -Dtest=ApplicationResourceBenchmarkIT -DfailIfNoSpecifiedTests=false
 ```
 
-Output: `target/perf/application-resources.json` (machine-readable) and `application-resources.md`
+Output (relative to `backend/`): `target/perf/application-resources.json` (machine-readable) and `application-resources.md`
 (`-Dgw2.perf.output-dir=<dir>` overrides). Sizes are in `ApplicationResourceBenchmarkIT.sizes()`. The default
 suite runs only `MeasurementReportTest` (report math, units, metadata, unavailable-value and observer-failure
 handling; no database). `ApplicationBenchmarkBoundaryIT` (tiny sizes, no timing assertions) proves each workload

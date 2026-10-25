@@ -99,6 +99,6 @@ integration evidence remain implementation follow-up, not architecture results.
 - `docs/CURRENT_ARCHITECTURE.md` sections 5.4, 5.11 and 5.12.
 - `docs/ROADMAP.md` Phase 5; `agent/product-owner-requests/Request-004-UX-update.md` item 7.
 - Results of `STORY-WEB-003-bank-materials-views.md` and `STORY-API-007-bank-materials-read-endpoints.md`.
-- `src/main/java/sync/IconSync.java` and `IconSyncGateway.java` (read-only inspection).
+- `backend/src/main/java/sync/IconSync.java` and `IconSyncGateway.java` (read-only inspection).
 - [GW2 item metadata](https://wiki.guildwars2.com/wiki/API:2/items), [recipe metadata](https://wiki.guildwars2.com/wiki/API:2/recipes), and [render service](https://wiki.guildwars2.com/wiki/API:Render_service).
 - [MDN HTTP caching](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Caching): reuse, revalidation and cache ownership; no ArenaNet-specific TTL inferred.

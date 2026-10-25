@@ -52,6 +52,7 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
+          cache-dependency-path: backend/pom.xml
 
       - name: Run application benchmarks
         id: bench
@@ -66,11 +67,12 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p perf-out
+          cd backend
           chmod +x ./mvnw
           ./mvnw -B -ntp test \
             -Dtest='ApplicationResourceBenchmarkIT,ApplicationBenchmarkBoundaryIT' \
             -DfailIfNoSpecifiedTests=false \
-            -Dgw2.perf.output-dir="$GITHUB_WORKSPACE/perf-out" 2>&1 | tee perf-out/maven.log
+            -Dgw2.perf.output-dir="$GITHUB_WORKSPACE/perf-out" 2>&1 | tee "$GITHUB_WORKSPACE/perf-out/maven.log"
 
       - name: Fetch previous report for comparison
         id: previous

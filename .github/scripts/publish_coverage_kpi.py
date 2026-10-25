@@ -127,7 +127,7 @@ def fmt(value: float | None) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--java", type=Path, default=Path("target/site/jacoco/jacoco.xml"))
+    parser.add_argument("--java", type=Path, default=Path("backend/target/site/jacoco/jacoco.xml"))
     parser.add_argument("--frontend", type=Path, default=Path("frontend/coverage/coverage-summary.json"))
     parser.add_argument("--output", type=Path, default=Path("quality-reports"))
     parser.add_argument("--revision", default=os.environ.get("GITHUB_SHA"))

@@ -23,7 +23,7 @@ The backend is Java-based and uses Maven through the included Maven wrapper. Pos
 Typical backend verification:
 
 ```bash
-./mvnw test
+(cd backend && ./mvnw test)
 ```
 
 The browser frontend lives in `frontend/` and uses Vue 3, TypeScript, and Vite.
