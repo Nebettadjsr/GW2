@@ -10,8 +10,10 @@ FROM ${JDK_IMAGE} AS build
 WORKDIR /src
 # Dependencies first so a source-only change reuses the downloaded Maven repository layer.
 COPY .mvn/ .mvn/
-COPY mvnw pom.xml ./
-RUN ./mvnw -B -q dependency:resolve
+COPY pom.xml ./
+COPY --chmod=755 mvnw ./
+# Existing Windows checkouts may still contain CRLF even after the repository attributes change.
+RUN sed -i 's/\r$//' mvnw && ./mvnw -B -q dependency:resolve
 COPY src/ src/
 # The pom deliberately has no repackage execution (ordinary `mvn package` keeps a plain jar), so the
 # executable Spring Boot jar is produced by invoking the pinned plugin goal explicitly. Tests run in CI.

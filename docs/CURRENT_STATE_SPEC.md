@@ -75,7 +75,7 @@ Development uses GitHub issues, PRs, Maven/Vitest CI and native Codex review. Ea
 - Account datasets are GUID-scoped. One account is active per shared-cookie browser session; independent accounts in such tabs are not promised.
 - The browser connection panel retains the key in sessionStorage, proves it before loading account data, and renews access without repeated entry. Invalid keys are removed; transient failures retain the key for retry.
 - Scoped HTTP workflows now operate on the migrated schema; legacy unscoped account access stays refused. Local Chrome/live-ArenaNet recovery evidence covers completed full synchronization, selector options, loaded Profit, Bank, Materials, reload retention and disconnect. This does not certify every feature or establish a hosted deployment.
-- The backend/frontend/PostgreSQL stack is not containerized or deployed.
+- A Java 25 backend image and isolated Docker smoke are available (`CURRENT_ARCHITECTURE.md`, Backend container image). The full frontend/backend/PostgreSQL Compose stack and hosted deployment are not yet delivered.
 - Refresh status is process-local, not durable telemetry. Multiple backend replicas would require shared coordination for global scheduled work and refresh deduplication.
 - Hosting provider is undecided. Cloudflare-related infrastructure is only a possible future option, not a decision.
 

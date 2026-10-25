@@ -8,17 +8,32 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ID="${GW2_SMOKE_ID:-$(date +%s)-$$}"
+[[ "$ID" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ && ${#ID} -le 48 ]] || {
+  echo 'GW2_SMOKE_ID must be at most 48 lowercase letters/digits/hyphens' >&2; exit 1;
+}
 NS="gw2-smoke-$ID"
 IMAGE="$NS:latest"
 PG_IMAGE="${GW2_SMOKE_PG_IMAGE:-postgres:17}"
 SCHEMA="smoke_${ID//-/_}"
 TIMEOUT="${GW2_SMOKE_TIMEOUT_SECONDS:-120}"
 DB_PASSWORD="smoke-$RANDOM$RANDOM"
+PG_ID=''
+APP_ID=''
+NETWORK_ID=''
+IMAGE_CREATED=false
+
+# Do not replace an existing tag when a caller deliberately reuses a smoke ID.
+if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+  echo "Image $IMAGE already exists; choose another GW2_SMOKE_ID" >&2
+  exit 1
+fi
 
 cleanup() {
-  docker rm -f "$NS-app" "$NS-pg" >/dev/null 2>&1 || true
-  docker network rm "$NS" >/dev/null 2>&1 || true
-  docker rmi "$IMAGE" >/dev/null 2>&1 || true
+  # Immutable IDs are assigned only after successful creation. A name collision never grants ownership.
+  [ -z "$APP_ID" ] || docker rm -fv "$APP_ID" >/dev/null 2>&1 || true
+  [ -z "$PG_ID" ] || docker rm -fv "$PG_ID" >/dev/null 2>&1 || true
+  [ -z "$NETWORK_ID" ] || docker network rm "$NETWORK_ID" >/dev/null 2>&1 || true
+  [ "$IMAGE_CREATED" = false ] || docker rmi "$IMAGE" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -28,14 +43,15 @@ fail() { echo "FAIL: $*" >&2; docker logs "$NS-app" 2>&1 | tail -30 >&2 || true;
 echo "== build $IMAGE"
 t0=$(now_ms)
 docker build -q -t "$IMAGE" . >/dev/null
+IMAGE_CREATED=true
 echo "build_ms=$(( $(now_ms) - t0 ))"
 echo "image_bytes=$(docker image inspect "$IMAGE" --format '{{.Size}}')"
 echo "runtime_user=$(docker image inspect "$IMAGE" --format '{{.Config.User}}')"
 
 echo "== start disposable PostgreSQL ($PG_IMAGE)"
-docker network create "$NS" >/dev/null
-docker run -d --name "$NS-pg" --network "$NS" -e POSTGRES_PASSWORD="$DB_PASSWORD" \
-  -e POSTGRES_USER=gw2 -e POSTGRES_DB=gw2 "$PG_IMAGE" >/dev/null
+NETWORK_ID=$(docker network create "$NS")
+PG_ID=$(docker run -d --name "$NS-pg" --network "$NS" -e POSTGRES_PASSWORD="$DB_PASSWORD" \
+  -e POSTGRES_USER=gw2 -e POSTGRES_DB=gw2 "$PG_IMAGE")
 for _ in $(seq "$TIMEOUT"); do
   docker exec "$NS-pg" pg_isready -U gw2 -d gw2 -h 127.0.0.1 >/dev/null 2>&1 && break
   sleep 1
@@ -48,13 +64,16 @@ docker exec "$NS-pg" pg_isready -U gw2 -d gw2 -h 127.0.0.1 >/dev/null || fail "P
 docker exec "$NS-pg" psql -q -U gw2 -d gw2 -h 127.0.0.1 -c "CREATE SCHEMA $SCHEMA" >/dev/null
 
 start_app() {
-  docker rm -f "$NS-app" >/dev/null 2>&1 || true
+  if [ -n "$APP_ID" ]; then
+    docker rm -fv "$APP_ID" >/dev/null
+    APP_ID=''
+  fi
   # The scheduler's first upstream refresh is pushed a day out so the smoke makes no ArenaNet call.
-  docker run -d --name "$NS-app" --network "$NS" -p 127.0.0.1::8080 \
+  start=$(now_ms)
+  APP_ID=$(docker run -d --name "$NS-app" --network "$NS" -p 127.0.0.1::8080 \
     -e DATABASE_URL="jdbc:postgresql://$NS-pg:5432/gw2?currentSchema=$SCHEMA" \
     -e DATABASE_USER=gw2 -e DATABASE_PASSWORD="$DB_PASSWORD" \
-    -e GW2_GLOBAL_REFRESH_INITIAL_DELAY_MS=86400000 "$IMAGE" >/dev/null
-  start=$(now_ms)
+    -e GW2_GLOBAL_REFRESH_INITIAL_DELAY_MS=86400000 "$IMAGE")
   PORT=$(docker port "$NS-app" 8080/tcp | head -1 | sed 's/.*://')
   for _ in $(seq $((TIMEOUT * 5))); do
     [ "$(docker inspect -f '{{.State.Running}}' "$NS-app")" = true ] || fail "container exited during startup"
