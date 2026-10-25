@@ -16,6 +16,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MeasurementReportTest {
 
     @Test
+    void unavailableMemoryRetainsIdleOrPeakKpiIdentity() {
+        for (boolean idle : List.of(true, false)) {
+            List<Metric> metrics = new java.util.ArrayList<>();
+            ApplicationBenchmarkHarness.collectProcess(metrics, -1, -1, 1_000_000, -1, -1, idle);
+            for (String name : idle ? List.of("idle_heap_used", "idle_rss") : List.of("peak_heap_used", "peak_rss")) {
+                Metric memory = metrics.stream().filter(metric -> metric.name().equals(name)).findFirst().orElseThrow();
+                assertFalse(memory.available());
+                assertEquals("bytes", memory.unit());
+                assertTrue(memory.unavailableReason() != null && !memory.unavailableReason().isBlank());
+            }
+        }
+    }
+
+    @Test
     void p95IsNearestRankOverKnownSamples() {
         // 1..20: ceil(0.95 * 20) = 19th smallest.
         List<Double> twenty = java.util.stream.IntStream.rangeClosed(1, 20).mapToObj(i -> (double) i).toList();

@@ -445,7 +445,7 @@ abstract class ApplicationBenchmarkHarness {
                 "configured value (gw2.global-refresh.interval-ms), not an observed frequency; account and price refreshes are demand-driven");
     }
 
-    private static void collectProcess(List<Metric> out, long cpu0, long cpu1, long wallNanos, long heapPeak,
+    static void collectProcess(List<Metric> out, long cpu0, long cpu1, long wallNanos, long heapPeak,
                                        long rssPeak, boolean idle) {
         String boundary = "application JVM process";
         if (cpu0 >= 0 && cpu1 >= 0) {
@@ -461,10 +461,10 @@ abstract class ApplicationBenchmarkHarness {
         }
         out.add(heapPeak >= 0 ? Metric.of(idle ? "idle_heap_used" : "peak_heap_used", heapPeak, "bytes",
                 boundary + ", sampled every 20 ms (lower bound of the true peak)")
-                : Metric.unavailable("peak_heap_used", "bytes", boundary, "heap sampling failed"));
+                : Metric.unavailable(idle ? "idle_heap_used" : "peak_heap_used", "bytes", boundary, "heap sampling failed"));
         out.add(rssPeak >= 0 ? Metric.of(idle ? "idle_rss" : "peak_rss", rssPeak, "bytes",
                 boundary + ", resident set from /proc, sampled every 20 ms")
-                : Metric.unavailable("peak_rss", "bytes", boundary, "/proc/self/status is not available on this platform"));
+                : Metric.unavailable(idle ? "idle_rss" : "peak_rss", "bytes", boundary, "/proc/self/status is not available on this platform"));
     }
 
     private static void collectRepository(List<Metric> out, Recorder rec, long wallNanos) {
