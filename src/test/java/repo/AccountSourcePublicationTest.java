@@ -12,6 +12,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -42,7 +43,9 @@ class AccountSourcePublicationTest {
     private static final Instant T3 = Instant.parse("2026-10-12T11:00:00Z");
 
     private final String schema = "test_source_publication_" + UUID.randomUUID().toString().replace("-", "");
-    private final AccountSourcePublication publication = new AccountSourcePublication();
+    private static AccountSourcePublication at(Instant completion) {
+        return new AccountSourcePublication(java.time.Clock.fixed(completion, java.time.ZoneOffset.UTC));
+    }
     private final AccountSourceStateRepository states = new AccountSourceStateRepository();
     private final AccountRegistryRepository registry = new AccountRegistryRepository();
 
@@ -107,7 +110,7 @@ class AccountSourcePublicationTest {
         publishAll(B, 7, 19, 20, 300, 9);
 
         // A's next bank publication carries no slots: A's stale row goes, B's stays.
-        publication.publish(admin, A, "bank", T2, (c, s, ts) -> deleteStale(c, "account_bank", s, ts));
+        at(T2).publish(admin, A, "bank", (c, s, ts) -> deleteStale(c, "account_bank", s, ts));
 
         assertTrue(new BankRepository().loadBankSlots(admin, A).isEmpty());
         assertEquals(7, new BankRepository().loadBankSlots(admin, B).get(0).count());
@@ -117,9 +120,9 @@ class AccountSourcePublicationTest {
 
     @Test
     void successfulEmptyAndUnchangedPublicationsAdvanceTheGeneration() throws Exception {
-        var first = publication.publish(admin, A, "bank", T1, (c, s, ts) -> upsertBank(c, s, ts, 2));
-        var unchanged = publication.publish(admin, A, "bank", T2, (c, s, ts) -> upsertBank(c, s, ts, 2));
-        var empty = publication.publish(admin, A, "bank", T3, (c, s, ts) -> deleteStale(c, "account_bank", s, ts));
+        var first = at(T1).publish(admin, A, "bank", (c, s, ts) -> upsertBank(c, s, ts, 2));
+        var unchanged = at(T2).publish(admin, A, "bank", (c, s, ts) -> upsertBank(c, s, ts, 2));
+        var empty = at(T3).publish(admin, A, "bank", (c, s, ts) -> deleteStale(c, "account_bank", s, ts));
 
         assertEquals(List.of(1L, 2L, 3L), List.of(first.generation(), unchanged.generation(), empty.generation()));
         var marker = states.read(admin, A, "bank").orElseThrow();
@@ -130,10 +133,10 @@ class AccountSourcePublicationTest {
 
     @Test
     void failedPublicationRollsBackRowsMarkerAndActivityButLastGoodStays() throws Exception {
-        publication.publish(admin, A, "bank", T1, (c, s, ts) -> upsertBank(c, s, ts, 2));
+        at(T1).publish(admin, A, "bank", (c, s, ts) -> upsertBank(c, s, ts, 2));
         var before = registry.find(admin, A).orElseThrow();
 
-        assertThrows(IllegalStateException.class, () -> publication.publish(admin, A, "bank", T2, (c, s, ts) -> {
+        assertThrows(IllegalStateException.class, () -> at(T2).publish(admin, A, "bank", (c, s, ts) -> {
             deleteStale(c, "account_bank", s, ts);
             upsertBank(c, s, ts, 99);
             throw new IllegalStateException("mid-publication failure");
@@ -147,7 +150,7 @@ class AccountSourcePublicationTest {
 
     @Test
     void anUnregisteredAccountWhosFirstPublicationFailsIsNotRegistered() throws Exception {
-        assertThrows(IllegalStateException.class, () -> publication.publish(admin, B, "bank", T1, (c, s, ts) -> {
+        assertThrows(IllegalStateException.class, () -> at(T1).publish(admin, B, "bank", (c, s, ts) -> {
             throw new IllegalStateException("boom");
         }));
         assertTrue(registry.find(admin, B).isEmpty());
@@ -156,11 +159,11 @@ class AccountSourcePublicationTest {
 
     @Test
     void independentSourcesPublishDespiteAnotherSourcesFailure() throws Exception {
-        assertThrows(IllegalStateException.class, () -> publication.publish(admin, A, "bank", T1, (c, s, ts) -> {
+        assertThrows(IllegalStateException.class, () -> at(T1).publish(admin, A, "bank", (c, s, ts) -> {
             upsertBank(c, s, ts, 5);
             throw new IllegalStateException("bank failed");
         }));
-        publication.publish(admin, A, "luck", T1, (c, s, ts) ->
+        at(T1).publish(admin, A, "luck", (c, s, ts) ->
                 new AccountLuckRepository().save(c, s, 10, T1));
 
         assertTrue(states.read(admin, A, "bank").isEmpty());
@@ -180,7 +183,7 @@ class AccountSourcePublicationTest {
 
             var firstWriter = CompletableFuture.supplyAsync(() -> {
                 try {
-                    return publication.publish(first, A, "bank", T1, (c, s, ts) -> {
+                    return at(T1).publish(first, A, "bank", (c, s, ts) -> {
                         upsertBank(c, s, ts, 2);
                         holding.countDown();
                         if (!release.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("not released");
@@ -193,7 +196,7 @@ class AccountSourcePublicationTest {
 
             var secondWriter = CompletableFuture.supplyAsync(() -> {
                 try {
-                    return publication.publish(second, A, "bank", T2, (c, s, ts) -> upsertBank(c, s, ts, 3));
+                    return at(T2).publish(second, A, "bank", (c, s, ts) -> upsertBank(c, s, ts, 3));
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
@@ -202,7 +205,7 @@ class AccountSourcePublicationTest {
             assertFalse(secondWriter.isDone(), "same-account writer must queue behind the first");
 
             // an unrelated account publishes while A's first writer still holds its transaction open
-            var unrelated = publication.publish(other, B, "bank", T1, (c, s, ts) -> upsertBank(c, s, ts, 7));
+            var unrelated = at(T1).publish(other, B, "bank", (c, s, ts) -> upsertBank(c, s, ts, 7));
             assertEquals(1, unrelated.generation());
             assertFalse(secondWriter.isDone());
 
@@ -213,6 +216,58 @@ class AccountSourcePublicationTest {
         assertEquals(3, new BankRepository().loadBankSlots(admin, A).get(0).count());
         assertEquals(2, states.read(admin, A, "bank").orElseThrow().generation());
         assertEquals(7, new BankRepository().loadBankSlots(admin, B).get(0).count());
+    }
+
+    @Test
+    void aQueuedWriterStampsCompletionAfterItAcquiresTheLockNotWhenItWasCalled() throws Exception {
+        var now = new java.util.concurrent.atomic.AtomicReference<>(T1);
+        Clock clock = new Clock() {
+            @Override public java.time.ZoneId getZone() { return java.time.ZoneOffset.UTC; }
+            @Override public Clock withZone(java.time.ZoneId zone) { return this; }
+            @Override public Instant instant() { return now.get(); }
+        };
+        var publisher = new AccountSourcePublication(clock);
+        CountDownLatch holding = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (Connection first = connect(); Connection second = connect()) {
+            first.setSchema(schema);
+            second.setSchema(schema);
+            var firstWriter = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return publisher.publish(first, A, "bank", (c, s, ts) -> {
+                        upsertBank(c, s, ts, 2);
+                        holding.countDown();
+                        if (!release.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("not released");
+                    });
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            assertTrue(holding.await(30, TimeUnit.SECONDS));
+            // the second writer is called while the clock still reads T1, then queues on the lock
+            var secondWriter = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return publisher.publish(second, A, "bank", (c, s, ts) -> {
+                        now.set(T3); // wall-clock time once the lock is finally held
+                        upsertBank(c, s, ts, 3);
+                    });
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            awaitBlockedWriter();
+            now.set(T2);
+            release.countDown();
+            var one = firstWriter.get(30, TimeUnit.SECONDS);
+            var two = secondWriter.get(30, TimeUnit.SECONDS);
+            assertEquals(T2, one.completedAt());
+            assertEquals(T3, two.completedAt());
+            assertTrue(two.completedAt().isAfter(one.completedAt()));
+        }
+        var marker = states.read(admin, A, "bank").orElseThrow();
+        assertEquals(2, marker.generation());
+        assertEquals(T3, marker.completedAt());
+        assertEquals(T3, registry.find(admin, A).orElseThrow().lastSuccessfulSyncAt());
     }
 
     @Test
@@ -229,7 +284,7 @@ class AccountSourcePublicationTest {
             second.setSchema(schema);
             var firstWriter = CompletableFuture.supplyAsync(() -> {
                 try {
-                    return publication.publish(first, A, "bank", T1, (c, s, ts) -> {
+                    return at(T1).publish(first, A, "bank", (c, s, ts) -> {
                         upsertBank(c, s, ts, 2);
                         holding.countDown();
                         if (!release.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("not released");
@@ -239,7 +294,7 @@ class AccountSourcePublicationTest {
                 }
             });
             assertTrue(holding.await(30, TimeUnit.SECONDS));
-            var other = publication.publish(second, collider, "bank", T1, (c, s, ts) -> upsertBank(c, s, ts, 9));
+            var other = at(T1).publish(second, collider, "bank", (c, s, ts) -> upsertBank(c, s, ts, 9));
             assertEquals(1, other.generation());
             assertFalse(firstWriter.isDone());
             release.countDown();
@@ -261,8 +316,8 @@ class AccountSourcePublicationTest {
         registry.recordAuthorizedUse(admin, A, T1);
         assertEquals(T2, registry.find(admin, A).orElseThrow().lastSeenAt());
 
-        publication.publish(admin, A, "luck", T3, (c, s, ts) -> new AccountLuckRepository().save(c, s, 1, T3));
-        publication.publish(admin, A, "luck", T1, (c, s, ts) -> new AccountLuckRepository().save(c, s, 1, T1));
+        at(T3).publish(admin, A, "luck", (c, s, ts) -> new AccountLuckRepository().save(c, s, 1, T3));
+        at(T1).publish(admin, A, "luck", (c, s, ts) -> new AccountLuckRepository().save(c, s, 1, T1));
         assertEquals(T3, registry.find(admin, A).orElseThrow().lastSuccessfulSyncAt());
         assertEquals(T2, registry.find(admin, A).orElseThrow().lastSeenAt());
         assertNull(registry.find(admin, B).map(AccountRegistryRepository.Activity::lastSeenAt).orElse(null));
@@ -279,8 +334,8 @@ class AccountSourcePublicationTest {
     void repeatableReadSnapshotKeepsOneAccountsRowsAndGenerationsWhilePublishingAndSharesGlobalItems()
             throws Exception {
         update(admin, "INSERT INTO items (item_id, name, rarity) VALUES (100, 'Shared Ore', 'Fine')");
-        publication.publish(admin, A, "bank", T1, (c, s, ts) -> upsertBank(c, s, ts, 2));
-        publication.publish(admin, B, "bank", T1, (c, s, ts) -> upsertBank(c, s, ts, 7));
+        at(T1).publish(admin, A, "bank", (c, s, ts) -> upsertBank(c, s, ts, 2));
+        at(T1).publish(admin, B, "bank", (c, s, ts) -> upsertBank(c, s, ts, 7));
 
         var reader = new application.CalculationInputVersions.DatabaseAccountSourceStateReader();
         try (Connection snapshot = connect()) {
@@ -291,7 +346,7 @@ class AccountSourcePublicationTest {
             assertEquals(2, bank.loadBankSlots(snapshot, A).get(0).count());
             assertEquals(1, reader.read(snapshot, A, java.util.Set.of("bank")).get("bank").generation());
 
-            publication.publish(admin, A, "bank", T2, (c, s, ts) -> upsertBank(c, s, ts, 50));
+            at(T2).publish(admin, A, "bank", (c, s, ts) -> upsertBank(c, s, ts, 50));
 
             assertEquals(2, bank.loadBankSlots(snapshot, A).get(0).count());
             assertEquals(1, reader.read(snapshot, A, java.util.Set.of("bank")).get("bank").generation());
@@ -310,16 +365,16 @@ class AccountSourcePublicationTest {
     /** Publishes every source family for one account with the given distinguishing values. */
     private void publishAll(AccountScope scope, int bank, int material, long luck, int rating, int bag)
             throws Exception {
-        publication.publish(admin, scope, "bank", T1, (c, s, ts) -> upsertBank(c, s, ts, bank));
-        publication.publish(admin, scope, AccountSyncStateRepository.MATERIALS, T1, (c, s, ts) -> {
+        at(T1).publish(admin, scope, "bank", (c, s, ts) -> upsertBank(c, s, ts, bank));
+        at(T1).publish(admin, scope, AccountSyncStateRepository.MATERIALS, (c, s, ts) -> {
             update(c, "INSERT INTO account_materials (account_id, item_id, count, fetched_at) VALUES (?, 100, ?, ?)",
                     s.accountId(), material, ts);
         });
-        publication.publish(admin, scope, "luck", T1, (c, s, ts) -> new AccountLuckRepository().save(c, s, luck, T1));
-        publication.publish(admin, scope, "recipes", T1, (c, s, ts) ->
+        at(T1).publish(admin, scope, "luck", (c, s, ts) -> new AccountLuckRepository().save(c, s, luck, T1));
+        at(T1).publish(admin, scope, "recipes", (c, s, ts) ->
                 update(c, "INSERT INTO account_recipes (account_id, recipe_id, fetched_at) VALUES (?, 7319, ?)",
                         s.accountId(), ts));
-        publication.publish(admin, scope, "characters", T1, (c, s, ts) -> {
+        at(T1).publish(admin, scope, "characters", (c, s, ts) -> {
             update(c, "INSERT INTO characters (account_id, character_id, name) VALUES (?, 41, 'Shared')", s.accountId());
             update(c, "INSERT INTO character_crafting (account_id, character_id, discipline, rating) VALUES (?, 41, 'Artificer', ?)",
                     s.accountId(), rating);

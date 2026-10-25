@@ -90,7 +90,7 @@ class ScopedFetchOwnershipTest {
     private void seedBankForB() throws Exception {
         try (Connection con = Db.open()) {
             AccountSync.publishBank(con, AccountScope.of(B),
-                    List.of(new BankSlot(0, 1, 1, null, null, null, null, null)), Instant.parse("2026-10-01T00:00:00Z"));
+                    List.of(new BankSlot(0, 1, 1, null, null, null, null, null)), java.time.Clock.systemUTC());
         }
     }
 

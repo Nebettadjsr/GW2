@@ -149,7 +149,7 @@ public final class CharacterSync {
         }
 
         try (Connection con = Db.open()) {
-            publishRoster(con, scope, payloads, java.time.Instant.now());
+            publishRoster(con, scope, payloads, java.time.Clock.systemUTC());
         }
     }
 
@@ -179,9 +179,9 @@ public final class CharacterSync {
     static repo.AccountSourcePublication.Published publishRoster(Connection con,
                                                                  model.AccountScope scope,
                                                                  List<CharPayload> payloads,
-                                                                 java.time.Instant completedAt) throws Exception {
-        return new repo.AccountSourcePublication().publish(
-                con, scope, AccountSyncStateRepository.CHARACTERS, completedAt,
+                                                                 java.time.Clock clock) throws Exception {
+        return new repo.AccountSourcePublication(clock).publish(
+                con, scope, AccountSyncStateRepository.CHARACTERS,
                 (tx, owner, runTs) -> {
                     for (CharPayload p : payloads) {
                         long characterId = upsertScopedCharacter(tx, owner, p.info(), runTs);

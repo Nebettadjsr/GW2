@@ -7,6 +7,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Instant;
 
 /**
@@ -43,6 +44,20 @@ public final class AccountSourcePublication {
 
     private final AccountRegistryRepository registry = new AccountRegistryRepository();
     private final AccountSourceStateRepository sourceState = new AccountSourceStateRepository();
+    private final Clock clock;
+
+    public AccountSourcePublication() {
+        this(Clock.systemUTC());
+    }
+
+    /**
+     * @param clock the wall clock that stamps completion. It is read inside the publication
+     *              transaction after the writer lock is held and the payload is written, so a
+     *              publisher that queued behind another always completes later than it.
+     */
+    public AccountSourcePublication(Clock clock) {
+        this.clock = java.util.Objects.requireNonNull(clock, "clock");
+    }
 
     /**
      * One source's already-fetched, already-validated rows, written inside the publication
@@ -64,16 +79,13 @@ public final class AccountSourcePublication {
     /**
      * Publishes {@code source} for {@code scope}.
      *
-     * @param completedAt the instant to record as this source's successful completion
      * @throws Exception whatever the payload threw, after the transaction was rolled back
      */
     public Published publish(Connection con,
                              AccountScope scope,
                              String source,
-                             Instant completedAt,
                              Payload payload) throws Exception {
         if (source == null || source.isBlank()) throw new IllegalArgumentException("source is required");
-        if (completedAt == null) throw new IllegalArgumentException("completedAt is required");
         ManagedSchema.requireManagedAccountSchema(con, "publication of account source " + source);
 
         con.setAutoCommit(false);
@@ -84,6 +96,10 @@ public final class AccountSourcePublication {
             Timestamp runTs = transactionNow(con);
             payload.write(con, scope, runTs);
 
+            // Completion is observed here, not supplied by the caller: a caller-captured instant
+            // predates the lock wait, so a queued writer could advance the generation while moving
+            // freshness backward.
+            Instant completedAt = clock.instant();
             long generation = sourceState.advance(con, scope, source, completedAt);
             registry.recordSuccessfulSync(con, scope, completedAt);
 

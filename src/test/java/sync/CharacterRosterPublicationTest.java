@@ -140,7 +140,7 @@ class CharacterRosterPublicationTest {
                 character(HELD_CHARACTER, 500));
         Thread refresh = new Thread(() -> {
             try {
-                CharacterSync.publishRoster(writer, ACCOUNT, generationTwo, GENERATION_TWO);
+                CharacterSync.publishRoster(writer, ACCOUNT, generationTwo, java.time.Clock.fixed(GENERATION_TWO, java.time.ZoneOffset.UTC));
             } catch (Exception thrown) {
                 failure.set(thrown);
             }
@@ -183,7 +183,7 @@ class CharacterRosterPublicationTest {
         try (Connection writer = connect()) {
             writer.setSchema(schema);
             assertThrows(Exception.class,
-                    () -> CharacterSync.publishRoster(writer, ACCOUNT, doomed, GENERATION_TWO),
+                    () -> CharacterSync.publishRoster(writer, ACCOUNT, doomed, java.time.Clock.fixed(GENERATION_TWO, java.time.ZoneOffset.UTC)),
                     "the publish must fail rather than commit half a generation");
         }
 
@@ -240,7 +240,7 @@ class CharacterRosterPublicationTest {
     private void publish(Instant version, List<CharacterSync.CharPayload> payloads) throws Exception {
         try (Connection writer = connect()) {
             writer.setSchema(schema);
-            CharacterSync.publishRoster(writer, ACCOUNT, payloads, version);
+            CharacterSync.publishRoster(writer, ACCOUNT, payloads, java.time.Clock.fixed(version, java.time.ZoneOffset.UTC));
         }
     }
 

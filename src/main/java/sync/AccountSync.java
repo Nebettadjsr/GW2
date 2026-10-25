@@ -24,7 +24,9 @@ import java.time.Instant;
 public final class AccountSync {
     private AccountSync() {}
 
-    private static final repo.AccountSourcePublication PUBLICATION = new repo.AccountSourcePublication();
+    private static repo.AccountSourcePublication publication(java.time.Clock clock) {
+        return new repo.AccountSourcePublication(clock);
+    }
 
     /**
      * Fetches and publishes one account's bank (STORY-APP-015).
@@ -64,7 +66,7 @@ public final class AccountSync {
         requireCredentialOwner(scope, fetcher);
         List<BankSlot> rows = parseBankSlots(fetcher.get("https://api.guildwars2.com/v2/account/bank"));
         try (Connection con = Db.open()) {
-            publishBank(con, scope, rows, Instant.now());
+            publishBank(con, scope, rows, java.time.Clock.systemUTC());
         }
     }
 
@@ -72,8 +74,8 @@ public final class AccountSync {
     static repo.AccountSourcePublication.Published publishBank(Connection con,
                                                                model.AccountScope scope,
                                                                List<BankSlot> rows,
-                                                               Instant completedAt) throws Exception {
-        return PUBLICATION.publish(con, scope, AccountSyncStateRepository.BANK, completedAt,
+                                                               java.time.Clock clock) throws Exception {
+        return publication(clock).publish(con, scope, AccountSyncStateRepository.BANK,
                 (tx, owner, runTs) -> upsertScopedAccountBank(tx, owner, rows, runTs));
     }
 
@@ -86,7 +88,7 @@ public final class AccountSync {
         requireCredentialOwner(scope, fetcher);
         List<MaterialStack> rows = parseMaterialStacks(fetcher.get("https://api.guildwars2.com/v2/account/materials"));
         try (Connection con = Db.open()) {
-            publishMaterials(con, scope, rows, Instant.now());
+            publishMaterials(con, scope, rows, java.time.Clock.systemUTC());
         }
     }
 
@@ -98,8 +100,8 @@ public final class AccountSync {
     static repo.AccountSourcePublication.Published publishMaterials(Connection con,
                                                                     model.AccountScope scope,
                                                                     List<MaterialStack> rows,
-                                                                    Instant completedAt) throws Exception {
-        return PUBLICATION.publish(con, scope, AccountSyncStateRepository.MATERIALS, completedAt,
+                                                                    java.time.Clock clock) throws Exception {
+        return publication(clock).publish(con, scope, AccountSyncStateRepository.MATERIALS,
                 (tx, owner, runTs) -> upsertScopedAccountMaterials(tx, owner, rows, runTs));
     }
 
@@ -112,7 +114,7 @@ public final class AccountSync {
         requireCredentialOwner(scope, fetcher);
         List<Integer> ids = parseAccountRecipeIds(fetcher.get("https://api.guildwars2.com/v2/account/recipes"));
         try (Connection con = Db.open()) {
-            publishRecipes(con, scope, ids, Instant.now());
+            publishRecipes(con, scope, ids, java.time.Clock.systemUTC());
         }
     }
 
@@ -120,8 +122,8 @@ public final class AccountSync {
     static repo.AccountSourcePublication.Published publishRecipes(Connection con,
                                                                   model.AccountScope scope,
                                                                   List<Integer> ids,
-                                                                  Instant completedAt) throws Exception {
-        return PUBLICATION.publish(con, scope, AccountSyncStateRepository.RECIPES, completedAt,
+                                                                  java.time.Clock clock) throws Exception {
+        return publication(clock).publish(con, scope, AccountSyncStateRepository.RECIPES,
                 (tx, owner, runTs) -> upsertScopedAccountRecipes(tx, owner, ids, runTs));
     }
 
@@ -141,7 +143,7 @@ public final class AccountSync {
         requireCredentialOwner(scope, fetcher);
         long consumedLuck = parseConsumedLuck(fetcher.get("https://api.guildwars2.com/v2/account/luck"));
         try (Connection con = Db.open()) {
-            publishLuck(con, scope, consumedLuck, Instant.now());
+            publishLuck(con, scope, consumedLuck, java.time.Clock.systemUTC());
         }
     }
 
@@ -149,8 +151,8 @@ public final class AccountSync {
     static repo.AccountSourcePublication.Published publishLuck(Connection con,
                                                                model.AccountScope scope,
                                                                long consumedLuck,
-                                                               Instant completedAt) throws Exception {
-        return PUBLICATION.publish(con, scope, AccountSyncStateRepository.LUCK, completedAt,
+                                                               java.time.Clock clock) throws Exception {
+        return publication(clock).publish(con, scope, AccountSyncStateRepository.LUCK,
                 (tx, owner, runTs) -> new AccountLuckRepository()
                         .save(tx, owner, consumedLuck, runTs.toInstant()));
     }
