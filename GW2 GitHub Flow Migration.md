@@ -2,15 +2,30 @@ GW2 · Workflow migration · Approach 2
 
 # From the Python pipeline to a GitHub pull-request flow
 
-**Implementation update (24 Oct 2026):** The owner starts one Claude story through
-the manual GitHub Actions button; there is no schedule or time-of-day gate.
-Two GitHub-hosted Claude pilots succeeded. The Python service and its CI job
-were retired after those pilots. The implemented review gate uses a third
+**Implementation update (25 Oct 2026):** GitHub issues/PRs/CI are the live workflow;
+the Python service, role contracts and runtime CI job are retired and recoverable
+on the pushed `pre-github-flow` tag. One manual dispatch permits one bounded Claude
+story; there is no schedule or time-of-day gate. An authorized active Codex session
+can dispatch successive runs and supervise review/local verification. This does
+not create an unattended background planner or a subscription-percentage gate.
+
+The JavaFX infrastructure pilot (#9 / PR #28) merged. The temporary unavailable-state
+pilot (#7) was superseded by the complete credential-based browser recovery
+(#13 / PR #61), following the owner's request to prioritize the permanent usable
+path; it is not claimed as a merged second pilot. Subsequent scoped persistence,
+HTTP/browser, measurement and container stories have exercised the delivery flow.
+The implemented review gate uses a third
 workflow, `review-merge.yml`, because native Codex posts its review state as a
 PR comment and CI completion can happen before or after that comment. The gate
 checks both against the current PR head before an eligible auto story merges.
-The original phases below remain the migration rationale; current status lives
-in GitHub issue #17 and its PRs.
+The original phases below remain historical migration rationale, not a current
+queue. Completion evidence and pilot substitution are recorded in issue #17.
+Current phase/requirements live in `docs/ROADMAP.md`, selected work in GitHub issues,
+and key/cache policy in UD-018/UD-016. Planning remains an interactive/supervised
+Codex responsibility; implementation and independent native Codex PR review are
+distinct executions. Architecture proposals can be separately reviewed before a
+dependent implementation, as in #75/ADR-011. Normal code and tests are written
+together. Do not restore the old Python role pipeline to represent this flow.
 
 Each story becomes a GitHub issue. Each attempt becomes a pull request worked on by one Claude Code session. CI and one reviewer are the gates. The custom service, its state files and its role boundaries go away.
 
