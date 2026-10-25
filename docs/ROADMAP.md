@@ -278,18 +278,16 @@ Phase 4. The frontend needs stable backend APIs for backend-owned workflows. Sma
 
 ## 10. Phase 6 — Multi-User / Account Isolation
 
-**Status: In progress.** The versioned account schema and disposable-cache reset are
-implemented (STORY-INFRA-004), and global-only operations were restored
-(STORY-SYNC-007). The scoped account recovery chain is now integrated:
-validated access (#8), scoped persistence (#15), scoped refresh (#11) and HTTP
-integration (#12, PR #58) and browser credentials (#13, PR #61) are merged and complete
-the recovery path. A local Chrome/live-ArenaNet check passed: completed
-full sync, selectors, loaded Profit, Bank/Materials, reload retention and disconnect.
-CI and exact-head Codex review passed; this does not close the whole Phase 6 milestone.
-Temporary unavailable-state issue #7 is superseded by #13. Normal scoped HTTP
-paths no longer reach legacy account_sync_state. UD-018 selects simple browser
-session retention without advanced credential hardening.
-Independent coverage work remains queued behind the account recovery path.
+**Status: Complete.** Bounded review #63 maps every exit criterion to delivered
+source and verification evidence. Its blocking cached-browser access finding is
+resolved by #69 / PR #70: cached reads use live account context without a new
+upstream proof, while necessary refresh runs behind the usable result. Exact-head
+Codex review and CI passed, together with live browser recovery and a controlled
+refresh-outage check over real cached results. The scoped recovery chain
+(#8, #15, #11, #12, #13), proportionate key policy UD-018 and process/performance
+reporting (#10, #14) are accepted. PR #71 reconciles obsolete documentation.
+No exit criterion is transferred or waived. Existing small follow-ups remain in
+#60 and meaningful coverage work in #21; neither blocks this milestone.
 
 ### Objective
 
@@ -334,6 +332,10 @@ Phase 5. The browser/backend contract and web frontend should exist before intro
 ---
 
 ## 11. Phase 7 — Containerized Runtime and Database Migration
+
+**Status: Ready to start.** #72 packages the backend first; frontend packaging,
+Compose integration and actual container measurements follow. Hosting and a
+deployment proxy remain separate technical/deployment choices when needed.
 
 The versioned schema lifecycle was delivered during Phase 6 (STORY-INFRA-004, ADR-010). This phase packages that selected lifecycle; it does not reopen the Flyway choice or require another manual-SQL conversion.
 
