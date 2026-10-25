@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, watch } from 'vue'
+import { hasStoredKey } from '@/api/accountSession'
 import { craftingApi, type CraftingApi } from '@/api/craftingApi'
+import { syncApi, type SyncApi } from '@/api/syncApi'
 import type { EffectiveDiscoverySettings } from '@/api/types'
 import TradingPostPriceDisclaimer from '@/items/TradingPostPriceDisclaimer.vue'
 import PageHeader from '@/shell/PageHeader.vue'
@@ -19,9 +21,16 @@ import { useIngredientSearch } from './useIngredientSearch'
 import { ref } from 'vue'
 
 /** Crafting Discovery evaluates one attempt per missing recipe for the selected character. Eligibility and all calculation inputs remain backend-owned; search and sort are view state. */
-const props = withDefaults(defineProps<{ api?: CraftingApi }>(), { api: () => craftingApi })
+const props = withDefaults(defineProps<{ api?: CraftingApi; refreshApi?: SyncApi }>(), {
+  api: () => craftingApi,
+  refreshApi: () => syncApi
+})
 
-const discovery = useCraftingDiscovery(props.api)
+const discovery = useCraftingDiscovery(props.api, {
+  startAccountRefresh: () => props.refreshApi.startProfitDataRefresh(),
+  readTaskStatus: (statusUrl: string) => props.refreshApi.readTaskStatus(statusUrl),
+  hasKey: hasStoredKey
+})
 const ingredientRecipeIds = ref<ReadonlySet<number>>(new Set())
 const table = useDiscoveryTableView(discovery.rows, ingredientRecipeIds)
 useIngredientSearch(props.api, table.searchText, ingredientRecipeIds)
@@ -66,14 +75,14 @@ function syncResolution(): void {
 
 /**
  * The events 13.4 requires a detail to be invalidated by, and nothing else. The key deliberately
- * contains the selected recipe and the backend's echoed scope and settings only —
+ * contains the selected recipe, backend's echoed scope/settings and applied result version —
  * sorting and searching are absent from it, so re-ordering the list leaves a valid detail alone. A
  * started reload empties `calculationInputs` while it is in flight, which clears the tree immediately
  * and asks again against the answer that replaces it.
  */
 watch(
   () =>
-    `${table.selectedRecipeId.value ?? 'none'}|${discoveryCalculationKey(calculationInputs.value)}`,
+    `${table.selectedRecipeId.value ?? 'none'}|${discoveryCalculationKey(calculationInputs.value)}|${discovery.resultVersion.value}`,
   () => syncResolution()
 )
 
@@ -251,6 +260,15 @@ function onReload(): void {
             <TradingPostPriceDisclaimer v-if="discovery.hasResult.value" />
           </div>
         </div>
+
+        <p
+          v-if="discovery.refreshNotice.value !== null"
+          class="notice notice--warning"
+          role="status"
+          data-test="discovery-refresh-notice"
+        >
+          {{ discovery.refreshNotice.value }}
+        </p>
 
         <!--
           Loading comes first on purpose: the selector read is part of it, and until that has answered

@@ -16,16 +16,13 @@ import {
  * not ask for it again, and is sent to the backend only as the `X-GW2-API-Key` header of a proof or
  * of account work that needs it — never in a URL, a log line or an error message. The backend turns a
  * proven key into an HttpOnly session cookie and an access context; this module renews that lease
- * from the retained key when it lapses.
+ * from the retained key once it has lapsed, never while it is still live.
  *
  * `generation` is the small request guard: it changes whenever the connected account may have changed
  * (connect, replace, disconnect, definitive rejection). Every account request records it when it
  * starts, and an answer that arrives under a different one is discarded by the transport.
  */
 export const STORAGE_KEY = 'gw2.apiKey'
-
-/** The lease is renewed this long before the backend would expire it. */
-const RENEW_MARGIN_MS = 60_000
 
 export type ConnectionPhase = 'disconnected' | 'restoring' | 'connecting' | 'connected' | 'unavailable'
 
@@ -312,12 +309,9 @@ const transport: AccountTransport = {
     if (connection.phase === 'disconnected') throw keyRequired()
     if (connection.phase === 'unavailable' || connection.phase === 'restoring' || connection.phase === 'connecting') {
       await establish(true)
-    } else if (lease === null || lease.expiresAtMs - Date.now() < RENEW_MARGIN_MS) {
-      try {
-        await establish(false)
-      } catch (error) {
-        if (!leaseIsLive()) throw error
-      }
+    } else if (!leaseIsLive()) {
+      // Only a lapsed lease is renewed before a request; a live one serves cached reads without a new proof.
+      await establish(false)
     }
     if (epoch !== accountEpoch) {
       throw new ApiRequestError('The account changed before this request started.', 'ACCOUNT_CHANGED', null)

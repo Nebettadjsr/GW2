@@ -80,12 +80,15 @@ function isAccountPath(path: string): boolean {
     route.startsWith('/sync/account') || route.startsWith('/sync/tasks/') || route === '/system/status'
 }
 
-/** Only an explicit refresh trigger or a calculation that may admit one needs the key itself. */
+/**
+ * Only an explicit account refresh trigger needs the key itself. Calculations (Profit, Discovery,
+ * detail) are keyless cached reads under a live session; the backend reports a needed refresh
+ * instead of re-proving a key.
+ */
 function sendsKey(path: string, method: string | undefined): boolean {
   if (method !== 'POST') return false
   const route = path.split('?')[0] ?? path
-  return route.startsWith('/sync/account') || route.startsWith('/crafting/profit') ||
-    route.startsWith('/crafting/discovery')
+  return route.startsWith('/sync/account')
 }
 
 async function sendJsonAttempt<T>(path: string, init: RequestInit, mayRecover: boolean): Promise<T> {

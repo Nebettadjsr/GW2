@@ -1,4 +1,4 @@
-import { computed, ref, shallowRef, type ComputedRef, type Ref } from 'vue'
+import { computed, onScopeDispose, ref, shallowRef, type ComputedRef, type Ref } from 'vue'
 import type { CraftingApi } from '@/api/craftingApi'
 import { ApiRequestError } from '@/api/http'
 import {
@@ -10,6 +10,7 @@ import {
   type EffectiveScope,
   type EffectiveSettings,
   type OutstandingRefresh,
+  type SyncTaskAccepted,
   type SyncTaskStatus
 } from '@/api/types'
 import { buildScopeOptions, defaultScopeOptionId, type ScopeOption } from './scopeOptions'
@@ -39,6 +40,21 @@ export const RECOVERY_TIMED_OUT =
 /** Wording for a task reference the backend can no longer resolve. */
 export const RECOVERY_TASK_UNKNOWN =
   'The refresh task the backend advertised is no longer known to it.'
+
+/** Wording for a needed account refresh with no retained key to admit it with. */
+export const RECOVERY_KEY_NEEDED =
+  'Account data needs a refresh, but no GW2 API key is connected. Connect a key to refresh; the cached result stays.'
+
+/** Wording for a refresh that could not be admitted right now; the key and result are kept. */
+export const RECOVERY_REFRESH_UNAVAILABLE =
+  'The account refresh could not be started right now. The cached result and your key are kept; retry shortly.'
+
+/** Wording for a refresh that only joined an unrelated narrower task. */
+export const RECOVERY_REFRESH_NOT_COVERED =
+  'The account refresh is waiting behind another task and has not started. Retry shortly.'
+
+/** The backend code for an account refresh a keyless read could not admit. */
+const CREDENTIAL_REQUIRED = 'CREDENTIAL_REQUIRED'
 
 /** Wording for a provisional answer that advertised no refresh work to follow at all. */
 export const RECOVERY_NOTHING_ADMITTED =
@@ -74,6 +90,14 @@ export function timerAlarm(milliseconds: number): RecoveryAlarm {
  */
 export interface ProfitRefreshPorts {
   readTaskStatus(statusUrl: string): Promise<SyncTaskStatus>
+  /**
+   * The explicit keyed refresh of the Profit account sources. Calculations are keyless cached reads;
+   * only this call carries the key, and only when the backend reported a needed refresh it could not
+   * admit without one. Absent means the page cannot admit account work.
+   */
+  startAccountRefresh?(): Promise<SyncTaskAccepted>
+  /** Whether a key is retained for this browser session. */
+  hasKey?(): boolean
   now?(): number
   sleep?(milliseconds: number): Promise<void>
   alarm?(milliseconds: number): RecoveryAlarm
@@ -157,6 +181,12 @@ export function useCraftingProfit(api: CraftingApi, refresh: ProfitRefreshPorts)
    * next checkpoint instead of writing into a context that moved on.
    */
   let activeCycle = 0
+  let disposed = false
+  onScopeDispose(() => {
+    disposed = true
+    newestRequestId += 1
+    abandonRecovery()
+  })
 
   const selectedScope = computed<ScopeOption | null>(
     () => scopeOptions.value.find((option) => option.id === selectedScopeId.value) ?? null
@@ -170,6 +200,7 @@ export function useCraftingProfit(api: CraftingApi, refresh: ProfitRefreshPorts)
     selectorError.value = null
     try {
       const loaded = await api.loadSelectorOptions()
+      if (disposed) return
       const options = buildScopeOptions(loaded)
       scopeOptions.value = options
       // A selection the backend no longer offers falls back to its documented default entry.
@@ -196,6 +227,7 @@ export function useCraftingProfit(api: CraftingApi, refresh: ProfitRefreshPorts)
     foreground: boolean,
     cycle?: number
   ): Promise<RequestOutcome> {
+    if (disposed) return { kind: 'superseded' }
     const requestId = ++newestRequestId
     if (foreground) isLoading.value = true
 
@@ -319,6 +351,8 @@ export function useCraftingProfit(api: CraftingApi, refresh: ProfitRefreshPorts)
      * wait is inside the same budget, so pacing cannot extend the five minutes either.
      */
     let firstRound = true
+    // One keyed admission per cycle: a backend that keeps reporting the need cannot loop it.
+    let keyedAdmitted = false
 
     if (resubmitFirst) {
       const asked = await sendProfit(currentRequest(), false, cycle)
@@ -345,7 +379,30 @@ export function useCraftingProfit(api: CraftingApi, refresh: ProfitRefreshPorts)
 
       const followable = envelope.outstandingWork.filter(isFollowable)
 
-      if (followable.length === 0) {
+      if (needsKeyedRefresh(envelope)) {
+        if (keyedAdmitted) return stop(cycle, firstFailureOf(envelope) ?? RECOVERY_REFRESH_UNAVAILABLE)
+        keyedAdmitted = true
+        if (refresh.startAccountRefresh === undefined || !(refresh.hasKey?.() ?? false)) {
+          return stop(cycle, RECOVERY_KEY_NEEDED)
+        }
+        let accepted: SyncTaskAccepted
+        try {
+          accepted = await refresh.startAccountRefresh()
+        } catch (cause) {
+          if (cycle !== activeCycle) return
+          return stop(cycle, `${RECOVERY_REFRESH_UNAVAILABLE} (${describeFailure(cause)})`)
+        }
+        if (cycle !== activeCycle) return
+        if (accepted.coversRequest === false) return stop(cycle, RECOVERY_REFRESH_NOT_COVERED)
+        followable.push({
+          kind: 'ACCOUNT',
+          sources: [],
+          taskId: accepted.taskId,
+          taskState: null,
+          taskStatusUrl: accepted.statusUrl,
+          reuse: accepted.admission ?? null
+        })
+      } else if (followable.length === 0) {
         const reported = firstFailureOf(envelope)
         if (reported !== null) return stop(cycle, reported)
         if (envelope.outstandingWork.some((work) => work.taskState === 'UNKNOWN')) {
@@ -499,6 +556,11 @@ export function useCraftingProfit(api: CraftingApi, refresh: ProfitRefreshPorts)
  */
 function isFollowable(work: OutstandingRefresh): boolean {
   return work.taskStatusUrl !== null && work.taskState !== 'UNKNOWN' && work.taskState !== 'NONE'
+}
+
+/** The keyless read reported an account refresh it could not admit without a key. */
+function needsKeyedRefresh(envelope: CalculationFreshness): boolean {
+  return envelope.failures.some((failure) => failure.kind === 'ACCOUNT' && failure.code === CREDENTIAL_REQUIRED)
 }
 
 /** The backend's own bounded recovery item, where it supplied one. */
