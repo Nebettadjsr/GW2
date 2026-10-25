@@ -1,0 +1,63 @@
+# Application resource measurements
+
+Owner of: how to reproduce and read the STORY-PERF-005 application measurements. The requirement lives in
+`TARGET_ARCHITECTURE.md` section 17; test-layer rules live in `TEST_STRATEGY.md`. These measurements are
+informational: they never gate a story, merge, pull request or CI run, and they do not state hosting capacity.
+
+## What is measured
+
+The code is under `src/test/java/perf`. It starts the real Spring Boot application (real HTTP, controllers,
+application services, scoped repositories, the production Flyway chain, the shared crafting graph cache) against
+a disposable, uniquely named PostgreSQL schema that it drops afterwards. Only the outside edges are fixtures:
+the account proof port, the upstream account GETs, and the global-data and Trading Post price refresh gateways.
+No GW2 key, network access or populated database is needed. Fixture version: `perf-fixtures-1`
+(raw materials, a binary tree of Chef recipes, deterministic prices, bank/material/recipe/Luck responses).
+
+| Workload | Boundary exercised |
+|---|---|
+| `idle` | process with no requests or tasks |
+| `account_sync_full`, `account_sync_incremental` | `POST /api/sync/account` to task success; incremental repeats after about 5% of upstream rows change (the application always re-fetches and republishes whole sources) |
+| `price_refresh` | `POST /api/prices/refresh` (Profit) to task success; the gateway writes the price rows by JDBC |
+| `profit_small`, `profit_large` | `POST /api/crafting/profit`, All scope with an account roster, over 200 / 5,000 recipes; one cold call then repeats with a changed buy budget so the result cache cannot answer |
+| `global_refresh` | `POST /api/sync/global` including the real crafting-graph rebuild; the gateway writes recipes by JDBC |
+| `http_typical` | sequential status, bank, materials, selector-options reads |
+| `database_reads` | `TpPriceRepository` and `ItemRepository` reads of every fixture item |
+| `http_concurrent` | 8 clients issuing a profit/status/bank/selector mix |
+
+## Reproduce
+
+```
+export DATABASE_URL=jdbc:postgresql://localhost:5432/<disposable db> DATABASE_USER=... DATABASE_PASSWORD=... GW2_API_KEY=placeholder
+./mvnw test -Dtest=ApplicationResourceBenchmarkIT -DfailIfNoSpecifiedTests=false
+```
+
+Output: `target/perf/application-resources.json` (machine-readable) and `application-resources.md`
+(`-Dgw2.perf.output-dir=<dir>` overrides). Sizes are in `ApplicationResourceBenchmarkIT.sizes()`. The default
+suite runs `ApplicationBenchmarkBoundaryTest` (tiny sizes, no timing assertions) to prove each workload reaches
+its boundary, and `MeasurementReportTest` for the report math and unavailable-value handling.
+
+The JSON carries `schemaVersion`, `commit`, `timestamp`, `fixtureVersion`, `environment`, and per workload
+the metrics (`value`, `unit`, `boundary`, or `value: null` with `unavailableReason`), limits and diagnostics.
+Compare two runs only when `schemaVersion`, `fixtureVersion`, the sizes and the environment match.
+`measurementScope` is `application-process`; container CPU/memory, startup-to-readiness and image size are
+not measured until container infrastructure exists and must be reported under a distinct scope.
+
+## KPIs and limits
+
+- Process memory (heap, resident set from `/proc`) and CPU time/utilization are for the whole JVM, which also
+  hosts the in-process load-generating client and fixture writers. Peaks are sampled every 20 ms, so they are
+  lower bounds. RSS is unavailable off Linux; CPU time is unavailable on a JVM that cannot report it.
+- HTTP p95 is nearest-rank over the workload's requests, measured at the client including body download.
+  Throughput is requests over workload wall time. Profit and sync workloads have few samples; read p95 as indicative.
+- Database rows inserted/updated/deleted/read come from `pg_stat_all_tables` for the test schema after a
+  1.3 s settle (PostgreSQL publishes statistics with a delay). Storage is tables plus indexes plus TOAST at the
+  end of each workload. Connections are sampled every 25 ms per database; the application opens one per call
+  (no pool), so active and peak coincide.
+- Network ingress/egress is HTTP body bytes only. JDBC wire bytes and upstream traffic are marked unavailable
+  (offline fixtures send nothing upstream; there are no per-process network counters without OS tooling).
+- Background-job duration is accept-to-terminal-state. Per-job CPU and memory are unavailable because tasks
+  share pool threads and heap; the workload-window process figures are reported instead. Frequency is the
+  configured global-refresh interval, not an observed rate.
+- Fixture data is synthetic and the global/price refresh gateways bypass upstream fetching and parsing, so
+  those workloads understate real refresh cost. Runs on shared CI runners are noisy.
+- Nothing here is a measurement of hosting capacity.

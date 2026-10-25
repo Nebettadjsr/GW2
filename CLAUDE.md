@@ -17,6 +17,7 @@ Implementing agents may write production code, tests, and fixtures together. Run
 - `docs/ROADMAP.md`: phase sequence and exit criteria.
 - `docs/FRONTEND_UX_GUIDELINES.md`: browser UX requirements.
 - `docs/TEST_STRATEGY.md` and `docs/QUALITY_METRICS.md`: test layers, coverage, and reporting.
+- `docs/PERFORMANCE_MEASUREMENTS.md`: reproducing and reading the informational application resource measurements.
 - `docs/CODING_GUIDELINES.md`: implementation conventions.
 - `agent/stories/` and `agent/user-decisions/`: historical story and decision records; active work is tracked in GitHub issues.
 
