@@ -46,6 +46,9 @@ public class CraftingDiscoveryService {
     private final CraftingPlanner planner;
     /** The authorized account of this request-local instance, or null for the retained unscoped path. */
     private final model.AccountScope scope;
+    private java.time.Clock clock = java.time.Clock.systemUTC();
+    /** Account max age; null means published inputs are never reported stale. */
+    private java.time.Duration accountMaxAge;
 
     // Scoped to the most recent reload(); backs getResultByRecipeId/itemName/itemSellUnit so a
     // stale cache from an earlier reload() - or one skipped by the "no missing recipes" early
@@ -108,8 +111,63 @@ public class CraftingDiscoveryService {
      * calculation is unchanged and receives the already-scoped ordinary inputs.
      */
     public CraftingDiscoveryService forScope(model.AccountScope scope) {
-        return new CraftingDiscoveryService(recipeRepo, invRepo, tpRepo, itemRepo, graphCache, planner,
-                java.util.Objects.requireNonNull(scope));
+        CraftingDiscoveryService bound = new CraftingDiscoveryService(recipeRepo, invRepo, tpRepo, itemRepo,
+                graphCache, planner, java.util.Objects.requireNonNull(scope));
+        bound.clock = clock;
+        bound.accountMaxAge = accountMaxAge;
+        return bound;
+    }
+
+    /** Sets the account freshness policy used to classify published inputs as stale. */
+    public CraftingDiscoveryService withFreshness(java.time.Clock clock, java.time.Duration accountMaxAge) {
+        this.clock = clock;
+        this.accountMaxAge = accountMaxAge;
+        return this;
+    }
+
+    /** The account sources one Discovery calculation consumes. */
+    public static final java.util.Set<String> SOURCES = java.util.Set.of(
+            repo.AccountSyncStateRepository.BANK, repo.AccountSyncStateRepository.MATERIALS,
+            repo.AccountSyncStateRepository.RECIPES, repo.AccountSyncStateRepository.CHARACTERS);
+
+    /**
+     * Source state of the account's Discovery inputs: {@code missing} were never published (no
+     * calculation is possible), {@code stale} were published but expired (still usable).
+     */
+    public record InputState(java.util.Set<String> missing, java.util.Set<String> stale) {
+        public java.util.Set<String> needingRefresh() {
+            java.util.Set<String> all = new java.util.TreeSet<>(missing);
+            all.addAll(stale);
+            return all;
+        }
+    }
+
+    /** Reads the markers only (no rows, no activity). The retained unscoped service reports nothing needed. */
+    public InputState inputState() throws SQLException {
+        if (scope == null) return new InputState(java.util.Set.of(), java.util.Set.of());
+        java.util.Set<String> missing = new java.util.TreeSet<>();
+        java.util.Set<String> stale = new java.util.TreeSet<>();
+        try (java.sql.Connection con = repo.Db.open()) {
+            repo.ManagedSchema.requireManagedAccountSchema(con, "account-scoped Discovery");
+            var states = new repo.AccountSourceStateRepository();
+            java.time.Instant now = clock.instant();
+            for (String source : SOURCES) {
+                var state = states.read(con, scope, source);
+                if (state.isEmpty()) missing.add(source);
+                else if (accountMaxAge != null && state.get().completedAt().plus(accountMaxAge).isBefore(now)) {
+                    stale.add(source);
+                }
+            }
+        }
+        return new InputState(missing, stale);
+    }
+
+    /** Records ordinary authorized use (activity only, never freshness) for a request that calculated nothing. */
+    public void recordAuthorizedUse() throws SQLException {
+        if (scope == null) return;
+        try (java.sql.Connection con = repo.Db.open()) {
+            new repo.AccountRegistryRepository().recordAuthorizedUse(con, scope, clock.instant());
+        }
     }
 
     /** The account's stored inputs are missing: a keyed sync must publish them first. */
@@ -133,8 +191,14 @@ public class CraftingDiscoveryService {
     public void verifySelectedCharacter(DiscChoice choice) throws SQLException {
         requireCharacterScope(choice);
         if (scope == null) return;
-        try (java.sql.Connection con = openScoped(choice.charName, false)) {
-            // Nothing to read: openScoped itself refuses a foreign or unknown character.
+        try (java.sql.Connection con = repo.Db.open()) {
+            repo.ManagedSchema.requireManagedAccountSchema(con, "account-scoped Discovery");
+            // A never-published roster has nothing to compare with: that is the pending case.
+            if (new repo.AccountSourceStateRepository()
+                    .read(con, scope, repo.AccountSyncStateRepository.CHARACTERS).isEmpty()) return;
+            if (!new repo.CharacterRepository().loadAllCharacterNames(con, scope).contains(choice.charName)) {
+                throw new CharacterNotOwnedException();
+            }
         }
     }
 
@@ -156,7 +220,7 @@ public class CraftingDiscoveryService {
                 throw new CharacterNotOwnedException();
             }
             if (recordUse) {
-                new repo.AccountRegistryRepository().recordAuthorizedUse(con, scope, java.time.Instant.now());
+                new repo.AccountRegistryRepository().recordAuthorizedUse(con, scope, clock.instant());
             }
             return con;
         } catch (SQLException | RuntimeException failure) {

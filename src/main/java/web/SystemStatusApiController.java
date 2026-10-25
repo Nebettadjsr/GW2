@@ -39,6 +39,7 @@ public class SystemStatusApiController {
 
     private final AccountAccessService access;
     private final AccountStateReader accountStates;
+    private final application.ScopedSourceGate gate;
 
     /** Reads one account's published source markers; a seam so the projection is testable offline. */
     @FunctionalInterface
@@ -50,13 +51,21 @@ public class SystemStatusApiController {
     /** Global diagnostics only: with no account facility no account projection is possible. */
     public SystemStatusApiController(GlobalDataRefreshService globalDataRefreshService,
                                      TradingPostPriceCacheStatusService priceCacheStatusService) {
-        this(globalDataRefreshService, priceCacheStatusService, null, null);
+        this(globalDataRefreshService, priceCacheStatusService, null, null, null);
+    }
+
+    public SystemStatusApiController(GlobalDataRefreshService globalDataRefreshService,
+                                     TradingPostPriceCacheStatusService priceCacheStatusService,
+                                     AccountAccessService access, AccountStateReader accountStates) {
+        this(globalDataRefreshService, priceCacheStatusService, access, accountStates, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public SystemStatusApiController(GlobalDataRefreshService globalDataRefreshService,
                                      TradingPostPriceCacheStatusService priceCacheStatusService,
-                                     AccountAccessService access, AccountStateReader accountStates) {
+                                     AccountAccessService access, AccountStateReader accountStates,
+                                     application.ScopedSourceGate gate) {
+        this.gate = gate;
         this.globalDataRefreshService = globalDataRefreshService;
         this.priceCacheStatusService = priceCacheStatusService;
         this.access = access;
@@ -88,8 +97,10 @@ public class SystemStatusApiController {
         Instant latest = null;
         String scopeLabel = null;
         try {
-            Map<String, AccountSourceStateRepository.SourceState> states = accountStates.read(
-                    AccountScope.of(UUID.fromString(context.accountId())), permitted);
+            AccountScope scope = AccountScope.of(UUID.fromString(context.accountId()));
+            Map<String, AccountSourceStateRepository.SourceState> states = accountStates.read(scope, permitted);
+            // Ordinary authorized use: activity only, never freshness, and only after the proof passed.
+            if (gate != null) gate.recordUse(scope);
             Map<String, AccountSourceStateRepository.SourceState> sorted = new TreeMap<>(states);
             for (var state : sorted.values()) {
                 if (latest == null || state.completedAt().isAfter(latest)) latest = state.completedAt();

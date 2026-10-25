@@ -164,8 +164,11 @@ public class Gw2ApiApplication {
      * earlier one's data.
      */
     @Bean
-    public Supplier<CraftingDiscoveryService> craftingDiscoveryServiceFactory(CraftingGraphCache graphCache) {
-        return () -> new CraftingDiscoveryService(graphCache);
+    public Supplier<CraftingDiscoveryService> craftingDiscoveryServiceFactory(
+            CraftingGraphCache graphCache,
+            @Value("${gw2.account-data.max-age-ms:900000}") long accountMaxAgeMs) {
+        return () -> new CraftingDiscoveryService(graphCache)
+                .withFreshness(Clock.systemUTC(), Duration.ofMillis(accountMaxAgeMs));
     }
 
     /** Shared immutable catalog snapshot for calculations, ingredient search and refresh invalidation. */

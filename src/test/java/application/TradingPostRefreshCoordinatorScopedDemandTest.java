@@ -46,4 +46,18 @@ class TradingPostRefreshCoordinatorScopedDemandTest {
         coordinator.refreshAndAwait(TradingPostRefreshCoordinator.Variant.DISCOVERY, a);
         assertEquals(List.of("global", "d:" + a.id()), calls);
     }
+
+    @Test
+    void explicitGlobalDemandIsRetainedWhenScopedDemandJoinsTheSameDrain() throws Exception {
+        FakeBackgroundTasks tasks = new FakeBackgroundTasks();
+        TradingPostRefreshCoordinator coordinator = new TradingPostRefreshCoordinator(service, tasks);
+        AccountScope a = AccountScope.of(UUID.randomUUID());
+
+        var first = coordinator.require(TradingPostRefreshCoordinator.Variant.PROFIT);
+        var second = coordinator.requireProfitCoverage(a);
+        assertEquals(TradingPostRefreshCoordinator.REUSE_COALESCED_INTO_ACTIVE_RUN, second.reuse());
+
+        tasks.run(first.taskId());
+        assertEquals(List.of("global", a.id()), calls, "manual/global demand and scoped demand both execute");
+    }
 }

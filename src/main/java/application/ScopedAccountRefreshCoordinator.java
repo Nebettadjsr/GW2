@@ -227,15 +227,21 @@ public class ScopedAccountRefreshCoordinator {
      * @throws Rejected when identity or any demanded source's grants cannot be proven
      */
     public Admission require(AccountContext context, String sessionId, String apiKey, Set<String> sources) {
+        return require(context, sessionId, apiKey, sources, null);
+    }
+
+    /**
+     * As {@link #require(AccountContext, String, String, Set)}, reusing {@code proof} - obtained by
+     * {@link #verify} earlier in the same request - instead of asking GW2 to validate the key again.
+     * Session liveness, account match and every source's grants are still checked.
+     */
+    public Admission require(AccountContext context, String sessionId, String apiKey, Set<String> sources,
+                             AccountAccessService.KeyedProof proof) {
         if (sources.isEmpty()) return new Admission(null, Set.of(), REUSE_ADMITTED);
         AccountScope scope = AccountScope.of(context.accountId());
         Set<AccountGrant> grants = EnumSet.noneOf(AccountGrant.class);
-        for (String source : sources) {
-            AccountOperation operation = operationFor(source);
-            if (operation == null) throw new IllegalArgumentException("unknown account source: " + source);
-            authorize(context, sessionId, apiKey, operation);
-            grants.addAll(operation.requiredGrants());
-        }
+        authorize(context, sessionId, apiKey, proof, sources);
+        for (String source : sources) grants.addAll(operationFor(source).requiredGrants());
 
         synchronized (this) {
             Run run = active.get(scope.accountId());
@@ -278,17 +284,26 @@ public class ScopedAccountRefreshCoordinator {
      *
      * @throws Rejected when identity or any source's grants cannot be proven
      */
-    public void verify(AccountContext context, String sessionId, String apiKey, Set<String> sources) {
+    public AccountAccessService.KeyedProof verify(AccountContext context, String sessionId, String apiKey,
+                                                   Set<String> sources) {
+        return authorize(context, sessionId, apiKey, null, sources);
+    }
+
+    /** One upstream proof for the whole source set (or the supplied one), then a check per source. */
+    private AccountAccessService.KeyedProof authorize(AccountContext context, String sessionId, String apiKey,
+                                                      AccountAccessService.KeyedProof proof, Set<String> sources) {
+        java.util.List<AccountOperation> operations = new java.util.ArrayList<>();
         for (String source : sources) {
             AccountOperation operation = operationFor(source);
             if (operation == null) throw new IllegalArgumentException("unknown account source: " + source);
-            authorize(context, sessionId, apiKey, operation);
+            operations.add(operation);
         }
-    }
-
-    private void authorize(AccountContext context, String sessionId, String apiKey, AccountOperation operation) {
         try {
-            access.authorizeKeyedOperation(sessionId, context, apiKey, operation);
+            if (proof != null) {
+                access.authorizeKeyedOperations(sessionId, context, proof, operations);
+                return proof;
+            }
+            return access.authorizeKeyedOperations(sessionId, context, apiKey, operations);
         } catch (InvalidCredentialException e) {
             throw new Rejected(Reason.INVALID_CREDENTIAL);
         } catch (AccountAccessService.AccountMismatchException e) {
@@ -301,6 +316,36 @@ public class ScopedAccountRefreshCoordinator {
             throw new Rejected(Reason.MALFORMED_PROOF);
         } catch (IllegalStateException e) {
             throw new Rejected(Reason.SESSION);
+        }
+    }
+
+    /**
+     * A full sync that arrives behind a narrower active run is told to wait
+     * ({@link #REUSE_WAITING_FOR_ACTIVE_TASK}) and its key is not retained. This rechecks for up to
+     * {@code bound}: once the active run is terminal the demand is admitted with the caller's own
+     * (already proved) credential, so the uncovered sources - Luck in particular - are really
+     * admitted. If the bound passes first, the waiting admission is returned unchanged and the
+     * caller must say so honestly (it covers none of the uncovered sources).
+     */
+    public Admission requireAfterBoundedWait(AccountContext context, String sessionId, String apiKey,
+                                             Set<String> sources, java.time.Duration bound) {
+        AccountAccessService.KeyedProof proof = verify(context, sessionId, apiKey, sources);
+        long deadline = System.nanoTime() + bound.toNanos();
+        while (true) {
+            Admission admission = require(context, sessionId, apiKey, sources, proof);
+            if (!REUSE_WAITING_FOR_ACTIVE_TASK.equals(admission.reuse()) || admission.taskId() == null) {
+                return admission;
+            }
+            while (tasks.find(admission.taskId()).map(status -> !status.terminal()).orElse(false)) {
+                if (System.nanoTime() >= deadline) return admission;
+                try {
+                    Thread.sleep(20);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    return admission;
+                }
+            }
+            if (System.nanoTime() >= deadline) return admission;
         }
     }
 

@@ -96,6 +96,11 @@ public final class ScopedSourceGate {
         return new Read<>(rows.load(), Status.CURRENT, null, null);
     }
 
+    /** Records authorized use (activity only, never freshness) for a request that read no source. */
+    public void recordUse(AccountScope scope) throws SQLException {
+        activity.record(scope, clock.instant());
+    }
+
     public <T> Read<T> read(AccountScope scope, String source, Rows<T> rows) throws SQLException {
         for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             var before = states.read(scope, source);

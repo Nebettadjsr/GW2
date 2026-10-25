@@ -118,7 +118,13 @@ public class CachedCraftingProfitService {
      * The caller's transient proof for a keyed calculation: the trusted context, the presented
      * session and the key. Never stored; handed only to {@link ScopedAccountRefreshCoordinator}.
      */
-    public record KeyedAdmission(application.access.AccountContext context, String sessionId, String apiKey) {
+    public record KeyedAdmission(application.access.AccountContext context, String sessionId, String apiKey,
+                                 java.util.concurrent.atomic.AtomicReference<application.access.AccountAccessService.KeyedProof> proof) {
+        /** {@code proof} is request-local: filled by the preflight, reused by admission of the same request. */
+        public KeyedAdmission(application.access.AccountContext context, String sessionId, String apiKey) {
+            this(context, sessionId, apiKey, new java.util.concurrent.atomic.AtomicReference<>());
+        }
+
         @Override public String toString() { return "KeyedAdmission[context=" + context + ", apiKey=<redacted>]"; }
     }
 
@@ -310,8 +316,8 @@ public class CachedCraftingProfitService {
      */
     private void verifyProof(KeyedAdmission keyed) {
         if (keyed == null || scopedRefresh == null) return;
-        scopedRefresh.verify(keyed.context(), keyed.sessionId(), keyed.apiKey(),
-                CalculationInputVersions.REQUIRED_ACCOUNT_SOURCES);
+        keyed.proof().set(scopedRefresh.verify(keyed.context(), keyed.sessionId(), keyed.apiKey(),
+                CalculationInputVersions.REQUIRED_ACCOUNT_SOURCES));
     }
 
     private CalculationInputVersions capture(ProfitInputSession session) throws SQLException {
@@ -365,7 +371,7 @@ public class CachedCraftingProfitService {
                 // Proof was verified before any work; a late rejection (revocation or outage during
                 // the calculation) propagates as API-010 401/403/503 rather than a calculation.
                 ScopedAccountRefreshCoordinator.Admission admission = scopedRefresh.require(
-                        keyed.context(), keyed.sessionId(), keyed.apiKey(), needing);
+                        keyed.context(), keyed.sessionId(), keyed.apiKey(), needing, keyed.proof().get());
                 outstanding.add(new CalculationFreshness.OutstandingRefresh(
                         CalculationFreshness.RefreshKind.ACCOUNT, admission.sources(), admission.taskId(),
                         stateOf(admission.taskId()), admission.reuse()));

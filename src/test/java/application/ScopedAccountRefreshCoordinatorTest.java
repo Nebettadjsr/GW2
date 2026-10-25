@@ -47,9 +47,11 @@ class ScopedAccountRefreshCoordinatorTest {
     private final Map<String, AccountProof> keys = new ConcurrentHashMap<>();
     private final Gateway gateway = new Gateway();
     private final java.util.concurrent.atomic.AtomicInteger fetcherRequests = new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicInteger proofCalls = new java.util.concurrent.atomic.AtomicInteger();
     private final ScopedAccountRefreshCoordinator coordinator = new ScopedAccountRefreshCoordinator(
             new AccountRefreshService(gateway), new BackgroundTaskServiceTasks(service),
             new AccountAccessService(key -> {
+                proofCalls.incrementAndGet();
                 AccountProof proof = keys.get(key);
                 if (proof == null) throw new InvalidCredentialException("rejected");
                 return proof;
@@ -258,6 +260,94 @@ class ScopedAccountRefreshCoordinatorTest {
         AccountContext lacking = new AccountContext(A, NARROW, Set.of(), a.context().accessContext(),
                 a.context().expiresAt());
         assertTrue(coordinator.observe(lacking, admitted.taskId()).isEmpty());
+    }
+
+    @Test
+    void oneUpstreamProofCoversTheWholeSourceSetAndIsReusableWithoutWeakeningChecks() {
+        AccountSessions.Issued a = session(A, "key-a", WIDE);
+        Set<String> all = Set.of(AccountSyncStateRepository.BANK, AccountSyncStateRepository.MATERIALS,
+                AccountSyncStateRepository.CHARACTERS);
+        proofCalls.set(0);
+
+        var proof = coordinator.verify(a.context(), a.sessionId(), "key-a", all);
+        assertEquals(1, proofCalls.get(), "one validation request for the whole required source set");
+
+        var admission = coordinator.require(a.context(), a.sessionId(), "key-a", all, proof);
+        assertEquals(1, proofCalls.get(), "admission reuses the request's proof");
+        assertEquals(ScopedAccountRefreshCoordinator.REUSE_ADMITTED, admission.reuse());
+
+        // A reused proof is still checked: revoked session and uncovered source both fail closed.
+        assertTrue(sessions.revoke(a.sessionId()));
+        assertEquals(ScopedAccountRefreshCoordinator.Reason.SESSION,
+                assertThrows(ScopedAccountRefreshCoordinator.Rejected.class,
+                        () -> coordinator.require(a.context(), a.sessionId(), "key-a", all, proof)).reason());
+        assertEquals(1, proofCalls.get());
+    }
+
+    @Test
+    void rejectionsStillComeFromTheSingleProof() {
+        AccountSessions.Issued narrow = session(A, "key-narrow", NARROW);
+        keys.put("wide-key", new AccountProof(A, WIDE, Set.of(), null));
+        AccountSessions.Issued wideSession = sessions.establish(keys.get("wide-key"));
+        keys.put("narrow-cred", new AccountProof(A, NARROW, Set.of(), null));
+        Set<String> needsCharacters = Set.of(AccountSyncStateRepository.BANK, AccountSyncStateRepository.CHARACTERS);
+        proofCalls.set(0);
+
+        assertEquals(ScopedAccountRefreshCoordinator.Reason.INSUFFICIENT_GRANTS,
+                assertThrows(ScopedAccountRefreshCoordinator.Rejected.class,
+                        () -> coordinator.verify(narrow.context(), narrow.sessionId(), "key-narrow",
+                                needsCharacters)).reason(), "session grants checked before any proof");
+        assertEquals(0, proofCalls.get());
+
+        assertEquals(ScopedAccountRefreshCoordinator.Reason.INSUFFICIENT_GRANTS,
+                assertThrows(ScopedAccountRefreshCoordinator.Rejected.class,
+                        () -> coordinator.verify(wideSession.context(), wideSession.sessionId(), "narrow-cred",
+                                needsCharacters)).reason(), "credential narrower than the session");
+        assertEquals(1, proofCalls.get());
+        assertTrue(gateway.calls.isEmpty());
+    }
+
+    @Test
+    void fullSyncBehindANarrowerActiveRunIsAdmittedAfterTheBoundedRecheck() throws Exception {
+        AccountSessions.Issued narrow = session(A, "key-narrow", NARROW);
+        AccountSessions.Issued wide = session(A, "key-wide", WIDE);
+        gateway.blockAccount = A;
+        var profitOnly = admit(narrow, "key-narrow", AccountSyncStateRepository.BANK);
+        assertTrue(gateway.started.await(5, TimeUnit.SECONDS));
+
+        var releaser = new Thread(() -> {
+            try { Thread.sleep(150); } catch (InterruptedException ignored) { /* test ends */ }
+            gateway.release.countDown();
+        });
+        releaser.start();
+        var full = coordinator.requireAfterBoundedWait(wide.context(), wide.sessionId(), "key-wide",
+                Set.of(AccountSyncStateRepository.BANK, AccountSyncStateRepository.CHARACTERS),
+                java.time.Duration.ofSeconds(5));
+        releaser.join();
+
+        assertEquals(ScopedAccountRefreshCoordinator.REUSE_ADMITTED, full.reuse());
+        assertNotEquals(profitOnly.taskId(), full.taskId(), "its own task, not the narrower one");
+        awaitTerminal(full.taskId());
+        assertEquals(List.of("A:BANK:key-narrow", "A:BANK:key-wide", "A:CHARACTERS:key-wide"), gateway.callsFor(A));
+    }
+
+    @Test
+    void fullSyncStillBehindAfterTheBoundIsReportedWaitingAndAdmitsNothing() throws Exception {
+        AccountSessions.Issued narrow = session(A, "key-narrow", NARROW);
+        AccountSessions.Issued wide = session(A, "key-wide", WIDE);
+        gateway.blockAccount = A;
+        var profitOnly = admit(narrow, "key-narrow", AccountSyncStateRepository.BANK);
+        assertTrue(gateway.started.await(5, TimeUnit.SECONDS));
+
+        var full = coordinator.requireAfterBoundedWait(wide.context(), wide.sessionId(), "key-wide",
+                Set.of(AccountSyncStateRepository.BANK, AccountSyncStateRepository.CHARACTERS),
+                java.time.Duration.ofMillis(100));
+
+        assertEquals(ScopedAccountRefreshCoordinator.REUSE_WAITING_FOR_ACTIVE_TASK, full.reuse());
+        assertEquals(profitOnly.taskId(), full.taskId());
+        gateway.release.countDown();
+        awaitTerminal(profitOnly.taskId());
+        assertEquals(List.of("A:BANK:key-narrow"), gateway.callsFor(A), "the uncovered sources were not run");
     }
 
     private void awaitTerminal(String taskId) throws InterruptedException {

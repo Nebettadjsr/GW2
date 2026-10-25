@@ -64,6 +64,10 @@ public class AccountSyncApiController {
             AccountSyncStateRepository.BANK, AccountSyncStateRepository.MATERIALS,
             AccountSyncStateRepository.RECIPES, AccountSyncStateRepository.CHARACTERS));
 
+    /** How long a demand behind a narrower active run waits for it before it is reported as not covered. */
+    static final java.time.Duration RECHECK_BOUND = java.time.Duration.ofSeconds(5);
+    private static final int WAITING_RETRY_SECONDS = 10;
+
     private final ScopedAccountRefreshCoordinator coordinator;
     private final AccountAccessHttp http;
 
@@ -108,7 +112,7 @@ public class AccountSyncApiController {
         String sessionId = AccountAccessHttp.presentedSessionId(request).orElseThrow();
         ScopedAccountRefreshCoordinator.Admission admission;
         try {
-            admission = coordinator.require(context, sessionId, apiKey, sources);
+            admission = coordinator.requireAfterBoundedWait(context, sessionId, apiKey, sources, RECHECK_BOUND);
         } catch (ScopedAccountRefreshCoordinator.Rejected rejected) {
             return switch (rejected.reason()) {
                 case SESSION -> error(HttpStatus.UNAUTHORIZED, "SESSION_REQUIRED", "Prove a GW2 API key to continue");
@@ -123,10 +127,22 @@ public class AccountSyncApiController {
             };
         }
         String statusPath = SyncTaskApiController.statusPath(admission.taskId());
+        boolean covers = !ScopedAccountRefreshCoordinator.REUSE_WAITING_FOR_ACTIVE_TASK.equals(admission.reuse());
+        if (!covers) {
+            // The only task to point at belongs to a narrower run (or another entry point); its success
+            // is not this request's sync. Nothing was admitted for the uncovered sources: retry later.
+            return ResponseEntity.accepted().location(URI.create(statusPath))
+                    .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                    .header(HttpHeaders.RETRY_AFTER, String.valueOf(WAITING_RETRY_SECONDS))
+                    .header(AccountAccessHttp.ACCESS_CONTEXT_HEADER, context.accessContext())
+                    .body(new SyncTaskAcceptedResponse(admission.taskId(), ACCOUNT_SYNC_OPERATION, statusPath,
+                            admission.reuse(), false, WAITING_RETRY_SECONDS));
+        }
         return ResponseEntity.accepted().location(URI.create(statusPath))
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .header(AccountAccessHttp.ACCESS_CONTEXT_HEADER, context.accessContext())
-                .body(new SyncTaskAcceptedResponse(admission.taskId(), ACCOUNT_SYNC_OPERATION, statusPath));
+                .body(new SyncTaskAcceptedResponse(admission.taskId(), ACCOUNT_SYNC_OPERATION, statusPath,
+                        admission.reuse(), true, null));
     }
 
     private static ResponseEntity<ApiErrorResponse> error(HttpStatus status, String code, String message) {

@@ -17,7 +17,15 @@ public record CraftingDiscoveryResolutionResponse(int recipeId,
                                                  CraftingRowDto row,
                                                  String treeStatus,
                                                  String treeBasis,
-                                                 ResolutionNodeDto tree) {
+                                                 ResolutionNodeDto tree,
+                                                 @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                                        DiscoveryFreshnessDto freshness) {
+
+    public CraftingDiscoveryResolutionResponse(int recipeId, CalculationDto calculation, String consistency,
+                                               String calculatedAt, CraftingRowDto row, String treeStatus,
+                                               String treeBasis, ResolutionNodeDto tree) {
+        this(recipeId, calculation, consistency, calculatedAt, row, treeStatus, treeBasis, tree, null);
+    }
 
     /**
      * The effective inputs this calculation ran with, in the shape the Discovery table response

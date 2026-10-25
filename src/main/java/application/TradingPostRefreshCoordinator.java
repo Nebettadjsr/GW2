@@ -70,6 +70,8 @@ public class TradingPostRefreshCoordinator {
     /** Coordination state of one variant; guarded by the coordinator's monitor. */
     private static final class State {
         boolean demanded;
+        /** Explicit global/manual demand, tracked apart from scoped demand so neither hides the other. */
+        boolean globalDemanded;
         /** Accounts whose required item sets were demanded; empty means the global selection. */
         final java.util.Set<model.AccountScope> scopes = new java.util.LinkedHashSet<>();
         boolean draining;
@@ -120,6 +122,7 @@ public class TradingPostRefreshCoordinator {
         State state = states.get(variant);
         state.demanded = true;
         if (scope != null) state.scopes.add(scope);
+        else state.globalDemanded = true;
         if (state.draining) {
             return new Admission(state.activeTaskId, REUSE_COALESCED_INTO_ACTIVE_RUN);
         }
@@ -164,6 +167,7 @@ public class TradingPostRefreshCoordinator {
             if (state.draining) {
                 state.demanded = true;
                 if (scope != null) state.scopes.add(scope);
+                else state.globalDemanded = true;
             }
         }
         try {
@@ -195,16 +199,19 @@ public class TradingPostRefreshCoordinator {
         try {
             while (true) {
                 java.util.List<model.AccountScope> pass;
+                boolean global;
                 synchronized (this) {
                     if (!state.demanded) return;
                     state.demanded = false;
+                    global = state.globalDemanded || state.scopes.isEmpty();
+                    state.globalDemanded = false;
                     pass = new java.util.ArrayList<>(state.scopes);
                     state.scopes.clear();
                 }
 
                 try {
-                    if (pass.isEmpty()) refreshFor(variant, null);
-                    else for (model.AccountScope scope : pass) refreshFor(variant, scope);
+                    if (global) refreshFor(variant, null);
+                    for (model.AccountScope scope : pass) refreshFor(variant, scope);
                     synchronized (this) {
                         state.completedPasses++;
                         state.lastFailure = null;

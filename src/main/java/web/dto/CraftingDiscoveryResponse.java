@@ -6,7 +6,14 @@ import java.util.List;
 public record CraftingDiscoveryResponse(EffectiveScopeDto scope,
                                         EffectiveSettingsDto settings,
                                         int rowCount,
-                                        List<CraftingRowDto> rows) {
+                                        List<CraftingRowDto> rows,
+                                        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                                        DiscoveryFreshnessDto freshness) {
+    public CraftingDiscoveryResponse(EffectiveScopeDto scope, EffectiveSettingsDto settings, int rowCount,
+                                     List<CraftingRowDto> rows) {
+        this(scope, settings, rowCount, rows, null);
+    }
+
     public record EffectiveScopeDto(String discipline, String characterName, int rating) { }
 
     public record EffectiveSettingsDto(boolean useOwnMats,

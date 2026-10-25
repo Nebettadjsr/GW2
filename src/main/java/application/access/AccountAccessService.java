@@ -103,6 +103,15 @@ public final class AccountAccessService {
     }
 
     /**
+     * The outcome of proving one transient key for one session: the credential's own scope. It holds
+     * no key and is only meaningful for the request that obtained it, so a single proof can be
+     * checked against several operations (and reused by a later step of the same request) without
+     * asking GW2 again.
+     */
+    public record KeyedProof(AccountContext credentialScope) {
+    }
+
+    /**
      * Admits an account operation that will call GW2 with a caller-supplied transient key
      * (TARGET_ARCHITECTURE.md §8.1: "a session is not an upstream credential").
      *
@@ -117,17 +126,62 @@ public final class AccountAccessService {
                                        AccountOperation operation)
             throws InvalidCredentialException, MalformedProofException, ProofUnavailableException,
             AccountMismatchException, InsufficientGrantsException {
-        // The presented session must be live and the context must be the one issued for it: a
-        // fabricated, expired or revoked pair never reaches the upstream key check. The scope that
-        // was stored at proof time is authoritative, not the caller's copy of it.
+        authorizeKeyedOperations(sessionId, context, apiKey, java.util.List.of(operation));
+    }
+
+    /** Proves the key once and checks every operation against that one proof. */
+    public KeyedProof authorizeKeyedOperations(String sessionId, AccountContext context, String apiKey,
+                                               java.util.Collection<AccountOperation> operations)
+            throws InvalidCredentialException, MalformedProofException, ProofUnavailableException,
+            AccountMismatchException, InsufficientGrantsException {
+        // Fail on the session before the upstream key check, as for a single operation.
+        AccountContext live = liveContext(sessionId, context);
+        for (AccountOperation operation : operations) requireSessionPermits(live, operation);
+        KeyedProof proof = proveKey(sessionId, live, apiKey);
+        authorizeKeyedOperations(sessionId, context, proof, operations);
+        return proof;
+    }
+
+    /**
+     * Checks {@code operations} against a proof already obtained for this request. The session is
+     * resolved again (it may have ended since) and the account and grant checks all run; only the
+     * upstream key validation is not repeated.
+     */
+    public void authorizeKeyedOperations(String sessionId, AccountContext context, KeyedProof proof,
+                                         java.util.Collection<AccountOperation> operations)
+            throws AccountMismatchException, InsufficientGrantsException {
+        AccountContext live = liveContext(sessionId, context);
+        if (!proof.credentialScope().accountId().equalsIgnoreCase(live.accountId())) {
+            throw new AccountMismatchException("the credential resolves to a different account");
+        }
+        for (AccountOperation operation : operations) {
+            requireSessionPermits(live, operation);
+            if (!proof.credentialScope().permits(operation)) {
+                throw new InsufficientGrantsException("the credential does not cover this operation");
+            }
+        }
+    }
+
+    // The presented session must be live and the context must be the one issued for it: a
+    // fabricated, expired or revoked pair never reaches the upstream key check. The scope that
+    // was stored at proof time is authoritative, not the caller's copy of it.
+    private AccountContext liveContext(String sessionId, AccountContext context) {
         AccountSessions.Resolution live = sessions.resolve(sessionId, context.accessContext());
         if (!live.authenticated()) {
             throw new IllegalStateException("the session is not live or the context was not issued for it");
         }
-        context = live.context();
-        if (!context.permits(operation)) {
+        return live.context();
+    }
+
+    private static void requireSessionPermits(AccountContext live, AccountOperation operation)
+            throws InsufficientGrantsException {
+        if (!live.permits(operation)) {
             throw new InsufficientGrantsException("the session does not cover this operation");
         }
+    }
+
+    private KeyedProof proveKey(String sessionId, AccountContext live, String apiKey)
+            throws InvalidCredentialException, MalformedProofException, ProofUnavailableException {
         AccountProof proved;
         try {
             proved = proof.prove(apiKey);
@@ -135,13 +189,7 @@ public final class AccountAccessService {
             sessions.revoke(sessionId);
             throw e;
         }
-        if (!proved.accountId().equalsIgnoreCase(context.accountId())) {
-            throw new AccountMismatchException("the credential resolves to a different account");
-        }
-        AccountContext credentialScope = new AccountContext(proved.accountId(), proved.grants(),
-                proved.endpointRestrictions(), context.accessContext(), context.expiresAt());
-        if (!credentialScope.permits(operation)) {
-            throw new InsufficientGrantsException("the credential does not cover this operation");
-        }
+        return new KeyedProof(new AccountContext(proved.accountId(), proved.grants(),
+                proved.endpointRestrictions(), live.accessContext(), live.expiresAt()));
     }
 }

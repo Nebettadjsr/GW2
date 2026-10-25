@@ -30,6 +30,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -53,6 +54,7 @@ class AccountSyncApiControllerTest {
     private final AccountSessions sessions = new AccountSessions(Clock.systemUTC(), 8);
     private final Map<String, AccountProof> keys = new ConcurrentHashMap<>();
     private final List<String> runs = new CopyOnWriteArrayList<>();
+    private volatile java.util.concurrent.CountDownLatch holdFirstRun;
     private final AccountAccessService access = new AccountAccessService(key -> {
         AccountProof proof = keys.get(key);
         if (proof == null) throw new InvalidCredentialException("rejected");
@@ -61,8 +63,13 @@ class AccountSyncApiControllerTest {
     private final AccountRefreshService refresh = new AccountRefreshService() {
         @Override
         public void refreshSources(model.AccountScope scope, Set<String> sources,
-                                   sync.AccountSync.AuthFetcher fetcher) {
+                                   sync.AccountSync.AuthFetcher fetcher) throws Exception {
             runs.add(scope.id() + ":" + new java.util.TreeSet<>(sources));
+            var hold = holdFirstRun;
+            if (hold != null) {
+                holdFirstRun = null;
+                hold.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            }
         }
     };
     private final ScopedAccountRefreshCoordinator coordinator = new ScopedAccountRefreshCoordinator(
@@ -102,6 +109,35 @@ class AccountSyncApiControllerTest {
         long deadline = System.nanoTime() + TIMEOUT.toNanos();
         while (runs.size() < expected && System.nanoTime() < deadline) Thread.sleep(10);
         assertEquals(expected, runs.size());
+    }
+
+    @Test
+    void aFullSyncBehindAProfitOnlyRunIsNotReportedAsThatRunsSuccessAndIsAdmittedAfterTheRecheck() throws Exception {
+        var release = new java.util.concurrent.CountDownLatch(1);
+        holdFirstRun = release;
+        var s = session(A, "key-a");
+        String profitTask = com.jayway.jsonpath.JsonPath.read(
+                mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-a"))
+                        .andExpect(status().isAccepted())
+                        .andExpect(jsonPath("$.admission").value("ADMITTED"))
+                        .andExpect(jsonPath("$.coversRequest").value(true))
+                        .andReturn().getResponse().getContentAsString(), "$.taskId");
+        awaitRuns(1);
+
+        new Thread(() -> {
+            try { Thread.sleep(200); } catch (InterruptedException ignored) { /* test ends */ }
+            release.countDown();
+        }).start();
+        String body = mvc.perform(trigger("/api/sync/account", s, "key-a"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.admission").value("ADMITTED"))
+                .andExpect(jsonPath("$.coversRequest").value(true))
+                .andReturn().getResponse().getContentAsString();
+
+        assertNotEquals(profitTask, com.jayway.jsonpath.JsonPath.read(body, "$.taskId"),
+                "the full sync has its own task; the narrower one is not advertised as it");
+        awaitRuns(2);
+        assertTrue(runs.get(1).contains("LUCK"), "Luck, uncovered by the Profit-only run, was admitted");
     }
 
     @Test
