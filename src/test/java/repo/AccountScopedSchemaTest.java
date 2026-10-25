@@ -137,6 +137,29 @@ class AccountScopedSchemaTest {
         }
     }
 
+    @Test
+    void firstAuthorizedSnapshotRegistersActivityWithoutFabricatingFreshness() throws Exception {
+        var scope = model.AccountScope.of("30000000-0000-0000-0000-000000000003");
+        System.setProperty(Db.TEST_SCHEMA_PROPERTY, schema);
+        try {
+            try (var snapshot = application.ProfitInputSession.open(scope)) {
+                assertEquals(scope, snapshot.scope());
+                assertEquals(Connection.TRANSACTION_REPEATABLE_READ,
+                        snapshot.connection().getTransactionIsolation());
+            }
+            var registry = new AccountRegistryRepository();
+            var activity = registry.find(admin, scope).orElseThrow();
+            org.junit.jupiter.api.Assertions.assertNotNull(activity.lastSeenAt());
+            org.junit.jupiter.api.Assertions.assertNull(activity.lastSuccessfulSyncAt());
+            assertEquals(0, count("SELECT count(*) FROM account_source_state WHERE account_id = '" + scope.id() + "'"));
+            registry.recordAuthorizedUse(admin, scope, activity.lastSeenAt().minusSeconds(60));
+            assertEquals(activity.lastSeenAt(), registry.find(admin, scope).orElseThrow().lastSeenAt());
+            assertEquals(activity.createdAt(), registry.find(admin, scope).orElseThrow().createdAt());
+        } finally {
+            System.clearProperty(Db.TEST_SCHEMA_PROPERTY);
+        }
+    }
+
     private int count(String sql) throws SQLException {
         try (var statement = admin.createStatement(); var result = statement.executeQuery(sql)) {
             result.next();

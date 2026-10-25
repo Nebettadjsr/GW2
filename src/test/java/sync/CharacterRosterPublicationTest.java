@@ -183,7 +183,7 @@ class CharacterRosterPublicationTest {
         try (Connection writer = connect()) {
             writer.setSchema(schema);
             assertThrows(Exception.class,
-                    () -> CharacterSync.publishRoster(writer, doomed, GENERATION_TWO),
+                    () -> CharacterSync.publishRoster(writer, ACCOUNT, doomed, GENERATION_TWO),
                     "the publish must fail rather than commit half a generation");
         }
 
@@ -220,15 +220,15 @@ class CharacterRosterPublicationTest {
     // ---------- the production capture path ----------
 
     private static Instant capturedMarker(ProfitInputSession session) throws Exception {
-        Map<String, Instant> versions = new CalculationInputVersions.DatabaseAccountSourceVersionReader()
-                .read(session.connection(), Set.of(AccountSyncStateRepository.CHARACTERS));
-        return versions.get(AccountSyncStateRepository.CHARACTERS);
+        var versions = new CalculationInputVersions.DatabaseAccountSourceStateReader()
+                .read(session.connection(), ACCOUNT, Set.of(AccountSyncStateRepository.CHARACTERS));
+        return versions.get(AccountSyncStateRepository.CHARACTERS).completedAt();
     }
 
     private static Map<String, Integer> capturedRatings(ProfitInputSession session) throws Exception {
         Map<String, Integer> ratings = new LinkedHashMap<>();
         for (CharacterRepository.DiscRow row
-                : new CharacterRepository().loadAllCharacterCrafting(session.connection())) {
+                : new CharacterRepository().loadAllCharacterCrafting(session.connection(), ACCOUNT)) {
             ratings.put(row.charName, row.rating);
         }
         return ratings;
@@ -241,6 +241,25 @@ class CharacterRosterPublicationTest {
         try (Connection writer = connect()) {
             writer.setSchema(schema);
             CharacterSync.publishRoster(writer, ACCOUNT, payloads, version);
+        }
+    }
+
+    @Test
+    void successfulEmptyRosterRemovesChildrenAndAdvancesItsGeneration() throws Exception {
+        publish(GENERATION_TWO, List.of());
+        assertEquals(List.of(), characterNames());
+        try (var snapshot = ProfitInputSession.open(ACCOUNT)) {
+            var marker = new repo.AccountSourceStateRepository()
+                    .read(snapshot.connection(), ACCOUNT, AccountSyncStateRepository.CHARACTERS).orElseThrow();
+            assertEquals(2, marker.generation());
+            assertEquals(GENERATION_TWO, marker.completedAt());
+            for (String table : List.of("character_crafting", "character_recipes", "character_items")) {
+                try (var statement = snapshot.connection().createStatement();
+                     var rows = statement.executeQuery("SELECT count(*) FROM " + table)) {
+                    assertTrue(rows.next());
+                    assertEquals(0, rows.getInt(1));
+                }
+            }
         }
     }
 
