@@ -135,7 +135,7 @@ These paths exist on a migrated database and are what the unscoped paths above a
 
 ## 8. Startup, configuration, and build
 
-`web.Gw2ApiApplication` starts Spring Boot and is the only application entry point; `sync.IconSync.main` remains a standalone maintenance utility. The backend uses `repo.EnvConfig` for local environment and `.env` configuration, and Spring properties expose the HTTP port, global scheduler intervals, account data max age, and the account-access settings described in section 7 (`gw2.account-access.enforce`, `.session-capacity`, `.allowed-origins`, `.test-fixtures`). Schema creation and upgrades are owned by the versioned Flyway chain described below. The system is not containerized or deployed.
+`web.Gw2ApiApplication` starts Spring Boot and is the only application entry point; `sync.IconSync.main` remains a standalone maintenance utility. The backend uses `repo.EnvConfig` for local environment and `.env` configuration, and Spring properties expose the HTTP port, global scheduler intervals, account data max age, and the account-access settings described in section 7 (`gw2.account-access.enforce`, `.session-capacity`, `.allowed-origins`, `.test-fixtures`). Schema creation and upgrades are owned by the versioned Flyway chain described below. The backend can be built into a Java 25 container image (section below); the system is otherwise not deployed.
 
 ### Versioned schema lifecycle and cache reset
 
@@ -203,3 +203,16 @@ After connecting, `useAccountBootstrap` reads the selector options. A `202` ther
 
 Evidence: focused Vitest connection/switching/recovery tests and frontend/scripts/account-recovery-live-smoke.mjs. On 2026-10-25 Chrome against local Vite/backend/PostgreSQL and real ArenaNet completed proof, full account synchronization, selector options, loaded Profit, reload retention, Bank/Materials and disconnect without the legacy account_sync_state / DATA_STORE_UNAVAILABLE page failure. The live check is excluded from CI and needs GW2_API_KEY; normal tests remain offline. Older pre-connection smoke scripts need adaptation (#60).
 
+
+
+## Backend container image (STORY-INFRA-006)
+
+Observed packaging of the Spring backend only; no Compose stack, frontend runtime, reverse proxy, TLS, hosting provider, backup or restore is selected.
+
+- **Build:** `docker build -t gw2-backend .` needs only Docker. The multi-stage `Dockerfile` builds with `eclipse-temurin:25-jdk` and runs on `eclipse-temurin:25-jre` (the official Temurin images, ordinary Ubuntu-based, on the Java 25 line the project compiles for). The executable jar is produced by `./mvnw package spring-boot:repackage` inside the build stage; `pom.xml` is unchanged, so ordinary `./mvnw` commands still produce the plain `gw2-tool.jar`. Tests are not run in the image build; CI runs them.
+- **Context:** `.dockerignore` admits only `mvnw`, `pom.xml`, the Maven wrapper properties and `src/`; `.env`, `.git`, `frontend/`, `target/` and reports never enter the context.
+- **Run:** `docker run -p 8080:8080 -e DATABASE_URL=jdbc:postgresql://HOST:5432/DB?currentSchema=SCHEMA -e DATABASE_USER=... -e DATABASE_PASSWORD=... gw2-backend`. `GW2_API_KEY` is not required. The schema named by `currentSchema` (or the role's `search_path`) must already exist; the startup gate then applies the Flyway chain, validates a managed schema, and resets an unmanaged one exactly as outside a container. Other settings (`GW2_API_PORT`, `GW2_GLOBAL_REFRESH_*`, `GW2_ACCOUNT_*`, `ICON_CACHE_DIR`) are the existing environment variables.
+- **Paths and user:** the process runs as non-root `gw2` (uid 10001) with working directory `/app/data`, which holds the cwd-relative `crafting_graph_cache.json`; `ICON_CACHE_DIR` defaults to `/app/data/icons`. Both are disposable caches; mount a volume on `/app/data` only if they should survive container replacement.
+- **Readiness:** there is no dedicated health endpoint; `GET /api/system/status` answering 200 is used as the readiness signal. The image has no `curl`, so probe from outside the container.
+- **Smoke:** `scripts/container-smoke.sh` builds the image, starts a disposable PostgreSQL container on a private network under a unique `gw2-smoke-<id>` name, creates an isolated schema, and checks readiness, a global read, `GET /api/account/bank` without a session (401), and a second start that finds the managed schema without a reset. It removes only the containers, network and image it created, and pushes the scheduler's first upstream refresh a day out so it makes no ArenaNet call. It never touches existing containers or databases.
+- **Limitations:** the image is built and smoke-tested locally or on a runner with Docker, not in CI. The base-image tag floats with Temurin patch releases. Account routes are refused without a validated session; proving a key needs ArenaNet and is not part of the smoke.
