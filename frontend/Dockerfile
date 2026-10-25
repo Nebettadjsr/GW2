@@ -24,5 +24,7 @@ COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /src/dist/ /usr/share/nginx/html/
 # Internal backend that /api/ is forwarded to; override at run time (host name on the shared network).
 ENV GW2_BACKEND_ORIGIN=http://backend:8080
+# Preserve Nginx request/upstream variables when rendering the one configured origin.
+ENV NGINX_ENVSUBST_FILTER=^GW2_BACKEND_ORIGIN$
 # Unprivileged (uid 101) listener; the pid file and temp paths of this image are already writable.
 EXPOSE 8080

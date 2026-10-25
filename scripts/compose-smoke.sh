@@ -115,6 +115,39 @@ else
   echo "browser smoke SKIPPED (run npm ci in frontend/ to include it)"
 fi
 
+wait_proxy() {
+  local deadline code
+  deadline=$(( $(now_ms) + TIMEOUT * 1000 ))
+  while [ "$(now_ms)" -lt "$deadline" ]; do
+    code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/system/status" || true)
+    [ "$code" = 200 ] && return
+    sleep 0.2
+  done
+  fail "proxy did not recover after backend address change"
+}
+
+echo "== backend address change and backend-only recreation without frontend restart"
+old_backend=$(dc ps -q backend)
+old_frontend=$(dc ps -q frontend)
+old_frontend_started=$(docker inspect -f '{{.State.StartedAt}}' "$old_frontend")
+# On this fresh three-service network addresses are allocated PostgreSQL, backend, frontend.
+# Move the backend two slots forward (the next unused address) so a same-IP recreation cannot hide
+# stale Nginx DNS. Reconnecting the existing container keeps its process and data unchanged.
+old_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$old_backend")
+moved_ip="${old_ip%.*}.$(( ${old_ip##*.} + 2 ))"
+docker network disconnect "${PROJECT}_default" "$old_backend"
+docker network connect --ip "$moved_ip" --alias backend "${PROJECT}_default" "$old_backend"
+wait_proxy
+dc up -d --no-deps --force-recreate --wait --wait-timeout "$TIMEOUT" backend >/dev/null || fail "backend recreation failed"
+[ "$(dc ps -q backend)" != "$old_backend" ] || fail "backend was not recreated"
+new_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$(dc ps -q backend)")
+[ "$new_ip" != "$moved_ip" ] || fail "backend recreation did not change its IP"
+wait_proxy
+[ "$(dc ps -q frontend)" = "$old_frontend" ] || fail "frontend was unexpectedly replaced"
+[ "$(docker inspect -f '{{.State.StartedAt}}' "$old_frontend")" = "$old_frontend_started" ] || fail "frontend was unexpectedly restarted"
+check_stack
+echo "backend address $old_ip -> $moved_ip -> $new_ip; untouched frontend recovered via DNS"
+
 echo "== restart (containers recreated, volumes kept)"
 dc down >/dev/null
 start_stack
