@@ -17,7 +17,12 @@ import application.MaterialStorageService;
 import application.ItemReadService;
 import application.TradingPostPriceRefreshService;
 import application.TradingPostPriceCacheStatusService;
+import application.access.AccountAccessService;
+import application.access.AccountProofPort;
+import application.access.AccountSessions;
 import application.icons.IconDelivery;
+import infra.access.FixtureAccountProofAdapter;
+import infra.access.Gw2AccountProofAdapter;
 import infra.icons.FilesystemIconStore;
 import infra.icons.HttpIconImageFetcher;
 import infra.icons.IconAcquisition;
@@ -32,6 +37,7 @@ import repo.CraftingGraphCache;
 import repo.ItemIconMetadataRepository;
 import repo.ItemRepository;
 import repo.RecipeRepository;
+import web.access.AccountAccessHttp;
 import web.task.BackgroundTaskService;
 
 import java.nio.file.Path;
@@ -232,6 +238,45 @@ public class Gw2ApiApplication {
     @Bean
     public ItemReadService itemReadService() {
         return new ItemReadService();
+    }
+
+    /**
+     * Upstream validation of a caller-supplied GW2 key (STORY-API-010, TARGET_ARCHITECTURE.md §8.1).
+     *
+     * <p>The live adapter is the default. {@code gw2.account-access.test-fixtures} replaces it with
+     * the offline fixture adapter so the HTTP access contract can be verified without sending a
+     * credential to ArenaNet; it is never set in a deployment, and its fixtures live in test
+     * resources.
+     */
+    @Bean
+    public AccountProofPort accountProofPort(
+            @Value("${gw2.account-access.test-fixtures:false}") boolean useFixtures) {
+        return useFixtures
+                ? new FixtureAccountProofAdapter(Clock.systemUTC())
+                : new Gw2AccountProofAdapter();
+    }
+
+    /**
+     * The one process-local session store. Shared deliberately: a per-request instance would issue
+     * sessions nothing could resolve, and the bound on retained sessions only means something while
+     * one instance holds them all. Restart loses them, which the contract requires - proof again.
+     */
+    @Bean
+    public AccountSessions accountSessions(
+            @Value("${gw2.account-access.session-capacity:500}") int capacity) {
+        return new AccountSessions(Clock.systemUTC(), capacity);
+    }
+
+    @Bean
+    public AccountAccessService accountAccessService(AccountProofPort proof, AccountSessions sessions) {
+        return new AccountAccessService(proof, sessions);
+    }
+
+    /** The transport rules the session routes and the account guard must apply identically. */
+    @Bean
+    public AccountAccessHttp accountAccessHttp(
+            @Value("${gw2.account-access.allowed-origins:}") String allowedOrigins) {
+        return new AccountAccessHttp(allowedOrigins);
     }
 
     /**

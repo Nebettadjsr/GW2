@@ -16,7 +16,7 @@ import urllib.request
 from pathlib import Path
 
 
-REQUIRED_CHECKS = {"Backend tests (Maven)", "Frontend tests (Vitest)", "Coverage KPI report"}
+REQUIRED_CHECKS = {"Backend tests (Maven)", "Frontend tests (Vitest)", "Coverage KPI report", "Workflow checks"}
 BOT_LOGIN = "chatgpt-codex-connector[bot]"
 REVIEW_MARKER = "<!-- codex-pull-request-review-summary -->"
 REVIEW_STATE = re.compile(r"<!-- codex-review-state:v1 (\{.*?\}) -->", re.DOTALL)
@@ -72,7 +72,7 @@ def candidate_numbers(event_name: str, event: dict, repository: str) -> list[int
         return [issue["number"]]
     if event_name == "workflow_run":
         run = event.get("workflow_run") or {}
-        if run.get("name") != "CI" or run.get("conclusion") != "success":
+        if run.get("name") != "CI" or run.get("conclusion") not in {"success", "failure", "timed_out"}:
             return []
         branch = run.get("head_branch") or ""
         if not branch.startswith("story/issue-"):
@@ -84,7 +84,7 @@ def candidate_numbers(event_name: str, event: dict, repository: str) -> list[int
     return []
 
 
-def review_for_head(comments: list[dict], head_sha: str) -> bool:
+def review_state_for_head(comments: list[dict], head_sha: str) -> dict | None:
     for comment in reversed(comments):
         if (comment.get("user") or {}).get("login") != BOT_LOGIN:
             continue
@@ -93,18 +93,20 @@ def review_for_head(comments: list[dict], head_sha: str) -> bool:
             continue
         match = REVIEW_STATE.search(body)
         if not match:
-            return False
+            return None
         try:
             state = json.loads(match.group(1))["code_review"]
         except (ValueError, KeyError, TypeError):
-            return False
-        return (
-            state.get("commit_sha") == head_sha
-            and state.get("status") == "completed"
+            return None
+        return state if state.get("commit_sha") == head_sha else None
+    return None
+
+
+def review_for_head(comments: list[dict], head_sha: str) -> bool:
+    state = review_state_for_head(comments, head_sha) or {}
+    return (state.get("status") == "completed"
             and state.get("has_any_findings") is False
-            and state.get("has_unresolved_findings") is False
-        )
-    return False
+            and state.get("has_unresolved_findings") is False)
 
 
 def checks_green(checks: list[dict]) -> bool:
@@ -176,6 +178,37 @@ def ready_reason(pr: dict, issue: dict, comments: list[dict], checks: list[dict]
     return None
 
 
+def rework_reason(pr: dict, issue: dict, comments: list[dict], checks: list[dict], repository: str) -> str | None:
+    """Requeue established stories after definitive failure; never start Claude."""
+    labels = {label["name"] for label in issue.get("labels", []) + pr.get("labels", [])}
+    if (pr.get("state") != "open" or pr.get("draft") or issue.get("state") != "open"
+            or not STORY_TITLE.match(issue.get("title") or "")
+            or "auto" not in {label["name"] for label in issue.get("labels", [])}
+            or labels & {"pairing", "needs-decision", "blocked"}
+            or pr.get("base", {}).get("ref") != "master"
+            or pr.get("base", {}).get("repo", {}).get("full_name") != repository
+            or pr.get("head", {}).get("repo", {}).get("full_name") != repository
+            or not pr.get("head", {}).get("ref", "").startswith(f"story/issue-{issue['number']}-run-")
+            or re.search(r"^Migration status:\s*BLOCKED\b", issue.get("body") or "", re.MULTILINE)):
+        return None
+    if pr.get("mergeable_state") == "behind":
+        return "story branch needs current master before the required checks can satisfy protection"
+    state = review_state_for_head(comments, pr["head"]["sha"]) or {}
+    if state.get("status") == "completed" and (
+            state.get("has_any_findings") is True or state.get("has_unresolved_findings") is True):
+        return "current Codex review has findings"
+    if any(check.get("name") in REQUIRED_CHECKS
+           and (check.get("app") or {}).get("slug") == "github-actions"
+           and check.get("status") == "completed"
+           and check.get("conclusion") in {"failure", "timed_out"} for check in checks):
+        return "current CI failed"
+    report = report_for_head(pr, comments, repository)
+    if report and (not re.search(r"^Local-only checks still needed: none$", report, re.MULTILINE)
+                   or not re.search(r"^Unresolved gaps: none$", report, re.MULTILINE)):
+        return "current implementation report lists incomplete verification or gaps"
+    return None
+
+
 def main() -> None:
     event_name = os.environ["GITHUB_EVENT_NAME"]
     event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
@@ -192,6 +225,12 @@ def main() -> None:
         files = pages(f"pulls/{number}/files")
         checks_response = api(f"commits/{pr['head']['sha']}/check-runs?per_page=100")
         checks = checks_response.get("check_runs", [])
+        rework = rework_reason(pr, issue, comments, checks, repository)
+        if rework:
+            if "needs-rework" not in {label["name"] for label in issue.get("labels", [])}:
+                api(f"issues/{issue_number}/labels", method="POST", data={"labels": ["needs-rework"]})
+            print(f"PR #{number}: {rework}; queued for the next manual Claude run")
+            continue
         reason = ready_reason(pr, issue, comments, checks, files, repository)
         if reason:
             print(f"PR #{number}: {reason}; no merge")

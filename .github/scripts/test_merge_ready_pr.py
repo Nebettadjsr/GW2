@@ -31,6 +31,76 @@ def fixtures():
 
 
 class MergeGateTest(unittest.TestCase):
+    def test_branch_behind_master_is_queued_for_preparation_and_fresh_checks(self):
+        pr, issue, comments, checks, _ = fixtures()
+        pr["mergeable_state"] = "behind"
+        self.assertIn("current master", gate.rework_reason(pr, issue, comments, checks, REPO))
+
+    def test_current_review_failure_requeues_but_old_or_running_review_does_not(self):
+        pr, issue, comments, checks, _ = fixtures()
+        comments[0]["body"] = comments[0]["body"].replace('"has_any_findings": false', '"has_any_findings": true')
+        self.assertIn("Codex", gate.rework_reason(pr, issue, comments, checks, REPO))
+        comments[0]["body"] = comments[0]["body"].replace(SHA, "b" * 40)
+        self.assertIsNone(gate.rework_reason(pr, issue, comments, checks, REPO))
+        comments[0]["body"] = comments[0]["body"].replace("b" * 40, SHA).replace('"status": "completed"', '"status": "running"')
+        self.assertIsNone(gate.rework_reason(pr, issue, comments, checks, REPO))
+
+    def test_ci_failure_and_incomplete_current_report_requeue_existing_work(self):
+        pr, issue, comments, checks, _ = fixtures()
+        checks[0]["conclusion"] = "failure"
+        self.assertIn("CI", gate.rework_reason(pr, issue, comments, checks, REPO))
+        checks[0]["conclusion"] = "success"
+        pr["body"] = pr["body"].replace("Unresolved gaps: none", "Unresolved gaps: activity unverified")
+        self.assertIn("report", gate.rework_reason(pr, issue, comments, checks, REPO))
+        pr["head"]["sha"] = "b" * 40
+        self.assertIsNone(gate.rework_reason(pr, issue, comments, checks, REPO))
+
+    def test_requeue_respects_manual_holds_and_branch_ownership(self):
+        for hold in ("pairing", "blocked", "needs-decision"):
+            pr, issue, comments, checks, _ = fixtures()
+            checks[0]["conclusion"] = "failure"
+            issue["labels"].append({"name": hold})
+            self.assertIsNone(gate.rework_reason(pr, issue, comments, checks, REPO))
+        pr, issue, comments, checks, _ = fixtures()
+        checks[0]["conclusion"] = "failure"
+        pr["head"]["repo"]["full_name"] = "foreign/repository"
+        self.assertIsNone(gate.rework_reason(pr, issue, comments, checks, REPO))
+
+    def test_failed_ci_event_targets_only_matching_current_pr_head(self):
+        pr, _, _, _, _ = fixtures()
+        event = {"workflow_run": {"name": "CI", "conclusion": "failure",
+                                  "head_branch": pr["head"]["ref"], "head_sha": SHA}}
+        with patch.object(gate, "pages", return_value=[{"number": 42, "head": {"sha": SHA}}]):
+            self.assertEqual([42], gate.candidate_numbers("workflow_run", event, REPO))
+        with patch.object(gate, "pages", return_value=[{"number": 42, "head": {"sha": "b" * 40}}]):
+            self.assertEqual([], gate.candidate_numbers("workflow_run", event, REPO))
+
+    def test_failed_current_ci_adds_rework_label_without_attempting_merge(self):
+        pr, issue, _, checks, files = fixtures()
+        checks[0]["conclusion"] = "failure"
+        calls = []
+
+        def fake_api(path, *, method="GET", data=None):
+            calls.append((path, method, data))
+            if path == "pulls/42":
+                return pr
+            if path == "issues/42":
+                return issue
+            if path.endswith("/check-runs?per_page=100"):
+                return {"check_runs": checks}
+            if path == "issues/42/labels" and method == "POST":
+                return []
+            self.fail(f"Unexpected write: {path} {method}")
+
+        with patch.dict(gate.os.environ, {"GITHUB_EVENT_NAME": "workflow_run", "GITHUB_EVENT_PATH": "unused",
+                                          "GITHUB_REPOSITORY": REPO}), \
+                patch.object(gate.Path, "read_text", return_value="{}"), \
+                patch.object(gate, "candidate_numbers", return_value=[42]), \
+                patch.object(gate, "pages", side_effect=[[], files]), \
+                patch.object(gate, "api", side_effect=fake_api):
+            gate.main()
+        self.assertIn(("issues/42/labels", "POST", {"labels": ["needs-rework"]}), calls)
+
     def test_clean_current_review_and_all_checks_allow_merge(self):
         self.assertIsNone(gate.ready_reason(*fixtures(), REPO))
 
