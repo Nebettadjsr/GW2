@@ -2,6 +2,8 @@ package perf;
 
 import org.junit.jupiter.api.Test;
 
+import repo.EnvConfig;
+
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -14,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * database counters move, profit returns calculated rows, and the report is well formed.
  * A benchmark never substitutes for behavior tests.
  */
-class ApplicationBenchmarkBoundaryTest extends ApplicationBenchmarkHarness {
+class ApplicationBenchmarkBoundaryIT extends ApplicationBenchmarkHarness {
 
     @Override
     Sizes sizes() {
@@ -30,6 +32,55 @@ class ApplicationBenchmarkBoundaryTest extends ApplicationBenchmarkHarness {
         return r.workloads().stream().filter(w -> w.name().equals(name)).findFirst().orElseThrow();
     }
 
+    private static long untaggedClients(DatabaseProbe probe) throws Exception {
+        try (java.sql.Connection c = probe.openObserverConnection();
+             java.sql.ResultSet rs = c.createStatement().executeQuery(
+                     "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                             + "AND backend_type = 'client backend' AND coalesce(application_name, '') <> '"
+                             + ConnectionObserver.APPLICATION_NAME + "'")) {
+            rs.next();
+            return rs.getLong(1);
+        }
+    }
+
+    @Test
+    void connectionObserverUsesOneSessionAndNeverCountsItselfOrTheProbes() throws Exception {
+        String url = EnvConfig.require("DATABASE_URL");
+        DatabaseProbe probe = new DatabaseProbe(url, EnvConfig.require("DATABASE_USER"),
+                EnvConfig.require("DATABASE_PASSWORD"), "unused");
+        try (java.sql.Connection neighbour = java.sql.DriverManager.getConnection(url,
+                EnvConfig.require("DATABASE_USER"), EnvConfig.require("DATABASE_PASSWORD"));
+             ConnectionObserver observer = new ConnectionObserver(probe::openObserverConnection, 5)) {
+            long before = untaggedClients(probe);
+            probe.counters();
+            probe.storage();
+            Thread.sleep(200);
+            assertTrue(observer.samples() >= 3, "sampled repeatedly");
+            assertTrue(observer.failures().isEmpty(), observer.failures().toString());
+            try (java.sql.Connection c = probe.openObserverConnection();
+                 java.sql.ResultSet rs = c.createStatement().executeQuery(
+                         "SELECT count(*), count(DISTINCT pid) FROM pg_stat_activity WHERE application_name = '"
+                                 + ConnectionObserver.APPLICATION_NAME + "' AND datname = current_database()")) {
+                rs.next();
+                // This test's own session is tagged too; the observer is the only other one: no per-sample connections.
+                assertEquals(2, rs.getLong(1));
+            }
+            java.util.List<String> diagnostics = new java.util.ArrayList<>();
+            java.util.List<Metric> metrics = observer.metrics(diagnostics, 5);
+            assertTrue(diagnostics.isEmpty());
+            for (Metric m : metrics) assertTrue(m.available(), m.name());
+            // Independent ground truth from this test's own (tagged) session: untagged client sessions before and after.
+            long after = untaggedClients(probe);
+            long lo = Math.min(before, after);
+            long hi = Math.max(before, after);
+            // The untagged extra connection guarantees at least one; counting the observer or the probes would exceed hi.
+            assertTrue(hi >= 1);
+            assertTrue(metrics.get(0).value() >= lo && metrics.get(0).value() <= hi,
+                    "open peak " + metrics.get(0).value() + " outside independent count " + lo + ".." + hi);
+            assertTrue(metrics.get(1).value() <= metrics.get(0).value());
+        }
+    }
+
     @Test
     void everyWorkloadReachesItsApplicationBoundary() throws Exception {
         MeasurementReport report = runAll();
@@ -42,6 +93,9 @@ class ApplicationBenchmarkBoundaryTest extends ApplicationBenchmarkHarness {
         MeasurementReport.Workload full = workload(report, "account_sync_full");
         assertTrue(value(full, "db_rows_inserted") >= 20 + 12, "full sync inserts the fixture rows");
         assertTrue(value(full, "background_job_duration") > 0);
+        // Submission plus at least the terminal status poll are recorded in the same HTTP figures.
+        assertTrue(value(full, "http_requests") >= 2, "task polls are counted");
+        assertTrue(value(full, "network_egress") > 0);
         MeasurementReport.Workload incremental = workload(report, "account_sync_incremental");
         assertTrue(value(incremental, "db_rows_inserted") + value(incremental, "db_rows_updated") > 0,
                 "incremental sync writes through the same boundary");

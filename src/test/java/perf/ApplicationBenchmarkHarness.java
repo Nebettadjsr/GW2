@@ -65,7 +65,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>Nothing here asserts a performance threshold: a failing workload becomes a diagnostic in the
  * report. Subclasses choose the fixture {@link Sizes}; they own whether the run is a measurement
  * ({@code ApplicationResourceBenchmarkIT}) or a quick boundary check
- * ({@code ApplicationBenchmarkBoundaryTest}).
+ * ({@code ApplicationBenchmarkBoundaryIT}).
  */
 @SpringBootTest(classes = web.Gw2ApiApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"gw2.account-luck.schema-init=false", "gw2.account-access.enforce=true",
@@ -386,6 +386,10 @@ abstract class ApplicationBenchmarkHarness {
         final List<Metric> extra = java.util.Collections.synchronizedList(new ArrayList<>());
     }
 
+    static final long CONNECTION_SAMPLE_MILLIS = 25;
+    /** Task-status poll interval: a task shorter than this is observed at this granularity. */
+    static final long TASK_POLL_MILLIS = 50;
+
     interface Body { void run(Recorder rec) throws Exception; }
 
     MeasurementReport.Workload measure(String name, String description, String boundary, int iterations, Body body) {
@@ -400,16 +404,12 @@ abstract class ApplicationBenchmarkHarness {
         } catch (Exception e) {
             rec.diagnostics.add("database counters unavailable before run: " + e);
         }
+        ConnectionObserver observer = new ConnectionObserver(db::openObserverConnection, CONNECTION_SAMPLE_MILLIS);
         long cpu0 = ProcessProbe.cpuNanos();
         long wall0 = System.nanoTime();
         try (ProcessProbe.PeakSampler heap = new ProcessProbe.PeakSampler("heap", ProcessProbe::heapUsedBytes, 20);
              ProcessProbe.PeakSampler rss = new ProcessProbe.PeakSampler("rss", ProcessProbe::rssBytes, 20);
-             ProcessProbe.PeakSampler conns = new ProcessProbe.PeakSampler("db-connections", () -> {
-                 try { return db.connections(); } catch (Exception e) { return -1; }
-             }, 25);
-             ProcessProbe.PeakSampler active = new ProcessProbe.PeakSampler("db-active-connections", () -> {
-                 try { return db.activeConnections(); } catch (Exception e) { return -1; }
-             }, 10)) {
+             observer) {
             try {
                 body.run(rec);
             } catch (Throwable t) {
@@ -418,7 +418,7 @@ abstract class ApplicationBenchmarkHarness {
             long wallNanos = System.nanoTime() - wall0;
             long cpu1 = ProcessProbe.cpuNanos();
             collectProcess(metrics, cpu0, cpu1, wallNanos, heap.peak(), rss.peak(), name.equals("idle"));
-            metrics.addAll(connectionMetrics(conns.peak(), active.peak()));
+            metrics.addAll(observer.metrics(rec.diagnostics, CONNECTION_SAMPLE_MILLIS));
             collectHttp(metrics, rec, wallNanos);
             collectRepository(metrics, rec, wallNanos);
             metrics.addAll(rec.extra);
@@ -467,18 +467,6 @@ abstract class ApplicationBenchmarkHarness {
                 : Metric.unavailable("peak_rss", "bytes", boundary, "/proc/self/status is not available on this platform"));
     }
 
-    private static List<Metric> connectionMetrics(long openPeak, long activePeak) {
-        String boundary = "database-wide pg_stat_activity (client backends of the test database, not only this schema), "
-                + "sampled; each query excludes its own connection, concurrent probes and other database clients are included";
-        return List.of(
-                openPeak >= 0 ? Metric.of("db_connections_open_peak", openPeak, "connections",
-                        boundary + "; counts every state including idle, sampled every 25 ms (lower bound)")
-                        : Metric.unavailable("db_connections_open_peak", "connections", "database", "pg_stat_activity could not be read"),
-                activePeak >= 0 ? Metric.of("db_connections_active_peak", activePeak, "connections",
-                        boundary + "; only state 'active', point samples every 10 ms so short statements are mostly missed (lower bound)")
-                        : Metric.unavailable("db_connections_active_peak", "connections", "database", "pg_stat_activity could not be read"));
-    }
-
     private static void collectRepository(List<Metric> out, Recorder rec, long wallNanos) {
         if (rec.repoLatenciesMillis.isEmpty()) {
             return;
@@ -500,7 +488,7 @@ abstract class ApplicationBenchmarkHarness {
             List<Double> lat = new ArrayList<>(rec.latenciesMillis);
             out.add(Metric.of("http_latency_p95", Stats.p95(lat), "ms", boundary + ", nearest-rank over " + lat.size() + " requests"));
             out.add(Metric.of("http_throughput", Stats.throughputPerSecond(rec.requests.get(), wallNanos), "requests/second",
-                    "recorded workload requests over wall time; background-task polling is excluded"));
+                    "all recorded requests (including task-status polls) over wall time"));
         }
         out.add(Metric.of("http_requests", rec.requests.get(), "requests", boundary));
         out.add(Metric.of("http_errors", rec.errors.get(), "requests", "non-2xx responses"));
@@ -565,8 +553,8 @@ abstract class ApplicationBenchmarkHarness {
         String taskId = JSON.readTree(accepted.body()).path("taskId").asText();
         String state = "";
         for (int i = 0; i < 6000 && !state.equals("SUCCEEDED") && !state.equals("FAILED"); i++) {
-            state = JSON.readTree(send("GET", "/api/sync/tasks/" + taskId, new Recorder()).body()).path("state").asText();
-            if (!state.equals("SUCCEEDED") && !state.equals("FAILED")) Thread.sleep(10);
+            state = JSON.readTree(send("GET", "/api/sync/tasks/" + taskId, rec).body()).path("state").asText();
+            if (!state.equals("SUCCEEDED") && !state.equals("FAILED")) Thread.sleep(TASK_POLL_MILLIS);
         }
         rec.jobMillis.add(Stats.nanosToMillis(System.nanoTime() - t));
         if (!state.equals("SUCCEEDED")) throw new IllegalStateException(path + " task ended " + state);

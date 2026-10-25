@@ -43,7 +43,7 @@ public final class DatabaseProbe {
     public record Storage(long tableBytes, long indexBytes, long totalBytes, long rows) {}
 
     public Counters counters() throws SQLException {
-        try (Connection c = DriverManager.getConnection(url, user, password);
+        try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement("""
                      SELECT coalesce(sum(n_tup_ins), 0), coalesce(sum(n_tup_upd), 0), coalesce(sum(n_tup_del), 0),
                             coalesce(sum(coalesce(seq_tup_read, 0) + coalesce(idx_tup_fetch, 0)), 0),
@@ -59,7 +59,7 @@ public final class DatabaseProbe {
     }
 
     public Storage storage() throws SQLException {
-        try (Connection c = DriverManager.getConnection(url, user, password);
+        try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement("""
                      SELECT coalesce(sum(pg_table_size(cl.oid)), 0), coalesce(sum(pg_indexes_size(cl.oid)), 0),
                             coalesce(sum(pg_total_relation_size(cl.oid)), 0),
@@ -74,34 +74,22 @@ public final class DatabaseProbe {
         }
     }
 
-    /** Client connections (any state, including idle) to this database other than the probe's own, at this instant. */
-    public long connections() throws SQLException {
-        try (Connection c = DriverManager.getConnection(url, user, password);
-             PreparedStatement ps = c.prepareStatement("""
-                     SELECT count(*) FROM pg_stat_activity
-                     WHERE datname = current_database() AND pid <> pg_backend_pid() AND backend_type = 'client backend'""");
-             ResultSet rs = ps.executeQuery()) {
-            rs.next();
-            return rs.getLong(1);
-        }
+    /** Opens a connection tagged as an observer session so connection sampling excludes it. */
+    public Connection openObserverConnection() throws SQLException {
+        return connect();
     }
 
-    /** Client connections of this database that are executing a statement (state 'active') right now. */
-    public long activeConnections() throws SQLException {
-        try (Connection c = DriverManager.getConnection(url, user, password);
-             PreparedStatement ps = c.prepareStatement("""
-                     SELECT count(*) FROM pg_stat_activity
-                     WHERE datname = current_database() AND pid <> pg_backend_pid() AND backend_type = 'client backend'
-                       AND state = 'active'""");
-             ResultSet rs = ps.executeQuery()) {
-            rs.next();
-            return rs.getLong(1);
-        }
+    private Connection connect() throws SQLException {
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty("user", user);
+        props.setProperty("password", password);
+        props.setProperty("ApplicationName", ConnectionObserver.APPLICATION_NAME);
+        return DriverManager.getConnection(url, props);
     }
 
     /** Server version string, for the environment block. */
     public String serverVersion() throws SQLException {
-        try (Connection c = DriverManager.getConnection(url, user, password)) {
+        try (Connection c = connect()) {
             return c.getMetaData().getDatabaseProductVersion();
         }
     }

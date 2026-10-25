@@ -33,8 +33,15 @@ export DATABASE_URL=jdbc:postgresql://localhost:5432/<disposable db> DATABASE_US
 
 Output: `target/perf/application-resources.json` (machine-readable) and `application-resources.md`
 (`-Dgw2.perf.output-dir=<dir>` overrides). Sizes are in `ApplicationResourceBenchmarkIT.sizes()`. The default
-suite runs `ApplicationBenchmarkBoundaryTest` (tiny sizes, no timing assertions) to prove each workload reaches
-its boundary, and `MeasurementReportTest` for the report math and unavailable-value handling.
+suite runs only `MeasurementReportTest` (report math, units, metadata, unavailable-value and observer-failure
+handling; no database). `ApplicationBenchmarkBoundaryIT` (tiny sizes, no timing assertions) proves each workload
+reaches its boundary and the connection observer neither opens a session per sample nor counts itself. It runs real
+workloads and asserts every diagnostic is empty, so it is deliberately an excluded `*IT`, not part of the normal
+gate (informational/nonblocking separation; its behavior assertions are unchanged). Run it explicitly:
+
+```
+./mvnw test -Dtest=ApplicationBenchmarkBoundaryIT -DfailIfNoSpecifiedTests=false
+```
 
 The JSON carries `schemaVersion`, `commit`, `timestamp`, `fixtureVersion`, `environment`, and per workload
 the metrics (`value`, `unit`, `boundary`, or `value: null` with `unavailableReason`), limits and diagnostics.
@@ -51,11 +58,18 @@ not measured until container infrastructure exists and must be reported under a 
   Throughput is requests over workload wall time. Profit and sync workloads have few samples; read p95 as indicative.
 - Database rows inserted/updated/deleted/read come from `pg_stat_all_tables` for the test schema after a
   1.3 s settle (PostgreSQL publishes statistics with a delay). Storage is tables plus indexes plus TOAST at the
-  end of each workload. Connection KPIs are database-wide
-  (`pg_stat_activity`, not per schema; other clients of the database and probe interference are not excluded):
-  `db_connections_open_peak` counts every client connection in any state (sampled every 25 ms), and
-  `db_connections_active_peak` counts only state `active` (point samples every 10 ms, so short statements are
-  mostly missed). Both are lower bounds; the application opens a connection per call (no pool).
+  end of each workload. Connection KPIs come from one
+  persistent observer session opened before the timed window (not a connection per sample), which reads open and
+  active client-backend counts in a single `pg_stat_activity` query every 25 ms. Sessions tagged with application
+  name `gw2-perf-observer` (the observer and the statistics probes) are excluded from both counts. The counts are
+  database-wide, not per schema: other clients of the database, fixture writers and the observer's own small query
+  load are not excluded. `db_connections_open_peak` counts every state; `db_connections_active_peak` counts state
+  `active` (point samples, short statements are mostly missed). Both are lower bounds; the application opens a
+  connection per call (no pool). If the observer cannot open or a query fails, both are unavailable with the reason
+  and a diagnostic.
+- Asynchronous workloads (account sync, global and price refresh) record the submission and every task-status
+  poll in the same HTTP figures (request count, p95, throughput, body bytes, errors). Polls are every 50 ms, so
+  `background_job_duration` has 50 ms granularity, and the polls themselves add a small load to the measured process.
 - `database_reads` runs repository calls without HTTP, so it reports `repository_read_latency_p95`,
   `repository_read_throughput` and `repository_read_rounds`, never `http_*` or `network_*` KPIs. A database
   probe failure yields unavailable KPIs (with unit and reason) plus a diagnostic, not a number or an exception.

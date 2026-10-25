@@ -158,4 +158,25 @@ class MeasurementReportTest {
         report.add(new MeasurementReport.Workload("w", "d", "b", 1, out, List.of(), diagnostics));
         assertTrue(report.toJson().toString().contains("unavailableReason"));
     }
+
+    @Test
+    void connectionObserverFailureYieldsUnavailableKpisWithDiagnosticsAndOpensNothingElse() {
+        java.util.concurrent.atomic.AtomicInteger opens = new java.util.concurrent.atomic.AtomicInteger();
+        try (ConnectionObserver observer = new ConnectionObserver(() -> {
+            opens.incrementAndGet();
+            throw new java.sql.SQLException("refused");
+        }, 5)) {
+            java.util.List<String> diagnostics = new java.util.ArrayList<>();
+            java.util.List<Metric> metrics = observer.metrics(diagnostics, 5);
+            assertEquals(1, opens.get(), "a failed open is not retried per observation");
+            assertEquals(List.of("db_connections_open_peak", "db_connections_active_peak"),
+                    metrics.stream().map(Metric::name).toList());
+            for (Metric m : metrics) {
+                assertFalse(m.available());
+                assertTrue(m.unavailableReason().contains("refused"));
+                assertEquals("connections", m.unit());
+            }
+            assertFalse(diagnostics.isEmpty());
+        }
+    }
 }
