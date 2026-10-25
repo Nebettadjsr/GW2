@@ -2,7 +2,7 @@
 
 ## Status
 
-PROPOSED (architecture proposal for issue #75; independent review precedes acceptance). This is a design, not delivered behavior: no frontend image, Compose file or proxy configuration exists yet, and `CURRENT_ARCHITECTURE.md` / `CURRENT_STATE_SPEC.md` correctly do not describe one.
+ACCEPTED upon merge of the independently reviewed architecture decision for issue #75. This is a design, not delivered behavior: no frontend image, Compose file or proxy configuration exists yet, and `CURRENT_ARCHITECTURE.md` / `CURRENT_STATE_SPEC.md` correctly do not describe one.
 
 ## Context
 
@@ -25,12 +25,12 @@ Required configuration semantics (design):
 2. `proxy_set_header Host $http_host;` Nginx's default is `Host $proxy_host` (the upstream's own name:port), which would make the backend compute an origin of `backend:8080` and reject every browser `Origin`. `$host` is also wrong: it carries the host name without the port (nginx core docs), breaking a nonstandard published port. `$http_host` passes the client's `Host` unchanged. Browsers always send `Host`, so the documented "absent Host" caveat does not apply to them.
 3. `Origin`, `Cookie`, `X-GW2-API-Key`, `X-Account-Context` and request bodies are passed by default; `Set-Cookie` returns unchanged. No `proxy_cookie_*`, no header stripping, no CORS headers (same origin).
 4. Do not add `X-Forwarded-*` handling to the backend now. Forwarding headers are untrusted client input unless the backend is configured to trust them, and the origin guard deliberately does not use them.
-5. Static assets: `root` at `dist/`; `try_files $uri /index.html` for browser navigation (Vue router paths such as `/crafting/profit`); a request for a missing file under `/assets/` returns 404 rather than HTML. Hashed assets under `/assets/` may be cached long-term; `index.html` should be `no-cache`. `/api/` never falls back to `index.html`.
+5. Static assets: `root` at `dist/`; current navigation uses hashes such as `/#/crafting` (`shell/destinations.ts`), so the server receives `/`. A conventional `try_files $uri /index.html` fallback may serve the shell for direct URLs; this does not introduce a path router or new feature routes. A missing file under `/assets/` returns 404 rather than HTML. Hashed assets may be cached long-term; `index.html` should be `no-cache`. `/api/` never falls back to `index.html`.
 6. Do not log request headers or the `X-GW2-API-Key` value; use no header-dumping log format.
 
 ## Alternatives
 
-- **Caddy.** Credible and simpler config, and the realistic runner-up; its reverse proxy is documented to keep the client `Host` by default. Not selected because this run could not read its official documentation or run it (not installed), so that claim is unverified here, and Nginx's behavior is the one verified below. Revisit if Nginx image constraints prove costly. Automatic HTTPS is a hosting/edge concern and is not a reason to choose it now.
+- **Caddy.** A viable simpler-config alternative. Its [official reverse-proxy documentation](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#defaults), verified during review, confirms original Host forwarding for the selected HTTP upstream case. Nginx is selected because its small explicit configuration has already demonstrated the required forwarding behavior below; there is no unmet requirement needing a second runtime evaluation or migration. No performance superiority is claimed. Automatic HTTPS remains a hosting/edge concern.
 - **Vite dev/preview server.** Has a proxy but is documented as a development tool; excluded by the issue.
 - **Backend serving the static files.** Collapses the selected frontend container into the backend and mixes releases; contradicts the three-container topology.
 - **Custom Node/Java forwarder, Traefik/HAProxy/Envoy, extra proxy container, Kubernetes/service mesh.** More moving parts with no requirement.
@@ -44,19 +44,19 @@ Disposable check with Nginx 1.24.0 (Ubuntu package) on loopback, in a temp direc
 - A request without `Origin` arrives without one (nothing is invented).
 - `/crafting/profit` returned the `index.html` body (200), `/assets/a.js` 200, `/assets/nope.js` 404.
 
-Not tested: the real backend through the proxy, Docker image behavior, HTTP/2, TLS. Official sources read: <https://nginx.org/en/docs/http/ngx_http_proxy_module.html> (`proxy_set_header` default, `$http_host` pass-through, `proxy_pass` URI rules) and <https://nginx.org/en/docs/http/ngx_http_core_module.html> (`$host`, `try_files`). Sources for Caddy and image-specific facts could not be fetched.
+Not tested: the real backend through the proxy, Docker image behavior, HTTP/2, TLS. Official sources read: <https://nginx.org/en/docs/http/ngx_http_proxy_module.html> (`proxy_set_header` default, `$http_host` pass-through, `proxy_pass` URI rules) and <https://nginx.org/en/docs/http/ngx_http_core_module.html> (`$host`, `try_files`). Review additionally verified the Caddy source above and the Nginx project's [unprivileged image documentation](https://github.com/nginx/docker-nginx-unprivileged), which describes non-root operation and writable pid/temp paths. This closes the original documentation-fetch limitation, without claiming another runtime test.
 
 ## Container implications (proposal)
 
-- Running non-root and without writing to the image is feasible with Nginx: the process needs a listen port above 1024 (e.g. 8080 inside, mapped to the published port), and writable locations for the pid file and the client-body/proxy/fastcgi/uwsgi/scgi temp paths (point them at `/tmp` or `tmpfs`; the check above ran fully as an unprivileged user with exactly these overrides). The static files and config can be read-only. The implementer may use the project-maintained unprivileged Nginx image or the official image with an adjusted `nginx.conf`; choosing and verifying the exact image tag, user and read-only root filesystem is implementation work.
+- Run non-root using an unprivileged listen port (e.g. 8080) and writable pid/temp locations. The original check used these overrides; the Nginx project's unprivileged image documents the same approach. The implementer verifies the maintained image/tag and actual user/paths. A read-only root filesystem is optional and is not an acceptance gate; no additional hardening program is introduced.
 - Backend host name on the Compose network, listen port and published port are configuration, not decisions here.
 - If a public TLS edge later terminates HTTPS in front of this container, the backend would see `http` while the browser `Origin` is `https://…`, so same-origin would fail. That is the hosting/TLS decision's problem; the already existing `GW2_ACCOUNT_ACCESS_ALLOWED_ORIGINS` setting is the available mechanism, and the choice stays open. This ADR does not decide it.
 
 ## Minimal smoke for the implementation story
 
-Build the image and start frontend + backend + PostgreSQL via Compose with a nonstandard published port; then (1) `GET /` and a deep client route return the app and a missing `/assets/x` returns 404; (2) a `POST /api/...` session/proof route sent with browser-style `Origin: http://localhost:<port>` is not rejected with `ORIGIN_REJECTED` (a fixture proof adapter avoids a live key), and one with a foreign `Origin` is; (3) the issued `GW2_SESSION` cookie reaches the browser with the expected attributes and is replayed on a following `/api` call; (4) the container runs as non-root and only the frontend port is published.
+Build the image and start the three containers on a private test network with a nonstandard frontend port; Compose integration is a later story. Verify static assets/current hash navigation, missing-asset 404, proxied global read, ordinary keyless account refusal, and the real `/api/session` boundary with matching versus foreign Origin. A missing key may be refused normally; do not invent a successful proof or add a production fixture adapter. A separate controlled echo upstream can verify key/context/cookie/body forwarding and returned Set-Cookie without ArenaNet. Actual key proof/session issuance is an optional live check reported separately. Verify non-root operation and that only the frontend port is published.
 
 ## Consequences and remaining unknowns
 
-- The implementation story owns Dockerfile, Nginx config, Compose, smoke and measurements; this proposal changes none of them.
-- Unknown, genuinely open: exact Nginx image and read-only-rootfs feasibility; proxy read-timeout for long backend calls (measure, UD-007); whether the later TLS edge needs allowed-origins or forwarded-header support (hosting decision).
+- #76 owns the frontend image/configuration, smoke and measurements; a later Compose story joins the accepted images. This decision changes no runtime files.
+- Remaining engineering work: verify the exact maintained image/tag and proxy read-timeout against existing endpoint behavior (UD-007), without inventing a new performance limit. Public TLS/edge integration remains a hosting decision. Read-only-rootfs work is not required.
