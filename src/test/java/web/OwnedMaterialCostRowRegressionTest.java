@@ -179,4 +179,39 @@ class OwnedMaterialCostRowRegressionTest {
     void tradeableOwnedItemWithUsableQuoteIsNotFlagged() throws Exception {
         assertFalse(row(Map.of(MATERIAL, 3), Map.of(), SETTINGS).unvaluedOwnedInput());
     }
+
+    @Test
+    void recursiveValuationUsesCheaperCraftingRouteForQuotedIntermediate() {
+        List<Recipe> recipes = List.of(NEEDS_REFINED.get(0), NEEDS_REFINED.get(1),
+                new Recipe(4, RAW, 1, 0, "Artificer", List.of(new Ingredient(600, 1))));
+        Map<Integer, PriceQuote> quotes = new java.util.HashMap<>(NO_SELL_SIDE_TP);
+        quotes.put(600, new PriceQuote(1, 2));
+        CraftResult result = resultWith(quotes, recipes, Map.of(), Map.of(REFINED, 2));
+
+        // Six raw are needed. Crafting each from a 2c ingredient beats buying raw at 20c.
+        assertEquals(12, result.matsSellValueCopper);
+        assertEquals(838, result.profitCopper);
+        var explanation = new craft.SingleCraftExplainer().explainIndividual(recipes.get(0),
+                recipes, Map.of(REFINED, 2), Map.of(), quotes, OWN_ONLY, Set.of(2));
+        assertEquals(12, explanation.root().effectiveCostCopper());
+    }
+
+    @Test
+    void vendorSellValueIsNotAnAcquisitionPriceForQuotedIngredients() {
+        CraftResult result = resultWith(NO_SELL_SIDE_TP, NEEDS_REFINED,
+                Map.of(RAW, 1), Map.of(REFINED, 2));
+        // Raw costs 20c to obtain. Its 1c vendor SELL value is not a purchasing offer.
+        assertEquals(120, result.matsSellValueCopper);
+    }
+
+    @Test
+    void cyclicValuationTerminatesAndUsesVendorFallback() {
+        List<Recipe> recipes = List.of(NEEDS_REFINED.get(0),
+                new Recipe(3, REFINED, 1, 0, "Artificer", List.of(new Ingredient(RAW, 1))),
+                new Recipe(4, RAW, 1, 0, "Artificer", List.of(new Ingredient(REFINED, 1))));
+        CraftResult result = resultWith(Map.of(OUTPUT2, new PriceQuote(1000, 1200)),
+                recipes, Map.of(REFINED, 25), Map.of(REFINED, 2));
+        assertEquals(50, result.matsSellValueCopper);
+        assertFalse(result.unvaluedOwnedInput);
+    }
 }

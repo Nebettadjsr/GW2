@@ -498,8 +498,15 @@ public class CraftingResolver {
         return value;
     }
 
-    /** Crafting cost, else vendor value, else 0; {@code visiting} breaks recipe cycles. */
+    /** Crafting cost, else vendor value, else 0. */
     private int fallbackValue(int itemId, PlannerContext ctx, Set<Integer> visiting) {
+        int crafted = craftingUnitValue(itemId, ctx, visiting);
+        if (crafted > 0) return crafted;
+        return Math.max(ctx.vendorValues.getOrDefault(itemId, 0), 0);
+    }
+
+    /** Compare real purchase/crafting routes recursively; vendor sell values are not buy offers. */
+    private int craftingUnitValue(int itemId, PlannerContext ctx, Set<Integer> visiting) {
         if (!visiting.add(itemId)) return 0;
         try {
             int best = 0;
@@ -508,7 +515,9 @@ public class CraftingResolver {
                 boolean valued = true;
                 for (Ingredient ing : recipe.ingredients) {
                     int unit = resolveDirectBuyUnit(ing.itemId, ctx.tp, ctx.settings);
-                    if (unit <= 0) unit = fallbackValue(ing.itemId, ctx, visiting);
+                    int crafted = craftingUnitValue(ing.itemId, ctx, visiting);
+                    if (crafted > 0 && (unit <= 0 || crafted < unit)) unit = crafted;
+                    if (unit <= 0) unit = Math.max(ctx.vendorValues.getOrDefault(ing.itemId, 0), 0);
                     if (unit <= 0) { valued = false; break; }
                     total += (long) unit * ing.count;
                 }
@@ -516,9 +525,7 @@ public class CraftingResolver {
                 int unitCost = (int) Math.min(Integer.MAX_VALUE, (total + recipe.outputCount - 1) / recipe.outputCount);
                 if (unitCost > 0 && (best == 0 || unitCost < best)) best = unitCost;
             }
-            if (best > 0) return best;
-            Integer vendor = ctx.vendorValues.get(itemId);
-            return vendor == null ? 0 : Math.max(vendor, 0);
+            return best;
         } finally {
             visiting.remove(itemId);
         }
