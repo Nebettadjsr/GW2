@@ -82,10 +82,11 @@ public class CraftingDiscoveryApiController {
             @RequestBody(required = false) CraftingDiscoveryRequest request) throws Exception {
 
         CraftingDiscoveryApiMapper.Effective effective = CraftingDiscoveryApiMapper.toEffective(request);
+        var service = discoveryServiceFactory.get().forScope(RequestAccountContext.scopeOf(http));
+        service.verifySelectedCharacter(effective.toDiscChoice());
         refreshQuotes(RequestAccountContext.scopeOf(http));
 
-        CraftingDiscoveryService.DiscoveryData data = discoveryServiceFactory.get()
-                .forScope(RequestAccountContext.scopeOf(http))
+        CraftingDiscoveryService.DiscoveryData data = service
                 .reload(effective.toDiscChoice(), effective.toCraftingSettings());
 
         return CraftingDiscoveryApiMapper.toResponse(effective, data);
@@ -120,10 +121,12 @@ public class CraftingDiscoveryApiController {
         int recipeId = CraftingResolutionMapper.requireRecipeId(body.recipeId());
         CraftingDiscoveryApiMapper.Effective effective = CraftingDiscoveryApiMapper.toEffective(
                 CraftingResolutionMapper.requireCalculation(body.calculation()));
+        var service = discoveryServiceFactory.get().forScope(RequestAccountContext.scopeOf(http));
+        service.verifySelectedCharacter(effective.toDiscChoice());
         refreshQuotes(RequestAccountContext.scopeOf(http));
 
         CraftingResolutionDetail detail = CraftingResolutionMapper.requireInCalculation(
-                discoveryServiceFactory.get().forScope(RequestAccountContext.scopeOf(http)).resolveDetail(
+                service.resolveDetail(
                         recipeId, effective.toDiscChoice(), effective.toCraftingSettings()));
 
         return new CraftingDiscoveryResolutionResponse(

@@ -14,6 +14,7 @@ public record AccountLuckResponse(
         long luckRemainingToCap,
         long cumulativeLuckForCap,
         Instant fetchedAt,
-        List<TargetDto> targets) {
+        List<TargetDto> targets,
+        AccountSourceFreshnessDto freshness) {
     public record TargetDto(String kind, int magicFindPercent, long cumulativeLuck, long luckRemaining) {}
 }

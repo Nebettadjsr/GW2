@@ -119,11 +119,30 @@ public class CraftingDiscoveryService {
         }
     }
 
+    /** The selected character is not on the authorized account's roster; nothing was calculated. */
+    public static final class CharacterNotOwnedException extends RuntimeException {
+        public CharacterNotOwnedException() {
+            super("selected character is not on the authorized account");
+        }
+    }
+
+    /**
+     * Validates, before any quote, source or calculation work and without recording activity, that
+     * the selected character belongs to this account. A no-op for the retained unscoped service.
+     */
+    public void verifySelectedCharacter(DiscChoice choice) throws SQLException {
+        requireCharacterScope(choice);
+        if (scope == null) return;
+        try (java.sql.Connection con = openScoped(choice.charName, false)) {
+            // Nothing to read: openScoped itself refuses a foreign or unknown character.
+        }
+    }
+
     /**
      * Opens the scoped connection, records authorized use (activity only, never freshness) and
      * refuses unless every source Discovery consumes has been published for this account.
      */
-    private java.sql.Connection openScoped() throws SQLException {
+    private java.sql.Connection openScoped(String charName, boolean recordUse) throws SQLException {
         java.sql.Connection con = repo.Db.open();
         try {
             repo.ManagedSchema.requireManagedAccountSchema(con, "account-scoped Discovery");
@@ -133,7 +152,12 @@ public class CraftingDiscoveryService {
                     repo.AccountSyncStateRepository.CHARACTERS)) {
                 if (states.read(con, scope, source).isEmpty()) throw new AccountInputsUnavailableException();
             }
-            new repo.AccountRegistryRepository().recordAuthorizedUse(con, scope, java.time.Instant.now());
+            if (!new repo.CharacterRepository().loadAllCharacterNames(con, scope).contains(charName)) {
+                throw new CharacterNotOwnedException();
+            }
+            if (recordUse) {
+                new repo.AccountRegistryRepository().recordAuthorizedUse(con, scope, java.time.Instant.now());
+            }
             return con;
         } catch (SQLException | RuntimeException failure) {
             try { con.close(); } catch (SQLException ignored) { /* original failure wins */ }
@@ -309,7 +333,7 @@ public class CraftingDiscoveryService {
             missingIds = recipeRepo.loadMissingDiscoverableRecipeIdsForCharacter(charName, discipline);
             knownIds = missingIds.isEmpty() ? Set.of() : recipeRepo.loadKnownRecipeIds();
         } else {
-            try (java.sql.Connection con = openScoped()) {
+            try (java.sql.Connection con = openScoped(charName, true)) {
                 missingIds = recipeRepo.loadMissingDiscoverableRecipeIdsForCharacter(con, scope, charName, discipline);
                 knownIds = missingIds.isEmpty() ? Set.of() : recipeRepo.loadKnownRecipeIds(con, scope);
             }

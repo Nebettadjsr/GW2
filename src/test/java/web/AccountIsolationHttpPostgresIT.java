@@ -65,6 +65,7 @@ class AccountIsolationHttpPostgresIT {
 
     static final String ACCOUNT_A = "AAAAAAAA-1111-2222-3333-444444444444";
     static final String ACCOUNT_B = "BBBBBBBB-1111-2222-3333-444444444444";
+    static final String ACCOUNT_C = "CCCCCCCC-1111-2222-3333-444444444444";
     static final ObjectMapper JSON = new ObjectMapper();
     static final AtomicBoolean UPSTREAM_OUTAGE = new AtomicBoolean();
     static final String SCHEMA = "it_isolation_" + UUID.randomUUID().toString().replace("-", "");
@@ -114,6 +115,7 @@ class AccountIsolationHttpPostgresIT {
             return key -> switch (key) {
                 case "key-a", "key-a-2" -> new AccountProof(ACCOUNT_A, all, Set.of(), null);
                 case "key-b" -> new AccountProof(ACCOUNT_B, all, Set.of(), null);
+                case "key-c" -> new AccountProof(ACCOUNT_C, all, Set.of(), null);
                 case "key-a-narrow" -> new AccountProof(ACCOUNT_A,
                         Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES), Set.of(), null);
                 default -> throw new InvalidCredentialException("rejected");
@@ -343,5 +345,89 @@ class AccountIsolationHttpPostgresIT {
         Resp other = send("POST", "/api/crafting/profit", b, "key-b", "{}", null);
         assertFalse(other.json().path("freshness").path("outstandingWork").toString().contains("ACCOUNT"), other.body());
         assertFalse(other.json().path("freshness").path("failures").toString().contains("CREDENTIAL_REQUIRED"), other.body());
+    }
+
+    @Test @Order(9)
+    void neverPublishedSourcesArePendingNotEmptyAndStaleOnesAreUsableWithCredentialRequired() throws Exception {
+        Session c = login("key-c");
+        Resp bank = send("GET", "/api/account/bank", c, null, null, null);
+        assertEquals(202, bank.status(), bank.body());
+        assertEquals("PENDING", bank.json().path("freshness").path("status").asText());
+        assertTrue(bank.json().path("slots").isNull() && bank.json().path("slotCount").isNull(), bank.body());
+        Resp materials = send("GET", "/api/account/materials", c, null, null, null);
+        assertEquals(202, materials.status(), materials.body());
+        assertTrue(materials.json().path("categories").isNull(), materials.body());
+        assertEquals(404, send("GET", "/api/account/luck", c, null, null, null).status(), "no fabricated zero Luck");
+        Resp selector = send("GET", "/api/crafting/selector-options", c, null, null, null);
+        assertEquals(202, selector.status(), selector.body());
+        assertTrue(selector.json().path("characterOptions").isNull(), selector.body());
+
+        // Let the refresh the earlier test admitted finish, then expire A's sources again: still usable,
+        // credential required, no admission.
+        for (int i = 0; i < 100 && scalar("SELECT count(*) FROM account_source_state WHERE account_id = '"
+                + ACCOUNT_A.toLowerCase() + "' AND completed_at > now() - interval '1 hour'") < 4; i++) {
+            Thread.sleep(50);
+        }
+        try (Connection db = connect(); Statement st = db.createStatement()) {
+            st.execute("SET search_path TO " + SCHEMA);
+            st.execute("UPDATE account_source_state SET completed_at = now() - interval '5 hours' WHERE account_id = '"
+                    + ACCOUNT_A.toLowerCase() + "'");
+        }
+        Session a = login("key-a");
+        for (String path : new String[] {"/api/account/bank", "/api/account/materials", "/api/account/luck"}) {
+            Resp stale = send("GET", path, a, null, null, null);
+            assertEquals(200, stale.status(), path + stale.body());
+            assertEquals("STALE", stale.json().path("freshness").path("status").asText(), path);
+            assertEquals("CREDENTIAL_REQUIRED", stale.json().path("freshness").path("refresh").asText(), path);
+        }
+        assertEquals(2, send("GET", "/api/account/bank", a, null, null, null).json().path("slots").get(0)
+                .path("count").asInt(), "the stale rows are A's own");
+    }
+
+    @Test @Order(10)
+    void foreignOrUnknownCharactersAreRefusedBeforeQuotesActivityOrCalculation() throws Exception {
+        Session a = login("key-a");
+        long seenBefore = scalar("SELECT floor(extract(epoch FROM last_seen_at) * 1000) FROM account_registry "
+                + "WHERE account_id = '" + ACCOUNT_A.toLowerCase() + "'");
+        long quotesBefore = scalar("SELECT count(*) FROM tp_prices");
+        String body = "{\"scope\":{\"characterName\":\"Somebody Else\","
+                + "\"discipline\":\"Chef\",\"rating\":400}}";
+        Resp table = send("POST", "/api/crafting/discovery", a, null, body, null);
+        assertEquals(403, table.status(), table.body());
+        Resp detail = send("POST", "/api/crafting/discovery/resolution", a, null,
+                "{\"recipeId\":7,\"calculation\":" + body + "}", null);
+        assertEquals(403, detail.status(), detail.body());
+        assertEquals(table.json().path("error").asText(), detail.json().path("error").asText());
+        assertFalse(table.body().contains("Somebody Else"));
+        assertEquals(seenBefore, scalar("SELECT floor(extract(epoch FROM last_seen_at) * 1000) FROM account_registry "
+                + "WHERE account_id = '" + ACCOUNT_A.toLowerCase() + "'"), "rejection advances no activity");
+        assertEquals(quotesBefore, scalar("SELECT count(*) FROM tp_prices"), "rejection starts no quote work");
+    }
+
+    @Test @Order(11)
+    void keyedProfitRejectsForeignOriginInvalidKeyAndMismatchWithoutActivityOrCalculation() throws Exception {
+        Session a;
+        String seen = "SELECT floor(extract(epoch FROM last_seen_at) * 1000) FROM account_registry WHERE account_id = '"
+                + ACCOUNT_A.toLowerCase() + "'";
+        login("key-a");
+        long before = scalar(seen);
+        for (String path : new String[] {"/api/crafting/profit", "/api/crafting/profit/resolution"}) {
+            String body = path.endsWith("resolution") ? "{\"recipeId\":7,\"calculation\":{}}" : "{}";
+            // A definitive invalid-key rejection revokes the session, so each route proves on its own.
+            a = login("key-a");
+            HttpRequest foreign = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
+                    .header("Origin", "https://evil.example").header("Content-Type", "application/json")
+                    .header("Cookie", a.cookie()).header("X-Account-Context", a.context())
+                    .header("X-GW2-API-Key", "key-a").POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            assertEquals(403, HttpClient.newHttpClient().send(foreign, HttpResponse.BodyHandlers.ofString())
+                    .statusCode(), path + " foreign origin");
+            assertEquals(401, send("POST", path, a, "not-a-key", body, null).status(), path + " invalid key");
+            int otherKey = send("POST", path, a, "key-b", body, null).status();
+            assertTrue(otherKey == 401 || otherKey == 403, path + " another account's key: " + otherKey);
+            int narrow = send("POST", path, a, "key-a-narrow", body, null).status();
+            assertTrue(narrow == 401 || narrow == 403, path + " lower-grant key: " + narrow);
+        }
+        assertEquals(before, scalar(seen), "rejected proof advances no activity");
+        UPSTREAM_OUTAGE.set(false);
     }
 }

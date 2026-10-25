@@ -71,6 +71,43 @@ public class ApiExceptionHandler {
                         "Prove a GW2 API key and sync account data to use Discovery"));
     }
 
+    /** A selected character outside the authorized account: the same answer as any scope mismatch. */
+    @ExceptionHandler({application.CraftingDiscoveryService.CharacterNotOwnedException.class,
+            application.CachedCraftingProfitService.CharacterNotOwnedException.class})
+    public ResponseEntity<ApiErrorResponse> handleCharacterNotOwned() {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).header("Cache-Control", "no-store")
+                .body(new ApiErrorResponse("ACCOUNT_ACCESS_DENIED",
+                        "This session is not authorized for this account operation"));
+    }
+
+    @ExceptionHandler(ForeignOriginException.class)
+    public ResponseEntity<ApiErrorResponse> handleForeignOrigin() {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).header("Cache-Control", "no-store")
+                .body(new ApiErrorResponse("ORIGIN_REJECTED",
+                        "This request did not come from this application's own origin"));
+    }
+
+    /** A keyed calculation whose proof or scope could not be established (API-010 semantics). */
+    @ExceptionHandler(application.ScopedAccountRefreshCoordinator.Rejected.class)
+    public ResponseEntity<ApiErrorResponse> handleRejectedProof(
+            application.ScopedAccountRefreshCoordinator.Rejected rejected) {
+        return switch (rejected.reason()) {
+            case SESSION -> ResponseEntity.status(HttpStatus.UNAUTHORIZED).header("Cache-Control", "no-store")
+                    .body(new ApiErrorResponse("SESSION_REQUIRED", "Prove a GW2 API key to continue"));
+            case INVALID_CREDENTIAL, MALFORMED_PROOF -> ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .header("Cache-Control", "no-store")
+                    .body(new ApiErrorResponse("INVALID_CREDENTIAL", "The GW2 API key could not be validated"));
+            case ACCOUNT_MISMATCH, INSUFFICIENT_GRANTS -> ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .header("Cache-Control", "no-store")
+                    .body(new ApiErrorResponse("ACCOUNT_ACCESS_DENIED",
+                            "This session is not authorized for this account operation"));
+            case UPSTREAM_UNAVAILABLE -> ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .header("Cache-Control", "no-store").header("Retry-After", "30")
+                    .body(new ApiErrorResponse("PROOF_UNAVAILABLE",
+                            "GW2 could not validate the key right now; retry shortly"));
+        };
+    }
+
     /** The database backing the calculation could not be read. */
     @ExceptionHandler(SQLException.class)
     public ResponseEntity<ApiErrorResponse> handleSqlFailure(SQLException e) {

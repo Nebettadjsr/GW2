@@ -100,7 +100,7 @@ class CraftingProfitResolutionApiControllerTest {
     void setUp() {
         factory = new RecordingServiceFactory();
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new CraftingProfitApiController(factory))
+                .standaloneSetup(new CraftingProfitApiController(factory, new web.access.AccountAccessHttp("")))
                 .defaultRequest(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/")
                         .requestAttr(web.access.RequestAccountContext.ATTRIBUTE, ACCOUNT_CONTEXT))
                 .setControllerAdvice(new ApiExceptionHandler())

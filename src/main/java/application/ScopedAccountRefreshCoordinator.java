@@ -272,6 +272,20 @@ public class ScopedAccountRefreshCoordinator {
         }
     }
 
+    /**
+     * Proves the key against the session's account for every given source's operation without
+     * admitting anything, so a caller can reject before it does account work or records activity.
+     *
+     * @throws Rejected when identity or any source's grants cannot be proven
+     */
+    public void verify(AccountContext context, String sessionId, String apiKey, Set<String> sources) {
+        for (String source : sources) {
+            AccountOperation operation = operationFor(source);
+            if (operation == null) throw new IllegalArgumentException("unknown account source: " + source);
+            authorize(context, sessionId, apiKey, operation);
+        }
+    }
+
     private void authorize(AccountContext context, String sessionId, String apiKey, AccountOperation operation) {
         try {
             access.authorizeKeyedOperation(sessionId, context, apiKey, operation);

@@ -28,8 +28,9 @@ import java.util.List;
  */
 public record CraftingSelectorOptionsResponse(String defaultScopeKind,
                                               List<String> disciplines,
-                                              int characterOptionCount,
-                                              List<CharacterOptionDto> characterOptions) {
+                                              Integer characterOptionCount,
+                                              List<CharacterOptionDto> characterOptions,
+                                              AccountSourceFreshnessDto freshness) {
 
     /**
      * One synced character discipline, as reported by

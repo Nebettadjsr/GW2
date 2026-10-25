@@ -20,7 +20,8 @@ import java.util.List;
  * @param slots     every bank slot in the service's slot order; empty when the account has no bank
  *                  rows at all
  */
-public record BankContentsResponse(int slotCount, List<BankSlotDto> slots) {
+public record BankContentsResponse(Integer slotCount, List<BankSlotDto> slots,
+                                   AccountSourceFreshnessDto freshness) {
 
     /**
      * One account-bank slot, as reported by

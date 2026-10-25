@@ -57,8 +57,12 @@ public class CraftingProfitApiController {
 
     private final CachedCraftingProfitService profitService;
 
-    public CraftingProfitApiController(CachedCraftingProfitService profitService) {
+    private final web.access.AccountAccessHttp accessHttp;
+
+    public CraftingProfitApiController(CachedCraftingProfitService profitService,
+                                       web.access.AccountAccessHttp accessHttp) {
         this.profitService = profitService;
+        this.accessHttp = accessHttp;
     }
 
     /**
@@ -76,6 +80,7 @@ public class CraftingProfitApiController {
 
         CraftingProfitApiMapper.Effective effective = CraftingProfitApiMapper.toEffective(request);
 
+        requireSameOriginWhenKeyed(http);
         var keyed = keyedAdmission(http);
         CachedCraftingProfitService.ProfitOutcome outcome = keyed == null
                 ? profitService.profit(RequestAccountContext.scopeOf(http), effective.toDiscChoice(),
@@ -112,6 +117,7 @@ public class CraftingProfitApiController {
             @RequestBody(required = false) CraftingProfitResolutionRequest request,
             HttpServletRequest http) throws Exception {
 
+        requireSameOriginWhenKeyed(http);
         CraftingProfitResolutionRequest body = CraftingResolutionMapper.requireBody(request);
         int recipeId = CraftingResolutionMapper.requireRecipeId(body.recipeId());
         CraftingProfitApiMapper.Effective effective = CraftingProfitApiMapper.toEffective(
@@ -152,6 +158,17 @@ public class CraftingProfitApiController {
                 CraftingResolutionMapper.treeStatus(detail),
                 CraftingResolutionMapper.profitTreeBasis(detail),
                 CraftingResolutionMapper.toTree(detail)));
+    }
+
+    /**
+     * A keyed calculation admits account work, so it is a state change: the established same-origin
+     * check ({@link web.access.AccountAccessHttp#isSameOrigin}) runs before any proof or admission.
+     * A keyless request is a pure cached read and needs no origin evidence.
+     */
+    private void requireSameOriginWhenKeyed(HttpServletRequest http) {
+        if (web.access.AccountAccessHttp.presentedApiKey(http) != null && !accessHttp.isSameOrigin(http)) {
+            throw new ForeignOriginException();
+        }
     }
 
     /**

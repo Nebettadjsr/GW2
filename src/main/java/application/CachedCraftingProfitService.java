@@ -73,6 +73,37 @@ public class CachedCraftingProfitService {
     private final Clock clock;
     private final Duration accountMaxAge;
     private ScopedAccountRefreshCoordinator scopedRefresh;
+    private CharacterRoster roster;
+
+    /** The names of the characters one account owns, read without recording activity. */
+    @FunctionalInterface
+    public interface CharacterRoster {
+        List<String> namesOf(AccountScope scope) throws SQLException;
+    }
+
+    /** The selected character is not on the authorized account's roster; nothing was calculated. */
+    public static final class CharacterNotOwnedException extends RuntimeException {
+        public CharacterNotOwnedException() {
+            super("selected character is not on the authorized account");
+        }
+    }
+
+    /** Binds the roster lookup a character-scoped request is validated against before any work. */
+    public CachedCraftingProfitService withCharacterRoster(CharacterRoster roster) {
+        this.roster = roster;
+        return this;
+    }
+
+    /**
+     * A selected character must be on the account's published roster before activity, capture or
+     * calculation. An account whose roster was never published has nothing to compare with; that
+     * stays the pending (no-result) case rather than a rejection.
+     */
+    private void verifyCharacter(AccountScope scope, DiscChoice choice) throws SQLException {
+        if (roster == null || choice == null || choice.kind != DiscChoice.Kind.CHAR_DISCIPLINE) return;
+        List<String> owned = roster.namesOf(scope);
+        if (!owned.isEmpty() && !owned.contains(choice.charName)) throw new CharacterNotOwnedException();
+    }
 
     /**
      * Binds the credential-aware coordinator keyed requests admit through (STORY-API-011). Without
@@ -218,6 +249,8 @@ public class CachedCraftingProfitService {
         CalculationInputVersions captured;
         CraftingProfitService.ProfitData data = null;
 
+        verifyProof(keyed);
+        verifyCharacter(scope, choice);
         try (ProfitInputSession session = sessions.open(scope)) {
             captured = capture(session, scope);
             if (captured.usable()) {
@@ -254,6 +287,8 @@ public class CachedCraftingProfitService {
         CalculationInputVersions captured;
         CraftingResolutionDetail detail = null;
 
+        verifyProof(keyed);
+        verifyCharacter(scope, choice);
         try (ProfitInputSession session = sessions.open(scope)) {
             captured = capture(session, scope);
             if (captured.usable()) {
@@ -267,6 +302,16 @@ public class CachedCraftingProfitService {
                 : CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS;
 
         return new ResolutionOutcome(detail, consistency, describeScoped(requestId, captured, detail != null, scope, keyed));
+    }
+
+    /**
+     * A presented key is proven before any account work or activity: a definitive rejection
+     * ({@link ScopedAccountRefreshCoordinator.Rejected}) reaches the caller instead of a calculation.
+     */
+    private void verifyProof(KeyedAdmission keyed) {
+        if (keyed == null || scopedRefresh == null) return;
+        scopedRefresh.verify(keyed.context(), keyed.sessionId(), keyed.apiKey(),
+                CalculationInputVersions.REQUIRED_ACCOUNT_SOURCES);
     }
 
     private CalculationInputVersions capture(ProfitInputSession session) throws SQLException {
@@ -317,20 +362,13 @@ public class CachedCraftingProfitService {
                         "Account sources " + needing
                                 + " need a refresh; no GW2 key was supplied, so none was admitted", true));
             } else {
-                try {
-                    ScopedAccountRefreshCoordinator.Admission admission = scopedRefresh.require(
-                            keyed.context(), keyed.sessionId(), keyed.apiKey(), needing);
-                    outstanding.add(new CalculationFreshness.OutstandingRefresh(
-                            CalculationFreshness.RefreshKind.ACCOUNT, admission.sources(), admission.taskId(),
-                            stateOf(admission.taskId()), admission.reuse()));
-                } catch (ScopedAccountRefreshCoordinator.Rejected rejected) {
-                    // Nothing was admitted; the authorized cached result is still returned.
-                    failures.add(new CalculationFreshness.RefreshFailure(CalculationFreshness.RefreshKind.ACCOUNT,
-                            null, "REFRESH_NOT_ADMITTED_" + rejected.reason(),
-                            "The supplied GW2 key could not be used to refresh " + needing
-                                    + "; none was admitted", rejected.reason()
-                                    == ScopedAccountRefreshCoordinator.Reason.UPSTREAM_UNAVAILABLE));
-                }
+                // Proof was verified before any work; a late rejection (revocation or outage during
+                // the calculation) propagates as API-010 401/403/503 rather than a calculation.
+                ScopedAccountRefreshCoordinator.Admission admission = scopedRefresh.require(
+                        keyed.context(), keyed.sessionId(), keyed.apiKey(), needing);
+                outstanding.add(new CalculationFreshness.OutstandingRefresh(
+                        CalculationFreshness.RefreshKind.ACCOUNT, admission.sources(), admission.taskId(),
+                        stateOf(admission.taskId()), admission.reuse()));
             }
         }
         if (!captured.coverage().covered()) {

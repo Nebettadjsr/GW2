@@ -12,6 +12,9 @@ import web.access.RequestAccountContext;
 import web.dto.BankContentsResponse;
 
 import java.sql.SQLException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import web.dto.AccountSourceFreshnessDto;
 import java.util.List;
 
 /**
@@ -32,8 +35,17 @@ public class BankContentsApiController {
 
     private final BankContentsService bankContentsService;
 
+    private final application.ScopedSourceGate gate;
+
     public BankContentsApiController(BankContentsService bankContentsService) {
+        this(bankContentsService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public BankContentsApiController(BankContentsService bankContentsService,
+                                     application.ScopedSourceGate gate) {
         this.bankContentsService = bankContentsService;
+        this.gate = gate;
     }
 
     /**
@@ -45,10 +57,17 @@ public class BankContentsApiController {
      * substituted, and there is no 404 case.
      */
     @GetMapping(path = "/bank", produces = MediaType.APPLICATION_JSON_VALUE)
-    public BankContentsResponse bankContents(HttpServletRequest request) throws SQLException {
-        List<BankContentsResponse.BankSlotDto> slots =
-                toSlots(bankContentsService.getBankContents(RequestAccountContext.scopeOf(request)));
-        return new BankContentsResponse(slots.size(), slots);
+    public ResponseEntity<BankContentsResponse> bankContents(HttpServletRequest request) throws SQLException {
+        var scope = RequestAccountContext.scopeOf(request);
+        var read = application.ScopedSourceGate.through(gate, scope, repo.AccountSyncStateRepository.BANK,
+                () -> bankContentsService.getBankContents(scope));
+        var freshness = read.status() == null || gate == null ? null : AccountSourceFreshnessDto.of(read);
+        if (!read.hasData()) {
+            // Never published: pending, not an empty bank.
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(new BankContentsResponse(null, null, freshness));
+        }
+        List<BankContentsResponse.BankSlotDto> slots = toSlots(read.data());
+        return ResponseEntity.ok(new BankContentsResponse(slots.size(), slots, freshness));
     }
 
     /**

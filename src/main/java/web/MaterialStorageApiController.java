@@ -33,8 +33,17 @@ public class MaterialStorageApiController {
 
     private final MaterialStorageService materialStorageService;
 
+    private final application.ScopedSourceGate gate;
+
     public MaterialStorageApiController(MaterialStorageService materialStorageService) {
+        this(materialStorageService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public MaterialStorageApiController(MaterialStorageService materialStorageService,
+                                        application.ScopedSourceGate gate) {
         this.materialStorageService = materialStorageService;
+        this.gate = gate;
     }
 
     /**
@@ -46,11 +55,20 @@ public class MaterialStorageApiController {
      * successful account-material sync the read fails instead of presenting an empty inventory.
      */
     @GetMapping(path = "/materials", produces = MediaType.APPLICATION_JSON_VALUE)
-    public MaterialStorageResponse materialStorage(HttpServletRequest request) throws SQLException {
-        List<MaterialStorageResponse.MaterialCategoryDto> categories =
-                toCategories(materialStorageService.getMaterialStorage(RequestAccountContext.scopeOf(request)));
-
-        return new MaterialStorageResponse(categories.size(), categories);
+    public org.springframework.http.ResponseEntity<MaterialStorageResponse> materialStorage(
+            HttpServletRequest request) throws SQLException {
+        var scope = RequestAccountContext.scopeOf(request);
+        var read = application.ScopedSourceGate.through(gate, scope, repo.AccountSyncStateRepository.MATERIALS,
+                () -> materialStorageService.getMaterialStorage(scope));
+        var freshness = gate == null ? null : web.dto.AccountSourceFreshnessDto.of(read);
+        if (!read.hasData()) {
+            // Never published: pending, not an inventory of zeros.
+            return org.springframework.http.ResponseEntity.accepted()
+                    .body(new MaterialStorageResponse(null, null, freshness));
+        }
+        List<MaterialStorageResponse.MaterialCategoryDto> categories = toCategories(read.data());
+        return org.springframework.http.ResponseEntity.ok(
+                new MaterialStorageResponse(categories.size(), categories, freshness));
     }
 
     /** Field-for-field copy, preserving the service's grouping and order; no regrouping or sorting. */

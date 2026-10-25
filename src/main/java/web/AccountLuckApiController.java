@@ -22,16 +22,29 @@ import java.util.List;
 public class AccountLuckApiController {
     private final AccountLuckService luckService;
 
+    private final application.ScopedSourceGate gate;
+
     public AccountLuckApiController(AccountLuckService luckService) {
+        this(luckService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AccountLuckApiController(AccountLuckService luckService, application.ScopedSourceGate gate) {
         this.luckService = luckService;
+        this.gate = gate;
     }
 
     @GetMapping(path = "/luck", produces = MediaType.APPLICATION_JSON_VALUE)
     public AccountLuckResponse luck(HttpServletRequest request)
             throws SQLException {
         if (!request.getParameterMap().isEmpty()) throw new ApiValidationException("Account Luck accepts no query parameters");
-        AccountLuckService.AccountLuckStatus status = luckService.getStatus(RequestAccountContext.scopeOf(request))
-                .orElseThrow(AccountLuckNotSyncedException::new);
+        var scope = RequestAccountContext.scopeOf(request);
+        var read = application.ScopedSourceGate.through(gate, scope, repo.AccountSyncStateRepository.LUCK,
+                () -> luckService.getStatus(scope));
+        // Never published (or no stored row): the existing not-synced answer, never zero Luck.
+        if (!read.hasData() || read.data().isEmpty()) throw new AccountLuckNotSyncedException();
+        AccountLuckService.AccountLuckStatus status = read.data().get();
+        var freshness = gate == null ? null : web.dto.AccountSourceFreshnessDto.of(read);
         var progress = status.progress();
         List<AccountLuckResponse.TargetDto> targets = List.of(
                 target("PLUS_5", status.targets().get(0)),
@@ -41,7 +54,7 @@ public class AccountLuckApiController {
                 progress.currentThreshold(),
                 progress.nextThreshold() == null ? null : progress.magicFindPercent() + 1,
                 progress.nextThreshold(), progress.remainingToNext(), progress.remainingToCap(),
-                status.capThreshold(), status.fetchedAt(), targets);
+                status.capThreshold(), status.fetchedAt(), targets, freshness);
     }
 
     private static AccountLuckResponse.TargetDto target(String kind, AccountLuckService.Target target) {

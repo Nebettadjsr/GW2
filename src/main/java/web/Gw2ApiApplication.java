@@ -153,7 +153,8 @@ public class Gw2ApiApplication {
                 tradingPostRefreshCoordinator,
                 tasks,
                 Clock.systemUTC(),
-                Duration.ofMillis(accountMaxAgeMs)).withScopedRefresh(scopedAccountRefreshCoordinator);
+                Duration.ofMillis(accountMaxAgeMs)).withScopedRefresh(scopedAccountRefreshCoordinator)
+                .withCharacterRoster(scope -> new repo.CharacterRepository().loadAllCharacterNames(scope));
     }
 
     /**
@@ -306,6 +307,13 @@ public class Gw2ApiApplication {
     @Bean
     public AccountAccessService accountAccessService(AccountProofPort proof, AccountSessions sessions) {
         return new AccountAccessService(proof, sessions);
+    }
+
+    /** Source-state handling for the keyless account reads (STORY-API-011). */
+    @Bean
+    public application.ScopedSourceGate scopedSourceGate(
+            @Value("${gw2.account-data.max-age-ms:900000}") long accountMaxAgeMs) {
+        return application.ScopedSourceGate.database(Clock.systemUTC(), Duration.ofMillis(accountMaxAgeMs));
     }
 
     /** The transport rules the session routes and the account guard must apply identically. */
