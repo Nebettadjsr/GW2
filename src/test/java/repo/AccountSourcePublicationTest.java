@@ -69,6 +69,10 @@ class AccountSourcePublicationTest {
     @AfterEach
     void tearDown() throws Exception {
         if (admin == null) return;
+        if (!admin.getAutoCommit()) {
+            admin.rollback();
+            admin.setAutoCommit(true);
+        }
         try (Statement s = admin.createStatement()) {
             s.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
         } finally {
