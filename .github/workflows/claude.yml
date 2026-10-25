@@ -46,6 +46,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - uses: actions/setup-java@v5
         with:
@@ -88,6 +89,8 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$ISSUE_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo 'Enter an issue number.' >&2; exit 1; }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" > "$RUNNER_TEMP/claude-issue.json"
           jq -e '.state == "open" and (has("pull_request") | not)' "$RUNNER_TEMP/claude-issue.json" >/dev/null || {
             echo 'The number must identify an open issue, not a PR.' >&2
@@ -97,6 +100,10 @@ jobs:
             git check-ref-format --branch "$EXISTING_BRANCH"
             git fetch origin "$EXISTING_BRANCH"
             git switch -c "$EXISTING_BRANCH" FETCH_HEAD
+            # Include merged prerequisites and the current workflow before Claude starts.
+            # A conflict stops preparation before any model usage is consumed.
+            git fetch origin master
+            git merge origin/master --no-edit
             branch_name="$EXISTING_BRANCH"
             echo 'existing_pr=true' >> "$GITHUB_OUTPUT"
           else

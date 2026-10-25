@@ -191,6 +191,8 @@ def rework_reason(pr: dict, issue: dict, comments: list[dict], checks: list[dict
             or not pr.get("head", {}).get("ref", "").startswith(f"story/issue-{issue['number']}-run-")
             or re.search(r"^Migration status:\s*BLOCKED\b", issue.get("body") or "", re.MULTILINE)):
         return None
+    if pr.get("mergeable_state") == "behind":
+        return "story branch needs current master before the required checks can satisfy protection"
     state = review_state_for_head(comments, pr["head"]["sha"]) or {}
     if state.get("status") == "completed" and (
             state.get("has_any_findings") is True or state.get("has_unresolved_findings") is True):
