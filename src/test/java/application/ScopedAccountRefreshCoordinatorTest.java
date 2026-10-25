@@ -46,6 +46,7 @@ class ScopedAccountRefreshCoordinatorTest {
     /** key -> proof; a key absent from the map is rejected as invalid. */
     private final Map<String, AccountProof> keys = new ConcurrentHashMap<>();
     private final Gateway gateway = new Gateway();
+    private final java.util.concurrent.atomic.AtomicInteger fetcherRequests = new java.util.concurrent.atomic.AtomicInteger();
     private final ScopedAccountRefreshCoordinator coordinator = new ScopedAccountRefreshCoordinator(
             new AccountRefreshService(gateway), new BackgroundTaskServiceTasks(service),
             new AccountAccessService(key -> {
@@ -53,7 +54,10 @@ class ScopedAccountRefreshCoordinatorTest {
                 if (proof == null) throw new InvalidCredentialException("rejected");
                 return proof;
             }, sessions),
-            key -> url -> (JsonNode) TextNode.valueOf(key));
+            key -> url -> {
+                fetcherRequests.incrementAndGet();
+                return (JsonNode) TextNode.valueOf(key);
+            });
 
     @AfterEach
     void close() {
@@ -161,19 +165,82 @@ class ScopedAccountRefreshCoordinatorTest {
 
     @Test
     void failureMetadataIsSanitizedAndOtherSourcesStillCommit() throws Exception {
-        AccountSessions.Issued a = session(A, "secret-key-value", WIDE);
-        gateway.failSource = AccountSyncStateRepository.BANK;
-        var admitted = admit(a, "secret-key-value", AccountSyncStateRepository.BANK,
-                AccountSyncStateRepository.CHARACTERS);
+        java.util.logging.Logger taskLog = java.util.logging.Logger.getLogger(BackgroundTaskService.class.getName());
+        StringBuilder logged = new StringBuilder();
+        java.util.logging.Handler capture = new java.util.logging.Handler() {
+            @Override public void publish(java.util.logging.LogRecord record) {
+                logged.append(record.getMessage()).append(' ').append(java.util.Arrays.toString(record.getParameters()));
+                for (Throwable t = record.getThrown(); t != null; t = t.getCause()) {
+                    logged.append(' ').append(t);
+                    for (Throwable s : t.getSuppressed()) logged.append(' ').append(s);
+                    java.io.StringWriter w = new java.io.StringWriter();
+                    t.printStackTrace(new java.io.PrintWriter(w));
+                    logged.append(w);
+                }
+            }
+            @Override public void flush() {}
+            @Override public void close() {}
+        };
+        taskLog.addHandler(capture);
+        try {
+            AccountSessions.Issued a = session(A, "secret-key-value", WIDE);
+            gateway.failSource = AccountSyncStateRepository.BANK;
+            var admitted = admit(a, "secret-key-value", AccountSyncStateRepository.BANK,
+                    AccountSyncStateRepository.CHARACTERS);
+            awaitTerminal(admitted.taskId());
+
+            assertEquals(List.of("A:BANK:secret-key-value", "A:CHARACTERS:secret-key-value"), gateway.callsFor(A));
+            var failure = coordinator.lastFailure(AccountScope.of(A)).orElseThrow();
+            var snapshot = service.find(admitted.taskId()).orElseThrow();
+            assertEquals("ACCOUNT_SYNC", snapshot.operation());
+
+            // The complete retained failure, including its chain and stack trace text.
+            Throwable retained = snapshot.failure();
+            assertNotNull(retained);
+            assertNull(retained.getCause());
+            assertEquals(0, retained.getSuppressed().length);
+            java.io.StringWriter trace = new java.io.StringWriter();
+            retained.printStackTrace(new java.io.PrintWriter(trace));
+            String everything = failure + " " + snapshot + " " + trace + " " + logged;
+            for (String secret : List.of("secret-key-value", "upstream-body-secret", "cause-secret-text",
+                    "suppressed-secret-text")) {
+                assertFalse(everything.contains(secret), "leaked " + secret);
+            }
+            assertTrue(logged.length() > 0, "the task boundary must still log the (sanitized) failure");
+            assertFalse(coordinator.isActive(AccountScope.of(A)));
+        } finally {
+            taskLog.removeHandler(capture);
+        }
+    }
+
+    @Test
+    void characterSourceNeedsInventoriesBecauseBagsAndEquipmentArePublished() {
+        keys.put("chars-only", new AccountProof(A, Set.of(AccountGrant.ACCOUNT, AccountGrant.CHARACTERS), Set.of(), null));
+        AccountSessions.Issued session = sessions.establish(keys.get("chars-only"));
+
+        assertEquals(ScopedAccountRefreshCoordinator.Reason.INSUFFICIENT_GRANTS,
+                assertThrows(ScopedAccountRefreshCoordinator.Rejected.class,
+                        () -> admit(session, "chars-only", AccountSyncStateRepository.CHARACTERS)).reason());
+
+        assertTrue(gateway.calls.isEmpty());
+        assertEquals(0, fetcherRequests.get(), "no source fetch may have happened");
+        assertFalse(coordinator.isActive(AccountScope.of(A)));
+    }
+
+    @Test
+    void observationEnforcesEndpointRestrictionsNotJustGrantNames() throws Exception {
+        AccountSessions.Issued a = session(A, "key-a", WIDE);
+        var admitted = admit(a, "key-a", AccountSyncStateRepository.BANK);
         awaitTerminal(admitted.taskId());
 
-        assertEquals(List.of("A:BANK:secret-key-value", "A:CHARACTERS:secret-key-value"), gateway.callsFor(A));
-        var failure = coordinator.lastFailure(AccountScope.of(A)).orElseThrow();
-        assertFalse(failure.toString().contains("secret-key-value"));
-        var snapshot = service.find(admitted.taskId()).orElseThrow();
-        assertEquals("ACCOUNT_SYNC", snapshot.operation());
-        assertFalse(snapshot.toString().replace(snapshot.failure().toString(), "").contains("secret-key-value"));
-        assertFalse(coordinator.isActive(AccountScope.of(A)));
+        // Same GUID, same grants, but a replacement key limited to the materials endpoint.
+        AccountContext materialsOnly = new AccountContext(A, WIDE, Set.of("/v2/account/materials"),
+                a.context().accessContext(), a.context().expiresAt());
+        assertTrue(coordinator.observe(materialsOnly, admitted.taskId()).isEmpty());
+        assertTrue(coordinator.observe(a.context(), admitted.taskId()).isPresent());
+        AccountContext bankToo = new AccountContext(A, WIDE, Set.of("/v2/account/bank"),
+                a.context().accessContext(), a.context().expiresAt());
+        assertTrue(coordinator.observe(bankToo, admitted.taskId()).isPresent());
     }
 
     @Test
@@ -225,7 +292,13 @@ class ScopedAccountRefreshCoordinatorTest {
                 started.countDown();
                 release.await(5, TimeUnit.SECONDS);
             }
-            if (source.equals(failSource)) throw new IllegalStateException("upstream boom");
+            if (source.equals(failSource)) {
+                IllegalStateException failure = new IllegalStateException(
+                        "Unrecognized token 'upstream-body-secret' secret-key-value",
+                        new RuntimeException("cause-secret-text"));
+                failure.addSuppressed(new RuntimeException("suppressed-secret-text"));
+                throw failure;
+            }
         }
 
         @Override public void syncAccountBank(AccountScope s, AccountSync.AuthFetcher f) throws Exception {

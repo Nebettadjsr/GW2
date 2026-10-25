@@ -123,6 +123,33 @@ public class ScopedAccountRefreshCoordinator {
         }
     }
 
+    /**
+     * The only failure that leaves a worker: fixed text, no cause, no suppressed exceptions, so the
+     * task facility's log line and retained failure cannot disclose upstream text or credentials.
+     */
+    static class SanitizedRefreshFailure extends Exception {
+        SanitizedRefreshFailure() {
+            super("Account data refresh failed; upstream details are withheld", null, false, true);
+        }
+    }
+
+    /**
+     * Same disclosure rules, kept an {@link java.sql.SQLException} so the task facility's existing
+     * data-store classification of the retained failure still applies.
+     */
+    static final class SanitizedDataStoreFailure extends java.sql.SQLException {
+        SanitizedDataStoreFailure() {
+            super("Account data refresh failed; data store details are withheld");
+        }
+    }
+
+    private static Exception sanitize(Exception raw) {
+        for (Throwable t = raw; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof java.sql.SQLException) return new SanitizedDataStoreFailure();
+        }
+        return new SanitizedRefreshFailure();
+    }
+
     /** Per-account coordination state; guarded by the coordinator's monitor. */
     private static final class Run {
         final Set<String> outstanding = new LinkedHashSet<>();
@@ -272,7 +299,11 @@ public class ScopedAccountRefreshCoordinator {
                         run.lastRefreshed = Set.copyOf(batch);
                         run.lastFailure = null;
                     }
-                } catch (Exception failure) {
+                } catch (Exception raw) {
+                    // The raw exception can carry upstream response text (malformed JSON snippets,
+                    // error payloads) and arbitrary causes. Nothing from it may reach the task
+                    // facility, which logs and retains whatever the body throws.
+                    Exception failure = sanitize(raw);
                     synchronized (this) {
                         run.lastFailure = new CalculationFreshness.RefreshFailure(
                                 CalculationFreshness.RefreshKind.ACCOUNT, run.taskId,
@@ -313,11 +344,21 @@ public class ScopedAccountRefreshCoordinator {
     public synchronized Optional<TaskRecord> observe(AccountContext context, String taskId) {
         for (TaskRecord record : records) {
             if (record.taskId().equals(taskId) && record.accountId().equalsIgnoreCase(context.accountId())
-                    && context.grants().containsAll(record.requiredGrants())) {
+                    && context.grants().containsAll(record.requiredGrants())
+                    && permitsEverySource(context, record.sources())) {
                 return Optional.of(record);
             }
         }
         return Optional.empty();
+    }
+
+    /** Grant names alone are not enough: endpoint restrictions of the observer apply per source. */
+    private static boolean permitsEverySource(AccountContext context, Set<String> sources) {
+        for (String source : sources) {
+            AccountOperation operation = operationFor(source);
+            if (operation == null || !context.permits(operation)) return false;
+        }
+        return true;
     }
 
     public synchronized Set<String> outstandingSources(AccountScope scope) {

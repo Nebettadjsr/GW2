@@ -1,6 +1,6 @@
 package web;
 
-import application.TradingPostPriceRefreshService;
+import application.TradingPostRefreshCoordinator;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import web.dto.SyncTaskAcceptedResponse;
-import web.task.BackgroundTaskService;
+import web.task.TaskAlreadyRunningException;
 
 import java.net.URI;
 import java.util.Map;
@@ -22,8 +22,9 @@ import java.util.Map;
  * tasks with status reporting, and both variants fetch quotes from the rate-limited commerce
  * endpoint in batches. No duration was measured or assumed to reach that choice.
  *
- * <p>Thin by construction: it validates the request, submits one existing use-case method as the
- * task body ({@link PriceRefreshVariant#bodyOf}), and returns the identifier. Which items are
+ * <p>Thin by construction: it validates the request, hands the demand to the shared
+ * {@link TradingPostRefreshCoordinator} (which runs one existing use-case method as the task body),
+ * and returns the identifier. Which items are
  * relevant ({@code sync.tp.relevance.CraftingProfitItemCollector}/{@code DiscoveryItemCollector},
  * including their ten-minute freshness filter), the batching, the quote fetching and the
  * {@code tp_prices} persistence all stay where they already are, behind
@@ -56,13 +57,15 @@ public class PriceRefreshApiController {
     /** This route's path, also used in its validation message. */
     static final String PRICE_REFRESH_PATH = "/api/prices/refresh";
 
-    private final TradingPostPriceRefreshService priceRefreshService;
-    private final BackgroundTaskService taskService;
+    private final TradingPostRefreshCoordinator coordinator;
 
-    public PriceRefreshApiController(TradingPostPriceRefreshService priceRefreshService,
-                                     BackgroundTaskService taskService) {
-        this.priceRefreshService = priceRefreshService;
-        this.taskService = taskService;
+    /**
+     * @param coordinator the one shared Trading Post demand coordinator (STORY-SYNC-006): manual
+     *                    requests are admitted through the same path as the calculation's own
+     *                    demands, so they coalesce with them and recheck uncovered ids
+     */
+    public PriceRefreshApiController(TradingPostRefreshCoordinator coordinator) {
+        this.coordinator = coordinator;
     }
 
     /**
@@ -93,7 +96,13 @@ public class PriceRefreshApiController {
         PriceRefreshVariant variant = PriceRefreshVariant.ofRequestValue(
                 request == null ? null : request.get(PriceRefreshVariant.VARIANT_FIELD));
 
-        String taskId = taskService.submit(variant.operation(), variant.bodyOf(priceRefreshService));
+        TradingPostRefreshCoordinator.Admission admission = coordinator.require(variant.coordinatorVariant());
+        if (!TradingPostRefreshCoordinator.REUSE_ADMITTED.equals(admission.reuse())) {
+            // The variant's run is unfinished. The demand is kept for one recheck pass of that run,
+            // but this request started nothing and is told which task to follow.
+            throw new TaskAlreadyRunningException(variant.operation(), admission.taskId());
+        }
+        String taskId = admission.taskId();
         String statusPath = SyncTaskApiController.statusPath(taskId);
 
         return ResponseEntity.accepted()

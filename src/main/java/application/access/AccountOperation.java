@@ -32,8 +32,14 @@ public enum AccountOperation {
     /** Account recipe unlocks, stored from {@code /v2/account/recipes}. */
     RECIPES_READ(Set.of(AccountGrant.ACCOUNT, AccountGrant.UNLOCKS), Set.of("/v2/account/recipes")),
 
-    /** The character roster and every character payload, stored from {@code /v2/characters}. */
-    CHARACTERS_READ(Set.of(AccountGrant.ACCOUNT, AccountGrant.CHARACTERS), Set.of("/v2/characters")),
+    /**
+     * The character roster and every character payload, stored from {@code /v2/characters}. The
+     * published payload includes bags and equipment, which the API only returns to keys that also
+     * hold {@code inventories} (https://wiki.guildwars2.com/wiki/API:2/tokeninfo), so that grant is
+     * required next to {@code characters}.
+     */
+    CHARACTERS_READ(Set.of(AccountGrant.ACCOUNT, AccountGrant.CHARACTERS, AccountGrant.INVENTORIES),
+            Set.of("/v2/characters")),
 
     /** A full account refresh: every account source this application publishes. */
     ACCOUNT_REFRESH(Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES, AccountGrant.CHARACTERS,

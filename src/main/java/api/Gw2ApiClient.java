@@ -53,7 +53,18 @@ public final class Gw2ApiClient {
                 .header("Authorization", "Bearer " + apiKey.trim())
                 .GET()
                 .build();
-        return sendJsonStrict(req, url);
+        HttpResponse<String> res = CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
+        // Unlike sendJsonStrict, nothing of the response body is printed or carried into an
+        // exception: only the request target and the status code, which classify the failure safely.
+        if (!HttpStatus.isOkOrPartial(res.statusCode())) {
+            throw new RuntimeException("GET " + url + " failed: HTTP " + res.statusCode());
+        }
+        try {
+            return MAPPER.readTree(res.body());
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            // Jackson's message quotes the offending payload text; drop it and the cause.
+            throw new IOException("GET " + url + " returned malformed JSON");
+        }
     }
 
     // -----------------------
