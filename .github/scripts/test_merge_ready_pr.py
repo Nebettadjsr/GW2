@@ -31,6 +31,11 @@ def fixtures():
 
 
 class MergeGateTest(unittest.TestCase):
+    def test_branch_behind_master_is_queued_for_preparation_and_fresh_checks(self):
+        pr, issue, comments, checks, _ = fixtures()
+        pr["mergeable_state"] = "behind"
+        self.assertIn("current master", gate.rework_reason(pr, issue, comments, checks, REPO))
+
     def test_current_review_failure_requeues_but_old_or_running_review_does_not(self):
         pr, issue, comments, checks, _ = fixtures()
         comments[0]["body"] = comments[0]["body"].replace('"has_any_findings": false', '"has_any_findings": true')

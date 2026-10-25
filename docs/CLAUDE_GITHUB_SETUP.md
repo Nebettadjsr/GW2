@@ -25,6 +25,11 @@ the current commit has a completed Codex finding, failed CI, or a run report
 listing unresolved gaps or remaining checks. The next button press resumes that
 PR. Old-commit failures cannot requeue newer work. Java 25 and disposable
 PostgreSQL are supplied so Claude can run the required isolated database tests.
+Before reworking an existing PR, preparation merges current `master` into its
+branch, including merged prerequisites and workflow changes. A merge conflict
+stops preparation before Claude starts and requires a supervised resolution.
+An otherwise clean PR behind `master` is also queued for this preparation and
+fresh checks when branch protection requires an up-to-date branch.
 Claude writes a temporary run report with
 its changes, checks, and gaps. The workflow places it in a new PR or adds it
 as a comment on a rework PR; a missing report is shown explicitly for review.
