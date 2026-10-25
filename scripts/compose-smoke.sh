@@ -18,18 +18,50 @@ TIMEOUT="${GW2_SMOKE_TIMEOUT_SECONDS:-300}"
 # Explicit settings: ephemeral frontend port, loopback, throwaway password, no inherited .env values.
 export GW2_STACK_HTTP_PORT='' GW2_STACK_HTTP_BIND=127.0.0.1 GW2_STACK_DB_PASSWORD="smoke-$RANDOM$RANDOM"
 unset DATABASE_URL DATABASE_USER DATABASE_PASSWORD GW2_API_KEY
-dc() { docker compose -p "$PROJECT" "$@"; }
+dc() { docker compose -p "$PROJECT" -f compose.yaml -f "$WORK/smoke.yaml" "$@"; }
 
 if [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT")" ]; then
   echo "Project $PROJECT already exists; choose another GW2_SMOKE_ID" >&2; exit 1
 fi
+for kind in network volume; do
+  if [ -n "$(docker "$kind" ls -q --filter "label=com.docker.compose.project=$PROJECT")" ]; then
+    echo "Project $PROJECT has existing $kind resources; choose another GW2_SMOKE_ID" >&2; exit 1
+  fi
+done
+if docker network inspect "${PROJECT}_default" >/dev/null 2>&1; then
+  echo "Network ${PROJECT}_default already exists" >&2; exit 1
+fi
+for volume in "${PROJECT}_gw2-postgres" "${PROJECT}_gw2-icons"; do
+  if docker volume inspect "$volume" >/dev/null 2>&1; then
+    echo "Volume $volume already exists" >&2; exit 1
+  fi
+done
+for image in "$PROJECT-backend" "$PROJECT-frontend"; do
+  if docker image inspect "$image" >/dev/null 2>&1; then
+    echo "Image $image already exists" >&2; exit 1
+  fi
+done
+
+TEMP_ROOT=$(cd "${TMPDIR:-/tmp}" && pwd -P)
+WORK=$(mktemp -d "$TEMP_ROOT/gw2-cstack.XXXXXXXX")
+WORK=$(cd "$WORK" && pwd -P)
+[[ "$WORK" == "$TEMP_ROOT"/gw2-cstack.* ]] || { echo 'Unexpected temporary path' >&2; exit 1; }
 
 cleanup() {
   dc down -v --remove-orphans >/dev/null 2>&1 || true
   # Compose names built images <project>-<service>; the shared postgres image is never removed.
   docker rmi "$PROJECT-backend" "$PROJECT-frontend" >/dev/null 2>&1 || true
+  rm -rf "$WORK"
 }
 trap cleanup EXIT
+
+# The production stack keeps its normal scheduler. Only this disposable smoke defers upstream work.
+cat > "$WORK/smoke.yaml" <<'OVERRIDE'
+services:
+  backend:
+    environment:
+      GW2_GLOBAL_REFRESH_INITIAL_DELAY_MS: "86400000"
+OVERRIDE
 
 now_ms() { date +%s%3N; }
 curl() { command curl --connect-timeout 2 --max-time 5 "$@"; }
@@ -55,9 +87,8 @@ check_stack() {
     [ -z "$(docker port "$(dc ps -q "$s")")" ] || fail "$s must publish no host port"
   done
   expect "frontend published on loopback" "$(dc port frontend 8080 | sed 's/:[0-9]*$//')" 127.0.0.1
-  expect "GET /" "$(curl -s -o /tmp/gw2-cstack-$ID.html -w '%{http_code}' "$BASE/")" 200
-  grep -q '<div id="app"' "/tmp/gw2-cstack-$ID.html" || fail "index.html is not the application shell"
-  rm -f "/tmp/gw2-cstack-$ID.html"
+  expect "GET /" "$(curl -s -o "$WORK/index.html" -w '%{http_code}' "$BASE/")" 200
+  grep -q '<div id="app"' "$WORK/index.html" || fail "index.html is not the application shell"
   expect "GET /crafting direct URL" "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/crafting")" 200
   expect "proxied global read /api/system/status" "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/system/status")" 200
   expect "keyless account read /api/account/bank" "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/account/bank")" 401

@@ -22,6 +22,8 @@ const browser = await chromium.launch({ executablePath: resolveBrowserPath(), he
 let failed = false
 try {
   const page = await browser.newPage()
+  const pageErrors = []
+  page.on('pageerror', (error) => pageErrors.push(error.name))
   page.setDefaultTimeout(TIMEOUT_MS)
   const origin = new URL(FRONTEND_URL).origin
   const apiResponses = []
@@ -47,11 +49,13 @@ try {
   if (foreign.length > 0) throw new Error(`API requests left the frontend origin: ${JSON.stringify(foreign)}`)
   const serverErrors = apiResponses.filter((r) => r.status >= 500)
   if (serverErrors.length > 0) throw new Error(`API responded 5xx: ${JSON.stringify(serverErrors)}`)
+  if (pageErrors.length > 0) throw new Error(`Browser page errors: ${pageErrors.join(', ')}`)
   console.log(`  ok   ${apiResponses.length} API responses, all same-origin, none 5xx (the app makes none before a key is entered)`)
 } catch (error) {
   failed = true
   console.error(`FAIL: ${error instanceof Error ? error.message : error}`)
 } finally {
-  await browser.close()
+  // Windows browser-driver cleanup can stall after the browser has already exited.
+  await Promise.race([browser.close(), new Promise((resolve) => setTimeout(resolve, 10_000))])
 }
 process.exit(failed ? 1 : 0)
