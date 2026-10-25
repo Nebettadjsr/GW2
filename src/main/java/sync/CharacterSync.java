@@ -132,6 +132,8 @@ public final class CharacterSync {
                         "Unreadable character detail for '" + name + "'; roster not published");
             }
 
+            requireConsistentDetail(name, info, cNode);
+
             payloads.add(new CharPayload(
                     info,
                     CharacterCraftingParser.parse(CharacterParser.craftingNode(cNode)),
@@ -182,6 +184,25 @@ public final class CharacterSync {
                     }
                     deleteStaleCharacters(tx, owner, runTs);
                 });
+    }
+
+    /**
+     * Rejects a detail response that cannot replace the requested character's last-good rows: one
+     * naming a different character, or one missing a section (a key without the matching
+     * permission omits it) that the parsers would otherwise read as "empty" and publish as deletion.
+     */
+    static void requireConsistentDetail(String requestedName, CharacterInfo info, JsonNode cNode) {
+        if (!requestedName.equals(info.name())) {
+            throw new IllegalStateException("Character detail for '" + requestedName
+                    + "' names '" + info.name() + "'; roster not published");
+        }
+        for (String section : new String[] {"crafting", "recipes", "bags", "equipment"}) {
+            JsonNode n = cNode.get(section);
+            if (n == null || !n.isArray()) {
+                throw new IllegalStateException("Character detail for '" + requestedName
+                        + "' lacks a '" + section + "' array; roster not published");
+            }
+        }
     }
 
     private static List<model.CharacterItemRow> characterItems(JsonNode cNode) {
