@@ -18,6 +18,7 @@ import { timerAlarm, useCraftingProfit, type RecoveryAlarm } from './useCrafting
 import { calculationKey, useProfitResolution, type CalculationInputs } from './useProfitResolution'
 import { useProfitTableView, type SortKey } from './useProfitTableView'
 import { useIngredientSearch } from './useIngredientSearch'
+import { hasStoredKey } from '@/api/accountSession'
 import { syncApi } from '@/api/syncApi'
 import type { SyncApi } from '@/api/syncApi'
 
@@ -43,6 +44,8 @@ const props = withDefaults(
 
 const profit = useCraftingProfit(props.api, {
   readTaskStatus: (statusUrl: string) => props.refreshApi.readTaskStatus(statusUrl),
+  startAccountRefresh: () => props.refreshApi.startProfitDataRefresh(),
+  hasKey: hasStoredKey,
   now: () => props.refreshClock?.now() ?? Date.now(),
   sleep: (milliseconds: number) =>
     props.refreshClock === null

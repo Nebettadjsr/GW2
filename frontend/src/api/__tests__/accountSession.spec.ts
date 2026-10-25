@@ -96,7 +96,7 @@ describe('key entry and retention', () => {
 
     expect(calls.slice(1).map((c) => [c.path, c.headers['X-GW2-API-Key'] ?? null])).toEqual([
       ['/api/sync/account', 'KEY-A'],
-      ['/api/crafting/profit', 'KEY-A'],
+      ['/api/crafting/profit', null],
       ['/api/account/materials', null]
     ])
     expect(calls.every((c) => !c.path.includes('KEY-A'))).toBe(true)
@@ -170,7 +170,7 @@ describe('lease renewal and context mismatch', () => {
     handler = (call) => {
       if (call.path === '/api/session') {
         if (call.headers['X-GW2-API-Key'] === 'KEY-B') return proof('ctx-b')
-        if (++proofsA === 1) return proof('ctx-a', new Date(Date.now() + 10_000).toISOString())
+        if (++proofsA === 1) return proof('ctx-a', new Date(Date.now() - 1_000).toISOString())
         return new Promise<Response>((resolve) => { release = resolve })
       }
       return json({})
@@ -239,16 +239,45 @@ describe('lease renewal and context mismatch', () => {
     expect(calls.filter((c) => c.path === '/api/account/bank')).toHaveLength(2)
   })
 
-  it('renews a lease close to expiry before sending the next request', async () => {
+  it('does not re-prove a still-live lease, even close to its expiry, and sends no key on a read', async () => {
+    handler = (call) => (call.path === '/api/session'
+      ? proof('ctx-1', new Date(Date.now() + 10_000).toISOString())
+      : json({}))
+    await connectKey('KEY-A')
+
+    await getJson('/account/bank')
+    await postJson('/crafting/profit', {})
+    await postJson('/crafting/discovery/resolution', {})
+
+    expect(calls.map((c) => c.path)).toEqual([
+      '/api/session', '/api/account/bank', '/api/crafting/profit', '/api/crafting/discovery/resolution'
+    ])
+    for (const call of calls.slice(1)) {
+      expect(call.headers['X-Account-Context']).toBe('ctx-1')
+      expect(call.headers['X-GW2-API-Key']).toBeUndefined()
+    }
+  })
+
+  it('sends the key only with an explicit account refresh trigger', async () => {
+    handler = (call) => (call.path === '/api/session' ? proof('ctx-1') : json({}))
+    await connectKey('KEY-A')
+
+    await postJson('/sync/account/crafting-profit', {})
+
+    expect(calls[1]?.headers['X-GW2-API-Key']).toBe('KEY-A')
+  })
+
+  it('renews an expired lease with the retained key before sending the next request', async () => {
     let session = 0
     handler = (call) => (call.path === '/api/session'
-      ? proof(`ctx-${++session}`, session === 1 ? new Date(Date.now() + 10_000).toISOString() : '2099-01-01T00:00:00Z')
+      ? proof(`ctx-${++session}`, session === 1 ? new Date(Date.now() - 1_000).toISOString() : '2099-01-01T00:00:00Z')
       : json({}))
     await connectKey('KEY-A')
 
     await getJson('/account/bank')
 
     expect(calls.map((c) => c.path)).toEqual(['/api/session', '/api/session', '/api/account/bank'])
+    expect(calls[2]?.headers['X-Account-Context']).toBe('ctx-2')
   })
 })
 
