@@ -282,10 +282,10 @@ Phase 4. The frontend needs stable backend APIs for backend-owned workflows. Sma
 implemented (STORY-INFRA-004), and global-only operations were restored
 (STORY-SYNC-007). The scoped account recovery chain is now integrated:
 validated access (#8), scoped persistence (#15), scoped refresh (#11) and HTTP
-integration (#12, PR #58) are merged. Browser credentials (#13, PR #61) complete
-the recovery path. Its branch passed a local Chrome/live-ArenaNet check: completed
+integration (#12, PR #58) and browser credentials (#13, PR #61) are merged and complete
+the recovery path. A local Chrome/live-ArenaNet check passed: completed
 full sync, selectors, loaded Profit, Bank/Materials, reload retention and disconnect.
-Final merge requires CI/review; this does not close the whole Phase 6 milestone.
+CI and exact-head Codex review passed; this does not close the whole Phase 6 milestone.
 Temporary unavailable-state issue #7 is superseded by #13. Normal scoped HTTP
 paths no longer reach legacy account_sync_state. UD-018 selects simple browser
 session retention without advanced credential hardening.
