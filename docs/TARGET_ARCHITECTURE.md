@@ -499,7 +499,7 @@ Review workflow and story disposition belong in the agent/planning documentation
 - **Multi-user persistence:** one shared database with shared global data and account-scoped data keyed by stable Guild Wars 2 account identity.
 - **Per-user GW2 API keys:** browser-held and supplied transiently when required; not durable server-side application data.
 - **Application identity/access:** validated GW2-key possession with bounded account sessions; section 8.1 and ADR-008. No separate application authentication infrastructure.
-- **Browser key storage/transport:** document-memory-only retention, explicit keyed requests and generation/context checks; section 8.2 and ADR-009.
+- **Browser key storage/transport:** simple sessionStorage retention, explicit backend requests and correct account switching; section 8.2 and UD-018 supersede ADR-009's memory-only choice.
 - **Global metadata checks:** backend-owned scheduled ID-list checks; implementation default six hours, configurable by environment.
 - **Trading Post prices:** globally shared on-demand freshness cache, ten-minute TTL; no full-catalog timer.
 - **Hosting portability:** no unnecessary provider-specific dependency.
