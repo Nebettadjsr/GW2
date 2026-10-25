@@ -73,7 +73,7 @@ import java.util.concurrent.atomic.AtomicLong;
 @Import(ApplicationBenchmarkHarness.Fixtures.class)
 abstract class ApplicationBenchmarkHarness {
 
-    static final String FIXTURE_VERSION = "perf-fixtures-1";
+    static final String FIXTURE_VERSION = "perf-fixtures-2";
     static final String ACCOUNT = "AAAAAAAA-1111-2222-3333-444444444444";
     static final String KEY = "perf-key";
     static final ObjectMapper JSON = new ObjectMapper();
@@ -119,7 +119,12 @@ abstract class ApplicationBenchmarkHarness {
 
         @Bean @Primary
         ScopedAccountRefreshCoordinator perfScopedCoordinator(BackgroundTasks tasks, AccountAccessService access) {
-            return new ScopedAccountRefreshCoordinator(new AccountRefreshService(), tasks, access,
+            AccountRefreshService refresh = new AccountRefreshService(new sync.AccountRefreshGateway() {
+                @Override protected JsonNode fetchItemMetadata(java.util.List<Integer> ids) {
+                    return JSON.createArrayNode(); // Synthetic metadata edge: never call ArenaNet.
+                }
+            });
+            return new ScopedAccountRefreshCoordinator(refresh, tasks, access,
                     key -> url -> upstream(url.substring(url.indexOf("/v2/") + 3)));
         }
 

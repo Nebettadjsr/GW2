@@ -18,6 +18,11 @@ export interface SyncApi {
   readTaskStatus(statusUrl: string): Promise<SyncTaskStatus>
 }
 
+/** Refreshes only consumed account Luck; needs no Bank, character or recipe permission. */
+export function startLuckRefresh(): Promise<SyncTaskAccepted> {
+  return postJson<SyncTaskAccepted>('/sync/account/luck', {})
+}
+
 /** Code used when the backend advertised a status location this client will not follow. */
 export const UNUSABLE_STATUS_URL_CODE = 'UNUSABLE_STATUS_URL'
 

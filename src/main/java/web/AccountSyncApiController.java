@@ -64,6 +64,9 @@ public class AccountSyncApiController {
             AccountSyncStateRepository.BANK, AccountSyncStateRepository.MATERIALS,
             AccountSyncStateRepository.RECIPES, AccountSyncStateRepository.CHARACTERS));
 
+    /** Luck's single source: the narrow recovery for a never-published Luck, needing no Bank/characters/recipes grants. */
+    private static final Set<String> LUCK_SOURCES = new LinkedHashSet<>(List.of(AccountSyncStateRepository.LUCK));
+
     /** How long a demand behind a narrower active run waits for it before it is reported as not covered. */
     static final java.time.Duration RECHECK_BOUND = java.time.Duration.ofSeconds(5);
     private static final int WAITING_RETRY_SECONDS = 10;
@@ -96,6 +99,13 @@ public class AccountSyncApiController {
                                                     @RequestBody(required = false) Map<String, Object> body) {
         SyncRequestValidation.rejectAnyRequestField("/api/sync/account/crafting-profit", body);
         return admit(request, PROFIT_SOURCES);
+    }
+
+    @PostMapping(path = "/account/luck", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> syncAccountLuck(HttpServletRequest request,
+                                             @RequestBody(required = false) Map<String, Object> body) {
+        SyncRequestValidation.rejectAnyRequestField("/api/sync/account/luck", body);
+        return admit(request, LUCK_SOURCES);
     }
 
     private ResponseEntity<?> admit(HttpServletRequest request, Set<String> sources) {
