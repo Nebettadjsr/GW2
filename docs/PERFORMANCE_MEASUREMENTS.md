@@ -50,8 +50,7 @@ gate (informational/nonblocking separation; its behavior assertions are unchange
 The JSON carries `schemaVersion`, `commit`, `timestamp`, `fixtureVersion`, `environment`, and per workload
 the metrics (`value`, `unit`, `boundary`, or `value: null` with `unavailableReason`), limits and diagnostics.
 Compare two runs only when `schemaVersion`, `fixtureVersion`, the sizes and the environment match.
-`measurementScope` is `application-process`; container CPU/memory, startup-to-readiness and image size are
-not measured until container infrastructure exists and must be reported under a distinct scope.
+`measurementScope` is `application-process`; container figures are a separate report (see Container measurements below).
 
 ## KPIs and limits
 
@@ -116,6 +115,50 @@ Controlled checks: `python -m unittest discover -s .github/scripts` (`test_perfo
 compatible/incompatible/absent history, unavailable KPIs, missing and corrupt reports, and the workflow's
 trigger and nonblocking configuration).
 
-## Container measurements (STORY-INFRA-006)
+## Container measurements (STORY-PERF-007)
 
-Separate from the application-process measurements above. `scripts/container-smoke.sh` prints `image_bytes`, `build_ms` and `startup_to_readiness_ms` (container start to the first 200 from `/api/system/status`, new and reused schema). They are observations from one run on a shared machine, not limits or gates, and are not part of the informational application report.
+Scope `container-stack`, separate from the application-process report above and never merged with it.
+`scripts/container_measure.py` builds and starts `compose.yaml` under its own unique project
+`gw2-cmeasure-<id>` on an ephemeral loopback port with a throwaway database password and an isolated, disposable
+PostgreSQL volume; it never reads a maintainer `.env`, `DATABASE_*` or `GW2_API_KEY`, and on exit runs
+`compose down -v` for that project and removes only its two built images. It refuses to start if the project already has
+containers, networks or volumes, or any expected-name network, volume or built image (including unlabelled leftovers).
+
+```
+python3 scripts/container_measure.py --output-dir container-perf-out [--id <lowercase-id>] [--idle-seconds 20] [--traffic-seconds 30] [--strict]
+```
+
+Needs Docker with Compose v2 and Python 3 (no packages). Output: `container-resources.json` (schema `container-1`,
+workload `container-workload-2`) and `container-resources.md`. Without `--strict` the exit status is 0 even when a
+measurement fails; failures appear in `diagnostics`. `.github/scripts/performance_summary.py --container` renders it.
+
+Recorded: actual image ids and Docker-reported sizes per service (application image ids are provenance and are *not*
+a comparison condition; the PostgreSQL image id and application runtime base layers are), one `up --build --wait` time to all-services-healthy (includes the
+image build, so cache state changes it; per-service readiness is not reported), idle and `http_global` Docker stats
+peaks/means (CPU, memory) per service, client-side request count, errors, p95, throughput and body bytes for sequential
+GETs of `/`, `/api/system/status` and `/api/crafting/ingredient-search?query=wood` through the frontend proxy, and
+post-traffic `pg_database_size` and connection count from inside the postgres container.
+
+Limits: CPU is Docker's percent of one core (above 100 on several cores) and memory is `docker stats` usage; both are
+~1 s-spaced point samples taken by an `docker stats --no-stream` call that takes seconds, so "peak" is an observed
+sample maximum and only a few samples exist per window. A separate sequential traffic thread keeps issuing requests while
+the observer collects Docker samples, so workload CPU is not sampled only in request-free pauses. Version 1 used paused
+traffic and is incompatible with this corrected workload. The observed window can include a final sample/request drain.
+The client shares the host with the stack. Network and block
+I/O counters and per-service readiness are not measured. Account sync, crafting profit/discovery and live-upstream
+workloads are not measured in container mode (no GW2 key, no proof bypass); the application-process fixture reports
+cover those. A global-read workload is not evidence about the seven-second crafting requirement, container resource limits
+are not set, and nothing here is a hosted-deployment or capacity statement. Runs on shared runners are noisy.
+
+Workflow: the same Performance job runs the container step after the application steps, with its own
+`continue-on-error` steps and artifact `container-performance-<commit>-<run id>` (`container-resources.json/.md`,
+`container.log`, `summary.md`, `metadata.json`) and a "Container performance" job-summary section. Deltas appear only
+against the latest earlier completed `master` container report with identical `schemaVersion`, `workloadVersion`,
+`measurementScope` and `environment` (engine/OS/architecture/CPU/memory, workload parameters, PostgreSQL image id and runtime base layers);
+otherwise the reason is stated. Failure, missing report or an unavailable metric never fails CI or a merge.
+The workflow uses `--strict` inside a nonblocking step so a failed measurement has an explicit failure outcome.
+Runtime base layers come from actual image inspection, excluding the two application filesystem layers in each current
+Dockerfile (backend: user/directory setup and jar; frontend: template and dist). Update this boundary if those Dockerfiles
+add or remove filesystem layers; unknown runtime metadata prevents comparison.
+
+Earlier ad-hoc observations: `scripts/container-smoke.sh` prints `image_bytes`, `build_ms` and `startup_to_readiness_ms` for a single image; they are not part of the informational reports.

@@ -1,4 +1,4 @@
-# Informational application performance report (STORY-PERF-006, docs/PERFORMANCE_MEASUREMENTS.md).
+# Informational application and container performance report (STORY-PERF-006/007, docs/PERFORMANCE_MEASUREMENTS.md).
 #
 # Never a gate: every measuring step is continue-on-error, the job is continue-on-error, and
 # the summary script always exits 0. This workflow is not one of the required checks listed in
@@ -87,6 +87,8 @@ jobs:
           if [ -z "$run_id" ]; then echo "no earlier completed master performance run"; exit 0; fi
           gh run download "$run_id" --pattern 'application-performance-*' --dir previous || true
           find previous -name application-resources.json | head -n 1 > previous/path.txt
+          gh run download "$run_id" --pattern 'container-performance-*' --dir previous-container || true
+          find previous-container -name container-resources.json 2>/dev/null | head -n 1 > previous/container-path.txt
 
       - name: Publish summary and metadata
         if: always()
@@ -111,5 +113,43 @@ jobs:
         with:
           name: application-performance-${{ github.sha }}-${{ github.run_id }}
           path: perf-out
+          if-no-files-found: warn
+          retention-days: 30
+
+      # Container section (STORY-PERF-007): the owned three-service Compose stack under its own unique
+      # project; the script removes only that project's containers, volumes and images. Never a gate.
+      - name: Run container measurement
+        id: container
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mkdir -p container-perf-out
+          python3 scripts/container_measure.py --strict --output-dir container-perf-out \
+            --id "r${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --commit "$GITHUB_SHA" \
+            --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2>&1 | tee container-perf-out/container.log
+
+      - name: Publish container summary and metadata
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p container-perf-out
+          prev=$(cat previous/container-path.txt 2>/dev/null || true)
+          args=(--container --report container-perf-out/container-resources.json
+                --summary-out container-perf-out/summary.md --metadata-out container-perf-out/metadata.json
+                --commit "$GITHUB_SHA" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                --event "$GITHUB_EVENT_NAME"
+                --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+                --outcome "${{ steps.container.outcome }}" --setup-log container-perf-out/container.log)
+          if [ -n "$prev" ]; then args+=(--previous "$prev"); fi
+          python3 .github/scripts/performance_summary.py "${args[@]}" || true
+          cat container-perf-out/summary.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload container performance reports
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-performance-${{ github.sha }}-${{ github.run_id }}
+          path: container-perf-out
           if-no-files-found: warn
           retention-days: 30
