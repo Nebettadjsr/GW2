@@ -20,12 +20,13 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.request
 from pathlib import Path
 
 SCHEMA_VERSION = "container-1"
-WORKLOAD_VERSION = "container-workload-1"
+WORKLOAD_VERSION = "container-workload-2"
 SERVICES = ("postgres", "backend", "frontend")
 ROOT = Path(__file__).resolve().parent.parent
 BUILT = ("backend", "frontend")
@@ -213,25 +214,46 @@ class Measurement:
         t0 = time.perf_counter()
         deadline = t0 + seconds
         next_sample = t0
-        while time.perf_counter() < deadline:
-            if traffic:
-                for url in traffic:
-                    code, size, ms = http_get(url)
-                    http["requests"] += 1
-                    key = f"{url.split('/', 3)[-1] or '/'}={code}"
-                    http["codes"][key] = http["codes"].get(key, 0) + 1
-                    if code != 200:
-                        http["errors"] += 1
-                    else:
-                        http["latency"].append(ms)
-                        http["bytes"] += size
-            if time.perf_counter() >= next_sample:
-                for svc, s in stats_sample(ids).items():
-                    if s:
-                        series[svc].append(s)
-                next_sample = time.perf_counter() + 1
-            elif not traffic:
-                time.sleep(0.2)
+        stop = threading.Event()
+        driver_errors = []
+        def drive():
+            try:
+                while not stop.is_set() and time.perf_counter() < deadline:
+                    for url in traffic:
+                        remaining = deadline - time.perf_counter()
+                        if stop.is_set() or remaining <= 0:
+                            return
+                        code, size, ms = http_get(url, timeout=min(10, remaining))
+                        http["requests"] += 1
+                        key = f"{url.split('/', 3)[-1] or '/'}={code}"
+                        http["codes"][key] = http["codes"].get(key, 0) + 1
+                        if code != 200:
+                            http["errors"] += 1
+                        else:
+                            http["latency"].append(ms)
+                            http["bytes"] += size
+            except BaseException as error:
+                driver_errors.append(error)
+        driver = threading.Thread(target=drive, name="gw2-container-http", daemon=True) if traffic else None
+        if driver:
+            driver.start()
+        try:
+            while time.perf_counter() < deadline:
+                if time.perf_counter() >= next_sample:
+                    for svc, s in stats_sample(ids).items():
+                        if s:
+                            series[svc].append(s)
+                    next_sample = time.perf_counter() + 1
+                else:
+                    stop.wait(min(0.2, max(0, deadline - time.perf_counter())))
+        finally:
+            stop.set()
+            if driver:
+                driver.join(timeout=12)
+                if driver.is_alive():
+                    raise RuntimeError("HTTP load driver did not stop")
+        if driver_errors:
+            raise RuntimeError("HTTP load driver failed") from driver_errors[0]
         wall = time.perf_counter() - t0
         return series, http, wall
 

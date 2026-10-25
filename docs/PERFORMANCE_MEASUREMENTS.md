@@ -129,7 +129,7 @@ python3 scripts/container_measure.py --output-dir container-perf-out [--id <lowe
 ```
 
 Needs Docker with Compose v2 and Python 3 (no packages). Output: `container-resources.json` (schema `container-1`,
-workload `container-workload-1`) and `container-resources.md`. Without `--strict` the exit status is 0 even when a
+workload `container-workload-2`) and `container-resources.md`. Without `--strict` the exit status is 0 even when a
 measurement fails; failures appear in `diagnostics`. `.github/scripts/performance_summary.py --container` renders it.
 
 Recorded: actual image ids and Docker-reported sizes per service (application image ids are provenance and are *not*
@@ -141,8 +141,9 @@ post-traffic `pg_database_size` and connection count from inside the postgres co
 
 Limits: CPU is Docker's percent of one core (above 100 on several cores) and memory is `docker stats` usage; both are
 ~1 s-spaced point samples taken by an `docker stats --no-stream` call that takes seconds, so "peak" is an observed
-sample maximum and only a few samples exist per window. The sequential traffic client pauses while each Docker sample is collected;
-reported throughput includes those pauses and describes this light polling workload, not maximum request throughput.
+sample maximum and only a few samples exist per window. A separate sequential traffic thread keeps issuing requests while
+the observer collects Docker samples, so workload CPU is not sampled only in request-free pauses. Version 1 used paused
+traffic and is incompatible with this corrected workload. The observed window can include a final sample/request drain.
 The client shares the host with the stack. Network and block
 I/O counters and per-service readiness are not measured. Account sync, crafting profit/discovery and live-upstream
 workloads are not measured in container mode (no GW2 key, no proof bypass); the application-process fixture reports

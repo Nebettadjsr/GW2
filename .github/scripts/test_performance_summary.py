@@ -184,6 +184,31 @@ class ContainerHelperTest(unittest.TestCase):
         self.assertIsNone(self.cm.p95([]))
         self.assertEqual(95, self.cm.p95([float(i) for i in range(1, 101)]))
 
+    def test_http_requests_continue_during_stats_collection(self):
+        from unittest.mock import patch
+        from types import SimpleNamespace
+        import threading
+        request_started, sampling_started, request_finished = (threading.Event() for _ in range(3))
+        m = self.cm.Measurement(SimpleNamespace(id="concurrent"))
+        def http_get(url, timeout):
+            request_started.set()
+            self.assertTrue(sampling_started.wait(1), "request must overlap sampling")
+            request_finished.set()
+            return 200, 10, 1.0
+        def stats_sample(ids):
+            self.assertTrue(request_started.wait(1), "load driver must be running")
+            sampling_started.set()
+            self.assertTrue(request_finished.wait(1), "HTTP must finish while stats subscription is active")
+            return {"backend": {"cpu_percent": 3, "mem_bytes": 10}}
+        try:
+            with patch.object(self.cm, "http_get", http_get), patch.object(self.cm, "stats_sample", stats_sample):
+                series, http, _ = m.timed_sampling({"backend": "b"}, "http_global", 0.03, ["http://local/"])
+            self.assertGreater(http["requests"], 0)
+            self.assertEqual(0, http["errors"])
+            self.assertEqual(3, series["backend"][0]["cpu_percent"])
+        finally:
+            m.cleanup_work()
+
     def test_unavailable_workload_metrics_are_explicit(self):
         args = type("A", (), {"id": "ut", "output_dir": ".", "commit": "c", "timestamp": "t",
                               "idle_seconds": 1, "traffic_seconds": 1, "paths": ["/"], "timeout": 1})()
