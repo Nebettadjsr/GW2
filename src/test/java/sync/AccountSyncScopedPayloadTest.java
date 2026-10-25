@@ -33,6 +33,20 @@ class AccountSyncScopedPayloadTest {
     }
 
     @Test
+    void incompleteOrNonIntegralMaterialAndRecipeFieldsRejectWholePayload() {
+        for (String json : new String[]{"[{\"id\":1}]", "[{\"id\":1,\"category\":5}]", "[{\"id\":1,\"count\":3}]",
+                "[{\"id\":1,\"category\":5,\"count\":-1}]", "[{\"id\":1,\"category\":5,\"count\":3.5}]",
+                "[{\"id\":\"1\",\"category\":5,\"count\":3}]", "[{\"id\":1,\"category\":5,\"count\":3,\"binding\":7}]"}) {
+            assertThrows(RuntimeException.class,
+                    () -> AccountSync.parseMaterialStacks(Gw2ApiClient.readJson(json)), json);
+        }
+        for (String json : new String[]{"[\"10\"]", "[10.5]", "[10,null]", "[4294967306]"}) {
+            assertThrows(RuntimeException.class,
+                    () -> AccountSync.parseAccountRecipeIds(Gw2ApiClient.readJson(json)), json);
+        }
+    }
+
+    @Test
     void malformedBankSlotAfterValidSlotRejectsWholePayloadButNullSlotsAreEmpties() throws Exception {
         var m = new com.fasterxml.jackson.databind.ObjectMapper();
         var ok = AccountSync.parseBankSlots(m.readTree("[{\"id\":1,\"count\":2},null]"));

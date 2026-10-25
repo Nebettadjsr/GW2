@@ -285,6 +285,12 @@ public final class AccountSync {
         }
         List<MaterialStack> rows = new ArrayList<>(root.size());
         for (JsonNode entry : root) {
+            if (entry == null || !entry.isObject() || !isInt(entry.get("id")) || entry.get("id").asInt() <= 0
+                    || !isInt(entry.get("category")) || entry.get("category").asInt() < 0
+                    || !isInt(entry.get("count")) || entry.get("count").asInt() < 0
+                    || (entry.hasNonNull("binding") && !entry.get("binding").isTextual())) {
+                throw new RuntimeException("Unexpected JSON (materials): malformed entry; nothing published");
+            }
             MaterialStack row = MaterialParser.parse(entry);
             if (row == null) {
                 throw new RuntimeException("Unexpected JSON (materials): malformed entry; nothing published");
@@ -304,7 +310,7 @@ public final class AccountSync {
         }
         List<Integer> ids = new ArrayList<>(root.size());
         for (JsonNode idNode : root) {
-            Integer id = RecipeIdParser.parse(idNode);
+            Integer id = isInt(idNode) ? RecipeIdParser.parse(idNode) : null;
             if (id == null || id <= 0) {
                 throw new RuntimeException("Unexpected JSON (account/recipes): malformed id; nothing published");
             }
