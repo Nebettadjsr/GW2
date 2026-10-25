@@ -1,0 +1,159 @@
+name: Run next ready story with Claude
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: claude-implementation
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: read
+  issues: write
+  id-token: write
+  actions: write
+
+jobs:
+  implement:
+    if: github.actor == 'Nebettadjsr' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Use the Claude subscription; do not fall back to Console/API billing.
+      ANTHROPIC_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Verify story selection rules
+        run: python -m unittest discover -s .github/scripts -p test_select_claude_story.py
+
+      - name: Select next ready story
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/scripts/select_claude_story.py
+
+      - name: Validate story and prepare branch
+        id: prepare
+        if: steps.select.outputs.issue_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+          EXISTING_BRANCH: ${{ steps.select.outputs.pr_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ISSUE_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo 'Enter an issue number.' >&2; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" > "$RUNNER_TEMP/claude-issue.json"
+          jq -e '.state == "open" and (has("pull_request") | not)' "$RUNNER_TEMP/claude-issue.json" >/dev/null || {
+            echo 'The number must identify an open issue, not a PR.' >&2
+            exit 1
+          }
+          if [[ -n "$EXISTING_BRANCH" ]]; then
+            git check-ref-format --branch "$EXISTING_BRANCH"
+            git fetch origin "$EXISTING_BRANCH"
+            git switch -c "$EXISTING_BRANCH" FETCH_HEAD
+            branch_name="$EXISTING_BRANCH"
+            echo 'existing_pr=true' >> "$GITHUB_OUTPUT"
+          else
+            branch_name="story/issue-${ISSUE_NUMBER}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            git switch -c "$branch_name"
+            echo 'existing_pr=false' >> "$GITHUB_OUTPUT"
+          fi
+          echo "branch_name=$branch_name" >> "$GITHUB_OUTPUT"
+
+      - name: Implement one story
+        id: claude
+        if: steps.select.outputs.issue_number != ''
+        uses: anthropics/claude-code-action@v1
+        env:
+          CLAUDE_BRANCH: ${{ steps.prepare.outputs.branch_name }}
+          GW2_RUN_REPORT: ${{ runner.temp }}/gw2-claude-report.md
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read
+          prompt: |
+            Work on GitHub issue #${{ steps.select.outputs.issue_number }} in ${{ github.repository }} only.
+            Read the full issue, its acceptance criteria, and relevant repository instructions.
+            Implement or finish that one issue on the checked-out story branch.
+            If this branch already has a PR, address its review and CI feedback as part of this issue.
+            Run narrow checks and report the exact results. Do not start another issue.
+            Before finishing, write a concise Markdown implementation report to the file named by
+            GW2_RUN_REPORT. Include changes, acceptance-criteria evidence, exact checks run and
+            results, changed or weakened assertions with reasons, local-only checks still needed,
+            and any unresolved gap. Do not put secrets in the report or commit the report file.
+            For an automatic merge, include standalone lines exactly
+            `Local-only checks still needed: none` and `Unresolved gaps: none` only when true.
+            Leave committing, pushing, and PR creation to the workflow steps after this action.
+          claude_args: |
+            --max-turns 12
+            --allowedTools Read,Edit,Write,Glob,Grep,Bash
+
+      - name: Publish story branch
+        if: steps.claude.outputs.conclusion == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH_NAME: ${{ steps.prepare.outputs.branch_name }}
+          EXISTING_PR: ${{ steps.prepare.outputs.existing_pr }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "$BRANCH_NAME"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m "Implement issue #${{ steps.select.outputs.issue_number }}"
+          fi
+          if [[ "$EXISTING_PR" == 'false' ]] && [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/master)" ]]; then
+            echo 'Claude made no changes; no PR was opened.' >&2
+            exit 1
+          fi
+          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          gh auth setup-git
+          git push --set-upstream origin "$BRANCH_NAME"
+          # A push made with GITHUB_TOKEN does not trigger CI on an existing PR.
+          # workflow_dispatch is the documented exception to that suppression.
+          if [[ "$EXISTING_PR" == 'true' ]]; then
+            gh workflow run ci.yml --ref "$BRANCH_NAME"
+            gh issue edit "$ISSUE_NUMBER" --remove-label needs-rework
+          fi
+
+      - name: Publish PR evidence
+        if: steps.claude.outputs.conclusion == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GW2_AUTOMATION_TOKEN }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+          BRANCH_NAME: ${{ steps.prepare.outputs.branch_name }}
+          EXISTING_PR: ${{ steps.prepare.outputs.existing_pr }}
+          RUN_REPORT: ${{ runner.temp }}/gw2-claude-report.md
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          body="$RUNNER_TEMP/claude-pr-body.md"
+          {
+            printf '<!-- gw2-claude-run-report:v1 head=%s -->\n' "$(git rev-parse HEAD)"
+            printf 'Closes #%s\n\n' "$ISSUE_NUMBER"
+            printf '## Implementation report\n\n'
+            if [[ -s "$RUN_REPORT" ]]; then
+              cat "$RUN_REPORT"
+            else
+              printf 'Claude did not supply a run report. Reviewers must request acceptance and check evidence.\n'
+            fi
+            printf '\n## Workflow evidence\n\n'
+            printf -- '- Claude run: https://github.com/%s/actions/runs/%s\n' "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+            printf -- '- CI and Codex review: check this PR before merging.\n'
+          } > "$body"
+          if [[ "$EXISTING_PR" == 'true' ]]; then
+            gh pr comment "$BRANCH_NAME" --body-file "$body"
+          else
+            gh pr create --head "$BRANCH_NAME" --base master \
+              --title "Implement issue #$ISSUE_NUMBER" \
+              --body-file "$body"
+          fi

@@ -66,7 +66,7 @@ Ectoplasm Salvage is the explicit frontend-owned calculation exception. The brow
 
 Changing Ecto amount, salvage method or exact tool, or Trading Post price modes recalculates locally. A Trading Post refresh rereads the required prices through the backend price boundary; it does not require a dedicated Ecto calculation request.
 
-The former backend-owned Ecto calculation flow, including the old parameterless `GET /api/ecto/salvage` operation and client/contracts used exclusively by it, is not part of the target architecture and may be removed when no active consumer remains. The browser implementation is the canonical Ecto Salvage UI; JavaFX compatibility is not required.
+The former backend-owned Ecto calculation flow, including the old parameterless `GET /api/ecto/salvage` operation, is not part of the target architecture. Its frontend client, composable and transport types have been removed. The browser implementation is the canonical Ecto Salvage UI; JavaFX compatibility is not required.
 
 This exception does not permit the frontend to recreate Crafting Profit, Discovery, recursive crafting, or other backend-owned domain logic.
 
@@ -468,7 +468,7 @@ Existing code should be:
 
 The browser frontend is the sole supported user interface. Remove the obsolete JavaFX UI code, tests, resources, dependencies, entry points and support code with no remaining consumer during Phase 6, before its health review. Preserve shared domain/application/backend functionality used by the browser; desktop-only features do not require replacement web features unless the product specification requires them. Do not introduce a replacement desktop framework or retain a desktop compatibility layer.
 
-The obsolete backend-owned Ecto calculation path may likewise be removed while preserving the frontend-owned Ecto behavior defined in section 4.2.
+The obsolete backend-owned Ecto calculation path is removed; the frontend-owned Ecto behavior defined in section 4.2 is preserved.
 
 ---
 
@@ -547,7 +547,7 @@ Before containers exist, measure application processes and database activity onl
 - `ROADMAP.md` owns migration sequencing and milestones.
 - `docs/crafting/README.md` is the permitted human-readable explanation of crafting rules and must remain aligned with `DOMAIN_SPEC.md` when user-visible crafting behavior changes.
 - `docs/crafting/GLOSSARY.md` is the canonical player-facing terminology and label mapping; reference it from feature documentation rather than copying its definitions.
-- Agent/runtime orchestration is development infrastructure and belongs in agent/runtime documentation, not deployed application architecture.
+- GitHub development automation is separate from deployed application architecture.
 
 ---
 
@@ -575,4 +575,4 @@ Implementation details not fixed here remain open until they are required. Domai
 
 # 21. Project Health Review
 
-Before a phase is closed, perform a bounded review against that phase's exit criteria. Check the actual implementation and its evidence for architecture/boundary drift, duplicate or obsolete paths, documentation consistency, appropriate tests, relevant performance and security/configuration risks, and temporary migration code that is now removable. Reconcile current-state documents with completed work: remove confirmed-resolved findings, obsolete descriptions, and historical detail that no longer informs current decisions. Remove duplicated information from documents that do not own it, keeping the current authoritative statement in its owning document and linking to it where needed. Keep documentation concise without deleting still-relevant requirements, decisions, or evidence. Record concrete findings, evidence, impact, and whether each finding blocks closure in the phase review story. A review does not itself close a phase: blocking findings and proposed criterion transfers require explicit planner disposition. Detailed test procedures remain in `TEST_STRATEGY.md`; planning workflow remains in `agent/PLANNER_INSTRUCTIONS.md`.
+Before a phase is closed, perform a bounded review against that phase's exit criteria. Check the actual implementation and its evidence for architecture/boundary drift, duplicate or obsolete paths, documentation consistency, appropriate tests, relevant performance and security/configuration risks, and temporary migration code that is now removable. Reconcile current-state documents with completed work: remove confirmed-resolved findings, obsolete descriptions, and historical detail that no longer informs current decisions. Remove duplicated information from documents that do not own it, keeping the current authoritative statement in its owning document and linking to it where needed. Keep documentation concise without deleting still-relevant requirements, decisions, or evidence. Record concrete findings, evidence, impact, and whether each finding blocks closure in the phase review issue. A review does not itself close a phase: blocking findings and proposed criterion transfers require explicit planning disposition. Detailed test procedures remain in `TEST_STRATEGY.md`; active planning takes place through GitHub issues.

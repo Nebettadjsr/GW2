@@ -7,7 +7,7 @@ This document is the **current open-problem register** for defects, architectura
 Use it as current-state input, not as a historical changelog:
 
 - Keep only findings that are still open, unresolved, or explicitly require follow-up.
-- Before adding or carrying forward a finding, check the current implementation and `agent/stories/BACKLOG.md` / the canonical story result for evidence that later work already resolved it.
+- Before adding or carrying forward a finding, check the current implementation, GitHub issues and PRs, and historical story results for evidence that later work already resolved it.
 - When a DONE story or current-code verification establishes that a finding is resolved, **remove the finding from this file** instead of appending a long resolution history here. Story files and the backlog retain that history.
 - Do not remove a finding merely because related work exists. If closure is not established, keep the finding and update only the current facts that matter.
 - Do not duplicate the same underlying problem under multiple historical headings. Consolidate extensions into the live finding.
@@ -148,7 +148,7 @@ No open finding. KP-08, KP-09 and KP-11 described the legacy JavaFX shopping lis
 
 ### KP-25 — Orphaned production code remains (CH-E4)
 
-**Observed fact:** `api/Gw2PriceFetch.java` has no production callers since its former caller `Main.java` was deleted. `model/Price.java` is used only by that orphaned helper. `craft.ResolvedNeedMapper#toNode` likewise has no production entry call; the live detail chain uses `RecipeTreeBuilder` instead. The browser-owned Ectoplasm screen also leaves `frontend/src/api/ectoApi.ts` and `frontend/src/ecto/useEctoSalvage.ts` unreferenced after the backend calculation route was removed. The 2026-09-23 production-code audit found no FXML/controller binding, reflective lookup, or service registration for these symbols. The three orphans the JavaFX view deletion created — `application.InitialSetupService`, `application.EctoSalvageService` and `util.CoinUtils` — were themselves removed by `STORY-UI-004`, together with `ecto.EctoSalvageCalculator` and `sync.IconSyncGateway`, so they are no longer part of this problem; the same story then removed the desktop icon download the last of those left without a caller (`sync.IconSync.syncItemIconsToDisk` and `sync.DesktopIconAdoption`), so it is not part of this problem either.
+**Observed fact:** `api/Gw2PriceFetch.java` has no production callers since its former caller `Main.java` was deleted. `model/Price.java` is used only by that orphaned helper. `craft.ResolvedNeedMapper#toNode` likewise has no production entry call; the live detail chain uses `RecipeTreeBuilder` instead. The 2026-09-23 production-code audit found no FXML/controller binding, reflective lookup, or service registration for these symbols. The three orphans the JavaFX view deletion created — `application.InitialSetupService`, `application.EctoSalvageService` and `util.CoinUtils` — were themselves removed by `STORY-UI-004`, together with `ecto.EctoSalvageCalculator` and `sync.IconSyncGateway`, so they are no longer part of this problem; the same story then removed the desktop icon download the last of those left without a caller (`sync.IconSync.syncItemIconsToDisk` and `sync.DesktopIconAdoption`), so it is not part of this problem either.
 
 **Inferred risk:** obsolete competing implementations remain available to be mistaken for live behavior or modified without effect.
 
@@ -156,30 +156,7 @@ No open finding. KP-08, KP-09 and KP-11 described the legacy JavaFX shopping lis
 
 ---
 
-## 8. Agent/runtime workflow risks
-
-These findings concern the repository's agent/runtime implementation. They remain recorded as open problems, but this document does not authorize changing orchestrator flow or agent behavior.
-
-### KP-27 — Planner validation does not fully protect or roll back shared state (CH-18)
-
-
-**Observed fact:** source protection compares sets of `git status --porcelain -- src` lines, not file contents. An already modified source file can change again without changing that line; Python runtime source is outside this check. The planner has workspace-write access. The rollback snapshot covers Markdown and the planning result, not production source. Finally, result parsing/full validation occur *after* `_run_guarded_planner` has returned: a zero-exit planner that writes an invalid story, malformed result or impermissibly resolved request is marked FAILED without reverting its already-written planning changes.
-
-**Inferred risk:** illegal source edits can escape detection, and rejected planning changes remain visible to later runs/users. Synchronous invocation prevents simultaneous model writers but does not make validation a commit boundary (TARGET_ARCHITECTURE §36). **Recommendation:** separately define content-based protected-state checks and a commit/rollback boundary covering validation; preserve pre-existing user changes.
-
-
-### KP-28 — All nonzero Claude exits are treated as capacity interruptions (CH-19) (resolved)
-
-**Resolved 2026-10-10:** `run_claude_attempt()` classifies each non-zero exit from its output tail, and the pipeline's `implement` step double-checks `/usage`. Only a real capacity signal pauses the story; other failures count against `MAX_CLAUDE_FAILED_RUNS_PER_STORY` and then create a user intervention (`workflow_service/README.md`). The original finding is kept below for history.
-
-**Observed fact (original):** the runner returns only the process exit code. Every nonzero exit sets the story UNFINISHED, defers capacity and loops back to the same prompt, without classifying usage exhaustion versus authentication/CLI/configuration/process failure. This path never consumes the normal retry limit or creates an intervention.
-
-**Inferred risk:** a deterministic invocation failure becomes an indefinite hourly retry cycle masquerading as quota exhaustion, withholding actionable failure handling. **Recommendation:** preserve quota-resume behavior while distinguishing capacity events from terminal/tooling errors. No Claude command was invoked in this audit.
-
-
----
-
-## 9. Platform and performance follow-up
+## 8. Platform and performance follow-up
 
 ### KP-30 — Full-catalog work persists for narrow crafting scopes (CH-21; follow-up required)
 
@@ -191,7 +168,7 @@ These findings concern the repository's agent/runtime implementation. They remai
 
 ---
 
-## 10. Open domain/UX clarification
+## 9. Open domain/UX clarification
 
 ### KP-31 - Discovery had two independent character authorities (resolved)
 

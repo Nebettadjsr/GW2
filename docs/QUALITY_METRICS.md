@@ -2,8 +2,8 @@
 
 ## Test coverage KPI
 
-Test coverage is a permanent KPI for the Maven Java backend, Vue/TypeScript frontend, and
-Python agent runtime. The long-term target is **at least 90% line and branch coverage** in each
+Test coverage is a permanent KPI for the Maven Java backend and Vue/TypeScript frontend.
+The long-term target is **at least 90% line and branch coverage** in each
 relevant area. It is a warning target and is not currently a build gate.
 
 The GitHub Actions `Coverage KPI report` job publishes a combined summary to the workflow run
@@ -11,91 +11,125 @@ and the `coverage-reports` artifact. It reports each language/module and package
 well as a weighted aggregate over measured lines and branches. Missing reports are marked
 unavailable. Aggregation never fills unavailable coverage with zero or estimates.
 
-The Python area covers the whole agent workflow: `agent/runtime` and `workflow_service`
-(its `test_*` files excluded like the runtime's tests). Service coverage was added on 2026-10-10,
-before the package was renamed. Snapshots
-taken before that date measured `agent/runtime` only.
+The retired Python harness is not part of current application coverage. Its last
+measured values remain below as historical evidence for the pre-migration snapshot.
 
 Coverage is a minimum signal, not proof of correctness. Review affected modules and critical
 branches individually. Do not pad tests, omit legitimate source files, or change measurement
 scope to improve the number. Exceptions for generated or impractical-to-unit-test code must be
 specific and documented in `docs/TEST_STRATEGY.md` and the report configuration.
 
-## Provisional measured working-tree snapshot
+## Current clean CI baseline
 
-Measured on **2026-10-03** at HEAD `c05080f7a39f09b0660490fc66fa24ee8449ffdc`. The working
-tree was dirty before and after this task and includes unrelated in-progress files. These are
-measured results for the current checkout, **not a clean-commit baseline**. A clean baseline is
-pending; no commit was created because this task does not invoke the repository's story
-publication workflow. The report measured all three areas:
+Measured on clean `master` commit `f2fea26157e4767865006ee9b3f5d3342ab8654d` in
+[CI run 40107414677](https://github.com/Nebettadjsr/GW2/actions/runs/40107414677),
+after the GW2 API boundary test pilot and issue-closure fix. All three jobs succeeded. The
+`coverage-reports` artifact (ID `12565690292`) contains the raw JaCoCo and
+Vitest reports and `coverage-kpi/coverage-kpi.json`. The KPI remains warning-only.
 
-| Area | Line | Branch | Gap to 90% line / branch | Suite/build result |
-|---|---:|---:|---:|---|
-| Java backend | 58.09% | 52.72% | 31.91 pp / 37.28 pp | 625 passed |
-| Frontend TypeScript | 92.88% | 85.22% | 0 pp / 4.78 pp | 307 passed; type-check and build passed |
-| Python agent runtime | 79.52% | 70.14% | 10.48 pp / 19.86 pp | 365 passed, 49 subtests passed |
-| **Combined (weighted)** | **69.51%** | **65.86%** | **20.49 pp / 24.14 pp** | Not a separate test run |
+| Area | Line | Branch | Gap to 90% line / branch |
+|---|---:|---:|---:|
+| Java backend | 79.84% (4016/5030) | 68.31% (1526/2234) | 10.16 pp / 21.69 pp |
+| Frontend TypeScript | 95.50% (1572/1646) | 87.49% (1357/1551) | 0 pp / 2.51 pp |
+| **Combined (weighted)** | **83.70% (5588/6676)** | **76.17% (2883/3785)** | **6.30 pp / 13.83 pp** |
 
-Coverage is measured by packages under Java, source feature directories in the frontend, and
-Python runtime packages; the CI artifact lists the complete breakdown. At the area level, each
-line and branch measure is below target except the frontend line measure. The four former Python
-failures are resolved by aligning fixtures and documentation with the configured 50% weekly
-remaining threshold. All subsystem suites now pass. These values are measured, not estimates.
-Routine run-by-run values remain in CI summaries and artifacts.
+For the open backend coverage request #21, the same artifact measures `sync`
+at 43.08% line / 36.67% branch, `repo` at 76.09% / 57.92%, `parser` at
+63.25% / 41.96%, `api.tp` at 3.49% / 0%, `api` at 31.65% / 73.33%, and
+`model` at 45.16% / 33.33%. The artifact has the complete package breakdown.
+These measurements include the tests merged in #36 and #40. The baseline is a measured
+snapshot, not a requirement to reach 90% in one story.
 
-Verification used the full Maven, Vitest-with-coverage, and pytest-cov suites. The original
-unittest discovery command also exits successfully after the capacity fixture correction. The
-frontend `npm run build` performs `vue-tsc --noEmit` before Vite production bundling; both passed.
-The GitHub Actions workflow was parsed and its coverage job reviewed locally, but no remote
-Actions run was triggered or inspected. CI status therefore remains unverified remotely.
+## Pre-migration clean CI snapshot
+
+Measured from CI run
+[40096904227](https://github.com/Nebettadjsr/GW2/actions/runs/40096904227) on clean `master`
+commit `459f728cdf12fcfed23809d3b1b42d400d4e5fd5`. All four jobs (Maven, Vitest, pytest-cov,
+Coverage KPI report) succeeded. Values come from the run's `coverage-reports` artifact
+(ID `12561400964`): `coverage-kpi/coverage-kpi.json` and `.md`, cross-checked against the raw
+`coverage-input/java-coverage/jacoco.xml`. The artifact does not carry test counts, so none are
+listed here. Java and frontend package figures remain valid evidence for that commit. The Python
+and three-area combined figures record the retired harness and are not current CI targets. The
+current two-area baseline is recorded above.
+The 90% target remains an informational warning KPI, not a build gate.
+
+| Area | Line | Branch | Gap to 90% line / branch |
+|---|---:|---:|---:|
+| Java backend | 78.91% (3969/5030) | 65.89% (1472/2234) | 11.09 pp / 24.11 pp |
+| Frontend TypeScript | 95.50% (1572/1646) | 87.49% (1357/1551) | 0 pp / 2.51 pp |
+| Python agent runtime + `workflow_service` | 80.80% (4726/5849) | 72.63% (1595/2196) | 9.20 pp / 17.37 pp |
+| **Combined (weighted)** | **81.97%** | **73.97%** | **8.03 pp / 16.03 pp** |
+
+Coverage is measured per Java package, frontend source area, and Python package. At area level,
+every measure is below target except the frontend line measure. Definitions and exclusions are
+unchanged. `unavailable` means the tool has no branch counter for that module (`web.dto`,
+`main.ts`); it is not counted as zero.
+
+### Change from the retired provisional snapshot
+
+The earlier 2026-10-03 figures (dirty working tree at `c05080f`, Python measured on
+`agent/runtime` only) are retired and no longer authoritative. They are not a like-for-like
+comparison with this baseline, but the measured movement is:
+
+| Area | Line | Branch |
+|---|---:|---:|
+| Java backend | 58.09% → 78.91% (+20.82 pp) | 52.72% → 65.89% (+13.17 pp) |
+| Frontend TypeScript | 92.88% → 95.50% (+2.62 pp) | 85.22% → 87.49% (+2.27 pp) |
+| Python | 79.52% → 80.80% (+1.28 pp) | 70.14% → 72.63% (+2.49 pp) |
+| Combined | 69.51% → 81.97% (+12.46 pp) | 65.86% → 73.97% (+8.11 pp) |
+
+Python scope now also includes `workflow_service` and `agent.runtime.qa`, which the provisional
+snapshot did not report. Java `infra.db` is newly reported. Largest remaining Java gaps for #21 by
+uncovered lines: `sync` (432 missed lines), `repo` (142), `parser` (90), `api.tp` (83), `api` (72).
 
 ### Package/module breakdown
 
-Each cell is `line / branch` coverage. `—` means the tool has no branch counter for that module.
+Each cell is `line / branch` coverage.
 
-| Java package | Coverage |
+| Java package | Coverage (line / branch) |
 |---|---:|
-| default package | 10.65% / 14.63% |
 | `api` | 8.86% / 6.67% |
 | `api.tp` | 3.49% / 0.00% |
-| `application` | 93.82% / 71.25% |
+| `application` | 93.01% / 78.40% |
 | `application.icons` | 96.97% / 100.00% |
 | `craft` | 92.44% / 84.02% |
-| `ecto` | 100.00% / 100.00% |
-| `infra.icons` | 89.29% / 78.68% |
+| `infra.db` | 79.17% / 65.38% |
+| `infra.icons` | 90.13% / 78.68% |
 | `luck` | 89.47% / 72.22% |
-| `model` | 47.62% / 50.00% |
+| `model` | 45.16% / 33.33% |
 | `parser` | 45.78% / 26.79% |
-| `repo` | 85.05% / 64.39% |
-| `repo.tp` | 78.26% / 66.67% |
-| `sync` | 37.53% / 33.68% |
+| `repo` | 76.09% / 57.92% |
+| `repo.tp` | 69.57% / 66.67% |
+| `sync` | 43.08% / 36.67% |
 | `sync.tp` | 100.00% / 100.00% |
-| `sync.tp.relevance` | 0.00% / 0.00% |
+| `sync.tp.relevance` | 85.71% / 77.27% |
 | `tradingpost` | 100.00% / 100.00% |
-| `util` | 30.00% / 28.95% |
-| `web` | 93.68% / 82.59% |
-| `web.dto` | 100.00% / — |
+| `util` | 100.00% / 78.57% |
+| `web` | 97.63% / 93.16% |
+| `web.dto` | 100.00% / unavailable |
 | `web.task` | 98.51% / 88.89% |
 
-| Frontend source area | Coverage |
+| Frontend source area | Coverage (line / branch) |
 |---|---:|
-| `App.vue` | 100.00% / 94.44% |
-| `account` | 98.88% / 86.84% |
-| `api` | 84.06% / 70.59% |
-| `crafting` | 94.02% / 85.63% |
-| `ecto` | 84.40% / 83.70% |
+| `App.vue` | 100.00% / 83.33% |
+| `account` | 98.88% / 87.14% |
+| `api` | 85.92% / 70.59% |
+| `crafting` | 95.31% / 87.55% |
+| `ecto` | 97.40% / 93.27% |
 | `items` | 100.00% / 90.00% |
-| `main.ts` | 0.00% / — |
-| `shell` | 100.00% / 86.21% |
-| `sync` | 95.57% / 85.58% |
+| `main.ts` | 0.00% / unavailable |
+| `shell` | 100.00% / 84.00% |
+| `sync` | 95.57% / 84.50% |
 
-| Python agent-runtime package | Coverage |
+| Python package | Coverage (line / branch) |
 |---|---:|
-| `agent.runtime.core` | 76.51% / 68.56% |
-| `agent.runtime.evaluation` | 94.29% / 94.44% |
-| `agent.runtime.human` | 89.85% / 81.51% |
-| `agent.runtime.runners` | 79.35% / 58.47% |
-| `agent.runtime.support` | 85.11% / 73.08% |
+| `agent.runtime.core` | 75.76% / 68.86% |
+| `agent.runtime.evaluation` | 93.55% / 93.18% |
+| `agent.runtime.human` | 89.71% / 80.92% |
+| `agent.runtime.qa` | 77.75% / 67.89% |
+| `agent.runtime.runners` | 73.60% / 56.06% |
+| `agent.runtime.support` | 86.67% / 79.46% |
+| `workflow_service` | 86.24% / 80.10% |
 
 ## Generation and review
 
@@ -109,14 +143,8 @@ python .github/scripts/publish_coverage_kpi.py
 The script writes `quality-reports/coverage-kpi.md` and `quality-reports/coverage-kpi.json`.
 HTML reports remain in the tool-specific output directories.
 
-### Establishing the clean baseline
+### Refreshing the baseline
 
-The current numbers cannot be promoted to a clean baseline without a commit identifying the
-complete source and test state. To establish one, first have the owner of the unrelated dirty
-work finish or preserve it separately; then run `git status --short` and confirm only the
-coverage/failure-fix files intended for this baseline remain. Activate/complete the appropriate
-story through the repository workflow so it commits only that scoped work. Check out the
-resulting SHA with a clean worktree, run the full three-suite CI commands, and retain the
-`coverage-reports` artifact and workflow SHA. Replace this provisional snapshot only with those
-clean-commit results. Do not stage or commit the other in-progress files as part of baseline
-creation.
+The snapshot above is replaced only by a later successful CI run on a clean commit: record
+the run link, exact commit SHA, and the `coverage-reports` artifact values, and mark the old
+snapshot as retired.

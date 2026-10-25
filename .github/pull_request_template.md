@@ -1,37 +1,25 @@
-## What changed?
+## Issue
 
-<!-- Briefly describe the implementation. -->
+Closes #
 
-## Why?
+## Why
 
-<!-- What problem, issue, or requirement does this address? -->
+<!-- State the problem or requirement this PR addresses. -->
 
-## Verification
+## Acceptance criteria
 
-<!-- List the tests/checks you ran. GitHub Actions will run the full CI suite after push. -->
+- [ ] Each acceptance criterion is met; note any justified difference from the suggested approach.
 
-- [ ] Relevant targeted backend tests
-- [ ] Relevant frontend tests
-- [ ] Manual verification where appropriate
-- [ ] Full CI passed
+## Changes and tests
 
-## Impact
+- Code and behavior:
+- Tests added or changed:
+- Removed or weakened assertions and why (write `None` if none):
+- Narrow checks run locally, with results:
+- Local-only checks run or still needed (real database, browser smoke, live GW2 API):
 
-Check any areas materially affected by this change:
+## Review notes
 
-- [ ] Domain / crafting behavior
-- [ ] PostgreSQL / persistence
-- [ ] GW2 API synchronization
-- [ ] Backend HTTP API
-- [ ] Browser frontend
-- [ ] JavaFX desktop UI
-- [ ] Build / CI / tooling
-- [ ] Documentation only
-
-## Documentation / decisions
-
-<!-- If this changes documented behavior or architecture, identify the relevant DOMAIN_SPEC, TARGET_ARCHITECTURE, ADR, or other decision document. -->
-
-## Notes / follow-up
-
-<!-- Known limitations, intentionally deferred work, migration notes, or anything reviewers should know. -->
+- Affected areas (domain, persistence, GW2 API, HTTP API, browser, build/CI, documentation):
+- Relevant domain, architecture, or UX docs checked:
+- Known limitations and small follow-up issues:

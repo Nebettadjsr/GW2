@@ -13,8 +13,6 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>25</maven.compiler.release>
 
-        <javafx.version>25.0.2</javafx.version>
-        <javafx.platform>win</javafx.platform>
         <postgresql.version>42.7.12</postgresql.version>
 
         <!--
@@ -26,8 +24,7 @@
         -->
         <spring.boot.version>4.1.1</spring.boot.version>
 
-        <main.class>Gw2App</main.class>
-        <!-- Spring Boot HTTP entry point; JavaFX keeps ${main.class} untouched. -->
+        <!-- Spring Boot HTTP entry point. -->
         <api.main.class>web.Gw2ApiApplication</api.main.class>
     </properties>
 
@@ -83,48 +80,6 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-base</artifactId>
-            <version>${javafx.version}</version>
-            <classifier>${javafx.platform}</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-graphics</artifactId>
-            <version>${javafx.version}</version>
-            <classifier>${javafx.platform}</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-controls</artifactId>
-            <version>${javafx.version}</version>
-            <classifier>${javafx.platform}</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-fxml</artifactId>
-            <version>${javafx.version}</version>
-            <classifier>${javafx.platform}</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-media</artifactId>
-            <version>${javafx.version}</version>
-            <classifier>${javafx.platform}</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-swing</artifactId>
-            <version>${javafx.version}</version>
-            <classifier>${javafx.platform}</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-web</artifactId>
-            <version>${javafx.version}</version>
-            <classifier>${javafx.platform}</classifier>
-        </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -147,20 +102,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-webmvc-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-
-        <!--
-            STORY-UI-001: JavaFX UI verification capability. testfx-junit5 declares no JavaFX
-            dependency of its own (verified in its POM before adding this) - it drives whatever
-            JavaFX is already on the test classpath, so it uses this project's javafx.version
-            (25.0.2) rather than pinning its own. openjfx-monocle (transitive, for headless
-            testing) is not used: these tests run headful against a real desktop session.
-        -->
-        <dependency>
-            <groupId>org.testfx</groupId>
-            <artifactId>testfx-junit5</artifactId>
-            <version>4.0.18</version>
             <scope>test</scope>
         </dependency>
 
@@ -208,19 +149,10 @@
                 </executions>
             </plugin>
 
-            <plugin>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-maven-plugin</artifactId>
-                <version>0.0.8</version>
-                <configuration>
-                    <mainClass>${main.class}</mainClass>
-                </configuration>
-            </plugin>
-
             <!--
                 STORY-API-001: makes the API runnable with `./mvnw spring-boot:run`. Deliberately
                 declares no <executions>, so the `repackage` goal never runs and the existing
-                gw2-tool jar / JavaFX launch stay exactly as before.
+                gw2-tool jar stays exactly as before.
             -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>

@@ -1,0 +1,37 @@
+name: Merge reviewed auto story
+
+on:
+  issue_comment:
+    types: [created, edited]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  issues: write
+  pull-requests: read
+
+jobs:
+  merge:
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'story/issue-')) ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       github.event.comment.user.login == 'chatgpt-codex-connector[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Both events use the trusted default-branch workflow. Never checkout a
+      # pull request head while a write-capable token is available.
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Check current PR, CI and Codex state before merging
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/scripts/merge_ready_pr.py

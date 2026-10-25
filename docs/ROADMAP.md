@@ -7,7 +7,7 @@ This document is the realistic path from the repository's **actual current state
 It is written for two audiences:
 
 - a human maintainer deciding what to work on next,
-- a planning/orchestrator AI that selects a story, hands it to Claude Code, and evaluates the result without the full conversation history behind this document.
+- an interactive planning session that turns Product Owner requests and roadmap work into GitHub issues, with implementation and review tracked on pull requests.
 
 This document contains **no dates and no time estimates**. Sequencing is based on dependencies and risk, not a schedule.
 
@@ -56,8 +56,8 @@ Phase 1  Domain Stabilization                   (complete — milestone-01 archi
 Phase 2  Domain Isolation / Decoupling          (complete, 2026-09-21 — see §6)
 Phase 3  Backend / Application-Service Extraction (complete; milestone-03 archived)
 Phase 4  Backend HTTP API                       (complete; milestone-04 archived)
-Phase 5  Browser Frontend Completion             (current; browser implementation and acceptance work in progress)
-Phase 6  Multi-User / Account Isolation         (not started)
+Phase 5  Browser Frontend Completion             (complete, 2026-10-17 — see §9)
+Phase 6  Multi-User / Account Isolation         (current; account-scoped cutover in progress)
 Phase 7  Containerized Runtime and Database Migration (not started; PostgreSQL is already used locally)
 Phase 8  Deployment / Runtime Configuration     (not started)
 Phase 9  Final Cleanup / JavaFX Removal         (not started; removal is already permitted earlier — see §2)
@@ -269,7 +269,7 @@ Phase 4. The frontend needs stable backend APIs for backend-owned workflows. Sma
 - (Done) Crafting Profit and backend-authoritative resolution details are available in the browser.
 - (Done) Crafting Discovery is available in the browser.
 - (Done) Bank, Materials, and frontend-owned Ectoplasm Salvage workflows are available in the browser.
-- (Done) The shared refresh workflow and System Status page are implemented; remaining Phase 5 stories are listed in `agent/stories/BACKLOG.md`.
+- (Done) The shared refresh workflow and System Status page are implemented; current work is tracked in GitHub issues.
 - (Done and continuing) Frontend component and browser smoke coverage is tracked in the canonical stories and `TEST_STRATEGY.md`.
 - (Done) The obsolete backend-owned Ectoplasm calculation route was removed; the browser calculation is canonical.
 - Finish browser coverage and acceptance. JavaFX removal is permitted from this phase onward but is not required to close it; Phase 9 still owns completing it.
@@ -277,6 +277,17 @@ Phase 4. The frontend needs stable backend APIs for backend-owned workflows. Sma
 ---
 
 ## 10. Phase 6 — Multi-User / Account Isolation
+
+**Status: In progress.** The versioned account schema and disposable-cache reset are
+implemented (STORY-INFRA-004), and global-only operations were restored
+(STORY-SYNC-007). Account pages are not yet usable on the migrated schema:
+validated access (#8) and scoped persistence (#15) remain unfinished, followed
+by scoped refresh (#11), HTTP enforcement (#12), and browser credentials (#13).
+The unavailable-state presentation (#7) is a separate usability task and does
+not restore account reads by itself. These are the current critical path; their
+`pairing` route requires local integration evidence before merging. Small
+independent CI-only work may proceed through the `auto` queue without delaying
+this path.
 
 ### Objective
 
@@ -411,6 +422,9 @@ Phase 5 (frontend functional parity) and Phase 8 (a deployable system users can 
 
 ## 14. Status
 
-This roadmap reflects the repository state inspected on 2026-09-30. Phase 5 is current; Phases 0–4 are complete. `agent/PROJECT_STATE.md` is the continuity pointer for planning runs.
+Phase 5 closed on 2026-10-17; Phase 6 is current. GitHub issues and merged PRs
+carry live story state. The account-scoped critical path and its current cutover
+limitation are summarized in §10; the historical `agent/PROJECT_STATE.md`
+pointer is no longer maintained by the retired Python harness.
 
 It should be revisited whenever a phase's exit criteria are fully met, or when a new domain/architecture decision materially changes what a later phase requires.
