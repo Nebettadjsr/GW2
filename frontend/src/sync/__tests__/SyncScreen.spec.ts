@@ -1,6 +1,7 @@
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, type PropType } from 'vue'
+import { connection } from '@/api/accountSession'
 import { ApiRequestError, UNREACHABLE_CODE } from '@/api/http'
 import { systemApi } from '@/api/systemApi'
 import type { SyncTaskAccepted, SyncTaskStatus } from '@/api/types'
@@ -31,9 +32,11 @@ const Shell = defineComponent({
 
 beforeEach(() => {
   vi.useFakeTimers()
+  connection.phase = 'connected'
 })
 
 afterEach(() => {
+  connection.phase = 'disconnected'
   vi.restoreAllMocks()
   vi.useRealTimers()
 })
@@ -72,6 +75,26 @@ function isDisabled(wrapper: VueWrapper, testId: string): boolean {
 }
 
 describe('SyncScreen', () => {
+  it('showsItsHeadingAndKeyControlsWhileDisconnectedWithoutAnAccountRefreshOrError', async () => {
+    connection.phase = 'disconnected'
+    vi.spyOn(systemApi, 'readStatus').mockResolvedValue({
+      running: false, lastCheckedAt: null, lastChangedAt: null, lastRecipeSyncAt: null, lastGraphRebuildAt: null,
+      lastFailure: null, accountLastRefreshedAt: null, accountRefreshScope: null, cachedPriceItems: null,
+      stalePriceItems: null, newestPriceFetchedAt: null, priceCacheError: null
+    })
+    const wrapper = mountControls(new FakeSyncApi())
+    await settle()
+
+    expect(wrapper.find('[data-test="page-heading"]').text()).toBe('System Status')
+    expect(wrapper.find('[data-test="api-key-input"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="connect"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="connection-error"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="sync-trigger-ACCOUNT_SYNC"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="status-needs-connection"]').exists()).toBe(true)
+    expect(systemApi.readStatus).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('startsNoSynchronizationWhenMounted', async () => {
     const api = new FakeSyncApi()
 
