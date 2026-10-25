@@ -404,3 +404,15 @@ describe('SelectedResultDetail', () => {
     )
   })
 })
+
+describe('unvalued owned input (DOMAIN_SPEC.md 11.2)', () => {
+  it('warns that the profit is not reliable when the backend flags an unvalued owned input', () => {
+    const wrapper = detailOf({ ...profitableRow, unvaluedOwnedInput: true })
+    expect(wrapper.find('[data-test="detail-unvalued-owned-input"]').exists()).toBe(true)
+  })
+
+  it('shows no warning for an ordinary row', () => {
+    const wrapper = detailOf(profitableRow)
+    expect(wrapper.find('[data-test="detail-unvalued-owned-input"]').exists()).toBe(false)
+  })
+})

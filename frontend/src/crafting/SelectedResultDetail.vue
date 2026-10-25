@@ -278,6 +278,15 @@ function materialQuoteText(item: MissingItem): string {
           </dd>
         </dl>
 
+        <p
+          v-if="row.unvaluedOwnedInput"
+          class="value-note"
+          data-test="detail-unvalued-owned-input"
+        >
+          An owned material has no Trading Post, crafting or vendor value, so it is counted as 0
+          rather than free. This profit is not reliable.
+        </p>
+
         <!-- TP prices -->
         <div
           class="tp-prices"

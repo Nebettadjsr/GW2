@@ -13,6 +13,9 @@ public class PlannerContext {
     public final CraftingSettings settings;
     public final Set<Integer> allowedRecipeIds;
 
+    /** Vendor sell value by item id (DOMAIN_SPEC.md 11.2); empty when unknown. Values <= 0 mean none. */
+    public final Map<Integer, Integer> vendorValues;
+
     /**
      * Candidate characters for coordinated multi-character planning (DOMAIN_SPEC.md section
      * 2.2.1 / STORY-DOM-014's "All"/generic-discipline scope). {@code null} means "not
@@ -61,7 +64,7 @@ public class PlannerContext {
                           Set<Integer> allowedRecipeIds,
                           List<CharacterCraftingProfile> coordinatedRoster) {
         this(recipesByOutput, tp, settings, allowedRecipeIds, coordinatedRoster,
-                new ConcurrentHashMap<>(), new ConcurrentHashMap<>());
+                new ConcurrentHashMap<>(), new ConcurrentHashMap<>(), Map.of());
     }
 
     private PlannerContext(Map<Integer, List<Recipe>> recipesByOutput,
@@ -70,7 +73,9 @@ public class PlannerContext {
                            Set<Integer> allowedRecipeIds,
                            List<CharacterCraftingProfile> coordinatedRoster,
                            Map<Integer, List<String>> eligibleCharactersByRecipeId,
-                           Map<FirstRecipeKey, Object> firstRecipeByKey) {
+                           Map<FirstRecipeKey, Object> firstRecipeByKey,
+                           Map<Integer, Integer> vendorValues) {
+        this.vendorValues = vendorValues;
         this.recipesByOutput = recipesByOutput;
         this.tp = tp;
         this.settings = settings;
@@ -98,7 +103,13 @@ public class PlannerContext {
                 settings.allowDailyCrafts);
 
         return new PlannerContext(recipesByOutput, tp, noBuySettings, allowedRecipeIds,
-                coordinatedRoster, eligibleCharactersByRecipeId, firstRecipeByKey);
+                coordinatedRoster, eligibleCharactersByRecipeId, firstRecipeByKey, vendorValues);
+    }
+
+    /** This context with vendor sell values for the untradeable-material fallback; shares the memo tables. */
+    public PlannerContext withVendorValues(Map<Integer, Integer> vendorValues) {
+        return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
+                coordinatedRoster, eligibleCharactersByRecipeId, firstRecipeByKey, vendorValues);
     }
 
     public boolean isCoordinated() {

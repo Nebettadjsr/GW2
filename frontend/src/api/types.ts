@@ -71,6 +71,12 @@ export interface CraftingRow {
    * nothing about craftability or any economic value.
    */
   iconUrl: string | null
+  /**
+   * True when an owned sellable input had no Trading Post value, crafting cost or vendor value
+   * (DOMAIN_SPEC.md 11.2): its cost was counted as 0 only because it could not be valued, so the
+   * profit shown is not a confident figure.
+   */
+  unvaluedOwnedInput?: boolean
 }
 
 /** The scope the backend actually calculated with, after it applied its own defaults. */

@@ -45,6 +45,7 @@ const displayRows = computed(() =>
     disciplines: row.disciplines,
     craftable: formatCount(row.craftableCount),
     ownMaterials: formatCopper(row.matsSellValueCopper),
+    unvalued: row.unvaluedOwnedInput === true,
     profit: formatSignedCopper(row.profitCopper),
     profitTone: moneyTone(row.profitCopper),
     sellValue: formatCopper(row.totalSellValueCopper),
@@ -168,6 +169,12 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
         <td class="numeric" data-test="craftable-count">{{ row.craftable }}</td>
         <td class="numeric" data-test="own-materials">
           <span class="money money--cost">{{ row.ownMaterials }}</span>
+          <span
+            v-if="row.unvalued"
+            class="unvalued-note"
+            data-test="unvalued-owned-input"
+            title="An owned material has no Trading Post, crafting or vendor value; it is counted as 0, not free. Profit is not reliable."
+          > ⚠ unvalued material</span>
         </td>
         <td class="numeric" data-test="profit-per-craft">
           <span :class="`money money--${row.profitTone}`">{{ row.profit }}</span>
@@ -237,6 +244,11 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
 
 .numeric .column-label {
   align-items: flex-end;
+}
+
+.profit-table .unvalued-note {
+  color: var(--warning, #b26a00);
+  font-size: 0.8em;
 }
 
 .profit-table .is-total {
