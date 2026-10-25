@@ -1,19 +1,12 @@
 # GW2 Tool — Test Strategy
 
-## Orchestrated story QA
+## GitHub issue and pull-request verification
 
-QA is the sole author and maintainer of all test code and fixtures, including acceptance, regression, unit, integration, property, UI, implementation-specific tests of the application. QA decides what and how to test under this strategy and the story's requirements. Existing test coverage can be reused; low-risk work may receive `NO_TESTS_NEEDED` with a specific justification. The orchestrator prepares a persistent QA plan before coding. QA must prepare required test code rather than delegate its implementation through a specification. If requirements need a Product Owner decision, QA uses the existing `UD-*` flow. See [`agent/QA_INSTRUCTIONS.md`](../agent/QA_INSTRUCTIONS.md) and [`agent/qa-plans/README.md`](../agent/qa-plans/README.md).
-
-The coding agent implements production behavior to satisfy the QA-defined story exit criteria. It runs the required checks and reports exact results, but does not create, modify, delete, skip or weaken tests or fixtures. Missing tests, test defects and changed expectations return to QA; they are not coding-agent repair work. A test expectation may change only with documented evidence and independent review. The evaluator checks acceptance behavior, integration points, invariants, coverage and plan adherence; a green suite alone does not establish completion. Conditional independent QA review runs when needed. Post-publication CI remains the full regression gate. Throughout this document, instructions to add, update or design tests apply to QA; instructions to run required checks and fix production behavior apply to the coding agent as well.
+The implementing agent authors and maintains production code, tests, and fixtures together to meet the issue's acceptance criteria. Existing coverage can be reused; a low-risk change may need no new test when the PR states why. Changed or weakened assertions require an evidence-backed reason in the PR. CI runs the default backend and frontend suites. Codex reviews the issue, behavior, documentation, and test diff; a green suite alone does not establish completion. Questions requiring a Product Owner decision stay on the issue or PR with `needs-decision`.
 
 ## 1. Purpose
 
-Application failures discovered in evaluation or story-relevant CI are classified
-by independent QA. Valid tests exposing production defects return to the coder.
-An evidenced `REVISE_TESTS` verdict schedules a guarded QA writing phase for
-application tests/fixtures only, followed by evaluation and publication/CI again.
-The automated flow never works on itself, so workflow tests are outside this routing. Red CI for an old
-commit cannot be accepted merely because QA approved or corrected a test.
+Application failures discovered in review or CI are investigated against the issue and current code. Fix production defects and incorrect tests on the same PR branch, with reasons visible in the diff or PR discussion. CI and review must evaluate the current head commit; an older green result does not verify a newer revision.
 
 This document defines the testing strategy for the GW2 Tool.
 
@@ -1020,8 +1013,8 @@ A smaller set of high-value tests is preferable to a large number of shallow tes
 
 # 26. Coverage KPI and Reports
 
-Test coverage is a permanent software-quality KPI for the Java backend, TypeScript frontend,
-and Python agent runtime. The long-term target is at least **90% line and branch coverage**,
+Test coverage is a permanent software-quality KPI for the Java backend and TypeScript frontend.
+The long-term target is at least **90% line and branch coverage**,
 maintained as consistently as possible. Coverage below target is a warning and does not fail
 the build.
 
@@ -1039,12 +1032,6 @@ Developers and AI agents can generate reports locally:
 - Frontend: `cd frontend && npm ci && npm run test:coverage`; HTML at
   `frontend/coverage/index.html`, machine-readable summary at
   `frontend/coverage/coverage-summary.json`.
-- Python agent runtime: install `requirements-dev.txt`, then run
-  `python -m pytest agent/runtime/tests --import-mode=importlib
-  -o consider_namespace_packages=true --cov-config=.coveragerc
-  --cov=agent.runtime --cov-branch
-  --cov-report=term-missing --cov-report=html:agent/runtime/htmlcov
-  --cov-report=xml:agent/runtime/coverage.xml`; HTML is in `agent/runtime/htmlcov`.
 - Combined local KPI: `python .github/scripts/publish_coverage_kpi.py`; this writes
   `quality-reports/coverage-kpi.md` and `quality-reports/coverage-kpi.json`.
 
@@ -1069,8 +1056,8 @@ Do not create meaningless tests solely to increase coverage percentage.
 
 ## 26.1 Test quality rules for implementation work
 
-QA owns test authorship and decides the required checks. The coding agent satisfies
-those checks and reports evidence; the rules below do not authorize it to change tests.
+The implementing agent owns test design and authorship for its issue. The reviewer checks
+whether the tests establish the acceptance behavior, especially at integration boundaries.
 
 - Review the applicable domain rules and express critical cross-component business rules as
   invariants over complete outputs.
@@ -1095,23 +1082,21 @@ Do not create retrospective records for historical defects as part of unrelated 
 
 ---
 
-# 27. Claude Code Testing Rules
+# 27. Implementing Agent Testing Rules
 
-For tasks involving behavior changes, Claude must:
+For tasks involving behavior changes, the implementing agent must:
 
 1. read `docs/DOMAIN_SPEC.md`,
 2. read this document,
-3. read the QA plan and relevant tests to understand the story's exit criteria,
-4. implement production behavior that satisfies those criteria without writing or changing tests,
-5. run the QA-required focused checks (§20), not the whole regression suite,
-6. report exact commands, real results and any test defect or missing check for QA to resolve.
+3. read the issue's acceptance criteria and relevant tests,
+4. implement production behavior and meaningful tests together,
+5. run focused checks (§20), leaving the complete regression suite to CI,
+6. report exact commands, real results, and any unresolved verification gap in the PR.
 
 For pure UI styling or documentation-only changes, domain test execution is not automatically required.
 
-Claude must not:
+The implementing agent must not:
 
-- create or modify any test code or fixture, including implementation-specific tests,
-- choose additional test scope or change expected results; QA owns those decisions,
 - delete failing tests merely to make a build green,
 - weaken assertions without justification,
 - introduce live external API dependencies into normal tests,
@@ -1119,7 +1104,7 @@ Claude must not:
 - run the complete regression suite locally as routine verification — that is the CI gate's job (§20, §36),
 - treat a green targeted run as proof that nothing else broke; the gate decides that.
 
-A CI failure comes back as a short list of failing tests (§36). Claude reproduces the relevant failure and fixes production-code defects. If the test, fixture or expected result is wrong, Claude reports evidence for QA; only QA changes it. Missing product intent still requires the normal human decision. The applicable post-publication CI gates must pass before finalization; deleting, skipping or weakening a test merely to make CI green is not an acceptable fix.
+A CI failure is investigated on the current PR branch. The implementing agent fixes production defects and maintains incorrect tests or fixtures with an evidence-backed explanation. Missing product intent still requires a human decision. Required CI checks must pass on the PR head; deleting, skipping, or weakening a test merely to make CI green is not an acceptable fix.
 
 ---
 
@@ -1229,7 +1214,7 @@ Formalizes §10's closing line into its own layer:
 
 ## 31.5 General Principles
 
-- Choose the lowest layer that proves the behavior being tested; do not reach for an integration or live test when a unit test already proves the rule. This applies to Layer 5 (§32) too: a change confined to background/non-UI logic never needs a TestFX test merely because a UI-adjacent story exists nearby.
+- Choose the lowest layer that proves the behavior being tested; do not reach for an integration or live test when a unit test already proves the rule. This applies to browser tests too: a change confined to background/non-UI logic never needs one merely because a UI-adjacent story exists nearby.
 - Domain behavior remains primarily unit-tested (§4.1, Layer 1); persistence behavior that depends on PostgreSQL-specific semantics (constraint enforcement, upsert conflict behavior, NULL-uniqueness quirks, transactional visibility) must be integration-tested against real PostgreSQL (Layer 2), not asserted from application code alone.
 - External API parsing should primarily be verified using captured real responses (Layer 3), not hand-typed minimal JSON.
 - Avoid testing implementation details (private helper structure, incidental call counts) when the same confidence can come from testing observable behavior.
@@ -1240,64 +1225,11 @@ Formalizes §10's closing line into its own layer:
 
 ---
 
-# 32. Layer 5 — JavaFX UI Verification (TestFX)
+# 32. Layer 5 — JavaFX UI Verification (retired)
 
-STORY-UI-001 established this layer to satisfy `docs/TARGET_ARCHITECTURE.md`'s "Existing JavaFX UI Verification Capability" section: a reusable, repeatable way to drive the real JavaFX application and inspect real controls, for STORY-DOM-013/014/015's own selection, refresh, empty/error and blocked-row acceptance checks to build on. This section is the permanent owner of that methodology; the domain stories own the behavior matrix itself.
+This layer (TestFX against the JavaFX application, established by STORY-UI-001) was retired with the desktop UI. `STORY-UI-004` removed the application and its 31 desktop-only test and fixture files, and `STORY-INFRA-005` removed the `testfx-junit5` and JavaFX dependencies, the `javafx.*` properties and the CI platform flag. No TestFX or JavaFX tooling remains in the build, and no desktop-session check is owed by any story. The detailed methodology is available in git history only.
 
-## 32.1 Tooling and Compatibility Evidence
-
-Tooling: `org.testfx:testfx-junit5:4.0.18` (the only released TestFX version; there is no newer choice available), driving the project's own JavaFX 25.0.2 (`win` classifier) and Java 25 already on the test classpath — `testfx-junit5` declares no JavaFX dependency of its own, so it does not pin a different version. `openjfx-monocle` (headless JavaFX) is intentionally not used: these tests run headful, against a real desktop/window session.
-
-Compatibility was demonstrated, not assumed: `uiverify.FxCompatibilityPrototypeIT` is a minimal standalone-scene prototype (a button click updating a label) that was run and confirmed passing before any further TestFX usage was built on top of it. It remains in the suite as recorded evidence, separate from the reusable harness itself.
-
-## 32.2 Reusable Harness
-
-- `uiverify.JavaFxUiSupport` — control lookup (`find`, wrapping TestFX's `FxRobot#lookup` with a bounded wait and a diagnostic failure naming the query and timeout instead of a silent `null`), bounded waiting (`waitUntil`, polling an actual observable condition off the FX Application Thread — never a fixed `Thread.sleep`), a `TableView` row-count wait (`waitForRowCount`), displayed-state inspection (`columnValues`, reading each row's cell through the column's own `cellValueFactory` — the value the user actually sees), and optional screenshot capture (`captureScreenshot`, a PNG snapshot of any `Node`). No fixed screen coordinates anywhere in this layer.
-- `uiverify.CraftingUiTestFixtures` — disposable-schema fixture lifecycle, reusing the same per-test uniquely-named-schema pattern as the Layer 2 repository tests (§31.2, e.g. `repo.RecipeRepositoryTest`). Creates a schema named `test_ui_<random>`, creates the minimal tables a crafting view needs, and exposes `execute(sql)` for a test to seed its own rows. Points every `repo.Db.open()` call made from *inside* application code (view → controller → repositories) at that schema via the `repo.Db.TEST_SCHEMA_PROPERTY` system property — not just calls a test can pass an explicit `Connection` to. Also points `craft.CraftingGraphCache` at a fresh, not-yet-existing temp file path via `craft.CraftingGraphCache.TEST_CACHE_FILE_PROPERTY`, so the controller's cache load always rebuilds from the fixture schema's own recipe rows instead of reading the developer's real (possibly large, stale, or absent) `crafting_graph_cache.json`. `dropSchemaAndClose()` (called from `@AfterAll`) drops the schema and clears both system properties. Both system properties default to unset/no-op in normal and production use.
-- Both production seams above are narrowly scoped (a single optional system property each, read once in an existing method) and preserve default behavior exactly when unset.
-
-## 32.3 Required Smoke Test
-
-`uiverify.CraftingProfitViewSmokeIT` launches the real `Gw2App`, navigates into the real `CraftingProfitView`, selects a fixture character from the real character `ComboBox`, clicks the real "Refresh" button, and asserts the real `TableView`'s displayed "Item" and "Craftable" column values — against a small deterministic fixture (one character owning 10 unbound "UI Test Ore", a recipe turning 2 Ore into 1 "UI Test Widget" with a real TP sell price), then captures a screenshot of the table. This is a real-view test, not a check of standalone demonstration controls.
-
-`@BeforeAll`/`@AfterAll` (`PER_CLASS` lifecycle) is required, not `@BeforeEach`/`@AfterEach`: TestFX's `ApplicationExtension` invokes `start(Stage)` — which triggers the application's own startup DB reload — from a `BeforeEachCallback`, which JUnit 5 always runs before a test class's own `@BeforeEach` methods. An earlier version of this test used `@BeforeEach` and the application's first auto-reload ran against the developer's real database, before the fixture schema existed.
-
-## 32.4 Command, Prerequisites, and Startup/Failure Behavior
-
-Run explicitly (never part of the default `./mvnw test` goal):
-
-```
-./mvnw test -Dtest=CraftingProfitViewSmokeIT
-./mvnw test -Dtest=FxCompatibilityPrototypeIT
-```
-
-Prerequisites: a real interactive Windows desktop/window session (not headless — no Monocle is configured); a reachable PostgreSQL server matching `DATABASE_URL`/`DATABASE_USER`/`DATABASE_PASSWORD` (from the process environment or `.env`), used only to create/drop the test's own disposable schema, never the developer's normal schema or data.
-
-Readiness/failure detection is not a separate mechanism layered on top — it is the same bounded-wait/lookup machinery used for assertions (§32.2), and both a startup-path failure and a control-lookup failure were actually observed and fixed while establishing this test:
-
-- A `CraftingGraphCache` load failure (`MismatchedInputException: No content to map due to end-of-input`, because `Files.createTempFile` had left an empty file where the cache expected either a missing file or valid JSON) surfaced as a clean `RuntimeException` and failed the test in ~3.2s — no hang, and the real cause was visible directly in the surefire output. Fixed in `CraftingUiTestFixtures` by deleting the reserved temp file immediately after creating it, so the cache always rebuilds from the fixture schema instead of trying to parse an empty file.
-- A control-lookup failure (`EmptyNodeQueryException`, naming the exact query `"Refresh"` that matched no node) surfaced when the real "Refresh" button turned out not to be attached to `CraftingProfitView`'s visible layout at all — a pre-existing defect, unrelated to this story's other in-flight changes, confirmed by checking `git show HEAD:src/main/java/CraftingProfitView.java`. Failed cleanly in ~2.8s. Fixed by adding the already-fully-wired `btnRefresh` to `filterRow3`, the minimal change that makes the existing, already-implemented button reachable; no calculation or domain logic changed.
-
-In both cases JUnit 5's extension lifecycle (`ApplicationExtension`'s own after-each cleanup) tore down the FX toolkit/stage and the test's `@AfterAll` dropped the fixture schema regardless of the failure — termination was bounded and test resources were still cleaned up on the failing runs, not only on success.
-
-A naming defect was also found and fixed while verifying regression isolation (§32.5): the original prototype class name `TestFxPrototypeIT` starts with `"Test"`, which matches Maven Surefire's default `**/Test*.java` inclusion pattern regardless of the "IT" suffix — so it silently ran as part of the normal `./mvnw test` goal. Renamed to `FxCompatibilityPrototypeIT`, which matches none of Surefire's default patterns (`**/Test*.java`, `**/*Test.java`, `**/*Tests.java`, `**/*TestCase.java`), confirmed by diffing `target/surefire-reports/` before and after a default `./mvnw test` run. `CraftingProfitViewSmokeIT` and `api.Gw2ApiLiveSmokeIT` (Layer 4, §31.4) were already named safely.
-
-## 32.5 Actual Commands Run and Outcomes
-
-All run locally against a real Windows desktop session and a local PostgreSQL server already listening on port 5432:
-
-- `./mvnw test -Dtest=FxCompatibilityPrototypeIT` — 1 test, passed (proved TestFX 4.0.18 drives this project's real JavaFX 25.0.2/Java 25 combination).
-- `./mvnw test -Dtest=CraftingProfitViewSmokeIT` — failed twice for the real, unrelated reasons recorded in §32.4 above, then passed after each fix; re-run twice more afterward, passed both times, screenshot (`target/ui-test-screenshots/crafting-profit-smoke.png`, ~22KB PNG) produced and verified non-empty each time.
-- `./mvnw test -Dtest=FxCompatibilityPrototypeIT,CraftingProfitViewSmokeIT` — both passed together in one Surefire invocation.
-- `./mvnw test` (default goal, full existing suite) — passed, both before this story's changes and after, confirming the domain/repository/sync/parser suite (Layer 1–3) remains unaffected and that neither UI test is selected by the default goal (verified by absence of `uiverify.*` reports after clearing `target/surefire-reports/` and re-running).
-
-No check from STORY-DOM-013/014/015's own behavior matrix (All characters selection, refresh preservation of sorting/filtering, initial defaults, zero-character/empty-data handling, blocked-row visibility) was executed here — those remain those stories' own scope, to be built on top of §32.2's reusable harness.
-
-## 32.6 Limitations and Manual/PowerShell Fallback
-
-- Headful only: no headless (Monocle) configuration exists, so this layer requires a real interactive desktop session and cannot currently run in a headless CI runner. This is a recorded limitation, not solved by this story. It is also the reason this layer sits outside the CI gate (§36.4): a story that changes JavaFX UI behavior still owes this check locally, because a green pipeline says nothing about it.
-- Requires a reachable local PostgreSQL server; if none is reachable, `CraftingUiTestFixtures`'s constructor fails fast with the real JDBC connection error rather than silently skipping.
-- No genuinely impractical-for-TestFX case was identified while establishing this layer — the ComboBox-selection/button-click/TableView-assertion pattern needed for the smoke test, and intended for STORY-DOM-013/014/015's own checks, is fully covered by §32.2's harness. Per `docs/TARGET_ARCHITECTURE.md`'s "Existing JavaFX UI Verification Capability" section, Windows PowerShell (including `System.Windows.Automation`) remains available as a repository-scoped interim fallback if a future check proves genuinely impractical through TestFX (e.g. verifying a native OS-level dialog outside the JavaFX scene graph) — but no such case exists yet, so no PowerShell procedure was written for this story. A future story reaching for that fallback must name the specific impractical case, not use it as a default.
+The number §32 is kept so that existing cross-references stay stable. UI-observable behavior is now verified in the browser layers: Vitest component and unit tests, the type-checking build, and the local browser smoke scripts (§12). Backend behavior behind the UI is covered by Layers 1–4 and the Spring Boot HTTP boundary layer (§35).
 
 ---
 
@@ -1305,15 +1237,15 @@ No check from STORY-DOM-013/014/015's own behavior matrix (All characters select
 
 For PROJECT HEALTH REVIEW tasks, verification is an evidence source under `docs/TARGET_ARCHITECTURE.md` §21, not an automatic requirement to run broad suites or add tests. Use that policy to bound review checks; the implementation-change rules below remain unchanged.
 
-Broad, layered coverage (§3's pyramid, Layers 1–5) is the project's goal, not a checklist every change must exhaust. Test effort — which layers are touched, how many tests are written, how heavy each one is — must stay proportional to the size and risk of the actual change, never padded out for thoroughness alone.
+Broad, layered coverage (§3's pyramid, Layers 1–4 and 6) is the project's goal, not a checklist every change must exhaust. Test effort — which layers are touched, how many tests are written, how heavy each one is — must stay proportional to the size and risk of the actual change, never padded out for thoroughness alone.
 
 Concretely:
 
-- A change confined to background/non-UI logic (domain, application-service, repository, sync, parser code) does not require Layer 5 (§32, JavaFX/TestFX) coverage, or any other UI-facing test, merely because it happens to sit near a UI-adjacent story or feature. Add a UI-layer test only when the change itself alters UI-observable behavior: a view, a controller's wiring to the domain/application layer, a displayed value, or an interactive control.
-- Conversely, a change that does alter UI-observable behavior does not need it re-verified at every other layer beyond what already covers the underlying calculation — Layer 5 exists to check that the UI correctly reflects a result, not to re-prove the result itself (§12, §32 already establish this for the frontend generally).
+- A change confined to background/non-UI logic (domain, application-service, repository, sync, parser code) does not require browser-layer coverage, or any other UI-facing test, merely because it happens to sit near a UI-adjacent story or feature. Add a UI-layer test only when the change itself alters UI-observable behavior: a view, a controller's wiring to the domain/application layer, a displayed value, or an interactive control.
+- Conversely, a change that does alter UI-observable behavior does not need it re-verified at every other layer beyond what already covers the underlying calculation — Browser tests exist to check that the UI correctly reflects a result, not to re-prove the result itself (§12 already establishes this for the frontend generally).
 - §31.5's "choose the lowest layer that proves the behavior" already governs which layer to use; this section governs how much test volume is appropriate once that layer is chosen. Prefer one clear, well-named test (§16, §22, §23) over several overlapping ones asserting the same fact.
-- Heavier layers (Layer 2 PostgreSQL integration, Layer 4 live smoke, Layer 5 TestFX) cost real setup/runtime/review effort disproportionate to most changes; reach for them only when the change's own risk genuinely requires that layer's specific guarantee (real SQL semantics, real external API shape, real UI wiring), not as a default upgrade from a cheaper layer that already proves the point.
-- This does not relax any existing minimum: QA must provide appropriate automated verification for domain behavior and named regression tests for confirmed defects (§16). It constrains the upper bound of QA's test design; the coding agent fulfills that design without writing tests.
+- Heavier layers (Layer 2 PostgreSQL integration, Layer 4 live smoke) cost real setup/runtime/review effort disproportionate to most changes; reach for them only when the change's own risk genuinely requires that layer's specific guarantee (real SQL semantics, real external API shape, real UI wiring), not as a default upgrade from a cheaper layer that already proves the point.
+- This does not relax any existing minimum: the implementing agent provides appropriate automated verification for domain behavior and named regression tests for confirmed defects (§16). Keep test volume proportional to risk.
 
 ---
 
@@ -1351,7 +1283,7 @@ The methodology below applies unchanged to every route added afterwards — `STO
 
 ## 35.2 Real-database API checks (explicit runs only)
 
-Name these `*IT` so Surefire's default patterns exclude them (§32.4), and run them explicitly. They boot the real application on a random port with the real application service and no schema override, so they read the developer's real database exactly as the running application does.
+Name these `*IT` so Surefire's default patterns exclude them (§36.2), and run them explicitly. They boot the real application on a random port with the real application service and no schema override, so they read the developer's real database exactly as the running application does.
 
 - **Timing** (§34, and `TARGET_ARCHITECTURE.md` §17 at this boundary): measure wall-clock from issuing the HTTP request to holding the *complete* response body, so routing, calculation and full JSON serialization are all inside the timer. Report the first request after startup separately from repeats, report the maximum, and record row count, response size, settings, data scale and environment. Context/server startup sits outside the per-request timer and must be stated as such. Backend request time is one part of the §17 navigation-to-complete-page budget and is never reported as proof of it.
 - **Result equivalence**: for each settings combination, call the endpoint over HTTP and call the same application-service method in process with identical inputs, then compare every row field by field — count, order, each authoritative value, blocked state and both missing-material maps. This is what proves a mapping preserves results on real data; fixture-based contract tests cannot. Both runs must be read-only, with no synchronization in between.
@@ -1390,9 +1322,9 @@ is, what it runs, what it cannot run, and what "verified" therefore means.
 
 | Where | Runs | Authoritative for |
 |---|---|---|
-| Local (Claude, during implementation) | the narrowest scope covering the change: one test, one class, at most the directly related suite (§20) | that the change under construction behaves as intended |
-| GitHub Actions (`.github/workflows/ci.yml`) | the complete default suites: `./mvnw test`, the frontend `npm test` plus type-check/build, and the `agent/runtime` harness tests | that nothing else in the repository broke |
-| Local, explicitly invoked by a human | Layer 4 live GW2 API smoke (§31.4), Layer 5 TestFX UI verification (§32), the browser smoke scripts (§12.2), real-database `*IT` equivalence/performance checks (§34, §35.2) | the things the gate cannot run at all — see §36.4 |
+| Local (implementing agent, during implementation) | the narrowest scope covering the change: one test, one class, at most the directly related suite (§20) | that the change under construction behaves as intended |
+| GitHub Actions (`.github/workflows/ci.yml`) | the complete default suites: `./mvnw test` and the frontend `npm test` plus type-check/build; the legacy harness job remains only until decommission | that the default product suites pass on the PR head |
+| Local, explicitly invoked during pairing | Layer 4 live GW2 API smoke (§31.4), the browser smoke scripts (§12.2), real-database `*IT` equivalence/performance checks (§34, §35.2) | the things the gate cannot run at all — see §36.4 |
 
 Neither side's scope is reduced by this split: the gate runs the same commands the
 developer runs, with the same test selection. What changed is *who pays for the
@@ -1401,19 +1333,16 @@ attempt.
 
 ## 36.2 What the gate runs
 
-Three jobs, in parallel, on every pushed commit and every pull request:
+Two test jobs, in parallel, on every pushed commit and every pull request, followed by a coverage report job:
 
-- **Backend** — `./mvnw -B -ntp test -Djavafx.platform=linux` on `ubuntu-latest`,
+- **Backend** — `./mvnw -B -ntp test` on `ubuntu-latest`,
   against a `postgres:17` service container. Surefire's default patterns still
   select `*Test` classes only, so every `*IT` class stays excluded exactly as it
-  is locally. `javafx.platform` overrides the pom's Windows default for the Linux
-  runner; this is verified safe because no class in the default suite loads a
-  JavaFX native library (the whole suite passes with the Linux classifier).
+  is locally. The build has no platform-specific classifier, so the same command
+  runs on a developer machine and on the Linux runner.
 - **Frontend** — `npm ci`, then `npm test` (Vitest, with Vitest's own
   `github-actions` reporter added so failures become annotations), then
   `npm run build`, which type-checks first (§12.1).
-- **Agent runtime** — `python -m unittest discover -s agent/runtime/tests -t .`,
-  the offline harness contract tests.
 
 ## 36.3 Required services and configuration
 
@@ -1431,17 +1360,11 @@ Three jobs, in parallel, on every pushed commit and every pull request:
 - **Database credentials** in the workflow are the service container's own,
   reachable only from that job for its lifetime. They are configuration, not
   secrets, and no secret of any kind is required by the gate today.
-- **No GitHub token is required** for the orchestrator to read the result of a
-  public repository's run. A token may be supplied through the environment purely
-  to raise the API rate limit; it is never written to a file or a log.
+- **The CI jobs require no application secret.** Agent workflows use their own scoped
+  GitHub and model credentials; those are not application test inputs.
 
 ## 36.4 What the gate deliberately cannot verify
 
-- **Layer 5 (TestFX, §32)** is headful and Windows-native: it needs a real
-  interactive desktop session and the Windows JavaFX classifier, so it cannot run
-  on the CI runner. §32.6 already records this. It remains an explicitly invoked
-  local check, and a story that changes JavaFX UI behavior still owes that check
-  locally — the gate will not catch it.
 - **Layer 4 live GW2 API smoke (§31.4)** must never run automatically anywhere,
   by definition.
 - **Real-database `*IT` equivalence and performance checks (§34, §35.2)** read a
@@ -1454,19 +1377,13 @@ layer passed". It is the regression gate, not the whole strategy.
 
 ## 36.5 What "verified" means for a story
 
-The development pipeline (`workflow_service/README.md`) commits and pushes a story once
-the evaluator accepts it, then waits for that commit's CI conclusion. Only the
-application jobs decide; a failing agent-runtime job is reported as an
-agent-workflow warning and never holds a story:
-
-- **green** — the story completes normally;
-- **red** — the failing tests, and only those, come back to Claude as a bounded
-  failure report; it fixes them, the harness pushes again, and the gate re-runs.
-  After a small number of failed attempts the story is blocked for a human
-  instead of looping;
-- **undetermined** (no run appeared, a cancelled run, an unreadable API, a
-  rejected push) — never treated as a pass; the story keeps its step and the
-  next pipeline run checks again.
+The PR head must have green backend and frontend CI checks and a completed Codex
+review before a merge. A red or missing required check holds the PR.
+The implementing agent fixes relevant failures on the same branch and CI reruns
+on the new head. Local-only checks required by the issue need recorded evidence;
+their absence cannot be inferred away from green CI. The review-merge workflow
+requires a current clean Codex summary and explicit no-pending-local-checks
+evidence for an automatic Claude story merge; other PRs are supervised.
 
 A story's Definition of Done must not demand a full local regression run. Where
 it needs test evidence, it names the tests that must exist and pass, and the gate

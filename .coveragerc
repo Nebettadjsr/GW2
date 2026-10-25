@@ -1,9 +1,0 @@
-[run]
-branch = True
-source = agent.runtime
-omit =
-    agent/runtime/tests/*
-    workflow_service/test_*
-
-[report]
-show_missing = True
