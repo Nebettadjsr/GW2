@@ -205,12 +205,12 @@ public final class CharacterSync {
         }
         for (JsonNode row : cNode.get("crafting")) {
             if (row == null || !row.isObject() || !row.path("discipline").isTextual()
-                    || row.path("discipline").asText().isBlank() || !row.path("rating").isIntegralNumber()) {
+                    || row.path("discipline").asText().isBlank() || !nonNegativeInt(row.path("rating"))) {
                 throw malformed(requestedName, "crafting");
             }
         }
         for (JsonNode id : cNode.get("recipes")) {
-            if (id == null || !id.isIntegralNumber() || id.asInt() <= 0) throw malformed(requestedName, "recipes");
+            if (!positiveInt(id)) throw malformed(requestedName, "recipes");
         }
         for (JsonNode bag : cNode.get("bags")) {
             if (bag == null || bag.isNull()) continue; // an unequipped bag slot
@@ -236,8 +236,17 @@ public final class CharacterSync {
     /** An empty inventory slot (null) is valid; any other slot must be an object with an integral id. */
     private static boolean validItem(JsonNode n, boolean nullAllowed) {
         if (n == null || n.isNull()) return nullAllowed;
-        return n.isObject() && n.path("id").isIntegralNumber() && n.path("id").canConvertToInt()
-                && (!n.has("count") || n.get("count").isNull() || n.get("count").isIntegralNumber());
+        return n.isObject() && positiveInt(n.get("id"))
+                && (nullAllowed ? positiveInt(n.get("count"))
+                : !n.has("count") || positiveInt(n.get("count")));
+    }
+
+    private static boolean nonNegativeInt(JsonNode n) {
+        return n != null && n.isIntegralNumber() && n.canConvertToInt() && n.intValue() >= 0;
+    }
+
+    private static boolean positiveInt(JsonNode n) {
+        return nonNegativeInt(n) && n.intValue() > 0;
     }
 
     private static List<model.CharacterItemRow> characterItems(JsonNode cNode) {

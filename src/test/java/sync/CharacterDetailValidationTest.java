@@ -60,4 +60,16 @@ class CharacterDetailValidationTest {
                 + "\"bags\":[null,{\"inventory\":[null,{\"id\":1,\"count\":3}]}],\"equipment\":[{\"id\":2,\"slot\":\"Helm\"}]");
         assertDoesNotThrow(() -> CharacterSync.requireConsistentDetail("Aria", CharacterParser.parseInfo(n), n));
     }
+
+    @Test
+    void nestedNumbersCannotOverflowOrFabricateInventoryCounts() throws Exception {
+        for (String item : new String[]{"{\"id\":1}", "{\"id\":1,\"count\":null}",
+                "{\"id\":1,\"count\":4294967297}", "{\"id\":0,\"count\":1}"}) {
+            rejected(",\"crafting\":[],\"recipes\":[],\"bags\":[{\"inventory\":[" + item
+                    + "]}],\"equipment\":[]");
+        }
+        rejected(",\"crafting\":[],\"recipes\":[4294967297],\"bags\":[],\"equipment\":[]");
+        rejected(",\"crafting\":[{\"discipline\":\"Chef\",\"rating\":4294967297}],\"recipes\":[],\"bags\":[],\"equipment\":[]");
+        rejected(",\"crafting\":[],\"recipes\":[],\"bags\":[],\"equipment\":[{\"id\":1,\"slot\":\"Helm\",\"count\":null}]");
+    }
 }

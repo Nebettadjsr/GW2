@@ -229,7 +229,8 @@ public final class AccountSync {
         for (int slot = 0; slot < root.size(); slot++) {
             JsonNode entry = root.get(slot);
             if (entry != null && !entry.isNull()
-                    && (!entry.isObject() || !isInt(entry.get("id")) || (entry.has("count") && !isInt(entry.get("count"))))) {
+                    && (!entry.isObject() || !isInt(entry.get("id")) || entry.get("id").intValue() <= 0
+                    || !isInt(entry.get("count")) || entry.get("count").intValue() <= 0)) {
                 throw new RuntimeException("Unexpected JSON (bank): malformed slot " + slot + "; nothing published");
             }
             rows.add(BankParser.parseSlot(slot, entry));

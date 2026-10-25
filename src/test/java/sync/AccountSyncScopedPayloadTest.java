@@ -42,4 +42,14 @@ class AccountSyncScopedPayloadTest {
                     () -> AccountSync.parseBankSlots(m.readTree(bad)), bad);
         }
     }
+
+    @Test
+    void bankCountsAndIdsMustBePresentPositiveAndRepresentable() {
+        for (String slot : new String[]{"{\"id\":1}", "{\"id\":1,\"count\":null}",
+                "{\"id\":1,\"count\":0}", "{\"id\":-1,\"count\":2}",
+                "{\"id\":1,\"count\":4294967297}", "{\"id\":4294967297,\"count\":1}"}) {
+            assertThrows(RuntimeException.class, () -> AccountSync.parseBankSlots(Gw2ApiClient.readJson(
+                    "[{\"id\":2,\"count\":3}," + slot + "]")), slot);
+        }
+    }
 }
