@@ -19,6 +19,9 @@ let pricesAnswer: unknown = itemPrices
 let priceFailure = false
 let luckStored = true
 let taskState: 'SUCCEEDED' | 'FAILED' = 'SUCCEEDED'
+let admissionCoverage: boolean[] = []
+let lastAdmissionCovered = true
+let stallAdmission = false
 let wrapper: VueWrapper | null = null
 
 function jsonResponse(body: unknown): Response {
@@ -70,6 +73,9 @@ beforeEach(() => {
   priceFailure = false
   luckStored = true
   taskState = 'SUCCEEDED'
+  admissionCoverage = []
+  lastAdmissionCovered = true
+  stallAdmission = false
   vi.stubGlobal('fetch', vi.fn((input: string, init?: RequestInit) => {
     requests.push({ method: init?.method ?? 'GET', url: input })
     const url = new URL(input, 'http://test.local')
@@ -88,10 +94,12 @@ beforeEach(() => {
         ))
     }
     if (url.pathname === '/api/sync/account/luck') {
-      return Promise.resolve(jsonResponse({ taskId: 'luck-1', operation: 'ACCOUNT_SYNC', statusUrl: '/api/sync/tasks/luck-1' }))
+      if (stallAdmission) return new Promise<Response>(() => {})
+      lastAdmissionCovered = admissionCoverage.shift() ?? true
+      return Promise.resolve(jsonResponse({ taskId: 'luck-1', operation: 'ACCOUNT_SYNC', statusUrl: '/api/sync/tasks/luck-1', coversRequest: lastAdmissionCovered }))
     }
     if (url.pathname === '/api/sync/tasks/luck-1') {
-      if (taskState === 'SUCCEEDED') luckStored = true
+      if (taskState === 'SUCCEEDED' && lastAdmissionCovered) luckStored = true
       return Promise.resolve(jsonResponse(
         taskState === 'FAILED'
           ? { taskId: 'luck-1', operation: 'ACCOUNT_SYNC', state: 'FAILED', failure: { message: 'upstream down' } }
@@ -106,6 +114,7 @@ afterEach(() => {
   wrapper?.unmount()
   wrapper = null
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 describe('EctoSalvageScreen', () => {
@@ -328,5 +337,66 @@ describe('EctoSalvageScreen', () => {
     expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(2)
     expect(open.find('[data-test="ecto-luck-missing"]').exists()).toBe(false)
     expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(true)
+  })
+
+  it('requests Luck again after an unrelated successful Profit task', async () => {
+    luckStored = false
+    admissionCoverage = [false, true]
+    const open = await openScreen()
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(2)
+    expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(true)
+  })
+
+  it('stops repeated uncovered admissions and offers retry without inventing Luck', async () => {
+    luckStored = false
+    admissionCoverage = [false, false, false, false, false]
+    const open = await openScreen()
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(4)
+    expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(false)
+    expect(open.find('[data-test="ecto-luck-refresh-error"]').text()).toContain('Another refresh kept running')
+  })
+
+  it('ends the visible recovery budget even when admission never answers', async () => {
+    vi.useFakeTimers()
+    luckStored = false
+    stallAdmission = true
+    const open = await openScreen()
+    expect(open.find('[data-test="ecto-luck-refresh"]').attributes('disabled')).toBeDefined()
+    await vi.advanceTimersByTimeAsync(60_000)
+    await flushPromises()
+    expect(open.find('[data-test="ecto-luck-refresh-error"]').text()).toContain('may still be running')
+    expect(open.find('[data-test="ecto-luck-refresh"]').attributes('disabled')).toBeUndefined()
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(1)
+  })
+
+  it('does not start Luck work when an initial missing-data read resolves after leaving', async () => {
+    const base = vi.mocked(fetch).getMockImplementation()!
+    let release!: (response: Response) => void
+    const held = new Promise<Response>((resolve) => { release = resolve })
+    vi.stubGlobal('fetch', vi.fn((input: string, init?: RequestInit) =>
+      input === '/api/account/luck' ? held : base(input, init)))
+    const open = await openScreen()
+    open.unmount()
+    wrapper = null
+    release(new Response(JSON.stringify({ error: 'CREDENTIAL_REQUIRED', message: 'missing' }),
+      { status: 404, headers: { 'Content-Type': 'application/json' } }))
+    await flushPromises()
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(0)
+  })
+
+  it('does not continue polling when a timed-out admission answers late', async () => {
+    vi.useFakeTimers()
+    luckStored = false
+    const base = vi.mocked(fetch).getMockImplementation()!
+    let release!: (response: Response) => void
+    const held = new Promise<Response>((resolve) => { release = resolve })
+    vi.stubGlobal('fetch', vi.fn((input: string, init?: RequestInit) =>
+      input === '/api/sync/account/luck' ? held : base(input, init)))
+    const open = await openScreen()
+    await vi.advanceTimersByTimeAsync(60_000)
+    release(jsonResponse({ taskId: 'luck-1', statusUrl: '/api/sync/tasks/luck-1' }))
+    await flushPromises()
+    expect(requests.some(({ url }) => url.startsWith('/api/sync/tasks/'))).toBe(false)
+    expect(open.find('[data-test="ecto-luck-refresh-error"]').text()).toContain('may still be running')
   })
 })

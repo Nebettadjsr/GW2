@@ -130,13 +130,21 @@ class AccountIsolationHttpPostgresIT {
                 case "key-c" -> new AccountProof(ACCOUNT_C, all, Set.of(), null);
                 case "key-a-narrow" -> new AccountProof(ACCOUNT_A,
                         Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES), Set.of(), null);
+                case "key-a-luck" -> new AccountProof(ACCOUNT_A,
+                        Set.of(AccountGrant.ACCOUNT, AccountGrant.PROGRESSION, AccountGrant.UNLOCKS), Set.of(), null);
                 default -> throw new InvalidCredentialException("rejected");
             };
         }
 
         @Bean @Primary
         ScopedAccountRefreshCoordinator itScopedCoordinator(BackgroundTasks tasks, AccountAccessService access) {
-            return new ScopedAccountRefreshCoordinator(new AccountRefreshService(), tasks, access, key -> url -> {
+            AccountRefreshService refresh = new AccountRefreshService(new sync.AccountRefreshGateway() {
+                @Override protected JsonNode fetchItemMetadata(java.util.List<Integer> ids) {
+                    // Metadata is an upstream edge too: synthetic item IDs must never call ArenaNet.
+                    return JSON.createArrayNode();
+                }
+            });
+            return new ScopedAccountRefreshCoordinator(refresh, tasks, access, key -> url -> {
                 if (UPSTREAM_OUTAGE.get()) throw new IOException("simulated upstream outage");
                 boolean a = key.startsWith("key-a");
                 String path = url.substring(url.indexOf("/v2/") + 3);
@@ -538,5 +546,21 @@ class AccountIsolationHttpPostgresIT {
         send("POST", "/api/crafting/discovery", a, null, discoveryBody("Bela"), null);
         send("POST", "/api/crafting/profit", a, null, "{}", "stale-tab-context");
         assertEquals(before, scalar(seenSql(ACCOUNT_A)), "rejected proof/scope advance no activity");
+    }
+
+    @Test @Order(13)
+    void neverPublishedLuckRecoversThroughTheRealLuckOnlyRoute() throws Exception {
+        try (Connection con = Db.open(); Statement st = con.createStatement()) {
+            st.execute("DELETE FROM account_luck WHERE account_id='" + ACCOUNT_A.toLowerCase() + "'");
+            st.execute("DELETE FROM account_source_state WHERE account_id='" + ACCOUNT_A.toLowerCase()
+                    + "' AND source='LUCK'");
+        }
+        Session luck = login("key-a-luck");
+        assertEquals(404, send("GET", "/api/account/luck", luck, null, null, null).status());
+        assertEquals(403, send("POST", "/api/sync/account/crafting-profit", luck, "key-a-luck", "{}", null).status());
+        assertEquals("SUCCEEDED", sync(luck, "key-a-luck", "/api/sync/account/luck"));
+        Resp recovered = send("GET", "/api/account/luck", luck, null, null, null);
+        assertEquals(200, recovered.status());
+        assertEquals(10, recovered.json().path("consumedLuck").asInt());
     }
 }

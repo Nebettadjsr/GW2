@@ -189,8 +189,12 @@ const luckRefreshing = ref(false)
 const luckRefreshError = ref<string | null>(null)
 const LUCK_POLL_MS = 1_000
 const LUCK_MAX_POLLS = 60
+const LUCK_ADMISSION_RETRIES = 3
+const LUCK_RECOVERY_BUDGET_MS = 60_000
 let luckAutoTried = false
 let unmounted = false
+let luckCycle = 0
+let cancelLuckRefresh: (() => void) | null = null
 
 const selectedMethodId = ref(defaultMethod.id)
 const selectedToolId = ref(defaultMethod.defaultToolId)
@@ -444,6 +448,7 @@ async function loadPage(): Promise<void> {
     pricesPromise,
     luckPromise
   ])
+  if (unmounted) return
 
   const errors: string[] = []
 
@@ -481,14 +486,48 @@ async function loadPage(): Promise<void> {
 
 /** One bounded Luck-only refresh: start the task, poll it, then re-read the stored Luck once. */
 async function refreshLuck(): Promise<void> {
-  if (luckRefreshing.value) return
+  if (unmounted || luckRefreshing.value) return
   luckRefreshing.value = true
   luckRefreshError.value = null
+  const cycle = ++luckCycle
+  let timer = 0
+  const stopped = new Promise<never>((_, reject) => {
+    cancelLuckRefresh = () => {
+      luckCycle += 1
+      reject(new Error('The page was closed.'))
+    }
+    timer = window.setTimeout(() => {
+      luckCycle += 1
+      reject(new Error('The refresh is taking longer than expected. It may still be running.'))
+    }, LUCK_RECOVERY_BUDGET_MS)
+  })
   try {
+    await Promise.race([recoverLuck(cycle), stopped])
+  } catch (cause) {
+    if (unmounted) return
+    luckRefreshError.value = `Account Luck could not be refreshed: ${
+      cause instanceof Error ? cause.message : String(cause)
+    }`
+  } finally {
+    window.clearTimeout(timer)
+    cancelLuckRefresh = null
+    luckRefreshing.value = false
+  }
+}
+
+function requireLuckCycle(cycle: number): void {
+  if (unmounted || cycle !== luckCycle) throw new Error('This Luck refresh is no longer active.')
+}
+
+async function recoverLuck(cycle: number): Promise<void> {
+  for (let attempt = 0; attempt <= LUCK_ADMISSION_RETRIES; attempt += 1) {
+    requireLuckCycle(cycle)
     const accepted = await startLuckRefresh()
+    requireLuckCycle(cycle)
     let done = false
     for (let poll = 0; poll < LUCK_MAX_POLLS && !done && !unmounted; poll += 1) {
       const status = await syncApi.readTaskStatus(accepted.statusUrl)
+      requireLuckCycle(cycle)
       if (status.state === 'SUCCEEDED') {
         done = true
       } else if (status.state === 'FAILED') {
@@ -497,22 +536,23 @@ async function refreshLuck(): Promise<void> {
         await new Promise<void>((resolve) => window.setTimeout(resolve, LUCK_POLL_MS))
       }
     }
-    if (unmounted) return
+    requireLuckCycle(cycle)
     if (!done) throw new Error('The refresh is taking longer than expected.')
-    accountLuck.value = await getJson<AccountLuckResponse>('/account/luck')
+    if (accepted.coversRequest === false) continue
+    const loaded = await getJson<AccountLuckResponse>('/account/luck')
+    requireLuckCycle(cycle)
+    accountLuck.value = loaded
     luckProblem.value = null
-  } catch (cause) {
-    if (unmounted) return
-    luckRefreshError.value = `Account Luck could not be refreshed: ${
-      cause instanceof Error ? cause.message : String(cause)
-    }`
-  } finally {
-    luckRefreshing.value = false
+    return
   }
+  throw new Error('Another refresh kept running, so Luck was not refreshed. Try again.')
 }
 
 onMounted(loadPage)
-onBeforeUnmount(() => { unmounted = true })
+onBeforeUnmount(() => {
+  unmounted = true
+  cancelLuckRefresh?.()
+})
 </script>
 
 <template>
