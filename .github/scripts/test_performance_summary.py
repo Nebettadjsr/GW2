@@ -191,6 +191,7 @@ class ContainerHelperTest(unittest.TestCase):
         request_started, sampling_started, request_finished = (threading.Event() for _ in range(3))
         m = self.cm.Measurement(SimpleNamespace(id="concurrent"))
         def http_get(url, timeout):
+            self.assertEqual(10, timeout, "window deadline must not truncate an admitted request timeout")
             request_started.set()
             self.assertTrue(sampling_started.wait(1), "request must overlap sampling")
             request_finished.set()
