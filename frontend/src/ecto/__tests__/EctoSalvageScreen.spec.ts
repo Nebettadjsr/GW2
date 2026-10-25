@@ -96,9 +96,10 @@ beforeEach(() => {
     if (url.pathname === '/api/sync/account/luck') {
       if (stallAdmission) return new Promise<Response>(() => {})
       lastAdmissionCovered = admissionCoverage.shift() ?? true
-      return Promise.resolve(jsonResponse({ taskId: 'luck-1', operation: 'ACCOUNT_SYNC', statusUrl: '/api/sync/tasks/luck-1', coversRequest: lastAdmissionCovered }))
+      return Promise.resolve(jsonResponse({ taskId: 'luck-1', operation: 'ACCOUNT_SYNC', statusUrl: '/api/sync/tasks/luck-1', coversRequest: lastAdmissionCovered, retryAfterSeconds: lastAdmissionCovered ? undefined : 10 }))
     }
     if (url.pathname === '/api/sync/tasks/luck-1') {
+      if (!lastAdmissionCovered) return Promise.resolve(new Response('{}', { status: 404 }))
       if (taskState === 'SUCCEEDED' && lastAdmissionCovered) luckStored = true
       return Promise.resolve(jsonResponse(
         taskState === 'FAILED'
@@ -339,19 +340,29 @@ describe('EctoSalvageScreen', () => {
     expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(true)
   })
 
-  it('requests Luck again after an unrelated successful Profit task', async () => {
+  it('retries admission after the advertised delay without observing an inaccessible Profit task', async () => {
+    vi.useFakeTimers()
     luckStored = false
     admissionCoverage = [false, true]
     const open = await openScreen()
+    await vi.advanceTimersByTimeAsync(9_999)
+    expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    await flushPromises()
     expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(2)
+    expect(requests.filter(({ url }) => url.startsWith('/api/sync/tasks/'))).toHaveLength(1)
     expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(true)
   })
 
   it('stops repeated uncovered admissions and offers retry without inventing Luck', async () => {
+    vi.useFakeTimers()
     luckStored = false
     admissionCoverage = [false, false, false, false, false]
     const open = await openScreen()
+    await vi.advanceTimersByTimeAsync(40_000)
+    await flushPromises()
     expect(requests.filter(({ method }) => method === 'POST')).toHaveLength(4)
+    expect(requests.some(({ url }) => url.startsWith('/api/sync/tasks/'))).toBe(false)
     expect(open.find('[data-test="ecto-account-luck"]').exists()).toBe(false)
     expect(open.find('[data-test="ecto-luck-refresh-error"]').text()).toContain('Another refresh kept running')
   })

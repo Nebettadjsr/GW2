@@ -524,6 +524,16 @@ async function recoverLuck(cycle: number): Promise<void> {
     requireLuckCycle(cycle)
     const accepted = await startLuckRefresh()
     requireLuckCycle(cycle)
+    if (accepted.coversRequest === false) {
+      // The blocker may need grants this Luck-only session does not have. Its status is not ours.
+      const seconds = accepted.retryAfterSeconds ?? 1
+      const delay = Number.isFinite(seconds) && seconds > 0
+        ? Math.min(seconds * 1_000, LUCK_RECOVERY_BUDGET_MS) : LUCK_POLL_MS
+      if (attempt < LUCK_ADMISSION_RETRIES) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, delay))
+      }
+      continue
+    }
     let done = false
     for (let poll = 0; poll < LUCK_MAX_POLLS && !done && !unmounted; poll += 1) {
       const status = await syncApi.readTaskStatus(accepted.statusUrl)
@@ -538,7 +548,6 @@ async function recoverLuck(cycle: number): Promise<void> {
     }
     requireLuckCycle(cycle)
     if (!done) throw new Error('The refresh is taking longer than expected.')
-    if (accepted.coversRequest === false) continue
     const loaded = await getJson<AccountLuckResponse>('/account/luck')
     requireLuckCycle(cycle)
     accountLuck.value = loaded
