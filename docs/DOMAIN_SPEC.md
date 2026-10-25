@@ -2,6 +2,10 @@
 
 ## 1. Purpose
 
+### Product risk policy
+
+Read-only GW2 API keys provide account identification and ArenaNet game-data access. Apply the proportionate handling policy in [UD-018](../agent/user-decisions/UD-018-proportionate-gw2-key-handling.md); high-sensitivity credential infrastructure is not a product requirement. Account separation and correct calculations remain required. Cached GW2 data is disposable and re-fetchable under UD-016. TARGET_ARCHITECTURE sections 8–8.2 own storage and transport choices.
+
 This document defines the business/domain rules of the GW2 Tool independently from its technical implementation.
 
 It describes:
