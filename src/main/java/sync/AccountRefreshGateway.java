@@ -36,11 +36,11 @@ public class AccountRefreshGateway {
     // committed publications intact.
 
     public void syncAccountBank(model.AccountScope scope, AccountSync.AuthFetcher fetcher) throws Exception {
-        AccountSync.syncAccountBank(scope, fetcher);
+        AccountSync.syncAccountBankImpl(scope, fetcher, this::repairItemMetadata);
     }
 
     public void syncAccountMaterials(model.AccountScope scope, AccountSync.AuthFetcher fetcher) throws Exception {
-        AccountSync.syncAccountMaterials(scope, fetcher);
+        AccountSync.syncAccountMaterialsImpl(scope, fetcher, this::repairItemMetadata);
     }
 
     public void syncAccountRecipes(model.AccountScope scope, AccountSync.AuthFetcher fetcher) throws Exception {
@@ -53,6 +53,24 @@ public class AccountRefreshGateway {
 
     public void syncCharacterCraftingAndRecipes(model.AccountScope scope, AccountSync.AuthFetcher fetcher)
             throws Exception {
-        CharacterSync.syncCharactersCraftingAndRecipes(scope, fetcher);
+        CharacterSync.syncCharactersCraftingAndRecipes(scope, fetcher, this::repairItemMetadata);
+    }
+
+    /** Fetch public metadata before publishing new account IDs, outside the account transaction. */
+    private void repairItemMetadata(java.util.Collection<Integer> ids) throws Exception {
+        try (java.sql.Connection con = repo.Db.open()) {
+            IconSync.repairMissingMetadata(con, ids, this::fetchItemMetadata);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw interrupted;
+        } catch (Exception unavailable) {
+            System.out.println("Account item metadata unavailable; retry on the next synchronization: "
+                    + unavailable.getClass().getSimpleName());
+        }
+    }
+
+    /** Replaceable upstream edge, including for full HTTP/database fixture checks. */
+    protected com.fasterxml.jackson.databind.JsonNode fetchItemMetadata(java.util.List<Integer> ids) throws Exception {
+        return IconSync.fetchItemMetadata(ids);
     }
 }

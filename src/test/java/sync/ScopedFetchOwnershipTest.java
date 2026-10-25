@@ -80,6 +80,29 @@ class ScopedFetchOwnershipTest {
         };
     }
 
+    @Test
+    void normalGatewayRepairsOnlyTheVerifiedAccountsPublishedItemMetadata() throws Exception {
+        java.util.List<Integer> requested = new java.util.ArrayList<>();
+        AccountRefreshGateway gateway = new AccountRefreshGateway() {
+            @Override
+            protected JsonNode fetchItemMetadata(java.util.List<Integer> ids) throws Exception {
+                requested.addAll(ids);
+                assertEquals(0, count("SELECT count(*) FROM account_bank WHERE account_id='" + A + "'"),
+                        "metadata must be available before the account generation is published");
+                return JSON.readTree("""
+                        [{"id":99,"name":"Bank item","type":"Trophy","rarity":"Basic","vendor_value":2,
+                          "icon":"https://render.guildwars2.com/file/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/63133.png"}]
+                        """);
+            }
+        };
+        seedBankForB();
+        gateway.syncAccountBank(AccountScope.of(A), credentialOf(A, "[]"));
+        assertEquals(java.util.List.of(99), requested);
+        assertEquals(1, count("SELECT count(*) FROM items WHERE item_id=99 AND icon_url IS NOT NULL"));
+        gateway.syncAccountBank(AccountScope.of(A), credentialOf(A, "[]"));
+        assertEquals(java.util.List.of(99), requested, "repeat sync must reuse existing canonical metadata");
+    }
+
     private long count(String sql) throws Exception {
         try (Statement st = admin.createStatement(); ResultSet rs = st.executeQuery(sql)) {
             rs.next();
