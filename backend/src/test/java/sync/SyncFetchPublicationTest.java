@@ -223,9 +223,32 @@ class SyncFetchPublicationTest {
                 scalar("SELECT string_agg(recipe_id||':'||item_id||':'||count, ',' ORDER BY recipe_id) FROM recipe_ingredients"));
         assertEquals("10,11,20,21,30", scalar("SELECT string_agg(item_id::text, ',' ORDER BY item_id) FROM items"));
         long detailCalls = urls.stream().filter(url -> url.contains("/v2/recipes?ids=")).count();
-        System.out.println("INVESTIGATION_RECIPE_DETAIL_CALLS=" + detailCalls);
         assertEquals(1, detailCalls,
-                "Measure recipe payload fetch count while preserving exact SQL publication assertions");
+                "Recipe and ingredient publication must share the one fetched payload");
+    }
+
+    @Test void recipeSync_reusesEveryDetailBatchAcrossItemAndIngredientPublication() throws Exception {
+        int count = SyncConstants.HTTP_IDS_BATCH * 2 + 1;
+        RecipeSync.fetcher = url -> {
+            urls.add(url);
+            if (url.endsWith("/v2/recipes")) return json(range(1, count).toString());
+            return json(java.util.Arrays.stream(idsOf(url).split(",")).map(Integer::parseInt)
+                    .map(id -> "{\"id\":" + id + ",\"type\":\"Refinement\",\"output_item_id\":" + (10000 + id)
+                            + ",\"output_item_count\":6,\"ingredients\":[{\"item_id\":" + (20000 + id) + ",\"count\":5}]}")
+                    .collect(Collectors.joining(",", "[", "]")));
+        };
+        ItemSync.fetcher = url -> json(java.util.Arrays.stream(idsOf(url).split(","))
+                .map(Integer::parseInt).map(SyncFetchPublicationTest::itemJson)
+                .collect(Collectors.joining(",", "[", "]")));
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
+        assertEquals(3, urls.stream().filter(url -> url.contains("?ids=")).count());
+        assertEquals(4, new HashSet<>(urls).size(), "Each batch downloaded exactly once plus the ID list");
+        assertEquals(String.valueOf(count), scalar("SELECT count(*) FROM recipes WHERE output_item_count=6"));
+        assertEquals(String.valueOf(count), scalar("SELECT count(*) FROM recipe_ingredients WHERE count=5 AND item_id=20000+recipe_id"));
+        assertEquals(String.valueOf(count * 2), scalar("SELECT count(*) FROM items"));
+        assertEquals("t", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertFalse(RecipeSync.syncAllRecipesGlobalSafe());
+        assertEquals(3, urls.stream().filter(url -> url.contains("?ids=")).count());
     }
 
     @Test
