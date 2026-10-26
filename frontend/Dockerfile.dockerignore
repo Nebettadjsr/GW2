@@ -1,0 +1,16 @@
+# Used with frontend/Dockerfile and frontend/ as context. Admit only what the
+# image build needs; local state, dependencies, reports and history stay out.
+**
+!package.json
+!package-lock.json
+!index.html
+!tsconfig.json
+!vite.config.ts
+!public/**
+!src/**
+!default.conf.template
+# Never copy local state, even under src
+**/.env
+**/.env.*
+**/node_modules
+**/*.log

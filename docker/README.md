@@ -21,11 +21,11 @@ Browser -> frontend (Nginx :8080, host :8088)
 
 | Service | Image / build definition | Purpose |
 | --- | --- | --- |
-| `frontend` | `frontend/Dockerfile`, Nginx configuration in `frontend/default.conf.template` | Serves the built browser UI and forwards `/api` to the backend. |
-| `backend` | `backend/Dockerfile` | Runs the Java API, calculations, ArenaNet synchronization and Flyway schema migrations. |
+| `frontend` | [`../frontend/Dockerfile`](../frontend/Dockerfile), Nginx configuration in [`../frontend/default.conf.template`](../frontend/default.conf.template) | Serves the built browser UI and forwards `/api` to the backend. |
+| `backend` | [`../backend/Dockerfile`](../backend/Dockerfile) | Runs the Java API, calculations, ArenaNet synchronization and Flyway schema migrations. |
 | `postgres` | Official `postgres:17` image, configured in `compose.yaml` | Runs the database in its own container. No custom database Dockerfile is needed. |
 
-The `docker/backend/` and `docker/frontend/` directories contain image build definitions and container configuration. Application source lives in the repository's top-level `backend/` and `frontend/` directories.
+Each application's Dockerfile and Docker ignore rules live beside its source in the top-level `backend/` or `frontend/` directory. The frontend also owns its Nginx configuration. This `docker/` directory holds the complete stack's orchestration, shared settings and startup instructions.
 
 `compose.yaml` owns all three services, their startup health checks, network, ports and volumes. The backend connects to `jdbc:postgresql://postgres:5432/gw2` on the Compose network. Only the frontend publishes a host port; the database is not inside the backend container.
 
