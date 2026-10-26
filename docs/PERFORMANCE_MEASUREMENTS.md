@@ -118,7 +118,7 @@ trigger and nonblocking configuration).
 ## Container measurements (STORY-PERF-007)
 
 Scope `container-stack`, separate from the application-process report above and never merged with it.
-`scripts/container_measure.py` builds and starts `compose.yaml` under its own unique project
+`scripts/container_measure.py` builds and starts `docker/compose.yaml` under its own unique project
 `gw2-cmeasure-<id>` on an ephemeral loopback port with a throwaway database password and an isolated, disposable
 PostgreSQL volume; it never reads a maintainer `.env`, `DATABASE_*` or `GW2_API_KEY`, and on exit runs
 `compose down -v` for that project and removes only its two built images. It refuses to start if the project already has

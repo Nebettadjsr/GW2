@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Repeatable offline smoke for the Docker Compose stack (STORY-INFRA-008). Starts compose.yaml under its
+# Repeatable offline smoke for the Docker Compose stack (STORY-INFRA-008). Starts docker/compose.yaml under its
 # own unique project (gw2-cstack-<id>) on an ephemeral loopback frontend port, checks the three
 # services, static UI, proxied global read, keyless refusal, same-origin session boundary, that only
 # the frontend publishes a port, then restarts the stack (volumes kept) and verifies the managed
@@ -18,7 +18,7 @@ TIMEOUT="${GW2_SMOKE_TIMEOUT_SECONDS:-300}"
 # Explicit settings: ephemeral frontend port, loopback, throwaway password, no inherited .env values.
 export GW2_STACK_HTTP_PORT='' GW2_STACK_HTTP_BIND=127.0.0.1 GW2_STACK_DB_PASSWORD="smoke-$RANDOM$RANDOM"
 unset DATABASE_URL DATABASE_USER DATABASE_PASSWORD GW2_API_KEY
-dc() { docker compose -p "$PROJECT" -f compose.yaml -f "$WORK/smoke.yaml" "$@"; }
+dc() { docker compose -p "$PROJECT" -f docker/compose.yaml -f "$WORK/smoke.yaml" "$@"; }
 
 if [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT")" ]; then
   echo "Project $PROJECT already exists; choose another GW2_SMOKE_ID" >&2; exit 1
