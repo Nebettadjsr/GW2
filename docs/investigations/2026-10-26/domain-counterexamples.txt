@@ -19,4 +19,3 @@ org.opentest4j.AssertionFailedError: Produced surplus must be retained across su
 	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:152)
 	at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:590)
 	at craft.InvestigationCounterexamplesIT.intermediateBatchSurplusCanSupplyTheNextCraft(InvestigationCounterexamplesIT.java:39)
-

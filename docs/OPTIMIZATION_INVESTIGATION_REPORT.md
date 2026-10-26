@@ -1,6 +1,15 @@
-# Optimization investigation: working evidence report
+# Resource and improvement investigation: first-round findings
 
-**In progress. This is not the completed investigation.** Parent issue: #116. No adoption, merge, database replacement or deployment is authorized by this report. The Product Owner decides which recommendations to implement.
+**Measured first-round findings; full deployment qualification is not complete.** Parent issue: #116. No adoption, merge, database replacement or deployment is authorized by this report. The Product Owner decides which recommendations to implement.
+
+## Conclusions for the next stage
+
+1. **The current developer setup can support continued development and small multi-user trials. Public/shared hosting capacity is not yet certified.** Actual one-account Profit navigation produced a usable result in about two seconds, while larger synthetic workloads exposed throughput and latency limits. The six-CPU developer machine is not equivalent to a tiny hosting instance.
+2. **Avoid buying hardware or replacing PostgreSQL as the first response.** There are measured application-level opportunities: bounded connection reuse and reduced simulation-state copying. PostgreSQL's current measured footprint is small relative to Java, and no alternative engine has demonstrated a benefit in this application's complete persistence contract.
+3. **Correctness takes priority over faster wrong results.** Two independently reproduced economic defects remain: an avoidable 50-copper purchase and discarded intermediate surplus. Neither is fixed by the performance experiments.
+4. **The strongest measured optimization candidates are connection reuse and request-local simulation-state reuse.** Both improve the tested high-load workloads. Neither establishes a universal RAM saving, and the pool prototype exposed a startup fault during qualification that had to be corrected.
+5. **Improve refresh clarity and recovery in the UI.** Bank/Materials reread cached data without showing its age, and a recoverable failed read removes the previous view. Proposed changes are described below; they have not been silently implemented.
+6. **All decisions remain with the Product Owner.** Experimental branches, before/after data, costs, test evidence and qualification gaps are recorded for selection. No experiment is merged or deployed.
 
 ## Scope and evidence ledger
 
@@ -19,7 +28,7 @@ The initial seven-minute deliverable was an investigation plan plus one empty-st
 | Recipe payload reuse | Controlled before/after upstream request counter, exact SQL assertions and failure/retry tests | Two detail fetches before, one after; 26 targeted tests and both application CI suites passed |
 | Database alternatives | Technical suitability screening | No end-to-end SQLite/DuckDB prototype or measured engine ranking |
 | Constrained application process | Two CPUs / 1.5 GiB and one CPU / 1 GiB with 5,000 recipes; two CPUs / 2 GiB with 13,000 recipes | All completed without workload errors; larger catalog exposes materially worse latency; not a hosting capacity certificate |
-| Simulation-state allocation | JFR allocation attribution, request-worker reuse prototype, equivalence and concurrency tests | 117 domain test invocations passed across 25 classes; corrected daily-limit equivalence cases passed; five-pair 13,000-recipe timing experiment running |
+| Simulation-state allocation | JFR attribution, request-worker reuse, equivalence and concurrency tests, five alternating 13,000-recipe comparison pairs | All ten workload reports have no diagnostics; 117 domain invocations and strengthened daily-limit comparisons passed; full application CI passed on bdec991 |
 | Soak, real catalog and fault matrix | Not completed | Sustained hosting capacity remains unproven |
 
 All load experiments use a dedicated PostgreSQL container with a uniquely named schema per run and deterministic upstream edges. They do not load-test ArenaNet or modify the user's normal database. The load generator currently shares the application JVM, so its CPU, heap and response buffers contribute to process measurements. Windows RSS is unavailable in the existing report. A sampled Windows working set is an observation, not an isolated service memory requirement.
@@ -95,7 +104,7 @@ The **first one-CPU / 1 GiB attempt stalled in the prototype**, not from OOM. A 
 
 Revision `3289f8987ac0ffa3b42df7b6f8cdd1bed343a87b` moves pool construction out of class initialization. The one-CPU / 1 GiB rerun, with `-Xmx512m`, completed with no errors or OOM through twenty accounts. At twenty: mixed p95 **5,744.87 ms**, throughput **9.34 requests/s**, sampled RSS maximum **722.5 MiB**, sampled heap maximum **445.1 MiB**. [Raw report](investigations/2026-10-26/constrained-cpu1-ram1024-fixed.json), [limits/source provenance](investigations/2026-10-26/constrained-cpu1-ram1024-fixed-provenance.json). Its embedded commit is unknown because that wrapper omitted GITHUB_SHA; source provenance is recorded separately, not inserted into raw data.
 
-The five-pair speed results above belong to `b7be0ee`; they are not silently relabeled as measurements of revision `3289f89`. The corrected code needs its own adoption verification. The one-CPU result leaves little latency room for rendering and more realistic account/catalog/refresh load; it does not establish a suitable twenty-user deployment. Both profiles cap the harness/client/Maven together and leave PostgreSQL outside the cap. They cannot certify a whole-stack 1 GiB host.
+The five-pair speed results above belong to `b7be0ee`; they are not silently relabeled as measurements of revision `3289f89`. The corrected code needs its own adoption verification. A separate fresh-JVM test with virtual-thread scheduler parallelism forced to one passed in 0.642 seconds; it confirms startup without relying on a pool initialized by an earlier test. The one-CPU workload leaves little latency room for rendering and more realistic account/catalog/refresh load; it does not establish a suitable twenty-user deployment. Both profiles cap the harness/client/Maven together and leave PostgreSQL outside the cap. They cannot certify a whole-stack 1 GiB host.
 
 #### Catalog-sized synthetic workload
 
@@ -117,7 +126,31 @@ Reprinting the existing JFR with full stack depth identifies `PlanState.<init>` 
 
 Each coordinated recipe evaluation currently copies the account inventories into a fresh simulation state. `experiment/116-reuse-simulation-state` tries one reusable state per worker **inside one request**, retaining accepted-craft journal history until that root evaluation finishes and restoring all state afterward. It uses a request-local worker map, not ThreadLocal storage or cross-request/account pooling. Separate fresh-state behavior remains the default.
 
-Tradeoff: fewer full inventory copies, but a longer undo journal and additional rollback work; correctness and actual throughput must decide whether this is worthwhile. Tests compare complete results across forty seeded fixtures and eight settings combinations, plus twenty-four concurrent account fixtures, and directly verify restoration of bound/character inventory, daily limits, visiting state and buy cost. The existing domain suite passed 117 invocations across 25 classes; the strengthened daily-limit comparison also passed. These comparisons preserve baseline behavior and do not fix the separately confirmed pruning/surplus bugs. Five alternating control/candidate pairs with a 13,000-recipe catalog are in progress; no speed or memory gain is claimed yet.
+Tradeoff: fewer full inventory copies, but a longer undo journal and additional rollback work; correctness and actual throughput must decide whether this is worthwhile. Tests compare complete results across forty seeded fixtures and eight settings combinations, plus twenty-four concurrent account fixtures, and directly verify restoration of bound/character inventory, daily limits, visiting state and buy cost. The existing domain suite passed 117 invocations across 25 classes; the strengthened daily-limit comparison also passed. These comparisons preserve baseline behavior and do not fix the separately confirmed pruning/surplus bugs. The completed timing and sensitivity results follow.
+
+#### Five-pair state-reuse outcome
+
+All ten runs completed successfully on source `bdec991a56fd2cabd38b8db16a83b7c61bfb311d`. Both modes use the corrected eight-connection pool, the same six-core Windows environment and a two-GiB maximum JVM heap. Only simulation-state reuse differs. Do not add these percentages to the earlier pool experiment: its source, catalog size and comparison axis differ.
+
+| Active accounts | Fresh-state median per-run mixed p95 (ms) | Reused-state median (ms) | Median paired p95 change |
+| --- | ---: | ---: | ---: |
+| 1 | 349.65 | 283.39 | -19.5% |
+| 2 | 572.03 | 483.66 | -20.3% |
+| 5 | 1,023.32 | 857.61 | -20.8% |
+| 10 | 1,719.91 | 1,307.40 | -26.9% |
+| 20 | 3,340.82 | 2,460.14 | -26.8% |
+
+At twenty accounts, median per-run total CPU time was **61,562.5 -> 39,828.12 ms** (median paired change **-37.8%**) and throughput **15.21 -> 21.22 requests/s** (median paired change **+39.6%**). Every pair improved p95 (range **-32.3% to -17.4%**) and CPU time. Heap peaks were not consistently better: paired changes range from **-17.3% to +9.3%**. No guaranteed RAM reduction is claimed. [Run-level summary/checksums](investigations/2026-10-26/paired-state-summary.json), [raw reports/logs](investigations/2026-10-26/paired-state-raw.zip).
+
+A supplemental pure-domain empty-inventory/buying-enabled check used two thousand flat recipes, warmup and five alternating pairs. All result checksums matched. Runs were only about 31-37 ms; one candidate run regressed and the short measurements vary, so they do not establish a general latency gain or rule out regressions in other inventory/settings shapes. [Raw observations](investigations/2026-10-26/empty-inventory-tradeoff.json), [reproducer](investigations/2026-10-26/EmptyInventoryTradeoff.java). This is separate from the application/HTTP benchmark.
+
+Recommendation: a worthwhile candidate for production finalization and independent review, with explicit journal-lifetime and account-isolation checks. It adds about forty net production lines plus tests/tooling, rather than simplifying the state model. Preserve that complexity cost and the low-inventory qualification gap in the adoption decision.
+
+#### Constrained follow-up
+
+The combined pool-plus-state prototype was also run with the same two-CPU / 2 GiB harness cap, `-Xmx1280m`, Java image and 13,000-recipe fixture as the earlier constrained catalog observation. All account tiers completed without HTTP errors, workload diagnostics or OOM.
+
+At twenty accounts, mixed p95 was **5,517.78 ms**, throughput **10.09 requests/s**, sampled process RSS maximum **1,519.5 MiB**, and sampled heap maximum **1,117.5 MiB**. Earlier pool-only observation: **8,066.77 ms**, **6.22 requests/s**, **1,566.3 MiB** RSS. These are separate single runs; the Windows five-pair series provides the repeated comparison evidence. Neither includes browser rendering or caps PostgreSQL, and neither certifies a whole-stack hosting size. [Raw follow-up](investigations/2026-10-26/catalog-13000-state-reuse.json), [limits/provenance](investigations/2026-10-26/catalog-13000-state-reuse-provenance.json).
 
 ### Code reduction
 
@@ -161,7 +194,7 @@ Proposed UX improvements for review:
 
 Keep PostgreSQL as the control while measuring connection/query behavior. The existing live observation showed approximately 91 MiB sampled PostgreSQL RAM, with Java much larger. This weakens the case for an immediate database rewrite to save memory but does not establish engine superiority. Compare optimized PostgreSQL before spending effort porting arrays, UUID casts, Flyway migrations and snapshot/publication semantics to another engine.
 
-SQLite's single concurrent writer is directly relevant to concurrent account/global/price writes; its suitability cannot be decided from read-only microbenchmarks. DuckDB is a secondary analytical candidate, not a drop-in replacement for the scoped publication contract. Final recommendation and whether a bounded replacement prototype is justified remain pending the measured bottlenecks and deployment target. See primary-source links in the plan; no new database architecture decision is made here.
+SQLite's single concurrent writer is directly relevant to concurrent account/global/price writes; its suitability cannot be decided from read-only microbenchmarks. DuckDB is a secondary analytical candidate, not a drop-in replacement for the scoped publication contract. **Recommendation for this round: retain PostgreSQL and address the measured application/access costs first.** Reopen an alternative-engine prototype if the agreed deployment envelope or later measurements justify it. See primary-source links in the plan; no new database architecture decision is made here.
 
 ## Provisional recommendation order
 
@@ -171,7 +204,7 @@ This ranking is for Product Owner review. It authorizes no merge or automatic im
 | --- | --- | --- | --- |
 | 1: prioritize correctness | Pruning overstates material cost; batch surplus understates craftability | Correct candidate comparison and surplus ownership/rollback. Expected example outcomes are 0 copper instead of 50, and six crafts instead of five | Both defects independently reproduced. Fixes are not implemented, so there are no measured after-results. Recheck performance because valid exploration can cost more CPU |
 | 2: consider a managed bounded JDBC pool | Repeated connection creation adds overhead and leaves connection demand tied to caller concurrency | Reuse a bounded set of connections with lifecycle/schema/transaction reset and explicit overload behavior | Five-pair prototype improves high-load p95/CPU/throughput; low-load p95 not consistently better. One-CPU initialization fault found and corrected on experiment branch; production wiring/adoption verification still required |
-| 3: evaluate request-worker simulation-state reuse | Large repeated inventory copies dominate sampled allocations | Reuse isolated worker state within a request and restore every recipe's changes | Equivalence/rollback/concurrency tests passed; five-pair timing trial running. Longer journals and low-inventory workloads are material tradeoffs, not assumed wins |
+| 3: consider request-worker simulation-state reuse | Large repeated inventory copies dominate sampled allocations | Reuse isolated worker state within a request and restore every recipe's changes | Five-pair thirteen-thousand-recipe trial improves high-load p95/CPU/throughput; heap effect is mixed. Longer journals, added logic and low-inventory qualification remain costs |
 | 4: improve freshness and recovery UX | Reload implies more freshness than it provides; recoverable reads erase the previous view | Show source age, distinguish cache reread from refresh, retain a visibly dated last-good view with retry | Actual browser/network/failure observations support the problem. No replacement UI has been implemented or user-tested; expected reduction in confusion is a hypothesis |
 | 5: consider recipe payload reuse | Global refresh downloads/parses identical detail batches twice | Retain parsed ingredient facts until item publication and use them for ingredient writes | Detail calls measured 2 -> 1; exact SQL publication and retry assertions pass. Extra temporary retention must be checked at full catalog size; no claimed percentage gain in total startup time |
 | 6: consider orphan cleanup | Three obsolete classes provide misleading alternative paths | Remove 155 production lines without a new abstraction | Full application CI passed; maintenance benefit. Runtime speed/resource improvement is not claimed |
@@ -180,7 +213,7 @@ This ranking is for Product Owner review. It authorizes no merge or automatic im
 
 ## Qualification gaps and subsequent work
 
-- Finish the simulation-state paired series and update this ranking with its actual results, including negative or neutral cases.
+- Both five-pair series and the combined constrained follow-up are complete, with run-level values, negative/neutral cases and raw evidence recorded. This concludes the initial measurement/experiment round, not every proposed test in the investigation plan.
 - Before adopting either optimization, run the chosen final implementation through independent review and its normal functional/SQL/browser gates. Recorded speed results remain tied to their exact experimental commits.
 - Hosting certification still requires an agreed workload and host envelope, realistic catalog/account diversity, per-route and complete-browser latency distributions, upstream latency/429/failure bursts, and sustained load/recovery. The exploratory 1/5/20 tiers are not an agreed hosting requirement. No one-hour soak was performed.
 - Check small/empty inventories and buying-heavy settings before generalizing the state-reuse result. Retained journals may cost more than fresh empty states; numerical equality alone does not prove speed in that workload.
@@ -188,3 +221,13 @@ This ranking is for Product Owner review. It authorizes no merge or automatic im
 - A database replacement requires a bounded full-contract prototype only if these results or the eventual deployment envelope justify its cost. No replacement has been selected or implemented.
 
 All these gaps stay explicit; neither CI success nor a provisional recommendation closes them. The Product Owner chooses which improvement to finalize, defer or reject.
+
+## Reproduction and repository state
+
+- Report and plan: draft PRs #118 and #117, respectively. They remain unmerged. Investigation parent #116 remains open.
+- Pool: branch `experiment/116-bounded-jdbc-pool`; paired measurement commit `b7be0ee`, initialization correction `3289f89`. `scripts/investigations/compare-jdbc-pool.ps1` on that branch reproduces the alternating series against an explicitly supplied isolated database.
+- State reuse: branch `experiment/116-reuse-simulation-state`, commit `bdec991`; `scripts/investigations/compare-simulation-state.ps1` runs five pairs, with both modes using pool size eight. The report's `scripts/investigations/summarize-simulation-state.py <raw-directory>` validates metadata, workload diagnostics and source identity before calculating results.
+- Recipe fetch reuse: branch `experiment/116-reuse-recipe-payloads`, candidate `747ee03`; instrumented before-state `5f8881c`. Run `SyncFetchPublicationTest` and `RecipeSyncTest` against an isolated PostgreSQL database.
+- Orphan cleanup: branch `experiment/116-remove-dead-price-path`, commit `081504c`. All required application CI checks passed; 155 source lines removed, no assertions removed.
+- Counterexamples: branch `experiment/116-domain-counterexamples`, commit `ff2d0a2`. Explicitly run `InvestigationCounterexamplesIT`; two expected normative failures reproduce the defects on application baseline `bb386ac`.
+- Normal app processes remain available at ports 5173/8080. Owned investigation containers and disposable volumes were removed after recording results. Experimental worktrees/branches remain available for review; the report branch contains evidence and analysis helpers, not adopted runtime changes.
