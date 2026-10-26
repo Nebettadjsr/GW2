@@ -38,6 +38,7 @@ public final class RecipeSync {
         markPublication(false);
 
         Set<Integer> neededItemIds = new HashSet<>();
+        List<RecipeBatch> fetchedBatches = new ArrayList<>();
 
         int done = 0;
 
@@ -53,6 +54,7 @@ public final class RecipeSync {
                 JsonNode root = fetcher.get(url);
 
                 List<RecipeParser.RecipeRow> rows = new ArrayList<>(root.size());
+                List<RecipeParser.IngredientRow> ingredientRows = new ArrayList<>();
 
                 for (JsonNode r : root) {
 
@@ -64,7 +66,9 @@ public final class RecipeSync {
                     if (rr.outputItem() > 0)
                         neededItemIds.add(rr.outputItem());
 
-                    for (var ing : RecipeParser.parseIngredients(r))
+                    var ingredients = RecipeParser.parseIngredients(r);
+                    ingredientRows.addAll(ingredients);
+                    for (var ing : ingredients)
                         if (ing.itemId() > 0)
                             neededItemIds.add(ing.itemId());
                 }
@@ -83,6 +87,7 @@ public final class RecipeSync {
 
                     upsertRecipes(con, rows, runTs);
                     con.commit();
+                    fetchedBatches.add(new RecipeBatch(List.copyOf(batch), List.copyOf(ingredientRows)));
 
                 } catch (Exception ex) {
                     con.rollback();
@@ -103,7 +108,7 @@ public final class RecipeSync {
 
         ItemSync.syncItemsByIds(neededItemIds);
 
-        syncRecipeIngredients(ids);
+        syncRecipeIngredients(fetchedBatches);
         removeDeletedRecipes(remoteIds);
         markPublication(true);
         return true;
@@ -194,48 +199,38 @@ public final class RecipeSync {
     }
 
 
-    private static void syncRecipeIngredients(List<Integer> ids) throws Exception {
+    private record RecipeBatch(List<Integer> ids, List<RecipeParser.IngredientRow> ingredients) { }
+
+    private static void syncRecipeIngredients(List<RecipeBatch> batches) throws Exception {
 
         int ingDone = 0;
 
         try (Connection con = Db.open()) {
 
-            for (List<Integer> batch : BatchUtils.chunk(ids, SyncConstants.HTTP_IDS_BATCH)) {
-
-                String idsParam = BatchUtils.idsParam(batch);
-                if (idsParam.isBlank()) continue;
-
-                String url = "https://api.guildwars2.com/v2/recipes?ids=" + idsParam;
-
-                JsonNode root = fetcher.get(url);
-
-                List<RecipeParser.IngredientRow> ingRows = new ArrayList<>();
-
-                for (JsonNode r : root)
-                    ingRows.addAll(RecipeParser.parseIngredients(r));
+            for (RecipeBatch batch : batches) {
 
                 con.setAutoCommit(false);
 
                 try {
                     try (PreparedStatement delete = con.prepareStatement(
                             "DELETE FROM recipe_ingredients WHERE recipe_id = ANY (?)")) {
-                        delete.setArray(1, con.createArrayOf("int4", batch.toArray(Integer[]::new)));
+                        delete.setArray(1, con.createArrayOf("int4", batch.ids().toArray(Integer[]::new)));
                         delete.executeUpdate();
                     }
-                    upsertRecipeIngredients(con, ingRows);
+                    upsertRecipeIngredients(con, batch.ingredients());
                     con.commit();
                 } catch (Exception ex) {
                     con.rollback();
                     throw ex;
                 }
 
-                ingDone += batch.size();
+                ingDone += batch.ids().size();
 
                 System.out.println(
                         "Global ingredients pass progress: "
-                                + Math.min(ingDone, ids.size())
+                                + ingDone
                                 + " / "
-                                + ids.size());
+                                + batches.stream().mapToInt(b -> b.ids().size()).sum());
             }
         }
 
