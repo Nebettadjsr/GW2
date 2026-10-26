@@ -35,22 +35,6 @@ public class PlannerContext {
      */
     private final Map<Integer, List<String>> eligibleCharactersByRecipeId;
 
-    /**
-     * Memoized {@code CraftingResolver.firstRecipeFor(itemId, ctx, parentDiscipline)} answers.
-     * Lives here rather than on the resolver so that every recipe's simulation - and both of a
-     * simulation's phases - reuses one table, since the choice depends only on this context's
-     * fixed {@link #recipesByOutput}, {@link #allowedRecipeIds}, {@link #coordinatedRoster},
-     * {@link #tp} and the buy-side price mode. See {@link #withBuyingDisabled()}.
-     */
-    private final Map<FirstRecipeKey, Object> firstRecipeByKey;
-
-    /** Null-tolerant placeholder: {@link #firstRecipeByKey} is concurrent and cannot store nulls. */
-    static final Object NO_RECIPE = new Object();
-
-    /** Key into {@link #firstRecipeByKey}: the two arguments the choice actually varies with. */
-    record FirstRecipeKey(int itemId, String parentDiscipline) {
-    }
-
     public PlannerContext(Map<Integer, List<Recipe>> recipesByOutput,
                           Map<Integer, PriceQuote> tp,
                           CraftingSettings settings,
@@ -64,7 +48,7 @@ public class PlannerContext {
                           Set<Integer> allowedRecipeIds,
                           List<CharacterCraftingProfile> coordinatedRoster) {
         this(recipesByOutput, tp, settings, allowedRecipeIds, coordinatedRoster,
-                new ConcurrentHashMap<>(), new ConcurrentHashMap<>(), Map.of());
+                new ConcurrentHashMap<>(), Map.of());
     }
 
     private PlannerContext(Map<Integer, List<Recipe>> recipesByOutput,
@@ -73,7 +57,6 @@ public class PlannerContext {
                            Set<Integer> allowedRecipeIds,
                            List<CharacterCraftingProfile> coordinatedRoster,
                            Map<Integer, List<String>> eligibleCharactersByRecipeId,
-                           Map<FirstRecipeKey, Object> firstRecipeByKey,
                            Map<Integer, Integer> vendorValues) {
         this.vendorValues = vendorValues;
         this.recipesByOutput = recipesByOutput;
@@ -82,16 +65,12 @@ public class PlannerContext {
         this.allowedRecipeIds = allowedRecipeIds;
         this.coordinatedRoster = coordinatedRoster;
         this.eligibleCharactersByRecipeId = eligibleCharactersByRecipeId;
-        this.firstRecipeByKey = firstRecipeByKey;
     }
 
     /**
      * This context with buying disabled - the zero-cash "own mats first" phase
      * {@link RecipeSimulator} runs before the buying phase. Keeps every other setting, and shares
-     * both memo tables with this context: neither memoized answer depends on
-     * {@code allowBuying}/{@code maxBuyCopper}. Eligibility does not consult settings at all, and
-     * the first-recipe choice consults only the buy-side price mode ({@code listingBuy}) and the
-     * candidate/price data, all of which are carried over unchanged.
+     * the eligibility memo with this context: eligibility does not consult buying settings.
      */
     public PlannerContext withBuyingDisabled() {
         CraftingSettings noBuySettings = new CraftingSettings(
@@ -103,13 +82,13 @@ public class PlannerContext {
                 settings.allowDailyCrafts);
 
         return new PlannerContext(recipesByOutput, tp, noBuySettings, allowedRecipeIds,
-                coordinatedRoster, eligibleCharactersByRecipeId, firstRecipeByKey, vendorValues);
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues);
     }
 
     /** This context with vendor sell values for the untradeable-material fallback; shares the memo tables. */
     public PlannerContext withVendorValues(Map<Integer, Integer> vendorValues) {
         return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
-                coordinatedRoster, eligibleCharactersByRecipeId, firstRecipeByKey, vendorValues);
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues);
     }
 
     public boolean isCoordinated() {
@@ -141,16 +120,6 @@ public class PlannerContext {
         }
 
         return List.copyOf(eligible);
-    }
-
-    /**
-     * The shared first-recipe memo table, for {@code CraftingResolver.firstRecipeFor} to consult
-     * and fill. A racing pair of threads may both compute the same key; the choice is a pure
-     * function of fixed context data, so both arrive at the same answer and the first one stored
-     * wins.
-     */
-    Map<FirstRecipeKey, Object> firstRecipeMemo() {
-        return firstRecipeByKey;
     }
 
     private static Set<String> splitDisciplines(String disciplinesText) {
