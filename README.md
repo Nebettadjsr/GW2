@@ -105,7 +105,16 @@ The frontend communicates with the Spring Boot API over HTTP. Application servic
 
 ## Running locally
 
-Run the development servers below, or use the three-container stack described in `docs/CURRENT_ARCHITECTURE.md`.
+Start the complete frontend, backend and PostgreSQL stack with Docker:
+
+```sh
+cd docker
+docker compose up --build --wait
+```
+
+Open **http://127.0.0.1:8088**. See [Docker setup](docker/README.md) for configuration, logs, shutdown and cache reset.
+
+For development without containers, run the servers below.
 
 **Requirements:** Java 25, PostgreSQL, Node.js/npm and a Guild Wars 2 API key with the permissions required for account synchronization. The PostgreSQL schema and runtime configuration must be set up for your environment; consult the repository configuration and development documentation.
 

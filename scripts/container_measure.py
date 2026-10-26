@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Informational container measurement of the owned three-service Compose stack (STORY-PERF-007).
 
-Starts compose.yaml under its own unique project (gw2-cmeasure-<id>) on an ephemeral loopback port,
+Starts docker/compose.yaml under its own unique project (gw2-cmeasure-<id>) on an ephemeral loopback port,
 records Docker-reported image ids/sizes, startup-to-readiness, idle and proxied global HTTP traffic
 samples (`docker stats`), and writes container-resources.json / .md. Only that project's containers,
 network, volumes and built images are removed afterwards. No GW2 key, ArenaNet access or maintainer
@@ -135,7 +135,7 @@ class Measurement:
         override = self.work / "measure.yaml"
         override.write_text("services:\n  backend:\n    environment:\n"
                             "      GW2_GLOBAL_REFRESH_INITIAL_DELAY_MS: \"86400000\"\n")
-        return run(["docker", "compose", "-p", self.project, "-f", str(ROOT / "compose.yaml"),
+        return run(["docker", "compose", "-p", self.project, "-f", str(ROOT / "docker" / "compose.yaml"),
                     "-f", str(override), *a], timeout=timeout, env=env, cwd=ROOT)
 
     def preflight(self):
