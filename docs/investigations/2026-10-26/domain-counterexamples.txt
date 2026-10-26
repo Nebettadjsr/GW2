@@ -1,0 +1,22 @@
+-------------------------------------------------------------------------------
+Test set: craft.InvestigationCounterexamplesIT
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.114 s <<< FAILURE! -- in craft.InvestigationCounterexamplesIT
+craft.InvestigationCounterexamplesIT.ownedBoundInputMakesCraftingCheaperThanBuyingTheIntermediate -- Time elapsed: 0.076 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: Must evaluate actual recursive cost before pruning ==> expected: <0> but was: <50>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:158)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:139)
+	at org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:201)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:152)
+	at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:590)
+	at craft.InvestigationCounterexamplesIT.ownedBoundInputMakesCraftingCheaperThanBuyingTheIntermediate(InvestigationCounterexamplesIT.java:21)
+
+craft.InvestigationCounterexamplesIT.intermediateBatchSurplusCanSupplyTheNextCraft -- Time elapsed: 0.006 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: Produced surplus must be retained across successful crafts ==> expected: <6> but was: <5>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:158)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:139)
+	at org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:201)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:152)
+	at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:590)
+	at craft.InvestigationCounterexamplesIT.intermediateBatchSurplusCanSupplyTheNextCraft(InvestigationCounterexamplesIT.java:39)
+
