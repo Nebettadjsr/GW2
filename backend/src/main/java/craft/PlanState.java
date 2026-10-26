@@ -52,6 +52,8 @@ public class PlanState {
 
     public final Set<Integer> visiting;
     public final Map<Integer, Integer> dailyLeft;
+    // Already paid for by earlier steps of this simulation, never valued as owned stock.
+    private final Map<Integer, Integer> surplus = new HashMap<>();
 
     public int buyCostCopper = 0;
 
@@ -63,6 +65,7 @@ public class PlanState {
     private static final int DAILY = 3;
     private static final int VISITING = 4;
     private static final int BUY_COST = 5;
+    private static final int SURPLUS = 6;
 
     /** Journalled "this slot had no value before", distinguishable from every real quantity. */
     private static final int ABSENT = Integer.MIN_VALUE;
@@ -124,6 +127,7 @@ public class PlanState {
         this.visiting = new HashSet<>(other.visiting);
         this.dailyLeft = new HashMap<>(other.dailyLeft);
         this.buyCostCopper = other.buyCostCopper;
+        this.surplus.putAll(other.surplus);
     }
 
     /**
@@ -239,6 +243,7 @@ public class PlanState {
             case DAILY -> valueOrAbsent(dailyLeft, key);
             case VISITING -> visiting.contains(key) ? 1 : ABSENT;
             case BUY_COST -> buyCostCopper;
+            case SURPLUS -> valueOrAbsent(surplus, key);
             default -> throw new IllegalStateException("unknown journal kind " + kind);
         };
     }
@@ -257,6 +262,7 @@ public class PlanState {
                 else visiting.add(key);
             }
             case BUY_COST -> buyCostCopper = value;
+            case SURPLUS -> writeOrRemove(surplus, key, value);
             default -> throw new IllegalStateException("unknown journal kind " + kind);
         }
     }
@@ -272,6 +278,17 @@ public class PlanState {
     }
 
     // ---------------- journalled mutations ----------------
+
+    public void addSurplus(int itemId, int quantity) {
+        if (quantity > 0) setValue(SURPLUS, itemId, null, surplus.getOrDefault(itemId, 0) + quantity);
+    }
+
+    public int consumeSurplus(int itemId, int wanted) {
+        int have = surplus.getOrDefault(itemId, 0);
+        int used = Math.min(have, wanted);
+        if (used > 0) setValue(SURPLUS, itemId, null, have == used ? ABSENT : have - used);
+        return used;
+    }
 
     /** Adds {@code delta} copper to the running cash cost of this plan. */
     public void addBuyCost(int delta) {

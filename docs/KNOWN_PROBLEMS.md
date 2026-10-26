@@ -22,22 +22,7 @@ No finding in this document by itself authorizes an implementation change. Norma
 
 ## 2. Crafting-domain correctness and calculation risks
 
-### KP-01 — Candidate pruning and recipe ranking can reject the cheaper valid recursive path (CH-E1)
-
-**Observed fact:** `CraftingResolver.resolveNeed(...)` calls `estimateDirectCraftFloor(...)` before `tryCraft(...)` and can skip crafting when that estimate is at least the direct purchase cost. The estimate sums direct ingredient purchase prices rather than resolved recursive effective cost. Owned bound ingredients, owned tradable ingredients valued by opportunity cost, and recursively craftable ingredients can therefore make the real effective cost lower than this estimate; a missing ingredient quote can also produce `Integer.MAX_VALUE` and suppress a feasible recursive route.
-
-`CraftingResolver.computeFirstRecipeFor(...)` uses the same direct-purchase estimate when ranking multiple recipes. It does not rank candidates by fully resolved effective cost, does not account for available owned/bound inventory in that ranking, and compares recipe-batch costs without normalizing differing output counts to the requested quantity. `tryCraft(...)` then attempts only the selected recipe, so an unsatisfiable candidate can hide a feasible alternative.
-
-**Inferred risk:** economically wrong purchases, recipe choices, budget results, and craftability despite the already-corrected effective-cost comparator. This remains relevant to `DOMAIN_SPEC.md` §22 and §30.
-
-**Recommendation:** assess candidate pruning and multi-recipe ranking together. Any correction should compare valid candidates using the authoritative effective-cost semantics rather than treating direct ingredient purchase cost as a safe lower bound.
-
-### KP-05 — Intermediate crafting surplus is discarded instead of reused (CH-16)
-
-
-**Observed fact:** `tryCraftAssigned` computes `produced = times * outputCount`, clamps satisfaction with `Math.min(produced, qtyRequested)`, and never stores `produced - qtyRequested` in simulation state. PlanState's inventory mutations consume quantities; there is no produced-surplus credit on this path. Subsequent branches/batches must obtain those items again.
-
-**Inferred risk:** overstated materials/cash and understated craftability, contrary to DOMAIN_SPEC §17/DQ-009. For the specified six-produced/five-needed example the remaining one never reaches the next requirement. **Recommendation:** preserve produced surplus and its cost ownership across branches/batches, including speculative rollback; do not credit terminal surplus as extra profit.
+No open calculation finding. Candidate selection and intermediate surplus are covered by the crafting correctness regression suite.
 
 
 ---

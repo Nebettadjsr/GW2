@@ -130,7 +130,9 @@ public class CraftingResolver {
                                    ) {
         ResolvedNeed result = new ResolvedNeed(itemId, qtyRequested);
 
-        int remaining = qtyRequested;
+        int reused = state.consumeSurplus(itemId, qtyRequested);
+        result.setQtyCrafted(reused);
+        int remaining = qtyRequested - reused;
 
         // 1) Use owned inventory first, if enabled
         if (ctx.settings.useOwnMats) {
@@ -195,34 +197,13 @@ public class CraftingResolver {
         // 3) Evaluate craft speculatively: performed on the live state and undone below if the
         //    craft is not the candidate finally chosen (this used to run on a full copy of state).
         CandidateEval craftEval = null;
-        int craftMark = -1;
-        Recipe firstRecipe = firstRecipeFor(itemId, ctx, parentDiscipline);
-
-        boolean shouldTryCraft = true;
-
-        boolean allowedDailyCraft = DailyCrafts.isDailyOutput(itemId)
-                && ctx.settings.allowDailyCrafts;
-        if (buyEval != null && firstRecipe != null && !allowedDailyCraft) {
-            int estimatedCraftFloor = estimateDirectCraftFloor(firstRecipe, ctx);
-
-            // normalize to requested quantity
-            int times = ceilDiv(remaining, firstRecipe.outputCount);
-            long estimatedTotalCraftFloor = (long) estimatedCraftFloor * times;
-
-            if (estimatedTotalCraftFloor >= buyEval.need.getBuyCostCopper()) {
-                shouldTryCraft = false;
-            }
-        }
-
-        if (shouldTryCraft) {
-            craftMark = state.mark();
-            ResolvedNeed craftNeed = tryCraft(itemId, remaining, ctx, state, parentDiscipline);
-            if (craftNeed != null) {
-                craftEval = new CandidateEval(craftNeed);
-            } else {
-                state.rollbackTo(craftMark);
-                craftMark = -1;
-            }
+        int craftMark = state.mark();
+        ResolvedNeed craftNeed = tryCraft(itemId, remaining, ctx, state, parentDiscipline);
+        if (craftNeed != null) {
+            craftEval = new CandidateEval(craftNeed);
+        } else {
+            state.rollbackTo(craftMark);
+            craftMark = -1;
         }
 
         // 4) Choose better candidate
@@ -248,7 +229,7 @@ public class CraftingResolver {
                 result.traceForWrite().setCraftAttempt(chosenNeed);
             }
 
-            result.setQtyCrafted(chosenNeed.getQtyCrafted());
+            result.setQtyCrafted(reused + chosenNeed.getQtyCrafted());
             result.setQtyBought(chosenNeed.getQtyBought());
             result.setQtyBlocked(chosenNeed.getQtyBlocked());
             result.setBuyCostCopper(result.getBuyCostCopper() + chosenNeed.getBuyCostCopper());
@@ -311,13 +292,10 @@ public class CraftingResolver {
             String parentDiscipline,
             Recipe fixedRecipe
                                  ) {
-        Recipe recipe = fixedRecipe != null ? fixedRecipe : firstRecipeFor(itemId, ctx, parentDiscipline);
-        if (recipe == null) {
-            if (hasOnlyDisallowedRecipes(itemId, ctx)) {
-                return blockedNeed(itemId, qtyRequested, BlockedReason.RECIPE_NOT_ALLOWED);
-            }
-            return null;
+        if (fixedRecipe == null) {
+            return tryRecipeCandidates(itemId, qtyRequested, ctx, state, parentDiscipline);
         }
+        Recipe recipe = fixedRecipe;
 
         boolean isDaily = DailyCrafts.isDailyOutput(itemId);
 
@@ -450,6 +428,7 @@ public class CraftingResolver {
             }
 
             craftResult.setQtyCrafted(qtySatisfied);
+            state.addSurplus(itemId, produced - qtySatisfied);
 
             if (tracing) {
                 craftResult.traceForWrite().setCraft(times, produced);
@@ -466,6 +445,39 @@ public class CraftingResolver {
         } finally {
             state.endVisiting(itemId);
         }
+    }
+
+    private ResolvedNeed tryRecipeCandidates(int itemId, int quantity, PlannerContext ctx,
+                                             PlanState state, String parentDiscipline) {
+        ResolvedNeed best = null;
+        PlanState.Delta effect = null;
+        boolean bestMatches = false;
+        int mark = state.mark();
+        List<Recipe> candidates = ctx.recipesByOutput.getOrDefault(itemId, List.of());
+        if (candidates.size() == 1) {
+            Recipe only = candidates.getFirst();
+            if (ctx.allowedRecipeIds.contains(only.recipeId)
+                    && (!ctx.isCoordinated() || !ctx.eligibleCharactersFor(only).isEmpty())) {
+                return tryCraft(itemId, quantity, ctx, state, parentDiscipline, only);
+            }
+        }
+        for (Recipe recipe : candidates) {
+            if (!ctx.allowedRecipeIds.contains(recipe.recipeId)
+                    || (ctx.isCoordinated() && ctx.eligibleCharactersFor(recipe).isEmpty())) continue;
+            ResolvedNeed attempt = tryCraft(itemId, quantity, ctx, state, parentDiscipline, recipe);
+            boolean matches = sharesDiscipline(parentDiscipline, recipe.disciplinesText);
+            boolean preferDiscipline = best != null && attempt.isFullySatisfied()
+                    && best.isFullySatisfied() && matches != bestMatches;
+            if (preferDiscipline ? matches : isBetterCraftAttempt(attempt, best)) {
+                best = attempt;
+                bestMatches = matches;
+                effect = state.captureDelta(mark);
+            }
+            state.rollbackTo(mark);
+        }
+        state.applyDelta(effect);
+        return best != null ? best : hasOnlyDisallowedRecipes(itemId, ctx)
+                ? blockedNeed(itemId, quantity, BlockedReason.RECIPE_NOT_ALLOWED) : null;
     }
 
     private ResolvedNeed blockedNeed(int itemId, int qtyRequested, BlockedReason reason) {
@@ -636,76 +648,11 @@ public class CraftingResolver {
         return result;
     }
 
-    /**
-     * DOMAIN_SPEC.md section 30 / DQ-003: prefer a valid recipe matching the parent
-     * recipe's crafting discipline; among same-discipline candidates prefer the lowest
-     * effective cost; otherwise prefer the lowest effective cost among all valid candidates.
-     *
-     * <p>The answer depends only on {@code itemId}, {@code parentDiscipline} and data fixed for
-     * {@code ctx}'s lifetime, but the recursive planner asks for the same pairs millions of times
-     * per page load, each time rescanning the candidate list, re-estimating every candidate's cost
-     * and re-splitting discipline strings. It is therefore memoized per context
-     * (STORY-PERF-001); the computation itself is unchanged.
-     */
-    public Recipe firstRecipeFor(int itemId, PlannerContext ctx, String parentDiscipline) {
-        var memo = ctx.firstRecipeMemo();
-        var key = new PlannerContext.FirstRecipeKey(itemId, parentDiscipline);
-
-        Object cached = memo.get(key);
-        if (cached != null) {
-            return cached == PlannerContext.NO_RECIPE ? null : (Recipe) cached;
-        }
-
-        Recipe computed = computeFirstRecipeFor(itemId, ctx, parentDiscipline);
-        memo.putIfAbsent(key, computed == null ? PlannerContext.NO_RECIPE : computed);
-        return computed;
-    }
-
-    private Recipe computeFirstRecipeFor(int itemId, PlannerContext ctx, String parentDiscipline) {
-        List<Recipe> list = ctx.recipesByOutput.get(itemId);
-        if (list == null || list.isEmpty()) {
-            return null;
-        }
-
-        return chooseCandidate(list, ctx, parentDiscipline);
-    }
-
-    /** The best allowed, eligible candidate in {@code list} by section 30's rule. */
-    private Recipe chooseCandidate(List<Recipe> list,
-                                   PlannerContext ctx,
-                                   String parentDiscipline) {
-        Recipe bestSameDiscipline = null;
-        int bestSameDisciplineCost = Integer.MAX_VALUE;
-        Recipe bestOverall = null;
-        int bestOverallCost = Integer.MAX_VALUE;
-
-        for (Recipe recipe : list) {
-            if (!ctx.allowedRecipeIds.contains(recipe.recipeId)
-                    || (ctx.isCoordinated() && ctx.eligibleCharactersFor(recipe).isEmpty())) {
-                continue;
-            }
-
-            int cost = estimateDirectCraftFloor(recipe, ctx);
-
-            if (bestOverall == null || cost < bestOverallCost) {
-                bestOverallCost = cost;
-                bestOverall = recipe;
-            }
-
-            if (sharesDiscipline(parentDiscipline, recipe.disciplinesText)
-                    && (bestSameDiscipline == null || cost < bestSameDisciplineCost)) {
-                bestSameDisciplineCost = cost;
-                bestSameDiscipline = recipe;
-            }
-        }
-
-        return bestSameDiscipline != null ? bestSameDiscipline : bestOverall;
-    }
 
     /**
      * DOMAIN_SPEC.md section 42: distinguishes "no recipe exists for this item at all"
      * (NO_RECIPE) from "recipe(s) exist but every candidate is filtered out by
-     * ctx.allowedRecipeIds" (RECIPE_NOT_ALLOWED) - firstRecipeFor(...) returns null for both.
+     * ctx.allowedRecipeIds" (RECIPE_NOT_ALLOWED).
      */
     private boolean hasOnlyDisallowedRecipes(int itemId, PlannerContext ctx) {
         List<Recipe> list = ctx.recipesByOutput.get(itemId);
@@ -772,20 +719,4 @@ public class CraftingResolver {
         }
     }
 
-    private int estimateDirectCraftFloor(
-            Recipe recipe,
-            PlannerContext ctx
-                                        ) {
-        int sum = 0;
-
-        for (Ingredient ing : recipe.ingredients) {
-            int buyUnit = resolveDirectBuyUnit(ing.itemId, ctx.tp, ctx.settings);
-            if (buyUnit <= 0) {
-                return Integer.MAX_VALUE;
-            }
-            sum += buyUnit * ing.count;
-        }
-
-        return sum;
-    }
 }
