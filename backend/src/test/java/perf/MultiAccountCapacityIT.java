@@ -23,6 +23,8 @@ class MultiAccountCapacityIT extends ApplicationBenchmarkHarness {
     final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     final List<Browser> browsers = new ArrayList<>();
 
+    @Override String fixtureVersion() { return "multiaccount-fixtures-1"; }
+
     @Override Sizes sizes() {
         int recipes = Integer.getInteger("gw2.investigation.recipes", 5000);
         return new Sizes(400, 200, recipes, 400, 2, 1, 2, 4, 1000);

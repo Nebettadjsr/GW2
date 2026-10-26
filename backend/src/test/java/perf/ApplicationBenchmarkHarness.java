@@ -307,7 +307,7 @@ abstract class ApplicationBenchmarkHarness {
             createSchema(s);
             System.setProperty(Db.TEST_SCHEMA_PROPERTY, SCHEMA);
             login();
-            MeasurementReport report = new MeasurementReport(commit(), Instant.now(), FIXTURE_VERSION, environment(s));
+            MeasurementReport report = new MeasurementReport(commit(), Instant.now(), fixtureVersion(), environment(s));
             report.add(measure("idle", "Application idle: no requests, no tasks.",
                     "Application JVM process; the load-generating client lives in the same JVM but sends nothing.",
                     1, rec -> Thread.sleep(s.idleMillis())));
@@ -364,6 +364,8 @@ abstract class ApplicationBenchmarkHarness {
 
     /** Experiment hook, executed while the isolated schema remains alive. Normal benchmarks add none. */
     void additionalWorkloads(MeasurementReport report) throws Exception { }
+
+    String fixtureVersion() { return FIXTURE_VERSION; }
 
     private void createSchema(Sizes s) throws Exception {
         try (Connection c = connect(); Statement st = c.createStatement()) {
@@ -672,6 +674,10 @@ abstract class ApplicationBenchmarkHarness {
         e.put("postgresql", db.serverVersion());
         e.put("runner", System.getenv("GITHUB_ACTIONS") != null ? "GitHub Actions" : "local");
         e.put("sizes", s.toString());
+        if (Boolean.getBoolean("gw2.investigation")) {
+            e.put("investigationPoolSize", System.getProperty("gw2.investigation.pool-size", "0"));
+            e.put("investigationAccounts", "20 distinct synthetic GUIDs; account-specific bank markers");
+        }
         return e;
     }
 
