@@ -20,7 +20,7 @@ const GARLIC_ICON_URL =
   '/api/items/12134/icon/9247ad5f6cd4702a0c12724f8a90235191e8831a61be53d54a138b86e3984f8d.jpg' 
 
 /** A bank whose empty slots sit between occupied ones, so order and position are observable. */
-export const bankWithEmptySlots: BankContents = {
+export const bankWithEmptySlots = {
   slotCount: 5,
   slots: [
     { slot: 0, itemId: 19697, count: 42, iconUrl: COPPER_ORE_ICON_URL, rarity: 'Basic' },
@@ -31,7 +31,7 @@ export const bankWithEmptySlots: BankContents = {
     { slot: 3, itemId: null, count: null, iconUrl: null, rarity: null },
     { slot: 4, itemId: 12134, count: 250, iconUrl: GARLIC_ICON_URL, rarity: 'Fine' }
   ]
-}
+} satisfies BankContents
 
 /** A successful read of a bank that has no slots at all — not a bank whose slots are empty. */
 export const bankWithoutSlots: BankContents = { slotCount: 0, slots: [] }
@@ -40,7 +40,7 @@ export const bankWithoutSlots: BankContents = { slotCount: 0, slots: [] }
  * Two categories in the backend's order, the second carrying its `"Category <id>"` fallback label.
  * Item 12134 appears in both, and the first category's stacks ascend by count.
  */
-export const materialStorage: MaterialStorage = {
+export const materialStorage = {
   categoryCount: 2,
   categories: [
     {
@@ -62,7 +62,7 @@ export const materialStorage: MaterialStorage = {
       ]
     }
   ]
-}
+} satisfies MaterialStorage
 
 /** A successful read of material storage holding nothing. */
 export const emptyMaterialStorage: MaterialStorage = { categoryCount: 0, categories: [] }

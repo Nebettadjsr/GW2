@@ -501,8 +501,16 @@ export interface BankSlot {
 
 /** Response body of `GET /api/account/bank`. `slots` is in the backend's slot order. */
 export interface BankContents {
-  slotCount: number
-  slots: BankSlot[]
+  slotCount: number | null
+  slots: BankSlot[] | null
+  freshness?: InventoryFreshness
+}
+
+/** Backend publication status for a saved account inventory; absent only in legacy fixtures. */
+export interface InventoryFreshness {
+  status: string
+  completedAt: string | null
+  refresh: string | null
 }
 
 /**
@@ -526,8 +534,9 @@ export interface MaterialCategory {
 
 /** Response body of `GET /api/account/materials`. `categories` is in the backend's order. */
 export interface MaterialStorage {
-  categoryCount: number
-  categories: MaterialCategory[]
+  categoryCount: number | null
+  categories: MaterialCategory[] | null
+  freshness?: InventoryFreshness
 }
 
 /** Uniform backend error body. */

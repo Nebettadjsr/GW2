@@ -15,7 +15,7 @@ import {
  * (`CURRENT_ARCHITECTURE.md` 5.12). Nothing here reaches a backend or a browser.
  */
 async function openScreen(api: FakeAccountApi): Promise<VueWrapper> {
-  const wrapper = mount(MaterialsScreen, { props: { api } })
+  const wrapper = mount(MaterialsScreen, { props: { api }, global: { stubs: { InventoryRefresh: true } } })
   await flushPromises()
   return wrapper
 }
@@ -75,7 +75,7 @@ describe('MaterialsScreen', () => {
     const pending = deferred<MaterialStorage>()
     api.materialsHandler = () => pending.promise
 
-    const wrapper = mount(MaterialsScreen, { props: { api } })
+  const wrapper = mount(MaterialsScreen, { props: { api }, global: { stubs: { InventoryRefresh: true } } })
     await flushPromises()
 
     expect(wrapper.find('[data-test="materials-loading"]').exists()).toBe(true)
@@ -124,7 +124,7 @@ describe('MaterialsScreen', () => {
     expect(wrapper.findAll('[data-test="material-category"]')).toHaveLength(2)
   })
 
-  it('doesNotPresentTheEarlierCategoriesWhenAReloadFails', async () => {
+  it('retainsTheEarlierCategoriesWithAnExplicitWarningWhenAReloadFails', async () => {
     const api = new FakeAccountApi()
     const wrapper = await openScreen(api)
     expect(wrapper.findAll('[data-test="material-category"]')).toHaveLength(2)
@@ -135,7 +135,8 @@ describe('MaterialsScreen', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-test="materials-error"]').text()).toContain('DATA_STORE_UNAVAILABLE')
-    expect(wrapper.findAll('[data-test="material-category"]')).toHaveLength(0)
+    expect(wrapper.findAll('[data-test="material-category"]')).toHaveLength(2)
+    expect(wrapper.find('[data-test="materials-error"]').text()).toContain('previous saved snapshot')
     expect(wrapper.find('[data-test="materials-empty"]').exists()).toBe(false)
   })
 
