@@ -14,6 +14,8 @@ public final class AppConfig {
     public static final String DB_URL  = EnvConfig.require("DATABASE_URL");
     public static final String DB_USER = EnvConfig.require("DATABASE_USER");
     public static final String DB_PASS = EnvConfig.require("DATABASE_PASSWORD");
+    public static final int DB_POOL_SIZE = Integer.parseInt(EnvConfig.optional("DATABASE_POOL_SIZE", "8"));
+    public static final long DB_POOL_TIMEOUT_MS = Long.parseLong(EnvConfig.optional("DATABASE_POOL_TIMEOUT_MS", "15000"));
 
     // Icon cache
     private static final String DEFAULT_ICON_CACHE_DIR =
