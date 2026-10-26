@@ -36,10 +36,12 @@ public class RecipeSimulator {
             PlannerContext ctx,
             PlanState baseState
                                                 ) {
-        RecipeSimulationResult result =
-                new RecipeSimulationResult(recipe.recipeId, recipe.outputItemId);
+        return simulateOnState(recipe, ctx, new PlanState(baseState));
+    }
 
-        PlanState state = new PlanState(baseState);
+    /** Caller owns this state exclusively and restores it after the recipe, including on failure. */
+    RecipeSimulationResult simulateOnState(Recipe recipe, PlannerContext ctx, PlanState state) {
+        RecipeSimulationResult result = new RecipeSimulationResult(recipe.recipeId, recipe.outputItemId);
 
         // Phase 1: when inventory use and buying are both enabled, prefer fully-owned paths first.
         if (ctx.settings.useOwnMats && ctx.settings.allowBuying) {
