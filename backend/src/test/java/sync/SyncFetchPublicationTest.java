@@ -224,7 +224,7 @@ class SyncFetchPublicationTest {
         assertEquals("10,11,20,21,30", scalar("SELECT string_agg(item_id::text, ',' ORDER BY item_id) FROM items"));
         long detailCalls = urls.stream().filter(url -> url.contains("/v2/recipes?ids=")).count();
         System.out.println("INVESTIGATION_RECIPE_DETAIL_CALLS=" + detailCalls);
-        assertEquals(Integer.getInteger("gw2.investigation.expected-recipe-requests", 2).longValue(), detailCalls,
+        assertEquals(1, detailCalls,
                 "Measure recipe payload fetch count while preserving exact SQL publication assertions");
     }
 
