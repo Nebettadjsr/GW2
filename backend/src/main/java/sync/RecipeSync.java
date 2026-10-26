@@ -204,6 +204,7 @@ public final class RecipeSync {
     private static void syncRecipeIngredients(List<RecipeBatch> batches) throws Exception {
 
         int ingDone = 0;
+        int total = batches.stream().mapToInt(batch -> batch.ids().size()).sum();
 
         try (Connection con = Db.open()) {
 
@@ -230,7 +231,7 @@ public final class RecipeSync {
                         "Global ingredients pass progress: "
                                 + ingDone
                                 + " / "
-                                + batches.stream().mapToInt(b -> b.ids().size()).sum());
+                                + total);
             }
         }
 
