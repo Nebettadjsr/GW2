@@ -23,5 +23,6 @@
   },
   "limitations": "One qualification run, not a paired speedup claim or soak. Mixed-route p95 is not Profit-only/browser p95. Heap includes the load client; Windows RSS is unavailable. Raw no-container wording describes the measured process and does not mean the project lacks Docker support.",
   "statePairs": "selected-state-pairs.txt: 13000-recipe domain-only comparison, six processors, 2 GiB max heap, complete outputs equal in every pair; first pair warmup, five measured alternating pairs; median paired reduction 10.13%.",
+  "emptyInventoryCheck": "Same domain benchmark with the one-line test-only selected-state-empty-overlay.patch and -Dgw2.benchmark.empty-inventory=true. Complete outputs matched. Warmup fresh/reuse 464/931 ms; subsequent alternating pairs 269/412, 217/220, 220/200, 214/205, 226/235 ms. Mixed results, median paired change +1.38%; no stable speed benefit demonstrated for empty inventory, with larger cold/early JIT cost. Do not generalize the stocked-inventory improvement to every workload.",
   "browserEvidence": "inventory-refresh-smoke.mjs passed at 1280x900 and 390x844. Controlled HTTP fixtures; refresh, failure recovery, freshness, no document-wide overflow or page errors, disconnect clears account data. Screenshots are fixture data, not live account images."
 }

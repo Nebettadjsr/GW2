@@ -1,0 +1,6 @@
+STATE_PAIR run=0 recipes=13000 control_ms=464 reuse_ms=931
+STATE_PAIR run=1 recipes=13000 control_ms=269 reuse_ms=412
+STATE_PAIR run=2 recipes=13000 control_ms=217 reuse_ms=220
+STATE_PAIR run=3 recipes=13000 control_ms=220 reuse_ms=200
+STATE_PAIR run=4 recipes=13000 control_ms=214 reuse_ms=205
+STATE_PAIR run=5 recipes=13000 control_ms=226 reuse_ms=235
