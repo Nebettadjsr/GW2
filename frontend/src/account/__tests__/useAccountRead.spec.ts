@@ -20,7 +20,15 @@ function runInScope(
 }
 
 describe('useAccountRead', () => {
-  it('startsALoadThatClearsTheEarlierAnswerRatherThanShowingItAsCurrent', async () => {
+  it('clearsTheRetainedSnapshotWhenTheAccountWorkspaceIsDisposed', async () => {
+    const { state, stop } = runInScope(async () => bankWithEmptySlots)
+    await state.load()
+    expect(state.data.value).toBe(bankWithEmptySlots)
+    stop()
+    expect(state.data.value).toBeNull()
+  })
+
+  it('keepsTheEarlierSnapshotWhileClearlyReportingALoadInProgress', async () => {
     const pending = deferred<BankContents>()
     let answer: Promise<BankContents> = Promise.resolve(bankWithEmptySlots)
     const { state } = runInScope(() => answer)
@@ -31,7 +39,7 @@ describe('useAccountRead', () => {
     answer = pending.promise
     const reload = state.load()
     expect(state.phase.value).toBe('loading')
-    expect(state.data.value).toBeNull()
+    expect(state.data.value).toBe(bankWithEmptySlots)
 
     pending.resolve(bankWithoutSlots)
     await reload

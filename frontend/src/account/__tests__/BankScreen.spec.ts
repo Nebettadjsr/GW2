@@ -15,7 +15,7 @@ import {
  * (`CURRENT_ARCHITECTURE.md` 5.12). Nothing here reaches a backend or a browser.
  */
 async function openScreen(api: FakeAccountApi): Promise<VueWrapper> {
-  const wrapper = mount(BankScreen, { props: { api } })
+  const wrapper = mount(BankScreen, { props: { api }, global: { stubs: { InventoryRefresh: true } } })
   await flushPromises()
   return wrapper
 }
@@ -94,7 +94,7 @@ describe('BankScreen', () => {
     const pending = deferred<BankContents>()
     api.bankHandler = () => pending.promise
 
-    const wrapper = mount(BankScreen, { props: { api } })
+  const wrapper = mount(BankScreen, { props: { api }, global: { stubs: { InventoryRefresh: true } } })
     await flushPromises()
 
     expect(wrapper.find('[data-test="bank-loading"]').exists()).toBe(true)
@@ -145,7 +145,7 @@ describe('BankScreen', () => {
     expect(wrapper.find('[data-test="bank-no-slots"]').exists()).toBe(false)
   })
 
-  it('doesNotPresentTheEarlierBankWhenAReloadFails', async () => {
+  it('retainsTheEarlierBankWithAnExplicitWarningWhenAReloadFails', async () => {
     const api = new FakeAccountApi()
     const wrapper = await openScreen(api)
     expect(wrapper.findAll('[data-test="bank-slot"]')).toHaveLength(5)
@@ -156,7 +156,8 @@ describe('BankScreen', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-test="bank-error"]').text()).toContain('ACCOUNT_READ_FAILED')
-    expect(wrapper.findAll('[data-test="bank-slot"]')).toHaveLength(0)
+    expect(wrapper.findAll('[data-test="bank-slot"]')).toHaveLength(5)
+    expect(wrapper.find('[data-test="bank-error"]').text()).toContain('previous saved snapshot')
     expect(wrapper.find('[data-test="bank-no-slots"]').exists()).toBe(false)
   })
 

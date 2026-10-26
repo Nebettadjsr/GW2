@@ -5,6 +5,8 @@ import type { BankContents, BankSlot } from '@/api/types'
 import PageHeader from '@/shell/PageHeader.vue'
 import BankSlotTile from './BankSlotTile.vue'
 import { useAccountRead } from './useAccountRead'
+import InventoryRefresh from './InventoryRefresh.vue'
+import InventoryFreshness from './InventoryFreshness.vue'
 
 const SLOTS_PER_TAB = 30
 const props = withDefaults(defineProps<{ api?: AccountApi }>(), { api: () => accountApi })
@@ -16,7 +18,7 @@ function isEmptySlot(slot: BankSlot): boolean {
   return slot.itemId === null && slot.count === null
 }
 
-const hasNoSlots = computed(() => bank.data.value !== null && bank.data.value.slots.length === 0)
+const hasNoSlots = computed(() => bank.data.value?.slots?.length === 0)
 
 // Group by the original, zero-based slot index, never by item identity or occupancy.
 // Slots are already in the backend's canonical order, so no sorting is necessary.
@@ -47,24 +49,26 @@ function onReload(): void { void bank.load() }
       <template #actions>
         <button
           type="button"
-          class="button--primary"
+          class="button--secondary"
           data-test="bank-reload"
           :disabled="bank.phase.value === 'loading'"
           @click="onReload"
-        >Reload bank</button>
+        >Reload saved bank</button>
       </template>
     </PageHeader>
+    <InventoryRefresh @updated="bank.load()" />
+    <InventoryFreshness v-if="bank.data.value" :freshness="bank.data.value.freshness" />
 
     <div class="stack">
       <p v-if="bank.phase.value === 'loading'" class="notice notice--info" role="status" data-test="bank-loading">
-        Loading the bank…
+        {{ bank.data.value ? 'Loading the bank. Showing the previous saved snapshot below.' : 'Loading the bank…' }}
       </p>
-      <p v-else-if="bank.failure.value !== null" class="notice notice--error" data-test="bank-error">
-        The bank could not be read, so nothing is shown for it — this is a failure, not an empty bank.
-        <span class="meta detail">Backend answer: {{ bank.failure.value.code }} — {{ bank.failure.value.message }}</span>
+      <div v-else-if="bank.failure.value !== null" class="notice notice--error" role="alert" data-test="bank-error">
+        {{ bank.data.value ? 'Could not update the bank. Showing the previous saved snapshot below; it may be out of date.' : 'Could not load the bank. This does not mean your bank is empty.' }}
+        <details><summary>Error details</summary>{{ bank.failure.value.code }} — {{ bank.failure.value.message }}</details>
         <span class="notice__actions"><button type="button" data-test="bank-retry" @click="onReload">Try again</button></span>
-      </p>
-      <p v-else-if="hasNoSlots" class="notice" data-test="bank-no-slots">
+      </div>
+      <p v-if="hasNoSlots" class="notice" data-test="bank-no-slots">
         The backend returned a bank with no slots at all
         (<code>slotCount {{ bank.data.value?.slotCount }}</code>).
       </p>

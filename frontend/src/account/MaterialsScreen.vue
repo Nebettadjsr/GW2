@@ -5,11 +5,13 @@ import type { MaterialStorage } from '@/api/types'
 import PageHeader from '@/shell/PageHeader.vue'
 import InventoryTile from './InventoryTile.vue'
 import { useAccountRead } from './useAccountRead'
+import InventoryRefresh from './InventoryRefresh.vue'
+import InventoryFreshness from './InventoryFreshness.vue'
 
 const props = withDefaults(defineProps<{ api?: AccountApi }>(), { api: () => accountApi })
 const materials = useAccountRead<MaterialStorage>(() => props.api.loadMaterials())
 onMounted(() => { void materials.load() })
-const hasNoCategories = computed(() => materials.data.value !== null && materials.data.value.categories.length === 0)
+const hasNoCategories = computed(() => materials.data.value?.categories?.length === 0)
 function onReload(): void { void materials.load() }
 </script>
 
@@ -19,18 +21,20 @@ function onReload(): void { void materials.load() }
          navigation and groups this page's own actions. -->
     <PageHeader heading="Materials">
       <template #actions>
-        <button type="button" class="button--primary" data-test="materials-reload"
-          :disabled="materials.phase.value === 'loading'" @click="onReload">Reload materials</button>
+        <button type="button" class="button--secondary" data-test="materials-reload"
+          :disabled="materials.phase.value === 'loading'" @click="onReload">Reload saved materials</button>
       </template>
     </PageHeader>
+    <InventoryRefresh @updated="materials.load()" />
+    <InventoryFreshness v-if="materials.data.value" :freshness="materials.data.value.freshness" />
     <div class="stack">
-      <p v-if="materials.phase.value === 'loading'" class="notice notice--info" role="status" data-test="materials-loading">Loading material storage…</p>
-      <p v-else-if="materials.failure.value !== null" class="notice notice--error" data-test="materials-error">
-        Material storage could not be read, so nothing is shown for it — this is a failure, not empty material storage.
-        <span class="meta detail">Backend answer: {{ materials.failure.value.code }} — {{ materials.failure.value.message }}</span>
+      <p v-if="materials.phase.value === 'loading'" class="notice notice--info" role="status" data-test="materials-loading">{{ materials.data.value ? 'Loading material storage. Showing the previous saved snapshot below.' : 'Loading material storage…' }}</p>
+      <div v-else-if="materials.failure.value !== null" class="notice notice--error" role="alert" data-test="materials-error">
+        {{ materials.data.value ? 'Could not update material storage. Showing the previous saved snapshot below; it may be out of date.' : 'Could not load material storage. This does not mean your material storage is empty.' }}
+        <details><summary>Error details</summary>{{ materials.failure.value.code }} — {{ materials.failure.value.message }}</details>
         <span class="notice__actions"><button type="button" data-test="materials-retry" @click="onReload">Try again</button></span>
-      </p>
-      <p v-else-if="hasNoCategories" class="notice" data-test="materials-empty">No material categories are available.</p>
+      </div>
+      <p v-if="hasNoCategories" class="notice" data-test="materials-empty">No material categories are available.</p>
       <template v-else-if="materials.data.value !== null">
         <section v-for="category in materials.data.value.categories" :key="category.category" class="material-category" data-test="material-category">
           <h2 data-test="material-category-name">{{ category.name }}</h2>

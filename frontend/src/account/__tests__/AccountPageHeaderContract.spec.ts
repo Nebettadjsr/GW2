@@ -9,7 +9,7 @@ describe.each([
   ['Materials', MaterialsScreen, 'materials-reload']
 ] as const)('%s shared page header contract', (heading, Screen, reloadHook) => {
   it('uses the shared header, keeps navigation focus semantics, and groups reload as an action', async () => {
-    const wrapper = mount(Screen, { props: { api: new FakeAccountApi() } })
+    const wrapper = mount(Screen, { props: { api: new FakeAccountApi() }, global: { stubs: { InventoryRefresh: true } } })
     await flushPromises()
     const pageHeader = wrapper.find('.page-head')
     const pageHeading = pageHeader.find('[data-test="page-heading"]')

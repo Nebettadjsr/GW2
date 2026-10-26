@@ -9,9 +9,8 @@ import { onScopeDispose, ref, shallowRef, type Ref } from 'vue'
 import { ApiRequestError } from '@/api/http'
 
 /**
- * `loading` and `failed` are kept apart from `loaded` on purpose: a failed read must never be
- * presentable as an inventory, empty or otherwise. The initial value is `loading` because both
- * screens issue their read on mount and nothing is rendered before that.
+ * `loading` and `failed` are distinct from `loaded`; a retained snapshot is labelled as older,
+ * never presented as a successful new read. Both screens issue their first read on mount.
  */
 export type AccountReadPhase = 'loading' | 'loaded' | 'failed'
 
@@ -23,7 +22,7 @@ export interface AccountReadFailure {
 
 export interface AccountReadState<T> {
   phase: Ref<AccountReadPhase>
-  /** The last successful response, or null. Never holds data while `phase` is not `loaded`. */
+  /** Last successful response; views must label it as an older snapshot while loading/failed. */
   data: Ref<T | null>
   failure: Ref<AccountReadFailure | null>
   /** Repeats this one read. Nothing else is requested and nothing is synchronized. */
@@ -43,9 +42,6 @@ export function useAccountRead<T>(read: () => Promise<T>): AccountReadState<T> {
     const requestId = ++newestRequestId
     phase.value = 'loading'
     failure.value = null
-    // Dropped while the new read is in flight, so a failure cannot leave the previous answer on
-    // screen as if it had just been loaded, and a reload cannot show stale data as current.
-    data.value = null
 
     try {
       const loaded = await read()
@@ -66,6 +62,7 @@ export function useAccountRead<T>(read: () => Promise<T>): AccountReadState<T> {
 
   onScopeDispose(() => {
     isDisposed = true
+    data.value = null
   })
 
   return { phase, data, failure, load }
