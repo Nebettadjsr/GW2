@@ -75,7 +75,7 @@ class ReusableSimulationStateTest {
                 var input = new CraftingSettings((settings & 1) != 0, (settings & 2) != 0,
                         200, false, true, (settings & 4) != 0);
                 var ordinary = calculate(new CraftingPlanner(false), f, input);
-                var reused = calculate(new CraftingPlanner(false), f, input);
+                var reused = calculate(new CraftingPlanner(), f, input);
                 assertEquals(JSON.valueToTree(ordinary), JSON.valueToTree(reused), "seed=" + seed + ", settings=" + settings);
             }
         }
