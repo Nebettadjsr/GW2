@@ -22,7 +22,10 @@ public final class Db {
     public static final String TEST_SCHEMA_PROPERTY = "gw2tool.test.schema";
 
     public static Connection open() throws SQLException {
-        Connection con = DriverManager.getConnection(AppConfig.DB_URL, AppConfig.DB_USER, AppConfig.DB_PASS);
+        // Opt-in investigation prototype, disabled by default. Not a deployment configuration API.
+        Connection con = Integer.getInteger("gw2.investigation.pool-size", 0) > 0
+                ? ExperimentPool.DATA_SOURCE.getConnection()
+                : DriverManager.getConnection(AppConfig.DB_URL, AppConfig.DB_USER, AppConfig.DB_PASS);
 
         String testSchema = System.getProperty(TEST_SCHEMA_PROPERTY);
         if (testSchema != null && !testSchema.isBlank()) {
@@ -30,5 +33,26 @@ public final class Db {
         }
 
         return con;
+    }
+
+    private static final class ExperimentPool {
+        static final com.zaxxer.hikari.HikariDataSource DATA_SOURCE = create();
+
+        static com.zaxxer.hikari.HikariDataSource create() {
+            var config = new com.zaxxer.hikari.HikariConfig();
+            config.setJdbcUrl(AppConfig.DB_URL);
+            config.setUsername(AppConfig.DB_USER);
+            config.setPassword(AppConfig.DB_PASS);
+            config.setMaximumPoolSize(Integer.getInteger("gw2.investigation.pool-size", 8));
+            config.setMinimumIdle(0);
+            config.setConnectionTimeout(15_000);
+            // Explicit reset target for the isolated prototype database. Custom production search
+            // paths and application lifecycle integration must be designed before adoption.
+            config.setSchema("public");
+            config.addDataSourceProperty("tcpKeepAlive", "true");
+            var pool = new com.zaxxer.hikari.HikariDataSource(config);
+            Runtime.getRuntime().addShutdownHook(new Thread(pool::close, "investigation-pool-close"));
+            return pool;
+        }
     }
 }
