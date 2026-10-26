@@ -112,8 +112,8 @@ abstract class ApplicationBenchmarkHarness {
             Set<AccountGrant> all = Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES, AccountGrant.CHARACTERS,
                     AccountGrant.UNLOCKS, AccountGrant.PROGRESSION, AccountGrant.TRADINGPOST);
             return key -> {
-                if (!KEY.equals(key)) throw new InvalidCredentialException("rejected");
-                return new AccountProof(ACCOUNT, all, Set.of(), null);
+                if (!KEY.equals(key) && !investigationKey(key)) throw new InvalidCredentialException("rejected");
+                return new AccountProof(fixtureAccount(key), all, Set.of(), null);
             };
         }
 
@@ -125,7 +125,18 @@ abstract class ApplicationBenchmarkHarness {
                 }
             });
             return new ScopedAccountRefreshCoordinator(refresh, tasks, access,
-                    key -> url -> upstream(url.substring(url.indexOf("/v2/") + 3)));
+                    key -> url -> {
+                        String path = url.substring(url.indexOf("/v2/") + 3);
+                        JsonNode result = upstream(path);
+                        if (investigationKey(key) && path.equals("/account")) {
+                            return JSON.createObjectNode().put("id", fixtureAccount(key));
+                        }
+                        if (investigationKey(key) && path.equals("/account/bank")) {
+                            int marker = Integer.parseInt(key.substring("investigation-".length())) + 1000;
+                            ((com.fasterxml.jackson.databind.node.ObjectNode) result.get(0)).put("count", marker);
+                        }
+                        return result;
+                    });
         }
 
         @Bean @Primary
@@ -186,6 +197,16 @@ abstract class ApplicationBenchmarkHarness {
             }
             return out;
         }
+    }
+
+    // Test-only experiment identities. Production account proof and upstream adapters are untouched.
+    static boolean investigationKey(String key) {
+        return Boolean.getBoolean("gw2.investigation") && key != null && key.matches("investigation-[0-9]{1,3}");
+    }
+
+    static String fixtureAccount(String key) {
+        return investigationKey(key)
+                ? UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString() : ACCOUNT;
     }
 
     interface SqlWork { void run(Connection c) throws Exception; }
@@ -329,6 +350,7 @@ abstract class ApplicationBenchmarkHarness {
                     s.threads() + " concurrent clients each issuing a mix of profit, status, bank and selector requests.",
                     "HTTP, whole application, shared connection use.", s.threads() * s.requestsPerThread(),
                     rec -> concurrent(rec, s.threads(), s.requestsPerThread())));
+            additionalWorkloads(report);
             return report;
         } finally {
             System.clearProperty(Db.TEST_SCHEMA_PROPERTY);
@@ -339,6 +361,9 @@ abstract class ApplicationBenchmarkHarness {
             }
         }
     }
+
+    /** Experiment hook, executed while the isolated schema remains alive. Normal benchmarks add none. */
+    void additionalWorkloads(MeasurementReport report) throws Exception { }
 
     private void createSchema(Sizes s) throws Exception {
         try (Connection c = connect(); Statement st = c.createStatement()) {
