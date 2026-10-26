@@ -1,0 +1,126 @@
+{
+  "timestamp": "2026-10-26T07:48:24.339Z",
+  "scope": "normal local development app; one account; browser observation, not capacity",
+  "observations": [
+    {
+      "case": "bank-metadata-coverage",
+      "occupiedSlots": 174,
+      "occupiedSlotsWithIcon": 174
+    },
+    {
+      "destination": "bank",
+      "width": 1280,
+      "navigationToRegionSettledMs": 797.38,
+      "populatedIndicatorCount": 7,
+      "horizontalOverflow": false,
+      "visibleFreshnessWording": false,
+      "keyFormRepeated": false
+    },
+    {
+      "case": "image-state",
+      "destination": "bank",
+      "width": 1280,
+      "images": {
+        "total": 174,
+        "decoded": 80,
+        "failed": 0,
+        "pending": 94
+      }
+    },
+    {
+      "destination": "materials",
+      "width": 1280,
+      "navigationToRegionSettledMs": 872.29,
+      "populatedIndicatorCount": 9,
+      "horizontalOverflow": false,
+      "visibleFreshnessWording": false,
+      "keyFormRepeated": false
+    },
+    {
+      "case": "image-state",
+      "destination": "materials",
+      "width": 1280,
+      "images": {
+        "total": 681,
+        "decoded": 113,
+        "failed": 0,
+        "pending": 568
+      }
+    },
+    {
+      "case": "bank-metadata-coverage",
+      "occupiedSlots": 174,
+      "occupiedSlotsWithIcon": 174
+    },
+    {
+      "destination": "bank",
+      "width": 390,
+      "navigationToRegionSettledMs": 380.98,
+      "populatedIndicatorCount": 7,
+      "horizontalOverflow": false,
+      "visibleFreshnessWording": false,
+      "keyFormRepeated": false
+    },
+    {
+      "case": "image-state",
+      "destination": "bank",
+      "width": 390,
+      "images": {
+        "total": 174,
+        "decoded": 174,
+        "failed": 0,
+        "pending": 0
+      }
+    },
+    {
+      "destination": "materials",
+      "width": 390,
+      "navigationToRegionSettledMs": 670.05,
+      "populatedIndicatorCount": 9,
+      "horizontalOverflow": false,
+      "visibleFreshnessWording": false,
+      "keyFormRepeated": false
+    },
+    {
+      "case": "image-state",
+      "destination": "materials",
+      "width": 390,
+      "images": {
+        "total": 681,
+        "decoded": 284,
+        "failed": 0,
+        "pending": 397
+      }
+    },
+    {
+      "case": "bank-metadata-coverage",
+      "occupiedSlots": 174,
+      "occupiedSlotsWithIcon": 174
+    },
+    {
+      "case": "bank-metadata-coverage",
+      "occupiedSlots": 174,
+      "occupiedSlotsWithIcon": 174
+    },
+    {
+      "case": "bank-reload-requests",
+      "requests": [
+        {
+          "path": "/api/account/bank",
+          "method": "GET"
+        }
+      ]
+    },
+    {
+      "case": "bank-reload-transport-failure",
+      "previousSlotsStillVisible": false,
+      "retryVisible": true
+    },
+    {
+      "case": "bank-metadata-coverage",
+      "occupiedSlots": 174,
+      "occupiedSlotsWithIcon": 174
+    }
+  ],
+  "failures": []
+}

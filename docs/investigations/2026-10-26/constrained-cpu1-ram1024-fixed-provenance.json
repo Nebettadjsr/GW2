@@ -1,0 +1,13 @@
+{
+  "container": "/gw2-investigation-cpu1-ram1024-fixed",
+  "image": "sha256:2d5d5e9b533342a565907c84f47a2ec298c40cde7b13a3ca85d4950fa456a641",
+  "observedApplicationCommit": "3289f8987ac0ffa3b42df7b6f8cdd1bed343a87b",
+  "rawCommitLimitation": "GITHUB_SHA omitted from this wrapper invocation; raw report remains unknown. Git source and unchanged backend worktree were checked separately.",
+  "nanoCpus": 1000000000,
+  "memoryBytes": 1073741824,
+  "exitCode": 0,
+  "oomKilled": false,
+  "start": "2026-10-26T08:01:15.06039402Z",
+  "finish": "2026-10-26T08:04:29.117458963Z",
+  "note": "Application-process harness, in-process load generator and Maven share this cap; PostgreSQL is outside it. Not a complete stack capacity certificate."
+}

@@ -1,0 +1,354 @@
+{
+  "schemaVersion": "container-1",
+  "measurementScope": "container-stack",
+  "workloadVersion": "container-workload-2",
+  "fixtureVersion": "container-workload-2",
+  "commit": "unknown",
+  "timestamp": "2026-10-26T06:19:31Z",
+  "project": "gw2-cmeasure-investigation-20261026",
+  "environment": {
+    "hostOs": "Windows",
+    "hostArchitecture": "AMD64",
+    "engineVersion": "29.4.3",
+    "enginePlatform": "linux/amd64",
+    "composeVersion": "5.1.3",
+    "engineCpus": "6",
+    "engineMemoryBytes": "33626185728",
+    "engineOs": "Docker Desktop",
+    "runner": "local",
+    "idleSeconds": 20,
+    "trafficSeconds": 30,
+    "trafficUrls": [
+      "/",
+      "/api/system/status",
+      "/api/crafting/ingredient-search?query=wood"
+    ],
+    "postgresImageId": "sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe",
+    "backendRuntimeBaseLayers": [
+      "sha256:edf698db7561f9f53f2b22b9d417f9fde0be95175736b6954c7ef917c7114cb1",
+      "sha256:6be3abfee1446ddfb97160837ec6ea1edec87a006b73a02dca2bae5de070302e",
+      "sha256:df83852edcfdc9d36d90634d0cea42857194b583d0ff1e555aa762963a290c5f",
+      "sha256:7f94a61f04d0ed20aaad1c20e05e22de7b78e5e8eacef2c6b703160c6300f05d",
+      "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+      "sha256:b151bb3afec2fe5d8dc2d4a051173100b8ac748f4ac51975710d179e61c04c24",
+      "sha256:6447a169cd9d071ad7f8d33005e5f60854f0c161b005b39ddf94a66e58e61efa"
+    ],
+    "frontendRuntimeBaseLayers": [
+      "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711",
+      "sha256:b8edda8641ac49fd7047a93743731efdb098fe4323b0293615a4daf1a6ff6b07",
+      "sha256:ea99b346cd2fd6e72cbcf6e367eeb09afad17bf7c005973dea3e13b74169fa4f",
+      "sha256:2905b9963ff30d787a9c75efa70a68f4372091a4c6794da3c08b5f82237dfc26",
+      "sha256:f3fc23f90da4deec07e69c635dcb622701554b86ca6169b4ce36067c949ace69",
+      "sha256:f3ab0add3da3d203af0bca76efed2ff7070cbdedef5c51bfd89b5013011c9e97",
+      "sha256:76d28e61993f7e88d78daa293c15609e9ff96037fbfd62f89adfe6529064084b",
+      "sha256:00052d18c950c80abaec242318f8bd760ef299966f87d8c6b116f16016f68892",
+      "sha256:901452d457987140a54c0dffb3328676c46b4022a79e41394a69b57ddaf6b3b8"
+    ]
+  },
+  "images": {
+    "postgres": {
+      "id": "sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe",
+      "sizeBytes": 161360471,
+      "architecture": "amd64",
+      "os": "linux",
+      "tags": [
+        "postgres:17"
+      ],
+      "role": "runtime base"
+    },
+    "backend": {
+      "id": "sha256:8e7878b435e9845e6b31931eb6a1180003e7aae5c3a0b712b36f3f692c7cf605",
+      "sizeBytes": 151299043,
+      "architecture": "amd64",
+      "os": "linux",
+      "tags": [
+        "gw2-cmeasure-investigation-20261026-backend:latest"
+      ],
+      "role": "provenance (changes with code)",
+      "runtimeBaseLayers": [
+        "sha256:edf698db7561f9f53f2b22b9d417f9fde0be95175736b6954c7ef917c7114cb1",
+        "sha256:6be3abfee1446ddfb97160837ec6ea1edec87a006b73a02dca2bae5de070302e",
+        "sha256:df83852edcfdc9d36d90634d0cea42857194b583d0ff1e555aa762963a290c5f",
+        "sha256:7f94a61f04d0ed20aaad1c20e05e22de7b78e5e8eacef2c6b703160c6300f05d",
+        "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+        "sha256:b151bb3afec2fe5d8dc2d4a051173100b8ac748f4ac51975710d179e61c04c24",
+        "sha256:6447a169cd9d071ad7f8d33005e5f60854f0c161b005b39ddf94a66e58e61efa"
+      ]
+    },
+    "frontend": {
+      "id": "sha256:038690729031b252e4110014d53177a4c8d73c77d8cb6f93a81a21f9e1f93502",
+      "sizeBytes": 25668409,
+      "architecture": "amd64",
+      "os": "linux",
+      "tags": [
+        "gw2-cmeasure-investigation-20261026-frontend:latest"
+      ],
+      "role": "provenance (changes with code)",
+      "runtimeBaseLayers": [
+        "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711",
+        "sha256:b8edda8641ac49fd7047a93743731efdb098fe4323b0293615a4daf1a6ff6b07",
+        "sha256:ea99b346cd2fd6e72cbcf6e367eeb09afad17bf7c005973dea3e13b74169fa4f",
+        "sha256:2905b9963ff30d787a9c75efa70a68f4372091a4c6794da3c08b5f82237dfc26",
+        "sha256:f3fc23f90da4deec07e69c635dcb622701554b86ca6169b4ce36067c949ace69",
+        "sha256:f3ab0add3da3d203af0bca76efed2ff7070cbdedef5c51bfd89b5013011c9e97",
+        "sha256:76d28e61993f7e88d78daa293c15609e9ff96037fbfd62f89adfe6529064084b",
+        "sha256:00052d18c950c80abaec242318f8bd760ef299966f87d8c6b116f16016f68892",
+        "sha256:901452d457987140a54c0dffb3328676c46b4022a79e41394a69b57ddaf6b3b8"
+      ]
+    }
+  },
+  "workloads": [
+    {
+      "name": "startup",
+      "description": "One cold `compose up --build --wait` of the owned project to all-services-healthy.",
+      "metrics": [
+        {
+          "name": "up_to_healthy",
+          "unit": "ms",
+          "boundary": "docker compose up --build --wait (includes image build, so build cache affects it)",
+          "value": 20737
+        }
+      ],
+      "limits": [
+        "Per-service readiness times are not reported: Compose --wait gives only the aggregate."
+      ],
+      "diagnostics": []
+    },
+    {
+      "name": "idle",
+      "description": "Healthy stack with no requests, sampled with docker stats.",
+      "metrics": [
+        {
+          "name": "postgres_cpu_peak",
+          "unit": "percent_of_one_core",
+          "boundary": "docker-stats",
+          "value": 5.09
+        },
+        {
+          "name": "postgres_cpu_mean",
+          "unit": "percent_of_one_core",
+          "boundary": "docker-stats",
+          "value": 1.99
+        },
+        {
+          "name": "postgres_memory_peak",
+          "unit": "bytes",
+          "boundary": "docker-stats",
+          "value": 63554191
+        },
+        {
+          "name": "postgres_samples",
+          "unit": "count",
+          "boundary": "docker-stats",
+          "value": 7
+        },
+        {
+          "name": "backend_cpu_peak",
+          "unit": "percent_of_one_core",
+          "boundary": "docker-stats",
+          "value": 7.37
+        },
+        {
+          "name": "backend_cpu_mean",
+          "unit": "percent_of_one_core",
+          "boundary": "docker-stats",
+          "value": 3.63
+        },
+        {
+          "name": "backend_memory_peak",
+          "unit": "bytes",
+          "boundary": "docker-stats",
+          "value": 256062259
+        },
+        {
+          "name": "backend_samples",
+          "unit": "count",
+          "boundary": "docker-stats",
+          "value": 7
+        },
+        {
+          "name": "frontend_cpu_peak",
+          "unit": "percent_of_one_core",
+          "boundary": "docker-stats",
+          "value": 2.44
+        },
+        {
+          "name": "frontend_cpu_mean",
+          "unit": "percent_of_one_core",
+          "boundary": "docker-stats",
+          "value": 0.66
+        },
+        {
+          "name": "frontend_memory_peak",
+          "unit": "bytes",
+          "boundary": "docker-stats",
+          "value": 8229224
+        },
+        {
+          "name": "frontend_samples",
+          "unit": "count",
+          "boundary": "docker-stats",
+          "value": 7
+        },
+        {
+          "name": "window",
+          "unit": "seconds",
+          "boundary": "wall",
+          "value": 20.93
+        }
+      ],
+      "limits": [
+        "First samples may still include post-start work; peaks are of ~1 s point samples."
+      ],
+      "diagnostics": []
+    },
+    {
+      "name": "http_global",
+      "description": "Sequential single-client GETs of the paths in environment.trafficUrls through the frontend proxy to the backend and database: /, /api/system/status, /api/crafting/ingredient-search?query=wood.",
+      "metrics": [
+        {
+          "name": "postgres_cpu_peak",
+          "unit": "percent_of_one_core",
+          "boundary": "docker-stats",
+          "value": 21.34
+        },
+        {
+          "name": "postgres_cpu_mean",
+          "unit": "percent_of_one_core",
+          "boundary": "docker-stats",
+          "value": 13.95
+        },
+        {
+          "name": "postgres_memory_peak",
+          "unit": "bytes",
+          "boundary": "docker-stats",
+          "value": 66773319
+        },
+        {
+          "name": "postgres_samples",
+          "unit": "count",
+          "boundary": "docker-stats",
+          "value": 10
+        },
+        {
+          "name": "backend_cpu_peak",
+          "unit": "percent_of_one_core",
+          "boundary": "docker-stats",
+          "value": 53.35
+        },
+        {
+          "name": "backend_cpu_mean",
+          "unit": "percent_of_one_core",
+          "boundary": "docker-stats",
+          "value": 31.49
+        },
+        {
+          "name": "backend_memory_peak",
+          "unit": "bytes",
+          "boundary": "docker-stats",
+          "value": 272210329
+        },
+        {
+          "name": "backend_samples",
+          "unit": "count",
+          "boundary": "docker-stats",
+          "value": 10
+        },
+        {
+          "name": "frontend_cpu_peak",
+          "unit": "percent_of_one_core",
+          "boundary": "docker-stats",
+          "value": 5.23
+        },
+        {
+          "name": "frontend_cpu_mean",
+          "unit": "percent_of_one_core",
+          "boundary": "docker-stats",
+          "value": 3.63
+        },
+        {
+          "name": "frontend_memory_peak",
+          "unit": "bytes",
+          "boundary": "docker-stats",
+          "value": 8416919
+        },
+        {
+          "name": "frontend_samples",
+          "unit": "count",
+          "boundary": "docker-stats",
+          "value": 10
+        },
+        {
+          "name": "http_requests",
+          "unit": "count",
+          "boundary": "client",
+          "value": 2333
+        },
+        {
+          "name": "http_errors",
+          "unit": "count",
+          "boundary": "client",
+          "value": 0
+        },
+        {
+          "name": "http_p95",
+          "unit": "ms",
+          "boundary": "client",
+          "value": 33.22
+        },
+        {
+          "name": "http_throughput",
+          "unit": "requests_per_second",
+          "boundary": "client",
+          "value": 75.17
+        },
+        {
+          "name": "http_body_bytes",
+          "unit": "bytes",
+          "boundary": "client",
+          "value": 983376
+        },
+        {
+          "name": "window",
+          "unit": "seconds",
+          "boundary": "wall",
+          "value": 31.04
+        }
+      ],
+      "limits": [
+        "Global read traffic only; not a crafting, account-sync or live-upstream workload.",
+        "Client runs on the same host as the containers and shares its CPU.",
+        "Latency is client-side including body download; single client, so not a capacity figure."
+      ],
+      "diagnostics": []
+    },
+    {
+      "name": "database_observations",
+      "description": "Post-traffic PostgreSQL observations from inside the postgres container (database-wide, point-in-time).",
+      "metrics": [
+        {
+          "name": "db_size",
+          "unit": "bytes",
+          "boundary": "pg_database_size",
+          "value": 8255155
+        },
+        {
+          "name": "db_connections_at_end",
+          "unit": "count",
+          "boundary": "pg_stat_activity (point sample)",
+          "value": 1
+        }
+      ],
+      "limits": [
+        "Point samples only; no query-level or I/O counters."
+      ],
+      "diagnostics": []
+    }
+  ],
+  "diagnostics": [],
+  "notMeasured": [
+    "account synchronization, crafting profit/discovery calculation and live GW2 upstream traffic are not measured in container mode (no GW2 key, no production proof bypass); see the application-process report for those fixture workloads",
+    "network and block I/O counters, per-service readiness times"
+  ],
+  "cpuUnit": "Docker-reported percent of one CPU core (can exceed 100 on multi-core); computed by Docker between its two internal reads"
+}

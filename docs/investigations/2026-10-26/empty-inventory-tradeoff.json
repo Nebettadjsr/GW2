@@ -1,0 +1,7 @@
+{"scope":"supplemental pure domain, 2000 one-ingredient recipes, empty inventory, buying enabled, budget 1000; no HTTP/SQL","pairs":[
+{"pair":1,"controlMs":35.131,"candidateMs":32.091,"checksum":218394800000},
+{"pair":2,"controlMs":30.748,"candidateMs":34.391,"checksum":218394800000},
+{"pair":3,"controlMs":33.840,"candidateMs":31.107,"checksum":218394800000},
+{"pair":4,"controlMs":36.682,"candidateMs":34.858,"checksum":218394800000},
+{"pair":5,"controlMs":36.098,"candidateMs":31.900,"checksum":218394800000}
+]}

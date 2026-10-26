@@ -1,0 +1,2480 @@
+{
+  "schemaVersion" : "1",
+  "commit" : "b7be0ee",
+  "timestamp" : "2026-10-26T07:51:15.805326509Z",
+  "fixtureVersion" : "multiaccount-fixtures-1",
+  "measurementScope" : "application-process",
+  "containerMeasurements" : "No container infrastructure exists yet; container CPU/memory, startup-to-readiness and image size are not measured.",
+  "informationalOnly" : true,
+  "environment" : {
+    "measurementKind" : "process (no container)",
+    "java" : "Eclipse Adoptium 25.0.4.1",
+    "os" : "Linux 5.15.167.4-microsoft-standard-WSL2 amd64",
+    "availableProcessors" : "2",
+    "maxHeapBytes" : "778502144",
+    "postgresql" : "17.11 (Debian 17.11-1.pgdg13+2)",
+    "runner" : "local",
+    "sizes" : "Sizes[rawItems=400, smallRecipes=200, largeRecipes=5000, bankSlots=400, typicalRequests=2, profitRepeats=1, threads=2, requestsPerThread=4, idleMillis=1000]",
+    "investigationPoolSize" : "8",
+    "investigationAccounts" : "20 distinct synthetic GUIDs; account-specific bank markers"
+  },
+  "workloads" : [ {
+    "name" : "idle",
+    "description" : "Application idle: no requests, no tasks.",
+    "boundary" : "Application JVM process; the load-generating client lives in the same JVM but sends nothing.",
+    "iterations" : 1,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 1007.289792,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 1020.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 50.630911188664165,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "idle_heap_used",
+      "value" : 4.3983088E7,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "idle_rss",
+      "value" : 2.55987712E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 0.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 0.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 45.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 2236416.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 647168.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "account_sync_full",
+    "description" : "First account refresh (POST /api/sync/account) of an account with no stored data: bank, materials, recipes, Luck.",
+    "boundary" : "HTTP accept to task SUCCEEDED, through the scoped coordinator, repositories and PostgreSQL.",
+    "iterations" : 1,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 923.904006,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 1620.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 87.67144581468564,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 4.3348088E7,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 2.5565184E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 155.810656,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 14 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 15.153089400069124,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 14.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 2.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 3064.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "background_job_duration",
+      "value" : 923.372592,
+      "unit" : "ms",
+      "boundary" : "HTTP accept to terminal task state (mean over runs)"
+    }, {
+      "name" : "background_job_cpu_time",
+      "value" : null,
+      "unavailableReason" : "the task runs on shared pool threads; only the whole-process CPU of the workload window is attributable",
+      "unit" : "ms",
+      "boundary" : "task"
+    }, {
+      "name" : "background_job_memory",
+      "value" : null,
+      "unavailableReason" : "JVM heap is shared; only the workload-window peak above is observable",
+      "unit" : "bytes",
+      "boundary" : "task"
+    }, {
+      "name" : "scheduled_global_refresh_interval",
+      "value" : 2.16E7,
+      "unit" : "ms",
+      "boundary" : "configured value (gw2.global-refresh.interval-ms), not an observed frequency; account and price refreshes are demand-driven"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 48.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 2744320.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 835584.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "account_sync_incremental",
+    "description" : "Repeat account refresh after about 5% of upstream rows changed.",
+    "boundary" : "Same as account_sync_full; the application always re-fetches and republishes whole sources.",
+    "iterations" : 1,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 283.579536,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 420.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 74.05329840161669,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 4.2217048E7,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 2.57101824E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 0.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 5.328081,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 7 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 24.684432800538893,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 7.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 2.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 1531.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "background_job_duration",
+      "value" : 282.986988,
+      "unit" : "ms",
+      "boundary" : "HTTP accept to terminal task state (mean over runs)"
+    }, {
+      "name" : "background_job_cpu_time",
+      "value" : null,
+      "unavailableReason" : "the task runs on shared pool threads; only the whole-process CPU of the workload window is attributable",
+      "unit" : "ms",
+      "boundary" : "task"
+    }, {
+      "name" : "background_job_memory",
+      "value" : null,
+      "unavailableReason" : "JVM heap is shared; only the workload-window peak above is observable",
+      "unit" : "bytes",
+      "boundary" : "task"
+    }, {
+      "name" : "scheduled_global_refresh_interval",
+      "value" : 2.16E7,
+      "unit" : "ms",
+      "boundary" : "configured value (gw2.global-refresh.interval-ms), not an observed frequency; account and price refreshes are demand-driven"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 3307.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 5.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 7415.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 57.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 3096576.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 983040.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "price_refresh",
+    "description" : "Trading Post price refresh for Crafting Profit (POST /api/prices/refresh).",
+    "boundary" : "HTTP accept to task SUCCEEDED; the refresh gateway is a fixture that writes 5400 price rows through JDBC, so upstream fetch/parse cost is excluded.",
+    "iterations" : 1,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 180.098079,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 210.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 58.30156578183158,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 4.4103656E7,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 2.5759744E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 2.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 12.274728,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 5 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 27.76265037230075,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 5.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 20.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 1089.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "background_job_duration",
+      "value" : 179.541332,
+      "unit" : "ms",
+      "boundary" : "HTTP accept to terminal task state (mean over runs)"
+    }, {
+      "name" : "background_job_cpu_time",
+      "value" : null,
+      "unavailableReason" : "the task runs on shared pool threads; only the whole-process CPU of the workload window is attributable",
+      "unit" : "ms",
+      "boundary" : "task"
+    }, {
+      "name" : "background_job_memory",
+      "value" : null,
+      "unavailableReason" : "JVM heap is shared; only the workload-window peak above is observable",
+      "unit" : "bytes",
+      "boundary" : "task"
+    }, {
+      "name" : "scheduled_global_refresh_interval",
+      "value" : 2.16E7,
+      "unit" : "ms",
+      "boundary" : "configured value (gw2.global-refresh.interval-ms), not an observed frequency; account and price refreshes are demand-driven"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 5400.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 5400.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 18.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 3637248.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 1114112.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "profit_small",
+    "description" : "Crafting Profit (All scope, account roster) over 200 recipes; first call, then repeats with changed settings.",
+    "boundary" : "HTTP POST /api/crafting/profit through service, calculation and JSON serialization.",
+    "iterations" : 2,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 586.565388,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 960.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 81.83230886442962,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 4.3852448E7,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 2.61021696E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 481.066408,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 2 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 3.409679536017901,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 2.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 70.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 122084.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "result_rows",
+      "value" : 100.0,
+      "unit" : "rows",
+      "boundary" : "rows in the first response"
+    }, {
+      "name" : "craftable_rows",
+      "value" : 7.0,
+      "unit" : "rows",
+      "boundary" : "rows of the first response whose calculation crafted at least one item (craftableCount > 0)"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 3311.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 7416.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 66.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 3678208.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 1138688.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "global_refresh",
+    "description" : "Global data refresh (POST /api/sync/global) that adds the remaining recipes and rebuilds the crafting graph.",
+    "boundary" : "HTTP accept to task SUCCEEDED including real graph rebuild; the upstream fetch is a fixture that writes 5000 recipes through JDBC.",
+    "iterations" : 1,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 1146.091256,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 1280.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 55.84197564107408,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 4.7145696E7,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 2.66559488E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 2.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 5.11382,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 23 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 20.068209996010996,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 23.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 2.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 4968.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "background_job_duration",
+      "value" : 1145.559301,
+      "unit" : "ms",
+      "boundary" : "HTTP accept to terminal task state (mean over runs)"
+    }, {
+      "name" : "background_job_cpu_time",
+      "value" : null,
+      "unavailableReason" : "the task runs on shared pool threads; only the whole-process CPU of the workload window is attributable",
+      "unit" : "ms",
+      "boundary" : "task"
+    }, {
+      "name" : "background_job_memory",
+      "value" : null,
+      "unavailableReason" : "JVM heap is shared; only the workload-window peak above is observable",
+      "unit" : "bytes",
+      "boundary" : "task"
+    }, {
+      "name" : "scheduled_global_refresh_interval",
+      "value" : 2.16E7,
+      "unit" : "ms",
+      "boundary" : "configured value (gw2.global-refresh.interval-ms), not an observed frequency; account and price refreshes are demand-driven"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 19200.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 5602.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 75911.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 75.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 5718016.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 1712128.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "profit_large",
+    "description" : "Crafting Profit (All scope, account roster) over 5000 recipes; first call, then repeats with changed settings.",
+    "boundary" : "Same as profit_small.",
+    "iterations" : 2,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 1169.788191,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 1890.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 80.78385533984246,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 6.5982184E7,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 2.89112064E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 519.771563,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 2 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 1.7097112241236498,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 2.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 70.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 2999682.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "result_rows",
+      "value" : 2500.0,
+      "unit" : "rows",
+      "boundary" : "rows in the first response"
+    }, {
+      "name" : "craftable_rows",
+      "value" : 12.0,
+      "unit" : "rows",
+      "boundary" : "rows of the first response whose calculation crafted at least one item (craftableCount > 0)"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 2.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 231006.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 80.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 5718016.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 1712128.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "http_typical",
+    "description" : "Sequential typical reads: system status, bank, materials, selector options.",
+    "boundary" : "HTTP GET through interceptor, controller, service, repository.",
+    "iterations" : 8,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 299.631703,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 200.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 33.37430552200279,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 6.8525488E7,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 2.900992E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 51.704599,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 8 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 26.69944441760223,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 8.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 0.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 115812.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 25.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 5718016.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 1712128.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "database_reads",
+    "description" : "Repository reads of Trading Post quotes and item metadata for every fixture item.",
+    "boundary" : "Application repositories (TpPriceRepository, ItemRepository) over JDBC; no HTTP.",
+    "iterations" : 2,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 102.053141,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 40.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 19.597632962615037,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 6.9908696E7,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 2.92200448E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "repository_read_latency_p95",
+      "value" : 51.526039,
+      "unit" : "ms",
+      "boundary" : "repository call (JDBC, no HTTP), one round = TP quotes + item metadata, nearest-rank over 2 rounds"
+    }, {
+      "name" : "repository_read_throughput",
+      "value" : 19.597632962615037,
+      "unit" : "rounds/second",
+      "boundary" : "repository call (JDBC, no HTTP), one round = TP quotes + item metadata, over the workload wall time"
+    }, {
+      "name" : "repository_read_rounds",
+      "value" : 2.0,
+      "unit" : "rounds",
+      "boundary" : "repository call (JDBC, no HTTP), one round = TP quotes + item metadata"
+    }, {
+      "name" : "rows_returned_per_round",
+      "value" : 10800.0,
+      "unit" : "rows",
+      "boundary" : "quotes + items returned by the last round"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 8.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 24838.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 163.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 5718016.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 1712128.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "http_concurrent",
+    "description" : "2 concurrent clients each issuing a mix of profit, status, bank and selector requests.",
+    "boundary" : "HTTP, whole application, shared connection use.",
+    "iterations" : 8,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 768.779798,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 1160.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 75.44423013051131,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 8.4257264E7,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 3.09387264E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 2.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 669.306807,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 8 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 10.406100707656734,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 8.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 4.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 3056362.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 21600.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 53.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 5718016.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 1712128.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "accounts_onboarding_1",
+    "description" : "1 distinct accounts concurrently synchronize",
+    "boundary" : "Real HTTP admission, per-account coordinator, publication and PostgreSQL; deterministic upstream.",
+    "iterations" : 1,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 254.704554,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 180.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 35.335057260106936,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 8.7457152E7,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 3.10136832E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 2.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 26.902017,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 5 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 19.630587366726076,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 5.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 2.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 28377.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "background_job_duration",
+      "value" : 223.350111,
+      "unit" : "ms",
+      "boundary" : "HTTP accept to terminal task state (mean over runs)"
+    }, {
+      "name" : "background_job_cpu_time",
+      "value" : null,
+      "unavailableReason" : "the task runs on shared pool threads; only the whole-process CPU of the workload window is attributable",
+      "unit" : "ms",
+      "boundary" : "task"
+    }, {
+      "name" : "background_job_memory",
+      "value" : null,
+      "unavailableReason" : "JVM heap is shared; only the workload-window peak above is observable",
+      "unit" : "bytes",
+      "boundary" : "task"
+    }, {
+      "name" : "scheduled_global_refresh_interval",
+      "value" : 2.16E7,
+      "unit" : "ms",
+      "boundary" : "configured value (gw2.global-refresh.interval-ms), not an observed frequency; account and price refreshes are demand-driven"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 4.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 93617.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 86.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 6160384.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 1941504.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "accounts_mixed_1",
+    "description" : "1 isolated accounts: changed-budget Profit plus bank/status/selectors",
+    "boundary" : "HTTP client in application JVM, no browser rendering; deterministic 5000-recipe binary-tree fixture by default.",
+    "iterations" : 12,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 1592.028025,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 1940.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 60.92857567629816,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 1.12772776E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 3.37768448E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 2.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 1.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 450.67935,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 12 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 7.537555753768844,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 12.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 105.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 4584549.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 3307.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 17.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 397269.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 283.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 6160384.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 1941504.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "accounts_onboarding_2",
+    "description" : "2 distinct accounts concurrently synchronize",
+    "boundary" : "Real HTTP admission, per-account coordinator, publication and PostgreSQL; deterministic upstream.",
+    "iterations" : 2,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 412.384687,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 360.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 43.64856544733922,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 1.14229408E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 3.3896448E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 2.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 2.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 65.859832,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 12 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 29.09904363155948,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 12.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 4.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 57192.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "background_job_duration",
+      "value" : 379.79401,
+      "unit" : "ms",
+      "boundary" : "HTTP accept to terminal task state (mean over runs)"
+    }, {
+      "name" : "background_job_cpu_time",
+      "value" : null,
+      "unavailableReason" : "the task runs on shared pool threads; only the whole-process CPU of the workload window is attributable",
+      "unit" : "ms",
+      "boundary" : "task"
+    }, {
+      "name" : "background_job_memory",
+      "value" : null,
+      "unavailableReason" : "JVM heap is shared; only the workload-window peak above is observable",
+      "unit" : "bytes",
+      "boundary" : "task"
+    }, {
+      "name" : "scheduled_global_refresh_interval",
+      "value" : 2.16E7,
+      "unit" : "ms",
+      "boundary" : "configured value (gw2.global-refresh.interval-ms), not an observed frequency; account and price refreshes are demand-driven"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 5.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 12423.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 115.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 6742016.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 2088960.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "accounts_mixed_2",
+    "description" : "2 isolated accounts: changed-budget Profit plus bank/status/selectors",
+    "boundary" : "HTTP client in application JVM, no browser rendering; deterministic 5000-recipe binary-tree fixture by default.",
+    "iterations" : 24,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 2094.0505,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 2860.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 68.28870650445154,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 1.9272584E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 4.18963456E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 2.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 2.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 609.525939,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 24 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 11.461041651096764,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 24.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 210.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 9169098.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 3306.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 3328.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 4.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 400086.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 334.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 6742016.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 2088960.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "accounts_onboarding_5",
+    "description" : "5 distinct accounts concurrently synchronize",
+    "boundary" : "Real HTTP admission, per-account coordinator, publication and PostgreSQL; deterministic upstream.",
+    "iterations" : 5,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 519.514531,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 910.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 87.58176583130069,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 1.94572088E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 4.24955904E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 5.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 4.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 46.149542,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 35 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 67.37058910100052,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 35.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 10.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 144075.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "background_job_duration",
+      "value" : 464.707686,
+      "unit" : "ms",
+      "boundary" : "HTTP accept to terminal task state (mean over runs)"
+    }, {
+      "name" : "background_job_cpu_time",
+      "value" : null,
+      "unavailableReason" : "the task runs on shared pool threads; only the whole-process CPU of the workload window is attributable",
+      "unit" : "ms",
+      "boundary" : "task"
+    }, {
+      "name" : "background_job_memory",
+      "value" : null,
+      "unavailableReason" : "JVM heap is shared; only the workload-window peak above is observable",
+      "unit" : "bytes",
+      "boundary" : "task"
+    }, {
+      "name" : "scheduled_global_refresh_interval",
+      "value" : 2.16E7,
+      "unit" : "ms",
+      "boundary" : "configured value (gw2.global-refresh.interval-ms), not an observed frequency; account and price refreshes are demand-driven"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 14.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 210464.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 272.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 8658944.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 2965504.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "accounts_mixed_5",
+    "description" : "5 isolated accounts: changed-budget Profit plus bank/status/selectors",
+    "boundary" : "HTTP client in application JVM, no browser rendering; deterministic 5000-recipe binary-tree fixture by default.",
+    "iterations" : 60,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 4415.905933,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 8580.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 97.14880853645212,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 4.78611656E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 7.15620352E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 5.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 4.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 1281.31997,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 60 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 13.587245949154143,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 60.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 525.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 2.2922745E7,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 9918.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 6692.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 10.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 1507729.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 1180.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 8658944.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 2965504.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "accounts_onboarding_10",
+    "description" : "10 distinct accounts concurrently synchronize",
+    "boundary" : "Real HTTP admission, per-account coordinator, publication and PostgreSQL; deterministic upstream.",
+    "iterations" : 10,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 760.392777,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 1460.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 96.00301608335766,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 4.93296736E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 7.22305024E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 8.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 8.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 37.290776,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 85 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 111.78433379569044,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 85.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 20.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 291404.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "background_job_duration",
+      "value" : 646.4127034,
+      "unit" : "ms",
+      "boundary" : "HTTP accept to terminal task state (mean over runs)"
+    }, {
+      "name" : "background_job_cpu_time",
+      "value" : null,
+      "unavailableReason" : "the task runs on shared pool threads; only the whole-process CPU of the workload window is attributable",
+      "unit" : "ms",
+      "boundary" : "task"
+    }, {
+      "name" : "background_job_memory",
+      "value" : null,
+      "unavailableReason" : "JVM heap is shared; only the workload-window peak above is observable",
+      "unit" : "bytes",
+      "boundary" : "task"
+    }, {
+      "name" : "scheduled_global_refresh_interval",
+      "value" : 2.16E7,
+      "unit" : "ms",
+      "boundary" : "configured value (gw2.global-refresh.interval-ms), not an observed frequency; account and price refreshes are demand-driven"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 10.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 0.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 19046.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 230.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 1.1935744E7,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 4145152.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "accounts_mixed_10",
+    "description" : "10 isolated accounts: changed-budget Profit plus bank/status/selectors",
+    "boundary" : "HTTP client in application JVM, no browser rendering; deterministic 5000-recipe binary-tree fixture by default.",
+    "iterations" : 120,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 7927.807486,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 14470.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 91.26104553846125,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 5.78455792E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 1.022767104E9,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 8.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 8.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 1952.380161,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 120 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 15.136593593110367,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 120.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 1050.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 4.584549E7,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 16530.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 16682.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 20.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 2987101.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 2168.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 1.200128E7,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 4145152.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "accounts_onboarding_20",
+    "description" : "20 distinct accounts concurrently synchronize",
+    "boundary" : "Real HTTP admission, per-account coordinator, publication and PostgreSQL; deterministic upstream.",
+    "iterations" : 20,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 1492.794177,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 2690.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 90.09949400412218,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 5.91448552E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 1.026215936E9,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 8.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 7.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 35.065172,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 264 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 176.84956443931787,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 264.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 40.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 603232.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "background_job_duration",
+      "value" : 1149.4872842500001,
+      "unit" : "ms",
+      "boundary" : "HTTP accept to terminal task state (mean over runs)"
+    }, {
+      "name" : "background_job_cpu_time",
+      "value" : null,
+      "unavailableReason" : "the task runs on shared pool threads; only the whole-process CPU of the workload window is attributable",
+      "unit" : "ms",
+      "boundary" : "task"
+    }, {
+      "name" : "background_job_memory",
+      "value" : null,
+      "unavailableReason" : "JVM heap is shared; only the workload-window peak above is observable",
+      "unit" : "bytes",
+      "boundary" : "task"
+    }, {
+      "name" : "scheduled_global_refresh_interval",
+      "value" : 2.16E7,
+      "unit" : "ms",
+      "boundary" : "configured value (gw2.global-refresh.interval-ms), not an observed frequency; account and price refreshes are demand-driven"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 28042.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 27752.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 18.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 515520.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 1224.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 1.6703488E7,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 6561792.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  }, {
+    "name" : "accounts_mixed_20",
+    "description" : "20 isolated accounts: changed-budget Profit plus bank/status/selectors",
+    "boundary" : "HTTP client in application JVM, no browser rendering; deterministic 5000-recipe binary-tree fixture by default.",
+    "iterations" : 240,
+    "metrics" : [ {
+      "name" : "wall_time",
+      "value" : 12698.022701,
+      "unit" : "ms",
+      "boundary" : "application JVM process"
+    }, {
+      "name" : "cpu_time",
+      "value" : 24400.0,
+      "unit" : "ms",
+      "boundary" : "application JVM process, user+system, workload window"
+    }, {
+      "name" : "cpu_utilization",
+      "value" : 96.07795077448728,
+      "unit" : "percent of all processors",
+      "boundary" : "application JVM process, workload window"
+    }, {
+      "name" : "peak_heap_used",
+      "value" : 7.17388448E8,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, sampled every 20 ms (lower bound of the true peak)"
+    }, {
+      "name" : "peak_rss",
+      "value" : 1.02643712E9,
+      "unit" : "bytes",
+      "boundary" : "application JVM process, resident set from /proc, sampled every 20 ms"
+    }, {
+      "name" : "db_connections_open_peak",
+      "value" : 8.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; counts every state including idle, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "db_connections_active_peak",
+      "value" : 6.0,
+      "unit" : "connections",
+      "boundary" : "database-wide pg_stat_activity (client backends of the test database, not only this schema); one persistent observer session is excluded, as are the statistics probe sessions; other database clients, fixture writers and the observer's own small query load are not excluded; only state 'active', point samples so short statements are mostly missed, sampled every 25 ms (lower bound)"
+    }, {
+      "name" : "http_latency_p95",
+      "value" : 2794.061371,
+      "unit" : "ms",
+      "boundary" : "HTTP client round trip incl. body download, nearest-rank over 240 requests"
+    }, {
+      "name" : "http_throughput",
+      "value" : 18.900580480227006,
+      "unit" : "requests/second",
+      "boundary" : "all recorded requests (including task-status polls) over wall time"
+    }, {
+      "name" : "http_requests",
+      "value" : 240.0,
+      "unit" : "requests",
+      "boundary" : "HTTP client round trip incl. body download"
+    }, {
+      "name" : "http_errors",
+      "value" : 0.0,
+      "unit" : "requests",
+      "boundary" : "non-2xx responses"
+    }, {
+      "name" : "network_ingress",
+      "value" : 2100.0,
+      "unit" : "bytes",
+      "boundary" : "HTTP request bodies received by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "network_egress",
+      "value" : 9.169098E7,
+      "unit" : "bytes",
+      "boundary" : "HTTP response bodies sent by the application; headers and TCP overhead excluded"
+    }, {
+      "name" : "db_rows_inserted",
+      "value" : 5018.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_updated",
+      "value" : 5655.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_deleted",
+      "value" : 22.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables)"
+    }, {
+      "name" : "db_rows_read",
+      "value" : 5218087.0,
+      "unit" : "rows",
+      "boundary" : "test schema (pg_stat_all_tables), sequential scan rows + index fetches"
+    }, {
+      "name" : "db_transactions_committed",
+      "value" : 3816.0,
+      "unit" : "transactions",
+      "boundary" : "whole test database (pg_stat_database)"
+    }, {
+      "name" : "db_storage_total",
+      "value" : 1.6703488E7,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), tables + indexes + TOAST at workload end"
+    }, {
+      "name" : "db_storage_indexes",
+      "value" : 6561792.0,
+      "unit" : "bytes",
+      "boundary" : "test schema (pg_stat_all_tables), at workload end"
+    }, {
+      "name" : "db_network_bytes",
+      "value" : null,
+      "unavailableReason" : "no per-process network counters are available without OS tooling; HTTP body bytes are reported instead",
+      "unit" : "bytes",
+      "boundary" : "JDBC wire"
+    } ],
+    "limits" : [ "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.", "Fixture data is synthetic (perf-fixtures-2); sizes are not a claim about real GW2 data volumes." ],
+    "diagnostics" : [ ]
+  } ]
+}
