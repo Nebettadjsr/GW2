@@ -65,13 +65,7 @@ No open finding. KP-08, KP-09 and KP-11 described the legacy JavaFX shopping lis
 
 ## 7. Incomplete or obsolete implementation
 
-### KP-25 — Orphaned production code remains (CH-E4)
-
-**Observed fact:** `api/Gw2PriceFetch.java` has no production callers since its former caller `Main.java` was deleted. `model/Price.java` is used only by that orphaned helper. `craft.ResolvedNeedMapper#toNode` likewise has no production entry call; the live detail chain uses `RecipeTreeBuilder` instead. The 2026-09-23 production-code audit found no FXML/controller binding, reflective lookup, or service registration for these symbols. The three orphans the JavaFX view deletion created — `application.InitialSetupService`, `application.EctoSalvageService` and `util.CoinUtils` — were themselves removed by `STORY-UI-004`, together with `ecto.EctoSalvageCalculator` and `sync.IconSyncGateway`, so they are no longer part of this problem; the same story then removed the desktop icon download the last of those left without a caller (`sync.IconSync.syncItemIconsToDisk` and `sync.DesktopIconAdoption`), so it is not part of this problem either.
-
-**Inferred risk:** obsolete competing implementations remain available to be mistaken for live behavior or modified without effect.
-
-**Recommendation:** reassess production reachability when this area is next touched and retire confirmed-dead paths, or intentionally reuse the mapper through normal planned work if that is the chosen design.
+No open finding.
 
 ---
 
