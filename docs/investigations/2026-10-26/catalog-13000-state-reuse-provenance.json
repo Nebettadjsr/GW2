@@ -1,0 +1,14 @@
+{
+  "container": "/gw2-investigation-state13000",
+  "image": "sha256:2d5d5e9b533342a565907c84f47a2ec298c40cde7b13a3ca85d4950fa456a641",
+  "applicationCommit": "bdec991a56fd2cabd38b8db16a83b7c61bfb311d",
+  "nanoCpus": 2000000000,
+  "memoryBytes": 2147483648,
+  "exitCode": 0,
+  "oomKilled": false,
+  "start": "2026-10-26T08:34:23.877714564Z",
+  "finish": "2026-10-26T08:37:21.471681165Z",
+  "workload": "13000 synthetic recipes, 20 distinct accounts; pool 8 plus request-worker state reuse; process/client/Maven inside cap, PostgreSQL outside",
+  "jvmOptions": "-Xmx1280m",
+  "comparisonLimit": "Single non-alternating constrained observations; use Windows five-pair series for repeated comparative evidence."
+}
