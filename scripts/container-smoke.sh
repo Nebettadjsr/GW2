@@ -42,7 +42,7 @@ fail() { echo "FAIL: $*" >&2; docker logs "$NS-app" 2>&1 | tail -30 >&2 || true;
 
 echo "== build $IMAGE"
 t0=$(now_ms)
-docker build -q -f docker/backend/Dockerfile -t "$IMAGE" backend >/dev/null
+docker build -q -t "$IMAGE" backend >/dev/null
 IMAGE_CREATED=true
 echo "build_ms=$(( $(now_ms) - t0 ))"
 echo "image_bytes=$(docker image inspect "$IMAGE" --format '{{.Size}}')"

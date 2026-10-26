@@ -25,7 +25,7 @@ services:
   backend:
     build:
       context: ../backend
-      dockerfile: ../docker/backend/Dockerfile
+      dockerfile: Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,8 +48,8 @@ services:
 
   frontend:
     build:
-      context: ..
-      dockerfile: docker/frontend/Dockerfile
+      context: ../frontend
+      dockerfile: Dockerfile
     depends_on:
       backend:
         condition: service_healthy
