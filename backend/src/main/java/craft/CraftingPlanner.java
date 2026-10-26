@@ -15,13 +15,23 @@ public class CraftingPlanner {
 
     private final CostEvaluator costEvaluator = new CostEvaluator();
     private final Map<Integer, Integer> vendorValues;
+    private final boolean reuseSimulationState;
 
     public CraftingPlanner() {
         this(Map.of());
     }
 
     private CraftingPlanner(Map<Integer, Integer> vendorValues) {
+        this(vendorValues, false);
+    }
+
+    private CraftingPlanner(Map<Integer, Integer> vendorValues, boolean reuseSimulationState) {
         this.vendorValues = vendorValues;
+        this.reuseSimulationState = reuseSimulationState;
+    }
+
+    public CraftingPlanner withReusableSimulationState() {
+        return new CraftingPlanner(vendorValues, true);
     }
 
     /**
@@ -29,7 +39,7 @@ public class CraftingPlanner {
      * (DOMAIN_SPEC.md 11.2 step 2), keyed by item id; non-positive values mean "no vendor value".
      */
     public CraftingPlanner withVendorValues(Map<Integer, Integer> vendorValues) {
-        return vendorValues.equals(this.vendorValues) ? this : new CraftingPlanner(Map.copyOf(vendorValues));
+        return vendorValues.equals(this.vendorValues) ? this : new CraftingPlanner(Map.copyOf(vendorValues), reuseSimulationState);
     }
 
     public Map<Integer, CraftResult> evaluateAll(List<Recipe> recipes,
@@ -110,16 +120,26 @@ public class CraftingPlanner {
         PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
                 roster).withVendorValues(vendorValues);
 
+        // Request-local map, deliberately not ThreadLocal: no account state remains attached to
+        // shared pool threads after this invocation. A worker executes one root at a time.
+        Map<Thread, PlanState> workerStates = new java.util.concurrent.ConcurrentHashMap<>();
+
         // See evaluateAll(...)'s parallelization note: identical independence argument applies
         // here, including for the coordinated per-character trial paths, since each recipe still
         // only ever mutates its own fresh PlanState.
         return recipes.parallelStream().collect(Collectors.toConcurrentMap(
                 r -> r.recipeId,
-                r -> evaluateOneRecipeNew(
-                        r,
-                        new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory),
-                        ctx,
-                        new RecipeSimulator())
+                r -> {
+                    PlanState state = reuseSimulationState
+                            ? workerStates.computeIfAbsent(Thread.currentThread(), thread ->
+                                PlanState.reusable(sellableInventory, accountBoundInventory, characterBoundInventory))
+                            : new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory);
+                    try {
+                        return evaluateOneRecipeNew(r, state, ctx, new RecipeSimulator());
+                    } finally {
+                        if (reuseSimulationState) state.rollbackTo(0);
+                    }
+                }
         ));
     }
 

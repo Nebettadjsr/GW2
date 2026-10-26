@@ -120,7 +120,9 @@ public class CraftingProfitService {
         this.itemRepo = itemRepo;
         this.charRepo = charRepo;
         this.graphCache = graphCache;
-        this.planner = planner;
+        // Investigation #116 only; default application behavior remains the control.
+        this.planner = Boolean.getBoolean("gw2.investigation.reuse-state")
+                ? planner.withReusableSimulationState() : planner;
         this.session = session == null ? ProfitInputSession.detached() : session;
     }
 

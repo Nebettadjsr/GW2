@@ -72,6 +72,15 @@ public class PlanState {
     private int[] journalOldValue = new int[64];
     private String[] journalOwner = new String[64];
     private int journalSize = 0;
+    private boolean retainCommittedChanges;
+
+    /** Request-worker experiment: keep accepted-craft history until the whole recipe is restored. */
+    static PlanState reusable(Map<Integer, Integer> sellable, Map<Integer, Integer> bound,
+                              Map<String, Map<Integer, Integer>> characterBound) {
+        PlanState state = new PlanState(sellable, bound, characterBound);
+        state.retainCommittedChanges = true;
+        return state;
+    }
 
     public PlanState(Map<Integer, Integer> baseInventory) {
         this(baseInventory, Map.of());
@@ -150,6 +159,7 @@ public class PlanState {
      * the journal from growing across up to 250 accepted craft iterations.
      */
     public void commitTo(int mark) {
+        if (retainCommittedChanges) return;
         for (int i = mark; i < journalSize; i++) {
             journalOwner[i] = null;
         }

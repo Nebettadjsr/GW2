@@ -676,6 +676,7 @@ abstract class ApplicationBenchmarkHarness {
         e.put("sizes", s.toString());
         if (Boolean.getBoolean("gw2.investigation")) {
             e.put("investigationPoolSize", System.getProperty("gw2.investigation.pool-size", "0"));
+            e.put("investigationReuseState", System.getProperty("gw2.investigation.reuse-state", "false"));
             e.put("investigationAccounts", "20 distinct synthetic GUIDs; account-specific bank markers");
         }
         return e;
