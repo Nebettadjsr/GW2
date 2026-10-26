@@ -1,0 +1,11 @@
+{
+  "rawReport": "baseline-container.json",
+  "rawArchive": "baseline-container-raw.zip",
+  "archiveEntry": "container-resources.json",
+  "rawReportSha256": "cf0094240eb45d40b9db38cd43828b29c287a4e3d26aeca681d93548b3fc6bff",
+  "gitNormalizedTextSha256": "380af545b99213a433c45b1c4c57129604ab6214ad23a934563e288eb71e4674",
+  "lineEndings": "The checksum identifies the original archived Windows bytes. Git normalizes the readable JSON text copy to LF; its separate blob checksum is recorded above. JSON values are identical.",
+  "observedApplicationCommit": "bb386ac3ce864e08c8755d014e7abbf300af8fd4",
+  "provenance": "git log -1 was recorded during the measurement. Application, scripts and Docker files were unchanged from this commit; the subsequent planning branch changes documentation only.",
+  "limitation": "The measurement command omitted --commit. The raw report correctly remains unmodified with commit: unknown because the helper defaults to GITHUB_SHA, which was unset locally. Use --commit explicitly for subsequent comparable reports."
+}

@@ -1,0 +1,1710 @@
+{
+  "scope": "five alternating paired runs; in-process load generator; no rendering/live upstream",
+  "commit": "b7be0ee11cc34e9f25d9fcb68362ace73362f917",
+  "fixtureVersion": "multiaccount-fixtures-1",
+  "environment": {
+    "measurementKind": "process (no container)",
+    "java": "Oracle Corporation 25.0.1",
+    "os": "Windows 10 10.0 amd64",
+    "availableProcessors": "6",
+    "maxHeapBytes": "2147483648",
+    "postgresql": "17.11 (Debian 17.11-1.pgdg13+2)",
+    "runner": "local",
+    "sizes": "Sizes[rawItems=400, smallRecipes=200, largeRecipes=5000, bankSlots=400, typicalRequests=2, profitRepeats=1, threads=2, requestsPerThread=4, idleMillis=1000]",
+    "investigationAccounts": "20 distinct synthetic GUIDs; account-specific bank markers"
+  },
+  "rawReports": [
+    {
+      "run": "pair-1-pool-0",
+      "commit": "b7be0ee11cc34e9f25d9fcb68362ace73362f917",
+      "timestamp": "2026-10-26T07:35:02.167250700Z",
+      "sha256": "0e0763b6ef71dcbef15c8366d5b2c8d370da8d6a32ac511eaa8c70500e68bc52"
+    },
+    {
+      "run": "pair-1-pool-8",
+      "commit": "b7be0ee11cc34e9f25d9fcb68362ace73362f917",
+      "timestamp": "2026-10-26T07:36:09.024548400Z",
+      "sha256": "3c6f23cae9fe532c59d88de639a966e9ccf9d1152901674cc342745a529dafaf"
+    },
+    {
+      "run": "pair-2-pool-0",
+      "commit": "b7be0ee11cc34e9f25d9fcb68362ace73362f917",
+      "timestamp": "2026-10-26T07:38:06.188881700Z",
+      "sha256": "88923f943d482d23d7f0552e17ea036aa952eae61603c186d7a3934abfb9423b"
+    },
+    {
+      "run": "pair-2-pool-8",
+      "commit": "b7be0ee11cc34e9f25d9fcb68362ace73362f917",
+      "timestamp": "2026-10-26T07:37:08.323989900Z",
+      "sha256": "9e43ea845cb87ef1ce78f09919e9127bada7beba12f877bfb5de491bde39e39b"
+    },
+    {
+      "run": "pair-3-pool-0",
+      "commit": "b7be0ee11cc34e9f25d9fcb68362ace73362f917",
+      "timestamp": "2026-10-26T07:39:13.071940900Z",
+      "sha256": "11aa36f58838bf50cee9ccd9dc31a050dd0bacb4b0d37cfb5fa3f3087a2f2f98"
+    },
+    {
+      "run": "pair-3-pool-8",
+      "commit": "b7be0ee11cc34e9f25d9fcb68362ace73362f917",
+      "timestamp": "2026-10-26T07:40:23.349892700Z",
+      "sha256": "84d7d57d9850bbd6d0fa09b04bf5685fb0091de81d3c46a7f2167ad92f61e921"
+    },
+    {
+      "run": "pair-4-pool-0",
+      "commit": "b7be0ee11cc34e9f25d9fcb68362ace73362f917",
+      "timestamp": "2026-10-26T07:42:20.853376300Z",
+      "sha256": "5f6b9b53de345e6c7dc25988b88ec4f6577a42c537bba02eb096b339b2f201aa"
+    },
+    {
+      "run": "pair-4-pool-8",
+      "commit": "b7be0ee11cc34e9f25d9fcb68362ace73362f917",
+      "timestamp": "2026-10-26T07:41:22.942812600Z",
+      "sha256": "68a4d925f1d035eaafd8de8a3dbce331b72605613b81a59363d5e34b8273aa0d"
+    },
+    {
+      "run": "pair-5-pool-0",
+      "commit": "b7be0ee11cc34e9f25d9fcb68362ace73362f917",
+      "timestamp": "2026-10-26T07:43:26.342228500Z",
+      "sha256": "628228434d23320c7d9bdfc4d5d8050e2eccad249791c84944d898d1703dfff3"
+    },
+    {
+      "run": "pair-5-pool-8",
+      "commit": "b7be0ee11cc34e9f25d9fcb68362ace73362f917",
+      "timestamp": "2026-10-26T07:44:31.671606900Z",
+      "sha256": "2dfc83e1a0f776cbdb4ff33bed21f51d39464ad9a1f8e288a27c3b8a92c723df"
+    }
+  ],
+  "workloads": [
+    {
+      "name": "accounts_onboarding_1",
+      "metrics": {
+        "http_latency_p95": {
+          "control": [
+            76.7226,
+            72.2615,
+            71.4337,
+            72.3932,
+            73.8844
+          ],
+          "candidate": [
+            19.8833,
+            22.2682,
+            26.9964,
+            21.4784,
+            31.84
+          ],
+          "controlMedian": 72.3932,
+          "candidateMedian": 22.2682,
+          "pairedChangePercentMedian": -69.18386692775545,
+          "pairedChangePercentRange": [
+            -74.08416815905613,
+            -56.905652614083614
+          ]
+        },
+        "http_throughput": {
+          "control": [
+            14.728003236233244,
+            14.905836106853975,
+            14.75457969858361,
+            14.744242680405025,
+            14.889091159949537
+          ],
+          "candidate": [
+            20.549941083318917,
+            20.444195116127116,
+            16.510268561531845,
+            20.457746161922245,
+            19.462485086870803
+          ],
+          "controlMedian": 14.75457969858361,
+          "candidateMedian": 20.444195116127116,
+          "pairedChangePercentMedian": 37.15564138482981,
+          "pairedChangePercentRange": [
+            11.899280757667228,
+            39.52971596830434
+          ]
+        },
+        "http_errors": {
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "candidate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "controlMedian": 0.0,
+          "candidateMedian": 0.0,
+          "pairedChangePercentMedian": null,
+          "pairedChangePercentRange": null
+        },
+        "peak_heap_used": {
+          "control": [
+            273786328.0,
+            314013920.0,
+            332853728.0,
+            324812888.0,
+            328351632.0
+          ],
+          "candidate": [
+            62109072.0,
+            281450544.0,
+            224604200.0,
+            312207816.0,
+            128080952.0
+          ],
+          "controlMedian": 324812888.0,
+          "candidateMedian": 224604200.0,
+          "pairedChangePercentMedian": -32.52165107190868,
+          "pairedChangePercentRange": [
+            -77.31476496518117,
+            -3.880717935059276
+          ]
+        },
+        "cpu_time": {
+          "control": [
+            437.5,
+            484.375,
+            531.25,
+            578.125,
+            562.5
+          ],
+          "candidate": [
+            296.875,
+            390.625,
+            453.125,
+            312.5,
+            359.375
+          ],
+          "controlMedian": 531.25,
+          "candidateMedian": 359.375,
+          "pairedChangePercentMedian": -32.142857142857146,
+          "pairedChangePercentRange": [
+            -45.94594594594595,
+            -14.705882352941178
+          ]
+        },
+        "cpu_utilization": {
+          "control": [
+            17.898615044033455,
+            20.05559545627054,
+            21.77325129131262,
+            23.677820276692096,
+            23.264204937421148
+          ],
+          "candidate": [
+            20.33587919703434,
+            26.62004572412385,
+            20.781154005400325,
+            21.310152252002336,
+            23.31443526031398
+          ],
+          "controlMedian": 21.77325129131262,
+          "candidateMedian": 21.310152252002336,
+          "pairedChangePercentMedian": 0.21591248455706488,
+          "pairedChangePercentRange": [
+            -9.999518524179516,
+            32.73126585628692
+          ]
+        },
+        "db_connections_open_peak": {
+          "control": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "candidate": [
+            2.0,
+            2.0,
+            2.0,
+            2.0,
+            2.0
+          ],
+          "controlMedian": 1.0,
+          "candidateMedian": 2.0,
+          "pairedChangePercentMedian": 100.0,
+          "pairedChangePercentRange": [
+            100.0,
+            100.0
+          ]
+        }
+      }
+    },
+    {
+      "name": "accounts_mixed_1",
+      "metrics": {
+        "http_latency_p95": {
+          "control": [
+            192.1716,
+            178.7868,
+            204.7678,
+            189.2177,
+            199.4597
+          ],
+          "candidate": [
+            208.6818,
+            172.7007,
+            248.4723,
+            223.2824,
+            194.2994
+          ],
+          "controlMedian": 192.1716,
+          "candidateMedian": 208.6818,
+          "pairedChangePercentMedian": 8.591383950594155,
+          "pairedChangePercentRange": [
+            -3.404110370564263,
+            21.343443646901513
+          ]
+        },
+        "http_throughput": {
+          "control": [
+            10.230461608658244,
+            10.353461123228016,
+            9.853479579772086,
+            10.132511293950401,
+            9.428984620147462
+          ],
+          "candidate": [
+            15.629642085103663,
+            17.08506812030223,
+            13.619810922974862,
+            13.751740741182156,
+            15.935247652339639
+          ],
+          "controlMedian": 10.132511293950401,
+          "candidateMedian": 15.629642085103663,
+          "pairedChangePercentMedian": 52.77553137852534,
+          "pairedChangePercentRange": [
+            35.718977677257655,
+            69.00279610478805
+          ]
+        },
+        "http_errors": {
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "candidate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "controlMedian": 0.0,
+          "candidateMedian": 0.0,
+          "pairedChangePercentMedian": null,
+          "pairedChangePercentRange": null
+        },
+        "peak_heap_used": {
+          "control": [
+            302097880.0,
+            340228320.0,
+            361165280.0,
+            354173016.0,
+            357711760.0
+          ],
+          "candidate": [
+            420623776.0,
+            310810672.0,
+            258559400.0,
+            340519368.0,
+            250333768.0
+          ],
+          "controlMedian": 354173016.0,
+          "candidateMedian": 310810672.0,
+          "pairedChangePercentMedian": -8.646443070935424,
+          "pairedChangePercentRange": [
+            -30.018021213504415,
+            39.23426936991415
+          ]
+        },
+        "cpu_time": {
+          "control": [
+            1828.125,
+            1734.375,
+            1968.75,
+            1875.0,
+            1718.75
+          ],
+          "candidate": [
+            1796.875,
+            1812.5,
+            1906.25,
+            1562.5,
+            1718.75
+          ],
+          "controlMedian": 1828.125,
+          "candidateMedian": 1796.875,
+          "pairedChangePercentMedian": -1.7094017094017095,
+          "pairedChangePercentRange": [
+            -16.666666666666664,
+            4.504504504504505
+          ]
+        },
+        "cpu_utilization": {
+          "control": [
+            25.975781428233823,
+            24.939977966109154,
+            26.9431082259393,
+            26.38674816132917,
+            22.508426827608957
+          ],
+          "candidate": [
+            39.00626822454256,
+            43.00928606673304,
+            36.05939523877893,
+            29.843187372357107,
+            38.039870697859385
+          ],
+          "controlMedian": 25.975781428233823,
+          "candidateMedian": 38.039870697859385,
+          "pairedChangePercentMedian": 50.163983833593264,
+          "pairedChangePercentRange": [
+            13.099148064381374,
+            72.45117908756056
+          ]
+        },
+        "db_connections_open_peak": {
+          "control": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "candidate": [
+            2.0,
+            2.0,
+            2.0,
+            2.0,
+            2.0
+          ],
+          "controlMedian": 1.0,
+          "candidateMedian": 2.0,
+          "pairedChangePercentMedian": 100.0,
+          "pairedChangePercentRange": [
+            100.0,
+            100.0
+          ]
+        }
+      }
+    },
+    {
+      "name": "accounts_onboarding_2",
+      "metrics": {
+        "http_latency_p95": {
+          "control": [
+            79.6502,
+            80.7722,
+            73.7892,
+            75.2921,
+            77.9825
+          ],
+          "candidate": [
+            22.17,
+            24.3557,
+            28.4001,
+            27.7041,
+            27.7981
+          ],
+          "controlMedian": 77.9825,
+          "candidateMedian": 27.7041,
+          "pairedChangePercentMedian": -64.35341262462731,
+          "pairedChangePercentRange": [
+            -72.16579493836801,
+            -61.51184726220098
+          ]
+        },
+        "http_throughput": {
+          "control": [
+            29.226804876979507,
+            29.34633963105782,
+            29.168507928729667,
+            29.60243924099346,
+            25.511665896083528
+          ],
+          "candidate": [
+            39.71095192314184,
+            40.46029247127016,
+            38.04769659244829,
+            39.65485996084479,
+            40.204463821209146
+          ],
+          "controlMedian": 29.226804876979507,
+          "candidateMedian": 39.71095192314184,
+          "pairedChangePercentMedian": 35.87168385422853,
+          "pairedChangePercentRange": [
+            30.44101085120306,
+            57.592467638035394
+          ]
+        },
+        "http_errors": {
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "candidate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "controlMedian": 0.0,
+          "candidateMedian": 0.0,
+          "pairedChangePercentMedian": null,
+          "pairedChangePercentRange": null
+        },
+        "peak_heap_used": {
+          "control": [
+            127562488.0,
+            194358656.0,
+            211584928.0,
+            207133432.0,
+            209940736.0
+          ],
+          "candidate": [
+            343470480.0,
+            146429376.0,
+            83853896.0,
+            175392448.0,
+            167341416.0
+          ],
+          "controlMedian": 207133432.0,
+          "candidateMedian": 167341416.0,
+          "pairedChangePercentMedian": -20.291116822606547,
+          "pairedChangePercentRange": [
+            -60.36868183729987,
+            169.2566485532957
+          ]
+        },
+        "cpu_time": {
+          "control": [
+            734.375,
+            734.375,
+            781.25,
+            734.375,
+            1078.125
+          ],
+          "candidate": [
+            500.0,
+            500.0,
+            500.0,
+            468.75,
+            546.875
+          ],
+          "controlMedian": 734.375,
+          "candidateMedian": 500.0,
+          "pairedChangePercentMedian": -36.0,
+          "pairedChangePercentRange": [
+            -49.275362318840585,
+            -31.914893617021278
+          ]
+        },
+        "cpu_utilization": {
+          "control": [
+            29.81032615490531,
+            29.932247453552897,
+            31.649856693500073,
+            30.193460163339683,
+            35.26251896694237
+          ],
+          "candidate": [
+            33.09245993595153,
+            33.71691039272513,
+            31.706413827040244,
+            30.980359344409994,
+            36.64469358703958
+          ],
+          "controlMedian": 30.193460163339683,
+          "candidateMedian": 33.09245993595153,
+          "pairedChangePercentMedian": 3.919670688849427,
+          "pairedChangePercentRange": [
+            0.17869633372395585,
+            12.644098793600625
+          ]
+        },
+        "db_connections_open_peak": {
+          "control": [
+            2.0,
+            2.0,
+            2.0,
+            2.0,
+            2.0
+          ],
+          "candidate": [
+            2.0,
+            2.0,
+            2.0,
+            2.0,
+            2.0
+          ],
+          "controlMedian": 2.0,
+          "candidateMedian": 2.0,
+          "pairedChangePercentMedian": 0.0,
+          "pairedChangePercentRange": [
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "name": "accounts_mixed_2",
+      "metrics": {
+        "http_latency_p95": {
+          "control": [
+            273.3358,
+            275.5425,
+            286.5832,
+            271.6844,
+            293.4263
+          ],
+          "candidate": [
+            267.942,
+            280.3825,
+            290.8742,
+            264.2083,
+            252.7464
+          ],
+          "controlMedian": 275.5425,
+          "candidateMedian": 267.942,
+          "pairedChangePercentMedian": -1.9733236553718903,
+          "pairedChangePercentRange": [
+            -13.863753862554251,
+            1.7565348358238655
+          ]
+        },
+        "http_throughput": {
+          "control": [
+            17.09319895799859,
+            17.33295884512806,
+            15.662757851414204,
+            16.550489129018096,
+            17.139320321685044
+          ],
+          "candidate": [
+            23.7111835575588,
+            22.732551156764806,
+            23.04529119885926,
+            23.721469620160956,
+            26.1993803409893
+          ],
+          "controlMedian": 17.09319895799859,
+          "candidateMedian": 23.7111835575588,
+          "pairedChangePercentMedian": 43.32790671769287,
+          "pairedChangePercentRange": [
+            31.152167150933145,
+            52.86125615985641
+          ]
+        },
+        "http_errors": {
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "candidate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "controlMedian": 0.0,
+          "candidateMedian": 0.0,
+          "pairedChangePercentMedian": null,
+          "pairedChangePercentRange": null
+        },
+        "peak_heap_used": {
+          "control": [
+            413562432.0,
+            398221432.0,
+            400328608.0,
+            399443456.0,
+            399824576.0
+          ],
+          "candidate": [
+            395899280.0,
+            399939632.0,
+            389501560.0,
+            397690568.0,
+            427661184.0
+          ],
+          "controlMedian": 399824576.0,
+          "candidateMedian": 397690568.0,
+          "pairedChangePercentMedian": -0.43883257409028625,
+          "pairedChangePercentRange": [
+            -4.270975947834643,
+            6.962205344776005
+          ]
+        },
+        "cpu_time": {
+          "control": [
+            3140.625,
+            3031.25,
+            3187.5,
+            3218.75,
+            2656.25
+          ],
+          "candidate": [
+            2718.75,
+            2703.125,
+            1984.375,
+            2687.5,
+            2218.75
+          ],
+          "controlMedian": 3140.625,
+          "candidateMedian": 2687.5,
+          "pairedChangePercentMedian": -16.470588235294116,
+          "pairedChangePercentRange": [
+            -37.745098039215684,
+            -10.824742268041238
+          ]
+        },
+        "cpu_utilization": {
+          "control": [
+            37.280088873239116,
+            36.486480207843364,
+            34.670167119015815,
+            36.99436589168542,
+            31.61549972533049
+          ],
+          "candidate": [
+            44.767208539661794,
+            42.67286621224297,
+            31.757291474122457,
+            44.27184000290456,
+            40.36796884136807
+          ],
+          "controlMedian": 36.486480207843364,
+          "candidateMedian": 42.67286621224297,
+          "pairedChangePercentMedian": 19.671844443898884,
+          "pairedChangePercentRange": [
+            -8.401677542810893,
+            27.684108086468285
+          ]
+        },
+        "db_connections_open_peak": {
+          "control": [
+            2.0,
+            2.0,
+            2.0,
+            2.0,
+            2.0
+          ],
+          "candidate": [
+            2.0,
+            2.0,
+            2.0,
+            2.0,
+            2.0
+          ],
+          "controlMedian": 2.0,
+          "candidateMedian": 2.0,
+          "pairedChangePercentMedian": 0.0,
+          "pairedChangePercentRange": [
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "name": "accounts_onboarding_5",
+      "metrics": {
+        "http_latency_p95": {
+          "control": [
+            99.3631,
+            99.0016,
+            99.1976,
+            111.961,
+            113.6875
+          ],
+          "candidate": [
+            27.3899,
+            31.8029,
+            33.5035,
+            36.7884,
+            29.898
+          ],
+          "controlMedian": 99.3631,
+          "candidateMedian": 31.8029,
+          "pairedChangePercentMedian": -67.87637775551103,
+          "pairedChangePercentRange": [
+            -73.70159428257284,
+            -66.22549335871028
+          ]
+        },
+        "http_throughput": {
+          "control": [
+            62.4360253725736,
+            59.1004636658684,
+            56.614149097533215,
+            61.986277654956396,
+            61.987660913326195
+          ],
+          "candidate": [
+            80.82085975614191,
+            66.57017570231535,
+            65.82895429219647,
+            76.6376703783142,
+            80.65157872776975
+          ],
+          "controlMedian": 61.986277654956396,
+          "candidateMedian": 76.6376703783142,
+          "pairedChangePercentMedian": 23.636510010996414,
+          "pairedChangePercentRange": [
+            12.639007502001789,
+            30.10908548483583
+          ]
+        },
+        "http_errors": {
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "candidate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "controlMedian": 0.0,
+          "candidateMedian": 0.0,
+          "pairedChangePercentMedian": null,
+          "pairedChangePercentRange": null
+        },
+        "peak_heap_used": {
+          "control": [
+            202744072.0,
+            330403472.0,
+            347623264.0,
+            343448312.0,
+            346983704.0
+          ],
+          "candidate": [
+            360865728.0,
+            255236144.0,
+            184073000.0,
+            289687240.0,
+            149360712.0
+          ],
+          "controlMedian": 343448312.0,
+          "candidateMedian": 255236144.0,
+          "pairedChangePercentMedian": -22.750162867537902,
+          "pairedChangePercentRange": [
+            -56.95454562327227,
+            77.9907666054966
+          ]
+        },
+        "cpu_time": {
+          "control": [
+            1265.625,
+            1328.125,
+            1484.375,
+            1203.125,
+            1406.25
+          ],
+          "candidate": [
+            625.0,
+            1031.25,
+            828.125,
+            562.5,
+            687.5
+          ],
+          "controlMedian": 1328.125,
+          "candidateMedian": 687.5,
+          "pairedChangePercentMedian": -50.617283950617285,
+          "pairedChangePercentRange": [
+            -53.246753246753244,
+            -22.35294117647059
+          ]
+        },
+        "cpu_utilization": {
+          "control": [
+            37.6288545772207,
+            33.54393303685106,
+            36.85816998537319,
+            35.5129715731521,
+            41.50959436160236
+          ],
+          "candidate": [
+            28.062798526438165,
+            36.908867576888554,
+            29.308926222164086,
+            23.949271993223185,
+            30.804422430745387
+          ],
+          "controlMedian": 36.85816998537319,
+          "candidateMedian": 29.308926222164086,
+          "pairedChangePercentMedian": -25.422129262934085,
+          "pairedChangePercentRange": [
+            -32.5619036303656,
+            10.031425165143304
+          ]
+        },
+        "db_connections_open_peak": {
+          "control": [
+            5.0,
+            5.0,
+            5.0,
+            5.0,
+            5.0
+          ],
+          "candidate": [
+            5.0,
+            5.0,
+            5.0,
+            5.0,
+            5.0
+          ],
+          "controlMedian": 5.0,
+          "candidateMedian": 5.0,
+          "pairedChangePercentMedian": 0.0,
+          "pairedChangePercentRange": [
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "name": "accounts_mixed_5",
+      "metrics": {
+        "http_latency_p95": {
+          "control": [
+            475.5746,
+            485.3054,
+            495.9478,
+            455.9455,
+            467.6152
+          ],
+          "candidate": [
+            562.6395,
+            517.5331,
+            462.4718,
+            460.2261,
+            472.1856
+          ],
+          "controlMedian": 475.5746,
+          "candidateMedian": 472.1856,
+          "pairedChangePercentMedian": 0.9773848241032383,
+          "pairedChangePercentRange": [
+            -6.749903921340109,
+            18.307306571881682
+          ]
+        },
+        "http_throughput": {
+          "control": [
+            25.890908312612694,
+            23.523588984561936,
+            21.790374922648706,
+            27.442017076069547,
+            26.62158153935302
+          ],
+          "candidate": [
+            33.372599905188444,
+            30.06621331828018,
+            34.45206460313346,
+            35.84200485838376,
+            34.51769092065643
+          ],
+          "controlMedian": 25.890908312612694,
+          "candidateMedian": 34.45206460313346,
+          "pairedChangePercentMedian": 29.660557054550207,
+          "pairedChangePercentRange": [
+            27.813036259101615,
+            58.10680048154799
+          ]
+        },
+        "http_errors": {
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "candidate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "controlMedian": 0.0,
+          "candidateMedian": 0.0,
+          "pairedChangePercentMedian": null,
+          "pairedChangePercentRange": null
+        },
+        "peak_heap_used": {
+          "control": [
+            726581632.0,
+            564534304.0,
+            511479104.0,
+            557430912.0,
+            557721800.0
+          ],
+          "candidate": [
+            561516544.0,
+            596867632.0,
+            657457152.0,
+            613892952.0,
+            623646720.0
+          ],
+          "controlMedian": 557721800.0,
+          "candidateMedian": 613892952.0,
+          "pairedChangePercentMedian": 10.128975409243182,
+          "pairedChangePercentRange": [
+            -22.71803755149153,
+            28.540373762756882
+          ]
+        },
+        "cpu_time": {
+          "control": [
+            7531.25,
+            7000.0,
+            7359.375,
+            7125.0,
+            6890.625
+          ],
+          "candidate": [
+            5765.625,
+            6140.625,
+            6593.75,
+            6171.875,
+            6171.875
+          ],
+          "controlMedian": 7125.0,
+          "candidateMedian": 6171.875,
+          "pairedChangePercentMedian": -12.276785714285714,
+          "pairedChangePercentRange": [
+            -23.443983402489625,
+            -10.40339702760085
+          ]
+        },
+        "cpu_utilization": {
+          "control": [
+            54.164139785934545,
+            45.740311914425995,
+            44.545427901768846,
+            54.31232546305431,
+            50.95537091516789
+          ],
+          "candidate": [
+            53.448304535653364,
+            51.28481698821229,
+            63.102305826919796,
+            61.44788159314924,
+            59.17746490303511
+          ],
+          "controlMedian": 50.95537091516789,
+          "candidateMedian": 59.17746490303511,
+          "pairedChangePercentMedian": 13.138005175176785,
+          "pairedChangePercentRange": [
+            -1.3216036534693947,
+            41.65832229981582
+          ]
+        },
+        "db_connections_open_peak": {
+          "control": [
+            5.0,
+            5.0,
+            5.0,
+            5.0,
+            5.0
+          ],
+          "candidate": [
+            5.0,
+            5.0,
+            5.0,
+            5.0,
+            5.0
+          ],
+          "controlMedian": 5.0,
+          "candidateMedian": 5.0,
+          "pairedChangePercentMedian": 0.0,
+          "pairedChangePercentRange": [
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "name": "accounts_onboarding_10",
+      "metrics": {
+        "http_latency_p95": {
+          "control": [
+            148.0817,
+            147.4788,
+            131.1935,
+            87.3752,
+            163.4025
+          ],
+          "candidate": [
+            37.16,
+            43.0364,
+            34.01,
+            70.4298,
+            37.9719
+          ],
+          "controlMedian": 147.4788,
+          "candidateMedian": 37.9719,
+          "pairedChangePercentMedian": -74.0764595806957,
+          "pairedChangePercentRange": [
+            -76.76173865148942,
+            -19.393832574918292
+          ]
+        },
+        "http_throughput": {
+          "control": [
+            104.5059845352044,
+            104.56023793727745,
+            103.41222389410589,
+            104.31805203026774,
+            101.37534600736784
+          ],
+          "candidate": [
+            126.78508935829353,
+            117.35609751857051,
+            119.83218591745769,
+            123.48994946173818,
+            123.93155308608077
+          ],
+          "controlMedian": 104.31805203026774,
+          "candidateMedian": 123.48994946173818,
+          "pairedChangePercentMedian": 18.378312342247092,
+          "pairedChangePercentRange": [
+            12.237787359444335,
+            22.250189979202215
+          ]
+        },
+        "http_errors": {
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "candidate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "controlMedian": 0.0,
+          "candidateMedian": 0.0,
+          "pairedChangePercentMedian": null,
+          "pairedChangePercentRange": null
+        },
+        "peak_heap_used": {
+          "control": [
+            488554880.0,
+            456006688.0,
+            391002944.0,
+            466204800.0,
+            402532552.0
+          ],
+          "candidate": [
+            574623744.0,
+            370375216.0,
+            196608000.0,
+            240075608.0,
+            579082240.0
+          ],
+          "controlMedian": 456006688.0,
+          "candidateMedian": 370375216.0,
+          "pairedChangePercentMedian": -18.778556160123685,
+          "pairedChangePercentRange": [
+            -49.717002642312586,
+            43.859729386556545
+          ]
+        },
+        "cpu_time": {
+          "control": [
+            2296.875,
+            2046.875,
+            2390.625,
+            2187.5,
+            2031.25
+          ],
+          "candidate": [
+            1328.125,
+            1015.625,
+            1296.875,
+            1500.0,
+            1296.875
+          ],
+          "controlMedian": 2187.5,
+          "candidateMedian": 1296.875,
+          "pairedChangePercentMedian": -42.17687074829932,
+          "pairedChangePercentRange": [
+            -50.38167938931297,
+            -31.428571428571427
+          ]
+        },
+        "cpu_utilization": {
+          "control": [
+            40.00619720488294,
+            35.67028950464413,
+            37.80119996129157,
+            36.22154584384296,
+            34.66644302650941
+          ],
+          "candidate": [
+            35.980010000851195,
+            24.52464743668687,
+            29.433213278731618,
+            38.59060920679318,
+            34.78868677673398
+          ],
+          "controlMedian": 36.22154584384296,
+          "candidateMedian": 34.78868677673398,
+          "pairedChangePercentMedian": -10.063908807459281,
+          "pairedChangePercentRange": [
+            -31.2462899032713,
+            6.5404811080224
+          ]
+        },
+        "db_connections_open_peak": {
+          "control": [
+            10.0,
+            10.0,
+            10.0,
+            10.0,
+            10.0
+          ],
+          "candidate": [
+            8.0,
+            8.0,
+            8.0,
+            8.0,
+            8.0
+          ],
+          "controlMedian": 10.0,
+          "candidateMedian": 8.0,
+          "pairedChangePercentMedian": -20.0,
+          "pairedChangePercentRange": [
+            -20.0,
+            -20.0
+          ]
+        }
+      }
+    },
+    {
+      "name": "accounts_mixed_10",
+      "metrics": {
+        "http_latency_p95": {
+          "control": [
+            825.4299,
+            815.1801,
+            879.4356,
+            852.6361,
+            889.4568
+          ],
+          "candidate": [
+            684.6358,
+            651.805,
+            656.8817,
+            640.0423,
+            689.7417
+          ],
+          "controlMedian": 852.6361,
+          "candidateMedian": 656.8817,
+          "pairedChangePercentMedian": -22.453603142951966,
+          "pairedChangePercentRange": [
+            -25.306446543669598,
+            -17.05706323456419
+          ]
+        },
+        "http_throughput": {
+          "control": [
+            29.4869948469265,
+            30.740853808257665,
+            25.79935262974414,
+            30.23619685487616,
+            26.097345534596293
+          ],
+          "candidate": [
+            38.10908802665807,
+            41.31817938604353,
+            40.683685262467236,
+            41.19821577393852,
+            39.29229726574399
+          ],
+          "controlMedian": 29.4869948469265,
+          "candidateMedian": 40.683685262467236,
+          "pairedChangePercentMedian": 36.254622139406166,
+          "pairedChangePercentRange": [
+            29.240325182307526,
+            57.69265937147164
+          ]
+        },
+        "http_errors": {
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "candidate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "controlMedian": 0.0,
+          "candidateMedian": 0.0,
+          "pairedChangePercentMedian": null,
+          "pairedChangePercentRange": null
+        },
+        "peak_heap_used": {
+          "control": [
+            917865696.0,
+            915662816.0,
+            878074816.0,
+            926941184.0,
+            862453760.0
+          ],
+          "candidate": [
+            789993672.0,
+            902404752.0,
+            853540864.0,
+            827087960.0,
+            908574800.0
+          ],
+          "controlMedian": 915662816.0,
+          "candidateMedian": 853540864.0,
+          "pairedChangePercentMedian": -2.794061685058053,
+          "pairedChangePercentRange": [
+            -13.931452559699975,
+            5.347653652759308
+          ]
+        },
+        "cpu_time": {
+          "control": [
+            12718.75,
+            12625.0,
+            12953.125,
+            12515.625,
+            12312.5
+          ],
+          "candidate": [
+            10796.875,
+            10718.75,
+            11109.375,
+            10703.125,
+            10765.625
+          ],
+          "controlMedian": 12625.0,
+          "candidateMedian": 10765.625,
+          "pairedChangePercentMedian": -14.481897627965044,
+          "pairedChangePercentRange": [
+            -15.11056511056511,
+            -12.563451776649744
+          ]
+        },
+        "cpu_utilization": {
+          "control": [
+            52.08857162629811,
+            53.90323324017403,
+            46.414199935021465,
+            52.55901406414019,
+            44.62827317982179
+          ],
+          "candidate": [
+            57.147091637197754,
+            61.51100490196585,
+            62.77365499482249,
+            61.24300738964386,
+            58.7508524654896
+          ],
+          "controlMedian": 52.08857162629811,
+          "candidateMedian": 61.24300738964386,
+          "pairedChangePercentMedian": 16.52236724780679,
+          "pairedChangePercentRange": [
+            9.711381696528862,
+            35.24665960568919
+          ]
+        },
+        "db_connections_open_peak": {
+          "control": [
+            10.0,
+            10.0,
+            10.0,
+            10.0,
+            10.0
+          ],
+          "candidate": [
+            8.0,
+            8.0,
+            8.0,
+            8.0,
+            8.0
+          ],
+          "controlMedian": 10.0,
+          "candidateMedian": 8.0,
+          "pairedChangePercentMedian": -20.0,
+          "pairedChangePercentRange": [
+            -20.0,
+            -20.0
+          ]
+        }
+      }
+    },
+    {
+      "name": "accounts_onboarding_20",
+      "metrics": {
+        "http_latency_p95": {
+          "control": [
+            239.5381,
+            257.6389,
+            200.4887,
+            258.8228,
+            105.8989
+          ],
+          "candidate": [
+            67.2301,
+            50.2118,
+            62.3829,
+            48.6438,
+            51.2629
+          ],
+          "controlMedian": 239.5381,
+          "candidateMedian": 51.2629,
+          "pairedChangePercentMedian": -71.93344190339658,
+          "pairedChangePercentRange": [
+            -81.20575157984537,
+            -51.592603889181085
+          ]
+        },
+        "http_throughput": {
+          "control": [
+            179.35992313394615,
+            175.87162847574447,
+            181.23290672089678,
+            177.46446238265221,
+            177.79060127765408
+          ],
+          "candidate": [
+            197.15455582183702,
+            215.4239924047655,
+            191.07545604500208,
+            215.2915311553268,
+            198.59372692727047
+          ],
+          "controlMedian": 177.79060127765408,
+          "candidateMedian": 198.59372692727047,
+          "pairedChangePercentMedian": 11.700914165382862,
+          "pairedChangePercentRange": [
+            5.430884215339038,
+            22.48933740582037
+          ]
+        },
+        "http_errors": {
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "candidate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "controlMedian": 0.0,
+          "candidateMedian": 0.0,
+          "pairedChangePercentMedian": null,
+          "pairedChangePercentRange": null
+        },
+        "peak_heap_used": {
+          "control": [
+            696468280.0,
+            756287488.0,
+            797858752.0,
+            934805504.0,
+            614989824.0
+          ],
+          "candidate": [
+            392583368.0,
+            677534032.0,
+            312809984.0,
+            718178168.0,
+            369606736.0
+          ],
+          "controlMedian": 756287488.0,
+          "candidateMedian": 392583368.0,
+          "pairedChangePercentMedian": -39.90034931049526,
+          "pairedChangePercentRange": [
+            -60.793814291580276,
+            -10.413163942228277
+          ]
+        },
+        "cpu_time": {
+          "control": [
+            3578.125,
+            3796.875,
+            3734.375,
+            3343.75,
+            4093.75
+          ],
+          "candidate": [
+            2046.875,
+            1687.5,
+            1687.5,
+            1468.75,
+            1796.875
+          ],
+          "controlMedian": 3734.375,
+          "candidateMedian": 1687.5,
+          "pairedChangePercentMedian": -55.55555555555556,
+          "pairedChangePercentRange": [
+            -56.10687022900763,
+            -42.79475982532751
+          ]
+        },
+        "cpu_utilization": {
+          "control": [
+            32.412738634527834,
+            34.34992743666884,
+            33.975483736739406,
+            26.657538009523513,
+            34.658584475256966
+          ],
+          "candidate": [
+            30.160742260674336,
+            27.048213332071565,
+            24.42726000575311,
+            23.95526033215047,
+            26.433192820180675
+          ],
+          "controlMedian": 33.975483736739406,
+          "candidateMedian": 26.433192820180675,
+          "pairedChangePercentMedian": -21.256854524829752,
+          "pairedChangePercentRange": [
+            -28.103275305720878,
+            -6.947874412113227
+          ]
+        },
+        "db_connections_open_peak": {
+          "control": [
+            20.0,
+            20.0,
+            20.0,
+            20.0,
+            20.0
+          ],
+          "candidate": [
+            8.0,
+            8.0,
+            8.0,
+            8.0,
+            8.0
+          ],
+          "controlMedian": 20.0,
+          "candidateMedian": 8.0,
+          "pairedChangePercentMedian": -60.0,
+          "pairedChangePercentRange": [
+            -60.0,
+            -60.0
+          ]
+        }
+      }
+    },
+    {
+      "name": "accounts_mixed_20",
+      "metrics": {
+        "http_latency_p95": {
+          "control": [
+            1778.7074,
+            1733.6954,
+            1858.4854,
+            1687.2972,
+            1657.3814
+          ],
+          "candidate": [
+            1277.177,
+            1135.141,
+            1076.0573,
+            1261.3151,
+            1144.5325
+          ],
+          "controlMedian": 1733.6954,
+          "candidateMedian": 1144.5325,
+          "pairedChangePercentMedian": -30.943324210106375,
+          "pairedChangePercentRange": [
+            -42.10030920877829,
+            -25.246417762087198
+          ]
+        },
+        "http_throughput": {
+          "control": [
+            27.904417973951833,
+            29.088844311851023,
+            25.26123990185882,
+            29.21498139863875,
+            31.392836178328732
+          ],
+          "candidate": [
+            37.65943711129773,
+            43.495822307822,
+            42.84693075027279,
+            40.99471559326758,
+            41.21192951420666
+          ],
+          "controlMedian": 29.088844311851023,
+          "candidateMedian": 41.21192951420666,
+          "pairedChangePercentMedian": 40.32086837192954,
+          "pairedChangePercentRange": [
+            31.27813390322565,
+            69.61531150780904
+          ]
+        },
+        "http_errors": {
+          "control": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "candidate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "controlMedian": 0.0,
+          "candidateMedian": 0.0,
+          "pairedChangePercentMedian": null,
+          "pairedChangePercentRange": null
+        },
+        "peak_heap_used": {
+          "control": [
+            1021607992.0,
+            1453077408.0,
+            1457413056.0,
+            1263875192.0,
+            1610088448.0
+          ],
+          "candidate": [
+            1222783936.0,
+            1302189192.0,
+            1327299536.0,
+            1221816664.0,
+            1189609472.0
+          ],
+          "controlMedian": 1453077408.0,
+          "candidateMedian": 1222783936.0,
+          "pairedChangePercentMedian": -8.927703746329001,
+          "pairedChangePercentRange": [
+            -26.11527189840443,
+            19.692087921724088
+          ]
+        },
+        "cpu_time": {
+          "control": [
+            27953.125,
+            25484.375,
+            26375.0,
+            26109.375,
+            26640.625
+          ],
+          "candidate": [
+            21171.875,
+            19515.625,
+            19687.5,
+            20906.25,
+            20875.0
+          ],
+          "controlMedian": 26375.0,
+          "candidateMedian": 20875.0,
+          "pairedChangePercentMedian": -23.421213979153894,
+          "pairedChangePercentRange": [
+            -25.355450236966824,
+            -19.92818671454219
+          ]
+        },
+        "cpu_utilization": {
+          "control": [
+            54.167755810980715,
+            51.479931719432535,
+            46.268416834133774,
+            52.97117395521414,
+            58.078109466200615
+          ],
+          "candidate": [
+            55.36950660352476,
+            58.94778869625616,
+            58.57978813513858,
+            59.51706756053822,
+            59.74298809785166
+          ],
+          "controlMedian": 52.97117395521414,
+          "candidateMedian": 58.94778869625616,
+          "pairedChangePercentMedian": 12.357463723304448,
+          "pairedChangePercentRange": [
+            2.2185722383212187,
+            26.608585604170255
+          ]
+        },
+        "db_connections_open_peak": {
+          "control": [
+            20.0,
+            20.0,
+            20.0,
+            20.0,
+            20.0
+          ],
+          "candidate": [
+            8.0,
+            8.0,
+            8.0,
+            8.0,
+            8.0
+          ],
+          "controlMedian": 20.0,
+          "candidateMedian": 8.0,
+          "pairedChangePercentMedian": -60.0,
+          "pairedChangePercentRange": [
+            -60.0,
+            -60.0
+          ]
+        }
+      }
+    }
+  ]
+}

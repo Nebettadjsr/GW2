@@ -1,0 +1,12 @@
+diff --git a/backend/src/test/java/craft/SimulationStatePerformanceIT.java b/backend/src/test/java/craft/SimulationStatePerformanceIT.java
+--- a/backend/src/test/java/craft/SimulationStatePerformanceIT.java
++++ b/backend/src/test/java/craft/SimulationStatePerformanceIT.java
+@@ -15,7 +15,7 @@ class SimulationStatePerformanceIT {
+         var prices = new HashMap<Integer, PriceQuote>();
+         var allowed = new HashSet<Integer>();
+         for (int id = 1; id <= 400; id++) {
+-            owned.put(id, 200);
++            if (!Boolean.getBoolean("gw2.benchmark.empty-inventory")) owned.put(id, 200);
+             prices.put(id, quote(3, 5));
+         }
+         for (int index = 0; index < count; index++) {
