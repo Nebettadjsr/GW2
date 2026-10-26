@@ -197,16 +197,13 @@ public class CraftingResolver {
         // 3) Evaluate craft speculatively: performed on the live state and undone below if the
         //    craft is not the candidate finally chosen (this used to run on a full copy of state).
         CandidateEval craftEval = null;
-        int craftMark = -1;
-        {
-            craftMark = state.mark();
-            ResolvedNeed craftNeed = tryCraft(itemId, remaining, ctx, state, parentDiscipline);
-            if (craftNeed != null) {
-                craftEval = new CandidateEval(craftNeed);
-            } else {
-                state.rollbackTo(craftMark);
-                craftMark = -1;
-            }
+        int craftMark = state.mark();
+        ResolvedNeed craftNeed = tryCraft(itemId, remaining, ctx, state, parentDiscipline);
+        if (craftNeed != null) {
+            craftEval = new CandidateEval(craftNeed);
+        } else {
+            state.rollbackTo(craftMark);
+            craftMark = -1;
         }
 
         // 4) Choose better candidate
@@ -299,12 +296,6 @@ public class CraftingResolver {
             return tryRecipeCandidates(itemId, qtyRequested, ctx, state, parentDiscipline);
         }
         Recipe recipe = fixedRecipe;
-        if (recipe == null) {
-            if (hasOnlyDisallowedRecipes(itemId, ctx)) {
-                return blockedNeed(itemId, qtyRequested, BlockedReason.RECIPE_NOT_ALLOWED);
-            }
-            return null;
-        }
 
         boolean isDaily = DailyCrafts.isDailyOutput(itemId);
 
@@ -661,7 +652,7 @@ public class CraftingResolver {
     /**
      * DOMAIN_SPEC.md section 42: distinguishes "no recipe exists for this item at all"
      * (NO_RECIPE) from "recipe(s) exist but every candidate is filtered out by
-     * ctx.allowedRecipeIds" (RECIPE_NOT_ALLOWED) - firstRecipeFor(...) returns null for both.
+     * ctx.allowedRecipeIds" (RECIPE_NOT_ALLOWED).
      */
     private boolean hasOnlyDisallowedRecipes(int itemId, PlannerContext ctx) {
         List<Recipe> list = ctx.recipesByOutput.get(itemId);
