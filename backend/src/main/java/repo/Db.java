@@ -1,7 +1,6 @@
 package repo;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
 
 /**
@@ -10,6 +9,11 @@ import java.sql.SQLException;
  */
 public final class Db {
     private Db() {}
+    private static PooledConnections connections;
+
+    static {
+        Runtime.getRuntime().addShutdownHook(new Thread(Db::closePool, "jdbc-pool-close"));
+    }
 
     /**
      * Optional system property (never a normal environment/.env value) letting an in-process
@@ -22,13 +26,20 @@ public final class Db {
     public static final String TEST_SCHEMA_PROPERTY = "gw2tool.test.schema";
 
     public static Connection open() throws SQLException {
-        Connection con = DriverManager.getConnection(AppConfig.DB_URL, AppConfig.DB_USER, AppConfig.DB_PASS);
+        return pool().open(System.getProperty(TEST_SCHEMA_PROPERTY));
+    }
 
-        String testSchema = System.getProperty(TEST_SCHEMA_PROPERTY);
-        if (testSchema != null && !testSchema.isBlank()) {
-            con.setSchema(testSchema);
+    // JDBC I/O must not run in a static initializer: that pins a virtual thread's carrier.
+    private static synchronized PooledConnections pool() throws SQLException {
+        if (connections == null) connections = new PooledConnections(AppConfig.DB_URL,
+                AppConfig.DB_USER, AppConfig.DB_PASS, AppConfig.DB_POOL_SIZE, AppConfig.DB_POOL_TIMEOUT_MS);
+        return connections;
+    }
+
+    static synchronized void closePool() {
+        if (connections != null) {
+            connections.close();
+            connections = null;
         }
-
-        return con;
     }
 }
