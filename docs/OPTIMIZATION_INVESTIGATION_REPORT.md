@@ -231,3 +231,24 @@ All these gaps stay explicit; neither CI success nor a provisional recommendatio
 - Orphan cleanup: branch `experiment/116-remove-dead-price-path`, commit `081504c`. All required application CI checks passed; 155 source lines removed, no assertions removed.
 - Counterexamples: branch `experiment/116-domain-counterexamples`, commit `ff2d0a2`. Explicitly run `InvestigationCounterexamplesIT`; two expected normative failures reproduce the defects on application baseline `bb386ac`.
 - Normal app processes remain available at ports 5173/8080. Owned investigation containers and disposable volumes were removed after recording results. Experimental worktrees/branches remain available for review; the report branch contains evidence and analysis helpers, not adopted runtime changes.
+
+## Selected implementations (2026-10-26)
+
+The Product Owner selected six changes after the investigation. They are implemented in a separate worktree as a stack of draft PRs. They remain unmerged; `master` is still `bb386ac`. The normal running application has not been replaced.
+
+| Selected change | Review artifact |
+| --- | --- |
+| Actual effective-cost recipe selection and journalled intermediate surplus | [PR #125](https://github.com/Nebettadjsr/GW2/pull/125) |
+| Production bounded PostgreSQL pool, configuration and lifecycle | [PR #126](https://github.com/Nebettadjsr/GW2/pull/126) |
+| Request-local simulation state reuse, including the simulator's remaining copy | [PR #127](https://github.com/Nebettadjsr/GW2/pull/127) |
+| One recipe-detail download per batch, reused for ingredient publication | [PR #128](https://github.com/Nebettadjsr/GW2/pull/128) |
+| Remove the three confirmed obsolete classes | [PR #129](https://github.com/Nebettadjsr/GW2/pull/129) |
+| Bank/Materials actual refresh, backend freshness and retained error snapshots | [PR #130](https://github.com/Nebettadjsr/GW2/pull/130) |
+
+Local combined verification: 950 default backend tests passed with one existing skip; 568 frontend tests passed; production frontend build/type checking passed. Explicit PostgreSQL account-isolation and fresh one-carrier pool-startup checks passed. The browser smoke uses controlled HTTP responses and passed at 1280px and 390px, including refresh, read failure/recovery, freshness, disconnect isolation and overflow checks. Native Codex reviews were requested for all six PRs; their current outcomes and CI results belong to GitHub.
+
+Final state reuse is different from the experimental version: it removes the simulator's internal per-root copy as well as the outer repeated construction. A domain-only 13,000-recipe comparison after the calculation fixes produced identical complete results in every pair; five alternating pairs after warmup showed a median paired time reduction of 10.13%. Do not substitute this number for the earlier mixed HTTP experiment or compare the two percentages as if they measured the same workload.
+
+One combined qualification run used the final application source `1edc3cd`, real HTTP/PostgreSQL and the prior isolated multi-account test fixtures at 13,000 recipes. Account-specific markers remained isolated at 1/2/5/10/20 concurrent accounts, with no HTTP errors or workload diagnostics. At 20 accounts, mixed-route p95 was 1303.33 ms and throughput 35.73 requests/s. The JVM had six processors and a 2 GiB heap; the load client lived inside it and PostgreSQL was outside that envelope. This is a qualification run, not a paired speedup claim, browser latency measurement or hosting certification. KP-12 cross-source consistency remains open.
+
+Raw results, prototype-metadata corrections, source hashes and limitations are recorded in [selected implementation provenance](investigations/2026-10-26/selected-improvements-provenance.json), [load results](investigations/2026-10-26/selected-improvements-load.json) and [state pairs](investigations/2026-10-26/selected-state-pairs.txt). Browser fixture screenshots: [Bank error on mobile](investigations/2026-10-26/selected-bank-error-mobile.png), [Materials desktop](investigations/2026-10-26/selected-materials-desktop.png).
