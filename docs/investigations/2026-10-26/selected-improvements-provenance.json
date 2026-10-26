@@ -1,5 +1,7 @@
 {
   "applicationCommit": "1edc3cd870838b886946566eb52a6ad0d50f5132",
+  "finalStackHead": "6951f3d1516f4360e4f3cbc96c94bcbe1b32be62",
+  "reviewCorrection": "800bde1 corrects the seeded test candidate from CraftingPlanner(false) to the production-default enabled planner. Retested all 126 crafting tests, including the 320 actual fresh-vs-reused comparisons; all passed. Production source is byte-identical to the applicationCommit used for the load and browser qualification. See selected-state-equivalence-retest.txt.",
   "pullRequests": [125, 126, 127, 128, 129, 130],
   "adoption": "All six PRs remain draft and unmerged for the Product Owner's decision.",
   "loadReport": "selected-improvements-load.json",
