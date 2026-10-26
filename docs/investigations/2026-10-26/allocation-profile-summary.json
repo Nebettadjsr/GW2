@@ -1,0 +1,457 @@
+{
+  "scope": "Baseline mixed application workload with in-process client; allocation sample weight, not live memory or exact total allocation",
+  "applicationBaseline": "bb386ac3ce864e08c8755d014e7abbf300af8fd4",
+  "recordedReportCommit": "0ab49f8861e3f9549e506e35797b153232fc0960",
+  "sourceJfrLocal": "quality-reports/optimization-20261026/application-baseline/profile.jfr",
+  "sourceJfrSha256": "4bca62aee65c408d910c029ab42aab0989c4b522a36d109cd135471e23662375",
+  "eventCount": 3645,
+  "totalSampleWeightBytes": 17299058552,
+  "grouping": "first craft/application/repo/web/sync stack frame in jdk.ObjectAllocationSample, printed with --stack-depth 128",
+  "groups": [
+    {
+      "frame": "craft/PlanState.<init>",
+      "sampleWeightBytes": 10984741208,
+      "sharePercent": 63.49906947236743
+    },
+    {
+      "frame": "no-app-frame",
+      "sampleWeightBytes": 2014805072,
+      "sharePercent": 11.646905904986731
+    },
+    {
+      "frame": "repo/Db.open",
+      "sampleWeightBytes": 1334956216,
+      "sharePercent": 7.716929866369298
+    },
+    {
+      "frame": "web/CraftingRowMapper.ingredientNames",
+      "sampleWeightBytes": 377281912,
+      "sharePercent": 2.1809389850084138
+    },
+    {
+      "frame": "repo/RecipeRepository.loadIngredientsByRecipe",
+      "sampleWeightBytes": 314581408,
+      "sharePercent": 1.8184886018761421
+    },
+    {
+      "frame": "craft/PlanState.writeOrRemove",
+      "sampleWeightBytes": 223548528,
+      "sharePercent": 1.2922583464760562
+    },
+    {
+      "frame": "repo/ItemRepository.loadItems",
+      "sampleWeightBytes": 193086768,
+      "sharePercent": 1.116169226317097
+    },
+    {
+      "frame": "web/CraftingRowMapper.itemName",
+      "sampleWeightBytes": 157452744,
+      "sharePercent": 0.9101809993110659
+    },
+    {
+      "frame": "repo/RecipeRepository.loadAllRecipes",
+      "sampleWeightBytes": 149051528,
+      "sharePercent": 0.8616164142803463
+    },
+    {
+      "frame": "craft/PlannerContext.eligibleCharactersFor",
+      "sampleWeightBytes": 145624768,
+      "sharePercent": 0.8418074750268062
+    },
+    {
+      "frame": "craft/CraftingResolver.resolveNeed",
+      "sampleWeightBytes": 122410648,
+      "sharePercent": 0.7076145076452598
+    },
+    {
+      "frame": "repo/RecipeRepository.scopedIds",
+      "sampleWeightBytes": 105371064,
+      "sharePercent": 0.6091144421718702
+    },
+    {
+      "frame": "craft/PlanState.writeRaw",
+      "sampleWeightBytes": 102032272,
+      "sharePercent": 0.5898140161402234
+    },
+    {
+      "frame": "repo/tp/TpPriceRepository.loadTpQuotes",
+      "sampleWeightBytes": 99483024,
+      "sharePercent": 0.5750776766317057
+    },
+    {
+      "frame": "repo/BankRepository.loadBankSlots",
+      "sampleWeightBytes": 94032064,
+      "sharePercent": 0.5435675225755487
+    },
+    {
+      "frame": "craft/PlannerContext.splitDisciplines",
+      "sampleWeightBytes": 94025192,
+      "sharePercent": 0.543527797870419
+    },
+    {
+      "frame": "repo/RecipeRepository.readKnownRecipes",
+      "sampleWeightBytes": 93784792,
+      "sharePercent": 0.5421381268702465
+    },
+    {
+      "frame": "repo/BankRepository.rowOf",
+      "sampleWeightBytes": 84551536,
+      "sharePercent": 0.48876380032961225
+    },
+    {
+      "frame": "repo/ItemRepository.vendorValues",
+      "sampleWeightBytes": 57112488,
+      "sharePercent": 0.33014795474749714
+    },
+    {
+      "frame": "craft/ResolvedNeed.<init>",
+      "sampleWeightBytes": 52627736,
+      "sharePercent": 0.3042231219797539
+    },
+    {
+      "frame": "craft/CraftingGraph.<init>",
+      "sampleWeightBytes": 48173656,
+      "sharePercent": 0.2784755936584219
+    },
+    {
+      "frame": "craft/CraftingPlanner.lambda$evaluateAllCoordinated$0",
+      "sampleWeightBytes": 45495888,
+      "sharePercent": 0.26299632354698327
+    },
+    {
+      "frame": "application/ScopedAccountRefreshCoordinator$Credential.lambda$fetcher$0",
+      "sampleWeightBytes": 42952040,
+      "sharePercent": 0.2482911996100168
+    },
+    {
+      "frame": "craft/CraftingGraph.lambda$freeze$0",
+      "sampleWeightBytes": 35939504,
+      "sharePercent": 0.2077541034500107
+    },
+    {
+      "frame": "application/CraftingProfitService.loadCalculationInputs",
+      "sampleWeightBytes": 29871056,
+      "sharePercent": 0.17267446034828587
+    },
+    {
+      "frame": "craft/PlanState.valueOrAbsent",
+      "sampleWeightBytes": 25322328,
+      "sharePercent": 0.1463798039869193
+    },
+    {
+      "frame": "craft/CraftingPlanner.buildRecipesByOutput",
+      "sampleWeightBytes": 24573720,
+      "sharePercent": 0.14205235461879487
+    },
+    {
+      "frame": "craft/RecipeSimulator.simulateRecipe",
+      "sampleWeightBytes": 21744568,
+      "sharePercent": 0.1256979848622227
+    },
+    {
+      "frame": "craft/CraftingPlanner.withVendorValues",
+      "sampleWeightBytes": 21691408,
+      "sharePercent": 0.1253906849022844
+    },
+    {
+      "frame": "repo/CraftingGraphCache.lambda$loadForSnapshot$1",
+      "sampleWeightBytes": 21672504,
+      "sharePercent": 0.12528140727920925
+    },
+    {
+      "frame": "craft/CraftingResolver.resolveDirectSellUnit",
+      "sampleWeightBytes": 18540528,
+      "sharePercent": 0.10717651451533164
+    },
+    {
+      "frame": "craft/CraftingResolver.splitDisciplines",
+      "sampleWeightBytes": 14624952,
+      "sharePercent": 0.0845418954796772
+    },
+    {
+      "frame": "application/GlobalDataRefreshService.refreshAll",
+      "sampleWeightBytes": 9308416,
+      "sharePercent": 0.053808801051337125
+    },
+    {
+      "frame": "craft/CraftingPlanner.evaluateOneRecipeNew",
+      "sampleWeightBytes": 8914848,
+      "sharePercent": 0.05153371770609636
+    },
+    {
+      "frame": "craft/CraftingResolver.tryCraftAssigned",
+      "sampleWeightBytes": 8164208,
+      "sharePercent": 0.0471945220340104
+    },
+    {
+      "frame": "craft/CraftingResolver.<init>",
+      "sampleWeightBytes": 7643160,
+      "sharePercent": 0.044182519973703135
+    },
+    {
+      "frame": "repo/CraftingGraphCache.lambda$loadForSnapshot$0",
+      "sampleWeightBytes": 7552472,
+      "sharePercent": 0.043658283352806124
+    },
+    {
+      "frame": "craft/CraftingResolver.firstRecipeFor",
+      "sampleWeightBytes": 7502472,
+      "sharePercent": 0.043369250282886726
+    },
+    {
+      "frame": "craft/PlanState.consumeBoundInventory",
+      "sampleWeightBytes": 7388536,
+      "sharePercent": 0.04271062484579999
+    },
+    {
+      "frame": "web/BankContentsApiController.lambda$toSlots$0",
+      "sampleWeightBytes": 7287824,
+      "sharePercent": 0.04212844287504554
+    },
+    {
+      "frame": "craft/ResolvedNeed.addChild",
+      "sampleWeightBytes": 6593936,
+      "sharePercent": 0.0381173112986409
+    },
+    {
+      "frame": "craft/CraftingResolver.sharesDiscipline",
+      "sampleWeightBytes": 6367984,
+      "sharePercent": 0.03681115929435234
+    },
+    {
+      "frame": "craft/CraftingResolver.hasOnlyDisallowedRecipes",
+      "sampleWeightBytes": 6333192,
+      "sharePercent": 0.036610038522979615
+    },
+    {
+      "frame": "craft/CraftingPlanner.lambda$evaluateAllCoordinated$1",
+      "sampleWeightBytes": 5776368,
+      "sharePercent": 0.033391227520483624
+    },
+    {
+      "frame": "application/CraftingProfitService.loadCandidates",
+      "sampleWeightBytes": 4837976,
+      "sharePercent": 0.027966701109527523
+    },
+    {
+      "frame": "repo/ManagedSchema.isManaged",
+      "sampleWeightBytes": 4571296,
+      "sharePercent": 0.026425114327805414
+    },
+    {
+      "frame": "repo/RecipeRepository.lambda$loadIngredientsByRecipe$0",
+      "sampleWeightBytes": 4238872,
+      "sharePercent": 0.02450348374310769
+    },
+    {
+      "frame": "application/ProfitInputSession.close",
+      "sampleWeightBytes": 3882832,
+      "sharePercent": 0.022445337058825628
+    },
+    {
+      "frame": "web/CraftingRowMapper.iconUrl",
+      "sampleWeightBytes": 3735624,
+      "sharePercent": 0.02159437745569173
+    },
+    {
+      "frame": "application/CraftingProfitService.lambda$loadCandidates$0",
+      "sampleWeightBytes": 3730552,
+      "sharePercent": 0.021565057941079106
+    },
+    {
+      "frame": "sync/tp/relevance/CraftingProfitItemCollector.coverage",
+      "sampleWeightBytes": 3585424,
+      "sharePercent": 0.020726122113653853
+    },
+    {
+      "frame": "repo/MaterialStorageRepository.readRows",
+      "sampleWeightBytes": 3529160,
+      "sharePercent": 0.02040087898073495
+    },
+    {
+      "frame": "repo/CraftingGraphCache.loadForSnapshot",
+      "sampleWeightBytes": 2805832,
+      "sharePercent": 0.016219564732761767
+    },
+    {
+      "frame": "craft/PlanState.consumeInventory",
+      "sampleWeightBytes": 2487528,
+      "sharePercent": 0.014379557087009274
+    },
+    {
+      "frame": "application/TradingPostPriceRefreshService.refreshForProfit",
+      "sampleWeightBytes": 2355640,
+      "sharePercent": 0.013617157216498678
+    },
+    {
+      "frame": "craft/CraftingGraph.lambda$new$1",
+      "sampleWeightBytes": 1953640,
+      "sharePercent": 0.011293331334346709
+    },
+    {
+      "frame": "repo/InventoryRepository.forEachScopedRow",
+      "sampleWeightBytes": 1773864,
+      "sharePercent": 0.01025410715079011
+    },
+    {
+      "frame": "repo/MaterialStorageRepository.loadMaterialStorage",
+      "sampleWeightBytes": 1410456,
+      "sharePercent": 0.008153368553324727
+    },
+    {
+      "frame": "web/CraftingRowMapper.toRow",
+      "sampleWeightBytes": 1378864,
+      "sharePercent": 0.007970745898426855
+    },
+    {
+      "frame": "sync/AccountSync.upsertScopedAccountBank",
+      "sampleWeightBytes": 1172232,
+      "sharePercent": 0.0067762762723551475
+    },
+    {
+      "frame": "sync/AccountSync.upsertScopedAccountRecipes",
+      "sampleWeightBytes": 1156192,
+      "sharePercent": 0.006683554463525004
+    },
+    {
+      "frame": "repo/CraftingGraphCache.writeAtomically",
+      "sampleWeightBytes": 1105024,
+      "sharePercent": 0.006387769581092288
+    },
+    {
+      "frame": "craft/CraftingPlanner.purchaseCosts",
+      "sampleWeightBytes": 678704,
+      "sharePercent": 0.003923358013731521
+    },
+    {
+      "frame": "repo/AccountSourceStateRepository.rowOf",
+      "sampleWeightBytes": 659424,
+      "sharePercent": 0.0038119068619706007
+    },
+    {
+      "frame": "craft/PlannerContext.computeEligible",
+      "sampleWeightBytes": 652632,
+      "sharePercent": 0.0037726446097527495
+    },
+    {
+      "frame": "craft/RecipeSimulator.<init>",
+      "sampleWeightBytes": 648552,
+      "sharePercent": 0.0037490595112473265
+    },
+    {
+      "frame": "sync/tp/relevance/CraftingProfitItemCollector.coverageOf",
+      "sampleWeightBytes": 598624,
+      "sharePercent": 0.003460442648948611
+    },
+    {
+      "frame": "web/CraftingRowMapper.toRows",
+      "sampleWeightBytes": 585080,
+      "sharePercent": 0.0033821493709688443
+    },
+    {
+      "frame": "craft/CraftingPlanner.evaluateAllCoordinated",
+      "sampleWeightBytes": 534360,
+      "sharePercent": 0.0030889542248426056
+    },
+    {
+      "frame": "repo/AccountRegistryRepository.recordAuthorizedUse",
+      "sampleWeightBytes": 402280,
+      "sharePercent": 0.0023254444673435196
+    },
+    {
+      "frame": "repo/AccountSourceStateRepository.read",
+      "sampleWeightBytes": 379496,
+      "sharePercent": 0.002193737878042648
+    },
+    {
+      "frame": "application/MaterialStorageService.lambda$group$1",
+      "sampleWeightBytes": 356944,
+      "sharePercent": 0.002063372402186202
+    },
+    {
+      "frame": "repo/CraftingGraphCache.rebuild",
+      "sampleWeightBytes": 350496,
+      "sharePercent": 0.002026098697489396
+    },
+    {
+      "frame": "craft/PlanState.consumeInventoryWithBinding",
+      "sampleWeightBytes": 314944,
+      "sharePercent": 0.0018205846234539062
+    },
+    {
+      "frame": "sync/AccountSync.parseBankSlots",
+      "sampleWeightBytes": 297104,
+      "sharePercent": 0.001717457624106665
+    },
+    {
+      "frame": "sync/IconSync.repairMissingMetadata",
+      "sampleWeightBytes": 289072,
+      "sharePercent": 0.0016710273517548122
+    },
+    {
+      "frame": "repo/AccountRegistryRepository.monotonicUpdate",
+      "sampleWeightBytes": 289032,
+      "sharePercent": 0.0016707961252988767
+    },
+    {
+      "frame": "web/access/AccountAccessHttp.presentedSessionId",
+      "sampleWeightBytes": 276000,
+      "sharePercent": 0.0015954625459550847
+    },
+    {
+      "frame": "repo/CraftingGraphCache.lambda$rebuild$0",
+      "sampleWeightBytes": 240752,
+      "sharePercent": 0.0013917057929847048
+    },
+    {
+      "frame": "web/MaterialStorageApiController.toStacks",
+      "sampleWeightBytes": 238176,
+      "sharePercent": 0.0013768148092224573
+    },
+    {
+      "frame": "craft/CraftingPlanner.lambda$buildRecipesByOutput$0",
+      "sampleWeightBytes": 235512,
+      "sharePercent": 0.0013614151272571518
+    },
+    {
+      "frame": "craft/CraftingResolver.blockedNeed",
+      "sampleWeightBytes": 220176,
+      "sharePercent": 0.0012727629040514736
+    },
+    {
+      "frame": "repo/tp/TpPriceRepository.cacheStatus",
+      "sampleWeightBytes": 198728,
+      "sharePercent": 0.0011487792783788481
+    },
+    {
+      "frame": "craft/PlanState.isVisiting",
+      "sampleWeightBytes": 188864,
+      "sharePercent": 0.001091758834345149
+    },
+    {
+      "frame": "repo/CharacterRepository.loadAllCharacterCrafting",
+      "sampleWeightBytes": 180536,
+      "sharePercent": 0.0010436174862193737
+    },
+    {
+      "frame": "web/task/BackgroundTaskService.markRunning",
+      "sampleWeightBytes": 177752,
+      "sharePercent": 0.0010275241248862616
+    },
+    {
+      "frame": "repo/InventoryRepository.classifyCoordinatedRow",
+      "sampleWeightBytes": 173824,
+      "sharePercent": 0.0010048176869133937
+    },
+    {
+      "frame": "craft/PlanState.currentValue",
+      "sampleWeightBytes": 136448,
+      "sharePercent": 0.0007887596864872442
+    },
+    {
+      "frame": "craft/ResolvedNeed.accumulateBoughtItems",
+      "sampleWeightBytes": 47496,
+      "sharePercent": 0.0002745582937778359
+    }
+  ]
+}

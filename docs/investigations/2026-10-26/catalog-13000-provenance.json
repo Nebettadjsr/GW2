@@ -1,0 +1,14 @@
+{
+  "container": "/gw2-investigation-catalog13000",
+  "image": "sha256:2d5d5e9b533342a565907c84f47a2ec298c40cde7b13a3ca85d4950fa456a641",
+  "observedApplicationCommit": "3289f8987ac0ffa3b42df7b6f8cdd1bed343a87b",
+  "nanoCpus": 2000000000,
+  "memoryBytes": 2147483648,
+  "exitCode": 0,
+  "oomKilled": false,
+  "start": "2026-10-26T08:05:56.505960062Z",
+  "finish": "2026-10-26T08:08:49.315807357Z",
+  "workload": "13000-recipe binary-tree synthetic catalog, 400 bank slots/account, 20 distinct accounts; Maven and load generator inside cap, PostgreSQL outside",
+  "jvmOptions": "-Xmx1280m",
+  "mavenOptions": "-Xmx128m"
+}
