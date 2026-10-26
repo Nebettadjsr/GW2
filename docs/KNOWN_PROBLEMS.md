@@ -42,12 +42,6 @@ No open finding. KP-08, KP-09 and KP-11 described the legacy JavaFX shopping lis
 
 **Inferred risk:** moving a stack from bank to material storage can leave its old bank quantity alongside its refreshed storage quantity in Profit indefinitely until a full account refresh; even full refresh has intermediate mixed snapshots. Concurrent runs can publish older fetches after newer ones. This is an application-created consistency problem, distinct from accepted GW2 API lag (DOMAIN_SPEC §39). **Recommendation:** define coherent account snapshot publication/refresh ownership and accurate freshness reporting; preserve or explicitly decide refresh scope.
 
-### KP-14 — Global/setup synchronization downloads data already available (CH-06)
-
-
-**Observed fact:** the first recipe pass downloads every recipe batch and already parses its ingredients to collect item IDs. After item synchronization it downloads the identical recipe batches again to persist ingredients.
-
-**Inferred risk:** an extra complete recipe-detail pass adds network latency/rate-limit exposure and repeated parsing. The FK-required recipe→item→ingredient write order does not require re-fetching the payloads. **Recommendation:** retain/reuse the fetched facts while preserving that ordering. No duration was measured.
 
 
 ### KP-16 — Persisted graph cache lacks source validation and corrupt-file recovery (CH-08)
