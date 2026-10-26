@@ -31,7 +31,7 @@ The maxima were not necessarily simultaneous. They cannot be summed as a measure
 
 Source artifacts: `quality-reports/container-20261025/live-resources.json` and `.md` (local ignored files). The new reproducible offline baseline is recorded in `quality-reports/optimization-20261026/baseline/`; its scope and outcome are appended below after completion. Existing methodology and limitations: [PERFORMANCE_MEASUREMENTS.md](PERFORMANCE_MEASUREMENTS.md).
 
-Fresh baseline on the current application commit completed successfully (no diagnostics). Durable raw evidence: [baseline-container.json](investigations/2026-10-26/baseline-container.json).
+Fresh baseline on the current application commit completed successfully (no diagnostics). Durable raw evidence: [baseline-container.json](investigations/2026-10-26/baseline-container.json). Its raw `commit` field is `unknown`: the local command omitted `--commit`, and the helper defaults to an unset `GITHUB_SHA`. The separately observed application commit and raw report checksum are recorded in [baseline-provenance.json](investigations/2026-10-26/baseline-provenance.json). The raw report is preserved unchanged; future comparisons must supply `--commit` explicitly.
 
 | Current offline baseline | Result |
 | --- | --- |
@@ -145,5 +145,5 @@ Include a ranked shortlist, explicit keep-as-is choices, a database recommendati
 ## 8. Execution record
 
 - 2026-10-26: reviewed existing resource methodology/live observations, roadmap deployment needs, current task/coordinator/session/scheduler code, known problems and frontend UX rules. Recorded leads above; no application changes or database replacement made.
-- Fresh offline container baseline: PASS with no diagnostics, at the application baseline commit above. Command: `python scripts/container_measure.py --output-dir quality-reports/optimization-20261026/baseline --id investigation-20261026 --idle-seconds 20 --traffic-seconds 30 --strict`. Owned containers, volumes and images were cleaned up. It deliberately measures idle/global HTTP, not account/crafting multi-user capacity.
+- Fresh offline container baseline: PASS with no diagnostics, at the separately observed application baseline commit above. Command: `python scripts/container_measure.py --output-dir quality-reports/optimization-20261026/baseline --id investigation-20261026 --idle-seconds 20 --traffic-seconds 30 --strict`. Owned containers, volumes and images were cleaned up. It deliberately measures idle/global HTTP, not account/crafting multi-user capacity. Reproduction must add `--commit <actual-application-commit>`; this run's missing embedded commit is documented rather than silently filled in.
 - A2-A6, B1-B2, C1-C6 and D1 are **not executed** by preparing this plan. Their expected benefits are hypotheses and their after-results are unavailable.

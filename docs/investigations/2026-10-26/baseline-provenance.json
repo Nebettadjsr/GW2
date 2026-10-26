@@ -1,0 +1,7 @@
+{
+  "rawReport": "baseline-container.json",
+  "rawReportSha256": "cf0094240eb45d40b9db38cd43828b29c287a4e3d26aeca681d93548b3fc6bff",
+  "observedApplicationCommit": "bb386ac3ce864e08c8755d014e7abbf300af8fd4",
+  "provenance": "git log -1 was recorded during the measurement. Application, scripts and Docker files were unchanged from this commit; the subsequent planning branch changes documentation only.",
+  "limitation": "The measurement command omitted --commit. The raw report correctly remains unmodified with commit: unknown because the helper defaults to GITHUB_SHA, which was unset locally. Use --commit explicitly for subsequent comparable reports."
+}
