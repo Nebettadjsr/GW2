@@ -1,0 +1,12 @@
+{
+  "container": "/gw2-investigation-cpu2-ram1536",
+  "image": "sha256:2d5d5e9b533342a565907c84f47a2ec298c40cde7b13a3ca85d4950fa456a641",
+  "configuredImage": "eclipse-temurin:25-jdk",
+  "nanoCpus": 2000000000,
+  "memoryBytes": 1610612736,
+  "exitCode": 0,
+  "oomKilled": false,
+  "start": "2026-10-26T07:49:58.134951447Z",
+  "finish": "2026-10-26T07:52:23.322976498Z",
+  "note": "Application-process harness and client plus Maven share this cap; PostgreSQL is a separate unconstrained container; raw report retains legacy process-only wording."
+}
