@@ -1,0 +1,24 @@
+{
+  "scope": "one normal developer-app browser observation, not complete seven-second certification",
+  "timestamp": "2026-10-26T07:54:45.488Z",
+  "observations": [
+    {
+      "case": "initial-complete-results-observation",
+      "durationMs": 1973.71,
+      "rows": 204,
+      "loadingShown": false,
+      "refreshingShown": false,
+      "keyFormRepeated": false
+    },
+    {
+      "case": "return-navigation",
+      "durationMs": 70.93,
+      "searchPreserved": true
+    },
+    {
+      "case": "selection",
+      "selectedRowVisible": true
+    }
+  ],
+  "failures": []
+}

@@ -1,0 +1,28 @@
+{
+  "applicationCommit": "1edc3cd870838b886946566eb52a6ad0d50f5132",
+  "finalStackHead": "6951f3d1516f4360e4f3cbc96c94bcbe1b32be62",
+  "reviewCorrection": "800bde1 corrects the seeded test candidate from CraftingPlanner(false) to the production-default enabled planner. Retested all 126 crafting tests, including the 320 actual fresh-vs-reused comparisons; all passed. Production source is byte-identical to the applicationCommit used for the load and browser qualification. See selected-state-equivalence-retest.txt.",
+  "pullRequests": [125, 126, 127, 128, 129, 130],
+  "adoption": "All six PRs remain draft and unmerged for the Product Owner's decision.",
+  "loadReport": "selected-improvements-load.json",
+  "command": "mvn test -Dtest=MultiAccountCapacityIT -Dgw2.investigation=true -Dgw2.investigation.recipes=13000 -DargLine=\"-Xmx2g -XX:ActiveProcessorCount=6\"",
+  "testHarnessSource": "experiment/116-reuse-simulation-state at bdec991a56fd2cabd38b8db16a83b7c61bfb311d",
+  "testHarnessOverlay": "Only test sources were overlaid on the selected implementation in a separate validation worktree. No experimental production code was copied.",
+  "harnessSha256": "4210cdb0e7c77281b535f7b65cbb62d26650f1aa9a7d9c7914f8d605f14bbfb7",
+  "multiAccountTestSha256": "1ecf1d9a3753bbfcc46654a06082021b5b7f84a19c67e3ff4eeea2d4ff9d2a1b",
+  "pool": "Production default: maximum 8, minimum idle 0, acquisition timeout 15000 ms; complete search_path reset on borrow.",
+  "stateReuse": "Production default enabled, request-local worker states used directly inside the simulator.",
+  "legacyMetadata": "investigationPoolSize=0 and investigationReuseState=false in the raw harness report are obsolete prototype property values, not the production modes. The application ignores those properties. Some raw workload descriptions say 5000; the actual Sizes and invocation specify 13000 recipes.",
+  "scope": "Real Spring HTTP, account sessions, coordination, SQL/Flyway and PostgreSQL 17.11. Deterministic proof and ArenaNet fixtures; no live upstream traffic. Windows application process limited to six processors and 2 GiB max heap, with the load client inside that JVM. PostgreSQL runs separately in an isolated Docker container and is outside those limits.",
+  "result": "All workload diagnostics empty; no HTTP errors. Distinct-account publication and bank markers verified at 1, 2, 5, 10 and 20 concurrent accounts.",
+  "twentyAccountMixed": {
+    "httpP95Ms": 1303.33,
+    "requestsPerSecond": 35.73,
+    "processCpuMs": 16921.88,
+    "peakHeapBytes": 1017643008
+  },
+  "limitations": "One qualification run, not a paired speedup claim or soak. Mixed-route p95 is not Profit-only/browser p95. Heap includes the load client; Windows RSS is unavailable. Raw no-container wording describes the measured process and does not mean the project lacks Docker support.",
+  "statePairs": "selected-state-pairs.txt: 13000-recipe domain-only comparison, six processors, 2 GiB max heap, complete outputs equal in every pair; first pair warmup, five measured alternating pairs; median paired reduction 10.13%.",
+  "emptyInventoryCheck": "Same domain benchmark with the one-line test-only selected-state-empty-overlay.patch and -Dgw2.benchmark.empty-inventory=true. Complete outputs matched. Warmup fresh/reuse 464/931 ms; subsequent alternating pairs 269/412, 217/220, 220/200, 214/205, 226/235 ms. Mixed results, median paired change +1.38%; no stable speed benefit demonstrated for empty inventory, with larger cold/early JIT cost. Do not generalize the stocked-inventory improvement to every workload.",
+  "browserEvidence": "inventory-refresh-smoke.mjs passed at 1280x900 and 390x844. Controlled HTTP fixtures; refresh, failure recovery, freshness, no document-wide overflow or page errors, disconnect clears account data. Screenshots are fixture data, not live account images."
+}
