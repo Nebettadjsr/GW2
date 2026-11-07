@@ -17,7 +17,7 @@ import { ApiRequestError } from '@/api/http'
 import { charactersApi, type CharactersApi } from '@/api/charactersApi'
 import { syncApi, type SyncApi } from '@/api/syncApi'
 import type {
-  CharacterEquipmentTabsResponse, CharacterOverview, CharacterReadResponse, EquipmentTab
+  CharacterEquipmentTabsResponse, CharacterInventoryResponse, CharacterOverview, CharacterReadResponse, EquipmentTab
 } from '@/api/types'
 
 export const EQUIPMENT_POLL_MS = 2_000
@@ -94,6 +94,14 @@ export function useCharacters(
   const inspectedTab = ref<number | null>(null)
   let equipmentId = 0
 
+  // Inventory: a lazily loaded section, read only when first inspected for the selected character.
+  const section = ref<'equipment' | 'inventory'>('equipment')
+  const inventoryPhase = ref<ReadPhase>('idle')
+  const inventoryResponse = shallowRef<CharacterInventoryResponse | null>(null)
+  const lastGoodInventory = shallowRef<Map<string, CharacterInventoryResponse>>(new Map())
+  const inventoryFailure = ref<ReadFailure | null>(null)
+  let inventoryId = 0
+
   const stillSelected = (name: string, id: number, newest: number): boolean =>
     current() && selectedName.value === name && id === newest
 
@@ -135,11 +143,106 @@ export function useCharacters(
       equipmentFailure.value = failureOf(cause)
     }
     equipmentPhase.value = 'loaded'
+    reconcile(name)
     if (equipmentResponse.value?.state === 'PENDING' && !autoRecoveryTried) {
       autoRecoveryTried = true
       void refreshEquipment()
     }
   }
+
+  async function loadInventory(name: string): Promise<void> {
+    if (!current()) return
+    const id = ++inventoryId
+    inventoryPhase.value = 'loading'
+    inventoryFailure.value = null
+    try {
+      const response = await api.loadInventory(name)
+      if (!stillSelected(name, id, inventoryId)) return
+      inventoryResponse.value = response
+      if (HAS_DATA.includes(response.state) && response.bags) {
+        lastGoodInventory.value = new Map(lastGoodInventory.value).set(name, response)
+      }
+    } catch (cause) {
+      if (!stillSelected(name, id, inventoryId)) return
+      inventoryFailure.value = failureOf(cause)
+    }
+    inventoryPhase.value = 'loaded'
+    reconcile(name)
+  }
+
+  // Bounded generation reconciliation between the two CHARACTERS-derived sections: each target
+  // (character + section + known newer parent generation) is reread at most once automatically.
+  const reconciled = new Set<string>()
+  function reconcile(name: string): void {
+    if (!current() || selectedName.value !== name) return
+    const ig = knownInventoryParent.value
+    const eg = knownEquipmentParent.value
+    if (ig === undefined || eg === undefined || ig === eg) return
+    if (eg < ig) {
+      const key = `eq:${name}:${ig}`
+      if (reconciled.has(key) || equipmentPhase.value === 'loading') return
+      reconciled.add(key)
+      void loadEquipment(name)
+    } else {
+      const key = `inv:${name}:${eg}`
+      if (reconciled.has(key) || inventoryPhase.value !== 'loaded') return
+      reconciled.add(key)
+      void loadInventory(name)
+    }
+  }
+
+  /**
+   * Switch section. Inventory is read the first time it is opened, and again on re-entry when the
+   * last read gave no layout (user-driven, one request per entry); returning to a loaded layout
+   * costs no request unless the other section proved it describes an older parent generation.
+   */
+  function showSection(next: 'equipment' | 'inventory'): void {
+    section.value = next
+    const name = selectedName.value
+    if (name === null) return
+    if (next === 'inventory' && inventoryPhase.value !== 'loading') {
+      const r = inventoryResponse.value
+      const usable = r !== null && HAS_DATA.includes(r.state) && r.bags !== undefined && inventoryFailure.value === null
+      if (inventoryPhase.value === 'idle' || !usable) { void loadInventory(name); return }
+    }
+    reconcile(name)
+  }
+
+  const inventorySource = computed<CharacterInventoryResponse | null>(() => {
+    const now = inventoryResponse.value
+    if (now && HAS_DATA.includes(now.state) && now.bags) return now
+    return selectedName.value === null ? null : (lastGoodInventory.value.get(selectedName.value) ?? null)
+  })
+  const inventoryIsRetained = computed(
+    () => inventorySource.value !== null &&
+      (inventoryFailure.value !== null || inventorySource.value !== inventoryResponse.value)
+  )
+  /**
+   * Newest CHARACTERS parent generation observed per section, from the current envelope (even a
+   * non-data PENDING/UNAVAILABLE one that carries parent metadata) and from the retained display data.
+   */
+  const newest = (...gs: Array<number | undefined>): number | undefined => {
+    const k = gs.filter((g): g is number => typeof g === 'number')
+    return k.length ? Math.max(...k) : undefined
+  }
+  const knownEquipmentParent = computed(() =>
+    newest(equipmentResponse.value?.parent?.generation, equipmentSource.value?.parent?.generation))
+  const knownInventoryParent = computed(() =>
+    newest(inventoryResponse.value?.generation, inventorySource.value?.generation))
+
+  /** Retained equipment describes an older parent than the newest one known. */
+  const equipmentOlderThanInventory = computed(() => {
+    const g = knownInventoryParent.value
+    const eg = knownEquipmentParent.value
+    return g !== undefined && eg !== undefined && eg < g
+  })
+
+  /** The inventory shown describes an older parent than the newest one known from equipment. */
+  const inventoryOlderThanEquipment = computed(() => {
+    const g = inventorySource.value?.generation
+    const eg = knownEquipmentParent.value
+    return g !== undefined && eg !== undefined && g < eg
+  })
 
   /**
    * Core fields to show: the character's own detail when it carried data, else — only once the detail
@@ -153,12 +256,21 @@ export function useCharacters(
   })
   const detailIsRetained = computed(() => shownDetail.value !== null && shownDetail.value !== detail.value)
 
+  function resetInventory(): void {
+    inventoryId += 1
+    inventoryResponse.value = null
+    inventoryFailure.value = null
+    inventoryPhase.value = 'idle'
+    section.value = 'equipment'
+  }
+
   function select(name: string): void {
     if (selectedName.value === name) return
     selectedName.value = name
     detail.value = null
     detailResponse.value = null
     equipmentResponse.value = null
+    resetInventory()
     inspectedTab.value = initialInspection(name)
     refreshMessage.value = null
     // Invalidate anything in flight for the previous character.
@@ -181,6 +293,7 @@ export function useCharacters(
     detail.value = null
     detailResponse.value = null
     equipmentResponse.value = null
+    resetInventory()
     inspectedTab.value = null
     detailPhase.value = 'idle'
     equipmentPhase.value = 'idle'
@@ -260,6 +373,8 @@ export function useCharacters(
     selectedName, detail, shownDetail, detailIsRetained, detailResponse, detailFailure, detailPhase, select, back, loadDetail,
     equipmentPhase, equipmentResponse, equipmentFailure, equipmentTabs, equipmentIsRetained, equipmentSource,
     activeTab, inspectedTab, shownTab, inspect, loadEquipment,
-    refreshing, refreshMessage, refreshEquipment
+    refreshing, refreshMessage, refreshEquipment,
+    section, showSection, inventoryPhase, inventoryResponse, inventoryFailure, inventorySource, inventoryIsRetained,
+    equipmentOlderThanInventory, inventoryOlderThanEquipment, loadInventory
   }
 }

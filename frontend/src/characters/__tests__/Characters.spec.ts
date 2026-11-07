@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { connection } from '@/api/accountSession'
 import type { CharactersApi } from '@/api/charactersApi'
-import type { CharacterEquipmentTabsResponse, CharacterOverview, CharacterReadResponse } from '@/api/types'
+import type { CharacterInventoryResponse, CharacterEquipmentTabsResponse, CharacterOverview, CharacterReadResponse } from '@/api/types'
 import CharactersScreen from '../CharactersScreen.vue'
 import { useCharacters } from '../useCharacters'
 
@@ -25,6 +25,17 @@ const tabsResponse: CharacterEquipmentTabsResponse = { state: 'AVAILABLE', chara
     { tab: 3, name: 'Fractal', active: false, equipment: [{ slot: 'Boots', item: item(5, 'Boots', 'Rare'), upgrades: [], infusions: [] }] }
   ] }
 
+const inventoryResponse: CharacterInventoryResponse = { state: 'AVAILABLE', character: 'Ana B', generation: 1,
+  completedAt: '2026-01-01T00:00:00Z', contents: 'HAS_ITEMS',
+  bags: [
+    { bag: 0, installed: true, container: { itemId: 10, resolved: true, name: 'Big Bag' }, capacity: 2, slots: [
+      { slot: 0, empty: false, item: { itemId: 11, resolved: true, name: 'Iron Ore' }, quantity: 250 },
+      { slot: 1, empty: true }] },
+    { bag: 1, installed: false, slots: [] },
+    { bag: 2, installed: true, container: { itemId: 12, resolved: false }, capacity: 1, slots: [
+      { slot: 0, empty: false, item: { itemId: 99, resolved: false }, quantity: 3, binding: 'Account' }] }
+  ] }
+
 function deferred<T>() { let resolve!: (v: T) => void; const promise = new Promise<T>((r) => { resolve = r }); return { promise, resolve } }
 
 function fakeApi(over: Partial<CharactersApi> = {}): CharactersApi & { calls: string[] } {
@@ -34,6 +45,7 @@ function fakeApi(over: Partial<CharactersApi> = {}): CharactersApi & { calls: st
     loadRoster: async () => { calls.push('roster'); return roster },
     loadCharacter: async (n) => { calls.push(`detail:${n}`); return detailOf(n === 'Bo' ? bo : ana) },
     loadEquipmentTabs: async (n) => { calls.push(`equip:${n}`); return tabsResponse },
+    loadInventory: async (n) => { calls.push(`inv:${n}`); return inventoryResponse },
     startEquipmentTabsRefresh: async () => { calls.push('refresh'); return { taskId: 't', operation: 'X', statusUrl: '/api/sync/tasks/t' } },
     ...over
   }
@@ -396,5 +408,215 @@ describe('remaining acceptance fixes', () => {
     await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
     expect(w.find('[data-test="equipment-state"]').exists()).toBe(true)
     expect(w.find('[data-test="equipment-freshness"]').text()).toContain('2026')
+  })
+})
+
+describe('Character inventory section', () => {
+  async function open(api: ReturnType<typeof fakeApi>) {
+    const w = mount(CharactersScreen, { props: { api } })
+    await flushPromises()
+    await w.find('[data-test="roster-item"]').trigger('click')
+    await flushPromises()
+    return w
+  }
+
+  it('reads inventory lazily and renders bags, empties, uninstalled positions and unresolved items', async () => {
+    const api = fakeApi()
+    const w = await open(api)
+    expect(api.calls.some((c) => c.startsWith('inv:'))).toBe(false)
+    await w.find('[data-test="section-inventory"]').trigger('click')
+    await flushPromises()
+    expect(api.calls.filter((c) => c === 'inv:Ana B')).toHaveLength(1)
+    const bags = w.findAll('[data-test="inventory-bag"]')
+    expect(bags).toHaveLength(3)
+    expect(bags[0]!.text()).toContain('Iron Ore'); expect(bags[0]!.text()).toContain('×250')
+    expect(bags[0]!.findAll('[data-test="inventory-slot-empty"]')).toHaveLength(1)
+    expect(bags[0]!.findAll('[data-test="inventory-slot"]').map((e) => e.attributes('data-slot'))).toEqual(['0', '1'])
+    expect(bags[1]!.find('[data-test="inventory-bag-uninstalled"]').exists()).toBe(true)
+    expect(bags[1]!.findAll('[data-test="inventory-slot"]')).toHaveLength(0)
+    expect(bags[2]!.text()).toContain('Item #99 (details unavailable)'); expect(bags[2]!.text()).toContain('×3')
+    await w.find('[data-test="section-equipment"]').trigger('click')
+    await w.find('[data-test="section-inventory"]').trigger('click')
+    expect(api.calls.filter((c) => c === 'inv:Ana B')).toHaveLength(1)
+  })
+
+  it('distinguishes genuine no-bags from legacy layout and omitted bags, linking System Status', async () => {
+    const none = await open(fakeApi({ loadInventory: async () => ({ state: 'AVAILABLE', contents: 'NO_BAGS', bags: [] }) }))
+    await none.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
+    expect(none.find('[data-test="inventory-no-bags"]').exists()).toBe(true)
+    const legacy = await open(fakeApi({ loadInventory: async () => ({ state: 'UNAVAILABLE', reason: 'LAYOUT_REFRESH_REQUIRED' }) }))
+    await legacy.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
+    expect(legacy.find('[data-test="inventory-no-bags"]').exists()).toBe(false)
+    expect(legacy.find('[data-test="inventory-panel"]').exists()).toBe(false)
+    expect(legacy.find('[data-test="inventory-system-status"]').attributes('href')).toBe('#/synchronization')
+  })
+
+  it('shows grant, failure and retains last-good inventory on a later failed read', async () => {
+    const grant = await open(fakeApi({ loadInventory: async () => ({ state: 'GRANT_REQUIRED', reason: 'MISSING_GRANT' }) }))
+    await grant.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
+    expect(grant.find('[data-test="inventory-state"]').text()).toContain('MISSING_GRANT')
+    expect(grant.find('[data-test="inventory-panel"]').exists()).toBe(false)
+    let fail = false
+    const c = useCharacters(fakeApi({ loadInventory: async () => { if (fail) throw new Error('down'); return inventoryResponse } }), tasks, noSleep)
+    c.select('Ana B'); await c.loadInventory('Ana B')
+    fail = true
+    await c.loadInventory('Ana B')
+    expect(c.inventoryFailure.value).not.toBeNull()
+    expect(c.inventorySource.value?.bags).toHaveLength(3)
+    expect(c.inventoryIsRetained.value).toBe(true)
+  })
+
+  it('discards a late inventory answer after the selection changes', async () => {
+    const slow = deferred<CharacterInventoryResponse>()
+    const c = useCharacters(fakeApi({ loadInventory: (n) => n === 'Ana B' ? slow.promise : Promise.resolve({ ...inventoryResponse, bags: [] }) }), tasks, noSleep)
+    c.select('Ana B'); const first = c.loadInventory('Ana B'); c.back(); c.select('Bo')
+    await c.loadInventory('Bo')
+    slow.resolve(inventoryResponse); await first
+    expect(c.inventorySource.value?.bags).toEqual([])
+  })
+
+  it('discards an answer from a replaced account', async () => {
+    const slow = deferred<CharacterInventoryResponse>()
+    const c = useCharacters(fakeApi({ loadInventory: () => slow.promise }), tasks, noSleep)
+    c.select('Ana B'); const p = c.loadInventory('Ana B')
+    connection.generation += 1
+    slow.resolve(inventoryResponse); await p
+    expect(c.inventorySource.value).toBeNull()
+  })
+
+  it('rereads retained equipment once when inventory shows a newer parent generation', async () => {
+    const api = fakeApi({
+      loadEquipmentTabs: async (n) => { api.calls.push(`equip:${n}`); return { ...tabsResponse, parent: { generation: 1 } } },
+      loadInventory: async () => ({ ...inventoryResponse, generation: 2 })
+    })
+    const w = await open(api)
+    await w.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
+    expect(api.calls.filter((c) => c === 'equip:Ana B')).toHaveLength(2)
+  })
+
+  it('surfaces a stale refresh failure with the System Status link while keeping the retained layout', async () => {
+    const w = await open(fakeApi({ loadInventory: async () => ({ ...inventoryResponse, state: 'STALE', reason: 'REFRESH_FAILED', message: 'Refresh failed upstream' }) }))
+    await w.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
+    expect(w.find('[data-test="inventory-panel"]').exists()).toBe(true)
+    expect(w.find('[data-test="inventory-stale-refresh-failed"]').text()).toContain('Refresh failed upstream')
+    expect(w.find('[data-test="inventory-system-status"]').attributes('href')).toBe('#/synchronization')
+    expect(w.find('[data-test="inventory-recheck"]').exists()).toBe(true)
+  })
+
+  it('offers a bounded recheck after a legacy answer, without back/reselect', async () => {
+    let legacy = true
+    const api = fakeApi({ loadInventory: async (n) => { api.calls.push(`inv:${n}`); return legacy ? { state: 'UNAVAILABLE', reason: 'LAYOUT_REFRESH_REQUIRED' } : inventoryResponse } })
+    const w = await open(api)
+    await w.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
+    expect(w.find('[data-test="inventory-panel"]').exists()).toBe(false)
+    legacy = false
+    await w.find('[data-test="inventory-recheck"]').trigger('click'); await flushPromises()
+    expect(w.find('[data-test="inventory-panel"]').exists()).toBe(true)
+    expect(api.calls.filter((c) => c === 'inv:Ana B')).toHaveLength(2)
+  })
+
+  it('rereads on section re-entry when the last read gave no layout', async () => {
+    let ok = false
+    const api = fakeApi({ loadInventory: async (n) => { api.calls.push(`inv:${n}`); return ok ? inventoryResponse : { state: 'PENDING', reason: 'REFRESH_IN_PROGRESS' } } })
+    const w = await open(api)
+    await w.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
+    await w.find('[data-test="section-equipment"]').trigger('click')
+    ok = true
+    await w.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
+    expect(api.calls.filter((c) => c === 'inv:Ana B')).toHaveLength(2)
+    expect(w.find('[data-test="inventory-panel"]').exists()).toBe(true)
+  })
+
+  it('rereads equipment once when inventory gen2 arrives before equipment gen1, and never loops', async () => {
+    const eq = deferred<CharacterEquipmentTabsResponse>()
+    let eqCalls = 0
+    const api = fakeApi({
+      loadEquipmentTabs: (n) => { api.calls.push(`equip:${n}`); eqCalls += 1; return eqCalls === 1 ? eq.promise : Promise.resolve({ ...tabsResponse, parent: { generation: 1 } }) },
+      loadInventory: async (n) => { api.calls.push(`inv:${n}`); return { ...inventoryResponse, generation: 2 } }
+    })
+    const c = useCharacters(api, tasks, noSleep)
+    c.select('Ana B'); await c.loadInventory('Ana B')
+    eq.resolve({ ...tabsResponse, parent: { generation: 1 } }); await flushPromises()
+    expect(api.calls.filter((x) => x === 'equip:Ana B')).toHaveLength(2)
+    expect(c.equipmentOlderThanInventory.value).toBe(true)
+    c.showSection('equipment'); c.showSection('inventory'); await flushPromises()
+    expect(api.calls.filter((x) => x === 'equip:Ana B')).toHaveLength(2)
+  })
+
+  it('rereads a loaded older inventory once after equipment establishes a newer parent', async () => {
+    let eqGen = 1
+    const api = fakeApi({
+      loadEquipmentTabs: async (n) => { api.calls.push(`equip:${n}`); return { ...tabsResponse, parent: { generation: eqGen } } },
+      loadInventory: async (n) => { api.calls.push(`inv:${n}`); return { ...inventoryResponse, generation: 1 } }
+    })
+    const c = useCharacters(api, tasks, noSleep)
+    c.select('Ana B'); await flushPromises()
+    c.showSection('inventory'); await flushPromises()
+    eqGen = 2
+    await c.loadEquipment('Ana B'); await flushPromises()
+    expect(api.calls.filter((x) => x === 'inv:Ana B')).toHaveLength(2)
+    expect(c.inventoryOlderThanEquipment.value).toBe(true) // still gen1: warned, not looped
+    c.showSection('equipment'); c.showSection('inventory'); await flushPromises()
+    expect(api.calls.filter((x) => x === 'inv:Ana B')).toHaveLength(2)
+  })
+
+  it('reconciles toward a newer parent reported only by a PENDING equipment envelope, once', async () => {
+    let eqCalls = 0
+    const api = fakeApi({
+      loadEquipmentTabs: async (n) => {
+        api.calls.push(`equip:${n}`); eqCalls += 1
+        return eqCalls === 2 ? { ...tabsResponse, parent: { generation: 1 } }
+          : eqCalls === 1 ? { state: 'PENDING', reason: 'NOT_SYNCED', message: 'p' }
+          : { state: 'PENDING', reason: 'COVERAGE_INCOMPATIBLE', message: 'p', parent: { generation: 3 }, coveredParentGeneration: 1 }
+      },
+      loadInventory: async (n) => { api.calls.push(`inv:${n}`); return { ...inventoryResponse, generation: inv += 1 } }
+    })
+    let inv = 1
+    const c = useCharacters(api, tasks, noSleep)
+    c.select('Ana B'); await flushPromises(); await flushPromises()
+    c.showSection('inventory'); await flushPromises(); await flushPromises()
+    expect(api.calls.filter((x) => x === 'equip:Ana B').length).toBeLessThanOrEqual(4)
+    expect(api.calls.filter((x) => x === 'inv:Ana B')).toHaveLength(2)
+    expect(c.equipmentTabs.value).not.toBeNull()
+    c.showSection('equipment'); c.showSection('inventory'); await flushPromises()
+    expect(api.calls.filter((x) => x === 'inv:Ana B')).toHaveLength(2)
+    expect(api.calls.filter((x) => x === 'equip:Ana B').length).toBeLessThanOrEqual(4)
+  })
+
+  it('does not reconcile after an account replacement mid-flight', async () => {
+    const eq = deferred<CharacterEquipmentTabsResponse>()
+    const api = fakeApi({ loadEquipmentTabs: (n) => { api.calls.push(`equip:${n}`); return eq.promise }, loadInventory: async () => ({ ...inventoryResponse, generation: 2 }) })
+    const c = useCharacters(api, tasks, noSleep)
+    c.select('Ana B'); await c.loadInventory('Ana B')
+    connection.generation += 1
+    eq.resolve({ ...tabsResponse, parent: { generation: 1 } }); await flushPromises()
+    expect(api.calls.filter((x) => x === 'equip:Ana B')).toHaveLength(1)
+  })
+
+  it('keeps the original completedAt and layout when a reread fails', async () => {
+    let fail = false
+    const api = fakeApi({ loadInventory: async () => { if (fail) throw new Error('down'); return inventoryResponse } })
+    const w = await open(api)
+    await w.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
+    const before = w.find('[data-test="inventory-freshness"]').text()
+    fail = true
+    await w.find('[data-test="inventory-retry"]').exists()
+    const c = (w.vm as unknown as { $: { setupState: { c: ReturnType<typeof useCharacters> } } }).$.setupState.c
+    await c.loadInventory('Ana B'); await flushPromises()
+    expect(w.find('[data-test="inventory-error"]').exists()).toBe(true)
+    expect(w.findAll('[data-test="inventory-slot"]')).toHaveLength(3)
+    expect(w.find('[data-test="inventory-freshness"]').text()).toBe(before)
+  })
+
+  it('section tabs use roving tabindex and arrow/Home/End keys, keeping the inspected equipment tab', async () => {
+    const w = await open(fakeApi())
+    const eq = w.find('[data-test="section-equipment"]'), inv = w.find('[data-test="section-inventory"]')
+    expect(eq.attributes('tabindex')).toBe('0'); expect(inv.attributes('tabindex')).toBe('-1')
+    await eq.trigger('keydown', { key: 'ArrowRight' }); await flushPromises()
+    expect(inv.attributes('aria-selected')).toBe('true'); expect(inv.attributes('tabindex')).toBe('0')
+    await inv.trigger('keydown', { key: 'Home' }); await flushPromises()
+    expect(eq.attributes('aria-selected')).toBe('true')
+    await eq.trigger('keydown', { key: 'End' }); await flushPromises()
+    expect(inv.attributes('aria-selected')).toBe('true')
   })
 })
