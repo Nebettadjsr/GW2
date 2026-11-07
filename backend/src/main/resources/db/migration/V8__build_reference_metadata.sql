@@ -16,14 +16,16 @@ CREATE TABLE build_specializations (
     CONSTRAINT build_specializations_pkey PRIMARY KEY (specialization_id)
 );
 
--- tier (1..3 = adept, master, grandmaster) and slot (Major/Minor) are the upstream values, NULL when
--- upstream did not state them.
+-- specialization_id, tier (0 is a legitimate documented value), trait_order (0 is legitimate) and slot
+-- (Major/Minor) are the upstream values. Repair only stores rows that state all of them, so a NULL marks
+-- an incomplete row that a later repair replaces.
 CREATE TABLE build_traits (
     trait_id          INTEGER     NOT NULL,
     name              TEXT        NOT NULL,
     icon_url          TEXT,
     specialization_id INTEGER,
     tier              INTEGER,
+    trait_order       INTEGER,
     slot              TEXT,
     fetched_at        TIMESTAMPTZ NOT NULL,
     CONSTRAINT build_traits_pkey PRIMARY KEY (trait_id)

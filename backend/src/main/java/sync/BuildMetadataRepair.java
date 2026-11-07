@@ -135,9 +135,10 @@ public final class BuildMetadataRepair {
                 String name = text(n, "name");
                 List<Integer> minor = intList(n.get("minor_traits"));
                 List<Integer> major = intList(n.get("major_traits"));
-                if (id == null || !batch.contains(id) || name == null || minor == null || major == null
-                        || !n.path("elite").isBoolean() || !seen.add(id)) continue;
-                rows.add(new SpecRow(id, name, text(n, "profession"), n.get("elite").asBoolean(),
+                String profession = text(n, "profession");
+                if (id == null || !batch.contains(id) || name == null || profession == null || minor == null
+                        || major == null || !n.path("elite").isBoolean() || !seen.add(id)) continue;
+                rows.add(new SpecRow(id, name, profession, n.get("elite").asBoolean(),
                         text(n, "icon"), minor, major));
             }
             try (Connection con = Db.open()) { repo.upsertSpecializations(con, rows, clock.instant()); }
@@ -152,9 +153,14 @@ public final class BuildMetadataRepair {
             for (JsonNode n : root) {
                 Integer id = intOf(n, "id");
                 String name = text(n, "name");
-                if (id == null || !batch.contains(id) || name == null || !seen.add(id)) continue;
-                rows.add(new TraitRow(id, name, text(n, "icon"), intOf(n, "specialization"), intOf(n, "tier"),
-                        text(n, "slot")));
+                Integer spec = intOf(n, "specialization");
+                Integer tier = nonNegative(n, "tier");
+                Integer order = nonNegative(n, "order");
+                String slot = text(n, "slot");
+                // A partial answer is never stored: it would replace a complete row's facts with nulls.
+                if (id == null || !batch.contains(id) || name == null || spec == null || tier == null
+                        || order == null || slot == null || !seen.add(id)) continue;
+                rows.add(new TraitRow(id, name, text(n, "icon"), spec, tier, order, slot));
             }
             try (Connection con = Db.open()) { repo.upsertTraits(con, rows, clock.instant()); }
         }
@@ -199,6 +205,12 @@ public final class BuildMetadataRepair {
     private static Integer intOf(JsonNode n, String field) {
         JsonNode v = n.get(field);
         return v != null && v.isInt() && v.asInt() > 0 ? v.asInt() : null;
+    }
+
+    /** Zero is a documented, valid value (tier 0, order 0). */
+    private static Integer nonNegative(JsonNode n, String field) {
+        JsonNode v = n.get(field);
+        return v != null && v.isInt() && v.asInt() >= 0 ? v.asInt() : null;
     }
 
     private static String text(JsonNode n, String field) {

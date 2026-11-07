@@ -20,7 +20,8 @@ public class BuildMetadataRepository {
 
     public record SpecRow(int id, String name, String profession, boolean elite, String iconUrl,
                           List<Integer> minorTraits, List<Integer> majorTraits) {}
-    public record TraitRow(int id, String name, String iconUrl, Integer specializationId, Integer tier, String slot) {}
+    public record TraitRow(int id, String name, String iconUrl, Integer specializationId, Integer tier,
+                           Integer order, String slot) {}
     public record NamedRow(int id, String name, String iconUrl) {}
     public record LegendRow(String id, int swapSkillId) {}
 
@@ -83,11 +84,21 @@ public class BuildMetadataRepository {
         }
     }
 
+    /** Required facts of a usable stored row; rows lacking them are incomplete and get repaired. */
+    static String completeCondition(BuildResourceType type) {
+        return switch (type) {
+            case SPECIALIZATIONS -> "profession IS NOT NULL";
+            case TRAITS -> "specialization_id IS NOT NULL AND tier IS NOT NULL AND trait_order IS NOT NULL AND slot IS NOT NULL";
+            case SKILLS, PETS -> "name IS NOT NULL";
+        };
+    }
+
+    /** Ids whose stored row exists and is complete. */
     public Set<Integer> present(Connection con, BuildResourceType type, Collection<Integer> ids) throws SQLException {
         Set<Integer> out = new TreeSet<>();
         if (ids.isEmpty()) return out;
         try (PreparedStatement ps = con.prepareStatement("SELECT " + type.idColumn() + " FROM " + type.table()
-                + " WHERE " + type.idColumn() + " = ANY(?)")) {
+                + " WHERE " + type.idColumn() + " = ANY(?) AND " + completeCondition(type))) {
             ps.setArray(1, con.createArrayOf("integer", ids.toArray()));
             try (ResultSet rs = ps.executeQuery()) { while (rs.next()) out.add(rs.getInt(1)); }
         }
@@ -151,15 +162,17 @@ public class BuildMetadataRepository {
 
     public void upsertTraits(Connection con, List<TraitRow> rows, Instant at) throws SQLException {
         try (PreparedStatement ps = con.prepareStatement("""
-                INSERT INTO build_traits (trait_id, name, icon_url, specialization_id, tier, slot, fetched_at)
-                VALUES (?,?,?,?,?,?,?)
+                INSERT INTO build_traits (trait_id, name, icon_url, specialization_id, tier, trait_order, slot, fetched_at)
+                VALUES (?,?,?,?,?,?,?,?)
                 ON CONFLICT (trait_id) DO UPDATE SET name = EXCLUDED.name, icon_url = EXCLUDED.icon_url,
-                    specialization_id = EXCLUDED.specialization_id, tier = EXCLUDED.tier, slot = EXCLUDED.slot,
+                    specialization_id = EXCLUDED.specialization_id, tier = EXCLUDED.tier,
+                    trait_order = EXCLUDED.trait_order, slot = EXCLUDED.slot,
                     fetched_at = EXCLUDED.fetched_at""")) {
             for (TraitRow r : rows) {
                 ps.setInt(1, r.id()); ps.setString(2, r.name()); ps.setString(3, r.iconUrl());
-                ps.setObject(4, r.specializationId()); ps.setObject(5, r.tier()); ps.setString(6, r.slot());
-                ps.setTimestamp(7, Timestamp.from(at));
+                ps.setObject(4, r.specializationId()); ps.setObject(5, r.tier());
+                ps.setObject(6, r.order()); ps.setString(7, r.slot());
+                ps.setTimestamp(8, Timestamp.from(at));
                 ps.addBatch();
             }
             ps.executeBatch();
@@ -214,15 +227,16 @@ public class BuildMetadataRepository {
         Map<Integer, TraitRow> traits = new HashMap<>();
         if (!traitIds.isEmpty()) {
             try (PreparedStatement ps = con.prepareStatement("""
-                    SELECT trait_id, name, icon_url, specialization_id, tier, slot FROM build_traits
+                    SELECT trait_id, name, icon_url, specialization_id, tier, trait_order, slot FROM build_traits
                     WHERE trait_id = ANY(?)""")) {
                 ps.setArray(1, con.createArrayOf("integer", traitIds.toArray()));
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         Integer spec = (Integer) rs.getObject(4);
                         Integer tier = (Integer) rs.getObject(5);
+                        Integer order = (Integer) rs.getObject(6);
                         traits.put(rs.getInt(1), new TraitRow(rs.getInt(1), rs.getString(2), rs.getString(3), spec,
-                                tier, rs.getString(6)));
+                                tier, order, rs.getString(7)));
                     }
                 }
             }

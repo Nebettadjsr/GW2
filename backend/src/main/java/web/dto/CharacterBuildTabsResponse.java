@@ -11,7 +11,11 @@ import repo.BuildMetadataRepository.Metadata;
 import repo.CharacterBuildTabsRepository.SkillsView;
 
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Body of the selected-character saved-build-tabs read (STORY-CHAR-007). {@code tabs} is present only for
@@ -33,9 +37,16 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
         public IdRef(int id, boolean resolved) { this(id, resolved, null, null); }
     }
 
-    /** A trait reference with its documented tier (1..3) and slot (Major/Minor) when known. */
+    /**
+     * A trait reference with the documented owning specialization, tier, order (0 is valid for both) and
+     * slot when known. {@code placement}: ORDINARY (owner, slot and unique tier/order all consistent),
+     * NONSTANDARD (stated but outside the usual tier 0..3), CONFLICT (wrong owner or slot, not offered by
+     * the specialization, or a duplicate tier/order choice) or UNRESOLVED (no metadata). The ids stay
+     * either way; clients place only ORDINARY rows by tier/order and never by array position.
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record TraitRef(int id, boolean resolved, String name, String iconUrl, Integer tier, String slot) {}
+    public record TraitRef(int id, boolean resolved, String name, String iconUrl, Integer specializationId,
+                           Integer tier, Integer order, String slot, String placement) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record SpecRef(int id, boolean resolved, String name, String iconUrl, String profession, Boolean elite) {}
@@ -49,8 +60,9 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
 
     /**
      * {@code traits} are the selected (highlighted) choices (null positions explicit). {@code minorTraits}/{@code majorTraits}
-     * are the specialization-defined choices in upstream order (minor: adept, master, grandmaster; major:
-     * three per tier in tier order); present only when the specialization is resolved, each possibly unresolved.
+     * are the specialization's offered choice ids as upstream lists them; their placement comes only from
+     * each trait's documented specialization/tier/order/slot fields (see {@link TraitRef}), never from list
+     * position. Present only when the specialization is resolved, each possibly unresolved.
      */
     public record SpecializationDto(SpecRef specialization, List<TraitRef> traits,
                                     @JsonInclude(JsonInclude.Include.NON_NULL) List<TraitRef> minorTraits,
@@ -97,17 +109,46 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
         SpecRef spec = s.id() == null ? null : row == null ? new SpecRef(s.id(), false, null, null, null, null)
                 : new SpecRef(s.id(), true, row.name(), url(BuildResourceType.SPECIALIZATIONS, s.id(), row.iconUrl()),
                         row.profession(), row.elite());
+        Set<Integer> offeredMajor = row == null ? Set.of() : new HashSet<>(row.majorTraits());
         List<TraitRef> selected = s.traits() == null ? null
-                : s.traits().stream().map(i -> i == null ? null : trait(i, m)).toList();
+                : s.traits().stream().map(i -> i == null ? null
+                        : trait(i, m, s.id(), "Major", row == null || offeredMajor.contains(i), null)).toList();
         return new SpecializationDto(spec, selected,
-                row == null ? null : row.minorTraits().stream().map(i -> trait(i, m)).toList(),
-                row == null ? null : row.majorTraits().stream().map(i -> trait(i, m)).toList());
+                row == null ? null : choices(row.minorTraits(), m, s.id(), "Minor"),
+                row == null ? null : choices(row.majorTraits(), m, s.id(), "Major"));
     }
 
-    private static TraitRef trait(int id, Metadata m) {
+    private static List<TraitRef> choices(List<Integer> ids, Metadata m, Integer owner, String slot) {
+        Map<String, Integer> keyCount = new HashMap<>();
+        Map<Integer, Integer> idCount = new HashMap<>();
+        for (int i : ids) {
+            idCount.merge(i, 1, Integer::sum);
+            var t = m.traits().get(i);
+            if (t != null && t.tier() != null && t.order() != null) keyCount.merge(t.tier() + "/" + t.order(), 1, Integer::sum);
+        }
+        return ids.stream().map(i -> {
+            var t = m.traits().get(i);
+            boolean dup = idCount.get(i) > 1
+                    || (t != null && t.tier() != null && t.order() != null && keyCount.get(t.tier() + "/" + t.order()) > 1);
+            return trait(i, m, owner, slot, true, dup);
+        }).toList();
+    }
+
+    /** {@code offered} false or {@code duplicate} true marks a conflict; the expected owner/slot are checked here. */
+    private static TraitRef trait(int id, Metadata m, Integer owner, String slot, boolean offered, Boolean duplicate) {
         var t = m.traits().get(id);
-        return t == null ? new TraitRef(id, false, null, null, null, null)
-                : new TraitRef(id, true, t.name(), url(BuildResourceType.TRAITS, id, t.iconUrl()), t.tier(), t.slot());
+        if (t == null) return new TraitRef(id, false, null, null, null, null, null, null, "UNRESOLVED");
+        String placement;
+        if (!offered || Boolean.TRUE.equals(duplicate) || owner == null || !owner.equals(t.specializationId())
+                || !slot.equals(t.slot())) {
+            placement = "CONFLICT";
+        } else if (t.tier() == null || t.order() == null || t.tier() > 3) {
+            placement = "NONSTANDARD";
+        } else {
+            placement = "ORDINARY";
+        }
+        return new TraitRef(id, true, t.name(), url(BuildResourceType.TRAITS, id, t.iconUrl()),
+                t.specializationId(), t.tier(), t.order(), t.slot(), placement);
     }
 
     private static SkillsDto skills(SkillsView s, Metadata m) {
