@@ -39,6 +39,7 @@ public class CharactersApiController {
     private final CharacterRosterService service;
     private final application.CharacterEquipmentTabsService equipmentTabs;
     private final application.CharacterInventoryLayoutService inventory;
+    private final application.CharacterBuildTabsService buildTabs;
 
     public CharactersApiController(CharacterRosterService service) {
         this(service, null, null);
@@ -49,10 +50,18 @@ public class CharactersApiController {
         this(service, equipmentTabs, null);
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
     public CharactersApiController(CharacterRosterService service,
                                    application.CharacterEquipmentTabsService equipmentTabs,
                                    application.CharacterInventoryLayoutService inventory) {
+        this(service, equipmentTabs, inventory, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public CharactersApiController(CharacterRosterService service,
+                                   application.CharacterEquipmentTabsService equipmentTabs,
+                                   application.CharacterInventoryLayoutService inventory,
+                                   application.CharacterBuildTabsService buildTabs) {
+        this.buildTabs = buildTabs;
         this.service = service;
         this.equipmentTabs = equipmentTabs;
         this.inventory = inventory;
@@ -87,6 +96,22 @@ public class CharactersApiController {
             LOG.log(Level.SEVERE, "Equipment tabs read failed", e);
             return web.dto.CharacterEquipmentTabsResponse.unavailable(
                     e instanceof SQLException ? "DATA_STORE_UNAVAILABLE" : "EQUIPMENT_READ_FAILED");
+        }
+    }
+
+    /** One selected character's saved build tabs (STORY-CHAR-007); stored rows only. */
+    @GetMapping(path = "/{name}/build-tabs", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<web.dto.CharacterBuildTabsResponse> buildTabs(
+            @PathVariable("name") String name, HttpServletRequest request) {
+        var context = RequestAccountContext.required(request);
+        var scope = RequestAccountContext.scopeOf(request);
+        try {
+            if (buildTabs == null) throw new IllegalStateException("build tabs are not configured");
+            return web.dto.CharacterBuildTabsResponse.respond(buildTabs.read(context, scope, name));
+        } catch (SQLException | RuntimeException e) {
+            LOG.log(Level.SEVERE, "Build tabs read failed", e);
+            return web.dto.CharacterBuildTabsResponse.unavailable(
+                    e instanceof SQLException ? "DATA_STORE_UNAVAILABLE" : "BUILD_TABS_READ_FAILED");
         }
     }
 

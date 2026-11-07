@@ -68,6 +68,8 @@ public class AccountSyncApiController {
     private static final Set<String> LUCK_SOURCES = new LinkedHashSet<>(List.of(AccountSyncStateRepository.LUCK));
 
     /** Optional saved-equipment-tab coverage only (STORY-CHAR-005); never part of any other source set. */
+    private static final Set<String> BUILD_TABS_SOURCES =
+            new LinkedHashSet<>(List.of(AccountSyncStateRepository.CHARACTER_BUILD_TABS));
     private static final Set<String> EQUIPMENT_TABS_SOURCES =
             new LinkedHashSet<>(List.of(AccountSyncStateRepository.CHARACTER_EQUIPMENT_TABS));
 
@@ -143,6 +145,14 @@ public class AccountSyncApiController {
         return admit(request, EQUIPMENT_TABS_SOURCES, true);
     }
 
+    /** Demands only the optional build-tab coverage; same proof and published-parent rules as equipment tabs. */
+    @PostMapping(path = "/account/character-build-tabs", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> syncCharacterBuildTabs(HttpServletRequest request,
+                                                    @RequestBody(required = false) Map<String, Object> body) {
+        SyncRequestValidation.rejectAnyRequestField("/api/sync/account/character-build-tabs", body);
+        return admit(request, BUILD_TABS_SOURCES, true);
+    }
+
     private ResponseEntity<?> admit(HttpServletRequest request, Set<String> sources) {
         return admit(request, sources, false);
     }
@@ -172,7 +182,7 @@ public class AccountSyncApiController {
                 }
                 if (!published) {
                     return error(HttpStatus.CONFLICT, "PREREQUISITE_UNAVAILABLE",
-                            "Equipment tabs need a published character roster; refresh characters first");
+                            "This source needs a published character roster; refresh characters first");
                 }
                 admission = coordinator.requireAfterBoundedWait(context, sessionId, apiKey, sources, RECHECK_BOUND,
                         proof);

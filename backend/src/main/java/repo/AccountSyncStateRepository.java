@@ -17,6 +17,8 @@ public final class AccountSyncStateRepository {
     public static final String CHARACTERS = "CHARACTERS";
     /** Optional, independently refreshed saved-equipment-tab coverage of the CHARACTERS roster. */
     public static final String CHARACTER_EQUIPMENT_TABS = "CHARACTER_EQUIPMENT_TABS";
+    /** Optional, independently refreshed saved-build-tab coverage of the CHARACTERS roster (STORY-CHAR-007). */
+    public static final String CHARACTER_BUILD_TABS = "CHARACTER_BUILD_TABS";
 
     /**
      * Creates the legacy marker table on a pre-migration database, and refuses to run at all on a

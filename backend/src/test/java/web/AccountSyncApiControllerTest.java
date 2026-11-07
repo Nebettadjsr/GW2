@@ -186,11 +186,75 @@ class AccountSyncApiControllerTest {
     }
 
     @Test
+    void buildTabsTriggerDemandsOnlyTheOptionalSourceAndReusesOwnerScopedObservation() throws Exception {
+        var s = session(A, "key-a");
+        String body = mvc.perform(trigger("/api/sync/account/character-build-tabs", s, "key-a"))
+                .andExpect(status().isAccepted())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andReturn().getResponse().getContentAsString();
+        awaitRuns(1);
+        assertEquals(A + ":[CHARACTER_BUILD_TABS]", runs.get(0), "no ordinary source is demanded");
+        String taskId = JsonPath.read(body, "$.taskId");
+        mvc.perform(authorized(get("/api/sync/tasks/" + taskId), s)).andExpect(status().isOk());
+        var other = session(B, "key-b");
+        mvc.perform(authorized(get("/api/sync/tasks/" + taskId), other)).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void buildTabsTriggerProvesTheKeyExactlyOncePerRequestIncludingTheBoundedWait() throws Exception {
+        var s = session(A, "key-a");
+        proofCalls.set(0);
+        mvc.perform(trigger("/api/sync/account/character-build-tabs", s, "key-a")).andExpect(status().isAccepted());
+        assertEquals(1, proofCalls.get(), "one upstream proof round for the whole optional refresh");
+        awaitRuns(1);
+    }
+
+    @Test
+    void buildTabsTriggerWithoutPublishedParentAdmitsNothing() throws Exception {
+        parentPublished = false;
+        var s = session(A, "key-a");
+        proofCalls.set(0);
+        mvc.perform(trigger("/api/sync/account/character-build-tabs", s, "key-a"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("PREREQUISITE_UNAVAILABLE"));
+        assertEquals(1, proofCalls.get(), "missing parent still costs exactly one proof");
+        Thread.sleep(150);
+        assertTrue(runs.isEmpty(), "no task, no tab fetch");
+    }
+
+    @Test
+    void buildTabsTriggerRequiresEachOfTheFourGrantsAKeyAndTheOwnOrigin() throws Exception {
+        for (AccountGrant missing : List.of(AccountGrant.ACCOUNT, AccountGrant.CHARACTERS,
+                AccountGrant.INVENTORIES, AccountGrant.BUILDS)) {
+            Set<AccountGrant> grants = new java.util.HashSet<>(ALL);
+            grants.remove(missing);
+            AccountProof proof = new AccountProof(A, grants, Set.of(), null);
+            keys.put("k-" + missing, proof);
+            var s = sessions.establish(proof);
+            mvc.perform(trigger("/api/sync/account/character-build-tabs", s, "k-" + missing))
+                    .andExpect(status().isForbidden());
+        }
+        var s = session(A, "key-a");
+        mvc.perform(trigger("/api/sync/account/character-build-tabs", s, null)).andExpect(status().isBadRequest());
+        mvc.perform(trigger("/api/sync/account/character-build-tabs", s, "wrong")).andExpect(status().isUnauthorized());
+        mvc.perform(authorized(post("/api/sync/account/character-build-tabs"), s).header("Origin", "http://evil.example")
+                        .header(AccountAccessHttp.API_KEY_HEADER, "key-a").contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+        var bSession = session(B, "key-b");
+        keys.put("key-a-as-b", keys.get("key-a"));
+        mvc.perform(trigger("/api/sync/account/character-build-tabs", bSession, "key-a-as-b"))
+                .andExpect(status().isForbidden());
+        Thread.sleep(150);
+        assertTrue(runs.isEmpty(), "nothing was admitted by any rejected request");
+    }
+
+    @Test
     void ordinarySourceSetsNeverIncludeEquipmentTabs() throws Exception {
         var s = session(A, "key-a");
         mvc.perform(trigger("/api/sync/account", s, "key-a")).andExpect(status().isAccepted());
         awaitRuns(1);
         assertFalse(runs.get(0).contains("EQUIPMENT"));
+        assertFalse(runs.get(0).contains("BUILD_TABS"));
     }
 
     @Test

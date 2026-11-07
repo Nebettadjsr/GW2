@@ -21,9 +21,21 @@ class EquipmentTabsGrantRegressionTest {
         assertEquals(EnumSet.of(AccountGrant.ACCOUNT, AccountGrant.CHARACTERS, AccountGrant.INVENTORIES),
                 EnumSet.copyOf(AccountOperation.CHARACTERS_READ.requiredGrants()));
         for (AccountOperation op : AccountOperation.values()) {
-            if (op.name().startsWith("CHARACTER_EQUIPMENT_TABS")) continue;
+            if (op.name().startsWith("CHARACTER_EQUIPMENT_TABS") || op.name().startsWith("CHARACTER_BUILD_TABS")) continue;
             assertFalse(op.requiredGrants().contains(AccountGrant.BUILDS), op.name());
         }
+    }
+
+    @Test
+    void buildTabsOperationsMirrorEquipmentGrantsAndEndpoints() {
+        assertEquals(Set.of(AccountGrant.ACCOUNT, AccountGrant.BUILDS, AccountGrant.CHARACTERS),
+                AccountOperation.CHARACTER_BUILD_TABS_ENDPOINT.requiredGrants());
+        assertEquals(Set.of("/v2/characters/:id/buildtabs"),
+                AccountOperation.CHARACTER_BUILD_TABS_ENDPOINT.upstreamEndpoints());
+        assertEquals(Set.of(AccountGrant.ACCOUNT, AccountGrant.CHARACTERS, AccountGrant.INVENTORIES,
+                AccountGrant.BUILDS), AccountOperation.CHARACTER_BUILD_TABS_READ.requiredGrants());
+        assertEquals(AccountOperation.CHARACTER_BUILD_TABS_READ,
+                ScopedAccountRefreshCoordinator.operationFor(AccountSyncStateRepository.CHARACTER_BUILD_TABS));
     }
 
     @Test

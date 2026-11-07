@@ -225,6 +225,7 @@ public class ScopedAccountRefreshCoordinator implements CharacterRosterService.R
             case AccountSyncStateRepository.LUCK -> AccountOperation.LUCK_READ;
             case AccountSyncStateRepository.CHARACTERS -> AccountOperation.CHARACTERS_READ;
             case AccountSyncStateRepository.CHARACTER_EQUIPMENT_TABS -> AccountOperation.CHARACTER_EQUIPMENT_TABS_READ;
+            case AccountSyncStateRepository.CHARACTER_BUILD_TABS -> AccountOperation.CHARACTER_BUILD_TABS_READ;
             default -> null;
         };
     }

@@ -296,5 +296,23 @@ class AccountAccessContractTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void buildTabsRoutesSitBehindTheRealSessionGuard() throws Exception {
+        var restricted = prove("fixture-key-restricted");
+        var full = prove("fixture-key-a");
+        String read = "/api/account/characters/Ana%20B/build-tabs";
+        String refresh = "/api/sync/account/character-build-tabs";
+        http.perform(get(read)).andExpect(status().isUnauthorized());
+        http.perform(post(refresh).header("Origin", ORIGIN)).andExpect(status().isUnauthorized());
+        http.perform(get(read).cookie(restricted.cookie()).header("X-Account-Context", restricted.context()))
+                .andExpect(status().isOk()); // the read reports GRANT_REQUIRED itself, behind a live session
+        http.perform(post(refresh).header("Origin", ORIGIN).cookie(restricted.cookie())
+                        .header("X-Account-Context", restricted.context()))
+                .andExpect(status().isForbidden());
+        http.perform(post(refresh).header("Origin", ORIGIN).cookie(full.cookie())
+                        .header("X-Account-Context", full.context()).header("X-Account-Context", "wrong"))
+                .andExpect(status().isForbidden());
+    }
+
     private record Proof(jakarta.servlet.http.Cookie cookie, String context) {}
 }
