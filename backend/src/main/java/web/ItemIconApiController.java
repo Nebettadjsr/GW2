@@ -84,7 +84,7 @@ public class ItemIconApiController {
         };
     }
 
-    private static ResponseEntity<?> image(IconDeliveryResult.Delivered delivered, String ifNoneMatch) {
+    static ResponseEntity<?> image(IconDeliveryResult.Delivered delivered, String ifNoneMatch) {
         CacheControl freshness = CacheControl.maxAge(BROWSER_FRESHNESS.toSeconds(), TimeUnit.SECONDS)
                 .cachePublic();
 
@@ -124,7 +124,7 @@ public class ItemIconApiController {
      * Every non-success response: a fixed wording, no upstream detail, and {@code no-store} so a
      * temporary failure cannot be remembered by the browser as this image's answer.
      */
-    private static ResponseEntity<?> failure(HttpStatus status,
+    static ResponseEntity<?> failure(HttpStatus status,
                                              String error,
                                              String message,
                                              Integer retryAfterSeconds) {

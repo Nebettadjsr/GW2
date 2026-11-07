@@ -42,11 +42,59 @@ public class IconDelivery {
     private final ItemIconMetadataRepository metadataRepo;
     private final IconStore store;
     private final IconAcquisition acquisition;
+    private final repo.BuildMetadataRepository resourceRepo;
 
     public IconDelivery(ItemIconMetadataRepository metadataRepo, IconStore store, IconAcquisition acquisition) {
+        this(metadataRepo, store, acquisition, null);
+    }
+
+    public IconDelivery(ItemIconMetadataRepository metadataRepo, IconStore store, IconAcquisition acquisition,
+                        repo.BuildMetadataRepository resourceRepo) {
         this.metadataRepo = metadataRepo;
         this.store = store;
         this.acquisition = acquisition;
+        this.resourceRepo = resourceRepo;
+    }
+
+    /**
+     * Delivers a build-reference resource image ({@code /api/resources/{type}/{id}/icon/{key}.{ext}}). Same
+     * order as {@link #deliver}: validate the route, serve a valid cache hit with no metadata read, and on
+     * a miss verify the retained source of exactly this type and id before the shared acquisition.
+     */
+    public IconDeliveryResult deliverResource(String rawType, String rawId, String fileName) {
+        Optional<ResourceIconUrls.ResourceIconRequest> parsed = ResourceIconUrls.parse(rawType, rawId, fileName);
+        if (parsed.isEmpty()) {
+            return new IconDeliveryResult.InvalidRequest("the resource icon route's type, id, key or extension is malformed");
+        }
+        var request = parsed.get();
+        try {
+            Optional<StoredIcon> hit = store.find(request.sourceKey(), request.extension());
+            if (hit.isPresent()) return delivered(hit.get(), request.extension());
+        } catch (IconStorageException storageFailure) {
+            return unavailable("icon storage is unavailable");
+        }
+        if (resourceRepo == null) return new IconDeliveryResult.NotFound("resource images are not configured");
+        Optional<String> retained;
+        try {
+            retained = resourceRepo.findIconSource(request.type(), request.id());
+        } catch (SQLException metadataUnavailable) {
+            return unavailable("icon metadata is unavailable");
+        }
+        if (retained.isEmpty()) return new IconDeliveryResult.NotFound("no retained icon metadata for this resource");
+        Optional<IconSource> source = IconSourcePolicy.accept(retained.get());
+        if (source.isEmpty()) {
+            return new IconDeliveryResult.NotFound("the resource's retained icon source is not an accepted source");
+        }
+        if (!source.get().sourceKey().equals(request.sourceKey())
+                || !source.get().extension().equals(request.extension())) {
+            return new IconDeliveryResult.NotFound("the requested icon key does not match the resource's source");
+        }
+        return switch (acquisition.acquire(source.get())) {
+            case IconAcquisitionResult.Available(StoredIcon icon) -> delivered(icon, request.extension());
+            case IconAcquisitionResult.UpstreamMissing ignored ->
+                    new IconDeliveryResult.NotFound("the image does not exist upstream");
+            case IconAcquisitionResult.Unavailable(String reason) -> unavailable(reason);
+        };
     }
 
     /**

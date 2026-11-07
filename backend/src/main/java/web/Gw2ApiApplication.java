@@ -379,6 +379,7 @@ public class Gw2ApiApplication {
         return new IconDelivery(
                 new ItemIconMetadataRepository(),
                 store,
-                new IconAcquisition(store, new HttpIconImageFetcher()));
+                new IconAcquisition(store, new HttpIconImageFetcher()),
+                new repo.BuildMetadataRepository());
     }
 }

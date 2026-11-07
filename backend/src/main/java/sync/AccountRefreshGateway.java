@@ -63,7 +63,18 @@ public class AccountRefreshGateway {
 
     public void syncCharacterBuildTabs(model.AccountScope scope, AccountSync.AuthFetcher fetcher)
             throws Exception {
+        // Metadata repair stays outside the account publication: stored references first (so metadata
+        // recovers even when the refresh below fails), then those the successful publication added.
+        BuildMetadataRepair repair = new BuildMetadataRepair(this::fetchBuildMetadata, java.time.Clock.systemUTC());
+        repair.repairStored(scope);
         CharacterBuildTabsSync.sync(scope, fetcher);
+        repair.repairStored(scope);
+    }
+
+    /** Replaceable public metadata edge (finite timeouts), including for fixture checks. */
+    protected com.fasterxml.jackson.databind.JsonNode fetchBuildMetadata(String endpoint, java.util.List<String> ids)
+            throws Exception {
+        return BuildMetadataRepair.fetchLive(endpoint, ids);
     }
 
     /** Fetch public metadata before publishing new account IDs, outside the account transaction. */
