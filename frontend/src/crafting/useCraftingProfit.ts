@@ -203,9 +203,17 @@ export function useCraftingProfit(
    * is only offered while no list request is loading.
    */
   watch(
-    contextKey,
-    () => {
+    effectiveKey,
+    (key) => {
       if (!opened || disposed) return
+      if (key === 'none') {
+        // Identity is not (yet) validated: drop old in-flight work, but never submit a request built
+        // from the previous account's scope/settings. The workspace/account transport reconnects.
+        newestRequestId += 1
+        abandonRecovery()
+        isLoading.value = false
+        return
+      }
       void requestProfit(currentRequest())
     },
     { flush: 'sync' }
@@ -246,8 +254,14 @@ export function useCraftingProfit(
   }
 
   function contextKey(): string {
+    return effectiveKey()
+  }
+
+  /** Request-relevant context: saved IDs matter only while protection is effectively enabled. */
+  function effectiveKey(): string {
     const context = protectionContext()
-    return context === null ? 'none' : `${protection.state.accountId}|${context.enabled}|${context.ids.join(',')}`
+    if (context === null) return 'none'
+    return `${protection.state.accountId}|${context.enabled}|${context.enabled ? context.ids.join(',') : ''}`
   }
 
   /** Whether an enabled-protection request was echoed back as such (order/duplicate insensitive). */

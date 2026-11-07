@@ -151,10 +151,16 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     const value: StoredPreference = { version: PREFERENCE_SCHEMA_VERSION, protectedItemIds: [...ids], enabled }
     try {
       storage.setItem(keyFor(accountId), JSON.stringify(value))
-      // A later successful write supersedes an earlier write/remove failure for this account.
+      // A later successful write supersedes earlier write/remove/read/recovered-record diagnostics for this
+      // account: the record now stored is the valid committed one. 'storage-unavailable' cannot reach here.
       if (
         state.accountId === accountId &&
-        (state.diagnostic === 'write-failed' || state.diagnostic === 'quota-exceeded' || state.diagnostic === 'remove-failed')
+        (state.diagnostic === 'write-failed' ||
+          state.diagnostic === 'quota-exceeded' ||
+          state.diagnostic === 'remove-failed' ||
+          state.diagnostic === 'read-failed' ||
+          state.diagnostic === 'corrupt' ||
+          state.diagnostic === 'unsupported-version')
       ) {
         state.diagnostic = null
       }

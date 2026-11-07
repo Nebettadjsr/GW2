@@ -1,7 +1,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { connection } from '@/api/accountSession'
-import type { CraftingProfitRequest, CraftingProfitResponse } from '@/api/types'
+import type { CraftingProfitRequest, CraftingProfitResolutionResponse, CraftingProfitResponse } from '@/api/types'
 import type { SyncApi } from '@/api/syncApi'
 import {
   PREFERENCE_KEY_PREFIX,
@@ -11,7 +11,7 @@ import {
 } from '@/materials/materialProtectionState'
 import { calculationKey } from '../useProfitResolution'
 import CraftingProfitScreen from '../CraftingProfitScreen.vue'
-import { DEFAULT_SETTINGS, FakeCraftingApi, deferred, echoedProfitResponse, profitableRow } from './fixtures'
+import { DEFAULT_SETTINGS, FakeCraftingApi, deferred, echoedProfitResponse, profitableRow, resolutionResponse } from './fixtures'
 
 const A = 'aaaaaaaa-0000-0000-0000-000000000001'
 const B = 'bbbbbbbb-0000-0000-0000-000000000002'
@@ -175,6 +175,105 @@ describe('Crafting Profit material protection', () => {
   })
 })
 
+describe('committed-context watcher request counts', () => {
+  it('does not recalculate for saved-selection edits while protection is off', async () => {
+    commit([3])
+    const fake = api()
+    await open(fake)
+    const count = fake.profitRequests.length
+    commit([3, 4])
+    await flushPromises()
+    expect(fake.profitRequests).toHaveLength(count)
+  })
+
+  it('does not submit during transient null identity, then calculates once for the validated account', async () => {
+    commit([3])
+    useMaterialProtection().setActivation(true)
+    const fake = api()
+    const slow = deferred<CraftingProfitResponse>()
+    const w = mount(CraftingProfitScreen, { props: { api: fake, refreshApi: syncApi } })
+    await flushPromises()
+    const count = fake.profitRequests.length
+    fake.profitHandler = () => slow.promise
+    connection.accountId = null
+    await flushPromises()
+    expect(fake.profitRequests).toHaveLength(count)
+    connection.accountId = B
+    await flushPromises()
+    expect(fake.profitRequests).toHaveLength(count + 1)
+    expect(fake.profitRequests.at(-1)!.settings?.materialProtectionEnabled).not.toBe(true)
+    expect(w.exists()).toBe(true)
+  })
+
+  it('rejects an in-flight response that was overtaken by a null identity', async () => {
+    commit([3])
+    useMaterialProtection().setActivation(true)
+    const fake = api()
+    const slow = deferred<CraftingProfitResponse>()
+    fake.profitHandler = () => slow.promise
+    const w = mount(CraftingProfitScreen, { props: { api: fake, refreshApi: syncApi } })
+    await flushPromises()
+    connection.accountId = null
+    await flushPromises()
+    slow.resolve(echo({ settings: { ...DEFAULT_SETTINGS, materialProtectionEnabled: true, protectedItemIds: [3] } }))
+    await flushPromises()
+    expect(w.find('[data-test="summary"]').exists()).toBe(false)
+  })
+})
+
+describe('delayed detail responses', () => {
+  it('cannot reappear after the committed set changes, and detail uses the list echo', async () => {
+    commit([3])
+    useMaterialProtection().setActivation(true)
+    const fake = api()
+    const w = await open(fake)
+    const slow = deferred<CraftingProfitResolutionResponse>()
+    const original = fake.resolutionHandler
+    fake.resolutionHandler = (request, index) => (index === 0 ? slow.promise : original(request, index))
+    await w.findAll('tbody tr')[0]!.trigger('click')
+    await flushPromises()
+    const first = fake.resolutionRequests[0]!
+    expect(first.calculation.settings).toMatchObject({ materialProtectionEnabled: true, protectedItemIds: [3] })
+    expect(first.basedOnCalculationId).toBeDefined()
+    // New list is held back: the interval before the new list returns.
+    const list = deferred<CraftingProfitResponse>()
+    fake.profitHandler = () => list.promise
+    commit([3, 4])
+    await flushPromises()
+    slow.resolve(resolutionResponse(first))
+    await flushPromises()
+    expect(w.find('[data-test="resolution-tree"]').exists()).toBe(false)
+    expect(fake.resolutionRequests).toHaveLength(1)
+    list.resolve(echo({ settings: { ...DEFAULT_SETTINGS, materialProtectionEnabled: true, protectedItemIds: [3, 4] } }))
+    await flushPromises()
+    // Any detail now shown belongs to a request made from the new list's echoed settings.
+    const latest = fake.resolutionRequests.at(-1)!
+    if (fake.resolutionRequests.length > 1) {
+      expect(latest.calculation.settings).toMatchObject({ materialProtectionEnabled: true, protectedItemIds: [3, 4] })
+    }
+  })
+
+  it('cannot reappear after an activation change or account switch', async () => {
+    commit([3])
+    useMaterialProtection().setActivation(true)
+    const fake = api()
+    const w = await open(fake)
+    const slow = deferred<CraftingProfitResolutionResponse>()
+    fake.resolutionHandler = () => slow.promise
+    await w.findAll('tbody tr')[0]!.trigger('click')
+    await flushPromises()
+    const first = fake.resolutionRequests[0]!
+    await toggle(w).setValue(false)
+    await flushPromises()
+    slow.resolve(resolutionResponse(first))
+    await flushPromises()
+    expect(w.find('[data-test="resolution-tree"]').exists()).toBe(false)
+    connection.accountId = B
+    await flushPromises()
+    expect(w.find('[data-test="resolution-tree"]').exists()).toBe(false)
+  })
+})
+
 describe('protection context comparison', () => {
   it('ignores ID order and duplicates, notices real changes', () => {
     const base = { ...DEFAULT_SETTINGS, materialProtectionEnabled: true }
@@ -198,6 +297,49 @@ describe('storage recovery', () => {
     expect(m.state.diagnostic).toBe('write-failed')
     fail = false
     m.setActivation(true)
+    expect(m.state.diagnostic).toBeNull()
+  })
+})
+
+describe('storage recovery of recovered diagnostics', () => {
+  const memory = (raw: string | null, failRead = false) => {
+    const data = new Map<string, string>()
+    if (raw !== null) data.set(PREFERENCE_KEY_PREFIX + A, raw)
+    return {
+      data,
+      storage: {
+        getItem: (k: string) => {
+          if (failRead) throw new Error('read')
+          return data.get(k) ?? null
+        },
+        setItem: (k: string, v: string) => void data.set(k, v),
+        removeItem: (k: string) => void data.delete(k)
+      }
+    }
+  }
+
+  it.each([
+    ['corrupt', '{not json'],
+    ['unsupported-version', JSON.stringify({ version: 99, protectedItemIds: [1], enabled: true })]
+  ])('clears %s after a successful save and reload restores the saved values', (diagnostic, raw) => {
+    const { storage, data } = memory(raw)
+    const m = createMaterialProtectionState({ storage, accountId: () => A })
+    expect(m.state.diagnostic).toBe(diagnostic)
+    m.setPending([5, 2])
+    m.commit()
+    expect(m.state.diagnostic).toBeNull()
+    const reloaded = createMaterialProtectionState({ storage, accountId: () => A })
+    expect(reloaded.state.diagnostic).toBeNull()
+    expect(reloaded.state.committed).toEqual([2, 5])
+    expect(data.size).toBe(1)
+  })
+
+  it('clears read-failed after a successful commit', () => {
+    const { storage } = memory(null, true)
+    const m = createMaterialProtectionState({ storage, accountId: () => A })
+    expect(m.state.diagnostic).toBe('read-failed')
+    m.setPending([7])
+    m.commit()
     expect(m.state.diagnostic).toBeNull()
   })
 })
