@@ -175,6 +175,47 @@ class CraftingResolverBoundMaterialTest {
         assertEquals(14, need.getOpportunityCostCopper());
     }
 
+    private static Map<Integer, List<Recipe>> fractionalBRecipes() {
+        return Map.of(B, List.of(CraftTestFixtures.recipe(1, B, 3,
+                List.of(CraftTestFixtures.ingredient(A, 1)))));
+    }
+
+    private static int resolveBoundCost(PlanState state, int qty) {
+        PlannerContext ctx = CraftTestFixtures.context(fractionalBRecipes(),
+                Map.of(A, CraftTestFixtures.quote(10, 10)), CraftTestFixtures.defaultSettings(), Set.of())
+                .withVendorValues(Map.of());
+        return new CraftingResolver().resolveNeed(B, qty, ctx, state, true).getOpportunityCostCopper();
+    }
+
+    @Test
+    void splitBoundConsumptionChargesCumulativeRoundedTotal() {
+        // 10 copper / 3 outputs; 1 + 1 + 2 units. Old per-call rounding: 4 + 4 + 7 = 15.
+        PlanState state = CraftTestFixtures.stateWithBoundInventory(Map.of(), Map.of(B, 4));
+        int first = resolveBoundCost(state, 1);
+        int second = resolveBoundCost(state, 1);
+        int third = resolveBoundCost(state, 2);
+        assertEquals(4, first);   // ceil(10/3)
+        assertEquals(3, second);  // ceil(20/3)=7 - 4
+        assertEquals(7, third);   // ceil(40/3)=14 - 7
+        assertEquals(14, first + second + third);
+    }
+
+    @Test
+    void boundCumulativeChargeFollowsRollbackAndFreshState() {
+        PlanState state = CraftTestFixtures.stateWithBoundInventory(Map.of(), Map.of(B, 4));
+        int mark = state.mark();
+        assertEquals(4, resolveBoundCost(state, 1));
+        assertEquals(10, resolveBoundCost(state, 3)); // ceil(40/3)=14 minus the 4 already charged
+        state.rollbackTo(mark);
+        assertEquals(0, state.consumedBoundQuantity(B));
+        // after reset the cumulative count restarts: same sequence gives the same charges
+        assertEquals(4, resolveBoundCost(state, 1));
+        assertEquals(3, resolveBoundCost(state, 1));
+        assertEquals(7, resolveBoundCost(state, 2));
+        PlanState fresh = CraftTestFixtures.stateWithBoundInventory(Map.of(), Map.of(B, 4));
+        assertEquals(14, resolveBoundCost(fresh, 4));
+    }
+
     @Test
     void vendorValueUsedWhenNoCompleteCraftingValueExists() {
         // ingredient has no price and no vendor value -> recipe incomplete -> vendor fallback

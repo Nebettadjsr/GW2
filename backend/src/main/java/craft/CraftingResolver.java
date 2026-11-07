@@ -160,7 +160,11 @@ public class CraftingResolver {
                 // recursive crafting cost, then vendor value, then explicit unvalued zero. This is
                 // valuation only: nothing is bought, consumed or recorded for the ingredients.
                 OwnedValue boundValue = resolveOwnedFallbackValue(itemId, ctx);
-                oppCost += boundValue.costOf(consumption.usedBound());
+                // Charge the difference of cumulative rounded totals so fractional per-unit
+                // values never round up independently for each requirement.
+                int boundConsumed = state.consumedBoundQuantity(itemId);
+                oppCost += boundValue.costOf(boundConsumed)
+                        - boundValue.costOf(boundConsumed - consumption.usedBound());
                 if (boundValue.isZero()) unvalued = true;
             }
             result.setOpportunityCostCopper(oppCost);

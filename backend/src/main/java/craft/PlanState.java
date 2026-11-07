@@ -30,6 +30,7 @@ public class PlanState {
 
     public final Map<Integer, Integer> inventory;
     private final Map<Integer, Integer> initialSellableInventory;
+    private final Map<Integer, Integer> initialBoundTotals;
 
     /**
      * Owned quantity that is account-bound or soulbound-and-usable-by-the-selected-character
@@ -114,6 +115,9 @@ public class PlanState {
                       Map<String, Map<Integer, Integer>> characterBoundInventory) {
         this.inventory = new HashMap<>(sellableInventory);
         this.initialSellableInventory = Map.copyOf(sellableInventory);
+        Map<Integer, Integer> boundTotals = new HashMap<>(accountBoundInventory);
+        for (var stock : characterBoundInventory.values()) stock.forEach((k, v) -> boundTotals.merge(k, v, Integer::sum));
+        this.initialBoundTotals = Map.copyOf(boundTotals);
         this.boundInventory = new HashMap<>(accountBoundInventory);
         this.characterBoundInventory = new HashMap<>();
         for (var e : characterBoundInventory.entrySet()) {
@@ -130,6 +134,7 @@ public class PlanState {
     public PlanState(PlanState other) {
         this.inventory = new HashMap<>(other.inventory);
         this.initialSellableInventory = other.initialSellableInventory;
+        this.initialBoundTotals = other.initialBoundTotals;
         this.boundInventory = new HashMap<>(other.boundInventory);
         this.characterBoundInventory = new HashMap<>();
         for (var e : other.characterBoundInventory.entrySet()) {
@@ -346,6 +351,13 @@ public class PlanState {
     /** Cumulative consumption follows the journalled inventory, including speculative rollback. */
     public int consumedSellableQuantity(int itemId) {
         return initialSellableInventory.getOrDefault(itemId, 0) - inventory.getOrDefault(itemId, 0);
+    }
+
+    /** Cumulative account-bound plus soulbound consumption, following journalled rollback. */
+    public int consumedBoundQuantity(int itemId) {
+        int remaining = boundInventory.getOrDefault(itemId, 0);
+        for (var stock : characterBoundInventory.values()) remaining += stock.getOrDefault(itemId, 0);
+        return initialBoundTotals.getOrDefault(itemId, 0) - remaining;
     }
 
     private int consumeBoundInventory(int itemId, int qtyWanted) {
