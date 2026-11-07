@@ -8,7 +8,8 @@ import type { CalculationFreshness } from '@/api/types'
  *
  * Three situations, never two at once:
  *
- * - **refreshing** — the backend answered from inputs it does not consider current, so the cached
+ * - **refreshing** — (with last-good rows the chip stands alone; the explanatory lines appear only
+ *   when there are no rows to show) the backend answered from inputs it does not consider current, so the cached
  *   result stays on screen while the refresh it admitted runs. The chip reuses the Trading Post
  *   price warning's visual form (a small bordered label beside the results) with a green animated
  *   border instead of the red outline.
@@ -113,18 +114,22 @@ function names(sources: { source: string }[]): string {
         <span aria-hidden="true">↻</span> Stale data – refreshing…
       </span>
 
-      <span class="meta detail-line" data-test="stale-data-explanation">{{ explanation }}</span>
+      <span v-if="isPending" class="meta detail-line" data-test="stale-data-explanation">
+        {{ explanation }}
+      </span>
 
       <span
-        v-if="refreshing.length > 0"
+        v-if="isPending && refreshing.length > 0"
         class="meta detail-line"
         data-test="stale-data-outstanding"
       >
         Refreshing: {{ refreshing.join(' · ') }}
       </span>
 
-      <span class="meta detail-line" data-test="stale-data-account">{{ accountSummary }}</span>
-      <span class="meta detail-line" data-test="stale-data-trading-post">{{ tradingPostSummary }}</span>
+      <span v-if="isPending" class="meta detail-line" data-test="stale-data-account">{{ accountSummary }}</span>
+      <span v-if="isPending" class="meta detail-line" data-test="stale-data-trading-post">
+        {{ tradingPostSummary }}
+      </span>
     </p>
 
     <p v-else class="notice notice--warning" role="alert" data-test="refresh-failed">

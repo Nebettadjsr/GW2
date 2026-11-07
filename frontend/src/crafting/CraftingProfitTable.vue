@@ -278,6 +278,12 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
   text-align: left;
 }
 
+/* Row hover is the pointer cue; the name button gets no box of its own (keyboard focus keeps the
+   global :focus-visible outline). */
+.recipe-select:hover:not(:disabled) {
+  border-color: transparent;
+}
+
 .recipe-marker {
   width: 0.75rem;
   color: var(--color-highlight);
