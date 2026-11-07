@@ -356,6 +356,46 @@ class BuildMetadataRepairTest {
         assertEquals("CONFLICT", s7.traits().get(2).placement(), "selected Minor in a major selection");
     }
 
+    @Test
+    void persistedIncompleteRowsStayUnresolvedAfterFailedRepairWhileCompleteSiblingsResolve() throws Exception {
+        publishRoster(A, "Ana");
+        publishBuilds(A, A_ID);
+        exec("INSERT INTO build_specializations VALUES (7,'Old7',NULL,false,NULL,'{701,703}','{711}',now())");
+        exec("INSERT INTO build_specializations VALUES (9,'Spec9','Ranger',true,NULL,'{}','{}',now())");
+        exec("INSERT INTO build_traits (trait_id,name,specialization_id,tier,trait_order,slot,fetched_at) "
+                + "VALUES (701,'Old701',7,NULL,NULL,'Minor',now()),(703,'Tr703',7,3,0,'Minor',now())");
+        FakeSource down = fullSource();
+        down.fail = true;
+        new BuildMetadataRepair(down, NOW).repairStored(A);
+        var specs = body(read(A, A_ID, "Ana")).tabs().get(0).specializations();
+        assertFalse(specs.get(0).specialization().resolved(), "incomplete specialization stays unresolved");
+        assertEquals(7, specs.get(0).specialization().id());
+        assertNull(specs.get(0).minorTraits());
+        assertEquals(701, specs.get(0).traits().get(0).id(), "original id preserved");
+        assertFalse(specs.get(0).traits().get(0).resolved(), "incomplete trait stays unresolved");
+        assertEquals("UNRESOLVED", specs.get(0).traits().get(0).placement());
+        assertTrue(specs.get(2).specialization().resolved(), "complete sibling stays resolved");
+    }
+
+    @Test
+    void selectedTraitInheritsDuplicateConflictFromOfferedMajorChoices() throws Exception {
+        publishRoster(A, "Ana");
+        String tabs = TABS.replace("[701,null,703]", "[711,712,731]");
+        CharacterBuildTabsSync.sync(A, url -> url.endsWith("/v2/account")
+                ? M.readTree("{\"id\":\"" + A_ID + "\"}") : M.readTree(tabs));
+        FakeSource source = fullSource();
+        source.bodies.put("traits", "["
+                + "{\"id\":711,\"name\":\"dup1\",\"specialization\":7,\"tier\":1,\"order\":0,\"slot\":\"Major\"},"
+                + "{\"id\":712,\"name\":\"dup2\",\"specialization\":7,\"tier\":1,\"order\":0,\"slot\":\"Major\"},"
+                + "{\"id\":731,\"name\":\"clean\",\"specialization\":7,\"tier\":3,\"order\":0,\"slot\":\"Major\"}]");
+        new BuildMetadataRepair(source, NOW).repairStored(A);
+        var s7 = body(read(A, A_ID, "Ana")).tabs().get(0).specializations().get(0);
+        assertEquals("CONFLICT", s7.traits().get(0).placement());
+        assertEquals("CONFLICT", s7.traits().get(1).placement());
+        assertEquals("ORDINARY", s7.traits().get(2).placement(), "clean sibling stays ordinary");
+        assertEquals("CONFLICT", s7.majorTraits().get(0).placement());
+    }
+
     // ---- production wiring: AccountRefreshGateway.syncCharacterBuildTabs ----
 
     private AccountRefreshGateway gateway(FakeSource source) {

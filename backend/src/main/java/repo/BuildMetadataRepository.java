@@ -214,7 +214,8 @@ public class BuildMetadataRepository {
         if (!refs.specializations().isEmpty()) {
             try (PreparedStatement ps = con.prepareStatement("""
                     SELECT specialization_id, name, profession, elite, icon_url, minor_traits, major_traits
-                    FROM build_specializations WHERE specialization_id = ANY(?)""")) {
+                    FROM build_specializations WHERE specialization_id = ANY(?)\sAND\s"""
+                    + completeCondition(BuildResourceType.SPECIALIZATIONS))) {
                 ps.setArray(1, con.createArrayOf("integer", refs.specializations().toArray()));
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) specs.put(rs.getInt(1), new SpecRow(rs.getInt(1), rs.getString(2), rs.getString(3),
@@ -228,7 +229,7 @@ public class BuildMetadataRepository {
         if (!traitIds.isEmpty()) {
             try (PreparedStatement ps = con.prepareStatement("""
                     SELECT trait_id, name, icon_url, specialization_id, tier, trait_order, slot FROM build_traits
-                    WHERE trait_id = ANY(?)""")) {
+                    WHERE trait_id = ANY(?)\sAND\s""" + completeCondition(BuildResourceType.TRAITS))) {
                 ps.setArray(1, con.createArrayOf("integer", traitIds.toArray()));
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
@@ -261,7 +262,7 @@ public class BuildMetadataRepository {
         Map<Integer, NamedRow> out = new HashMap<>();
         if (ids.isEmpty()) return out;
         try (PreparedStatement ps = con.prepareStatement("SELECT " + type.idColumn() + ", name, icon_url FROM "
-                + type.table() + " WHERE " + type.idColumn() + " = ANY(?)")) {
+                + type.table() + " WHERE " + type.idColumn() + " = ANY(?) AND " + completeCondition(type))) {
             ps.setArray(1, con.createArrayOf("integer", ids.toArray()));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) out.put(rs.getInt(1), new NamedRow(rs.getInt(1), rs.getString(2), rs.getString(3)));

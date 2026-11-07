@@ -111,15 +111,17 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
                 : new SpecRef(s.id(), true, row.name(), url(BuildResourceType.SPECIALIZATIONS, s.id(), row.iconUrl()),
                         row.profession(), row.elite());
         Set<Integer> offeredMajor = row == null ? Set.of() : new HashSet<>(row.majorTraits());
+        Set<Integer> dupMajor = row == null ? Set.of() : duplicates(row.majorTraits(), m);
         List<TraitRef> selected = s.traits() == null ? null
                 : s.traits().stream().map(i -> i == null ? null
-                        : trait(i, m, s.id(), "Major", row == null || offeredMajor.contains(i), null)).toList();
+                        : trait(i, m, s.id(), "Major", row == null || offeredMajor.contains(i), dupMajor.contains(i))).toList();
         return new SpecializationDto(spec, selected,
                 row == null ? null : choices(row.minorTraits(), m, s.id(), "Minor"),
                 row == null ? null : choices(row.majorTraits(), m, s.id(), "Major"));
     }
 
-    private static List<TraitRef> choices(List<Integer> ids, Metadata m, Integer owner, String slot) {
+    /** Ids among {@code ids} that share their id or their tier/order with another offered choice. */
+    private static Set<Integer> duplicates(List<Integer> ids, Metadata m) {
         Map<String, Integer> keyCount = new HashMap<>();
         Map<Integer, Integer> idCount = new HashMap<>();
         for (int i : ids) {
@@ -127,12 +129,18 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
             var t = m.traits().get(i);
             if (t != null && t.tier() != null && t.order() != null) keyCount.merge(t.tier() + "/" + t.order(), 1, Integer::sum);
         }
-        return ids.stream().map(i -> {
+        Set<Integer> dup = new HashSet<>();
+        for (int i : ids) {
             var t = m.traits().get(i);
-            boolean dup = idCount.get(i) > 1
-                    || (t != null && t.tier() != null && t.order() != null && keyCount.get(t.tier() + "/" + t.order()) > 1);
-            return trait(i, m, owner, slot, true, dup);
-        }).toList();
+            if (idCount.get(i) > 1
+                    || (t != null && t.tier() != null && t.order() != null && keyCount.get(t.tier() + "/" + t.order()) > 1)) dup.add(i);
+        }
+        return dup;
+    }
+
+    private static List<TraitRef> choices(List<Integer> ids, Metadata m, Integer owner, String slot) {
+        Set<Integer> dup = duplicates(ids, m);
+        return ids.stream().map(i -> trait(i, m, owner, slot, true, dup.contains(i))).toList();
     }
 
     /** {@code offered} false or {@code duplicate} true marks a conflict; the expected owner/slot are checked here. */
