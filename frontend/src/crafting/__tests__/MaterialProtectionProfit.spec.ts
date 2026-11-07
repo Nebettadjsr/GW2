@@ -160,6 +160,29 @@ describe('Crafting Profit material protection', () => {
     expect(w.find('[data-test="summary"]').exists()).toBe(true)
   })
 
+  it('shows the empty-selection warning as a floating alert that can be dismissed', async () => {
+    const w = await open(api())
+    await toggle(w).setValue(true)
+    const warn = w.find('[data-test="protection-empty-warning"]')
+    expect(warn.classes()).toContain('protection__popup')
+    expect(warn.find('a[href="#/bank"]').exists()).toBe(true)
+    expect(warn.find('a[href="#/materials"]').exists()).toBe(true)
+    await w.find('[data-test="protection-warning-dismiss"]').trigger('click')
+    expect(w.find('[data-test="protection-empty-warning"]').exists()).toBe(false)
+    await toggle(w).setValue(true)
+    expect(w.find('[data-test="protection-empty-warning"]').exists()).toBe(true)
+    await w.find('[data-test="protection-control"]').trigger('keydown', { key: 'Escape' })
+    expect(w.find('[data-test="protection-empty-warning"]').exists()).toBe(false)
+    expect(useMaterialProtection().state.activation).toBe(false)
+  })
+
+  it('places the protection block below the calculation grid, not inside it', async () => {
+    const w = await open(api())
+    const control = w.find('[data-test="protection-control"]')
+    expect(control.element.closest('.calculation-layout')).toBeNull()
+    expect(control.element.closest('[data-test="calculation-controls"]')).not.toBeNull()
+  })
+
   it('shows an unconfirmed error when the backend omits the protection echo', async () => {
     commit([3])
     useMaterialProtection().setActivation(true)

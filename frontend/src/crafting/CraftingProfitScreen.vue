@@ -267,9 +267,9 @@ function onMaximumDisplayedChange(event: Event): void {
                 layout-part="checks"
                 @apply="onSettingsApplied"
               />
-              <MaterialProtectionControl />
             </div>
           </div>
+          <MaterialProtectionControl class="calculation-protection" />
         </section>
 
         <section class="control-column control-column--display">
