@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nextTick, reactive } from 'vue'
+import { createApp, defineComponent, h, nextTick, reactive } from 'vue'
 import {
   PREFERENCE_KEY_PREFIX,
   canonicalIds,
   createMaterialProtectionState,
+  resetMaterialProtection,
+  useMaterialProtection,
   type MaterialProtectionState,
   type PreferenceStorage
 } from '../materialProtectionState'
 import { connectKey, connection, disconnect, installAccountSession, resetAccountSession } from '@/api/accountSession'
-import { installAccountTransport } from '@/api/http'
+import { getJson, installAccountTransport } from '@/api/http'
 
 class FakeStorage implements PreferenceStorage {
   data = new Map<string, string>()
@@ -247,6 +249,75 @@ describe('storage degradation and stored values', () => {
   })
 })
 
+describe('newest-request and shared-lifetime regressions', () => {
+  const full = (ids: number[]) => ({ materialProtectionEnabled: true, protectedItemIds: ids })
+
+  it('accepts only the newest of two requests started in the same account and edit state', () => {
+    const m = make()
+    source.id = A
+    const older = m.beginRequest()
+    const newer = m.beginRequest()
+    expect(m.reconcile(newer, full([2]))).toBe(true)
+    expect(m.reconcile(older, full([9]))).toBe(false)
+    expect(m.state.effective?.protectedItemIds).toEqual([2])
+
+    const first = m.beginRequest()
+    m.beginRequest()
+    expect(m.reconcile(first, full([7]))).toBe(false)
+    expect(m.state.effective?.protectedItemIds).toEqual([2])
+  })
+
+  it('clears effective protection on a current response with missing fields, ignores a stale one', () => {
+    const m = make()
+    source.id = A
+    m.setPending([1])
+    m.commit()
+    expect(m.reconcile(m.beginRequest(), full([1]))).toBe(true)
+    const stale = m.beginRequest()
+    const current = m.beginRequest()
+    expect(m.reconcile(stale, {})).toBe(false)
+    expect(m.state.effective).not.toBeNull()
+    expect(m.reconcile(current, {})).toBe(false)
+    expect(m.state.effective).toBeNull()
+    expect(m.state.committed).toEqual([1])
+
+    expect(m.reconcile(m.beginRequest(), full([1]))).toBe(true)
+    expect(m.reconcile(m.beginRequest(), null)).toBe(false)
+    expect(m.state.effective).toBeNull()
+    expect(m.state.committed).toEqual([1])
+  })
+
+  it('keeps following the account after the first consumer component unmounts', () => {
+    resetMaterialProtection()
+    // The shared instance reads the real connection; emulate it with a first use inside a component.
+    const Consumer = defineComponent({ setup() { useMaterialProtection(); return () => h('div') } })
+    const app = createApp(Consumer)
+    app.mount(document.createElement('div'))
+    const shared = useMaterialProtection()
+    app.unmount()
+    connection.accountId = A
+    expect(shared.state.accountId).toBe(A)
+    shared.setPending([4])
+    shared.commit()
+    connection.accountId = B
+    expect(shared.state.accountId).toBe(B)
+    expect(shared.state.committed).toEqual([])
+    expect(shared.state.pending).toEqual([])
+    shared.setPending([8])
+    shared.commit()
+    const written = [...Object.keys(window.localStorage)].filter((k) => k.startsWith(PREFERENCE_KEY_PREFIX))
+    expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).toContain('[4]')
+    expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + B)).toContain('[8]')
+    expect(written.length).toBe(2)
+    resetMaterialProtection()
+    expect(shared.state.accountId).toBeNull()
+    connection.accountId = A
+    expect(shared.state.accountId).toBeNull()
+    connection.accountId = null
+    window.localStorage.clear()
+  })
+})
+
 describe('integration with the account session', () => {
   let fetchCalls: string[]
   beforeEach(() => {
@@ -297,7 +368,35 @@ describe('integration with the account session', () => {
     expect([...storage.data.keys()].sort()).toEqual([PREFERENCE_KEY_PREFIX + A, PREFERENCE_KEY_PREFIX + B])
   })
 
-  it('keeps the partition on renewal of the same account and tolerates a missing accountId', async () => {
+  it('preserves committed and pending state across genuine same-account lease renewal', async () => {
+    const m = createMaterialProtectionState({ storage })
+    created.push(m)
+    currentId = A
+    let sessions = 0
+    let reads = 0
+    vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+      fetchCalls.push(input)
+      if (input.endsWith('/session')) {
+        sessions += 1
+        return new Response(JSON.stringify({ accountId: A, accessContext: `ctx-${sessions}`, expiresAt: '2099-01-01T00:00:00Z', grants: [] }), { status: 200 })
+      }
+      reads += 1
+      return reads === 1
+        ? new Response(JSON.stringify({ error: 'SESSION_REQUIRED', message: 'Prove' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+        : new Response(JSON.stringify({ ok: 1 }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+    await connectKey('KEY')
+    m.setPending([4])
+    m.commit()
+    m.setPending([4, 6])
+    await expect(getJson('/account/bank')).resolves.toEqual({ ok: 1 })
+    expect(sessions).toBe(2)
+    expect(m.state.accountId).toBe(A)
+    expect(m.state.committed).toEqual([4])
+    expect(m.state.pending).toEqual([4, 6])
+  })
+
+  it('keeps the partition on explicit replacement with the same account and tolerates a missing accountId', async () => {
     const m = createMaterialProtectionState({ storage })
     created.push(m)
     currentId = A

@@ -1,4 +1,4 @@
-import { computed, reactive, watch, type ComputedRef } from 'vue'
+import { computed, effectScope, reactive, watch, type ComputedRef } from 'vue'
 import { connection } from '@/api/accountSession'
 import type { EffectiveSettings } from '@/api/types'
 
@@ -45,6 +45,8 @@ interface StoredPreference {
 export interface RequestToken {
   readonly accountId: string
   readonly editVersion: number
+  /** Monotonic request order: only the newest started request may reconcile. */
+  readonly sequence: number
 }
 
 export interface EffectiveProtection {
@@ -102,8 +104,12 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
   let epoch = 0
   /** Bumped on every local edit and account change; guards delayed canonical responses. */
   let editVersion = 0
+  /** Last started request; a canonical response is accepted only from this one. */
+  let requestSequence = 0
+  /** Detached so the watcher outlives whichever component first created the instance. */
+  const scope = effectScope(true)
 
-  const dirty: ComputedRef<boolean> = computed(() => !sameIds(state.pending, state.committed))
+  const dirty: ComputedRef<boolean> = scope.run(() => computed(() => !sameIds(state.pending, state.committed)))!
 
   function keyFor(accountId: string): string {
     return PREFERENCE_KEY_PREFIX + accountId
@@ -232,7 +238,13 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     }
   }
 
-  const stop = watch(currentAccountId, accountChanged, { flush: 'sync', immediate: true })
+  scope.run(() => watch(currentAccountId, accountChanged, { flush: 'sync', immediate: true }))
+  const stop = (): void => {
+    scope.stop()
+    epoch += 1
+    editVersion += 1
+    reset()
+  }
 
   function ready(): string | null {
     return state.status === 'ready' && state.accountId !== null ? state.accountId : null
@@ -281,18 +293,30 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
   /** Captures the account and edit state a later request is built from; null before restoration. */
   function beginRequest(): RequestToken | null {
     const accountId = ready()
-    return accountId === null ? null : { accountId, editVersion }
+    if (accountId === null) return null
+    requestSequence += 1
+    return { accountId, editVersion, sequence: requestSequence }
   }
 
   /**
    * Applies the backend's echoed settings to the effective state, only if the account and edit state
-   * are still those the request was built from. Omitted fields (older backend) change nothing.
+   * are still those the request was built from and it is the newest started request. A current response
+   * with omitted fields clears the effective claim; a stale one changes nothing.
    * The committed browser preference is never overwritten.
    */
   function reconcile(token: RequestToken | null, settings: Partial<EffectiveSettings> | null | undefined): boolean {
-    if (token === null || settings == null) return false
-    if (token.accountId !== state.accountId || token.editVersion !== editVersion || ready() === null) return false
-    if (typeof settings.materialProtectionEnabled !== 'boolean' || !Array.isArray(settings.protectedItemIds)) {
+    if (token === null) return false
+    if (
+      token.accountId !== state.accountId ||
+      token.editVersion !== editVersion ||
+      token.sequence !== requestSequence ||
+      ready() === null
+    ) {
+      return false
+    }
+    if (settings == null || typeof settings.materialProtectionEnabled !== 'boolean' || !Array.isArray(settings.protectedItemIds)) {
+      // The newest response makes no protection claim: drop any earlier effective claim only.
+      state.effective = null
       return false
     }
     state.effective = {
