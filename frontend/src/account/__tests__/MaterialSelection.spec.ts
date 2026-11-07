@@ -5,6 +5,8 @@ import { resetMaterialProtection, useMaterialProtection } from '@/materials/mate
 import BankScreen from '../BankScreen.vue'
 import MaterialsScreen from '../MaterialsScreen.vue'
 import InventoryTile from '../InventoryTile.vue'
+import InventoryRefresh from '../InventoryRefresh.vue'
+import { PREFERENCE_KEY_PREFIX } from '@/materials/materialProtectionState'
 import { FakeAccountApi, deferred, materialStorage } from './accountFixtures'
 
 const A = 'aaaaaaaa-0000-0000-0000-000000000001'
@@ -98,15 +100,112 @@ describe('Bank and Materials selection', () => {
     expect(useMaterialProtection().state.pending).toEqual([])
   })
 
-  it('selectionSurvivesRereadAndRefresh_whileInventoryUpdates', async () => {
+  it('selectionFollowsItemIds_whenReplacementInventoryChangesQuantitiesPositionsAndDuplicates', async () => {
     const api = new FakeAccountApi()
     const w = await open(MaterialsScreen, api)
-    await box(w, 2).setValue(true)
-    await w.find('[data-test="materials-reload"]').trigger('click')
+    const state = useMaterialProtection().state
+    await box(w, 0).setValue(true) // 12134
+    await box(w, 2).setValue(true) // 19698
+    await w.find('[data-test="selection-confirm"]').trigger('click')
+    await box(w, 1).setValue(true) // 19697 pending only
+    expect(state.committed).toEqual([12134, 19698])
+    expect(state.pending).toEqual([12134, 19697, 19698])
+
+    // Replacement: reordered positions, new counts, 12134 now three times, 19698 moved, a new item 555.
+    const replacement = {
+      categoryCount: 1,
+      categories: [{
+        category: 30, name: 'Zephyrite Supplies', order: 6,
+        materials: [
+          { position: 0, itemId: 555, count: 9, iconUrl: null, rarity: null },
+          { position: 1, itemId: 19698, count: 1, iconUrl: null, rarity: null },
+          { position: 2, itemId: 12134, count: 40, iconUrl: null, rarity: null },
+          { position: 3, itemId: 12134, count: 2, iconUrl: null, rarity: null },
+          { position: 4, itemId: 12134, count: 7, iconUrl: null, rarity: null },
+          { position: 5, itemId: 19697, count: 0, iconUrl: null, rarity: null }
+        ]
+      }]
+    }
+    api.materialsHandler = () => Promise.resolve(replacement as typeof materialStorage)
+    // Exercise the InventoryRefresh @updated path via the stub's emission.
+    w.findComponent(InventoryRefresh).vm.$emit('updated')
     await flushPromises()
     expect(api.materialCalls).toBe(2)
-    expect(useMaterialProtection().state.pending).toEqual([19698])
-    expect((box(w, 2).element as HTMLInputElement).checked).toBe(true)
+    expect(w.findAll('[data-test="material-stack"]').map((s) => s.text())).toEqual(
+      expect.arrayContaining([expect.stringContaining('40')]))
+    expect(boxes(w).map((c) => (c.element as HTMLInputElement).checked)).toEqual([false, true, true, true, true, true])
+    expect(boxes(w).map((c) => c.attributes('aria-label'))).toEqual(
+      ['Protect item #555', 'Protect item #19698', 'Protect item #12134', 'Protect item #12134', 'Protect item #12134', 'Protect item #19697'])
+    expect(state.pending).toEqual([12134, 19697, 19698])
+    expect(state.committed).toEqual([12134, 19698])
+    expect(w.find('[data-test="selection-state"]').text()).toContain('Unconfirmed changes')
+
+    // A cached reread via the reload button also leaves both sets untouched.
+    await w.find('[data-test="materials-reload"]').trigger('click')
+    await flushPromises()
+    expect(api.materialCalls).toBe(3)
+    expect(state.pending).toEqual([12134, 19697, 19698])
+    expect(state.committed).toEqual([12134, 19698])
+  })
+
+  it('bankRefreshWithMovedStacks_keepsSelectionByItemId', async () => {
+    const api = new FakeAccountApi()
+    const w = await open(BankScreen, api)
+    const state = useMaterialProtection().state
+    await box(w, 2).setValue(true) // 12134
+    api.bankHandler = () => Promise.resolve({
+      slotCount: 3,
+      slots: [
+        { slot: 0, itemId: 12134, count: 5, iconUrl: null, rarity: null },
+        { slot: 1, itemId: null, count: null, iconUrl: null, rarity: null },
+        { slot: 2, itemId: 12134, count: 1, iconUrl: null, rarity: null }
+      ]
+    } as never)
+    w.findComponent(InventoryRefresh).vm.$emit('updated')
+    await flushPromises()
+    expect(state.pending).toEqual([12134])
+    expect(state.committed).toEqual([])
+    expect(boxes(w).map((c) => (c.element as HTMLInputElement).checked)).toEqual([true, true])
+  })
+
+  it('showsSavedSelectionWording_andActivationDistinction', async () => {
+    const w = await open(MaterialsScreen, new FakeAccountApi())
+    const text = w.find('[data-test="selection-bar"]').text()
+    expect(text).toContain('Saved selection: 0 items.')
+    expect(text).not.toContain('Committed')
+    expect(w.find('[data-test="selection-activation-note"]').text())
+      .toContain('only affects calculations when material protection is turned on in Crafting Profit')
+    expect(w.find('[data-test="selection-storage-notice"]').exists()).toBe(false)
+  })
+
+  it('surfacesStorageProblem_whenBrowserStorageThrows_andKeepsMemoryCommitUsable', async () => {
+    const real = Storage.prototype.setItem
+    Storage.prototype.setItem = () => { throw new DOMException('full', 'QuotaExceededError') }
+    try {
+      const w = await open(MaterialsScreen, new FakeAccountApi())
+      await box(w, 2).setValue(true)
+      await w.find('[data-test="selection-confirm"]').trigger('click')
+      const notice = w.find('[data-test="selection-storage-notice"]')
+      expect(notice.text()).toContain('will not be kept after you restart')
+      expect(notice.attributes('role')).toBe('status')
+      expect(useMaterialProtection().state.committed).toEqual([19698])
+      expect(w.find('[data-test="selection-committed"]').text()).toContain('1 item.')
+      expect(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).toBeNull()
+    } finally {
+      Storage.prototype.setItem = real
+    }
+  })
+
+  it('surfacesStorageProblem_whenReadFails', async () => {
+    const real = Storage.prototype.getItem
+    Storage.prototype.getItem = () => { throw new Error('denied') }
+    try {
+      resetMaterialProtection()
+      const w = await open(BankScreen, new FakeAccountApi())
+      expect(w.find('[data-test="selection-storage-notice"]').text()).toContain('cannot save or restore')
+    } finally {
+      Storage.prototype.getItem = real
+    }
   })
 
   it('accountSwitchRemovesPriorSelectionImmediately_staleResponseCannotRestoreIt', async () => {
