@@ -160,6 +160,21 @@ class AccountAccessContractTest {
     }
 
     @Test
+    void characterRoutesRequireASessionAndAMatchingAccountBeforeAnyRead() throws Exception {
+        var a = prove("fixture-key-a");
+        for (String path : java.util.List.of("/api/account/characters", "/api/account/characters/Zed",
+                "/api/account/characters;x=1", "/api/account/characters/Two%20Words")) {
+            var uri = java.net.URI.create(path);
+            http.perform(get(uri)).andExpect(status().isUnauthorized());
+            http.perform(get(uri).cookie(a.cookie()).header("X-Account-Context", "stale-tab-context"))
+                    .andExpect(status().isForbidden());
+        }
+        http.perform(get("/api/account/characters").param("accountId", ACCOUNT_B)
+                        .cookie(a.cookie()).header("X-Account-Context", a.context()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void unauthenticatedAndMalformedProofResponsesFailClosedWithSafeStatus() throws Exception {
         http.perform(get("/api/account/luck")).andExpect(status().isUnauthorized());
         http.perform(post("/api/session").header("Origin", ORIGIN)

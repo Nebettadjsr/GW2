@@ -124,7 +124,8 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
     /** Account reads that read only scoped storage and so cannot run without a resolved scope. */
     private static boolean isScopedAccountRead(String path) {
         return path.equals("/api/account/bank") || path.equals("/api/account/materials")
-                || path.equals("/api/account/luck");
+                || path.equals("/api/account/luck")
+                || path.equals("/api/account/characters") || path.startsWith("/api/account/characters/");
     }
 
     /** The account-dependent crafting routes (STORY-API-011); other crafting routes are global. */
@@ -156,6 +157,9 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
             case "/api/account/luck" -> AccountOperation.LUCK_READ;
             case "/api/account/bank" -> AccountOperation.BANK_READ;
             case "/api/account/materials" -> AccountOperation.MATERIAL_STORAGE_READ;
+            // /api/account/characters[/{name}] deliberately declare no operation here: the read
+            // reports GRANT_REQUIRED / ENDPOINT_RESTRICTED as explicit states (STORY-CHAR-001), still
+            // against AccountOperation.CHARACTERS_READ, and still behind a live session.
             case "/api/crafting/profit", "/api/crafting/profit/resolution" -> AccountOperation.CRAFTING_PROFIT_READ;
             case "/api/crafting/selector-options" -> AccountOperation.CHARACTERS_READ;
             case "/api/crafting/discovery", "/api/crafting/discovery/resolution" -> AccountOperation.CRAFTING_PROFIT_READ;

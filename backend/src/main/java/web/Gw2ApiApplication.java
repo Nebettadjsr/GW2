@@ -319,6 +319,13 @@ public class Gw2ApiApplication {
         return application.ScopedSourceGate.database(Clock.systemUTC(), Duration.ofMillis(accountMaxAgeMs));
     }
 
+    /** Account-scoped Characters roster/detail reads over stored rows only (STORY-CHAR-001). */
+    @Bean
+    public application.CharacterRosterService characterRosterService(
+            application.ScopedSourceGate gate, ScopedAccountRefreshCoordinator coordinator) {
+        return new application.CharacterRosterService(gate, coordinator, new repo.CharacterRepository());
+    }
+
     /** The transport rules the session routes and the account guard must apply identically. */
     @Bean
     public AccountAccessHttp accountAccessHttp(

@@ -52,7 +52,7 @@ import java.util.function.Predicate;
  *       {@link TaskRecord}s hold the owner, required grants and sources only.</li>
  * </ul>
  */
-public class ScopedAccountRefreshCoordinator {
+public class ScopedAccountRefreshCoordinator implements CharacterRosterService.RefreshStatus {
 
     /** The reported operation; per-account exclusion uses {@code OPERATION + ":" + guid}. */
     public static final String OPERATION = AccountRefreshCoordinator.OPERATION;
@@ -482,6 +482,23 @@ public class ScopedAccountRefreshCoordinator {
     public synchronized Optional<CalculationFreshness.RefreshFailure> lastFailure(AccountScope scope) {
         Run run = history.get(scope.accountId());
         return run == null ? Optional.empty() : Optional.ofNullable(run.lastFailure);
+    }
+
+    /** True while an unfinished run of this account still has {@code source} outstanding. */
+    @Override
+    public synchronized boolean isRefreshing(AccountScope scope, String source) {
+        Run run = active.get(scope.accountId());
+        return run != null && run.outstanding.contains(source);
+    }
+
+    /**
+     * True when the account's most recent finished run failed and did not refresh {@code source}
+     * successfully, so the source's last-good data was not brought up to date by that attempt.
+     */
+    @Override
+    public synchronized boolean lastRefreshFailed(AccountScope scope, String source) {
+        Run run = history.get(scope.accountId());
+        return run != null && run.lastFailure != null && !run.lastRefreshed.contains(source);
     }
 
     /** True while the account has an unfinished run this coordinator admitted. */

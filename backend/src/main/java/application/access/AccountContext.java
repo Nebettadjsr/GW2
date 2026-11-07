@@ -40,6 +40,16 @@ public record AccountContext(String accountId,
                 || endpointRestrictions.containsAll(operation.upstreamEndpoints());
     }
 
+    /** True when the key lacks a grant the operation's sources require. */
+    public boolean lacksGrantFor(AccountOperation operation) {
+        return !grants.containsAll(operation.requiredGrants());
+    }
+
+    /** True when the key's URL restriction excludes an endpoint the operation's sources come from. */
+    public boolean restrictsEndpointOf(AccountOperation operation) {
+        return !endpointRestrictions.isEmpty() && !endpointRestrictions.containsAll(operation.upstreamEndpoints());
+    }
+
     /**
      * A caller-supplied account identifier is a consistency assertion only: it may agree with the
      * resolved scope, and it never selects one. Absent or blank asserts nothing.
