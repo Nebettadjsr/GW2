@@ -450,6 +450,70 @@ class CraftingProfitResolutionDetailTest {
         assertNull(service.getResultByRecipeId(1));
     }
 
+    // ------------------------------------------------ Material Protection list/detail agreement
+
+    @Test
+    void protectedListRowAndDetailAgreeWithoutExtraReadsAndUnprotectedRecalculationIsUnchanged()
+            throws SQLException {
+        Recipe target = new Recipe(51, 351, 1, 0, "Artificer", List.of(new Ingredient(551, 2)));
+        Recipe middle = new Recipe(52, 551, 1, 0, "Artificer", List.of(new Ingredient(651, 1)));
+        var fakes = new Fakes();
+        fakes.visible = List.of(target, middle);
+        fakes.graph = List.of(target, middle);
+        fakes.characters = List.of(new CharacterRepository.DiscRow("Aria", "Artificer", 400, true));
+        fakes.sellable = Map.of(551, 4, 651, 1);
+        fakes.accountBound = Map.of(551, 2);
+        fakes.characterBound = Map.of("Aria", Map.of(551, 3));
+        fakes.quotes = Map.of(351, new PriceQuote(1000, 1200), 551, new PriceQuote(30, 40),
+                651, new PriceQuote(5, 7));
+        var service = fakes.service();
+
+        CraftingSettings open = new CraftingSettings(true, true, 100000, false, true, false);
+        CraftingSettings guarded = new CraftingSettings(true, true, 100000, false, true, false,
+                true, List.of(551));
+        CraftingSettings emptySelection = new CraftingSettings(true, true, 100000, false, true, false,
+                true, List.of());
+
+        CraftResult unprotectedRow = service.reload(DiscChoice.all(), open).resultsByRecipeId().get(51);
+        CraftResult listRow = service.reload(DiscChoice.all(), guarded).resultsByRecipeId().get(51);
+        CraftingResolutionDetail detail = service.resolveDetail(51, DiscChoice.all(), guarded);
+        CraftResult detailRow = detail.row();
+
+        assertEquals(listRow.craftableCount, detailRow.craftableCount);
+        assertEquals(listRow.buyCostCopper, detailRow.buyCostCopper);
+        assertEquals(listRow.totalMatsSellValueCopper, detailRow.totalMatsSellValueCopper);
+        assertEquals(listRow.profitCopper, detailRow.profitCopper);
+        assertEquals(listRow.totalProfitCopper, detailRow.totalProfitCopper);
+        assertEquals(listRow.missingToBuy, detailRow.missingToBuy);
+        assertEquals(listRow.blockedReason, detailRow.blockedReason);
+
+        CraftTraceNode root = detail.explanation().root();
+        assertEquals(listRow.craftableCount, root.craftCount());
+        for (CraftTraceNode child : root.children()) {
+            if (child.itemId() == 551) {
+                assertEquals(0, child.inventoryQuantity(), "protected owned stock is never consumed");
+            }
+        }
+        assertNotEquals(unprotectedRow.totalMatsSellValueCopper, listRow.totalMatsSellValueCopper,
+                "protection must change the owned-material valuation for this fixture");
+
+        CraftResult after = service.reload(DiscChoice.all(), open).resultsByRecipeId().get(51);
+        CraftResult emptyRow = service.reload(DiscChoice.all(), emptySelection).resultsByRecipeId().get(51);
+        for (CraftResult r : List.of(after, emptyRow)) {
+            assertEquals(unprotectedRow.craftableCount, r.craftableCount);
+            assertEquals(unprotectedRow.buyCostCopper, r.buyCostCopper);
+            assertEquals(unprotectedRow.totalMatsSellValueCopper, r.totalMatsSellValueCopper);
+            assertEquals(unprotectedRow.totalProfitCopper, r.totalProfitCopper);
+            assertEquals(unprotectedRow.missingToBuy, r.missingToBuy);
+        }
+
+        // 4 reloads + 1 detail = 5 operations; each performs exactly one load of every source.
+        assertEquals(5, fakes.inventoryLoads.get());
+        assertEquals(5, fakes.quoteLoads.get());
+        assertEquals(5, fakes.characterLoads.get());
+        assertEquals(5, fakes.graphLoads.get());
+    }
+
     // ---------------------------------------------------------------------------- helpers
 
     private static CraftTraceNode onlyChild(CraftTraceNode node) {
