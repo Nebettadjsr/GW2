@@ -137,6 +137,15 @@ function failedEnvelope() {
       freshSource('MATERIALS'),
       freshSource('RECIPES')
     ],
+    tradingPost: {
+      requiredItems: 3_205,
+      freshItems: 3_000,
+      staleItems: 180,
+      missingItems: 25,
+      oldestFetchedAt: '2026-10-12T07:00:00Z',
+      newestFetchedAt: '2026-10-13T08:59:00Z',
+      covered: false
+    },
     outstandingWork: [],
     failures: [
       {
@@ -737,9 +746,20 @@ async function run() {
     check(await present(page, 'refresh-retry'), 'No retry is offered after recovery stopped.')
     const failedAccount = await textOf(page, 'refresh-failed-account')
     const failedPrices = await textOf(page, 'refresh-failed-trading-post')
+    // The values are the failedEnvelope fixture's own: three of four sources fresh, CHARACTERS
+    // expired; 3000 of 3205 prices fresh, 180 expired, 25 without a stored price.
     check(
-      failedAccount !== null && failedAccount.length > 0 && failedPrices !== null && failedPrices.length > 0,
-      `The failure lacks account/Trading Post context: ${JSON.stringify([failedAccount, failedPrices])}`
+      failedAccount !== null &&
+        failedAccount.includes('3 of 4 up to date') &&
+        failedAccount.includes('expired: CHARACTERS'),
+      `The failure's account context is not the supplied facts: ${JSON.stringify(failedAccount)}`
+    )
+    check(
+      failedPrices !== null &&
+        failedPrices.includes('3000 of 3205 required items') &&
+        failedPrices.includes('expired: 180') &&
+        failedPrices.includes('no stored price: 25'),
+      `The failure's Trading Post context is not the supplied facts: ${JSON.stringify(failedPrices)}`
     )
     check(await present(page, 'summary'), 'The ordinary summary is missing after the refresh ended.')
     const animating = await page.evaluate(() =>

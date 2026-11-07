@@ -345,6 +345,26 @@ describe('Crafting Profit provisional refresh workflow', () => {
       expect(clock.waiting()).toBe(0)
     })
 
+    it('keepsAProvisionalCalculatedZeroRowResultCompactWhilePendingKeepsItsExplanation', async () => {
+      const api = new FakeCraftingApi()
+      scriptedProfit(api, [profitResponse([], 'ALL', DEFAULT_SETTINGS, provisionalFreshness())])
+      const { wrapper } = await openScreen(api, recordingSyncApi(statesByTask({})))
+
+      // A successful CALCULATED result with no rows is honest about being empty, and its refresh
+      // indicator is the compact chip alone: no diagnostic prose is brought back for it.
+      expect(text(wrapper, 'empty')).toContain('The backend returned no recipes for this scope.')
+      expect(exists(wrapper, 'pending')).toBe(false)
+      expectQuietActiveRefresh(wrapper)
+
+      // A PENDING answer (nothing synchronized, nothing calculated) stays informative.
+      const pendingApi = new FakeCraftingApi()
+      scriptedProfit(pendingApi, [pendingProfitResponse()])
+      const pending = await openScreen(pendingApi, recordingSyncApi(statesByTask({})))
+      expect(exists(pending.wrapper, 'pending')).toBe(true)
+      expect(exists(pending.wrapper, 'empty')).toBe(false)
+      expect(exists(pending.wrapper, 'stale-data-explanation')).toBe(true)
+    })
+
     it('showsAPendingStateWithNoFabricatedRowForATwoHundredTwoAnswer', async () => {
       const api = new FakeCraftingApi()
       scriptedProfit(api, [
