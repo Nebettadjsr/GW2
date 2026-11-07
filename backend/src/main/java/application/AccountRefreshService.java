@@ -119,7 +119,11 @@ public class AccountRefreshService {
                 new ScopedStep(AccountSyncStateRepository.RECIPES, () -> gateway.syncAccountRecipes(scope, fetcher)),
                 new ScopedStep(AccountSyncStateRepository.LUCK, () -> gateway.syncAccountLuck(scope, fetcher)),
                 new ScopedStep(AccountSyncStateRepository.CHARACTERS,
-                        () -> gateway.syncCharacterCraftingAndRecipes(scope, fetcher)));
+                        () -> gateway.syncCharacterCraftingAndRecipes(scope, fetcher)),
+                // Optional coverage: only ever run when explicitly demanded. refreshAll below lists its
+                // sources explicitly and never includes it.
+                new ScopedStep(AccountSyncStateRepository.CHARACTER_EQUIPMENT_TABS,
+                        () -> gateway.syncCharacterEquipmentTabs(scope, fetcher)));
 
         Exception firstFailure = null;
         for (ScopedStep step : steps) {

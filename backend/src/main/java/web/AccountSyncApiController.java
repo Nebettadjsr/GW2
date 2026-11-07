@@ -67,6 +67,16 @@ public class AccountSyncApiController {
     /** Luck's single source: the narrow recovery for a never-published Luck, needing no Bank/characters/recipes grants. */
     private static final Set<String> LUCK_SOURCES = new LinkedHashSet<>(List.of(AccountSyncStateRepository.LUCK));
 
+    /** Optional saved-equipment-tab coverage only (STORY-CHAR-005); never part of any other source set. */
+    private static final Set<String> EQUIPMENT_TABS_SOURCES =
+            new LinkedHashSet<>(List.of(AccountSyncStateRepository.CHARACTER_EQUIPMENT_TABS));
+
+    /** Whether the account has a published CHARACTERS roster (the equipment-tabs parent). */
+    @FunctionalInterface
+    interface ParentPublished {
+        boolean test(model.AccountScope scope) throws Exception;
+    }
+
     /** How long a demand behind a narrower active run waits for it before it is reported as not covered. */
     static final java.time.Duration RECHECK_BOUND = java.time.Duration.ofSeconds(5);
     private static final int WAITING_RETRY_SECONDS = 10;
@@ -74,9 +84,23 @@ public class AccountSyncApiController {
     private final ScopedAccountRefreshCoordinator coordinator;
     private final AccountAccessHttp http;
 
+    private final ParentPublished parentPublished;
+
+    @org.springframework.beans.factory.annotation.Autowired
     public AccountSyncApiController(ScopedAccountRefreshCoordinator coordinator, AccountAccessHttp http) {
+        this(coordinator, http, scope -> {
+            try (var con = repo.Db.open()) {
+                return new repo.AccountSourceStateRepository()
+                        .read(con, scope, AccountSyncStateRepository.CHARACTERS).isPresent();
+            }
+        });
+    }
+
+    AccountSyncApiController(ScopedAccountRefreshCoordinator coordinator, AccountAccessHttp http,
+                             ParentPublished parentPublished) {
         this.coordinator = coordinator;
         this.http = http;
+        this.parentPublished = parentPublished;
     }
 
     /**
@@ -108,7 +132,22 @@ public class AccountSyncApiController {
         return admit(request, LUCK_SOURCES);
     }
 
+    /**
+     * Demands only the optional equipment-tab coverage. The key is proved first; then a published
+     * same-account CHARACTERS roster is required, otherwise nothing is admitted and no tab is fetched.
+     */
+    @PostMapping(path = "/account/character-equipment-tabs", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> syncCharacterEquipmentTabs(HttpServletRequest request,
+                                                        @RequestBody(required = false) Map<String, Object> body) {
+        SyncRequestValidation.rejectAnyRequestField("/api/sync/account/character-equipment-tabs", body);
+        return admit(request, EQUIPMENT_TABS_SOURCES, true);
+    }
+
     private ResponseEntity<?> admit(HttpServletRequest request, Set<String> sources) {
+        return admit(request, sources, false);
+    }
+
+    private ResponseEntity<?> admit(HttpServletRequest request, Set<String> sources, boolean needsParent) {
         if (!http.isSameOrigin(request)) {
             return error(HttpStatus.FORBIDDEN, "ORIGIN_REJECTED",
                     "This request did not come from this application's own origin");
@@ -122,7 +161,24 @@ public class AccountSyncApiController {
         String sessionId = AccountAccessHttp.presentedSessionId(request).orElseThrow();
         ScopedAccountRefreshCoordinator.Admission admission;
         try {
-            admission = coordinator.requireAfterBoundedWait(context, sessionId, apiKey, sources, RECHECK_BOUND);
+            if (needsParent) {
+                var proof = coordinator.verify(context, sessionId, apiKey, sources);
+                boolean published;
+                try {
+                    published = parentPublished.test(RequestAccountContext.scopeOf(request));
+                } catch (Exception e) {
+                    return error(HttpStatus.SERVICE_UNAVAILABLE, "DATA_STORE_UNAVAILABLE",
+                            "The character roster could not be checked right now");
+                }
+                if (!published) {
+                    return error(HttpStatus.CONFLICT, "PREREQUISITE_UNAVAILABLE",
+                            "Equipment tabs need a published character roster; refresh characters first");
+                }
+                admission = coordinator.requireAfterBoundedWait(context, sessionId, apiKey, sources, RECHECK_BOUND,
+                        proof);
+            } else {
+                admission = coordinator.requireAfterBoundedWait(context, sessionId, apiKey, sources, RECHECK_BOUND);
+            }
         } catch (ScopedAccountRefreshCoordinator.Rejected rejected) {
             return switch (rejected.reason()) {
                 case SESSION -> error(HttpStatus.UNAUTHORIZED, "SESSION_REQUIRED", "Prove a GW2 API key to continue");

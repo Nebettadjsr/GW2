@@ -56,6 +56,11 @@ public class AccountRefreshGateway {
         CharacterSync.syncCharactersCraftingAndRecipes(scope, fetcher, this::repairItemMetadata);
     }
 
+    public void syncCharacterEquipmentTabs(model.AccountScope scope, AccountSync.AuthFetcher fetcher)
+            throws Exception {
+        CharacterEquipmentTabsSync.sync(scope, fetcher, this::repairItemMetadata);
+    }
+
     /** Fetch public metadata before publishing new account IDs, outside the account transaction. */
     private void repairItemMetadata(java.util.Collection<Integer> ids) throws Exception {
         try (java.sql.Connection con = repo.Db.open()) {

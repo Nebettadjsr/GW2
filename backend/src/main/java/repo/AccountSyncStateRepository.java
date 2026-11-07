@@ -15,6 +15,8 @@ public final class AccountSyncStateRepository {
     public static final String RECIPES = "ACCOUNT_RECIPES";
     public static final String LUCK = "LUCK";
     public static final String CHARACTERS = "CHARACTERS";
+    /** Optional, independently refreshed saved-equipment-tab coverage of the CHARACTERS roster. */
+    public static final String CHARACTER_EQUIPMENT_TABS = "CHARACTER_EQUIPMENT_TABS";
 
     /**
      * Creates the legacy marker table on a pre-migration database, and refuses to run at all on a

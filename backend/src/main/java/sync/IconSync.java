@@ -90,15 +90,15 @@ public final class IconSync {
         INSERT INTO items (item_id, name, type, rarity, vendor_value, icon_url, fetched_at)
         VALUES (?, ?, ?, ?, ?, ?, now())
         ON CONFLICT (item_id) DO UPDATE SET
-          name         = COALESCE(items.name, EXCLUDED.name),
-          type         = COALESCE(items.type, EXCLUDED.type),
-          rarity       = COALESCE(items.rarity, EXCLUDED.rarity),
+          name         = COALESCE(NULLIF(btrim(items.name), ''), NULLIF(btrim(EXCLUDED.name), ''), items.name),
+          type         = COALESCE(NULLIF(btrim(items.type), ''), NULLIF(btrim(EXCLUDED.type), ''), items.type),
+          rarity       = COALESCE(NULLIF(btrim(items.rarity), ''), NULLIF(btrim(EXCLUDED.rarity), ''), items.rarity),
           vendor_value = COALESCE(items.vendor_value, EXCLUDED.vendor_value),
           icon_url     = COALESCE(EXCLUDED.icon_url, items.icon_url)
         WHERE (EXCLUDED.icon_url IS NOT NULL AND items.icon_url IS DISTINCT FROM EXCLUDED.icon_url)
-           OR (items.name IS NULL AND EXCLUDED.name IS NOT NULL)
-           OR (items.type IS NULL AND EXCLUDED.type IS NOT NULL)
-           OR (items.rarity IS NULL AND EXCLUDED.rarity IS NOT NULL)
+           OR (btrim(coalesce(items.name, '')) = '' AND btrim(coalesce(EXCLUDED.name, '')) <> '')
+           OR (btrim(coalesce(items.type, '')) = '' AND btrim(coalesce(EXCLUDED.type, '')) <> '')
+           OR (btrim(coalesce(items.rarity, '')) = '' AND btrim(coalesce(EXCLUDED.rarity, '')) <> '')
            OR (items.vendor_value IS NULL AND EXCLUDED.vendor_value IS NOT NULL)
         """;
 
@@ -268,7 +268,7 @@ public final class IconSync {
      * Completes metadata for item ids an account publication just stored (STORY-FIX-002): ids with no
      * {@code items} row or no {@code icon_url} are fetched from the canonical items endpoint and written
      * through the ordinary metadata upsert, so a first or later account sync needs no separate global
-     * refresh. Ids that already carry an icon source cost no upstream call.
+     * refresh. Ids that already carry an icon source and non-blank name, type and rarity cost no upstream call.
      *
      * <p>Best effort and bounded: an unavailable batch is reported and left for the next sync or the
      * on-demand read repair; it never fails or rolls back the already committed account publication.
@@ -286,7 +286,9 @@ public final class IconSync {
 
         Set<Integer> hasIcon = new HashSet<>();
         try (PreparedStatement ps = con.prepareStatement(
-                "SELECT item_id, icon_url FROM items WHERE item_id = ANY(?) AND icon_url IS NOT NULL")) {
+                "SELECT item_id, icon_url FROM items WHERE item_id = ANY(?) AND icon_url IS NOT NULL"
+                        + " AND btrim(coalesce(name, '')) <> '' AND btrim(coalesce(type, '')) <> ''"
+                        + " AND btrim(coalesce(rarity, '')) <> ''")) {
             ps.setArray(1, con.createArrayOf("int", wanted.toArray()));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {

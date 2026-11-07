@@ -37,9 +37,33 @@ public class CharactersApiController {
     private static final Logger LOG = Logger.getLogger(CharactersApiController.class.getName());
 
     private final CharacterRosterService service;
+    private final application.CharacterEquipmentTabsService equipmentTabs;
 
     public CharactersApiController(CharacterRosterService service) {
+        this(service, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public CharactersApiController(CharacterRosterService service,
+                                   application.CharacterEquipmentTabsService equipmentTabs) {
         this.service = service;
+        this.equipmentTabs = equipmentTabs;
+    }
+
+    /** One selected character's saved equipment tabs (STORY-CHAR-005); the roster stays compact. */
+    @GetMapping(path = "/{name}/equipment-tabs", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<web.dto.CharacterEquipmentTabsResponse> equipmentTabs(
+            @PathVariable("name") String name, HttpServletRequest request) {
+        var context = RequestAccountContext.required(request);
+        var scope = RequestAccountContext.scopeOf(request);
+        try {
+            if (equipmentTabs == null) throw new IllegalStateException("equipment tabs are not configured");
+            return web.dto.CharacterEquipmentTabsResponse.respond(equipmentTabs.read(context, scope, name));
+        } catch (SQLException | RuntimeException e) {
+            LOG.log(Level.SEVERE, "Equipment tabs read failed", e);
+            return web.dto.CharacterEquipmentTabsResponse.unavailable(
+                    e instanceof SQLException ? "DATA_STORE_UNAVAILABLE" : "EQUIPMENT_READ_FAILED");
+        }
     }
 
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
