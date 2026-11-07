@@ -112,12 +112,18 @@ public class CharacterRosterService {
         if (!read.hasData()) {
             boolean refreshing = coordinator != null
                     && coordinator.isRefreshing(scope, AccountSyncStateRepository.CHARACTERS);
-            return refreshing
-                    ? new Result(State.PENDING, "REFRESH_IN_PROGRESS",
-                            "Characters are being refreshed; no character data has been published yet.",
-                            null, null, null, null)
-                    : new Result(State.PENDING, "NOT_YET_PUBLISHED",
-                            "Characters have not been published for this account yet.", null, null, null, null);
+            if (refreshing) {
+                return new Result(State.PENDING, "REFRESH_IN_PROGRESS",
+                        "Characters are being refreshed; no character data has been published yet.",
+                        null, null, null, null);
+            }
+            if (coordinator != null && coordinator.lastRefreshFailed(scope, AccountSyncStateRepository.CHARACTERS)) {
+                // Nothing was ever published and the latest own-source attempt failed: not "pending".
+                return denied(State.UNAVAILABLE, "REFRESH_FAILED",
+                        "The character refresh failed and no character data has been published yet.");
+            }
+            return new Result(State.PENDING, "NOT_YET_PUBLISHED",
+                    "Characters have not been published for this account yet.", null, null, null, null);
         }
         boolean failed = coordinator != null
                 && coordinator.lastRefreshFailed(scope, AccountSyncStateRepository.CHARACTERS);

@@ -30,6 +30,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -277,6 +278,51 @@ class CharactersApiTest {
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.state").value("PENDING"))
                 .andExpect(jsonPath("$.reason").value("REFRESH_IN_PROGRESS"));
+    }
+
+    @Test
+    void failureWithoutPublicationIsUnavailableThenPendingWhileRetryingThenAvailableOnSuccess() throws Exception {
+        failed.set(true);
+        for (String path : new String[] {"/api/account/characters", "/api/account/characters/Zed"}) {
+            mvc.perform(as(NONE, path))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.state").value("UNAVAILABLE"))
+                    .andExpect(jsonPath("$.reason").value("REFRESH_FAILED"))
+                    .andExpect(jsonPath("$.message").isNotEmpty())
+                    .andExpect(jsonPath("$.characters").doesNotExist());
+        }
+        refreshing.set(true); // active retry, still no marker
+        mvc.perform(as(NONE, "/api/account/characters"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.reason").value("REFRESH_IN_PROGRESS"));
+        refreshing.set(false);
+        failed.set(false); // never attempted
+        mvc.perform(as(NONE, "/api/account/characters"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.reason").value("NOT_YET_PUBLISHED"));
+        // success: a published account is AVAILABLE and carries no reason/message keys
+        mvc.perform(as(A, "/api/account/characters"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("AVAILABLE"));
+    }
+
+    @Test
+    void omittedFieldsAreAbsentKeysNotNullsInTheActualJson() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        String available = mvc.perform(as(A, "/api/account/characters/Zed")).andReturn().getResponse().getContentAsString();
+        var ok = mapper.readTree(available);
+        assertFalse(ok.has("reason"));
+        assertFalse(ok.has("message"));
+        assertFalse(ok.has("characters"));
+        assertFalse(ok.has("characterCount"));
+        assertTrue(ok.has("character") && ok.has("sections") && ok.has("freshness"));
+        String pending = mvc.perform(as(NONE, "/api/account/characters")).andReturn().getResponse().getContentAsString();
+        var p = mapper.readTree(pending);
+        for (String key : new String[] {"freshness", "characters", "characterCount", "character", "sections"}) {
+            assertFalse(p.has(key), key + " must be omitted, not null");
+        }
+        assertTrue(p.has("reason") && p.has("message"));
+        p.fields().forEachRemaining(e -> assertFalse(e.getValue().isNull(), e.getKey()));
     }
 
     @Test

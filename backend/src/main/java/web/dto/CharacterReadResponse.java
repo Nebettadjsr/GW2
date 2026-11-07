@@ -1,5 +1,7 @@
 package web.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.time.Instant;
 import java.util.List;
 
@@ -15,6 +17,7 @@ import java.util.List;
  * @param characterCount size of {@code characters}; null when no roster is reported
  * @param sections       deferred-section availability on the detail read only
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record CharacterReadResponse(String state,
                                     String reason,
                                     String message,
@@ -25,6 +28,7 @@ public record CharacterReadResponse(String state,
                                     Sections sections) {
 
     /** Source freshness already known to the shared sync infrastructure; null when not applicable. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Freshness(Instant completedAt, String refresh) {}
 
     public record DisciplineDto(String discipline, int rating, boolean active) {}
