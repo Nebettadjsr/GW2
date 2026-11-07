@@ -191,7 +191,9 @@ public class ScopedAccountRefreshCoordinator implements CharacterRosterService.R
     /**
      * Per account, the sources whose latest attempt failed and which no later attempt has repaired.
      * Source-specific, so an unrelated source's success or failure neither sets nor clears it.
-     * Bounded by the number of accounts and the fixed source set; holds no failure detail.
+     * In-memory diagnostic only, not durable source truth: an entry is removed when its last failed
+     * source is repaired and when the owner's retained history is evicted by the terminal-record
+     * cap, so it is bounded like the history. Holds no failure detail.
      */
     private final Map<UUID, Set<String>> unrepaired = new HashMap<>();
     private final Deque<TaskRecord> records = new ArrayDeque<>();
@@ -384,7 +386,11 @@ public class ScopedAccountRefreshCoordinator implements CharacterRosterService.R
                 oldest.remove();
                 UUID owner = UUID.fromString(record.accountId());
                 Run retained = history.get(owner);
-                if (retained != null && record.taskId().equals(retained.taskId)) history.remove(owner);
+                if (retained != null && record.taskId().equals(retained.taskId)) {
+                    history.remove(owner);
+                    // Failure metadata lives no longer than the owner's retained history.
+                    if (!active.containsKey(owner)) unrepaired.remove(owner);
+                }
                 terminal--;
             }
         }
@@ -411,7 +417,10 @@ public class ScopedAccountRefreshCoordinator implements CharacterRosterService.R
                         public void succeeded(String source) {
                             synchronized (ScopedAccountRefreshCoordinator.this) {
                                 Set<String> failed = unrepaired.get(scope.accountId());
-                                if (failed != null) failed.remove(source);
+                                if (failed != null) {
+                                    failed.remove(source);
+                                    if (failed.isEmpty()) unrepaired.remove(scope.accountId());
+                                }
                             }
                         }
 
@@ -518,6 +527,11 @@ public class ScopedAccountRefreshCoordinator implements CharacterRosterService.R
     public synchronized boolean lastRefreshFailed(AccountScope scope, String source) {
         Set<String> failed = unrepaired.get(scope.accountId());
         return failed != null && failed.contains(source);
+    }
+
+    /** Number of accounts with retained failure metadata (diagnostic/test). */
+    synchronized int unrepairedAccountCount() {
+        return unrepaired.size();
     }
 
     /** True while the account has an unfinished run this coordinator admitted. */

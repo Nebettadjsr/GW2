@@ -246,6 +246,31 @@ class ScopedAccountRefreshCoordinatorTest {
     }
 
     @Test
+    void repairRemovesEmptyFailureMetadataAndHistoryEvictionLeavesNoOrphans() throws Exception {
+        AccountSessions.Issued a = session(A, "key-a", WIDE);
+        gateway.failSource = AccountSyncStateRepository.BANK;
+        awaitTerminal(admit(a, "key-a", AccountSyncStateRepository.BANK).taskId());
+        assertEquals(1, coordinator.unrepairedAccountCount());
+        gateway.failSource = null;
+        awaitTerminal(admit(a, "key-a", AccountSyncStateRepository.BANK).taskId());
+        assertEquals(0, coordinator.unrepairedAccountCount(), "repair leaves no empty owner entry");
+
+        // Many other failing accounts: the existing record cap evicts old owners and their metadata.
+        gateway.failSource = AccountSyncStateRepository.BANK;
+        for (int i = 0; i < 130; i++) {
+            String id = String.format("33333333-3333-3333-3333-%012d", i);
+            AccountSessions.Issued s = session(id, "key-" + i, WIDE);
+            awaitTerminal(admit(s, "key-" + i, AccountSyncStateRepository.BANK).taskId());
+        }
+        assertTrue(coordinator.unrepairedAccountCount() <= 101,
+                "failure metadata is bounded by the retained history: " + coordinator.unrepairedAccountCount());
+        assertFalse(coordinator.lastRefreshFailed(
+                AccountScope.of("33333333-3333-3333-3333-000000000000"), AccountSyncStateRepository.BANK));
+        assertTrue(coordinator.lastRefreshFailed(
+                AccountScope.of("33333333-3333-3333-3333-000000000129"), AccountSyncStateRepository.BANK));
+    }
+
+    @Test
     void mixedRunFailureIsReportedOnlyForTheSourceThatFailed() throws Exception {
         AccountSessions.Issued a = session(A, "key-a", WIDE);
         gateway.failSource = AccountSyncStateRepository.BANK;
@@ -442,7 +467,7 @@ class ScopedAccountRefreshCoordinatorTest {
             record(s, AccountSyncStateRepository.RECIPES, f);
         }
         @Override public void syncAccountLuck(AccountScope s, AccountSync.AuthFetcher f) throws Exception {
-            record(s, AccountSyncStateRepository.BANK, f);
+            record(s, AccountSyncStateRepository.LUCK, f);
         }
         @Override public void syncCharacterCraftingAndRecipes(AccountScope s, AccountSync.AuthFetcher f)
                 throws Exception {
