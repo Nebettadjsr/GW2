@@ -30,9 +30,10 @@ public final class CharacterSync {
             List<model.CharacterItemRow> items,
             List<model.CharacterBagRow> bags
     ) {
+        /** Legacy payload: no bag-manifest evidence ({@code bags == null}), never a known-empty layout. */
         CharPayload(CharacterInfo info, List<model.CharacterCraftingRow> crafting,
                     List<model.CharacterRecipeRow> recipes, List<model.CharacterItemRow> items) {
-            this(info, crafting, recipes, items, List.of());
+            this(info, crafting, recipes, items, null);
         }
     }
 
@@ -156,8 +157,12 @@ public final class CharacterSync {
                     parseManifest(name, cNode)));
         }
 
-        metadata.repair(payloads.stream().flatMap(p -> p.items().stream())
-                .map(model.CharacterItemRow::itemId).toList());
+        metadata.repair(payloads.stream().flatMap(p -> java.util.stream.Stream.concat(
+                        p.items().stream().map(model.CharacterItemRow::itemId),
+                        p.bags() == null ? java.util.stream.Stream.<Integer>empty()
+                                : p.bags().stream().map(model.CharacterBagRow::containerItemId)
+                                        .filter(java.util.Objects::nonNull)))
+                .distinct().toList());
         try (Connection con = Db.open()) {
             publishRoster(con, scope, payloads, java.time.Clock.systemUTC());
         }
@@ -190,6 +195,13 @@ public final class CharacterSync {
                                                                  model.AccountScope scope,
                                                                  List<CharPayload> payloads,
                                                                  java.time.Clock clock) throws Exception {
+        // Reject a contradictory manifest/occupied set before any write or generation advance.
+        boolean complete = true;
+        for (CharPayload p : payloads) {
+            if (p.bags() == null) complete = false;
+            else validateBagPayload(p);
+        }
+        final boolean layoutComplete = complete;
         return new repo.AccountSourcePublication(clock).publish(
                 con, scope, AccountSyncStateRepository.CHARACTERS,
                 (tx, owner, runTs) -> {
@@ -200,7 +212,8 @@ public final class CharacterSync {
                         replaceScopedItems(tx, owner, characterId, p.items(), runTs);
                         replaceScopedBags(tx, owner, characterId, p.bags(), runTs);
                     }
-                    markBagLayoutPublished(tx, owner, runTs);
+                    if (layoutComplete) markBagLayoutPublished(tx, owner, runTs);
+                    else clearBagLayoutPublished(tx, owner);
                     deleteStaleCharacters(tx, owner, runTs);
                 });
     }
@@ -296,6 +309,45 @@ public final class CharacterSync {
             }
         }
         deleteStaleChildren(con, scope, "character_bags", characterId, runTs);
+    }
+
+    /** Validates normalized manifest rows and occupied BAG rows of one character. */
+    static void validateBagPayload(CharPayload p) {
+        String who = "Character '" + p.info().name() + "'";
+        java.util.Map<Integer, model.CharacterBagRow> bags = new java.util.HashMap<>();
+        for (model.CharacterBagRow b : p.bags()) {
+            if (b.bagIndex() < 0 || bags.put(b.bagIndex(), b) != null) {
+                throw new IllegalStateException(who + " has a negative or duplicate bag position; roster not published");
+            }
+            boolean ok = b.installed()
+                    ? b.containerItemId() != null && b.containerItemId() > 0 && b.capacity() != null && b.capacity() > 0
+                    : b.containerItemId() == null && b.capacity() == null;
+            if (!ok) throw new IllegalStateException(who + " has an inconsistent bag " + b.bagIndex()
+                    + " manifest row; roster not published");
+        }
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        for (model.CharacterItemRow it : p.items()) {
+            if (!"BAG".equals(it.location())) continue;
+            if (it.bagIndex() == null || it.slotIndex() == null || it.slotIndex() < 0
+                    || it.count() == null || it.count() <= 0 || it.itemId() <= 0) {
+                throw new IllegalStateException(who + " has an invalid occupied bag row; roster not published");
+            }
+            model.CharacterBagRow b = bags.get(it.bagIndex());
+            if (b == null || !b.installed() || it.slotIndex() >= b.capacity()) {
+                throw new IllegalStateException(who + " has an occupied slot outside an installed bag's capacity; roster not published");
+            }
+            if (!seen.add(((long) it.bagIndex() << 32) | it.slotIndex())) {
+                throw new IllegalStateException(who + " has a duplicate occupied slot; roster not published");
+            }
+        }
+    }
+
+    private static void clearBagLayoutPublished(Connection con, model.AccountScope scope) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement(
+                "DELETE FROM character_bag_layout_publication WHERE account_id = ?")) {
+            ps.setObject(1, scope.accountId());
+            ps.executeUpdate();
+        }
     }
 
     /** Records that this CHARACTERS publication wrote a complete manifest (absent = legacy generation). */

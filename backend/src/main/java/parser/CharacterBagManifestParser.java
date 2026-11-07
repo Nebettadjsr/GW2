@@ -28,11 +28,11 @@ public final class CharacterBagManifestParser {
             int size = positive(bag.get("size"), "bag " + i + " size");
             JsonNode inv = bag.get("inventory");
             if (inv == null || !inv.isArray()) throw new IllegalStateException("bag " + i + " lacks inventory");
-            for (int s = 0; s < inv.size(); s++) {
-                JsonNode slot = inv.get(s);
-                if (slot != null && !slot.isNull() && s >= size) {
-                    throw new IllegalStateException("bag " + i + " slot " + s + " is outside capacity " + size);
-                }
+            // Upstream inventories are slot-aligned: one entry (item or null) per slot. A shorter or
+            // longer array is incomplete or contradictory evidence, so empties are never invented.
+            if (inv.size() != size) {
+                throw new IllegalStateException("bag " + i + " inventory has " + inv.size()
+                        + " entries but capacity " + size);
             }
             out.add(new CharacterBagRow(i, true, id, size));
         }

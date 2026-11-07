@@ -88,8 +88,18 @@ class CharacterInventoryLayoutTest {
         return new CharacterInventoryLayoutService(null, new CharacterInventoryLayoutRepository(), () -> {
             Connection c;
             try { c = connect(); c.setSchema(schema); } catch (Exception e) { throw new SQLException(e); }
-            return c;
+            return countingConnection(c);
         }, NOW, Duration.ofHours(1));
+    }
+
+    private Connection countingConnection(Connection real) {
+        return (Connection) java.lang.reflect.Proxy.newProxyInstance(Connection.class.getClassLoader(),
+                new Class<?>[] {Connection.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("prepareStatement") || method.getName().equals("createStatement")
+                            || method.getName().equals("prepareCall")) queries++;
+                    try { return method.invoke(real, args); }
+                    catch (java.lang.reflect.InvocationTargetException e) { throw e.getCause(); }
+                });
     }
 
     private static AccountContext ctx(String id) {
@@ -113,7 +123,7 @@ class CharacterInventoryLayoutTest {
     @Test
     void parserKeepsInstalledAndNullPositionsAndAcceptsBoundarySlots() throws Exception {
         var rows = CharacterBagManifestParser.parse(json(
-                "[{\"id\":5,\"size\":2,\"inventory\":[null,{\"id\":1,\"count\":1}]},null,{\"id\":6,\"size\":1,\"inventory\":[]}]"));
+                "[{\"id\":5,\"size\":2,\"inventory\":[null,{\"id\":1,\"count\":1}]},null,{\"id\":6,\"size\":1,\"inventory\":[null]}]"));
         assertEquals(List.of(new CharacterBagRow(0, true, 5, 2), new CharacterBagRow(1, false, null, null),
                 new CharacterBagRow(2, true, 6, 1)), rows);
     }
@@ -122,6 +132,9 @@ class CharacterInventoryLayoutTest {
     void parserRejectsContradictoryPayloads() throws Exception {
         for (String bad : new String[] {
                 "[{\"id\":5,\"size\":2,\"inventory\":[null,null,{\"id\":1,\"count\":1}]}]",   // slot == capacity
+                "[{\"id\":5,\"size\":2,\"inventory\":[]}]",                                   // invented trailing empties
+                "[{\"id\":5,\"size\":2,\"inventory\":[null]}]",                               // shorter than capacity
+                "[{\"id\":5,\"size\":2,\"inventory\":[null,null,null]}]",                     // overlong all-null tail
                 "[{\"id\":5,\"size\":0,\"inventory\":[]}]",                                      // no capacity
                 "[{\"id\":5,\"inventory\":[]}]",                                                 // capacity missing
                 "[{\"size\":2,\"inventory\":[]}]",                                               // container missing
@@ -184,13 +197,90 @@ class CharacterInventoryLayoutTest {
     void failedPublicationKeepsWholePriorGeneration() throws Exception {
         publish(A, payload("Ana", manifest(), bagItem(0, 2, 100, 5)));
         long gen = count("SELECT generation FROM account_source_state WHERE source='CHARACTERS'");
-        // installed bag with zero capacity violates the manifest constraint mid-publication
-        assertThrows(Exception.class, () -> publish(A, payload("Ana", List.of(new CharacterBagRow(0, true, 1, 0)),
+        // contradictory payload is rejected at the publication boundary, before any write
+        assertThrows(IllegalStateException.class, () -> publish(A, payload("Ana", List.of(new CharacterBagRow(0, true, 1, 0)),
                 bagItem(0, 0, 999, 1))));
         assertEquals(gen, count("SELECT generation FROM account_source_state WHERE source='CHARACTERS'"));
         var r = service().read(ctx(A_ID), A, "Ana");
         assertEquals(3, r.bags().size());
         assertEquals(5, r.bags().get(0).slots().get(2).quantity());
+    }
+
+    @Test
+    void validationRejectsEveryContradictionBeforeWriting() throws Exception {
+        publish(A, payload("Ana", manifest(), bagItem(0, 2, 100, 5)));
+        long gen = count("SELECT generation FROM account_source_state WHERE source='CHARACTERS'");
+        List<CharacterSync.CharPayload> bad = List.of(
+                payload("Ana", manifest(), bagItem(0, 3, 100, 1)),                       // slot == capacity
+                payload("Ana", manifest(), bagItem(0, -1, 100, 1)),                      // negative slot
+                payload("Ana", manifest(), bagItem(0, 1, 100, 1), bagItem(0, 1, 101, 1)), // duplicate coordinate
+                payload("Ana", manifest(), bagItem(1, 0, 100, 1)),                       // uninstalled bag
+                payload("Ana", manifest(), bagItem(7, 0, 100, 1)),                       // missing bag
+                payload("Ana", manifest(), bagItem(0, 0, 100, 0)),                       // non-positive quantity
+                payload("Ana", List.of(new CharacterBagRow(0, true, 1, 2), new CharacterBagRow(0, true, 1, 2))),
+                payload("Ana", List.of(new CharacterBagRow(0, true, null, 2))),
+                payload("Ana", List.of(new CharacterBagRow(-1, false, null, null))));
+        for (var p : bad) assertThrows(IllegalStateException.class, () -> publish(A, p));
+        assertEquals(gen, count("SELECT generation FROM account_source_state WHERE source='CHARACTERS'"));
+        assertEquals(3, count("SELECT count(*) FROM character_bags"));
+        assertEquals(5, service().read(ctx(A_ID), A, "Ana").bags().get(0).slots().get(2).quantity());
+    }
+
+    @Test
+    void sqlFailureAfterValidReplacementBeganRollsBackEverything() throws Exception {
+        publish(A, payload("Ana", manifest(), bagItem(0, 2, 100, 5)));
+        long gen = count("SELECT generation FROM account_source_state WHERE source='CHARACTERS'");
+        exec("CREATE FUNCTION fail_marker() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END $$",
+                "CREATE TRIGGER fail_marker BEFORE INSERT OR UPDATE ON character_bag_layout_publication"
+                        + " FOR EACH ROW EXECUTE FUNCTION fail_marker()");
+        // valid payload: roster, items and bag rows are written first; the marker write then fails
+        assertThrows(Exception.class, () -> publish(A, payload("Ana", List.of(new CharacterBagRow(0, true, 1, 4)),
+                bagItem(0, 3, 101, 9))));
+        assertEquals(gen, count("SELECT generation FROM account_source_state WHERE source='CHARACTERS'"));
+        assertEquals(3, count("SELECT count(*) FROM character_bags"));
+        assertEquals(8932, count("SELECT container_item_id FROM character_bags WHERE bag_index=0"));
+        assertEquals(100, count("SELECT item_id FROM character_items WHERE location='BAG'"));
+        assertEquals(5, service().read(ctx(A_ID), A, "Ana").bags().get(0).slots().get(2).quantity());
+    }
+
+    @Test
+    void databaseRejectsInstalledBagWithNullFieldsAndInvalidValues() {
+        for (String values : new String[] {"true, NULL, 4", "true, 5, NULL", "true, 0, 4", "true, 5, 0",
+                "false, 5, NULL", "false, NULL, 4"}) {
+            assertThrows(SQLException.class, () -> exec("INSERT INTO account_registry(account_id) VALUES ('" + A_ID
+                    + "') ON CONFLICT DO NOTHING",
+                    "INSERT INTO characters(account_id, character_id, name, profession, race, gender, level) VALUES ('"
+                            + A_ID + "', 1, 'Ana', 'Guardian', 'Human', 'Female', 80) ON CONFLICT DO NOTHING",
+                    "INSERT INTO character_bags(account_id, character_id, bag_index, installed, container_item_id, capacity)"
+                            + " VALUES ('" + A_ID + "', 1, 0, " + values.replace(", ", ", ") + ")"), values);
+        }
+    }
+
+    @Test
+    void legacyPayloadWithoutManifestEvidenceIsNeverCertifiedEmpty() throws Exception {
+        publish(A, payload("Ana", manifest(), bagItem(0, 2, 100, 5)));
+        publish(A, new CharacterSync.CharPayload(new CharacterInfo("Ana", "Engineer", "Norn", "Male", 80, null),
+                List.of(), List.of(), List.of()));
+        assertEquals(0, count("SELECT count(*) FROM character_bag_layout_publication"));
+        var r = service().read(ctx(A_ID), A, "Ana");
+        assertEquals(State.UNAVAILABLE, r.state());
+        assertEquals("LAYOUT_REFRESH_REQUIRED", r.reason());
+        publish(A, payload("Ana", List.of()));
+        assertEquals(CharacterInventoryLayoutService.Contents.NO_BAGS, service().read(ctx(A_ID), A, "Ana").contents(),
+                "an explicitly validated empty manifest is a genuine success");
+    }
+
+    @Test
+    void accountReferencedItemIdsIncludeInstalledContainersDistinct() throws Exception {
+        publish(A, payload("Ana", manifest(), bagItem(0, 2, 8932, 5)));
+        try (Connection c = connect()) {
+            c.setSchema(schema);
+            assertEquals(List.of(8932, 8933), IconSync.accountReferencedItemIds(c, A));
+        }
+    }
+
+    private void exec(String... statements) throws SQLException {
+        try (Statement s = admin.createStatement()) { for (String q : statements) s.execute(q); }
     }
 
     @Test
@@ -262,15 +352,28 @@ class CharacterInventoryLayoutTest {
             for (int s = 0; s < 32; s += 2) items.add(bagItem(b, s, 100 + b * 40 + s, 1));
         }
         publish(A, payload("Ana", bags, items.toArray(new CharacterItemRow[0])));
+        queries = 0;
         long t0 = System.nanoTime();
         var r = service().read(ctx(A_ID), A, "Ana");
         long cold = System.nanoTime() - t0;
+        int coldQueries = queries;
+        queries = 0;
         t0 = System.nanoTime();
         r = service().read(ctx(A_ID), A, "Ana");
         long warm = System.nanoTime() - t0;
-        int bytes = M.writeValueAsBytes(web.dto.CharacterInventoryResponse.respond(r).getBody().bags()).length;
-        System.out.printf("[CHAR-006 measure] bags=%d manifestRows=%d itemRows=%d bytes=%d queries=6 cold=%dms warm=%dms%n",
-                bags.size(), count("SELECT count(*) FROM character_bags"), items.size(), bytes, cold / 1_000_000, warm / 1_000_000);
+        var wire = new ObjectMapper().registerModule(new com.fasterxml.jackson.databind.module.SimpleModule()
+                .addSerializer(Instant.class, new com.fasterxml.jackson.databind.ser.std.ToStringSerializer(Instant.class)));
+        int bytes = wire.writeValueAsBytes(web.dto.CharacterInventoryResponse.respond(r).getBody()).length;
+        long storage = count("SELECT pg_total_relation_size('character_bags') + pg_total_relation_size('character_items')"
+                + " + pg_total_relation_size('character_bag_layout_publication')");
+        System.out.printf("[CHAR-006 measure] synthetic stress (not a game maximum) bags=%d manifestRows=%d itemRows=%d"
+                        + " fullResponseBytes=%d preparedStatements(cold)=%d preparedStatements(warm)=%d cold=%dms warm=%dms"
+                        + " storageBytes(character_bags+character_items+layout marker, incl. indexes/toast)=%d%n",
+                bags.size(), count("SELECT count(*) FROM character_bags"), items.size(), bytes, coldQueries, queries,
+                cold / 1_000_000, warm / 1_000_000, storage);
+        assertEquals(coldQueries, queries);
+        assertEquals(8, queries, "measured prepared statements incl. schema guards, marker, character, publication,"
+                + " manifest, occupied rows and one metadata batch; independent of bag count");
         assertEquals(32 * 32, r.bags().stream().mapToInt(b -> b.slots().size()).sum());
         assertTrue(bytes < 1_000_000);
     }

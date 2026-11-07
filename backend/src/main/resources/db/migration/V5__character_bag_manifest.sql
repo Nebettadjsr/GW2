@@ -12,7 +12,8 @@ CREATE TABLE character_bags (
     CONSTRAINT character_bags_pkey PRIMARY KEY (account_id, character_id, bag_index),
     CONSTRAINT character_bags_index_check CHECK (bag_index >= 0),
     CONSTRAINT character_bags_state_check CHECK (
-        (installed AND container_item_id > 0 AND capacity > 0)
+        (installed AND container_item_id IS NOT NULL AND capacity IS NOT NULL
+            AND container_item_id > 0 AND capacity > 0)
         OR (NOT installed AND container_item_id IS NULL AND capacity IS NULL)),
     CONSTRAINT fk_character_bags_parent
         FOREIGN KEY (account_id, character_id)
