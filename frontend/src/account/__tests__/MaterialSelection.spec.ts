@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { connection } from '@/api/accountSession'
 import { resetMaterialProtection, useMaterialProtection } from '@/materials/materialProtectionState'
 import BankScreen from '../BankScreen.vue'
@@ -233,5 +233,34 @@ describe('Bank and Materials selection', () => {
     await flushPromises()
     expect(w.find('[data-test="selection-bar"]').exists()).toBe(false)
     expect(boxes(w)).toHaveLength(0)
+  })
+})
+
+describe('Selection presets', () => {
+  it('unionIsAdditiveIdempotent_manualAdjustable_noCommit_noFetch', async () => {
+    const api = new FakeAccountApi()
+    const w = await open(BankScreen, api)
+    const state = useMaterialProtection().state
+    const fetches = vi.spyOn(globalThis, 'fetch')
+    await box(w, 0).setValue(true) // manual 19697
+    await w.find('[data-test="preset-extra"]').trigger('click')
+    expect(state.pending).toEqual([19675, 19697, 19721, 19925, 19976])
+    await w.find('[data-test="preset-extra"]').trigger('click')
+    expect(state.pending).toEqual([19675, 19697, 19721, 19925, 19976])
+    await w.find('[data-test="preset-t1"]').trigger('click')
+    expect(state.pending).toHaveLength(13)
+    expect(state.committed).toEqual([])
+    expect(fetches).not.toHaveBeenCalled()
+    fetches.mockRestore()
+    // Manual removal of a preset item, and shared-state reflection on a tile.
+    state.pending = [...state.pending]
+    await box(w, 0).setValue(false)
+    expect(state.pending).not.toContain(19697)
+    await w.find('[data-test="selection-discard"]').trigger('click')
+    expect(state.pending).toEqual([])
+    await w.find('[data-test="preset-t6"]').trigger('click')
+    expect(boxes(w).map((c) => (c.element as HTMLInputElement).checked)).toEqual([false, true, false]) // 24295 is T6
+    await w.find('[data-test="selection-confirm"]').trigger('click')
+    expect(state.committed).toHaveLength(8)
   })
 })

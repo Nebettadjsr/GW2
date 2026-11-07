@@ -1,0 +1,10 @@
+{
+  "source": "ArenaNet /v2/items, verified by supervisor 2026-11-07",
+  "t1": {"24290":"Vial of Weak Blood","24342":"Bone Chip","24346":"Tiny Claw","24272":"Pile of Glittering Dust","24352":"Tiny Fang","24284":"Tiny Scale","24296":"Tiny Totem","24278":"Tiny Venom Sac"},
+  "t2": {"24291":"Vial of Thin Blood","24343":"Bone Shard","24347":"Small Claw","24273":"Pile of Shimmering Dust","24353":"Small Fang","24285":"Small Scale","24297":"Small Totem","24279":"Small Venom Sac"},
+  "t3": {"24292":"Vial of Blood","24344":"Bone","24348":"Claw","24274":"Pile of Radiant Dust","24354":"Fang","24286":"Scale","24298":"Totem","24280":"Venom Sac"},
+  "t4": {"24293":"Vial of Thick Blood","24345":"Heavy Bone","24349":"Sharp Claw","24275":"Pile of Luminous Dust","24355":"Sharp Fang","24287":"Smooth Scale","24363":"Engraved Totem","24281":"Full Venom Sac"},
+  "t5": {"24294":"Vial of Potent Blood","24341":"Large Bone","24350":"Large Claw","24276":"Pile of Incandescent Dust","24356":"Large Fang","24288":"Large Scale","24299":"Intricate Totem","24282":"Potent Venom Sac"},
+  "t6": {"24295":"Vial of Powerful Blood","24358":"Ancient Bone","24351":"Vicious Claw","24277":"Pile of Crystalline Dust","24357":"Vicious Fang","24289":"Armored Scale","24300":"Elaborate Totem","24283":"Powerful Venom Sac"},
+  "extra": {"19675":"Mystic Clover","19976":"Mystic Coin","19721":"Glob of Ectoplasm","19925":"Obsidian Shard"}
+}
