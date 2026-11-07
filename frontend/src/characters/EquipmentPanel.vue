@@ -84,7 +84,7 @@ async function onKey(event: KeyboardEvent, index: number): Promise<void> {
               <div class="equipment__name" data-test="equipment-item">{{ label(entry.item) }}</div>
               <div v-if="entry.item.rarity || entry.item.type" class="meta">
                 <span v-if="entry.item.rarity" :class="['rarity', rarityClass(entry.item.rarity)]" data-test="equipment-rarity">{{ entry.item.rarity }}</span>
-                <span v-if="entry.item.type"> {{ entry.item.type }}</span>
+                <span v-if="entry.item.type" class="equipment__type">{{ entry.item.type }}</span>
               </div>
               <div v-if="entry.statId !== undefined || stats(entry).length > 0" class="meta" data-test="equipment-stats">
                 <template v-if="stats(entry).length > 0">{{ stats(entry).join(', ') }}</template>
@@ -117,7 +117,8 @@ async function onKey(event: KeyboardEvent, index: number): Promise<void> {
 .equipment__name { font-weight: 600; }
 .equipment__sub { margin: 2px 0 0; padding-left: 16px; font-size: 0.9em; }
 .rarity { font-weight: 600; }
-.rarity--junk { color: #7a7a7a } .rarity--basic { color: #404040 } .rarity--fine { color: #1a6fd1 }
-.rarity--masterwork { color: #218c1e } .rarity--rare { color: #a07800 } .rarity--exotic { color: #b86a00 }
-.rarity--ascended { color: #c2186e } .rarity--legendary { color: #7a2bd1 } .rarity--unknown { color: inherit }
+.rarity--junk { color: #b0b0b0 } .rarity--basic { color: #e0e0e0 } .rarity--fine { color: #62a4f0 }
+.rarity--masterwork { color: #4cc94a } .rarity--rare { color: #f0c020 } .rarity--exotic { color: #ffa010 }
+.rarity--ascended { color: #ff5fa8 } .rarity--legendary { color: #b98cff } .rarity--unknown { color: inherit }
+.rarity + .equipment__type { margin-left: 0.5em }
 </style>

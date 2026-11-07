@@ -39,17 +39,8 @@ export async function getJson<T>(path: string): Promise<T> {
  * the state and reason are never lost; any other failure still throws like `getJson`.
  */
 export async function getStateJson<T extends { state: string }>(path: string): Promise<T> {
-  stateBodyPaths.set(path, (stateBodyPaths.get(path) ?? 0) + 1)
-  try {
-    return await getJson<T>(path)
-  } finally {
-    const left = (stateBodyPaths.get(path) ?? 1) - 1
-    if (left <= 0) stateBodyPaths.delete(path)
-    else stateBodyPaths.set(path, left)
-  }
+  return sendJsonAttempt<T>(path, { method: 'GET', headers: { Accept: 'application/json' } }, true, true)
 }
-
-const stateBodyPaths = new Map<string, number>()
 
 export async function postJson<T>(path: string, body: unknown): Promise<T> {
   return sendJson<T>(path, {
@@ -60,7 +51,7 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function sendJson<T>(path: string, init: RequestInit): Promise<T> {
-  return sendJsonAttempt<T>(path, init, true)
+  return sendJsonAttempt<T>(path, init, true, false)
 }
 
 /**
@@ -109,7 +100,12 @@ function sendsKey(path: string, method: string | undefined): boolean {
   return route.startsWith('/sync/account')
 }
 
-async function sendJsonAttempt<T>(path: string, init: RequestInit, mayRecover: boolean): Promise<T> {
+async function sendJsonAttempt<T>(
+  path: string,
+  init: RequestInit,
+  mayRecover: boolean,
+  acceptStateBody: boolean
+): Promise<T> {
   const transport = accountTransport !== null && isAccountPath(path) ? accountTransport : null
   let attempt = init
   let ticket: AccountRequestTicket | null = null
@@ -134,7 +130,7 @@ async function sendJsonAttempt<T>(path: string, init: RequestInit, mayRecover: b
     throw new ApiRequestError('The account changed while this request was in flight.', ACCOUNT_CHANGED_CODE, null)
   }
 
-  if (!response.ok && stateBodyPaths.has(path)) {
+  if (!response.ok && acceptStateBody) {
     const stateBody = await readStateBody<T>(response.clone())
     if (stateBody !== null) {
       if (transport !== null && ticket !== null && !transport.isCurrent(ticket)) {
@@ -146,7 +142,7 @@ async function sendJsonAttempt<T>(path: string, init: RequestInit, mayRecover: b
   if (!response.ok) {
     const error = await toRequestError(response)
     if (transport !== null && ticket !== null && mayRecover && (await transport.recover(ticket, error))) {
-      return sendJsonAttempt<T>(path, init, false)
+      return sendJsonAttempt<T>(path, init, false, acceptStateBody)
     }
     throw error
   }

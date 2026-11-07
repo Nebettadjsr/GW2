@@ -53,6 +53,7 @@ export function useCharacters(
   let rosterId = 0
 
   async function loadRoster(): Promise<void> {
+    if (!current()) return
     const id = ++rosterId
     rosterPhase.value = 'loading'
     rosterFailure.value = null
@@ -97,6 +98,7 @@ export function useCharacters(
     current() && selectedName.value === name && id === newest
 
   async function loadDetail(name: string): Promise<void> {
+    if (!current()) return
     const id = ++detailId
     detailPhase.value = 'loading'
     detailFailure.value = null
@@ -113,6 +115,7 @@ export function useCharacters(
   }
 
   async function loadEquipment(name: string): Promise<void> {
+    if (!current()) return
     const id = ++equipmentId
     equipmentPhase.value = 'loading'
     equipmentFailure.value = null
@@ -144,13 +147,19 @@ export function useCharacters(
     detail.value = null
     detailResponse.value = null
     equipmentResponse.value = null
-    inspectedTab.value = null
+    inspectedTab.value = initialInspection(name)
     refreshMessage.value = null
     // Invalidate anything in flight for the previous character.
     detailId += 1
     equipmentId += 1
     void loadDetail(name)
     void loadEquipment(name)
+  }
+
+  /** Inspection for a (re)opened character: its retained tabs' actual active tab, else nothing yet. */
+  function initialInspection(name: string): number | null {
+    const tabs = lastGoodEquipment.value.get(name)?.tabs
+    return tabs?.find((t) => t.active)?.tab ?? tabs?.[0]?.tab ?? null
   }
 
   function back(): void {
@@ -195,9 +204,11 @@ export function useCharacters(
     refreshMessage.value = null
     try {
       for (let attempt = 0; attempt <= EQUIPMENT_MAX_COVER_RETRIES; attempt += 1) {
+        if (!current()) return
         const accepted = await api.startEquipmentTabsRefresh()
         if (!current()) return
-        await awaitTask(accepted.statusUrl)
+        if (!(await awaitTask(accepted.statusUrl))) return
+        if (!current()) return
         if (accepted.coversRequest !== false) break
         if (attempt === EQUIPMENT_MAX_COVER_RETRIES) throw new Error('Another refresh kept running. Try again later.')
       }
@@ -213,16 +224,18 @@ export function useCharacters(
     }
   }
 
-  async function awaitTask(statusUrl: string): Promise<void> {
+  /** Resolves true on success, false when the workspace/account is no longer current. */
+  async function awaitTask(statusUrl: string): Promise<boolean> {
     for (let poll = 0; poll < EQUIPMENT_MAX_POLLS; poll += 1) {
+      if (!current()) return false
       const status = await tasks.readTaskStatus(statusUrl)
-      if (!current()) return
-      if (status.state === 'SUCCEEDED') return
+      if (!current()) return false
+      if (status.state === 'SUCCEEDED') return true
       if (status.state === 'FAILED') {
         throw new Error(status.failure ? status.failure.message : 'The equipment update failed.')
       }
       await sleep(EQUIPMENT_POLL_MS)
-      if (!current()) return
+      if (!current()) return false
     }
     throw new Error('The equipment update is taking longer than expected.')
   }

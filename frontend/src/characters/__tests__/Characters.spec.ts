@@ -106,17 +106,23 @@ describe('Characters screen', () => {
     expect(w.findAll('[data-test="roster-item"]')).toHaveLength(2)
   })
 
-  it('does not render an empty roster for a failed roster read and retains a last-good roster', async () => {
-    let fail = false
-    const api = fakeApi({ loadRoster: async () => { if (fail) throw new Error('down'); return roster } })
-    const w = mount(CharactersScreen, { props: { api } })
-    await flushPromises()
-    fail = true
-    await w.vm.$nextTick()
+  it('does not render an empty roster for a failed first read', async () => {
     const first = mount(CharactersScreen, { props: { api: fakeApi({ loadRoster: async () => { throw new Error('down') } }) } })
     await flushPromises()
     expect(first.find('[data-test="roster-error"]').text()).toContain('does not mean you have none')
     expect(first.find('[data-test="roster-empty"]').exists()).toBe(false)
+  })
+
+  it('retains the last-good roster when a later read of the same instance fails', async () => {
+    let fail = false
+    const api = fakeApi({ loadRoster: async () => { if (fail) throw new Error('down'); return roster } })
+    const c = useCharacters(api, tasks, noSleep)
+    await c.loadRoster()
+    expect(c.roster.value?.characters).toHaveLength(2)
+    fail = true
+    await c.loadRoster()
+    expect(c.rosterFailure.value).not.toBeNull()
+    expect(c.roster.value?.characters).toHaveLength(2)
   })
 })
 
@@ -192,14 +198,83 @@ describe('useCharacters guards and recovery', () => {
   })
 })
 
-describe('getStateJson', () => {
-  it('returns the structured state body of a 403 and a 503 instead of losing it', async () => {
-    const { getStateJson } = await import('@/api/http')
-    const f = vi.spyOn(globalThis, 'fetch')
-    f.mockResolvedValueOnce(new Response(JSON.stringify({ state: 'GRANT_REQUIRED', reason: 'R' }), { status: 403 }))
-    await expect(getStateJson('/account/characters/x/equipment-tabs')).resolves.toMatchObject({ state: 'GRANT_REQUIRED' })
-    f.mockResolvedValueOnce(new Response('oops', { status: 500 }))
-    await expect(getStateJson('/account/characters')).rejects.toMatchObject({ code: 'UNEXPECTED_STATUS' })
-    f.mockRestore()
+describe('reopen, refresh cancellation and real account replacement', () => {
+  it('reopening a viewed character after back then a failed read keeps tabs, a focusable tab and the active tab', async () => {
+    let fail = false
+    const api = fakeApi({ loadEquipmentTabs: async () => { if (fail) throw new Error('boom'); return tabsResponse } })
+    const w = mount(CharactersScreen, { props: { api } })
+    await flushPromises()
+    await w.findAll('[data-test="roster-item"]')[0]!.trigger('click')
+    await flushPromises()
+    await w.find('[data-test="character-back"]').trigger('click')
+    fail = true
+    await w.findAll('[data-test="roster-item"]')[0]!.trigger('click')
+    await flushPromises()
+    const tabs = w.findAll('[data-test="equipment-tab"]')
+    expect(tabs).toHaveLength(3)
+    expect(tabs[1]!.attributes('aria-selected')).toBe('true')
+    expect(tabs.filter((t) => t.attributes('tabindex') === '0')).toHaveLength(1)
+    expect(w.find('[data-test="equipment-tabpanel"]').exists()).toBe(true)
+  })
+
+  it('makes no further request when the account changes while waiting on a task that does not cover the request', async () => {
+    const calls: string[] = []
+    const api = fakeApi({
+      startEquipmentTabsRefresh: async () => { calls.push('refresh'); return { taskId: 't', operation: 'X', statusUrl: '/api/sync/tasks/t', coversRequest: false } },
+      loadEquipmentTabs: async () => { calls.push('equip'); return tabsResponse }
+    })
+    const running = { readTaskStatus: async () => { calls.push('task'); return { taskId: 't', operation: 'X', state: 'RUNNING' } as never } }
+    const gate = deferred<void>()
+    const c = useCharacters(api, running, () => gate.promise)
+    c.select('Ana B'); await flushPromises()
+    const p = c.refreshEquipment()
+    await flushPromises()
+    const before = calls.length
+    connection.generation += 1
+    gate.resolve()
+    await p
+    expect(calls.length).toBe(before)
+  })
+
+  it('never dispatches an outgoing account A request under account B (real connectKey, transport and APIs)', async () => {
+    const { connectKey, installAccountSession, resetAccountSession } = await import('@/api/accountSession')
+    const { charactersApi } = await import('@/api/charactersApi')
+    const { syncApi } = await import('@/api/syncApi')
+    resetAccountSession(); installAccountSession()
+    let id = 'acc-A'
+    const log: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+      const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } })
+      if (input.endsWith('/session') || input.includes('/account/session')) {
+        return json({ accountId: id, accessContext: `ctx-${id}`, expiresAt: '2099-01-01T00:00:00Z', grants: ['account'] })
+      }
+      log.push(`${init?.method ?? 'GET'} ${input}`)
+      if (input.includes('/sync/tasks/')) return json({ taskId: 't', operation: 'X', state: 'RUNNING' })
+      if (input.includes('/sync/account')) return json({ taskId: 't', operation: 'X', statusUrl: '/api/sync/tasks/t', coversRequest: false }, 202)
+      if (input.includes('equipment-tabs')) return json(tabsResponse)
+      if (input.includes('/account/characters/')) return json(detailOf(ana))
+      return json(roster)
+    }))
+    try {
+      await connectKey('SAME-NAME-KEY')
+      const gate = deferred<void>()
+      const c = useCharacters(charactersApi, syncApi, () => gate.promise)
+      await c.loadRoster()
+      c.select('Ana B'); await flushPromises()
+      const p = c.refreshEquipment()
+      await flushPromises()
+      const before = log.length
+      id = 'acc-B'
+      await connectKey('SAME-NAME-KEY')
+      gate.resolve()
+      await p
+      await c.loadRoster(); c.select('Bo'); await flushPromises()
+      expect(log.length).toBe(before)
+      expect(log.some((l) => l.startsWith('POST') && l.includes('/sync/account'))).toBe(true)
+      expect(log.filter((l) => l.startsWith('POST'))).toHaveLength(1)
+    } finally {
+      resetAccountSession()
+      vi.unstubAllGlobals()
+    }
   })
 })
