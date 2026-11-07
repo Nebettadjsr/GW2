@@ -42,6 +42,25 @@ public enum AccountOperation {
             Set.of("/v2/characters")),
 
     /**
+     * The saved-equipment-tabs endpoint itself, {@code /v2/characters/:id/equipmenttabs}: it needs
+     * {@code account}, {@code builds} and {@code characters}. {@code inventories} is deliberately not
+     * attributed to it (STORY-CHAR-005).
+     */
+    CHARACTER_EQUIPMENT_TABS_ENDPOINT(
+            Set.of(AccountGrant.ACCOUNT, AccountGrant.BUILDS, AccountGrant.CHARACTERS),
+            Set.of("/v2/characters/:id/equipmenttabs")),
+
+    /**
+     * The first-iteration equipment-tabs workflow (refresh and read): the endpoint's own dependency
+     * plus the cached {@code CHARACTERS} parent it enumerates and is read next to, which stays
+     * governed by {@link #CHARACTERS_READ} ({@code inventories}). The four-grant union applies only to
+     * this workflow; it is never added to {@link #CHARACTERS_READ} or any existing consumer.
+     */
+    CHARACTER_EQUIPMENT_TABS_READ(
+            Set.of(AccountGrant.ACCOUNT, AccountGrant.CHARACTERS, AccountGrant.INVENTORIES, AccountGrant.BUILDS),
+            Set.of("/v2/characters", "/v2/characters/:id/equipmenttabs")),
+
+    /**
      * Crafting Profit's account inputs: bank, material storage, recipe unlocks and the character
      * roster. Luck is deliberately absent - Profit never consumes it (DOMAIN_SPEC), so a key without
      * {@code progression} may still use Profit.

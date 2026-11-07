@@ -326,6 +326,15 @@ public class Gw2ApiApplication {
         return new application.CharacterRosterService(gate, coordinator, new repo.CharacterRepository());
     }
 
+    /** Selected-character saved equipment tabs over stored rows only (STORY-CHAR-005). */
+    @Bean
+    public application.CharacterEquipmentTabsService characterEquipmentTabsService(
+            ScopedAccountRefreshCoordinator coordinator,
+            @Value("${gw2.account-data.max-age-ms:900000}") long accountMaxAgeMs) {
+        return new application.CharacterEquipmentTabsService(coordinator, new repo.CharacterEquipmentTabsRepository(),
+                Clock.systemUTC(), Duration.ofMillis(accountMaxAgeMs));
+    }
+
     /** The transport rules the session routes and the account guard must apply identically. */
     @Bean
     public AccountAccessHttp accountAccessHttp(
