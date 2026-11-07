@@ -36,6 +36,12 @@ export interface ConnectionState {
   logoutNotice: string | null
   generation: number
   grants: readonly string[]
+  /**
+   * The backend-verified stable GW2 account GUID of the current session, or null while there is none
+   * (or when an older backend did not supply one). It is the only identity browser preferences may be
+   * partitioned by; never the key, the access context or the generation.
+   */
+  accountId: string | null
 }
 
 export const connection: ConnectionState = reactive({
@@ -44,7 +50,8 @@ export const connection: ConnectionState = reactive({
   errorIsDefinitive: false,
   logoutNotice: null,
   generation: 0,
-  grants: []
+  grants: [],
+  accountId: null
 })
 
 export const KEY_REQUIRED_CODE = 'KEY_REQUIRED'
@@ -97,6 +104,7 @@ export function hasStoredKey(): boolean {
 /* ------------------------------------------------------------------------------ proof --- */
 
 interface Proven {
+  accountId: string | null
   accessContext: string
   expiresAt: string
   grants: string[]
@@ -117,7 +125,8 @@ async function proveKey(key: string): Promise<Proven> {
   if (typeof body.accessContext !== 'string' || typeof body.expiresAt !== 'string') {
     throw new ApiRequestError('The backend answered the key check unexpectedly.', 'UNEXPECTED_STATUS', response.status)
   }
-  return { accessContext: body.accessContext, expiresAt: body.expiresAt, grants: body.grants ?? [] }
+  const accountId = typeof body.accountId === 'string' && body.accountId.trim() !== '' ? body.accountId : null
+  return { accountId, accessContext: body.accessContext, expiresAt: body.expiresAt, grants: body.grants ?? [] }
 }
 
 function isDefinitiveRejection(error: unknown): boolean {
@@ -141,6 +150,12 @@ function describeProofFailure(error: unknown): string {
 function adopt(proven: Proven): void {
   lease = { accessContext: proven.accessContext, expiresAtMs: Date.parse(proven.expiresAt) }
   connection.grants = proven.grants
+  if (connection.accountId !== null && connection.accountId !== proven.accountId) {
+    // A different account behind the same retained intent: everything in flight belongs to the old one.
+    accountEpoch += 1
+    connection.generation += 1
+  }
+  connection.accountId = proven.accountId
 }
 
 /** The key was refused for good: forget it and ask for a new one. */
@@ -153,6 +168,7 @@ function reject(error: unknown): void {
   connection.error = describeProofFailure(error)
   connection.errorIsDefinitive = true
   connection.grants = []
+  connection.accountId = null
 }
 
 /**
@@ -249,6 +265,7 @@ export async function connectKey(rawKey: string): Promise<boolean> {
   inflight = null
   lease = null
   connection.grants = []
+  connection.accountId = null
   writeKey(key)
   connection.phase = 'connecting'
   connection.error = null
@@ -286,6 +303,7 @@ export async function disconnect(): Promise<void> {
   connection.error = null
   connection.errorIsDefinitive = false
   connection.grants = []
+  connection.accountId = null
   connection.logoutNotice = null
   if (context === null) return
   try {
@@ -362,4 +380,5 @@ export function resetAccountSession(): void {
   connection.logoutNotice = null
   connection.generation = 0
   connection.grants = []
+  connection.accountId = null
 }
