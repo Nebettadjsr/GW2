@@ -1,440 +1,115 @@
-# GW2 Tool — Roadmap
+# GW2 active roadmap
 
-## 1. Purpose
+Updated: 2026-11-07. Owner: GitHub Codex planner; changes are reviewed by the interactive Codex supervisor.
 
-This document is the realistic path from the repository's **actual current state** to the target architecture defined in `docs/TARGET_ARCHITECTURE.md`.
+**Workflow execution authorized by the Product Owner on 2026-11-07; interactive Codex supervises one released story at a time.** Draft order, active handoffs and execution evidence live in [the backlog](../agent/BACKLOG.md) and GitHub issues/PRs. The Product Owner owns product intent and material hosting/budget decisions.
 
-It is written for two audiences:
+## Roles
 
-- a human maintainer deciding what to work on next,
-- an interactive planning session that turns Product Owner requests and roadmap work into GitHub issues, with implementation and review tracked on pull requests.
+- Interactive Codex supervises readiness, progress, failures and acceptance.
+- Codex on GitHub plans milestones and bounded issue contracts.
+- Claude implements released stories and their tests.
+- Codex PR review and CI check delivered changes; planning is an explicit separate invocation.
 
-This document contains **no dates and no time estimates**. Sequencing is based on dependencies and risk, not a schedule.
+Contracts and invocation details: [agent roles](../agent/README.md). These files do not install a scheduler or start a planner/Claude run.
 
-Grounding sources (do not duplicate their content here — read them when a phase needs detail):
+## Milestone 1: measurable fit within Oracle Always Free
 
-```text
-docs/DOMAIN_SPEC.md            authoritative domain rules
-docs/TARGET_ARCHITECTURE.md    target structure, dependency direction, decided and open architecture choices
-docs/CURRENT_ARCHITECTURE.md   current structure, as observed in source
-docs/KNOWN_PROBLEMS.md         confirmed conflicts, coupling, tech debt (numbered, referenced below)
-docs/TEST_STRATEGY.md          testing approach and priorities
-docs/CODING_GUIDELINES.md      code-level rules for changes made from here on
-```
+### Goal
 
----
+Implement the missing KPIs and repeatable qualification needed for the final product to operate within Oracle Always Free while preserving correctness, account isolation and a usable desktop experience. Include material protection and the Characters view in final qualification, not just the current application. Report supported capacity and limitations honestly; measuring usage does not itself guarantee free hosting.
 
-## 2. Guiding Principles for Sequencing
+### Confirmed hosting target
 
-This roadmap follows the migration principle already stated in `TARGET_ARCHITECTURE.md` §14:
+The Product Owner confirmed Oracle Always Free on 2026-11-07; Cloudflare is not the requested hosting target. Preserve the portable single-host frontend/backend/PostgreSQL deployment in `TARGET_ARCHITECTURE.md` section 12.
 
-```text
-protect behavior with tests
-  -> isolate domain logic
-  -> isolate persistence/API adapters
-  -> introduce backend API
-  -> introduce web frontend
-  -> introduce multi-user/account isolation
-  -> containerize final runtime
-```
+Qualification target: ARM64 Ampere A1, combined 2 OCPU / 12 GB RAM for the entire deployment, including OS, Docker, PostgreSQL, backend, frontend and monitoring overhead. This is an allocation ceiling, not permission for Java alone to use 12 GB. Confirm the actual tenancy's available resources and shared storage/network usage before qualification.
 
-Applied here as: **fix behavior before refactoring, refactor before extracting, extract before exposing, expose before replacing the UI.** Concretely:
+Oracle's [Always Free resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm), checked 2026-11-07, specify 1,500 OCPU-hours and 9,000 GB-hours monthly, equivalent to 2 OCPU / 12 GB, plus 200 GB combined boot/block storage across the tenancy. The planner must include storage, transfer, logs and any other required services in the budget; workload, latency and safety-headroom targets remain to be agreed. No target host is currently verified by this setup.
 
-- Domain conflicts (`KNOWN_PROBLEMS.md` §3) are fixed **before** the domain is decoupled from `repo.*`, so the decoupling step is a mechanical, behavior-preserving refactor (`TEST_STRATEGY.md` §18), not a place where bugs and restructuring get tangled together (`CLAUDE.md` "Working Rules" forbids combining unrelated refactoring with a fix).
-- The domain is decoupled from persistence **before** an application-service layer is introduced, so the application layer orchestrates a clean domain instead of relocating the same coupling one level up.
-- A backend HTTP API exists **before** frontend work starts, so the frontend has a real contract to build against instead of a guessed one.
-- JavaFX removal is **permitted but not required** from Phase 5 onward. The original sequencing held it back until the web frontend had functional parity and a deployable backend existed, per `TARGET_ARCHITECTURE.md` §14 ("Reuse of Existing Code"). The Product Owner has since decided that the browser frontend is the canonical user interface and that the legacy JavaFX UI is obsolete and removable (`TARGET_ARCHITECTURE.md` §1, §13 and its Decided list), so parity against JavaFX is no longer a precondition for removing it. Phase 9 remains the phase that *guarantees* it is finished; no phase requires it to be deferred until then. Shared domain, application and backend code that the browser still uses is never removed with it.
-- Any technology or product decision still listed under `TARGET_ARCHITECTURE.md` §16 “To Be Decided” is called out at the phase where it first becomes a blocking decision. None should be silently finalized by whoever executes a story.
+### Sequence
 
----
+1. Reconcile existing measurements/reports and open work; identify gaps.
+2. Verify available Oracle resources and agree workload/KPI budgets with units, quota periods and operating headroom.
+3. Extend existing instrumentation/reporting only where needed.
+4. Run reproducible correctness, multi-account, desktop, sustained-load and recovery qualification with simulated upstream failures.
+5. Produce a concise usage/headroom report and supervisor health review. Propose optional improvements separately; do not implement them automatically.
 
-## 3. Phase Overview
+### Evidence and exit criteria
 
-```text
-Phase 0  Build & Test Foundation                (complete, 2026-09-19 — see §4)
-Phase 1  Domain Stabilization                   (complete — milestone-01 archived)
-Phase 2  Domain Isolation / Decoupling          (complete, 2026-09-21 — see §6)
-Phase 3  Backend / Application-Service Extraction (complete; milestone-03 archived)
-Phase 4  Backend HTTP API                       (complete; milestone-04 archived)
-Phase 5  Browser Frontend Completion             (complete, 2026-10-17 — see §9)
-Phase 6  Multi-User / Account Isolation         (complete; bounded review #63 and PR #73)
-Phase 7  Containerized Runtime and Database Migration (complete, 2026-10-25; review #82)
-Phase 8  Deployment / Runtime Configuration     (next; not started)
-Phase 9  Final Cleanup / JavaFX Removal         (final review later; JavaFX removal already delivered)
-```
+- Selected topology is compatible with the application or a separately approved adaptation plan exists. All required runtime/storage/network components and free-tier limits are accounted for.
+- Metrics cover relevant CPU, memory, database/pool/storage, latency/errors, transfer/request quotas and upstream/cache activity. Provider-specific counters supplement host metrics where applicable.
+- Every result includes commit, configuration, environment, workload, account count, duration, units and measurement boundaries; missing data is explicit. Compare current measurements with budgets and show headroom.
+- Cold/warm catalogs, concurrent distinct accounts, refreshes, slow/429/5xx upstreams and restart recovery have meaningful evidence. Use disposable data and fake upstreams; preserve account isolation and domain behavior.
+- Desktop response/rendering behavior is included; mobile optimization is outside this milestone.
+- Per-service and whole-deployment evidence comes from the selected target environment before claiming free-tier fit. Development-machine results are labelled experiments.
+- Existing coverage and performance reports remain usable. Monitoring overhead and log/storage growth are bounded and measured.
+- Supervisor reviews CI, code review, local-only evidence, remaining risks and workload limits. Unknown or excessive usage is a reported gap, not a passed milestone. The Product Owner decides adoption of further optimizations.
 
-Every new or revised phase must retain the PROJECT HEALTH REVIEW exit requirement, with execution and findings governed by `TARGET_ARCHITECTURE.md` §21. Schedule the review near exit, after milestone implementation; planner/user disposition of blocking findings precedes closure. Phase 1 uses the existing `STORY-QUALITY-001` ("Review Phase 1 project health before milestone completion").
+### Reuse existing work
 
-Phases are listed in dependency order. A later phase should not be started while an earlier phase has open blocking exit criteria, unless a story explicitly documents why it's safe to jump ahead.
+Start from [performance measurement guidance](PERFORMANCE_MEASUREMENTS.md), [quality metrics](QUALITY_METRICS.md) and [the optimization investigation](OPTIMIZATION_INVESTIGATION_REPORT.md). Do not reimplement completed pooling, simulation-state reuse, recipe-payload reuse, correctness fixes or Bank/Materials refresh improvements without current evidence of a remaining gap.
 
----
+KPI contracts and proposed story order: [active backlog](../agent/BACKLOG.md).
 
-## 4. Phase 0 — Build & Test Foundation
+## Milestone 2: protect selected materials from Crafting Profit
 
-**Status:** complete (confirmed 2026-09-19 from completed Phase 0 stories).
+### Confirmed product intent
 
-This historical closure predates the recurring review requirement below; no retrospective review is claimed and the archived milestone is not reopened. Relevant inherited gaps are assessed in the current milestone under `TARGET_ARCHITECTURE.md` §21.
+Users saving for a legendary or another goal can protect owned item/material types selected in Bank and Materials from Crafting Profit consumption. Buying replacements remains allowed when buying is enabled. Implement selection, request/settings transport and authoritative backend calculation behavior together; hiding results alone does not meet the goal.
 
-### Objective
+### Confirmed product/UI contract
 
-Give the project a build system and an automated test capability, so later behavior changes can be verified without manual UI testing (`TEST_STRATEGY.md` §1).
+- Product behavior: [DOMAIN_SPEC.md section 9.1](DOMAIN_SPEC.md). Protect all owned copies while preserving normal acquisition rules for replacements.
+- Selection UI: [FRONTEND_UX_GUIDELINES.md section 2.1](FRONTEND_UX_GUIDELINES.md). Tile checkboxes plus explicit confirmation, presets for every tier T1–T6 and room for more, Profit toggle/count, short empty-selection warning and links back to relevant selection pages.
+- Remember the committed selection and activation setting per account on the same browser. No cross-device synchronization is required.
 
-### Dependencies
+These choices were confirmed by the Product Owner. The planner can now refine the bounded story contracts, including a UI review of exact preset membership, labels and interactions. Story release and workflow execution remain unauthorized.
 
-None. This is the foundation everything else assumes.
+### Acceptance and resource constraints
 
-### Exit Criteria
+- Bank and Materials edit one coherent selection by item type; real inventory quantities remain visible and unchanged. Use committed selection consistently across repeated stacks and locations.
+- The backend applies the approved restriction throughout Crafting Profit, including recursive ingredients. List/detail calculations, costs, quantities, shopping lists and any cached results must agree with the same effective settings.
+- Feature disabled or an empty list preserves existing results. Account changes must not reuse another account's selections or stale in-flight results. Discovery and Ecto are outside the requested scope.
+- Preserve existing selection/navigation, sorting, filtering, refresh and item-link interactions; define accessible keyboard operation and a visible enabled/count summary. Consult the Product Owner for unresolved UI decisions rather than inventing them.
+- Prefer a compact, validated item-ID selection and constant-time membership checks within existing calculation boundaries. Reuse existing request/account state; no new service, polling loop or per-item upstream fetch is justified by this feature. Persistence architecture follows the answer above.
+- Measure feature-disabled, enabled-empty and enabled-populated cases using comparable catalogs/accounts and selected-list sizes. Record calculation latency/CPU/allocation, request size and desktop interaction cost; do not claim zero overhead without evidence.
+- Final Oracle qualification includes this feature under the agreed workload. Do not introduce an unmeasured per-account copy of the entire catalog or shared mutable calculation state to support it.
 
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
-- [x] A standard build system exists (Maven, via `./mvnw`), replacing the manual JAR/`lib/` setup.
-- [x] A test framework is wired in (JUnit 5 via Maven/Surefire) and at least one regression test runs (`craft.CraftingResolverCraftVsBuyTest`).
-- [x] The highest-priority domain conflicts already identified in `KNOWN_PROBLEMS.md` §3 each have at least one test expressing the *intended* (spec-correct) behavior, per `TEST_STRATEGY.md` §24's priority order. §3.1/§3.2/§3.3/§3.5 are fixed-and-tested; §3.4 gained an intended-behavior test at the repo+domain layer (`STORY-DOM-011`, not yet wired into production — see Phase 1's `STORY-DOM-012`); §3.6 was explicitly decided to need no new automated test (`STORY-DOM-010`, no test seam exists for its live-HTTP-calling JavaFX view) — an accepted decision of that story, not a gap.
-- [x] Minimal, hand-built domain test fixtures exist (small recipe/item/price sets, `TEST_STRATEGY.md` §15) rather than relying on the full production `crafting_graph_cache.json` for unit tests (`STORY-TEST-001`, `src/test/java/craft/CraftTestFixtures.java`).
-- [x] Persistence-relevant code paths are covered by integration tests against a real PostgreSQL instance, not only mocked/in-memory behavior (`STORY-TEST-002` through `STORY-TEST-008`).
-- [x] At least the critical repositories/sync flows used by the crafting domain are verified against the real database schema, constraints, and upsert/delete semantics (`STORY-TEST-003` through `STORY-TEST-008`: character/account/price/recipe sync and crafting repository reads).
-- [x] Parser/sync logic for Guild Wars 2 API data is covered by tests using captured real API payloads as fixtures (`STORY-SYNC-002`: `parser.RecipeParserTest` against a captured `/v2/recipes/7319` payload; noted here as a documentation correction — this criterion was already satisfied when `STORY-SYNC-002` reached DONE but the checkbox was not updated at the time).
-- [x] Live GW2 API smoke tests exist for selected critical endpoints, but are optional/manual and not part of the default deterministic test suite (`STORY-SYNC-003`: `api.Gw2ApiLiveSmokeIT`, excluded from `./mvnw test` by naming convention, run via `./mvnw test -Dtest=Gw2ApiLiveSmokeIT`).
-- [x] Integration tests are isolated from the normal development database and can recreate their required test data from scratch (`STORY-TEST-002` through `STORY-TEST-008`: uniquely named disposable schemas, fresh tables/data, and teardown).
+Status: awaiting bounded story refinement/release under active supervision. Detailed story order and decisions are in the [backlog](../agent/BACKLOG.md). Feature planning can proceed alongside KPI planning; final product qualification follows feature integration.
 
-### High-Level Stories
+## Milestone 3: Characters overview and equipment-first details
 
-- **(Done)** Migrate manual JAR/build setup to Maven, Java 25, standard `src/main/java`/`src/test/java` layout.
-- **(Done)** Regression test + fix for the craft-vs-buy cash-vs-effective-cost conflict (`KNOWN_PROBLEMS.md` §3.1).
-- **(Done)** Add a regression/characterization test for multi-recipe selection (`KNOWN_PROBLEMS.md` §3.2) that fails against current behavior, ahead of fixing it in Phase 1 (`STORY-DOM-001`).
-- **(Done)** Add a regression/characterization test for the owned-material pool scope (`KNOWN_PROBLEMS.md` §3.3) (`STORY-TEST-002`).
-- **(Done)** Add a characterization test for bound-material handling (`KNOWN_PROBLEMS.md` §3.4) — `STORY-DOM-007` added a craft-domain test documenting current (non-compliant) behavior; `STORY-DOM-011` added the intended-behavior counterpart at the repo+domain layer, wired into production controllers by Phase 1's `STORY-DOM-012`.
-- **(Done)** Add a regression/characterization test for price-unavailable handling (`KNOWN_PROBLEMS.md` §3.5) (`STORY-DOM-003`).
-- **(Done)** Build a small, reusable in-memory domain fixture (a handful of items/recipes/prices) usable across the above tests, instead of each test hand-rolling its own (`STORY-TEST-001`).
-- **(Done)** Add PostgreSQL integration-test infrastructure using an isolated disposable test database (`STORY-TEST-002`).
-- **(Done)** Add integration tests for character/item sync and the repositories consumed by crafting logic (`STORY-TEST-002` `InventoryRepository`, `STORY-TEST-003` `CharacterSync` incl. `replaceCharacterItems`, `STORY-TEST-004` `RecipeRepository`, `STORY-TEST-005` `TpPriceRepository`); documentation correction made during `STORY-QUALITY-001` — this bullet was left unchecked despite the underlying work being complete.
-- Add captured real GW2 API payload fixtures for character, inventory, recipe, and related parser/sync tests.
-- **(Done)** Add optional live GW2 API smoke tests outside the default `mvn test` path (`STORY-SYNC-003`).
+### Goal and scope
 
----
+Add a GW2efficiency-inspired roster with concise information and click-through character details. Primary purpose: inspect armor/weapons/other equipment to see ascended/legendary items and remaining gear gaps. Include character inventory, builds and story details to the extent supported by the API. Discovered recipes are excluded; map completion is deferred for a later Product Owner decision.
 
-## 5. Phase 1 — Domain Stabilization
+Owning scope: [DOMAIN_SPEC.md section 56](DOMAIN_SPEC.md). UI intent: [FRONTEND_UX_GUIDELINES.md section 2.2](FRONTEND_UX_GUIDELINES.md). Do not infer every statistic, sharing/export option or character renderer from the supplied screenshots.
 
-### Objective
+### Sequence and exit criteria
 
-Bring the existing crafting/economy domain logic into agreement with `DOMAIN_SPEC.md` while it still lives in its current location, so Phase 2's extraction starts from a correct, well-tested baseline instead of carrying bugs into a new structure.
+1. Audit existing character synchronization/storage and current API data/permissions for equipment, inventory, builds and story. Include all saved available equipment/build tabs using adjacent in-game-style tabs, in original slot order, with the in-game active tab initially selected. Report unsupported story data rather than silently substituting backstory choices.
+2. Prepare a concrete overview/detail UI proposal for Product Owner review, prioritizing equipment quality visibility. Set bounded read/refresh and cache contracts; reuse current account and shared metadata infrastructure.
+3. Implement reviewed data/API and equipment/overview stories, then inventory/build details and supported story functionality. Every story includes meaningful tests; pending API/product choices block only the affected work.
+4. Verify account isolation, metadata-based rarity, missing versus empty slots, template-reference deduplication, refresh/recovery and navigation. Do not change existing crafting inventory totals through duplicated template equipment.
+5. Measure roster/detail response size, desktop rendering, metadata/upstream requests, cold/warm behavior and whole-stack CPU/memory/storage under the Oracle workload. No per-character polling loop, new service or eager download of every detail on each roster visit without measured justification.
 
-### Dependencies
+Status: awaiting bounded story refinement/release under active supervision. Final product hosting qualification depends on this milestone as well as material protection. The backlog records story release; unreleased drafts are not executable.
 
-Phase 0 (each fix needs a failing test first, per `TEST_STRATEGY.md` §17's bug-fix workflow, and — for a conflict whose behavior depends on real persistence or GW2 API data, such as §3.3/§3.4's character-inventory/binding data — Phase 0's own exit criteria requiring `TEST_STRATEGY.md` Layer 2/3 coverage to already exist).
+## Operational follow-up: owner administration and automatic inventory refresh
 
-### Exit Criteria
+Confirmed scope: [DOMAIN_SPEC.md section 57](DOMAIN_SPEC.md), [UX sections 2.3–2.4](FRONTEND_UX_GUIDELINES.md) and [owner authorization target](TARGET_ARCHITECTURE.md). Only the Product Owner's verified account gets global item/recipe/full-TP controls and detailed diagnostics. Other users get their account connection/freshness/refresh controls and generic shared health. Backend authorization is required before public deployment; a hidden button is not the acceptance criterion.
 
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
-- All confirmed conflicts in `KNOWN_PROBLEMS.md` §3 are either resolved and covered by a passing test, or converted into an explicit, answered domain question (`DOMAIN_SPEC.md` §51/§53) if resolution requires a decision only the project owner can make. For a conflict whose correct behavior depends on real database/API semantics rather than pure in-memory domain logic (e.g. §3.3's owned-material pool), "covered by a passing test" means the PostgreSQL integration-test coverage Phase 0 already requires (`TEST_STRATEGY.md` Layer 2) — a unit test alone does not close that item.
-- `craft.BlockedReason` carries the full set of reasons `DOMAIN_SPEC.md` §42 expects, and nothing in the crafting-profit/discovery flow silently drops a row instead of exposing a blocked/unavailable state.
-- The dead legacy craft-vs-buy code path is removed once confirmed unreachable.
+Bank/Materials move to automatic stale-data refresh with saved data retained and an updating hint. Remove both manual refresh and cached-reload buttons there; keep manual account refresh in System Status. Reuse the existing shared task/freshness model, preserve material-protection selections and prevent refresh storms across views.
 
-### High-Level Stories
+Prepare separate backend authorization, status UI and inventory freshness stories. Verify owner versus non-owner direct requests, task visibility, key replacement, empty owner configuration, account switching, duplicate refresh admission and stale/error recovery. Batch and bound full-catalog admin work; include its CPU/memory/storage/upstream impact in Oracle qualification rather than assuming on-demand TP measurements represent it. Implementation follows supervisor release of a concrete contract.
 
-- **(Done)** Fix craft-vs-buy cash-vs-effective-cost selection (`KNOWN_PROBLEMS.md` §3.1, `DOMAIN_SPEC.md` §22).
-- **(Done)** Implement discipline-aware, cost-based multi-recipe selection (`KNOWN_PROBLEMS.md` §3.2, `DOMAIN_SPEC.md` §30 / DQ-003) (`STORY-DOM-002`).
-- **(Done)** Extend the owned-material pool to include character inventories (`KNOWN_PROBLEMS.md` §3.3, `DOMAIN_SPEC.md` §9 / DQ-006) — `STORY-DOM-004` extended `InventoryRepository.loadOwnedInventory()` to sum `character_items`, and `STORY-SYNC-001` made `sync.CharacterSync` actually populate that table from the GW2 API's `bags`/`equipment` data, so the fix now has a real effect.
-- **(Done)** Implement account-bound/soulbound material handling (`KNOWN_PROBLEMS.md` §3.4, `DOMAIN_SPEC.md` §11.1 / DQ-007). `UD-001` resolved the "selected character" design; `STORY-DOM-011` implemented the repo + domain layers; `STORY-DOM-012` added the character-selector UI to `CraftingProfitView`/`CraftingDiscoveryView` and wired their controllers to call the binding-aware repository method, giving this rule real-user effect.
-- **(Done)** Add the missing `BlockedReason` values (`PRICE_UNAVAILABLE`, `RECIPE_NOT_ALLOWED`, `INSUFFICIENT_BUDGET`) and stop silently filtering unresolvable rows at the controller layer (`KNOWN_PROBLEMS.md` §3.5, `DOMAIN_SPEC.md` §21 / §42) (`STORY-DOM-008`, `STORY-DOM-013`); documentation correction made during `STORY-QUALITY-001` — this bullet was left unchecked despite the underlying work being complete.
-- **(Done)** Resolve the Ectoplasm Salvage fee-model ambiguity as a new, explicitly answered domain question (`UD-002` and `DOMAIN_SPEC.md` sections 45–47), then make `EctoView` and `Main.java` agree (`STORY-DOM-010`; full convergence into one implementation happens in Phase 3, once an application-service layer exists to hold it).
-- **(Done)** Remove the dead legacy code path in `CraftingPlanner` (`canCraft`/`simulateCraft`/`obtain`/`PlanRun`) once confirmed unused (`KNOWN_PROBLEMS.md` §7.1).
-- **(Done)** Remove leftover debug instrumentation (`KNOWN_PROBLEMS.md` §7.2) (`STORY-DOM-006`).
-- **(Done)** Decide whether the 250-craft simulation cap is intentional and document it in `DOMAIN_SPEC.md`, or expose a "capped" indicator (`KNOWN_PROBLEMS.md` §7.6) — resolved by `agent/user-decisions/UD-003-craft-simulation-cap.md`, recorded in `DOMAIN_SPEC.md` §28; documentation correction made during `STORY-QUALITY-001` — this bullet was left unchecked despite the underlying decision being resolved.
+## Existing architecture and historical migration
 
----
+### Correctness prerequisite: owned non-tradable valuation
 
-## 6. Phase 2 — Domain Isolation / Decoupling
+Product Owner clarification: owned non-tradable/bound inputs, especially daily materials, must use recursive crafting-input value before vendor fallback rather than automatic zero. The owning rule is `DOMAIN_SPEC.md` sections 11.1–11.2. Review and correct the current bound-stock bypass before accepting material-protection work; verify list/detail profit reconciliation and bounded valuation overhead. This is a draft correction, not a started implementation.
 
-Status: Complete (2026-09-21). Planner closure assessment accepted `STORY-QUALITY-002`'s evidence: all implementation exit criteria are satisfied, no blocking findings remain, and no criterion transfer is needed. The disclosed cross-character Discovery live-view verification gap is non-blocking for this milestone's domain/persistence scope; no additional story is required for closure.
+[Domain specification](DOMAIN_SPEC.md), [current architecture](CURRENT_ARCHITECTURE.md), [target architecture](TARGET_ARCHITECTURE.md), [test strategy](TEST_STRATEGY.md) and recorded user decisions remain authoritative. This roadmap does not change their business or architecture rules.
 
-### Objective
-
-Extract the crafting/economy domain logic into a persistence- and transport-independent form, satisfying `TARGET_ARCHITECTURE.md` §7's Domain Independence Rule, so it can be unit tested and later reused by a backend module without dragging JDBC-shaped types along.
-
-### Dependencies
-
-Phase 1. This must be a behavior-preserving refactor (`TEST_STRATEGY.md` §18) — fixing domain bugs at the same time as restructuring would make it impossible to tell which change caused a test failure.
-
-### Exit Criteria
-
-- **(Done — `STORY-QUALITY-002`; planner disposition 2026-09-21)** Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
-- **(Done — `STORY-DOM-017`)** `craft.*` no longer imports anything from `repo.*` (`KNOWN_PROBLEMS.md` §4.1).
-- **(Done — `STORY-DOM-017`)** Independent domain types exist (e.g. `Recipe`, `Ingredient`, `PriceQuote`) with a mapping boundary living in `repo.*`, per `TARGET_ARCHITECTURE.md` §10.
-- **(Done — `STORY-DOM-018`/`STORY-DOM-019`)** The "recipe is unlocked" rule is no longer expressed as a SQL CTE (`KNOWN_PROBLEMS.md` §4.2): `craft.RecipeKnowledgePolicy.isKnownAccountWide` is the single pure domain policy shared by `RecipeRepository.loadRecipes`, `loadRecipesForCharacter`, and `loadMissingDiscoverableRecipeIdsForCharacter`. `STORY-DOM-018` extracted the policy but left the character-scoped entry points checking only the selected character's own unlocks; `STORY-DOM-019` corrected them to agree with `loadRecipes`'s account-wide (any-character) knowledge decision, matching `DOMAIN_SPEC.md` §34/35 and decided `DQ-010`.
-- **(Done — `STORY-INFRA-003`)** `repo.Db` and `sync.Db` are consolidated into one connection helper (`KNOWN_PROBLEMS.md` §4.3).
-- **(Done — `STORY-DOM-017`)** All Phase 0/1 domain tests still pass, now exercising only the independent domain types with no database or repository involved.
-
-### High-Level Stories
-
-- **(Done — `STORY-DOM-017`)** Introduce independent domain model types, separate from the `repo.RecipeRepository`/`repo.tp.TpPriceRepository` nested classes currently reused as the domain model.
-- **(Done — `STORY-DOM-017`)** Introduce a mapping/adapter layer in `repo.*` converting persistence rows into the new domain model.
-- **(Done — `STORY-DOM-018`/`STORY-DOM-019`)** Move "recipe is unlocked" logic out of SQL into an application/domain-level concept (`craft.RecipeKnowledgePolicy`); `STORY-DOM-018` found Discovery's separate unlock query was **not** semantically consistent with it for cross-character knowledge (`KNOWN_PROBLEMS.md` §4.2) and reported it rather than fixing it mid-refactor; `STORY-DOM-019` implemented the already-decided (`DQ-010`) account-wide correction.
-- **(Done — `STORY-INFRA-003`)** Consolidate `repo.Db` and `sync.Db`.
-- **(Done — `STORY-DOM-017`)** Port the Phase 0/1 domain tests to construct only the new independent types (no `repo.*` construction inside domain tests).
-
----
-
-## 7. Phase 3 — Backend / Application-Service Extraction
-
-**Status: Complete — 2026-09-23.** All exit criteria are satisfied. Review findings are explicitly dispositioned in `STORY-QUALITY-003`'s Result; `STORY-APP-010` and `STORY-APP-011` complete its two scoped follow-ups. The documented current phase advances through `agent/PROJECT_STATE.md`; no next-phase stories are planned in this pass.
-
-**Blocking performance gate (PO requirement, 2026-09-22) — satisfied 2026-09-23:** this phase could not close or advance to Phase 4 until the Crafting Profit performance requirement in `TARGET_ARCHITECTURE.md` §17 passed real-user-database measurement and received explicit subsequent user acceptance. Both happened: the measurements and the Product Owner's dated acceptance are recorded in `STORY-PERF-001`'s Result. This gate no longer blocks the phase; the remaining exit criteria below still govern whether Phase 3 closes.
-
-### Objective
-
-Introduce an Application Layer of named use cases that orchestrate the now-independent domain plus infrastructure, per `TARGET_ARCHITECTURE.md` §8, replacing the current pattern of UI classes and button handlers calling `sync.*`/`repo.*`/`craft.*` directly.
-
-### Dependencies
-
-Phase 2. Building an application layer on top of a still-coupled domain would just relocate the coupling problem rather than remove it.
-
-### Exit Criteria
-
-- **(Done)** Crafting Profit meets the complete-page, at-most-7-second real-user-database requirement in `TARGET_ARCHITECTURE.md` §17, with measurement evidence and explicit dated user acceptance recorded in `STORY-PERF-001`.
-- **(Done)** Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
-- **(Done)** Application services exist for at least: crafting profit calculation, crafting discovery candidates, account refresh, global data refresh, Trading Post price refresh, crafting graph rebuild — matching the example use-case list in `TARGET_ARCHITECTURE.md` §8.
-- **(Done)** `Gw2App` button handlers, `EctoView`, and `Main.java` no longer call `sync.*`/`repo.*`/`craft.*` directly; they call application services.
-- **(Done)** The two disagreeing Ectoplasm Salvage implementations (`STORY-DOM-010` and `STORY-APP-003`) converge into one application service with one calculation.
-- **(Done)** `AccountRefreshService`'s current dead-call situation (`KNOWN_PROBLEMS.md` §8) is resolved — either wired up as the account-refresh use case or removed.
-
-### High-Level Stories
-
-- **(Done)** Measure and resolve Crafting Profit page-load latency on the current real user database; obtain explicit user acceptance (`STORY-PERF-001`).
-- **(Done)** Define application services wrapping the crafting-profit and crafting-discovery flows currently implemented inside `CraftingProfitController`/`CraftingDiscoveryController`.
-- **(Done)** Define application services for the synchronization use cases currently invoked ad hoc from `Gw2App`/`InitialSetupService`/`AccountRefreshService`.
-- **(Done)** Migrate the Ectoplasm Salvage calculation into a domain calculation plus application service; retire the inline `EctoView` calculation and `Main.java`.
-- **(Done)** Update JavaFX views/controllers to call application services only.
-
----
-
-## 8. Phase 4 — Backend HTTP API
-
-**Status: COMPLETE — milestone-04 closed by planning on 2026-09-24.** All eight exit criteria below are satisfied on the recorded evidence in `agent/stories/STORY-QUALITY-004-phase-four-completion-review.md`; its Result records the subsequent planner disposition of all eight non-blocking findings. No criterion is transferred. API timing remains boundary-only evidence, not a new full-page measurement. The documented current-phase pointer is maintained in `agent/PROJECT_STATE.md`.
-
-### Objective
-
-Expose the application services over HTTP per `TARGET_ARCHITECTURE.md` §9, so a future web frontend has a real contract to consume — without removing the JavaFX UI yet.
-
-### Dependencies
-
-Phase 3. The API layer should be a thin translation over existing application services (`TARGET_ARCHITECTURE.md` §9: "Business rules must not be implemented in controllers"), not a new place to re-implement orchestration.
-
-### Exit Criteria
-
-- **(Done)** Preserve and reverify the accepted Crafting Profit performance requirement at the backend/API boundary (`TARGET_ARCHITECTURE.md` §17); API timing is only one part of the full page-load budget.
-- **(Done)** Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
-- **(Done)** **Spring Boot is the selected backend framework (resolved `UD-006`).
-- **(Done)** HTTP endpoints exist for at least the crafting profit/discovery calculations and the sync/refresh operations sketched in `TARGET_ARCHITECTURE.md` §9.
-- **(Done)** Controllers/routes contain no business logic (thin translation only).
-- **(Done)** Transport DTOs are distinct from domain objects; GW2 API JSON shapes do not leak into HTTP responses.
-- **(Done)** Backend API tests exist per `TEST_STRATEGY.md` §11 (valid/invalid input, mapped domain failures).
-- **(Done)** The JavaFX UI continues to work unmodified (still calling application services in-process) — the API is additive at this point.
-
-### High-Level Stories
-
-- **(Done)** Decide and document the backend web framework.
-- **(Done)** Stand up crafting-profit and crafting-discovery HTTP endpoints.
-- **(Done)** Stand up sync/refresh trigger endpoints, using the resolved mixed synchronous/asynchronous approach in `UD-007`.
-- **(Done)** Define request/response DTOs and their mapping to/from domain objects.
-- **(Done)** Add backend API contract tests.
-
----
-
-## 9. Phase 5 — Browser Frontend Completion
-
-**Status: Complete (2026-10-17).** The planner accepted the current-contract evidence in `STORY-PERF-004` and the bounded review in `STORY-QUALITY-005`. Review F1/F2/F5 are addressed by the resolved acceptance contract and its measured verification; the remaining findings are retained as non-blocking at their recorded references. No Phase 5 exit criterion is transferred.
-
-### Objective
-
-Complete and verify browser feature workflows over the backend HTTP API. JavaFX is obsolete and may be removed from this phase onward, but removing it is not a Phase 5 exit criterion; Phase 9 is where any remainder is finished. Authoritative crafting-profit/discovery and other backend-owned domain results remain backend-provided. The Ecto Salvage calculator is an explicit exception: its small feature-specific calculation is frontend-owned and operates from the required metadata, Trading Post prices, and account Luck data.
-
-### Dependencies
-
-Phase 4. The frontend needs stable backend APIs for backend-owned workflows. Small presentation-local calculations may remain in the frontend when explicitly decided, as with Ecto Salvage.
-
-### Exit Criteria
-
-- Verify the browser-navigation-to-complete-Crafting-Profit-page performance requirement against the real user database under the resolved cached-result scope in `TARGET_ARCHITECTURE.md` §17; historical `STORY-PERF-002` / `STORY-PERF-003` evidence must be supplemented by `STORY-PERF-004` for the updated behavior. See `TEST_STRATEGY.md` §34.
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
-- **(Done)** Vue 3 and TypeScript are selected for the browser frontend (ADR-001).
-- **(Done)** The browser renders Crafting Profit, Discovery, resolution details and domain states using backend-provided authoritative values (`TARGET_ARCHITECTURE.md` §10.2–10.3).
-- Normal feature workflows refresh their needed account and price data; System Status is reserved for diagnostics and explicit maintenance refreshes. Existing workflows are delivered; complete the decided Crafting Profit cached-result and asynchronous refresh contract (`TARGET_ARCHITECTURE.md` §9.1) through `STORY-APP-014` and `STORY-WEB-034`.
-- **(Done)** Crafting Profit, Discovery, and other backend-owned domain results are not independently recalculated in the browser.
-- **(Done)** Ecto Salvage is frontend-owned and calculates locally from item metadata, Trading Post prices, account Luck, and user-selected inputs; the former backend calculation route is absent.
-- **(Done)** The former backend-owned Ecto calculation route is absent. Unreferenced legacy browser API types/hooks are recorded in `KNOWN_PROBLEMS.md` KP-25; their cleanup is not required for feature behavior.
-
-### High-Level Stories
-
-- (Done) Vue 3 and TypeScript are selected; see ADR-001.
-- (Done) Crafting Profit and backend-authoritative resolution details are available in the browser.
-- (Done) Crafting Discovery is available in the browser.
-- (Done) Bank, Materials, and frontend-owned Ectoplasm Salvage workflows are available in the browser.
-- (Done) The shared refresh workflow and System Status page are implemented; current work is tracked in GitHub issues.
-- (Done and continuing) Frontend component and browser smoke coverage is tracked in the canonical stories and `TEST_STRATEGY.md`.
-- (Done) The obsolete backend-owned Ectoplasm calculation route was removed; the browser calculation is canonical.
-- Finish browser coverage and acceptance. JavaFX removal is permitted from this phase onward but is not required to close it; Phase 9 still owns completing it.
-
----
-
-## 10. Phase 6 — Multi-User / Account Isolation
-
-**Status: Complete.** Bounded review #63 maps every exit criterion to delivered
-source and verification evidence. Its blocking cached-browser access finding is
-resolved by #69 / PR #70: cached reads use live account context without a new
-upstream proof, while necessary refresh runs behind the usable result. Exact-head
-Codex review and CI passed, together with live browser recovery and a controlled
-refresh-outage check over real cached results. The scoped recovery chain
-(#8, #15, #11, #12, #13), proportionate key policy UD-018 and process/performance
-reporting (#10, #14) are accepted. PR #71 reconciles obsolete documentation.
-No exit criterion is transferred or waived. Existing small follow-ups remain in
-#60 and meaningful coverage work in #21; neither blocks this milestone.
-
-### Objective
-
-Convert the web application from the current single-account-per-instance assumption to a shared multi-user deployment model before containerization/deployment hardens the runtime around the old assumption. One application instance and one PostgreSQL database should support multiple GW2 accounts while preserving strict account-data isolation and sharing genuinely global GW2 data.
-
-### Dependencies
-
-Phase 5. The browser/backend contract and web frontend should exist before introducing browser-held per-user GW2 credentials and multi-user request scoping. This phase must complete before containerization/deployment so the production runtime is built around the intended public multi-user model rather than retrofitted afterward.
-
-### Exit Criteria
-
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
-- Replace the single configured GW2-account-per-instance assumption with an explicit multi-user/account model.
-- Use one shared PostgreSQL database; do not create one database per user. Global GW2 reference/economy data is shared, while account-specific data is scoped to a stable GW2 account identity.
-- Resolve a presented GW2 API key through the GW2 API to the stable account identity and use that identity to find/reuse the account's existing persisted data. Replacing/recreating a GW2 API key must not create a duplicate account dataset.
-- Keep the user's GW2 API key out of persistent server/database storage. The browser retains the key and supplies it to the backend only when required for account-specific GW2 API operations; the backend treats it as transient request/operation input. UD-018 and TARGET_ARCHITECTURE section 8.2 select simple browser sessionStorage retention and proportionate handling of read-only game-data tokens. Memory-only lifetime and advanced credential hardening are not exit criteria.
-- Account-specific persistence (including characters, inventories/material storage, unlock/discovery state and other synchronized account data) cannot be read, modified, synchronized or used in calculations under another account's scope. Add persistence/API/integration tests proving this isolation.
-- After the schema reset, global-only item, recipe, icon metadata and Trading Post operations remain usable without an account scope. Mixed global/account selections execute their global portion independently and their account portion only under a verified account scope. Until scoped account workflows are available, the browser clearly asks for a validated key instead of showing raw schema errors.
-- Explicitly decide whether possession/validation of the GW2 API key and resolved stable GW2 account identity is sufficient for application identity, or whether separate application authentication is required. Do not add username/password infrastructure by default without that decision.
-- Classify synchronization/data ownership as either global or account-specific. Shared/global refreshes must not be independently triggered by every browser user when that would duplicate expensive work or external API traffic.
-- Profit and Discovery use one globally shared Trading Post cache. Feature calculations refresh only their required missing or stale IDs on demand; fresh quotes are reused for ten minutes. No full-catalog timer runs. Multi-user requests must continue to share this cache.
-- Apply the same multi-user concurrency review to other global refresh/synchronization operations: coalesce, schedule, cache or otherwise centralize work where many users could otherwise trigger the same global operation at once. Account-specific refreshes remain scoped to the requesting account.
-- Track account activity (for example `last_seen_at` and/or `last_successful_sync_at`) so inactive account-specific data can be identified. Define a retention/cleanup policy for stale account data, but only introduce automatic deletion/cleaner execution when measured storage/database impact makes cleanup worthwhile. The concrete inactivity period remains an explicit decision at that point; cleanup must never delete shared global data.
-- Define a cutover path from the existing single-user database to the account-scoped model: reset disposable cached data and repopulate each verified account through fresh GW2 API synchronization (UD-016; `TARGET_ARCHITECTURE.md` §7.4).
-- Existing authoritative domain calculations remain account-agnostic where possible; user/account scoping belongs at the API/application/persistence boundaries and must not duplicate domain rules.
-- Complete removal of the obsolete JavaFX desktop UI, its exclusive code/resources/tests, entry points and build/runtime dependencies before the Phase 6 health review. Preserve shared backend and specified browser behavior; update current architecture and runtime/testing documentation to reflect the removal.
-- Begin application performance and resource measurement before the Phase 6 health review. A dedicated, automatically and manually runnable GitHub Actions workflow reports representative process, HTTP, database and background-operation measurements with workload/environment metadata; missing or failed benchmarks remain visible and nonblocking. Container-specific measurements wait until containers exist (`TARGET_ARCHITECTURE.md` §17, Application resource measurements).
-
-### High-Level Stories
-
-- Decide and document the stable account identity, browser-side GW2 API-key handling, and whether separate application authentication is required.
-- Separate persistence into shared/global data and account-scoped data, adding stable account ownership keys/relations where required.
-- Reset the existing single-user cache at schema cutover and repopulate account-scoped data through fresh synchronization.
-- Make account sync resolve the supplied GW2 API key to the stable GW2 account identity and reuse existing data for replacement keys.
-- Add cross-account isolation tests covering repositories, application services and HTTP endpoints.
-- Keep Trading Post prices in a shared on-demand cache, refreshing only missing/stale required IDs; no full-catalog timer is planned while this remains a single backend instance.
-- Review other global refresh operations for duplicate multi-user triggering and centralize/coalesce them where appropriate.
-- Add account activity tracking and document the deferred evidence-based stale-account cleanup policy.
-- Remove the obsolete JavaFX application and its exclusive build, runtime and test infrastructure, preserving shared backend consumers.
-- Establish initial nonblocking application performance measurements and make their first results available to the Phase 6 health review.
-
----
-
-## 11. Phase 7 — Containerized Runtime and Database Migration
-
-**Status: Complete — 2026-10-25.** Review #82 and supervisor/planner disposition
-accepted backend/frontend images (#72/#76), the selected proxy runtime (#75),
-the three-service Compose stack (#78), backend/Docker organization (#88), and
-actual container resource reporting (#79). Fresh-schema, managed restart, proxy
-and DNS replacement checks passed. A fresh isolated stack then synchronized live
-ArenaNet data and passed browser proof, account refresh, Profit, Bank, Materials,
-reload and disconnect without manual SQL. No exit criterion is transferred.
-Known domain/cache and coverage follow-ups remain explicitly nonblocking for
-container packaging; this is not a declaration that the app has no bugs.
-Hosting/public TLS stay undecided until Phase 8 needs them.
-
-The versioned schema lifecycle was delivered during Phase 6 (STORY-INFRA-004, ADR-010). This phase packages that selected lifecycle; it does not reopen the Flyway choice or require another manual-SQL conversion.
-
-### Objective
-
-Move from manually-run local services to the target three-container model (frontend, backend, PostgreSQL) with reproducible schema management, per `TARGET_ARCHITECTURE.md` §3, §7, and §12.
-
-### Dependencies
-
-Phase 6. Containerization should package the intended multi-user/account-isolated runtime rather than harden the superseded single-account-per-instance model. The backend and web frontend already exist from Phases 4–5.
-
-### Exit Criteria
-
-- **(Done)** Bounded PROJECT HEALTH REVIEW and explicit supervisor/planner disposition recorded in #82 (`TARGET_ARCHITECTURE.md` §21).
-- **(Done)** Flyway is selected (`TARGET_ARCHITECTURE.md` §7.3 and §16, ADR-010).
-- **(Done)** Versioned migrations and the managed schema gate replace manual table setup; fresh/reset scoped schemas are covered by the production-chain integration checks.
-- **(Done)** Backend, frontend, and PostgreSQL each run in their own container.
-- **(Done)** `docker compose up` starts all three (`TARGET_ARCHITECTURE.md` §12).
-- **(Done)** PostgreSQL and backend have no published host port; only the frontend is exposed (`TARGET_ARCHITECTURE.md` §12).
-- **(Done)** Fresh environment creates the versioned schema and completes the live browser workflow without manual SQL; evidence and limits in #82.
-
-### High-Level Stories
-
-- (Done) Select Flyway and implement the versioned schema lifecycle.
-- (Done) Write and verify the backend Dockerfile (#72).
-- (Done) Write and verify the frontend Dockerfile (#76).
-- (Done) `docker/compose.yaml` wires frontend/backend/PostgreSQL on an internal network (#78).
-- (Done) Verify a fresh `docker compose up` reproduces a working environment from nothing (#82).
-
----
-
-## 12. Phase 8 — Deployment / Runtime Configuration
-
-### Objective
-
-Make the containerized system deployable outside the developer's own machine, per `TARGET_ARCHITECTURE.md` §11–12 and §16.
-
-### Dependencies
-
-Phase 7. Deployment configuration only matters once there is something containerized to deploy.
-
-### Exit Criteria
-
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
-- Server-owned configuration (database URL/user/password and any future deployment settings) is supplied via environment variables or equivalent container/runtime configuration. Per-user GW2 API keys are not deployment environment variables in the multi-user model; they remain user/browser-held and are supplied transiently to the backend as defined in Phase 6.
-- **Explicit decisions made, only when actually needed** on reverse proxy and hosting provider. Authentication/account identity follows the Phase 6 decision rather than being deferred to deployment.
-- The deployed application supports the Phase 6 shared multi-user model: one application instance can serve multiple isolated GW2 accounts using shared global data and one PostgreSQL database.
-
-### High-Level Stories
-
-- Carry server-owned `.env`-style configuration into container-level environment variables; do not move per-user GW2 API keys into deployment configuration.
-- Decide a reverse proxy approach, if the chosen hosting target needs one.
-- Decide a hosting provider only at the point of actually deploying. Oracle Cloud and Cloudflare-related hosting are possible candidates only. Evaluate current capabilities and limits when deployment is reached; neither is selected, and provider portability remains a constraint.
-- Apply the authentication/account-identity decision already made in Phase 6; deployment must not silently replace it with provider-specific identity infrastructure.
-
----
-
-## 13. Phase 9 — Final Cleanup / JavaFX Removal
-
-### Objective
-
-Confirm final cleanup and retire any remaining obsolete paths, consistent with `TARGET_ARCHITECTURE.md` §14. JavaFX source/resources and build dependencies are already removed (STORY-UI-004 / STORY-INFRA-005); do not recreate removal work or require obsolete desktop-only features to be reimplemented.
-
-The JavaFX UI is already superseded by the browser frontend, so removal work may happen in any phase from Phase 5 onward (see §2). This phase is not a gate holding that work back; it is where the remaining items below are confirmed finished, and it closes immediately if earlier phases already did them.
-
-### Dependencies
-
-Phase 5 (frontend functional parity) and Phase 8 (a deployable system users can actually switch to) for *completing* this phase. Individual removal steps have no such dependency: the Product Owner has declared the JavaFX UI obsolete, so any of them may be done earlier as long as shared domain/application/backend code the browser still uses is preserved.
-
-### Exit Criteria
-
-- Complete a bounded PROJECT HEALTH REVIEW before declaring this milestone complete (`TARGET_ARCHITECTURE.md` §21).
-- Verify the specified browser feature workflows against `DOMAIN_SPEC.md`; obsolete desktop-only features are not new product requirements.
-- **(Done)** JavaFX views/controllers and the `Gw2App` entry point are removed.
-- **(Done)** The obsolete `Main.java` entry point is removed.
-- **(Done)** JavaFX Maven dependencies and plugin are removed.
-- No class remains in the default (unnamed) Java package.
-- `CLAUDE.md`, `docs/CURRENT_STATE_SPEC.md`, and `docs/CURRENT_ARCHITECTURE.md` are updated to describe the web-only architecture.
-
-### High-Level Stories
-
-- Verify the specified browser workflows and review remaining confirmed obsolete code.
-- (Done) Remove JavaFX views/controllers, entry points and build dependencies.
-- Update project documentation to reflect the web-only architecture.
-
----
-
-## 14. Status
-
-Phase 5 closed on 2026-10-17; Phase 6 is current. GitHub issues and merged PRs
-carry live story state. The account-scoped critical path and its current cutover
-limitation are summarized in §10; the historical `agent/PROJECT_STATE.md`
-pointer is no longer maintained by the retired Python harness.
-
-It should be revisited whenever a phase's exit criteria are fully met, or when a new domain/architecture decision materially changes what a later phase requires.
+The previous Phase 0–9 migration roadmap is retained in Git history at baseline `d713eb46c03e3c5cfa3cdfc90ad5d5216b559752:docs/ROADMAP.md`. Historical phase references in ADRs describe that plan. Previous completion statements are historical evidence, not a fresh health certification.

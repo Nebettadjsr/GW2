@@ -320,6 +320,12 @@ Verify usable key entry/reload/replacement/disconnect, no stale A response enter
 
 ---
 
+## 8.3 Owner administration (approved target; not yet implemented)
+
+Identify the Product Owner's administrator account by its backend-verified GW2 account GUID, configured server-side. Do not tie ownership to one replaceable API key, a display name, a client-supplied GUID/role or the first account to connect. No configured owner means no owner privilege; provisioning/verification of the intended GUID is required before enabling admin actions. Reuse the existing session/proof boundary rather than introducing a separate identity platform.
+
+Authorize owner-only global mutation endpoints and detailed system diagnostics on the backend, including asynchronous admission and later task status/results. Ordinary account operations remain scoped to the verified requesting account with their existing grants. Return a separate generic shared-health projection to non-admins instead of sending privileged diagnostics and hiding them in the browser. Never log keys or expose them through admin diagnostics. Required product controls are defined in `DOMAIN_SPEC.md` section 57.
+
 # 9. Synchronization and Long-Running Operations
 
 Synchronization is an application-level/backend responsibility. The frontend may trigger permitted operations and display status/freshness; the backend owns execution order, persistence, error handling, and synchronization state.
@@ -426,9 +432,9 @@ PostgreSQL (internal)
 
 The backend also communicates with the external Guild Wars 2 API over HTTPS. PostgreSQL does not need public exposure.
 
-The application must remain portable to a normal Docker-capable host. A home server, VPS, NAS/container host, or suitable cloud VM may be used. Oracle Cloud Free Tier / Always Free is only a deployment candidate and must be re-evaluated when deployment work is reached; application architecture must not depend on Oracle-specific services.
+The application must remain portable to a normal Docker-capable host. The Product Owner selected Oracle Cloud Always Free on 2026-11-07: the final product must fit the whole-deployment free-tier budget, including the planned material-protection and Characters features. Qualification targets the small ARM64 deployment described in `ROADMAP.md`; actual availability and measured fit remain to be verified. Application architecture must not depend unnecessarily on Oracle-specific services.
 
-Cloudflare-related hosting is another possible future option to evaluate; neither Cloudflare nor any specific Cloudflare product is selected. Hosting remains undecided until the deployment phase.
+Cloudflare is not the selected hosting target. This decision does not select a public TLS/edge product or change Java/PostgreSQL and the existing container boundaries.
 
 ### Frontend runtime and `/api` forwarding (ADR-011)
 
@@ -508,13 +514,13 @@ Review workflow and story disposition belong in the agent/planning documentation
 - **Global metadata checks:** backend-owned scheduled ID-list checks; implementation default six hours, configurable by environment.
 - **Trading Post prices:** globally shared on-demand freshness cache, ten-minute TTL; no full-catalog timer.
 - **Hosting portability:** no unnecessary provider-specific dependency.
-- **Potential hosting options:** Cloudflare-related infrastructure may be evaluated with portable hosts; no provider or product is selected.
+- **Hosting target (Product Owner, 2026-11-07):** Oracle Always Free; the final product must fit its whole-deployment budget. Preserve hosting portability and qualify actual usage before claiming fit.
 
 ## To Be Decided
 
 - Public TLS/edge proxy, if required by deployment (separate from the internal frontend-to-backend forwarding selected in ADR-011).
 - Inactive-account retention threshold, only if measured impact justifies automatic cleanup.
-- Hosting provider.
+- Oracle target-host access, available tenancy resources and measured capacity/headroom; hosting provider is decided.
 
 ---
 

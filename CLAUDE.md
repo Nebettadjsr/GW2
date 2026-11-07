@@ -4,6 +4,8 @@ GW2 is a crafting and economy application. The active browser UI is Vue/TypeScri
 
 ## Work from GitHub issues
 
+You are the programmer. Codex on GitHub plans under `agent/PLANNER_INSTRUCTIONS.md`; the interactive Codex supervisor approves readiness under `agent/SUPERVISOR_INSTRUCTIONS.md`. Read the setup/activation status in `agent/BACKLOG.md` before beginning work. Draft backlog entries are not implementation authorization. Do not dispatch a run, activate a draft, choose the next milestone or change acceptance criteria yourself. Report discoveries to the supervisor/planner; implement only the assigned approved story, including its tests.
+
 An issue states the goal, acceptance criteria, constraints, and dependencies. Work on one issue per branch and pull request. Do not start an issue whose listed dependencies are unmerged. Link the issue in the PR. If a requirement needs a Product Owner decision, ask on the issue or PR and apply `needs-decision`; do not invent product behavior. Record a small, nonblocking improvement as a follow-up issue rather than expanding the current PR. An acceptance criterion or material correctness/security gap is blocking.
 
 Implementing agents may write production code, tests, and fixtures together. Run the narrow relevant checks locally and let CI run the complete Maven and Vitest suites. In the PR, list checks actually run, local-only checks still needed, and the reason for any removed or weakened assertion. Respond to review findings on the same branch.
@@ -36,3 +38,5 @@ Use `docs/TEST_STRATEGY.md` to choose meaningful tests. Backend CI runs Maven; f
 Reviewers compare the PR with its issue, the owning docs, the test diff, and the actual CI result. They may accept a sound implementation that differs in minor details from the proposed approach when the acceptance criteria are met; record a small follow-up issue if useful. Request changes for unmet criteria, unsafe behavior, or inadequate verification.
 
 Keep the PR focused and report observed facts separately from inferences and recommendations. Preserve unrelated maintainer changes. Stop processes you start before finishing.
+
+Return deliverables to the main project and remove temporary worktrees and disposable logs after use. Preserve required measurement evidence without leaving scratch files in the project root.

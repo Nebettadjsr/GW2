@@ -112,8 +112,8 @@ Profit tree shows one `Value` from the backend's `effectiveCostCopper` field. It
 economic cost of everything consumed by that requirement: the opportunity value of owned sellable
 materials plus the actual acquisition cost of materials that must be bought. It is inclusive of
 descendants exactly once, so a parent includes a crafted child's cost without adding the child's
-materials again. Owned bound/non-tradeable materials retain their established zero-opportunity-value
-rules; unavailable valuations remain unknown. The selected root covers the full counted quantity
+materials again. Owned bound/non-tradeable materials use the recursive economic valuation in
+section 11.2 rather than an automatic zero; unavailable valuations remain unknown. The selected root covers the full counted quantity
 and reconciles with Calculation's total Own materials plus Bought materials. Do not add a per-node
 technical disclosure for the cash, opportunity and effective values; those remain available in the
 backend/API contract, with missing distinct from known zero.
@@ -471,6 +471,16 @@ It does not necessarily represent what the Guild Wars 2 crafting UI can physical
 
 ---
 
+## 9.1 Protected materials in Crafting Profit (approved feature; not yet implemented)
+
+The user can protect selected item types from consumption of owned stock in Crafting Profit. With protection enabled, all owned copies of those item types are unavailable to the calculation, across material storage, bank and character inventories. Selection is by item type, not a single displayed stack or a reserved quantity.
+
+Protection restricts owned-stock availability; it does not ban the item from the recipe graph. Only when the "Allow buying" checkbox is enabled may the calculation buy replacements, under the existing prices, budget and acquisition rules. Existing intermediate-crafting rules still apply without consuming protected owned copies, including indirectly through subrecipes. Do not remove or overwrite actual cached inventory to apply protection.
+
+Disabled protection or an empty committed selection preserves ordinary calculation behavior. List results, selected-result details, quantities, costs and shopping lists must use the same effective protection settings. Any calculated-result identity/cache must distinguish those settings. Discovery and Ecto behavior are unchanged.
+
+Selection and activation preferences are remembered per verified GW2 account on the same browser across restarts; cross-device synchronization is not required. They must never leak between accounts. The UI confirmation and preset rules belong in `FRONTEND_UX_GUIDELINES.md`, section 2.1.
+
 # 10. Inventory Consumption Rule
 
 When the option to use owned materials is enabled, owned materials should be consumed before obtaining additional copies.
@@ -557,7 +567,7 @@ Binding affects whether an owned material can be used by the selected character.
 
 Account-bound materials may be used by any eligible character on the account.
 
-Because they cannot be sold on the Trading Post, they do not receive a normal Trading Post opportunity cost.
+They do not receive a direct Trading Post resale opportunity cost. Their consumed economic value must nevertheless follow section 11.2; account binding is not a reason to assign zero crafting-input value.
 
 ### Soulbound items
 
@@ -565,7 +575,7 @@ Soulbound materials may only be used for crafting by the character to which they
 
 A soulbound item held by or bound to another character must not be counted as usable inventory for the selected character.
 
-Because soulbound items cannot be sold on the Trading Post, they do not receive a normal Trading Post opportunity cost.
+They do not receive a direct Trading Post resale opportunity cost. Their consumed economic value must nevertheless follow section 11.2; soulbinding restricts usability, not whether a value can be established.
 
 ## 11.2 Non-Tradable Material Valuation
 
@@ -575,7 +585,9 @@ Non-tradable materials are valued using the following fallback order:
 2. If the item cannot be crafted, use its vendor sell value if one exists.
 3. If neither a crafting cost nor a vendor sell value exists, assign an economic value of `0`.
 
-The crafting-cost calculation in step 1 is recursive and follows the same economic-cost rules as other crafting calculations.
+The crafting-cost calculation in step 1 is recursive and follows the same economic-cost rules as other crafting calculations. Sum ingredient quantities times their unit values and divide by recipe output quantity for the produced unit value. Resolve unpriced child ingredients recursively, falling back to vendor sell values where crafting cannot establish a value. This applies to owned account-bound and soulbound inputs, including daily materials such as Lump of Mithrillium. Being already owned or time-gated does not make their material inputs free.
+
+This is valuation, not an instruction to purchase or actually recraft owned stock: actual buying still requires "Allow buying". Do not add a crafted item's value and its ingredient costs twice. Economic values must reconcile between the tree, Own materials and total profit. Detect cycles and unresolved leaves rather than treating an unresolved cost as a fully priced recipe. Do not invent a gold price for the daily cooldown itself.
 
 An item valued at `0` by this fallback must not be treated as genuinely free. It represents an acquisition requirement whose economic value cannot be modeled from the available market, crafting, or vendor data.
 
@@ -1805,3 +1817,31 @@ Consumed Luck belongs to the GW2 account identified by `/v2/account`'s stable `i
 The canonical global progression is the exact [GW2 Wiki Luck progression table](https://wiki.guildwars2.com/wiki/Luck#Progression), represented by the cumulative Luck threshold for every integer Luck-derived Magic Find percentage from 0 to 300. The 0% threshold is zero and the 300% threshold is 4,295,450. This progression excludes Magic Find from achievements, equipment, guild bonuses and other sources.
 
 For nonnegative consumed Luck, the current Luck-derived percentage is the greatest percentage whose cumulative threshold has been reached, capped at 300. Before the cap, the next threshold is the threshold for current percentage +1; remaining Luck is that threshold minus consumed Luck. At the cap there is no next +1% threshold, and remaining Luck to the cap is zero. For any later target through 300%, its cumulative requirement comes from that target's table row, and remaining Luck is the nonnegative difference from the consumed amount.
+
+---
+
+# 56. Character Overview and Details (approved scope; not yet implemented)
+
+Provide an account-scoped character overview and a selectable character detail view. The overview presents concise character information; equipment inspection is the primary goal, followed by inventory and builds. The user must be able to identify which characters have ascended/legendary gear and which equipment slots contain lower-quality gear or are empty, without inferring an optimal build or prescribing purchases.
+
+Equipment details cover armor, weapons and other equipped items, with item identity, slot and actual rarity. Determine quality from item metadata, not the equipped skin or icon color. Distinguish an empty slot from missing, unavailable or stale data. Do not count equipment-template references to one item as multiple owned copies or feed duplicate references into the crafting inventory pool.
+
+Inventory shows the selected character's items and quantities. Builds and equipment expose all saved, available tabs supplied by the API, in their in-game slot order. On initial entry, select the currently active in-game tab for each section. The user can inspect another tab without changing the character's actual in-game active build/equipment; these are read-only views. Build and equipment tabs have independent selection and active-state information.
+
+Story details are requested, subject to an explicit API coverage assessment. Do not present character backstory choices as completed story-journal progression or invent progress that the API does not expose. Bring unsupported requested information back to the Product Owner before choosing a substitute.
+
+Discovered recipes are excluded from this view. Map completion is deferred pending a later Product Owner decision. Public sharing, exports, editing in-game equipment/builds and a build-optimization engine are not requested by this feature. Screenshots illustrate the desired overview-to-details interaction; they do not implicitly require every field/control shown there.
+
+Reuse verified-account access and backend-owned GW2 calls. Character reads/refresh failures and missing grants must not appear as an empty roster or empty equipment. Preserve useful last-synchronized data with clear freshness/error state where appropriate. All character work forms part of final Oracle Always Free qualification.
+
+---
+
+# 57. System Status Roles and Automatic Inventory Freshness (approved change; not yet implemented)
+
+System Status has an ordinary account view and an owner/admin view. Ordinary users can manage their own API-key connection, see the age/state of their account data and explicitly refresh their account sources. They may see generic shared-system health labels (for example healthy, updating or having issues), not privileged diagnostic payloads or global administration controls.
+
+Only the Product Owner's verified GW2 account may use owner administration: detailed shared-system diagnostics and explicit global refresh controls for the full GW2 item catalog, full recipe catalog and all Trading Post prices. Full TP refresh means the applicable tradable catalog, not only a requesting user's currently demanded items. Define further admin actions explicitly when requested; this does not authorize account impersonation or disclosure of other users' keys. Owner permissions apply at the backend, including direct endpoint/task/diagnostic access, not just button visibility.
+
+Bank and Materials must not expose either the manual account-refresh button or the separate reload-saved-snapshot button. Show the saved account-scoped view and its synchronization age immediately when available. If the relevant account data is stale, automatically request the permitted refresh while retaining the old view and showing a clear updating hint. Replace it when the relevant refresh has successfully published; unknown task outcome is not success. On failure retain the prior view with stale/error information and direct users to System Status for manual refresh/connection controls. Missing data triggers the initial-load path rather than a misleading empty inventory.
+
+Use the same freshness/admission principles as Crafting Profit. Coalesce same-account refresh work across views, respect grants and source coverage, and avoid retry loops or per-view background jobs. Exact freshness/retry policy follows the existing contracts and must be explicit in the implementation story. Account changes must clear old account data and prevent stale responses from being displayed under the new account.

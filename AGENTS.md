@@ -2,6 +2,15 @@
 
 GW2 uses GitHub issues, branches, pull requests, CI, and Codex review for development. The previous Python story harness is preserved by the `pre-github-flow` tag. Select current work from GitHub issues.
 
+## Role routing
+
+- Supervisor (interactive Codex): follow `agent/SUPERVISOR_INSTRUCTIONS.md`.
+- Planner (Codex on GitHub, explicitly assigned a planning task): follow `agent/PLANNER_INSTRUCTIONS.md`. Planning does not include implementation or starting Claude.
+- Programmer (Claude): follow `CLAUDE.md` and the approved issue contract.
+- Codex PR review remains review mode under the Code Review Rules below; a review event is not a planning invocation.
+
+`docs/ROADMAP.md` owns milestone intent; `agent/BACKLOG.md` owns draft planning order and handoffs. GitHub issues/PRs own execution evidence. Historical `agent/stories/` is not the active backlog. The setup status and activation rules are in `agent/BACKLOG.md`.
+
 ## Work contract
 
 - Read the linked issue, its dependencies, and only the relevant authoritative docs and code. One issue gets one branch and PR. Do not implement an issue before its dependencies are merged.
@@ -23,6 +32,8 @@ The backend owns authoritative business logic and GW2 API access. The frontend d
 ## Verification and repository care
 
 CI runs the Maven and Vitest suites. Real-database `*IT`, browser smoke, and live GW2 API checks require explicit local evidence when an issue depends on them. Explain removed or weakened assertions in the PR. Never invent test results. Preserve unrelated maintainer edits, keep diffs focused, and stop any process you start.
+
+Keep deliverables in the main project. Put disposable logs/builds in ignored output directories or OS temporary storage; remove temporary worktrees and stop their processes after returning results. Preserve measurements needed to support a report, without duplicating reports or retaining unrelated scratch output.
 
 ## Code Review Rules
 
