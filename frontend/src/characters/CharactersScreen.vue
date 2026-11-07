@@ -237,6 +237,11 @@ function fmt(value?: string | null): string | null {
         </div>
         <p v-else-if="c.inventoryIsRetained.value" class="notice" data-test="inventory-retained">Showing previously saved inventory.</p>
         <p v-if="inventoryState?.state === 'STALE'" class="meta" data-test="inventory-stale">This saved inventory may be out of date.</p>
+        <p v-if="inventoryState?.state === 'STALE' && inventoryState.reason === 'REFRESH_FAILED'" class="notice" role="status" data-test="inventory-stale-refresh-failed">
+          The latest account refresh failed{{ inventoryState.message ? ': ' + inventoryState.message : '.' }}
+          Try an account refresh from <a href="#/synchronization" data-test="inventory-system-status">System Status</a>, then
+          <button type="button" data-test="inventory-recheck" :disabled="c.inventoryPhase.value === 'loading'" @click="c.loadInventory(c.selectedName.value!)">check again</button>.
+        </p>
         <p v-if="c.inventorySource.value?.completedAt" class="meta" data-test="inventory-freshness">
           Last synchronized: {{ fmt(c.inventorySource.value.completedAt) ?? 'unknown' }}.
         </p>

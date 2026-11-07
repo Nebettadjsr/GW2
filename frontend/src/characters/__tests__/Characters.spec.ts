@@ -494,6 +494,15 @@ describe('Character inventory section', () => {
     expect(api.calls.filter((c) => c === 'equip:Ana B')).toHaveLength(2)
   })
 
+  it('surfaces a stale refresh failure with the System Status link while keeping the retained layout', async () => {
+    const w = await open(fakeApi({ loadInventory: async () => ({ ...inventoryResponse, state: 'STALE', reason: 'REFRESH_FAILED', message: 'Refresh failed upstream' }) }))
+    await w.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
+    expect(w.find('[data-test="inventory-panel"]').exists()).toBe(true)
+    expect(w.find('[data-test="inventory-stale-refresh-failed"]').text()).toContain('Refresh failed upstream')
+    expect(w.find('[data-test="inventory-system-status"]').attributes('href')).toBe('#/synchronization')
+    expect(w.find('[data-test="inventory-recheck"]').exists()).toBe(true)
+  })
+
   it('offers a bounded recheck after a legacy answer, without back/reselect', async () => {
     let legacy = true
     const api = fakeApi({ loadInventory: async (n) => { api.calls.push(`inv:${n}`); return legacy ? { state: 'UNAVAILABLE', reason: 'LAYOUT_REFRESH_REQUIRED' } : inventoryResponse } })
