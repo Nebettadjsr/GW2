@@ -57,7 +57,8 @@ class CharacterEquipmentTabsParserTest {
                 "[{\"tab\":1,\"is_active\":true,\"equipment\":[{\"id\":1,\"stats\":{\"attributes\":{}}}]}]",
                 "[{\"tab\":1,\"is_active\":true,\"equipment\":[{\"id\":1,\"stats\":{\"id\":2,\"attributes\":{\"Power\":\"x\"}}}]}]",
                 "[{\"tab\":1,\"is_active\":true,\"equipment\":[]},{\"tab\":1,\"is_active\":false,\"equipment\":[]}]",
-                "[{\"tab\":1,\"is_active\":true,\"equipment\":[]},{\"tab\":2,\"is_active\":true,\"equipment\":[]}]"}) {
+                "[{\"tab\":1,\"is_active\":true,\"equipment\":[]},{\"tab\":2,\"is_active\":true,\"equipment\":[]}]",
+                "[{\"tab\":1,\"is_active\":true,\"equipment\":[{\"id\":1,\"slot\":\"Helm\"},{\"id\":2,\"slot\":\"Helm\"}]}]"}) {
             assertThrows(IllegalStateException.class, () -> CharacterEquipmentTabsParser.parse(json(bad)), bad);
         }
     }

@@ -23,7 +23,7 @@ import java.util.List;
  */
 public class CharacterEquipmentTabsService {
 
-    public enum State { AVAILABLE, STALE, PENDING, GRANT_REQUIRED, ENDPOINT_RESTRICTED, NOT_FOUND }
+    public enum State { AVAILABLE, STALE, PENDING, UNAVAILABLE, GRANT_REQUIRED, ENDPOINT_RESTRICTED, NOT_FOUND }
 
     /**
      * @param reason stable machine-readable reason; null only for AVAILABLE
@@ -98,6 +98,14 @@ public class CharacterEquipmentTabsService {
         if (snapshot.equipment().isEmpty() || snapshot.coveredParentGeneration().isEmpty()) {
             boolean refreshing = coordinator != null
                     && coordinator.isRefreshing(scope, AccountSyncStateRepository.CHARACTER_EQUIPMENT_TABS);
+            boolean failedFirst = !refreshing && coordinator != null
+                    && coordinator.lastRefreshFailed(scope, AccountSyncStateRepository.CHARACTER_EQUIPMENT_TABS);
+            if (failedFirst) {
+                // First attempt failed and nothing is retrying: not a perpetual PENDING.
+                return new Result(State.UNAVAILABLE, "REFRESH_FAILED",
+                        "The equipment-tab refresh failed and no equipment tabs are stored yet.",
+                        name, parentAt, parentGeneration, null, null, null, null);
+            }
             return pending(refreshing ? "REFRESH_IN_PROGRESS" : "COVERAGE_NOT_PUBLISHED",
                     "Equipment tabs have not been published for this account's characters yet.",
                     name, parentAt, parentGeneration, null, null, null);

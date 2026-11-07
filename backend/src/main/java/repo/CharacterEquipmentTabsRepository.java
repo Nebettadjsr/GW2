@@ -80,7 +80,7 @@ public class CharacterEquipmentTabsRepository {
         List<RawTab> rawTabs = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement("""
                 SELECT tab_number, name, is_active FROM character_equipment_tabs
-                WHERE account_id = ? AND character_id = ? ORDER BY tab_number""")) {
+                WHERE account_id = ? AND character_id = ? ORDER BY tab_order""")) {
             ps.setObject(1, scope.accountId());
             ps.setLong(2, characterId);
             try (ResultSet rs = ps.executeQuery()) {
@@ -149,7 +149,7 @@ public class CharacterEquipmentTabsRepository {
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         String name = rs.getString(2);
-                        refs.put(rs.getInt(1), new ItemRef(rs.getInt(1), name != null, name, rs.getString(3),
+                        refs.put(rs.getInt(1), new ItemRef(rs.getInt(1), complete(name, rs.getString(3), rs.getString(4)), name, rs.getString(3),
                                 rs.getString(4), IconSourcePolicy.accept(rs.getString(5)).map(infra.icons.IconSource::canonicalUrl).orElse(null)));
                     }
                 }
@@ -157,6 +157,12 @@ public class CharacterEquipmentTabsRepository {
         }
         for (int id : ids) refs.putIfAbsent(id, new ItemRef(id, false, null, null, null, null));
         return refs;
+    }
+
+    /** Required display facts: a name alone does not make an item resolved. */
+    private static boolean complete(String name, String type, String rarity) {
+        return name != null && !name.isBlank() && type != null && !type.isBlank()
+                && rarity != null && !rarity.isBlank();
     }
 
     private static List<Integer> ints(Array array) throws SQLException {

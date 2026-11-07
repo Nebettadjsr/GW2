@@ -133,7 +133,8 @@ public final class CharacterEquipmentTabsSync {
                     }
                     for (var character : fetched.entrySet()) {
                         long characterId = characterId(tx, owner, character.getKey());
-                        for (Tab tab : character.getValue()) insertTab(tx, owner, characterId, tab, runTs);
+                        int tabOrder = 0;
+                        for (Tab tab : character.getValue()) insertTab(tx, owner, characterId, tab, tabOrder++, runTs);
                     }
                     try (PreparedStatement ps = tx.prepareStatement("""
                             INSERT INTO character_equipment_coverage (account_id, parent_generation) VALUES (?, ?)
@@ -158,18 +159,20 @@ public final class CharacterEquipmentTabsSync {
         }
     }
 
-    private static void insertTab(Connection tx, AccountScope owner, long characterId, Tab tab, Timestamp runTs)
+    private static void insertTab(Connection tx, AccountScope owner, long characterId, Tab tab, int tabOrder,
+                                  Timestamp runTs)
             throws SQLException {
         try (PreparedStatement ps = tx.prepareStatement("""
                 INSERT INTO character_equipment_tabs
-                  (account_id, character_id, tab_number, name, is_active, fetched_at) VALUES (?, ?, ?, ?, ?, ?)
+                  (account_id, character_id, tab_number, tab_order, name, is_active, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """)) {
             ps.setObject(1, owner.accountId());
             ps.setLong(2, characterId);
             ps.setInt(3, tab.number());
-            ps.setString(4, tab.name());
-            ps.setBoolean(5, tab.active());
-            ps.setTimestamp(6, runTs);
+            ps.setInt(4, tabOrder);
+            ps.setString(5, tab.name());
+            ps.setBoolean(6, tab.active());
+            ps.setTimestamp(7, runTs);
             ps.executeUpdate();
         }
         int order = 0;

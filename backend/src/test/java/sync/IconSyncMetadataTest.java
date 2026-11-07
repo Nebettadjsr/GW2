@@ -480,7 +480,7 @@ class IconSyncMetadataTest {
     @Test
     void repairMissingMetadataFillsOnlyAccountIdsWithoutIconSource() throws Exception {
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO items (item_id, name, icon_url) VALUES (20, 'Has icon', '" + ECTO_URL + "')");
+            st.execute("INSERT INTO items (item_id, name, type, rarity, icon_url) VALUES (20, 'Has icon', 'Armor', 'Rare', '" + ECTO_URL + "')");
             st.execute("INSERT INTO items (item_id, name) VALUES (30, 'Null icon')");
         }
         FixtureMetadataSource upstream = new FixtureMetadataSource();
@@ -494,6 +494,28 @@ class IconSyncMetadataTest {
         assertEquals(LOG_URL, singleStringColumn("SELECT icon_url FROM items WHERE item_id = 10"));
         assertEquals(LOG_URL, singleStringColumn("SELECT icon_url FROM items WHERE item_id = 30"));
         assertEquals(ECTO_URL, singleStringColumn("SELECT icon_url FROM items WHERE item_id = 20"));
+    }
+
+    /** STORY-CHAR-005: an icon alone is not complete; name/type/rarity gaps are repaired in one deduplicated batch. */
+    @Test
+    void repairMissingMetadataRepairsIconPresentRowsMissingNameTypeOrRarity() throws Exception {
+        try (Statement st = con.createStatement()) {
+            st.execute("INSERT INTO items (item_id, name, type, rarity, icon_url) VALUES (20, 'Whole', 'Armor', 'Rare', '" + ECTO_URL + "')");
+            st.execute("INSERT INTO items (item_id, name, type, icon_url) VALUES (21, 'No rarity', 'Armor', '" + ECTO_URL + "')");
+            st.execute("INSERT INTO items (item_id, name, rarity, icon_url) VALUES (22, 'No type', 'Rare', '" + ECTO_URL + "')");
+            st.execute("INSERT INTO items (item_id, name, type, rarity, icon_url) VALUES (23, ' ', 'Armor', 'Rare', '" + ECTO_URL + "')");
+        }
+        FixtureMetadataSource upstream = new FixtureMetadataSource();
+        upstream.knows(itemJson(21, "No rarity", "Armor", "Exotic", 1, LOG_URL));
+        upstream.knows(itemJson(22, "No type", "Weapon", "Rare", 1, LOG_URL));
+        // 23 is not returned upstream: it stays unresolved and is reported, not invented.
+
+        IconSync.repairMissingMetadata(con, java.util.Arrays.asList(20, 21, 22, 23, 21, 22), upstream);
+
+        assertEquals(List.of(List.of(21, 22, 23)), upstream.requestedBatches(), "one deduplicated batch, complete row skipped");
+        assertEquals("Exotic", singleStringColumn("SELECT rarity FROM items WHERE item_id = 21"));
+        assertEquals("Weapon", singleStringColumn("SELECT type FROM items WHERE item_id = 22"));
+        assertEquals(" ", singleStringColumn("SELECT name FROM items WHERE item_id = 23"));
     }
 
     @Test

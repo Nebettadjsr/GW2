@@ -43,6 +43,7 @@ public record CharacterEquipmentTabsResponse(String state, String reason, String
         HttpStatus status = switch (r.state()) {
             case AVAILABLE, STALE -> HttpStatus.OK;
             case PENDING -> HttpStatus.ACCEPTED;
+            case UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
             case GRANT_REQUIRED, ENDPOINT_RESTRICTED -> HttpStatus.FORBIDDEN;
             case NOT_FOUND -> HttpStatus.NOT_FOUND;
         };

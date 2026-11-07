@@ -146,7 +146,7 @@ class CharacterEquipmentTabsSyncTest {
     }
 
     @Test
-    void publishesTabsInNumberOrderWithoutTouchingCharactersOrInventoryAndReadsThemBack() throws Exception {
+    void publishesTabsInUpstreamOrderWithoutTouchingCharactersOrInventoryAndReadsThemBack() throws Exception {
         publishRoster(A, "Ana", "Bo");
         long parentGen = generation(A, "CHARACTERS");
         long itemsBefore = count("SELECT coalesce(sum(count),0) FROM character_items");
@@ -169,8 +169,8 @@ class CharacterEquipmentTabsSyncTest {
         var r = service(Duration.ofHours(1)).read(ctx(A_ID, ALL), A, "Ana");
         assertEquals(CharacterEquipmentTabsService.State.AVAILABLE, r.state());
         assertEquals(parentGen, r.coveredParentGeneration());
-        assertEquals(List.of(1, 2), r.tabs().stream().map(t -> t.number()).toList());
-        var main = r.tabs().get(0);
+        assertEquals(List.of(2, 1), r.tabs().stream().map(t -> t.number()).toList());
+        var main = r.tabs().get(1);
         assertTrue(main.active());
         assertEquals("Legendary", main.equipment().get(0).item().rarity());
         assertEquals(10, main.equipment().get(0).statAttributes().get("Power"));
@@ -236,6 +236,61 @@ class CharacterEquipmentTabsSyncTest {
                     .publish(c, A, capture, Map.of("Ana", List.of()), NOW));
         }
         assertEquals(0, generation(A, "CHARACTER_EQUIPMENT_TABS"));
+    }
+
+    @Test
+    void iconPresentNameKnownRarityMissingStaysUnresolvedThroughRepairSelectionAndMapping() throws Exception {
+        publishRoster(A, "Ana");
+        String icon = "https://render.guildwars2.com/file/0123456789ABCDEF0123456789ABCDEF01234567/1.png";
+        try (var ps = admin.prepareStatement(
+                "INSERT INTO items(item_id,name,type,icon_url) VALUES (100,'Helm','Armor',?),(200,'Boots','Armor','x')")) {
+            ps.setString(1, icon);
+            ps.executeUpdate();
+        }
+        // real production selection against the real schema, with a source that knows nothing
+        try (Connection c = connect()) {
+            c.setSchema(schema);
+            var failed = IconSync.repairMissingMetadata(c, List.of(100), ids -> M.readTree("[]"));
+            assertTrue(failed.isEmpty());
+            var requested = new ArrayList<List<Integer>>();
+            IconSync.repairMissingMetadata(c, List.of(100, 100), ids -> { requested.add(ids); return M.readTree("[]"); });
+            assertEquals(List.of(List.of(100)), requested, "icon-present but rarity-less row is selected for repair");
+        }
+        CharacterEquipmentTabsSync.sync(A, fetcher(A_ID, new ArrayList<>(), Map.of("/characters/Ana/",
+                "[{\"tab\":1,\"is_active\":true,\"equipment\":[{\"id\":100,\"slot\":\"Helm\"}]}]")), repair);
+        var item = service(Duration.ofHours(1)).read(ctx(A_ID, ALL), A, "Ana").tabs().get(0).equipment().get(0).item();
+        assertFalse(item.resolved(), "name without rarity is not resolved");
+        assertEquals("Helm", item.name());
+        assertNull(item.rarity());
+        assertEquals(icon, item.icon(), "icon presentation stays independent");
+    }
+
+    @Test
+    void firstEquipmentRefreshFailureIsUnavailableUnlessRetryingAndKeepsLastGood() throws Exception {
+        publishRoster(A, "Ana");
+        boolean[] flags = new boolean[2]; // refreshing, failed
+        var status = new application.CharacterRosterService.RefreshStatus() {
+            public boolean isRefreshing(AccountScope s, String src) { return flags[0]; }
+            public boolean lastRefreshFailed(AccountScope s, String src) { return flags[1]; }
+        };
+        var svc = new CharacterEquipmentTabsService(status, new CharacterEquipmentTabsRepository(), () -> {
+            try { Connection c = connect(); c.setSchema(schema); return c; }
+            catch (java.sql.SQLException e) { throw e; } catch (Exception e) { throw new java.sql.SQLException(e); }
+        }, Clock.systemUTC(), Duration.ofHours(1));
+        assertEquals("COVERAGE_NOT_PUBLISHED", svc.read(ctx(A_ID, ALL), A, "Ana").reason(), "never attempted");
+        flags[1] = true;
+        var failed = svc.read(ctx(A_ID, ALL), A, "Ana");
+        assertEquals(CharacterEquipmentTabsService.State.UNAVAILABLE, failed.state());
+        assertEquals("REFRESH_FAILED", failed.reason());
+        assertNull(failed.tabs());
+        flags[0] = true;
+        assertEquals("REFRESH_IN_PROGRESS", svc.read(ctx(A_ID, ALL), A, "Ana").reason(), "active retry stays pending");
+        flags[0] = false;
+        // stale compatible last-good after a later failure
+        CharacterEquipmentTabsSync.sync(A, fetcher(A_ID, new ArrayList<>(), Map.of("/characters/Ana/", "[]")), repair);
+        assertEquals("EQUIPMENT_REFRESH_FAILED", svc.read(ctx(A_ID, ALL), A, "Ana").reason());
+        // parent missing stays independent of an equipment outage
+        assertEquals("PARENT_NOT_PUBLISHED", svc.read(ctx(B_ID, ALL), B, "Ana").reason());
     }
 
     @Test

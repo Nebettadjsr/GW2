@@ -43,7 +43,13 @@ public final class CharacterEquipmentTabsParser {
             JsonNode equipment = node.get("equipment");
             if (equipment == null || !equipment.isArray()) throw invalid("equipment");
             List<Entry> entries = new ArrayList<>();
-            for (JsonNode e : equipment) entries.add(entry(e));
+            Set<String> slots = new HashSet<>();
+            for (JsonNode e : equipment) {
+                Entry entry = entry(e);
+                // Two entries for one named slot would display contradictory gear.
+                if (entry.slot() != null && !slots.add(entry.slot())) throw invalid("duplicate slot in tab");
+                entries.add(entry);
+            }
             tabs.add(new Tab(number.intValue(), name, isActive.booleanValue(), List.copyOf(entries)));
         }
         if (active > 1) throw invalid("more than one active tab");
