@@ -174,6 +174,25 @@ class CraftingProfitResolutionApiControllerTest {
     }
 
     @Test
+    void detailEchoesAndAppliesCanonicalProtectionAndRejectsInvalidIds() throws Exception {
+        factory.next(service -> service.canned = available(rootCraftedByRequestedRecipe()));
+
+        mockMvc.perform(resolution("{\"recipeId\": 7, \"calculation\": {\"settings\": "
+                        + "{\"materialProtectionEnabled\": true, \"protectedItemIds\": [30, 4, 30]}}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.calculation.settings.materialProtectionEnabled").value(true))
+                .andExpect(jsonPath("$.calculation.settings.protectedItemIds[0]").value(4))
+                .andExpect(jsonPath("$.calculation.settings.protectedItemIds[1]").value(30))
+                .andExpect(jsonPath("$.calculation.settings.protectedItemIds.length()").value(2));
+        assertEquals(java.util.Set.of(4, 30), factory.only().capturedSettings.protectedItemIds);
+        assertTrue(factory.only().capturedSettings.isProtected(4));
+
+        mockMvc.perform(resolution("{\"recipeId\": 7, \"calculation\": {\"settings\": "
+                        + "{\"materialProtectionEnabled\": true, \"protectedItemIds\": [0]}}}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void theEnvelopeCarriesTheFixedLiteralsAndACompletionTimestamp() throws Exception {
         factory.next(service -> service.canned = available(rootCraftedByRequestedRecipe()));
 

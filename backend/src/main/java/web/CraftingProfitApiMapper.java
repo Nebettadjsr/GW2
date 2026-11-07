@@ -102,7 +102,23 @@ final class CraftingProfitApiMapper {
                 orDefault(settings == null ? null : settings.listingSell(), DEFAULT_LISTING_SELL),
                 orDefault(settings == null ? null : settings.listingBuy(), DEFAULT_LISTING_BUY),
                 orDefault(settings == null ? null : settings.allowDailyCrafts(),
-                        DEFAULT_ALLOW_DAILY_CRAFTS));
+                        DEFAULT_ALLOW_DAILY_CRAFTS),
+                orDefault(settings == null ? null : settings.materialProtectionEnabled(), false),
+                canonicalProtectedIds(settings == null ? null : settings.protectedItemIds()));
+    }
+
+    /** Positive IDs only; duplicates removed; ascending numeric order. No inventory/item reads. */
+    private static List<Integer> canonicalProtectedIds(List<Integer> ids) {
+        if (ids == null) return List.of();
+        java.util.TreeSet<Integer> sorted = new java.util.TreeSet<>();
+        for (Integer id : ids) {
+            if (id == null || id <= 0) {
+                throw new ApiValidationException(
+                        "settings.protectedItemIds must contain only positive item IDs");
+            }
+            sorted.add(id);
+        }
+        return List.copyOf(sorted);
     }
 
     /** A validated request, in both its transport form (echoed back) and its application form. */
@@ -125,7 +141,9 @@ final class CraftingProfitApiMapper {
                     settings.maxBuyCopper(),
                     settings.listingSell(),
                     settings.listingBuy(),
-                    settings.allowDailyCrafts());
+                    settings.allowDailyCrafts(),
+                    settings.materialProtectionEnabled(),
+                    settings.protectedItemIds());
         }
     }
 

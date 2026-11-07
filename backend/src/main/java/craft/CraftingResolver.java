@@ -135,7 +135,9 @@ public class CraftingResolver {
         int remaining = qtyRequested - reused;
 
         // 1) Use owned inventory first, if enabled
-        if (ctx.settings.useOwnMats) {
+        // Material Protection: pre-existing owned copies of a protected item ID are unavailable in
+        // every pool and at every depth; surplus produced in this plan (above) stays reusable.
+        if (ctx.settings.useOwnMats && !ctx.settings.isProtected(itemId)) {
             // DOMAIN_SPEC.md section 11.1 / DQ-007: account-bound/soulbound-usable owned
             // quantity is consumed before ordinary tradable owned quantity and never charged
             // TP opportunity cost, since it cannot be sold on the Trading Post either way.

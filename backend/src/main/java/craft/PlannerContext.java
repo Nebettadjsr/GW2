@@ -73,13 +73,7 @@ public class PlannerContext {
      * the eligibility memo with this context: eligibility does not consult buying settings.
      */
     public PlannerContext withBuyingDisabled() {
-        CraftingSettings noBuySettings = new CraftingSettings(
-                settings.useOwnMats,
-                false,
-                0,
-                settings.listingSell,
-                settings.listingBuy,
-                settings.allowDailyCrafts);
+        CraftingSettings noBuySettings = settings.withBuyingDisabled();
 
         return new PlannerContext(recipesByOutput, tp, noBuySettings, allowedRecipeIds,
                 coordinatedRoster, eligibleCharactersByRecipeId, vendorValues);
