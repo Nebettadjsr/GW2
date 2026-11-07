@@ -117,31 +117,19 @@ describe('partitioning, commit and restart', () => {
 })
 
 describe('delayed work', () => {
-  it('ignores a delayed restore for Account A once Account B is current', async () => {
-    let resolveA!: (v: string | null) => void
-    const slow: PreferenceStorage = {
-      getItem: (key) =>
-        key.endsWith(A)
-          ? new Promise<string | null>((r) => (resolveA = r))
-          : Promise.resolve(JSON.stringify({ version: 1, protectedItemIds: [8], enabled: false })),
-      setItem: (k, v) => void storage.setItem(k, v),
-      removeItem: () => undefined
-    }
-    const m = make(slow)
+  it('never shows Account A values under Account B while the replacement proof is pending', () => {
+    const m = make()
     source.id = A
-    expect(m.state.status).toBe('loading')
-    source.id = B
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(m.state.committed).toEqual([8])
-    resolveA(JSON.stringify({ version: 1, protectedItemIds: [1, 2], enabled: true }))
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(m.state.accountId).toBe(B)
-    expect(m.state.committed).toEqual([8])
-    expect(m.state.activation).toBe(false)
+    m.setPending([1, 2])
     m.commit()
-    expect(storage.data.has(PREFERENCE_KEY_PREFIX + A)).toBe(false)
+    source.id = null
+    expect(m.state.committed).toEqual([])
+    expect(m.state.status).toBe('uninitialized')
+    source.id = B
+    expect(m.state.committed).toEqual([])
+    m.setPending([9])
+    m.commit()
+    expect(JSON.parse(storage.data.get(PREFERENCE_KEY_PREFIX + A)!).protectedItemIds).toEqual([1, 2])
   })
 
   it('applies a canonical response only for the current account and edit state', () => {
@@ -233,19 +221,86 @@ describe('storage degradation and stored values', () => {
     expect(m.state.diagnostic).toBe('remove-failed')
   })
 
-  it('handles a rejecting async read and an unavailable storage', async () => {
-    const m = make({ getItem: () => Promise.reject(new Error('x')), setItem: () => undefined, removeItem: () => undefined })
-    source.id = A
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(m.state.status).toBe('ready')
-    expect(m.state.diagnostic).toBe('read-failed')
+  it('keeps working with unavailable storage', () => {
     const none = make(null)
     source.id = B
     none.setPending([1])
     none.commit()
     expect(none.state.committed).toEqual([1])
     expect(none.state.diagnostic).toBe('storage-unavailable')
+  })
+})
+
+describe('per-page committed shadow', () => {
+  it('restores each account\'s latest committed values with unavailable storage', () => {
+    const m = make(null)
+    source.id = A
+    m.setPending([4, 2])
+    m.commit()
+    m.setActivation(true)
+    m.setPending([99])
+    source.id = B
+    expect(m.state.committed).toEqual([])
+    expect(m.state.activation).toBe(false)
+    m.setPending([8])
+    m.commit()
+    source.id = A
+    expect(m.state.committed).toEqual([2, 4])
+    expect(m.state.activation).toBe(true)
+    expect(m.state.pending).toEqual([2, 4])
+    source.id = null
+    source.id = B
+    expect(m.state.committed).toEqual([8])
+    expect(m.state.activation).toBe(false)
+  })
+
+  it('prefers the latest committed value over an older stored record after a failed write', () => {
+    storage.data.set(PREFERENCE_KEY_PREFIX + A, JSON.stringify({ version: 1, protectedItemIds: [1], enabled: false }))
+    let failWrites = false
+    const flaky: PreferenceStorage = {
+      getItem: (k) => storage.getItem(k),
+      setItem: (k, v) => {
+        if (failWrites) throw new Error('full')
+        storage.setItem(k, v)
+      },
+      removeItem: (k) => storage.removeItem(k)
+    }
+    const m = make(flaky)
+    source.id = A
+    expect(m.state.committed).toEqual([1])
+    failWrites = true
+    m.setPending([1, 7])
+    m.commit()
+    m.setActivation(true)
+    expect(m.state.diagnostic).toBe('write-failed')
+    source.id = B
+    expect(m.state.committed).toEqual([])
+    source.id = A
+    expect(m.state.committed).toEqual([1, 7])
+    expect(m.state.activation).toBe(true)
+  })
+
+  it('uses the shadow when a later read fails, without committing pending edits', () => {
+    let failReads = false
+    const flaky: PreferenceStorage = {
+      getItem: (k) => {
+        if (failReads) throw new Error('denied')
+        return storage.getItem(k)
+      },
+      setItem: (k, v) => storage.setItem(k, v),
+      removeItem: (k) => storage.removeItem(k)
+    }
+    const m = make(flaky)
+    source.id = A
+    m.setPending([3])
+    m.commit()
+    m.setPending([3, 5])
+    failReads = true
+    source.id = null
+    source.id = A
+    expect(m.state.diagnostic).toBe('read-failed')
+    expect(m.state.committed).toEqual([3])
+    expect(m.state.pending).toEqual([3])
   })
 })
 

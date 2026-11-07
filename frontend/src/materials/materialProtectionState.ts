@@ -16,11 +16,11 @@ import type { EffectiveSettings } from '@/api/types'
 export const PREFERENCE_KEY_PREFIX = 'gw2.materialProtection.v1.'
 export const PREFERENCE_SCHEMA_VERSION = 1
 
-/** Minimal synchronous or asynchronous key-value port; `localStorage` satisfies it. */
+/** Minimal synchronous key-value port; `localStorage` satisfies it. */
 export interface PreferenceStorage {
-  getItem(key: string): string | null | Promise<string | null>
-  setItem(key: string, value: string): void | Promise<void>
-  removeItem(key: string): void | Promise<void>
+  getItem(key: string): string | null
+  setItem(key: string, value: string): void
+  removeItem(key: string): void
 }
 
 /** Bounded, secret-free storage diagnostics. */
@@ -68,10 +68,6 @@ function sameIds(a: readonly number[], b: readonly number[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index])
 }
 
-function isThenable<T>(value: T | Promise<T>): value is Promise<T> {
-  return typeof (value as { then?: unknown } | null)?.then === 'function'
-}
-
 function browserStorage(): PreferenceStorage | null {
   try {
     return window.localStorage
@@ -100,8 +96,11 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     diagnostic: null as StorageDiagnostic | null,
     effective: null as EffectiveProtection | null
   })
-  /** Bumped on every account change; guards delayed restores. */
-  let epoch = 0
+  /**
+   * Latest COMMITTED values per account for this page. It backs restoration when storage is unavailable
+   * or a read/write failed, so A->B->A and reconnect never fall back to a stale stored record.
+   */
+  const shadow = new Map<string, { ids: number[]; enabled: boolean }>()
   /** Bumped on every local edit and account change; guards delayed canonical responses. */
   let editVersion = 0
   /** Last started request; a canonical response is accepted only from this one. */
@@ -150,27 +149,19 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
       return
     }
     const value: StoredPreference = { version: PREFERENCE_SCHEMA_VERSION, protectedItemIds: [...ids], enabled }
-    const fail = (error: unknown): void => {
-      if (state.accountId === accountId) state.diagnostic = diagnose(error, 'write-failed')
-    }
     try {
-      const result = storage.setItem(keyFor(accountId), JSON.stringify(value))
-      if (isThenable(result)) result.catch(fail)
+      storage.setItem(keyFor(accountId), JSON.stringify(value))
     } catch (error) {
-      fail(error)
+      if (state.accountId === accountId) state.diagnostic = diagnose(error, 'write-failed')
     }
   }
 
   function discardStored(accountId: string): void {
     if (storage === null) return
-    const fail = (): void => {
-      if (state.accountId === accountId) state.diagnostic = 'remove-failed'
-    }
     try {
-      const result = storage.removeItem(keyFor(accountId))
-      if (isThenable(result)) result.catch(fail)
+      storage.removeItem(keyFor(accountId))
     } catch {
-      fail()
+      if (state.accountId === accountId) state.diagnostic = 'remove-failed'
     }
   }
 
@@ -199,49 +190,37 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
         discardStored(accountId)
       }
     }
+    const latest = shadow.get(accountId)
+    if (latest !== undefined) {
+      state.committed = [...latest.ids]
+      state.activation = latest.enabled
+    }
     state.pending = [...state.committed]
     state.status = 'ready'
   }
 
   function accountChanged(accountId: string | null): void {
-    epoch += 1
     editVersion += 1
-    const token = epoch
     reset()
     if (accountId === null) return
-    state.accountId = accountId
-    state.status = 'loading'
     if (storage === null) {
       apply(accountId, null, null, false)
       state.diagnostic = 'storage-unavailable'
       return
     }
-    const current = (): boolean => token === epoch && currentAccountId() === accountId
-    let read: string | null | Promise<string | null>
+    let read: string | null
     try {
       read = storage.getItem(keyFor(accountId))
     } catch (error) {
       apply(accountId, null, error, true)
       return
     }
-    if (isThenable(read)) {
-      read.then(
-        (raw) => {
-          if (current()) apply(accountId, raw, null, false)
-        },
-        (error) => {
-          if (current()) apply(accountId, null, error, true)
-        }
-      )
-    } else {
-      apply(accountId, read, null, false)
-    }
+    apply(accountId, read, null, false)
   }
 
   scope.run(() => watch(currentAccountId, accountChanged, { flush: 'sync', immediate: true }))
   const stop = (): void => {
     scope.stop()
-    epoch += 1
     editVersion += 1
     reset()
   }
@@ -278,6 +257,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     editVersion += 1
     state.committed = canonicalIds(state.pending)
     state.pending = [...state.committed]
+    shadow.set(accountId, { ids: [...state.committed], enabled: state.activation })
     persist(accountId, state.committed, state.activation)
   }
 
@@ -287,6 +267,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     if (accountId === null) return
     editVersion += 1
     state.activation = enabled
+    shadow.set(accountId, { ids: [...state.committed], enabled })
     persist(accountId, state.committed, enabled)
   }
 
