@@ -280,6 +280,21 @@ function scriptedProfit(api: FakeCraftingApi, script: CraftingProfitResponse[]):
     Promise.resolve(script[Math.min(callIndex, script.length - 1)] as CraftingProfitResponse)
 }
 
+/** Active refresh with last-good rows: the chip, then the table, with no status text between. */
+function expectQuietActiveRefresh(wrapper: VueWrapper): void {
+  expect(exists(wrapper, 'stale-data-chip')).toBe(true)
+  for (const id of [
+    'stale-data-explanation',
+    'stale-data-outstanding',
+    'stale-data-account',
+    'stale-data-trading-post',
+    'summary'
+  ]) {
+    expect(exists(wrapper, id)).toBe(false)
+  }
+  expect(wrapper.find('[data-test="stale-data-indicator"]').text()).toBe('↻ Stale data – refreshing…')
+}
+
 describe('Crafting Profit provisional refresh workflow', () => {
   describe('a provisional result is usable immediately (AC1)', () => {
     it('showsTheSuppliedCachedRowsWithTheStaleIndicatorBeforeAnyRefreshFinishes', async () => {
@@ -301,11 +316,7 @@ describe('Crafting Profit provisional refresh workflow', () => {
 
       expect(exists(wrapper, 'stale-data-indicator')).toBe(true)
       expect(text(wrapper, 'stale-data-chip')).toContain('Stale data – refreshing…')
-      expect(text(wrapper, 'stale-data-explanation')).toContain(
-        'calculated from the data that last synchronized successfully'
-      )
-      expect(text(wrapper, 'stale-data-explanation')).toContain('replaced automatically')
-      expect(text(wrapper, 'stale-data-outstanding')).toContain('account data')
+      expectQuietActiveRefresh(wrapper)
       expect(exists(wrapper, 'refresh-failed')).toBe(false)
       // The page polled what the backend advertised and started nothing of its own.
       expect(sync.statusReads).toEqual(['/api/sync/tasks/task-account-1'])
@@ -330,7 +341,28 @@ describe('Crafting Profit provisional refresh workflow', () => {
       expect(tableProfits(wrapper)).toEqual([REFRESHED_PROFIT])
       expect(exists(wrapper, 'stale-data-indicator')).toBe(false)
       expect(exists(wrapper, 'refresh-failed')).toBe(false)
+      expect(text(wrapper, 'summary')).toContain('Showing 1 of 1 matching recipe')
       expect(clock.waiting()).toBe(0)
+    })
+
+    it('keepsAProvisionalCalculatedZeroRowResultCompactWhilePendingKeepsItsExplanation', async () => {
+      const api = new FakeCraftingApi()
+      scriptedProfit(api, [profitResponse([], 'ALL', DEFAULT_SETTINGS, provisionalFreshness())])
+      const { wrapper } = await openScreen(api, recordingSyncApi(statesByTask({})))
+
+      // A successful CALCULATED result with no rows is honest about being empty, and its refresh
+      // indicator is the compact chip alone: no diagnostic prose is brought back for it.
+      expect(text(wrapper, 'empty')).toContain('The backend returned no recipes for this scope.')
+      expect(exists(wrapper, 'pending')).toBe(false)
+      expectQuietActiveRefresh(wrapper)
+
+      // A PENDING answer (nothing synchronized, nothing calculated) stays informative.
+      const pendingApi = new FakeCraftingApi()
+      scriptedProfit(pendingApi, [pendingProfitResponse()])
+      const pending = await openScreen(pendingApi, recordingSyncApi(statesByTask({})))
+      expect(exists(pending.wrapper, 'pending')).toBe(true)
+      expect(exists(pending.wrapper, 'empty')).toBe(false)
+      expect(exists(pending.wrapper, 'stale-data-explanation')).toBe(true)
     })
 
     it('showsAPendingStateWithNoFabricatedRowForATwoHundredTwoAnswer', async () => {
@@ -437,11 +469,11 @@ describe('Crafting Profit provisional refresh workflow', () => {
         '/api/sync/tasks/task-account-2'
       ])
       expect(exists(wrapper, 'stale-data-indicator')).toBe(true)
-      expect(text(wrapper, 'stale-data-outstanding')).toContain('account data')
+      expectQuietActiveRefresh(wrapper)
       expect(tableProfits(wrapper)).toEqual([CACHED_PROFIT])
     })
 
-    it('reportsAccountFreshnessAndTradingPostCoverageAsTwoSeparateFacts', async () => {
+    it('keepsAccountAndTradingPostDetailOutOfTheCompactIndicatorEvenWhenBothAreOutstanding', async () => {
       const api = new FakeCraftingApi()
       const bothOutstanding = provisionalFreshness({
         tradingPost: uncoveredPrices(),
@@ -450,19 +482,7 @@ describe('Crafting Profit provisional refresh workflow', () => {
       scriptedProfit(api, [profitResponse([cachedRow], 'ALL', DEFAULT_SETTINGS, bothOutstanding)])
       const { wrapper } = await openScreen(api, recordingSyncApi(statesByTask({})))
 
-      // The counts are the envelope's own and stay in their own lines: 3 of 4 account sources up to
-      // date, and a Trading Post gap of 180 expired plus 25 with no stored price at all. Neither
-      // line's numbers leak into the other, which is what keeps the two mechanisms distinguishable.
-      const account = text(wrapper, 'stale-data-account')
-      const prices = text(wrapper, 'stale-data-trading-post')
-      expect(account).toContain('3 of 4 up to date')
-      expect(account).toContain('expired: CHARACTERS')
-      expect(account).not.toContain('3205')
-      expect(prices).toContain('3000 of 3205 required items up to date')
-      expect(prices).toContain('expired: 180')
-      expect(prices).toContain('no stored price: 25')
-      expect(text(wrapper, 'stale-data-outstanding')).toContain('account data')
-      expect(text(wrapper, 'stale-data-outstanding')).toContain('Trading Post prices')
+      expectQuietActiveRefresh(wrapper)
     })
   })
 
@@ -658,6 +678,9 @@ describe('Crafting Profit provisional refresh workflow', () => {
       expect(exists(wrapper, 'stale-data-indicator')).toBe(false)
       expect(text(wrapper, 'refresh-failed')).toContain('did not finish')
       expect(text(wrapper, 'refresh-failure-detail')).toContain('within five minutes')
+      expect(text(wrapper, 'refresh-failed-account')).toContain('up to date')
+      expect(text(wrapper, 'refresh-failed-trading-post')).toContain('Trading Post prices')
+      expect(exists(wrapper, 'summary')).toBe(true)
       // The last usable rows are still on screen, and nothing is still animating or parked.
       expect(tableProfits(wrapper)).toEqual([CACHED_PROFIT])
       expect(exists(wrapper, 'refresh-retry')).toBe(true)
@@ -833,7 +856,7 @@ describe('Crafting Profit provisional refresh workflow', () => {
       expect(sync.statusReads).toEqual([])
       expect(api.profitRequests).toHaveLength(2)
       expect(exists(wrapper, 'stale-data-indicator')).toBe(true)
-      expect(text(wrapper, 'stale-data-outstanding')).toContain('account data')
+      expectQuietActiveRefresh(wrapper)
       expect(tableProfits(wrapper)).toEqual([CACHED_PROFIT])
 
       // The next round is paced by one wait and reaches the final answer.
@@ -1092,7 +1115,7 @@ describe('Crafting Profit provisional refresh workflow', () => {
       // A provisional result is still the ordinary authoritative one: the row carries no warning of
       // its own and the states the domain reported are unchanged.
       expect(exists(wrapper, 'row-diagnostic')).toBe(false)
-      expect(text(wrapper, 'summary')).toContain('1 calculated for this scope')
+      expect(exists(wrapper, 'summary')).toBe(false)
     })
 
     it('needsNoSystemStatusVisitAndNeverCallsASynchronizationTrigger', async () => {
@@ -1122,14 +1145,16 @@ describe('Crafting Profit provisional refresh workflow', () => {
         ]
       })
       scriptedProfit(api, [profitResponse([cachedRow], 'ALL', DEFAULT_SETTINGS, unknownState)])
-      const { wrapper } = await openScreen(api, recordingSyncApi(statesByTask({})))
+      const { wrapper, clock } = await openScreen(api, recordingSyncApi(statesByTask({})))
+      await clock.advance(RECOVERY_BUDGET_MS)
 
-      const account = text(wrapper, 'stale-data-account')
+      // The detail lives in the failure state; the compact active indicator carries none of it.
+      const account = text(wrapper, 'refresh-failed-account')
       expect(account).toContain('1 of 2 up to date')
       expect(account).toContain('CHARACTERS: SOME_STATE_ADDED_LATER')
     })
 
-    it('keepsAnUnknownRefreshMechanismAndAnUnreportedSourceSetVisible', async () => {
+    it('keepsAnUnreportedSourceSetVisibleInTheFailureState', async () => {
       const api = new FakeCraftingApi()
       scriptedProfit(api, [
         profitResponse(
@@ -1142,15 +1167,15 @@ describe('Crafting Profit provisional refresh workflow', () => {
           })
         )
       ])
-      const { wrapper } = await openScreen(api, recordingSyncApi(statesByTask({})))
+      const { wrapper, clock } = await openScreen(api, recordingSyncApi(statesByTask({})))
+      await clock.advance(RECOVERY_BUDGET_MS)
 
-      // A mechanism this client has no wording for is named as the backend named it, and an empty
-      // required-source list is reported as such rather than read as "everything is up to date".
-      expect(text(wrapper, 'stale-data-outstanding')).toContain('SOME_MECHANISM_ADDED_LATER')
-      expect(text(wrapper, 'stale-data-account')).toContain('no required source was reported')
-      expect(text(wrapper, 'stale-data-account')).not.toContain('up to date')
+      // An empty required-source list is reported as such rather than read as "everything is up to
+      // date" (the failure state is where account/Trading Post detail is shown).
+      expect(text(wrapper, 'refresh-failed-account')).toContain('no required source was reported')
+      expect(text(wrapper, 'refresh-failed-account')).not.toContain('up to date')
       // The covered-coverage wording, which the uncovered case above does not reach.
-      expect(text(wrapper, 'stale-data-trading-post')).toContain('all 3205 required items covered')
+      expect(text(wrapper, 'refresh-failed-trading-post')).toContain('all 3205 required items covered')
     })
 
     it('omitsTheGenerationFromADetailRequestWhenTheResponseNamedNone', async () => {

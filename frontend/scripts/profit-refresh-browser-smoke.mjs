@@ -3,7 +3,7 @@
  *
  * `smoke:profit` covers the information hierarchy against inputs the backend reports as current.
  * This script covers the states that one cannot reach: a cached result served while a refresh runs,
- * the stale indicator and its explanation, the controls surviving an automatic replacement, a detail
+ * the compact stale indicator (no explanation while rows remain), the controls surviving an automatic replacement, a detail
  * answer computed from newer inputs than the row it was asked about, and bounded termination with a
  * retry. Each case is driven by *scripted* responses from this process, so the sequence is
  * deterministic and nothing real is synchronized.
@@ -48,6 +48,9 @@ function check(condition, message) {
 }
 
 /* ------------------------------------------------------------------ scripted responses --------- */
+
+const SYNTHETIC_ACCOUNT_ID = '00000000-0000-4000-8000-000000000153'
+const DUMMY_KEY = 'synthetic-read-only-smoke-key'
 
 const ACCOUNT_SOURCES = ['CHARACTERS', 'INVENTORY', 'MATERIALS', 'RECIPES']
 
@@ -134,6 +137,15 @@ function failedEnvelope() {
       freshSource('MATERIALS'),
       freshSource('RECIPES')
     ],
+    tradingPost: {
+      requiredItems: 3_205,
+      freshItems: 3_000,
+      staleItems: 180,
+      missingItems: 25,
+      oldestFetchedAt: '2026-10-12T07:00:00Z',
+      newestFetchedAt: '2026-10-13T08:59:00Z',
+      covered: false
+    },
     outstandingWork: [],
     failures: [
       {
@@ -264,6 +276,17 @@ function envelopeForPhase() {
 }
 
 function answerApi({ url, body, sendJson }) {
+  // Synthetic read-only account session (accountSession contract): the retained dummy key is proven
+  // here, so the workspace is admitted. No real key, GW2 API or backend is involved.
+  if (url.pathname === '/api/session') {
+    return sendJson(200, {
+      accountId: SYNTHETIC_ACCOUNT_ID,
+      accessContext: 'smoke-access-context',
+      expiresAt: '2099-01-01T00:00:00Z',
+      grants: ['account', 'inventories', 'characters', 'builds']
+    })
+  }
+
   if (url.pathname === '/api/crafting/selector-options') {
     return sendJson(200, {
       defaultScopeKind: 'ALL',
@@ -380,6 +403,8 @@ async function tableProfits(page) {
 
 async function openProfit(page) {
   await page.setViewportSize(VIEWPORT)
+  // Retain the dummy key the way a connected browser session does, before the app starts.
+  await page.addInitScript((key) => window.sessionStorage.setItem('gw2.apiKey', key), DUMMY_KEY)
   await page.goto(`${PAGE_ORIGIN}/#/crafting`, { waitUntil: 'networkidle', timeout: TIMEOUT_MS })
   await page.waitForSelector('[data-test="profit-table"]', { timeout: TIMEOUT_MS })
 }
@@ -423,8 +448,8 @@ async function run() {
     )
     record('page served by this script', `${stub.servedCount()} requests answered so far`)
 
-    // 1. The cached result is on screen and usable while the refresh runs, with the indicator and
-    //    the explanation UD-015 item 4 requires. No row is invented and no loading state is left up.
+    // 1. The cached result is on screen and usable while the refresh runs, with the compact
+    //    indicator (issue #153: no explanation between it and the table). No row is invented and no loading state is left up.
     check(
       JSON.stringify(await listedRecipes(page)) ===
         JSON.stringify(['Deldrimor Steel Ingot', 'Spiritwood Plank']),
@@ -441,12 +466,20 @@ async function run() {
       chip !== null && chip.includes('Stale data – refreshing…'),
       `The stale-data indicator does not carry UD-015's wording: ${JSON.stringify(chip)}`
     )
-    const explanation = await textOf(page, 'stale-data-explanation')
+    // Compact contract (issue #153): nothing sits between the chip and the table.
+    const quietLeaks = []
+    for (const id of [
+      'stale-data-explanation',
+      'stale-data-outstanding',
+      'stale-data-account',
+      'stale-data-trading-post',
+      'summary'
+    ]) {
+      if (await present(page, id)) quietLeaks.push(id)
+    }
     check(
-      explanation !== null &&
-        explanation.includes('last synchronized successfully') &&
-        explanation.includes('replaced automatically'),
-      `The indicator does not explain that cached results stay up: ${JSON.stringify(explanation)}`
+      quietLeaks.length === 0,
+      `The active refresh shows text beyond the compact indicator: ${JSON.stringify(quietLeaks)}`
     )
     record(
       'cached rows render immediately with the stale-data indicator',
@@ -529,21 +562,66 @@ async function run() {
       `duration ${reduced.animationDuration}, border ${reduced.borderWidth}px ${reduced.borderColor}`
     )
 
-    // 3. Account freshness and Trading Post coverage stay two separate, backend-supplied facts.
-    const account = await textOf(page, 'stale-data-account')
-    const prices = await textOf(page, 'stale-data-trading-post')
+    // 3. (Account/Trading Post detail is asserted on the failure state, step 7, per issue #153.)
+
+    // 3a. Hover and keyboard focus, measured from the rendered cascade: pointer hover changes the
+    //     whole row's background while the recipe-name button keeps a transparent border, and
+    //     keyboard focus still draws a visible outline.
+    const rowSelector = '.profit-table tbody tr'
+    const buttonSelector = `${rowSelector} .recipe-select`
+    await page.mouse.move(0, 0)
+    const readRow = () =>
+      page.evaluate(
+        ([rowSel, buttonSel]) => {
+          const rowElement = document.querySelector(rowSel)
+          const button = document.querySelector(buttonSel)
+          if (rowElement === null || button === null) return null
+          return {
+            background: getComputedStyle(rowElement).backgroundColor,
+            borderColor: getComputedStyle(button).borderTopColor,
+            borderWidth: Number.parseFloat(getComputedStyle(button).borderTopWidth)
+          }
+        },
+        [rowSelector, buttonSelector]
+      )
+    const idle = await readRow()
+    check(idle !== null, 'No Profit row with a recipe-name button to measure hover on.')
+    await page.hover(buttonSelector)
+    const hovered = await readRow()
     check(
-      account !== null && account.includes('3 of 4 up to date') && account.includes('CHARACTERS'),
-      `Account freshness is not reported in the backend's own terms: ${JSON.stringify(account)}`
+      hovered.background !== idle.background,
+      `Hovering the recipe name does not change the whole row background: ${JSON.stringify({ idle, hovered })}`
     )
     check(
-      prices !== null &&
-        prices.includes('3000 of 3205 required items up to date') &&
-        prices.includes('expired: 180') &&
-        prices.includes('no stored price: 25'),
-      `Trading Post coverage is not reported separately: ${JSON.stringify(prices)}`
+      hovered.borderColor === 'rgba(0, 0, 0, 0)' || hovered.borderWidth === 0,
+      `The recipe-name button gains its own border on hover: ${JSON.stringify(hovered)}`
     )
-    record('account and Trading Post freshness stay distinguishable', `${account} || ${prices}`)
+    await page.mouse.move(0, 0)
+    await page.focus(buttonSelector)
+    await page.keyboard.press('Shift+Tab')
+    await page.keyboard.press('Tab')
+    const focus = await page.evaluate((buttonSel) => {
+      const button = document.querySelector(buttonSel)
+      if (button === null || document.activeElement !== button) return null
+      const style = getComputedStyle(button)
+      return {
+        matches: button.matches(':focus-visible'),
+        outlineStyle: style.outlineStyle,
+        outlineWidth: Number.parseFloat(style.outlineWidth)
+      }
+    }, buttonSelector)
+    check(focus !== null, 'Keyboard navigation did not reach a recipe-name button.')
+    check(
+      focus.matches && focus.outlineStyle !== 'none' && focus.outlineWidth > 0,
+      `Keyboard focus has no visible outline: ${JSON.stringify(focus)}`
+    )
+    await page.mouse.move(0, 0)
+    await page.evaluate(() => document.activeElement?.blur())
+    record(
+      'row hover changes the whole row, the name button keeps a transparent border, focus outline shows',
+      `row ${idle.background} -> ${hovered.background}, button border ${hovered.borderColor}, ` +
+        `focus outline ${focus.outlineStyle} ${focus.outlineWidth}px`
+    )
 
     // 4. The page polled what the backend advertised, and started no synchronization of its own.
     await waitForStatusReads(1)
@@ -666,6 +744,24 @@ async function run() {
       `The last usable rows were not retained: ${JSON.stringify(await tableProfits(page))}`
     )
     check(await present(page, 'refresh-retry'), 'No retry is offered after recovery stopped.')
+    const failedAccount = await textOf(page, 'refresh-failed-account')
+    const failedPrices = await textOf(page, 'refresh-failed-trading-post')
+    // The values are the failedEnvelope fixture's own: three of four sources fresh, CHARACTERS
+    // expired; 3000 of 3205 prices fresh, 180 expired, 25 without a stored price.
+    check(
+      failedAccount !== null &&
+        failedAccount.includes('3 of 4 up to date') &&
+        failedAccount.includes('expired: CHARACTERS'),
+      `The failure's account context is not the supplied facts: ${JSON.stringify(failedAccount)}`
+    )
+    check(
+      failedPrices !== null &&
+        failedPrices.includes('3000 of 3205 required items') &&
+        failedPrices.includes('expired: 180') &&
+        failedPrices.includes('no stored price: 25'),
+      `The failure's Trading Post context is not the supplied facts: ${JSON.stringify(failedPrices)}`
+    )
+    check(await present(page, 'summary'), 'The ordinary summary is missing after the refresh ended.')
     const animating = await page.evaluate(() =>
       [...document.querySelectorAll('[data-test="refresh-status"] *')].some(
         (element) => getComputedStyle(element).animationName !== 'none'

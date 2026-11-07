@@ -138,6 +138,9 @@ const isDetailRecalculated = computed(
 )
 
 const isEmptyResult = computed(() => profit.hasResult.value && profit.rows.value.length === 0)
+const isActiveRefresh = computed(
+  () => profit.isProvisional.value && profit.isRecovering.value && profit.recoveryFailure.value === null
+)
 
 const isFilteredEmpty = computed(
   () => profit.rows.value.length > 0 && table.matchingRows.value.length === 0
@@ -419,7 +422,7 @@ function onMaximumDisplayedChange(event: Event): void {
         </p>
 
         <template v-else-if="profit.hasResult.value">
-          <p class="meta" data-test="summary">
+          <p v-if="!isActiveRefresh" class="meta" data-test="summary">
             Showing {{ displayedCount }} of {{ matchingCount }} matching
             {{ matchingCount === 1 ? 'recipe' : 'recipes' }} ·
             {{ calculatedCount }} calculated for this scope
