@@ -28,7 +28,7 @@ cached controls/results and must not submit another calculation.
 
 Bank and Materials expose checkboxes on item tiles and an explicit confirmation button to lock in the selection. Checkbox changes are a pending edit until confirmation; Crafting Profit consumes the committed selection. Distinguish pending changes, committed protection and the Profit activation state clearly. Do not interfere with item links, quantity display or keyboard navigation.
 
-Provide preset buttons for every material tier (T1 through T6), followed by the same confirmation step. The design must allow additional presets without a new selection mechanism. Document and review exact preset membership and bulk-selection interactions; do not infer crafting tier from item rarity or select unrelated items automatically.
+Provide preset buttons for every intermediate-material tier (T1 through T6), including families such as dust and blood. Basic crafting materials and gemstones are excluded from these presets; users can still select them individually. Provide an additional preset selecting Mystic Clovers, Mystic Coins, Globs of Ectoplasm and Obsidian Shards; its visible label remains for UI review. Presets change only pending checkboxes and require the same confirmation step. The design must allow further presets. Verify exact item-ID membership from game data; do not infer crafting tier from rarity or select unrelated items automatically. These membership choices were confirmed by the Product Owner on 2026-11-07.
 
 Crafting Profit has a protection toggle and selected-item count. Attempting to activate it without a committed selection must show a short popup/floating warning explaining that nothing is selected; do not imply that stock is being protected. When a selection exists, provide links to the relevant Materials and/or Bank selection pages. Checkbox selection must remain coherent when the same item appears in multiple stacks/views.
 
@@ -38,7 +38,7 @@ Remember the committed selection and activation setting per account on the same 
 
 Add a Characters destination alongside the existing application views. Start with a compact roster/list and open character details when a row is selected, following the interaction shown in the supplied GW2efficiency references while using the application's own visual style. Show concise identity/crafting information; propose exact overview fields for Product Owner review rather than importing every statistic from the reference.
 
-Equipment is the primary detail view. Make slots, item names and rarity easy to scan, so ascended/legendary equipment and remaining lower-quality or empty slots can be identified. Use labels as well as rarity colors. Provide Inventory and Builds sections and a Story section after API feasibility is established. Discovered Recipes is omitted; Map Completion remains deferred.
+Equipment is the primary detail view. Make slots, item names and rarity easy to scan, so ascended/legendary equipment and remaining lower-quality or empty slots can be identified. Use labels as well as rarity colors. Provide Inventory and Builds sections. Story is deferred by Product Owner decision (2026-11-07). Discovered Recipes is omitted; Map Completion remains deferred.
 
 Preserve roster position/selection when returning from details, and provide clear back/character navigation. Item links, readable quantities, keyboard access, loading/freshness/error states and account-switch cleanup must be considered in the concrete design.
 
