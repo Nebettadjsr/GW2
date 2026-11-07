@@ -358,7 +358,7 @@ class SingleCraftExplainerSemanticsTest {
     }
 
     @Test
-    void shouldNotMarkBoundQuantityAsUnvalued() {
+    void shouldMarkBoundQuantityWithoutAnyEstablishedValueAsUnvalued() {
         Recipe root = recipe(1, FINAL_ITEM, List.of(ingredient(RAW_ITEM, 1)));
 
         SingleCraftExplanation explanation = explainer.explainIndividual(
@@ -372,8 +372,9 @@ class SingleCraftExplainerSemanticsTest {
 
         CraftTraceNode raw = single(explanation.root());
         assertEquals(1, raw.inventoryQuantity());
-        // Bound quantity is deliberately exempt from opportunity cost; that is not "unvalued".
-        assertEquals(List.of(), raw.states());
+        // DOMAIN_SPEC.md 11.2 (STORY-VALUE-001): usable bound stock is valued by crafting cost,
+        // then vendor value; with neither it is explicitly unvalued rather than silently free.
+        assertEquals(List.of(ResolutionState.UNVALUED_NONTRADEABLE), raw.states());
         assertEquals(Integer.valueOf(0), raw.opportunityCostCopper());
     }
 

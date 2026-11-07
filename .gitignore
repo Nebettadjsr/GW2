@@ -35,3 +35,7 @@ compose.env
 # Derived/rebuildable data (auto-rebuilt by craft.CraftingGraphCache.load() when absent)
 crafting_graph_cache.json
 .aider*
+
+# Python helper bytecode is generated, never source.
+__pycache__/
+*.py[cod]

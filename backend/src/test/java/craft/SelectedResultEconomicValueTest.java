@@ -88,6 +88,57 @@ class SelectedResultEconomicValueTest {
     }
 
     @Test
+    void valuedBoundOwnedMaterialReconcilesListWithFreshDetail() {
+        // MID: 3 per craft from 10 x RAW(buy 6) => 60/3 = 20 per unit; 3 MID owned as account-bound.
+        int mid = 300;
+        Recipe midRecipe = recipe(8, mid, 3, List.of(ingredient(RAW, 10)));
+        Recipe target = recipe(9, OUTPUT, List.of(ingredient(mid, 3)));
+        List<CharacterCraftingProfile> roster = List.of(profile("Aria", "Artificer", 500));
+        List<Recipe> recipes = List.of(target, midRecipe);
+        Set<Integer> allowed = Set.of(8, 9);
+        Map<Integer, PriceQuote> quotes = Map.of(OUTPUT, quote(500, 600), RAW, quote(6, 6));
+        CraftingSettings s = settings(true, false, false);
+        Map<Integer, Integer> bound = Map.of(mid, 3);
+
+        CraftResult row = new CraftingPlanner().evaluateOneCoordinated(target, recipes, Map.of(), bound,
+                Map.of(), roster, quotes, s, allowed);
+        SingleCraftExplanation explanation = new SingleCraftExplainer().explainCoordinatedResult(
+                target, recipes, Map.of(), bound, Map.of(), roster, quotes, s, allowed, row.craftableCount);
+
+        assertEquals(1, row.craftableCount);
+        assertEquals(0, row.buyCostCopper, "valuation must not buy RAW");
+        assertEquals(60, row.totalMatsSellValueCopper, "3 bound MID at 20 each");
+        CraftTraceNode midNode = explanation.root().children().get(0);
+        assertEquals(3, inventoryQuantity(midNode, mid));
+        assertEquals(0, boughtQuantity(midNode, mid));
+        assertTrue(midNode.children().isEmpty() || midNode.children().stream()
+                .allMatch(c -> boughtQuantity(c, RAW) == 0 && inventoryQuantity(c, RAW) == 0),
+                "no ingredient purchase or consumption for owned bound stock");
+        assertEquals(Integer.valueOf(60), explanation.root().effectiveCostCopper());
+        assertEquals(calculationMaterialCost(row), explanation.root().effectiveCostCopper());
+    }
+
+    @Test
+    void unvaluedBoundOwnedMaterialStaysFlaggedAndConsistent() {
+        int mid = 300;
+        Recipe target = recipe(9, OUTPUT, List.of(ingredient(mid, 2)));
+        List<CharacterCraftingProfile> roster = List.of(profile("Aria", "Artificer", 500));
+        Set<Integer> allowed = Set.of(9);
+        CraftingSettings s = settings(true, false, false);
+        Map<Integer, Integer> bound = Map.of(mid, 2);
+        CraftResult row = new CraftingPlanner().evaluateOneCoordinated(target, List.of(target), Map.of(), bound,
+                Map.of(), roster, Map.of(OUTPUT, quote(100, 120)), s, allowed);
+        SingleCraftExplanation explanation = new SingleCraftExplainer().explainCoordinatedResult(
+                target, List.of(target), Map.of(), bound, Map.of(), roster, Map.of(OUTPUT, quote(100, 120)),
+                s, allowed, row.craftableCount);
+        assertEquals(1, row.craftableCount);
+        assertEquals(0, calculationMaterialCost(row));
+        CraftTraceNode midNode = explanation.root().children().get(0);
+        assertTrue(midNode.states().contains(ResolutionState.UNVALUED_NONTRADEABLE));
+        assertEquals(Integer.valueOf(0), explanation.root().effectiveCostCopper());
+    }
+
+    @Test
     void unavailableRequiredPurchaseRemainsUnknownRatherThanZero() {
         Recipe target = recipe(7, OUTPUT, List.of(ingredient(RAW, 1)));
         Outcome outcome = evaluate(target, List.of(target), Map.of(),
