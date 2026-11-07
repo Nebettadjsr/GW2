@@ -108,7 +108,7 @@ Prepare separate backend authorization, status UI and inventory freshness storie
 
 ### Correctness prerequisite: owned non-tradable valuation
 
-Product Owner clarification: owned non-tradable/bound inputs, especially daily materials, must use recursive crafting-input value before vendor fallback rather than automatic zero. The owning rule is `DOMAIN_SPEC.md` sections 11.1–11.2. The accepted contract is issue [#132](https://github.com/Nebettadjsr/GW2/issues/132), currently ACTIVE through PR [#133](https://github.com/Nebettadjsr/GW2/pull/133) and not DONE while review-driven mixed bound/sellable fractional-rounding correction remains under verification. Material-protection implementation remains dependent on acceptance of this prerequisite.
+Product Owner clarification: owned non-tradable/bound inputs, especially daily materials, must use recursive crafting-input value before vendor fallback rather than automatic zero. The owning rule is `DOMAIN_SPEC.md` sections 11.1–11.2. Issue [#132](https://github.com/Nebettadjsr/GW2/issues/132) is complete through accepted PR [#133](https://github.com/Nebettadjsr/GW2/pull/133), merged as `23ce30d`, including cumulative mixed-pool rounding, cycle safety and valued-bound list/detail tests. This implementation prerequisite for material protection is satisfied; resource qualification remains separate.
 
 [Domain specification](DOMAIN_SPEC.md), [current architecture](CURRENT_ARCHITECTURE.md), [target architecture](TARGET_ARCHITECTURE.md), [test strategy](TEST_STRATEGY.md) and recorded user decisions remain authoritative. This roadmap does not change their business or architecture rules.
 

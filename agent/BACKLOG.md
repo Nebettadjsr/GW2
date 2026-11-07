@@ -6,7 +6,7 @@ Authorization: start the agreed workflow, supervise progress and stop only for n
 
 Initial audit: setup PR [#131](https://github.com/Nebettadjsr/GW2/pull/131) merged as `9fd9ef5`; old issues #21, #60, #111 and #116 remain open. Coverage issue [#111](https://github.com/Nebettadjsr/GW2/issues/111) has no `auto` release and is not newly activated.
 
-Current handoff: the accepted `STORY-VALUE-001` planning contract is issue [#132](https://github.com/Nebettadjsr/GW2/issues/132), ACTIVE through implementation PR [#133](https://github.com/Nebettadjsr/GW2/pull/133). PR #133 is correcting mixed bound/sellable fractional rounding in run [42348693445](https://github.com/Nebettadjsr/GW2/actions/runs/42348693445); it is not DONE until the implementation is accepted and merged. The narrowed CPU/memory contract is issue [#134](https://github.com/Nebettadjsr/GW2/issues/134), accepted as a planning artifact but DRAFT/unreleased with no `auto` until #132 is accepted. No other feature contract is released.
+Current handoff: valuation issue [#132](https://github.com/Nebettadjsr/GW2/issues/132) is DONE via accepted/merged PR [#133](https://github.com/Nebettadjsr/GW2/pull/133), merge `23ce30d`, with green required CI and clean native Codex review of head `340681d`. The narrowed CPU/memory contract is issue [#134](https://github.com/Nebettadjsr/GW2/issues/134), READY for supervisor release once this planning handoff is merged. No other feature contract is released.
 
 ## Activation and state
 
@@ -23,8 +23,8 @@ Current handoff: the accepted `STORY-VALUE-001` planning contract is issue [#132
 | PLAN-HOST-001 | Planner verifies the Oracle provider budget and records target-host qualification gaps | Provider limits recorded; actual tenancy/host facts remain required only for qualification | DONE — planning artifact accepted in #134 |
 | PLAN-KPI-001 | Planner inventories existing measurements and proposes bounded KPI contracts and workloads | PLAN-HOST-001 provider limits; real-host access is not required for local reporting work | DONE — planning artifact accepted in #134 |
 | PLAN-VALUE-001 | Planner prepares correctness contract for recursive valuation of owned bound/non-tradable materials, including daily materials | DOMAIN_SPEC.md sections 11.1–11.2 | DONE — contract accepted as #132 |
-| STORY-VALUE-001 | Claude corrects valuation and verifies list/detail cost/profit agreement, cycle handling, yields and performance | Approved issue #132 | ACTIVE — PR #133; not accepted or DONE |
-| STORY-KPI-001 | Claude adds whole-host Linux CPU/memory observations, boundaries/provenance and safe 2 OCPU/12 GB comparison to the existing report | Accepted contract #134; STORY-VALUE-001 accepted | DRAFT — no `auto` |
+| STORY-VALUE-001 | Claude corrects valuation and verifies list/detail cost/profit agreement, cycle handling, yields and performance | Approved issue #132 | DONE — PR #133 merged as 23ce30d |
+| STORY-KPI-001 | Claude adds whole-host Linux CPU/memory observations, boundaries/provenance and safe 2 OCPU/12 GB comparison to the existing report | Accepted contract #134; STORY-VALUE-001 accepted | READY — supervisor release next |
 | STORY-KPI-002 | Claude adds repeatable desktop and multi-account/fault qualification workloads | STORY-KPI-001 | DRAFT |
 | STORY-KPI-003 | Claude exposes a concise capacity/health summary and documented reproduction path | STORY-KPI-001, STORY-KPI-002 | DRAFT |
 | STORY-KPI-004 | Claude adds safe JVM heap/committed/max and GC observations and relates them to container/host memory without treating 12 GB as a JVM allowance | STORY-KPI-001 | DRAFT |
@@ -92,4 +92,4 @@ Resolve the owner via a configured, verified account GUID; do not request/store 
 - Intended concurrent-user workload and acceptable latency/headroom: planner proposes against the Oracle resource baseline; Product Owner approves material tradeoffs.
 - Material protection: core product/UI/retention answers are confirmed and recorded in the owning domain/UX documents. Story and concrete UI review remain preparation work.
 - Characters: feature and in-game-style equipment/build tab scope confirmed; equipment first, inventory/builds next, story subject to API coverage, discovered recipes excluded and map completion deferred. Concrete UI design remains review work. Drafts do not authorize implementation.
-- Next authorized action: complete review-driven correction of active PR #133 against issue #132. Keep accepted contract #134 DRAFT and without `auto` until #132 is accepted, then release work only through normal supervisor review. Real Oracle access is required for final qualification, not for locally testable reporting preparation.
+- Next authorized action: release accepted contract #134 to Claude after this planning handoff is merged, then inspect its real diff, tests, smoke evidence and native review. PR-triggered runs marked action_required need supervisor approval for the trusted exact head; a separate dispatched CI pass does not replace branch-protection checks. Real Oracle access is required for final qualification, not for locally testable reporting preparation.
