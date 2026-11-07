@@ -64,7 +64,7 @@ function describe(slot: InventorySlot, bag: number): string {
 </template>
 
 <style scoped>
-.inventory { display: grid; grid-template-columns: minmax(150px, 220px) max-content 56px; gap: 16px; align-items: start; justify-content: start; }
+.inventory { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, max-content) 56px; gap: 16px; align-items: start; justify-content: start; }
 .inventory__center { min-width: 0; max-width: 100%; overflow-x: auto; }
 .inventory__slots { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(10, 60px); gap: 4px; }
 .inventory__slot { position: relative; box-sizing: border-box; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
@@ -76,5 +76,5 @@ function describe(slot: InventorySlot, bag: number): string {
 .inventory__rail-label { font-size: 0.75rem; }
 .inventory__unknown { border: 1px dashed var(--color-border); width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-@media (max-width: 1100px) { .inventory { grid-template-columns: max-content 56px; } .inventory__facts { grid-column: 1 / -1; } }
+@media (max-width: 1100px) { .inventory { grid-template-columns: minmax(0, max-content) 56px; } .inventory__facts { grid-column: 1 / -1; } }
 </style>

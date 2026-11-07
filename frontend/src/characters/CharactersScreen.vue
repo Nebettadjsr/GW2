@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { connection } from '@/api/accountSession'
 import { charactersApi, type CharactersApi } from '@/api/charactersApi'
 import { syncApi } from '@/api/syncApi'
@@ -84,6 +84,15 @@ const inventoryProblem = computed(() => {
   const r = inventoryState.value
   return r !== null && !(r.state === 'AVAILABLE' || r.state === 'STALE')
 })
+/** On Inventory with a bag layout the character name heads the left facts column instead of sitting above the tabs. */
+const nameInFacts = computed(() => c.selectedName.value !== null && c.section.value === 'inventory' && !!c.inventorySource.value?.bags)
+// The heading moves between two places; keep keyboard focus on it when it does.
+watch(nameInFacts, async () => {
+  const hadFocus = document.activeElement !== null && document.activeElement === headingRef.value
+  if (!hadFocus) return
+  await nextTick()
+  if (live()) headingRef.value?.focus({ preventScroll: true })
+}, { flush: 'pre' })
 const canRefresh = computed(() => {
   const s = equipmentState.value?.state
   return s === 'PENDING' || s === 'STALE' || s === 'UNAVAILABLE' || c.equipmentFailure.value !== null
@@ -138,7 +147,7 @@ function fmt(value?: string | null): string | null {
     <!-- Selected character -->
     <section v-if="c.selectedName.value !== null" class="detail" data-test="character-detail">
       <button ref="backRef" type="button" data-test="character-back" @click="back()">← All characters</button>
-      <h2 ref="headingRef" tabindex="-1" data-test="character-name">{{ c.selectedName.value }}</h2>
+      <h2 v-if="!nameInFacts" ref="headingRef" tabindex="-1" data-test="character-name">{{ c.selectedName.value }}</h2>
       <p v-if="c.detailPhase.value === 'loading'" class="meta" role="status" data-test="detail-loading">Loading character…</p>
       <p v-if="c.detailFailure.value" class="notice notice--error" role="alert" data-test="detail-error">
         Could not load this character's details: {{ c.detailFailure.value.message }}
@@ -239,7 +248,10 @@ function fmt(value?: string | null): string | null {
         </p>
         <p v-if="c.inventorySource.value?.contents === 'ALL_SLOTS_EMPTY'" class="meta" data-test="inventory-all-empty">All listed bag slots are empty.</p>
         <InventoryPanel v-if="c.inventorySource.value?.bags" :bags="c.inventorySource.value.bags">
-          <template #facts><CharacterFacts v-if="c.shownDetail.value" :detail="c.shownDetail.value" :created="fmt(c.shownDetail.value.createdAt)" /></template>
+          <template #facts>
+            <h2 ref="headingRef" tabindex="-1" data-test="character-name">{{ c.selectedName.value }}</h2>
+            <CharacterFacts v-if="c.shownDetail.value" :detail="c.shownDetail.value" :created="fmt(c.shownDetail.value.createdAt)" />
+          </template>
         </InventoryPanel>
         <CharacterFacts v-else-if="c.shownDetail.value" :detail="c.shownDetail.value" :created="fmt(c.shownDetail.value.createdAt)" />
       </template>

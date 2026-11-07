@@ -457,6 +457,32 @@ describe('Character inventory section', () => {
     expect(legacy.find('[data-test="inventory-system-status"]').attributes('href')).toBe('#/synchronization')
   })
 
+  it('flattens three nonuniform installed bags in supplied order with boundaries, holes, duplicates and the name in the facts column', async () => {
+    const it_ = (id: number, name: string) => ({ itemId: id, resolved: true, name })
+    const bags = [
+      { bag: 0, installed: true, container: it_(10, 'Bag A'), capacity: 7, slots: [0, 1, 2, 3, 4, 5, 6].map((slot) => slot === 2 || slot === 6 ? { slot, empty: true } : { slot, empty: false, item: it_(11, 'Iron Ore'), quantity: slot + 1 }) },
+      { bag: 1, installed: false, slots: [] },
+      { bag: 2, installed: true, container: it_(12, 'Bag B'), capacity: 12, slots: Array.from({ length: 12 }, (_, slot) => slot % 5 === 0 ? { slot, empty: true } : { slot, empty: false, item: it_(11, 'Iron Ore'), quantity: 1 }) },
+      { bag: 3, installed: true, container: { itemId: 13, resolved: false }, capacity: 9, slots: Array.from({ length: 9 }, (_, slot) => slot === 8 ? { slot, empty: true } : { slot, empty: false, item: { itemId: 98, resolved: false }, quantity: 2 }) }
+    ] as CharacterInventoryResponse['bags']
+    const w = await open(fakeApi({ loadInventory: async () => ({ ...inventoryResponse, contents: 'HAS_ITEMS', bags }) }))
+    await w.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
+    const coords = w.findAll('[data-test="inventory-slot"]').map((e) => `${e.attributes('data-bag')}:${e.attributes('data-slot')}`)
+    const expected = [...[0, 1, 2, 3, 4, 5, 6].map((s) => `0:${s}`), ...Array.from({ length: 12 }, (_, s) => `2:${s}`), ...Array.from({ length: 9 }, (_, s) => `3:${s}`)]
+    expect(coords).toEqual(expected)
+    expect(coords).toHaveLength(28)
+    expect(w.findAll('[data-test="inventory-slot-empty"]')).toHaveLength(2 + 3 + 1)
+    expect(w.findAll('[data-test="inventory-slot"]').filter((e) => e.text().includes('Iron Ore')).length).toBeGreaterThan(10) // duplicates kept
+    expect(w.findAll('[data-test="inventory-bag"]').map((e) => e.attributes('data-bag'))).toEqual(['0', '1', '2', '3'])
+    expect(w.findAll('[data-test="inventory-grid"]')).toHaveLength(1)
+    const name = w.findAll('[data-test="character-name"]')
+    expect(name).toHaveLength(1)
+    expect(w.find('[data-test="inventory-facts"] [data-test="character-name"]').text()).toBe('Ana B')
+    await w.find('[data-test="section-equipment"]').trigger('click'); await flushPromises()
+    expect(w.find('[data-test="inventory-facts"]').exists()).toBe(false)
+    expect(w.findAll('[data-test="character-name"]')).toHaveLength(1)
+  })
+
   it('shows grant, failure and retains last-good inventory on a later failed read', async () => {
     const grant = await open(fakeApi({ loadInventory: async () => ({ state: 'GRANT_REQUIRED', reason: 'MISSING_GRANT' }) }))
     await grant.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
