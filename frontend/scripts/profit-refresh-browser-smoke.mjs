@@ -441,12 +441,20 @@ async function run() {
       chip !== null && chip.includes('Stale data – refreshing…'),
       `The stale-data indicator does not carry UD-015's wording: ${JSON.stringify(chip)}`
     )
-    const explanation = await textOf(page, 'stale-data-explanation')
+    // Compact contract (issue #153): nothing sits between the chip and the table.
+    const quietLeaks = []
+    for (const id of [
+      'stale-data-explanation',
+      'stale-data-outstanding',
+      'stale-data-account',
+      'stale-data-trading-post',
+      'summary'
+    ]) {
+      if (await present(page, id)) quietLeaks.push(id)
+    }
     check(
-      explanation !== null &&
-        explanation.includes('last synchronized successfully') &&
-        explanation.includes('replaced automatically'),
-      `The indicator does not explain that cached results stay up: ${JSON.stringify(explanation)}`
+      quietLeaks.length === 0,
+      `The active refresh shows text beyond the compact indicator: ${JSON.stringify(quietLeaks)}`
     )
     record(
       'cached rows render immediately with the stale-data indicator',
@@ -529,21 +537,7 @@ async function run() {
       `duration ${reduced.animationDuration}, border ${reduced.borderWidth}px ${reduced.borderColor}`
     )
 
-    // 3. Account freshness and Trading Post coverage stay two separate, backend-supplied facts.
-    const account = await textOf(page, 'stale-data-account')
-    const prices = await textOf(page, 'stale-data-trading-post')
-    check(
-      account !== null && account.includes('3 of 4 up to date') && account.includes('CHARACTERS'),
-      `Account freshness is not reported in the backend's own terms: ${JSON.stringify(account)}`
-    )
-    check(
-      prices !== null &&
-        prices.includes('3000 of 3205 required items up to date') &&
-        prices.includes('expired: 180') &&
-        prices.includes('no stored price: 25'),
-      `Trading Post coverage is not reported separately: ${JSON.stringify(prices)}`
-    )
-    record('account and Trading Post freshness stay distinguishable', `${account} || ${prices}`)
+    // 3. (Account/Trading Post detail is asserted on the failure state, step 7, per issue #153.)
 
     // 4. The page polled what the backend advertised, and started no synchronization of its own.
     await waitForStatusReads(1)
@@ -666,6 +660,13 @@ async function run() {
       `The last usable rows were not retained: ${JSON.stringify(await tableProfits(page))}`
     )
     check(await present(page, 'refresh-retry'), 'No retry is offered after recovery stopped.')
+    const failedAccount = await textOf(page, 'refresh-failed-account')
+    const failedPrices = await textOf(page, 'refresh-failed-trading-post')
+    check(
+      failedAccount !== null && failedAccount.length > 0 && failedPrices !== null && failedPrices.length > 0,
+      `The failure lacks account/Trading Post context: ${JSON.stringify([failedAccount, failedPrices])}`
+    )
+    check(await present(page, 'summary'), 'The ordinary summary is missing after the refresh ended.')
     const animating = await page.evaluate(() =>
       [...document.querySelectorAll('[data-test="refresh-status"] *')].some(
         (element) => getComputedStyle(element).animationName !== 'none'
