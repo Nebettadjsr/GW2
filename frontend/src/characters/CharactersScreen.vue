@@ -47,6 +47,30 @@ async function back(): Promise<void> {
   window.scrollTo(0, from.scrollY) // the browser clamps this when the roster is shorter
 }
 
+type SectionId = 'equipment' | 'inventory'
+const SECTIONS: { id: SectionId; label: string }[] = [{ id: 'equipment', label: 'Equipment' }, { id: 'inventory', label: 'Inventory' }]
+const tabRefs = new Map<SectionId, HTMLElement>()
+function setTab(id: SectionId, el: unknown): void {
+  if (el instanceof HTMLElement) tabRefs.set(id, el)
+  else tabRefs.delete(id)
+}
+/** Arrow/Home/End move between section tabs (roving tabindex); selection follows focus. */
+async function onTabKey(event: KeyboardEvent): Promise<void> {
+  const i = SECTIONS.findIndex((t) => t.id === c.section.value)
+  let n = i
+  if (event.key === 'ArrowRight') n = (i + 1) % SECTIONS.length
+  else if (event.key === 'ArrowLeft') n = (i - 1 + SECTIONS.length) % SECTIONS.length
+  else if (event.key === 'Home') n = 0
+  else if (event.key === 'End') n = SECTIONS.length - 1
+  else return
+  event.preventDefault()
+  const target = SECTIONS[n]!.id
+  const name = c.selectedName.value
+  c.showSection(target)
+  await nextTick()
+  if (live() && c.selectedName.value === name) tabRefs.get(target)?.focus()
+}
+
 const characters = computed(() => c.roster.value?.characters ?? [])
 const rosterState = computed(() => c.rosterResponse.value)
 const equipmentState = computed(() => c.equipmentResponse.value)
@@ -135,16 +159,17 @@ function fmt(value?: string | null): string | null {
         </template>
       </dl>
 
-      <div class="sections" role="tablist" aria-label="Character sections" data-test="section-tablist">
-        <button type="button" role="tab" id="section-tab-equipment" aria-controls="section-panel" :aria-selected="c.section.value === 'equipment'"
-          :class="{ 'sections__tab--selected': c.section.value === 'equipment' }" data-test="section-equipment" @click="c.showSection('equipment')">Equipment</button>
-        <button type="button" role="tab" id="section-tab-inventory" aria-controls="section-panel" :aria-selected="c.section.value === 'inventory'"
-          :class="{ 'sections__tab--selected': c.section.value === 'inventory' }" data-test="section-inventory" @click="c.showSection('inventory')">Inventory</button>
+      <div class="sections" role="tablist" aria-label="Character sections" data-test="section-tablist" @keydown="onTabKey">
+        <button v-for="t in SECTIONS" :key="t.id" :ref="(el) => setTab(t.id, el)" type="button" role="tab" :id="`section-tab-${t.id}`"
+          aria-controls="section-panel" :aria-selected="c.section.value === t.id" :tabindex="c.section.value === t.id ? 0 : -1"
+          :class="{ 'sections__tab--selected': c.section.value === t.id }" :data-test="`section-${t.id}`" @click="c.showSection(t.id)">{{ t.label }}</button>
       </div>
       <div id="section-panel" role="tabpanel" :aria-labelledby="`section-tab-${c.section.value}`">
       <template v-if="c.section.value === 'equipment'">
       <p v-if="c.equipmentOlderThanInventory.value" class="notice" role="status" data-test="equipment-older">
-        The equipment shown may describe an older saved character list than the inventory. Reading it again…
+        {{ c.equipmentPhase.value === 'loading'
+          ? 'The equipment shown may describe an older saved character list than the inventory. Reading it again…'
+          : 'The equipment shown may describe an older saved character list than the inventory, and it could not be brought up to date yet.' }}
       </p>
       <p v-if="c.equipmentPhase.value === 'loading'" class="meta" role="status" data-test="equipment-loading">
         {{ c.equipmentSource.value ? 'Updating equipment. Showing the previous saved data below.' : 'Loading equipment…' }}
@@ -175,6 +200,11 @@ function fmt(value?: string | null): string | null {
       <EquipmentPanel v-if="c.equipmentTabs.value" :tabs="c.equipmentTabs.value" :shown="c.shownTab.value" @inspect="c.inspect" />
       </template>
       <template v-else>
+        <p v-if="c.inventoryOlderThanEquipment.value" class="notice" role="status" data-test="inventory-older">
+          {{ c.inventoryPhase.value === 'loading'
+            ? 'The inventory shown may describe an older saved character list than the equipment. Reading it again…'
+            : 'The inventory shown may describe an older saved character list than the equipment, and it could not be brought up to date yet.' }}
+        </p>
         <p v-if="c.inventoryPhase.value === 'loading'" class="meta" role="status" data-test="inventory-loading">
           {{ c.inventorySource.value ? 'Updating inventory. Showing the previous saved data below.' : 'Loading inventory…' }}
         </p>
@@ -187,18 +217,23 @@ function fmt(value?: string | null): string | null {
           <template v-if="inventoryState?.state === 'GRANT_REQUIRED'">Your API key does not allow reading inventory. </template>
           <template v-else-if="inventoryState?.state === 'ENDPOINT_RESTRICTED'">Inventory is restricted for this account. </template>
           <template v-else-if="inventoryState?.state === 'PENDING'">
-            <template v-if="inventoryState.reason === 'LAYOUT_REFRESH_REQUIRED'">
-              The saved character data needs an account refresh before inventory can be shown. Start one from
-              <a href="#/synchronization" data-test="inventory-system-status">System Status</a>.
-            </template>
-            <template v-else-if="inventoryState.reason === 'REFRESH_FAILED'">The first inventory refresh failed. Try an account refresh from <a href="#/synchronization">System Status</a>. </template>
-            <template v-else-if="inventoryState.reason === 'REFRESH_IN_PROGRESS'">An account refresh is in progress. Check again shortly. </template>
+            <template v-if="inventoryState.reason === 'REFRESH_IN_PROGRESS'">An account refresh is in progress. Check again when it has finished. </template>
             <template v-else>Inventory has not been synchronized yet. </template>
+          </template>
+          <template v-else-if="inventoryState?.state === 'UNAVAILABLE' && inventoryState.reason === 'LAYOUT_REFRESH_REQUIRED'">
+            The saved character data needs an account refresh before inventory can be shown. Start one from
+            <a href="#/synchronization" data-test="inventory-system-status">System Status</a>, then check again.
+          </template>
+          <template v-else-if="inventoryState?.state === 'UNAVAILABLE' && inventoryState.reason === 'REFRESH_FAILED'">
+            The first inventory refresh failed. Try an account refresh from
+            <a href="#/synchronization" data-test="inventory-system-status">System Status</a>, then check again.
           </template>
           <template v-else-if="inventoryState?.state === 'NOT_FOUND'">This character was not found. </template>
           {{ inventoryState?.message }}
           <span class="meta">({{ inventoryState?.state }}<template v-if="inventoryState?.reason">: {{ inventoryState.reason }}</template>)</span>
           <template v-if="c.inventorySource.value"> Showing the previous saved data below; it may be out of date.</template>
+          <button v-if="inventoryState?.state !== 'NOT_FOUND'" type="button" data-test="inventory-recheck" :disabled="c.inventoryPhase.value === 'loading'"
+            @click="c.loadInventory(c.selectedName.value!)">Check again</button>
         </div>
         <p v-else-if="c.inventoryIsRetained.value" class="notice" data-test="inventory-retained">Showing previously saved inventory.</p>
         <p v-if="inventoryState?.state === 'STALE'" class="meta" data-test="inventory-stale">This saved inventory may be out of date.</p>

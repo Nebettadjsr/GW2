@@ -143,6 +143,7 @@ export function useCharacters(
       equipmentFailure.value = failureOf(cause)
     }
     equipmentPhase.value = 'loaded'
+    reconcile(name)
     if (equipmentResponse.value?.state === 'PENDING' && !autoRecoveryTried) {
       autoRecoveryTried = true
       void refreshEquipment()
@@ -166,19 +167,45 @@ export function useCharacters(
       inventoryFailure.value = failureOf(cause)
     }
     inventoryPhase.value = 'loaded'
-    // A newer parent generation shows retained equipment is older: one bounded current reread.
-    const g = inventoryResponse.value?.generation
+    reconcile(name)
+  }
+
+  // Bounded generation reconciliation between the two CHARACTERS-derived sections: each target
+  // (character + section + known newer parent generation) is reread at most once automatically.
+  const reconciled = new Set<string>()
+  function reconcile(name: string): void {
+    if (!current() || selectedName.value !== name) return
+    const ig = inventorySource.value?.generation
     const eg = equipmentSource.value?.parent?.generation
-    if (g !== undefined && eg !== undefined && eg < g && equipmentPhase.value !== 'loading' && stillSelected(name, id, inventoryId)) {
+    if (ig === undefined || eg === undefined || ig === eg) return
+    if (eg < ig) {
+      const key = `eq:${name}:${ig}`
+      if (reconciled.has(key) || equipmentPhase.value === 'loading') return
+      reconciled.add(key)
       void loadEquipment(name)
+    } else {
+      const key = `inv:${name}:${eg}`
+      if (reconciled.has(key) || inventoryPhase.value !== 'loaded') return
+      reconciled.add(key)
+      void loadInventory(name)
     }
   }
 
-  /** Switch section; Inventory is read the first time it is opened for this selection. */
+  /**
+   * Switch section. Inventory is read the first time it is opened, and again on re-entry when the
+   * last read gave no layout (user-driven, one request per entry); returning to a loaded layout
+   * costs no request unless the other section proved it describes an older parent generation.
+   */
   function showSection(next: 'equipment' | 'inventory'): void {
     section.value = next
     const name = selectedName.value
-    if (next === 'inventory' && name !== null && inventoryPhase.value === 'idle') void loadInventory(name)
+    if (name === null) return
+    if (next === 'inventory' && inventoryPhase.value !== 'loading') {
+      const r = inventoryResponse.value
+      const usable = r !== null && HAS_DATA.includes(r.state) && r.bags !== undefined && inventoryFailure.value === null
+      if (inventoryPhase.value === 'idle' || !usable) { void loadInventory(name); return }
+    }
+    reconcile(name)
   }
 
   const inventorySource = computed<CharacterInventoryResponse | null>(() => {
@@ -195,6 +222,13 @@ export function useCharacters(
     const g = inventorySource.value?.generation
     const eg = equipmentSource.value?.parent?.generation
     return g !== undefined && eg !== undefined && eg < g
+  })
+
+  /** The inventory shown describes an older parent than the equipment response now known. */
+  const inventoryOlderThanEquipment = computed(() => {
+    const g = inventorySource.value?.generation
+    const eg = equipmentSource.value?.parent?.generation
+    return g !== undefined && eg !== undefined && g < eg
   })
 
   /**
@@ -328,6 +362,6 @@ export function useCharacters(
     activeTab, inspectedTab, shownTab, inspect, loadEquipment,
     refreshing, refreshMessage, refreshEquipment,
     section, showSection, inventoryPhase, inventoryResponse, inventoryFailure, inventorySource, inventoryIsRetained,
-    equipmentOlderThanInventory, loadInventory
+    equipmentOlderThanInventory, inventoryOlderThanEquipment, loadInventory
   }
 }
