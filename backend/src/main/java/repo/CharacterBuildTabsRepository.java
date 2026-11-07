@@ -30,7 +30,14 @@ public class CharacterBuildTabsRepository {
 
     public record Snapshot(boolean characterFound, Optional<Long> coveredParentGeneration, List<TabView> tabs,
                            Optional<AccountSourceStateRepository.SourceState> parent,
-                           Optional<AccountSourceStateRepository.SourceState> builds) {}
+                           Optional<AccountSourceStateRepository.SourceState> builds,
+                           BuildMetadataRepository.Metadata metadata) {
+        public Snapshot(boolean characterFound, Optional<Long> coveredParentGeneration, List<TabView> tabs,
+                        Optional<AccountSourceStateRepository.SourceState> parent,
+                        Optional<AccountSourceStateRepository.SourceState> builds) {
+            this(characterFound, coveredParentGeneration, tabs, parent, builds, BuildMetadataRepository.Metadata.empty());
+        }
+    }
 
     public Snapshot load(Connection con, AccountScope scope, String name) throws SQLException {
         ManagedSchema.requireManagedAccountSchema(con, "character build tabs");
@@ -58,7 +65,38 @@ public class CharacterBuildTabsRepository {
         if (builds.isEmpty() || covered.isEmpty()) {
             return new Snapshot(true, covered, List.of(), parent, builds);
         }
-        return new Snapshot(true, covered, tabs(con, scope, characterId), parent, builds);
+        List<TabView> tabs = tabs(con, scope, characterId);
+        return new Snapshot(true, covered, tabs, parent, builds, metadata(con, tabs));
+    }
+
+    /**
+     * Shared metadata of exactly this character's references, in one batched query per namespace. A
+     * failure here never makes the stored builds unavailable: they are served with unresolved references.
+     */
+    private BuildMetadataRepository.Metadata metadata(Connection con, List<TabView> tabs) {
+        BuildMetadataRepository.Refs refs = BuildMetadataRepository.Refs.empty();
+        for (TabView t : tabs) {
+            for (Specialization s : t.specializations()) {
+                if (s.id() != null) refs.specializations().add(s.id());
+                if (s.traits() != null) for (Integer i : s.traits()) if (i != null) refs.traits().add(i);
+            }
+            for (SkillsView k : new SkillsView[]{t.skills(), t.aquaticSkills()}) {
+                if (k.heal() != null) refs.skills().add(k.heal());
+                if (k.elite() != null) refs.skills().add(k.elite());
+                if (k.utilities() != null) for (Integer i : k.utilities()) if (i != null) refs.skills().add(i);
+            }
+            for (List<Integer> pets : Arrays.asList(t.pets(), t.aquaticPets())) {
+                if (pets != null) for (Integer i : pets) if (i != null) refs.pets().add(i);
+            }
+            for (List<String> l : Arrays.asList(t.legends(), t.aquaticLegends())) {
+                if (l != null) for (String i : l) if (i != null) refs.legends().add(i);
+            }
+        }
+        try {
+            return new BuildMetadataRepository().load(con, refs);
+        } catch (SQLException metadataUnavailable) {
+            return BuildMetadataRepository.Metadata.empty();
+        }
     }
 
     private List<TabView> tabs(Connection con, AccountScope scope, long characterId) throws SQLException {

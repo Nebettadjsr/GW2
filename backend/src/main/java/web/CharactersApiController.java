@@ -168,6 +168,7 @@ public class CharactersApiController {
         return new CharacterDto(p.name(), p.profession(), p.race(), p.gender(), p.level(), p.createdAt(),
                 p.disciplines().stream()
                         .map(d -> new CharacterReadResponse.DisciplineDto(d.discipline(), d.rating(), d.active()))
-                        .toList());
+                        .toList(),
+                p.ageSeconds(), p.deaths(), p.nextBirthdayAt());
     }
 }

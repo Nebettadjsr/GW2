@@ -400,15 +400,17 @@ public final class CharacterSync {
                                               CharacterInfo c, Timestamp runTs) throws SQLException {
         try (PreparedStatement ps = con.prepareStatement("""
                 INSERT INTO characters
-                  (account_id, name, profession, race, gender, level, created_at_gw, fetched_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?::timestamptz, ?)
+                  (account_id, name, profession, race, gender, level, created_at_gw, fetched_at, age_seconds, deaths)
+                VALUES (?, ?, ?, ?, ?, ?, ?::timestamptz, ?, ?, ?)
                 ON CONFLICT (account_id, name) DO UPDATE SET
                   profession    = EXCLUDED.profession,
                   race          = EXCLUDED.race,
                   gender        = EXCLUDED.gender,
                   level         = EXCLUDED.level,
                   created_at_gw = EXCLUDED.created_at_gw,
-                  fetched_at    = EXCLUDED.fetched_at
+                  fetched_at    = EXCLUDED.fetched_at,
+                  age_seconds   = EXCLUDED.age_seconds,
+                  deaths        = EXCLUDED.deaths
                 RETURNING character_id
                 """)) {
             ps.setObject(1, scope.accountId());
@@ -419,6 +421,8 @@ public final class CharacterSync {
             DbBind.setIntOrNull(ps, 6, c.level());
             DbBind.setStringOrNull(ps, 7, c.createdIso());
             ps.setTimestamp(8, runTs);
+            ps.setObject(9, c.ageSeconds(), java.sql.Types.BIGINT);
+            ps.setObject(10, c.deaths(), java.sql.Types.BIGINT);
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) throw new SQLException("Upsert character failed (no RETURNING row)");
                 return rs.getLong(1);
@@ -555,15 +559,17 @@ public final class CharacterSync {
     static long upsertCharacter(Connection con, CharacterInfo c) throws SQLException {
 
         String sql = """
-        INSERT INTO characters (name, profession, race, gender, level, created_at_gw, fetched_at)
-        VALUES (?, ?, ?, ?, ?, ?::timestamptz, now())
+        INSERT INTO characters (name, profession, race, gender, level, created_at_gw, fetched_at, age_seconds, deaths)
+        VALUES (?, ?, ?, ?, ?, ?::timestamptz, now(), ?, ?)
         ON CONFLICT (name) DO UPDATE SET
           profession    = EXCLUDED.profession,
           race          = EXCLUDED.race,
           gender        = EXCLUDED.gender,
           level         = EXCLUDED.level,
           created_at_gw = EXCLUDED.created_at_gw,
-          fetched_at    = EXCLUDED.fetched_at
+          fetched_at    = EXCLUDED.fetched_at,
+          age_seconds   = EXCLUDED.age_seconds,
+          deaths        = EXCLUDED.deaths
         RETURNING character_id
         """;
 
@@ -576,6 +582,8 @@ public final class CharacterSync {
 
             DbBind.setIntOrNull(ps, 5, c.level());
             DbBind.setStringOrNull(ps, 6, c.createdIso());
+            ps.setObject(7, c.ageSeconds(), java.sql.Types.BIGINT);
+            ps.setObject(8, c.deaths(), java.sql.Types.BIGINT);
 
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) throw new SQLException("Upsert character failed (no RETURNING row)");

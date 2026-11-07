@@ -157,7 +157,17 @@ public class CharacterRepository {
      * columns stay null: nothing is defaulted or fabricated.
      */
     public record CharacterProfile(String name, String profession, String race, String gender,
-                                   Integer level, java.time.Instant createdAt, List<Discipline> disciplines) {
+                                   Integer level, java.time.Instant createdAt, List<Discipline> disciplines,
+                                   Long ageSeconds, Long deaths, java.time.Instant nextBirthdayAt) {
+        public CharacterProfile(String name, String profession, String race, String gender,
+                                Integer level, java.time.Instant createdAt, List<Discipline> disciplines,
+                                Long ageSeconds, Long deaths) {
+            this(name, profession, race, gender, level, createdAt, disciplines, ageSeconds, deaths, null);
+        }
+        public CharacterProfile(String name, String profession, String race, String gender,
+                                Integer level, java.time.Instant createdAt, List<Discipline> disciplines) {
+            this(name, profession, race, gender, level, createdAt, disciplines, null, null, null);
+        }
         public CharacterProfile {
             disciplines = List.copyOf(disciplines);
         }
@@ -202,7 +212,8 @@ public class CharacterRepository {
         }
         List<CharacterProfile> out = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement("""
-                SELECT c.character_id, c.name, c.profession, c.race, c.gender, c.level, c.created_at_gw
+                SELECT c.character_id, c.name, c.profession, c.race, c.gender, c.level, c.created_at_gw,
+                       c.age_seconds, c.deaths
                 FROM characters c
                 WHERE c.account_id = ?""" + filter + """
 
@@ -214,10 +225,15 @@ public class CharacterRepository {
                     int level = rs.getInt("level");
                     Integer boxedLevel = rs.wasNull() ? null : level;
                     Timestamp created = rs.getTimestamp("created_at_gw");
+                    long age = rs.getLong("age_seconds");
+                    Long boxedAge = rs.wasNull() ? null : age;
+                    long deaths = rs.getLong("deaths");
+                    Long boxedDeaths = rs.wasNull() ? null : deaths;
                     out.add(new CharacterProfile(rs.getString("name"), rs.getString("profession"),
                             rs.getString("race"), rs.getString("gender"), boxedLevel,
                             created == null ? null : created.toInstant(),
-                            disciplines.getOrDefault(rs.getLong("character_id"), List.of())));
+                            disciplines.getOrDefault(rs.getLong("character_id"), List.of()),
+                            boxedAge, boxedDeaths));
                 }
             }
         }

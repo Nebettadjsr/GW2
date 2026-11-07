@@ -34,7 +34,8 @@ public record CharacterReadResponse(String state,
     public record DisciplineDto(String discipline, int rating, boolean active) {}
 
     public record CharacterDto(String name, String profession, String race, String gender, Integer level,
-                               Instant createdAt, List<DisciplineDto> craftingDisciplines) {}
+                               Instant createdAt, List<DisciplineDto> craftingDisciplines,
+                               Long ageSeconds, Long deaths, Instant nextBirthdayAt) {}
 
     /** Later sections are explicitly not implemented; they carry no payload and no empty collection. */
     public record Sections(String equipmentTabs, String inventory, String buildTabs) {

@@ -35,7 +35,16 @@ public class CharacterBuildTabsService {
     public record Result(State state, String reason, String message, String character,
                          Instant parentCompletedAt, Long parentGeneration,
                          Instant buildsCompletedAt, Long buildsGeneration,
-                         Long coveredParentGeneration, List<CharacterBuildTabsRepository.TabView> tabs) {}
+                         Long coveredParentGeneration, List<CharacterBuildTabsRepository.TabView> tabs,
+                         repo.BuildMetadataRepository.Metadata metadata) {
+        public Result(State state, String reason, String message, String character,
+                      Instant parentCompletedAt, Long parentGeneration, Instant buildsCompletedAt,
+                      Long buildsGeneration, Long coveredParentGeneration,
+                      List<CharacterBuildTabsRepository.TabView> tabs) {
+            this(state, reason, message, character, parentCompletedAt, parentGeneration, buildsCompletedAt,
+                    buildsGeneration, coveredParentGeneration, tabs, repo.BuildMetadataRepository.Metadata.empty());
+        }
+    }
 
     private final CharacterRosterService.RefreshStatus coordinator;
     private final CharacterBuildTabsRepository repository;
@@ -126,7 +135,7 @@ public class CharacterBuildTabsService {
                 : expired ? "Build-tab data is older than the freshness limit; showing the last successful data."
                 : null;
         return new Result(state, reason, message, name, parentAt, parentGeneration, builds.completedAt(),
-                builds.generation(), covered, snapshot.tabs());
+                builds.generation(), covered, snapshot.tabs(), snapshot.metadata());
     }
 
     private static Result pending(String reason, String message, String name, Instant parentAt, long parentGeneration,

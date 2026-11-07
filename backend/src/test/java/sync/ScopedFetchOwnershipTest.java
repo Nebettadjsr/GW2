@@ -181,6 +181,7 @@ class ScopedFetchOwnershipTest {
         AccountScope scope = AccountScope.of(A);
         String detail = "{\"name\":\"Ana\",\"profession\":\"Guardian\",\"race\":\"Human\","
                 + "\"gender\":\"Female\",\"level\":80,\"created\":\"2020-01-01T00:00:00Z\","
+                + "\"age\":12631700,\"deaths\":9193,"
                 + "\"crafting\":[{\"discipline\":\"Artificer\",\"rating\":400}],"
                 + "\"recipes\":[77],\"bags\":[],\"equipment\":[]}";
         AccountSync.AuthFetcher good = url -> url.endsWith("/characters/Ana")
@@ -198,6 +199,18 @@ class ScopedFetchOwnershipTest {
         assertEquals(before, states.read(admin, scope, repo.AccountSyncStateRepository.CHARACTERS).orElseThrow());
         assertEquals(activityBefore, registry.find(admin, scope).orElseThrow());
         assertEquals(1, count("SELECT count(*) FROM characters WHERE name = 'Ana' AND profession = 'Guardian'"));
+        assertEquals(12631700, count("SELECT age_seconds FROM characters WHERE name = 'Ana'"));
+        for (String badAge : new String[] {"\"age\":12631700,", "\"age\":-1,", "\"age\":1.5,", "\"age\":\"9\",",
+                "\"age\":9223372036854775808,", "\"age\":null,"}) {
+            AccountSync.AuthFetcher malformed = url -> url.endsWith("/characters/Ana")
+                    ? JSON.readTree(badAge.equals("\"age\":12631700,") ? detail.replace(badAge, "")
+                        : detail.replace("\"age\":12631700,", badAge))
+                    : credentialOf(A, "[\"Ana\"]").get(url);
+            assertThrows(IllegalStateException.class,
+                    () -> CharacterSync.syncCharactersCraftingAndRecipes(scope, malformed), badAge);
+            assertEquals(before, states.read(admin, scope, repo.AccountSyncStateRepository.CHARACTERS).orElseThrow());
+            assertEquals(12631700, count("SELECT age_seconds FROM characters WHERE name = 'Ana'"));
+        }
         assertEquals(1, count("SELECT count(*) FROM character_crafting WHERE rating = 400"));
         assertEquals(1, count("SELECT count(*) FROM character_recipes WHERE recipe_id = 77"));
     }
