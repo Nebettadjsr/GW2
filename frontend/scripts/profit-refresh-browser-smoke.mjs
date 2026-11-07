@@ -555,6 +555,65 @@ async function run() {
 
     // 3. (Account/Trading Post detail is asserted on the failure state, step 7, per issue #153.)
 
+    // 3a. Hover and keyboard focus, measured from the rendered cascade: pointer hover changes the
+    //     whole row's background while the recipe-name button keeps a transparent border, and
+    //     keyboard focus still draws a visible outline.
+    const rowSelector = '.profit-table tbody tr'
+    const buttonSelector = `${rowSelector} .recipe-select`
+    await page.mouse.move(0, 0)
+    const readRow = () =>
+      page.evaluate(
+        ([rowSel, buttonSel]) => {
+          const rowElement = document.querySelector(rowSel)
+          const button = document.querySelector(buttonSel)
+          if (rowElement === null || button === null) return null
+          return {
+            background: getComputedStyle(rowElement).backgroundColor,
+            borderColor: getComputedStyle(button).borderTopColor,
+            borderWidth: Number.parseFloat(getComputedStyle(button).borderTopWidth)
+          }
+        },
+        [rowSelector, buttonSelector]
+      )
+    const idle = await readRow()
+    check(idle !== null, 'No Profit row with a recipe-name button to measure hover on.')
+    await page.hover(buttonSelector)
+    const hovered = await readRow()
+    check(
+      hovered.background !== idle.background,
+      `Hovering the recipe name does not change the whole row background: ${JSON.stringify({ idle, hovered })}`
+    )
+    check(
+      hovered.borderColor === 'rgba(0, 0, 0, 0)' || hovered.borderWidth === 0,
+      `The recipe-name button gains its own border on hover: ${JSON.stringify(hovered)}`
+    )
+    await page.mouse.move(0, 0)
+    await page.focus(buttonSelector)
+    await page.keyboard.press('Shift+Tab')
+    await page.keyboard.press('Tab')
+    const focus = await page.evaluate((buttonSel) => {
+      const button = document.querySelector(buttonSel)
+      if (button === null || document.activeElement !== button) return null
+      const style = getComputedStyle(button)
+      return {
+        matches: button.matches(':focus-visible'),
+        outlineStyle: style.outlineStyle,
+        outlineWidth: Number.parseFloat(style.outlineWidth)
+      }
+    }, buttonSelector)
+    check(focus !== null, 'Keyboard navigation did not reach a recipe-name button.')
+    check(
+      focus.matches && focus.outlineStyle !== 'none' && focus.outlineWidth > 0,
+      `Keyboard focus has no visible outline: ${JSON.stringify(focus)}`
+    )
+    await page.mouse.move(0, 0)
+    await page.evaluate(() => document.activeElement?.blur())
+    record(
+      'row hover changes the whole row, the name button keeps a transparent border, focus outline shows',
+      `row ${idle.background} -> ${hovered.background}, button border ${hovered.borderColor}, ` +
+        `focus outline ${focus.outlineStyle} ${focus.outlineWidth}px`
+    )
+
     // 4. The page polled what the backend advertised, and started no synchronization of its own.
     await waitForStatusReads(1)
     const polled = [...new Set(stub.requestsTo('/api/sync/tasks/').map((request) => request.path))]
