@@ -13,7 +13,9 @@ defineProps<{ detail: CharacterOverview; created?: string | null }>()
     <template v-if="created"><dt>Created</dt><dd>{{ created }}</dd></template>
     <template v-if="detail.craftingDisciplines.length > 0">
       <dt>Crafting</dt>
-      <dd>{{ detail.craftingDisciplines.map((d) => `${d.discipline} ${d.rating}${d.active ? '' : ' (inactive)'}`).join(', ') }}</dd>
+      <dd class="facts__disciplines">
+        <span v-for="d in detail.craftingDisciplines" :key="d.discipline">{{ d.discipline }} {{ d.rating }}{{ d.active ? '' : ' (inactive)' }}</span>
+      </dd>
     </template>
   </dl>
 </template>
@@ -21,4 +23,5 @@ defineProps<{ detail: CharacterOverview; created?: string | null }>()
 <style scoped>
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0; }
 .facts dd { margin: 0; }
+.facts__disciplines span { display: block; }
 </style>

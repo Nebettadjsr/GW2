@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { connection } from '@/api/accountSession'
 import { charactersApi, type CharactersApi } from '@/api/charactersApi'
 import { syncApi } from '@/api/syncApi'
@@ -29,15 +29,14 @@ function setRow(name: string, el: unknown): void {
   if (el instanceof HTMLElement) rowRefs.set(name, el)
   else rowRefs.delete(name)
 }
-const headingRef = ref<HTMLElement | null>(null)
-const backRef = ref<HTMLElement | null>(null)
+const headerRef = ref<InstanceType<typeof PageHeader> | null>(null)
 let origin: { name: string; scrollY: number } | null = null
 async function open(name: string): Promise<void> {
   origin = { name, scrollY: window.scrollY }
   c.select(name)
   await nextTick()
   // Move keyboard focus into the opened detail (its heading) once it is rendered.
-  if (live() && c.selectedName.value === name) (headingRef.value ?? backRef.value)?.focus({ preventScroll: true })
+  if (live() && c.selectedName.value === name) headerRef.value?.focusHeading({ preventScroll: true })
 }
 async function back(): Promise<void> {
   const from = origin
@@ -84,15 +83,6 @@ const inventoryProblem = computed(() => {
   const r = inventoryState.value
   return r !== null && !(r.state === 'AVAILABLE' || r.state === 'STALE')
 })
-/** On Inventory with a bag layout the character name heads the left facts column instead of sitting above the tabs. */
-const nameInFacts = computed(() => c.selectedName.value !== null && c.section.value === 'inventory' && !!c.inventorySource.value?.bags)
-// The heading moves between two places; keep keyboard focus on it when it does.
-watch(nameInFacts, async () => {
-  const hadFocus = document.activeElement !== null && document.activeElement === headingRef.value
-  if (!hadFocus) return
-  await nextTick()
-  if (live()) headingRef.value?.focus({ preventScroll: true })
-}, { flush: 'pre' })
 const canRefresh = computed(() => {
   const s = equipmentState.value?.state
   return s === 'PENDING' || s === 'STALE' || s === 'UNAVAILABLE' || c.equipmentFailure.value !== null
@@ -106,7 +96,11 @@ function fmt(value?: string | null): string | null {
 
 <template>
   <div class="screen characters" data-test="characters-screen">
-    <PageHeader heading="Characters" intro="Your characters and their saved equipment. Read-only." />
+    <PageHeader ref="headerRef" :heading="c.selectedName.value ?? 'Characters'">
+      <template v-if="c.selectedName.value !== null" #actions>
+        <button type="button" data-test="character-back" @click="back()">← All characters</button>
+      </template>
+    </PageHeader>
 
     <!-- Roster -->
     <p v-if="c.rosterPhase.value === 'loading' && !c.roster.value" class="notice notice--info" role="status" data-test="roster-loading">Loading characters…</p>
@@ -123,10 +117,6 @@ function fmt(value?: string | null): string | null {
     <p v-else-if="c.rosterIsRetained.value && !c.rosterFailure.value" class="notice" data-test="roster-retained">
       Showing the previous saved character list; the latest read reported {{ rosterState?.state }}.
     </p>
-    <p v-if="c.roster.value?.state === 'STALE'" class="meta" data-test="roster-stale">This saved list may be out of date.</p>
-    <p v-if="c.roster.value?.freshness?.completedAt" class="meta" data-test="roster-freshness">
-      Last synchronized: {{ fmt(c.roster.value.freshness.completedAt) ?? 'unknown' }}.
-    </p>
 
     <p v-if="c.roster.value && characters.length === 0" class="notice" data-test="roster-empty">No characters were found on this account.</p>
 
@@ -136,9 +126,7 @@ function fmt(value?: string | null): string | null {
           <button type="button" class="roster__item" data-test="roster-item" :data-name="ch.name" :ref="(el) => setRow(ch.name, el)" @click="open(ch.name)">
             <strong>{{ ch.name }}</strong>
             <span>Level {{ ch.level ?? '?' }} {{ ch.race }} {{ ch.profession }}</span>
-            <span v-if="ch.craftingDisciplines.length > 0" class="meta">
-              {{ ch.craftingDisciplines.map((d) => `${d.discipline} ${d.rating}${d.active ? '' : ' (inactive)'}`).join(', ') }}
-            </span>
+            <span v-for="d in ch.craftingDisciplines" :key="d.discipline" class="meta">{{ d.discipline }} {{ d.rating }}{{ d.active ? '' : ' (inactive)' }}</span>
           </button>
         </li>
       </ul>
@@ -146,8 +134,6 @@ function fmt(value?: string | null): string | null {
 
     <!-- Selected character -->
     <section v-if="c.selectedName.value !== null" class="detail" data-test="character-detail">
-      <button ref="backRef" type="button" data-test="character-back" @click="back()">← All characters</button>
-      <h2 v-if="!nameInFacts" ref="headingRef" tabindex="-1" data-test="character-name">{{ c.selectedName.value }}</h2>
       <p v-if="c.detailPhase.value === 'loading'" class="meta" role="status" data-test="detail-loading">Loading character…</p>
       <p v-if="c.detailFailure.value" class="notice notice--error" role="alert" data-test="detail-error">
         Could not load this character's details: {{ c.detailFailure.value.message }}
@@ -189,10 +175,6 @@ function fmt(value?: string | null): string | null {
         <template v-if="c.equipmentSource.value"> Showing the previous saved data below; it may be out of date.</template>
       </div>
       <p v-else-if="c.equipmentIsRetained.value" class="notice" data-test="equipment-retained">Showing previously saved equipment.</p>
-      <p v-if="equipmentState?.state === 'STALE'" class="meta" data-test="equipment-stale">This saved equipment may be out of date.</p>
-      <p v-if="c.equipmentSource.value?.equipment?.completedAt" class="meta" data-test="equipment-freshness">
-        Equipment last synchronized: {{ fmt(c.equipmentSource.value.equipment.completedAt) ?? 'unknown' }}.
-      </p>
       <p class="meta" v-if="c.refreshMessage.value" role="alert" data-test="equipment-refresh-error">{{ c.refreshMessage.value }}</p>
       <button v-if="canRefresh" type="button" :disabled="c.refreshing.value" data-test="equipment-refresh" @click="c.refreshEquipment()">
         {{ c.refreshing.value ? 'Updating equipment…' : 'Update equipment' }}
@@ -237,19 +219,14 @@ function fmt(value?: string | null): string | null {
             @click="c.loadInventory(c.selectedName.value!)">Check again</button>
         </div>
         <p v-else-if="c.inventoryIsRetained.value" class="notice" data-test="inventory-retained">Showing previously saved inventory.</p>
-        <p v-if="inventoryState?.state === 'STALE'" class="meta" data-test="inventory-stale">This saved inventory may be out of date.</p>
         <p v-if="inventoryState?.state === 'STALE' && inventoryState.reason === 'REFRESH_FAILED'" class="notice" role="status" data-test="inventory-stale-refresh-failed">
           The latest account refresh failed{{ inventoryState.message ? ': ' + inventoryState.message : '.' }}
           Try an account refresh from <a href="#/synchronization" data-test="inventory-system-status">System Status</a>, then
           <button type="button" data-test="inventory-recheck" :disabled="c.inventoryPhase.value === 'loading'" @click="c.loadInventory(c.selectedName.value!)">check again</button>.
         </p>
-        <p v-if="c.inventorySource.value?.completedAt" class="meta" data-test="inventory-freshness">
-          Last synchronized: {{ fmt(c.inventorySource.value.completedAt) ?? 'unknown' }}.
-        </p>
         <p v-if="c.inventorySource.value?.contents === 'ALL_SLOTS_EMPTY'" class="meta" data-test="inventory-all-empty">All listed bag slots are empty.</p>
         <InventoryPanel v-if="c.inventorySource.value?.bags" :bags="c.inventorySource.value.bags">
           <template #facts>
-            <h2 ref="headingRef" tabindex="-1" data-test="character-name">{{ c.selectedName.value }}</h2>
             <CharacterFacts v-if="c.shownDetail.value" :detail="c.shownDetail.value" :created="fmt(c.shownDetail.value.createdAt)" />
           </template>
         </InventoryPanel>
@@ -265,6 +242,6 @@ function fmt(value?: string | null): string | null {
 .roster { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
 .roster__item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; padding: 8px; }
 .sections { display: flex; gap: 2px; margin: 12px 0 8px; border-bottom: 1px solid var(--border, #888); }
+.sections button.sections__tab--selected { font-weight: 700; background: var(--color-raised); }
 .sections button { border: 1px solid var(--border, #888); border-bottom: 0; background: transparent; padding: 6px 12px; cursor: pointer; }
-.sections__tab--selected { font-weight: 700; background: rgba(128, 128, 128, 0.2); }
 </style>

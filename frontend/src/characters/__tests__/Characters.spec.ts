@@ -66,7 +66,8 @@ describe('Characters screen', () => {
     await w.findAll('[data-test="roster-item"]')[0]!.trigger('click')
     await flushPromises()
     expect(api.calls).toEqual(['roster', 'detail:Ana B', 'equip:Ana B'])
-    expect(w.find('[data-test="character-name"]').text()).toBe('Ana B')
+    expect(w.find('[data-test="page-heading"]').text()).toBe('Ana B')
+    expect(w.find('[data-test="page-intro"]').exists()).toBe(false)
     await w.find('[data-test="character-back"]').trigger('click')
     expect(w.find('[data-test="roster"]').exists()).toBe(true)
   })
@@ -375,7 +376,8 @@ describe('remaining acceptance fixes', () => {
     const w = mount(CharactersScreen, { props: { api: fakeApi() }, attachTo: document.body })
     await flushPromises()
     await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
-    expect(document.activeElement).toBe(w.find('[data-test="character-name"]').element)
+    expect(document.activeElement).toBe(w.find('[data-test="page-heading"]').element)
+    expect(w.find('[data-test="page-actions"] [data-test="character-back"]').exists()).toBe(true)
     w.unmount()
   })
 
@@ -407,7 +409,7 @@ describe('remaining acceptance fixes', () => {
     await w.find('[data-test="character-back"]').trigger('click')
     await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
     expect(w.find('[data-test="equipment-state"]').exists()).toBe(true)
-    expect(w.find('[data-test="equipment-freshness"]').text()).toContain('2026')
+    expect(w.find('[data-test="equipment-freshness"]').exists()).toBe(false) // routine freshness prose is hidden
   })
 })
 
@@ -475,12 +477,11 @@ describe('Character inventory section', () => {
     expect(w.findAll('[data-test="inventory-slot"]').filter((e) => e.text().includes('Iron Ore')).length).toBeGreaterThan(10) // duplicates kept
     expect(w.findAll('[data-test="inventory-bag"]').map((e) => e.attributes('data-bag'))).toEqual(['0', '1', '2', '3'])
     expect(w.findAll('[data-test="inventory-grid"]')).toHaveLength(1)
-    const name = w.findAll('[data-test="character-name"]')
-    expect(name).toHaveLength(1)
-    expect(w.find('[data-test="inventory-facts"] [data-test="character-name"]').text()).toBe('Ana B')
+    expect(w.find('[data-test="page-heading"]').text()).toBe('Ana B')
+    expect(w.find('[data-test="inventory-facts"] [data-test="character-name"]').exists()).toBe(false)
     await w.find('[data-test="section-equipment"]').trigger('click'); await flushPromises()
     expect(w.find('[data-test="inventory-facts"]').exists()).toBe(false)
-    expect(w.findAll('[data-test="character-name"]')).toHaveLength(1)
+    expect(w.find('[data-test="page-heading"]').text()).toBe('Ana B')
   })
 
   it('shows grant, failure and retains last-good inventory on a later failed read', async () => {
@@ -630,14 +631,16 @@ describe('Character inventory section', () => {
     const api = fakeApi({ loadInventory: async () => { if (fail) throw new Error('down'); return inventoryResponse } })
     const w = await open(api)
     await w.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
-    const before = w.find('[data-test="inventory-freshness"]').text()
     fail = true
     await w.find('[data-test="inventory-retry"]').exists()
     const c = (w.vm as unknown as { $: { setupState: { c: ReturnType<typeof useCharacters> } } }).$.setupState.c
+    const before = c.inventorySource.value?.completedAt
     await c.loadInventory('Ana B'); await flushPromises()
     expect(w.find('[data-test="inventory-error"]').exists()).toBe(true)
     expect(w.findAll('[data-test="inventory-slot"]')).toHaveLength(3)
-    expect(w.find('[data-test="inventory-freshness"]').text()).toBe(before)
+    expect(before).toBeTruthy()
+    expect(c.inventorySource.value?.completedAt).toBe(before)
+    expect(w.find('[data-test="inventory-freshness"]').exists()).toBe(false)
   })
 
   it('section tabs use roving tabindex and arrow/Home/End keys, keeping the inspected equipment tab', async () => {
