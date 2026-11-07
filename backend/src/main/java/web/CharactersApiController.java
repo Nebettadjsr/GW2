@@ -38,16 +38,40 @@ public class CharactersApiController {
 
     private final CharacterRosterService service;
     private final application.CharacterEquipmentTabsService equipmentTabs;
+    private final application.CharacterInventoryLayoutService inventory;
 
     public CharactersApiController(CharacterRosterService service) {
-        this(service, null);
+        this(service, null, null);
+    }
+
+    public CharactersApiController(CharacterRosterService service,
+                                   application.CharacterEquipmentTabsService equipmentTabs) {
+        this(service, equipmentTabs, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public CharactersApiController(CharacterRosterService service,
-                                   application.CharacterEquipmentTabsService equipmentTabs) {
+                                   application.CharacterEquipmentTabsService equipmentTabs,
+                                   application.CharacterInventoryLayoutService inventory) {
         this.service = service;
         this.equipmentTabs = equipmentTabs;
+        this.inventory = inventory;
+    }
+
+    /** One selected character's bag layout with empty slots (STORY-CHAR-006); the roster stays compact. */
+    @GetMapping(path = "/{name}/inventory", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<web.dto.CharacterInventoryResponse> inventory(
+            @PathVariable("name") String name, HttpServletRequest request) {
+        var context = RequestAccountContext.required(request);
+        var scope = RequestAccountContext.scopeOf(request);
+        try {
+            if (inventory == null) throw new IllegalStateException("inventory layout is not configured");
+            return web.dto.CharacterInventoryResponse.respond(inventory.read(context, scope, name));
+        } catch (SQLException | RuntimeException e) {
+            LOG.log(Level.SEVERE, "Inventory layout read failed", e);
+            return web.dto.CharacterInventoryResponse.unavailable(
+                    e instanceof SQLException ? "DATA_STORE_UNAVAILABLE" : "INVENTORY_READ_FAILED");
+        }
     }
 
     /** One selected character's saved equipment tabs (STORY-CHAR-005); the roster stays compact. */

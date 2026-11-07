@@ -57,7 +57,7 @@ class CharacterDetailValidationTest {
     @Test
     void validEmptyArraysAndEmptyInventorySlotsAreAccepted() throws Exception {
         JsonNode n = detail("Aria", ",\"crafting\":[{\"discipline\":\"Cook\",\"rating\":400,\"active\":true}],\"recipes\":[5],"
-                + "\"bags\":[null,{\"inventory\":[null,{\"id\":1,\"count\":3}]}],\"equipment\":[{\"id\":2,\"slot\":\"Helm\"}]");
+                + "\"bags\":[null,{\"id\":9,\"size\":2,\"inventory\":[null,{\"id\":1,\"count\":3}]}],\"equipment\":[{\"id\":2,\"slot\":\"Helm\"}]");
         assertDoesNotThrow(() -> CharacterSync.requireConsistentDetail("Aria", CharacterParser.parseInfo(n), n));
     }
 

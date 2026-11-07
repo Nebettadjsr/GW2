@@ -27,8 +27,14 @@ public final class CharacterSync {
             CharacterInfo info,
             List<model.CharacterCraftingRow> crafting,
             List<model.CharacterRecipeRow> recipes,
-            List<model.CharacterItemRow> items
-    ) {}
+            List<model.CharacterItemRow> items,
+            List<model.CharacterBagRow> bags
+    ) {
+        CharPayload(CharacterInfo info, List<model.CharacterCraftingRow> crafting,
+                    List<model.CharacterRecipeRow> recipes, List<model.CharacterItemRow> items) {
+            this(info, crafting, recipes, items, List.of());
+        }
+    }
 
     public static void syncCharactersCraftingAndRecipes() throws Exception {
         List<String> names = fetchCharacterNames();
@@ -146,7 +152,8 @@ public final class CharacterSync {
                     info,
                     CharacterCraftingParser.parse(CharacterParser.craftingNode(cNode)),
                     CharacterRecipesParser.parse(CharacterParser.recipesNode(cNode)),
-                    characterItems(cNode)));
+                    characterItems(cNode),
+                    parseManifest(name, cNode)));
         }
 
         metadata.repair(payloads.stream().flatMap(p -> p.items().stream())
@@ -191,7 +198,9 @@ public final class CharacterSync {
                         replaceScopedCrafting(tx, owner, characterId, p.crafting(), runTs);
                         replaceScopedRecipes(tx, owner, characterId, p.recipes(), runTs);
                         replaceScopedItems(tx, owner, characterId, p.items(), runTs);
+                        replaceScopedBags(tx, owner, characterId, p.bags(), runTs);
                     }
+                    markBagLayoutPublished(tx, owner, runTs);
                     deleteStaleCharacters(tx, owner, runTs);
                 });
     }
@@ -242,11 +251,63 @@ public final class CharacterSync {
                 if (!validItem(slot, true)) throw malformed(requestedName, "bags");
             }
         }
+        parseManifest(requestedName, cNode);
         for (JsonNode item : cNode.get("equipment")) {
             if (!validItem(item, false) || item == null || item.isNull()
                     || !item.path("slot").isTextual() || item.path("slot").asText().isBlank()) {
                 throw malformed(requestedName, "equipment");
             }
+        }
+    }
+
+    private static List<model.CharacterBagRow> parseManifest(String name, JsonNode cNode) {
+        try {
+            return CharacterBagManifestParser.parse(CharacterParser.bagsNode(cNode));
+        } catch (IllegalStateException e) {
+            throw new IllegalStateException("Character detail for '" + name + "' has an invalid bag layout ("
+                    + e.getMessage() + "); roster not published");
+        }
+    }
+
+    private static void replaceScopedBags(Connection con, model.AccountScope scope, long characterId,
+                                          List<model.CharacterBagRow> rows, Timestamp runTs) throws SQLException {
+        if (rows != null && !rows.isEmpty()) {
+            try (PreparedStatement ps = con.prepareStatement("""
+                    INSERT INTO character_bags
+                      (account_id, character_id, bag_index, installed, container_item_id, capacity, fetched_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (account_id, character_id, bag_index) DO UPDATE SET
+                      installed         = EXCLUDED.installed,
+                      container_item_id = EXCLUDED.container_item_id,
+                      capacity          = EXCLUDED.capacity,
+                      fetched_at        = EXCLUDED.fetched_at
+                    """)) {
+                for (var row : rows) {
+                    ps.setObject(1, scope.accountId());
+                    ps.setLong(2, characterId);
+                    ps.setInt(3, row.bagIndex());
+                    ps.setBoolean(4, row.installed());
+                    DbBind.setIntOrNull(ps, 5, row.containerItemId());
+                    DbBind.setIntOrNull(ps, 6, row.capacity());
+                    ps.setTimestamp(7, runTs);
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+            }
+        }
+        deleteStaleChildren(con, scope, "character_bags", characterId, runTs);
+    }
+
+    /** Records that this CHARACTERS publication wrote a complete manifest (absent = legacy generation). */
+    private static void markBagLayoutPublished(Connection con, model.AccountScope scope, Timestamp runTs)
+            throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("""
+                INSERT INTO character_bag_layout_publication (account_id, fetched_at) VALUES (?, ?)
+                ON CONFLICT (account_id) DO UPDATE SET fetched_at = EXCLUDED.fetched_at
+                """)) {
+            ps.setObject(1, scope.accountId());
+            ps.setTimestamp(2, runTs);
+            ps.executeUpdate();
         }
     }
 
