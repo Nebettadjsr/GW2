@@ -3,7 +3,8 @@ import { computed } from 'vue'
 import type { BankSlot } from '@/api/types'
 import InventoryTile from './InventoryTile.vue'
 
-const props = defineProps<{ slot: BankSlot }>()
+const props = defineProps<{ slot: BankSlot; selected?: boolean }>()
+defineEmits<{ toggle: [itemId: number] }>()
 
 // Both values are null only for a genuinely empty slot.
 const empty = computed(() => props.slot.itemId === null && props.slot.count === null)
@@ -21,7 +22,8 @@ const empty = computed(() => props.slot.itemId === null && props.slot.count === 
   >
     <InventoryTile v-if="!empty && slot.itemId !== null && slot.count !== null"
       :item-id="slot.itemId" :count="slot.count" :icon-url="slot.iconUrl"
-      :title="`Item #${slot.itemId} · ${slot.count} in slot #${slot.slot}`" />
+      :title="`Item #${slot.itemId} · ${slot.count} in slot #${slot.slot}`"
+      :selected="selected" @toggle="$emit('toggle', $event)" />
     <span v-else class="sr-only" data-test="bank-empty-slot">Empty</span>
   </li>
 </template>

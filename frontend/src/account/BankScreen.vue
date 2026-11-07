@@ -7,12 +7,17 @@ import BankSlotTile from './BankSlotTile.vue'
 import { useAccountRead } from './useAccountRead'
 import InventoryRefresh from './InventoryRefresh.vue'
 import InventoryFreshness from './InventoryFreshness.vue'
+import MaterialSelectionBar from './MaterialSelectionBar.vue'
+import { useMaterialProtection } from '@/materials/materialProtectionState'
 
 const SLOTS_PER_TAB = 30
 const props = withDefaults(defineProps<{ api?: AccountApi }>(), { api: () => accountApi })
 const bank = useAccountRead<BankContents>(() => props.api.loadBank())
 
 onMounted(() => { void bank.load() })
+const protection = useMaterialProtection()
+const pendingIds = computed(() => new Set(protection.state.pending))
+const selectable = computed(() => protection.state.status === 'ready')
 
 function isEmptySlot(slot: BankSlot): boolean {
   return slot.itemId === null && slot.count === null
@@ -59,6 +64,7 @@ function onReload(): void { void bank.load() }
     <InventoryRefresh @updated="bank.load()" />
     <InventoryFreshness v-if="bank.data.value" :freshness="bank.data.value.freshness" />
 
+    <MaterialSelectionBar />
     <div class="stack">
       <p v-if="bank.phase.value === 'loading'" class="notice notice--info" role="status" data-test="bank-loading">
         {{ bank.data.value ? 'Loading the bank. Showing the previous saved snapshot below.' : 'Loading the bank…' }}
@@ -80,7 +86,9 @@ function onReload(): void { void bank.load() }
           </div>
           <div class="bank-tab__scroll">
             <ol class="slots" data-test="bank-slots">
-              <BankSlotTile v-for="slot in tab.slots" :key="slot.slot" :slot="slot" />
+              <BankSlotTile v-for="slot in tab.slots" :key="slot.slot" :slot="slot"
+                :selected="selectable && slot.itemId !== null ? pendingIds.has(slot.itemId) : undefined"
+                @toggle="protection.togglePending" />
             </ol>
           </div>
         </section>
