@@ -4,6 +4,10 @@ import application.CharacterBuildTabsService;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import application.icons.ResourceIconUrls;
+import model.BuildResourceType;
+import parser.CharacterBuildTabsParser.Specialization;
+import repo.BuildMetadataRepository.Metadata;
 import repo.CharacterBuildTabsRepository.SkillsView;
 
 import java.time.Instant;
@@ -23,13 +27,34 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Coverage(Long generation, Instant completedAt) {}
 
-    /** An upstream numeric identifier with no resolved display metadata. */
-    public record IdRef(int id, boolean resolved) {}
+    /** A numeric reference; name and app-relative image URL only when metadata is resolved. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record IdRef(int id, boolean resolved, String name, String iconUrl) {
+        public IdRef(int id, boolean resolved) { this(id, resolved, null, null); }
+    }
 
-    /** An upstream STRING legend identifier with no resolved display metadata. */
-    public record LegendRef(String id, boolean resolved) {}
+    /** A trait reference with its documented tier (1..3) and slot (Major/Minor) when known. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record TraitRef(int id, boolean resolved, String name, String iconUrl, Integer tier, String slot) {}
 
-    public record SpecializationDto(IdRef specialization, List<IdRef> traits) {}
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record SpecRef(int id, boolean resolved, String name, String iconUrl, String profession, Boolean elite) {}
+
+    /**
+     * A STRING legend id. Legends have no native name or icon; {@code swapSkill} is the explicitly related
+     * skill (resolved or not), and {@code resolved} says whether the legend-to-skill relation is known.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record LegendRef(String id, boolean resolved, IdRef swapSkill) {}
+
+    /**
+     * {@code traits} are the selected (highlighted) choices (null positions explicit). {@code minorTraits}/{@code majorTraits}
+     * are the specialization-defined choices in upstream order (minor: adept, master, grandmaster; major:
+     * three per tier in tier order); present only when the specialization is resolved, each possibly unresolved.
+     */
+    public record SpecializationDto(SpecRef specialization, List<TraitRef> traits,
+                                    @JsonInclude(JsonInclude.Include.NON_NULL) List<TraitRef> minorTraits,
+                                    @JsonInclude(JsonInclude.Include.NON_NULL) List<TraitRef> majorTraits) {}
 
     public record SkillsDto(IdRef heal, List<IdRef> utilities, IdRef elite) {}
 
@@ -43,7 +68,7 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
         var body = new CharacterBuildTabsResponse(r.state().name(), r.reason(), r.message(), r.character(),
                 r.parentGeneration() == null ? null : new Coverage(r.parentGeneration(), r.parentCompletedAt()),
                 r.buildsGeneration() == null ? null : new Coverage(r.buildsGeneration(), r.buildsCompletedAt()),
-                r.coveredParentGeneration(), r.tabs() == null ? null : r.tabs().stream().map(CharacterBuildTabsResponse::tab).toList());
+                r.coveredParentGeneration(), r.tabs() == null ? null : r.tabs().stream().map(t -> tab(t, r.metadata())).toList());
         HttpStatus status = switch (r.state()) {
             case AVAILABLE, STALE -> HttpStatus.OK;
             case PENDING -> HttpStatus.ACCEPTED;
@@ -59,27 +84,57 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
                 "UNAVAILABLE", reason, "Build tabs cannot be read right now.", null, null, null, null, null));
     }
 
-    private static TabDto tab(repo.CharacterBuildTabsRepository.TabView t) {
+    private static TabDto tab(repo.CharacterBuildTabsRepository.TabView t, Metadata m) {
         return new TabDto(t.number(), t.name(), t.profession(), t.active(),
-                t.specializations().stream().map(s -> new SpecializationDto(ref(s.id()),
-                        s.traits() == null ? null : s.traits().stream().map(CharacterBuildTabsResponse::ref).toList())).toList(),
-                skills(t.skills()), skills(t.aquaticSkills()),
-                legends(t.legends()), legends(t.aquaticLegends()), refs(t.pets()), refs(t.aquaticPets()));
+                t.specializations().stream().map(s -> specialization(s, m)).toList(),
+                skills(t.skills(), m), skills(t.aquaticSkills(), m),
+                legends(t.legends(), m), legends(t.aquaticLegends(), m),
+                refs(t.pets(), BuildResourceType.PETS, m), refs(t.aquaticPets(), BuildResourceType.PETS, m));
     }
 
-    private static SkillsDto skills(SkillsView s) {
-        return new SkillsDto(ref(s.heal()), refs(s.utilities()), ref(s.elite()));
+    private static SpecializationDto specialization(Specialization s, Metadata m) {
+        var row = s.id() == null ? null : m.specializations().get(s.id());
+        SpecRef spec = s.id() == null ? null : row == null ? new SpecRef(s.id(), false, null, null, null, null)
+                : new SpecRef(s.id(), true, row.name(), url(BuildResourceType.SPECIALIZATIONS, s.id(), row.iconUrl()),
+                        row.profession(), row.elite());
+        List<TraitRef> selected = s.traits() == null ? null
+                : s.traits().stream().map(i -> i == null ? null : trait(i, m)).toList();
+        return new SpecializationDto(spec, selected,
+                row == null ? null : row.minorTraits().stream().map(i -> trait(i, m)).toList(),
+                row == null ? null : row.majorTraits().stream().map(i -> trait(i, m)).toList());
     }
 
-    private static IdRef ref(Integer id) {
-        return id == null ? null : new IdRef(id, false);
+    private static TraitRef trait(int id, Metadata m) {
+        var t = m.traits().get(id);
+        return t == null ? new TraitRef(id, false, null, null, null, null)
+                : new TraitRef(id, true, t.name(), url(BuildResourceType.TRAITS, id, t.iconUrl()), t.tier(), t.slot());
     }
 
-    private static List<IdRef> refs(List<Integer> ids) {
-        return ids == null ? null : ids.stream().map(CharacterBuildTabsResponse::ref).toList();
+    private static SkillsDto skills(SkillsView s, Metadata m) {
+        return new SkillsDto(idRef(s.heal(), BuildResourceType.SKILLS, m), refs(s.utilities(), BuildResourceType.SKILLS, m),
+                idRef(s.elite(), BuildResourceType.SKILLS, m));
     }
 
-    private static List<LegendRef> legends(List<String> ids) {
-        return ids == null ? null : ids.stream().map(i -> i == null ? null : new LegendRef(i, false)).toList();
+    private static IdRef idRef(Integer id, BuildResourceType type, Metadata m) {
+        if (id == null) return null;
+        var row = type == BuildResourceType.SKILLS ? m.skills().get(id) : m.pets().get(id);
+        return row == null ? new IdRef(id, false) : new IdRef(id, true, row.name(), url(type, id, row.iconUrl()));
+    }
+
+    private static List<IdRef> refs(List<Integer> ids, BuildResourceType type, Metadata m) {
+        return ids == null ? null : ids.stream().map(i -> idRef(i, type, m)).toList();
+    }
+
+    private static List<LegendRef> legends(List<String> ids, Metadata m) {
+        return ids == null ? null : ids.stream().map(i -> {
+            if (i == null) return null;
+            var row = m.legends().get(i);
+            return row == null ? new LegendRef(i, false, null)
+                    : new LegendRef(i, true, idRef(row.swapSkillId(), BuildResourceType.SKILLS, m));
+        }).toList();
+    }
+
+    private static String url(BuildResourceType type, int id, String rawSource) {
+        return ResourceIconUrls.iconUrlFor(type, id, rawSource);
     }
 }

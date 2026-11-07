@@ -225,7 +225,8 @@ class CharacterBuildTabsHttpTest {
         assertTrue(sql.stream().filter(q -> q.contains("character_build_tab")).count() == 2,
                 "one tab read and one specialization read");
         assertTrue(body.length < 5_000);
-        assertTrue(sql.size() <= 10, "bounded statement count: " + sql.size());
+        // Original read budget (10) plus at most one batched metadata statement per namespace (5), never per reference.
+        assertTrue(sql.size() <= 15, "bounded statement count: " + sql.size());
     }
 
     @Test
