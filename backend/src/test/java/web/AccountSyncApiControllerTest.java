@@ -55,6 +55,8 @@ class AccountSyncApiControllerTest {
     private final Map<String, AccountProof> keys = new ConcurrentHashMap<>();
     private final List<String> runs = new CopyOnWriteArrayList<>();
     private volatile java.util.concurrent.CountDownLatch holdFirstRun;
+    private final java.util.concurrent.atomic.AtomicInteger controlledOverrideInvocations =
+            new java.util.concurrent.atomic.AtomicInteger();
     private final AccountAccessService access = new AccountAccessService(key -> {
         AccountProof proof = keys.get(key);
         if (proof == null) throw new InvalidCredentialException("rejected");
@@ -63,13 +65,17 @@ class AccountSyncApiControllerTest {
     private final AccountRefreshService refresh = new AccountRefreshService() {
         @Override
         public void refreshSources(model.AccountScope scope, Set<String> sources,
-                                   sync.AccountSync.AuthFetcher fetcher) throws Exception {
+                                   sync.AccountSync.AuthFetcher fetcher,
+                                   AccountRefreshService.SourceOutcomes outcomes) throws Exception {
             runs.add(scope.id() + ":" + new java.util.TreeSet<>(sources));
+            controlledOverrideInvocations.incrementAndGet();
             var hold = holdFirstRun;
             if (hold != null) {
                 holdFirstRun = null;
                 hold.await(10, java.util.concurrent.TimeUnit.SECONDS);
             }
+            // The controlled body publishes nothing and fails nothing: every requested source succeeded.
+            for (String source : new java.util.TreeSet<>(sources)) outcomes.succeeded(source);
         }
     };
     private final ScopedAccountRefreshCoordinator coordinator = new ScopedAccountRefreshCoordinator(
@@ -109,6 +115,15 @@ class AccountSyncApiControllerTest {
         long deadline = System.nanoTime() + TIMEOUT.toNanos();
         while (runs.size() < expected && System.nanoTime() < deadline) Thread.sleep(10);
         assertEquals(expected, runs.size());
+    }
+
+    @Test
+    void theControlledRefreshOverrideIsInvokedAndNoGatewayIsReached() throws Exception {
+        var s = session(A, "key-a");
+        mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-a")).andExpect(status().isAccepted());
+        awaitRuns(1);
+        assertEquals(1, controlledOverrideInvocations.get(),
+                "the coordinator's refresh call reaches the controlled override, not the inherited gateway path");
     }
 
     @Test
