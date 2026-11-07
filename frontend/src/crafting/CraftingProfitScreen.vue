@@ -9,6 +9,7 @@ import {
 import TradingPostPriceDisclaimer from '@/items/TradingPostPriceDisclaimer.vue'
 import PageHeader from '@/shell/PageHeader.vue'
 import CraftingProfitTable from './CraftingProfitTable.vue'
+import MaterialProtectionControl from './MaterialProtectionControl.vue'
 import ProfitRefreshStatus from './ProfitRefreshStatus.vue'
 import ProfitSettingsForm from './ProfitSettingsForm.vue'
 import ResultDisplayControls from './ResultDisplayControls.vue'
@@ -260,11 +261,14 @@ function onMaximumDisplayedChange(event: Event): void {
               />
             </div>
 
-            <ProfitSettingsForm
-              :settings="profit.settings.value"
-              layout-part="checks"
-              @apply="onSettingsApplied"
-            />
+            <div class="calculation-layout__checks">
+              <ProfitSettingsForm
+                :settings="profit.settings.value"
+                layout-part="checks"
+                @apply="onSettingsApplied"
+              />
+              <MaterialProtectionControl />
+            </div>
           </div>
         </section>
 

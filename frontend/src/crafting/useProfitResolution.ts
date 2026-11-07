@@ -7,6 +7,7 @@ import type {
   ResolutionCalculation,
   ScopeRequest
 } from '@/api/types'
+import { canonicalIds } from '@/materials/materialProtectionState'
 import { useResolutionDetail, type ResolutionDetailState } from './useResolutionDetail'
 
 /**
@@ -88,7 +89,9 @@ export function calculationKey(
     settings.maxBuyCopper,
     settings.listingSell,
     settings.listingBuy,
-    settings.allowDailyCrafts
+    settings.allowDailyCrafts,
+    settings.materialProtectionEnabled ?? null,
+    settings.protectedItemIds === undefined ? null : canonicalIds(settings.protectedItemIds)
   ])
 }
 

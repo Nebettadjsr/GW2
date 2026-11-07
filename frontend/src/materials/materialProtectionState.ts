@@ -151,6 +151,13 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     const value: StoredPreference = { version: PREFERENCE_SCHEMA_VERSION, protectedItemIds: [...ids], enabled }
     try {
       storage.setItem(keyFor(accountId), JSON.stringify(value))
+      // A later successful write supersedes an earlier write/remove failure for this account.
+      if (
+        state.accountId === accountId &&
+        (state.diagnostic === 'write-failed' || state.diagnostic === 'quota-exceeded' || state.diagnostic === 'remove-failed')
+      ) {
+        state.diagnostic = null
+      }
     } catch (error) {
       if (state.accountId === accountId) state.diagnostic = diagnose(error, 'write-failed')
     }
