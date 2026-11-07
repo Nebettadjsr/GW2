@@ -24,6 +24,38 @@ their page heading and show a concise link to System Status when a connection is
 repeat the key form above every page. Opening System Status must preserve the crafting screens'
 cached controls/results and must not submit another calculation.
 
+### 2.1 Material protection (approved feature; not yet implemented)
+
+Bank and Materials expose checkboxes on item tiles and an explicit confirmation button to lock in the selection. Checkbox changes are a pending edit until confirmation; Crafting Profit consumes the committed selection. Distinguish pending changes, committed protection and the Profit activation state clearly. Do not interfere with item links, quantity display or keyboard navigation.
+
+Provide preset buttons for every material tier (T1 through T6), followed by the same confirmation step. The design must allow additional presets without a new selection mechanism. Document and review exact preset membership and bulk-selection interactions; do not infer crafting tier from item rarity or select unrelated items automatically.
+
+Crafting Profit has a protection toggle and selected-item count. Attempting to activate it without a committed selection must show a short popup/floating warning explaining that nothing is selected; do not imply that stock is being protected. When a selection exists, provide links to the relevant Materials and/or Bank selection pages. Checkbox selection must remain coherent when the same item appears in multiple stacks/views.
+
+Remember the committed selection and activation setting per account on the same browser. Account changes must not display or apply another account's preferences. Calculation behavior belongs in `DOMAIN_SPEC.md`, section 9.1. Resolve remaining visual/interaction ambiguities with the Product Owner during design review; the workflow is not started by these requirements.
+
+### 2.2 Characters (approved scope; not yet implemented)
+
+Add a Characters destination alongside the existing application views. Start with a compact roster/list and open character details when a row is selected, following the interaction shown in the supplied GW2efficiency references while using the application's own visual style. Show concise identity/crafting information; propose exact overview fields for Product Owner review rather than importing every statistic from the reference.
+
+Equipment is the primary detail view. Make slots, item names and rarity easy to scan, so ascended/legendary equipment and remaining lower-quality or empty slots can be identified. Use labels as well as rarity colors. Provide Inventory and Builds sections and a Story section after API feasibility is established. Discovered Recipes is omitted; Map Completion remains deferred.
+
+Preserve roster position/selection when returning from details, and provide clear back/character navigation. Item links, readable quantities, keyboard access, loading/freshness/error states and account-switch cleanup must be considered in the concrete design.
+
+Equipment and Builds each use a horizontal row of adjacent tabs, styled after the supplied in-game Hero panel reference. Preserve the in-game tab order; initially select the active in-game tab rather than moving it to the first position. Clicking another available tab displays its equipment/build. Keep the actual in-game active state distinguishable from the tab currently being inspected; browsing never changes the game. Provide keyboard-operable tab controls and a clear selected state. If unavailable/locked slots are shown, derive them from reliable API data and make them non-selectable; do not invent an unlock or purchase workflow.
+
+The screenshots do not automatically authorize public sharing, exports, a 3D character renderer or every displayed secondary statistic. Present a concrete equipment-focused desktop layout for Product Owner review before implementation; ask about unresolved UI choices. Domain scope is in `DOMAIN_SPEC.md`, section 56.
+
+### 2.3 System Status: account controls and owner administration
+
+Ordinary users see their key/connection controls, their account-data age and manual account refresh. Shared-system health uses concise generic labels. Owner-only controls provide detailed diagnostics and global item, recipe and full-TP refresh actions, clearly distinguished from refreshing one account. Do not render privileged details for ordinary users and do not rely on hidden controls for authorization. Admin identity is resolved by the backend as described in `TARGET_ARCHITECTURE.md` section 8.3.
+
+### 2.4 Bank and Materials: automatic stale-data refresh
+
+Remove both "Refresh account data" and "Reload saved bank/materials" buttons from these pages. Show saved inventory with its age; automatically refresh stale relevant account data using the shared account task mechanism. Keep the saved inventory visible during the refresh with a compact updating hint. On completion update the view without resetting controls or pending material-protection checkboxes. On failure keep the saved view, clearly mark it stale/failed, and link to System Status rather than adding another permanent refresh control. A failed cached read must still preserve the last successful view.
+
+System Status remains the place for manual account refresh. New navigation must not itself duplicate ongoing refreshes or start global catalog work. Product behavior is owned by `DOMAIN_SPEC.md` section 57.
+
 ## 3. Layout and responsive behavior
 
 Use the restrained dark, Guild Wars 2-inspired visual identity in section 9, with readable typography, consistent spacing and clear group boundaries. Favor clarity over decoration, hierarchy over raw density, and user-relevant information over diagnostic data. Visual polish is part of the intended result; it must support rather than obscure the data.
