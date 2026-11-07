@@ -56,6 +56,10 @@ class CharactersApiTest {
     private final AtomicBoolean refreshing = new AtomicBoolean();
     private final AtomicBoolean failed = new AtomicBoolean();
     private final AtomicInteger connectionsOpened = new AtomicInteger();
+    private final AtomicInteger rosterStatements = new AtomicInteger();
+    private final AtomicInteger markerStatements = new AtomicInteger();
+    /** Test hook run on every row-read connection open, before it is returned (delayed-read evidence). */
+    private volatile java.util.concurrent.Callable<Void> onRowRead = () -> null;
     private Connection admin;
     private MockMvc mvc;
     private Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
@@ -88,7 +92,7 @@ class CharactersApiTest {
     private void rebuild() {
         var gate = new ScopedSourceGate((scope, source) -> {
             try (Connection con = scoped()) {
-                return new AccountSourceStateRepository().read(con, scope, source);
+                return new AccountSourceStateRepository().read(counting(con, markerStatements), scope, source);
             }
         }, (scope, at) -> { }, clock, Duration.ofMinutes(15));
         var status = new CharacterRosterService.RefreshStatus() {
@@ -97,9 +101,30 @@ class CharactersApiTest {
         };
         var service = new CharacterRosterService(gate, status, new CharacterRepository(), () -> {
             connectionsOpened.incrementAndGet();
-            return scoped();
+            try {
+                onRowRead.call();
+            } catch (SQLException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new SQLException(e);
+            }
+            return counting(scoped(), rosterStatements);
         });
         mvc = MockMvcBuilders.standaloneSetup(new CharactersApiController(service)).build();
+    }
+
+    /** A connection that counts every prepared (and so executed) statement it is asked for. */
+    private static Connection counting(Connection real, AtomicInteger counter) {
+        return (Connection) java.lang.reflect.Proxy.newProxyInstance(Connection.class.getClassLoader(),
+                new Class<?>[]{Connection.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("prepareStatement") || method.getName().equals("createStatement")
+                            || method.getName().equals("prepareCall")) counter.incrementAndGet();
+                    try {
+                        return method.invoke(real, args);
+                    } catch (java.lang.reflect.InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
     }
 
     private static Connection open() throws SQLException {
@@ -366,10 +391,54 @@ class CharactersApiTest {
         byte[] body = mvc.perform(as(A, "/api/account/characters")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.characterCount").value(43)).andReturn().getResponse().getContentAsByteArray();
         System.out.println("CHAR-ROSTER-REPORT characters=43 disciplineRows=" + (4 + 40 * 3)
-                + " sqlStatements=2 (+1 marker read before and after, via the shared gate) responseBytes="
+                + " rowReadStatements=" + rosterStatements.get() + " (2 projection reads + 1 schema guard)"
+                + " markerStatements=" + markerStatements.get() + " (2 marker reads x 2 statements)"
+                + " allSqlStatements=" + (rosterStatements.get() + markerStatements.get())
+                + " (measured by counting prepared statements on every connection the read opened) responseBytes="
                 + new String(body, StandardCharsets.UTF_8).getBytes(StandardCharsets.UTF_8).length
                 + " characterItemsRowsRead=0 upstreamCalls=0");
         assertTrue(body.length < 40_000);
         assertEquals(1, connectionsOpened.get());
+        // 2 projection reads (disciplines, characters) + 1 managed-schema guard statement.
+        assertEquals(3, rosterStatements.get(), "2 roster projection reads + 1 schema guard");
+        assertEquals(4, markerStatements.get(), "marker read before and after the row read, 2 statements each");
+    }
+
+    /**
+     * Delayed-read isolation: A's row read is paused after its marker check while B's complete roster
+     * and detail reads run; both finish with their own same-named character facts. The marker/row
+     * generation-move seam is covered by ScopedSourceGateTest.aGenerationThatMovesDuringTheReadIsRetried...
+     */
+    @Test
+    void delayedReadOfOneAccountDoesNotMixWithAnotherAccountsSameNamedCharacter() throws Exception {
+        var aInside = new java.util.concurrent.CountDownLatch(1);
+        var bDone = new java.util.concurrent.CountDownLatch(1);
+        onRowRead = () -> {
+            if (Thread.currentThread().getName().equals("reader-A")) {
+                aInside.countDown();
+                if (!bDone.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("B never finished");
+            }
+            return null;
+        };
+        var pool = java.util.concurrent.Executors.newSingleThreadExecutor(r -> new Thread(r, "reader-A"));
+        try {
+            var aRead = pool.submit(() -> mvc.perform(as(A, "/api/account/characters/Shared"))
+                    .andReturn().getResponse().getContentAsString());
+            assertTrue(aInside.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            mvc.perform(as(B, "/api/account/characters/Shared")).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.character.profession").value("Warrior"))
+                    .andExpect(jsonPath("$.character.craftingDisciplines[0].discipline").value("Scribe"));
+            mvc.perform(as(B, "/api/account/characters")).andExpect(jsonPath("$.characterCount").value(1));
+            bDone.countDown();
+            String a = aRead.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            assertTrue(a.contains("\"profession\":\"Mesmer\""), a);
+            assertTrue(a.contains("Tailor") && !a.contains("Scribe") && !a.contains("Warrior"), a);
+        } finally {
+            bDone.countDown();
+            pool.shutdownNow();
+        }
+        // Switching back and forth afterwards still returns each account's own facts.
+        mvc.perform(as(A, "/api/account/characters/Shared")).andExpect(jsonPath("$.character.race").value("Sylvari"));
+        mvc.perform(as(B, "/api/account/characters/Shared")).andExpect(jsonPath("$.character.race").value("Norn"));
     }
 }

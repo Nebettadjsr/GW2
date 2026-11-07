@@ -95,6 +95,24 @@ public class AccountRefreshService {
      */
     public void refreshSources(AccountScope scope, Set<String> sources, AccountSync.AuthFetcher fetcher)
             throws Exception {
+        refreshSources(scope, sources, fetcher, SourceOutcomes.NONE);
+    }
+
+    /** Receives each attempted source's own outcome; carries no failure detail. */
+    public interface SourceOutcomes {
+        SourceOutcomes NONE = new SourceOutcomes() {
+            public void succeeded(String source) { }
+            public void failed(String source) { }
+        };
+
+        void succeeded(String source);
+
+        void failed(String source);
+    }
+
+    /** As above, additionally reporting which individual sources succeeded or failed. */
+    public void refreshSources(AccountScope scope, Set<String> sources, AccountSync.AuthFetcher fetcher,
+                               SourceOutcomes outcomes) throws Exception {
         List<ScopedStep> steps = List.of(
                 new ScopedStep(AccountSyncStateRepository.BANK, () -> gateway.syncAccountBank(scope, fetcher)),
                 new ScopedStep(AccountSyncStateRepository.MATERIALS, () -> gateway.syncAccountMaterials(scope, fetcher)),
@@ -108,7 +126,9 @@ public class AccountRefreshService {
             if (!sources.contains(step.source())) continue;
             try {
                 step.run().run();
+                outcomes.succeeded(step.source());
             } catch (Exception failure) {
+                outcomes.failed(step.source());
                 if (firstFailure == null) firstFailure = failure;
                 else firstFailure.addSuppressed(failure);
             }

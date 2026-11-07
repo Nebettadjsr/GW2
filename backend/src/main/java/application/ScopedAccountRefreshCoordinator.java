@@ -188,6 +188,12 @@ public class ScopedAccountRefreshCoordinator implements CharacterRosterService.R
 
     private final Map<UUID, Run> active = new HashMap<>();
     private final Map<UUID, Run> history = new HashMap<>();
+    /**
+     * Per account, the sources whose latest attempt failed and which no later attempt has repaired.
+     * Source-specific, so an unrelated source's success or failure neither sets nor clears it.
+     * Bounded by the number of accounts and the fixed source set; holds no failure detail.
+     */
+    private final Map<UUID, Set<String>> unrepaired = new HashMap<>();
     private final Deque<TaskRecord> records = new ArrayDeque<>();
 
     public ScopedAccountRefreshCoordinator(AccountRefreshService refresh, BackgroundTasks tasks,
@@ -401,7 +407,20 @@ public class ScopedAccountRefreshCoordinator implements CharacterRosterService.R
                     run.refreshing.addAll(batch);
                 }
                 try {
-                    refresh.refreshSources(scope, batch, fetcher);
+                    refresh.refreshSources(scope, batch, fetcher, new AccountRefreshService.SourceOutcomes() {
+                        public void succeeded(String source) {
+                            synchronized (ScopedAccountRefreshCoordinator.this) {
+                                Set<String> failed = unrepaired.get(scope.accountId());
+                                if (failed != null) failed.remove(source);
+                            }
+                        }
+
+                        public void failed(String source) {
+                            synchronized (ScopedAccountRefreshCoordinator.this) {
+                                unrepaired.computeIfAbsent(scope.accountId(), k -> new LinkedHashSet<>()).add(source);
+                            }
+                        }
+                    });
                     synchronized (this) {
                         run.lastRefreshed = Set.copyOf(batch);
                         run.lastFailure = null;
@@ -492,13 +511,13 @@ public class ScopedAccountRefreshCoordinator implements CharacterRosterService.R
     }
 
     /**
-     * True when the account's most recent finished run failed and did not refresh {@code source}
-     * successfully, so the source's last-good data was not brought up to date by that attempt.
+     * True when the latest attempt to refresh {@code source} itself failed and no later attempt has
+     * succeeded. Failures of other sources never count, and persist across unrelated runs.
      */
     @Override
     public synchronized boolean lastRefreshFailed(AccountScope scope, String source) {
-        Run run = history.get(scope.accountId());
-        return run != null && run.lastFailure != null && !run.lastRefreshed.contains(source);
+        Set<String> failed = unrepaired.get(scope.accountId());
+        return failed != null && failed.contains(source);
     }
 
     /** True while the account has an unfinished run this coordinator admitted. */
