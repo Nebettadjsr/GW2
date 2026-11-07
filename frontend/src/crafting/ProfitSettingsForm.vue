@@ -242,6 +242,8 @@ function onMaxBuyCopperChange(event: Event): void {
         <span>Use own materials</span>
       </label>
 
+      <slot name="after-own-materials" />
+
       <label class="check-row">
         <input
           type="checkbox"

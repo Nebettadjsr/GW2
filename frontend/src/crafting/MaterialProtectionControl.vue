@@ -34,7 +34,7 @@ function onToggle(event: Event): void {
   <div v-if="ready" class="protection" data-test="protection-control" @keydown.esc="dismiss">
     <label class="protection__toggle">
       <input type="checkbox" data-test="protection-toggle" :checked="enabled" @change="onToggle" />
-      <span>Protect selected materials</span>
+      <span>Respect excluded items/ mats</span>
     </label>
     <span class="meta" data-test="protection-count">
       {{ count }} {{ count === 1 ? 'item' : 'items' }} in the saved selection
@@ -63,17 +63,16 @@ function onToggle(event: Event): void {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-3);
-  grid-column: 1 / -1;
-  width: 100%;
-  margin-top: var(--space-3);
+  min-width: 0;
 }
-.protection__toggle { display: flex; align-items: center; gap: var(--space-2); }
+.protection__toggle { display: flex; flex: 0 0 100%; align-items: center; gap: var(--space-2); }
 .protection__popup {
   position: absolute;
   top: 100%;
   left: 0;
   z-index: 20;
-  max-width: min(32rem, 100%);
+  width: max-content;
+  max-width: min(24rem, 90vw);
   margin: var(--space-1) 0 0;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }

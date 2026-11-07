@@ -266,10 +266,13 @@ function onMaximumDisplayedChange(event: Event): void {
                 :settings="profit.settings.value"
                 layout-part="checks"
                 @apply="onSettingsApplied"
-              />
+              >
+                <template #after-own-materials>
+                  <MaterialProtectionControl />
+                </template>
+              </ProfitSettingsForm>
             </div>
           </div>
-          <MaterialProtectionControl class="calculation-protection" />
         </section>
 
         <section class="control-column control-column--display">

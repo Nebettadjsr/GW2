@@ -176,11 +176,18 @@ describe('Crafting Profit material protection', () => {
     expect(useMaterialProtection().state.activation).toBe(false)
   })
 
-  it('places the protection block below the calculation grid, not inside it', async () => {
+  it('places the checkbox between Use own materials and Allow buying, unchecked by default', async () => {
     const w = await open(api())
-    const control = w.find('[data-test="protection-control"]')
-    expect(control.element.closest('.calculation-layout')).toBeNull()
-    expect(control.element.closest('[data-test="calculation-controls"]')).not.toBeNull()
+    const column = w.find('.settings__checks')
+    const labels = column.findAll('label').map((l) => l.text())
+    expect(labels).toEqual([
+      'Use own materials',
+      expect.stringContaining('Respect excluded items/ mats'),
+      'Allow buying',
+      'Allow daily craft'
+    ])
+    const toggle = w.find('[data-test="protection-toggle"]')
+    expect((toggle.element as HTMLInputElement).checked).toBe(false)
   })
 
   it('shows an unconfirmed error when the backend omits the protection echo', async () => {
