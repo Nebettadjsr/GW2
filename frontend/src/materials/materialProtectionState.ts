@@ -185,6 +185,9 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
       if (value !== null) {
         state.committed = value.protectedItemIds
         state.activation = value.enabled
+        // A successfully restored committed preference is also this page's latest committed value,
+        // but never replaces a newer in-memory commit already in the shadow.
+        if (!shadow.has(accountId)) shadow.set(accountId, { ids: [...value.protectedItemIds], enabled: value.enabled })
       }
       if (diagnostic === 'unsupported-version' || (diagnostic === 'corrupt' && value === null)) {
         discardStored(accountId)

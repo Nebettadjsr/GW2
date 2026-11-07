@@ -302,6 +302,49 @@ describe('per-page committed shadow', () => {
     expect(m.state.committed).toEqual([3])
     expect(m.state.pending).toEqual([3])
   })
+
+  it('shadows a preference only loaded from storage, with no local edit (A->B->A, read failure)', () => {
+    storage.setItem(
+      PREFERENCE_KEY_PREFIX + A,
+      JSON.stringify({ version: 1, protectedItemIds: [9, 4], enabled: true })
+    )
+    let failReads = false
+    const flaky: PreferenceStorage = {
+      getItem: (k) => {
+        if (failReads) throw new Error('denied')
+        return storage.getItem(k)
+      },
+      setItem: (k, v) => storage.setItem(k, v),
+      removeItem: (k) => storage.removeItem(k)
+    }
+    const m = make(flaky)
+    source.id = A
+    expect(m.state.committed).toEqual([4, 9])
+    source.id = B
+    failReads = true
+    source.id = A
+    expect(m.state.committed).toEqual([4, 9])
+    expect(m.state.activation).toBe(true)
+    expect(m.state.pending).toEqual([4, 9])
+    // Missing record after storage became unavailable: still the loaded preference.
+    failReads = false
+    storage.data.clear()
+    source.id = null
+    source.id = A
+    expect(m.state.committed).toEqual([4, 9])
+    expect(m.state.activation).toBe(true)
+  })
+
+  it('keeps a newer failed-write commit over the loaded shadow', () => {
+    storage.setItem(PREFERENCE_KEY_PREFIX + A, JSON.stringify({ version: 1, protectedItemIds: [1], enabled: false }))
+    const m = make({ getItem: (k) => storage.getItem(k), setItem: () => { throw new Error('full') }, removeItem: () => undefined })
+    source.id = A
+    m.setPending([1, 2])
+    m.commit()
+    source.id = null
+    source.id = A
+    expect(m.state.committed).toEqual([1, 2])
+  })
 })
 
 describe('newest-request and shared-lifetime regressions', () => {
