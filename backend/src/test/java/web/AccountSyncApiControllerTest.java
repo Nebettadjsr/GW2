@@ -59,7 +59,9 @@ class AccountSyncApiControllerTest {
     private volatile java.util.concurrent.CountDownLatch holdFirstRun;
     private final java.util.concurrent.atomic.AtomicInteger controlledOverrideInvocations =
             new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicInteger proofCalls = new java.util.concurrent.atomic.AtomicInteger();
     private final AccountAccessService access = new AccountAccessService(key -> {
+        proofCalls.incrementAndGet();
         AccountProof proof = keys.get(key);
         if (proof == null) throw new InvalidCredentialException("rejected");
         return proof;
@@ -136,12 +138,23 @@ class AccountSyncApiControllerTest {
     }
 
     @Test
+    void equipmentTabsTriggerProvesTheKeyExactlyOncePerRequestIncludingTheBoundedWait() throws Exception {
+        var s = session(A, "key-a");
+        proofCalls.set(0);
+        mvc.perform(trigger("/api/sync/account/character-equipment-tabs", s, "key-a")).andExpect(status().isAccepted());
+        assertEquals(1, proofCalls.get(), "one upstream proof round for the whole optional refresh");
+        awaitRuns(1);
+    }
+
+    @Test
     void equipmentTabsTriggerWithoutPublishedParentAdmitsNothing() throws Exception {
         parentPublished = false;
         var s = session(A, "key-a");
+        proofCalls.set(0);
         mvc.perform(trigger("/api/sync/account/character-equipment-tabs", s, "key-a"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("PREREQUISITE_UNAVAILABLE"));
+        assertEquals(1, proofCalls.get(), "missing parent still costs exactly one proof");
         Thread.sleep(150);
         assertTrue(runs.isEmpty(), "no task, no tab fetch");
     }

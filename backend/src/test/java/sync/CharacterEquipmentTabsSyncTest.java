@@ -169,8 +169,8 @@ class CharacterEquipmentTabsSyncTest {
         var r = service(Duration.ofHours(1)).read(ctx(A_ID, ALL), A, "Ana");
         assertEquals(CharacterEquipmentTabsService.State.AVAILABLE, r.state());
         assertEquals(parentGen, r.coveredParentGeneration());
-        assertEquals(List.of(2, 1), r.tabs().stream().map(t -> t.number()).toList());
-        var main = r.tabs().get(1);
+        assertEquals(List.of(1, 2), r.tabs().stream().map(t -> t.number()).toList());
+        var main = r.tabs().get(0); // upstream array was [2,1]; in-game order is 1,2
         assertTrue(main.active());
         assertEquals("Legendary", main.equipment().get(0).item().rarity());
         assertEquals(10, main.equipment().get(0).statAttributes().get("Power"));
@@ -207,6 +207,18 @@ class CharacterEquipmentTabsSyncTest {
         bad.put("/characters/Bo/", "[{\"tab\":1,\"is_active\":true,\"equipment\":[{\"id\":0}]}]");
         assertThrows(IllegalStateException.class,
                 () -> CharacterEquipmentTabsSync.sync(A, fetcher(A_ID, new ArrayList<>(), bad), repair));
+        assertEquals(tabs, count("SELECT count(*) FROM character_equipment_tabs"));
+        assertEquals(1, generation(A, "CHARACTER_EQUIPMENT_TABS"));
+    }
+
+    @Test
+    void nonEmptyResponseWithNoActiveTabPublishesNothingAndKeepsLastGood() throws Exception {
+        publishRoster(A, "Ana");
+        CharacterEquipmentTabsSync.sync(A, fetcher(A_ID, new ArrayList<>(), Map.of("/characters/Ana/", TABS)), repair);
+        long tabs = count("SELECT count(*) FROM character_equipment_tabs");
+        assertThrows(IllegalStateException.class, () -> CharacterEquipmentTabsSync.sync(A,
+                fetcher(A_ID, new ArrayList<>(), Map.of("/characters/Ana/",
+                        "[{\"tab\":1,\"is_active\":false,\"equipment\":[]}]")), repair));
         assertEquals(tabs, count("SELECT count(*) FROM character_equipment_tabs"));
         assertEquals(1, generation(A, "CHARACTER_EQUIPMENT_TABS"));
     }

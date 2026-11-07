@@ -90,15 +90,15 @@ public final class IconSync {
         INSERT INTO items (item_id, name, type, rarity, vendor_value, icon_url, fetched_at)
         VALUES (?, ?, ?, ?, ?, ?, now())
         ON CONFLICT (item_id) DO UPDATE SET
-          name         = COALESCE(items.name, EXCLUDED.name),
-          type         = COALESCE(items.type, EXCLUDED.type),
-          rarity       = COALESCE(items.rarity, EXCLUDED.rarity),
+          name         = COALESCE(NULLIF(btrim(items.name), ''), NULLIF(btrim(EXCLUDED.name), ''), items.name),
+          type         = COALESCE(NULLIF(btrim(items.type), ''), NULLIF(btrim(EXCLUDED.type), ''), items.type),
+          rarity       = COALESCE(NULLIF(btrim(items.rarity), ''), NULLIF(btrim(EXCLUDED.rarity), ''), items.rarity),
           vendor_value = COALESCE(items.vendor_value, EXCLUDED.vendor_value),
           icon_url     = COALESCE(EXCLUDED.icon_url, items.icon_url)
         WHERE (EXCLUDED.icon_url IS NOT NULL AND items.icon_url IS DISTINCT FROM EXCLUDED.icon_url)
-           OR (items.name IS NULL AND EXCLUDED.name IS NOT NULL)
-           OR (items.type IS NULL AND EXCLUDED.type IS NOT NULL)
-           OR (items.rarity IS NULL AND EXCLUDED.rarity IS NOT NULL)
+           OR (btrim(coalesce(items.name, '')) = '' AND btrim(coalesce(EXCLUDED.name, '')) <> '')
+           OR (btrim(coalesce(items.type, '')) = '' AND btrim(coalesce(EXCLUDED.type, '')) <> '')
+           OR (btrim(coalesce(items.rarity, '')) = '' AND btrim(coalesce(EXCLUDED.rarity, '')) <> '')
            OR (items.vendor_value IS NULL AND EXCLUDED.vendor_value IS NOT NULL)
         """;
 

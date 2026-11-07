@@ -162,7 +162,7 @@ public class AccountSyncApiController {
         ScopedAccountRefreshCoordinator.Admission admission;
         try {
             if (needsParent) {
-                coordinator.verify(context, sessionId, apiKey, sources);
+                var proof = coordinator.verify(context, sessionId, apiKey, sources);
                 boolean published;
                 try {
                     published = parentPublished.test(RequestAccountContext.scopeOf(request));
@@ -174,8 +174,11 @@ public class AccountSyncApiController {
                     return error(HttpStatus.CONFLICT, "PREREQUISITE_UNAVAILABLE",
                             "Equipment tabs need a published character roster; refresh characters first");
                 }
+                admission = coordinator.requireAfterBoundedWait(context, sessionId, apiKey, sources, RECHECK_BOUND,
+                        proof);
+            } else {
+                admission = coordinator.requireAfterBoundedWait(context, sessionId, apiKey, sources, RECHECK_BOUND);
             }
-            admission = coordinator.requireAfterBoundedWait(context, sessionId, apiKey, sources, RECHECK_BOUND);
         } catch (ScopedAccountRefreshCoordinator.Rejected rejected) {
             return switch (rejected.reason()) {
                 case SESSION -> error(HttpStatus.UNAUTHORIZED, "SESSION_REQUIRED", "Prove a GW2 API key to continue");

@@ -254,6 +254,30 @@ class IconSyncMetadataTest {
                      "the metadata repair is not allowed to touch the desktop path column");
     }
 
+    /** Stored empty/whitespace display facts count as missing: repaired from valid upstream, never blanked. */
+    @Test
+    void blankStoredFactsAreReplacedByValidUpstreamAndValidOnesSurviveBlankUpstream() throws Exception {
+        try (Statement st = con.createStatement()) {
+            st.execute("INSERT INTO items (item_id, name, type, rarity, vendor_value, icon_url) VALUES"
+                               + " (10, '', '  ', NULL, 1, '" + ECTO_URL + "'),"
+                               + " (20, 'Keep', 'Armor', 'Rare', 1, '" + LOG_URL + "')");
+            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (0, 10, 5), (1, 20, 5)");
+        }
+        FixtureMetadataSource upstream = new FixtureMetadataSource();
+        upstream.knows(itemJson(10, "Glob of Ectoplasm", "CraftingMaterial", "Rare", 16, ECTO_URL));
+        upstream.knows(itemJson(20, " ", "", "  ", 1, LOG_URL));
+
+        IconSync.repairItemIconMetadata(con, upstream);
+
+        assertEquals("Glob of Ectoplasm", stringColumn("name", 10));
+        assertEquals("CraftingMaterial", stringColumn("type", 10));
+        assertEquals("Rare", stringColumn("rarity", 10));
+        assertEquals("Keep", stringColumn("name", 20));
+        assertEquals("Armor", stringColumn("type", 20));
+        assertEquals("Rare", stringColumn("rarity", 20));
+        assertEquals(0, IconSync.repairItemIconMetadata(con, upstream).rowsWritten(), "second repair writes nothing");
+    }
+
     /**
      * The other half of "complete metadata coverage": a row can exist and still be missing the
      * canonical fields an item view shows. Upstream returns them, so the repair fills exactly the

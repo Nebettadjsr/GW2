@@ -20,9 +20,13 @@ class CharacterEquipmentTabsParserTest {
                     "binding":"Account","bound_to":"x","stats":{"id":161,"attributes":{"Power":10,"Precision":4}}},
                    {"id":200}]}]"""));
         assertEquals(2, tabs.size());
-        assertEquals(3, tabs.get(0).number());
-        assertTrue(tabs.get(0).equipment().isEmpty());
-        var tab = tabs.get(1);
+        // Out-of-order upstream array [3,1]: canonical order is the in-game tab position; active stays tab 1.
+        assertEquals(1, tabs.get(0).number());
+        assertTrue(tabs.get(0).active());
+        assertEquals(3, tabs.get(1).number());
+        assertFalse(tabs.get(1).active());
+        assertTrue(tabs.get(1).equipment().isEmpty());
+        var tab = tabs.get(0);
         assertNull(tab.name());
         var full = tab.equipment().get(0);
         assertEquals(java.util.List.of(7, 5), full.upgrades());
@@ -57,6 +61,8 @@ class CharacterEquipmentTabsParserTest {
                 "[{\"tab\":1,\"is_active\":true,\"equipment\":[{\"id\":1,\"stats\":{\"attributes\":{}}}]}]",
                 "[{\"tab\":1,\"is_active\":true,\"equipment\":[{\"id\":1,\"stats\":{\"id\":2,\"attributes\":{\"Power\":\"x\"}}}]}]",
                 "[{\"tab\":1,\"is_active\":true,\"equipment\":[]},{\"tab\":1,\"is_active\":false,\"equipment\":[]}]",
+                "[{\"tab\":1,\"is_active\":false,\"equipment\":[]},{\"tab\":2,\"is_active\":false,\"equipment\":[]}]",
+                "[{\"tab\":1,\"is_active\":false,\"equipment\":[]}]",
                 "[{\"tab\":1,\"is_active\":true,\"equipment\":[]},{\"tab\":2,\"is_active\":true,\"equipment\":[]}]",
                 "[{\"tab\":1,\"is_active\":true,\"equipment\":[{\"id\":1,\"slot\":\"Helm\"},{\"id\":2,\"slot\":\"Helm\"}]}]"}) {
             assertThrows(IllegalStateException.class, () -> CharacterEquipmentTabsParser.parse(json(bad)), bad);

@@ -338,7 +338,17 @@ public class ScopedAccountRefreshCoordinator implements CharacterRosterService.R
      */
     public Admission requireAfterBoundedWait(AccountContext context, String sessionId, String apiKey,
                                              Set<String> sources, java.time.Duration bound) {
-        AccountAccessService.KeyedProof proof = verify(context, sessionId, apiKey, sources);
+        return requireAfterBoundedWait(context, sessionId, apiKey, sources, bound,
+                verify(context, sessionId, apiKey, sources));
+    }
+
+    /**
+     * As above, reusing a proof the caller already obtained for this same request. The proof is not
+     * cached anywhere; session, account, grant and revocation checks still run on every admission attempt.
+     */
+    public Admission requireAfterBoundedWait(AccountContext context, String sessionId, String apiKey,
+                                             Set<String> sources, java.time.Duration bound,
+                                             AccountAccessService.KeyedProof proof) {
         long deadline = System.nanoTime() + bound.toNanos();
         while (true) {
             Admission admission = require(context, sessionId, apiKey, sources, proof);

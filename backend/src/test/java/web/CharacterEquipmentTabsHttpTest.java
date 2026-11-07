@@ -140,9 +140,9 @@ class CharacterEquipmentTabsHttpTest {
                 "INSERT INTO account_source_state (account_id, source, generation, completed_at) VALUES"
                         + " ('" + A + "', 'CHARACTER_EQUIPMENT_TABS', 1, '" + NOW.minusSeconds(30) + "')",
                 "INSERT INTO character_equipment_coverage (account_id, parent_generation) VALUES ('" + A + "', 2)",
-                // Upstream order: tab 3 first, then tab 1 (tab numbers need not be sorted).
-                "INSERT INTO character_equipment_tabs (account_id, character_id, tab_number, tab_order, name, is_active) VALUES"
-                        + " ('" + A + "', 1, 3, 0, 'PvE', false), ('" + A + "', 1, 1, 1, NULL, true)",
+                // Inserted out of order; reads must return in-game (tab number) order: 1, then 3.
+                "INSERT INTO character_equipment_tabs (account_id, character_id, tab_number, name, is_active) VALUES"
+                        + " ('" + A + "', 1, 3, 'PvE', false), ('" + A + "', 1, 1, NULL, true)",
                 "INSERT INTO character_equipment_tab_entries (account_id, character_id, tab_number, entry_order, slot,"
                         + " item_id, location, upgrade_ids, infusion_ids, stat_id, stat_attributes, binding, bound_to) VALUES"
                         + " ('" + A + "', 1, 3, 0, 'Helm', 100, 'Equipped', '{200,999}', '{300}', 1234,"
@@ -171,37 +171,37 @@ class CharacterEquipmentTabsHttpTest {
                 .andExpect(jsonPath("$.equipment.generation").value(1))
                 .andExpect(jsonPath("$.coveredParentGeneration").value(2))
                 .andExpect(jsonPath("$.tabs.length()").value(2))
-                // upstream order preserved: tab 3 before tab 1
-                .andExpect(jsonPath("$.tabs[0].tab").value(3))
-                .andExpect(jsonPath("$.tabs[0].name").value("PvE"))
-                .andExpect(jsonPath("$.tabs[0].active").value(false))
-                .andExpect(jsonPath("$.tabs[1].tab").value(1))
-                .andExpect(jsonPath("$.tabs[1].name").doesNotExist())
-                .andExpect(jsonPath("$.tabs[1].active").value(true))
-                .andExpect(jsonPath("$.tabs[0].equipment.length()").value(2))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].slot").value("Helm"))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].item.itemId").value(100))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].item.resolved").value(true))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].item.name").value("Ascended Helm"))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].item.type").value("Armor"))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].item.rarity").value("Ascended"))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].upgrades.length()").value(2))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].upgrades[0].name").value("Superior Rune"))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].upgrades[0].rarity").value("Exotic"))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].upgrades[1].itemId").value(999))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].upgrades[1].resolved").value(false))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].upgrades[1].name").doesNotExist())
-                .andExpect(jsonPath("$.tabs[0].equipment[0].infusions[0].name").value("Infusion"))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].statId").value(1234))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].statAttributes.Power").value(100))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].statAttributes.Precision").value(70))
-                .andExpect(jsonPath("$.tabs[0].equipment[0].binding").value("Account"))
-                .andExpect(jsonPath("$.tabs[0].equipment[1].item.rarity").value("Legendary"))
-                .andExpect(jsonPath("$.tabs[0].equipment[1].statId").doesNotExist())
+                // in-game (tab number) order: tab 1 before tab 3; active is tab 1 and stays where it is
+                .andExpect(jsonPath("$.tabs[1].tab").value(3))
+                .andExpect(jsonPath("$.tabs[1].name").value("PvE"))
+                .andExpect(jsonPath("$.tabs[1].active").value(false))
+                .andExpect(jsonPath("$.tabs[0].tab").value(1))
+                .andExpect(jsonPath("$.tabs[0].name").doesNotExist())
+                .andExpect(jsonPath("$.tabs[0].active").value(true))
+                .andExpect(jsonPath("$.tabs[1].equipment.length()").value(2))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].slot").value("Helm"))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].item.itemId").value(100))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].item.resolved").value(true))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].item.name").value("Ascended Helm"))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].item.type").value("Armor"))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].item.rarity").value("Ascended"))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].upgrades.length()").value(2))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].upgrades[0].name").value("Superior Rune"))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].upgrades[0].rarity").value("Exotic"))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].upgrades[1].itemId").value(999))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].upgrades[1].resolved").value(false))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].upgrades[1].name").doesNotExist())
+                .andExpect(jsonPath("$.tabs[1].equipment[0].infusions[0].name").value("Infusion"))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].statId").value(1234))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].statAttributes.Power").value(100))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].statAttributes.Precision").value(70))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].binding").value("Account"))
+                .andExpect(jsonPath("$.tabs[1].equipment[1].item.rarity").value("Legendary"))
+                .andExpect(jsonPath("$.tabs[1].equipment[1].statId").doesNotExist())
                 // icon present but type/rarity missing is NOT resolved
-                .andExpect(jsonPath("$.tabs[1].equipment[0].item.resolved").value(false))
-                .andExpect(jsonPath("$.tabs[1].equipment[0].item.name").value("Name Only"))
-                .andExpect(jsonPath("$.tabs[1].equipment[0].item.rarity").doesNotExist())
+                .andExpect(jsonPath("$.tabs[0].equipment[0].item.resolved").value(false))
+                .andExpect(jsonPath("$.tabs[0].equipment[0].item.name").value("Name Only"))
+                .andExpect(jsonPath("$.tabs[0].equipment[0].item.rarity").doesNotExist())
                 .andReturn().getResponse().getContentAsByteArray();
         String json = new String(body, StandardCharsets.UTF_8);
         assertFalse(json.contains("S15") || json.contains("\"Bo\""), "only the requested character is serialized");
@@ -214,8 +214,8 @@ class CharacterEquipmentTabsHttpTest {
         seedEquipment();
         // Roster-wide data that must not be loaded: Bo (requested character is Ana B) has bulky tabs.
         for (int t = 1; t <= 8; t++) {
-            exec("INSERT INTO character_equipment_tabs (account_id, character_id, tab_number, tab_order, name, is_active)"
-                    + " VALUES ('" + A + "', 2, " + t + ", " + (t - 1) + ", 'Bo" + t + "', " + (t == 1) + ")");
+            exec("INSERT INTO character_equipment_tabs (account_id, character_id, tab_number, name, is_active)"
+                    + " VALUES ('" + A + "', 2, " + t + ", 'Bo" + t + "', " + (t == 1) + ")");
             for (int e = 0; e < 16; e++) {
                 exec("INSERT INTO character_equipment_tab_entries (account_id, character_id, tab_number, entry_order,"
                         + " slot, item_id) VALUES ('" + A + "', 2, " + t + ", " + e + ", 'S" + e + "', " + (7000 + e) + ")");

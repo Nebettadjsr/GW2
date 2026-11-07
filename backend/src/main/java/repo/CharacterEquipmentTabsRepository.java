@@ -80,7 +80,7 @@ public class CharacterEquipmentTabsRepository {
         List<RawTab> rawTabs = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement("""
                 SELECT tab_number, name, is_active FROM character_equipment_tabs
-                WHERE account_id = ? AND character_id = ? ORDER BY tab_order""")) {
+                WHERE account_id = ? AND character_id = ? ORDER BY tab_number""")) {
             ps.setObject(1, scope.accountId());
             ps.setLong(2, characterId);
             try (ResultSet rs = ps.executeQuery()) {

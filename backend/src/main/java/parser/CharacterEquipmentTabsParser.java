@@ -25,7 +25,7 @@ public final class CharacterEquipmentTabsParser {
 
     public record Tab(int number, String name, boolean active, List<Entry> equipment) {}
 
-    /** @return tabs in upstream order (possibly empty) */
+    /** @return tabs in in-game (ascending tab number) order, possibly empty */
     public static List<Tab> parse(JsonNode root) {
         if (root == null || !root.isArray()) throw invalid("response is not an array");
         List<Tab> tabs = new ArrayList<>();
@@ -52,7 +52,10 @@ public final class CharacterEquipmentTabsParser {
             }
             tabs.add(new Tab(number.intValue(), name, isActive.booleanValue(), List.copyOf(entries)));
         }
-        if (active > 1) throw invalid("more than one active tab");
+        // A non-empty response identifies exactly one active tab; an empty one is legitimate.
+        if (!tabs.isEmpty() && active != 1) throw invalid(active == 0 ? "no active tab" : "more than one active tab");
+        // The tab number is the in-game position, whatever order the array arrives in.
+        tabs.sort(java.util.Comparator.comparingInt(Tab::number));
         return List.copyOf(tabs);
     }
 

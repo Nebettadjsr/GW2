@@ -17,8 +17,6 @@ CREATE TABLE character_equipment_tabs (
     account_id   UUID        NOT NULL,
     character_id BIGINT      NOT NULL,
     tab_number   INTEGER     NOT NULL,
-    -- Zero-based position in the upstream response; display order (tab numbers need not be contiguous).
-    tab_order    INTEGER     NOT NULL,
     name         TEXT,
     is_active    BOOLEAN     NOT NULL,
     fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
