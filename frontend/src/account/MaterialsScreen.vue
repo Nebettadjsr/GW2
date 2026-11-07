@@ -7,10 +7,15 @@ import InventoryTile from './InventoryTile.vue'
 import { useAccountRead } from './useAccountRead'
 import InventoryRefresh from './InventoryRefresh.vue'
 import InventoryFreshness from './InventoryFreshness.vue'
+import MaterialSelectionBar from './MaterialSelectionBar.vue'
+import { useMaterialProtection } from '@/materials/materialProtectionState'
 
 const props = withDefaults(defineProps<{ api?: AccountApi }>(), { api: () => accountApi })
 const materials = useAccountRead<MaterialStorage>(() => props.api.loadMaterials())
 onMounted(() => { void materials.load() })
+const protection = useMaterialProtection()
+const pendingIds = computed(() => new Set(protection.state.pending))
+const selectable = computed(() => protection.state.status === 'ready')
 const hasNoCategories = computed(() => materials.data.value?.categories?.length === 0)
 function onReload(): void { void materials.load() }
 </script>
@@ -27,6 +32,7 @@ function onReload(): void { void materials.load() }
     </PageHeader>
     <InventoryRefresh @updated="materials.load()" />
     <InventoryFreshness v-if="materials.data.value" :freshness="materials.data.value.freshness" />
+    <MaterialSelectionBar />
     <div class="stack">
       <p v-if="materials.phase.value === 'loading'" class="notice notice--info" role="status" data-test="materials-loading">{{ materials.data.value ? 'Loading material storage. Showing the previous saved snapshot below.' : 'Loading material storage…' }}</p>
       <div v-else-if="materials.failure.value !== null" class="notice notice--error" role="alert" data-test="materials-error">
@@ -42,7 +48,9 @@ function onReload(): void { void materials.load() }
             <ol class="material-grid" data-test="material-grid">
               <li v-for="material in category.materials" :key="material.position" data-test="material-stack">
                 <InventoryTile :item-id="material.itemId" :count="material.count" :icon-url="material.iconUrl"
-                  :show-one="true" :title="`Item #${material.itemId}`" />
+                  :show-one="true" :title="`Item #${material.itemId}`"
+                  :selected="selectable ? pendingIds.has(material.itemId) : undefined"
+                  @toggle="protection.togglePending" />
               </li>
             </ol>
           </div>
