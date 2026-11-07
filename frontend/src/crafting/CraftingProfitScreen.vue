@@ -240,7 +240,7 @@ function onMaximumDisplayedChange(event: Event): void {
     <section class="controls-panel" aria-label="Crafting profit controls">
       <div class="controls-grid">
         <section
-          class="control-column"
+          class="control-column control-column--calculation"
           aria-labelledby="calculation-heading"
           data-test="calculation-controls"
         >
@@ -493,17 +493,36 @@ function onMaximumDisplayedChange(event: Event): void {
 
 <style scoped>
 
-.calculation-layout {
+/* Heading, left inputs and right checkbox column share one grid so the checkbox column starts at the heading. */
+.control-column--calculation {
   display: grid;
   grid-template-columns: minmax(0, 55fr) minmax(0, 45fr);
-  gap: var(--space-5);
-  /* Both columns stay in one row; each may grow so wrapped content never overlaps its neighbour. */
+  column-gap: var(--space-5);
   align-items: start;
+}
+
+.control-column--calculation > .control-column__title {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.calculation-layout {
+  display: contents;
 }
 
 .calculation-layout__main,
 .calculation-layout__checks {
   min-width: 0;
+}
+
+.calculation-layout__checks {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.calculation-layout__main {
+  grid-column: 1;
+  grid-row: 2;
 }
 
 .calculation-layout__main {
@@ -513,8 +532,13 @@ function onMaximumDisplayedChange(event: Event): void {
 }
 
 @media (max-width: 1100px) {
-  .calculation-layout {
+  .control-column--calculation {
     grid-template-columns: 1fr;
+  }
+  .calculation-layout__checks,
+  .calculation-layout__main {
+    grid-column: 1;
+    grid-row: auto;
   }
 }
 

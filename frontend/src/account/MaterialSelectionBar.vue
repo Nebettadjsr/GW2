@@ -18,7 +18,7 @@ const storageNotice = computed(() => {
   }
 })
 function applyPreset(preset: MaterialPreset): void {
-  protection.setPending([...protection.state.pending, ...preset.itemIds])
+  protection.setPending([...protection.state.pending, ...preset.itemIds], 'materials')
 }
 function items(n: number): string { return `${n} ${n === 1 ? 'item' : 'items'}` }
 </script>

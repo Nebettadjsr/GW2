@@ -205,6 +205,70 @@ describe('Crafting Profit material protection', () => {
   })
 })
 
+describe('info tooltip and source hints', () => {
+  const panel = (w: VueWrapper) => {
+    const el = w.find('[data-test="protection-panel"]')
+    return { element: el.element, isVisible: () => (el.element as HTMLElement).style.display !== 'none' }
+  }
+  const infoButton = (w: VueWrapper) => w.find('[data-test="protection-info-button"]')
+
+  it('is hidden until hover, stays open while the pointer is over the panel, and closes on leave', async () => {
+    commit([3])
+    const w = await open(api())
+    expect(panel(w).isVisible()).toBe(false)
+    await w.find('[data-test="protection-info"]').trigger('mouseenter')
+    expect(panel(w).isVisible()).toBe(true)
+    expect(panel(w).element.closest('[data-test="protection-info"]')).not.toBeNull()
+    await w.find('[data-test="protection-info"]').trigger('mouseleave')
+    expect(panel(w).isVisible()).toBe(false)
+  })
+
+  it('opens on keyboard focus, stays while focus is inside, and closes on Escape', async () => {
+    commit([3])
+    const w = await open(api())
+    expect(infoButton(w).attributes('aria-label')).toBeTruthy()
+    await infoButton(w).trigger('focusin')
+    expect(panel(w).isVisible()).toBe(true)
+    await w.find('[data-test="protection-bank-link"]').trigger('focusin')
+    expect(panel(w).isVisible()).toBe(true)
+    await w.find('[data-test="protection-control"]').trigger('keydown', { key: 'Escape' })
+    expect(panel(w).isVisible()).toBe(false)
+  })
+
+  it('shows only the destinations where the committed selection was made, per account, at Save', async () => {
+    const state = useMaterialProtection()
+    state.togglePending(3, 'bank')
+    const w = await open(api())
+    expect(w.find('[data-test="protection-links"]').exists()).toBe(false)
+    state.commit()
+    await flushPromises()
+    expect(w.find('[data-test="protection-bank-link"]').exists()).toBe(true)
+    expect(w.find('[data-test="protection-materials-link"]').exists()).toBe(false)
+    state.togglePending(4, 'materials') // pending only: links unchanged
+    await flushPromises()
+    expect(w.find('[data-test="protection-materials-link"]').exists()).toBe(false)
+    state.discardPending()
+    state.togglePending(4, 'materials')
+    state.commit()
+    await flushPromises()
+    expect(w.find('[data-test="protection-bank-link"]').exists()).toBe(true)
+    expect(w.find('[data-test="protection-materials-link"]').exists()).toBe(true)
+    expect(JSON.parse(localStorage.getItem(PREFIX(A))!).sources).toEqual(['bank', 'materials'])
+    connection.accountId = B
+    await flushPromises()
+    expect(w.find('[data-test="protection-links"]').exists()).toBe(false)
+  })
+
+  it('shows both links for a legacy record without hints and never sends hints to the backend', async () => {
+    localStorage.setItem(PREFIX(A), JSON.stringify({ version: 1, protectedItemIds: [3], enabled: true }))
+    const fake = api()
+    const w = await open(fake)
+    expect(w.find('[data-test="protection-bank-link"]').exists()).toBe(true)
+    expect(w.find('[data-test="protection-materials-link"]').exists()).toBe(true)
+    expect(JSON.stringify(fake.profitRequests)).not.toContain('sources')
+  })
+})
+
 describe('committed-context watcher request counts', () => {
   it('does not recalculate for saved-selection edits while protection is off', async () => {
     commit([3])

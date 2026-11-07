@@ -50,7 +50,7 @@ function onReload(): void { void materials.load() }
                 <InventoryTile :item-id="material.itemId" :count="material.count" :icon-url="material.iconUrl"
                   :show-one="true" :title="`Item #${material.itemId}`"
                   :selected="selectable ? pendingIds.has(material.itemId) : undefined"
-                  @toggle="protection.togglePending" />
+                  @toggle="(id: number) => protection.togglePending(id, 'materials')" />
               </li>
             </ol>
           </div>

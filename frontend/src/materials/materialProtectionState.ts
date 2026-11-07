@@ -35,10 +35,22 @@ export type StorageDiagnostic =
 
 export type RestoreStatus = 'uninitialized' | 'loading' | 'ready'
 
+/** UI-only hint: where a committed selection was made. Never sent to the backend. */
+export type SelectionView = 'bank' | 'materials'
+
 interface StoredPreference {
   version: number
   protectedItemIds: number[]
   enabled: boolean
+  /** Optional, backwards compatible. Absent (legacy) means the origin is unknown. */
+  sources?: SelectionView[]
+}
+
+function canonicalSources(value: unknown): SelectionView[] | null {
+  if (!Array.isArray(value)) return null
+  const out = new Set<SelectionView>()
+  for (const v of value) if (v === 'bank' || v === 'materials') out.add(v)
+  return [...out].sort()
 }
 
 /** Correlates a calculation request with the account and edit state it was built from. */
@@ -92,6 +104,10 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     status: 'uninitialized' as RestoreStatus,
     committed: [] as number[],
     pending: [] as number[],
+    /** Views whose checkboxes/presets edited the current pending selection. */
+    pendingViews: [] as SelectionView[],
+    /** Views the committed selection came from; null when unknown (legacy record). */
+    committedSources: null as SelectionView[] | null,
     activation: false,
     diagnostic: null as StorageDiagnostic | null,
     effective: null as EffectiveProtection | null
@@ -100,7 +116,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
    * Latest COMMITTED values per account for this page. It backs restoration when storage is unavailable
    * or a read/write failed, so A->B->A and reconnect never fall back to a stale stored record.
    */
-  const shadow = new Map<string, { ids: number[]; enabled: boolean }>()
+  const shadow = new Map<string, { ids: number[]; enabled: boolean; sources: SelectionView[] | null }>()
   /** Bumped on every local edit and account change; guards delayed canonical responses. */
   let editVersion = 0
   /** Last started request; a canonical response is accepted only from this one. */
@@ -136,19 +152,21 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
       value: {
         version: PREFERENCE_SCHEMA_VERSION,
         protectedItemIds: canonicalIds(record.protectedItemIds),
-        enabled: record.enabled === true
+        enabled: record.enabled === true,
+        sources: canonicalSources(record.sources) ?? undefined
       },
       diagnostic: Array.isArray(record.protectedItemIds) && typeof record.enabled === 'boolean' ? null : 'corrupt'
     }
   }
 
   /** Writes under the key of the account the caller captured, never "whatever is current". */
-  function persist(accountId: string, ids: readonly number[], enabled: boolean): void {
+  function persist(accountId: string, ids: readonly number[], enabled: boolean, sources: SelectionView[] | null): void {
     if (storage === null) {
       state.diagnostic = 'storage-unavailable'
       return
     }
     const value: StoredPreference = { version: PREFERENCE_SCHEMA_VERSION, protectedItemIds: [...ids], enabled }
+    if (sources !== null) value.sources = [...sources]
     try {
       storage.setItem(keyFor(accountId), JSON.stringify(value))
       // A later successful write supersedes earlier write/remove/read/recovered-record diagnostics for this
@@ -183,6 +201,8 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     state.status = 'uninitialized'
     state.committed = []
     state.pending = []
+    state.pendingViews = []
+    state.committedSources = null
     state.activation = false
     state.diagnostic = null
     state.effective = null
@@ -198,9 +218,10 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
       if (value !== null) {
         state.committed = value.protectedItemIds
         state.activation = value.enabled
+        state.committedSources = value.sources ?? null
         // A successfully restored committed preference is also this page's latest committed value,
         // but never replaces a newer in-memory commit already in the shadow.
-        if (!shadow.has(accountId)) shadow.set(accountId, { ids: [...value.protectedItemIds], enabled: value.enabled })
+        if (!shadow.has(accountId)) shadow.set(accountId, { ids: [...value.protectedItemIds], enabled: value.enabled, sources: value.sources ?? null })
       }
       if (diagnostic === 'unsupported-version' || (diagnostic === 'corrupt' && value === null)) {
         discardStored(accountId)
@@ -210,6 +231,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     if (latest !== undefined) {
       state.committed = [...latest.ids]
       state.activation = latest.enabled
+      state.committedSources = latest.sources === null ? null : [...latest.sources]
     }
     state.pending = [...state.committed]
     state.status = 'ready'
@@ -246,24 +268,26 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
   }
 
   /** Replaces the pending selection; committed storage is untouched. */
-  function setPending(ids: readonly number[]): void {
+  function setPending(ids: readonly number[], view?: SelectionView): void {
     if (ready() === null) return
     editVersion += 1
     state.pending = canonicalIds([...ids])
+    if (view !== undefined && !state.pendingViews.includes(view)) state.pendingViews = [...state.pendingViews, view].sort()
   }
 
-  function togglePending(itemId: number): void {
+  function togglePending(itemId: number, view?: SelectionView): void {
     if (ready() === null) return
     const next = new Set(state.pending)
     if (next.has(itemId)) next.delete(itemId)
     else next.add(itemId)
-    setPending([...next])
+    setPending([...next], view)
   }
 
   function discardPending(): void {
     if (ready() === null) return
     editVersion += 1
     state.pending = [...state.committed]
+    state.pendingViews = []
   }
 
   /** Explicit confirmation: the canonical pending selection becomes the committed one and is stored. */
@@ -271,10 +295,18 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     const accountId = ready()
     if (accountId === null) return
     editVersion += 1
+    const wasEmpty = state.committed.length === 0
     state.committed = canonicalIds(state.pending)
     state.pending = [...state.committed]
-    shadow.set(accountId, { ids: [...state.committed], enabled: state.activation })
-    persist(accountId, state.committed, state.activation)
+    // Origin hints: accumulate edited views; a non-empty legacy (unknown) origin stays unknown, not guessed.
+    if (state.committed.length === 0) state.committedSources = []
+    else {
+      const base = wasEmpty ? [] : state.committedSources
+      state.committedSources = base === null ? null : [...new Set([...base, ...state.pendingViews])].sort()
+    }
+    state.pendingViews = []
+    shadow.set(accountId, { ids: [...state.committed], enabled: state.activation, sources: state.committedSources && [...state.committedSources] })
+    persist(accountId, state.committed, state.activation, state.committedSources)
   }
 
   /** The stored Profit activation preference. */
@@ -283,8 +315,8 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     if (accountId === null) return
     editVersion += 1
     state.activation = enabled
-    shadow.set(accountId, { ids: [...state.committed], enabled })
-    persist(accountId, state.committed, enabled)
+    shadow.set(accountId, { ids: [...state.committed], enabled, sources: state.committedSources && [...state.committedSources] })
+    persist(accountId, state.committed, enabled, state.committedSources)
   }
 
   /** Captures the account and edit state a later request is built from; null before restoration. */
