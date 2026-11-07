@@ -6,7 +6,7 @@ Authorization: start the agreed workflow, supervise progress and stop only for n
 
 Initial audit: setup PR [#131](https://github.com/Nebettadjsr/GW2/pull/131) merged as `9fd9ef5`; old issues #21, #60, #111 and #116 remain open. Coverage issue [#111](https://github.com/Nebettadjsr/GW2/issues/111) has no `auto` release and is not newly activated.
 
-Current handoff: valuation issue [#132](https://github.com/Nebettadjsr/GW2/issues/132) is DONE via accepted/merged PR [#133](https://github.com/Nebettadjsr/GW2/pull/133), merge `23ce30d`, with green required CI and clean native Codex review of head `340681d`. The narrowed CPU/memory contract is issue [#134](https://github.com/Nebettadjsr/GW2/issues/134), READY for supervisor release once this planning handoff is merged. No other feature contract is released.
+Current handoff: valuation #132 is DONE via #133 (`23ce30d`), whole-host CPU/memory reporting #134 is DONE via #137 (`a92d19a`), verified session identity #136 is DONE via #140 (`6dee479`), and backend material protection #138 is DONE via #142 (`ec07587`), each with required CI and clean native review. Supervisor completed the pending synthetic benchmark and actual service parity review on #142; this is not Oracle qualification. Frontend state #139 is READY for supervisor release after this handoff merges; tile selection #143 and character roster foundation #141 remain DRAFT. GitHub holds live run/review state; this is the planning handoff, not a second executable queue.
 
 ## Activation and state
 
@@ -24,7 +24,7 @@ Current handoff: valuation issue [#132](https://github.com/Nebettadjsr/GW2/issue
 | PLAN-KPI-001 | Planner inventories existing measurements and proposes bounded KPI contracts and workloads | PLAN-HOST-001 provider limits; real-host access is not required for local reporting work | DONE — planning artifact accepted in #134 |
 | PLAN-VALUE-001 | Planner prepares correctness contract for recursive valuation of owned bound/non-tradable materials, including daily materials | DOMAIN_SPEC.md sections 11.1–11.2 | DONE — contract accepted as #132 |
 | STORY-VALUE-001 | Claude corrects valuation and verifies list/detail cost/profit agreement, cycle handling, yields and performance | Approved issue #132 | DONE — PR #133 merged as 23ce30d |
-| STORY-KPI-001 | Claude adds whole-host Linux CPU/memory observations, boundaries/provenance and safe 2 OCPU/12 GB comparison to the existing report | Accepted contract #134; STORY-VALUE-001 accepted | READY — supervisor release next |
+| STORY-KPI-001 | Claude adds whole-host Linux CPU/memory observations, boundaries/provenance and safe 2 OCPU/12 GB comparison to the existing report | Accepted contract #134; STORY-VALUE-001 accepted | DONE — #137 merged as a92d19a; not Oracle qualification |
 | STORY-KPI-002 | Claude adds repeatable desktop and multi-account/fault qualification workloads | STORY-KPI-001 | DRAFT |
 | STORY-KPI-003 | Claude exposes a concise capacity/health summary and documented reproduction path | STORY-KPI-001, STORY-KPI-002 | DRAFT |
 | STORY-KPI-004 | Claude adds safe JVM heap/committed/max and GC observations and relates them to container/host memory without treating 12 GB as a JVM allowance | STORY-KPI-001 | DRAFT |
@@ -32,21 +32,25 @@ Current handoff: valuation issue [#132](https://github.com/Nebettadjsr/GW2/issue
 | STORY-KPI-006 | Claude adds transfer-boundary observations without treating Docker/internal traffic as billable Oracle egress | STORY-KPI-001 | DRAFT |
 | REVIEW-KPI-001 | Supervisor validates real target-host evidence and reports free-tier fit/gaps | STORY-KPI-001–006, qualification workloads/reporting, all final features, target-host/tenancy access | BLOCKED |
 | PLAN-FEATURE-001 | Planner refines material-protection stories and prepares concrete UI review | Confirmed domain/UX contracts; inspect current code | DRAFT |
-| STORY-MAT-001 | Claude implements approved backend settings/validation and recursive calculation restrictions, with tests | Approved PLAN-FEATURE-001 story contract; STORY-VALUE-001 | DRAFT |
-| STORY-MAT-002 | Claude implements tile checkboxes, confirmation, tier presets, per-account browser retention and Profit toggle/warning/links | UI design review, STORY-MAT-001 request contract | DRAFT |
-| STORY-MAT-003 | Claude completes list/detail consistency, navigation/account-switch regression and feature overhead evidence | STORY-MAT-001, STORY-MAT-002; comparable KPI workload | DRAFT |
+| STORY-MAT-004 | Claude exposes the verified account GUID additively in session responses for browser preference partitioning | STORY-KPI-001; approved #136 | DONE — #140 merged as 6dee479 |
+| STORY-MAT-001 | Claude implements backend settings/validation and recursive calculation restrictions, with real list/detail and overhead evidence | STORY-VALUE-001, STORY-KPI-001, STORY-MAT-004; approved #138 | DONE — #142 merged as ec07587 |
+| STORY-MAT-002 | Claude adds per-account browser persistence, canonical state and pending/committed selection foundation | STORY-MAT-001, STORY-MAT-004; approved #139 | READY — release after this handoff merges |
+| STORY-MAT-003 | Claude adds Bank/Materials tile checkboxes, pending edits and explicit confirmation | STORY-MAT-002; approved draft #143 | DRAFT |
+| STORY-MAT-005 | Claude adds verified T1–T6 intermediate-material presets and the four-item extra preset | STORY-MAT-003; membership intent confirmed, extra label pending | DRAFT |
+| STORY-MAT-006 | Claude adds Profit activation/count, empty-selection warning, links and request integration | STORY-MAT-001, STORY-MAT-003; approved UX | DRAFT |
+| STORY-MAT-007 | Claude verifies integrated navigation, refresh, account switching and list/detail behavior | STORY-MAT-005, STORY-MAT-006; comparable KPI workload | DRAFT |
 | PLAN-CHAR-001 | Planner audits character API/storage coverage and prepares equipment-first UI review with in-game-style tabs | Confirmed DOMAIN_SPEC.md section 56 and UX section 2.2 | DRAFT |
-| STORY-CHAR-001 | Claude adds reviewed scoped character read/refresh contracts and missing data/metadata support | Approved PLAN-CHAR-001 data contract | DRAFT |
+| STORY-CHAR-001 | Claude adds compact scoped roster and selected-character core/crafting reads using existing publication state | Approved draft #141; material work first in supervisor release order | DRAFT — prepared, not released |
 | STORY-CHAR-002 | Claude implements character roster and equipment-focused detail view | STORY-CHAR-001, approved UI design | DRAFT |
 | STORY-CHAR-003 | Claude implements character inventory and build details with navigation and account-isolation regressions | STORY-CHAR-001, STORY-CHAR-002; approved template scope | DRAFT |
-| STORY-CHAR-004 | Claude adds agreed story details supported by the API | PLAN-CHAR-001 feasibility evidence and approved story scope | BLOCKED |
+| STORY-CHAR-004 | Reserved character Story outcome | A new Product Owner decision is required to resume | DEFERRED — Product Owner confirmed 2026-11-07 |
 | REVIEW-CHAR-001 | Supervisor reviews correctness, desktop behavior and Oracle resource evidence including both new features | Character/material stories and KPI qualification workloads | DRAFT |
 | PLAN-STATUS-001 | Planner audits current global routes/status projections and defines owner/admin and automatic inventory-freshness contracts | DOMAIN_SPEC.md section 57; TARGET_ARCHITECTURE.md section 8.3 | DRAFT |
 | STORY-STATUS-001 | Claude implements backend owner authorization and owner/generic status and task access contracts | Approved PLAN-STATUS-001; verified owner GUID/config before enabling privileges | DRAFT |
 | STORY-STATUS-002 | Claude implements ordinary versus owner System Status views and global refresh controls | STORY-STATUS-001, reviewed UX; bounded full-catalog refresh contract | DRAFT |
 | STORY-STATUS-003 | Claude replaces Bank/Materials refresh buttons with retained-snapshot automatic stale refresh and updating/failure hints | Approved PLAN-STATUS-001; shared freshness/task coverage and grant policy | DRAFT |
 
-IDs are reserved draft contracts, not GitHub issue numbers. No implementation issue has been created. Existing selector compatibility is retained by the `STORY-KPI-NNN` naming; publication/labels still require release.
+Story IDs are distinct from GitHub issue numbers. Published contracts are linked above; unpublished rows remain drafts. Never reuse a published ID for a different outcome. Existing selector compatibility is retained by `STORY-AREA-NNN` naming; publication/labels still require supervisor release.
 
 ## KPI story drafting criteria
 
@@ -58,7 +62,7 @@ For STORY-KPI-003: agree the presentation with the supervisor, preferably extend
 
 ## Material-protection planning handoff
 
-Correctness first: `CraftingResolver.resolveNeed` currently calculates fallback owned value only for `usedSellable()`; usable bound stock bypasses that fallback. The supplied Mithrillium screenshot shows zero value. Reproduce the affected path and prepare STORY-VALUE-001 against the clarified domain rule before releasing material protection. Existing recursive fallback helpers are present; reuse or correct them rather than assuming a wholly new valuation subsystem is needed. No corrected profit or runtime cost has been measured yet.
+Correctness prerequisite is accepted: STORY-VALUE-001 / #132 merged via #133. Owned bound stock now receives recursive/vendor/unvalued fallback with shared fractional rounding and cycle handling. Do not repeat the obsolete zero-valued-bound-stock investigation. This does not claim a measured live-account Mithrillium profit or Oracle capacity.
 
 Confirmed intent and feature-level criteria: `docs/ROADMAP.md`, Milestone 2; domain contract: `docs/DOMAIN_SPEC.md` section 9.1; UI contract: `docs/FRONTEND_UX_GUIDELINES.md` section 2.1. Core product questions are resolved. Draft contracts still require planner refinement and supervisor release; they are not implementation authorization.
 
@@ -74,7 +78,7 @@ Milestone 3 scope is in `docs/DOMAIN_SPEC.md` section 56; UI intent is in `docs/
 
 Existing `sync/CharacterSync.java`, `model/CharacterInfo.java`, `model/CharacterItemRow.java`, `parser/CharacterItemsParser.java` and `repo/CharacterRepository.java` provide reusable identity/crafting and flat bag/equipment data. The inspected records do not retain a full equipment/build-template representation or upgrade/stat details; do not assume new views can be delivered from existing rows alone. Verify API schema/version, permissions, missing metadata and account-scoped publication before choosing storage extensions.
 
-ArenaNet's [template API announcement](https://en-forum.guildwars2.com/topic/65255-api-updates-december-18-2019/) documents equipment/build tabs and warns that several tabs may reference one owned item. It is historical API evidence, not a substitute for checking the current schema. Keep template associations distinct from actual inventory quantities. Story-journal coverage remains unverified; backstory is not automatically equivalent.
+ArenaNet's [template API announcement](https://en-forum.guildwars2.com/topic/65255-api-updates-december-18-2019/) documents equipment/build tabs and warns that several tabs may reference one owned item. It is historical API evidence, not a substitute for checking the current schema. Keep template associations distinct from actual inventory quantities. Product Owner deferred Story after the API coverage assessment; do not substitute backstory or partial quest history.
 
 Template scope is confirmed: all saved available equipment/build tabs, adjacent like the in-game Hero panel, preserving original slot order, with the in-game active tab initially selected. Build/equipment selections are independent and read-only; inspecting another tab must not pretend to activate it in the game. Concrete overview fields and equipment layout still go through UI review before implementation. Prefer cached shared item/skill metadata, bounded account data and on-demand detail loading; no additional services or background poller. Include the feature in final Oracle resource qualification.
 
@@ -90,6 +94,6 @@ Resolve the owner via a configured, verified account GUID; do not request/store 
 
 - Hosting: RESOLVED by Product Owner, 2026-11-07: final product must fit Oracle Always Free. Target and verified quota references are in `docs/ROADMAP.md`; actual host access, available tenancy quota and workload/headroom remain to be established.
 - Intended concurrent-user workload and acceptable latency/headroom: planner proposes against the Oracle resource baseline; Product Owner approves material tradeoffs.
-- Material protection: core product/UI/retention answers are confirmed and recorded in the owning domain/UX documents. Story and concrete UI review remain preparation work.
-- Characters: feature and in-game-style equipment/build tab scope confirmed; equipment first, inventory/builds next, story subject to API coverage, discovered recipes excluded and map completion deferred. Concrete UI design remains review work. Drafts do not authorize implementation.
-- Next authorized action: release accepted contract #134 to Claude after this planning handoff is merged, then inspect its real diff, tests, smoke evidence and native review. PR-triggered runs marked action_required need supervisor approval for the trusted exact head; a separate dispatched CI pass does not replace branch-protection checks. Real Oracle access is required for final qualification, not for locally testable reporting preparation.
+- Material protection: core product/UI/retention answers are confirmed. T1–T6 presets select intermediate materials only, not basic materials or gemstones; an additional preset selects clovers, coins, ectoplasm and obsidian shards. Exact membership must be verified; only that extra preset's visible label remains open. Presets preselect pending checkboxes and do not commit automatically.
+- Characters: equipment first, inventory/builds next; Story is deferred, discovered recipes excluded and map completion deferred. Review genuinely unspecified visual choices without reopening approved tabs and roster/detail behavior. Drafts do not authorize implementation.
+- Next authorized action: merge this handoff, then release #139 to Claude. Keep #143 and later material UI contracts prepared through the GitHub planner. Planning tasks must use a recent accepted checkout; old setup PR #131 is historical. PR-triggered runs marked action_required need supervisor approval for the trusted exact head; dispatched CI does not replace branch-protection checks. Real Oracle access is required for final qualification, not for locally testable feature work.

@@ -1828,7 +1828,7 @@ Equipment details cover armor, weapons and other equipped items, with item ident
 
 Inventory shows the selected character's items and quantities. Builds and equipment expose all saved, available tabs supplied by the API, in their in-game slot order. On initial entry, select the currently active in-game tab for each section. The user can inspect another tab without changing the character's actual in-game active build/equipment; these are read-only views. Build and equipment tabs have independent selection and active-state information.
 
-Story details are requested, subject to an explicit API coverage assessment. Do not present character backstory choices as completed story-journal progression or invent progress that the API does not expose. Bring unsupported requested information back to the Product Owner before choosing a substitute.
+Story is deferred by Product Owner decision (2026-11-07). Equipment, inventory and builds remain the current scope. Do not substitute backstory choices or partial quest history for the deferred Story Journal.
 
 Discovered recipes are excluded from this view. Map completion is deferred pending a later Product Owner decision. Public sharing, exports, editing in-game equipment/builds and a build-optimization engine are not requested by this feature. Screenshots illustrate the desired overview-to-details interaction; they do not implicitly require every field/control shown there.
 

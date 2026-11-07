@@ -82,15 +82,15 @@ Status: awaiting bounded story refinement/release under active supervision. Deta
 
 ### Goal and scope
 
-Add a GW2efficiency-inspired roster with concise information and click-through character details. Primary purpose: inspect armor/weapons/other equipment to see ascended/legendary items and remaining gear gaps. Include character inventory, builds and story details to the extent supported by the API. Discovered recipes are excluded; map completion is deferred for a later Product Owner decision.
+Add a GW2efficiency-inspired roster with concise information and click-through character details. Primary purpose: inspect armor/weapons/other equipment to see ascended/legendary items and remaining gear gaps. Include character inventory and builds. Story is deferred by Product Owner decision (2026-11-07). Discovered recipes are excluded; map completion is deferred for a later Product Owner decision.
 
 Owning scope: [DOMAIN_SPEC.md section 56](DOMAIN_SPEC.md). UI intent: [FRONTEND_UX_GUIDELINES.md section 2.2](FRONTEND_UX_GUIDELINES.md). Do not infer every statistic, sharing/export option or character renderer from the supplied screenshots.
 
 ### Sequence and exit criteria
 
-1. Audit existing character synchronization/storage and current API data/permissions for equipment, inventory, builds and story. Include all saved available equipment/build tabs using adjacent in-game-style tabs, in original slot order, with the in-game active tab initially selected. Report unsupported story data rather than silently substituting backstory choices.
+1. Audit existing character synchronization/storage and current API data/permissions for equipment, inventory and builds. Include all saved available equipment/build tabs using adjacent in-game-style tabs, in original slot order, with the in-game active tab initially selected. Story remains outside this sequence.
 2. Prepare a concrete overview/detail UI proposal for Product Owner review, prioritizing equipment quality visibility. Set bounded read/refresh and cache contracts; reuse current account and shared metadata infrastructure.
-3. Implement reviewed data/API and equipment/overview stories, then inventory/build details and supported story functionality. Every story includes meaningful tests; pending API/product choices block only the affected work.
+3. Implement reviewed data/API and equipment/overview stories, then inventory/build details. Every story includes meaningful tests; pending API/product choices block only the affected work.
 4. Verify account isolation, metadata-based rarity, missing versus empty slots, template-reference deduplication, refresh/recovery and navigation. Do not change existing crafting inventory totals through duplicated template equipment.
 5. Measure roster/detail response size, desktop rendering, metadata/upstream requests, cold/warm behavior and whole-stack CPU/memory/storage under the Oracle workload. No per-character polling loop, new service or eager download of every detail on each roster visit without measured justification.
 
