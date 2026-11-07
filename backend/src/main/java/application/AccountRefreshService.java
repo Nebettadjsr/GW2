@@ -123,7 +123,9 @@ public class AccountRefreshService {
                 // Optional coverage: only ever run when explicitly demanded. refreshAll below lists its
                 // sources explicitly and never includes it.
                 new ScopedStep(AccountSyncStateRepository.CHARACTER_EQUIPMENT_TABS,
-                        () -> gateway.syncCharacterEquipmentTabs(scope, fetcher)));
+                        () -> gateway.syncCharacterEquipmentTabs(scope, fetcher)),
+                new ScopedStep(AccountSyncStateRepository.CHARACTER_BUILD_TABS,
+                        () -> gateway.syncCharacterBuildTabs(scope, fetcher)));
 
         Exception firstFailure = null;
         for (ScopedStep step : steps) {

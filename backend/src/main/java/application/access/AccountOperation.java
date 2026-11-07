@@ -60,6 +60,20 @@ public enum AccountOperation {
             Set.of(AccountGrant.ACCOUNT, AccountGrant.CHARACTERS, AccountGrant.INVENTORIES, AccountGrant.BUILDS),
             Set.of("/v2/characters", "/v2/characters/:id/equipmenttabs")),
 
+    /** The saved-build-tabs endpoint itself, {@code /v2/characters/:id/buildtabs} (STORY-CHAR-007). */
+    CHARACTER_BUILD_TABS_ENDPOINT(
+            Set.of(AccountGrant.ACCOUNT, AccountGrant.BUILDS, AccountGrant.CHARACTERS),
+            Set.of("/v2/characters/:id/buildtabs")),
+
+    /**
+     * The build-tabs workflow (refresh and read): the endpoint's own dependency plus the cached
+     * {@code CHARACTERS} parent it enumerates, which stays governed by {@link #CHARACTERS_READ}. The union
+     * applies only to this workflow and is never added to any existing consumer.
+     */
+    CHARACTER_BUILD_TABS_READ(
+            Set.of(AccountGrant.ACCOUNT, AccountGrant.CHARACTERS, AccountGrant.INVENTORIES, AccountGrant.BUILDS),
+            Set.of("/v2/characters", "/v2/characters/:id/buildtabs")),
+
     /**
      * Crafting Profit's account inputs: bank, material storage, recipe unlocks and the character
      * roster. Luck is deliberately absent - Profit never consumes it (DOMAIN_SPEC), so a key without

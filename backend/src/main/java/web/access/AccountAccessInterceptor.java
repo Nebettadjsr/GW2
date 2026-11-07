@@ -119,7 +119,8 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
     static boolean isScopedAccountSync(String path) {
         return path.equals("/api/sync/account") || path.equals("/api/sync/account/crafting-profit")
                 || path.equals("/api/sync/account/luck")
-                || path.equals("/api/sync/account/character-equipment-tabs");
+                || path.equals("/api/sync/account/character-equipment-tabs")
+                || path.equals("/api/sync/account/character-build-tabs");
     }
 
     /** Account reads that read only scoped storage and so cannot run without a resolved scope. */
@@ -168,6 +169,7 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
             case "/api/sync/account/crafting-profit" -> AccountOperation.CRAFTING_PROFIT_READ;
             case "/api/sync/account/luck" -> AccountOperation.LUCK_READ;
             case "/api/sync/account/character-equipment-tabs" -> AccountOperation.CHARACTER_EQUIPMENT_TABS_READ;
+            case "/api/sync/account/character-build-tabs" -> AccountOperation.CHARACTER_BUILD_TABS_READ;
             default -> null;
         };
     }

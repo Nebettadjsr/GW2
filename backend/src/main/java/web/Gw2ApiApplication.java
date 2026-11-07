@@ -335,6 +335,15 @@ public class Gw2ApiApplication {
                 Clock.systemUTC(), Duration.ofMillis(accountMaxAgeMs));
     }
 
+    /** Selected-character saved build tabs over stored rows only (STORY-CHAR-007). */
+    @Bean
+    public application.CharacterBuildTabsService characterBuildTabsService(
+            ScopedAccountRefreshCoordinator coordinator,
+            @Value("${gw2.account-data.max-age-ms:900000}") long accountMaxAgeMs) {
+        return new application.CharacterBuildTabsService(coordinator, new repo.CharacterBuildTabsRepository(),
+                Clock.systemUTC(), Duration.ofMillis(accountMaxAgeMs));
+    }
+
     /** Selected-character bag layout over stored rows only (STORY-CHAR-006). */
     @Bean
     public application.CharacterInventoryLayoutService characterInventoryLayoutService(
