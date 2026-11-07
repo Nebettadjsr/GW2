@@ -17,7 +17,7 @@ Contracts and invocation details: [agent roles](../agent/README.md). These files
 
 ### Goal
 
-Implement the missing KPIs and repeatable qualification needed for the final product to operate within Oracle Always Free while preserving correctness, account isolation and a usable desktop experience. Include material protection and the Characters view in final qualification, not just the current application. Report supported capacity and limitations honestly; measuring usage does not itself guarantee free hosting.
+Implement the missing KPIs and repeatable qualification needed for the final product to operate within Oracle Always Free while preserving correctness, account isolation and a usable desktop experience. Final qualification includes material protection, Characters, owner administration and automatic inventory freshness—not just the current application. It also requires the reserved JVM, storage/log and transfer accounting follow-ups. Report supported capacity and limitations honestly; measuring usage does not itself guarantee free hosting.
 
 ### Confirmed hosting target
 
@@ -94,7 +94,7 @@ Owning scope: [DOMAIN_SPEC.md section 56](DOMAIN_SPEC.md). UI intent: [FRONTEND_
 4. Verify account isolation, metadata-based rarity, missing versus empty slots, template-reference deduplication, refresh/recovery and navigation. Do not change existing crafting inventory totals through duplicated template equipment.
 5. Measure roster/detail response size, desktop rendering, metadata/upstream requests, cold/warm behavior and whole-stack CPU/memory/storage under the Oracle workload. No per-character polling loop, new service or eager download of every detail on each roster visit without measured justification.
 
-Status: awaiting bounded story refinement/release under active supervision. Final product hosting qualification depends on this milestone as well as material protection. The backlog records story release; unreleased drafts are not executable.
+Status: awaiting bounded story refinement/release under active supervision. Final product hosting qualification depends on this milestone, material protection, owner administration and automatic inventory freshness. The backlog records story release; unreleased drafts are not executable.
 
 ## Operational follow-up: owner administration and automatic inventory refresh
 
@@ -108,7 +108,7 @@ Prepare separate backend authorization, status UI and inventory freshness storie
 
 ### Correctness prerequisite: owned non-tradable valuation
 
-Product Owner clarification: owned non-tradable/bound inputs, especially daily materials, must use recursive crafting-input value before vendor fallback rather than automatic zero. The owning rule is `DOMAIN_SPEC.md` sections 11.1–11.2. Review and correct the current bound-stock bypass before accepting material-protection work; verify list/detail profit reconciliation and bounded valuation overhead. This is a draft correction, not a started implementation.
+Product Owner clarification: owned non-tradable/bound inputs, especially daily materials, must use recursive crafting-input value before vendor fallback rather than automatic zero. The owning rule is `DOMAIN_SPEC.md` sections 11.1–11.2. The accepted contract is issue [#132](https://github.com/Nebettadjsr/GW2/issues/132), currently ACTIVE through PR [#133](https://github.com/Nebettadjsr/GW2/pull/133) and not DONE while review-driven mixed bound/sellable fractional-rounding correction remains under verification. Material-protection implementation remains dependent on acceptance of this prerequisite.
 
 [Domain specification](DOMAIN_SPEC.md), [current architecture](CURRENT_ARCHITECTURE.md), [target architecture](TARGET_ARCHITECTURE.md), [test strategy](TEST_STRATEGY.md) and recorded user decisions remain authoritative. This roadmap does not change their business or architecture rules.
 
