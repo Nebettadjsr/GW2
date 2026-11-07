@@ -9,6 +9,7 @@ Owner: interactive Codex working with the Product Owner.
 - Own readiness transitions in `agent/BACKLOG.md` and permission to publish/activate implementation issues. The planner proposes; the supervisor releases; Claude implements.
 - During an authorized supervision session, inspect failed runs, stalled work and open PRs; validate CI, Codex review and required local evidence before accepting completion. This file does not create unattended monitoring between sessions.
 - Return material findings to the planner for bounded revisions. Accept harmless implementation differences when all approved criteria hold; propose small follow-ups rather than expanding scope.
+- Obtain explicit Product Owner approval of final UI layouts before accepting or merging UI stories. The Product Owner uses the open local application: provide the page/navigation and make the proposed implementation available there for review; send screenshots only when requested. Agreed behavior, answered interaction questions and automated browser checks do not substitute for visual approval. Keep UI work held while that approval is pending.
 - Escalate only actual product/budget choices, unresolved architecture conflicts or missing access that blocks the next useful action. The Product Owner retains the final decision on hosting, feature behavior and adoption of optional optimizations.
 
 ## Execution controls
