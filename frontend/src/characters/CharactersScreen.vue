@@ -5,6 +5,7 @@ import { charactersApi, type CharactersApi } from '@/api/charactersApi'
 import { syncApi } from '@/api/syncApi'
 import PageHeader from '@/shell/PageHeader.vue'
 import EquipmentPanel from './EquipmentPanel.vue'
+import CharacterFacts from './CharacterFacts.vue'
 import InventoryPanel from './InventoryPanel.vue'
 import { useCharacters } from './useCharacters'
 
@@ -148,16 +149,7 @@ function fmt(value?: string | null): string | null {
       <p v-if="c.detailIsRetained.value" class="notice" role="status" data-test="detail-retained">
         Showing the saved character list entry; the latest detail read did not succeed, so these facts may be out of date.
       </p>
-      <dl v-if="c.shownDetail.value" class="facts" data-test="character-facts">
-        <dt>Profession</dt><dd>{{ c.shownDetail.value.profession }}</dd>
-        <dt>Race</dt><dd>{{ c.shownDetail.value.race }}</dd>
-        <dt>Level</dt><dd>{{ c.shownDetail.value.level ?? 'unknown' }}</dd>
-        <template v-if="fmt(c.shownDetail.value.createdAt)"><dt>Created</dt><dd>{{ fmt(c.shownDetail.value.createdAt) }}</dd></template>
-        <template v-if="c.shownDetail.value.craftingDisciplines.length > 0">
-          <dt>Crafting</dt>
-          <dd>{{ c.shownDetail.value.craftingDisciplines.map((d) => `${d.discipline} ${d.rating}${d.active ? '' : ' (inactive)'}`).join(', ') }}</dd>
-        </template>
-      </dl>
+      <CharacterFacts v-if="c.shownDetail.value && c.section.value !== 'inventory'" :detail="c.shownDetail.value" :created="fmt(c.shownDetail.value.createdAt)" />
 
       <div class="sections" role="tablist" aria-label="Character sections" data-test="section-tablist" @keydown="onTabKey">
         <button v-for="t in SECTIONS" :key="t.id" :ref="(el) => setTab(t.id, el)" type="button" role="tab" :id="`section-tab-${t.id}`"
@@ -246,7 +238,10 @@ function fmt(value?: string | null): string | null {
           Last synchronized: {{ fmt(c.inventorySource.value.completedAt) ?? 'unknown' }}.
         </p>
         <p v-if="c.inventorySource.value?.contents === 'ALL_SLOTS_EMPTY'" class="meta" data-test="inventory-all-empty">All listed bag slots are empty.</p>
-        <InventoryPanel v-if="c.inventorySource.value?.bags" :bags="c.inventorySource.value.bags" />
+        <InventoryPanel v-if="c.inventorySource.value?.bags" :bags="c.inventorySource.value.bags">
+          <template #facts><CharacterFacts v-if="c.shownDetail.value" :detail="c.shownDetail.value" :created="fmt(c.shownDetail.value.createdAt)" /></template>
+        </InventoryPanel>
+        <CharacterFacts v-else-if="c.shownDetail.value" :detail="c.shownDetail.value" :created="fmt(c.shownDetail.value.createdAt)" />
       </template>
       </div>
     </section>
@@ -254,12 +249,10 @@ function fmt(value?: string | null): string | null {
 </template>
 
 <style scoped>
-.screen { max-width: 960px; margin-inline: auto; }
+.screen { max-width: 1280px; margin-inline: auto; }
 .roster { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
 .roster__item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; padding: 8px; }
-.facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; }
 .sections { display: flex; gap: 2px; margin: 12px 0 8px; border-bottom: 1px solid var(--border, #888); }
 .sections button { border: 1px solid var(--border, #888); border-bottom: 0; background: transparent; padding: 6px 12px; cursor: pointer; }
 .sections__tab--selected { font-weight: 700; background: rgba(128, 128, 128, 0.2); }
-.facts dd { margin: 0; }
 </style>
