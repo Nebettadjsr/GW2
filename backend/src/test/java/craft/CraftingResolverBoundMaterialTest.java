@@ -216,6 +216,72 @@ class CraftingResolverBoundMaterialTest {
         assertEquals(14, resolveBoundCost(fresh, 4));
     }
 
+    private static int costWith(PlanState state, int qty, Map<Integer, PriceQuote> tp) {
+        PlannerContext ctx = CraftTestFixtures.context(fractionalBRecipes(), tp,
+                CraftTestFixtures.defaultSettings(), Set.of()).withVendorValues(Map.of());
+        return new CraftingResolver().resolveNeed(B, qty, ctx, state, true).getOpportunityCostCopper();
+    }
+
+    private static Map<Integer, PriceQuote> aOnly() {
+        return Map.of(A, CraftTestFixtures.quote(10, 10));
+    }
+
+    private static int resolveForCharacter(PlanState state, int qty, Map<Integer, PriceQuote> tp, String character) {
+        try {
+            PlannerContext ctx = CraftTestFixtures.context(fractionalBRecipes(), tp,
+                    CraftTestFixtures.defaultSettings(), Set.of()).withVendorValues(Map.of());
+            var m = CraftingResolver.class.getDeclaredMethod("resolveNeed", int.class, int.class,
+                    PlannerContext.class, PlanState.class, boolean.class, String.class, String.class);
+            m.setAccessible(true);
+            return ((ResolvedNeed) m.invoke(new CraftingResolver(), B, qty, ctx, state, true, null, character))
+                    .getOpportunityCostCopper();
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    @Test
+    void mixedBoundAndSellableWithoutSellQuoteShareOneRoundingBasis() {
+        // 10/3 per unit: 1 bound + 1 sellable = ceil(20/3)=7, not 4+4=8.
+        PlanState state = CraftTestFixtures.stateWithBoundInventory(Map.of(B, 1), Map.of(B, 1));
+        assertEquals(7, costWith(state, 2, aOnly()));
+        assertEquals(1, state.consumedBoundQuantity(B));
+        assertEquals(1, state.consumedSellableQuantity(B));
+    }
+
+    @Test
+    void splitRequirementsUsingBothPoolsChargeCumulativeTotalAndFollowRollback() {
+        PlanState state = CraftTestFixtures.stateWithBoundInventory(Map.of(B, 2), Map.of(B, 2));
+        int mark = state.mark();
+        assertEquals(4, costWith(state, 1, aOnly()));   // bound: ceil(10/3)
+        assertEquals(3, costWith(state, 1, aOnly()));   // sellable: ceil(20/3)=7 - 4
+        assertEquals(7, costWith(state, 2, aOnly()));   // ceil(40/3)=14 - 7
+        state.rollbackTo(mark);
+        assertEquals(4, costWith(state, 1, aOnly()));
+        assertEquals(3, costWith(state, 1, aOnly()));
+        assertEquals(7, costWith(state, 2, aOnly()));
+        PlanState fresh = CraftTestFixtures.stateWithBoundInventory(Map.of(B, 2), Map.of(B, 2));
+        assertEquals(14, costWith(fresh, 4, aOnly()));
+    }
+
+    @Test
+    void directlyQuotedSellableStaysSeparateFromBoundFallbackBasis() {
+        Map<Integer, PriceQuote> tp = Map.of(A, CraftTestFixtures.quote(10, 10), B, CraftTestFixtures.quote(200, 150));
+        PlanState sellableOnly = CraftTestFixtures.stateWithBoundInventory(Map.of(B, 1), Map.of());
+        int direct = costWith(sellableOnly, 1, tp);
+        assertTrue(direct > 0);
+        // Earlier directly quoted sellable consumption (by a step on another character), then a
+        // later character-bound-only requirement with no current sellable consumption.
+        PlanState state = new PlanState(Map.of(B, 1), Map.of(), Map.of("X", Map.of(B, 2)));
+        assertEquals(direct, resolveForCharacter(state, 1, tp, "Y")); // Y has no bound stock
+        assertEquals(1, state.consumedSellableQuantity(B));
+        assertEquals(4, resolveForCharacter(state, 1, tp, "X"));  // ceil(10/3), no extra direct charge
+        assertEquals(3, resolveForCharacter(state, 1, tp, "X"));  // ceil(20/3) - 4
+        // and both in one requirement: direct sellable + separately rounded bound
+        PlanState both = CraftTestFixtures.stateWithBoundInventory(Map.of(B, 1), Map.of(B, 1));
+        assertEquals(direct + 4, costWith(both, 2, tp));
+    }
+
     @Test
     void vendorValueUsedWhenNoCompleteCraftingValueExists() {
         // ingredient has no price and no vendor value -> recipe incomplete -> vendor fallback

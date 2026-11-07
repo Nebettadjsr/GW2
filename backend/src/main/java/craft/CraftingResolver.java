@@ -146,26 +146,23 @@ public class CraftingResolver {
             int usedFromInventory = consumption.total();
             result.setQtyFromInventory(usedFromInventory);
 
-            int sellUnit = consumption.usedSellable() > 0 ? resolveDirectSellUnit(itemId, ctx.tp, ctx.settings) : 0;
-            int oppCost = consumption.usedSellable() * sellUnit;
+            // A direct TP sell quote is a property of the item, not of this requirement.
+            int sellUnit = (consumption.usedSellable() > 0 || state.consumedSellableQuantity(itemId) > 0)
+                    ? resolveDirectSellUnit(itemId, ctx.tp, ctx.settings) : 0;
+            boolean directlyQuoted = sellUnit > 0;
+            int oppCost = directlyQuoted ? consumption.usedSellable() * sellUnit : 0;
             boolean unvalued = false;
-            if (consumption.usedSellable() > 0 && sellUnit <= 0) {
+            // DOMAIN_SPEC.md section 11.2: usable bound stock is not free, and sellable stock
+            // without a direct quote uses the same fallback. Both pools share one cumulative
+            // rounding basis (difference of rounded cumulative totals) so fractional per-unit
+            // values never round up independently. Valuation only: nothing is bought or consumed.
+            int fallbackUsed = consumption.usedBound() + (directlyQuoted ? 0 : consumption.usedSellable());
+            if (fallbackUsed > 0) {
                 OwnedValue fallback = resolveOwnedFallbackValue(itemId, ctx);
-                int consumed = state.consumedSellableQuantity(itemId);
-                oppCost = fallback.costOf(consumed) - fallback.costOf(consumed - consumption.usedSellable());
+                int consumed = state.consumedBoundQuantity(itemId)
+                        + (directlyQuoted ? 0 : state.consumedSellableQuantity(itemId));
+                oppCost += fallback.costOf(consumed) - fallback.costOf(consumed - fallbackUsed);
                 unvalued = fallback.isZero();
-            }
-            if (consumption.usedBound() > 0) {
-                // DOMAIN_SPEC.md section 11.2: usable bound stock is not free. Value it by
-                // recursive crafting cost, then vendor value, then explicit unvalued zero. This is
-                // valuation only: nothing is bought, consumed or recorded for the ingredients.
-                OwnedValue boundValue = resolveOwnedFallbackValue(itemId, ctx);
-                // Charge the difference of cumulative rounded totals so fractional per-unit
-                // values never round up independently for each requirement.
-                int boundConsumed = state.consumedBoundQuantity(itemId);
-                oppCost += boundValue.costOf(boundConsumed)
-                        - boundValue.costOf(boundConsumed - consumption.usedBound());
-                if (boundValue.isZero()) unvalued = true;
             }
             result.setOpportunityCostCopper(oppCost);
 
