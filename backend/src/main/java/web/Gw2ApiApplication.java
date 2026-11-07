@@ -335,6 +335,15 @@ public class Gw2ApiApplication {
                 Clock.systemUTC(), Duration.ofMillis(accountMaxAgeMs));
     }
 
+    /** Selected-character bag layout over stored rows only (STORY-CHAR-006). */
+    @Bean
+    public application.CharacterInventoryLayoutService characterInventoryLayoutService(
+            ScopedAccountRefreshCoordinator coordinator,
+            @Value("${gw2.account-data.max-age-ms:900000}") long accountMaxAgeMs) {
+        return new application.CharacterInventoryLayoutService(coordinator,
+                new repo.CharacterInventoryLayoutRepository(), Clock.systemUTC(), Duration.ofMillis(accountMaxAgeMs));
+    }
+
     /** The transport rules the session routes and the account guard must apply identically. */
     @Bean
     public AccountAccessHttp accountAccessHttp(

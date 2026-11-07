@@ -502,6 +502,8 @@ public final class IconSync {
             SELECT item_id FROM account_bank WHERE account_id = ? AND item_id IS NOT NULL
             UNION SELECT item_id FROM account_materials WHERE account_id = ?
             UNION SELECT item_id FROM character_items WHERE account_id = ?
+            UNION SELECT container_item_id FROM character_bags
+                WHERE account_id = ? AND container_item_id IS NOT NULL
         ) referenced
         ORDER BY item_id
         """;
@@ -510,7 +512,7 @@ public final class IconSync {
 
         try (PreparedStatement ps = con.prepareStatement(sql)) {
 
-            for (int parameter = 1; parameter <= 3; parameter++)
+            for (int parameter = 1; parameter <= 4; parameter++)
                 ps.setObject(parameter, scope.accountId());
 
             try (ResultSet rs = ps.executeQuery()) {
