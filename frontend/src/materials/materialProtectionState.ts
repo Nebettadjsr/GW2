@@ -176,11 +176,18 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
         (state.diagnostic === 'write-failed' ||
           state.diagnostic === 'quota-exceeded' ||
           state.diagnostic === 'remove-failed' ||
-          state.diagnostic === 'read-failed' ||
           state.diagnostic === 'corrupt' ||
           state.diagnostic === 'unsupported-version')
       ) {
         state.diagnostic = null
+      } else if (state.accountId === accountId && state.diagnostic === 'read-failed') {
+        // A successful write does not prove reads work: clear only after a successful minimal readback.
+        try {
+          storage.getItem(keyFor(accountId))
+          state.diagnostic = null
+        } catch {
+          // Reads still fail: keep the bounded restoration warning.
+        }
       }
     } catch (error) {
       if (state.accountId === accountId) state.diagnostic = diagnose(error, 'write-failed')

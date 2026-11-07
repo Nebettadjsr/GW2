@@ -1,6 +1,6 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { connection } from '@/api/accountSession'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { connectKey, connection, resetAccountSession } from '@/api/accountSession'
 import type { CraftingProfitRequest, CraftingProfitResolutionResponse, CraftingProfitResponse } from '@/api/types'
 import type { SyncApi } from '@/api/syncApi'
 import {
@@ -154,10 +154,10 @@ describe('Crafting Profit material protection', () => {
     await flushPromises()
     slow.resolve(echo({ settings: { ...DEFAULT_SETTINGS, materialProtectionEnabled: true, protectedItemIds: [3] } }))
     await flushPromises()
-    expect(fake.profitRequests.at(-1)!.settings?.materialProtectionEnabled).not.toBe(true)
-    expect(w.find('[data-test="protection-count"]').text()).toContain('0 items')
+    // The outgoing workspace submits nothing for B and must not show A's late answer.
+    expect(fake.profitRequests).toHaveLength(1)
     expect(useMaterialProtection().state.effective?.enabled ?? false).toBe(false)
-    expect(w.find('[data-test="summary"]').exists()).toBe(true)
+    expect(w.find('[data-test="summary"]').exists()).toBe(false)
   })
 
   it('shows the empty-selection warning as a floating alert that can be dismissed', async () => {
@@ -280,23 +280,51 @@ describe('committed-context watcher request counts', () => {
     expect(fake.profitRequests).toHaveLength(count)
   })
 
-  it('does not submit during transient null identity, then calculates once for the validated account', async () => {
+  it('does not submit during transient null identity, nor for another account in the old workspace', async () => {
     commit([3])
     useMaterialProtection().setActivation(true)
     const fake = api()
-    const slow = deferred<CraftingProfitResponse>()
     const w = mount(CraftingProfitScreen, { props: { api: fake, refreshApi: syncApi } })
     await flushPromises()
     const count = fake.profitRequests.length
-    fake.profitHandler = () => slow.promise
     connection.accountId = null
     await flushPromises()
     expect(fake.profitRequests).toHaveLength(count)
     connection.accountId = B
     await flushPromises()
-    expect(fake.profitRequests).toHaveLength(count + 1)
-    expect(fake.profitRequests.at(-1)!.settings?.materialProtectionEnabled).not.toBe(true)
+    // The incoming workspace (keyed by generation) calculates for B with its own inputs.
+    expect(fake.profitRequests).toHaveLength(count)
+    // Same-account renewal after a transient null still calculates.
+    connection.accountId = null
+    connection.accountId = A
+    await flushPromises()
     expect(w.exists()).toBe(true)
+  })
+
+  it('real connectKey account replacement: old workspace submits nothing under the new account', async () => {
+    commit([3])
+    useMaterialProtection().setActivation(true)
+    const fake = api()
+    await open(fake)
+    resetAccountSession()
+    connection.accountId = A
+    await flushPromises()
+    const count = fake.profitRequests.length
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ accountId: B, accessContext: 'ctx', expiresAt: '2099-01-01T00:00:00Z', grants: ['account'] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    ))
+    try {
+      expect(await connectKey('KEY-B')).toBe(true)
+      await flushPromises()
+      expect(connection.accountId).toBe(B)
+      expect(fake.profitRequests).toHaveLength(count)
+    } finally {
+      vi.unstubAllGlobals()
+      resetAccountSession()
+    }
   })
 
   it('rejects an in-flight response that was overtaken by a null identity', async () => {
@@ -395,6 +423,30 @@ describe('storage recovery', () => {
   })
 })
 
+describe('read-failed warning', () => {
+  it('stays while reads keep failing after successful writes, and clears after a genuine read recovery', () => {
+    let readsFail = true
+    const data = new Map<string, string>()
+    const m = createMaterialProtectionState({
+      storage: {
+        getItem: (k) => { if (readsFail) throw new Error('read'); return data.get(k) ?? null },
+        setItem: (k, v) => { data.set(k, v) },
+        removeItem: (k) => { data.delete(k) }
+      },
+      accountId: () => A
+    })
+    expect(m.state.diagnostic).toBe('read-failed')
+    m.setPending([7])
+    m.commit()
+    expect(m.state.diagnostic).toBe('read-failed')
+    m.setActivation(true)
+    expect(m.state.diagnostic).toBe('read-failed')
+    readsFail = false
+    m.setActivation(false)
+    expect(m.state.diagnostic).toBeNull()
+  })
+})
+
 describe('storage recovery of recovered diagnostics', () => {
   const memory = (raw: string | null, failRead = false) => {
     const data = new Map<string, string>()
@@ -426,15 +478,6 @@ describe('storage recovery of recovered diagnostics', () => {
     expect(reloaded.state.diagnostic).toBeNull()
     expect(reloaded.state.committed).toEqual([2, 5])
     expect(data.size).toBe(1)
-  })
-
-  it('clears read-failed after a successful commit', () => {
-    const { storage } = memory(null, true)
-    const m = createMaterialProtectionState({ storage, accountId: () => A })
-    expect(m.state.diagnostic).toBe('read-failed')
-    m.setPending([7])
-    m.commit()
-    expect(m.state.diagnostic).toBeNull()
   })
 })
 

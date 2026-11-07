@@ -197,6 +197,8 @@ export function useCraftingProfit(
   })
 
   let opened = false
+  /** The verified account this composable's scope/settings belong to; bound on first sight. */
+  let boundAccountId: string | null = null
   /**
    * An effective change of the committed protection context (account, activation, committed IDs)
    * supersedes everything in flight and recalculates at once; the selected detail follows because it
@@ -209,6 +211,16 @@ export function useCraftingProfit(
       if (key === 'none') {
         // Identity is not (yet) validated: drop old in-flight work, but never submit a request built
         // from the previous account's scope/settings. The workspace/account transport reconnects.
+        newestRequestId += 1
+        abandonRecovery()
+        isLoading.value = false
+        return
+      }
+      const account = protection.state.accountId
+      boundAccountId ??= account
+      if (account !== boundAccountId) {
+        // Another account became current before the connection generation moved on: this workspace's
+        // scope/settings are the old account's. Submit nothing; the incoming workspace calculates itself.
         newestRequestId += 1
         abandonRecovery()
         isLoading.value = false
@@ -602,6 +614,7 @@ export function useCraftingProfit(
      */
     async open(): Promise<void> {
       opened = true
+      boundAccountId = protection.state.accountId
       await Promise.all([loadSelectorOptions(), requestProfit(currentRequest())])
     },
 

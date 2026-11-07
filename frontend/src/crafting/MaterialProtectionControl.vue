@@ -130,8 +130,12 @@ function onToggle(event: Event): void {
 .protection__toggle { display: flex; align-items: center; gap: var(--space-2); }
 .protection__info { position: relative; display: inline-flex; }
 .protection__info-button {
+  box-sizing: border-box;
   width: 1.25rem;
   height: 1.25rem;
+  min-width: 1.25rem;
+  min-height: 0;
+  flex: 0 0 1.25rem;
   padding: 0;
   border-radius: 50%;
   font-size: 0.75rem;
