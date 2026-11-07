@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { connection } from './api/accountSession'
 import { useAccountBootstrap } from './account/useAccountBootstrap'
 import BankScreen from './account/BankScreen.vue'
+import CharactersScreen from './characters/CharactersScreen.vue'
 import MaterialsScreen from './account/MaterialsScreen.vue'
 import CraftingDiscoveryScreen from './crafting/CraftingDiscoveryScreen.vue'
 import CraftingProfitScreen from './crafting/CraftingProfitScreen.vue'
@@ -126,6 +127,11 @@ watch(
 
     <KeepAlive>
       <CraftingDiscoveryScreen v-if="route.current.value.id === 'discovery'" />
+    </KeepAlive>
+
+    <!-- Characters keeps its selection and tab while the user visits another page of this account. -->
+    <KeepAlive>
+      <CharactersScreen v-if="route.current.value.id === 'characters'" />
     </KeepAlive>
 
     <!--

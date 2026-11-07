@@ -593,3 +593,65 @@ export interface SyncTaskStatus {
 
 /** Request value of `POST /api/prices/refresh`. The backend supports exactly these two variants. */
 export type PriceRefreshVariant = 'PROFIT' | 'DISCOVERY'
+
+/** Characters reads (`GET /api/account/characters`, STORY-CHAR-001 / STORY-CHAR-005). */
+export type CharacterReadState =
+  | 'AVAILABLE' | 'STALE' | 'PENDING' | 'GRANT_REQUIRED' | 'ENDPOINT_RESTRICTED' | 'NOT_FOUND' | 'UNAVAILABLE'
+
+export interface CharacterDiscipline { discipline: string; rating: number; active: boolean }
+
+export interface CharacterOverview {
+  name: string
+  profession: string
+  race: string
+  gender: string
+  level: number | null
+  createdAt: string | null
+  craftingDisciplines: CharacterDiscipline[]
+}
+
+export interface CharacterReadResponse {
+  state: CharacterReadState
+  reason?: string
+  message?: string
+  freshness?: { completedAt?: string; refresh?: string }
+  characterCount?: number
+  characters?: CharacterOverview[]
+  character?: CharacterOverview
+}
+
+export interface EquipmentItemRef {
+  itemId: number
+  resolved: boolean
+  name?: string
+  type?: string
+  rarity?: string
+  icon?: string
+}
+
+export interface EquipmentEntry {
+  slot?: string
+  item: EquipmentItemRef
+  location?: string
+  upgrades: EquipmentItemRef[]
+  infusions: EquipmentItemRef[]
+  statId?: number
+  statAttributes?: Record<string, number>
+  binding?: string
+  boundTo?: string
+}
+
+export interface EquipmentTab { tab: number; name: string | null; active: boolean; equipment: EquipmentEntry[] }
+
+export interface EquipmentCoverage { generation?: number; completedAt?: string }
+
+export interface CharacterEquipmentTabsResponse {
+  state: CharacterReadState
+  reason?: string
+  message?: string
+  character?: string
+  parent?: EquipmentCoverage
+  equipment?: EquipmentCoverage
+  coveredParentGeneration?: number
+  tabs?: EquipmentTab[]
+}

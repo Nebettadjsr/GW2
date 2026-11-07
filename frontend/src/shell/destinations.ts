@@ -12,6 +12,7 @@ export type DestinationId =
   | 'synchronization'
   | 'bank'
   | 'materials'
+  | 'characters'
 
 export interface Destination {
   readonly id: DestinationId
@@ -28,7 +29,8 @@ export const DESTINATIONS: readonly Destination[] = [
   { id: 'ecto', path: '#/ecto', label: 'Ecto Salvage' },
   { id: 'synchronization', path: '#/synchronization', label: 'System Status' },
   { id: 'bank', path: '#/bank', label: 'Bank' },
-  { id: 'materials', path: '#/materials', label: 'Materials' }
+  { id: 'materials', path: '#/materials', label: 'Materials' },
+  { id: 'characters', path: '#/characters', label: 'Characters' }
 ]
 
 /** Opening the application without a destination lands here. */
