@@ -263,6 +263,50 @@ class CharacterRosterPublicationTest {
         }
     }
 
+    private static CharacterSync.CharPayload withCounters(String name, long age, long deaths) {
+        return new CharacterSync.CharPayload(
+                new CharacterInfo(name, "Engineer", "Norn", "Male", 80, null, age, deaths),
+                List.of(new CharacterCraftingRow("Chef", 1, true)), List.of(), List.of());
+    }
+
+    private Map<String, String> counters() throws Exception {
+        Map<String, String> out = new LinkedHashMap<>();
+        try (Statement statement = admin.createStatement();
+             ResultSet rs = statement.executeQuery(
+                     "SELECT name, age_seconds || '/' || deaths FROM characters ORDER BY name")) {
+            while (rs.next()) out.put(rs.getString(1), rs.getString(2));
+        }
+        return out;
+    }
+
+    @Test
+    void countersRoundTripUpdateAndLegacyRowsStayUnknown() throws Exception {
+        // Generation one (setUp) used the legacy-unknown constructor: NULL, never zero.
+        assertEquals(java.util.Arrays.asList(null, null), new ArrayList<>(counters().values()));
+        publish(GENERATION_TWO, List.of(withCounters("Scribe Ana", 0, 0),
+                withCounters("Scribe Bo", 12631700L, 4294967296L)));
+        assertEquals(Map.of("Scribe Ana", "0/0", "Scribe Bo", "12631700/4294967296"), counters());
+        publish(Instant.parse("2026-10-12T11:00:00Z"), List.of(withCounters("Scribe Ana", Long.MAX_VALUE, 5),
+                withCounters("Scribe Bo", 12631800L, 4294967297L)));
+        assertEquals(Map.of("Scribe Ana", Long.MAX_VALUE + "/5", "Scribe Bo", "12631800/4294967297"), counters());
+    }
+
+    @Test
+    void failedGenerationKeepsPreviousCountersAndMarker() throws Exception {
+        publish(GENERATION_TWO, List.of(withCounters("Scribe Ana", 100, 1), withCounters("Scribe Bo", 200, 2)));
+        // Later character violates the nonnegative CHECK: the whole account publication rolls back.
+        var doomed = List.of(withCounters("Scribe Ana", 999, 9), withCounters("Scribe Bo", -1, 2));
+        try (Connection writer = connect()) {
+            writer.setSchema(schema);
+            assertThrows(Exception.class, () -> CharacterSync.publishRoster(writer, ACCOUNT, doomed,
+                    java.time.Clock.fixed(Instant.parse("2026-10-12T12:00:00Z"), java.time.ZoneOffset.UTC)));
+        }
+        assertEquals(Map.of("Scribe Ana", "100/1", "Scribe Bo", "200/2"), counters());
+        try (ProfitInputSession session = ProfitInputSession.open(ACCOUNT)) {
+            assertEquals(GENERATION_TWO, capturedMarker(session));
+        }
+    }
+
     private static CharacterSync.CharPayload character(String name, int rating) {
         return new CharacterSync.CharPayload(
                 new CharacterInfo(name, "Engineer", "Norn", "Male", 80, null),
