@@ -141,6 +141,31 @@ def render(report, problem, previous, previous_problem, args, container=False) -
                   f"CPU unit: {report.get('cpuUnit', 'unknown')}.", ""]
         lines += ["**Not measured in container mode:**", ""] + [f"- {n}" for n in report.get("notMeasured", [])] + [""]
 
+    host = report.get("hostObservations") if container else None
+    if host:
+        q, arch = report.get("qualification") or {}, host.get("architecture") or {}
+        lines += ["### Whole-host Linux observations (`whole-host-linux`; separate from per-service figures)", "",
+                  f"- Overall qualification: **{cell(q.get('status', 'not-qualified'))}**; tenancyVerified={str(q.get('tenancyVerified', False)).lower()}; "
+                  f"nativeTargetHost={str(q.get('nativeTargetHost', False)).lower()}; architecture `{cell(arch.get('classification'))}` "
+                  f"(target {cell(arch.get('targetArchitecture'))}).", ""]
+        lines += ["| Window | Metric | Value | Unit |", "|---|---|---|---|"]
+        for w in host.get("windows", []):
+            for m in w.get("metrics", []):
+                v = m.get("value")
+                lines.append(f"| {cell(w.get('window'))} | {cell(m.get('name'))} | "
+                             f"{cell(number(v) if v is not None else 'unavailable: ' + str(m.get('unavailableReason') or 'unavailable'))} | {cell(m.get('unit'))} |")
+        lines.append("")
+        for w in host.get("windows", []):
+            for c in (w.get("comparisons") or {}).values():
+                peak = c.get("peak") or {}
+                detail = (f"peak {number(peak.get('observed'))} {cell(c.get('observedUnit'))} vs {cell(c.get('ceiling'))} {cell(c.get('ceilingUnit'))}, "
+                          f"headroom {number(peak.get('absoluteHeadroom'))} ({number(peak.get('percentHeadroom'))}%)") if peak else \
+                    "unavailable: " + cell(c.get("unavailableReason") or "unavailable")
+                lines.append(f"- `{cell(w.get('window'))}` {cell(c.get('name'))}: `{cell(c.get('status'))}` - {detail}")
+        lines += ["", "Budget: 2 OCPU / 12 GB cover the whole deployment, not a JVM allowance. `within-local-budget` is arithmetic on a local run, "
+                  "not Oracle qualification or a capacity claim. Host figures include the reporter and traffic driver; "
+                  "the container-versus-host difference is unattributed.", ""]
+
     if previous is None:
         lines += [f"**Comparison:** no previous report to compare ({previous_problem}).", ""]
     else:

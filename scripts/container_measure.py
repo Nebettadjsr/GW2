@@ -25,7 +25,9 @@ import time
 import urllib.request
 from pathlib import Path
 
-SCHEMA_VERSION = "container-1"
+import host_resources as hr
+
+SCHEMA_VERSION = "container-2"
 WORKLOAD_VERSION = "container-workload-2"
 SERVICES = ("postgres", "backend", "frontend")
 ROOT = Path(__file__).resolve().parent.parent
@@ -125,6 +127,7 @@ class Measurement:
         self.env_extra: dict = {}
         self.base_url = ""
         self.started = False
+        self.host_windows: list = []
         self.password = f"measure-{os.getpid()}-{time.time_ns()}"
 
     def dc(self, *a, timeout=900):
@@ -215,6 +218,7 @@ class Measurement:
         deadline = t0 + seconds
         next_sample = t0
         stop = threading.Event()
+        host = hr.HostSampler()
         driver_errors = []
         def drive():
             try:
@@ -241,11 +245,13 @@ class Measurement:
         if driver:
             driver.start()
         try:
+            host.sample()  # baseline snapshot; the first sample never yields a CPU value
             while time.perf_counter() < deadline:
                 if time.perf_counter() >= next_sample:
                     for svc, s in stats_sample(ids).items():
                         if s:
                             series[svc].append(s)
+                    host.sample()
                     next_sample = time.perf_counter() + 1
                 else:
                     stop.wait(min(0.2, max(0, deadline - time.perf_counter())))
@@ -258,6 +264,7 @@ class Measurement:
         if driver_errors:
             raise RuntimeError("HTTP load driver failed") from driver_errors[0]
         wall = time.perf_counter() - t0
+        self.host_windows.append((label, wall, host))
         return series, http, wall
 
     def workload(self, name, description, series, http, wall, limits):
@@ -362,12 +369,27 @@ class Measurement:
                                "metrics": metrics, "limits": ["Per-service readiness times are not reported: Compose --wait gives only the aggregate."],
                                "diagnostics": []})
 
+    def note(self, text):
+        if text not in self.diagnostics:
+            self.diagnostics.append(text)
+
+    def host_report(self):
+        host = hr.build_host_report(self.host_windows)
+        for w in host["hostObservations"]["windows"]:
+            for m in w["metrics"]:
+                if m.get("value") is None:
+                    self.note(f"{w['window']}: {m['name']} unavailable: {m['unavailableReason']}")
+        if host["hostObservations"]["logicalCpuCount"]["value"] is None:
+            self.note("host logical CPU count unavailable")
+        return host
+
     def report(self, ids):
         return {"schemaVersion": SCHEMA_VERSION, "measurementScope": "container-stack",
                 "workloadVersion": WORKLOAD_VERSION, "fixtureVersion": WORKLOAD_VERSION,
                 "commit": self.args.commit, "timestamp": self.args.timestamp or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "project": self.project, "environment": self.environment() if self.images else {"note": "incomplete setup"},
                 "images": self.images, "workloads": self.workloads, "diagnostics": self.diagnostics,
+                **self.host_report(),
                 "notMeasured": ["account synchronization, crafting profit/discovery calculation and live GW2 upstream "
                                 "traffic are not measured in container mode (no GW2 key, no production proof bypass); "
                                 "see the application-process report for those fixture workloads",
@@ -382,6 +404,50 @@ class Measurement:
         (out / "container-resources.md").write_text(to_markdown(rep), encoding="utf-8")
 
 
+def hr_markdown(rep: dict) -> list[str]:
+    """Render the whole-host, boundary, budget and qualification facts straight from the JSON report."""
+    return render_host_sections(rep, heading="##")
+
+
+def render_host_sections(rep: dict, heading="##") -> list[str]:
+    host, q, b = rep.get("hostObservations"), rep.get("qualification"), rep.get("budget")
+    if not host:
+        return []
+    arch, ncpu = host["architecture"], host["logicalCpuCount"]
+    def cell(v):
+        return str(v).replace("|", "\\|").replace("\n", " ")
+    lines = ["", f"{heading} Whole-host Linux observations (`{host['boundary']}`)", "",
+             f"- Host OS `{host['hostOs']}`; architecture reported `{arch['hostArchitectureReported']}` "
+             f"(classification `{arch['classification']}`; target {arch['targetArchitecture']}).",
+             "- Logical CPUs: " + (f"{ncpu['value']} (source: {ncpu['source']})" if ncpu.get("value") else
+                                  "unavailable: " + ncpu.get("unavailableReason", "unavailable")),
+             "- Qualification: **" + q["status"] + f"** (tenancyVerified={str(q['tenancyVerified']).lower()}, "
+             f"nativeTargetHost={str(q['nativeTargetHost']).lower()}). {q['reason']}", ""]
+    for w in host["windows"]:
+        lines += [f"{heading}# Host window `{w['window']}` ({w['windowSeconds']} s)", "", "| Metric | Value | Unit | Boundary |", "|---|---|---|---|"]
+        for m in w["metrics"]:
+            v = m["value"] if m.get("value") is not None else "unavailable: " + m.get("unavailableReason", "unavailable")
+            lines.append(f"| {cell(m['name'])} | {cell(v)} | {m['unit']} | {m['boundary']} |")
+        for key in ("cpu", "memory"):
+            c = w["comparisons"][key]
+            if c["status"] == "unavailable":
+                lines.append(f"- {c['name']}: unavailable: {cell(c.get('unavailableReason', 'unavailable'))}")
+                continue
+            for stat in ("mean", "peak"):
+                d = c[stat]
+                lines.append(f"- {c['name']} {stat}: observed {d['observed']:.4g} {c['observedUnit']} vs ceiling {c['ceiling']} {c['ceilingUnit']}; "
+                             f"headroom {d['absoluteHeadroom']:.4g} ({d['percentHeadroom']:.1f}%); `{d['status']}`")
+        lines.append("")
+    lines += [f"{heading} Boundaries and sampling limits", ""]
+    lines += [f"- {k}: {v}" for k, v in rep["boundaries"].items()] + [f"- {x}" for x in host["samplingLimits"]]
+    lines += ["", f"{heading} Budget context (comparison only)", "",
+              f"- {b['name']}; checked {b['checkedDate']}; source {b['sourceUrl']}.",
+              f"- Ceilings: {b['cpuOcpuCeiling']} OCPU and {b['memoryCeilingLabel']} for the {b['scope']}; not a JVM allowance.",
+              f"- CPU normalization: busy logical CPUs = host CPU % / 100 x logical CPU count, compared with 2 OCPU. Docker percentages are percent of one core and are not summed into host CPU.",
+              f"- Tenancy availability: {b['tenancyAvailability']}. `within-local-budget` is arithmetic on a local run, not proof the application fits Oracle Always Free or supports any concurrency."]
+    return lines
+
+
 def to_markdown(rep: dict) -> str:
     lines = [f"# Container measurements ({rep['measurementScope']})", "",
              f"Project `{rep['project']}`; workload `{rep['workloadVersion']}`; CPU unit: {rep['cpuUnit']}.", "",
@@ -392,6 +458,7 @@ def to_markdown(rep: dict) -> str:
         lines += ["", f"## {w['name']}", "", w["description"], "", "| KPI | Value | Unit |", "|---|---|---|"]
         for m in w["metrics"]:
             lines.append(f"| {m['name']} | {m['value'] if m.get('value') is not None else 'unavailable: ' + m.get('unavailableReason', '')} | {m['unit']} |")
+    lines += hr_markdown(rep)
     lines += ["", "## Not measured", ""] + [f"- {n}" for n in rep["notMeasured"]]
     lines += ["", "## Diagnostics", ""] + ([f"- {d}" for d in rep["diagnostics"]] or ["None."])
     return "\n".join(lines) + "\n"

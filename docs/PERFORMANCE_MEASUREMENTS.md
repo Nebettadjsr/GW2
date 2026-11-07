@@ -128,7 +128,7 @@ containers, networks or volumes, or any expected-name network, volume or built i
 python3 scripts/container_measure.py --output-dir container-perf-out [--id <lowercase-id>] [--idle-seconds 20] [--traffic-seconds 30] [--strict]
 ```
 
-Needs Docker with Compose v2 and Python 3 (no packages). Output: `container-resources.json` (schema `container-1`,
+Needs Docker with Compose v2 and Python 3 (no packages). Output: `container-resources.json` (schema `container-2`,
 workload `container-workload-2`) and `container-resources.md`. Without `--strict` the exit status is 0 even when a
 measurement fails; failures appear in `diagnostics`. `.github/scripts/performance_summary.py --container` renders it.
 
@@ -160,5 +160,29 @@ The workflow uses `--strict` inside a nonblocking step so a failed measurement h
 Runtime base layers come from actual image inspection, excluding the two application filesystem layers in each current
 Dockerfile (backend: user/directory setup and jar; frontend: template and dist). Update this boundary if those Dockerfiles
 add or remove filesystem layers; unknown runtime metadata prevents comparison.
+
+### Whole-host Linux observations and Oracle budget context (STORY-KPI-001)
+
+Schema `container-2` adds, from the same JSON, top-level `hostObservations`, `boundaries`, `budget` and `qualification`
+sections (rendered in `container-resources.md` and the workflow summary). During each idle and traffic window the script
+also samples `/proc/stat` (aggregate `cpu` line; busy = all fields except idle and iowait, guest time not double counted)
+and `/proc/meminfo`. Host CPU is percent of the whole host between consecutive snapshots (the first snapshot yields no
+value; zero-duration, counter-reset and malformed input are `unavailable` with a reason). Host memory reports `MemTotal`,
+last `MemAvailable` and used = `MemTotal - MemAvailable`, with mean/peak over the window's samples. Logical CPU count comes
+from `os.cpu_count()`. Non-Linux hosts, unreadable counters or parse failures give `unavailable` plus `unavailableReason`,
+never zero, and appear in `diagnostics`; the per-service report is unchanged.
+
+Boundaries: `container-stack` per-service Docker figures (percent of one core) are not summed into or subtracted from the
+`whole-host-linux` figures. The reporter, Docker CLI calls and the traffic driver share the host and its CPU; the
+host-minus-container difference is unattributed, and container memory is never added to host used memory.
+
+Budget: Oracle `VM.Standard.A1.Flex`, Linux ARM64, 2 OCPU and 12 GB (12e9 bytes) for the whole deployment (OS, container
+engine, PostgreSQL, backend, frontend, measurement overhead), not a JVM allowance; checked 2026-11-07, source
+`docs/ROADMAP.md`; tenancy availability unverified. CPU comparison: busy logical CPUs = host CPU % / 100 x logical CPUs vs
+2 (one local logical CPU treated as one OCPU, arithmetic only). Statuses: `within-local-budget`, `over-local-budget`,
+`unavailable`; with absolute and percentage headroom when valid. Overall `qualification.status` is always `not-qualified`
+here, with `tenancyVerified: false` and `nativeTargetHost: false`; `native-oracle-a1` is reserved for later verified
+evidence. Architecture classification: `local-x86-64`, `local-or-ci-arm64` (non-Linux), `non-oracle-native-arm64`
+(Linux), `unknown`. Point samples (seconds apart) are not sustained peaks; none of this is capacity evidence.
 
 Earlier ad-hoc observations: `scripts/container-smoke.sh` prints `image_bytes`, `build_ms` and `startup_to_readiness_ms` for a single image; they are not part of the informational reports.
