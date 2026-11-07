@@ -95,6 +95,13 @@ export interface EffectiveSettings {
   listingSell: boolean
   listingBuy: boolean
   allowDailyCrafts: boolean
+  /**
+   * Material Protection as the backend canonicalized it (additive: absent from older backends, in
+   * which case the browser must not claim protection was enforced).
+   */
+  materialProtectionEnabled?: boolean
+  /** Canonical protected item IDs the backend calculated with; absent from older backends. */
+  protectedItemIds?: number[]
 }
 
 /**
