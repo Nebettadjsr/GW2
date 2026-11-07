@@ -170,7 +170,8 @@ describe('App shell', () => {
       '#/ecto',
       '#/synchronization',
       '#/bank',
-      '#/materials'
+      '#/materials',
+      '#/characters'
     ])
     // Real links, so they are reachable and operable by keyboard without any handler of ours.
     expect(links.every((link) => link.element.tagName === 'A')).toBe(true)

@@ -33,6 +33,15 @@ export async function getJson<T>(path: string): Promise<T> {
   return sendJson<T>(path, { method: 'GET', headers: { Accept: 'application/json' } })
 }
 
+/**
+ * A read whose non-2xx answers are themselves meaningful states (Characters: 403 grant required,
+ * 404 unknown, 503 unavailable). A structured body carrying a string `state` is returned as data so
+ * the state and reason are never lost; any other failure still throws like `getJson`.
+ */
+export async function getStateJson<T extends { state: string }>(path: string): Promise<T> {
+  return sendJsonAttempt<T>(path, { method: 'GET', headers: { Accept: 'application/json' } }, true, true)
+}
+
 export async function postJson<T>(path: string, body: unknown): Promise<T> {
   return sendJson<T>(path, {
     method: 'POST',
@@ -42,7 +51,7 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function sendJson<T>(path: string, init: RequestInit): Promise<T> {
-  return sendJsonAttempt<T>(path, init, true)
+  return sendJsonAttempt<T>(path, init, true, false)
 }
 
 /**
@@ -91,7 +100,12 @@ function sendsKey(path: string, method: string | undefined): boolean {
   return route.startsWith('/sync/account')
 }
 
-async function sendJsonAttempt<T>(path: string, init: RequestInit, mayRecover: boolean): Promise<T> {
+async function sendJsonAttempt<T>(
+  path: string,
+  init: RequestInit,
+  mayRecover: boolean,
+  acceptStateBody: boolean
+): Promise<T> {
   const transport = accountTransport !== null && isAccountPath(path) ? accountTransport : null
   let attempt = init
   let ticket: AccountRequestTicket | null = null
@@ -116,10 +130,19 @@ async function sendJsonAttempt<T>(path: string, init: RequestInit, mayRecover: b
     throw new ApiRequestError('The account changed while this request was in flight.', ACCOUNT_CHANGED_CODE, null)
   }
 
+  if (!response.ok && acceptStateBody) {
+    const stateBody = await readStateBody<T>(response.clone())
+    if (stateBody !== null) {
+      if (transport !== null && ticket !== null && !transport.isCurrent(ticket)) {
+        throw new ApiRequestError('The account changed while this response was downloading.', ACCOUNT_CHANGED_CODE, null)
+      }
+      return stateBody
+    }
+  }
   if (!response.ok) {
     const error = await toRequestError(response)
     if (transport !== null && ticket !== null && mayRecover && (await transport.recover(ticket, error))) {
-      return sendJsonAttempt<T>(path, init, false)
+      return sendJsonAttempt<T>(path, init, false, acceptStateBody)
     }
     throw error
   }
@@ -140,6 +163,17 @@ export async function toRequestError(response: Response): Promise<ApiRequestErro
     )
   }
   return new ApiRequestError(body.message, body.error, response.status, body.taskStatusUrl ?? null)
+}
+
+async function readStateBody<T>(response: Response): Promise<T | null> {
+  try {
+    const parsed: unknown = await response.json()
+    return typeof parsed === 'object' && parsed !== null && typeof (parsed as { state?: unknown }).state === 'string'
+      ? (parsed as T)
+      : null
+  } catch {
+    return null
+  }
 }
 
 async function readErrorBody(response: Response): Promise<ApiErrorBody | null> {

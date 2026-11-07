@@ -1,0 +1,400 @@
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { connection } from '@/api/accountSession'
+import type { CharactersApi } from '@/api/charactersApi'
+import type { CharacterEquipmentTabsResponse, CharacterOverview, CharacterReadResponse } from '@/api/types'
+import CharactersScreen from '../CharactersScreen.vue'
+import { useCharacters } from '../useCharacters'
+
+const ana: CharacterOverview = { name: 'Ana B', profession: 'Guardian', race: 'Human', gender: 'Female', level: 80,
+  createdAt: '2020-01-01T00:00:00Z', craftingDisciplines: [{ discipline: 'Weaponsmith', rating: 500, active: true }] }
+const bo: CharacterOverview = { ...ana, name: 'Bo', profession: 'Thief' }
+const roster: CharacterReadResponse = { state: 'AVAILABLE', characterCount: 2, characters: [ana, bo],
+  freshness: { completedAt: '2026-01-01T00:00:00Z', refresh: 'CURRENT' } }
+const detailOf = (c: CharacterOverview): CharacterReadResponse => ({ state: 'AVAILABLE', character: c })
+const item = (id: number, name: string, rarity: string) => ({ itemId: id, resolved: true, name, rarity, type: 'Weapon', icon: '/api/icons/x.png' })
+const tabsResponse: CharacterEquipmentTabsResponse = { state: 'AVAILABLE', character: 'Ana B',
+  equipment: { generation: 1, completedAt: '2026-01-01T00:00:00Z' },
+  tabs: [
+    { tab: 1, name: 'PvE', active: false, equipment: [] },
+    { tab: 2, name: 'WvW', active: true, equipment: [
+      { slot: 'HelmAquatic', item: item(1, 'Cool Helm', 'Ascended'), upgrades: [item(2, 'Rune', 'Exotic')],
+        infusions: [{ itemId: 3, resolved: false }], statAttributes: { Power: 100 } },
+      { item: { itemId: 9, resolved: false }, upgrades: [], infusions: [] }
+    ] },
+    { tab: 3, name: 'Fractal', active: false, equipment: [{ slot: 'Boots', item: item(5, 'Boots', 'Rare'), upgrades: [], infusions: [] }] }
+  ] }
+
+function deferred<T>() { let resolve!: (v: T) => void; const promise = new Promise<T>((r) => { resolve = r }); return { promise, resolve } }
+
+function fakeApi(over: Partial<CharactersApi> = {}): CharactersApi & { calls: string[] } {
+  const calls: string[] = []
+  return {
+    calls,
+    loadRoster: async () => { calls.push('roster'); return roster },
+    loadCharacter: async (n) => { calls.push(`detail:${n}`); return detailOf(n === 'Bo' ? bo : ana) },
+    loadEquipmentTabs: async (n) => { calls.push(`equip:${n}`); return tabsResponse },
+    startEquipmentTabsRefresh: async () => { calls.push('refresh'); return { taskId: 't', operation: 'X', statusUrl: '/api/sync/tasks/t' } },
+    ...over
+  }
+}
+const tasks = { readTaskStatus: async () => ({ taskId: 't', operation: 'X', state: 'SUCCEEDED' }) as never }
+const noSleep = async () => {}
+
+afterEach(() => { connection.generation = 0 })
+
+describe('Characters screen', () => {
+  it('lists only the supplied overview, loads detail lazily on selection and goes back', async () => {
+    const api = fakeApi()
+    const w = mount(CharactersScreen, { props: { api } })
+    await flushPromises()
+    expect(api.calls).toEqual(['roster'])
+    expect(w.findAll('[data-test="roster-item"]')).toHaveLength(2)
+    expect(w.text()).toContain('Weaponsmith 500')
+    await w.findAll('[data-test="roster-item"]')[0]!.trigger('click')
+    await flushPromises()
+    expect(api.calls).toEqual(['roster', 'detail:Ana B', 'equip:Ana B'])
+    expect(w.find('[data-test="character-name"]').text()).toBe('Ana B')
+    await w.find('[data-test="character-back"]').trigger('click')
+    expect(w.find('[data-test="roster"]').exists()).toBe(true)
+  })
+
+  it('shows rarity as text, upgrades, infusions, stats and honest unresolved/unspecified entries', async () => {
+    const w = mount(CharactersScreen, { props: { api: fakeApi() } })
+    await flushPromises()
+    await w.find('[data-test="roster-item"]').trigger('click')
+    await flushPromises()
+    const text = w.find('[data-test="equipment-tabpanel"]').text()
+    expect(text).toContain('Cool Helm'); expect(text).toContain('Ascended'); expect(text).toContain('Power +100')
+    expect(text).toContain('Upgrade: Rune'); expect(text).toContain('Infusion: Item #3 (details unavailable)')
+    expect(text).toContain('Unspecified slot'); expect(text).toContain('Helm Aquatic')
+    expect(w.find('[data-test="equipment-rarity"]').classes()).toContain('rarity--ascended')
+  })
+
+  it('selects the actual active tab first, keeps it identified when inspecting another, supports keyboard, is read-only', async () => {
+    const api = fakeApi()
+    const w = mount(CharactersScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.find('[data-test="roster-item"]').trigger('click')
+    await flushPromises()
+    const tabs = () => w.findAll('[data-test="equipment-tab"]')
+    expect(tabs().map((t) => t.text().replace(' In use', ''))).toEqual(['PvE', 'WvW', 'Fractal'])
+    expect(tabs()[1]!.attributes('aria-selected')).toBe('true')
+    await tabs()[1]!.trigger('keydown', { key: 'ArrowRight' })
+    await flushPromises()
+    expect(tabs()[2]!.attributes('aria-selected')).toBe('true')
+    expect(document.activeElement).toBe(tabs()[2]!.element)
+    expect(w.find('[data-test="equipment-inspecting"]').exists()).toBe(true)
+    expect(tabs()[1]!.find('[data-test="equipment-tab-active"]').exists()).toBe(true)
+    await tabs()[2]!.trigger('keydown', { key: 'Home' })
+    expect(tabs()[0]!.attributes('aria-selected')).toBe('true')
+    expect(w.find('[data-test="equipment-empty"]').text()).toContain('does not show which slots')
+    expect(api.calls.filter((c) => c === 'refresh')).toHaveLength(0)
+    w.unmount()
+  })
+
+  it('keeps the roster when equipment is unavailable and shows state, reason and a recovery action', async () => {
+    const api = fakeApi({ loadEquipmentTabs: async () => ({ state: 'GRANT_REQUIRED', reason: 'MISSING_GRANT', message: 'Needs builds permission' }) })
+    const w = mount(CharactersScreen, { props: { api } })
+    await flushPromises()
+    await w.find('[data-test="roster-item"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="equipment-state"]').text()).toContain('MISSING_GRANT')
+    expect(w.find('[data-test="equipment-tablist"]').exists()).toBe(false)
+    expect(w.find('[data-test="character-facts"]').exists()).toBe(true)
+    await w.find('[data-test="character-back"]').trigger('click')
+    expect(w.findAll('[data-test="roster-item"]')).toHaveLength(2)
+  })
+
+  it('does not render an empty roster for a failed first read', async () => {
+    const first = mount(CharactersScreen, { props: { api: fakeApi({ loadRoster: async () => { throw new Error('down') } }) } })
+    await flushPromises()
+    expect(first.find('[data-test="roster-error"]').text()).toContain('does not mean you have none')
+    expect(first.find('[data-test="roster-empty"]').exists()).toBe(false)
+  })
+
+  it('retains the last-good roster when a later read of the same instance fails', async () => {
+    let fail = false
+    const api = fakeApi({ loadRoster: async () => { if (fail) throw new Error('down'); return roster } })
+    const c = useCharacters(api, tasks, noSleep)
+    await c.loadRoster()
+    expect(c.roster.value?.characters).toHaveLength(2)
+    fail = true
+    await c.loadRoster()
+    expect(c.rosterFailure.value).not.toBeNull()
+    expect(c.roster.value?.characters).toHaveLength(2)
+  })
+})
+
+describe('useCharacters guards and recovery', () => {
+  it('discards a late equipment answer for a previously selected character', async () => {
+    const slow = deferred<CharacterEquipmentTabsResponse>()
+    const api = fakeApi({ loadEquipmentTabs: (n) => n === 'Ana B' ? slow.promise : Promise.resolve({ ...tabsResponse, character: 'Bo', tabs: [{ tab: 7, name: 'Bo tab', active: true, equipment: [] }] }) })
+    const c = useCharacters(api, tasks, noSleep)
+    c.select('Ana B'); c.back(); c.select('Bo')
+    await flushPromises()
+    slow.resolve(tabsResponse)
+    await flushPromises()
+    expect(c.equipmentTabs.value?.map((t) => t.tab)).toEqual([7])
+    expect(c.inspectedTab.value).toBe(7)
+  })
+
+  it('discards answers that arrive after the account generation changed', async () => {
+    const slow = deferred<CharacterReadResponse>()
+    const c = useCharacters(fakeApi({ loadRoster: () => slow.promise }), tasks, noSleep)
+    const p = c.loadRoster()
+    connection.generation += 1
+    slow.resolve(roster)
+    await p
+    expect(c.roster.value).toBeNull()
+  })
+
+  it('stops a refresh that would continue under a replaced account', async () => {
+    let reads = 0
+    const api = fakeApi({ loadEquipmentTabs: async () => { reads += 1; return { state: 'STALE', tabs: tabsResponse.tabs } } })
+    const gate = deferred<{ taskId: string; operation: string; statusUrl: string }>()
+    api.startEquipmentTabsRefresh = () => gate.promise
+    const c = useCharacters(api, tasks, noSleep)
+    c.select('Ana B'); await flushPromises()
+    const p = c.refreshEquipment()
+    connection.generation += 1
+    gate.resolve({ taskId: 't', operation: 'X', statusUrl: '/api/sync/tasks/t' })
+    await p
+    expect(reads).toBe(1)
+  })
+
+  it('retains last-good equipment with a warning on transient failure and keeps the inspected tab', async () => {
+    let fail = false
+    const api = fakeApi({ loadEquipmentTabs: async () => { if (fail) throw new Error('boom'); return tabsResponse } })
+    const c = useCharacters(api, tasks, noSleep)
+    c.select('Ana B'); await flushPromises()
+    c.inspect(3)
+    fail = true
+    await c.loadEquipment('Ana B')
+    expect(c.equipmentFailure.value).not.toBeNull()
+    expect(c.equipmentIsRetained.value).toBe(true)
+    expect(c.shownTab.value?.tab).toBe(3)
+  })
+
+  it('does not present PENDING as empty and recovers once automatically through the refresh operation', async () => {
+    let published = false
+    const api = fakeApi({ loadEquipmentTabs: async () => published ? tabsResponse : { state: 'PENDING', reason: 'NOT_SYNCED', message: 'pending' } })
+    const start = api.startEquipmentTabsRefresh
+    api.startEquipmentTabsRefresh = async () => { published = true; return start() }
+    const c = useCharacters(api, tasks, noSleep)
+    c.select('Ana B'); await flushPromises(); await flushPromises()
+    expect(api.calls.filter((x) => x === 'refresh')).toHaveLength(1)
+    expect(c.equipmentTabs.value).toHaveLength(3)
+  })
+
+  it('reports a missing prerequisite without looping', async () => {
+    const { ApiRequestError } = await import('@/api/http')
+    const api = fakeApi({ loadEquipmentTabs: async () => ({ state: 'PENDING', message: 'p' }) })
+    api.startEquipmentTabsRefresh = async () => { api.calls.push('refresh'); throw new ApiRequestError('no parent', 'PREREQUISITE_UNAVAILABLE', 409) }
+    const c = useCharacters(api, tasks, noSleep)
+    c.select('Ana B'); await flushPromises(); await flushPromises()
+    expect(api.calls.filter((x) => x === 'refresh')).toHaveLength(1)
+    expect(c.refreshMessage.value).toContain('not been synchronized')
+  })
+})
+
+describe('reopen, refresh cancellation and real account replacement', () => {
+  it('reopening a viewed character after back then a failed read keeps tabs, a focusable tab and the active tab', async () => {
+    let fail = false
+    const api = fakeApi({ loadEquipmentTabs: async () => { if (fail) throw new Error('boom'); return tabsResponse } })
+    const w = mount(CharactersScreen, { props: { api } })
+    await flushPromises()
+    await w.findAll('[data-test="roster-item"]')[0]!.trigger('click')
+    await flushPromises()
+    await w.find('[data-test="character-back"]').trigger('click')
+    fail = true
+    await w.findAll('[data-test="roster-item"]')[0]!.trigger('click')
+    await flushPromises()
+    const tabs = w.findAll('[data-test="equipment-tab"]')
+    expect(tabs).toHaveLength(3)
+    expect(tabs[1]!.attributes('aria-selected')).toBe('true')
+    expect(tabs.filter((t) => t.attributes('tabindex') === '0')).toHaveLength(1)
+    expect(w.find('[data-test="equipment-tabpanel"]').exists()).toBe(true)
+  })
+
+  it('makes no further request when the account changes while waiting on a task that does not cover the request', async () => {
+    const calls: string[] = []
+    const api = fakeApi({
+      startEquipmentTabsRefresh: async () => { calls.push('refresh'); return { taskId: 't', operation: 'X', statusUrl: '/api/sync/tasks/t', coversRequest: false } },
+      loadEquipmentTabs: async () => { calls.push('equip'); return tabsResponse }
+    })
+    const running = { readTaskStatus: async () => { calls.push('task'); return { taskId: 't', operation: 'X', state: 'RUNNING' } as never } }
+    const gate = deferred<void>()
+    const c = useCharacters(api, running, () => gate.promise)
+    c.select('Ana B'); await flushPromises()
+    const p = c.refreshEquipment()
+    await flushPromises()
+    const before = calls.length
+    connection.generation += 1
+    gate.resolve()
+    await p
+    expect(calls.length).toBe(before)
+  })
+
+  it('never dispatches an outgoing account A request under account B (real connectKey, transport and APIs)', async () => {
+    const { connectKey, installAccountSession, resetAccountSession } = await import('@/api/accountSession')
+    const { charactersApi } = await import('@/api/charactersApi')
+    const { syncApi } = await import('@/api/syncApi')
+    resetAccountSession(); installAccountSession()
+    let id = 'acc-A'
+    const log: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+      const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } })
+      if (input.endsWith('/session') || input.includes('/account/session')) {
+        return json({ accountId: id, accessContext: `ctx-${id}`, expiresAt: '2099-01-01T00:00:00Z', grants: ['account'] })
+      }
+      log.push(`${init?.method ?? 'GET'} ${input}`)
+      if (input.includes('/sync/tasks/')) return json({ taskId: 't', operation: 'X', state: 'RUNNING' })
+      if (input.includes('/sync/account')) return json({ taskId: 't', operation: 'X', statusUrl: '/api/sync/tasks/t', coversRequest: false }, 202)
+      if (input.includes('equipment-tabs')) return json(tabsResponse)
+      if (input.includes('/account/characters/')) return json(detailOf(ana))
+      return json(roster)
+    }))
+    try {
+      await connectKey('SAME-NAME-KEY')
+      const gate = deferred<void>()
+      const c = useCharacters(charactersApi, syncApi, () => gate.promise)
+      await c.loadRoster()
+      c.select('Ana B'); await flushPromises()
+      const p = c.refreshEquipment()
+      await flushPromises()
+      const before = log.length
+      id = 'acc-B'
+      await connectKey('SAME-NAME-KEY')
+      gate.resolve()
+      await p
+      await c.loadRoster(); c.select('Bo'); await flushPromises()
+      expect(log.length).toBe(before)
+      expect(log.some((l) => l.startsWith('POST') && l.includes('/sync/account'))).toBe(true)
+      expect(log.filter((l) => l.startsWith('POST'))).toHaveLength(1)
+    } finally {
+      resetAccountSession()
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('remaining acceptance fixes', () => {
+  it('after a refresh started for A, success rereads the character selected now (B) with no second POST', async () => {
+    let published = false
+    const gate = deferred<void>()
+    const api = fakeApi({
+      loadEquipmentTabs: async (n) => { api.calls.push(`equip:${n}`); return published ? { ...tabsResponse, character: n } : { state: 'PENDING', message: 'p' } }
+    })
+    api.startEquipmentTabsRefresh = async () => { api.calls.push('refresh'); return { taskId: 't', operation: 'X', statusUrl: '/s' } }
+    const slowTasks = { readTaskStatus: async () => { await gate.promise; published = true; return { taskId: 't', operation: 'X', state: 'SUCCEEDED' } as never } }
+    const c = useCharacters(api, slowTasks, noSleep)
+    c.select('Ana B'); await flushPromises()
+    expect(c.refreshing.value).toBe(true)
+    c.back(); c.select('Bo'); await flushPromises()
+    gate.resolve(); await flushPromises(); await flushPromises()
+    expect(api.calls.filter((x) => x === 'refresh')).toHaveLength(1)
+    expect(api.calls[api.calls.length - 1]).toBe('equip:Bo')
+    expect(c.equipmentTabs.value).toHaveLength(3)
+    expect(c.equipmentResponse.value?.character).toBe('Bo')
+  })
+
+  it('does not send a refresh result read after the account is replaced', async () => {
+    const gate = deferred<void>()
+    const api = fakeApi({ loadEquipmentTabs: async (n) => { api.calls.push(`equip:${n}`); return { state: 'PENDING', message: 'p' } } })
+    const slowTasks = { readTaskStatus: async () => { await gate.promise; return { taskId: 't', operation: 'X', state: 'SUCCEEDED' } as never } }
+    const c = useCharacters(api, slowTasks, noSleep)
+    c.select('Ana B'); await flushPromises()
+    connection.generation += 1
+    gate.resolve(); await flushPromises()
+    expect(api.calls.filter((x) => x.startsWith('equip:'))).toHaveLength(1)
+  })
+
+  it('keeps the retained roster entry, labelled, when a reopened detail fails or is unavailable', async () => {
+    let mode: 'ok' | 'fail' | 'unavailable' = 'ok'
+    const api = fakeApi({
+      loadCharacter: async (n) => {
+        if (mode === 'fail') throw new Error('boom')
+        if (mode === 'unavailable') return { state: 'UNAVAILABLE', message: 'down' }
+        return detailOf(n === 'Bo' ? bo : ana)
+      }
+    })
+    const w = mount(CharactersScreen, { props: { api } })
+    await flushPromises()
+    await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
+    expect(w.find('[data-test="detail-retained"]').exists()).toBe(false)
+    await w.find('[data-test="character-back"]').trigger('click')
+    for (const m of ['fail', 'unavailable'] as const) {
+      mode = m
+      await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
+      expect(w.find('[data-test="character-facts"]').text()).toContain('Guardian')
+      expect(w.find('[data-test="detail-retained"]').text()).toContain('may be out of date')
+      expect(w.find('[data-test="equipment-panel"]').exists()).toBe(true)
+      await w.find('[data-test="character-back"]').trigger('click')
+    }
+  })
+
+  it('never shows retained detail for a character absent from the roster or after the account changed', async () => {
+    const api = fakeApi({ loadCharacter: async () => { throw new Error('boom') } })
+    const c = useCharacters(api, tasks, noSleep)
+    await c.loadRoster()
+    c.select('Ghost'); await flushPromises()
+    expect(c.shownDetail.value).toBeNull()
+  })
+
+  it('restores the source row focus and scroll position when returning from detail', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ ...ana, name: `Char ${i}` }))
+    const api = fakeApi({ loadRoster: async () => ({ ...roster, characterCount: 30, characters: many }) })
+    const scrollTo = vi.fn()
+    vi.stubGlobal('scrollTo', scrollTo)
+    Object.defineProperty(window, 'scrollY', { value: 640, configurable: true })
+    const w = mount(CharactersScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="roster-item"]')[25]!.trigger('click'); await flushPromises()
+    Object.defineProperty(window, 'scrollY', { value: 0, configurable: true }) // short detail clamped the page
+    await w.find('[data-test="character-back"]').trigger('click'); await flushPromises()
+    expect((document.activeElement as HTMLElement).dataset.name).toBe('Char 25')
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 640)
+    w.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it('moves keyboard focus to the opened character heading', async () => {
+    const w = mount(CharactersScreen, { props: { api: fakeApi() }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
+    expect(document.activeElement).toBe(w.find('[data-test="character-name"]').element)
+    w.unmount()
+  })
+
+  it('does not steal focus after the account was replaced while opening', async () => {
+    const w = mount(CharactersScreen, { props: { api: fakeApi() }, attachTo: document.body })
+    await flushPromises()
+    const btn = w.findAll('[data-test="roster-item"]')[0]!
+    const before = document.activeElement
+    void btn.trigger('click')
+    connection.generation += 1
+    await flushPromises()
+    expect(document.activeElement).toBe(before)
+    w.unmount()
+  })
+
+  it('keeps the retained equipment completedAt when the latest read is a structured 503', async () => {
+    let n = 0
+    const api = fakeApi({ loadEquipmentTabs: async () => (n++ === 0 ? tabsResponse
+      : { state: 'UNAVAILABLE', message: 'down' } as CharacterEquipmentTabsResponse) })
+    const c = useCharacters(api, tasks, noSleep)
+    await c.loadRoster(); c.select('Ana B'); await flushPromises()
+    await c.loadEquipment('Ana B')
+    expect(c.equipmentResponse.value?.state).toBe('UNAVAILABLE')
+    expect(c.equipmentSource.value?.equipment?.completedAt).toBe('2026-01-01T00:00:00Z')
+    const w = mount(CharactersScreen, { props: { api: fakeApi({ loadEquipmentTabs: (() => { let k = 0
+      return async () => (k++ === 0 ? tabsResponse : { state: 'UNAVAILABLE', message: 'down' } as CharacterEquipmentTabsResponse) })() }) } })
+    await flushPromises()
+    await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
+    await w.find('[data-test="character-back"]').trigger('click')
+    await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
+    expect(w.find('[data-test="equipment-state"]').exists()).toBe(true)
+    expect(w.find('[data-test="equipment-freshness"]').text()).toContain('2026')
+  })
+})
