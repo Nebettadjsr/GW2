@@ -4,7 +4,9 @@
 
 Authorization: start the agreed workflow, supervise progress and stop only for necessary product/UI decisions or missing access. Supervisor: interactive Codex. Planner: Codex on GitHub. Programmer: Claude. Release one approved story at a time; no new paid API integration is authorized.
 
-Initial audit: no open PRs; old open issues #21, #60, #111 and #116 remain. Removed `auto` from old coverage story #111 so the selector cannot run it ahead of the new correctness priority. Historical requests remain open; they are not newly activated. Current step: publish the role/specification setup and obtain the GitHub planner's first story contract for STORY-VALUE-001. No product implementation has been dispatched at this point.
+Initial audit: setup PR [#131](https://github.com/Nebettadjsr/GW2/pull/131) merged as `9fd9ef5`; old issues #21, #60, #111 and #116 remain open. Coverage issue [#111](https://github.com/Nebettadjsr/GW2/issues/111) has no `auto` release and is not newly activated.
+
+Current handoff: valuation issue [#132](https://github.com/Nebettadjsr/GW2/issues/132) is DONE via accepted/merged PR [#133](https://github.com/Nebettadjsr/GW2/pull/133), merge `23ce30d`, with green required CI and clean native Codex review of head `340681d`. The narrowed CPU/memory contract is issue [#134](https://github.com/Nebettadjsr/GW2/issues/134), READY for supervisor release once this planning handoff is merged. No other feature contract is released.
 
 ## Activation and state
 
@@ -18,14 +20,17 @@ Initial audit: no open PRs; old open issues #21, #60, #111 and #116 remain. Remo
 
 | ID | Outcome / responsible role | Dependencies | State |
 | --- | --- | --- | --- |
-| PLAN-HOST-001 | Planner verifies Oracle ARM64 target resources and whole-stack free-tier budget | Actual tenancy/host facts needed for qualification; provider is decided | DRAFT |
-| PLAN-KPI-001 | Planner inventories existing measurements and proposes KPI contracts and workloads | PLAN-HOST-001 for provider-specific limits; inventory can be drafted independently | DRAFT |
-| PLAN-VALUE-001 | Planner prepares correctness contract for recursive valuation of owned bound/non-tradable materials, including daily materials | DOMAIN_SPEC.md sections 11.1–11.2; inspect current bound-stock bypass | DRAFT |
-| STORY-VALUE-001 | Claude corrects valuation and verifies list/detail cost/profit agreement, cycle handling, yields and performance | Approved PLAN-VALUE-001 contract | DRAFT |
-| STORY-KPI-001 | Claude adds only missing resource measurements and machine-readable budget comparison | Approved PLAN-KPI-001 | DRAFT |
+| PLAN-HOST-001 | Planner verifies the Oracle provider budget and records target-host qualification gaps | Provider limits recorded; actual tenancy/host facts remain required only for qualification | DONE — planning artifact accepted in #134 |
+| PLAN-KPI-001 | Planner inventories existing measurements and proposes bounded KPI contracts and workloads | PLAN-HOST-001 provider limits; real-host access is not required for local reporting work | DONE — planning artifact accepted in #134 |
+| PLAN-VALUE-001 | Planner prepares correctness contract for recursive valuation of owned bound/non-tradable materials, including daily materials | DOMAIN_SPEC.md sections 11.1–11.2 | DONE — contract accepted as #132 |
+| STORY-VALUE-001 | Claude corrects valuation and verifies list/detail cost/profit agreement, cycle handling, yields and performance | Approved issue #132 | DONE — PR #133 merged as 23ce30d |
+| STORY-KPI-001 | Claude adds whole-host Linux CPU/memory observations, boundaries/provenance and safe 2 OCPU/12 GB comparison to the existing report | Accepted contract #134; STORY-VALUE-001 accepted | READY — supervisor release next |
 | STORY-KPI-002 | Claude adds repeatable desktop and multi-account/fault qualification workloads | STORY-KPI-001 | DRAFT |
 | STORY-KPI-003 | Claude exposes a concise capacity/health summary and documented reproduction path | STORY-KPI-001, STORY-KPI-002 | DRAFT |
-| REVIEW-KPI-001 | Supervisor validates real target-host evidence and reports free-tier fit/gaps | Previous KPI stories, target-host access | BLOCKED |
+| STORY-KPI-004 | Claude adds safe JVM heap/committed/max and GC observations and relates them to container/host memory without treating 12 GB as a JVM allowance | STORY-KPI-001 | DRAFT |
+| STORY-KPI-005 | Claude adds project-scoped storage, database, volume and log accounting; tenancy-wide allocation remains explicit | STORY-KPI-001 | DRAFT |
+| STORY-KPI-006 | Claude adds transfer-boundary observations without treating Docker/internal traffic as billable Oracle egress | STORY-KPI-001 | DRAFT |
+| REVIEW-KPI-001 | Supervisor validates real target-host evidence and reports free-tier fit/gaps | STORY-KPI-001–006, qualification workloads/reporting, all final features, target-host/tenancy access | BLOCKED |
 | PLAN-FEATURE-001 | Planner refines material-protection stories and prepares concrete UI review | Confirmed domain/UX contracts; inspect current code | DRAFT |
 | STORY-MAT-001 | Claude implements approved backend settings/validation and recursive calculation restrictions, with tests | Approved PLAN-FEATURE-001 story contract; STORY-VALUE-001 | DRAFT |
 | STORY-MAT-002 | Claude implements tile checkboxes, confirmation, tier presets, per-account browser retention and Profit toggle/warning/links | UI design review, STORY-MAT-001 request contract | DRAFT |
@@ -45,7 +50,7 @@ IDs are reserved draft contracts, not GitHub issue numbers. No implementation is
 
 ## KPI story drafting criteria
 
-For STORY-KPI-001: identify missing measurements before adding instrumentation; report per-service and whole-stack CPU/memory, JVM heap/GC, database connections/storage, requests/latency/errors, upstream traffic and cache/refresh activity where applicable. Include units, boundaries, duration, commit, workload, environment and unavailable reasons. Compare only metrics supported by the selected hosting service's budget. Never silently turn an unmeasurable value into zero or claim a pass.
+For STORY-KPI-001: extend the existing container report only with whole-host Linux CPU/memory observations, architecture/boundary/provenance, safe 2 OCPU/12 GB comparison and explicit unavailable/not-qualified behavior. Preserve warning-only CI. JVM details, storage/log accounting and transfer accounting are reserved for STORY-KPI-004, STORY-KPI-005 and STORY-KPI-006 respectively; internal Docker traffic is not billable-egress evidence.
 
 For STORY-KPI-002: real public catalog topology with synthetic independent accounts, cold/warm cases, calculations, refreshes, sustained concurrent use, restart recovery and simulated slow/429/5xx upstreams. Preserve domain results and account separation; no live ArenaNet stress testing. Separate browser measurements from server and provider usage. Proposed load tiers, duration and success thresholds require an approved contract rather than invention by Claude.
 
@@ -87,4 +92,4 @@ Resolve the owner via a configured, verified account GUID; do not request/store 
 - Intended concurrent-user workload and acceptable latency/headroom: planner proposes against the Oracle resource baseline; Product Owner approves material tradeoffs.
 - Material protection: core product/UI/retention answers are confirmed and recorded in the owning domain/UX documents. Story and concrete UI review remain preparation work.
 - Characters: feature and in-game-style equipment/build tab scope confirmed; equipment first, inventory/builds next, story subject to API coverage, discovered recipes excluded and map completion deferred. Concrete UI design remains review work. Drafts do not authorize implementation.
-- Next authorized action: publish/review the setup and invoke the GitHub planner for the valuation correction; release Claude only after the bounded contract is accepted. Follow with the remaining agreed work in dependency order. Request Oracle host details only when required for qualification.
+- Next authorized action: release accepted contract #134 to Claude after this planning handoff is merged, then inspect its real diff, tests, smoke evidence and native review. PR-triggered runs marked action_required need supervisor approval for the trusted exact head; a separate dispatched CI pass does not replace branch-protection checks. Real Oracle access is required for final qualification, not for locally testable reporting preparation.
