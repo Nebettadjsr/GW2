@@ -148,11 +148,11 @@ class CharactersApiTest {
     private void seed() throws SQLException {
         exec("INSERT INTO account_registry (account_id) VALUES ('" + A + "'), ('" + B + "'), ('" + EMPTY
                         + "'), ('" + NONE + "')",
-                "INSERT INTO characters (account_id, character_id, name, profession, race, gender, level, created_at_gw) VALUES"
-                        + " ('" + A + "', 1, 'Zed', 'Guardian', 'Human', 'Male', 80, '2020-01-02T03:04:05Z'),"
-                        + " ('" + A + "', 2, 'Alice', 'Thief', 'Asura', 'Female', 40, NULL),"
-                        + " ('" + A + "', 3, 'Shared', 'Mesmer', 'Sylvari', 'Female', 80, '2019-05-06T07:08:09Z'),"
-                        + " ('" + B + "', 4, 'Shared', 'Warrior', 'Norn', 'Male', 12, '2021-01-01T00:00:00Z')",
+                "INSERT INTO characters (account_id, character_id, name, profession, race, gender, level, created_at_gw, age_seconds, deaths) VALUES"
+                        + " ('" + A + "', 1, 'Zed', 'Guardian', 'Human', 'Male', 80, '2020-01-02T03:04:05Z', 12631700, 9193),"
+                        + " ('" + A + "', 2, 'Alice', 'Thief', 'Asura', 'Female', 40, NULL, 0, 0),"
+                        + " ('" + A + "', 3, 'Shared', 'Mesmer', 'Sylvari', 'Female', 80, '2019-05-06T07:08:09Z', NULL, NULL),"
+                        + " ('" + B + "', 4, 'Shared', 'Warrior', 'Norn', 'Male', 12, '2021-01-01T00:00:00Z', 5000000000, 77)",
                 "INSERT INTO character_crafting (account_id, character_id, discipline, rating, is_active) VALUES"
                         + " ('" + A + "', 3, 'Tailor', 400, true), ('" + A + "', 3, 'Armorsmith', 500, false),"
                         + " ('" + A + "', 3, 'Chef', 12, true), ('" + A + "', 1, 'Jeweler', 80, false),"
@@ -173,6 +173,35 @@ class CharactersApiTest {
 
     private static org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder as(UUID a, String path) {
         return as(a, ALL, Set.of(), path);
+    }
+
+    @Test
+    void coreSummaryExposesCountersAndBackendBirthdayWithZeroDistinctFromUnknown() throws Exception {
+        // NOW = 2026-11-07T12:00Z; Zed created 2020-01-02T03:04:05Z -> 365-day multiples, not calendar years.
+        Instant zed = Instant.parse("2020-01-02T03:04:05Z");
+        Instant zedNext = zed.plusSeconds(365L * 86400 * 7); // 7 intervals = 2555 days -> 2026-12-31..., first after NOW
+        assertTrue(zedNext.isAfter(NOW) && !zedNext.minusSeconds(365L * 86400).isAfter(NOW));
+        mvc.perform(as(A, "/api/account/characters"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.characters[0].name").value("Alice"))
+                .andExpect(jsonPath("$.characters[0].ageSeconds").value(0))
+                .andExpect(jsonPath("$.characters[0].deaths").value(0))
+                .andExpect(jsonPath("$.characters[0].nextBirthdayAt").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.characters[1].ageSeconds").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.characters[1].deaths").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.characters[1].nextBirthdayAt").isNotEmpty())
+                .andExpect(jsonPath("$.characters[2].ageSeconds").value(12631700))
+                .andExpect(jsonPath("$.characters[2].deaths").value(9193))
+                .andExpect(jsonPath("$.characters[2].nextBirthdayAt").value(zedNext.toString()));
+        // Account isolation + 64-bit value on the selected-character read.
+        mvc.perform(as(B, "/api/account/characters/Shared"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.character.ageSeconds").value(5000000000L))
+                .andExpect(jsonPath("$.character.deaths").value(77));
+        mvc.perform(as(A, "/api/account/characters/Shared"))
+                .andExpect(jsonPath("$.character.ageSeconds").value(org.hamcrest.Matchers.nullValue()));
+        // No build grant is part of the required set: ALL has only account/characters/inventories.
+        assertFalse(ALL.toString().toLowerCase().contains("builds"));
     }
 
     @Test

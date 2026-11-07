@@ -19,7 +19,20 @@ public final class CharacterParser {
         Integer level = c.hasNonNull("level") ? c.get("level").asInt() : null;
         String createdIso = c.hasNonNull("created") ? c.get("created").asText() : null;
 
-        return new CharacterInfo(name, profession, race, gender, level, createdIso);
+        long age = requiredCounter(c, name, "age");
+        long deaths = requiredCounter(c, name, "deaths");
+
+        return new CharacterInfo(name, profession, race, gender, level, createdIso, age, deaths);
+    }
+
+    /** Exact integral value in 0..Long.MAX_VALUE; anything else (missing, null, text, fraction, overflow) is rejected. */
+    private static long requiredCounter(JsonNode c, String name, String field) {
+        JsonNode v = c.get(field);
+        if (v == null || v.isNull() || !v.isIntegralNumber() || !v.canConvertToLong() || v.longValue() < 0) {
+            throw new IllegalStateException("Malformed '" + field + "' for character '" + name
+                    + "'; roster not published");
+        }
+        return v.longValue();
     }
 
     public static JsonNode craftingNode(JsonNode characterRoot) {

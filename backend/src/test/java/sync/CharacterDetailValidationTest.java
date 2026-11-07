@@ -14,7 +14,7 @@ class CharacterDetailValidationTest {
 
     private static JsonNode detail(String name, String extra) throws Exception {
         return M.readTree("{\"name\":\"" + name + "\",\"race\":\"Human\",\"gender\":\"Male\","
-                + "\"profession\":\"Guardian\",\"level\":80,\"created\":\"2020-01-01T00:00:00Z\"" + extra + "}");
+                + "\"profession\":\"Guardian\",\"level\":80,\"created\":\"2020-01-01T00:00:00Z\",\"age\":100,\"deaths\":2" + extra + "}");
     }
 
     private static final String ALL = ",\"crafting\":[],\"recipes\":[],\"bags\":[],\"equipment\":[]";

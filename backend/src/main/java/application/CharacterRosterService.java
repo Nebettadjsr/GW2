@@ -50,6 +50,7 @@ public class CharacterRosterService {
     private final RefreshStatus coordinator;
     private final CharacterRepository repository;
     private final ConnectionSource connections;
+    private final java.time.Clock clock;
 
     /** The shared refresh coordinator's per-source status, as this read needs it. */
     public interface RefreshStatus {
@@ -70,6 +71,13 @@ public class CharacterRosterService {
 
     public CharacterRosterService(ScopedSourceGate gate, RefreshStatus coordinator,
                                   CharacterRepository repository, ConnectionSource connections) {
+        this(gate, coordinator, repository, connections, java.time.Clock.systemUTC());
+    }
+
+    public CharacterRosterService(ScopedSourceGate gate, RefreshStatus coordinator,
+                                  CharacterRepository repository, ConnectionSource connections,
+                                  java.time.Clock clock) {
+        this.clock = clock;
         this.gate = gate;
         this.coordinator = coordinator;
         this.repository = repository;
@@ -140,10 +148,17 @@ public class CharacterRosterService {
                         "No character with that name exists in the current account roster.",
                         read.completedAt(), read.refresh(), null, null);
             }
-            return new Result(state, reason, message, read.completedAt(), read.refresh(), null, found.get());
+            return new Result(state, reason, message, read.completedAt(), read.refresh(), null,
+                    withBirthday(found.get()));
         }
         return new Result(state, reason, message, read.completedAt(), read.refresh(),
-                (List<CharacterProfile>) read.data(), null);
+                ((List<CharacterProfile>) read.data()).stream().map(this::withBirthday).toList(), null);
+    }
+
+    private CharacterProfile withBirthday(CharacterProfile p) {
+        return new CharacterProfile(p.name(), p.profession(), p.race(), p.gender(), p.level(), p.createdAt(),
+                p.disciplines(), p.ageSeconds(), p.deaths(),
+                domain.CharacterBirthday.next(p.createdAt(), clock.instant()));
     }
 
     private static Result denied(State state, String reason, String message) {

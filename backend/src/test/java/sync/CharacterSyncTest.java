@@ -63,7 +63,9 @@ class CharacterSyncTest {
                     gender        TEXT,
                     level         INTEGER,
                     created_at_gw TIMESTAMPTZ,
-                    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+                    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    age_seconds   BIGINT,
+                    deaths        BIGINT
                 )
                 """);
             st.execute("""
@@ -150,10 +152,10 @@ class CharacterSyncTest {
 
     @Test
     void upsertCharacter_insertsThenUpdatesTheSameRowOnConflictingName() throws Exception {
-        CharacterInfo initial = new CharacterInfo("Test Hero", "Engineer", "Norn", "Male", 10, null);
+        CharacterInfo initial = new CharacterInfo("Test Hero", "Engineer", "Norn", "Male", 10, null, 0L, 5000000000L);
         long characterId = CharacterSync.upsertCharacter(con, initial);
 
-        CharacterInfo updated = new CharacterInfo("Test Hero", "Engineer", "Norn", "Male", 42, null);
+        CharacterInfo updated = new CharacterInfo("Test Hero", "Engineer", "Norn", "Male", 42, null, 12631700L, 9193L);
         long sameCharacterId = CharacterSync.upsertCharacter(con, updated);
 
         assertEquals(characterId, sameCharacterId);
@@ -164,6 +166,12 @@ class CharacterSyncTest {
             assertTrue(rs.next());
             assertEquals(1, rs.getInt(1));
             assertEquals(42, rs.getInt(2));
+        }
+        try (Statement st = con.createStatement();
+             ResultSet rs = st.executeQuery("SELECT age_seconds, deaths FROM characters WHERE character_id = " + characterId)) {
+            assertTrue(rs.next());
+            assertEquals(12631700L, rs.getLong(1), "later generation updates the counters");
+            assertEquals(9193L, rs.getLong(2));
         }
     }
 
