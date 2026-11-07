@@ -655,3 +655,36 @@ export interface CharacterEquipmentTabsResponse {
   coveredParentGeneration?: number
   tabs?: EquipmentTab[]
 }
+
+/** Character inventory read (`GET /api/account/characters/{name}/inventory`). No rarity/stat fields. */
+export interface InventoryItemRef { itemId: number; resolved: boolean; name?: string; icon?: string }
+
+export interface InventorySlot {
+  slot: number
+  empty: boolean
+  item?: InventoryItemRef
+  quantity?: number
+  binding?: string
+  boundTo?: string
+}
+
+export interface InventoryBag {
+  bag: number
+  installed: boolean
+  container?: InventoryItemRef
+  capacity?: number
+  slots: InventorySlot[]
+}
+
+export type InventoryContents = 'HAS_ITEMS' | 'ALL_SLOTS_EMPTY' | 'NO_BAGS'
+
+export interface CharacterInventoryResponse {
+  state: CharacterReadState
+  reason?: string
+  message?: string
+  character?: string
+  generation?: number
+  completedAt?: string
+  contents?: InventoryContents
+  bags?: InventoryBag[]
+}

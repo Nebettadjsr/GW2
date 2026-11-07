@@ -17,7 +17,7 @@ import { ApiRequestError } from '@/api/http'
 import { charactersApi, type CharactersApi } from '@/api/charactersApi'
 import { syncApi, type SyncApi } from '@/api/syncApi'
 import type {
-  CharacterEquipmentTabsResponse, CharacterOverview, CharacterReadResponse, EquipmentTab
+  CharacterEquipmentTabsResponse, CharacterInventoryResponse, CharacterOverview, CharacterReadResponse, EquipmentTab
 } from '@/api/types'
 
 export const EQUIPMENT_POLL_MS = 2_000
@@ -94,6 +94,14 @@ export function useCharacters(
   const inspectedTab = ref<number | null>(null)
   let equipmentId = 0
 
+  // Inventory: a lazily loaded section, read only when first inspected for the selected character.
+  const section = ref<'equipment' | 'inventory'>('equipment')
+  const inventoryPhase = ref<ReadPhase>('idle')
+  const inventoryResponse = shallowRef<CharacterInventoryResponse | null>(null)
+  const lastGoodInventory = shallowRef<Map<string, CharacterInventoryResponse>>(new Map())
+  const inventoryFailure = ref<ReadFailure | null>(null)
+  let inventoryId = 0
+
   const stillSelected = (name: string, id: number, newest: number): boolean =>
     current() && selectedName.value === name && id === newest
 
@@ -141,6 +149,54 @@ export function useCharacters(
     }
   }
 
+  async function loadInventory(name: string): Promise<void> {
+    if (!current()) return
+    const id = ++inventoryId
+    inventoryPhase.value = 'loading'
+    inventoryFailure.value = null
+    try {
+      const response = await api.loadInventory(name)
+      if (!stillSelected(name, id, inventoryId)) return
+      inventoryResponse.value = response
+      if (HAS_DATA.includes(response.state) && response.bags) {
+        lastGoodInventory.value = new Map(lastGoodInventory.value).set(name, response)
+      }
+    } catch (cause) {
+      if (!stillSelected(name, id, inventoryId)) return
+      inventoryFailure.value = failureOf(cause)
+    }
+    inventoryPhase.value = 'loaded'
+    // A newer parent generation shows retained equipment is older: one bounded current reread.
+    const g = inventoryResponse.value?.generation
+    const eg = equipmentSource.value?.parent?.generation
+    if (g !== undefined && eg !== undefined && eg < g && equipmentPhase.value !== 'loading' && stillSelected(name, id, inventoryId)) {
+      void loadEquipment(name)
+    }
+  }
+
+  /** Switch section; Inventory is read the first time it is opened for this selection. */
+  function showSection(next: 'equipment' | 'inventory'): void {
+    section.value = next
+    const name = selectedName.value
+    if (next === 'inventory' && name !== null && inventoryPhase.value === 'idle') void loadInventory(name)
+  }
+
+  const inventorySource = computed<CharacterInventoryResponse | null>(() => {
+    const now = inventoryResponse.value
+    if (now && HAS_DATA.includes(now.state) && now.bags) return now
+    return selectedName.value === null ? null : (lastGoodInventory.value.get(selectedName.value) ?? null)
+  })
+  const inventoryIsRetained = computed(
+    () => inventorySource.value !== null &&
+      (inventoryFailure.value !== null || inventorySource.value !== inventoryResponse.value)
+  )
+  /** Retained equipment describes an older parent than the inventory now shown. */
+  const equipmentOlderThanInventory = computed(() => {
+    const g = inventorySource.value?.generation
+    const eg = equipmentSource.value?.parent?.generation
+    return g !== undefined && eg !== undefined && eg < g
+  })
+
   /**
    * Core fields to show: the character's own detail when it carried data, else — only once the detail
    * read has finished without data — the same character's entry in the retained same-account roster.
@@ -153,12 +209,21 @@ export function useCharacters(
   })
   const detailIsRetained = computed(() => shownDetail.value !== null && shownDetail.value !== detail.value)
 
+  function resetInventory(): void {
+    inventoryId += 1
+    inventoryResponse.value = null
+    inventoryFailure.value = null
+    inventoryPhase.value = 'idle'
+    section.value = 'equipment'
+  }
+
   function select(name: string): void {
     if (selectedName.value === name) return
     selectedName.value = name
     detail.value = null
     detailResponse.value = null
     equipmentResponse.value = null
+    resetInventory()
     inspectedTab.value = initialInspection(name)
     refreshMessage.value = null
     // Invalidate anything in flight for the previous character.
@@ -181,6 +246,7 @@ export function useCharacters(
     detail.value = null
     detailResponse.value = null
     equipmentResponse.value = null
+    resetInventory()
     inspectedTab.value = null
     detailPhase.value = 'idle'
     equipmentPhase.value = 'idle'
@@ -260,6 +326,8 @@ export function useCharacters(
     selectedName, detail, shownDetail, detailIsRetained, detailResponse, detailFailure, detailPhase, select, back, loadDetail,
     equipmentPhase, equipmentResponse, equipmentFailure, equipmentTabs, equipmentIsRetained, equipmentSource,
     activeTab, inspectedTab, shownTab, inspect, loadEquipment,
-    refreshing, refreshMessage, refreshEquipment
+    refreshing, refreshMessage, refreshEquipment,
+    section, showSection, inventoryPhase, inventoryResponse, inventoryFailure, inventorySource, inventoryIsRetained,
+    equipmentOlderThanInventory, loadInventory
   }
 }

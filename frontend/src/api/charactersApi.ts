@@ -1,5 +1,5 @@
 import { getStateJson, postJson } from './http'
-import type { CharacterEquipmentTabsResponse, CharacterReadResponse, SyncTaskAccepted } from './types'
+import type { CharacterEquipmentTabsResponse, CharacterInventoryResponse, CharacterReadResponse, SyncTaskAccepted } from './types'
 
 /**
  * The Characters read routes and the one equipment-tabs refresh trigger. Character names are the
@@ -10,6 +10,7 @@ export interface CharactersApi {
   loadRoster(): Promise<CharacterReadResponse>
   loadCharacter(name: string): Promise<CharacterReadResponse>
   loadEquipmentTabs(name: string): Promise<CharacterEquipmentTabsResponse>
+  loadInventory(name: string): Promise<CharacterInventoryResponse>
   /** The existing optional-source refresh; takes no body fields and carries the transient key. */
   startEquipmentTabsRefresh(): Promise<SyncTaskAccepted>
 }
@@ -19,5 +20,7 @@ export const charactersApi: CharactersApi = {
   loadCharacter: (name) => getStateJson<CharacterReadResponse>(`/account/characters/${encodeURIComponent(name)}`),
   loadEquipmentTabs: (name) =>
     getStateJson<CharacterEquipmentTabsResponse>(`/account/characters/${encodeURIComponent(name)}/equipment-tabs`),
+  loadInventory: (name) =>
+    getStateJson<CharacterInventoryResponse>(`/account/characters/${encodeURIComponent(name)}/inventory`),
   startEquipmentTabsRefresh: () => postJson<SyncTaskAccepted>('/sync/account/character-equipment-tabs', {})
 }

@@ -5,6 +5,7 @@ import { charactersApi, type CharactersApi } from '@/api/charactersApi'
 import { syncApi } from '@/api/syncApi'
 import PageHeader from '@/shell/PageHeader.vue'
 import EquipmentPanel from './EquipmentPanel.vue'
+import InventoryPanel from './InventoryPanel.vue'
 import { useCharacters } from './useCharacters'
 
 /**
@@ -51,6 +52,11 @@ const rosterState = computed(() => c.rosterResponse.value)
 const equipmentState = computed(() => c.equipmentResponse.value)
 const equipmentProblem = computed(() => {
   const r = equipmentState.value
+  return r !== null && !(r.state === 'AVAILABLE' || r.state === 'STALE')
+})
+const inventoryState = computed(() => c.inventoryResponse.value)
+const inventoryProblem = computed(() => {
+  const r = inventoryState.value
   return r !== null && !(r.state === 'AVAILABLE' || r.state === 'STALE')
 })
 const canRefresh = computed(() => {
@@ -129,7 +135,17 @@ function fmt(value?: string | null): string | null {
         </template>
       </dl>
 
-      <h3>Equipment</h3>
+      <div class="sections" role="tablist" aria-label="Character sections" data-test="section-tablist">
+        <button type="button" role="tab" id="section-tab-equipment" aria-controls="section-panel" :aria-selected="c.section.value === 'equipment'"
+          :class="{ 'sections__tab--selected': c.section.value === 'equipment' }" data-test="section-equipment" @click="c.showSection('equipment')">Equipment</button>
+        <button type="button" role="tab" id="section-tab-inventory" aria-controls="section-panel" :aria-selected="c.section.value === 'inventory'"
+          :class="{ 'sections__tab--selected': c.section.value === 'inventory' }" data-test="section-inventory" @click="c.showSection('inventory')">Inventory</button>
+      </div>
+      <div id="section-panel" role="tabpanel" :aria-labelledby="`section-tab-${c.section.value}`">
+      <template v-if="c.section.value === 'equipment'">
+      <p v-if="c.equipmentOlderThanInventory.value" class="notice" role="status" data-test="equipment-older">
+        The equipment shown may describe an older saved character list than the inventory. Reading it again…
+      </p>
       <p v-if="c.equipmentPhase.value === 'loading'" class="meta" role="status" data-test="equipment-loading">
         {{ c.equipmentSource.value ? 'Updating equipment. Showing the previous saved data below.' : 'Loading equipment…' }}
       </p>
@@ -157,6 +173,42 @@ function fmt(value?: string | null): string | null {
       </button>
 
       <EquipmentPanel v-if="c.equipmentTabs.value" :tabs="c.equipmentTabs.value" :shown="c.shownTab.value" @inspect="c.inspect" />
+      </template>
+      <template v-else>
+        <p v-if="c.inventoryPhase.value === 'loading'" class="meta" role="status" data-test="inventory-loading">
+          {{ c.inventorySource.value ? 'Updating inventory. Showing the previous saved data below.' : 'Loading inventory…' }}
+        </p>
+        <div v-if="c.inventoryFailure.value" class="notice notice--error" role="alert" data-test="inventory-error">
+          Could not read inventory{{ c.inventorySource.value ? '; showing the previous saved data, which may be out of date' : '' }}.
+          <details><summary>Error details</summary>{{ c.inventoryFailure.value.code }} — {{ c.inventoryFailure.value.message }}</details>
+          <button type="button" data-test="inventory-retry" @click="c.loadInventory(c.selectedName.value!)">Try again</button>
+        </div>
+        <div v-else-if="inventoryProblem" class="notice" role="status" data-test="inventory-state">
+          <template v-if="inventoryState?.state === 'GRANT_REQUIRED'">Your API key does not allow reading inventory. </template>
+          <template v-else-if="inventoryState?.state === 'ENDPOINT_RESTRICTED'">Inventory is restricted for this account. </template>
+          <template v-else-if="inventoryState?.state === 'PENDING'">
+            <template v-if="inventoryState.reason === 'LAYOUT_REFRESH_REQUIRED'">
+              The saved character data needs an account refresh before inventory can be shown. Start one from
+              <a href="#/synchronization" data-test="inventory-system-status">System Status</a>.
+            </template>
+            <template v-else-if="inventoryState.reason === 'REFRESH_FAILED'">The first inventory refresh failed. Try an account refresh from <a href="#/synchronization">System Status</a>. </template>
+            <template v-else-if="inventoryState.reason === 'REFRESH_IN_PROGRESS'">An account refresh is in progress. Check again shortly. </template>
+            <template v-else>Inventory has not been synchronized yet. </template>
+          </template>
+          <template v-else-if="inventoryState?.state === 'NOT_FOUND'">This character was not found. </template>
+          {{ inventoryState?.message }}
+          <span class="meta">({{ inventoryState?.state }}<template v-if="inventoryState?.reason">: {{ inventoryState.reason }}</template>)</span>
+          <template v-if="c.inventorySource.value"> Showing the previous saved data below; it may be out of date.</template>
+        </div>
+        <p v-else-if="c.inventoryIsRetained.value" class="notice" data-test="inventory-retained">Showing previously saved inventory.</p>
+        <p v-if="inventoryState?.state === 'STALE'" class="meta" data-test="inventory-stale">This saved inventory may be out of date.</p>
+        <p v-if="c.inventorySource.value?.completedAt" class="meta" data-test="inventory-freshness">
+          Last synchronized: {{ fmt(c.inventorySource.value.completedAt) ?? 'unknown' }}.
+        </p>
+        <p v-if="c.inventorySource.value?.contents === 'ALL_SLOTS_EMPTY'" class="meta" data-test="inventory-all-empty">All listed bag slots are empty.</p>
+        <InventoryPanel v-if="c.inventorySource.value?.bags" :bags="c.inventorySource.value.bags" />
+      </template>
+      </div>
     </section>
   </div>
 </template>
@@ -166,5 +218,8 @@ function fmt(value?: string | null): string | null {
 .roster { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
 .roster__item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; padding: 8px; }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; }
+.sections { display: flex; gap: 2px; margin: 12px 0 8px; border-bottom: 1px solid var(--border, #888); }
+.sections button { border: 1px solid var(--border, #888); border-bottom: 0; background: transparent; padding: 6px 12px; cursor: pointer; }
+.sections__tab--selected { font-weight: 700; background: rgba(128, 128, 128, 0.2); }
 .facts dd { margin: 0; }
 </style>
