@@ -175,8 +175,8 @@ export function useCharacters(
   const reconciled = new Set<string>()
   function reconcile(name: string): void {
     if (!current() || selectedName.value !== name) return
-    const ig = inventorySource.value?.generation
-    const eg = equipmentSource.value?.parent?.generation
+    const ig = knownInventoryParent.value
+    const eg = knownEquipmentParent.value
     if (ig === undefined || eg === undefined || ig === eg) return
     if (eg < ig) {
       const key = `eq:${name}:${ig}`
@@ -217,17 +217,30 @@ export function useCharacters(
     () => inventorySource.value !== null &&
       (inventoryFailure.value !== null || inventorySource.value !== inventoryResponse.value)
   )
-  /** Retained equipment describes an older parent than the inventory now shown. */
+  /**
+   * Newest CHARACTERS parent generation observed per section, from the current envelope (even a
+   * non-data PENDING/UNAVAILABLE one that carries parent metadata) and from the retained display data.
+   */
+  const newest = (...gs: Array<number | undefined>): number | undefined => {
+    const k = gs.filter((g): g is number => typeof g === 'number')
+    return k.length ? Math.max(...k) : undefined
+  }
+  const knownEquipmentParent = computed(() =>
+    newest(equipmentResponse.value?.parent?.generation, equipmentSource.value?.parent?.generation))
+  const knownInventoryParent = computed(() =>
+    newest(inventoryResponse.value?.generation, inventorySource.value?.generation))
+
+  /** Retained equipment describes an older parent than the newest one known. */
   const equipmentOlderThanInventory = computed(() => {
-    const g = inventorySource.value?.generation
-    const eg = equipmentSource.value?.parent?.generation
+    const g = knownInventoryParent.value
+    const eg = knownEquipmentParent.value
     return g !== undefined && eg !== undefined && eg < g
   })
 
-  /** The inventory shown describes an older parent than the equipment response now known. */
+  /** The inventory shown describes an older parent than the newest one known from equipment. */
   const inventoryOlderThanEquipment = computed(() => {
     const g = inventorySource.value?.generation
-    const eg = equipmentSource.value?.parent?.generation
+    const eg = knownEquipmentParent.value
     return g !== undefined && eg !== undefined && g < eg
   })
 

@@ -551,6 +551,29 @@ describe('Character inventory section', () => {
     expect(api.calls.filter((x) => x === 'inv:Ana B')).toHaveLength(2)
   })
 
+  it('reconciles toward a newer parent reported only by a PENDING equipment envelope, once', async () => {
+    let eqCalls = 0
+    const api = fakeApi({
+      loadEquipmentTabs: async (n) => {
+        api.calls.push(`equip:${n}`); eqCalls += 1
+        return eqCalls === 2 ? { ...tabsResponse, parent: { generation: 1 } }
+          : eqCalls === 1 ? { state: 'PENDING', reason: 'NOT_SYNCED', message: 'p' }
+          : { state: 'PENDING', reason: 'COVERAGE_INCOMPATIBLE', message: 'p', parent: { generation: 3 }, coveredParentGeneration: 1 }
+      },
+      loadInventory: async (n) => { api.calls.push(`inv:${n}`); return { ...inventoryResponse, generation: inv += 1 } }
+    })
+    let inv = 1
+    const c = useCharacters(api, tasks, noSleep)
+    c.select('Ana B'); await flushPromises(); await flushPromises()
+    c.showSection('inventory'); await flushPromises(); await flushPromises()
+    expect(api.calls.filter((x) => x === 'equip:Ana B').length).toBeLessThanOrEqual(4)
+    expect(api.calls.filter((x) => x === 'inv:Ana B')).toHaveLength(2)
+    expect(c.equipmentTabs.value).not.toBeNull()
+    c.showSection('equipment'); c.showSection('inventory'); await flushPromises()
+    expect(api.calls.filter((x) => x === 'inv:Ana B')).toHaveLength(2)
+    expect(api.calls.filter((x) => x === 'equip:Ana B').length).toBeLessThanOrEqual(4)
+  })
+
   it('does not reconcile after an account replacement mid-flight', async () => {
     const eq = deferred<CharacterEquipmentTabsResponse>()
     const api = fakeApi({ loadEquipmentTabs: (n) => { api.calls.push(`equip:${n}`); return eq.promise }, loadInventory: async () => ({ ...inventoryResponse, generation: 2 }) })
