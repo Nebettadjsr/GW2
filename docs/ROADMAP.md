@@ -64,7 +64,7 @@ Users saving for a legendary or another goal can protect owned item/material typ
 - Selection UI: [FRONTEND_UX_GUIDELINES.md section 2.1](FRONTEND_UX_GUIDELINES.md). Tile checkboxes plus explicit confirmation, presets for every tier T1–T6 and room for more, Profit toggle/count, short empty-selection warning and links back to relevant selection pages.
 - Remember the committed selection and activation setting per account on the same browser. No cross-device synchronization is required.
 
-These choices were confirmed by the Product Owner. The planner can now refine the bounded story contracts, including a UI review of exact preset membership, labels and interactions. Story release and workflow execution remain unauthorized.
+These choices were confirmed by the Product Owner. The planner can now refine the bounded story contracts, including a UI review of exact preset membership, labels and interactions. Individual stories still require supervisor release under the execution authorization recorded in the backlog.
 
 ### Acceptance and resource constraints
 
