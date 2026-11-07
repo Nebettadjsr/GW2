@@ -121,6 +121,64 @@ class CraftingProfitApiControllerTest {
     }
 
     @Test
+    void omittedProtectionFieldsDefaultToDisabledAndEmpty() throws Exception {
+        factory.next(service -> service.canned = profitData(List.of(), Map.of(), Map.of(), Map.of()));
+
+        mockMvc.perform(post("/api/crafting/profit").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"settings\": {\"materialProtectionEnabled\": null, \"protectedItemIds\": null}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.settings.materialProtectionEnabled").value(false))
+                .andExpect(jsonPath("$.settings.protectedItemIds").isEmpty());
+
+        CraftingSettings settings = factory.only().capturedSettings;
+        assertFalse(settings.materialProtectionEnabled);
+        assertTrue(settings.protectedItemIds.isEmpty());
+    }
+
+    @Test
+    void protectedIdsAreDeduplicatedSortedNumericallyAndEchoed() throws Exception {
+        factory.next(service -> service.canned = profitData(List.of(), Map.of(), Map.of(), Map.of()));
+
+        mockMvc.perform(post("/api/crafting/profit").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"settings\": {\"materialProtectionEnabled\": true, "
+                                + "\"protectedItemIds\": [100, 9, 100, 20000, 9]}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.settings.materialProtectionEnabled").value(true))
+                .andExpect(jsonPath("$.settings.protectedItemIds[0]").value(9))
+                .andExpect(jsonPath("$.settings.protectedItemIds[1]").value(100))
+                .andExpect(jsonPath("$.settings.protectedItemIds[2]").value(20000))
+                .andExpect(jsonPath("$.settings.protectedItemIds.length()").value(3));
+
+        CraftingSettings settings = factory.only().capturedSettings;
+        assertTrue(settings.materialProtectionEnabled);
+        assertEquals(Set.of(9, 100, 20000), settings.protectedItemIds);
+    }
+
+    @Test
+    void disabledProtectionWithSelectionIsEchoedButChangesNothingForTheDomain() throws Exception {
+        factory.next(service -> service.canned = profitData(List.of(), Map.of(), Map.of(), Map.of()));
+
+        mockMvc.perform(post("/api/crafting/profit").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"settings\": {\"protectedItemIds\": [5]}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.settings.materialProtectionEnabled").value(false))
+                .andExpect(jsonPath("$.settings.protectedItemIds[0]").value(5));
+
+        assertFalse(factory.only().capturedSettings.isProtected(5));
+    }
+
+    @Test
+    void invalidProtectedIdsAreRejectedBeforeAnyCalculation() throws Exception {
+        for (String ids : List.of("[0]", "[-3]", "[1, null]")) {
+            mockMvc.perform(post("/api/crafting/profit").contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"settings\": {\"materialProtectionEnabled\": true, "
+                                    + "\"protectedItemIds\": " + ids + "}}"))
+                    .andExpect(status().isBadRequest());
+        }
+        assertEquals(0, factory.created.size());
+    }
+
+    @Test
     void characterDisciplineScopeAndExplicitSettingsReachTheApplicationServiceUnchanged() throws Exception {
         factory.next(service -> service.canned = profitData(List.of(), Map.of(), Map.of(), Map.of()));
 
