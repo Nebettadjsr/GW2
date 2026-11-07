@@ -312,6 +312,9 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
       state.committedSources = base === null ? null : [...new Set([...base, ...state.pendingViews])].sort()
     }
     state.pendingViews = []
+    // Empty-selection safety rule: an empty committed selection cannot stay activated, and a later
+    // non-empty Save must not silently re-enable it.
+    if (state.committed.length === 0) state.activation = false
     shadow.set(accountId, { ids: [...state.committed], enabled: state.activation, sources: state.committedSources && [...state.committedSources] })
     persist(accountId, state.committed, state.activation, state.committedSources)
   }

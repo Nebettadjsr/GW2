@@ -484,3 +484,38 @@ describe('storage recovery of recovered diagnostics', () => {
 function PREFIX(id: string): string {
   return PREFERENCE_KEY_PREFIX + id
 }
+
+describe('saving an empty selection clears latent activation', () => {
+  it('enabled -> save empty -> account roundtrip -> save non-empty stays off and sends no enabled request', async () => {
+    commit([3])
+    useMaterialProtection().setActivation(true)
+    const m = useMaterialProtection()
+    m.setPending([])
+    m.commit()
+    expect(m.state.activation).toBe(false)
+    expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).enabled).toBe(false)
+
+    connection.accountId = B
+    connection.accountId = A
+    expect(m.state.activation).toBe(false)
+
+    const fake = api()
+    const w = await open(fake)
+    m.setPending([4])
+    m.commit()
+    await flushPromises()
+    expect(m.state.activation).toBe(false)
+    expect((toggle(w).element as HTMLInputElement).checked).toBe(false)
+    expect(fake.profitRequests.some((r) => r.settings?.materialProtectionEnabled === true)).toBe(false)
+    expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).enabled).toBe(false)
+  })
+
+  it('keeps activation on when a non-empty selection is saved while already active', () => {
+    commit([3])
+    const m = useMaterialProtection()
+    m.setActivation(true)
+    m.setPending([3, 9])
+    m.commit()
+    expect(m.state.activation).toBe(true)
+  })
+})
