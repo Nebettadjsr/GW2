@@ -148,4 +148,79 @@ public class CharacterRepository {
         }
         return out;
     }
+
+    /** One crafting discipline of one character, exactly as persisted. */
+    public record Discipline(String discipline, int rating, boolean active) {}
+
+    /**
+     * One character's identity facts and crafting disciplines (STORY-CHAR-001). Nullable identity
+     * columns stay null: nothing is defaulted or fabricated.
+     */
+    public record CharacterProfile(String name, String profession, String race, String gender,
+                                   Integer level, java.time.Instant createdAt, List<Discipline> disciplines) {
+        public CharacterProfile {
+            disciplines = List.copyOf(disciplines);
+        }
+    }
+
+    /**
+     * The whole account roster with each character's disciplines, in two statements (one for the
+     * characters, one for all their disciplines) regardless of roster size. Characters are ordered
+     * by name then persisted id (no in-game slot order is retained); disciplines by discipline name.
+     */
+    public List<CharacterProfile> loadRoster(Connection con, model.AccountScope scope) throws SQLException {
+        return load(con, scope, null);
+    }
+
+    /** One named character of the account, or empty; the lookup is exact and account-scoped. */
+    public Optional<CharacterProfile> loadCharacter(Connection con, model.AccountScope scope, String name)
+            throws SQLException {
+        return load(con, scope, name).stream().findFirst();
+    }
+
+    private List<CharacterProfile> load(Connection con, model.AccountScope scope, String onlyName)
+            throws SQLException {
+        ManagedSchema.requireManagedAccountSchema(con, "characters");
+        String filter = onlyName == null ? "" : " AND c.name = ?";
+        Map<Long, List<Discipline>> disciplines = new HashMap<>();
+        try (PreparedStatement ps = con.prepareStatement("""
+                SELECT cc.character_id, cc.discipline, cc.rating, cc.is_active
+                FROM character_crafting cc
+                JOIN characters c ON c.account_id = cc.account_id AND c.character_id = cc.character_id
+                WHERE cc.account_id = ?""" + filter + """
+
+                ORDER BY cc.character_id, cc.discipline""")) {
+            ps.setObject(1, scope.accountId());
+            if (onlyName != null) ps.setString(2, onlyName);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    disciplines.computeIfAbsent(rs.getLong("character_id"), k -> new ArrayList<>())
+                            .add(new Discipline(rs.getString("discipline"), rs.getInt("rating"),
+                                    rs.getBoolean("is_active")));
+                }
+            }
+        }
+        List<CharacterProfile> out = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement("""
+                SELECT c.character_id, c.name, c.profession, c.race, c.gender, c.level, c.created_at_gw
+                FROM characters c
+                WHERE c.account_id = ?""" + filter + """
+
+                ORDER BY c.name, c.character_id""")) {
+            ps.setObject(1, scope.accountId());
+            if (onlyName != null) ps.setString(2, onlyName);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    int level = rs.getInt("level");
+                    Integer boxedLevel = rs.wasNull() ? null : level;
+                    Timestamp created = rs.getTimestamp("created_at_gw");
+                    out.add(new CharacterProfile(rs.getString("name"), rs.getString("profession"),
+                            rs.getString("race"), rs.getString("gender"), boxedLevel,
+                            created == null ? null : created.toInstant(),
+                            disciplines.getOrDefault(rs.getLong("character_id"), List.of())));
+                }
+            }
+        }
+        return out;
+    }
 }

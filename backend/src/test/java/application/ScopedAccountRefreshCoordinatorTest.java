@@ -216,6 +216,72 @@ class ScopedAccountRefreshCoordinatorTest {
     }
 
     @Test
+    void characterSuccessThenUnrelatedSourceFailureLeavesCharactersCurrent() throws Exception {
+        AccountSessions.Issued a = session(A, "key-a", WIDE);
+        awaitTerminal(admit(a, "key-a", AccountSyncStateRepository.CHARACTERS).taskId());
+        gateway.failSource = AccountSyncStateRepository.BANK;
+        awaitTerminal(admit(a, "key-a", AccountSyncStateRepository.BANK).taskId());
+        AccountScope scope = AccountScope.of(A);
+        assertTrue(coordinator.lastFailure(scope).isPresent());
+        assertFalse(coordinator.lastRefreshFailed(scope, AccountSyncStateRepository.CHARACTERS));
+        assertTrue(coordinator.lastRefreshFailed(scope, AccountSyncStateRepository.BANK));
+    }
+
+    @Test
+    void characterFailureSurvivesUnrelatedSuccessAndIsClearedOnlyByCharacterSuccess() throws Exception {
+        AccountSessions.Issued a = session(A, "key-a", WIDE);
+        AccountScope scope = AccountScope.of(A);
+        gateway.failSource = AccountSyncStateRepository.CHARACTERS;
+        awaitTerminal(admit(a, "key-a", AccountSyncStateRepository.CHARACTERS).taskId());
+        assertTrue(coordinator.lastRefreshFailed(scope, AccountSyncStateRepository.CHARACTERS));
+
+        gateway.failSource = null;
+        awaitTerminal(admit(a, "key-a", AccountSyncStateRepository.BANK).taskId());
+        assertTrue(coordinator.lastRefreshFailed(scope, AccountSyncStateRepository.CHARACTERS),
+                "an unrelated success must not claim character recovery");
+
+        awaitTerminal(admit(a, "key-a", AccountSyncStateRepository.CHARACTERS).taskId());
+        assertFalse(coordinator.lastRefreshFailed(scope, AccountSyncStateRepository.CHARACTERS));
+        assertFalse(coordinator.lastRefreshFailed(AccountScope.of(B), AccountSyncStateRepository.CHARACTERS));
+    }
+
+    @Test
+    void repairRemovesEmptyFailureMetadataAndHistoryEvictionLeavesNoOrphans() throws Exception {
+        AccountSessions.Issued a = session(A, "key-a", WIDE);
+        gateway.failSource = AccountSyncStateRepository.BANK;
+        awaitTerminal(admit(a, "key-a", AccountSyncStateRepository.BANK).taskId());
+        assertEquals(1, coordinator.unrepairedAccountCount());
+        gateway.failSource = null;
+        awaitTerminal(admit(a, "key-a", AccountSyncStateRepository.BANK).taskId());
+        assertEquals(0, coordinator.unrepairedAccountCount(), "repair leaves no empty owner entry");
+
+        // Many other failing accounts: the existing record cap evicts old owners and their metadata.
+        gateway.failSource = AccountSyncStateRepository.BANK;
+        for (int i = 0; i < 130; i++) {
+            String id = String.format("33333333-3333-3333-3333-%012d", i);
+            AccountSessions.Issued s = session(id, "key-" + i, WIDE);
+            awaitTerminal(admit(s, "key-" + i, AccountSyncStateRepository.BANK).taskId());
+        }
+        assertTrue(coordinator.unrepairedAccountCount() <= 101,
+                "failure metadata is bounded by the retained history: " + coordinator.unrepairedAccountCount());
+        assertFalse(coordinator.lastRefreshFailed(
+                AccountScope.of("33333333-3333-3333-3333-000000000000"), AccountSyncStateRepository.BANK));
+        assertTrue(coordinator.lastRefreshFailed(
+                AccountScope.of("33333333-3333-3333-3333-000000000129"), AccountSyncStateRepository.BANK));
+    }
+
+    @Test
+    void mixedRunFailureIsReportedOnlyForTheSourceThatFailed() throws Exception {
+        AccountSessions.Issued a = session(A, "key-a", WIDE);
+        gateway.failSource = AccountSyncStateRepository.BANK;
+        awaitTerminal(admit(a, "key-a", AccountSyncStateRepository.BANK,
+                AccountSyncStateRepository.CHARACTERS).taskId());
+        AccountScope scope = AccountScope.of(A);
+        assertTrue(coordinator.lastRefreshFailed(scope, AccountSyncStateRepository.BANK));
+        assertFalse(coordinator.lastRefreshFailed(scope, AccountSyncStateRepository.CHARACTERS));
+    }
+
+    @Test
     void characterSourceNeedsInventoriesBecauseBagsAndEquipmentArePublished() {
         keys.put("chars-only", new AccountProof(A, Set.of(AccountGrant.ACCOUNT, AccountGrant.CHARACTERS), Set.of(), null));
         AccountSessions.Issued session = sessions.establish(keys.get("chars-only"));

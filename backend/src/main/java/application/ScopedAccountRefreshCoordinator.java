@@ -52,7 +52,7 @@ import java.util.function.Predicate;
  *       {@link TaskRecord}s hold the owner, required grants and sources only.</li>
  * </ul>
  */
-public class ScopedAccountRefreshCoordinator {
+public class ScopedAccountRefreshCoordinator implements CharacterRosterService.RefreshStatus {
 
     /** The reported operation; per-account exclusion uses {@code OPERATION + ":" + guid}. */
     public static final String OPERATION = AccountRefreshCoordinator.OPERATION;
@@ -188,6 +188,14 @@ public class ScopedAccountRefreshCoordinator {
 
     private final Map<UUID, Run> active = new HashMap<>();
     private final Map<UUID, Run> history = new HashMap<>();
+    /**
+     * Per account, the sources whose latest attempt failed and which no later attempt has repaired.
+     * Source-specific, so an unrelated source's success or failure neither sets nor clears it.
+     * In-memory diagnostic only, not durable source truth: an entry is removed when its last failed
+     * source is repaired and when the owner's retained history is evicted by the terminal-record
+     * cap, so it is bounded like the history. Holds no failure detail.
+     */
+    private final Map<UUID, Set<String>> unrepaired = new HashMap<>();
     private final Deque<TaskRecord> records = new ArrayDeque<>();
 
     public ScopedAccountRefreshCoordinator(AccountRefreshService refresh, BackgroundTasks tasks,
@@ -378,7 +386,11 @@ public class ScopedAccountRefreshCoordinator {
                 oldest.remove();
                 UUID owner = UUID.fromString(record.accountId());
                 Run retained = history.get(owner);
-                if (retained != null && record.taskId().equals(retained.taskId)) history.remove(owner);
+                if (retained != null && record.taskId().equals(retained.taskId)) {
+                    history.remove(owner);
+                    // Failure metadata lives no longer than the owner's retained history.
+                    if (!active.containsKey(owner)) unrepaired.remove(owner);
+                }
                 terminal--;
             }
         }
@@ -401,7 +413,23 @@ public class ScopedAccountRefreshCoordinator {
                     run.refreshing.addAll(batch);
                 }
                 try {
-                    refresh.refreshSources(scope, batch, fetcher);
+                    refresh.refreshSources(scope, batch, fetcher, new AccountRefreshService.SourceOutcomes() {
+                        public void succeeded(String source) {
+                            synchronized (ScopedAccountRefreshCoordinator.this) {
+                                Set<String> failed = unrepaired.get(scope.accountId());
+                                if (failed != null) {
+                                    failed.remove(source);
+                                    if (failed.isEmpty()) unrepaired.remove(scope.accountId());
+                                }
+                            }
+                        }
+
+                        public void failed(String source) {
+                            synchronized (ScopedAccountRefreshCoordinator.this) {
+                                unrepaired.computeIfAbsent(scope.accountId(), k -> new LinkedHashSet<>()).add(source);
+                            }
+                        }
+                    });
                     synchronized (this) {
                         run.lastRefreshed = Set.copyOf(batch);
                         run.lastFailure = null;
@@ -482,6 +510,28 @@ public class ScopedAccountRefreshCoordinator {
     public synchronized Optional<CalculationFreshness.RefreshFailure> lastFailure(AccountScope scope) {
         Run run = history.get(scope.accountId());
         return run == null ? Optional.empty() : Optional.ofNullable(run.lastFailure);
+    }
+
+    /** True while an unfinished run of this account still has {@code source} outstanding. */
+    @Override
+    public synchronized boolean isRefreshing(AccountScope scope, String source) {
+        Run run = active.get(scope.accountId());
+        return run != null && run.outstanding.contains(source);
+    }
+
+    /**
+     * True when the latest attempt to refresh {@code source} itself failed and no later attempt has
+     * succeeded. Failures of other sources never count, and persist across unrelated runs.
+     */
+    @Override
+    public synchronized boolean lastRefreshFailed(AccountScope scope, String source) {
+        Set<String> failed = unrepaired.get(scope.accountId());
+        return failed != null && failed.contains(source);
+    }
+
+    /** Number of accounts with retained failure metadata (diagnostic/test). */
+    synchronized int unrepairedAccountCount() {
+        return unrepaired.size();
     }
 
     /** True while the account has an unfinished run this coordinator admitted. */
