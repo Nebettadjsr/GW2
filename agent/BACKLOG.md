@@ -4,27 +4,27 @@
 
 Authorization: start the agreed workflow, supervise progress and stop only for necessary product/UI decisions or missing access. Supervisor: interactive Codex. Planner: Codex on GitHub. Programmer: Claude. Release one approved story at a time; no new paid API integration is authorized.
 
-Initial audit: setup PR [#131](https://github.com/Nebettadjsr/GW2/pull/131) merged as `9fd9ef5`; old issues #21, #60, #111 and #116 remain open. Coverage issue [#111](https://github.com/Nebettadjsr/GW2/issues/111) has no `auto` release and is not newly activated.
+Historical migration context is in setup PR [#131](https://github.com/Nebettadjsr/GW2/pull/131). Reconcile legacy issues #21, #60, #111 and #116 on GitHub before selecting them; their presence does not authorize release.
 
-Current handoff: valuation #132 is DONE via #133 (`23ce30d`), whole-host CPU/memory reporting #134 is DONE via #137 (`a92d19a`), verified session identity #136 is DONE via #140 (`6dee479`), and backend material protection #138 is DONE via #142 (`ec07587`), each with required CI and clean native review. Supervisor completed the pending synthetic benchmark and actual service parity review on #142; this is not Oracle qualification. Frontend state #139 is READY for supervisor release after this handoff merges; tile selection #143 and character roster foundation #141 remain DRAFT. GitHub holds live run/review state; this is the planning handoff, not a second executable queue.
+Planning handoff: the next proposed release is frontend state contract #139, followed by tile selection #143; roster foundation #141 is prepared for the later Characters sequence. Earlier contracts are #132 (valuation), #134 (reporting), #136 (identity) and #138 (backend protection). Read their GitHub issues, PRs, CI and reviews for execution state and evidence before release; this file does not mirror completion, merge hashes, test outcomes or running attempts. Local measurement evidence is not Oracle qualification.
 
 ## Activation and state
 
 - Planner drafts/refines; supervisor reviews and releases. Only approved GitHub issues become executable work for Claude.
-- States: DRAFT, BLOCKED, READY, ACTIVE, REVIEW, DONE. Draft rows require supervisor release; the active handoff is recorded above.
-- READY requires an approved contract, resolved decisions and merged dependencies. DONE requires accepted implementation, actual verification and merged evidence.
+- Planning dispositions: DRAFT, BLOCKED, READY, PUBLISHED and DEFERRED. Accepted PLAN entries refer only to planning artifacts. Runtime progress lives on GitHub.
+- READY requires an approved contract and resolved decisions; verify actual merged dependencies on GitHub before release. PUBLISHED means only that an issue contract exists, not that it is implemented or released.
 - Adding the existing `auto` issue label makes a story eligible for the current selector/merge gate; only do so after explicit execution authorization and supervisor review. Markdown states are not an enforced workflow switch.
-- When execution starts, record authorization here, audit old open issues/PRs, link approved issues to the entries, and reconcile status from GitHub. Do not silently activate historical queued issues.
+- Record authorization here, audit old open issues/PRs on GitHub and link published contracts. Do not mirror execution status or silently activate historical queued issues.
 
 ## Proposed order
 
-| ID | Outcome / responsible role | Dependencies | State |
+| ID | Outcome / responsible role | Dependencies | Planning handoff |
 | --- | --- | --- | --- |
 | PLAN-HOST-001 | Planner verifies the Oracle provider budget and records target-host qualification gaps | Provider limits recorded; actual tenancy/host facts remain required only for qualification | DONE — planning artifact accepted in #134 |
 | PLAN-KPI-001 | Planner inventories existing measurements and proposes bounded KPI contracts and workloads | PLAN-HOST-001 provider limits; real-host access is not required for local reporting work | DONE — planning artifact accepted in #134 |
 | PLAN-VALUE-001 | Planner prepares correctness contract for recursive valuation of owned bound/non-tradable materials, including daily materials | DOMAIN_SPEC.md sections 11.1–11.2 | DONE — contract accepted as #132 |
-| STORY-VALUE-001 | Claude corrects valuation and verifies list/detail cost/profit agreement, cycle handling, yields and performance | Approved issue #132 | DONE — PR #133 merged as 23ce30d |
-| STORY-KPI-001 | Claude adds whole-host Linux CPU/memory observations, boundaries/provenance and safe 2 OCPU/12 GB comparison to the existing report | Accepted contract #134; STORY-VALUE-001 accepted | DONE — #137 merged as a92d19a; not Oracle qualification |
+| STORY-VALUE-001 | Claude corrects valuation and verifies list/detail cost/profit agreement, cycle handling, yields and performance | Approved issue #132 | PUBLISHED — #132 |
+| STORY-KPI-001 | Claude adds whole-host Linux CPU/memory observations, boundaries/provenance and safe 2 OCPU/12 GB comparison to the existing report | Accepted contract #134; STORY-VALUE-001 | PUBLISHED — #134 |
 | STORY-KPI-002 | Claude adds repeatable desktop and multi-account/fault qualification workloads | STORY-KPI-001 | DRAFT |
 | STORY-KPI-003 | Claude exposes a concise capacity/health summary and documented reproduction path | STORY-KPI-001, STORY-KPI-002 | DRAFT |
 | STORY-KPI-004 | Claude adds safe JVM heap/committed/max and GC observations and relates them to container/host memory without treating 12 GB as a JVM allowance | STORY-KPI-001 | DRAFT |
@@ -32,15 +32,15 @@ Current handoff: valuation #132 is DONE via #133 (`23ce30d`), whole-host CPU/mem
 | STORY-KPI-006 | Claude adds transfer-boundary observations without treating Docker/internal traffic as billable Oracle egress | STORY-KPI-001 | DRAFT |
 | REVIEW-KPI-001 | Supervisor validates real target-host evidence and reports free-tier fit/gaps | STORY-KPI-001–006, qualification workloads/reporting, all final features, target-host/tenancy access | BLOCKED |
 | PLAN-FEATURE-001 | Planner refines material-protection stories and prepares concrete UI review | Confirmed domain/UX contracts; inspect current code | DRAFT |
-| STORY-MAT-004 | Claude exposes the verified account GUID additively in session responses for browser preference partitioning | STORY-KPI-001; approved #136 | DONE — #140 merged as 6dee479 |
-| STORY-MAT-001 | Claude implements backend settings/validation and recursive calculation restrictions, with real list/detail and overhead evidence | STORY-VALUE-001, STORY-KPI-001, STORY-MAT-004; approved #138 | DONE — #142 merged as ec07587 |
-| STORY-MAT-002 | Claude adds per-account browser persistence, canonical state and pending/committed selection foundation | STORY-MAT-001, STORY-MAT-004; approved #139 | READY — release after this handoff merges |
-| STORY-MAT-003 | Claude adds Bank/Materials tile checkboxes, pending edits and explicit confirmation | STORY-MAT-002; approved draft #143 | DRAFT |
+| STORY-MAT-004 | Claude exposes the verified account GUID additively in session responses for browser preference partitioning | STORY-KPI-001; approved #136 | PUBLISHED — #136 |
+| STORY-MAT-001 | Claude implements backend settings/validation and recursive calculation restrictions, with real list/detail and overhead evidence | STORY-VALUE-001, STORY-KPI-001, STORY-MAT-004; approved #138 | PUBLISHED — #138 |
+| STORY-MAT-002 | Claude adds per-account browser persistence, canonical state and pending/committed selection foundation | STORY-MAT-001, STORY-MAT-004; approved #139 | PUBLISHED — #139; next proposed release |
+| STORY-MAT-003 | Claude adds Bank/Materials tile checkboxes, pending edits and explicit confirmation | STORY-MAT-002; approved draft #143 | PUBLISHED — #143; later release |
 | STORY-MAT-005 | Claude adds verified T1–T6 intermediate-material presets and the four-item extra preset | STORY-MAT-003; membership intent confirmed, extra label pending | DRAFT |
 | STORY-MAT-006 | Claude adds Profit activation/count, empty-selection warning, links and request integration | STORY-MAT-001, STORY-MAT-003; approved UX | DRAFT |
 | STORY-MAT-007 | Claude verifies integrated navigation, refresh, account switching and list/detail behavior | STORY-MAT-005, STORY-MAT-006; comparable KPI workload | DRAFT |
 | PLAN-CHAR-001 | Planner audits character API/storage coverage and prepares equipment-first UI review with in-game-style tabs | Confirmed DOMAIN_SPEC.md section 56 and UX section 2.2 | DRAFT |
-| STORY-CHAR-001 | Claude adds compact scoped roster and selected-character core/crafting reads using existing publication state | Approved draft #141; material work first in supervisor release order | DRAFT — prepared, not released |
+| STORY-CHAR-001 | Claude adds compact scoped roster and selected-character core/crafting reads using existing publication state | Approved draft #141; material work first in supervisor release order | PUBLISHED — #141; later release |
 | STORY-CHAR-002 | Claude implements character roster and equipment-focused detail view | STORY-CHAR-001, approved UI design | DRAFT |
 | STORY-CHAR-003 | Claude implements character inventory and build details with navigation and account-isolation regressions | STORY-CHAR-001, STORY-CHAR-002; approved template scope | DRAFT |
 | STORY-CHAR-004 | Reserved character Story outcome | A new Product Owner decision is required to resume | DEFERRED — Product Owner confirmed 2026-11-07 |
@@ -62,7 +62,7 @@ For STORY-KPI-003: agree the presentation with the supervisor, preferably extend
 
 ## Material-protection planning handoff
 
-Correctness prerequisite is accepted: STORY-VALUE-001 / #132 merged via #133. Owned bound stock now receives recursive/vendor/unvalued fallback with shared fractional rounding and cycle handling. Do not repeat the obsolete zero-valued-bound-stock investigation. This does not claim a measured live-account Mithrillium profit or Oracle capacity.
+The valuation prerequisite is tracked in #132/#133. Consult its actual acceptance evidence before releasing dependent work; do not repeat an old zero-valued-bound-stock investigation without checking the current code. Live-account profit and Oracle capacity require their own evidence.
 
 Confirmed intent and feature-level criteria: `docs/ROADMAP.md`, Milestone 2; domain contract: `docs/DOMAIN_SPEC.md` section 9.1; UI contract: `docs/FRONTEND_UX_GUIDELINES.md` section 2.1. Core product questions are resolved. Draft contracts still require planner refinement and supervisor release; they are not implementation authorization.
 
