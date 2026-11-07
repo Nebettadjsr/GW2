@@ -47,8 +47,52 @@ class AccountAccessContractTest {
         String cookie = result.getResponse().getHeader("Set-Cookie");
         org.junit.jupiter.api.Assertions.assertNotNull(cookie);
         org.junit.jupiter.api.Assertions.assertFalse(cookie.contains("fixture-key-a"));
-        org.junit.jupiter.api.Assertions.assertFalse(result.getResponse().getContentAsString().contains(ACCOUNT_A));
         org.junit.jupiter.api.Assertions.assertFalse(result.getResponse().getContentAsString().contains("fixture-key-a"));
+    }
+
+    /** STORY-MAT-004: the verified GUID is an additive preference namespace, never the key. */
+    @Test
+    void sessionResponsesExposeTheVerifiedAccountGuidAndStayStableAcrossRenewal() throws Exception {
+        var a = http.perform(post("/api/session").header("Origin", ORIGIN).header("X-GW2-API-Key", "fixture-key-a"))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", containsString("no-store")))
+                .andReturn().getResponse();
+        var b = http.perform(post("/api/session").header("Origin", ORIGIN).header("X-GW2-API-Key", "fixture-key-b"))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        String guidA = com.jayway.jsonpath.JsonPath.read(a.getContentAsString(), "$.accountId");
+        String guidB = com.jayway.jsonpath.JsonPath.read(b.getContentAsString(), "$.accountId");
+        org.junit.jupiter.api.Assertions.assertTrue(ACCOUNT_A.equalsIgnoreCase(guidA));
+        org.junit.jupiter.api.Assertions.assertTrue(ACCOUNT_B.equalsIgnoreCase(guidB));
+        org.junit.jupiter.api.Assertions.assertFalse(a.getContentAsString().contains("fixture-key-a"));
+        org.junit.jupiter.api.Assertions.assertNotEquals(guidA,
+                com.jayway.jsonpath.JsonPath.read(a.getContentAsString(), "$.accessContext"));
+
+        var cookie = new jakarta.servlet.http.Cookie(
+                a.getHeader("Set-Cookie").split("=", 2)[0],
+                a.getHeader("Set-Cookie").split("=", 2)[1].split(";", 2)[0]);
+        String context = com.jayway.jsonpath.JsonPath.read(a.getContentAsString(), "$.accessContext");
+        var renewed = http.perform(post("/api/session/renew").header("Origin", ORIGIN).cookie(cookie)
+                        .header("X-Account-Context", context).header("X-GW2-API-Key", "fixture-key-a"))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", containsString("no-store")))
+                .andExpect(header().string("Set-Cookie", containsString("HttpOnly")))
+                .andReturn().getResponse();
+        org.junit.jupiter.api.Assertions.assertEquals(guidA,
+                com.jayway.jsonpath.JsonPath.read(renewed.getContentAsString(), "$.accountId"));
+        org.junit.jupiter.api.Assertions.assertNotEquals(context,
+                com.jayway.jsonpath.JsonPath.read(renewed.getContentAsString(), "$.accessContext"));
+        org.junit.jupiter.api.Assertions.assertFalse(renewed.getContentAsString().contains("fixture-key-a"));
+    }
+
+    @Test
+    void failedSessionResponsesDoNotCarryAnAccountGuid() throws Exception {
+        for (String key : new String[] {"fixture-key-malformed"}) {
+            String body = http.perform(post("/api/session").header("Origin", ORIGIN).header("X-GW2-API-Key", key))
+                    .andExpect(status().isUnauthorized()).andReturn().getResponse().getContentAsString();
+            org.junit.jupiter.api.Assertions.assertFalse(body.contains("accountId"));
+            org.junit.jupiter.api.Assertions.assertFalse(body.toUpperCase().contains(ACCOUNT_A));
+        }
+        String noKey = http.perform(post("/api/session").header("Origin", ORIGIN))
+                .andReturn().getResponse().getContentAsString();
+        org.junit.jupiter.api.Assertions.assertFalse(noKey.contains("accountId"));
     }
 
     @Test

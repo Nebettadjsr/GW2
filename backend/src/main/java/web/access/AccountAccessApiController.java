@@ -124,7 +124,7 @@ public class AccountAccessApiController {
         return noStore(status)
                 .header(HttpHeaders.SET_COOKIE, http.sessionCookie(request, session.sessionId()))
                 .header(AccountAccessHttp.ACCESS_CONTEXT_HEADER, context.accessContext())
-                .body(new SessionAccessResponse(context.accessContext(), context.expiresAt(),
+                .body(new SessionAccessResponse(context.accountId(), context.accessContext(), context.expiresAt(),
                         grantNames(context)));
     }
 
