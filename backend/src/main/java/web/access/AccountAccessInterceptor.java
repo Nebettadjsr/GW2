@@ -232,6 +232,6 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         List<String> grants = context.grants().stream().map(AccountGrant::apiName).sorted().toList();
         response.getWriter().write(mapper.writeValueAsString(
-                new SessionAccessResponse(context.accessContext(), context.expiresAt(), grants)));
+                new SessionAccessResponse(context.accountId(), context.accessContext(), context.expiresAt(), grants)));
     }
 }
