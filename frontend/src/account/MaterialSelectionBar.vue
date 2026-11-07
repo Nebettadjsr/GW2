@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useMaterialProtection } from '@/materials/materialProtectionState'
+import { MATERIAL_PRESETS, type MaterialPreset } from '@/materials/materialPresets'
 
 const protection = useMaterialProtection()
 const ready = computed(() => protection.state.status === 'ready')
@@ -16,6 +17,9 @@ const storageNotice = computed(() => {
     default: return 'Your browser cannot save or restore this selection. It stays usable in this tab only and will not be kept after you restart or reload.'
   }
 })
+function applyPreset(preset: MaterialPreset): void {
+  protection.setPending([...protection.state.pending, ...preset.itemIds])
+}
 function items(n: number): string { return `${n} ${n === 1 ? 'item' : 'items'}` }
 </script>
 
@@ -32,6 +36,9 @@ function items(n: number): string { return `${n} ${n === 1 ? 'item' : 'items'}` 
       <template v-if="dirty">Unconfirmed changes: {{ items(pendingCount) }} selected, not yet saved.</template>
       <template v-else>No pending changes.</template>
     </p>
+    <span class="selection-bar__presets" role="group" aria-label="Selection presets" data-test="selection-presets">
+      <button v-for="preset in MATERIAL_PRESETS" :key="preset.id" type="button" class="button--secondary" :title="preset.tooltip" :data-test="`preset-${preset.id}`" @click="applyPreset(preset)">{{ preset.label }}</button>
+    </span>
     <span class="selection-bar__actions">
       <button type="button" :disabled="!dirty" data-test="selection-confirm" @click="protection.commit()">Save selection</button>
       <button type="button" class="button--secondary" :disabled="!dirty" data-test="selection-discard" @click="protection.discardPending()">Discard changes</button>
@@ -43,5 +50,5 @@ function items(n: number): string { return `${n} ${n === 1 ? 'item' : 'items'}` 
 .selection-bar { margin-block: var(--space-3); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
 .selection-bar p { margin: 0; }
 .selection-bar__state[data-state='pending'] { font-weight: 700; }
-.selection-bar__actions { display: flex; gap: var(--space-2); }
+.selection-bar__presets, .selection-bar__actions { display: flex; gap: var(--space-2); }
 </style>
