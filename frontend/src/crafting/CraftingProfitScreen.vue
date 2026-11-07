@@ -497,7 +497,13 @@ function onMaximumDisplayedChange(event: Event): void {
   display: grid;
   grid-template-columns: minmax(0, 55fr) minmax(0, 45fr);
   gap: var(--space-5);
+  /* Both columns stay in one row; each may grow so wrapped content never overlaps its neighbour. */
   align-items: start;
+}
+
+.calculation-layout__main,
+.calculation-layout__checks {
+  min-width: 0;
 }
 
 .calculation-layout__main {

@@ -280,6 +280,7 @@ function onMaxBuyCopperChange(event: Event): void {
 }
 
 .settings__values{
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -317,8 +318,10 @@ function onMaxBuyCopperChange(event: Event): void {
 .price-settings {
   display: flex;
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-5);
+  gap: var(--space-2) var(--space-5);
+  min-width: 0;
 }
 
 .price-setting {
