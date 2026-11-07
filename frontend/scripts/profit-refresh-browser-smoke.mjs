@@ -3,7 +3,7 @@
  *
  * `smoke:profit` covers the information hierarchy against inputs the backend reports as current.
  * This script covers the states that one cannot reach: a cached result served while a refresh runs,
- * the stale indicator and its explanation, the controls surviving an automatic replacement, a detail
+ * the compact stale indicator (no explanation while rows remain), the controls surviving an automatic replacement, a detail
  * answer computed from newer inputs than the row it was asked about, and bounded termination with a
  * retry. Each case is driven by *scripted* responses from this process, so the sequence is
  * deterministic and nothing real is synchronized.
@@ -48,6 +48,9 @@ function check(condition, message) {
 }
 
 /* ------------------------------------------------------------------ scripted responses --------- */
+
+const SYNTHETIC_ACCOUNT_ID = '00000000-0000-4000-8000-000000000153'
+const DUMMY_KEY = 'synthetic-read-only-smoke-key'
 
 const ACCOUNT_SOURCES = ['CHARACTERS', 'INVENTORY', 'MATERIALS', 'RECIPES']
 
@@ -264,6 +267,17 @@ function envelopeForPhase() {
 }
 
 function answerApi({ url, body, sendJson }) {
+  // Synthetic read-only account session (accountSession contract): the retained dummy key is proven
+  // here, so the workspace is admitted. No real key, GW2 API or backend is involved.
+  if (url.pathname === '/api/session') {
+    return sendJson(200, {
+      accountId: SYNTHETIC_ACCOUNT_ID,
+      accessContext: 'smoke-access-context',
+      expiresAt: '2099-01-01T00:00:00Z',
+      grants: ['account', 'inventories', 'characters', 'builds']
+    })
+  }
+
   if (url.pathname === '/api/crafting/selector-options') {
     return sendJson(200, {
       defaultScopeKind: 'ALL',
@@ -380,6 +394,8 @@ async function tableProfits(page) {
 
 async function openProfit(page) {
   await page.setViewportSize(VIEWPORT)
+  // Retain the dummy key the way a connected browser session does, before the app starts.
+  await page.addInitScript((key) => window.sessionStorage.setItem('gw2.apiKey', key), DUMMY_KEY)
   await page.goto(`${PAGE_ORIGIN}/#/crafting`, { waitUntil: 'networkidle', timeout: TIMEOUT_MS })
   await page.waitForSelector('[data-test="profit-table"]', { timeout: TIMEOUT_MS })
 }
@@ -423,8 +439,8 @@ async function run() {
     )
     record('page served by this script', `${stub.servedCount()} requests answered so far`)
 
-    // 1. The cached result is on screen and usable while the refresh runs, with the indicator and
-    //    the explanation UD-015 item 4 requires. No row is invented and no loading state is left up.
+    // 1. The cached result is on screen and usable while the refresh runs, with the compact
+    //    indicator (issue #153: no explanation between it and the table). No row is invented and no loading state is left up.
     check(
       JSON.stringify(await listedRecipes(page)) ===
         JSON.stringify(['Deldrimor Steel Ingot', 'Spiritwood Plank']),
