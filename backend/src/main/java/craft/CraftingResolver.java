@@ -622,6 +622,13 @@ public class CraftingResolver {
                 boolean valued = true;
                 for (Ingredient ing : recipe.ingredients) {
                     OwnedValue unit = OwnedValue.of(resolveDirectBuyUnit(ing.itemId, ctx.tp, ctx.settings));
+                    if (visiting.contains(ing.itemId)) {
+                        // Cyclic route: only a real purchase price is independent of the cycle;
+                        // crafting or vendor fallback of an item already being valued is rejected.
+                        if (unit.isZero()) { valued = false; break; }
+                        total = total.add(unit.times(ing.count));
+                        continue;
+                    }
                     OwnedValue crafted = craftingUnitValue(ing.itemId, ctx, visiting);
                     if (!crafted.isZero() && (unit.isZero() || crafted.compareTo(unit) < 0)) unit = crafted;
                     if (unit.isZero()) unit = OwnedValue.of(ctx.vendorValues.getOrDefault(ing.itemId, 0));

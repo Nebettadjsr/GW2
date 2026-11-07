@@ -247,6 +247,30 @@ class CraftingResolverBoundMaterialTest {
     }
 
     @Test
+    void vendorPricedCycleIsRejectedAndFallsBackToVendorValueOfTheItem() {
+        // A (x10) <- 1 B; B (x1) <- 1 A; A vendor 100, no market prices.
+        Recipe a = CraftTestFixtures.recipe(1, A, 10, List.of(CraftTestFixtures.ingredient(B, 1)));
+        Recipe b = CraftTestFixtures.recipe(2, B, 1, List.of(CraftTestFixtures.ingredient(A, 1)));
+        PlanState[] st = new PlanState[1];
+        ResolvedNeed need = resolveBound(Map.of(A, List.of(a), B, List.of(b)), Map.of(), Map.of(A, 100),
+                CraftTestFixtures.defaultSettings(), Map.of(), Map.of(A, 1), A, 1, st);
+        assertEquals(100, need.getOpportunityCostCopper());
+        assertFalse(need.hasUnvaluedOwnedInput());
+    }
+
+    @Test
+    void vendorPricedCycleDoesNotBeatCompleteNonCyclicAlternative() {
+        Recipe a = CraftTestFixtures.recipe(1, A, 10, List.of(CraftTestFixtures.ingredient(B, 1)));
+        Recipe b = CraftTestFixtures.recipe(2, B, 1, List.of(CraftTestFixtures.ingredient(A, 1)));
+        Recipe ok = CraftTestFixtures.recipe(3, A, List.of(CraftTestFixtures.ingredient(ORE, 2)));
+        PlanState[] st = new PlanState[1];
+        ResolvedNeed need = resolveBound(Map.of(A, List.of(a, ok), B, List.of(b)),
+                Map.of(ORE, CraftTestFixtures.quote(6, 6)), Map.of(A, 100),
+                CraftTestFixtures.defaultSettings(), Map.of(), Map.of(A, 1), A, 1, st);
+        assertEquals(12, need.getOpportunityCostCopper());
+    }
+
+    @Test
     void mixedBoundAndSellableStockAreEachValuedOnce() {
         PlanState[] st = new PlanState[1];
         Map<Integer, PriceQuote> tp = Map.of(LUMP, CraftTestFixtures.quote(50, 40), ORE, CraftTestFixtures.quote(8, 8),
