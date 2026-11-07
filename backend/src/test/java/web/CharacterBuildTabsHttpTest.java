@@ -144,7 +144,7 @@ class CharacterBuildTabsHttpTest {
                         + "  NULL, NULL, '{42,NULL}', '{NULL,NULL}')",
                 "INSERT INTO character_build_tab_specializations (account_id, character_id, tab_number, position,"
                         + " specialization_id, traits) VALUES"
-                        + " ('" + A + "', 1, 3, 1, 15, '{101,NULL,103}'), ('" + A + "', 1, 3, 2, NULL, NULL),"
+                        + " ('" + A + "', 1, 3, 1, 15, '{101,NULL,103}'), ('" + A + "', 1, 3, 2, NULL, '{NULL,NULL,NULL}'),"
                         + " ('" + A + "', 1, 3, 3, 17, '{NULL,NULL,NULL}'),"
                         + " ('" + A + "', 1, 1, 1, 30, '{1,2,3}'), ('" + A + "', 1, 1, 2, 31, '{4,5,6}'),"
                         + " ('" + A + "', 1, 1, 3, 32, '{7,8,9}')");
@@ -193,7 +193,8 @@ class CharacterBuildTabsHttpTest {
                 .andExpect(jsonPath("$.tabs[1].name").value("PvE"))
                 .andExpect(jsonPath("$.tabs[1].active").value(false))
                 .andExpect(jsonPath("$.tabs[1].specializations[1].specialization").value(org.hamcrest.Matchers.nullValue()))
-                .andExpect(jsonPath("$.tabs[1].specializations[1].traits").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.tabs[1].specializations[1].traits.length()").value(3))
+                .andExpect(jsonPath("$.tabs[1].specializations[1].traits[0]").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.tabs[1].specializations[0].traits[1]").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.tabs[1].specializations[0].traits[2].id").value(103))
                 .andExpect(jsonPath("$.tabs[1].legends[0].id").value("Legend1"))

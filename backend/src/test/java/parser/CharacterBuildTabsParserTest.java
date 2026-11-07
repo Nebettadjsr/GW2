@@ -18,7 +18,7 @@ class CharacterBuildTabsParserTest {
 
     private static String tab(int n, boolean active, String extra) {
         return "{\"tab\":" + n + ",\"is_active\":" + active + ",\"build\":{\"name\":\"B" + n + "\",\"profession\":\"Revenant\","
-                + "\"specializations\":[{\"id\":1,\"traits\":[10,null,12]},null,{\"id\":3,\"traits\":[null,null,null]}],"
+                + "\"specializations\":[{\"id\":1,\"traits\":[10,null,12]},{\"id\":null,\"traits\":[null,null,null]},{\"id\":3,\"traits\":[null,null,null]}],"
                 + "\"skills\":" + SKILLS + ",\"aquatic_skills\":" + SKILLS.replace("\"heal\":null", "\"heal\":4") + extra + "}}";
     }
 
@@ -33,6 +33,7 @@ class CharacterBuildTabsParserTest {
         assertEquals(3, b.specializations().size());
         assertEquals(Arrays.asList(10, null, 12), b.specializations().get(0).traits());
         assertNull(b.specializations().get(1).id(), "unselected position is kept, not dropped or zeroed");
+        assertEquals(Arrays.asList(null, null, null), b.specializations().get(1).traits());
         assertNull(b.skills().heal());
         assertEquals(Arrays.asList(5, null, 7), b.skills().utilities());
         assertEquals(4, b.aquaticSkills().heal());
@@ -51,6 +52,15 @@ class CharacterBuildTabsParserTest {
     }
 
     @Test
+    void acceptsDocumentedUnselectedSpecializationObjectAndExplicitNullSlots() throws Exception {
+        var tabs = CharacterBuildTabsParser.parse(json("[" + tab(1, true, "") + "]"));
+        var unselected = tabs.get(0).build().specializations().get(1);
+        assertNull(unselected.id());
+        assertEquals(Arrays.asList(null, null, null), unselected.traits());
+        assertNull(tabs.get(0).build().skills().heal(), "explicit null heal is a documented empty slot");
+    }
+
+    @Test
     void emptyResponseIsValid() throws Exception {
         assertTrue(CharacterBuildTabsParser.parse(json("[]")).isEmpty());
     }
@@ -64,7 +74,7 @@ class CharacterBuildTabsParserTest {
                 "[" + tab(1, false, "") + "]",
                 "[" + tab(1, true, "") + "," + tab(2, true, "") + "]",
                 "[{\"tab\":1,\"is_active\":true}]",
-                ok.replace("[{\"id\":1,\"traits\":[10,null,12]},null,{\"id\":3,\"traits\":[null,null,null]}]", "[null,null]"),
+                ok.replace("[{\"id\":1,\"traits\":[10,null,12]},{\"id\":null,\"traits\":[null,null,null]},{\"id\":3,\"traits\":[null,null,null]}]", "[null,null]"),
                 ok.replace("\"traits\":[10,null,12]", "\"traits\":[10,12]"),
                 ok.replace("\"utilities\":[5,null,7]", "\"utilities\":[5,7]"),
                 ok.replace("\"elite\":9", "\"elite\":0"),
@@ -73,6 +83,21 @@ class CharacterBuildTabsParserTest {
                 "[" + tab(1, true, ",\"legends\":[1,2]") + "]",
                 "[" + tab(1, true, ",\"pets\":{\"terrestrial\":[0,1],\"aquatic\":[null,null]}") + "]",
                 "[" + tab(1, true, ",\"pets\":{\"terrestrial\":[1],\"aquatic\":[null,null]}") + "]"};
+        String spec = "{\"id\":null,\"traits\":[null,null,null]}";
+        String[] more = {
+                ok.replace(spec, "null"),                                   // bare null is not the documented shape
+                ok.replace(spec, "{\"id\":null,\"traits\":[1,null,null]}"), // contradictory
+                ok.replace(spec, "{\"traits\":[null,null,null]}"),          // id missing
+                ok.replace(spec, "{\"id\":null}"),                          // traits missing
+                ok.replace("\"heal\":null,", ""),                           // heal missing
+                ok.replace(",\"elite\":9", ""),                              // elite missing
+                ok.replace("\"name\":\"B1\",", ""),                          // name missing
+                ok.replace("\"profession\":\"Revenant\",", ""),              // profession missing
+                "[" + tab(1, true, ",\"pets\":{\"terrestrial\":[1,null]}") + "]",   // aquatic pets missing
+                "[" + tab(1, true, ",\"pets\":{\"aquatic\":[1,null]}") + "]"};      // terrestrial pets missing
+        for (String b : more) {
+            assertThrows(IllegalStateException.class, () -> CharacterBuildTabsParser.parse(json(b)), b);
+        }
         for (String b : bad) {
             assertThrows(IllegalStateException.class, () -> CharacterBuildTabsParser.parse(json(b)), b);
         }

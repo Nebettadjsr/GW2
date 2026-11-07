@@ -77,7 +77,7 @@ class CharacterBuildTabsSyncTest {
     private static final String SK = "{\"heal\":1,\"utilities\":[2,null,4],\"elite\":5}";
     private static String tab(int n, boolean active, String extra) {
         return "{\"tab\":" + n + ",\"is_active\":" + active + ",\"build\":{\"name\":\"T" + n + "\",\"profession\":\"Ranger\","
-                + "\"specializations\":[{\"id\":7,\"traits\":[1,null,3]},null,{\"id\":9,\"traits\":[null,null,null]}],"
+                + "\"specializations\":[{\"id\":7,\"traits\":[1,null,3]},{\"id\":null,\"traits\":[null,null,null]},{\"id\":9,\"traits\":[null,null,null]}],"
                 + "\"skills\":" + SK + ",\"aquatic_skills\":" + SK + extra + "}}";
     }
     private static final String TABS = "[" + tab(2, false, "") + "," + tab(1, true,
@@ -166,6 +166,7 @@ class CharacterBuildTabsSyncTest {
         assertEquals("Ranger", t1.profession());
         assertEquals(3, t1.specializations().size());
         assertNull(t1.specializations().get(1).id());
+        assertEquals(Arrays.asList(null, null, null), t1.specializations().get(1).traits(), "documented empty object survives parse->DB->GET");
         assertEquals(Arrays.asList(1, null, 3), t1.specializations().get(0).traits());
         assertEquals(Arrays.asList(2, null, 4), t1.skills().utilities());
         assertEquals(Arrays.asList(11, null), t1.pets());
@@ -282,5 +283,64 @@ class CharacterBuildTabsSyncTest {
         assertEquals(0, count("SELECT count(*) FROM character_build_tabs WHERE account_id = ?::uuid", B_ID));
         assertEquals(2, service(Duration.ofHours(1)).read(ctx(A_ID, ALL), A, "Same").tabs().size());
         assertEquals(0, service(Duration.ofHours(1)).read(ctx(B_ID, ALL), B, "Same").tabs().size());
+    }
+
+    @Test
+    void specializationShapeCheckRejectsNullIdWithSelectedTraitsAndAcceptsDocumentedEmptyObject() throws Exception {
+        publishRoster(A, "Chk");
+        CharacterBuildTabsSync.sync(A, fetcher(A_ID, new ArrayList<>(), Map.of("/characters/Chk/", TABS)));
+        try (var st = admin.createStatement()) {
+            st.execute("DELETE FROM character_build_tab_specializations WHERE tab_number = 1 AND position = 2");
+        }
+        assertTrue(insertSpec(2, "NULL", "ARRAY[NULL,NULL,NULL]::int[]"), "documented unselected object");
+        for (String bad : new String[] {"NULL|ARRAY[1,NULL,NULL]::int[]", "NULL|NULL", "NULL|ARRAY[NULL,NULL]::int[]",
+                "0|ARRAY[NULL,NULL,NULL]::int[]", "5|ARRAY[1,2]::int[]", "5|NULL"}) {
+            String[] parts = bad.split("\\|");
+            try (var st = admin.createStatement()) {
+                st.execute("DELETE FROM character_build_tab_specializations WHERE tab_number = 1 AND position = 2");
+            }
+            assertFalse(insertSpec(2, parts[0], parts[1]), "CHECK must reject " + bad);
+        }
+    }
+
+    private boolean insertSpec(int position, String id, String traits) throws Exception {
+        try (var st = admin.createStatement()) {
+            st.executeUpdate("""
+                INSERT INTO character_build_tab_specializations
+                  (account_id, character_id, tab_number, position, specialization_id, traits)
+                SELECT account_id, character_id, 1, %d, %s, %s FROM character_build_tabs WHERE tab_number = 1"""
+                    .formatted(position, id, traits));
+            return true;
+        } catch (java.sql.SQLException e) {
+            return false;
+        }
+    }
+
+    /** Declared fixture + actual relation/index bytes + cold/warm SELECT timings (informational). */
+    @Test
+    void reportsFixtureRowsRelationBytesAndColdWarmSelectTimings() throws Exception {
+        publishRoster(A, "Meas");
+        CharacterBuildTabsSync.sync(A, fetcher(A_ID, new ArrayList<>(), Map.of("/characters/Meas/", TABS)));
+        StringBuilder sb = new StringBuilder("CHAR-BUILD-STORAGE-REPORT fixture=1 account/1 character/2 tabs/6 specializations");
+        for (String rel : new String[] {"character_build_tabs", "character_build_tabs_pkey", "uq_character_build_tabs_active",
+                "character_build_tab_specializations", "character_build_tab_specializations_pkey", "character_build_coverage"}) {
+            sb.append(' ').append(rel).append("Bytes=").append(count("SELECT pg_relation_size(?::regclass)", schema + "." + rel));
+        }
+        var repo = new CharacterBuildTabsRepository();
+        long[] ns = new long[6];
+        for (int i = 0; i < ns.length; i++) {
+            try (Connection c = connect()) {
+                c.setSchema(schema);
+                long t = System.nanoTime();
+                repo.load(c, A, "Meas");
+                ns[i] = System.nanoTime() - t;
+            }
+        }
+        sb.append(" firstLoadMicros(cold: new connection, first statement execution in this test JVM/schema)=").append(ns[0] / 1000)
+          .append(" repeatedLoadMicros(warm: new connection, plan/cache reuse not controlled)=");
+        for (int i = 1; i < ns.length; i++) sb.append(ns[i] / 1000).append(i < ns.length - 1 ? "," : "");
+        System.out.println(sb);
+        assertEquals(2, count("SELECT count(*) FROM character_build_tabs"));
+        assertEquals(6, count("SELECT count(*) FROM character_build_tab_specializations"));
     }
 }

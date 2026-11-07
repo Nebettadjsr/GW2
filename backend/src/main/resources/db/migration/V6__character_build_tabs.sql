@@ -51,20 +51,22 @@ CREATE UNIQUE INDEX uq_character_build_tabs_active
     ON character_build_tabs (account_id, character_id) WHERE is_active;
 
 -- Exactly three ordered specialization positions per tab; a position may be unselected (NULL id),
--- and each selected specialization carries three nullable trait positions.
+-- and every position carries three nullable trait positions (all NULL when unselected), matching the
+-- documented {"id":null,"traits":[null,null,null]} object.
 CREATE TABLE character_build_tab_specializations (
     account_id        UUID    NOT NULL,
     character_id      BIGINT  NOT NULL,
     tab_number        INTEGER NOT NULL,
     position          INTEGER NOT NULL,
     specialization_id INTEGER,
-    traits            INTEGER[],
+    traits            INTEGER[]  NOT NULL,
     CONSTRAINT character_build_tab_specializations_pkey
         PRIMARY KEY (account_id, character_id, tab_number, position),
     CONSTRAINT character_build_tab_specializations_position_check CHECK (position BETWEEN 1 AND 3),
     CONSTRAINT character_build_tab_specializations_shape_check CHECK (
-        (specialization_id IS NULL AND traits IS NULL)
-        OR (specialization_id > 0 AND traits IS NOT NULL AND cardinality(traits) = 3)),
+        cardinality(traits) = 3 AND (
+            (specialization_id IS NULL AND cardinality(array_remove(traits, NULL)) = 0)
+            OR (specialization_id IS NOT NULL AND specialization_id > 0))),
     CONSTRAINT fk_character_build_specializations_tab
         FOREIGN KEY (account_id, character_id, tab_number)
         REFERENCES character_build_tabs (account_id, character_id, tab_number) ON DELETE CASCADE
