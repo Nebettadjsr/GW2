@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, nextTick, onMounted } from 'vue'
 import { charactersApi, type CharactersApi } from '@/api/charactersApi'
 import { syncApi } from '@/api/syncApi'
 import PageHeader from '@/shell/PageHeader.vue'
@@ -14,6 +14,24 @@ import { useCharacters } from './useCharacters'
 const props = withDefaults(defineProps<{ api?: CharactersApi }>(), { api: () => charactersApi })
 const c = useCharacters(props.api, syncApi)
 onMounted(() => { void c.loadRoster() })
+
+// Return from detail to the same place in a long roster: remember the row and page scroll when a
+// character is opened, then restore selection focus and scroll once the roster is rendered again.
+let origin: { name: string; scrollY: number } | null = null
+function open(name: string): void {
+  origin = { name, scrollY: window.scrollY }
+  c.select(name)
+}
+async function back(): Promise<void> {
+  const from = origin
+  c.back()
+  await nextTick()
+  if (!from) return
+  const row = Array.from(document.querySelectorAll<HTMLElement>('[data-test="roster-item"]'))
+    .find((el) => el.dataset.name === from.name)
+  row?.focus({ preventScroll: true })
+  window.scrollTo(0, from.scrollY) // the browser clamps this when the roster is shorter
+}
 
 const characters = computed(() => c.roster.value?.characters ?? [])
 const rosterState = computed(() => c.rosterResponse.value)
@@ -62,7 +80,7 @@ function fmt(value?: string | null): string | null {
     <div v-if="c.selectedName.value === null && characters.length > 0">
       <ul class="roster" data-test="roster">
         <li v-for="ch in characters" :key="ch.name">
-          <button type="button" class="roster__item" data-test="roster-item" @click="c.select(ch.name)">
+          <button type="button" class="roster__item" data-test="roster-item" :data-name="ch.name" @click="open(ch.name)">
             <strong>{{ ch.name }}</strong>
             <span>Level {{ ch.level ?? '?' }} {{ ch.race }} {{ ch.profession }}</span>
             <span v-if="ch.craftingDisciplines.length > 0" class="meta">
@@ -75,7 +93,7 @@ function fmt(value?: string | null): string | null {
 
     <!-- Selected character -->
     <section v-if="c.selectedName.value !== null" class="detail" data-test="character-detail">
-      <button type="button" data-test="character-back" @click="c.back()">← All characters</button>
+      <button type="button" data-test="character-back" @click="back()">← All characters</button>
       <h2 data-test="character-name">{{ c.selectedName.value }}</h2>
       <p v-if="c.detailPhase.value === 'loading'" class="meta" role="status" data-test="detail-loading">Loading character…</p>
       <p v-if="c.detailFailure.value" class="notice notice--error" role="alert" data-test="detail-error">
@@ -84,14 +102,17 @@ function fmt(value?: string | null): string | null {
       <p v-else-if="c.detailResponse.value && !c.detail.value" class="notice" data-test="detail-state">
         {{ c.detailResponse.value.message ?? 'Character details are unavailable.' }} ({{ c.detailResponse.value.state }})
       </p>
-      <dl v-if="c.detail.value" class="facts" data-test="character-facts">
-        <dt>Profession</dt><dd>{{ c.detail.value.profession }}</dd>
-        <dt>Race</dt><dd>{{ c.detail.value.race }}</dd>
-        <dt>Level</dt><dd>{{ c.detail.value.level ?? 'unknown' }}</dd>
-        <template v-if="fmt(c.detail.value.createdAt)"><dt>Created</dt><dd>{{ fmt(c.detail.value.createdAt) }}</dd></template>
-        <template v-if="c.detail.value.craftingDisciplines.length > 0">
+      <p v-if="c.detailIsRetained.value" class="notice" role="status" data-test="detail-retained">
+        Showing the saved character list entry; the latest detail read did not succeed, so these facts may be out of date.
+      </p>
+      <dl v-if="c.shownDetail.value" class="facts" data-test="character-facts">
+        <dt>Profession</dt><dd>{{ c.shownDetail.value.profession }}</dd>
+        <dt>Race</dt><dd>{{ c.shownDetail.value.race }}</dd>
+        <dt>Level</dt><dd>{{ c.shownDetail.value.level ?? 'unknown' }}</dd>
+        <template v-if="fmt(c.shownDetail.value.createdAt)"><dt>Created</dt><dd>{{ fmt(c.shownDetail.value.createdAt) }}</dd></template>
+        <template v-if="c.shownDetail.value.craftingDisciplines.length > 0">
           <dt>Crafting</dt>
-          <dd>{{ c.detail.value.craftingDisciplines.map((d) => `${d.discipline} ${d.rating}${d.active ? '' : ' (inactive)'}`).join(', ') }}</dd>
+          <dd>{{ c.shownDetail.value.craftingDisciplines.map((d) => `${d.discipline} ${d.rating}${d.active ? '' : ' (inactive)'}`).join(', ') }}</dd>
         </template>
       </dl>
 

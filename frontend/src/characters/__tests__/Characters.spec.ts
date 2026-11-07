@@ -278,3 +278,84 @@ describe('reopen, refresh cancellation and real account replacement', () => {
     }
   })
 })
+
+describe('remaining acceptance fixes', () => {
+  it('after a refresh started for A, success rereads the character selected now (B) with no second POST', async () => {
+    let published = false
+    const gate = deferred<void>()
+    const api = fakeApi({
+      loadEquipmentTabs: async (n) => { api.calls.push(`equip:${n}`); return published ? { ...tabsResponse, character: n } : { state: 'PENDING', message: 'p' } }
+    })
+    api.startEquipmentTabsRefresh = async () => { api.calls.push('refresh'); return { taskId: 't', operation: 'X', statusUrl: '/s' } }
+    const slowTasks = { readTaskStatus: async () => { await gate.promise; published = true; return { taskId: 't', operation: 'X', state: 'SUCCEEDED' } as never } }
+    const c = useCharacters(api, slowTasks, noSleep)
+    c.select('Ana B'); await flushPromises()
+    expect(c.refreshing.value).toBe(true)
+    c.back(); c.select('Bo'); await flushPromises()
+    gate.resolve(); await flushPromises(); await flushPromises()
+    expect(api.calls.filter((x) => x === 'refresh')).toHaveLength(1)
+    expect(api.calls[api.calls.length - 1]).toBe('equip:Bo')
+    expect(c.equipmentTabs.value).toHaveLength(3)
+    expect(c.equipmentResponse.value?.character).toBe('Bo')
+  })
+
+  it('does not send a refresh result read after the account is replaced', async () => {
+    const gate = deferred<void>()
+    const api = fakeApi({ loadEquipmentTabs: async (n) => { api.calls.push(`equip:${n}`); return { state: 'PENDING', message: 'p' } } })
+    const slowTasks = { readTaskStatus: async () => { await gate.promise; return { taskId: 't', operation: 'X', state: 'SUCCEEDED' } as never } }
+    const c = useCharacters(api, slowTasks, noSleep)
+    c.select('Ana B'); await flushPromises()
+    connection.generation += 1
+    gate.resolve(); await flushPromises()
+    expect(api.calls.filter((x) => x.startsWith('equip:'))).toHaveLength(1)
+  })
+
+  it('keeps the retained roster entry, labelled, when a reopened detail fails or is unavailable', async () => {
+    let mode: 'ok' | 'fail' | 'unavailable' = 'ok'
+    const api = fakeApi({
+      loadCharacter: async (n) => {
+        if (mode === 'fail') throw new Error('boom')
+        if (mode === 'unavailable') return { state: 'UNAVAILABLE', message: 'down' }
+        return detailOf(n === 'Bo' ? bo : ana)
+      }
+    })
+    const w = mount(CharactersScreen, { props: { api } })
+    await flushPromises()
+    await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
+    expect(w.find('[data-test="detail-retained"]').exists()).toBe(false)
+    await w.find('[data-test="character-back"]').trigger('click')
+    for (const m of ['fail', 'unavailable'] as const) {
+      mode = m
+      await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
+      expect(w.find('[data-test="character-facts"]').text()).toContain('Guardian')
+      expect(w.find('[data-test="detail-retained"]').text()).toContain('may be out of date')
+      expect(w.find('[data-test="equipment-panel"]').exists()).toBe(true)
+      await w.find('[data-test="character-back"]').trigger('click')
+    }
+  })
+
+  it('never shows retained detail for a character absent from the roster or after the account changed', async () => {
+    const api = fakeApi({ loadCharacter: async () => { throw new Error('boom') } })
+    const c = useCharacters(api, tasks, noSleep)
+    await c.loadRoster()
+    c.select('Ghost'); await flushPromises()
+    expect(c.shownDetail.value).toBeNull()
+  })
+
+  it('restores the source row focus and scroll position when returning from detail', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ ...ana, name: `Char ${i}` }))
+    const api = fakeApi({ loadRoster: async () => ({ ...roster, characterCount: 30, characters: many }) })
+    const scrollTo = vi.fn()
+    vi.stubGlobal('scrollTo', scrollTo)
+    Object.defineProperty(window, 'scrollY', { value: 640, configurable: true })
+    const w = mount(CharactersScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="roster-item"]')[25]!.trigger('click'); await flushPromises()
+    Object.defineProperty(window, 'scrollY', { value: 0, configurable: true }) // short detail clamped the page
+    await w.find('[data-test="character-back"]').trigger('click'); await flushPromises()
+    expect((document.activeElement as HTMLElement).dataset.name).toBe('Char 25')
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 640)
+    w.unmount()
+    vi.unstubAllGlobals()
+  })
+})

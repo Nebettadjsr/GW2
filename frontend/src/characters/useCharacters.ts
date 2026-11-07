@@ -141,6 +141,18 @@ export function useCharacters(
     }
   }
 
+  /**
+   * Core fields to show: the character's own detail when it carried data, else — only once the detail
+   * read has finished without data — the same character's entry in the retained same-account roster.
+   * Never presented as fresh (see `detailIsRetained`).
+   */
+  const shownDetail = computed<CharacterOverview | null>(() => {
+    if (detail.value) return detail.value
+    if (detailPhase.value !== 'loaded' || selectedName.value === null) return null
+    return roster.value?.characters?.find((ch) => ch.name === selectedName.value) ?? null
+  })
+  const detailIsRetained = computed(() => shownDetail.value !== null && shownDetail.value !== detail.value)
+
   function select(name: string): void {
     if (selectedName.value === name) return
     selectedName.value = name
@@ -212,7 +224,10 @@ export function useCharacters(
         if (accepted.coversRequest !== false) break
         if (attempt === EQUIPMENT_MAX_COVER_RETRIES) throw new Error('Another refresh kept running. Try again later.')
       }
-      if (current() && selectedName.value === name) await loadEquipment(name)
+      // The refresh publishes every character: re-read whichever one is selected now, not the one
+      // that started it. `current()` above still gates this on the same account and workspace.
+      const selectedNow = selectedName.value
+      if (current() && selectedNow !== null) await loadEquipment(selectedNow)
     } catch (cause) {
       if (!current()) return
       const failure = failureOf(cause)
@@ -242,7 +257,7 @@ export function useCharacters(
 
   return {
     rosterPhase, rosterResponse, rosterFailure, roster, rosterIsRetained, loadRoster,
-    selectedName, detail, detailResponse, detailFailure, detailPhase, select, back, loadDetail,
+    selectedName, detail, shownDetail, detailIsRetained, detailResponse, detailFailure, detailPhase, select, back, loadDetail,
     equipmentPhase, equipmentResponse, equipmentFailure, equipmentTabs, equipmentIsRetained, equipmentSource,
     activeTab, inspectedTab, shownTab, inspect, loadEquipment,
     refreshing, refreshMessage, refreshEquipment
