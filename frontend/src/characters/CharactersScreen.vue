@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { connection } from '@/api/accountSession'
 import { charactersApi, type CharactersApi } from '@/api/charactersApi'
 import { syncApi } from '@/api/syncApi'
 import PageHeader from '@/shell/PageHeader.vue'
@@ -17,19 +18,31 @@ onMounted(() => { void c.loadRoster() })
 
 // Return from detail to the same place in a long roster: remember the row and page scroll when a
 // character is opened, then restore selection focus and scroll once the roster is rendered again.
+const generation = connection.generation
+let unmounted = false
+onBeforeUnmount(() => { unmounted = true })
+const live = (): boolean => !unmounted && generation === connection.generation
+const rowRefs = new Map<string, HTMLElement>()
+function setRow(name: string, el: unknown): void {
+  if (el instanceof HTMLElement) rowRefs.set(name, el)
+  else rowRefs.delete(name)
+}
+const headingRef = ref<HTMLElement | null>(null)
+const backRef = ref<HTMLElement | null>(null)
 let origin: { name: string; scrollY: number } | null = null
-function open(name: string): void {
+async function open(name: string): Promise<void> {
   origin = { name, scrollY: window.scrollY }
   c.select(name)
+  await nextTick()
+  // Move keyboard focus into the opened detail (its heading) once it is rendered.
+  if (live() && c.selectedName.value === name) (headingRef.value ?? backRef.value)?.focus({ preventScroll: true })
 }
 async function back(): Promise<void> {
   const from = origin
   c.back()
   await nextTick()
-  if (!from) return
-  const row = Array.from(document.querySelectorAll<HTMLElement>('[data-test="roster-item"]'))
-    .find((el) => el.dataset.name === from.name)
-  row?.focus({ preventScroll: true })
+  if (!from || !live() || c.selectedName.value !== null) return
+  rowRefs.get(from.name)?.focus({ preventScroll: true })
   window.scrollTo(0, from.scrollY) // the browser clamps this when the roster is shorter
 }
 
@@ -80,7 +93,7 @@ function fmt(value?: string | null): string | null {
     <div v-if="c.selectedName.value === null && characters.length > 0">
       <ul class="roster" data-test="roster">
         <li v-for="ch in characters" :key="ch.name">
-          <button type="button" class="roster__item" data-test="roster-item" :data-name="ch.name" @click="open(ch.name)">
+          <button type="button" class="roster__item" data-test="roster-item" :data-name="ch.name" :ref="(el) => setRow(ch.name, el)" @click="open(ch.name)">
             <strong>{{ ch.name }}</strong>
             <span>Level {{ ch.level ?? '?' }} {{ ch.race }} {{ ch.profession }}</span>
             <span v-if="ch.craftingDisciplines.length > 0" class="meta">
@@ -93,8 +106,8 @@ function fmt(value?: string | null): string | null {
 
     <!-- Selected character -->
     <section v-if="c.selectedName.value !== null" class="detail" data-test="character-detail">
-      <button type="button" data-test="character-back" @click="back()">← All characters</button>
-      <h2 data-test="character-name">{{ c.selectedName.value }}</h2>
+      <button ref="backRef" type="button" data-test="character-back" @click="back()">← All characters</button>
+      <h2 ref="headingRef" tabindex="-1" data-test="character-name">{{ c.selectedName.value }}</h2>
       <p v-if="c.detailPhase.value === 'loading'" class="meta" role="status" data-test="detail-loading">Loading character…</p>
       <p v-if="c.detailFailure.value" class="notice notice--error" role="alert" data-test="detail-error">
         Could not load this character's details: {{ c.detailFailure.value.message }}
@@ -135,8 +148,8 @@ function fmt(value?: string | null): string | null {
       </div>
       <p v-else-if="c.equipmentIsRetained.value" class="notice" data-test="equipment-retained">Showing previously saved equipment.</p>
       <p v-if="equipmentState?.state === 'STALE'" class="meta" data-test="equipment-stale">This saved equipment may be out of date.</p>
-      <p v-if="equipmentState?.equipment?.completedAt" class="meta" data-test="equipment-freshness">
-        Equipment last synchronized: {{ fmt(equipmentState.equipment.completedAt) ?? 'unknown' }}.
+      <p v-if="c.equipmentSource.value?.equipment?.completedAt" class="meta" data-test="equipment-freshness">
+        Equipment last synchronized: {{ fmt(c.equipmentSource.value.equipment.completedAt) ?? 'unknown' }}.
       </p>
       <p class="meta" v-if="c.refreshMessage.value" role="alert" data-test="equipment-refresh-error">{{ c.refreshMessage.value }}</p>
       <button v-if="canRefresh" type="button" :disabled="c.refreshing.value" data-test="equipment-refresh" @click="c.refreshEquipment()">

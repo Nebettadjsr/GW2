@@ -358,4 +358,43 @@ describe('remaining acceptance fixes', () => {
     w.unmount()
     vi.unstubAllGlobals()
   })
+
+  it('moves keyboard focus to the opened character heading', async () => {
+    const w = mount(CharactersScreen, { props: { api: fakeApi() }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
+    expect(document.activeElement).toBe(w.find('[data-test="character-name"]').element)
+    w.unmount()
+  })
+
+  it('does not steal focus after the account was replaced while opening', async () => {
+    const w = mount(CharactersScreen, { props: { api: fakeApi() }, attachTo: document.body })
+    await flushPromises()
+    const btn = w.findAll('[data-test="roster-item"]')[0]!
+    const before = document.activeElement
+    void btn.trigger('click')
+    connection.generation += 1
+    await flushPromises()
+    expect(document.activeElement).toBe(before)
+    w.unmount()
+  })
+
+  it('keeps the retained equipment completedAt when the latest read is a structured 503', async () => {
+    let n = 0
+    const api = fakeApi({ loadEquipmentTabs: async () => (n++ === 0 ? tabsResponse
+      : { state: 'UNAVAILABLE', message: 'down' } as CharacterEquipmentTabsResponse) })
+    const c = useCharacters(api, tasks, noSleep)
+    await c.loadRoster(); c.select('Ana B'); await flushPromises()
+    await c.loadEquipment('Ana B')
+    expect(c.equipmentResponse.value?.state).toBe('UNAVAILABLE')
+    expect(c.equipmentSource.value?.equipment?.completedAt).toBe('2026-01-01T00:00:00Z')
+    const w = mount(CharactersScreen, { props: { api: fakeApi({ loadEquipmentTabs: (() => { let k = 0
+      return async () => (k++ === 0 ? tabsResponse : { state: 'UNAVAILABLE', message: 'down' } as CharacterEquipmentTabsResponse) })() }) } })
+    await flushPromises()
+    await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
+    await w.find('[data-test="character-back"]').trigger('click')
+    await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
+    expect(w.find('[data-test="equipment-state"]').exists()).toBe(true)
+    expect(w.find('[data-test="equipment-freshness"]').text()).toContain('2026')
+  })
 })
