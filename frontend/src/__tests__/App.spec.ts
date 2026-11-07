@@ -8,8 +8,9 @@ import {
   profitResponse,
   selectorOptions
 } from '@/crafting/__tests__/fixtures'
-import { connectKey, installAccountSession, resetAccountSession } from '@/api/accountSession'
+import { connection, connectKey, installAccountSession, resetAccountSession } from '@/api/accountSession'
 import { installAccountTransport } from '@/api/http'
+import { resetMaterialProtection, useMaterialProtection } from '@/materials/materialProtectionState'
 import { accountLuck, itemMetadata, itemPrices, METADATA_IDS } from '@/ecto/__tests__/currentEctoFixtures'
 
 /**
@@ -371,6 +372,44 @@ describe('App shell', () => {
     expect((open.find('[data-test="filter-zero-craftable"]').element as HTMLInputElement).checked).toBe(false)
     expect((open.find('[data-test="max-displayed"]').element as HTMLInputElement).value).toBe('25')
     expect(open.findAll('[data-test="profit-row"]')).toHaveLength(rowsBefore)
+  })
+
+  it('keepsTheProfitSelectionWhenFollowingTheProtectionLinksToBankAndMaterialsAndBack', async () => {
+    connection.accountId = 'aaaaaaaa-0000-0000-0000-000000000001'
+    const protection = useMaterialProtection()
+    protection.setPending([3, 4])
+    protection.commit()
+    try {
+      const open = await openApp()
+      await open.find('[data-test="search"]').setValue('Iron')
+      const maximum = open.find('[data-test="max-displayed"]')
+      ;(maximum.element as HTMLInputElement).value = '25'
+      await maximum.trigger('change')
+      await open.find('[data-test="protection-toggle"]').setValue(true)
+      await flushPromises()
+      const calculationsBefore = pathsOf('/api/crafting/profit').length
+      const lastBody = () => JSON.parse(String((vi.mocked(fetch).mock.calls.filter((c) => c[0] === '/api/crafting/profit').at(-1)![1] as RequestInit).body))
+      expect(lastBody().settings).toMatchObject({ materialProtectionEnabled: true, protectedItemIds: [3, 4] })
+
+      for (const target of ['bank', 'materials']) {
+        const href = open.find(`[data-test="protection-${target}-link"]`).attributes('href')!
+        expect(href).toBe(`#/${target}`)
+        // jsdom does not follow anchors; apply the link's target the way the browser would.
+        window.location.hash = href
+        window.dispatchEvent(new HashChangeEvent('hashchange'))
+        await flushPromises()
+        expect(currentDestination(open)).toBe(`nav-${target}`)
+        await navigateTo(open, 'crafting')
+        expect((open.find('[data-test="search"]').element as HTMLInputElement).value).toBe('Iron')
+        expect((open.find('[data-test="max-displayed"]').element as HTMLInputElement).value).toBe('25')
+        expect((open.find('[data-test="protection-toggle"]').element as HTMLInputElement).checked).toBe(true)
+        expect(pathsOf('/api/crafting/profit')).toHaveLength(calculationsBefore)
+      }
+    } finally {
+      connection.accountId = null
+      resetMaterialProtection()
+      localStorage.clear()
+    }
   })
 
   it('keepsAnUnfinishedSynchronizationTrackedWhileAnotherAreaIsOpen', async () => {

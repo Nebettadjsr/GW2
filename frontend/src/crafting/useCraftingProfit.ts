@@ -1,4 +1,4 @@
-import { computed, onScopeDispose, ref, shallowRef, type ComputedRef, type Ref } from 'vue'
+import { computed, onScopeDispose, ref, shallowRef, watch, type ComputedRef, type Ref } from 'vue'
 import type { CraftingApi } from '@/api/craftingApi'
 import { ApiRequestError } from '@/api/http'
 import {
@@ -13,6 +13,7 @@ import {
   type SyncTaskAccepted,
   type SyncTaskStatus
 } from '@/api/types'
+import { canonicalIds, useMaterialProtection, type MaterialProtectionState } from '@/materials/materialProtectionState'
 import { buildScopeOptions, defaultScopeOptionId, type ScopeOption } from './scopeOptions'
 
 /**
@@ -50,6 +51,9 @@ export const RECOVERY_REFRESH_UNAVAILABLE =
   'The account refresh could not be started right now. The cached result and your key are kept; retry shortly.'
 
 /** Wording for a refresh that only joined an unrelated narrower task. */
+export const PROTECTION_UNCONFIRMED =
+  'Material protection was requested, but the backend did not confirm it for this calculation, so no result is shown as protected.'
+
 export const RECOVERY_REFRESH_NOT_COVERED =
   'The account refresh is waiting behind another task and has not started. Retry shortly.'
 
@@ -148,7 +152,11 @@ type TaskOutcome =
   | { kind: 'expired' }
   | { kind: 'failed'; message: string }
 
-export function useCraftingProfit(api: CraftingApi, refresh: ProfitRefreshPorts): CraftingProfitState {
+export function useCraftingProfit(
+  api: CraftingApi,
+  refresh: ProfitRefreshPorts,
+  protection: MaterialProtectionState = useMaterialProtection()
+): CraftingProfitState {
   const scopeOptions = shallowRef<ScopeOption[]>([])
   const selectedScopeId = ref<string | null>(null)
   const settings = ref<EffectiveSettings | null>(null)
@@ -188,6 +196,41 @@ export function useCraftingProfit(api: CraftingApi, refresh: ProfitRefreshPorts)
     abandonRecovery()
   })
 
+  let opened = false
+  /** The verified account this composable's scope/settings belong to; bound on first sight. */
+  let boundAccountId: string | null = null
+  /**
+   * An effective change of the committed protection context (account, activation, committed IDs)
+   * supersedes everything in flight and recalculates at once; the selected detail follows because it
+   * is only offered while no list request is loading.
+   */
+  watch(
+    effectiveKey,
+    (key) => {
+      if (!opened || disposed) return
+      if (key === 'none') {
+        // Identity is not (yet) validated: drop old in-flight work, but never submit a request built
+        // from the previous account's scope/settings. The workspace/account transport reconnects.
+        newestRequestId += 1
+        abandonRecovery()
+        isLoading.value = false
+        return
+      }
+      const account = protection.state.accountId
+      boundAccountId ??= account
+      if (account !== boundAccountId) {
+        // Another account became current before the connection generation moved on: this workspace's
+        // scope/settings are the old account's. Submit nothing; the incoming workspace calculates itself.
+        newestRequestId += 1
+        abandonRecovery()
+        isLoading.value = false
+        return
+      }
+      void requestProfit(currentRequest())
+    },
+    { flush: 'sync' }
+  )
+
   const selectedScope = computed<ScopeOption | null>(
     () => scopeOptions.value.find((option) => option.id === selectedScopeId.value) ?? null
   )
@@ -213,6 +256,37 @@ export function useCraftingProfit(api: CraftingApi, refresh: ProfitRefreshPorts)
   }
 
   /**
+   * The committed protection context for the verified account, or null while it is not restored.
+   * Activation is effective only with at least one committed ID; pending edits are never read.
+   */
+  function protectionContext(): { enabled: boolean; ids: number[] } | null {
+    if (protection.state.status !== 'ready' || protection.state.accountId === null) return null
+    const ids = [...protection.state.committed]
+    return { enabled: protection.state.activation && ids.length > 0, ids }
+  }
+
+  function contextKey(): string {
+    return effectiveKey()
+  }
+
+  /** Request-relevant context: saved IDs matter only while protection is effectively enabled. */
+  function effectiveKey(): string {
+    const context = protectionContext()
+    if (context === null) return 'none'
+    return `${protection.state.accountId}|${context.enabled}|${context.enabled ? context.ids.join(',') : ''}`
+  }
+
+  /** Whether an enabled-protection request was echoed back as such (order/duplicate insensitive). */
+  function echoConfirms(request: CraftingProfitRequest, response: CraftingProfitResponse): boolean {
+    if (request.settings?.materialProtectionEnabled !== true) return true
+    const echoed = response.settings
+    if (echoed?.materialProtectionEnabled !== true || !Array.isArray(echoed.protectedItemIds)) return false
+    const wanted = canonicalIds(request.settings.protectedItemIds)
+    const got = canonicalIds(echoed.protectedItemIds)
+    return wanted.length === got.length && wanted.every((id, index) => id === got[index])
+  }
+
+  /**
    * One calculation request. `foreground` is what the user asked for and owns the loading state; a
    * background request is a recovery resubmission and must leave the displayed cached result and
    * its controls alone until its own answer arrives.
@@ -229,17 +303,26 @@ export function useCraftingProfit(api: CraftingApi, refresh: ProfitRefreshPorts)
   ): Promise<RequestOutcome> {
     if (disposed) return { kind: 'superseded' }
     const requestId = ++newestRequestId
+    const dispatchedContext = contextKey()
+    const token = protection.beginRequest()
     if (foreground) isLoading.value = true
 
     try {
       const response = await api.calculateProfit(request)
       if (requestId !== newestRequestId) return { kind: 'superseded' }
       if (cycle !== undefined && cycle !== activeCycle) return { kind: 'superseded' }
+      if (dispatchedContext !== contextKey()) return { kind: 'superseded' }
+      if (!echoConfirms(request, response)) {
+        protection.reconcile(token, null)
+        return { kind: 'failed', message: PROTECTION_UNCONFIRMED }
+      }
+      protection.reconcile(token, response.settings)
       apply(response)
       return { kind: 'applied', response }
     } catch (cause) {
       if (requestId !== newestRequestId) return { kind: 'superseded' }
       if (cycle !== undefined && cycle !== activeCycle) return { kind: 'superseded' }
+      if (dispatchedContext !== contextKey()) return { kind: 'superseded' }
       return { kind: 'failed', message: describeFailure(cause) }
     } finally {
       if (foreground && requestId === newestRequestId) isLoading.value = false
@@ -490,7 +573,21 @@ export function useCraftingProfit(api: CraftingApi, refresh: ProfitRefreshPorts)
     const request: CraftingProfitRequest = {}
     const scope = selectedScope.value
     if (scope !== null) request.scope = scope.request
-    if (settings.value !== null) request.settings = settings.value
+    const context = protectionContext()
+    if (settings.value !== null) {
+      request.settings = { ...settings.value }
+      if (context !== null) {
+        request.settings.materialProtectionEnabled = context.enabled
+        request.settings.protectedItemIds = context.ids
+      } else {
+        delete request.settings.materialProtectionEnabled
+        delete request.settings.protectedItemIds
+      }
+    } else if (context !== null && context.enabled) {
+      // Backend defaults for everything else; only the committed protection is supplied.
+      // The route accepts a partial settings object; the type is the full echo shape.
+      request.settings = { materialProtectionEnabled: true, protectedItemIds: context.ids } as EffectiveSettings
+    }
     return request
   }
 
@@ -516,7 +613,9 @@ export function useCraftingProfit(api: CraftingApi, refresh: ProfitRefreshPorts)
      * first request carries no scope or settings at all — the defaults applied are the backend's.
      */
     async open(): Promise<void> {
-      await Promise.all([loadSelectorOptions(), requestProfit({})])
+      opened = true
+      boundAccountId = protection.state.accountId
+      await Promise.all([loadSelectorOptions(), requestProfit(currentRequest())])
     },
 
     /** Manual reload. Keeps the current scope and settings; search and sort are not touched. */

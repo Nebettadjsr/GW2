@@ -88,7 +88,7 @@ function onReload(): void { void bank.load() }
             <ol class="slots" data-test="bank-slots">
               <BankSlotTile v-for="slot in tab.slots" :key="slot.slot" :slot="slot"
                 :selected="selectable && slot.itemId !== null ? pendingIds.has(slot.itemId) : undefined"
-                @toggle="protection.togglePending" />
+                @toggle="(id: number) => protection.togglePending(id, 'bank')" />
             </ol>
           </div>
         </section>

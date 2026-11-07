@@ -18,7 +18,7 @@ const storageNotice = computed(() => {
   }
 })
 function applyPreset(preset: MaterialPreset): void {
-  protection.setPending([...protection.state.pending, ...preset.itemIds])
+  protection.setPending([...protection.state.pending, ...preset.itemIds], 'materials')
 }
 function items(n: number): string { return `${n} ${n === 1 ? 'item' : 'items'}` }
 </script>
@@ -50,5 +50,5 @@ function items(n: number): string { return `${n} ${n === 1 ? 'item' : 'items'}` 
 .selection-bar { margin-block: var(--space-3); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
 .selection-bar p { margin: 0; }
 .selection-bar__state[data-state='pending'] { font-weight: 700; }
-.selection-bar__presets, .selection-bar__actions { display: flex; gap: var(--space-2); }
+.selection-bar__presets, .selection-bar__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; max-width: 100%; }
 </style>
