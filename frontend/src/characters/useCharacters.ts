@@ -17,7 +17,7 @@ import { ApiRequestError } from '@/api/http'
 import { charactersApi, type CharactersApi } from '@/api/charactersApi'
 import { syncApi, type SyncApi } from '@/api/syncApi'
 import type {
-  CharacterEquipmentTabsResponse, CharacterInventoryResponse, CharacterOverview, CharacterReadResponse, EquipmentTab
+  CharacterBuildTabsResponse, CharacterEquipmentTabsResponse, CharacterInventoryResponse, CharacterOverview, CharacterReadResponse, EquipmentTab
 } from '@/api/types'
 
 export const EQUIPMENT_POLL_MS = 2_000
@@ -102,6 +102,13 @@ export function useCharacters(
   const inventoryFailure = ref<ReadFailure | null>(null)
   let inventoryId = 0
 
+  // Saved builds: read only for the selected character, solely to name its ACTIVE elite specialization
+  // in the header. Not retained across characters; any doubt falls back to the base profession.
+  const buildPhase = ref<ReadPhase>('idle')
+  const buildResponse = shallowRef<CharacterBuildTabsResponse | null>(null)
+  let buildId = 0
+  let buildRecoveryTried = false
+
   const stillSelected = (name: string, id: number, newest: number): boolean =>
     current() && selectedName.value === name && id === newest
 
@@ -149,6 +156,57 @@ export function useCharacters(
       void refreshEquipment()
     }
   }
+
+  async function loadBuildTabs(name: string): Promise<void> {
+    if (!current()) return
+    const id = ++buildId
+    buildPhase.value = 'loading'
+    try {
+      const response = await api.loadBuildTabs(name)
+      if (!stillSelected(name, id, buildId)) return
+      buildResponse.value = response
+    } catch {
+      if (!stillSelected(name, id, buildId)) return
+      buildResponse.value = null // transport failure: no decoration, base profession is shown
+    }
+    buildPhase.value = 'loaded'
+    // Optional source not covered yet: one automatic recovery attempt per selection, like equipment.
+    if (buildResponse.value?.state === 'PENDING' && !buildRecoveryTried && !refreshing.value) {
+      buildRecoveryTried = true
+      void recoverBuilds(name)
+    }
+  }
+
+  async function recoverBuilds(name: string): Promise<void> {
+    try {
+      const accepted = await api.startBuildTabsRefresh()
+      if (!stillSelected(name, buildId, buildId) || !(await awaitTask(accepted.statusUrl))) return
+      if (stillSelected(name, buildId, buildId) && accepted.coversRequest !== false) await loadBuildTabs(name)
+    } catch { /* optional decoration only: stay on the base profession */ }
+  }
+
+  /**
+   * The ACTIVE elite specialization's name for the header, or null for the base-profession fallback.
+   * Requires: this character's AVAILABLE/STALE build answer covering the current parent generation
+   * (and no newer parent known from equipment/inventory); exactly one tab marked active; exactly one
+   * resolved elite specialization in it whose parent profession is this character's profession.
+   */
+  const activeElite = computed<string | null>(() => {
+    const r = buildResponse.value
+    const d = shownDetail.value
+    if (!r || !d || !HAS_DATA.includes(r.state) || !r.tabs) return null
+    if (r.character !== undefined && r.character !== selectedName.value) return null
+    const parent = r.parent?.generation
+    if (parent === undefined || r.coveredParentGeneration !== parent) return null
+    const known = newest(knownEquipmentParent.value, knownInventoryParent.value)
+    if (known !== undefined && known > parent) return null
+    const active = r.tabs.filter((t) => t.active)
+    if (active.length !== 1) return null
+    const elites = active[0]!.specializations
+      .map((s) => s.specialization)
+      .filter((s) => s && s.resolved && s.elite === true && s.name && s.profession?.toLowerCase() === d.profession.toLowerCase())
+    return elites.length === 1 ? elites[0]!.name! : null
+  })
 
   async function loadInventory(name: string): Promise<void> {
     if (!current()) return
@@ -264,6 +322,13 @@ export function useCharacters(
     section.value = 'equipment'
   }
 
+  function resetBuilds(): void {
+    buildId += 1
+    buildResponse.value = null
+    buildPhase.value = 'idle'
+    buildRecoveryTried = false
+  }
+
   function select(name: string): void {
     if (selectedName.value === name) return
     selectedName.value = name
@@ -276,8 +341,10 @@ export function useCharacters(
     // Invalidate anything in flight for the previous character.
     detailId += 1
     equipmentId += 1
+    resetBuilds()
     void loadDetail(name)
     void loadEquipment(name)
+    void loadBuildTabs(name)
   }
 
   /** Inspection for a (re)opened character: its retained tabs' actual active tab, else nothing yet. */
@@ -297,6 +364,7 @@ export function useCharacters(
     inspectedTab.value = null
     detailPhase.value = 'idle'
     equipmentPhase.value = 'idle'
+    resetBuilds()
   }
 
   function inspect(tab: number): void {
@@ -375,6 +443,7 @@ export function useCharacters(
     activeTab, inspectedTab, shownTab, inspect, loadEquipment,
     refreshing, refreshMessage, refreshEquipment,
     section, showSection, inventoryPhase, inventoryResponse, inventoryFailure, inventorySource, inventoryIsRetained,
-    equipmentOlderThanInventory, inventoryOlderThanEquipment, loadInventory
+    equipmentOlderThanInventory, inventoryOlderThanEquipment, loadInventory,
+    buildPhase, buildResponse, activeElite, loadBuildTabs
   }
 }

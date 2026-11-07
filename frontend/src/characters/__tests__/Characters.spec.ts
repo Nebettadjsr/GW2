@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { connection } from '@/api/accountSession'
 import type { CharactersApi } from '@/api/charactersApi'
-import type { CharacterInventoryResponse, CharacterEquipmentTabsResponse, CharacterOverview, CharacterReadResponse } from '@/api/types'
+import type { CharacterBuildTabsResponse, CharacterInventoryResponse, CharacterEquipmentTabsResponse, CharacterOverview, CharacterReadResponse } from '@/api/types'
 import CharactersScreen from '../CharactersScreen.vue'
 import { useCharacters } from '../useCharacters'
 
@@ -36,6 +36,13 @@ const inventoryResponse: CharacterInventoryResponse = { state: 'AVAILABLE', char
       { slot: 0, empty: false, item: { itemId: 99, resolved: false }, quantity: 3, binding: 'Account' }] }
   ] }
 
+const spec = (id: number, name: string, profession: string, elite: boolean, resolved = true) => ({ specialization: { id, resolved, name, profession, elite } })
+const buildsResponse: CharacterBuildTabsResponse = { state: 'AVAILABLE', character: 'Ana B', parent: { generation: 1 }, builds: { generation: 1 }, coveredParentGeneration: 1,
+  tabs: [
+    { tab: 1, active: false, specializations: [spec(1, 'Zeal', 'Guardian', false), spec(2, 'Inspected Elite', 'Guardian', true)] },
+    { tab: 2, active: true, specializations: [spec(3, 'Valor', 'Guardian', false), spec(62, 'Willbender', 'Guardian', true)] }
+  ] }
+
 function deferred<T>() { let resolve!: (v: T) => void; const promise = new Promise<T>((r) => { resolve = r }); return { promise, resolve } }
 
 function fakeApi(over: Partial<CharactersApi> = {}): CharactersApi & { calls: string[] } {
@@ -46,6 +53,8 @@ function fakeApi(over: Partial<CharactersApi> = {}): CharactersApi & { calls: st
     loadCharacter: async (n) => { calls.push(`detail:${n}`); return detailOf(n === 'Bo' ? bo : ana) },
     loadEquipmentTabs: async (n) => { calls.push(`equip:${n}`); return tabsResponse },
     loadInventory: async (n) => { calls.push(`inv:${n}`); return inventoryResponse },
+    loadBuildTabs: async (n) => { calls.push(`builds:${n}`); return { ...buildsResponse, character: n } },
+    startBuildTabsRefresh: async () => { calls.push('build-refresh'); return { taskId: 'b', operation: 'X', statusUrl: '/api/sync/tasks/b' } },
     startEquipmentTabsRefresh: async () => { calls.push('refresh'); return { taskId: 't', operation: 'X', statusUrl: '/api/sync/tasks/t' } },
     ...over
   }
@@ -65,7 +74,7 @@ describe('Characters screen', () => {
     expect(w.text()).toContain('Weaponsmith 500')
     await w.findAll('[data-test="roster-item"]')[0]!.trigger('click')
     await flushPromises()
-    expect(api.calls).toEqual(['roster', 'detail:Ana B', 'equip:Ana B'])
+    expect(api.calls).toEqual(['roster', 'detail:Ana B', 'equip:Ana B', 'builds:Ana B'])
     expect(w.find('[data-test="page-heading"]').text()).toBe('Ana B')
     expect(w.find('[data-test="page-intro"]').exists()).toBe(false)
     await w.find('[data-test="character-back"]').trigger('click')
@@ -114,7 +123,7 @@ describe('Characters screen', () => {
     await flushPromises()
     expect(w.find('[data-test="equipment-state"]').text()).toContain('MISSING_GRANT')
     expect(w.find('[data-test="equipment-tablist"]').exists()).toBe(false)
-    expect(w.find('[data-test="character-facts"]').exists()).toBe(true)
+    expect(w.find('[data-test="character-summary"]').exists()).toBe(true)
     await w.find('[data-test="character-back"]').trigger('click')
     expect(w.findAll('[data-test="roster-item"]')).toHaveLength(2)
   })
@@ -340,7 +349,7 @@ describe('remaining acceptance fixes', () => {
     for (const m of ['fail', 'unavailable'] as const) {
       mode = m
       await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
-      expect(w.find('[data-test="character-facts"]').text()).toContain('Guardian')
+      expect(w.find('[data-test="character-subtitle"]').text()).toContain('Human')
       expect(w.find('[data-test="detail-retained"]').text()).toContain('may be out of date')
       expect(w.find('[data-test="equipment-panel"]').exists()).toBe(true)
       await w.find('[data-test="character-back"]').trigger('click')
@@ -441,8 +450,8 @@ describe('Character inventory section', () => {
     expect(rail[1]!.attributes('aria-label')).toContain('no bag installed')
     expect(rail.map((e) => e.attributes('data-bag'))).toEqual(['0', '1', '2'])
     expect(cells[2]!.text()).toContain('Item #99 (details unavailable)'); expect(cells[2]!.text()).toContain('×3')
-    expect(w.findAll('[data-test="character-facts"]')).toHaveLength(1)
-    expect(w.find('[data-test="inventory-facts"] [data-test="character-facts"]').exists()).toBe(true)
+    expect(w.findAll('[data-test="character-summary"]')).toHaveLength(1)
+    expect(w.find('[data-test="inventory-facts"]').exists()).toBe(false)
     await w.find('[data-test="section-equipment"]').trigger('click')
     await w.find('[data-test="section-inventory"]').trigger('click')
     expect(api.calls.filter((c) => c === 'inv:Ana B')).toHaveLength(1)
@@ -478,10 +487,81 @@ describe('Character inventory section', () => {
     expect(w.findAll('[data-test="inventory-bag"]').map((e) => e.attributes('data-bag'))).toEqual(['0', '1', '2', '3'])
     expect(w.findAll('[data-test="inventory-grid"]')).toHaveLength(1)
     expect(w.find('[data-test="page-heading"]').text()).toBe('Ana B')
-    expect(w.find('[data-test="inventory-facts"] [data-test="character-name"]').exists()).toBe(false)
     await w.find('[data-test="section-equipment"]').trigger('click'); await flushPromises()
     expect(w.find('[data-test="inventory-facts"]').exists()).toBe(false)
     expect(w.find('[data-test="page-heading"]').text()).toBe('Ana B')
+  })
+
+  it('shows the summary above the tabs and the subtitle with the active (not inspected) elite', async () => {
+    const full = { ...ana, ageSeconds: 3 * 86_400 + 7200, deaths: 0, nextBirthdayAt: new Date(Date.now() + 2 * 86_400_000 + 3_600_000).toISOString() }
+    const w = await open(fakeApi({ loadCharacter: async () => detailOf(full) }))
+    expect(w.find('[data-test="character-subtitle"]').text()).toBe('Lvl 80 Human Willbender')
+    expect(w.find('[data-test="profession-glyph"]').exists()).toBe(true)
+    expect(w.find('[data-test="summary-playtime"]').text()).toBe('3 d 2 h')
+    expect(w.find('[data-test="summary-deaths"]').text()).toBe('0')
+    expect(w.find('[data-test="summary-birthday"]').text()).toMatch(/^in 2 d /)
+    expect(w.findAll('[data-test="summary-discipline"]')).toHaveLength(1)
+    const html = w.html()
+    expect(html.indexOf('character-summary')).toBeLessThan(html.indexOf('section-tablist'))
+    await w.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
+    expect(w.findAll('[data-test="character-summary"]')).toHaveLength(1)
+    expect(w.text()).not.toContain('Inspected Elite')
+  })
+
+  it('keeps unknown core facts unknown instead of zero', async () => {
+    const w = await open(fakeApi())
+    for (const k of ['playtime', 'deaths', 'birthday']) expect(w.find(`[data-test="summary-${k}"]`).text()).toBe('unknown')
+  })
+
+  it('falls back to the base profession for unresolved, ambiguous, incompatible, stale-parent or failed builds', async () => {
+    const withTabs = (tabs: CharacterBuildTabsResponse['tabs'], over: Partial<CharacterBuildTabsResponse> = {}) =>
+      async () => ({ ...buildsResponse, tabs, ...over })
+    const cases: Array<[string, () => Promise<CharacterBuildTabsResponse>]> = [
+      ['unresolved', withTabs([{ tab: 1, active: true, specializations: [spec(62, 'Willbender', 'Guardian', true, false)] }])],
+      ['no active', withTabs([{ tab: 1, active: false, specializations: [spec(62, 'Willbender', 'Guardian', true)] }])],
+      ['two active', withTabs([{ tab: 1, active: true, specializations: [spec(62, 'Willbender', 'Guardian', true)] }, { tab: 2, active: true, specializations: [] }])],
+      ['wrong profession', withTabs([{ tab: 1, active: true, specializations: [spec(40, 'Reaper', 'Necromancer', true)] }])],
+      ['two elites', withTabs([{ tab: 1, active: true, specializations: [spec(62, 'Willbender', 'Guardian', true), spec(65, 'Firebrand', 'Guardian', true)] }])],
+      ['not covered', withTabs(buildsResponse.tabs, { coveredParentGeneration: 0 })],
+      ['grant', async () => ({ state: 'GRANT_REQUIRED' as const, reason: 'MISSING_GRANT' })],
+      ['transport', async () => { throw new Error('down') }]
+    ]
+    for (const [label, loadBuildTabs] of cases) {
+      const w = await open(fakeApi({ loadBuildTabs }))
+      expect(w.find('[data-test="character-subtitle"]').text(), label).toBe('Lvl 80 Human Guardian')
+    }
+  })
+
+  it('ignores build tabs older than a newer parent known from equipment', async () => {
+    const w = await open(fakeApi({ loadEquipmentTabs: async () => ({ ...tabsResponse, parent: { generation: 2 } }) }))
+    expect(w.find('[data-test="character-subtitle"]').text()).toBe('Lvl 80 Human Guardian')
+  })
+
+  it('does not decorate a new selection with a late build answer for the previous one', async () => {
+    const late = deferred<CharacterBuildTabsResponse>()
+    const c = useCharacters(fakeApi({ loadBuildTabs: (n) => n === 'Ana B' ? late.promise : Promise.resolve({ ...buildsResponse, character: n }) }), tasks, noSleep)
+    c.select('Ana B'); await flushPromises()
+    c.back(); c.select('Bo'); await flushPromises()
+    late.resolve(buildsResponse); await flushPromises()
+    expect(c.buildResponse.value?.character).toBe('Bo')
+  })
+
+  it('discards a build answer from a replaced account generation', async () => {
+    const late = deferred<CharacterBuildTabsResponse>()
+    const c = useCharacters(fakeApi({ loadBuildTabs: () => late.promise }), tasks, noSleep)
+    c.select('Ana B'); await flushPromises()
+    connection.generation += 1
+    late.resolve(buildsResponse); await flushPromises()
+    expect(c.buildResponse.value).toBeNull()
+  })
+
+  it('attempts a pending build source recovery exactly once and sends no timers or roster-wide reads', async () => {
+    const api = fakeApi({ loadBuildTabs: async (n) => { api.calls.push(`builds:${n}`); return { state: 'PENDING', reason: 'COVERAGE_NOT_PUBLISHED' } } })
+    const c = useCharacters(api, tasks, noSleep)
+    c.select('Ana B'); await flushPromises()
+    expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(1)
+    expect(api.calls.filter((x) => x.startsWith('builds:'))).toEqual(['builds:Ana B', 'builds:Ana B'])
+    expect(c.activeElite.value).toBeNull()
   })
 
   it('shows grant, failure and retains last-good inventory on a later failed read', async () => {

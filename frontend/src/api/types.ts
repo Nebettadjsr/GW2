@@ -607,6 +607,10 @@ export interface CharacterOverview {
   gender: string
   level: number | null
   createdAt: string | null
+  /** Played seconds / defeats / next 365-day birthday, from the backend; null = unknown, never zero. */
+  ageSeconds?: number | null
+  deaths?: number | null
+  nextBirthdayAt?: string | null
   craftingDisciplines: CharacterDiscipline[]
 }
 
@@ -654,6 +658,20 @@ export interface CharacterEquipmentTabsResponse {
   equipment?: EquipmentCoverage
   coveredParentGeneration?: number
   tabs?: EquipmentTab[]
+}
+
+/** Saved-build tabs read (`GET /api/account/characters/{name}/build-tabs`); only what the header consumes is typed. */
+export interface BuildSpecRef { id: number; resolved: boolean; name?: string; iconUrl?: string; profession?: string; elite?: boolean }
+export interface BuildTab { tab: number; name?: string; profession?: string; active: boolean; specializations: Array<{ specialization: BuildSpecRef | null }> }
+export interface CharacterBuildTabsResponse {
+  state: CharacterReadState
+  reason?: string
+  message?: string
+  character?: string
+  parent?: EquipmentCoverage
+  builds?: EquipmentCoverage
+  coveredParentGeneration?: number
+  tabs?: BuildTab[]
 }
 
 /** Character inventory read (`GET /api/account/characters/{name}/inventory`). No rarity/stat fields. */

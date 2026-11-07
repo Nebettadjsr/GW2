@@ -5,7 +5,8 @@ import { charactersApi, type CharactersApi } from '@/api/charactersApi'
 import { syncApi } from '@/api/syncApi'
 import PageHeader from '@/shell/PageHeader.vue'
 import EquipmentPanel from './EquipmentPanel.vue'
-import CharacterFacts from './CharacterFacts.vue'
+import CharacterSummary from './CharacterSummary.vue'
+import { characterIcon } from './characterIcons'
 import InventoryPanel from './InventoryPanel.vue'
 import { useCharacters } from './useCharacters'
 
@@ -87,16 +88,17 @@ const canRefresh = computed(() => {
   const s = equipmentState.value?.state
   return s === 'PENDING' || s === 'STALE' || s === 'UNAVAILABLE' || c.equipmentFailure.value !== null
 })
-function fmt(value?: string | null): string | null {
-  if (!value) return null
-  const d = new Date(value)
-  return Number.isNaN(d.getTime()) ? null : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(d)
-}
 </script>
 
 <template>
   <div class="screen characters" data-test="characters-screen">
     <PageHeader ref="headerRef" :heading="c.selectedName.value ?? 'Characters'">
+      <template v-if="c.selectedName.value !== null && c.shownDetail.value && characterIcon(c.shownDetail.value.profession)" #icon>
+        <img :src="characterIcon(c.shownDetail.value.profession)!" width="28" height="28" alt="" data-test="profession-glyph" />
+      </template>
+      <template v-if="c.selectedName.value !== null && c.shownDetail.value" #subtitle>
+        <span data-test="character-subtitle">Lvl {{ c.shownDetail.value.level ?? '?' }} {{ c.shownDetail.value.race }} {{ c.activeElite.value ?? c.shownDetail.value.profession }}</span>
+      </template>
       <template v-if="c.selectedName.value !== null" #actions>
         <button type="button" data-test="character-back" @click="back()">← All characters</button>
       </template>
@@ -144,7 +146,7 @@ function fmt(value?: string | null): string | null {
       <p v-if="c.detailIsRetained.value" class="notice" role="status" data-test="detail-retained">
         Showing the saved character list entry; the latest detail read did not succeed, so these facts may be out of date.
       </p>
-      <CharacterFacts v-if="c.shownDetail.value && c.section.value !== 'inventory'" :detail="c.shownDetail.value" :created="fmt(c.shownDetail.value.createdAt)" />
+      <CharacterSummary v-if="c.shownDetail.value" :detail="c.shownDetail.value" />
 
       <div class="sections" role="tablist" aria-label="Character sections" data-test="section-tablist" @keydown="onTabKey">
         <button v-for="t in SECTIONS" :key="t.id" :ref="(el) => setTab(t.id, el)" type="button" role="tab" :id="`section-tab-${t.id}`"
@@ -225,12 +227,7 @@ function fmt(value?: string | null): string | null {
           <button type="button" data-test="inventory-recheck" :disabled="c.inventoryPhase.value === 'loading'" @click="c.loadInventory(c.selectedName.value!)">check again</button>.
         </p>
         <p v-if="c.inventorySource.value?.contents === 'ALL_SLOTS_EMPTY'" class="meta" data-test="inventory-all-empty">All listed bag slots are empty.</p>
-        <InventoryPanel v-if="c.inventorySource.value?.bags" :bags="c.inventorySource.value.bags">
-          <template #facts>
-            <CharacterFacts v-if="c.shownDetail.value" :detail="c.shownDetail.value" :created="fmt(c.shownDetail.value.createdAt)" />
-          </template>
-        </InventoryPanel>
-        <CharacterFacts v-else-if="c.shownDetail.value" :detail="c.shownDetail.value" :created="fmt(c.shownDetail.value.createdAt)" />
+        <InventoryPanel v-if="c.inventorySource.value?.bags" :bags="c.inventorySource.value.bags" />
       </template>
       </div>
     </section>

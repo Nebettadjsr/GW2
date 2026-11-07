@@ -21,7 +21,11 @@ defineExpose({ focusHeading: (options?: FocusOptions) => headingEl.value?.focus(
 <template>
   <div class="page-head">
     <div class="page-head__text">
-      <h1 ref="headingEl" tabindex="-1" data-page-heading data-test="page-heading">{{ heading }}</h1>
+      <div class="page-head__title">
+        <slot name="icon" />
+        <h1 ref="headingEl" tabindex="-1" data-page-heading data-test="page-heading">{{ heading }}</h1>
+      </div>
+      <p v-if="$slots.subtitle !== undefined" class="page-head__intro" data-test="page-subtitle"><slot name="subtitle" /></p>
       <p v-if="intro !== undefined" class="page-head__intro" data-test="page-intro">{{ intro }}</p>
     </div>
 
@@ -30,3 +34,9 @@ defineExpose({ focusHeading: (options?: FocusOptions) => headingEl.value?.focus(
     </div>
   </div>
 </template>
+
+
+<style scoped>
+.page-head__title { display: flex; align-items: center; gap: 8px; }
+.page-head__title h1 { margin: 0; }
+</style>
