@@ -26,6 +26,17 @@ class CharacterBirthdayTest {
     }
 
     @Test
+    void fractionalSecondBoundaryIsNanosAware() {
+        Instant created = C.plusNanos(500_000_000);
+        Instant boundary = created.plusSeconds(Y);
+        // now is in the same epoch second as the boundary but before it: birthday still upcoming.
+        assertEquals(boundary, CharacterBirthday.next(created, boundary.minusNanos(1)));
+        assertEquals(boundary, CharacterBirthday.next(created, C.plusSeconds(Y).plusNanos(200_000_000)));
+        assertEquals(created.plusSeconds(2 * Y), CharacterBirthday.next(created, boundary));
+        assertEquals(created.plusSeconds(2 * Y), CharacterBirthday.next(created, boundary.plusNanos(1)));
+    }
+
+    @Test
     void manyIntervalsAndFixedDurationAroundLeapDay() {
         assertEquals(C.plusSeconds(6 * Y), CharacterBirthday.next(C, C.plusSeconds(5 * Y + 100)));
         // 2021-02-28T12:00Z is exactly 365 days after the leap day, not a calendar anniversary.

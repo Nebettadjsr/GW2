@@ -16,13 +16,11 @@ public final class CharacterBirthday {
     public static Instant next(Instant createdAt, Instant now) {
         if (createdAt == null || now == null || createdAt.isAfter(now)) return null;
         try {
-            long elapsed = Math.subtractExact(now.getEpochSecond(), createdAt.getEpochSecond());
-            // createdAt <= now, so elapsed >= 0 and the sub-second parts decide only the exact boundary.
+            // Complete elapsed duration (nanos-aware): its whole seconds floor-divide exactly because
+            // the interval is a whole number of seconds.
+            long elapsed = Duration.between(createdAt, now).getSeconds();
             long intervals = elapsed / INTERVAL_SECONDS + 1;
             Instant candidate = createdAt.plusSeconds(Math.multiplyExact(intervals, INTERVAL_SECONDS));
-            if (!candidate.isAfter(now)) { // defensive; sub-second edge
-                candidate = candidate.plusSeconds(INTERVAL_SECONDS);
-            }
             return candidate;
         } catch (ArithmeticException | java.time.DateTimeException e) {
             return null;

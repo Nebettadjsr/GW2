@@ -25,6 +25,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -362,10 +363,18 @@ class CharactersApiTest {
                 .andExpect(jsonPath("$.state").value("STALE"))
                 .andExpect(jsonPath("$.reason").value("REFRESH_FAILED"))
                 .andExpect(jsonPath("$.message").isNotEmpty())
-                .andExpect(jsonPath("$.characterCount").value(3));
+                .andExpect(jsonPath("$.characterCount").value(3))
+                .andExpect(jsonPath("$.characters[2].ageSeconds").value(12631700))
+                .andExpect(jsonPath("$.characters[2].deaths").value(9193))
+                .andExpect(jsonPath("$.characters[2].createdAt").value("2020-01-02T03:04:05Z"))
+                .andExpect(jsonPath("$.characters[2].nextBirthdayAt").isNotEmpty());
         mvc.perform(as(A, "/api/account/characters/Zed"))
                 .andExpect(jsonPath("$.state").value("STALE"))
-                .andExpect(jsonPath("$.character.name").value("Zed"));
+                .andExpect(jsonPath("$.character.name").value("Zed"))
+                .andExpect(jsonPath("$.character.ageSeconds").value(12631700))
+                .andExpect(jsonPath("$.character.deaths").value(9193))
+                .andExpect(jsonPath("$.character.createdAt").value("2020-01-02T03:04:05Z"))
+                .andExpect(jsonPath("$.character.nextBirthdayAt").isNotEmpty());
     }
 
     @Test
@@ -465,6 +474,17 @@ class CharactersApiTest {
         }
         byte[] body = mvc.perform(as(A, "/api/account/characters")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.characterCount").value(43)).andReturn().getResponse().getContentAsByteArray();
+        // Reconstructed wire-format baseline (NOT a measured old production response): the same JSON with the
+        // three added fields removed from every character. Statement counts: the widened queries add no
+        // projection SQL (code inspection); the counts asserted below are the measured "after".
+        com.fasterxml.jackson.databind.node.ObjectNode tree =
+                (com.fasterxml.jackson.databind.node.ObjectNode) new com.fasterxml.jackson.databind.ObjectMapper().readTree(body);
+        tree.withArray("characters").forEach(c ->
+                ((com.fasterxml.jackson.databind.node.ObjectNode) c).remove(List.of("ageSeconds", "deaths", "nextBirthdayAt")));
+        int baselineBytes = tree.toString().getBytes(StandardCharsets.UTF_8).length;
+        System.out.println("CHAR-ROSTER-BASELINE reconstructedBytesWithoutNewFields=" + baselineBytes
+                + " measuredBytesWithNewFields=" + body.length + " delta=" + (body.length - baselineBytes));
+        assertTrue(body.length > baselineBytes);
         System.out.println("CHAR-ROSTER-REPORT characters=43 disciplineRows=" + (4 + 40 * 3)
                 + " rowReadStatements=" + rosterStatements.get() + " (2 projection reads + 1 schema guard)"
                 + " markerStatements=" + markerStatements.get() + " (2 marker reads x 2 statements)"
