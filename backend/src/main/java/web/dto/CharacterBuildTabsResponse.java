@@ -40,8 +40,9 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
     /**
      * A trait reference with the documented owning specialization, tier, order (0 is valid for both) and
      * slot when known. {@code placement}: ORDINARY (owner, slot and unique tier/order all consistent),
-     * NONSTANDARD (stated but outside the usual tier 0..3), CONFLICT (wrong owner or slot, not offered by
-     * the specialization, or a duplicate tier/order choice) or UNRESOLVED (no metadata). The ids stay
+     * NONSTANDARD (tier/order stated but outside ordinary tiers 1..3 and order 0..2; raw tier 0 and order 0 values are still preserved),
+     * CONFLICT (wrong owner or slot, not offered by
+     * the specialization, or a duplicate tier/order choice) or UNRESOLVED (no metadata, or a required tier/order fact is missing). The ids stay
      * either way; clients place only ORDINARY rows by tier/order and never by array position.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -142,7 +143,9 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
         if (!offered || Boolean.TRUE.equals(duplicate) || owner == null || !owner.equals(t.specializationId())
                 || !slot.equals(t.slot())) {
             placement = "CONFLICT";
-        } else if (t.tier() == null || t.order() == null || t.tier() > 3) {
+        } else if (t.tier() == null || t.order() == null) {
+            placement = "UNRESOLVED";
+        } else if (t.tier() < 1 || t.tier() > 3 || t.order() < 0 || t.order() > 2) {
             placement = "NONSTANDARD";
         } else {
             placement = "ORDINARY";

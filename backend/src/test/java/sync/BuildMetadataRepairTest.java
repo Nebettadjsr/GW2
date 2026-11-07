@@ -330,11 +330,13 @@ class BuildMetadataRepairTest {
                 + "{\"id\":711,\"name\":\"dup1\",\"specialization\":7,\"tier\":1,\"order\":0,\"slot\":\"Major\"},"
                 + "{\"id\":712,\"name\":\"dup2\",\"specialization\":7,\"tier\":1,\"order\":0,\"slot\":\"Major\"},"
                 + "{\"id\":713,\"name\":\"ok\",\"specialization\":7,\"tier\":1,\"order\":2,\"slot\":\"Major\"},"
-                + "{\"id\":721,\"name\":\"odd\",\"specialization\":7,\"tier\":5,\"order\":0,\"slot\":\"Major\"}]");
+                + "{\"id\":721,\"name\":\"odd\",\"specialization\":7,\"tier\":5,\"order\":0,\"slot\":\"Major\"},"
+                + "{\"id\":723,\"name\":\"order3\",\"specialization\":7,\"tier\":2,\"order\":3,\"slot\":\"Major\"},"
+                + "{\"id\":731,\"name\":\"t3o0\",\"specialization\":7,\"tier\":3,\"order\":0,\"slot\":\"Major\"}]");
         new BuildMetadataRepair(source, NOW).repairStored(A);
         var s7 = body(read(A, A_ID, "Ana")).tabs().get(0).specializations().get(0);
         var minor = s7.minorTraits();
-        assertEquals("ORDINARY", minor.get(0).placement());
+        assertEquals("NONSTANDARD", minor.get(0).placement(), "tier 0 is outside ordinary tiers 1..3");
         assertEquals(0, minor.get(0).tier(), "tier 0 is kept, not nulled");
         assertEquals(0, minor.get(0).order(), "order 0 is kept");
         assertEquals(7, minor.get(0).specializationId());
@@ -347,6 +349,9 @@ class BuildMetadataRepairTest {
         assertEquals("ORDINARY", major.get(2).placement(), "valid sibling stays ordinary");
         assertEquals("NONSTANDARD", major.get(3).placement());
         assertEquals("UNRESOLVED", major.get(4).placement());
+        assertEquals("NONSTANDARD", major.get(5).placement(), "order 3 is outside documented order 0..2");
+        assertEquals(3, major.get(5).order(), "raw order kept");
+        assertEquals("ORDINARY", major.get(6).placement(), "tier 3 / order 0 is ordinary");
         assertEquals("ORDINARY", s7.traits().get(0).placement(), "valid selected major");
         assertEquals("CONFLICT", s7.traits().get(2).placement(), "selected Minor in a major selection");
     }
