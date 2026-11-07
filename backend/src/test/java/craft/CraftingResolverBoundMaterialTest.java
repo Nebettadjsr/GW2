@@ -60,8 +60,9 @@ class CraftingResolverBoundMaterialTest {
         assertEquals(BlockedReason.NONE, need.getBlockedReason());
         assertTrue(need.isFullySatisfied());
 
-        // No TP opportunity cost for the bound portion.
+        // No recipe or vendor value exists: explicit unvalued zero (section 11.2), not free.
         assertEquals(0, need.getOpportunityCostCopper());
+        assertTrue(need.hasUnvaluedOwnedInput());
 
         // Bound pool was decremented, not the ordinary sellable pool.
         assertEquals(0, state.boundInventory.getOrDefault(SOULBOUND_TO_SELECTED_ITEM_ID, 0));
@@ -95,6 +96,7 @@ class CraftingResolverBoundMaterialTest {
         assertEquals(0, need.getQtyBlocked());
         assertTrue(need.isFullySatisfied());
         assertEquals(0, need.getOpportunityCostCopper());
+        assertTrue(need.hasUnvaluedOwnedInput());
     }
 
     @Test
@@ -123,5 +125,106 @@ class CraftingResolverBoundMaterialTest {
         assertEquals(qtyRequested, need.getQtyBlocked());
         assertFalse(need.isFullySatisfied());
         assertEquals(BlockedReason.PRICE_UNAVAILABLE, need.getBlockedReason());
+    }
+
+    private static final int LUMP = 500, ORE = 501, CRYSTAL = 502, A = 503, B = 504;
+
+    private static ResolvedNeed resolveBound(Map<Integer, List<Recipe>> recipes, Map<Integer, PriceQuote> tp,
+                                             Map<Integer, Integer> vendor, CraftingSettings settings,
+                                             Map<Integer, Integer> sellable, Map<Integer, Integer> bound,
+                                             int item, int qty, PlanState[] out) {
+        PlannerContext ctx = CraftTestFixtures.context(recipes, tp, settings, Set.of())
+                .withVendorValues(vendor);
+        PlanState state = CraftTestFixtures.stateWithBoundInventory(sellable, bound);
+        out[0] = state;
+        return new CraftingResolver().resolveNeed(item, qty, ctx, state, true);
+    }
+
+    private static Map<Integer, List<Recipe>> lumpRecipes() {
+        // 3 Lump per craft from 10 ore (buy 8) + 2 crystal (buy 5): (80+10)/3 = 30 per unit
+        return Map.of(LUMP, List.of(CraftTestFixtures.recipe(1, LUMP, 3, List.of(
+                CraftTestFixtures.ingredient(ORE, 10), CraftTestFixtures.ingredient(CRYSTAL, 2)))));
+    }
+
+    private static Map<Integer, PriceQuote> lumpTp() {
+        return Map.of(ORE, CraftTestFixtures.quote(8, 8), CRYSTAL, CraftTestFixtures.quote(5, 5));
+    }
+
+    @Test
+    void boundOwnedCraftedItemIsValuedByRecursiveCraftingCostEvenWithBuyingDisabled() {
+        CraftingSettings settings = new CraftingSettings(true, false, 0, false, false, true);
+        PlanState[] st = new PlanState[1];
+        ResolvedNeed need = resolveBound(lumpRecipes(), lumpTp(), Map.of(LUMP, 1), settings,
+                Map.of(), Map.of(LUMP, 4), LUMP, 4, st);
+        // 4 units * 90/3 = 120 exactly; rounded once for the consumed quantity
+        assertEquals(120, need.getOpportunityCostCopper());
+        assertEquals(4, need.getQtyFromInventory());
+        assertEquals(0, need.getQtyBought());
+        assertEquals(0, need.getBuyCostCopper());
+        assertFalse(need.hasUnvaluedOwnedInput());
+    }
+
+    @Test
+    void fractionalUnitValueIsRoundedOnceForTheConsumedQuantity() {
+        // 1 B from 1 A (cost 10), output 3 -> 10/3 per unit; 4 units -> ceil(40/3)=14 (not 4*4=16)
+        Map<Integer, List<Recipe>> recipes = Map.of(B, List.of(CraftTestFixtures.recipe(1, B, 3,
+                List.of(CraftTestFixtures.ingredient(A, 1)))));
+        PlanState[] st = new PlanState[1];
+        ResolvedNeed need = resolveBound(recipes, Map.of(A, CraftTestFixtures.quote(10, 10)), Map.of(),
+                CraftTestFixtures.defaultSettings(), Map.of(), Map.of(B, 4), B, 4, st);
+        assertEquals(14, need.getOpportunityCostCopper());
+    }
+
+    @Test
+    void vendorValueUsedWhenNoCompleteCraftingValueExists() {
+        // ingredient has no price and no vendor value -> recipe incomplete -> vendor fallback
+        Map<Integer, List<Recipe>> recipes = Map.of(LUMP, List.of(CraftTestFixtures.recipe(1, LUMP,
+                List.of(CraftTestFixtures.ingredient(ORE, 1)))));
+        PlanState[] st = new PlanState[1];
+        ResolvedNeed need = resolveBound(recipes, Map.of(), Map.of(LUMP, 7),
+                CraftTestFixtures.defaultSettings(), Map.of(), Map.of(LUMP, 2), LUMP, 2, st);
+        assertEquals(14, need.getOpportunityCostCopper());
+        assertFalse(need.hasUnvaluedOwnedInput());
+    }
+
+    @Test
+    void cyclicRecipeIsNotZeroCostAndValidAlternativeStaysEligible() {
+        Recipe cyc = CraftTestFixtures.recipe(1, A, List.of(CraftTestFixtures.ingredient(B, 1)));
+        Recipe cyc2 = CraftTestFixtures.recipe(2, B, List.of(CraftTestFixtures.ingredient(A, 1)));
+        Recipe ok = CraftTestFixtures.recipe(3, A, List.of(CraftTestFixtures.ingredient(ORE, 2)));
+        PlanState[] st = new PlanState[1];
+        ResolvedNeed need = resolveBound(Map.of(A, List.of(cyc, ok), B, List.of(cyc2)),
+                Map.of(ORE, CraftTestFixtures.quote(6, 6)), Map.of(),
+                CraftTestFixtures.defaultSettings(), Map.of(), Map.of(A, 1), A, 1, st);
+        assertEquals(12, need.getOpportunityCostCopper());
+
+        // pure cycle with no vendor value terminates and is flagged unvalued
+        ResolvedNeed pure = resolveBound(Map.of(A, List.of(cyc), B, List.of(cyc2)), Map.of(), Map.of(),
+                CraftTestFixtures.defaultSettings(), Map.of(), Map.of(A, 1), A, 1, st);
+        assertEquals(0, pure.getOpportunityCostCopper());
+        assertTrue(pure.hasUnvaluedOwnedInput());
+    }
+
+    @Test
+    void mixedBoundAndSellableStockAreEachValuedOnce() {
+        PlanState[] st = new PlanState[1];
+        Map<Integer, PriceQuote> tp = Map.of(LUMP, CraftTestFixtures.quote(50, 40), ORE, CraftTestFixtures.quote(8, 8),
+                CRYSTAL, CraftTestFixtures.quote(5, 5));
+        ResolvedNeed need = resolveBound(lumpRecipes(), tp, Map.of(), CraftTestFixtures.defaultSettings(),
+                Map.of(LUMP, 2), Map.of(LUMP, 3), LUMP, 5, st);
+        // 3 bound * 30 + 2 sellable * instant-sell unit 50
+        assertEquals(90 + 100, need.getOpportunityCostCopper());
+        assertEquals(5, need.getQtyFromInventory());
+        assertEquals(0, need.getQtyBought());
+    }
+
+    @Test
+    void ownedBoundItemDoesNotConsumeOrBuyItsIngredients() {
+        PlanState[] st = new PlanState[1];
+        ResolvedNeed need = resolveBound(lumpRecipes(), lumpTp(), Map.of(), CraftTestFixtures.defaultSettings(),
+                Map.of(ORE, 10), Map.of(LUMP, 3), LUMP, 3, st);
+        assertEquals(10, st[0].inventory.getOrDefault(ORE, 0));
+        assertEquals(0, need.getBuyCostCopper());
+        assertEquals(90, need.getOpportunityCostCopper());
     }
 }

@@ -155,6 +155,14 @@ public class CraftingResolver {
                 oppCost = fallback.costOf(consumed) - fallback.costOf(consumed - consumption.usedSellable());
                 unvalued = fallback.isZero();
             }
+            if (consumption.usedBound() > 0) {
+                // DOMAIN_SPEC.md section 11.2: usable bound stock is not free. Value it by
+                // recursive crafting cost, then vendor value, then explicit unvalued zero. This is
+                // valuation only: nothing is bought, consumed or recorded for the ingredients.
+                OwnedValue boundValue = resolveOwnedFallbackValue(itemId, ctx);
+                oppCost += boundValue.costOf(consumption.usedBound());
+                if (boundValue.isZero()) unvalued = true;
+            }
             result.setOpportunityCostCopper(oppCost);
 
             if (unvalued) {
