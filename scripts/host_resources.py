@@ -15,7 +15,8 @@ BOUNDARY_CONTAINERS = "container-stack"
 BUDGET = {
     "name": "Oracle Cloud Infrastructure VM.Standard.A1.Flex (Always Free)",
     "checkedDate": "2026-11-07",
-    "sourceUrl": "https://github.com/Nebettadjsr/GW2/blob/master/docs/ROADMAP.md",
+    "sourceUrl": "https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm",
+    "policyReference": "docs/ROADMAP.md (project policy: whole-deployment 2 OCPU / 12 GB ceiling)",
     "targetArchitecture": "Linux ARM64",
     "cpuOcpuCeiling": 2,
     "memoryBytesCeiling": 12 * 1000 ** 3,
@@ -249,12 +250,15 @@ def window_observation(name, seconds, sampler, ncpu):
         metrics += [unavailable(n, u, reason) for n, u in (("host_memory_samples", "count"), ("host_memory_total", "bytes"),
                                                            ("host_memory_available_last", "bytes"),
                                                            ("host_memory_used_mean", "bytes"), ("host_memory_used_peak", "bytes"))]
+    diagnostics = [f"cpu: {r}" for r in dict.fromkeys(sampler.cpu_reasons)] + \
+                  [f"memory: {r}" for r in dict.fromkeys(sampler.mem_reasons)]
     cpu_cmp = cpu_comparison(name, cpu_s, ncpu)
     mem_cmp = memory_comparison(name, used_s)
     for cmp_ in (cpu_cmp, mem_cmp):
         if cmp_["status"] == "unavailable" and not cmp_.get("unavailableReason"):
             cmp_["unavailableReason"] = "unavailable"
     return {"window": name, "windowSeconds": round(seconds, 2), "metrics": metrics,
+            "diagnostics": diagnostics,
             "comparisons": {"cpu": cpu_cmp, "memory": mem_cmp}}
 
 

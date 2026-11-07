@@ -379,6 +379,8 @@ class Measurement:
             for m in w["metrics"]:
                 if m.get("value") is None:
                     self.note(f"{w['window']}: {m['name']} unavailable: {m['unavailableReason']}")
+            for d in w.get("diagnostics", []):
+                self.note(f"{w['window']}: host sampling problem - {d}")
         if host["hostObservations"]["logicalCpuCount"]["value"] is None:
             self.note("host logical CPU count unavailable")
         return host
@@ -437,11 +439,13 @@ def render_host_sections(rep: dict, heading="##") -> list[str]:
                 d = c[stat]
                 lines.append(f"- {c['name']} {stat}: observed {d['observed']:.4g} {c['observedUnit']} vs ceiling {c['ceiling']} {c['ceilingUnit']}; "
                              f"headroom {d['absoluteHeadroom']:.4g} ({d['percentHeadroom']:.1f}%); `{d['status']}`")
+        for d in w.get("diagnostics", []):
+            lines.append(f"- **Sampling problem (values above are partial):** {cell(d)}")
         lines.append("")
     lines += [f"{heading} Boundaries and sampling limits", ""]
     lines += [f"- {k}: {v}" for k, v in rep["boundaries"].items()] + [f"- {x}" for x in host["samplingLimits"]]
     lines += ["", f"{heading} Budget context (comparison only)", "",
-              f"- {b['name']}; checked {b['checkedDate']}; source {b['sourceUrl']}.",
+              f"- {b['name']}; checked {b['checkedDate']}; source {b['sourceUrl']}; project policy {b.get('policyReference', 'n/a')}. Tenancy not verified.",
               f"- Ceilings: {b['cpuOcpuCeiling']} OCPU and {b['memoryCeilingLabel']} for the {b['scope']}; not a JVM allowance.",
               f"- CPU normalization: busy logical CPUs = host CPU % / 100 x logical CPU count, compared with 2 OCPU. Docker percentages are percent of one core and are not summed into host CPU.",
               f"- Tenancy availability: {b['tenancyAvailability']}. `within-local-budget` is arithmetic on a local run, not proof the application fits Oracle Always Free or supports any concurrency."]

@@ -162,6 +162,9 @@ def render(report, problem, previous, previous_problem, args, container=False) -
                           f"headroom {number(peak.get('absoluteHeadroom'))} ({number(peak.get('percentHeadroom'))}%)") if peak else \
                     "unavailable: " + cell(c.get("unavailableReason") or "unavailable")
                 lines.append(f"- `{cell(w.get('window'))}` {cell(c.get('name'))}: `{cell(c.get('status'))}` - {detail}")
+        for w in host.get("windows", []):
+            for d in w.get("diagnostics") or []:
+                lines.append(f"- `{cell(w.get('window'))}` sampling problem (values are partial): {cell(d)}")
         lines += ["", "Budget: 2 OCPU / 12 GB cover the whole deployment, not a JVM allowance. `within-local-budget` is arithmetic on a local run, "
                   "not Oracle qualification or a capacity claim. Host figures include the reporter and traffic driver; "
                   "the container-versus-host difference is unattributed.", ""]

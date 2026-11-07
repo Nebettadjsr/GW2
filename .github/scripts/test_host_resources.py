@@ -175,6 +175,42 @@ class RenderTest(unittest.TestCase):
         self.assertIn("host_cpu_peak", text)
         self.assertIn("within-local-budget", text)
 
+    def test_partial_failure_keeps_values_and_surfaces_diagnostics(self):
+        files = {"/proc/stat": STAT1, "/proc/meminfo": MEM}
+        smp = hr.HostSampler(reader=lambda p: (files[p], None), system="Linux")
+        smp.sample()
+        files["/proc/stat"] = STAT2
+        smp.sample()
+        files["/proc/stat"] = "garbage\n"
+        files["/proc/meminfo"] = "MemTotal: 1 kB\n"
+        smp.sample()
+        rep = {"measurementScope": "container-stack", "project": "p", "workloadVersion": "w", "cpuUnit": "u",
+               "images": {}, "workloads": [], "notMeasured": [], "diagnostics": [],
+               **hr.build_host_report([("idle", 1, smp)], system="Linux", machine="x86_64")}
+        w = rep["hostObservations"]["windows"][0]
+        vals = {m["name"]: m.get("value") for m in w["metrics"]}
+        self.assertEqual(20.0, vals["host_cpu_mean"])
+        self.assertEqual(2, vals["host_memory_samples"])
+        self.assertTrue(any(d.startswith("cpu:") for d in w["diagnostics"]))
+        self.assertTrue(any(d.startswith("memory:") for d in w["diagnostics"]))
+        rep = json.loads(json.dumps(rep))
+        self.assertIn("Sampling problem", cm.to_markdown(rep))
+        import performance_summary as perf
+        from types import SimpleNamespace
+        rep.update(schemaVersion=cm.SCHEMA_VERSION, fixtureVersion="f", timestamp="t", environment={})
+        text, _ = perf.render(rep, None, None, "none", SimpleNamespace(commit="c", event="e", run_url="", outcome="success", setup_log=None), container=True)
+        self.assertIn("sampling problem", text)
+
+    def test_healthy_window_has_no_diagnostics_and_official_source(self):
+        files = {"/proc/stat": STAT1, "/proc/meminfo": MEM}
+        smp = hr.HostSampler(reader=lambda p: (files[p], None), system="Linux")
+        smp.sample()
+        files["/proc/stat"] = STAT2
+        smp.sample()
+        self.assertEqual([], hr.window_observation("idle", 1, smp, 2)["diagnostics"])
+        self.assertTrue(hr.BUDGET["sourceUrl"].startswith("https://docs.oracle.com/"))
+        self.assertEqual(12 * 1000 ** 3, hr.BUDGET["memoryBytesCeiling"])
+
     def test_unavailable_metrics_carry_reason_in_json(self):
         smp = hr.HostSampler(system="Darwin")
         smp.sample()
