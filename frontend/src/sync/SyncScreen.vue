@@ -76,8 +76,10 @@ async function loadOwnerDetails(): Promise<void> {
     ownerState.value = 'owner'
   } catch (cause) {
     if (isUnmounted || epoch !== ownerEpoch || !isCurrent(generation) || isAccountChange(cause)) return
-    if (cause instanceof ApiRequestError && cause.status === 403) withdrawOwner('not-owner')
-    else withdrawOwner('unavailable')
+    // Only a confirmed denial forgets tracked tasks; an outage hides owner presentation but leaves
+    // the shell-owned tracking untouched (it is neither a new task nor an authorization success).
+    if (cause instanceof ApiRequestError && cause.status === 403) withdrawOwner('not-owner', true)
+    else withdrawOwner('unavailable', false)
   } finally {
     if (ownerInflight === epoch) ownerInflight = null
   }
@@ -87,12 +89,16 @@ function isAccountChange(cause: unknown): boolean {
   return cause instanceof ApiRequestError && cause.code === ACCOUNT_CHANGED_CODE
 }
 
-/** Removes every owner payload, control and task presentation at once. */
-function withdrawOwner(next: OwnerState): void {
+/**
+ * Removes every owner payload and control at once. Shell-owned owner task tracking is cleared only
+ * when asked: account/lease changes are already handled by the tracker itself, so merely
+ * re-discovering capability (for example on remount) must not drop an active task.
+ */
+function withdrawOwner(next: OwnerState, resetTasks: boolean): void {
   ownerEpoch += 1
   ownerState.value = next
   ownerDetails.value = null
-  sync.resetOwnerOperations()
+  if (resetTasks) sync.resetOwnerOperations()
 }
 
 // A new account generation (or no connection) forgets everything of the former account immediately.
@@ -106,7 +112,7 @@ watch(
       systemStatusError.value = null
       systemStatusLoaded.value = false
     }
-    withdrawOwner('checking')
+    withdrawOwner('checking', false)
     if (connected) {
       if (generation !== previousGeneration) void loadSystemStatus()
       void loadOwnerDetails()
@@ -131,7 +137,7 @@ const ownerDenied = computed(() => OWNER_CONTROLS.some(({ key }) => {
   const op = operation(key)
   return op.submissionStatus === 403 || op.lookupStatus === 403
 }))
-watch(ownerDenied, (denied) => { if (denied) withdrawOwner('not-owner') }, { flush: 'sync' })
+watch(ownerDenied, (denied) => { if (denied) withdrawOwner('not-owner', true) }, { flush: 'sync' })
 
 function onTrigger(key: SyncOperationKey): void {
   void sync.trigger(key)

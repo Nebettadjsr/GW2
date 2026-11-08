@@ -304,4 +304,123 @@ describe('System Status owner projection', () => {
     expect(systemApi.readStatus).not.toHaveBeenCalled()
     wrapper.unmount()
   })
+  describe('navigation away and back (shared tracker remount)', () => {
+    const show = ref(true)
+    const NavShell = defineComponent({
+      props: { api: { type: Object as PropType<FakeSyncApi>, required: true } },
+      setup(props) {
+        provideSyncOperations(props.api)
+        return () => (show.value ? h(SyncScreen) : h('div'))
+      }
+    })
+    const RUNNING = 'FULL_ITEM_CATALOG'
+    const trigger = `sync-trigger-${RUNNING}`
+    async function navigate(visible: boolean): Promise<void> {
+      show.value = visible
+      await settle()
+    }
+    async function startRunning(): Promise<{ wrapper: VueWrapper; api: FakeSyncApi }> {
+      const api = new FakeSyncApi()
+      let terminal = false
+      api.statusHandler = (url) => Promise.resolve(statusOf(url, terminal ? 'SUCCEEDED' : 'RUNNING'))
+      ;(api as unknown as { finish: () => void }).finish = () => { terminal = true }
+      const wrapper = mount(NavShell, { props: { api } })
+      show.value = true
+      await settle()
+      await click(wrapper, trigger)
+      return { wrapper, api }
+    }
+
+    it('keepsTheSameTaskPollingAndSingleSubmissionAcrossRemountOfTheSameLease', async () => {
+      vi.spyOn(systemApi, 'readOwnerDetails').mockResolvedValue(DETAILS)
+      const { wrapper, api } = await startRunning()
+      expect(api.submissionCount(RUNNING)).toBe(1)
+
+      await navigate(false)
+      await navigate(true)
+      // Privileged presentation is re-discovered, and the active task is still the same one.
+      expect(has(wrapper, 'owner-admin')).toBe(true)
+      expect(api.submissionCount(RUNNING)).toBe(1)
+      expect(wrapper.find(`[data-test="${trigger}"]`).attributes('disabled')).toBeDefined()
+
+      ;(api as unknown as { finish: () => void }).finish()
+      await vi.advanceTimersByTimeAsync(STATUS_POLL_INTERVAL_MS)
+      await settle()
+      expect(wrapper.find(`[data-test="sync-state-${RUNNING}"]`).text()).toBe('Completed')
+      expect(api.submissionCount(RUNNING)).toBe(1)
+      expect(new Set(api.statusRequests).size).toBe(1)
+      wrapper.unmount()
+    })
+
+    it('doesNotShowOwnerControlsOnRemountUntilDiscoverySucceeds', async () => {
+      const read = vi.spyOn(systemApi, 'readOwnerDetails').mockResolvedValue(DETAILS)
+      const { wrapper, api } = await startRunning()
+      await navigate(false)
+      const pending = deferred<OwnerSystemDetails>()
+      read.mockReturnValue(pending.promise)
+      await navigate(true)
+      expect(has(wrapper, 'owner-admin')).toBe(false)
+      pending.resolve(DETAILS)
+      await settle()
+      expect(has(wrapper, 'owner-admin')).toBe(true)
+      expect(api.submissionCount(RUNNING)).toBe(1)
+      wrapper.unmount()
+    })
+
+    it('keepsTrackingThroughATemporaryDiagnosticsOutageOnRemount', async () => {
+      const read = vi.spyOn(systemApi, 'readOwnerDetails').mockResolvedValue(DETAILS)
+      const { wrapper, api } = await startRunning()
+      await navigate(false)
+      read.mockRejectedValue(new ApiRequestError('down', 'UNREACHABLE', 0))
+      await navigate(true)
+      expect(has(wrapper, 'owner-admin')).toBe(false)
+      expect(has(wrapper, 'owner-status-unavailable')).toBe(true)
+      read.mockResolvedValue(DETAILS)
+      await vi.advanceTimersByTimeAsync(5000)
+      await settle()
+      expect(has(wrapper, 'owner-admin')).toBe(true)
+      expect(wrapper.find(`[data-test="${trigger}"]`).attributes('disabled')).toBeDefined()
+      expect(api.submissionCount(RUNNING)).toBe(1)
+      wrapper.unmount()
+    })
+
+    it('clearsTrackingWhenTheAccountGenerationChangesWhileAway', async () => {
+      vi.spyOn(systemApi, 'readOwnerDetails').mockResolvedValue(DETAILS)
+      const { wrapper, api } = await startRunning()
+      await navigate(false)
+      connection.generation = 2
+      await settle()
+      await navigate(true)
+      expect(wrapper.find(`[data-test="${trigger}"]`).attributes('disabled')).toBeUndefined()
+      expect(wrapper.find(`[data-test="sync-state-${RUNNING}"]`).text()).toBe('Not started')
+      expect(api.submissionCount(RUNNING)).toBe(1)
+      wrapper.unmount()
+    })
+
+    it('clearsTrackingWhenTheLeaseChangesWhileAway', async () => {
+      vi.spyOn(systemApi, 'readOwnerDetails').mockResolvedValue(DETAILS)
+      const { wrapper } = await startRunning()
+      await navigate(false)
+      connection.leaseVersion += 1
+      await settle()
+      await navigate(true)
+      expect(wrapper.find(`[data-test="sync-state-${RUNNING}"]`).text()).toBe('Not started')
+      wrapper.unmount()
+    })
+
+    it('clearsTrackingWhenOwnerDiscoveryIsDeniedOnRemount', async () => {
+      const read = vi.spyOn(systemApi, 'readOwnerDetails').mockResolvedValue(DETAILS)
+      const { wrapper } = await startRunning()
+      await navigate(false)
+      read.mockRejectedValue(FORBIDDEN)
+      await navigate(true)
+      expect(has(wrapper, 'owner-admin')).toBe(false)
+      read.mockResolvedValue(DETAILS)
+      connection.leaseVersion += 1
+      await settle()
+      expect(has(wrapper, 'owner-admin')).toBe(true)
+      expect(wrapper.find(`[data-test="sync-state-${RUNNING}"]`).text()).toBe('Not started')
+      wrapper.unmount()
+    })
+  })
 })
