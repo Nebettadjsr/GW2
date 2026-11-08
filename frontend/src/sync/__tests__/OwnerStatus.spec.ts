@@ -1,6 +1,6 @@
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defineComponent, h, nextTick, type PropType } from 'vue'
+import { defineComponent, h, nextTick, ref, type PropType } from 'vue'
 import { connection } from '@/api/accountSession'
 import { ACCOUNT_CHANGED_CODE, ApiRequestError } from '@/api/http'
 import { systemApi, type OwnerSystemDetails } from '@/api/systemApi'
@@ -203,6 +203,86 @@ describe('System Status owner projection', () => {
     await vi.advanceTimersByTimeAsync(5000)
     await settle()
     expect(has(wrapper, 'owner-admin')).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('discardsAnOlderInFlightDetailsAnswerAfterAnOwnerActionIsDenied', async () => {
+    const older = deferred<OwnerSystemDetails>()
+    const read = vi.spyOn(systemApi, 'readOwnerDetails').mockResolvedValueOnce(DETAILS)
+    const api = new FakeSyncApi()
+    api.submitHandler = () => Promise.reject(FORBIDDEN)
+    const wrapper = await mountPage(api)
+    read.mockReturnValueOnce(older.promise)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(read).toHaveBeenCalledTimes(2)
+
+    await click(wrapper, 'sync-trigger-FULL_ITEM_CATALOG')
+    expect(has(wrapper, 'owner-admin')).toBe(false)
+    older.resolve(DETAILS)
+    await settle()
+    expect(has(wrapper, 'owner-admin')).toBe(false)
+    OWNER_TRIGGERS.forEach((key) => expect(has(wrapper, `sync-trigger-${key}`)).toBe(false))
+    wrapper.unmount()
+  })
+
+  it('keepsOwnerControlsWhenOnlyTheOrdinaryAccountRefreshIsDenied', async () => {
+    vi.spyOn(systemApi, 'readOwnerDetails').mockResolvedValue(DETAILS)
+    const api = new FakeSyncApi()
+    api.submitHandler = (operation) =>
+      operation === 'ACCOUNT_SYNC' ? Promise.reject(FORBIDDEN) : Promise.resolve(acceptance(operation))
+    const wrapper = await mountPage(api)
+    await click(wrapper, 'sync-trigger-ACCOUNT_SYNC')
+    expect(has(wrapper, 'sync-submission-error-ACCOUNT_SYNC')).toBe(true)
+    expect(has(wrapper, 'owner-admin')).toBe(true)
+    OWNER_TRIGGERS.forEach((key) => expect(has(wrapper, `sync-trigger-${key}`)).toBe(true))
+    wrapper.unmount()
+  })
+
+  it('withdrawsOwnerPresentationWhenAnOwnerTaskReadIsDeniedAndDiscardsAnOlderDetailsAnswer', async () => {
+    const older = deferred<OwnerSystemDetails>()
+    const read = vi.spyOn(systemApi, 'readOwnerDetails').mockResolvedValueOnce(DETAILS)
+    const api = new FakeSyncApi()
+    api.statusHandler = () => Promise.reject(FORBIDDEN)
+    const wrapper = await mountPage(api)
+    read.mockReturnValueOnce(older.promise)
+    await vi.advanceTimersByTimeAsync(5000)
+
+    await click(wrapper, 'sync-trigger-FULL_RECIPE_CATALOG')
+    expect(has(wrapper, 'owner-admin')).toBe(false)
+    expect(has(wrapper, 'sync-diagnostics-FULL_RECIPE_CATALOG')).toBe(false)
+    older.resolve(DETAILS)
+    await settle()
+    expect(has(wrapper, 'owner-admin')).toBe(false)
+    await vi.advanceTimersByTimeAsync(STATUS_POLL_INTERVAL_MS * 3)
+    expect(api.statusRequestCount('FULL_RECIPE_CATALOG')).toBe(1)
+    wrapper.unmount()
+  })
+
+  it('doesNotLetAnUnmountedScreensLateFailureResetTasksOfANewlyMountedScreen', async () => {
+    const oldRead = deferred<OwnerSystemDetails>()
+    const read = vi.spyOn(systemApi, 'readOwnerDetails').mockReturnValueOnce(oldRead.promise)
+    const api = new FakeSyncApi()
+    api.statusHandler = (url) => Promise.resolve(statusOf(url, 'RUNNING'))
+    const screenKey = ref(1)
+    const KeyedShell = defineComponent({
+      setup() {
+        provideSyncOperations(api)
+        return () => h(SyncScreen, { key: screenKey.value })
+      }
+    })
+    const wrapper = mount(KeyedShell)
+    await settle()
+
+    read.mockResolvedValue(DETAILS)
+    screenKey.value = 2
+    await settle()
+    await click(wrapper, 'sync-trigger-FULL_ITEM_CATALOG')
+    expect(has(wrapper, 'sync-diagnostics-FULL_ITEM_CATALOG')).toBe(true)
+
+    oldRead.reject(new ApiRequestError('down', 'BACKEND_UNREACHABLE', null))
+    await settle()
+    expect(has(wrapper, 'owner-admin')).toBe(true)
+    expect(has(wrapper, 'sync-diagnostics-FULL_ITEM_CATALOG')).toBe(true)
     wrapper.unmount()
   })
 

@@ -34,6 +34,9 @@ const OWNER_CONTROLS: readonly { key: OwnerOperationKey; description: string }[]
 
 let statusInflight: number | null = null
 let ownerInflight: number | null = null
+/** Bumped whenever owner presentation is withdrawn; any discovery answer from before is discarded. */
+let ownerEpoch = 0
+let isUnmounted = false
 
 /** True while the answer being applied still belongs to the account it was requested for. */
 function isCurrent(generation: number): boolean {
@@ -65,13 +68,14 @@ async function loadOwnerDetails(): Promise<void> {
   const generation = connection.generation
   if (ownerInflight === generation) return
   ownerInflight = generation
+  const epoch = ownerEpoch
   try {
     const details = await systemApi.readOwnerDetails()
-    if (!isCurrent(generation)) return
+    if (isUnmounted || epoch !== ownerEpoch || !isCurrent(generation)) return
     ownerDetails.value = details
     ownerState.value = 'owner'
   } catch (cause) {
-    if (!isCurrent(generation) || isAccountChange(cause)) return
+    if (isUnmounted || epoch !== ownerEpoch || !isCurrent(generation) || isAccountChange(cause)) return
     if (cause instanceof ApiRequestError && cause.status === 403) withdrawOwner('not-owner')
     else withdrawOwner('unavailable')
   } finally {
@@ -85,6 +89,7 @@ function isAccountChange(cause: unknown): boolean {
 
 /** Removes every owner payload, control and task presentation at once. */
 function withdrawOwner(next: OwnerState): void {
+  ownerEpoch += 1
   ownerState.value = next
   ownerDetails.value = null
   sync.resetOwnerOperations()
@@ -111,13 +116,18 @@ const statusTimer = setInterval(() => {
   // Non-owners are discovered once per generation; owner details keep refreshing while owner or unreachable.
   if (ownerState.value === 'owner' || ownerState.value === 'unavailable') void loadOwnerDetails()
 }, 5000)
-onUnmounted(() => clearInterval(statusTimer))
+onUnmounted(() => {
+  isUnmounted = true
+  clearInterval(statusTimer)
+})
 
-// An owner action denied by the backend removes owner presentation without being retried.
-watch(
-  () => sync.operations.some((op) => op.submissionStatus === 403),
-  (denied) => { if (denied) withdrawOwner('not-owner') }
-)
+// An owner action or owner task read denied by the backend removes owner presentation without a
+// retry. Only owner-only operations count: an ordinary account-refresh 403 says nothing about owners.
+const ownerDenied = computed(() => OWNER_CONTROLS.some(({ key }) => {
+  const op = operation(key)
+  return op.submissionStatus === 403 || op.lookupStatus === 403
+}))
+watch(ownerDenied, (denied) => { if (denied) withdrawOwner('not-owner') }, { flush: 'sync' })
 
 function onTrigger(key: SyncOperationKey): void {
   void sync.trigger(key)
@@ -264,11 +274,21 @@ function operation(key: SyncOperationKey): SyncOperationView {
     </section>
 
     <p v-if="ownerState === 'unavailable'" class="notice notice--warning" role="status" data-test="owner-status-unavailable">
-      Owner status unavailable. Owner administration stays hidden until the backend confirms it.
+      Owner tools are temporarily unavailable. Retrying automatically.
     </p>
 
     <section v-if="ownerState === 'owner' && ownerDetails" class="owner-admin" aria-label="Owner administration" data-test="owner-admin">
       <h2>Owner administration</h2>
+      <div class="status-grid">
+        <OwnerCatalogControl
+          v-for="control in OWNER_CONTROLS"
+          :key="control.key"
+          :operation="operation(control.key)"
+          :description="control.description"
+          @trigger="onTrigger(control.key)"
+          @retry-status="onRetryStatus(control.key)"
+        />
+      </div>
       <article class="panel status-card" data-test="owner-diagnostics">
         <h3>Shared diagnostics</h3>
         <p v-if="ownerDetails.lastFailure" class="status-card__error notice notice--error" data-test="global-last-failure">{{ ownerDetails.lastFailure }}</p>
@@ -283,20 +303,8 @@ function operation(key: SyncOperationKey): SyncOperationView {
           <dt>Newest price fetched</dt><dd>{{ formatDate(ownerDetails.newestPriceFetchedAt) }}</dd>
         </dl>
       </article>
-      <div class="status-grid">
-        <OwnerCatalogControl
-          v-for="control in OWNER_CONTROLS"
-          :key="control.key"
-          :operation="operation(control.key)"
-          :description="control.description"
-          @trigger="onTrigger(control.key)"
-          @retry-status="onRetryStatus(control.key)"
-        />
-      </div>
     </section>
     </template>
-
-    <p class="meta process-note">Status timestamps reset when the backend restarts.</p>
   </div>
 </template>
 
@@ -349,7 +357,6 @@ function operation(key: SyncOperationKey): SyncOperationView {
 .status-card__error { margin: var(--space-3) 0 0; }
 
 .status-card__message { margin: var(--space-2) 0 0; }
-.process-note { margin: 0; }
 .owner-admin { display: flex; flex-direction: column; gap: var(--space-4); }
 .owner-admin h2, .owner-admin h3 { margin: 0; }
 </style>

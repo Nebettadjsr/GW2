@@ -20,6 +20,7 @@ const IDLE: SyncOperationView = {
   submissionStatus: null,
   isAdmissionUnknown: false,
   lookupError: null,
+  lookupStatus: null,
   isTaskUnresolvable: false,
   canRetryStatus: false
 }

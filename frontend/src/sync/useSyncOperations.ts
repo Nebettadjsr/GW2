@@ -59,6 +59,8 @@ export interface SyncOperationView {
   isAdmissionUnknown: boolean
   /** The status lookup failed — distinct from a task that ran and failed. */
   lookupError: string | null
+  /** HTTP status of a failed status lookup, when the backend answered. */
+  lookupStatus: number | null
   /** The backend cannot resolve the identifier, so asking it again cannot establish the outcome. */
   isTaskUnresolvable: boolean
   readonly canRetryStatus: boolean
@@ -194,6 +196,7 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
     } catch (cause) {
       if (isStale(runtime, token)) return
       stopTracking(runtime, describeFailure(cause), isUnresolvableTask(cause))
+      runtime.view.lookupStatus = cause instanceof ApiRequestError ? cause.status : null
     }
   }
 
@@ -239,6 +242,7 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
     runtime.view.submissionStatus = null
     runtime.view.isAdmissionUnknown = false
     runtime.view.lookupError = null
+    runtime.view.lookupStatus = null
     runtime.view.isTaskUnresolvable = false
   }
 
@@ -294,6 +298,7 @@ function createView(operation: SyncOperation): SyncOperationView {
     submissionStatus: null as number | null,
     isAdmissionUnknown: false,
     lookupError: null as string | null,
+    lookupStatus: null as number | null,
     isTaskUnresolvable: false,
 
     get isBusy(): boolean {
