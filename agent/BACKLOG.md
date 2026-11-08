@@ -12,7 +12,7 @@ Planning handoff: the Characters sequence is Inventory UI #162, Builds core #161
 
 ## Immediate integration handoff
 
-- Current supervisor release: finish #166 regression, documentation and measurement evidence against the approved Builds layout. The Product Owner explicitly accepted the final page on 2026-11-08 and resumed supervision. Preserve its visual composition; CI, review and outstanding behavioral evidence still govern implementation acceptance.
+- Current supervisor release: #152, the bounded backend owner policy for the existing global action, its task reads and generic versus detailed status. Its planner contract and actual session/task/status seams were inspected after #166 acceptance. Preserve all approved character and material layouts. Actual owner GUID provisioning and final System Status UI remain separate work.
 - PR #170 / issue #169 is the approved paired baseline. The old left-facts layout and no-backend-change limits were superseded by direct instructions. UX guidelines §§2.1–2.4 and DOMAIN_SPEC §§9.1, 56–57 own the final contracts; consult the PR's actual acceptance evidence rather than reopening its completed reconciliation.
 - Preserve the narrow parser behavior in PR #175 / issue #174: only omitted land elite is nullable; aquatic/heal/utilities and invalid present values stay strict.
 - Keep regression coverage for finite `coversRequest:false` retries, simultaneous missing Equipment/Builds recovery, stale character/account responses and selection return races in both the managed screen and composable paths. Passive attributes require compatible build/equipment parent coverage; duration symbols/order follow the in-game reference.
@@ -68,7 +68,7 @@ Planning handoff: the Characters sequence is Inventory UI #162, Builds core #161
 | STORY-CHAR-014 | Equipment details and base/equipment totals | Saved equipment data | PUBLISHED — #176; paired stats refinements in #169 |
 | REVIEW-CHAR-001 | Supervisor reviews correctness, desktop behavior and Oracle resource evidence including both new features | Character/material stories and KPI qualification workloads | DRAFT |
 | PLAN-STATUS-001 | Owner/admin planning | DOMAIN_SPEC §57; TARGET_ARCHITECTURE §8.3 | ACCEPTED first bounded contract — #152; later contracts remain drafts |
-| STORY-STATUS-001 | Backend owner policy, existing global action/task authorization and generic/detailed status | Approved #152; synthetic principals suffice for implementation | PUBLISHED DRAFT — #152; actual owner configuration needed only to enable privilege |
+| STORY-STATUS-001 | Backend owner policy, existing global action/task authorization and generic/detailed status | Approved #152; synthetic principals suffice for implementation | PUBLISHED — #152; supervisor RELEASED; actual owner configuration needed only to enable privilege |
 | STORY-STATUS-004 | Distinct owner-only full-item, full-recipe and full-tradable-TP operations | STORY-STATUS-001 | DRAFT |
 | STORY-STATUS-002 | Ordinary/owner System Status UI | STORY-STATUS-001, STORY-STATUS-004, UI review | DRAFT |
 | STORY-STATUS-003 | Reserved automatic inventory-freshness draft | #169 delivers paired page-scoped refresh | DEFERRED — reconcile #169 before releasing any distinct remaining gap |
