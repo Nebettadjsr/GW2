@@ -17,7 +17,7 @@ import { ApiRequestError } from '@/api/http'
 import { charactersApi, type CharactersApi } from '@/api/charactersApi'
 import { syncApi, type SyncApi } from '@/api/syncApi'
 import type {
-  CharacterBuildTabsResponse, CharacterEquipmentTabsResponse, CharacterInventoryResponse, CharacterOverview, CharacterReadResponse, EquipmentTab
+  BuildTab, CharacterBuildTabsResponse, CharacterEquipmentTabsResponse, CharacterInventoryResponse, CharacterOverview, CharacterReadResponse, EquipmentTab
 } from '@/api/types'
 
 export const EQUIPMENT_POLL_MS = 2_000
@@ -96,7 +96,7 @@ export function useCharacters(
   let equipmentId = 0
 
   // Inventory: a lazily loaded section, read only when first inspected for the selected character.
-  const section = ref<'equipment' | 'inventory'>('equipment')
+  const section = ref<'equipment' | 'inventory' | 'builds'>('equipment')
   const inventoryPhase = ref<ReadPhase>('idle')
   const inventoryResponse = shallowRef<CharacterInventoryResponse | null>(null)
   const lastGoodInventory = shallowRef<Map<string, CharacterInventoryResponse>>(new Map())
@@ -107,6 +107,11 @@ export function useCharacters(
   // in the header. Not retained across characters; any doubt falls back to the base profession.
   const buildPhase = ref<ReadPhase>('idle')
   const buildResponse = shallowRef<CharacterBuildTabsResponse | null>(null)
+  /** Last Builds answer with tabs, per character name; account-bound because this state is. */
+  const lastGoodBuilds = shallowRef<Map<string, CharacterBuildTabsResponse>>(new Map())
+  const buildFailure = ref<ReadFailure | null>(null)
+  /** The saved build tab being inspected; independent of the equipment tab and of the active build. */
+  const inspectedBuild = ref<number | null>(null)
   let buildId = 0
   let buildRecoveryTried = false
   /** Bumped on every select/back so an old attempt for a same-name earlier selection cannot act. */
@@ -164,13 +169,22 @@ export function useCharacters(
     if (!current()) return
     const id = ++buildId
     buildPhase.value = 'loading'
+    buildFailure.value = null
     try {
       const response = await api.loadBuildTabs(name)
       if (!stillSelected(name, id, buildId)) return
       buildResponse.value = response
-    } catch {
+      if (HAS_DATA.includes(response.state) && response.tabs) {
+        lastGoodBuilds.value = new Map(lastGoodBuilds.value).set(name, response)
+        const tabs = response.tabs
+        if (inspectedBuild.value === null || !tabs.some((t) => t.tab === inspectedBuild.value)) {
+          inspectedBuild.value = tabs.find((t) => t.active)?.tab ?? tabs[0]?.tab ?? null
+        }
+      }
+    } catch (cause) {
       if (!stillSelected(name, id, buildId)) return
-      buildResponse.value = null // transport failure: no decoration, base profession is shown
+      buildResponse.value = null // transport failure: no header decoration, base profession is shown
+      buildFailure.value = failureOf(cause)
     }
     buildPhase.value = 'loaded'
     // Optional source not covered yet: one automatic recovery attempt per selection, like equipment.
@@ -274,10 +288,18 @@ export function useCharacters(
    * last read gave no layout (user-driven, one request per entry); returning to a loaded layout
    * costs no request unless the other section proved it describes an older parent generation.
    */
-  function showSection(next: 'equipment' | 'inventory'): void {
+  function showSection(next: 'equipment' | 'inventory' | 'builds'): void {
     section.value = next
     const name = selectedName.value
     if (name === null) return
+    // Builds were already requested for the selected character (header's active elite): reuse that
+    // answer; read again only when it gave no usable layout and nothing is in flight.
+    if (next === 'builds') {
+      const r = buildResponse.value
+      const usable = r !== null && HAS_DATA.includes(r.state) && r.tabs !== undefined && buildFailure.value === null
+      if (buildPhase.value === 'idle' || (buildPhase.value === 'loaded' && !usable)) void loadBuildTabs(name)
+      return
+    }
     if (next === 'inventory' && inventoryPhase.value !== 'loading') {
       const r = inventoryResponse.value
       const usable = r !== null && HAS_DATA.includes(r.state) && r.bags !== undefined && inventoryFailure.value === null
@@ -345,8 +367,30 @@ export function useCharacters(
   function resetBuilds(): void {
     buildId += 1
     buildResponse.value = null
+    buildFailure.value = null
     buildPhase.value = 'idle'
     buildRecoveryTried = false
+    inspectedBuild.value = null
+  }
+
+  /** Build tabs to present: the newest answer's, else this character's retained last-good ones. */
+  const buildSource = computed<CharacterBuildTabsResponse | null>(() => {
+    const now = buildResponse.value
+    if (now && HAS_DATA.includes(now.state) && now.tabs) return now
+    return selectedName.value === null ? null : (lastGoodBuilds.value.get(selectedName.value) ?? null)
+  })
+  const buildTabs = computed<BuildTab[] | null>(() => buildSource.value?.tabs ?? null)
+  const buildIsRetained = computed(
+    () => buildSource.value !== null && (buildFailure.value !== null || buildSource.value !== buildResponse.value))
+  const shownBuild = computed(() => buildTabs.value?.find((t) => t.tab === inspectedBuild.value) ?? null)
+  /** A known newer parent generation than the one the shown builds were saved under: not silently current. */
+  const buildsOlderThanKnownParent = computed(() => {
+    const covered = buildSource.value?.coveredParentGeneration
+    const known = newest(knownEquipmentParent.value, knownInventoryParent.value, buildSource.value?.parent?.generation)
+    return covered !== undefined && known !== undefined && covered < known
+  })
+  function inspectBuild(tab: number): void {
+    if (buildTabs.value?.some((t) => t.tab === tab)) inspectedBuild.value = tab
   }
 
   function select(name: string): void {
@@ -363,6 +407,8 @@ export function useCharacters(
     detailId += 1
     equipmentId += 1
     resetBuilds()
+    const kept = lastGoodBuilds.value.get(name)?.tabs
+    inspectedBuild.value = kept?.find((t) => t.active)?.tab ?? kept?.[0]?.tab ?? null
     void loadDetail(name)
     void loadEquipment(name)
     void loadBuildTabs(name)
@@ -473,6 +519,7 @@ export function useCharacters(
     refreshing, refreshMessage, refreshEquipment,
     section, showSection, inventoryPhase, inventoryResponse, inventoryFailure, inventorySource, inventoryIsRetained,
     equipmentOlderThanInventory, inventoryOlderThanEquipment, loadInventory,
-    buildPhase, buildResponse, activeElite, loadBuildTabs, recoverBuilds
+    buildPhase, buildResponse, buildFailure, buildSource, buildTabs, buildIsRetained, shownBuild, inspectedBuild, inspectBuild,
+    buildsOlderThanKnownParent, activeElite, loadBuildTabs, recoverBuilds
   }
 }

@@ -20,8 +20,8 @@ import java.util.Set;
 /**
  * Body of the selected-character saved-build-tabs read (STORY-CHAR-007). {@code tabs} is present only for
  * AVAILABLE or STALE, so missing, pending or incompatible coverage never reads as an empty list. Reference
- * ids are returned as {@code {id, resolved:false}}: names and icons are not available yet and are not
- * fabricated. Null positions stay explicit JSON nulls; absent Revenant/Ranger sections are omitted.
+ * ids are returned as {@code {id, resolved:false}} when no metadata is stored; name and icon are present
+ * only for resolved references and are never fabricated. Null positions stay explicit JSON nulls; absent Revenant/Ranger sections are omitted.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record CharacterBuildTabsResponse(String state, String reason, String message, String character,

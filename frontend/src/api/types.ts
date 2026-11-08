@@ -693,9 +693,30 @@ export interface CharacterEquipmentTabsResponse {
   sharedEquipment?: EquipmentEntry[]
 }
 
-/** Saved-build tabs read (`GET /api/account/characters/{name}/build-tabs`); only what the header consumes is typed. */
+/** Saved-build tabs read (`GET /api/account/characters/{name}/build-tabs`), mirroring CharacterBuildTabsResponse.java. */
+export interface BuildIdRef { id: number; resolved: boolean; name?: string; iconUrl?: string }
 export interface BuildSpecRef { id: number; resolved: boolean; name?: string; iconUrl?: string; profession?: string; elite?: boolean }
-export interface BuildTab { tab: number; name?: string; profession?: string; active: boolean; specializations: Array<{ specialization: BuildSpecRef | null }> }
+export type BuildTraitPlacement = 'ORDINARY' | 'NONSTANDARD' | 'CONFLICT' | 'UNRESOLVED'
+export interface BuildTraitRef {
+  id: number; resolved: boolean; name?: string; iconUrl?: string
+  specializationId?: number; tier?: number; order?: number; slot?: string; placement: BuildTraitPlacement
+}
+export interface BuildLegendRef { id: string; resolved: boolean; swapSkill?: BuildIdRef }
+export interface BuildSpecialization {
+  specialization: BuildSpecRef | null
+  /** Selected choices; explicit null entries are unselected positions. */
+  traits?: Array<BuildTraitRef | null> | null
+  minorTraits?: BuildTraitRef[]
+  majorTraits?: BuildTraitRef[]
+}
+export interface BuildSkills { heal: BuildIdRef | null; utilities: Array<BuildIdRef | null> | null; elite: BuildIdRef | null }
+export interface BuildTab {
+  tab: number; name?: string; profession?: string; active: boolean
+  specializations: BuildSpecialization[]
+  skills?: BuildSkills; aquaticSkills?: BuildSkills
+  legends?: Array<BuildLegendRef | null>; aquaticLegends?: Array<BuildLegendRef | null>
+  pets?: Array<BuildIdRef | null>; aquaticPets?: Array<BuildIdRef | null>
+}
 export interface CharacterBuildTabsResponse {
   state: CharacterReadState
   reason?: string
