@@ -2,7 +2,7 @@
 
 **Status: ACTIVE SUPERVISION. Execution authorized by the Product Owner on 2026-11-07.**
 
-The Product Owner resumed supervision on 2026-11-08 after approving the directly paired UI, most recently the character roster and its default playtime sort. Preserve that baseline and its reconciled tests/documentation while continuing the dependency-complete sequence below. This supersedes earlier draft layout proposals and shared-selection assumptions. No repeated approval is needed for the already accepted layouts.
+The Product Owner resumed supervision on 2026-11-08 after approving the directly paired UI, including the final Builds page with Equipment-width trait strips and cropped skill pictures. Preserve that baseline and its reconciled tests/documentation while continuing the dependency-complete sequence below. This supersedes earlier draft layout proposals and shared-selection assumptions. No repeated approval is needed for the already accepted layouts.
 
 Authorization: start the agreed workflow, supervise progress and stop only for necessary product/UI decisions or missing access. Supervisor: interactive Codex. Planner: Codex on GitHub. Programmer: Claude. Release one approved story at a time; no new paid API integration is authorized.
 
@@ -12,11 +12,11 @@ Planning handoff: the Characters sequence is Inventory UI #162, Builds core #161
 
 ## Immediate integration handoff
 
-- Current supervisor release: Builds UI #166, after verifying the merged #161/#162/#164/#169 prerequisites and actual DTO/resource/refresh seams. Implement one reviewable view, then obtain the Product Owner's final layout approval in the open local application before merging. Keep automatic merge eligibility removed during that hold.
+- Current supervisor release: finish #166 regression, documentation and measurement evidence against the approved Builds layout. The Product Owner explicitly accepted the final page on 2026-11-08 and resumed supervision. Preserve its visual composition; CI, review and outstanding behavioral evidence still govern implementation acceptance.
 - PR #170 / issue #169 is the approved paired baseline. The old left-facts layout and no-backend-change limits were superseded by direct instructions. UX guidelines §§2.1–2.4 and DOMAIN_SPEC §§9.1, 56–57 own the final contracts; consult the PR's actual acceptance evidence rather than reopening its completed reconciliation.
 - Preserve the narrow parser behavior in PR #175 / issue #174: only omitted land elite is nullable; aquatic/heal/utilities and invalid present values stay strict.
 - Keep regression coverage for finite `coversRequest:false` retries, simultaneous missing Equipment/Builds recovery, stale character/account responses and selection return races in both the managed screen and composable paths. Passive attributes require compatible build/equipment parent coverage; duration symbols/order follow the in-game reference.
-- Current-state docs must distinguish implemented scoped freshness and equipment projections from pending owner authorization, Builds UI, incomplete passive trait coverage and unqualified live economics/Oracle capacity. Do not repeat historical NOT_IMPLEMENTED claims for delivered equipment/inventory.
+- Current-state docs must distinguish implemented scoped freshness, equipment projections and the approved Builds view from pending owner authorization, incomplete passive trait coverage and unqualified live economics/Oracle capacity. Do not repeat historical NOT_IMPLEMENTED claims for delivered character features.
 - Update obsolete manual-refresh, shared-selection, nested-tab and left-facts assertions with meaningful behavioral coverage. Keep account isolation, source coverage, retained snapshots, finite recovery and duplicate-stack tests. Do not skip or weaken tests merely to make CI green.
 - Record remaining Mystic Forge work through `agent/product-owner-requests/mystic-forge-crafting.md`; the checkbox is a disabled placeholder, not authorization to implement it now. Prepare the live verification work in #154 at a suitable point; the owner executes game actions after a concrete experiment plan exists.
 
@@ -61,7 +61,7 @@ Planning handoff: the Characters sequence is Inventory UI #162, Builds core #161
 | STORY-CHAR-007 | Saved Builds data | Scoped character core | PUBLISHED — #161 |
 | STORY-CHAR-008 | Bag-layout Inventory UI | STORY-CHAR-006 | PUBLISHED — #162 |
 | STORY-CHAR-009 | Shared Builds reference metadata/images | STORY-CHAR-007 | PUBLISHED — #164 |
-| STORY-CHAR-010 | Full-trait-row Builds UI | STORY-CHAR-007, 008, 009, 011 | PUBLISHED — #166; supervisor RELEASED, final UI review required before merge |
+| STORY-CHAR-010 | Full-trait-row Builds UI | STORY-CHAR-007, 008, 009, 011 | PUBLISHED — #166; final layout approved, supervisor RELEASED remaining acceptance evidence |
 | STORY-CHAR-011 | Approved paired UI and regression/documentation reconciliation | STORY-CHAR-008 and integrated current master | PUBLISHED — #169 / PR #170; preserve its accepted baseline |
 | STORY-CHAR-012 | Character playtime, deaths and next birthday | Scoped character core | PUBLISHED — #171 |
 | STORY-CHAR-013 | Narrow missing land elite compatibility | Saved Builds data | PUBLISHED — #174 |
