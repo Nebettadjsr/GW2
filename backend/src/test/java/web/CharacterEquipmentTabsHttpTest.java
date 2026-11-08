@@ -280,7 +280,25 @@ class CharacterEquipmentTabsHttpTest {
         assertEquals(1, metadata, "one batched metadata lookup");
         assertEquals(2, tabRows, "one tab read and one entry read for the selected character only");
         assertFalse(new String(body, StandardCharsets.UTF_8).contains("Bo1"));
-        assertTrue(body.length < 5_000);
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var payloadWithoutProfiles = mapper.readTree(body);
+        for (var tab : payloadWithoutProfiles.path("tabs")) {
+            var stats = (com.fasterxml.jackson.databind.node.ObjectNode) tab.path("stats");
+            var profiles = stats.path("profiles");
+            assertEquals(4, profiles.size(), "PvE/WvW, each with and without Reinforced Armor");
+            for (String profile : List.of("PVE", "PVE_REINFORCED", "WVW", "WVW_REINFORCED")) {
+                assertEquals(2, profiles.path(profile).size(), "both weapon sets in " + profile);
+                assertTrue(profiles.path(profile).has("A") && profiles.path(profile).has("B"));
+            }
+            stats.remove("profiles");
+        }
+        int baseBytes = mapper.writeValueAsBytes(payloadWithoutProfiles).length;
+        assertTrue(baseBytes < 5_000, "the original projection keeps its existing byte budget");
+        // The approved buff/mode options add four backend-calculated profiles. Bound their complete
+        // payload as well, while preserving the original projection and statement-count budgets.
+        assertTrue(body.length < 8_192, "equipment plus four passive profiles: " + body.length);
+        System.out.println("CHAR-EQUIPMENT-PROFILES-REPORT baseBytes=" + baseBytes
+                + " profileBytes=" + (body.length - baseBytes) + " totalBytes=" + body.length);
         // schema guard + parent/equipment marker reads + character + coverage + tabs + entries + items
         // + (STORY-CHAR-014) shared-slot read, batched equipment details and batched itemstats: constant, not per entry
         assertTrue(sql.size() <= 15, "bounded statement count: " + sql.size());

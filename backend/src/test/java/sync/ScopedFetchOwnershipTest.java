@@ -90,7 +90,7 @@ class ScopedFetchOwnershipTest {
                 assertEquals(0, count("SELECT count(*) FROM account_bank WHERE account_id='" + A + "'"),
                         "metadata must be available before the account generation is published");
                 return JSON.readTree("""
-                        [{"id":99,"name":"Bank item","type":"Trophy","rarity":"Basic","vendor_value":2,
+                        [{"id":99,"name":"Bank item","type":"Trophy","rarity":"Basic","vendor_value":2,"flags":[],
                           "icon":"https://render.guildwars2.com/file/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/63133.png"}]
                         """);
             }
@@ -99,6 +99,8 @@ class ScopedFetchOwnershipTest {
         gateway.syncAccountBank(AccountScope.of(A), credentialOf(A, "[]"));
         assertEquals(java.util.List.of(99), requested);
         assertEquals(1, count("SELECT count(*) FROM items WHERE item_id=99 AND icon_url IS NOT NULL"));
+        assertEquals(1, count("SELECT count(*) FROM items WHERE item_id=99 AND no_mystic_forge=false"),
+                "complete metadata includes explicit Forge eligibility, so the next refresh can reuse it");
         gateway.syncAccountBank(AccountScope.of(A), credentialOf(A, "[]"));
         assertEquals(java.util.List.of(99), requested, "repeat sync must reuse existing canonical metadata");
     }
