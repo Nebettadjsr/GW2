@@ -91,6 +91,32 @@ public class BackgroundTaskService implements AutoCloseable {
         return task.id;
     }
 
+    /**
+     * Admits a task classified as owner-administrative by the trusted server-side caller (the
+     * external global action and the internal scheduler). Same admission rule as
+     * {@link #submit(String, TaskBody)}; the classification is never derived from request data.
+     */
+    public String submitAdministrative(String operation, TaskBody body) {
+        MutableTask task;
+        synchronized (this) {
+            unfinishedTaskId(operation).ifPresent(existing -> {
+                throw new TaskAlreadyRunningException(operation, existing);
+            });
+            evictOldestTerminalRecords();
+            task = new MutableTask(UUID.randomUUID().toString(), operation, operation, Instant.now());
+            task.administrative = true;
+            tasks.put(task.id, task);
+        }
+        executor.execute(() -> run(task, body));
+        return task.id;
+    }
+
+    /** True when the identifier names a retained task admitted through {@link #submitAdministrative}. */
+    public synchronized boolean isAdministrative(String taskId) {
+        MutableTask task = tasks.get(taskId);
+        return task != null && task.administrative;
+    }
+
     /** Starts work unless an unfinished task for this operation already exists, returning its ID. */
     public String submitOrExisting(String operation, TaskBody body) {
         synchronized (this) {
@@ -167,6 +193,7 @@ public class BackgroundTaskService implements AutoCloseable {
         private Instant startedAt;
         private Instant finishedAt;
         private Exception failure;
+        private boolean administrative;
 
         MutableTask(String id, String operation, String exclusionKey, Instant submittedAt) {
             this.id = id;

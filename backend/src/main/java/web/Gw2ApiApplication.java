@@ -353,6 +353,17 @@ public class Gw2ApiApplication {
                 new repo.CharacterInventoryLayoutRepository(), Clock.systemUTC(), Duration.ofMillis(accountMaxAgeMs));
     }
 
+    /** Optional owner identity; malformed nonblank configuration fails startup clearly. */
+    @Bean
+    public application.access.OwnerPolicy ownerPolicy(@Value("${gw2.owner.account-guid:}") String ownerGuid) {
+        return new application.access.OwnerPolicy(ownerGuid);
+    }
+
+    @Bean
+    public web.access.OwnerAccess ownerAccess(AccountAccessService access, application.access.OwnerPolicy policy) {
+        return new web.access.OwnerAccess(access, policy);
+    }
+
     /** The transport rules the session routes and the account guard must apply identically. */
     @Bean
     public AccountAccessHttp accountAccessHttp(

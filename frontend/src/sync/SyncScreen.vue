@@ -72,22 +72,25 @@ function accountStatus(): { text: string; tone: string } {
 function globalStatus(): { text: string; tone: string } {
   const status = systemStatus.value
   if (systemStatusError.value !== null) return { text: 'Problem', tone: 'failure' }
-  if (status?.running) return { text: 'Running', tone: 'busy' }
-  if (status?.lastFailure) return { text: 'Problem', tone: 'failure' }
-  if (status?.lastCheckedAt) return { text: 'OK', tone: 'success' }
+  if (status?.globalHealth === 'RUNNING' || status?.running) return { text: 'Running', tone: 'busy' }
+  if (status?.globalHealth === 'PROBLEM' || status?.lastFailure) return { text: 'Problem', tone: 'failure' }
+  if (status?.globalHealth === 'OK' || status?.lastCheckedAt) return { text: 'OK', tone: 'success' }
   return { text: 'Not run yet', tone: 'idle' }
 }
 
 function priceStatus(): { text: string; tone: string } {
-  if (systemStatusError.value !== null || systemStatus.value?.priceCacheError) {
+  if (systemStatusError.value !== null || systemStatus.value?.priceCacheError ||
+      systemStatus.value?.priceHealth === 'PROBLEM') {
     return { text: 'Problem', tone: 'failure' }
   }
+  if (systemStatus.value?.priceHealth === 'OK') return { text: 'Available', tone: 'success' }
   if (systemStatus.value?.cachedPriceItems !== null && systemStatus.value?.cachedPriceItems !== undefined) {
     return { text: 'Available', tone: 'success' }
   }
   return { text: 'Not checked', tone: 'idle' }
 }
 
+const isGlobalRunning = computed(() => systemStatus.value?.globalHealth === 'RUNNING' || systemStatus.value?.running === true)
 const account = computed(accountStatus)
 const global = computed(globalStatus)
 const prices = computed(priceStatus)
@@ -198,7 +201,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
             type="button"
             class="button--secondary"
             data-test="sync-trigger-GLOBAL_SYNC"
-            :disabled="operation('GLOBAL_SYNC').isBusy || systemStatus?.running"
+            :disabled="operation('GLOBAL_SYNC').isBusy || isGlobalRunning"
             @click="onTrigger('GLOBAL_SYNC')"
           >Check global data</button>
           <span
@@ -206,7 +209,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
             :class="`status--${describeOperationStatus(operation('GLOBAL_SYNC')).tone}`"
             role="status"
             data-test="sync-state-GLOBAL_SYNC"
-          >{{ systemStatus?.running ? 'Running' : describeOperationStatus(operation('GLOBAL_SYNC')).text }}</span>
+          >{{ isGlobalRunning ? 'Running' : describeOperationStatus(operation('GLOBAL_SYNC')).text }}</span>
           <button
             v-if="operation('GLOBAL_SYNC').canRetryStatus"
             type="button"

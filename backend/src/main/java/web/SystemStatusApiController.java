@@ -40,6 +40,7 @@ public class SystemStatusApiController {
     private final AccountAccessService access;
     private final AccountStateReader accountStates;
     private final application.ScopedSourceGate gate;
+    private final web.access.OwnerAccess ownerAccess;
 
     /** Reads one account's published source markers; a seam so the projection is testable offline. */
     @FunctionalInterface
@@ -60,11 +61,19 @@ public class SystemStatusApiController {
         this(globalDataRefreshService, priceCacheStatusService, access, accountStates, null);
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
     public SystemStatusApiController(GlobalDataRefreshService globalDataRefreshService,
                                      TradingPostPriceCacheStatusService priceCacheStatusService,
                                      AccountAccessService access, AccountStateReader accountStates,
                                      application.ScopedSourceGate gate) {
+        this(globalDataRefreshService, priceCacheStatusService, access, accountStates, gate, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SystemStatusApiController(GlobalDataRefreshService globalDataRefreshService,
+                                     TradingPostPriceCacheStatusService priceCacheStatusService,
+                                     AccountAccessService access, AccountStateReader accountStates,
+                                     application.ScopedSourceGate gate, web.access.OwnerAccess ownerAccess) {
+        this.ownerAccess = ownerAccess;
         this.gate = gate;
         this.globalDataRefreshService = globalDataRefreshService;
         this.priceCacheStatusService = priceCacheStatusService;
@@ -72,11 +81,22 @@ public class SystemStatusApiController {
         this.accountStates = accountStates;
     }
 
+    /** Owner-only detailed shared diagnostics; authorization is decided before any status is read. */
+    @GetMapping("/status/details")
+    public ResponseEntity<?> details(HttpServletRequest request) {
+        ResponseEntity<?> denial = ownerAccess == null
+                ? denied(HttpStatus.FORBIDDEN, "OWNER_REQUIRED", "This operation is restricted to the system owner")
+                : ownerAccess.deny(request);
+        if (denial != null) return denial;
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store").body(detailedStatus());
+    }
+
+    /** Generic shared health plus the requesting account's own freshness; no detailed diagnostics. */
     @GetMapping("/status")
     public ResponseEntity<?> status(HttpServletRequest request) {
         var presented = AccountAccessHttp.presentedSessionId(request);
         if (presented.isEmpty() || access == null || accountStates == null) {
-            return ResponseEntity.ok(globalStatus(null, null));
+            return ResponseEntity.ok(genericStatus(null, null));
         }
         var resolution = access.resolve(presented.get(), AccountAccessHttp.assertedAccessContext(request));
         switch (resolution.outcome()) {
@@ -111,7 +131,7 @@ public class SystemStatusApiController {
         }
         return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .header(AccountAccessHttp.ACCESS_CONTEXT_HEADER, context.accessContext())
-                .body(globalStatus(latest, scopeLabel));
+                .body(genericStatus(latest, scopeLabel));
     }
 
     private static ResponseEntity<ApiErrorResponse> denied(HttpStatus status, String code, String message) {
@@ -119,7 +139,17 @@ public class SystemStatusApiController {
                 .body(new ApiErrorResponse(code, message));
     }
 
-    private SystemStatus globalStatus(Instant accountLastRefreshedAt, String accountRefreshScope) {
+    private GenericStatus genericStatus(Instant accountLastRefreshedAt, String accountRefreshScope) {
+        DetailedStatus detail = detailedStatus();
+        String global = detail.running() ? "RUNNING"
+                : detail.lastFailure() != null ? "PROBLEM"
+                : detail.lastCheckedAt() != null ? "OK" : "NOT_RUN";
+        String prices = detail.priceCacheError() != null ? "PROBLEM"
+                : detail.cachedPriceItems() != null && detail.cachedPriceItems() > 0 ? "OK" : "NOT_RUN";
+        return new GenericStatus(global, prices, accountLastRefreshedAt, accountRefreshScope);
+    }
+
+    private DetailedStatus detailedStatus() {
         var global = globalDataRefreshService.status();
         Long cachedPriceItems = null;
         Long stalePriceItems = null;
@@ -133,16 +163,19 @@ public class SystemStatusApiController {
         } catch (SQLException e) {
             priceCacheError = "Database status unavailable";
         }
-        return new SystemStatus(global.running(), global.lastCheckedAt(), global.lastChangedAt(),
+        return new DetailedStatus(global.running(), global.lastCheckedAt(), global.lastChangedAt(),
                 global.lastRecipeSyncAt(), global.lastGraphRebuildAt(), global.lastFailure(),
-                accountLastRefreshedAt, accountRefreshScope,
                 cachedPriceItems, stalePriceItems, newestPriceFetchedAt, priceCacheError);
     }
 
-    public record SystemStatus(boolean running, Instant lastCheckedAt, Instant lastChangedAt,
-                                Instant lastRecipeSyncAt, Instant lastGraphRebuildAt,
-                                String lastFailure, Instant accountLastRefreshedAt,
-                                String accountRefreshScope, Long cachedPriceItems,
-                                Long stalePriceItems, Instant newestPriceFetchedAt,
-                                String priceCacheError) { }
+    /** Coarse states only ({@code OK|RUNNING|PROBLEM|NOT_RUN}); account fields appear only when authorized. */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record GenericStatus(String globalHealth, String priceHealth,
+                                Instant accountLastRefreshedAt, String accountRefreshScope) { }
+
+    public record DetailedStatus(boolean running, Instant lastCheckedAt, Instant lastChangedAt,
+                                 Instant lastRecipeSyncAt, Instant lastGraphRebuildAt,
+                                 String lastFailure, Long cachedPriceItems,
+                                 Long stalePriceItems, Instant newestPriceFetchedAt,
+                                 String priceCacheError) { }
 }

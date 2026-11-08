@@ -49,6 +49,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class GlobalSyncApiControllerTest {
 
+    private static final String OWNER_GUID = "11111111-2222-3333-4444-555555555555";
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
     private ControlledGlobalDataRefreshService refreshService;
@@ -59,10 +60,19 @@ class GlobalSyncApiControllerTest {
     void setUp() {
         refreshService = new ControlledGlobalDataRefreshService();
         taskService = new BackgroundTaskService();
+        var sessions = new application.access.AccountSessions(java.time.Clock.systemUTC(), 4);
+        var access = new application.access.AccountAccessService(key -> { throw new application.access.InvalidCredentialException("no"); }, sessions);
+        var issued = sessions.establish(new application.access.AccountProof(OWNER_GUID,
+                java.util.Set.of(application.access.AccountGrant.ACCOUNT), java.util.Set.of(), null));
+        var ownerAccess = new web.access.OwnerAccess(access, new application.access.OwnerPolicy(OWNER_GUID));
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new GlobalSyncApiController(refreshService, taskService),
-                        new SyncTaskApiController(taskService))
+                .standaloneSetup(new GlobalSyncApiController(refreshService, taskService, ownerAccess),
+                        new SyncTaskApiController(taskService, null, null, ownerAccess))
                 .setControllerAdvice(new SyncApiExceptionHandler())
+                // The owner's live session accompanies every request; owner denial has its own suite.
+                .defaultRequest(get("/").cookie(new jakarta.servlet.http.Cookie(
+                                web.access.AccountAccessHttp.SESSION_COOKIE, issued.sessionId()))
+                        .header(web.access.AccountAccessHttp.ACCESS_CONTEXT_HEADER, issued.context().accessContext()))
                 .build();
     }
 

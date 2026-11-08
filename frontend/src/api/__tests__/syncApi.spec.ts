@@ -61,6 +61,12 @@ describe('syncApi', () => {
     expect(init.body).toBe('{}')
   })
 
+  it('surfacesADeniedGlobalActionAsAnOrdinaryBackendError', async () => {
+    stubFetch(403, { error: 'OWNER_REQUIRED', message: 'This operation is restricted to the system owner' })
+
+    await expect(syncApi.startGlobalSync()).rejects.toBeInstanceOf(ApiRequestError)
+  })
+
   it('postsTheSelectedPriceRefreshVariantAndNothingElse', async () => {
     const profitFetch = stubFetch(202, { ...ACCEPTED, operation: 'PRICE_REFRESH_PROFIT' })
     await syncApi.startPriceRefresh('PROFIT')
