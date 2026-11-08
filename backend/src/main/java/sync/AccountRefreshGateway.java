@@ -58,7 +58,7 @@ public class AccountRefreshGateway {
 
     public void syncCharacterEquipmentTabs(model.AccountScope scope, AccountSync.AuthFetcher fetcher)
             throws Exception {
-        CharacterEquipmentTabsSync.sync(scope, fetcher, this::repairItemMetadata);
+        CharacterEquipmentTabsSync.sync(scope, fetcher, this::repairItemMetadata, equipmentDetailsSource());
     }
 
     public void syncCharacterBuildTabs(model.AccountScope scope, AccountSync.AuthFetcher fetcher)
@@ -88,6 +88,11 @@ public class AccountRefreshGateway {
             System.out.println("Account item metadata unavailable; retry on the next synchronization: "
                     + unavailable.getClass().getSimpleName());
         }
+    }
+
+    /** Replaceable public equipment-details edge (finite timeouts), including for fixture checks. */
+    protected EquipmentDetailsSync.Source equipmentDetailsSource() {
+        return EquipmentDetailsSync.LIVE;
     }
 
     /** Replaceable upstream edge, including for full HTTP/database fixture checks. */
