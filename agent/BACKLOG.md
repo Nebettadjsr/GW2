@@ -103,7 +103,7 @@ Current character services include core summaries, bag manifests, saved equipmen
 
 ArenaNet's [template API announcement](https://en-forum.guildwars2.com/topic/65255-api-updates-december-18-2019/) documents equipment/build tabs and warns that several tabs may reference one owned item. It is historical API evidence, not a substitute for checking the current schema. Keep template associations distinct from actual inventory quantities. Product Owner deferred Story after the API coverage assessment; do not substitute backstory or partial quest history.
 
-Template scope is confirmed: all saved available tabs in original slot order, initially selecting the in-game active tab. Equipment selectors now sit right of the Equipment/Inventory navigation; Builds keeps adjacent saved-build tabs. Selections are independent and read-only. Overview, Equipment and Inventory layout approval is complete; Builds still needs final visual review. Reuse shared metadata, bounded account data and lazy details; include the feature in final Oracle qualification.
+Template scope is confirmed: all saved available tabs in original slot order, initially selecting the in-game active tab. Equipment selectors now sit right of the Equipment/Inventory navigation; Builds keeps adjacent saved-build tabs. Selections are independent and read-only. Overview, Equipment and Inventory layout approval is complete; Builds is implemented and its layout was visually accepted by the Product Owner on 2026-11-08; final Oracle qualification remains outstanding. Reuse shared metadata, bounded account data and lazy details; include the feature in final Oracle qualification.
 
 ## System Status and inventory-refresh handoff
 

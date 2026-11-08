@@ -1092,7 +1092,7 @@ describe('Builds account replacement races (deferred, same character names)', ()
     expect(markOf(d)).toBeNull()
   })
 
-  it('real connectKey replacement with the same names: the old deferred builds read is dropped and nothing old is re-sent under the new identity', async () => {
+  it.each([['NEW first, then OLD', true], ['OLD first, then NEW', false]])('real connectKey replacement with the same names (%s): the old deferred builds read is dropped and nothing old is re-sent under the new identity', async (_label, newFirst) => {
     const { connectKey, installAccountSession, resetAccountSession } = await import('@/api/accountSession')
     const { charactersApi } = await import('@/api/charactersApi')
     resetAccountSession(); installAccountSession()
@@ -1104,7 +1104,8 @@ describe('Builds account replacement races (deferred, same character names)', ()
       if (input.endsWith('/session') || input.includes('/account/session')) {
         return json({ accountId: id, accessContext: `ctx-${id}`, expiresAt: '2099-01-01T00:00:00Z', grants: ['account'] })
       }
-      log.push(`${init?.method ?? 'GET'} ${id} ${input}`)
+      const ctx = (init?.headers as Record<string, string> | undefined)?.['X-Account-Context'] ?? 'none'
+      log.push(`${init?.method ?? 'GET'} ${id} ${ctx} ${input}`)
       if (input.includes('build')) {
         const g = { id, gate: deferred<Response>() }
         buildGates.push(g)
@@ -1125,10 +1126,26 @@ describe('Builds account replacement races (deferred, same character names)', ()
       await newC.loadRoster(); newC.select('Ana B'); await flushPromises()
       expect(buildGates.map((g) => g.id)).toEqual(['acc-A', 'acc-B'])
       const body = (m: string) => new Response(JSON.stringify(buildsFor(m)), { status: 200, headers: { 'Content-Type': 'application/json' } })
-      buildGates[1]!.gate.resolve(body('NEW')); await flushPromises()
-      buildGates[0]!.gate.resolve(body('OLD')); await flushPromises()
+      const resolveNew = async () => { buildGates[1]!.gate.resolve(body('NEW')); await flushPromises() }
+      const resolveOld = async () => { buildGates[0]!.gate.resolve(body('OLD')); await flushPromises() }
+      if (newFirst) { await resolveNew(); await resolveOld() } else {
+        await resolveOld()
+        expect(markOf(oldC)).toBeNull() // old result absent
+        expect(markOf(newC)).toBeNull() // new response still pending: nothing shown yet
+        await resolveNew()
+      }
       expect(markOf(newC)).toBe('NEW')
       expect(markOf(oldC)).toBeNull()
+      const rows = log.map((l) => l.split(' '))
+      // every request carries the context of the identity current when it was sent
+      expect(rows.every(([, who, ctx]) => ctx === `ctx-${who}`)).toBe(true)
+      const bReads = rows.filter(([, who]) => who === 'acc-B')
+      expect(bReads.length).toBeGreaterThan(0)
+      expect(bReads.every(([, , ctx]) => ctx === 'ctx-acc-B')).toBe(true)
+      expect(rows.filter(([, who, ctx]) => who === 'acc-A' && ctx !== 'ctx-acc-A')).toHaveLength(0)
+      expect(rows.filter(([, who, , url]) => who === 'acc-A' && String(url).includes('build'))).toHaveLength(1)
+      expect(rows.filter(([, who, , url]) => who === 'acc-B' && String(url).includes('build'))).toHaveLength(1)
+      expect(log.length).toBeLessThanOrEqual(8) // bounded: no reconcile loop
       expect(buildGates.filter((g) => g.id === 'acc-B')).toHaveLength(1) // finite: one read, no reconcile loop
     } finally {
       resetAccountSession()
