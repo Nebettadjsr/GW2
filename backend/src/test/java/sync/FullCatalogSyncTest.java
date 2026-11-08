@@ -259,25 +259,190 @@ class FullCatalogSyncTest {
         assertEquals("0", scalar("SELECT count(*) FROM tp_prices"));
     }
 
-    // ------------------------------------------------------------------ resource evidence
+    // ------------------------------------------------------------------ cache coherence
 
     @Test
-    void resourceEvidence_recordsBoundsCardinalityRequestsElapsedMemoryAndGrowth() throws Exception {
-        int n = 2000;
-        ItemSync.fetcher = url -> { urls.add(url); return url.endsWith("/v2/items") ? json(ids(1, n)) : itemsFor(url, "R"); };
-        Runtime rt = Runtime.getRuntime();
-        System.gc();
-        long usedBefore = rt.totalMemory() - rt.freeMemory();
-        long t0 = System.nanoTime();
+    void fullItems_refreshOnlyAlreadyCachedEquipmentProjection_leavesItemStatsAndUncachedRowsAlone() throws Exception {
+        String oldDetails = "{\"format\":1,\"itemId\":1,\"itemType\":\"Trophy\",\"description\":\"OLD\"}";
+        exec("INSERT INTO equipment_item_details (item_id, details, fetched_at) VALUES (1, '" + oldDetails + "'::jsonb, now() - interval '1 day')");
+        exec("INSERT INTO equipment_item_stats (stat_id, attributes, fetched_at) VALUES (5, '{\"statId\":5}'::jsonb, now() - interval '1 day')");
+        String statsBefore = scalar("SELECT attributes::text || fetched_at::text FROM equipment_item_stats WHERE stat_id=5");
+        ItemSync.fetcher = url -> url.endsWith("/v2/items") ? json("[1,2]") : json("["
+                + "{\"id\":1,\"name\":\"N1\",\"type\":\"Trophy\",\"rarity\":\"Basic\",\"vendor_value\":1,\"level\":80,\"description\":\"NEW\"},"
+                + "{\"id\":2,\"name\":\"N2\",\"type\":\"Trophy\",\"rarity\":\"Basic\",\"vendor_value\":1,\"level\":80,\"description\":\"x\"}]");
         ItemSync.syncAllItemsFull(TaskDeadline.start());
+        assertEquals("NEW", scalar("SELECT details->>'description' FROM equipment_item_details WHERE item_id=1"));
+        assertEquals("80", scalar("SELECT details->>'level' FROM equipment_item_details WHERE item_id=1"));
+        assertEquals("1", scalar("SELECT count(*) FROM equipment_item_details"), "uncached item 2 gets no row");
+        assertEquals(statsBefore, scalar("SELECT attributes::text || fetched_at::text FROM equipment_item_stats WHERE stat_id=5"));
+    }
+
+    // ------------------------------------------------------------------ strict record validation
+
+    @Test
+    void fullItems_bareIdWrongTypeAndMissingRequiredFieldsAreRejected() throws Exception {
+        String ok = "\"name\":\"a\",\"type\":\"Trophy\",\"rarity\":\"Basic\",\"vendor_value\":1";
+        String[] bad = {
+                "{\"id\":1}",
+                "{\"id\":1,\"name\":5,\"type\":\"T\",\"rarity\":\"B\",\"vendor_value\":1}",
+                "{\"id\":1,\"name\":\"a\",\"type\":\"T\",\"rarity\":\"B\",\"vendor_value\":\"7\"}",
+                "{\"id\":1,\"name\":\"a\",\"type\":\"T\",\"rarity\":\"B\",\"vendor_value\":-1}",
+                "{\"id\":\"1\"," + ok + "}",
+                "{\"id\":1," + ok + ",\"icon\":7}",
+                "{\"id\":1," + ok + ",\"flags\":\"NoSell\"}",
+        };
+        for (String rec : bad) {
+            ItemSync.fetcher = url -> url.endsWith("/v2/items") ? json("[1]") : json("[" + rec + "]");
+            assertThrows(IllegalStateException.class, () -> ItemSync.syncAllItemsFull(TaskDeadline.start()), rec);
+        }
+        assertEquals("0", scalar("SELECT count(*) FROM items"));
+        // legitimate shape without optional icon/flags still succeeds
+        ItemSync.fetcher = url -> url.endsWith("/v2/items") ? json("[1]") : json("[{\"id\":1," + ok + "}]");
+        ItemSync.syncAllItemsFull(TaskDeadline.start());
+        assertEquals("1", scalar("SELECT count(*) FROM items"));
+    }
+
+    @Test
+    void fullRecipes_bareIdWrongTypeAndBadIngredientsAreRejectedAndNeverPublished() throws Exception {
+        String head = "\"id\":1,\"type\":\"Refinement\",\"output_item_id\":10,\"output_item_count\":1,\"min_rating\":0,\"time_to_craft_ms\":1";
+        String[] bad = {
+                "{\"id\":1}",
+                "{" + head + "}",                                                     // item output without ingredients
+                "{" + head + ",\"ingredients\":[]}",
+                "{" + head + ",\"ingredients\":[{\"item_id\":11,\"count\":0}]}",
+                "{" + head + ",\"ingredients\":[{\"item_id\":11,\"count\":-2}]}",
+                "{" + head + ",\"ingredients\":[{\"item_id\":\"11\",\"count\":1}]}",
+                "{" + head + ",\"ingredients\":[{\"count\":1}]}",
+                "{" + head + ",\"ingredients\":[{\"item_id\":11,\"count\":1},{\"item_id\":11,\"count\":1}]}",
+                "{" + head + ",\"ingredients\":[7]}",
+                "{" + head.replace("\"output_item_count\":1", "\"output_item_count\":0") + ",\"ingredients\":[{\"item_id\":11,\"count\":1}]}",
+                "{" + head.replace("\"time_to_craft_ms\":1", "\"time_to_craft_ms\":\"1\"") + ",\"ingredients\":[{\"item_id\":11,\"count\":1}]}",
+                "{" + head + ",\"disciplines\":\"Cook\",\"ingredients\":[{\"item_id\":11,\"count\":1}]}",
+        };
+        ItemSync.fetcher = url -> itemsFor(url, "I");
+        for (String rec : bad) {
+            RecipeSync.fetcher = url -> url.endsWith("/v2/recipes") ? json("[1]") : json("[" + rec + "]");
+            assertThrows(IllegalStateException.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()), rec);
+            assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"), rec);
+        }
+        assertEquals("0", scalar("SELECT count(*) FROM recipe_ingredients"));
+        // guild upgrade recipe (no item output, no ingredients array) is a legitimate documented shape
+        RecipeSync.fetcher = url -> url.endsWith("/v2/recipes") ? json("[1]") : json(
+                "[{\"id\":1,\"type\":\"GuildConsumable\",\"output_upgrade_id\":3,\"min_rating\":0,\"time_to_craft_ms\":1,"
+                        + "\"guild_ingredients\":[{\"upgrade_id\":2,\"count\":1}]}]");
+        RecipeSync.syncAllRecipesFull(TaskDeadline.start());
+        assertEquals("t", scalar("SELECT complete FROM recipe_catalog_publication"));
+    }
+
+    @Test
+    void fullRecipes_expiryBeforeFinalPublicationLeavesItIncomplete() throws Exception {
+        var clock = new AtomicLong();
+        var d = TaskDeadline.after(Duration.ofMinutes(30), clock::get);
+        recipeUpstream(2, i -> recipeJson(i, 100000 + i, 500000 + i));
+        ItemSync.fetcher = url -> { clock.addAndGet(Duration.ofMinutes(31).toNanos()); return itemsFor(url, "I"); };
+        assertThrows(TaskDeadline.ExceededException.class, () -> RecipeSync.syncAllRecipesFull(d));
+        assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
+    }
+
+    // ------------------------------------------------------------------ trading post coverage
+
+    private static TpSync.TpUpstream scripted(int status, String arrayJson, java.util.function.IntFunction<String> single) {
+        return new TpSync.TpUpstream() {
+            public TpPriceApi.BatchResult fetchBatch(List<Integer> b) {
+                JsonNode arr = json(arrayJson);
+                Set<Integer> ret = new java.util.HashSet<>();
+                if (arr != null && arr.isArray()) for (JsonNode n : arr) if (n.hasNonNull("id")) ret.add(n.get("id").asInt());
+                return new TpPriceApi.BatchResult(status, arr, ret);
+            }
+            public JsonNode fetchSingle(int id) { String r = single.apply(id); return r == null ? null : json(r); }
+            public Set<Integer> fetchAllTradeableItemIds() { return Set.of(); }
+        };
+    }
+
+    private static String quote(int id, int buy) {
+        return "{\"id\":" + id + ",\"buys\":{\"quantity\":1,\"unit_price\":" + buy + "},\"sells\":{\"quantity\":2,\"unit_price\":9}}";
+    }
+
+    private void seedOldTp() throws Exception {
+        exec("INSERT INTO tp_tradeable_items (item_id) VALUES (1),(2)");
+        exec("INSERT INTO tp_prices (item_id, buy_quantity, buy_unit_price, sell_quantity, sell_unit_price, fetched_at) "
+                + "VALUES (1,1,111,1,111, now() - interval '1 day'),(2,1,222,1,222, now() - interval '1 day')");
+    }
+
+    @Test
+    void fullTp_omissionsMalformedDuplicateAndUnexpectedFailAndKeepOldQuotesUntouched() throws Exception {
+        seedOldTp();
+        String[] bad = {
+                "[]",                                                   // 200 omitting every requested id
+                "[" + quote(1, 5) + "]",                                // 200 omitting id 2
+                "[" + quote(1, 5) + "," + quote(1, 5) + "]",            // duplicate
+                "[" + quote(1, 5) + "," + quote(2, 5) + "," + quote(3, 5) + "]", // unexpected
+                "[" + quote(1, 5) + ",{\"id\":2,\"buys\":{\"quantity\":\"x\",\"unit_price\":1},\"sells\":{\"quantity\":1,\"unit_price\":1}}]",
+                "[" + quote(1, 5) + ",{\"id\":2,\"buys\":{\"quantity\":1,\"unit_price\":1}}]",   // one side only
+                "[" + quote(1, 5) + ",{\"buys\":null,\"sells\":null}]",
+                "{\"id\":1}",
+        };
+        for (String payload : bad) {
+            TpSync.upstream = scripted(200, payload, id -> { throw new AssertionError("no fallback on 200"); });
+            assertThrows(IllegalStateException.class, () -> TpSync.syncAllTradeablePrices(TaskDeadline.start()), payload);
+            assertEquals("111,222", scalar("SELECT string_agg(buy_unit_price::text, ',' ORDER BY item_id) FROM tp_prices"), payload);
+            assertEquals("2", scalar("SELECT count(*) FROM tp_prices WHERE fetched_at < now() - interval '1 hour'"), payload);
+        }
+    }
+
+    @Test
+    void fullTp_partialAndNotFoundFallbacksResolveEveryIdOrMarkItUnavailable() throws Exception {
+        seedOldTp();
+        // 206 returns id 1 only; id 2 resolves through the single fallback.
+        TpSync.upstream = scripted(206, "[" + quote(1, 5) + "]", id -> id == 2 ? quote(2, 6) : null);
+        TpSync.syncAllTradeablePrices(TaskDeadline.start());
+        assertEquals("5,6", scalar("SELECT string_agg(buy_unit_price::text, ',' ORDER BY item_id) FROM tp_prices"));
+        // 404 batch: id 1 single present, id 2 explicitly unavailable -> all-null row, old quote not kept as fresh.
+        TpSync.upstream = scripted(404, "[]", id -> id == 1 ? quote(1, 7) : null);
+        TpSync.syncAllTradeablePrices(TaskDeadline.start());
+        assertEquals("7", scalar("SELECT buy_unit_price FROM tp_prices WHERE item_id=1"));
+        assertNull(scalar("SELECT buy_unit_price FROM tp_prices WHERE item_id=2"));
+        assertEquals("0", scalar("SELECT count(*) FROM tp_prices WHERE fetched_at < now() - interval '1 hour'"));
+        // a fallback single response for the wrong id is rejected
+        seedFallbackWrongId();
+    }
+
+    private void seedFallbackWrongId() throws Exception {
+        TpSync.upstream = scripted(404, "[]", id -> quote(id + 100, 1));
+        assertThrows(IllegalStateException.class, () -> TpSync.syncAllTradeablePrices(TaskDeadline.start()));
+    }
+
+    // ------------------------------------------------------------------ resource evidence
+
+    /**
+     * Controlled multi-batch fixture (4000 items = 20 detail batches of 200). Heap and RSS are the
+     * workload-window peaks from the existing 20 ms {@link perf.ProcessProbe.PeakSampler} (a lower
+     * bound: a spike shorter than the interval can be missed; heap is shared with the whole test JVM,
+     * RSS is the process, so neither isolates this task). Database growth is the before/after total
+     * relation size of {@code items} only (side tables are not measured). No live API call; the upstream is an in-memory fake.
+     */
+    @Test
+    void resourceEvidence_recordsBoundsCardinalityRequestsElapsedPeakMemoryAndGrowth() throws Exception {
+        int n = 4000;
+        ItemSync.fetcher = url -> { urls.add(url); return url.endsWith("/v2/items") ? json(ids(1, n)) : itemsFor(url, "R"); };
+        long bytesBefore = Long.parseLong(scalar("SELECT pg_total_relation_size('items')"));
+        long t0 = System.nanoTime();
+        long heapPeak;
+        long rssPeak;
+        try (var heap = new perf.ProcessProbe.PeakSampler("heap", perf.ProcessProbe::heapUsedBytes, 20);
+             var rss = new perf.ProcessProbe.PeakSampler("rss", perf.ProcessProbe::rssBytes, 20)) {
+            ItemSync.syncAllItemsFull(TaskDeadline.start());
+            heapPeak = heap.peak();
+            rssPeak = rss.peak();
+        }
         long ms = (System.nanoTime() - t0) / 1_000_000;
-        long usedAfter = rt.totalMemory() - rt.freeMemory();
-        String bytes = scalar("SELECT pg_total_relation_size('items')");
-        System.out.printf("FULL-CATALOG-EVIDENCE bounds=connect %ds/request %ds/task %dmin; items fixture=%d ids, requests=%d, "
-                        + "elapsed=%d ms, heap delta=%d KiB (single sample, not a peak), items relation size=%s bytes%n",
+        long bytesAfter = Long.parseLong(scalar("SELECT pg_total_relation_size('items')"));
+        System.out.printf("FULL-CATALOG-EVIDENCE bounds=connect %ds/request %ds/task %dmin; items fixture=%d ids in %d detail batches, "
+                        + "requests=%d, elapsed=%d ms, peak heap=%d KiB, peak rss=%d KiB (20 ms workload-window samples, lower bound), "
+                        + "items relation size %d -> %d bytes (growth %d)%n",
                 TaskDeadline.CONNECT_SECONDS, TaskDeadline.REQUEST_SECONDS, TaskDeadline.TASK_MINUTES,
-                n, urls.size(), ms, (usedAfter - usedBefore) / 1024, bytes);
-        assertEquals(1 + 10, urls.size());
+                n, urls.size() - 1, urls.size(), ms, heapPeak / 1024, rssPeak / 1024, bytesBefore, bytesAfter, bytesAfter - bytesBefore);
+        assertEquals(1 + 20, urls.size());
         assertEquals(String.valueOf(n), scalar("SELECT count(*) FROM items"));
     }
 }

@@ -63,18 +63,33 @@ public final class TpSync {
      */
     public static void syncAllTradeablePrices(TaskDeadline deadline) throws Exception {
         Set<Integer> ids = new HashSet<>();
-        try (Connection con = Db.open();
-             PreparedStatement ps = con.prepareStatement("SELECT item_id FROM tp_tradeable_items");
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) ids.add(rs.getInt(1));
+        deadline.check();
+        try (Connection con = Db.open()) {
+            con.setAutoCommit(false);
+            try {
+                deadline.limitTransaction(con);
+                try (PreparedStatement ps = con.prepareStatement("SELECT item_id FROM tp_tradeable_items");
+                     ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) ids.add(rs.getInt(1));
+                }
+                con.commit();
+            } catch (Exception ex) {
+                con.rollback();
+                throw ex;
+            }
         }
+        deadline.check();
         if (ids.isEmpty()) {
             throw new IllegalStateException("tp_tradeable_items is empty; synchronize the tradeable catalog first");
         }
-        syncTpPrices(ids, deadline);
+        syncTpPrices(ids, deadline, true);
     }
 
     static void syncTpPrices(Set<Integer> itemIds, TaskDeadline deadline) throws Exception {
+        syncTpPrices(itemIds, deadline, false);
+    }
+
+    private static void syncTpPrices(Set<Integer> itemIds, TaskDeadline deadline, boolean strict) throws Exception {
 
         // NOTE (TP refresh scope):
         // This method intentionally refreshes TP prices only for items relevant to the current view
@@ -105,7 +120,7 @@ public final class TpSync {
             for (List<Integer> batch : BatchUtils.chunk(ids, SyncConstants.HTTP_IDS_BATCH)) {
 
                 deadline.check();
-                List<TpPrice> quotes = fetchTpBatchParsed(batch, deadline);
+                List<TpPrice> quotes = strict ? fetchTpBatchStrict(batch, deadline) : fetchTpBatchParsed(batch, deadline);
 
                 try {
                     deadline.check();
@@ -220,6 +235,69 @@ public final class TpSync {
         return out;
     }
 
+
+    /**
+     * Full-operation fetch: every requested ID ends resolved (a validated quote) or explicitly
+     * unavailable (404 batch or single fallback, stored as an all-null "no market data" row so the old
+     * quote is not kept as if refreshed). A 200 omission, duplicate, unexpected ID or malformed quote
+     * fails the run.
+     */
+    private static List<TpPrice> fetchTpBatchStrict(List<Integer> batch, TaskDeadline deadline) throws Exception {
+        TpPriceApi.BatchResult br = upstream.fetchBatch(batch, deadline);
+        Set<Integer> wanted = new HashSet<>(batch);
+        Map<Integer, TpPrice> resolved = new HashMap<>();
+        int status = br.statusCode();
+        if (status != 404) {
+            if (br.array() == null || !br.array().isArray()) {
+                throw new IllegalStateException("tp batch is not an array");
+            }
+            for (JsonNode p : br.array()) {
+                TpPrice q = strictQuote(p);
+                if (!wanted.contains(q.itemId())) throw new IllegalStateException("tp batch contains an unexpected id");
+                if (resolved.put(q.itemId(), q) != null) throw new IllegalStateException("tp batch contains a duplicate id");
+            }
+            if (status == 200 && resolved.size() != wanted.size()) {
+                throw new IllegalStateException("tp batch omitted requested ids");
+            }
+        }
+        for (int id : batch) {
+            if (resolved.containsKey(id)) continue;
+            deadline.check();
+            JsonNode one = upstream.fetchSingle(id, deadline);
+            if (one == null) {
+                resolved.put(id, TpPrice.noData(id));
+                continue;
+            }
+            TpPrice q = strictQuote(one);
+            if (q.itemId() != id) throw new IllegalStateException("tp single returned a different id");
+            resolved.put(id, q);
+        }
+        List<TpPrice> out = new ArrayList<>(batch.size());
+        for (int id : batch) out.add(resolved.get(id));
+        return out;
+    }
+
+    /** A quote needs a positive id and either both null sides or both well-formed non-negative sides. */
+    private static TpPrice strictQuote(JsonNode p) {
+        if (p == null || !p.isObject() || !p.has("id") || !p.get("id").isInt() || p.get("id").asInt() <= 0) {
+            throw new IllegalStateException("tp quote is malformed");
+        }
+        JsonNode buys = p.get("buys");
+        JsonNode sells = p.get("sells");
+        boolean noBuys = buys == null || buys.isNull();
+        boolean noSells = sells == null || sells.isNull();
+        if (noBuys && noSells) return TpPrice.noData(p.get("id").asInt());
+        if (!validSide(buys) || !validSide(sells)) throw new IllegalStateException("tp quote is malformed");
+        return new TpPrice(p.get("id").asInt(), buys.get("quantity").asLong(), buys.get("unit_price").asInt(),
+                sells.get("quantity").asLong(), sells.get("unit_price").asInt());
+    }
+
+    private static boolean validSide(JsonNode side) {
+        return side != null && side.isObject()
+                && side.path("quantity").canConvertToLong() && side.path("quantity").isIntegralNumber()
+                && side.get("quantity").asLong() >= 0
+                && side.path("unit_price").isInt() && side.get("unit_price").asInt() >= 0;
+    }
 
     private static void upsertTpRow(
             PreparedStatement ps,

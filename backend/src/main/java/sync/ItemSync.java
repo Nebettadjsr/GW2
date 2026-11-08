@@ -133,7 +133,8 @@ public final class ItemSync {
                 JsonNode root = fetcher.get("https://api.guildwars2.com/v2/items?ids=" + BatchUtils.idsParam(batch));
                 deadline.check();
                 List<ItemParser.ItemRow> rows =
-                        FullCatalogSupport.parseExact(root, batch, ItemParser::parse, ItemParser.ItemRow::itemId, "items");
+                        FullCatalogSupport.parseExact(root, batch,
+                                n -> ItemParser.parse(FullCatalogSupport.requireItem(n)), ItemParser.ItemRow::itemId, "items");
                 con.setAutoCommit(false);
                 try {
                     deadline.limitTransaction(con);
@@ -143,6 +144,8 @@ public final class ItemSync {
                         runTs = rs.getTimestamp(1);
                     }
                     upsertItems(con, rows, runTs);
+                    // Same validated payload: refresh only equipment projections that are already cached.
+                    EquipmentDetailsSync.refreshCached(con, root, runTs);
                     deadline.check();
                     con.commit();
                     deadline.check();

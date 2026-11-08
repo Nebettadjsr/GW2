@@ -127,7 +127,7 @@ public final class RecipeSync {
         List<Integer> ids = FullCatalogSupport.parseIdSnapshot(fetcher.get("https://api.guildwars2.com/v2/recipes"), "recipes");
         Set<Integer> remoteIds = new HashSet<>(ids);
 
-        markPublication(false);
+        markPublication(false, deadline);
 
         Set<Integer> neededItemIds = new HashSet<>();
         List<RecipeBatch> fetchedBatches = new ArrayList<>();
@@ -139,7 +139,8 @@ public final class RecipeSync {
                 JsonNode root = fetcher.get("https://api.guildwars2.com/v2/recipes?ids=" + BatchUtils.idsParam(batch));
                 deadline.check();
                 List<RecipeParser.RecipeRow> rows = FullCatalogSupport.parseExact(
-                        root, batch, RecipeParser::parseRecipe, RecipeParser.RecipeRow::recipeId, "recipes");
+                        root, batch, n -> RecipeParser.parseRecipe(FullCatalogSupport.requireRecipe(n)),
+                        RecipeParser.RecipeRow::recipeId, "recipes");
                 List<RecipeParser.IngredientRow> ingredientRows = new ArrayList<>();
                 for (JsonNode r : root) {
                     var ingredients = RecipeParser.parseIngredients(r);
@@ -173,7 +174,8 @@ public final class RecipeSync {
         deadline.check();
         removeDeletedRecipes(remoteIds, deadline);
         deadline.check();
-        markPublication(true);
+        markPublication(true, deadline);
+        deadline.check();
     }
 
     private static boolean isPublicationComplete() throws SQLException {
@@ -185,8 +187,33 @@ public final class RecipeSync {
     }
 
     private static void markPublication(boolean complete) throws SQLException {
-        try (Connection con = Db.open();
-             PreparedStatement ps = con.prepareStatement("""
+        try {
+            markPublication(complete, TaskDeadline.NONE);
+        } catch (InterruptedException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+    }
+
+    /** Publication flag write inside one transaction limited to the remaining task budget. */
+    private static void markPublication(boolean complete, TaskDeadline deadline)
+            throws SQLException, InterruptedException {
+        deadline.check();
+        try (Connection con = Db.open()) {
+            con.setAutoCommit(false);
+            try {
+                deadline.limitTransaction(con);
+                writePublication(con, complete);
+                deadline.check();
+                con.commit();
+            } catch (Exception ex) {
+                con.rollback();
+                throw ex;
+            }
+        }
+    }
+
+    private static void writePublication(Connection con, boolean complete) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("""
                      INSERT INTO recipe_catalog_publication (singleton, complete, updated_at)
                      VALUES (TRUE, ?, now())
                      ON CONFLICT (singleton) DO UPDATE SET complete = EXCLUDED.complete, updated_at = now()
@@ -197,6 +224,7 @@ public final class RecipeSync {
     }
 
     private static void removeDeletedRecipes(Set<Integer> remoteIds, TaskDeadline deadline) throws Exception {
+        deadline.check();
         try (Connection con = Db.open()) {
             con.setAutoCommit(false);
             deadline.limitTransaction(con);

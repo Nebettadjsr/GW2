@@ -34,8 +34,24 @@ public class FullCatalogAdministrationService {
         this.deadlines = deadlines;
     }
 
+    /**
+     * Full item refresh: after every item and cached equipment projection committed, the shared graph
+     * (which embeds item names under a count-only key) is invalidated and rebuilt. A failed rebuild
+     * leaves it invalidated.
+     */
     public void syncItems() throws Exception {
-        gateway.syncAllItems(deadlines.get());
+        TaskDeadline deadline = deadlines.get();
+        try {
+            gateway.syncAllItems(deadline);
+            deadline.check();
+            graph.invalidate();
+            deadline.check();
+            graph.rebuild();
+            deadline.check();
+        } catch (Exception | Error failure) {
+            graph.invalidate();
+            throw failure;
+        }
     }
 
     public void syncTradingPost() throws Exception {
@@ -50,6 +66,7 @@ public class FullCatalogAdministrationService {
             graph.invalidate();
             deadline.check();
             graph.rebuild();
+            deadline.check();
         } catch (Exception | Error failure) {
             graph.invalidate();
             throw failure;

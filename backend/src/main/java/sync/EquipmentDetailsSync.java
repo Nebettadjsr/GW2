@@ -161,4 +161,25 @@ public final class EquipmentDetailsSync {
             con.commit();
         }
     }
+
+    /**
+     * Full item refresh (STORY-STATUS-004): rewrites the slim projection of items that <em>already</em>
+     * have an {@code equipment_item_details} row from the same validated {@code /v2/items} payload, on
+     * the caller's transaction. Uncached items get no row, an unprojectable record leaves its old row,
+     * and {@code equipment_item_stats} is never touched.
+     */
+    static void refreshCached(Connection con, JsonNode itemsPayload, Timestamp ts) throws java.sql.SQLException {
+        try (PreparedStatement ps = con.prepareStatement(
+                "UPDATE equipment_item_details SET details = ?::jsonb, fetched_at = ? WHERE item_id = ?")) {
+            for (JsonNode n : itemsPayload) {
+                ObjectNode d = EquipmentDetailsParser.item(n);
+                if (d == null) continue;
+                ps.setString(1, d.toString());
+                ps.setTimestamp(2, ts);
+                ps.setInt(3, d.get("itemId").asInt());
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+    }
 }

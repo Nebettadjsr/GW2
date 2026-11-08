@@ -168,4 +168,40 @@ class FullCatalogAdminApiControllerTest {
         assertEquals(0, rebuilds.get());
         assertEquals(1, invalidations.get(), "stale relationships are not served after an aborted publication");
     }
+
+    @Test
+    void expiryDuringRebuildFailsAndLeavesGraphInvalidated_forRecipesAndItems() throws Exception {
+        for (boolean recipes : new boolean[] {true, false}) {
+            invalidations.set(0);
+            rebuilds.set(0);
+            var clock = new java.util.concurrent.atomic.AtomicLong();
+            var graph = new CraftingGraphRebuildService(null) {
+                @Override public void invalidate() { invalidations.incrementAndGet(); }
+                @Override public void rebuild() {
+                    rebuilds.incrementAndGet();
+                    clock.addAndGet(java.time.Duration.ofMinutes(31).toNanos()); // the rebuild overran the bound
+                }
+            };
+            var service = new FullCatalogAdministrationService(new FullCatalogGateway() {
+                @Override public void syncAllRecipes(TaskDeadline d) { }
+                @Override public void syncAllItems(TaskDeadline d) { }
+            }, graph, () -> TaskDeadline.after(TaskDeadline.TASK_BOUND, clock::get));
+            assertThrows(TaskDeadline.ExceededException.class, recipes ? service::syncRecipes : service::syncItems);
+            assertEquals(1, rebuilds.get());
+            assertEquals(2, invalidations.get(), "overrun rebuild result is discarded: graph invalidated, task FAILED");
+        }
+    }
+
+    @Test
+    void failedItemRebuildFailsAndLeavesGraphInvalidated() throws Exception {
+        var graph = new CraftingGraphRebuildService(null) {
+            @Override public void invalidate() { invalidations.incrementAndGet(); }
+            @Override public void rebuild() { throw new IllegalStateException("rebuild"); }
+        };
+        var service = new FullCatalogAdministrationService(new FullCatalogGateway() {
+            @Override public void syncAllItems(TaskDeadline d) { }
+        }, graph, TaskDeadline::start);
+        assertThrows(IllegalStateException.class, service::syncItems);
+        assertEquals(2, invalidations.get());
+    }
 }
