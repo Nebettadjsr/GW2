@@ -21,6 +21,18 @@ class EquipmentTotalsTest {
         assertEquals(1157, known.values().get("Power"));
         assertEquals(1108, known.values().get("Precision"));
         assertEquals(108, known.values().get("Ferocity"));
+    }
+
+    @Test
+    void intrinsicItemBonusesContributeOnceAndUnknownEffectsStayIncomplete() {
+        Gear back = new Gear(900, true, null, Map.of("Power", 63), 0,
+                List.of("+32 Condition Damage", "+18 Precision"), List.of(), null, true);
+        List<Slot> equipment = List.of(slot("Backpack", back), slot("WeaponA1", item(2, Map.of(), 0)));
+        var known = EquipmentTotals.compute("Necromancer", 80, equipment, List.of()).a();
+        assertTrue(known.complete(), known.warnings().toString());
+        assertEquals(1063, known.values().get("Power"));
+        assertEquals(32, known.values().get("ConditionDamage"));
+        assertEquals(1018, known.values().get("Precision"));
         Gear unsupported = new Gear(901, true, null, Map.of("Power", 63), 0,
                 List.of("Additional attributes depend on an unknown effect"), List.of(), null, true);
         var partial = EquipmentTotals.compute("Necromancer", 80,
