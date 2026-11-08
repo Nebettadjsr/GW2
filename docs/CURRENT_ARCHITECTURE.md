@@ -273,6 +273,8 @@ Pure `domain.EquipmentTotals` computes distinct level-80 land weapon-set base/eq
 
 ### Optional coverage
 
+The #166 pairing preview extends the shared build metadata with optional `display_details` JSONB (V12): specialization backgrounds, skill/trait descriptions and explicit effect facts. Null marks a legacy row for bounded repair; an empty object marks a completed fetch with no optional details. Missing display details do not hide previously resolved reference names or placement. Repair remains part of optional build synchronization; ordinary reads do not fetch upstream. The DTO supplies plain descriptions and formatted facts without invented damage totals. Images use the existing validated, content-keyed backend cache at `/api/resources/{type}/{id}/{image}/{key}.{ext}`, where `image` is `icon`, specialization-only `background`, or skill/trait `fact-N`. The browser uses only app-relative URLs.
+
 Optional `CHARACTER_EQUIPMENT_TABS` coverage over the published `CHARACTERS` roster. It is not part of the full, default, `CHARACTERS`, Profit or Luck source sets, and `CHARACTERS_READ` / ordinary `CHARACTERS` refresh still do not need `builds`.
 
 - **Refresh:** `POST /api/sync/account/character-equipment-tabs` (same origin, session, transient-key revalidation and task observation as the other keyed sync routes) demands only this source through the existing coordinator. A missing same-account `CHARACTERS` publication returns `409 PREREQUISITE_UNAVAILABLE` with no task and no tab fetch. The sync fetches `/v2/characters/{name}/equipmenttabs?tabs=all&v=2025-08-29T01:00:00.000Z` for every persisted character before one publication transaction that re-checks the `CHARACTERS` generation and records it as the covered parent generation.

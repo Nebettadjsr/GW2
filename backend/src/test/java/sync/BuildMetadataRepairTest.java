@@ -11,6 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import repo.CharacterBuildTabsRepository;
+import repo.BuildMetadataRepository;
 import repo.Db;
 import repo.EnvConfig;
 
@@ -129,6 +130,40 @@ class BuildMetadataRepairTest {
 
     private CharacterBuildTabsResponse body(CharacterBuildTabsService.Result r) {
         return CharacterBuildTabsResponse.respond(r).getBody();
+    }
+
+    @Test
+    void repairsMissingDisplayDetailsWithoutHidingPreviouslyResolvedReferencesOrChangingCoverage() throws Exception {
+        publishRoster(A, "Ana");
+        publishBuilds(A, A_ID);
+        FakeSource source = fullSource();
+        var specs = (com.fasterxml.jackson.databind.node.ArrayNode) M.readTree(source.bodies.get("specializations"));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) specs.get(0)).put("background", ICON);
+        source.bodies.put("specializations", specs.toString());
+        var traits = (com.fasterxml.jackson.databind.node.ArrayNode) M.readTree(source.bodies.get("traits"));
+        var first = (com.fasterxml.jackson.databind.node.ObjectNode) traits.get(0);
+        first.put("description", "<c=@reminder>Strike damage</c> is increased.");
+        first.set("facts", M.readTree("[{\"type\":\"Percent\",\"text\":\"Damage Increase\",\"percent\":3,\"icon\":\"" + ICON + "\"}]"));
+        source.bodies.put("traits", traits.toString());
+        var repair = new BuildMetadataRepair(source, NOW);
+        repair.repairStored(A);
+        var before = body(read(A, A_ID, "Ana"));
+        exec("UPDATE build_traits SET display_details = NULL WHERE trait_id = 701");
+        assertTrue(body(read(A, A_ID, "Ana")).tabs().get(0).specializations().get(0).minorTraits().get(0).resolved());
+        source.calls.clear();
+        repair.repairStored(A);
+        assertTrue(source.calls.stream().anyMatch(s -> s.startsWith("traits?701,")));
+        var after = body(read(A, A_ID, "Ana"));
+        assertEquals(before.builds(), after.builds());
+        assertEquals(before.coveredParentGeneration(), after.coveredParentGeneration());
+        var spec = after.tabs().get(0).specializations().get(0);
+        assertTrue(spec.specialization().backgroundUrl().startsWith("/api/resources/specializations/7/background/"));
+        assertEquals("Strike damage is increased.", spec.minorTraits().get(0).description());
+        assertEquals("3%", spec.minorTraits().get(0).facts().get(0).value());
+        var repository = new BuildMetadataRepository();
+        assertEquals(ICON, repository.findDetailImageSource(model.BuildResourceType.SPECIALIZATIONS, 7, "background").orElseThrow());
+        assertEquals(ICON, repository.findDetailImageSource(model.BuildResourceType.TRAITS, 701, "fact-0").orElseThrow());
+        assertTrue(repository.findDetailImageSource(model.BuildResourceType.TRAITS, 701, "fact-1").isEmpty());
     }
 
     @Test

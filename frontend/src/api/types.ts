@@ -694,12 +694,14 @@ export interface CharacterEquipmentTabsResponse {
 }
 
 /** Saved-build tabs read (`GET /api/account/characters/{name}/build-tabs`), mirroring CharacterBuildTabsResponse.java. */
-export interface BuildIdRef { id: number; resolved: boolean; name?: string; iconUrl?: string }
-export interface BuildSpecRef { id: number; resolved: boolean; name?: string; iconUrl?: string; profession?: string; elite?: boolean }
+export interface BuildFact { text: string; value?: string; iconUrl?: string }
+export interface BuildIdRef { id: number; resolved: boolean; name?: string; iconUrl?: string; description?: string; facts?: BuildFact[] }
+export interface BuildSpecRef { id: number; resolved: boolean; name?: string; iconUrl?: string; profession?: string; elite?: boolean; backgroundUrl?: string }
 export type BuildTraitPlacement = 'ORDINARY' | 'NONSTANDARD' | 'CONFLICT' | 'UNRESOLVED'
 export interface BuildTraitRef {
   id: number; resolved: boolean; name?: string; iconUrl?: string
   specializationId?: number; tier?: number; order?: number; slot?: string; placement: BuildTraitPlacement
+  description?: string; facts?: BuildFact[]
 }
 export interface BuildLegendRef { id: string; resolved: boolean; swapSkill?: BuildIdRef }
 export interface BuildSpecialization {

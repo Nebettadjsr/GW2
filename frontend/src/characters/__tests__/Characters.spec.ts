@@ -899,7 +899,9 @@ describe('Character inventory section', () => {
 
 describe('Builds section', () => {
   const trait = (id: number, slot: 'Minor' | 'Major', tier: number, order: number, placement = 'ORDINARY') =>
-    ({ id, resolved: true, name: `T${id}`, iconUrl: `/i/${id}.png`, specializationId: 62, tier, order, slot, placement }) as never
+    ({ id, resolved: true, name: `T${id}`, iconUrl: `/i/${id}.png`, specializationId: 62, tier, order, slot, placement,
+      description: id === 12 ? 'Your strike damage is increased.' : undefined,
+      facts: id === 12 ? [{ text: 'Damage Increase', value: '3%', iconUrl: '/fact/12.png' }] : undefined }) as never
   const richBuilds: CharacterBuildTabsResponse = { ...buildsResponse, tabs: [
     { tab: 1, active: false, specializations: [{ specialization: { id: 1, resolved: true, name: 'Zeal', profession: 'Guardian', elite: false }, traits: [null, null, null] }] },
     { tab: 2, active: true, profession: 'Guardian',
@@ -931,7 +933,7 @@ describe('Builds section', () => {
     expect(w.findAll('[data-test="build-tab"]').map((t) => t.text())).toEqual(['1', '2●'])
     expect(w.find('.character-navigation [data-test="build-tablist"]').exists()).toBe(true)
     expect(w.find('[data-test="builds-completed"]').exists()).toBe(false)
-    expect(w.find('[data-test="build-active-badge"]').exists()).toBe(true)
+    expect(w.findAll('[data-test="build-tab-active"]')).toHaveLength(1)
     expect(w.find('[data-test="build-tab"][aria-selected="true"]').text()).toContain('2')
   })
 
@@ -951,16 +953,23 @@ describe('Builds section', () => {
     await w.find('[data-test="section-builds"]').trigger('click'); await flushPromises()
     const rows = w.findAll('[data-test="trait-row"]')
     expect(rows).toHaveLength(1)
-    expect(rows[0]!.findAll('[data-test="trait"]').map((t) => t.attributes('title'))).toEqual(['T10', 'T11', 'T12', 'T13'])
+    expect(rows[0]!.findAll('[data-test="trait"]').map((t) => t.attributes('aria-label'))).toEqual(['T10, minor', 'T11, major', 'T12, major, selected', 'T13, major'])
     const selected = rows[0]!.findAll('.trait--selected')
-    expect(selected).toHaveLength(1); expect(selected[0]!.attributes('title')).toBe('T12')
+    expect(selected).toHaveLength(1); expect(selected[0]!.attributes('aria-current')).toBe('true')
     expect(w.find('[data-test="trait-unplaced"]').text()).toContain('T99')
     expect(w.find('[data-test="trait-unplaced"]').text()).not.toContain('(conflict)')
-    expect(w.find('[data-test="skills-land"]').text()).toContain('Heal')
-    expect(w.find('[data-test="skills-land"]').text()).toContain('Skill #2 (details unavailable)')
-    expect(w.find('[data-test="skills-aquatic"]').text()).toContain('No Skill saved')
+    expect(w.find('[data-test="skills-land"]').findAll('[data-test="skill"]')).toHaveLength(5)
+    expect(w.find('[data-test="skills-land"]').findAll('[data-test="skill"]')[1]!.attributes('aria-label')).toContain('Skill #2 (details unavailable)')
+    expect(w.find('[data-test="skills-aquatic"]').find('[data-test="skill"]').attributes('aria-label')).toContain('No Skill saved')
     expect(w.find('[data-test="build-legends"]').text()).toContain('Legend Legend1 (details unavailable)')
     expect(w.find('[data-test="build-pets"]').text()).toContain('Jacaranda')
+    expect(w.find('[data-test="skills-land"]').text()).not.toContain('Heal')
+    await selected[0]!.trigger('focus'); await flushPromises()
+    const tooltip = document.querySelector('[role="tooltip"]')!
+    expect(tooltip.textContent).toContain('Your strike damage is increased.')
+    expect(tooltip.textContent).toContain('Damage Increase: 3%')
+    await selected[0]!.trigger('keydown', { key: 'Escape' }); await flushPromises()
+    expect(document.querySelector('[role="tooltip"]')).toBeNull()
   })
 
   it('arrow/Home/End move between build tabs with roving tabindex', async () => {

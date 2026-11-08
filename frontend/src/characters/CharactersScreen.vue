@@ -368,7 +368,8 @@ const inventoryProblem = computed(() => {
 .roster__item::after { content: ''; position: absolute; inset: 0; z-index: 1; }
 .roster__name { display: flex; align-items: center; gap: 8px; font-size: var(--text-lg); line-height: 1.3; }
 .roster__name img { flex-shrink: 0; }
-.character-navigation { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 12px 0 8px; border-bottom: 1px solid var(--border, #888); }
+.character-navigation { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; margin: 12px 0 8px; border-bottom: 1px solid var(--border, #888); }
+.character-navigation :deep(.equipment-selector) { margin-left: auto; }
 .sections { display: flex; align-self: stretch; gap: 2px; }
 .sections button.sections__tab--selected { font-weight: 700; background: var(--color-raised); }
 .sections button { border: 1px solid var(--border, #888); border-bottom: 0; background: transparent; padding: 6px 12px; cursor: pointer; }

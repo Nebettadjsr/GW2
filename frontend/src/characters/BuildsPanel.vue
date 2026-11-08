@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { BuildIdRef, BuildLegendRef, BuildSkills, BuildSpecialization, BuildTab, BuildTraitRef } from '@/api/types'
+import BuildReferenceTile from './BuildReferenceTile.vue'
 
 /**
  * Read-only saved build tabs (STORY-CHAR-010). Tabs follow the backend's numeric order; the build the
@@ -20,7 +21,7 @@ const legendLabel = (l: BuildLegendRef | null): string =>
 
 function groups(s: BuildSkills | undefined): Array<{ key: string; kind: string; ref: BuildIdRef | null }> {
   if (!s) return []
-  return [{ key: 'heal', kind: 'Heal', ref: s.heal }, ...(s.utilities ?? []).map((u, i) => ({ key: `utility-${i}`, kind: 'Utility', ref: u })),
+  return [{ key: 'heal', kind: 'Heal', ref: s.heal }, ...Array.from({ length: 3 }, (_, i) => ({ key: `utility-${i}`, kind: 'Utility', ref: s.utilities?.[i] ?? null })),
     { key: 'elite', kind: 'Elite', ref: s.elite }]
 }
 
@@ -57,29 +58,44 @@ function unshownSelected(spec: BuildSpecialization): BuildTraitRef[] {
 <template>
   <div class="builds" data-test="builds-panel">
     <section v-if="shown" id="build-tabpanel" role="tabpanel" :aria-labelledby="`build-tab-${shown.tab}`" class="build" data-test="build-view">
-      <h3 class="build__title" data-test="build-title">{{ tabName(shown) }}
-        <span v-if="shown.profession" class="meta" data-test="build-profession">{{ shown.profession }}</span>
-        <span v-if="shown.active" class="build__badge" data-test="build-active-badge">In use in game</span>
-      </h3>
+      <h3 class="sr-only" data-test="build-title">{{ tabName(shown) }}</h3>
 
+      <div class="build__skills">
+        <h3 class="build__heading">Skills</h3>
+        <div v-for="g in [{ id: 'land', label: 'Land skills', s: shown.skills }, { id: 'aquatic', label: 'Aquatic skills', s: shown.aquaticSkills }]" :key="g.id"
+          class="skills-row" :aria-label="g.label" :data-test="`skills-${g.id}`">
+          <span class="skills-row__environment" :class="`skills-row__environment--${g.id}`" :title="g.label" aria-hidden="true">
+            <svg v-if="g.id === 'land'" viewBox="0 0 32 32"><path d="m5 24 6-12 4 5 5-11 8 18z" fill="currentColor" /><path d="m17 12 3-6 4 10-4-3-2 2z" fill="#d9cfab" /></svg>
+            <svg v-else viewBox="0 0 32 32"><path d="M16 3C13 10 6 16 6 22a10 10 0 0 0 20 0c0-6-7-12-10-19z" fill="currentColor" /><path d="M10 21c0 5 3 7 6 7" fill="none" stroke="#b4d9ef" stroke-width="2" /></svg>
+          </span>
+          <ul v-if="g.s" class="skills">
+            <li v-for="x in groups(g.s)" :key="x.key" :class="{ 'skill--separated': x.key === 'heal' || x.key === 'elite' }">
+              <BuildReferenceTile :reference="x.ref" :label="`${x.kind}: ${refLabel(x.ref, 'Skill')}`" class="skill" data-test="skill" />
+            </li>
+          </ul>
+          <p v-else class="meta">No skills saved.</p>
+        </div>
+      </div>
+
+      <h3 class="build__heading build__heading--traits">Traits</h3>
       <div class="build__specs" data-test="build-specializations">
-        <article v-for="(spec, i) in shown.specializations" :key="i" class="spec" data-test="build-spec">
+        <article v-for="(spec, i) in shown.specializations" :key="i" class="spec" :aria-label="specLabel(spec)" data-test="build-spec">
+          <img v-if="spec.specialization?.backgroundUrl" :src="spec.specialization.backgroundUrl" alt="" class="spec__art" />
           <header class="spec__head">
-            <img v-if="spec.specialization?.iconUrl" :src="spec.specialization.iconUrl" width="32" height="32" alt="" />
-            <strong data-test="build-spec-name">{{ specLabel(spec) }}</strong>
-            <span v-if="spec.specialization?.elite" class="meta">Elite</span>
+            <img v-if="spec.specialization?.iconUrl" :src="spec.specialization.iconUrl" :title="specLabel(spec)" alt="" class="spec__emblem" />
+            <strong :class="{ 'sr-only': spec.specialization?.iconUrl }" data-test="build-spec-name">{{ specLabel(spec) }}</strong>
           </header>
+          <div class="spec__choices">
           <template v-if="spec.minorTraits || spec.majorTraits">
             <div v-for="row in layout(spec).rows" :key="row.tier" class="trait-row" :data-tier="row.tier" data-test="trait-row">
-              <span v-for="t in row.minor" :key="t.id" class="trait trait--minor" :class="{ 'trait--selected': selectedIds(spec).has(t.id) }"
-                :title="traitLabel(t)" :aria-label="`${traitLabel(t)}, minor${selectedIds(spec).has(t.id) ? ', selected' : ''}`" tabindex="0" data-test="trait">
-                <img v-if="t.iconUrl" :src="t.iconUrl" width="32" height="32" alt="" /><span v-else aria-hidden="true">?</span>
-              </span>
-              <span v-for="t in row.major" :key="t.id" class="trait trait--major" :class="{ 'trait--selected': selectedIds(spec).has(t.id) }"
-                :title="traitLabel(t)" :aria-label="`${traitLabel(t)}, major${selectedIds(spec).has(t.id) ? ', selected' : ''}`"
-                :aria-current="selectedIds(spec).has(t.id) ? 'true' : undefined" tabindex="0" data-test="trait">
-                <img v-if="t.iconUrl" :src="t.iconUrl" width="32" height="32" alt="" /><span v-else aria-hidden="true">?</span>
-              </span>
+              <div class="trait-minors">
+                <BuildReferenceTile v-for="t in row.minor" :key="t.id" :reference="t" :label="`${traitLabel(t)}, minor`" class="trait trait--minor" data-test="trait" />
+              </div>
+              <div class="trait-majors">
+                <BuildReferenceTile v-for="t in row.major" :key="t.id" :reference="t" :selected="selectedIds(spec).has(t.id)"
+                  :label="`${traitLabel(t)}, major${selectedIds(spec).has(t.id) ? ', selected' : ''}`" class="trait trait--major"
+                  :class="{ 'trait--selected': selectedIds(spec).has(t.id) }" :style="{ gridRow: t.order! + 1 }" data-test="trait" />
+              </div>
             </div>
             <ul v-if="layout(spec).other.length" class="spec__other meta" aria-label="Choices without a known position" data-test="trait-unplaced">
               <li v-for="t in layout(spec).other" :key="t.id" :class="{ 'trait--selected-text': selectedIds(spec).has(t.id) }">
@@ -91,23 +107,9 @@ function unshownSelected(spec: BuildSpecialization): BuildTraitRef[] {
             <li v-for="t in unshownSelected(spec)" :key="t.id">{{ traitLabel(t) }} · selected<template v-if="!(spec.minorTraits || spec.majorTraits)"> (choices not available)</template></li>
           </ul>
           <p v-if="!spec.traits" class="meta" data-test="trait-none">No traits saved.</p>
+          </div>
         </article>
         <p v-if="shown.specializations.length === 0" class="meta" data-test="build-no-specs">No specializations saved.</p>
-      </div>
-
-      <div class="build__skills">
-        <div v-for="g in [{ id: 'land', label: 'Land skills', s: shown.skills }, { id: 'aquatic', label: 'Aquatic skills', s: shown.aquaticSkills }]" :key="g.id"
-          :data-test="`skills-${g.id}`">
-          <h4>{{ g.label }}</h4>
-          <ul v-if="g.s" class="skills">
-            <li v-for="x in groups(g.s)" :key="x.key" :title="refLabel(x.ref, x.kind)" data-test="skill">
-              <img v-if="x.ref?.iconUrl" :src="x.ref.iconUrl" width="32" height="32" alt="" />
-              <span v-else class="skill__blank" aria-hidden="true">?</span>
-              <span class="meta">{{ x.kind }}: {{ refLabel(x.ref, 'Skill') }}</span>
-            </li>
-          </ul>
-          <p v-else class="meta">Not saved for this build.</p>
-        </div>
       </div>
 
       <div v-if="shown.legends || shown.aquaticLegends" class="build__facts" data-test="build-legends">
@@ -125,22 +127,54 @@ function unshownSelected(spec: BuildSpecialization): BuildTraitRef[] {
 </template>
 
 <style scoped>
-.builds { display: flex; flex-direction: column; gap: 14px; }
-.trait:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
-.build__title { margin: 0; display: flex; gap: 10px; align-items: baseline; }
-.build__badge { color: #dfbc6c; font-size: .8rem; }
-.build__specs { display: flex; flex-wrap: wrap; gap: 16px; }
-.spec { min-width: 240px; padding: 10px; border: 1px solid var(--color-border); border-radius: 6px; display: flex; flex-direction: column; gap: 8px; }
-.spec__head { display: flex; align-items: center; gap: 8px; }
-.trait-row { display: flex; align-items: center; gap: 10px; }
-.trait { width: 36px; height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--color-border); border-radius: 50%; opacity: .55; }
-.trait--major { border-radius: 4px; }
-.trait--selected { opacity: 1; border: 2px solid #dfbc6c; box-shadow: 0 0 6px #dfbc6c; }
+.builds { width: min(100%, 950px); margin-inline: auto; }
+.build__heading { margin: 0 0 16px; font-size: 1.5rem; }
+.build__heading--traits { margin-top: 32px; }
+.build__specs { display: flex; flex-direction: column; gap: 14px; }
+.spec { position: relative; isolation: isolate; display: grid; grid-template-columns: 27% 1fr; min-height: 206px; box-sizing: border-box; padding: 12px 8%; background: #0a1010; border: 1px solid #23312e; overflow: hidden; }
+.spec__art { position: absolute; z-index: -1; bottom: 0; left: 0; width: 158%; height: 124%; max-width: none; pointer-events: none; }
+.spec__head { display: flex; align-items: center; justify-content: flex-start; }
+.spec__emblem { width: 160px; max-width: 95%; height: auto; filter: drop-shadow(0 4px 3px #0009); }
+.spec__choices { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.trait-row { display: grid; grid-template-columns: 1fr 1fr; align-items: center; flex: 1; min-width: 0; gap: 10px; }
+.trait-minors { display: flex; align-items: center; justify-content: center; }
+.trait-majors { display: grid; grid-template-rows: repeat(3, 52px); gap: 8px; justify-items: center; }
+.trait { width: 52px; height: 52px; }
+.trait--minor { clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 75%, 75% 100%, 25% 100%, 0 75%, 0 25%); background: #051007; }
+.trait--major { border: 1px solid #1d3726; background: #051007; opacity: .3; }
+.trait--selected { opacity: 1; border: 1px solid #102518; box-shadow: 0 0 3px #000; }
+.trait:hover, .trait:focus-visible { opacity: 1; }
 .trait--selected-text { color: #dfbc6c; }
-.spec__other { margin: 0; padding-left: 18px; }
-.build__skills { display: flex; flex-wrap: wrap; gap: 24px; }
+.spec__other { flex-basis: 100%; margin: 0; padding-left: 18px; background: #000b; }
+.build__skills { display: flex; flex-direction: column; gap: 16px; padding-top: 18px; }
+.build__skills .build__heading { margin-bottom: 0; }
 .build h4 { margin: 0 0 6px; }
-.skills { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
-.skills li { display: flex; align-items: center; gap: 6px; }
-.skill__blank { width: 32px; height: 32px; border: 1px dashed var(--color-border); display: inline-flex; align-items: center; justify-content: center; }
+.skills-row { display: flex; align-items: center; gap: 20px; }
+.skills-row__environment { display: inline-flex; flex: 0 0 36px; width: 36px; height: 36px; border: 1px solid #948f78; background: linear-gradient(140deg, #937543, #2f2519); color: #3f291c; }
+.skills-row__environment--aquatic { color: #0d3449; background: linear-gradient(140deg, #a1bedc, #334766); border-color: #7b98b8; }
+.skills-row__environment svg { width: 100%; height: 100%; }
+.skills { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; }
+.skills li { display: flex; }
+.skills li:first-child { margin-right: 8px; }
+.skills li:last-child { margin-left: 8px; }
+.skill { width: 60px; height: 60px; padding: 5px; border: 2px solid #c5c9c9; background: #070a0b; }
+.build__facts { margin-top: 24px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (max-width: 720px) {
+  .spec { padding: 10px 2%; grid-template-columns: 23% 1fr; min-height: 162px; }
+  .trait { width: 38px; height: 38px; }
+  .trait-row { gap: 3px; }
+  .trait-majors { grid-template-rows: repeat(3, 38px); gap: 6px; }
+}
+@media (max-width: 460px) {
+  .spec { padding: 8px 1%; grid-template-columns: 20% 1fr; min-height: 134px; }
+  .trait { width: 29px; height: 29px; }
+  .trait-majors { grid-template-rows: repeat(3, 29px); gap: 5px; }
+  .skills-row { gap: 10px; }
+  .skills-row__environment { flex-basis: 26px; width: 26px; height: 26px; }
+  .skill { width: 44px; height: 44px; padding: 3px; }
+  .skills { gap: 4px; }
+  .skills li:first-child { margin-right: 3px; }
+  .skills li:last-child { margin-left: 3px; }
+}
 </style>
