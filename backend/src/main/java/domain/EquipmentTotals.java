@@ -41,7 +41,8 @@ public final class EquipmentTotals {
 
     public record Slot(String slot, Gear item, List<Gear> upgrades, List<Gear> infusions) {}
 
-    public record SetResult(boolean available, boolean complete, Map<String, Integer> values, List<String> warnings) {}
+    /** {@code values}: gear stats are exact integers; derived percentages are doubles rounded to 2 decimals. */
+    public record SetResult(boolean available, boolean complete, Map<String, Number> values, List<String> warnings) {}
 
     public record Result(SetResult a, SetResult b) {}
 
@@ -66,9 +67,16 @@ public final class EquipmentTotals {
     private static final Pattern FLAT = Pattern.compile(
             "^\\+(\\d{1,5}) (Power|Precision|Toughness|Vitality|Ferocity|Condition Damage|Expertise|Concentration|"
                     + "Healing Power|Agony Resistance)\\.?$");
-    private static final Pattern PERCENT = Pattern.compile("^\\+(\\d{1,3})% (Boon|Condition) Duration\\.?$");
-    private static final Pattern CORE = Pattern.compile("^Increases (vitality) by (\\d{1,4})\\.?$",
+    private static final Pattern PERCENT = Pattern.compile(
+            "^\\+(\\d{1,3})% (Boon Duration|Condition Duration|Critical Chance)\\.?$");
+    /** First sentence carries the number; the only other sentence allowed is the known requirement text. */
+    private static final Pattern CORE = Pattern.compile(
+            "^Increases (vitality) by (\\d{1,4})\\.(?:\\s+Required to equip [A-Za-z ]{1,60}\\.)?$",
             Pattern.CASE_INSENSITIVE);
+    /** Words of dynamic (on-hit, timed, stacking, conditional) effects, which are not modelled. */
+    private static final Pattern DYNAMIC = Pattern.compile(
+            "(?i)\\b(chance|when|on|upon|while|after|each|per|stack|stacks|seconds|gain|gains|grant|grants|"
+                    + "trigger|triggers|if|against|every|cooldown)\\b");
 
     /** Parses one bounded, unconditional bonus line into {@code values} (percent durations under the *Duration keys). */
     static boolean parseLine(String line, Map<String, Integer> flat, Map<String, Integer> percent) {
@@ -82,8 +90,7 @@ public final class EquipmentTotals {
         }
         m = PERCENT.matcher(t);
         if (m.matches()) {
-            percent.merge(m.group(2).equals("Boon") ? "BoonDuration" : "ConditionDuration",
-                    Integer.parseInt(m.group(1)), Integer::sum);
+            percent.merge(m.group(2).replace(" ", ""), Integer.parseInt(m.group(1)), Integer::sum);
             return true;
         }
         return false;
@@ -95,6 +102,15 @@ public final class EquipmentTotals {
         Matcher m = CORE.matcher(description.strip());
         return m.matches() ? Integer.parseInt(m.group(2)) : null;
     }
+
+    /** Derived attributes of a shared PowerCore from its description; null for other slots or unsupported text. */
+    public static Map<String, Integer> coreAttributes(String slot, String description) {
+        if (!"PowerCore".equals(slot)) return null;
+        Integer v = coreVitality(description);
+        return v == null ? null : Map.of("Vitality", v);
+    }
+
+    private static double round2(double v) { return Math.round(v * 100.0) / 100.0; }
 
     private static SetResult set(String set, String profession, Integer level, List<Slot> tab, List<Slot> shared) {
         String w1 = "Weapon" + set + "1", w2 = "Weapon" + set + "2";
@@ -117,6 +133,7 @@ public final class EquipmentTotals {
         int defense = 0;
         Map<Integer, Integer> runeCounts = new LinkedHashMap<>();
         Map<Integer, Gear> runes = new LinkedHashMap<>();
+        Set<Integer> sigils = new LinkedHashSet<>();
         Set<String> seen = new LinkedHashSet<>();
         List<Slot> used = new ArrayList<>();
         for (Slot s : tab) {
@@ -144,7 +161,7 @@ public final class EquipmentTotals {
             } else {
                 if (!item.statsResolved()) { complete = false; warnings.add("Stats of the " + s.slot() + " item are unresolved"); }
                 if (!add(item.attributes(), flat)) { complete = false; warnings.add(s.slot() + " has an unknown attribute"); }
-                if (ARMOR_SLOTS.contains(s.slot())) defense += item.defense();
+                if (ARMOR_SLOTS.contains(s.slot()) || "Shield".equals(item.subtype())) defense += item.defense();
             }
             List<Gear> ups = new ArrayList<>(s.upgrades());
             ups.addAll(s.infusions());
@@ -161,7 +178,15 @@ public final class EquipmentTotals {
                     }
                     continue;
                 }
-                if ("Sigil".equals(u.subtype())) continue; // dynamic effects are not modelled
+                if ("Sigil".equals(u.subtype())) {
+                    if (!sigils.add(u.itemId())) continue; // a unique sigil never stacks with itself
+                    if (!add(u.attributes(), flat)) { complete = false; warnings.add("Unknown attribute in a sigil of " + s.slot()); }
+                    for (String line : u.effects()) {
+                        if (parseLine(line, flat, percent) || DYNAMIC.matcher(line).find()) continue;
+                        if (line.matches(".*\\d.*")) { complete = false; warnings.add("Unsupported sigil effect: " + line); }
+                    }
+                    continue;
+                }
                 if (!add(u.attributes(), flat)) { complete = false; warnings.add("Unknown attribute in an upgrade of " + s.slot()); }
                 if (u.attributes().isEmpty() && !u.effects().isEmpty()) {
                     for (String line : u.effects()) {
@@ -179,7 +204,7 @@ public final class EquipmentTotals {
                 }
             }
         }
-        Map<String, Integer> out = new LinkedHashMap<>();
+        Map<String, Number> out = new LinkedHashMap<>();
         int vit = flat.getOrDefault("Vitality", 0), prec = flat.getOrDefault("Precision", 0);
         int fer = flat.getOrDefault("Ferocity", 0), conc = flat.getOrDefault("Concentration", 0);
         int exp = flat.getOrDefault("Expertise", 0);
@@ -189,14 +214,14 @@ public final class EquipmentTotals {
         out.put("Vitality", vit);
         out.put("Health", baseHealth + 10 * vit);
         out.put("Precision", prec);
-        out.put("CriticalChance", (int) Math.round(5 + (prec - 1000) / 21.0));
+        out.put("CriticalChance", round2(5 + (prec - 1000) / 21.0 + percent.getOrDefault("CriticalChance", 0)));
         out.put("Ferocity", fer);
-        out.put("CriticalDamage", (int) Math.round(150 + fer / 15.0));
+        out.put("CriticalDamage", round2(150 + fer / 15.0));
         out.put("ConditionDamage", flat.getOrDefault("ConditionDamage", 0));
         out.put("Expertise", exp);
-        out.put("ConditionDuration", (int) Math.round(exp / 15.0) + percent.getOrDefault("ConditionDuration", 0));
+        out.put("ConditionDuration", round2(exp / 15.0 + percent.getOrDefault("ConditionDuration", 0)));
         out.put("Concentration", conc);
-        out.put("BoonDuration", (int) Math.round(conc / 15.0) + percent.getOrDefault("BoonDuration", 0));
+        out.put("BoonDuration", round2(conc / 15.0 + percent.getOrDefault("BoonDuration", 0)));
         out.put("HealingPower", flat.getOrDefault("HealingPower", 0));
         out.put("AgonyResistance", flat.getOrDefault("AgonyResistance", 0));
         return new SetResult(true, complete, out, warnings);

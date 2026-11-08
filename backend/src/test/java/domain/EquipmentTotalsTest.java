@@ -59,14 +59,64 @@ class EquipmentTotalsTest {
 
     @Test
     void powerCoreDescriptionAndPercentDurationAreBounded() {
-        Gear core = new Gear(96628, true, null, Map.of(), 0, List.of(), List.of(), "Increases vitality by 145.", true);
+        Gear core = new Gear(96628, true, null, Map.of(), 0, List.of(), List.of(), "Increases vitality by 145. Required to equip jade bot sensory arrays.", true);
         Gear inf = new Gear(9, true, null, Map.of(), 0, List.of("+10% Boon Duration"), List.of(), null, true);
         List<Slot> tab = List.of(new Slot("WeaponA1", item(2, Map.of("Concentration", 150), 0), List.of(inf), List.of()));
         var a = EquipmentTotals.compute("Ranger", 80, tab, List.of(slot("PowerCore", core))).a();
         assertTrue(a.complete(), a.warnings().toString());
         assertEquals(1145, a.values().get("Vitality"));
-        assertEquals(10 + 10, a.values().get("BoonDuration"));
+        assertEquals(20.0, a.values().get("BoonDuration"));
         Gear odd = new Gear(96628, true, null, Map.of(), 0, List.of(), List.of(), "Increases vitality by lots", true);
         assertFalse(EquipmentTotals.compute("Ranger", 80, tab, List.of(slot("PowerCore", odd))).a().complete());
+    }
+
+    @Test
+    void fractionalPercentagesKeepTwoDecimals() {
+        List<Slot> tab = List.of(new Slot("WeaponA1", item(2, Map.of("Precision", 100, "Ferocity", 400,
+                "Concentration", 100, "Expertise", 359), 0), List.of(), List.of()));
+        var v = EquipmentTotals.compute("Ranger", 80, tab, List.of()).a().values();
+        assertEquals(9.76, v.get("CriticalChance"));
+        assertEquals(176.67, v.get("CriticalDamage"));
+        assertEquals(6.67, v.get("BoonDuration"));
+        assertEquals(23.93, v.get("ConditionDuration"));
+        assertEquals(1100, v.get("Precision"));
+    }
+
+    @Test
+    void powerCoreDerivedAttributesAndMalformedNumbers() {
+        String live = "Increases vitality by 145. Required to equip jade bot sensory arrays.";
+        assertEquals(Map.of("Vitality", 145), EquipmentTotals.coreAttributes("PowerCore", live));
+        assertNull(EquipmentTotals.coreAttributes("PowerCore", "Increases vitality by 14x. Required to equip."));
+        assertNull(EquipmentTotals.coreAttributes("PowerCore", "Increases vitality by 145. Also +999 Power."));
+        assertNull(EquipmentTotals.coreAttributes("Sickle", live));
+    }
+
+    @Test
+    void shieldInSelectedSetAddsDefenseButInactiveShieldDoesNot() {
+        Gear shield = new Gear(3, true, "Shield", Map.of("Power", 5), 120, List.of(), List.of(), null, true);
+        List<Slot> tab = List.of(slot("Helm", item(1, Map.of(), 10)), slot("WeaponA1", item(2, Map.of(), 0)),
+                slot("WeaponA2", shield), slot("WeaponB1", item(4, Map.of(), 0)));
+        var r = EquipmentTotals.compute("Guardian", 80, tab, List.of());
+        assertEquals(1000 + 10 + 120, r.a().values().get("Armor"));
+        assertEquals(1010, r.b().values().get("Armor"));
+    }
+
+    @Test
+    void staticSigilEffectsCountOnceAndDynamicOrUnknownAreHonest() {
+        Gear conc = new Gear(72339, true, "Sigil", Map.of(), 0, List.of("+10% Boon Duration"), List.of(), null, true);
+        Gear acc = new Gear(9, true, "Sigil", Map.of(), 0, List.of("+7% Critical Chance"), List.of(), null, true);
+        Gear dyn = new Gear(10, true, "Sigil", Map.of(), 0, List.of("10% chance on critical to gain 5 might for 10 seconds"),
+                List.of(), null, true);
+        List<Slot> tab = List.of(
+                new Slot("WeaponA1", item(2, Map.of(), 0), List.of(conc, acc, dyn), List.of()),
+                new Slot("WeaponA2", item(3, Map.of(), 0), List.of(conc), List.of()));
+        var a = EquipmentTotals.compute("Thief", 80, tab, List.of()).a();
+        assertTrue(a.complete(), a.warnings().toString());
+        assertEquals(10.0, a.values().get("BoonDuration"), "duplicate sigil does not stack");
+        assertEquals(12.0, a.values().get("CriticalChance"));
+        Gear odd = new Gear(11, true, "Sigil", Map.of(), 0, List.of("+5% Strike Damage"), List.of(), null, true);
+        var w = EquipmentTotals.compute("Thief", 80,
+                List.of(new Slot("WeaponA1", item(2, Map.of(), 0), List.of(odd), List.of())), List.of()).a();
+        assertFalse(w.complete());
     }
 }

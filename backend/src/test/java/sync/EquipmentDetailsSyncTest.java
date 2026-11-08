@@ -131,14 +131,14 @@ class EquipmentDetailsSyncTest {
               {"id":500,"slot":"WeaponA1"},{"id":600,"slot":"WeaponB1"}]}]""";
 
     private static final String ITEMS = """
-            [{"id":100,"description":"<c=@flavor>Nice</c>","level":80,"details":{"weight_class":"Heavy","defense":50,
+            [{"id":100,"type":"Armor","description":"<c=@flavor>Nice</c>","level":80,"details":{"weight_class":"Heavy","type":"Helm","defense":50,
                "infix_upgrade":{"id":161,"attributes":[{"attribute":"Power","modifier":99}]}}},
-             {"id":200,"details":{"defense":30,"attribute_adjustment":100,"infix_upgrade":{"id":162,"attributes":[]}}},
-             {"id":500,"details":{"type":"Sword","min_power":900,"max_power":1000,
+             {"id":200,"type":"Armor","details":{"weight_class":"Heavy","type":"Boots","defense":30,"attribute_adjustment":100,"infix_upgrade":{"id":162,"attributes":[]}}},
+             {"id":500,"type":"Weapon","details":{"type":"Sword","min_power":900,"max_power":1000,
                "infix_upgrade":{"attributes":[{"attribute":"Vitality","modifier":20}]}}},
-             {"id":600,"details":{"infix_upgrade":{"attributes":[{"attribute":"Power","modifier":7}]}}},
-             {"id":300,"details":{"type":"Rune","bonuses":["+25 Power","+35 Ferocity"]}},
-             {"id":301,"details":{"infix_upgrade":{"attributes":[{"attribute":"AgonyResistance","modifier":1}],
+             {"id":600,"type":"Weapon","details":{"type":"Axe","infix_upgrade":{"attributes":[{"attribute":"Power","modifier":7}]}}},
+             {"id":300,"type":"UpgradeComponent","details":{"type":"Rune","bonuses":["+25 Power","+35 Ferocity"]}},
+             {"id":301,"type":"UpgradeComponent","details":{"type":"Default","infix_upgrade":{"attributes":[{"attribute":"AgonyResistance","modifier":1}],
                "buff":{"description":"+1 Agony Resistance"}}}}]""";
     private static final String STATS = """
             [{"id":161,"attributes":[{"attribute":"Power","multiplier":1.0}]},
@@ -204,7 +204,7 @@ class EquipmentDetailsSyncTest {
         try (var ps = admin.prepareStatement("DELETE FROM equipment_item_details WHERE item_id = 500")) { ps.executeUpdate(); }
         var broken = new EquipmentDetailsSync.Source() {
             public com.fasterxml.jackson.databind.JsonNode items(List<Integer> ids) throws Exception {
-                return M.readTree("[{\"id\":500,\"details\":{\"infix_upgrade\":{\"attributes\":[{\"attribute\":\"Power\"}]}}}]");
+                return M.readTree("[{\"id\":500,\"type\":\"Weapon\",\"details\":{\"infix_upgrade\":{\"attributes\":[{\"attribute\":\"Power\"}]}}}]");
             }
             public com.fasterxml.jackson.databind.JsonNode itemStats(List<Integer> ids) { throw new IllegalStateException("down"); }
         };
@@ -228,5 +228,44 @@ class EquipmentDetailsSyncTest {
         assertEquals(CharacterEquipmentTabsService.State.AVAILABLE, r.state());
         assertFalse(r.tabs().get(0).stats().weaponSets().get("A").complete());
         assertNull(r.tabs().get(0).equipment().get(0).item().details());
+    }
+
+    @Test
+    void bareFractionalAndPartialRecordsAreNeverCompleteAndRepairRecovers() throws Exception {
+        seed();
+        var bad = new EquipmentDetailsSync.Source() {
+            public com.fasterxml.jackson.databind.JsonNode items(List<Integer> ids) throws Exception {
+                return M.readTree("""
+                        [{"id":100},{"id":200.5,"type":"Armor","details":{"type":"Boots","weight_class":"Heavy","defense":1}},
+                         {"id":500,"type":"Weapon","details":{"type":"Sword","infix_upgrade":{"attributes":[{"attribute":"Power","modifier":1.5}]}}},
+                         {"id":600,"type":"Weapon"}]""");
+            }
+            public com.fasterxml.jackson.databind.JsonNode itemStats(List<Integer> ids) throws Exception { return M.readTree("[]"); }
+        };
+        sync(bad);
+        assertEquals(0, count("SELECT count(*) FROM equipment_item_details"), "nothing incomplete is cached");
+        // An incomplete legacy row is not read as known and is retried; a failed repair keeps it honest.
+        try (var ps = admin.prepareStatement("INSERT INTO equipment_item_details(item_id,details,fetched_at) "
+                + "VALUES (100,'{\"itemId\":100}'::jsonb, now())")) { ps.executeUpdate(); }
+        sync(bad);
+        var r = read();
+        assertNull(r.tabs().get(0).equipment().get(0).item().details());
+        assertFalse(r.tabs().get(0).stats().weaponSets().get("A").complete());
+        sync(good);
+        assertEquals(1, count("SELECT count(*) FROM equipment_item_details WHERE item_id = 100 AND details->>'format' IS NOT NULL"),
+                "the incomplete row was replaced");
+        assertTrue(read().tabs().get(0).stats().weaponSets().get("A").complete());
+    }
+
+    @Test
+    void selectedStatIdOverridesFixedAttributesThroughItemstats() throws Exception {
+        seed();
+        sync(good);
+        // Entry 'Boots' selects stat 162; the item's fixed set (stat 161 Power 99) must not be used.
+        try (var ps = admin.prepareStatement("UPDATE equipment_item_details SET details = jsonb_set(jsonb_set("
+                + "details, '{attributes}', '{\"Power\":99}'), '{statId}', '161') WHERE item_id = 200")) { ps.executeUpdate(); }
+        assertEquals(Map.of("Precision", 53), read().tabs().get(0).equipment().get(1).statAttributes());
+        try (var ps = admin.prepareStatement("DELETE FROM equipment_item_stats WHERE stat_id = 162")) { ps.executeUpdate(); }
+        assertNull(read().tabs().get(0).equipment().get(1).statAttributes(), "missing itemstats: unresolved, no fixed fallback");
     }
 }

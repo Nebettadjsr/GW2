@@ -55,7 +55,7 @@ public final class EquipmentDetailsSync {
     public static void repair(Collection<Integer> itemIds, Collection<Integer> statIds, Source source, Clock clock)
             throws InterruptedException {
         try {
-            for (List<Integer> batch : BatchUtils.chunk(missing("equipment_item_details", "item_id", itemIds),
+            for (List<Integer> batch : BatchUtils.chunk(missingDetails(itemIds),
                     SyncConstants.HTTP_IDS_BATCH)) {
                 JsonNode body = source.items(batch);
                 Set<Integer> wanted = new LinkedHashSet<>(batch);
@@ -86,6 +86,29 @@ public final class EquipmentDetailsSync {
             System.out.println("Equipment details unavailable; retry on the next synchronization: "
                     + unavailable.getClass().getSimpleName());
         }
+    }
+
+    /** Ids without a stored row, or whose stored row is incomplete (retried; the old row stays until replaced). */
+    private static List<Integer> missingDetails(Collection<Integer> ids) throws Exception {
+        List<Integer> want = new ArrayList<>(new LinkedHashSet<>(ids));
+        if (want.isEmpty()) return List.of();
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        Set<Integer> have = new LinkedHashSet<>();
+        try (Connection con = Db.open(); PreparedStatement ps = con.prepareStatement(
+                "SELECT item_id, details::text FROM equipment_item_details WHERE item_id = ANY(?)")) {
+            ps.setArray(1, con.createArrayOf("integer", want.toArray()));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    try {
+                        if (EquipmentDetailsParser.complete(mapper.readTree(rs.getString(2)))) have.add(rs.getInt(1));
+                    } catch (com.fasterxml.jackson.core.JsonProcessingException bad) {
+                        // unreadable row counts as missing
+                    }
+                }
+            }
+        }
+        want.removeAll(have);
+        return want;
     }
 
     private static List<Integer> missing(String table, String column, Collection<Integer> ids) throws Exception {

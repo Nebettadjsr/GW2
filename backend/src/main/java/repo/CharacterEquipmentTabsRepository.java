@@ -176,7 +176,8 @@ public class CharacterEquipmentTabsRepository {
         }
         Map<Integer, ItemRef> refs = metadata(con, ids);
         Map<Integer, Double> adjustments = new LinkedHashMap<>();
-        refs = withDetails(con, refs, adjustments);
+        Map<Integer, Integer> fixedStats = new LinkedHashMap<>();
+        refs = withDetails(con, refs, adjustments, fixedStats);
         Set<Integer> statIds = new LinkedHashSet<>();
         for (RawEntry e : raw) if (e.statId() != null) statIds.add(e.statId());
         Map<Integer, List<StatAttr>> stats = itemStats(con, statIds);
@@ -198,7 +199,7 @@ public class CharacterEquipmentTabsRepository {
                 }
             }
             ItemRef item = refs.get(e.itemId());
-            Map<String, Integer> effective = effective(item, attributes, e.statId(), adjustments, stats);
+            Map<String, Integer> effective = effective(item, attributes, e.statId(), adjustments, fixedStats, stats);
             byTab.computeIfAbsent(e.tab(), k -> new ArrayList<>()).add(new Entry(
                     e.slot(), item, e.location(),
                     e.upgrades().stream().map(refs::get).toList(), e.infusions().stream().map(refs::get).toList(),
@@ -206,7 +207,10 @@ public class CharacterEquipmentTabsRepository {
         }
         List<Entry> shared = new ArrayList<>();
         for (RawShared r : sharedRaw) {
-            shared.add(new Entry(r.slot(), refs.get(r.itemId()), "Equipped", List.of(), List.of(), null, null,
+            ItemRef ref = refs.get(r.itemId());
+            Map<String, Integer> derived = ref == null || ref.details() == null ? null
+                    : EquipmentTotals.coreAttributes(r.slot(), ref.details().description());
+            shared.add(new Entry(r.slot(), ref, "Equipped", List.of(), List.of(), null, derived,
                     r.binding(), r.boundTo(), null));
         }
         List<TabView> out = new ArrayList<>();
@@ -245,15 +249,20 @@ public class CharacterEquipmentTabsRepository {
                 d.defense() == null ? 0 : d.defense(), d.effects(), d.runeBonuses(), d.description(), resolved);
     }
 
-    /** Selected attributes override fixed ones; a bare stat id resolves through itemstats. Never both. */
+    /**
+     * Selected attributes win; else a stat id that differs from the item's fixed one (or an item without
+     * fixed attributes) resolves through itemstats, and is unresolved (null) when those are missing; else
+     * the fixed attributes. Never both.
+     */
     private static Map<String, Integer> effective(ItemRef item, Map<String, Integer> selected, Integer statId,
-            Map<Integer, Double> adjustments, Map<Integer, List<StatAttr>> stats) {
+            Map<Integer, Double> adjustments, Map<Integer, Integer> fixedStats, Map<Integer, List<StatAttr>> stats) {
         if (selected != null) return selected;
         Details d = item == null ? null : item.details();
         if (d == null) return null;
-        if (!d.attributes().isEmpty()) return d.attributes();
+        boolean sameAsFixed = statId == null || (!d.attributes().isEmpty() && statId.equals(fixedStats.get(item.itemId())));
+        if (sameAsFixed) return d.attributes().isEmpty() ? null : d.attributes();
         Double adjustment = adjustments.get(item.itemId());
-        List<StatAttr> rows = statId == null ? null : stats.get(statId);
+        List<StatAttr> rows = stats.get(statId);
         if (adjustment == null || rows == null) return null;
         Map<String, Integer> out = new LinkedHashMap<>();
         for (StatAttr a : rows) out.put(a.attribute(), (int) Math.round(adjustment * a.multiplier() + a.value()));
@@ -287,7 +296,8 @@ public class CharacterEquipmentTabsRepository {
 
     /** One batched read of the stored details of every referenced item; absent rows stay detail-less. */
     private static Map<Integer, ItemRef> withDetails(Connection con, Map<Integer, ItemRef> refs,
-                                                     Map<Integer, Double> adjustments) throws SQLException {
+                                                     Map<Integer, Double> adjustments,
+                                                     Map<Integer, Integer> fixedStats) throws SQLException {
         if (refs.isEmpty()) return refs;
         Map<Integer, ItemRef> out = new LinkedHashMap<>(refs);
         var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -301,8 +311,10 @@ public class CharacterEquipmentTabsRepository {
                     if (r == null) continue;
                     try {
                         var n = mapper.readTree(rs.getString(2));
+                        if (!parser.EquipmentDetailsParser.complete(n)) continue; // retried by the next sync
                         Map<String, Integer> attrs = new LinkedHashMap<>();
                         n.path("attributes").fields().forEachRemaining(f -> attrs.put(f.getKey(), f.getValue().asInt()));
+                        if (n.has("statId")) fixedStats.put(id, n.get("statId").asInt());
                         if (n.has("attributeAdjustment")) adjustments.put(id, n.get("attributeAdjustment").asDouble());
                         out.put(id, new ItemRef(r.itemId(), r.resolved(), r.name(), r.type(), r.rarity(), r.icon(),
                                 new Details(text(n, "description"), integer(n, "level"), text(n, "subtype"),
