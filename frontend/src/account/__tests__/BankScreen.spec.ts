@@ -1,3 +1,4 @@
+import { shellProvide } from '@/sync/__tests__/shellProvide'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError, UNREACHABLE_CODE } from '@/api/http'
@@ -15,7 +16,7 @@ import {
  * (`CURRENT_ARCHITECTURE.md` 5.12). Nothing here reaches a backend or a browser.
  */
 async function openScreen(api: FakeAccountApi): Promise<VueWrapper> {
-  const wrapper = mount(BankScreen, { props: { api }, global: { stubs: { InventoryRefresh: true } } })
+  const wrapper = mount(BankScreen, { props: { api }, global: { stubs: { InventoryRefresh: true }, provide: shellProvide() } })
   await flushPromises()
   return wrapper
 }
@@ -30,11 +31,11 @@ describe('BankScreen', () => {
     expect(api.materialCalls).toBe(0)
   })
 
-  it('repeatsOnlyThatOneReadOnAnExplicitReload', async () => {
+  it('repeatsOnlyThatOneReadWhenTheViewIsAutomaticallyReloaded', async () => {
     const api = new FakeAccountApi()
     const wrapper = await openScreen(api)
 
-    await wrapper.find('[data-test="bank-reload"]').trigger('click')
+    document.dispatchEvent(new Event('visibilitychange'))
     await flushPromises()
 
     expect(api.bankCalls).toBe(2)
@@ -94,7 +95,7 @@ describe('BankScreen', () => {
     const pending = deferred<BankContents>()
     api.bankHandler = () => pending.promise
 
-  const wrapper = mount(BankScreen, { props: { api }, global: { stubs: { InventoryRefresh: true } } })
+  const wrapper = mount(BankScreen, { props: { api }, global: { stubs: { InventoryRefresh: true }, provide: shellProvide() } })
     await flushPromises()
 
     expect(wrapper.find('[data-test="bank-loading"]').exists()).toBe(true)
@@ -108,7 +109,7 @@ describe('BankScreen', () => {
     expect(wrapper.find('[data-test="bank-slots"]').exists()).toBe(true)
   })
 
-  it('showsTheBackendsOwnSanitizedFailureAndRetriesOnlyOnRequest', async () => {
+  it('showsTheBackendsOwnSanitizedFailureAndRereadsWhenTheViewBecomesVisibleAgain', async () => {
     const api = new FakeAccountApi()
     api.bankHandler = (callIndex) =>
       callIndex === 0
@@ -126,7 +127,7 @@ describe('BankScreen', () => {
     expect(wrapper.find('[data-test="bank-no-slots"]').exists()).toBe(false)
     expect(api.bankCalls).toBe(1)
 
-    await wrapper.find('[data-test="bank-retry"]').trigger('click')
+    document.dispatchEvent(new Event('visibilitychange'))
     await flushPromises()
 
     expect(api.bankCalls).toBe(2)
@@ -145,37 +146,38 @@ describe('BankScreen', () => {
     expect(wrapper.find('[data-test="bank-no-slots"]').exists()).toBe(false)
   })
 
-  it('retainsTheEarlierBankWithAnExplicitWarningWhenAReloadFails', async () => {
+  it('retainsTheEarlierBankWithAnExplicitWarningWhenAnAutomaticReloadFails', async () => {
     const api = new FakeAccountApi()
     const wrapper = await openScreen(api)
     expect(wrapper.findAll('[data-test="bank-slot"]')).toHaveLength(5)
 
     api.bankHandler = () =>
       Promise.reject(new ApiRequestError('Reading the account failed.', 'ACCOUNT_READ_FAILED', 500))
-    await wrapper.find('[data-test="bank-reload"]').trigger('click')
+    document.dispatchEvent(new Event('visibilitychange'))
     await flushPromises()
 
-    expect(wrapper.find('[data-test="bank-error"]').text()).toContain('ACCOUNT_READ_FAILED')
+    // The automatic refresh reports its own failure and keeps the saved snapshot on screen.
+    expect(wrapper.find('.refresh-error').text()).toContain('Update failed — showing saved data')
     expect(wrapper.findAll('[data-test="bank-slot"]')).toHaveLength(5)
-    expect(wrapper.find('[data-test="bank-error"]').text()).toContain('previous saved snapshot')
     expect(wrapper.find('[data-test="bank-no-slots"]').exists()).toBe(false)
   })
 
-  it('keepsTheReloadUnrepeatableWhileItsOwnReadIsStillInFlight', async () => {
+  it('doesNotStartASecondReadWhileTheAutomaticReadIsStillInFlight', async () => {
     const api = new FakeAccountApi()
     const pending = deferred<BankContents>()
     const wrapper = await openScreen(api)
 
     api.bankHandler = () => pending.promise
-    await wrapper.find('[data-test="bank-reload"]').trigger('click')
-
-    expect(wrapper.find('[data-test="bank-reload"]').attributes('disabled')).toBeDefined()
+    document.dispatchEvent(new Event('visibilitychange'))
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(api.bankCalls).toBe(2)
 
     pending.resolve(bankWithoutSlots)
     await flushPromises()
 
     expect(api.bankCalls).toBe(2)
-    expect(wrapper.find('[data-test="bank-reload"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('[data-test="bank-no-slots"]').exists()).toBe(true)
   })
 
   it('rendersTheSuppliedApplicationImageForEachOccupiedSlotAndNothingForAnEmptyOne', async () => {

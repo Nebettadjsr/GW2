@@ -390,7 +390,8 @@ describe('App shell', () => {
       await flushPromises()
       const calculationsBefore = pathsOf('/api/crafting/profit').length
       const lastBody = () => JSON.parse(String((vi.mocked(fetch).mock.calls.filter((c) => c[0] === '/api/crafting/profit').at(-1)![1] as RequestInit).body))
-      expect(lastBody().settings).toMatchObject({ materialProtectionEnabled: true, protectedItemIds: [3, 4] })
+      // Protection is sent per source view; the combined list is intentionally empty.
+      expect(lastBody().settings).toMatchObject({ materialProtectionEnabled: true, protectedItemIds: [], protectedBankItemIds: [3, 4], protectedMaterialItemIds: [3, 4] })
 
       for (const target of ['bank', 'materials']) {
         const href = open.find(`[data-test="protection-${target}-link"]`).attributes('href')!

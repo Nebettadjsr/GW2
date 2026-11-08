@@ -1,10 +1,15 @@
-import { flushPromises, mount } from '@vue/test-utils'
+import { flushPromises, mount as baseMount } from '@vue/test-utils'
+import { shellProvide } from '@/sync/__tests__/shellProvide'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { connection } from '@/api/accountSession'
 import type { CharactersApi } from '@/api/charactersApi'
 import type { CharacterBuildTabsResponse, CharacterInventoryResponse, CharacterEquipmentTabsResponse, CharacterOverview, CharacterReadResponse } from '@/api/types'
 import CharactersScreen from '../CharactersScreen.vue'
 import { useCharacters } from '../useCharacters'
+
+/** Mounts under the shell's shared synchronization context, as the application does. */
+const mount: typeof baseMount = ((component: unknown, options: Record<string, unknown> = {}) =>
+  baseMount(component as never, { ...options, global: { ...(options.global as object), provide: shellProvide() } })) as unknown as typeof baseMount
 
 const ana: CharacterOverview = { name: 'Ana B', profession: 'Guardian', race: 'Human', gender: 'Female', level: 80,
   createdAt: '2020-01-01T00:00:00Z', craftingDisciplines: [{ discipline: 'Weaponsmith', rating: 500, active: true }] }

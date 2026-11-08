@@ -1,3 +1,4 @@
+import { shellProvide } from '@/sync/__tests__/shellProvide'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '@/api/http'
@@ -15,7 +16,7 @@ import {
  * (`CURRENT_ARCHITECTURE.md` 5.12). Nothing here reaches a backend or a browser.
  */
 async function openScreen(api: FakeAccountApi): Promise<VueWrapper> {
-  const wrapper = mount(MaterialsScreen, { props: { api }, global: { stubs: { InventoryRefresh: true } } })
+  const wrapper = mount(MaterialsScreen, { props: { api }, global: { stubs: { InventoryRefresh: true }, provide: shellProvide() } })
   await flushPromises()
   return wrapper
 }
@@ -34,11 +35,11 @@ describe('MaterialsScreen', () => {
     expect(api.bankCalls).toBe(0)
   })
 
-  it('repeatsOnlyThatOneReadOnAnExplicitReload', async () => {
+  it('repeatsOnlyThatOneReadWhenTheViewIsAutomaticallyReloaded', async () => {
     const api = new FakeAccountApi()
     const wrapper = await openScreen(api)
 
-    await wrapper.find('[data-test="materials-reload"]').trigger('click')
+    document.dispatchEvent(new Event('visibilitychange'))
     await flushPromises()
 
     expect(api.materialCalls).toBe(2)
@@ -75,7 +76,7 @@ describe('MaterialsScreen', () => {
     const pending = deferred<MaterialStorage>()
     api.materialsHandler = () => pending.promise
 
-  const wrapper = mount(MaterialsScreen, { props: { api }, global: { stubs: { InventoryRefresh: true } } })
+  const wrapper = mount(MaterialsScreen, { props: { api }, global: { stubs: { InventoryRefresh: true }, provide: shellProvide() } })
     await flushPromises()
 
     expect(wrapper.find('[data-test="materials-loading"]').exists()).toBe(true)
@@ -100,7 +101,7 @@ describe('MaterialsScreen', () => {
     expect(wrapper.find('[data-test="material-category"]').exists()).toBe(false)
   })
 
-  it('showsTheBackendsOwnSanitizedFailureAndRetriesOnlyOnRequest', async () => {
+  it('showsTheBackendsOwnSanitizedFailureAndRereadsWhenTheViewBecomesVisibleAgain', async () => {
     const api = new FakeAccountApi()
     api.materialsHandler = (callIndex) =>
       callIndex === 0
@@ -117,26 +118,26 @@ describe('MaterialsScreen', () => {
     expect(wrapper.find('[data-test="materials-empty"]').exists()).toBe(false)
     expect(api.materialCalls).toBe(1)
 
-    await wrapper.find('[data-test="materials-retry"]').trigger('click')
+    document.dispatchEvent(new Event('visibilitychange'))
     await flushPromises()
 
     expect(api.materialCalls).toBe(2)
     expect(wrapper.findAll('[data-test="material-category"]')).toHaveLength(2)
   })
 
-  it('retainsTheEarlierCategoriesWithAnExplicitWarningWhenAReloadFails', async () => {
+  it('retainsTheEarlierCategoriesWithAnExplicitWarningWhenAnAutomaticReloadFails', async () => {
     const api = new FakeAccountApi()
     const wrapper = await openScreen(api)
     expect(wrapper.findAll('[data-test="material-category"]')).toHaveLength(2)
 
     api.materialsHandler = () =>
       Promise.reject(new ApiRequestError('The data store is unavailable.', 'DATA_STORE_UNAVAILABLE', 503))
-    await wrapper.find('[data-test="materials-reload"]').trigger('click')
+    document.dispatchEvent(new Event('visibilitychange'))
     await flushPromises()
 
-    expect(wrapper.find('[data-test="materials-error"]').text()).toContain('DATA_STORE_UNAVAILABLE')
+    // The automatic refresh reports its own failure and keeps the saved snapshot on screen.
+    expect(wrapper.find('.refresh-error').text()).toContain('Update failed — showing saved data')
     expect(wrapper.findAll('[data-test="material-category"]')).toHaveLength(2)
-    expect(wrapper.find('[data-test="materials-error"]').text()).toContain('previous saved snapshot')
     expect(wrapper.find('[data-test="materials-empty"]').exists()).toBe(false)
   })
 
