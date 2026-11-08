@@ -26,10 +26,10 @@ const ownerDetails = ref<OwnerSystemDetails | null>(null)
 
 const isConnected = computed(() => connection.phase === 'connected')
 
-const OWNER_CONTROLS: readonly { key: OwnerOperationKey; description: string }[] = [
-  { key: 'FULL_ITEM_CATALOG', description: 'Downloads details for every item in the catalog, including unchanged ones.' },
-  { key: 'FULL_RECIPE_CATALOG', description: 'Downloads details for every recipe in the catalog, including unchanged ones.' },
-  { key: 'FULL_TP_CATALOG', description: 'Fetches prices for every tradable item on the Trading Post.' }
+const OWNER_CONTROLS: readonly { key: OwnerOperationKey; title: string; description: string }[] = [
+  { key: 'FULL_ITEM_CATALOG', title: 'Items', description: 'Update all item information.' },
+  { key: 'FULL_RECIPE_CATALOG', title: 'Recipes', description: 'Update every recipe, including saved recipes.' },
+  { key: 'FULL_TP_CATALOG', title: 'Trading Post prices', description: 'Update prices for all tradable items.' }
 ]
 
 let statusInflight: number | null = null
@@ -196,7 +196,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
       Status unavailable: {{ systemStatusError }}
     </p>
 
-    <section class="status-grid" aria-label="System health">
+    <section class="status-grid health-grid" aria-label="System health">
       <article class="panel status-card" data-test="account-status">
         <div class="status-card__heading">
           <h2>Account data</h2>
@@ -262,6 +262,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
         </details>
       </article>
 
+      <div class="shared-health">
       <article class="panel status-card" data-test="global-refresh-status">
         <div class="status-card__heading">
           <h2>Global game data</h2>
@@ -275,6 +276,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
           <span class="status" :class="`status--${prices.tone}`" data-test="price-cache-health">{{ prices.text }}</span>
         </div>
       </article>
+      </div>
     </section>
 
     <p v-if="ownerState === 'unavailable'" class="notice notice--warning" role="status" data-test="owner-status-unavailable">
@@ -288,6 +290,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
           v-for="control in OWNER_CONTROLS"
           :key="control.key"
           :operation="operation(control.key)"
+          :title="control.title"
           :description="control.description"
           @trigger="onTrigger(control.key)"
           @retry-status="onRetryStatus(control.key)"
@@ -317,6 +320,9 @@ function operation(key: SyncOperationKey): SyncOperationView {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+  width: 100%;
+  max-width: 80rem;
+  margin-inline: auto;
 }
 
 .status-grid {
@@ -324,6 +330,13 @@ function operation(key: SyncOperationKey): SyncOperationView {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
   gap: var(--space-4);
 }
+
+.health-grid {
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+.shared-health { display: grid; gap: var(--space-4); min-width: 0; }
 
 .status-card { min-width: 0; }
 
@@ -343,7 +356,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
 
 .status-facts {
   display: grid;
-  grid-template-columns: minmax(8rem, 1fr) minmax(0, 1.3fr);
+  grid-template-columns: max-content minmax(0, 1fr);
   column-gap: var(--space-3);
   row-gap: var(--space-2);
   margin: var(--space-4) 0;
@@ -363,4 +376,16 @@ function operation(key: SyncOperationKey): SyncOperationView {
 .status-card__message { margin: var(--space-2) 0 0; }
 .owner-admin { display: flex; flex-direction: column; gap: var(--space-4); }
 .owner-admin h2, .owner-admin h3 { margin: 0; }
+.owner-admin .status-facts {
+  grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr);
+  column-gap: var(--space-5);
+}
+
+@media (max-width: 64rem) {
+  .owner-admin .status-facts { grid-template-columns: max-content minmax(0, 1fr); }
+}
+
+@media (max-width: 48rem) {
+  .health-grid { grid-template-columns: minmax(0, 1fr); }
+}
 </style>

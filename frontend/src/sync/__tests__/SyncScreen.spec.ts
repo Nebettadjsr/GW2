@@ -160,9 +160,9 @@ describe('SyncScreen', () => {
     const triggers = wrapper.findAll('[data-test^="sync-trigger-"]').map((button) => button.text())
     expect(triggers).toEqual([
       'Refresh account data',
-      'Refresh full item catalog',
-      'Refresh full recipe catalog',
-      'Refresh all Trading Post prices'
+      'Refresh all items',
+      'Refresh all recipes',
+      'Refresh all prices'
     ])
     expect(exists(wrapper, 'sync-trigger-PRICE_REFRESH_PROFIT')).toBe(false)
     expect(exists(wrapper, 'sync-trigger-PRICE_REFRESH_DISCOVERY')).toBe(false)

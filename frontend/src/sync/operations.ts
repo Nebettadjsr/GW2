@@ -39,19 +39,19 @@ export const SYNC_OPERATIONS: readonly SyncOperation[] = [
   },
   {
     key: 'FULL_ITEM_CATALOG',
-    label: 'Refresh full item catalog',
+    label: 'Refresh all items',
     ownerOnly: true,
     submit: (api) => api.startFullCatalog('items')
   },
   {
     key: 'FULL_RECIPE_CATALOG',
-    label: 'Refresh full recipe catalog',
+    label: 'Refresh all recipes',
     ownerOnly: true,
     submit: (api) => api.startFullCatalog('recipes')
   },
   {
     key: 'FULL_TP_CATALOG',
-    label: 'Refresh all Trading Post prices',
+    label: 'Refresh all prices',
     ownerOnly: true,
     submit: (api) => api.startFullCatalog('trading-post')
   },

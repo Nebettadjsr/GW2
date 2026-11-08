@@ -37,7 +37,7 @@ Planning handoff: the Characters sequence is Inventory UI #162, Builds core #161
 | PLAN-VALUE-001 | Planner prepares correctness contract for recursive valuation of owned bound/non-tradable materials, including daily materials | DOMAIN_SPEC.md sections 11.1–11.2 | DONE — contract accepted as #132 |
 | STORY-VALUE-001 | Claude corrects valuation and verifies list/detail cost/profit agreement, cycle handling, yields and performance | Approved issue #132 | PUBLISHED — #132 |
 | STORY-KPI-001 | Claude adds whole-host Linux CPU/memory observations, boundaries/provenance and safe 2 OCPU/12 GB comparison to the existing report | Accepted contract #134; STORY-VALUE-001 | PUBLISHED — #134 |
-| STORY-KPI-002 | Claude adds repeatable desktop and multi-account/fault qualification workloads | STORY-KPI-001 | DRAFT |
+| STORY-KPI-002 | Claude adds repeatable desktop and multi-account/fault qualification workloads | STORY-KPI-001, final feature integration, Product Owner workload decisions | PUBLISHED DRAFT — #184; workload/latency/headroom proposals OPEN; not released |
 | STORY-KPI-003 | Claude exposes a concise capacity/health summary and documented reproduction path | STORY-KPI-001, STORY-KPI-002 | DRAFT |
 | STORY-KPI-004 | Claude adds safe JVM heap/committed/max and GC observations and relates them to container/host memory without treating 12 GB as a JVM allowance | STORY-KPI-001 | DRAFT |
 | STORY-KPI-005 | Claude adds project-scoped storage, database, volume and log accounting; tenancy-wide allocation remains explicit | STORY-KPI-001 | DRAFT |

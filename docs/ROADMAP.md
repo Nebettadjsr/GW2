@@ -76,7 +76,7 @@ These choices were confirmed by the Product Owner. The planner can now refine th
 - Measure feature-disabled, enabled-empty and enabled-populated cases using comparable catalogs/accounts and selected-list sizes. Record calculation latency/CPU/allocation, request size and desktop interaction cost; do not claim zero overhead without evidence.
 - Final Oracle qualification includes this feature under the agreed workload. Do not introduce an unmeasured per-account copy of the entire catalog or shared mutable calculation state to support it.
 
-Status: the Product Owner approved the paired selection and Crafting UI on 2026-11-08, including source-specific protection, ingredient checkbox eligibility and category-local preset placement. Integrate that reviewed implementation and reconcile its regression tests and owning documentation before accepting completion. Detailed release order is in the [backlog](../agent/BACKLOG.md); final resource qualification remains outstanding.
+Status: the paired selection and Crafting UI approved on 2026-11-08 is integrated with its regression and documentation baseline, including source-specific protection, ingredient checkbox eligibility and category-local preset placement. Detailed release order is in the [backlog](../agent/BACKLOG.md); final resource qualification remains outstanding.
 
 ## Milestone 3: Characters overview and equipment-first details
 
@@ -94,7 +94,7 @@ Owning scope: [DOMAIN_SPEC.md section 56](DOMAIN_SPEC.md). UI intent: [FRONTEND_
 4. Verify account isolation, metadata-based rarity, missing versus empty slots, template-reference deduplication, refresh/recovery and navigation. Do not change existing crafting inventory totals through duplicated template equipment.
 5. Measure roster/detail response size, desktop rendering, metadata/upstream requests, cold/warm behavior and whole-stack CPU/memory/storage under the Oracle workload. No per-character polling loop, new service or eager download of every detail on each roster visit without measured justification.
 
-Status: roster rows/sorting, character summary, Equipment and Inventory layouts were approved through direct pairing on 2026-11-08. Reconcile tests and current-state documentation with that baseline; do not redesign it in maintenance. Builds data, referenced metadata and the Builds UI (#166) are implemented and the final Builds page was visually accepted by the Product Owner on 2026-11-08; merge acceptance of #166 still follows CI and review. Story/recipes/map exclusions remain unchanged. Final hosting qualification and owner administration remain outstanding.
+Status: the approved roster, character summary, Equipment, Inventory and Builds layouts are integrated after CI and review, with their regression and documentation baseline. Preserve the Product Owner's 2026-11-08 visual decisions during maintenance. Story/recipes/map exclusions remain unchanged. Final hosting qualification remains outstanding; owner administration follows the separate operational sequence below.
 
 ## Operational follow-up: owner administration and automatic inventory refresh
 
@@ -103,6 +103,8 @@ Confirmed scope: [DOMAIN_SPEC.md section 57](DOMAIN_SPEC.md), [UX sections 2.3â€
 The paired Bank/Materials/Characters implementation uses automatic page-scoped stale refresh, retained saved data and a compact updating hint. Keep manual full-account refresh in System Status. Reconcile and verify shared admission, missing-grant/error recovery, retained inspected equipment and account switching before acceptance. Do not refresh unrelated sources when navigating a feature page.
 
 Prepare separate backend authorization, status UI and inventory freshness stories. Verify owner versus non-owner direct requests, task visibility, key replacement, empty owner configuration, account switching, duplicate refresh admission and stale/error recovery. Batch and bound full-catalog admin work; include its CPU/memory/storage/upstream impact in Oracle qualification rather than assuming on-demand TP measurements represent it. Implementation follows supervisor release of a concrete contract.
+
+Current gate: the owner backend and full-catalog operations are integrated. The System Status UI (#182) is awaiting local visual approval; actual owner provisioning and final resource qualification are separate. The next offline workload proposal is #184, with workload/latency/headroom choices still open rather than approved thresholds.
 
 ## Deferred crafting extension and live verification
 

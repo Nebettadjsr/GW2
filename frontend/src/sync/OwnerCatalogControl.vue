@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { describeOperationStatus } from './statusPresentation'
 import type { SyncOperationView } from './useSyncOperations'
 
-const props = defineProps<{ operation: SyncOperationView; description: string }>()
+const props = defineProps<{ operation: SyncOperationView; title: string; description: string }>()
 const emit = defineEmits<{ trigger: []; retryStatus: [] }>()
 
 const key = computed(() => props.operation.key)
@@ -15,7 +15,7 @@ const isBusyRefusal = computed(() => props.operation.submissionCode === 'SYNC_AL
 <template>
   <article class="panel status-card" :data-test="`owner-control-${key}`">
     <div class="status-card__heading">
-      <h3>{{ operation.label }}</h3>
+      <h3>{{ title }}</h3>
       <span class="status" :class="`status--${state.tone}`" role="status" :data-test="`sync-state-${key}`">{{ state.text }}</span>
     </div>
     <p class="meta">{{ description }}</p>
@@ -64,11 +64,12 @@ const isBusyRefusal = computed(() => props.operation.submissionCode === 'SYNC_AL
 </template>
 
 <style scoped>
-.status-card { min-width: 0; }
+.status-card { min-width: 0; display: flex; flex-direction: column; }
 .status-card__heading,
 .status-card__action { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .status-card__heading { justify-content: space-between; }
 .status-card__heading h3 { margin: 0; font-size: var(--text-md, 1rem); }
-.status-card__action { padding-top: var(--space-3); border-top: 1px solid var(--color-border); }
+.meta { margin: var(--space-3) 0; }
+.status-card__action { margin-top: auto; padding-top: var(--space-3); border-top: 1px solid var(--color-border); }
 .status-card__error, .status-card__message { margin: var(--space-3) 0 0; }
 </style>
