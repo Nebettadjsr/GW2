@@ -63,7 +63,7 @@ class FullCatalogAdminApiControllerTest {
         };
         var graph = new CraftingGraphRebuildService(null) {
             @Override public void invalidate() { invalidations.incrementAndGet(); }
-            @Override public void rebuild() { rebuilds.incrementAndGet(); if (failRebuild) throw new IllegalStateException("rebuild"); }
+            @Override public void rebuild(TaskDeadline dl) { rebuilds.incrementAndGet(); if (failRebuild) throw new IllegalStateException("rebuild"); }
         };
         var service = new FullCatalogAdministrationService(gateway, graph, TaskDeadline::start);
         var owner = new OwnerAccess(access, new OwnerPolicy(OWNER));
@@ -160,7 +160,7 @@ class FullCatalogAdminApiControllerTest {
         };
         var graph = new CraftingGraphRebuildService(null) {
             @Override public void invalidate() { invalidations.incrementAndGet(); }
-            @Override public void rebuild() { rebuilds.incrementAndGet(); }
+            @Override public void rebuild(TaskDeadline dl) { rebuilds.incrementAndGet(); }
         };
         var service = new FullCatalogAdministrationService(gateway, graph,
                 () -> TaskDeadline.after(TaskDeadline.TASK_BOUND, clock::get));
@@ -177,7 +177,7 @@ class FullCatalogAdminApiControllerTest {
             var clock = new java.util.concurrent.atomic.AtomicLong();
             var graph = new CraftingGraphRebuildService(null) {
                 @Override public void invalidate() { invalidations.incrementAndGet(); }
-                @Override public void rebuild() {
+                @Override public void rebuild(TaskDeadline dl) {
                     rebuilds.incrementAndGet();
                     clock.addAndGet(java.time.Duration.ofMinutes(31).toNanos()); // the rebuild overran the bound
                 }
@@ -196,7 +196,7 @@ class FullCatalogAdminApiControllerTest {
     void failedItemRebuildFailsAndLeavesGraphInvalidated() throws Exception {
         var graph = new CraftingGraphRebuildService(null) {
             @Override public void invalidate() { invalidations.incrementAndGet(); }
-            @Override public void rebuild() { throw new IllegalStateException("rebuild"); }
+            @Override public void rebuild(TaskDeadline dl) { throw new IllegalStateException("rebuild"); }
         };
         var service = new FullCatalogAdministrationService(new FullCatalogGateway() {
             @Override public void syncAllItems(TaskDeadline d) { }

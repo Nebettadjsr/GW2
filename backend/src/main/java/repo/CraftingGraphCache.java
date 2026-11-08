@@ -126,6 +126,62 @@ public class CraftingGraphCache {
         return graph;
     }
 
+    /**
+     * Full-catalog-task rebuild: same graph and cache file as {@link #rebuild()}, but every query runs
+     * on one caller-owned read transaction whose statements are limited by {@code SET LOCAL
+     * statement_timeout} to the remaining task budget (re-applied before each phase), with deadline
+     * checks before each phase and before publishing. Nothing is published unless the whole
+     * rebuild finished inside the budget; on failure the caller leaves the cache invalidated.
+     * Ordinary {@link #load()}/{@link #rebuild()} are unchanged.
+     */
+    public synchronized CraftingGraph rebuild(api.TaskDeadline deadline) throws IOException, SQLException, InterruptedException {
+        File file = new File(cacheFilePath());
+        CraftingGraph graph;
+        String key;
+        try (Connection con = Db.open()) {
+            boolean auto = con.getAutoCommit();
+            con.setAutoCommit(false);
+            try {
+                deadline.check();
+                deadline.limitTransaction(con);
+                List<Recipe> recipes = recipeRepo.loadAllRecipes(con);
+                Set<Integer> itemIds = new java.util.HashSet<>();
+                for (Recipe recipe : recipes) {
+                    itemIds.add(recipe.outputItemId);
+                    recipe.ingredients.forEach(ingredient -> itemIds.add(ingredient.itemId));
+                }
+                deadline.check();
+                deadline.limitTransaction(con);
+                Map<Integer, String> itemNames = new java.util.HashMap<>();
+                itemRepo.loadItems(con, itemIds).forEach((itemId, item) -> {
+                    if (item.name != null) itemNames.put(itemId, item.name);
+                });
+                deadline.check();
+                deadline.limitTransaction(con);
+                key = "recipes=" + count(con, "recipes") + ";ingredients=" + count(con, "recipe_ingredients");
+                graph = new CraftingGraph(recipes, itemNames);
+            } finally {
+                try { con.rollback(); } finally { con.setAutoCommit(auto); }
+            }
+        }
+        deadline.check();
+        CraftingGraphDto dto = toDto(graph);
+        dto.cacheKey = key;
+        dto.generatedAt = System.currentTimeMillis();
+        writeAtomically(file.toPath(), dto);
+        deadline.check();
+        cachedGraph = graph;
+        invalidated = false;
+        return graph;
+    }
+
+    private static int count(Connection con, String table) throws SQLException {
+        try (var ps = con.prepareStatement("SELECT COUNT(*) FROM " + table); var rs = ps.executeQuery()) {
+            rs.next();
+            return rs.getInt(1);
+        }
+    }
+
     /** Marks the persisted and in-memory catalog snapshot stale after recipe synchronization. */
     public synchronized void invalidate() {
         invalidated = true;

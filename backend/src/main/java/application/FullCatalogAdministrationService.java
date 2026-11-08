@@ -14,7 +14,7 @@ import java.util.function.Supplier;
  * <p>Recipes: after a successful full recipe synchronization the shared graph cache is invalidated
  * and then rebuilt. A failed rebuild leaves the cache invalidated, never serving stale recipe
  * relationships, and a failure after recipe rows may have changed also invalidates it. No
- * last-good graph is kept.
+ * last-good graph is kept. The rebuild's own queries are statement-limited to the remaining budget.
  */
 public class FullCatalogAdministrationService {
 
@@ -46,7 +46,7 @@ public class FullCatalogAdministrationService {
             deadline.check();
             graph.invalidate();
             deadline.check();
-            graph.rebuild();
+            graph.rebuild(deadline);
             deadline.check();
         } catch (Exception | Error failure) {
             graph.invalidate();
@@ -65,7 +65,7 @@ public class FullCatalogAdministrationService {
             deadline.check();
             graph.invalidate();
             deadline.check();
-            graph.rebuild();
+            graph.rebuild(deadline);
             deadline.check();
         } catch (Exception | Error failure) {
             graph.invalidate();

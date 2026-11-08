@@ -165,15 +165,31 @@ public final class EquipmentDetailsSync {
     /**
      * Full item refresh (STORY-STATUS-004): rewrites the slim projection of items that <em>already</em>
      * have an {@code equipment_item_details} row from the same validated {@code /v2/items} payload, on
-     * the caller's transaction. Uncached items get no row, an unprojectable record leaves its old row,
+     * the caller's transaction. Uncached items get no row, an unprojectable record for a cached row fails the batch,
      * and {@code equipment_item_stats} is never touched.
      */
     static void refreshCached(Connection con, JsonNode itemsPayload, Timestamp ts) throws java.sql.SQLException {
+        java.util.Set<Integer> cached = new java.util.HashSet<>();
+        try (PreparedStatement ps = con.prepareStatement(
+                "SELECT item_id FROM equipment_item_details WHERE item_id = ANY(?)")) {
+            java.util.List<Integer> ids = new java.util.ArrayList<>();
+            for (JsonNode n : itemsPayload) if (n.path("id").isInt()) ids.add(n.get("id").asInt());
+            ps.setArray(1, con.createArrayOf("int", ids.toArray()));
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) cached.add(rs.getInt(1));
+            }
+        }
+        if (cached.isEmpty()) return;
         try (PreparedStatement ps = con.prepareStatement(
                 "UPDATE equipment_item_details SET details = ?::jsonb, fetched_at = ? WHERE item_id = ?")) {
             for (JsonNode n : itemsPayload) {
+                if (!n.path("id").isInt() || !cached.contains(n.get("id").asInt())) continue;
                 ObjectNode d = EquipmentDetailsParser.item(n);
-                if (d == null) continue;
+                if (d == null) {
+                    // An already-cached projection that can no longer be projected would stay stale
+                    // while the item is reported refreshed: fail the batch instead.
+                    throw new IllegalStateException("items detail batch contains an unprojectable cached equipment item");
+                }
                 ps.setString(1, d.toString());
                 ps.setTimestamp(2, ts);
                 ps.setInt(3, d.get("itemId").asInt());

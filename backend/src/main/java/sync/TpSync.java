@@ -282,10 +282,13 @@ public final class TpSync {
         if (p == null || !p.isObject() || !p.has("id") || !p.get("id").isInt() || p.get("id").asInt() <= 0) {
             throw new IllegalStateException("tp quote is malformed");
         }
+        // Both side fields must be present: an explicit JSON null is the supported "no market data"
+        // shape, but an absent field (e.g. a bare {"id":1}) is a malformed quote.
+        if (!p.has("buys") || !p.has("sells")) throw new IllegalStateException("tp quote is malformed");
         JsonNode buys = p.get("buys");
         JsonNode sells = p.get("sells");
-        boolean noBuys = buys == null || buys.isNull();
-        boolean noSells = sells == null || sells.isNull();
+        boolean noBuys = buys.isNull();
+        boolean noSells = sells.isNull();
         if (noBuys && noSells) return TpPrice.noData(p.get("id").asInt());
         if (!validSide(buys) || !validSide(sells)) throw new IllegalStateException("tp quote is malformed");
         return new TpPrice(p.get("id").asInt(), buys.get("quantity").asLong(), buys.get("unit_price").asInt(),

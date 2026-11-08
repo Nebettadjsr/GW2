@@ -277,6 +277,82 @@ class FullCatalogSyncTest {
         assertEquals(statsBefore, scalar("SELECT attributes::text || fetched_at::text FROM equipment_item_stats WHERE stat_id=5"));
     }
 
+
+    @Test
+    void fullItems_unprojectableChangedPayloadForCachedEquipmentRowFailsAndKeepsUncachedUntouched() throws Exception {
+        String oldDetails = "{\"format\":1,\"itemId\":1,\"itemType\":\"Trophy\",\"description\":\"OLD\"}";
+        exec("INSERT INTO equipment_item_details (item_id, details, fetched_at) VALUES (1, '" + oldDetails + "'::jsonb, now() - interval '1 day')");
+        // Valid catalog records, but item 1 (cached) has no description -> the equipment parser cannot project it.
+        ItemSync.fetcher = url -> url.endsWith("/v2/items") ? json("[1,2]") : json("["
+                + itemJson(1, "N1") + "," + itemJson(2, "N2") + "]");
+        assertThrows(IllegalStateException.class, () -> ItemSync.syncAllItemsFull(TaskDeadline.start()));
+        assertEquals("OLD", scalar("SELECT details->>'description' FROM equipment_item_details WHERE item_id=1"));
+        assertEquals("1", scalar("SELECT count(*) FROM equipment_item_details"), "uncached item 2 stays uncached");
+        assertNull(scalar("SELECT 1 FROM items WHERE item_id=1"), "the failed batch is not reported as refreshed");
+    }
+
+    // ------------------------------------------------------------------ real shared graph
+
+    private repo.CraftingGraphCache realGraphCache() throws Exception {
+        java.nio.file.Path f = java.nio.file.Files.createTempFile("graph", ".json");
+        java.nio.file.Files.delete(f);
+        f.toFile().deleteOnExit();
+        System.setProperty(repo.CraftingGraphCache.TEST_CACHE_FILE_PROPERTY, f.toString());
+        return new repo.CraftingGraphCache(new repo.RecipeRepository());
+    }
+
+    @Test
+    void fullItems_changedNameUnderUnchangedRecipeCountsIsVisibleInTheRealSharedGraph() throws Exception {
+        try {
+            recipeUpstream(2, i -> recipeJson(i, 100000 + i, 500000 + i));
+            RecipeSync.syncAllRecipesFull(TaskDeadline.start());
+            repo.CraftingGraphCache cache = realGraphCache();
+            assertEquals("I", cache.rebuild(TaskDeadline.start()).getItemNames().get(100001));
+            String counts = scalar("SELECT (SELECT count(*) FROM recipes) || '/' || (SELECT count(*) FROM recipe_ingredients)");
+
+            ItemSync.fetcher = url -> url.endsWith("/v2/items") ? json(java.util.List.of(100001, 100002, 500001, 500002).toString())
+                    : itemsFor(url, "RENAMED");
+            new application.FullCatalogAdministrationService(cache).syncItems();
+
+            assertEquals(counts, scalar("SELECT (SELECT count(*) FROM recipes) || '/' || (SELECT count(*) FROM recipe_ingredients)"));
+            assertEquals("RENAMED", cache.load().getItemNames().get(100001));
+            assertEquals("RENAMED", cache.load().getItemNames().get(500002));
+        } finally {
+            System.clearProperty(repo.CraftingGraphCache.TEST_CACHE_FILE_PROPERTY);
+        }
+    }
+
+    @Test
+    void boundedGraphRebuild_blockedQueryFailsWithinShortBudget_leavesGraphInvalidated_thenRecovers() throws Exception {
+        try {
+            recipeUpstream(2, i -> recipeJson(i, 100000 + i, 500000 + i));
+            RecipeSync.syncAllRecipesFull(TaskDeadline.start());
+            repo.CraftingGraphCache cache = realGraphCache();
+            cache.rebuild(TaskDeadline.start());
+            var service = new application.CraftingGraphRebuildService(cache);
+
+            // Another session holds exclusive locks, so the rebuild's own SELECTs block in the database.
+            admin.setAutoCommit(false);
+            exec("LOCK TABLE recipes, recipe_ingredients IN ACCESS EXCLUSIVE MODE");
+            cache.invalidate();
+            long t0 = System.nanoTime();
+            var short_ = TaskDeadline.after(Duration.ofMillis(500), System::nanoTime);
+            assertThrows(java.sql.SQLException.class, () -> service.rebuild(short_));
+            long elapsedMs = Duration.ofNanos(System.nanoTime() - t0).toMillis();
+            assertTrue(elapsedMs < 10_000, "blocked JDBC query must be cut off by the budget, took " + elapsedMs + " ms");
+            admin.rollback();
+            admin.setAutoCommit(true);
+
+            // Nothing was published by the failed attempt; a fresh budget recovers.
+            service.rebuild(TaskDeadline.start());
+            assertEquals("I", cache.load().getItemNames().get(100001));
+            // Ordinary unbounded rebuild path is unchanged.
+            assertEquals("I", cache.rebuild().getItemNames().get(500001));
+        } finally {
+            System.clearProperty(repo.CraftingGraphCache.TEST_CACHE_FILE_PROPERTY);
+        }
+    }
+
     // ------------------------------------------------------------------ strict record validation
 
     @Test
@@ -380,6 +456,9 @@ class FullCatalogSyncTest {
                 "[" + quote(1, 5) + ",{\"id\":2,\"buys\":{\"quantity\":\"x\",\"unit_price\":1},\"sells\":{\"quantity\":1,\"unit_price\":1}}]",
                 "[" + quote(1, 5) + ",{\"id\":2,\"buys\":{\"quantity\":1,\"unit_price\":1}}]",   // one side only
                 "[" + quote(1, 5) + ",{\"buys\":null,\"sells\":null}]",
+                "[{\"id\":1},{\"id\":2}]",                              // bare ids: sides absent, not explicit null
+                "[" + quote(1, 5) + ",{\"id\":2}]",                      // one bare id
+                "[" + quote(1, 5) + ",{\"id\":2,\"buys\":null}]",         // sells absent
                 "{\"id\":1}",
         };
         for (String payload : bad) {
