@@ -180,13 +180,13 @@ describe('Bank and Materials selection', () => {
     expect(boxes(w).map((c) => (c.element as HTMLInputElement).checked)).toEqual([true, true])
   })
 
-  it('showsSavedSelectionWording_andActivationDistinction', async () => {
+  it('showsSavedSelectionWording_andConcisePurposeHint', async () => {
     const w = await open(MaterialsScreen, new FakeAccountApi())
     const text = w.find('[data-test="selection-bar"]').text()
     expect(text).toContain('Saved selection: 0 items.')
     expect(text).not.toContain('Committed')
     expect(w.find('[data-test="selection-activation-note"]').text())
-      .toContain('only affects calculations when material protection is turned on in Crafting Profit')
+      .toBe('Select materials that can be excluded from Crafting Profit calculations.')
     expect(w.find('[data-test="selection-storage-notice"]').exists()).toBe(false)
   })
 
