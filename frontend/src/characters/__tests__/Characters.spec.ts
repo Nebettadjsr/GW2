@@ -1,4 +1,5 @@
 import { flushPromises, mount as baseMount } from '@vue/test-utils'
+import { effectScope } from 'vue'
 import { shellProvide } from '@/sync/__tests__/shellProvide'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { connection } from '@/api/accountSession'
@@ -1012,5 +1013,176 @@ describe('Builds section', () => {
     await w.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
     await w.find('[data-test="section-builds"]').trigger('click'); await flushPromises()
     expect(w.find('[data-test="builds-older"]').exists()).toBe(true)
+  })
+})
+
+describe('Builds account replacement races (deferred, same character names)', () => {
+  const buildsFor = (accountMark: string): CharacterBuildTabsResponse => ({ ...buildsResponse, tabs: [
+    { tab: 1, active: true, specializations: [spec(7, accountMark, 'Guardian', false)] }] })
+  const markOf = (c: ReturnType<typeof useCharacters>) => c.buildSource.value?.tabs?.[0]?.specializations?.[0]?.specialization?.name ?? null
+
+  it('late old-account builds read cannot overwrite the replacement account state (old completes after new)', async () => {
+    const gates = [deferred<CharacterBuildTabsResponse>(), deferred<CharacterBuildTabsResponse>()]
+    let n = 0
+    const api = fakeApi({ loadBuildTabs: async () => gates[n++]!.promise })
+    const oldC = useCharacters(api, tasks, noSleep)
+    oldC.select('Ana B'); await flushPromises()
+    connection.generation += 1 // account replaced; same character name in the new workspace
+    const newC = useCharacters(api, tasks, noSleep)
+    newC.select('Ana B'); await flushPromises()
+    gates[1]!.resolve(buildsFor('NEW')); await flushPromises()
+    gates[0]!.resolve(buildsFor('OLD')); await flushPromises()
+    expect(markOf(newC)).toBe('NEW')
+    expect(markOf(oldC)).toBeNull()
+    expect(newC.inspectedBuild.value).toBe(1)
+  })
+
+  it('late old-account builds read is discarded when it completes before the new one too', async () => {
+    const gates = [deferred<CharacterBuildTabsResponse>(), deferred<CharacterBuildTabsResponse>()]
+    let n = 0
+    const api = fakeApi({ loadBuildTabs: async () => gates[n++]!.promise })
+    const oldC = useCharacters(api, tasks, noSleep)
+    oldC.select('Ana B'); await flushPromises()
+    connection.generation += 1
+    const newC = useCharacters(api, tasks, noSleep)
+    newC.select('Ana B'); await flushPromises()
+    gates[0]!.resolve(buildsFor('OLD')); await flushPromises()
+    expect(markOf(newC)).toBeNull() // nothing from the old account while the new read is pending
+    gates[1]!.resolve(buildsFor('NEW')); await flushPromises()
+    expect(markOf(newC)).toBe('NEW')
+    expect(markOf(oldC)).toBeNull()
+  })
+
+  it('a pending build recovery of the old account sends nothing further after replacement (before start and during the task)', async () => {
+    for (const phase of ['before-start', 'during-task'] as const) {
+      const startGate = deferred<void>(); const taskGate = deferred<void>()
+      const api = fakeApi({
+        loadBuildTabs: async (n) => { api.calls.push(`builds:${n}`); return { state: 'PENDING', message: 'p' } },
+        startBuildTabsRefresh: async () => { api.calls.push('build-refresh'); await startGate.promise; return { taskId: 'b', operation: 'X', statusUrl: '/s' } }
+      })
+      const slow = { readTaskStatus: async () => { await taskGate.promise; return { taskId: 'b', operation: 'X', state: 'SUCCEEDED' } as never } }
+      const c = useCharacters(api, slow, noSleep)
+      c.select('Ana B'); await flushPromises()
+      await flushPromises(); expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(1) // the one request began under the old account
+      if (phase === 'during-task') { startGate.resolve(); await flushPromises() }
+      connection.generation += 1
+      const before = api.calls.length
+      startGate.resolve(); taskGate.resolve(); await flushPromises(); await flushPromises()
+      expect(api.calls.slice(before)).toEqual([]) // no refresh start, no reread under the new identity
+      expect(c.buildSource.value).toBeNull()
+      connection.generation = 0
+    }
+  })
+
+  it('character change and disposal discard an in-flight builds read', async () => {
+    const gate = deferred<CharacterBuildTabsResponse>()
+    const api = fakeApi({ loadBuildTabs: async (n) => n === 'Ana B' ? gate.promise : buildsFor('BO') })
+    const c = useCharacters(api, tasks, noSleep)
+    c.select('Ana B'); await flushPromises()
+    c.showSection('builds'); c.back(); c.select('Bo'); await flushPromises()
+    gate.resolve(buildsFor('ANA')); await flushPromises()
+    expect(markOf(c)).toBe('BO')
+
+    const late = deferred<CharacterBuildTabsResponse>()
+    const scope = effectScope()
+    const d = scope.run(() => useCharacters(fakeApi({ loadBuildTabs: async () => late.promise }), tasks, noSleep))!
+    d.select('Ana B'); await flushPromises()
+    scope.stop()
+    late.resolve(buildsFor('GONE')); await flushPromises()
+    expect(markOf(d)).toBeNull()
+  })
+
+  it('real connectKey replacement with the same names: the old deferred builds read is dropped and nothing old is re-sent under the new identity', async () => {
+    const { connectKey, installAccountSession, resetAccountSession } = await import('@/api/accountSession')
+    const { charactersApi } = await import('@/api/charactersApi')
+    resetAccountSession(); installAccountSession()
+    let id = 'acc-A'
+    const log: string[] = []
+    const buildGates: Array<{ id: string; gate: ReturnType<typeof deferred<Response>> }> = []
+    vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+      const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (input.endsWith('/session') || input.includes('/account/session')) {
+        return json({ accountId: id, accessContext: `ctx-${id}`, expiresAt: '2099-01-01T00:00:00Z', grants: ['account'] })
+      }
+      log.push(`${init?.method ?? 'GET'} ${id} ${input}`)
+      if (input.includes('build')) {
+        const g = { id, gate: deferred<Response>() }
+        buildGates.push(g)
+        return g.gate.promise
+      }
+      if (input.includes('equipment-tabs')) return json(tabsResponse)
+      if (input.includes('/account/characters/')) return json(detailOf(ana))
+      return json(roster)
+    }))
+    try {
+      await connectKey('SAME-NAME-KEY')
+      const oldC = useCharacters(charactersApi, tasks, noSleep)
+      await oldC.loadRoster(); oldC.select('Ana B'); await flushPromises()
+      expect(buildGates.map((g) => g.id)).toEqual(['acc-A'])
+      id = 'acc-B'
+      await connectKey('SAME-NAME-KEY')
+      const newC = useCharacters(charactersApi, tasks, noSleep)
+      await newC.loadRoster(); newC.select('Ana B'); await flushPromises()
+      expect(buildGates.map((g) => g.id)).toEqual(['acc-A', 'acc-B'])
+      const body = (m: string) => new Response(JSON.stringify(buildsFor(m)), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      buildGates[1]!.gate.resolve(body('NEW')); await flushPromises()
+      buildGates[0]!.gate.resolve(body('OLD')); await flushPromises()
+      expect(markOf(newC)).toBe('NEW')
+      expect(markOf(oldC)).toBeNull()
+      expect(buildGates.filter((g) => g.id === 'acc-B')).toHaveLength(1) // finite: one read, no reconcile loop
+    } finally {
+      resetAccountSession()
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('Builds keyboard navigation and roster restoration', () => {
+  const rich: CharacterBuildTabsResponse = { ...buildsResponse, tabs: [
+    { tab: 1, active: false, specializations: [spec(1, 'Zeal', 'Guardian', false)] },
+    { tab: 2, active: true, specializations: [spec(62, 'Willbender', 'Guardian', true)] }] }
+
+  it('section arrows/End move focus to Builds; Back restores the origin row even with a delayed builds read in flight', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ ...ana, name: `Char ${i}` }))
+    const gate = deferred<CharacterBuildTabsResponse>()
+    const api = fakeApi({ loadRoster: async () => ({ ...roster, characterCount: 30, characters: many }),
+      loadBuildTabs: async () => gate.promise })
+    const scrollTo = vi.fn(); vi.stubGlobal('scrollTo', scrollTo)
+    Object.defineProperty(window, 'scrollY', { value: 500, configurable: true })
+    const w = mount(CharactersScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.get('[data-name="Char 7"]').trigger('click'); await flushPromises()
+    await w.get('[data-test="section-equipment"]').trigger('keydown', { key: 'End' }); await flushPromises()
+    expect(w.get('[data-test="section-builds"]').attributes('aria-selected')).toBe('true')
+    expect(document.activeElement).toBe(w.get('[data-test="section-builds"]').element)
+    expect(w.get('[data-test="section-builds"]').attributes('tabindex')).toBe('0')
+    expect(w.get('[data-test="section-equipment"]').attributes('tabindex')).toBe('-1')
+    await w.get('[data-test="section-builds"]').trigger('keydown', { key: 'ArrowRight' }); await flushPromises()
+    expect(w.get('[data-test="section-equipment"]').attributes('aria-selected')).toBe('true') // wraps
+    await w.get('[data-test="section-equipment"]').trigger('keydown', { key: 'ArrowLeft' }); await flushPromises()
+    expect(w.get('[data-test="section-builds"]').attributes('aria-selected')).toBe('true')
+    await w.get('[data-test="character-back"]').trigger('click'); await flushPromises()
+    gate.resolve(rich); await flushPromises() // obsolete delayed effect arrives after Back
+    expect((document.activeElement as HTMLElement).dataset.name).toBe('Char 7')
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 500)
+    expect(w.find('[data-test="roster"]').exists()).toBe(true)
+    expect(w.find('[data-test="build-view"]').exists()).toBe(false)
+    w.unmount(); vi.unstubAllGlobals()
+  })
+
+  it('an obsolete section-key effect does not steal focus after Back, and the actual active build stays marked while another is inspected', async () => {
+    const api = fakeApi({ loadBuildTabs: async () => rich })
+    const w = mount(CharactersScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
+    await w.get('[data-test="section-builds"]').trigger('click'); await flushPromises()
+    await w.findAll('[data-test="build-tab"]')[0]!.trigger('click'); await flushPromises()
+    expect(w.findAll('[data-test="build-tab"]')[0]!.attributes('aria-selected')).toBe('true')
+    expect(w.findAll('[data-test="build-tab"]')[1]!.find('[data-test="build-tab-active"]').exists()).toBe(true)
+    void w.get('[data-test="section-builds"]').trigger('keydown', { key: 'ArrowLeft' })
+    await w.get('[data-test="character-back"]').trigger('click'); await flushPromises()
+    expect(document.activeElement?.getAttribute('data-test')).not.toBe('section-inventory')
+    expect(w.find('[data-test="section-tablist"]').exists()).toBe(false)
+    w.unmount()
   })
 })

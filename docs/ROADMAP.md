@@ -94,7 +94,7 @@ Owning scope: [DOMAIN_SPEC.md section 56](DOMAIN_SPEC.md). UI intent: [FRONTEND_
 4. Verify account isolation, metadata-based rarity, missing versus empty slots, template-reference deduplication, refresh/recovery and navigation. Do not change existing crafting inventory totals through duplicated template equipment.
 5. Measure roster/detail response size, desktop rendering, metadata/upstream requests, cold/warm behavior and whole-stack CPU/memory/storage under the Oracle workload. No per-character polling loop, new service or eager download of every detail on each roster visit without measured justification.
 
-Status: roster rows/sorting, character summary, Equipment and Inventory layouts were approved through direct pairing on 2026-11-08. Reconcile tests and current-state documentation with that baseline; do not redesign it in maintenance. Builds data and referenced metadata are delivered, while Builds UI #166 still needs implementation and a final visual review. Story/recipes/map exclusions remain unchanged. Final hosting qualification and owner administration remain outstanding.
+Status: roster rows/sorting, character summary, Equipment and Inventory layouts were approved through direct pairing on 2026-11-08. Reconcile tests and current-state documentation with that baseline; do not redesign it in maintenance. Builds data, referenced metadata and the Builds UI (#166) are implemented and the final Builds page was visually accepted by the Product Owner on 2026-11-08; merge acceptance of #166 still follows CI and review. Story/recipes/map exclusions remain unchanged. Final hosting qualification and owner administration remain outstanding.
 
 ## Operational follow-up: owner administration and automatic inventory refresh
 

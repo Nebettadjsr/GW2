@@ -58,7 +58,7 @@ Equipment template selectors are compact adjacent numbered buttons aligned right
 
 Build specializations use full in-game-style trait rows (Product Owner decision, issue #164): every minor and major choice of the specialization is visible in tier order and the selected traits are highlighted. The compact selected-only view is rejected. Background artwork is not required. The backend supplies these rows via `GET /api/account/characters/{name}/builds` (`minorTraits`/`majorTraits` per specialization; unresolved choices stay explicit and are not invented). Each trait carries its documented `specializationId`, `tier`, `order` (0 is valid for both) and `slot` plus a `placement` of `ORDINARY`, `NONSTANDARD`, `CONFLICT` or `UNRESOLVED`; place a row by tier/order only when `ORDINARY`, never by array position.
 
-The screenshots do not authorize public sharing, exports, a 3D character renderer or additional statistics. Builds still needs a concrete view for Product Owner review; the approved full trait rows and saved-build tabs need no repeated decision. Domain scope is in `DOMAIN_SPEC.md`, section 56.
+The screenshots do not authorize public sharing, exports, a 3D character renderer or additional statistics. The Builds page layout described in section 2.2 was explicitly accepted by the Product Owner on 2026-11-08; the full trait rows and saved-build tabs need no repeated decision. Domain scope is in `DOMAIN_SPEC.md`, section 56.
 
 Builds sizing refinement (2026-11-08): use the Equipment composition's content width for the centered Skills/Traits block, scaling the trait artwork, emblems, tiles and spacing proportionally. Skills retain their tile size, with slightly enlarged, cropped pictures and a narrow inner black edge inside the light border.
 
