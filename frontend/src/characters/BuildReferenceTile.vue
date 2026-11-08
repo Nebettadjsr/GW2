@@ -50,7 +50,7 @@ async function show(event: MouseEvent | FocusEvent): Promise<void> {
 
 <style scoped>
 .build-tile { display: inline-flex; position: relative; align-items: center; justify-content: center; box-sizing: border-box; cursor: default; }
-.build-tile__icon { width: 100%; height: 100%; object-fit: contain; }
+.build-tile__icon { width: 100%; height: 100%; object-fit: contain; transform: scale(var(--build-icon-scale, 1)); }
 .build-tile__blank { color: #bac2c6; font-size: 18px; }
 .build-tile:focus-visible { outline: 2px solid var(--color-info); outline-offset: 3px; }
 .build-tooltip { position: fixed; z-index: 1000; width: 360px; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); overflow-y: auto; box-sizing: border-box; padding: 14px; background: rgba(3, 6, 7, .96); border: 1px solid #48515a; box-shadow: 0 8px 24px #0007; color: #eee; font-size: 15px; line-height: 1.35; }

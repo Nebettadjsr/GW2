@@ -357,7 +357,7 @@ const inventoryProblem = computed(() => {
 </template>
 
 <style scoped>
-.screen { max-width: 1280px; margin-inline: auto; }
+.screen { --character-panel-width: calc(980 * 60px / 76); max-width: 1280px; margin-inline: auto; }
 .roster-sort { display: flex; align-items: center; gap: var(--space-2); }
 .roster-sort select { min-width: 11rem; }
 .roster-scroll { max-width: 100%; overflow-x: auto; }

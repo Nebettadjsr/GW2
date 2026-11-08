@@ -60,6 +60,8 @@ Build specializations use full in-game-style trait rows (Product Owner decision,
 
 The screenshots do not authorize public sharing, exports, a 3D character renderer or additional statistics. Builds still needs a concrete view for Product Owner review; the approved full trait rows and saved-build tabs need no repeated decision. Domain scope is in `DOMAIN_SPEC.md`, section 56.
 
+Builds sizing refinement (2026-11-08): use the Equipment composition's content width for the centered Skills/Traits block, scaling the trait artwork, emblems, tiles and spacing proportionally. Skills retain their tile size, with slightly enlarged, cropped pictures and a narrow inner black edge inside the light border.
+
 ### 2.3 System Status: account controls and owner administration
 
 Ordinary users see their key/connection controls, their account-data age and manual account refresh. Shared-system health uses concise generic labels. Owner-only controls provide detailed diagnostics and global item, recipe and full-TP refresh actions, clearly distinguished from refreshing one account. Do not render privileged details for ordinary users and do not rely on hidden controls for authorization. Admin identity is resolved by the backend as described in `TARGET_ARCHITECTURE.md` section 8.3.

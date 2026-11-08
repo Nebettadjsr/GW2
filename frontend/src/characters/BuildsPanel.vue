@@ -127,19 +127,19 @@ function unshownSelected(spec: BuildSpecialization): BuildTraitRef[] {
 </template>
 
 <style scoped>
-.builds { width: min(100%, 950px); margin-inline: auto; }
+.builds { --trait-unit: calc(var(--character-panel-width, calc(980 * 60px / 76)) / 950); width: min(100%, calc(950 * var(--trait-unit))); margin-inline: auto; }
 .build__heading { margin: 0 0 16px; font-size: 1.5rem; }
 .build__heading--traits { margin-top: 32px; }
-.build__specs { display: flex; flex-direction: column; gap: 14px; }
-.spec { position: relative; isolation: isolate; display: grid; grid-template-columns: 27% 1fr; min-height: 206px; box-sizing: border-box; padding: 12px 8%; background: #0a1010; border: 1px solid #23312e; overflow: hidden; }
+.build__specs { display: flex; flex-direction: column; gap: calc(14 * var(--trait-unit)); }
+.spec { position: relative; isolation: isolate; display: grid; grid-template-columns: 27% 1fr; min-height: calc(206 * var(--trait-unit)); box-sizing: border-box; padding: calc(12 * var(--trait-unit)) 8%; background: #0a1010; border: 1px solid #23312e; overflow: hidden; }
 .spec__art { position: absolute; z-index: -1; bottom: 0; left: 0; width: 158%; height: 124%; max-width: none; pointer-events: none; }
 .spec__head { display: flex; align-items: center; justify-content: flex-start; }
-.spec__emblem { width: 160px; max-width: 95%; height: auto; filter: drop-shadow(0 4px 3px #0009); }
-.spec__choices { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.trait-row { display: grid; grid-template-columns: 1fr 1fr; align-items: center; flex: 1; min-width: 0; gap: 10px; }
+.spec__emblem { width: calc(160 * var(--trait-unit)); max-width: 95%; height: auto; filter: drop-shadow(0 4px 3px #0009); }
+.spec__choices { display: flex; align-items: center; flex-wrap: wrap; gap: calc(8 * var(--trait-unit)); }
+.trait-row { display: grid; grid-template-columns: 1fr 1fr; align-items: center; flex: 1; min-width: 0; gap: calc(10 * var(--trait-unit)); }
 .trait-minors { display: flex; align-items: center; justify-content: center; }
-.trait-majors { display: grid; grid-template-rows: repeat(3, 52px); gap: 8px; justify-items: center; }
-.trait { width: 52px; height: 52px; }
+.trait-majors { display: grid; grid-template-rows: repeat(3, calc(52 * var(--trait-unit))); gap: calc(8 * var(--trait-unit)); justify-items: center; }
+.trait { width: calc(52 * var(--trait-unit)); height: calc(52 * var(--trait-unit)); }
 .trait--minor { clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 75%, 75% 100%, 25% 100%, 0 75%, 0 25%); background: #051007; }
 .trait--major { border: 1px solid #1d3726; background: #051007; opacity: .3; }
 .trait--selected { opacity: 1; border: 1px solid #102518; box-shadow: 0 0 3px #000; }
@@ -157,7 +157,7 @@ function unshownSelected(spec: BuildSpecialization): BuildTraitRef[] {
 .skills li { display: flex; }
 .skills li:first-child { margin-right: 8px; }
 .skills li:last-child { margin-left: 8px; }
-.skill { width: 60px; height: 60px; padding: 5px; border: 2px solid #c5c9c9; background: #070a0b; }
+.skill { --build-icon-scale: 1.16; width: 60px; height: 60px; padding: 1px; overflow: hidden; border: 2px solid #c5c9c9; background: #070a0b; }
 .build__facts { margin-top: 24px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 @media (max-width: 720px) {
@@ -172,7 +172,7 @@ function unshownSelected(spec: BuildSpecialization): BuildTraitRef[] {
   .trait-majors { grid-template-rows: repeat(3, 29px); gap: 5px; }
   .skills-row { gap: 10px; }
   .skills-row__environment { flex-basis: 26px; width: 26px; height: 26px; }
-  .skill { width: 44px; height: 44px; padding: 3px; }
+  .skill { width: 44px; height: 44px; }
   .skills { gap: 4px; }
   .skills li:first-child { margin-right: 3px; }
   .skills li:last-child { margin-left: 3px; }

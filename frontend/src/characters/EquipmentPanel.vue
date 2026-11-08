@@ -117,7 +117,7 @@ function stats(entry: EquipmentEntry): string[] {
 <style scoped>
 .equipment { --equipment-unit: calc(60px / 76); }
 .equipment__panel { overflow-x: auto; }
-.equipment__hero { position: relative; width: calc(980 * var(--equipment-unit)); height: calc(900 * var(--equipment-unit)); margin: calc(24 * var(--equipment-unit)) auto; }
+.equipment__hero { position: relative; width: var(--character-panel-width, calc(980 * var(--equipment-unit))); height: calc(900 * var(--equipment-unit)); margin: calc(24 * var(--equipment-unit)) auto; }
 .equipment__art { position: absolute; left: calc(84 * var(--equipment-unit)); top: 0; width: calc(640 * var(--equipment-unit)); height: calc(792 * var(--equipment-unit)); display: flex; align-items: flex-end; justify-content: center; pointer-events: none; }
 .equipment__art img { width: 100%; height: 100%; max-width: 100%; object-fit: contain; object-position: center bottom; opacity: 0.5; }
 .equipment__art img.equipment__necromancer-art { width: auto; max-width: none; }
