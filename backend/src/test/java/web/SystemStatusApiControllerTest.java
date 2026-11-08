@@ -23,11 +23,13 @@ class SystemStatusApiControllerTest {
 
         mvc.perform(get("/api/system/status"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.running").value(false))
+                // Generic projection (STORY-STATUS-001): coarse states only; details moved to the owner route.
+                .andExpect(jsonPath("$.globalHealth").value("NOT_RUN"))
+                .andExpect(jsonPath("$.priceHealth").value("NOT_RUN"))
+                .andExpect(jsonPath("$.running").doesNotExist())
                 .andExpect(jsonPath("$.lastCheckedAt").doesNotExist())
                 .andExpect(jsonPath("$.accountLastRefreshedAt").doesNotExist())
-                .andExpect(jsonPath("$.cachedPriceItems").value(0))
-                .andExpect(jsonPath("$.stalePriceItems").value(0));
+                .andExpect(jsonPath("$.cachedPriceItems").doesNotExist());
     }
 
     @Test

@@ -1,7 +1,9 @@
 package web;
 
 import application.GlobalDataRefreshService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
+import web.access.OwnerAccess;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -65,10 +67,14 @@ public class GlobalSyncApiController {
     private final GlobalDataRefreshService globalDataRefreshService;
     private final BackgroundTaskService taskService;
 
+    private final OwnerAccess ownerAccess;
+
+    @org.springframework.beans.factory.annotation.Autowired
     public GlobalSyncApiController(GlobalDataRefreshService globalDataRefreshService,
-                                   BackgroundTaskService taskService) {
+                                   BackgroundTaskService taskService, OwnerAccess ownerAccess) {
         this.globalDataRefreshService = globalDataRefreshService;
         this.taskService = taskService;
+        this.ownerAccess = ownerAccess;
     }
 
     /**
@@ -87,12 +93,16 @@ public class GlobalSyncApiController {
      * here. See {@link SyncApiExceptionHandler}.
      */
     @PostMapping(path = "/global", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<SyncTaskAcceptedResponse> syncGlobalData(
-            @RequestBody(required = false) Map<String, Object> request) {
+    public ResponseEntity<?> syncGlobalData(
+            @RequestBody(required = false) Map<String, Object> request, HttpServletRequest http) {
+
+        // Owner-only (STORY-STATUS-001): decided before validation, admission or any refresh work.
+        ResponseEntity<?> denial = ownerAccess.deny(http);
+        if (denial != null) return denial;
 
         SyncRequestValidation.rejectAnyRequestField(GLOBAL_SYNC_PATH, request);
 
-        String taskId = taskService.submit(GLOBAL_SYNC_OPERATION, globalDataRefreshService::refreshAll);
+        String taskId = taskService.submitAdministrative(GLOBAL_SYNC_OPERATION, globalDataRefreshService::refreshAll);
         String statusPath = SyncTaskApiController.statusPath(taskId);
 
         return ResponseEntity.accepted()

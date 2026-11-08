@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
@@ -55,7 +56,22 @@ public class BackgroundTaskService implements AutoCloseable {
     /** Upper bound on retained task records; see the lifetime note above. */
     private static final int RETAINED_TASKS = 100;
 
-    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+    private final Executor executor;
+    private final ExecutorService ownedExecutor;
+
+    public BackgroundTaskService() {
+        this.ownedExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        this.executor = ownedExecutor;
+    }
+
+    /** Test seam: runs task bodies on the supplied executor, so a deferred one keeps tasks PENDING. */
+    public BackgroundTaskService(Executor executor) {
+        this.ownedExecutor = null;
+        this.executor = executor;
+    }
+
+    /** A task snapshot with its trusted administrative classification, read under one lock. */
+    public record Classified(TaskSnapshot task, boolean administrative) {}
 
     /** Submission-ordered so eviction can start at the oldest record. Guarded by {@code this}. */
     private final Map<String, MutableTask> tasks = new LinkedHashMap<>();
@@ -91,6 +107,32 @@ public class BackgroundTaskService implements AutoCloseable {
         return task.id;
     }
 
+    /**
+     * Admits a task classified as owner-administrative by the trusted server-side caller (the
+     * external global action and the internal scheduler). Same admission rule as
+     * {@link #submit(String, TaskBody)}; the classification is never derived from request data.
+     */
+    public String submitAdministrative(String operation, TaskBody body) {
+        MutableTask task;
+        synchronized (this) {
+            unfinishedTaskId(operation).ifPresent(existing -> {
+                throw new TaskAlreadyRunningException(operation, existing);
+            });
+            evictOldestTerminalRecords();
+            task = new MutableTask(UUID.randomUUID().toString(), operation, operation, Instant.now());
+            task.administrative = true;
+            tasks.put(task.id, task);
+        }
+        executor.execute(() -> run(task, body));
+        return task.id;
+    }
+
+    /** True when the identifier names a retained task admitted through {@link #submitAdministrative}. */
+    public synchronized boolean isAdministrative(String taskId) {
+        MutableTask task = tasks.get(taskId);
+        return task != null && task.administrative;
+    }
+
     /** Starts work unless an unfinished task for this operation already exists, returning its ID. */
     public String submitOrExisting(String operation, TaskBody body) {
         synchronized (this) {
@@ -107,10 +149,16 @@ public class BackgroundTaskService implements AutoCloseable {
         return task == null ? Optional.empty() : Optional.of(task.snapshot());
     }
 
+    /** Atomic lookup: the snapshot and its classification can never disagree after eviction. */
+    public synchronized Optional<Classified> findClassified(String taskId) {
+        MutableTask task = tasks.get(taskId);
+        return task == null ? Optional.empty() : Optional.of(new Classified(task.snapshot(), task.administrative));
+    }
+
     /** Interrupts anything still running; already-committed work is unaffected. */
     @Override
     public void close() {
-        executor.shutdownNow();
+        if (ownedExecutor != null) ownedExecutor.shutdownNow();
     }
 
     private void run(MutableTask task, TaskBody body) {
@@ -167,6 +215,7 @@ public class BackgroundTaskService implements AutoCloseable {
         private Instant startedAt;
         private Instant finishedAt;
         private Exception failure;
+        private boolean administrative;
 
         MutableTask(String id, String operation, String exclusionKey, Instant submittedAt) {
             this.id = id;

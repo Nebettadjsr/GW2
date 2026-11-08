@@ -21,7 +21,7 @@ public class GlobalDataRefreshScheduler {
             initialDelayString = "${gw2.global-refresh.initial-delay-ms:60000}")
     public void checkGlobalData() {
         try {
-            tasks.submit(OPERATION, refreshService::refreshAll);
+            tasks.submitAdministrative(OPERATION, refreshService::refreshAll);
         } catch (RuntimeException ignored) {
             // Includes duplicate admission: a manual or scheduled run is already doing this work.
             // A later fixed-delay execution retries after completion.

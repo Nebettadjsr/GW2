@@ -37,15 +37,22 @@ public class SyncTaskApiController {
     private final BackgroundTaskService taskService;
     private final AccountAccessService access;
     private final ScopedAccountRefreshCoordinator coordinator;
+    private final web.access.OwnerAccess ownerAccess;
 
     /** Global-task lookup only: with no account facility, every account task is reported unknown. */
     public SyncTaskApiController(BackgroundTaskService taskService) {
-        this(taskService, null, null);
+        this(taskService, null, null, null);
+    }
+
+    public SyncTaskApiController(BackgroundTaskService taskService, AccountAccessService access,
+                                 ScopedAccountRefreshCoordinator coordinator) {
+        this(taskService, access, coordinator, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public SyncTaskApiController(BackgroundTaskService taskService, AccountAccessService access,
-                                 ScopedAccountRefreshCoordinator coordinator) {
+                                 ScopedAccountRefreshCoordinator coordinator, web.access.OwnerAccess ownerAccess) {
+        this.ownerAccess = ownerAccess;
         this.taskService = taskService;
         this.access = access;
         this.coordinator = coordinator;
@@ -66,9 +73,19 @@ public class SyncTaskApiController {
      */
     @GetMapping(path = "/{taskId}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> status(@PathVariable("taskId") String taskId, HttpServletRequest request) {
-        TaskSnapshot task = taskService.find(taskId)
+        var classified = taskService.findClassified(taskId)
                 .orElseThrow(() -> new UnknownTaskException(taskId));
+        TaskSnapshot task = classified.task();
 
+        if (classified.administrative()) {
+            // Owner-administrative task: current owner authorization precedes serialization.
+            var denial = ownerAccess == null ? null : ownerAccess.deny(request);
+            if (denial != null || ownerAccess == null) {
+                return denial != null ? denial : denied(HttpStatus.FORBIDDEN, "OWNER_REQUIRED");
+            }
+            return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
+                    .body(SyncTaskStatusMapper.toResponse(task));
+        }
         if (!ScopedAccountRefreshCoordinator.OPERATION.equals(task.operation())) {
             return ResponseEntity.ok(SyncTaskStatusMapper.toResponse(task));
         }

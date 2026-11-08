@@ -89,7 +89,7 @@ function isAccountPath(path: string): boolean {
   const route = path.split('?')[0] ?? path
   return route.startsWith('/account/') || route.startsWith('/crafting/profit') ||
     route.startsWith('/crafting/discovery') || route === '/crafting/selector-options' ||
-    route.startsWith('/sync/account') || route.startsWith('/sync/tasks/') || route === '/system/status'
+    route.startsWith('/sync/account') || route === '/sync/global' || route.startsWith('/sync/tasks/') || route.startsWith('/system/status')
 }
 
 /**

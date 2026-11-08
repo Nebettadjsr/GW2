@@ -95,6 +95,29 @@ describe('SyncScreen', () => {
     wrapper.unmount()
   })
 
+  it('rendersGenericOnlyStatusWithoutDetailedFieldsOrDisablingControls', async () => {
+    vi.spyOn(systemApi, 'readStatus').mockResolvedValue({ globalHealth: 'PROBLEM', priceHealth: 'OK' })
+    const wrapper = mountControls(new FakeSyncApi())
+    await settle()
+
+    expect(textOf(wrapper, 'global-health')).toBe('Problem')
+    expect(textOf(wrapper, 'price-cache-health')).toBe('Available')
+    expect(isDisabled(wrapper, 'sync-trigger-GLOBAL_SYNC')).toBe(false)
+    expect(exists(wrapper, 'sync-trigger-ACCOUNT_SYNC')).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('treatsGenericRunningAsBusyAndANotRunStateAsIdle', async () => {
+    const read = vi.spyOn(systemApi, 'readStatus').mockResolvedValue({ globalHealth: 'RUNNING', priceHealth: 'NOT_RUN' })
+    const wrapper = mountControls(new FakeSyncApi())
+    await settle()
+    expect(textOf(wrapper, 'global-health')).toBe('Running')
+    expect(textOf(wrapper, 'price-cache-health')).toBe('Not checked')
+    expect(isDisabled(wrapper, 'sync-trigger-GLOBAL_SYNC')).toBe(true)
+    read.mockRestore()
+    wrapper.unmount()
+  })
+
   it('startsNoSynchronizationWhenMounted', async () => {
     const api = new FakeSyncApi()
 
