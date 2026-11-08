@@ -247,6 +247,8 @@ const inventoryProblem = computed(() => {
       </div>
       <EquipmentTabSelector v-if="c.section.value === 'equipment' && c.equipmentTabs.value?.length"
         :tabs="c.equipmentTabs.value" :selected="c.shownTab.value?.tab" @inspect="c.inspect" />
+      <EquipmentTabSelector v-if="c.section.value === 'builds' && c.buildTabs.value?.length" kind="build"
+        :tabs="c.buildTabs.value" :selected="c.shownBuild.value?.tab" @inspect="c.inspectBuild" />
       </div>
       <div id="section-panel" role="tabpanel" :aria-labelledby="`section-tab-${c.section.value}`">
       <template v-if="c.section.value === 'equipment'">
@@ -346,9 +348,8 @@ const inventoryProblem = computed(() => {
             @click="c.loadBuildTabs(c.selectedName.value!)">Check again</button>
         </div>
         <p v-else-if="c.buildIsRetained.value && !automatic.updating.value" class="notice" data-test="builds-retained">Showing previously saved builds.</p>
-        <p v-if="c.buildSource.value?.builds?.completedAt" class="meta" data-test="builds-completed">Builds saved {{ c.buildSource.value.builds.completedAt }}</p>
         <p v-if="c.buildTabs.value && c.buildTabs.value.length === 0" class="meta" data-test="builds-none">No saved builds are listed for this character.</p>
-        <BuildsPanel v-if="c.buildTabs.value?.length" :tabs="c.buildTabs.value" :selected="c.shownBuild.value?.tab" @inspect="c.inspectBuild" />
+        <BuildsPanel v-if="c.buildTabs.value?.length" :tabs="c.buildTabs.value" :selected="c.shownBuild.value?.tab" />
       </template>
       </div>
     </section>

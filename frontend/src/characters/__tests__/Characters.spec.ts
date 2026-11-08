@@ -929,6 +929,8 @@ describe('Builds section', () => {
     expect(api.calls.filter((x) => x.startsWith('builds:'))).toHaveLength(1)
     expect(api.calls.filter((x) => x.startsWith('inv:'))).toHaveLength(0)
     expect(w.findAll('[data-test="build-tab"]').map((t) => t.text())).toEqual(['1', '2●'])
+    expect(w.find('.character-navigation [data-test="build-tablist"]').exists()).toBe(true)
+    expect(w.find('[data-test="builds-completed"]').exists()).toBe(false)
     expect(w.find('[data-test="build-active-badge"]').exists()).toBe(true)
     expect(w.find('[data-test="build-tab"][aria-selected="true"]').text()).toContain('2')
   })
@@ -952,7 +954,8 @@ describe('Builds section', () => {
     expect(rows[0]!.findAll('[data-test="trait"]').map((t) => t.attributes('title'))).toEqual(['T10', 'T11', 'T12', 'T13'])
     const selected = rows[0]!.findAll('.trait--selected')
     expect(selected).toHaveLength(1); expect(selected[0]!.attributes('title')).toBe('T12')
-    expect(w.find('[data-test="trait-unplaced"]').text()).toContain('conflict')
+    expect(w.find('[data-test="trait-unplaced"]').text()).toContain('T99')
+    expect(w.find('[data-test="trait-unplaced"]').text()).not.toContain('(conflict)')
     expect(w.find('[data-test="skills-land"]').text()).toContain('Heal')
     expect(w.find('[data-test="skills-land"]').text()).toContain('Skill #2 (details unavailable)')
     expect(w.find('[data-test="skills-aquatic"]').text()).toContain('No Skill saved')
@@ -982,7 +985,7 @@ describe('Builds section', () => {
     const c = (w.vm as unknown as { $: { setupState: { c: ReturnType<typeof useCharacters> } } }).$.setupState.c
     await c.loadBuildTabs('Ana B'); await w.find('[data-test="section-builds"]').trigger('click'); await flushPromises()
     expect(w.find('[data-test="builds-error"]').text()).toContain('showing the previous saved data')
-    expect(w.find('[data-test="builds-completed"]').text()).toContain('2026-01-01T00:00:00Z')
+    expect(c.buildSource.value?.builds?.completedAt).toBe('2026-01-01T00:00:00Z')
     expect(w.findAll('[data-test="build-tab"]')).toHaveLength(2)
   })
 

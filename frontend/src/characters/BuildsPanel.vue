@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed } from 'vue'
 import type { BuildIdRef, BuildLegendRef, BuildSkills, BuildSpecialization, BuildTab, BuildTraitRef } from '@/api/types'
 
 /**
@@ -9,26 +9,9 @@ import type { BuildIdRef, BuildLegendRef, BuildSkills, BuildSpecialization, Buil
  * the selected traits highlighted. Nothing is edited, inferred or fabricated: unresolved ids stay as ids.
  */
 const props = defineProps<{ tabs: BuildTab[]; selected?: number }>()
-const emit = defineEmits<{ inspect: [tab: number] }>()
-const buttons = ref<HTMLElement[]>([])
 const shown = computed(() => props.tabs.find((t) => t.tab === props.selected) ?? null)
 
 const tabName = (t: BuildTab): string => t.name?.trim() || `Build ${t.tab}`
-async function onKey(event: KeyboardEvent, index: number): Promise<void> {
-  const last = props.tabs.length - 1
-  let next = index
-  if (event.key === 'ArrowRight') next = index === last ? 0 : index + 1
-  else if (event.key === 'ArrowLeft') next = index === 0 ? last : index - 1
-  else if (event.key === 'Home') next = 0
-  else if (event.key === 'End') next = last
-  else return
-  event.preventDefault()
-  const target = props.tabs[next]
-  if (!target) return
-  emit('inspect', target.tab)
-  await nextTick()
-  buttons.value[next]?.focus()
-}
 
 const refLabel = (r: BuildIdRef | null | undefined, kind: string): string =>
   !r ? `No ${kind} saved` : r.resolved && r.name ? r.name : `${kind} #${r.id} (details unavailable)`
@@ -73,18 +56,6 @@ function unshownSelected(spec: BuildSpecialization): BuildTraitRef[] {
 
 <template>
   <div class="builds" data-test="builds-panel">
-    <div class="build-selector">
-      <span class="build-selector__label">Build:</span>
-      <div class="build-selector__tabs" role="tablist" aria-label="Saved build tabs" data-test="build-tablist">
-        <button v-for="(tab, index) in tabs" :key="tab.tab" :ref="el => { if (el) buttons[index] = el as HTMLElement }" type="button" role="tab"
-          :id="`build-tab-${tab.tab}`" aria-controls="build-tabpanel" :aria-selected="selected === tab.tab" :tabindex="selected === tab.tab ? 0 : -1"
-          :aria-label="`${tabName(tab)}${tab.active ? ' · In use in game' : ''}`" :title="`${tabName(tab)}${tab.active ? ' · In use in game' : ''}`"
-          :class="{ 'build-selector__selected': selected === tab.tab }" data-test="build-tab" @click="emit('inspect', tab.tab)" @keydown="onKey($event, index)">
-          {{ tab.tab }}<span v-if="tab.active" class="build-selector__active" aria-hidden="true" data-test="build-tab-active">●</span>
-        </button>
-      </div>
-    </div>
-
     <section v-if="shown" id="build-tabpanel" role="tabpanel" :aria-labelledby="`build-tab-${shown.tab}`" class="build" data-test="build-view">
       <h3 class="build__title" data-test="build-title">{{ tabName(shown) }}
         <span v-if="shown.profession" class="meta" data-test="build-profession">{{ shown.profession }}</span>
@@ -112,7 +83,7 @@ function unshownSelected(spec: BuildSpecialization): BuildTraitRef[] {
             </div>
             <ul v-if="layout(spec).other.length" class="spec__other meta" aria-label="Choices without a known position" data-test="trait-unplaced">
               <li v-for="t in layout(spec).other" :key="t.id" :class="{ 'trait--selected-text': selectedIds(spec).has(t.id) }">
-                {{ traitLabel(t) }} ({{ t.placement.toLowerCase() }}){{ selectedIds(spec).has(t.id) ? ' · selected' : '' }}
+                {{ traitLabel(t) }}{{ selectedIds(spec).has(t.id) ? ' · selected' : '' }}
               </li>
             </ul>
           </template>
@@ -155,13 +126,7 @@ function unshownSelected(spec: BuildSpecialization): BuildTraitRef[] {
 
 <style scoped>
 .builds { display: flex; flex-direction: column; gap: 14px; }
-.build-selector { display: flex; align-items: center; gap: 10px; }
-.build-selector__label { color: var(--color-text-muted, #a9bcc8); font-size: .9rem; }
-.build-selector__tabs { display: flex; gap: 4px; }
-.build-selector button { min-width: 36px; padding: 5px 10px; border: 1px solid var(--border, #687780); border-radius: 6px; background: transparent; cursor: pointer; }
-.build-selector button.build-selector__selected { background: var(--color-raised); font-weight: 700; }
-.build-selector button:focus-visible, .trait:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
-.build-selector__active { margin-left: 6px; color: #dfbc6c; font-size: .55em; vertical-align: middle; }
+.trait:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .build__title { margin: 0; display: flex; gap: 10px; align-items: baseline; }
 .build__badge { color: #dfbc6c; font-size: .8rem; }
 .build__specs { display: flex; flex-wrap: wrap; gap: 16px; }
