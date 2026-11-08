@@ -33,6 +33,8 @@ const Shell = defineComponent({
 beforeEach(() => {
   vi.useFakeTimers()
   connection.phase = 'connected'
+  // Default: the backend recognizes this session as the owner; tests of denial override it.
+  vi.spyOn(systemApi, 'readOwnerDetails').mockResolvedValue(OWNER_DETAILS)
 })
 
 afterEach(() => {
@@ -74,6 +76,11 @@ function isDisabled(wrapper: VueWrapper, testId: string): boolean {
   return (wrapper.find(`[data-test="${testId}"]`).element as HTMLButtonElement).disabled
 }
 
+const OWNER_DETAILS = {
+  running: false, lastCheckedAt: null, lastChangedAt: null, lastRecipeSyncAt: null, lastGraphRebuildAt: null,
+  lastFailure: null, cachedPriceItems: 0, stalePriceItems: 0, newestPriceFetchedAt: null, priceCacheError: null
+}
+
 describe('SyncScreen', () => {
   it('showsItsHeadingAndKeyControlsWhileDisconnectedWithoutAnAccountRefreshOrError', async () => {
     connection.phase = 'disconnected'
@@ -101,8 +108,8 @@ describe('SyncScreen', () => {
     await settle()
 
     expect(textOf(wrapper, 'global-health')).toBe('Problem')
-    expect(textOf(wrapper, 'price-cache-health')).toBe('Available')
-    expect(isDisabled(wrapper, 'sync-trigger-GLOBAL_SYNC')).toBe(false)
+    expect(textOf(wrapper, 'price-cache-health')).toBe('OK')
+    expect(isDisabled(wrapper, 'sync-trigger-FULL_ITEM_CATALOG')).toBe(false)
     expect(exists(wrapper, 'sync-trigger-ACCOUNT_SYNC')).toBe(true)
     wrapper.unmount()
   })
@@ -112,8 +119,9 @@ describe('SyncScreen', () => {
     const wrapper = mountControls(new FakeSyncApi())
     await settle()
     expect(textOf(wrapper, 'global-health')).toBe('Running')
-    expect(textOf(wrapper, 'price-cache-health')).toBe('Not checked')
-    expect(isDisabled(wrapper, 'sync-trigger-GLOBAL_SYNC')).toBe(true)
+    expect(textOf(wrapper, 'price-cache-health')).toBe('Not run yet')
+    // Generic shared "running" is a label only; it does not block an owner's own operation.
+    expect(isDisabled(wrapper, 'sync-trigger-FULL_ITEM_CATALOG')).toBe(false)
     read.mockRestore()
     wrapper.unmount()
   })
@@ -127,23 +135,12 @@ describe('SyncScreen', () => {
     expect(api.submissions).toEqual([])
     expect(api.statusRequests).toEqual([])
     expect(textOf(wrapper, 'sync-state-ACCOUNT_SYNC')).toBe('Not started')
-    expect(isDisabled(wrapper, 'sync-trigger-GLOBAL_SYNC')).toBe(false)
+    expect(isDisabled(wrapper, 'sync-trigger-FULL_ITEM_CATALOG')).toBe(false)
   })
 
   it('showsHealthUsingTextAndColorForProblemAndNotRunStates', async () => {
     vi.spyOn(systemApi, 'readStatus').mockResolvedValue({
-      running: false,
-      lastCheckedAt: '2026-09-25T10:00:00Z',
-      lastChangedAt: null,
-      lastRecipeSyncAt: null,
-      lastGraphRebuildAt: null,
-      lastFailure: 'GW2 API unavailable',
-      accountLastRefreshedAt: null,
-      accountRefreshScope: null,
-      cachedPriceItems: 0,
-      stalePriceItems: 0,
-      newestPriceFetchedAt: null,
-      priceCacheError: null
+      globalHealth: 'PROBLEM', priceHealth: 'OK', accountLastRefreshedAt: null, accountRefreshScope: null
     })
     const wrapper = mountControls(new FakeSyncApi())
     await settle()
@@ -152,7 +149,7 @@ describe('SyncScreen', () => {
     expect(wrapper.find('[data-test="account-health"]').classes()).toContain('status--idle')
     expect(textOf(wrapper, 'global-health')).toBe('Problem')
     expect(wrapper.find('[data-test="global-health"]').classes()).toContain('status--failure')
-    expect(textOf(wrapper, 'price-cache-health')).toBe('Available')
+    expect(textOf(wrapper, 'price-cache-health')).toBe('OK')
     expect(wrapper.find('[data-test="price-cache-health"]').classes()).toContain('status--success')
   })
 
@@ -161,7 +158,12 @@ describe('SyncScreen', () => {
     await settle()
 
     const triggers = wrapper.findAll('[data-test^="sync-trigger-"]').map((button) => button.text())
-    expect(triggers).toEqual(['Refresh account data', 'Check global data'])
+    expect(triggers).toEqual([
+      'Refresh account data',
+      'Refresh full item catalog',
+      'Refresh full recipe catalog',
+      'Refresh all Trading Post prices'
+    ])
     expect(exists(wrapper, 'sync-trigger-PRICE_REFRESH_PROFIT')).toBe(false)
     expect(exists(wrapper, 'sync-trigger-PRICE_REFRESH_DISCOVERY')).toBe(false)
     expect(exists(wrapper, 'price-cache-status')).toBe(true)
@@ -173,16 +175,16 @@ describe('SyncScreen', () => {
     const api = new FakeSyncApi()
     api.statusHandler = (statusUrl) => Promise.resolve(statusOf(statusUrl, 'PENDING'))
     const wrapper = mountControls(api)
-
+    await settle()
     await click(wrapper, 'sync-trigger-ACCOUNT_SYNC')
-    await click(wrapper, 'sync-trigger-GLOBAL_SYNC')
+    await click(wrapper, 'sync-trigger-FULL_ITEM_CATALOG')
 
-    expect(api.submissions).toEqual(['ACCOUNT_SYNC', 'GLOBAL_SYNC'])
+    expect(api.submissions).toEqual(['ACCOUNT_SYNC', 'FULL_ITEM_CATALOG'])
     expect(api.statusRequests).toEqual([
       acceptance('ACCOUNT_SYNC').statusUrl,
-      acceptance('GLOBAL_SYNC').statusUrl
+      acceptance('FULL_ITEM_CATALOG').statusUrl
     ])
-    expect(textOf(wrapper, 'sync-diagnostics-GLOBAL_SYNC')).toContain(acceptance('GLOBAL_SYNC').taskId)
+    expect(textOf(wrapper, 'sync-diagnostics-FULL_ITEM_CATALOG')).toContain(acceptance('FULL_ITEM_CATALOG').taskId)
   })
 
   it('rendersEveryLifecycleStateTheBackendReportsInUserOrientedWords', async () => {
@@ -191,7 +193,7 @@ describe('SyncScreen', () => {
     api.statusHandler = (statusUrl, callIndex) =>
       Promise.resolve(statusOf(statusUrl, states[callIndex] ?? 'SUCCEEDED'))
     const wrapper = mountControls(api)
-
+    await settle()
     await click(wrapper, 'sync-trigger-ACCOUNT_SYNC')
     expect(textOf(wrapper, 'sync-state-ACCOUNT_SYNC')).toBe('Accepted, waiting to start')
     expect(exists(wrapper, 'sync-finished-ACCOUNT_SYNC')).toBe(false)
@@ -218,42 +220,43 @@ describe('SyncScreen', () => {
     const api = new FakeSyncApi()
     api.statusHandler = (statusUrl) => Promise.resolve(statusOf(statusUrl, 'PAUSED_BY_OPERATOR'))
     const wrapper = mountControls(api)
+    await settle()
+    await click(wrapper, 'sync-trigger-FULL_ITEM_CATALOG')
 
-    await click(wrapper, 'sync-trigger-GLOBAL_SYNC')
-
-    const state = textOf(wrapper, 'sync-state-GLOBAL_SYNC')
+    const state = textOf(wrapper, 'sync-state-FULL_ITEM_CATALOG')
     expect(state).toContain('PAUSED_BY_OPERATOR')
     expect(state).not.toContain('Completed')
     // An unknown state is not terminal either, so the client keeps looking it up.
     await advanceToNextPoll()
-    expect(api.statusRequestCount('GLOBAL_SYNC')).toBe(2)
+    expect(api.statusRequestCount('FULL_ITEM_CATALOG')).toBe(2)
   })
 
   it('treatsAFailedTaskReturnedWithHttp200AsAFailureAndStopsPolling', async () => {
     const api = new FakeSyncApi()
     api.statusHandler = (statusUrl) => Promise.resolve(statusOf(statusUrl, 'FAILED', SYNC_FAILURE))
     const wrapper = mountControls(api)
+    await settle()
+    await click(wrapper, 'sync-trigger-FULL_ITEM_CATALOG')
 
-    await click(wrapper, 'sync-trigger-GLOBAL_SYNC')
-
-    expect(textOf(wrapper, 'sync-state-GLOBAL_SYNC')).toBe('Failed')
-    const failure = textOf(wrapper, 'sync-task-failure-GLOBAL_SYNC')
+    expect(textOf(wrapper, 'sync-state-FULL_ITEM_CATALOG')).toBe('Failed')
+    const failure = textOf(wrapper, 'sync-task-failure-FULL_ITEM_CATALOG')
     expect(failure).toContain('were not rolled back')
     expect(failure).toContain('SYNC_FAILED')
     // A task failure is not a lookup failure: the status request itself succeeded.
-    expect(exists(wrapper, 'sync-lookup-error-GLOBAL_SYNC')).toBe(false)
+    expect(exists(wrapper, 'sync-lookup-error-FULL_ITEM_CATALOG')).toBe(false)
 
     await vi.advanceTimersByTimeAsync(STATUS_POLL_INTERVAL_MS * 5)
-    expect(api.statusRequestCount('GLOBAL_SYNC')).toBe(1)
+    expect(api.statusRequestCount('FULL_ITEM_CATALOG')).toBe(1)
   })
 
   it('showsTradingPostPricesAsOneSharedCacheWithoutSeparateRefreshActions', async () => {
     const wrapper = mountControls(new FakeSyncApi())
+    await settle()
 
     expect(exists(wrapper, 'price-cache-status')).toBe(true)
     expect(exists(wrapper, 'sync-trigger-PRICE_REFRESH_PROFIT')).toBe(false)
     expect(exists(wrapper, 'sync-trigger-PRICE_REFRESH_DISCOVERY')).toBe(false)
-    expect(wrapper.findAll('[data-test^="sync-trigger-"]')).toHaveLength(2)
+    expect(wrapper.findAll('[data-test^="sync-trigger-"]')).toHaveLength(4)
   })
 
   it('ignoresADuplicateClickWhileTheSameOperationIsUnfinished', async () => {
@@ -262,7 +265,7 @@ describe('SyncScreen', () => {
     api.submitHandler = () => slowSubmission.promise
     api.statusHandler = (statusUrl) => Promise.resolve(statusOf(statusUrl, 'RUNNING'))
     const wrapper = mountControls(api)
-
+    await settle()
     await click(wrapper, 'sync-trigger-ACCOUNT_SYNC')
     expect(isDisabled(wrapper, 'sync-trigger-ACCOUNT_SYNC')).toBe(true)
     await click(wrapper, 'sync-trigger-ACCOUNT_SYNC')
@@ -281,15 +284,15 @@ describe('SyncScreen', () => {
     const api = new FakeSyncApi()
     api.statusHandler = (statusUrl) => Promise.resolve(statusOf(statusUrl, 'RUNNING'))
     const wrapper = mountControls(api)
-
+    await settle()
     await click(wrapper, 'sync-trigger-ACCOUNT_SYNC')
-    expect(isDisabled(wrapper, 'sync-trigger-GLOBAL_SYNC')).toBe(false)
+    expect(isDisabled(wrapper, 'sync-trigger-FULL_ITEM_CATALOG')).toBe(false)
 
-    await click(wrapper, 'sync-trigger-GLOBAL_SYNC')
+    await click(wrapper, 'sync-trigger-FULL_ITEM_CATALOG')
 
-    expect(api.submissions).toEqual(['ACCOUNT_SYNC', 'GLOBAL_SYNC'])
+    expect(api.submissions).toEqual(['ACCOUNT_SYNC', 'FULL_ITEM_CATALOG'])
     expect(textOf(wrapper, 'sync-state-ACCOUNT_SYNC')).toBe('Running')
-    expect(textOf(wrapper, 'sync-state-GLOBAL_SYNC')).toBe('Running')
+    expect(textOf(wrapper, 'sync-state-FULL_ITEM_CATALOG')).toBe('Running')
   })
 
   it('showsABackendRejectionWithoutQueueingOrResubmitting', async () => {
@@ -297,23 +300,23 @@ describe('SyncScreen', () => {
     api.submitHandler = () =>
       Promise.reject(
         new ApiRequestError(
-          'A GLOBAL_SYNC task is already running (task 1c3f).',
+          'A FULL_ITEM_CATALOG task is already running (task 1c3f).',
           'SYNC_ALREADY_RUNNING',
           409
         )
       )
     const wrapper = mountControls(api)
+    await settle()
+    await click(wrapper, 'sync-trigger-FULL_ITEM_CATALOG')
 
-    await click(wrapper, 'sync-trigger-GLOBAL_SYNC')
-
-    const rejection = textOf(wrapper, 'sync-submission-error-GLOBAL_SYNC')
-    expect(rejection).toContain('SYNC_ALREADY_RUNNING')
-    expect(textOf(wrapper, 'sync-state-GLOBAL_SYNC')).toBe('Not accepted')
-    expect(exists(wrapper, 'sync-diagnostics-GLOBAL_SYNC')).toBe(false)
+    const rejection = textOf(wrapper, 'sync-busy-refusal-FULL_ITEM_CATALOG')
+    expect(rejection).toContain('already running')
+    expect(textOf(wrapper, 'sync-state-FULL_ITEM_CATALOG')).toBe('Not accepted')
+    expect(exists(wrapper, 'sync-diagnostics-FULL_ITEM_CATALOG')).toBe(false)
     // No task of this client's exists, so nothing is polled and nothing is sent again.
     await vi.advanceTimersByTimeAsync(STATUS_POLL_INTERVAL_MS * 10)
     expect(api.statusRequests).toEqual([])
-    expect(api.submissionCount('GLOBAL_SYNC')).toBe(1)
+    expect(api.submissionCount('FULL_ITEM_CATALOG')).toBe(1)
   })
 
   it('reportsAnUnansweredTriggerAsAnUnknownAdmissionAndNeverRetriesIt', async () => {
@@ -321,7 +324,7 @@ describe('SyncScreen', () => {
     api.submitHandler = () =>
       Promise.reject(new ApiRequestError('The backend could not be reached.', UNREACHABLE_CODE, null))
     const wrapper = mountControls(api)
-
+    await settle()
     await click(wrapper, 'sync-trigger-ACCOUNT_SYNC')
 
     const message = textOf(wrapper, 'sync-submission-error-ACCOUNT_SYNC')
@@ -340,7 +343,7 @@ describe('SyncScreen', () => {
     api.statusHandler = () =>
       Promise.reject(new ApiRequestError('The backend could not be reached.', UNREACHABLE_CODE, null))
     const wrapper = mountControls(api)
-
+    await settle()
     await click(wrapper, 'sync-trigger-ACCOUNT_SYNC')
 
     const lookupError = textOf(wrapper, 'sync-lookup-error-ACCOUNT_SYNC')
@@ -362,7 +365,7 @@ describe('SyncScreen', () => {
         ? Promise.reject(new ApiRequestError('unreachable', UNREACHABLE_CODE, null))
         : Promise.resolve(statusOf(statusUrl, 'SUCCEEDED'))
     const wrapper = mountControls(api)
-
+    await settle()
     await click(wrapper, 'sync-trigger-ACCOUNT_SYNC')
     await click(wrapper, 'sync-status-retry-ACCOUNT_SYNC')
 
@@ -377,7 +380,7 @@ describe('SyncScreen', () => {
     api.statusHandler = () =>
       Promise.reject(new ApiRequestError('No such task: task-ACCOUNT_SYNC.', 'TASK_NOT_FOUND', 404))
     const wrapper = mountControls(api)
-
+    await settle()
     await click(wrapper, 'sync-trigger-ACCOUNT_SYNC')
 
     const lookupError = textOf(wrapper, 'sync-lookup-error-ACCOUNT_SYNC')
@@ -397,7 +400,7 @@ describe('SyncScreen', () => {
     api.statusHandler = (statusUrl, callIndex) =>
       callIndex === 0 ? slowLookup.promise : Promise.resolve(statusOf(statusUrl, 'SUCCEEDED'))
     const wrapper = mountControls(api)
-
+    await settle()
     await click(wrapper, 'sync-trigger-ACCOUNT_SYNC')
     await vi.advanceTimersByTimeAsync(STATUS_POLL_INTERVAL_MS * 20)
 
@@ -420,25 +423,25 @@ describe('SyncScreen', () => {
         ? slowAccountLookup.promise
         : Promise.resolve(statusOf(statusUrl, 'FAILED', SYNC_FAILURE))
     const wrapper = mountControls(api)
-
+    await settle()
     await click(wrapper, 'sync-trigger-ACCOUNT_SYNC')
-    await click(wrapper, 'sync-trigger-GLOBAL_SYNC')
-    expect(textOf(wrapper, 'sync-state-GLOBAL_SYNC')).toBe('Failed')
+    await click(wrapper, 'sync-trigger-FULL_ITEM_CATALOG')
+    expect(textOf(wrapper, 'sync-state-FULL_ITEM_CATALOG')).toBe('Failed')
 
     slowAccountLookup.resolve(statusOf(acceptance('ACCOUNT_SYNC').statusUrl, 'SUCCEEDED'))
     await settle()
 
     expect(textOf(wrapper, 'sync-state-ACCOUNT_SYNC')).toBe('Completed')
-    expect(textOf(wrapper, 'sync-state-GLOBAL_SYNC')).toBe('Failed')
+    expect(textOf(wrapper, 'sync-state-FULL_ITEM_CATALOG')).toBe('Failed')
     expect(exists(wrapper, 'sync-task-failure-ACCOUNT_SYNC')).toBe(false)
-    expect(exists(wrapper, 'sync-task-failure-GLOBAL_SYNC')).toBe(true)
+    expect(exists(wrapper, 'sync-task-failure-FULL_ITEM_CATALOG')).toBe(true)
   })
 
   it('stopsPollingWhenTheTrackingStateIsDisposed', async () => {
     const api = new FakeSyncApi()
     api.statusHandler = (statusUrl) => Promise.resolve(statusOf(statusUrl, 'RUNNING'))
     const wrapper = mountControls(api)
-
+    await settle()
     await click(wrapper, 'sync-trigger-ACCOUNT_SYNC')
     expect(api.statusRequestCount('ACCOUNT_SYNC')).toBe(1)
 
@@ -453,7 +456,7 @@ describe('SyncScreen', () => {
     const api = new FakeSyncApi()
     api.statusHandler = (statusUrl) => Promise.resolve(statusOf(statusUrl, 'RUNNING'))
     const wrapper = mountControls(api)
-
+    await settle()
     await click(wrapper, 'sync-trigger-ACCOUNT_SYNC')
     await vi.advanceTimersByTimeAsync(STATUS_POLL_INTERVAL_MS * (MAX_STATUS_POLLS + 5))
     await settle()

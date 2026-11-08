@@ -88,6 +88,12 @@ export class FakeSyncApi implements SyncApi {
     return Promise.resolve({ taskId, operation, statusUrl: `/api/sync/tasks/${taskId}` })
   }
 
+  startFullCatalog(catalog: 'items' | 'recipes' | 'trading-post'): Promise<SyncTaskAccepted> {
+    const operation = catalog === 'items' ? 'FULL_ITEM_CATALOG'
+      : catalog === 'recipes' ? 'FULL_RECIPE_CATALOG' : 'FULL_TP_CATALOG'
+    return this.record(operation)
+  }
+
   readTaskStatus(statusUrl: string): Promise<SyncTaskStatus> {
     const callIndex = this.statusRequests.length
     this.statusRequests.push(statusUrl)

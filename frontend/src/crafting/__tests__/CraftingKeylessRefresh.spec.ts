@@ -56,6 +56,7 @@ function syncApi(start: () => Promise<SyncTaskAccepted>, state = 'SUCCEEDED'): S
     startAccountSync: () => { sync.fullStarted += 1; return start() },
     startProfitDataRefresh: () => { sync.started += 1; return start() },
     startGlobalSync: () => Promise.reject(new Error('unexpected')),
+    startFullCatalog: () => Promise.reject(new Error('unexpected')),
     startPriceRefresh: () => Promise.reject(new Error('unexpected')),
     readTaskStatus: (url) => { sync.reads.push(url); return Promise.resolve(task(state)) }
   }
