@@ -2,7 +2,7 @@
 
 ## Purpose and authority
 
-This runtime snapshot was updated for scoped account recovery and the container runtime on 2026-10-25. DOMAIN_SPEC owns product rules; CURRENT_ARCHITECTURE describes source boundaries; TARGET_ARCHITECTURE records selected design; ROADMAP owns sequencing.
+This runtime snapshot includes the Product Owner-approved UI and scoped refresh implementation of 2026-11-08. Integration test reconciliation is tracked in #169; a described implementation is not a claim that every acceptance gate has passed. DOMAIN_SPEC owns product rules; CURRENT_ARCHITECTURE describes source boundaries; TARGET_ARCHITECTURE records selected design; ROADMAP owns sequencing.
 
 ## Runtime and technology
 
@@ -25,11 +25,17 @@ The Maven wrapper and `backend/pom.xml` manage Java dependencies. Frontend depen
 
 ## Current user workflows
 
-The browser navigation includes Crafting Profit, Crafting Discovery, Ectoplasm Salvage, Bank, Materials, and System Status. See [README](../README.md) for a user-oriented overview and [Frontend UX Guidelines](FRONTEND_UX_GUIDELINES.md) for presentation rules.
+The browser navigation includes Crafting Profit, Crafting Discovery, Ectoplasm Salvage, Bank, Materials, Characters and System Status. See [README](../README.md) for a user-oriented overview and [Frontend UX Guidelines](FRONTEND_UX_GUIDELINES.md) for presentation rules.
 
 Crafting Profit provides an explicit **Refresh data & results** action. It requests the calculation again and starts no synchronization itself: the backend answers from its last successfully synchronized inputs and admits the account and Trading Post refresh those inputs still need, so bank, material storage, account recipe knowledge and character crafting/recipes/inventory are what get refreshed, and account Luck is not fetched for this workflow. The full account refresh remains available for diagnostics in System Status. Normal feature use does not require opening System Status.
 
 Profit and Discovery select their own required Trading Post item IDs but share one persisted price-cache/refresh pipeline. Prices younger than ten minutes are reused; only missing or stale required IDs are requested, in API batches. Feature calculations trigger this on demand; no full TP-price timer is run.
+
+Bank and Materials have independent per-verified-account browser selections, pending edits and explicit save/discard. The same item can be protected in either store separately. Crafting Profit sends the committed source-specific ID sets when protection is enabled; the backend excludes those stores' quantities before owned-pool aggregation, preserving character stock. Bank exposes `protectionSelectable` from catalog/flag evidence; unknown evidence stays selectable and all Materials entries retain checkboxes. Category-local presets and stable toolbar behavior follow UX §2.1. Mystic Forge is a disabled checkbox placeholder, not an implemented recipe source.
+
+Bank, Materials and Characters retain their saved content while automatic refresh runs. `useAutomaticAccountRefresh` shares shell task tracking, schedules from the backend's `X-Account-Max-Age-Ms` header (default 900000 ms), pauses inactive/hidden views and backs off after failure. Page operations request only Bank, Materials or Characters respectively; selected character details additionally recover their optional equipment/build sources when needed. The shell no longer bootstraps all account sources for these pages. Feature pages have a compact updating/failure indicator and no manual refresh/reload buttons or routine freshness paragraphs; System Status keeps explicit full-account refresh. Failed reads retain the last successful snapshot and source timestamps.
+
+Characters uses one roster row per character with a shared summary component, default playtime-descending sorting and local alternate sorts; opening/sorting the roster does not fetch every detail. Selecting a character lazily reads core data, equipment and the build data needed for the active-elite subtitle; Inventory reads its bag manifest on inspection. The approved detail header, summary, centered ten-column inventory, 60px equipment tiles, local profession artwork and right-hand template selector are implemented. Tooltips project supplied equipment, upgrade, infusion, glyph and relic facts. Backend base/equipment totals and bounded passive profiles supply the attribute panel; incomplete metadata/unsupported passives remain explicit in the response. Builds data/metadata are available, but the Builds UI is still #166. Exact presentation belongs in UX §2.2 and calculation scope in DOMAIN_SPEC §56.
 
 Owned-input valuation uses the domain fallback rules when the selected Trading Post side has no usable price. Item reads include vendor values; the same values reach row calculations and resolution details. The calculation row's `unvaluedOwnedInput` flag identifies a consumed input for which no market, crafting or vendor value could be established. Crafting Profit shows a warning in its table and selected detail so an unknown input counted at zero is not presented as a reliable profit. This flag is separate from the freshness envelope: freshly fetched data can still contain an unvalued item.
 
@@ -43,7 +49,7 @@ Both crafting result tables search output names, direct ingredient names and exi
 
 Global recipe metadata and TP-tradeable IDs are checked automatically. The default schedule is a six-hour fixed delay with a one-minute initial delay, configurable as `GW2_GLOBAL_REFRESH_INTERVAL_MS` and `GW2_GLOBAL_REFRESH_INITIAL_DELAY_MS`. The service fetches cheap ID lists first and skips detail work when IDs are unchanged. This detects recipe additions/removals but not an in-place recipe edit under an unchanged ID set. When the set changes, detail data is persisted before the crafting graph is rebuilt; unchanged recipe IDs do not trigger detail sync or a refresh-time graph rebuild. A missing graph cache is initialized on first use. The scheduled and manual System Status action use the same refresh service. In-process duplicate-task prevention and task/timestamp/error status are process-local and reset on restart.
 
-System Status is an administrative diagnostics and maintenance page. It shows current account refresh status/time, shared price-cache freshness, global check/change and recipe/graph timestamps, task state and the last global failure when available. It offers full account refresh and global-data check actions. It is not required for routine feature workflows and is not a general monitoring system.
+System Status currently shows account refresh status/time, shared price-cache freshness, global check/change and recipe/graph timestamps, task state and the last global failure when available. It offers full account refresh and global-data check actions. The approved owner-only authorization and generic-versus-detailed projection split are pending #152 and its follow-ups; current visibility must not be mistaken for that enforced boundary. It is not required for routine feature workflows and is not a general monitoring system.
 
 ## Persistence and generated data
 
@@ -51,12 +57,16 @@ The current PostgreSQL schema has shared item and recipe facts, TP tradeable IDs
 
 | Scope | Tables | Contents |
 | --- | --- | --- |
-| Shared metadata | items, recipes, recipe_ingredients | Item/recipe facts and crafting graph inputs. |
+| Shared metadata | items, recipes, recipe_ingredients, recipe_catalog_publication | Item/recipe facts, completion evidence and crafting graph inputs; nullable `items.no_mystic_forge` supports conservative checkbox eligibility. |
 | Shared Trading Post | tp_tradeable_items, tp_prices | Tradeable IDs and quotes with timestamps. |
 | Account identity/activity | account_registry | Verified stable GUID and monotonic activity. |
 | Scoped account data | account_bank, account_materials, account_recipes, account_luck | Re-fetchable data owned by the verified account GUID. |
-| Scoped characters | characters, character_crafting, character_recipes, character_items | Roster, crafting, recipes and inventories owned by that GUID. | `characters` also retains nullable 64-bit `age_seconds` (playtime) and `deaths` (null = unknown legacy row, never zero); the roster/detail reads expose `ageSeconds`, `deaths` and a service-clock-derived `nextBirthdayAt` (first strictly future multiple of 365 days after `createdAt`; null when creation is unknown or in the future). Newly fetched character documents with a missing, negative, fractional, textual or overflowing counter abort the whole account publication (STORY-CHAR-012). |
+| Scoped characters | characters, character_crafting, character_recipes, character_items, character_bags, character_bag_layout_publication | GUID-owned core facts, crafting, recipes, occupied items and capacity-defined bag manifests; `character_items.upgrade_ids` retains equipped gathering glyphs and other supplied upgrades. |
+| Scoped templates | character_equipment_coverage, character_equipment_tabs, character_equipment_tab_entries, character_build_coverage, character_build_tabs, character_build_tab_specializations | Saved tabs and independent coverage over the account's CHARACTERS generation. |
+| Shared character metadata | equipment_item_details, equipment_item_stats, build_specializations, build_traits, build_skills, build_pets, build_legends | Reused item/stat and referenced build metadata, repaired during bounded synchronization, not ordinary reads. |
 | Scoped freshness | account_source_state | Per-account/source publication generation and completion time, including empty successful results. |
+
+`characters` retains nullable 64-bit `age_seconds` and `deaths`; null means unknown, not zero. Roster/detail reads expose those and a backend-clock-derived `nextBirthdayAt` (first strictly future multiple of 365 days after creation; null for unknown/future creation). Invalid fetched counters abort publication. Flyway V9 stores shared equipment details/stats, V10 adds equipped upgrade IDs and V11 adds nullable Mystic Forge flags and an ingredient lookup index. These are disposable caches, not durable user-preference storage.
 
 Flyway alone writes the managed schema. The disabled legacy account_sync_state path is absent from scoped HTTP workflows. A reset discards cached data; verified synchronization repopulates it (UD-016). Missing markers are distinct from successful empty data. Reads report missing/stale state without inventing freshness or using another configured account. Publication is atomic per source; Profit captures scoped inputs in a repeatable-read snapshot.
 
@@ -83,7 +93,8 @@ The informational Performance workflow publishes separate application-process an
 - Scoped HTTP workflows now operate on the migrated schema; legacy unscoped account access stays refused. Local Chrome/live-ArenaNet recovery evidence covers completed full synchronization, selector options, loaded Profit, Bank, Materials, reload retention and disconnect. This does not certify every feature or establish a hosted deployment.
 - A Java 25 backend image and a static Nginx frontend image with same-origin `/api` forwarding, each with an isolated Docker smoke, are available (`CURRENT_ARCHITECTURE.md`, container image sections). A local three-container Docker Compose stack joins them (frontend is the only published port, `bash scripts/compose-smoke.sh` verifies it offline). Public TLS and hosted deployment are not delivered.
 - Refresh status is process-local, not durable telemetry. Multiple backend replicas would require shared coordination for global scheduled work and refresh deduplication.
-- Hosting provider is undecided. Cloudflare-related infrastructure is only a possible future option, not a decision.
+- Attribute projections support level-80 land equipment and explicitly modelled passives; they are not a full trait/combat simulator. In-game effects, live economic correctness and general exact attribute parity remain separate verification work.
+- Oracle Always Free is the approved hosting target; the actual tenancy/host and final whole-stack fit remain unqualified. No deployment is delivered.
 
 ## Companion documents
 
