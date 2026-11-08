@@ -61,6 +61,29 @@ class CharacterBuildTabsParserTest {
     }
 
     @Test
+    void omittedLandEliteMapsToNullLikeExplicitNullAndPositiveIdIsKept() throws Exception {
+        String omitted = tab(1, true, "").replace("\"skills\":{\"heal\":null,\"utilities\":[5,null,7],\"elite\":9}",
+                "\"skills\":{\"heal\":null,\"utilities\":[5,null,7]}");
+        String explicit = omitted.replace("\"utilities\":[5,null,7]}", "\"utilities\":[5,null,7],\"elite\":null}");
+        var o = CharacterBuildTabsParser.parse(json("[" + omitted + "]")).get(0).build();
+        var e = CharacterBuildTabsParser.parse(json("[" + explicit + "]")).get(0).build();
+        assertNull(o.skills().elite());
+        assertEquals(e.skills(), o.skills());
+        assertEquals(9, o.aquaticSkills().elite(), "aquatic elite is untouched");
+        assertEquals(9, CharacterBuildTabsParser.parse(json("[" + tab(1, true, "") + "]")).get(0).build().skills().elite());
+    }
+
+    @Test
+    void presentInvalidLandEliteStillFails() throws Exception {
+        String ok = tab(1, true, "");
+        for (String v : new String[]{"0", "-3", "1.5", "\"9\"", "true", "{}", "[]", "99999999999"}) {
+            String bad = ok.replace("\"skills\":{\"heal\":null,\"utilities\":[5,null,7],\"elite\":9}",
+                    "\"skills\":{\"heal\":null,\"utilities\":[5,null,7],\"elite\":" + v + "}");
+            assertThrows(IllegalStateException.class, () -> CharacterBuildTabsParser.parse(json("[" + bad + "]")), v);
+        }
+    }
+
+    @Test
     void emptyResponseIsValid() throws Exception {
         assertTrue(CharacterBuildTabsParser.parse(json("[]")).isEmpty());
     }
@@ -90,6 +113,11 @@ class CharacterBuildTabsParserTest {
                 ok.replace(spec, "{\"traits\":[null,null,null]}"),          // id missing
                 ok.replace(spec, "{\"id\":null}"),                          // traits missing
                 ok.replace("\"heal\":null,", ""),                           // heal missing
+                ok.replace(",\"elite\":9}", "}").replace(",\"elite\":9}", "}"), // both elite missing (aquatic included)
+                ok.replace("\"aquatic_skills\":{\"heal\":4,\"utilities\":[5,null,7],\"elite\":9}",
+                        "\"aquatic_skills\":{\"heal\":4,\"utilities\":[5,null,7]}"), // aquatic elite stays mandatory
+                ok.replace("\"skills\":{\"heal\":null,\"utilities\":[5,null,7],\"elite\":9}",
+                        "\"skills\":{\"utilities\":[5,null,7]}"), // omitted elite does not excuse missing heal
                 ok.replace("\"name\":\"B1\",", ""),                          // name missing
                 ok.replace("\"profession\":\"Revenant\",", ""),              // profession missing
                 "[" + tab(1, true, ",\"pets\":{\"terrestrial\":[1,null]}") + "]",   // aquatic pets missing
@@ -100,7 +128,5 @@ class CharacterBuildTabsParserTest {
         for (String b : bad) {
             assertThrows(IllegalStateException.class, () -> CharacterBuildTabsParser.parse(json(b)), b);
         }
-        assertNull(CharacterBuildTabsParser.parse(json("[" + ok.replace(",\"elite\":9", "") + "]"))
-                .getFirst().build().skills().elite());
     }
 }

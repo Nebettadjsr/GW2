@@ -64,8 +64,8 @@ public final class CharacterBuildTabsParser {
         List<Specialization> specializations = new ArrayList<>();
         for (JsonNode s : specs) specializations.add(specialization(s));
         return new Build(optionalText(b, "name", "build name"), optionalText(b, "profession", "profession"),
-                List.copyOf(specializations), skills(b.get("skills"), "skills"),
-                skills(b.get("aquatic_skills"), "aquatic_skills"),
+                List.copyOf(specializations), skills(b.get("skills"), "skills", true),
+                skills(b.get("aquatic_skills"), "aquatic_skills", false),
                 textPositions(b.get("legends"), "legends"), textPositions(b.get("aquatic_legends"), "aquatic_legends"),
                 idPositions(pet(b, "terrestrial"), "terrestrial pets"),
                 idPositions(pet(b, "aquatic"), "aquatic pets"));
@@ -105,14 +105,19 @@ public final class CharacterBuildTabsParser {
         return new Specialization(id.intValue(), java.util.Collections.unmodifiableList(out));
     }
 
-    private static Skills skills(JsonNode s, String what) {
+    /**
+ * {@code eliteMayBeOmitted}: the live API was observed (2026-11-07) omitting the land elite slot instead of
+ * sending null; only that member maps to null. Present values stay strictly validated and every other
+ * slot (including aquatic elite) remains mandatory.
+ */
+    private static Skills skills(JsonNode s, String what, boolean eliteMayBeOmitted) {
         if (s == null || !s.isObject()) throw invalid(what);
         JsonNode utilities = s.get("utilities");
         if (utilities == null || !utilities.isArray() || utilities.size() != 3) throw invalid(what + " utilities");
         List<Integer> out = new ArrayList<>();
         for (JsonNode u : utilities) out.add(nullableId(u, what + " utility"));
         return new Skills(requiredNullableId(s, "heal", what), java.util.Collections.unmodifiableList(out),
-                nullableId(s.get("elite"), what + " elite"));
+                eliteMayBeOmitted && !s.has("elite") ? null : requiredNullableId(s, "elite", what));
     }
 
     /** Two ordered positions, each a non-blank string or null; null/absent array means none. */

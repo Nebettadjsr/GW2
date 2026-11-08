@@ -177,6 +177,28 @@ class CharacterBuildTabsSyncTest {
     }
 
     @Test
+    void observedOmittedLandEliteMultiCharacterPublishesSqlNullAndLaterBadCharacterKeepsLastGood() throws Exception {
+        publishRoster(A, "Ana", "Bo");
+        String omitted = tab(3, false, "").replace("\"skills\":" + SK, "\"skills\":{\"heal\":1,\"utilities\":[2,null,4]}");
+        String ana = "[" + omitted + "," + tab(1, true, "") + "]";
+        Map<String, String> bodies = new LinkedHashMap<>();
+        bodies.put("/characters/Ana/buildtabs", ana);
+        bodies.put("/characters/Bo/buildtabs", "[" + tab(1, true, "") + "]");
+        CharacterBuildTabsSync.sync(A, fetcher(A_ID, new ArrayList<>(), bodies));
+        assertEquals(1, generation(A, "CHARACTER_BUILD_TABS"));
+        assertEquals(1, count("SELECT count(*) FROM character_build_tabs WHERE land_elite IS NULL AND aquatic_elite = 5"));
+        assertEquals(3, count("SELECT count(*) FROM character_build_tabs WHERE aquatic_elite = 5"));
+        assertEquals(2, count("SELECT count(*) FROM character_build_tabs WHERE land_elite = 5 AND is_active"));
+        long rows = count("SELECT count(*) FROM character_build_tabs");
+        String missingHeal = "[" + tab(1, true, "").replace("\"skills\":" + SK, "\"skills\":{\"utilities\":[2,null,4]}") + "]";
+        bodies.put("/characters/Bo/buildtabs", missingHeal);
+        assertThrows(IllegalStateException.class, () -> CharacterBuildTabsSync.sync(A, fetcher(A_ID, new ArrayList<>(), bodies)));
+        assertEquals(rows, count("SELECT count(*) FROM character_build_tabs"));
+        assertEquals(1, count("SELECT count(*) FROM character_build_tabs WHERE land_elite IS NULL"));
+        assertEquals(1, generation(A, "CHARACTER_BUILD_TABS"));
+    }
+
+    @Test
     void emptyRosterPublishesSuccessfully() throws Exception {
         publishRoster(A);
         CharacterBuildTabsSync.sync(A, fetcher(A_ID, new ArrayList<>(), Map.of()));
