@@ -491,6 +491,74 @@ class FullCatalogSyncTest {
         assertThrows(IllegalStateException.class, () -> TpSync.syncAllTradeablePrices(TaskDeadline.start()));
     }
 
+    // ------------------------------------------------------------------ overlapping publication ordering
+
+    /** Fake upstream: the first batch fetch signals and blocks until released; later fetches answer at once. */
+    private static final class GatedUpstream implements TpSync.TpUpstream {
+        final java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        volatile long firstEnteredMillis;
+        public TpPriceApi.BatchResult fetchBatch(List<Integer> b) throws Exception {
+            boolean first = calls.incrementAndGet() == 1;
+            int buy = first ? 5 : 99;
+            if (first) { firstEnteredMillis = System.currentTimeMillis(); entered.countDown(); release.await(); }
+            JsonNode arr = json("[" + b.stream().map(i -> quote(i, buy)).collect(Collectors.joining(",")) + "]");
+            return new TpPriceApi.BatchResult(200, arr, new java.util.HashSet<>(b));
+        }
+        public JsonNode fetchSingle(int id) { throw new AssertionError(); }
+        public Set<Integer> fetchAllTradeableItemIds() { return Set.of(); }
+    }
+
+    private interface TpRun { void run() throws Exception; }
+
+    /** Runs the delayed (older) observation, completes the newer one meanwhile, then resumes the older. */
+    private void delayedOlderThenNewer(TpRun older, TpRun newer) throws Exception {
+        var up = new GatedUpstream();
+        TpSync.upstream = up;
+        var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+        Thread t = new Thread(() -> { try { older.run(); } catch (Throwable e) { failure.set(e); } });
+        t.start();
+        up.entered.await();
+        while (System.currentTimeMillis() <= up.firstEnteredMillis) Thread.onSpinWait(); // newer strictly later
+        newer.run();
+        assertEquals("99", scalar("SELECT buy_unit_price FROM tp_prices WHERE item_id=1"));
+        String newerFetchedAt = scalar("SELECT fetched_at FROM tp_prices WHERE item_id=1");
+        up.release.countDown();
+        t.join();
+        assertNull(failure.get());
+        assertEquals("99,99", scalar("SELECT string_agg(buy_unit_price::text, ',' ORDER BY item_id) FROM tp_prices"));
+        assertEquals(newerFetchedAt, scalar("SELECT fetched_at FROM tp_prices WHERE item_id=1"));
+    }
+
+    private void seedOverlap() throws Exception {
+        exec("INSERT INTO tp_tradeable_items (item_id) VALUES (1),(2)");
+        exec("INSERT INTO tp_prices (item_id, buy_quantity, buy_unit_price, sell_quantity, sell_unit_price, fetched_at) "
+                + "VALUES (1,1,111,1,111, now() - interval '1 day'),(2,1,222,1,222, now() - interval '1 day')");
+    }
+
+    @Test
+    void delayedOlderFullObservationNeverReplacesNewerOrdinaryQuote() throws Exception {
+        seedOverlap();
+        delayedOlderThenNewer(() -> TpSync.syncAllTradeablePrices(TaskDeadline.start()), () -> TpSync.syncTpPrices(Set.of(1, 2)));
+    }
+
+    @Test
+    void delayedOlderOrdinaryObservationNeverReplacesNewerFullQuote() throws Exception {
+        seedOverlap();
+        delayedOlderThenNewer(() -> TpSync.syncTpPrices(Set.of(1, 2)), () -> TpSync.syncAllTradeablePrices(TaskDeadline.start()));
+    }
+
+    @Test
+    void newerObservationCommittingAfterOlderOneStillWins() throws Exception {
+        seedOverlap();
+        TpSync.upstream = scripted(200, "[" + quote(1, 5) + "," + quote(2, 5) + "]", id -> null);
+        TpSync.syncAllTradeablePrices(TaskDeadline.start());
+        TpSync.upstream = scripted(200, "[" + quote(1, 99) + "," + quote(2, 99) + "]", id -> null);
+        TpSync.syncTpPrices(Set.of(1, 2));
+        assertEquals("99,99", scalar("SELECT string_agg(buy_unit_price::text, ',' ORDER BY item_id) FROM tp_prices"));
+    }
+
     // ------------------------------------------------------------------ resource evidence
 
     /**

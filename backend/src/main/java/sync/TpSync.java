@@ -114,12 +114,13 @@ public final class TpSync {
 
             con.setAutoCommit(false);
 
-            // one timestamp for the whole run (no SELECT now() spam)
-            Timestamp runTs = new Timestamp(System.currentTimeMillis());
-
             for (List<Integer> batch : BatchUtils.chunk(ids, SyncConstants.HTTP_IDS_BATCH)) {
 
                 deadline.check();
+                // Observation time = just before this batch is fetched. Publication is monotonic per
+                // item (see upsertTpPrices), so a delayed older observation of an overlapping ID can
+                // never replace a newer quote or move fetched_at backwards, whichever run finishes last.
+                Timestamp runTs = new Timestamp(System.currentTimeMillis());
                 List<TpPrice> quotes = strict ? fetchTpBatchStrict(batch, deadline) : fetchTpBatchParsed(batch, deadline);
 
                 try {
@@ -164,6 +165,7 @@ public final class TpSync {
           sell_quantity = EXCLUDED.sell_quantity,
           sell_unit_price = EXCLUDED.sell_unit_price,
           fetched_at = EXCLUDED.fetched_at
+        WHERE tp_prices.fetched_at IS NULL OR tp_prices.fetched_at <= EXCLUDED.fetched_at
         """;
 
         try (PreparedStatement ps = con.prepareStatement(upsertSql)) {
