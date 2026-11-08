@@ -9,7 +9,7 @@ const reinforced = ref(false)
 const profile = computed(() => `${mode.value}${reinforced.value ? '_REINFORCED' : ''}`)
 const summary = computed(() => props.stats?.profiles?.[profile.value]?.A ?? props.stats?.weaponSets.A)
 const icons = import.meta.glob('./attributes/*.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
-const aliases: Record<string, string> = { Expertise: 'BoonDuration', ConditionDuration: 'BoonDuration', Concentration: 'ConditionDuration', BoonDuration: 'ConditionDuration' }
+const aliases: Record<string, string> = { Expertise: 'ConditionDuration', Concentration: 'BoonDuration' }
 const labels: Record<string, string> = {
   Power: 'Power', Toughness: 'Toughness', Armor: 'Armor', Vitality: 'Vitality', Health: 'Health',
   Precision: 'Precision', CriticalChance: 'Critical chance', Ferocity: 'Ferocity', CriticalDamage: 'Critical damage',
@@ -18,8 +18,8 @@ const labels: Record<string, string> = {
 }
 const rows = [
   ['Power', null], ['Toughness', 'Armor'], ['Vitality', 'Health'], ['Precision', 'CriticalChance'],
-  ['Ferocity', 'CriticalDamage'], ['ConditionDamage', 'HealingPower'], ['Concentration', 'BoonDuration'],
-  ['Expertise', 'ConditionDuration'], ['AgonyResistance', null]
+  ['Ferocity', 'CriticalDamage'], ['ConditionDamage', 'HealingPower'], ['Expertise', 'ConditionDuration'],
+  ['Concentration', 'BoonDuration'], ['AgonyResistance', null]
 ]
 const percentages = new Set(['CriticalChance', 'CriticalDamage', 'ConditionDuration', 'BoonDuration'])
 function icon(key: string): string | undefined { return icons[`./attributes/${aliases[key] ?? key}.png`] }

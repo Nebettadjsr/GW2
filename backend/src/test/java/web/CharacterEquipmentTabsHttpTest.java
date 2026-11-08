@@ -207,6 +207,53 @@ class CharacterEquipmentTabsHttpTest {
     }
 
     @Test
+    void passiveTraitsAreAdmittedOnlyWhenBuildCoverageMatchesTheRetainedEquipmentGeneration() throws Exception {
+        seedRoster();
+        seedEquipment();
+        exec("UPDATE characters SET profession='Necromancer' WHERE account_id='" + A + "' AND character_id=1");
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        // Baseline: no build at all -> gear only, trait exclusion reported.
+        var plain = json.readTree(mvc.perform(as(A, ALL, PATH)).andExpect(status().isOk()).andReturn()
+                .getResponse().getContentAsString(StandardCharsets.UTF_8));
+        var plainSet = plain.path("tabs").get(1).path("stats").path("profiles").path("PVE").path("A");
+        assertTrue(plainSet.path("warnings").toString().contains("traits excluded"));
+        // Equipment stays covered at parent generation 2 while CHARACTERS and Builds move to 3.
+        exec("UPDATE account_source_state SET generation=3 WHERE account_id='" + A + "' AND source='CHARACTERS'",
+                "INSERT INTO account_source_state (account_id, source, generation, completed_at) VALUES"
+                        + " ('" + A + "', 'CHARACTER_BUILD_TABS', 1, '" + NOW.minusSeconds(20) + "')",
+                "INSERT INTO character_build_coverage (account_id, parent_generation) VALUES ('" + A + "', 3)",
+                "INSERT INTO character_build_tabs (account_id, character_id, tab_number, name, profession, is_active,"
+                        + " land_utilities, aquatic_utilities, land_legends, aquatic_legends, land_pets, aquatic_pets) VALUES"
+                        + " ('" + A + "', 1, 1, NULL, 'Necromancer', true, '{NULL,NULL,NULL}', '{NULL,NULL,NULL}',"
+                        + "  NULL, NULL, NULL, NULL)",
+                "INSERT INTO character_build_tab_specializations (account_id, character_id, tab_number, position,"
+                        + " specialization_id, traits) VALUES ('" + A + "', 1, 1, 1, 53, '{916,829,853}'),"
+                        + " ('" + A + "', 1, 1, 2, 50, '{888,894,893}'), ('" + A + "', 1, 1, 3, 34, '{2020,1969,2021}')");
+        var mismatched = json.readTree(mvc.perform(as(A, ALL, PATH)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("STALE"))
+                .andExpect(jsonPath("$.coveredParentGeneration").value(2))
+                .andExpect(jsonPath("$.tabs.length()").value(2))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].item.name").value("Ascended Helm"))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8));
+        assertEquals(plain.path("tabs").get(1).path("stats").path("profiles"),
+                mismatched.path("tabs").get(1).path("stats").path("profiles"),
+                "newer traits must not be mixed into older gear");
+        assertEquals(plain.path("tabs").get(1).path("equipment"), mismatched.path("tabs").get(1).path("equipment"));
+        var mismatchedSet = mismatched.path("tabs").get(1).path("stats").path("profiles").path("PVE").path("A");
+        assertFalse(mismatchedSet.path("complete").asBoolean());
+        assertTrue(mismatchedSet.path("warnings").toString().contains("traits excluded"));
+        // Equipment catches up to generation 3: the build is now compatible and its bonus applies.
+        exec("UPDATE character_equipment_coverage SET parent_generation=3 WHERE account_id='" + A + "'");
+        var compatible = json.readTree(mvc.perform(as(A, ALL, PATH)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("AVAILABLE")).andReturn().getResponse()
+                .getContentAsString(StandardCharsets.UTF_8));
+        var set = compatible.path("tabs").get(1).path("stats").path("profiles").path("PVE").path("A");
+        assertFalse(set.path("warnings").toString().contains("traits excluded"));
+        assertTrue(set.path("values").path("Vitality").asInt() > plainSet.path("values").path("Vitality").asInt(),
+                "compatible traits add their Vitality bonus");
+    }
+
+    @Test
     void availableSelectedCharacterSerializesTabOrderActiveMarkerItemsUpgradesInfusionsAndStats() throws Exception {
         seedRoster();
         seedEquipment();

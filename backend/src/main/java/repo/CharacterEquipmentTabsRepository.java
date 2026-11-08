@@ -221,7 +221,7 @@ public class CharacterEquipmentTabsRepository {
                     r.binding(), r.boundTo(), null));
         }
         List<TabView> out = new ArrayList<>();
-        Map<Integer, List<Integer>> activeTraits = activeTraits(con, scope, characterId);
+        Map<Integer, List<Integer>> activeTraits = activeTraits(con, scope, characterId, covered.orElse(-1L));
         for (RawTab t : rawTabs) {
             List<Entry> entries = withRuneCounts(byTab.getOrDefault(t.number(), List.of()));
             Map<String, EquipmentTotals.SetResult> gear = totals(profession, level, entries, shared);
@@ -239,9 +239,9 @@ public class CharacterEquipmentTabsRepository {
         return new Snapshot(true, covered, out, parent, equipment, shared);
     }
 
-    /** Active build of this account/character only, from the same published parent snapshot. */
-    private static Map<Integer, List<Integer>> activeTraits(Connection con, AccountScope scope, long characterId)
-            throws SQLException {
+    /** Active build of this account/character only; admitted only when its coverage matches the equipment's covered parent generation. */
+    private static Map<Integer, List<Integer>> activeTraits(Connection con, AccountScope scope, long characterId,
+            long coveredParentGeneration) throws SQLException {
         Map<Integer, List<Integer>> selections = new LinkedHashMap<>();
         try (PreparedStatement ps = con.prepareStatement("""
                 SELECT s.specialization_id, s.traits
@@ -252,10 +252,12 @@ public class CharacterEquipmentTabsRepository {
                     AND p.generation = c.parent_generation
                 JOIN account_source_state m ON m.account_id = b.account_id AND m.source = 'CHARACTER_BUILD_TABS'
                 WHERE b.account_id = ? AND b.character_id = ? AND b.is_active
+                  AND c.parent_generation = ?
                 ORDER BY s.position
                 """)) {
             ps.setObject(1, scope.accountId());
             ps.setLong(2, characterId);
+            ps.setLong(3, coveredParentGeneration);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     int specialization = rs.getInt(1);
