@@ -10,6 +10,7 @@ import EquipmentTabSelector from './EquipmentTabSelector.vue'
 import CharacterSummary from './CharacterSummary.vue'
 import { characterIcon } from './characterIcons'
 import InventoryPanel from './InventoryPanel.vue'
+import BuildsPanel from './BuildsPanel.vue'
 import { useCharacters } from './useCharacters'
 import AutomaticRefreshStatus from '@/account/AutomaticRefreshStatus.vue'
 import { useAutomaticAccountRefresh } from '@/account/useAutomaticAccountRefresh'
@@ -45,7 +46,8 @@ const automatic = useAutomaticAccountRefresh({
     ...(c.section.value === 'inventory' ? [c.inventorySource.value?.completedAt] : [])],
   readFailed: () => c.rosterFailure.value !== null || (c.selectedName.value !== null && (
     c.detailFailure.value !== null || (c.section.value === 'equipment' && c.equipmentFailure.value !== null)
-    || (c.section.value === 'inventory' && c.inventoryFailure.value !== null))),
+    || (c.section.value === 'inventory' && c.inventoryFailure.value !== null)
+    || (c.section.value === 'builds' && c.buildFailure.value !== null))),
   refresh: async () => {
     if (parentNeedsRefresh()) { await automatic.refreshSource(); if (!live()) return; await loadVisible() }
     if (!live()) return
@@ -88,8 +90,8 @@ async function back(): Promise<void> {
   window.scrollTo(0, from.scrollY) // the browser clamps this when the roster is shorter
 }
 
-type SectionId = 'equipment' | 'inventory'
-const SECTIONS: { id: SectionId; label: string }[] = [{ id: 'equipment', label: 'Equipment' }, { id: 'inventory', label: 'Inventory' }]
+type SectionId = 'equipment' | 'inventory' | 'builds'
+const SECTIONS: { id: SectionId; label: string }[] = [{ id: 'equipment', label: 'Equipment' }, { id: 'inventory', label: 'Inventory' }, { id: 'builds', label: 'Builds' }]
 const tabRefs = new Map<SectionId, HTMLElement>()
 function setTab(id: SectionId, el: unknown): void {
   if (el instanceof HTMLElement) tabRefs.set(id, el)
@@ -154,6 +156,11 @@ const rosterState = computed(() => c.rosterResponse.value)
 const equipmentState = computed(() => c.equipmentResponse.value)
 const equipmentProblem = computed(() => {
   const r = equipmentState.value
+  return r !== null && !(r.state === 'AVAILABLE' || r.state === 'STALE')
+})
+const buildState = computed(() => c.buildResponse.value)
+const buildProblem = computed(() => {
+  const r = buildState.value
   return r !== null && !(r.state === 'AVAILABLE' || r.state === 'STALE')
 })
 const inventoryState = computed(() => c.inventoryResponse.value)
@@ -240,6 +247,8 @@ const inventoryProblem = computed(() => {
       </div>
       <EquipmentTabSelector v-if="c.section.value === 'equipment' && c.equipmentTabs.value?.length"
         :tabs="c.equipmentTabs.value" :selected="c.shownTab.value?.tab" @inspect="c.inspect" />
+      <EquipmentTabSelector v-if="c.section.value === 'builds' && c.buildTabs.value?.length" kind="build"
+        :tabs="c.buildTabs.value" :selected="c.shownBuild.value?.tab" @inspect="c.inspectBuild" />
       </div>
       <div id="section-panel" role="tabpanel" :aria-labelledby="`section-tab-${c.section.value}`">
       <template v-if="c.section.value === 'equipment'">
@@ -272,7 +281,7 @@ const inventoryProblem = computed(() => {
 
       <EquipmentPanel v-if="c.equipmentTabs.value" :tabs="c.equipmentTabs.value" :shown="c.shownTab.value" :profession="c.shownDetail.value?.profession" :shared-equipment="c.equipmentSource.value?.sharedEquipment" />
       </template>
-      <template v-else>
+      <template v-else-if="c.section.value === 'inventory'">
         <p v-if="c.inventoryOlderThanEquipment.value && !automatic.updating.value" class="notice" role="status" data-test="inventory-older">
           {{ c.inventoryPhase.value === 'loading'
             ? 'The inventory shown may describe an older saved character list than the equipment. Reading it again…'
@@ -317,13 +326,38 @@ const inventoryProblem = computed(() => {
         <p v-if="c.inventorySource.value?.contents === 'ALL_SLOTS_EMPTY'" class="meta" data-test="inventory-all-empty">All listed bag slots are empty.</p>
         <InventoryPanel v-if="c.inventorySource.value?.bags" :bags="c.inventorySource.value.bags" />
       </template>
+      <template v-else>
+        <p v-if="c.buildPhase.value === 'loading' && !c.buildSource.value" class="meta" role="status" data-test="builds-loading">Loading builds…</p>
+        <p v-if="c.buildsOlderThanKnownParent.value && !automatic.updating.value" class="notice" role="status" data-test="builds-older">
+          The builds shown were saved under an older character list than other saved data for this character, so they may not match it.
+        </p>
+        <div v-if="c.buildFailure.value" class="notice notice--error" role="alert" data-test="builds-error">
+          Could not read builds{{ c.buildSource.value ? '; showing the previous saved data, which may be out of date' : '' }}.
+          <details><summary>Error details</summary>{{ c.buildFailure.value.code }} — {{ c.buildFailure.value.message }}</details>
+          <button type="button" data-test="builds-retry" @click="c.loadBuildTabs(c.selectedName.value!)">Try again</button>
+        </div>
+        <div v-else-if="buildProblem && !automatic.updating.value" class="notice" role="status" data-test="builds-state">
+          <template v-if="buildState?.state === 'GRANT_REQUIRED'">Your API key does not allow reading builds. </template>
+          <template v-else-if="buildState?.state === 'ENDPOINT_RESTRICTED'">Builds are restricted for this account. </template>
+          <template v-else-if="buildState?.state === 'NOT_FOUND'">This character was not found. </template>
+          <template v-else-if="buildState?.state === 'PENDING'">Builds have not been synchronized yet. </template>
+          {{ buildState?.message }}
+          <span class="meta">({{ buildState?.state }}<template v-if="buildState?.reason">: {{ buildState.reason }}</template>)</span>
+          <template v-if="c.buildSource.value"> Showing the previous saved data below; it may be out of date.</template>
+          <button v-if="buildState?.state !== 'NOT_FOUND'" type="button" data-test="builds-recheck" :disabled="c.buildPhase.value === 'loading'"
+            @click="c.loadBuildTabs(c.selectedName.value!)">Check again</button>
+        </div>
+        <p v-else-if="c.buildIsRetained.value && !automatic.updating.value" class="notice" data-test="builds-retained">Showing previously saved builds.</p>
+        <p v-if="c.buildTabs.value && c.buildTabs.value.length === 0" class="meta" data-test="builds-none">No saved builds are listed for this character.</p>
+        <BuildsPanel v-if="c.buildTabs.value?.length" :tabs="c.buildTabs.value" :selected="c.shownBuild.value?.tab" />
+      </template>
       </div>
     </section>
   </div>
 </template>
 
 <style scoped>
-.screen { max-width: 1280px; margin-inline: auto; }
+.screen { --character-panel-width: calc(980 * 60px / 76); max-width: 1280px; margin-inline: auto; }
 .roster-sort { display: flex; align-items: center; gap: var(--space-2); }
 .roster-sort select { min-width: 11rem; }
 .roster-scroll { max-width: 100%; overflow-x: auto; }
@@ -334,7 +368,8 @@ const inventoryProblem = computed(() => {
 .roster__item::after { content: ''; position: absolute; inset: 0; z-index: 1; }
 .roster__name { display: flex; align-items: center; gap: 8px; font-size: var(--text-lg); line-height: 1.3; }
 .roster__name img { flex-shrink: 0; }
-.character-navigation { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 12px 0 8px; border-bottom: 1px solid var(--border, #888); }
+.character-navigation { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; margin: 12px 0 8px; border-bottom: 1px solid var(--border, #888); }
+.character-navigation :deep(.equipment-selector) { margin-left: auto; }
 .sections { display: flex; align-self: stretch; gap: 2px; }
 .sections button.sections__tab--selected { font-weight: 700; background: var(--color-raised); }
 .sections button { border: 1px solid var(--border, #888); border-bottom: 0; background: transparent; padding: 6px 12px; cursor: pointer; }

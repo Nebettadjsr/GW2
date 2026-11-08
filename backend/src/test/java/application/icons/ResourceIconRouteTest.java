@@ -39,6 +39,11 @@ class ResourceIconRouteTest {
             @Override public Optional<String> findIconSource(BuildResourceType type, int id) {
                 return Optional.ofNullable(Map.of("skills/7", SOURCE).get(type.segment() + "/" + id));
             }
+            @Override public Optional<String> findDetailImageSource(BuildResourceType type, int id, String image) {
+                return (type == BuildResourceType.SPECIALIZATIONS && id == 7 && image.equals("background"))
+                        || (type == BuildResourceType.TRAITS && id == 7 && image.equals("fact-0"))
+                        ? Optional.of(SOURCE) : Optional.empty();
+            }
         };
         IconImageFetcher fetcher = (IconSource source) -> {
             upstream.incrementAndGet();
@@ -47,6 +52,19 @@ class ResourceIconRouteTest {
         var store = new FilesystemIconStore(root);
         var delivery = new IconDelivery(new repo.ItemIconMetadataRepository(), store, new IconAcquisition(store, fetcher), repo);
         return MockMvcBuilders.standaloneSetup(new BuildResourceIconApiController(delivery)).build();
+    }
+
+    @Test
+    void backgroundAndFactImagesUseTheValidatedSharedCacheAndRejectUnknownRoles() throws Exception {
+        MockMvc mvc = mvc();
+        mvc.perform(get("/api/resources/skills/7/background/" + KEY + ".png")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/resources/traits/7/fact--1/" + KEY + ".png")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/resources/specializations/7/arbitrary/" + KEY + ".png")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/resources/traits/8/fact-0/" + KEY + ".png")).andExpect(status().isNotFound());
+        assertEquals(0, upstream.get());
+        mvc.perform(get("/api/resources/specializations/7/background/" + KEY + ".png")).andExpect(status().isOk());
+        mvc.perform(get("/api/resources/traits/7/fact-0/" + KEY + ".png")).andExpect(status().isOk());
+        assertEquals(1, upstream.get(), "the same public image is acquired once across roles");
     }
 
     @Test

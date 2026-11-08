@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
-import type { EquipmentTab } from '@/api/types'
 
-const props = defineProps<{ tabs: EquipmentTab[]; selected?: number }>()
+interface TemplateTab { tab: number; name?: string | null; active: boolean }
+const props = withDefaults(defineProps<{ tabs: TemplateTab[]; selected?: number; kind?: 'equipment' | 'build' }>(), { kind: 'equipment' })
 const emit = defineEmits<{ inspect: [tab: number] }>()
 const buttons = ref<HTMLElement[]>([])
-function name(tab: EquipmentTab): string { return tab.name?.trim() || `Equipment ${tab.tab}` }
-function description(tab: EquipmentTab): string { return `${name(tab)}${tab.active ? ' · In use in game' : ''}` }
+function name(tab: TemplateTab): string { return tab.name?.trim() || `${props.kind === 'build' ? 'Build' : 'Equipment'} ${tab.tab}` }
+function description(tab: TemplateTab): string { return `${name(tab)}${tab.active ? ' · In use in game' : ''}` }
 async function onKey(event: KeyboardEvent, index: number): Promise<void> {
   const last = props.tabs.length - 1
   let next = index
@@ -26,15 +26,15 @@ async function onKey(event: KeyboardEvent, index: number): Promise<void> {
 
 <template>
   <div class="equipment-selector">
-    <span class="equipment-selector__label">Equipment:</span>
-    <div class="equipment-selector__tabs" role="tablist" aria-label="Equipment tabs" data-test="equipment-tablist">
+    <span class="equipment-selector__label">{{ kind === 'build' ? 'Build' : 'Equipment' }}:</span>
+    <div class="equipment-selector__tabs" role="tablist" :aria-label="kind === 'build' ? 'Saved build tabs' : 'Equipment tabs'" :data-test="`${kind}-tablist`">
       <button v-for="(tab, index) in tabs" :key="tab.tab" :ref="el => { if (el) buttons[index] = el as HTMLElement }"
-        type="button" role="tab" :id="`equipment-tab-${tab.tab}`" aria-controls="equipment-tabpanel"
+        type="button" role="tab" :id="`${kind}-tab-${tab.tab}`" :aria-controls="`${kind}-tabpanel`"
         :aria-selected="selected === tab.tab" :tabindex="selected === tab.tab ? 0 : -1"
         :aria-label="description(tab)" :title="description(tab)"
-        :class="{ 'equipment-selector__selected': selected === tab.tab }" data-test="equipment-tab"
+        :class="{ 'equipment-selector__selected': selected === tab.tab }" :data-test="`${kind}-tab`"
         @click="emit('inspect', tab.tab)" @keydown="onKey($event, index)">
-        {{ tab.tab }}<span v-if="tab.active" class="equipment-selector__active" aria-hidden="true" data-test="equipment-tab-active">●</span>
+        {{ tab.tab }}<span v-if="tab.active" class="equipment-selector__active" aria-hidden="true" :data-test="`${kind}-tab-active`">●</span>
       </button>
     </div>
   </div>

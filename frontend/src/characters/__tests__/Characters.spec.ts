@@ -1,4 +1,5 @@
 import { flushPromises, mount as baseMount } from '@vue/test-utils'
+import { effectScope } from 'vue'
 import { shellProvide } from '@/sync/__tests__/shellProvide'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { connection } from '@/api/accountSession'
@@ -788,7 +789,9 @@ describe('Character inventory section', () => {
     await inv.trigger('keydown', { key: 'Home' }); await flushPromises()
     expect(eq.attributes('aria-selected')).toBe('true')
     await eq.trigger('keydown', { key: 'End' }); await flushPromises()
-    expect(inv.attributes('aria-selected')).toBe('true')
+    // Builds is now the last section, so End lands there (changed from Inventory by the new section).
+    expect(w.find('[data-test="section-builds"]').attributes('aria-selected')).toBe('true')
+    expect(w.find('[data-test="section-builds"]').attributes('tabindex')).toBe('0')
   })
 
   describe('optional Builds recovery', () => {
@@ -892,5 +895,311 @@ describe('Character inventory section', () => {
       gate.resolve(); await flushPromises()
       expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(1)
     })
+  })
+})
+
+describe('Builds section', () => {
+  const trait = (id: number, slot: 'Minor' | 'Major', tier: number, order: number, placement = 'ORDINARY') =>
+    ({ id, resolved: true, name: `T${id}`, iconUrl: `/i/${id}.png`, specializationId: 62, tier, order, slot, placement,
+      description: id === 12 ? 'Your strike damage is increased.' : undefined,
+      facts: id === 12 ? [{ text: 'Damage Increase', value: '3%', iconUrl: '/fact/12.png' }] : undefined }) as never
+  const richBuilds: CharacterBuildTabsResponse = { ...buildsResponse, tabs: [
+    { tab: 1, active: false, specializations: [{ specialization: { id: 1, resolved: true, name: 'Zeal', profession: 'Guardian', elite: false }, traits: [null, null, null] }] },
+    { tab: 2, active: true, profession: 'Guardian',
+      specializations: [{ specialization: { id: 62, resolved: true, name: 'Willbender', profession: 'Guardian', elite: true },
+        traits: [trait(12, 'Major', 1, 1), null, null],
+        minorTraits: [trait(10, 'Minor', 1, 0)],
+        // Supplied out of order on purpose: placement comes from tier/order, not array position.
+        majorTraits: [trait(13, 'Major', 1, 2), trait(12, 'Major', 1, 1), trait(11, 'Major', 1, 0), trait(99, 'Major', 0, 0, 'CONFLICT')] }],
+      skills: { heal: { id: 1, resolved: true, name: 'Heal', iconUrl: '/s/1.png' }, utilities: [{ id: 2, resolved: false }, null], elite: null },
+      aquaticSkills: { heal: null, utilities: [], elite: null },
+      legends: [{ id: 'Legend1', resolved: false }], pets: [{ id: 5, resolved: true, name: 'Jacaranda' }] }
+  ] }
+  const open = async (api: ReturnType<typeof fakeApi>) => {
+    const w = mount(CharactersScreen, { props: { api } }); mounted.push(w)
+    await flushPromises()
+    await w.find('[data-test="roster-item"]').trigger('click'); await flushPromises()
+    return w
+  }
+
+  it('reuses the header read: opening Builds adds no request, shows the actual active tab, and revisiting stays cheap', async () => {
+    const api = fakeApi({ loadBuildTabs: async (n) => { api.calls.push(`builds:${n}`); return { ...richBuilds, character: n } } })
+    const w = await open(api)
+    expect(api.calls.filter((x) => x.startsWith('builds:'))).toHaveLength(1)
+    await w.find('[data-test="section-builds"]').trigger('click'); await flushPromises()
+    await w.find('[data-test="section-equipment"]').trigger('click')
+    await w.find('[data-test="section-builds"]').trigger('click'); await flushPromises()
+    expect(api.calls.filter((x) => x.startsWith('builds:'))).toHaveLength(1)
+    expect(api.calls.filter((x) => x.startsWith('inv:'))).toHaveLength(0)
+    expect(w.findAll('[data-test="build-tab"]').map((t) => t.text())).toEqual(['1', '2●'])
+    expect(w.find('.character-navigation [data-test="build-tablist"]').exists()).toBe(true)
+    expect(w.find('[data-test="builds-completed"]').exists()).toBe(false)
+    expect(w.findAll('[data-test="build-tab-active"]')).toHaveLength(1)
+    expect(w.find('[data-test="build-tab"][aria-selected="true"]').text()).toContain('2')
+  })
+
+  it('inspects another build independently of equipment, keeping the active build identified', async () => {
+    const w = await open(fakeApi({ loadBuildTabs: async () => richBuilds }))
+    await w.find('[data-test="section-builds"]').trigger('click'); await flushPromises()
+    await w.findAll('[data-test="build-tab"]')[0]!.trigger('click'); await flushPromises()
+    expect(w.find('[data-test="build-spec-name"]').text()).toBe('Zeal')
+    expect(w.find('[data-test="build-active-badge"]').exists()).toBe(false)
+    expect(w.findAll('[data-test="build-tab"]')[1]!.find('[data-test="build-tab-active"]').exists()).toBe(true)
+    await w.find('[data-test="section-equipment"]').trigger('click'); await flushPromises()
+    expect(w.find('[data-test="character-subtitle"]').text()).toContain('Willbender')
+  })
+
+  it('renders full trait rows placed by tier/order with the selected trait highlighted, plus land/aquatic skills and facts', async () => {
+    const w = await open(fakeApi({ loadBuildTabs: async () => richBuilds }))
+    await w.find('[data-test="section-builds"]').trigger('click'); await flushPromises()
+    const rows = w.findAll('[data-test="trait-row"]')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.findAll('[data-test="trait"]').map((t) => t.attributes('aria-label'))).toEqual(['T10, minor', 'T11, major', 'T12, major, selected', 'T13, major'])
+    const selected = rows[0]!.findAll('.trait--selected')
+    expect(selected).toHaveLength(1); expect(selected[0]!.attributes('aria-current')).toBe('true')
+    expect(w.find('[data-test="trait-unplaced"]').text()).toContain('T99')
+    expect(w.find('[data-test="trait-unplaced"]').text()).not.toContain('(conflict)')
+    expect(w.find('[data-test="skills-land"]').findAll('[data-test="skill"]')).toHaveLength(5)
+    expect(w.find('[data-test="skills-land"]').findAll('[data-test="skill"]')[1]!.attributes('aria-label')).toContain('Skill #2 (details unavailable)')
+    expect(w.find('[data-test="skills-aquatic"]').find('[data-test="skill"]').attributes('aria-label')).toContain('No Skill saved')
+    expect(w.find('[data-test="build-legends"]').text()).toContain('Legend Legend1 (details unavailable)')
+    expect(w.find('[data-test="build-pets"]').text()).toContain('Jacaranda')
+    expect(w.find('[data-test="skills-land"]').text()).not.toContain('Heal')
+    await selected[0]!.trigger('focus'); await flushPromises()
+    const tooltip = document.querySelector('[role="tooltip"]')!
+    expect(tooltip.textContent).toContain('Your strike damage is increased.')
+    expect(tooltip.textContent).toContain('Damage Increase: 3%')
+    await selected[0]!.trigger('keydown', { key: 'Escape' }); await flushPromises()
+    expect(document.querySelector('[role="tooltip"]')).toBeNull()
+  })
+
+  it('arrow/Home/End move between build tabs with roving tabindex', async () => {
+    const w = await open(fakeApi({ loadBuildTabs: async () => richBuilds }))
+    await w.find('[data-test="section-builds"]').trigger('click'); await flushPromises()
+    const tabs = w.findAll('[data-test="build-tab"]')
+    expect(tabs[1]!.attributes('tabindex')).toBe('0'); expect(tabs[0]!.attributes('tabindex')).toBe('-1')
+    await tabs[1]!.trigger('keydown', { key: 'Home' }); await flushPromises()
+    expect(w.findAll('[data-test="build-tab"]')[0]!.attributes('aria-selected')).toBe('true')
+    await tabs[0]!.trigger('keydown', { key: 'End' }); await flushPromises()
+    expect(w.findAll('[data-test="build-tab"]')[1]!.attributes('aria-selected')).toBe('true')
+  })
+
+  it('keeps the last good builds with their original time when a later read fails, and says so', async () => {
+    let fail = false
+    const good = { ...richBuilds, builds: { generation: 1, completedAt: '2026-01-01T00:00:00Z' } }
+    const api = fakeApi({ loadBuildTabs: async () => { if (fail) throw new Error('boom'); return good } })
+    const w = await open(api)
+    await w.find('[data-test="section-builds"]').trigger('click'); await flushPromises()
+    fail = true
+    await w.find('[data-test="section-equipment"]').trigger('click')
+    const c = (w.vm as unknown as { $: { setupState: { c: ReturnType<typeof useCharacters> } } }).$.setupState.c
+    await c.loadBuildTabs('Ana B'); await w.find('[data-test="section-builds"]').trigger('click'); await flushPromises()
+    expect(w.find('[data-test="builds-error"]').text()).toContain('showing the previous saved data')
+    expect(c.buildSource.value?.builds?.completedAt).toBe('2026-01-01T00:00:00Z')
+    expect(w.findAll('[data-test="build-tab"]')).toHaveLength(2)
+  })
+
+  it('does not hide equipment when builds are unavailable and reports the real state', async () => {
+    const w = await open(fakeApi({ loadBuildTabs: async () => ({ state: 'GRANT_REQUIRED', message: 'builds grant missing' }) }))
+    expect(w.find('[data-test="equipment-panel"]').exists() || w.find('[data-test="equipment-tab"]').exists()).toBe(true)
+    await w.find('[data-test="section-builds"]').trigger('click'); await flushPromises()
+    expect(w.find('[data-test="builds-state"]').text()).toContain('does not allow reading builds')
+    expect(w.find('[data-test="build-view"]').exists()).toBe(false)
+  })
+
+  it('flags retained builds older than a newer known parent generation instead of presenting them as current', async () => {
+    const older = { ...richBuilds, parent: { generation: 1 }, coveredParentGeneration: 1 }
+    const w = await open(fakeApi({ loadBuildTabs: async () => older, loadInventory: async () => ({ ...inventoryResponse, generation: 3 }) }))
+    await w.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
+    await w.find('[data-test="section-builds"]').trigger('click'); await flushPromises()
+    expect(w.find('[data-test="builds-older"]').exists()).toBe(true)
+  })
+})
+
+describe('Builds account replacement races (deferred, same character names)', () => {
+  const buildsFor = (accountMark: string): CharacterBuildTabsResponse => ({ ...buildsResponse, tabs: [
+    { tab: 1, active: true, specializations: [spec(7, accountMark, 'Guardian', false)] }] })
+  const markOf = (c: ReturnType<typeof useCharacters>) => c.buildSource.value?.tabs?.[0]?.specializations?.[0]?.specialization?.name ?? null
+
+  it('late old-account builds read cannot overwrite the replacement account state (old completes after new)', async () => {
+    const gates = [deferred<CharacterBuildTabsResponse>(), deferred<CharacterBuildTabsResponse>()]
+    let n = 0
+    const api = fakeApi({ loadBuildTabs: async () => gates[n++]!.promise })
+    const oldC = useCharacters(api, tasks, noSleep)
+    oldC.select('Ana B'); await flushPromises()
+    connection.generation += 1 // account replaced; same character name in the new workspace
+    const newC = useCharacters(api, tasks, noSleep)
+    newC.select('Ana B'); await flushPromises()
+    gates[1]!.resolve(buildsFor('NEW')); await flushPromises()
+    gates[0]!.resolve(buildsFor('OLD')); await flushPromises()
+    expect(markOf(newC)).toBe('NEW')
+    expect(markOf(oldC)).toBeNull()
+    expect(newC.inspectedBuild.value).toBe(1)
+  })
+
+  it('late old-account builds read is discarded when it completes before the new one too', async () => {
+    const gates = [deferred<CharacterBuildTabsResponse>(), deferred<CharacterBuildTabsResponse>()]
+    let n = 0
+    const api = fakeApi({ loadBuildTabs: async () => gates[n++]!.promise })
+    const oldC = useCharacters(api, tasks, noSleep)
+    oldC.select('Ana B'); await flushPromises()
+    connection.generation += 1
+    const newC = useCharacters(api, tasks, noSleep)
+    newC.select('Ana B'); await flushPromises()
+    gates[0]!.resolve(buildsFor('OLD')); await flushPromises()
+    expect(markOf(newC)).toBeNull() // nothing from the old account while the new read is pending
+    gates[1]!.resolve(buildsFor('NEW')); await flushPromises()
+    expect(markOf(newC)).toBe('NEW')
+    expect(markOf(oldC)).toBeNull()
+  })
+
+  it('a pending build recovery of the old account sends nothing further after replacement (before start and during the task)', async () => {
+    for (const phase of ['before-start', 'during-task'] as const) {
+      const startGate = deferred<void>(); const taskGate = deferred<void>()
+      const api = fakeApi({
+        loadBuildTabs: async (n) => { api.calls.push(`builds:${n}`); return { state: 'PENDING', message: 'p' } },
+        startBuildTabsRefresh: async () => { api.calls.push('build-refresh'); await startGate.promise; return { taskId: 'b', operation: 'X', statusUrl: '/s' } }
+      })
+      const slow = { readTaskStatus: async () => { await taskGate.promise; return { taskId: 'b', operation: 'X', state: 'SUCCEEDED' } as never } }
+      const c = useCharacters(api, slow, noSleep)
+      c.select('Ana B'); await flushPromises()
+      await flushPromises(); expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(1) // the one request began under the old account
+      if (phase === 'during-task') { startGate.resolve(); await flushPromises() }
+      connection.generation += 1
+      const before = api.calls.length
+      startGate.resolve(); taskGate.resolve(); await flushPromises(); await flushPromises()
+      expect(api.calls.slice(before)).toEqual([]) // no refresh start, no reread under the new identity
+      expect(c.buildSource.value).toBeNull()
+      connection.generation = 0
+    }
+  })
+
+  it('character change and disposal discard an in-flight builds read', async () => {
+    const gate = deferred<CharacterBuildTabsResponse>()
+    const api = fakeApi({ loadBuildTabs: async (n) => n === 'Ana B' ? gate.promise : buildsFor('BO') })
+    const c = useCharacters(api, tasks, noSleep)
+    c.select('Ana B'); await flushPromises()
+    c.showSection('builds'); c.back(); c.select('Bo'); await flushPromises()
+    gate.resolve(buildsFor('ANA')); await flushPromises()
+    expect(markOf(c)).toBe('BO')
+
+    const late = deferred<CharacterBuildTabsResponse>()
+    const scope = effectScope()
+    const d = scope.run(() => useCharacters(fakeApi({ loadBuildTabs: async () => late.promise }), tasks, noSleep))!
+    d.select('Ana B'); await flushPromises()
+    scope.stop()
+    late.resolve(buildsFor('GONE')); await flushPromises()
+    expect(markOf(d)).toBeNull()
+  })
+
+  it.each([['NEW first, then OLD', true], ['OLD first, then NEW', false]])('real connectKey replacement with the same names (%s): the old deferred builds read is dropped and nothing old is re-sent under the new identity', async (_label, newFirst) => {
+    const { connectKey, installAccountSession, resetAccountSession } = await import('@/api/accountSession')
+    const { charactersApi } = await import('@/api/charactersApi')
+    resetAccountSession(); installAccountSession()
+    let id = 'acc-A'
+    const log: string[] = []
+    const buildGates: Array<{ id: string; gate: ReturnType<typeof deferred<Response>> }> = []
+    vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+      const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (input.endsWith('/session') || input.includes('/account/session')) {
+        return json({ accountId: id, accessContext: `ctx-${id}`, expiresAt: '2099-01-01T00:00:00Z', grants: ['account'] })
+      }
+      const ctx = (init?.headers as Record<string, string> | undefined)?.['X-Account-Context'] ?? 'none'
+      log.push(`${init?.method ?? 'GET'} ${id} ${ctx} ${input}`)
+      if (input.includes('build')) {
+        const g = { id, gate: deferred<Response>() }
+        buildGates.push(g)
+        return g.gate.promise
+      }
+      if (input.includes('equipment-tabs')) return json(tabsResponse)
+      if (input.includes('/account/characters/')) return json(detailOf(ana))
+      return json(roster)
+    }))
+    try {
+      await connectKey('SAME-NAME-KEY')
+      const oldC = useCharacters(charactersApi, tasks, noSleep)
+      await oldC.loadRoster(); oldC.select('Ana B'); await flushPromises()
+      expect(buildGates.map((g) => g.id)).toEqual(['acc-A'])
+      id = 'acc-B'
+      await connectKey('SAME-NAME-KEY')
+      const newC = useCharacters(charactersApi, tasks, noSleep)
+      await newC.loadRoster(); newC.select('Ana B'); await flushPromises()
+      expect(buildGates.map((g) => g.id)).toEqual(['acc-A', 'acc-B'])
+      const body = (m: string) => new Response(JSON.stringify(buildsFor(m)), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      const resolveNew = async () => { buildGates[1]!.gate.resolve(body('NEW')); await flushPromises() }
+      const resolveOld = async () => { buildGates[0]!.gate.resolve(body('OLD')); await flushPromises() }
+      if (newFirst) { await resolveNew(); await resolveOld() } else {
+        await resolveOld()
+        expect(markOf(oldC)).toBeNull() // old result absent
+        expect(markOf(newC)).toBeNull() // new response still pending: nothing shown yet
+        await resolveNew()
+      }
+      expect(markOf(newC)).toBe('NEW')
+      expect(markOf(oldC)).toBeNull()
+      const rows = log.map((l) => l.split(' '))
+      // every request carries the context of the identity current when it was sent
+      expect(rows.every(([, who, ctx]) => ctx === `ctx-${who}`)).toBe(true)
+      const bReads = rows.filter(([, who]) => who === 'acc-B')
+      expect(bReads.length).toBeGreaterThan(0)
+      expect(bReads.every(([, , ctx]) => ctx === 'ctx-acc-B')).toBe(true)
+      expect(rows.filter(([, who, ctx]) => who === 'acc-A' && ctx !== 'ctx-acc-A')).toHaveLength(0)
+      expect(rows.filter(([, who, , url]) => who === 'acc-A' && String(url).includes('build'))).toHaveLength(1)
+      expect(rows.filter(([, who, , url]) => who === 'acc-B' && String(url).includes('build'))).toHaveLength(1)
+      expect(log.length).toBeLessThanOrEqual(8) // bounded: no reconcile loop
+      expect(buildGates.filter((g) => g.id === 'acc-B')).toHaveLength(1) // finite: one read, no reconcile loop
+    } finally {
+      resetAccountSession()
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('Builds keyboard navigation and roster restoration', () => {
+  const rich: CharacterBuildTabsResponse = { ...buildsResponse, tabs: [
+    { tab: 1, active: false, specializations: [spec(1, 'Zeal', 'Guardian', false)] },
+    { tab: 2, active: true, specializations: [spec(62, 'Willbender', 'Guardian', true)] }] }
+
+  it('section arrows/End move focus to Builds; Back restores the origin row even with a delayed builds read in flight', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ ...ana, name: `Char ${i}` }))
+    const gate = deferred<CharacterBuildTabsResponse>()
+    const api = fakeApi({ loadRoster: async () => ({ ...roster, characterCount: 30, characters: many }),
+      loadBuildTabs: async () => gate.promise })
+    const scrollTo = vi.fn(); vi.stubGlobal('scrollTo', scrollTo)
+    Object.defineProperty(window, 'scrollY', { value: 500, configurable: true })
+    const w = mount(CharactersScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.get('[data-name="Char 7"]').trigger('click'); await flushPromises()
+    await w.get('[data-test="section-equipment"]').trigger('keydown', { key: 'End' }); await flushPromises()
+    expect(w.get('[data-test="section-builds"]').attributes('aria-selected')).toBe('true')
+    expect(document.activeElement).toBe(w.get('[data-test="section-builds"]').element)
+    expect(w.get('[data-test="section-builds"]').attributes('tabindex')).toBe('0')
+    expect(w.get('[data-test="section-equipment"]').attributes('tabindex')).toBe('-1')
+    await w.get('[data-test="section-builds"]').trigger('keydown', { key: 'ArrowRight' }); await flushPromises()
+    expect(w.get('[data-test="section-equipment"]').attributes('aria-selected')).toBe('true') // wraps
+    await w.get('[data-test="section-equipment"]').trigger('keydown', { key: 'ArrowLeft' }); await flushPromises()
+    expect(w.get('[data-test="section-builds"]').attributes('aria-selected')).toBe('true')
+    await w.get('[data-test="character-back"]').trigger('click'); await flushPromises()
+    gate.resolve(rich); await flushPromises() // obsolete delayed effect arrives after Back
+    expect((document.activeElement as HTMLElement).dataset.name).toBe('Char 7')
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 500)
+    expect(w.find('[data-test="roster"]').exists()).toBe(true)
+    expect(w.find('[data-test="build-view"]').exists()).toBe(false)
+    w.unmount(); vi.unstubAllGlobals()
+  })
+
+  it('an obsolete section-key effect does not steal focus after Back, and the actual active build stays marked while another is inspected', async () => {
+    const api = fakeApi({ loadBuildTabs: async () => rich })
+    const w = mount(CharactersScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="roster-item"]')[0]!.trigger('click'); await flushPromises()
+    await w.get('[data-test="section-builds"]').trigger('click'); await flushPromises()
+    await w.findAll('[data-test="build-tab"]')[0]!.trigger('click'); await flushPromises()
+    expect(w.findAll('[data-test="build-tab"]')[0]!.attributes('aria-selected')).toBe('true')
+    expect(w.findAll('[data-test="build-tab"]')[1]!.find('[data-test="build-tab-active"]').exists()).toBe(true)
+    void w.get('[data-test="section-builds"]').trigger('keydown', { key: 'ArrowLeft' })
+    await w.get('[data-test="character-back"]').trigger('click'); await flushPromises()
+    expect(document.activeElement?.getAttribute('data-test')).not.toBe('section-inventory')
+    expect(w.find('[data-test="section-tablist"]').exists()).toBe(false)
+    w.unmount()
   })
 })

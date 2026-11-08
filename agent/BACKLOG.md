@@ -2,7 +2,7 @@
 
 **Status: ACTIVE SUPERVISION. Execution authorized by the Product Owner on 2026-11-07.**
 
-The Product Owner resumed supervision on 2026-11-08 after approving the directly paired UI, most recently the character roster and its default playtime sort. First integrate that approved baseline and reconcile tests/documentation; then resume the dependency-complete sequence below. This supersedes earlier draft layout proposals and shared-selection assumptions. No repeated approval is needed for the already accepted layouts.
+The Product Owner resumed supervision on 2026-11-08 after approving the directly paired UI, including the final Builds page with Equipment-width trait strips and cropped skill pictures. Preserve that baseline and its reconciled tests/documentation while continuing the dependency-complete sequence below. This supersedes earlier draft layout proposals and shared-selection assumptions. No repeated approval is needed for the already accepted layouts.
 
 Authorization: start the agreed workflow, supervise progress and stop only for necessary product/UI decisions or missing access. Supervisor: interactive Codex. Planner: Codex on GitHub. Programmer: Claude. Release one approved story at a time; no new paid API integration is authorized.
 
@@ -12,10 +12,11 @@ Planning handoff: the Characters sequence is Inventory UI #162, Builds core #161
 
 ## Immediate integration handoff
 
-- Continue held PR #170 / issue #169 with the Product Owner's approved paired changes. The old left-facts layout and no-backend-change limits were superseded by direct instructions. UX guidelines §§2.1–2.4 and DOMAIN_SPEC §§9.1, 56–57 now own the final contracts. Preserve the approved UI while repairing stale tests, backend fixtures and current-state documentation.
-- Finish narrow parser fix PR #175 / issue #174 against its exact reviewed head and CI; keep it separate from the larger UI reconciliation.
-- Resolve actual outstanding PR #170 recovery findings: finite `coversRequest:false` retries, simultaneous missing Equipment/Builds recovery, stale character/account responses and selection return races. Verify both the screen's managed refresh path and any retained composable path. Do not close a finding based on changed layout alone.
-- Current-state docs must distinguish implemented scoped freshness and equipment projections from pending owner authorization, Builds UI, incomplete passive trait coverage and unqualified live economics/Oracle capacity. Do not repeat historical NOT_IMPLEMENTED claims for delivered equipment/inventory.
+- Current supervisor release: finish #166 regression, documentation and measurement evidence against the approved Builds layout. The Product Owner explicitly accepted the final page on 2026-11-08 and resumed supervision. Preserve its visual composition; CI, review and outstanding behavioral evidence still govern implementation acceptance.
+- PR #170 / issue #169 is the approved paired baseline. The old left-facts layout and no-backend-change limits were superseded by direct instructions. UX guidelines §§2.1–2.4 and DOMAIN_SPEC §§9.1, 56–57 own the final contracts; consult the PR's actual acceptance evidence rather than reopening its completed reconciliation.
+- Preserve the narrow parser behavior in PR #175 / issue #174: only omitted land elite is nullable; aquatic/heal/utilities and invalid present values stay strict.
+- Keep regression coverage for finite `coversRequest:false` retries, simultaneous missing Equipment/Builds recovery, stale character/account responses and selection return races in both the managed screen and composable paths. Passive attributes require compatible build/equipment parent coverage; duration symbols/order follow the in-game reference.
+- Current-state docs must distinguish implemented scoped freshness, equipment projections and the approved Builds view from the still-outstanding final Oracle qualification and owner administration, incomplete passive trait coverage and unqualified live economics/Oracle capacity. Do not repeat historical NOT_IMPLEMENTED claims for delivered character features.
 - Update obsolete manual-refresh, shared-selection, nested-tab and left-facts assertions with meaningful behavioral coverage. Keep account isolation, source coverage, retained snapshots, finite recovery and duplicate-stack tests. Do not skip or weaken tests merely to make CI green.
 - Record remaining Mystic Forge work through `agent/product-owner-requests/mystic-forge-crafting.md`; the checkbox is a disabled placeholder, not authorization to implement it now. Prepare the live verification work in #154 at a suitable point; the owner executes game actions after a concrete experiment plan exists.
 
@@ -60,8 +61,8 @@ Planning handoff: the Characters sequence is Inventory UI #162, Builds core #161
 | STORY-CHAR-007 | Saved Builds data | Scoped character core | PUBLISHED — #161 |
 | STORY-CHAR-008 | Bag-layout Inventory UI | STORY-CHAR-006 | PUBLISHED — #162 |
 | STORY-CHAR-009 | Shared Builds reference metadata/images | STORY-CHAR-007 | PUBLISHED — #164 |
-| STORY-CHAR-010 | Full-trait-row Builds UI | STORY-CHAR-007, 008, 009, 011 | PUBLISHED DRAFT — #166; next proposed implementation after reconciliation, final UI review required |
-| STORY-CHAR-011 | Approved paired UI and regression/documentation reconciliation | STORY-CHAR-008 and integrated current master | PUBLISHED — #169 / PR #170; current supervisor handoff above |
+| STORY-CHAR-010 | Full-trait-row Builds UI | STORY-CHAR-007, 008, 009, 011 | PUBLISHED — #166; final layout approved, supervisor RELEASED remaining acceptance evidence |
+| STORY-CHAR-011 | Approved paired UI and regression/documentation reconciliation | STORY-CHAR-008 and integrated current master | PUBLISHED — #169 / PR #170; preserve its accepted baseline |
 | STORY-CHAR-012 | Character playtime, deaths and next birthday | Scoped character core | PUBLISHED — #171 |
 | STORY-CHAR-013 | Narrow missing land elite compatibility | Saved Builds data | PUBLISHED — #174 |
 | STORY-CHAR-014 | Equipment details and base/equipment totals | Saved equipment data | PUBLISHED — #176; paired stats refinements in #169 |
@@ -102,7 +103,7 @@ Current character services include core summaries, bag manifests, saved equipmen
 
 ArenaNet's [template API announcement](https://en-forum.guildwars2.com/topic/65255-api-updates-december-18-2019/) documents equipment/build tabs and warns that several tabs may reference one owned item. It is historical API evidence, not a substitute for checking the current schema. Keep template associations distinct from actual inventory quantities. Product Owner deferred Story after the API coverage assessment; do not substitute backstory or partial quest history.
 
-Template scope is confirmed: all saved available tabs in original slot order, initially selecting the in-game active tab. Equipment selectors now sit right of the Equipment/Inventory navigation; Builds keeps adjacent saved-build tabs. Selections are independent and read-only. Overview, Equipment and Inventory layout approval is complete; Builds still needs final visual review. Reuse shared metadata, bounded account data and lazy details; include the feature in final Oracle qualification.
+Template scope is confirmed: all saved available tabs in original slot order, initially selecting the in-game active tab. Equipment selectors now sit right of the Equipment/Inventory navigation; Builds keeps adjacent saved-build tabs. Selections are independent and read-only. Overview, Equipment and Inventory layout approval is complete; Builds is implemented and its layout was visually accepted by the Product Owner on 2026-11-08; final Oracle qualification remains outstanding. Reuse shared metadata, bounded account data and lazy details; include the feature in final Oracle qualification.
 
 ## System Status and inventory-refresh handoff
 
@@ -118,4 +119,4 @@ Resolve the owner via a configured, verified account GUID; do not request/store 
 - Intended concurrent-user workload and acceptable latency/headroom: planner proposes against the Oracle resource baseline; Product Owner approves material tradeoffs.
 - Material protection: core product/UI/retention answers are confirmed. T1–T6 presets select intermediate materials only, not basic materials or gemstones; an additional preset selects clovers, coins, ectoplasm and obsidian shards. Exact membership must be verified; the extra preset's visible label is confirmed as "Clovers, coins, ecto & obsidian". Presets preselect pending checkboxes and do not commit automatically.
 - Characters: equipment first, inventory/builds next; Story is deferred, discovered recipes excluded and map completion deferred. Review genuinely unspecified visual choices without reopening approved tabs and roster/detail behavior. Drafts do not authorize implementation.
-- Next authorized planning sequence: keep #161, #164 and #166 reconciled to actual preceding Character contracts through the GitHub planner, with one approved implementation release at a time. Planning tasks must use a recent accepted checkout; old setup PR #131 is historical. PR-triggered runs marked action_required need supervisor approval for the trusted exact head; dispatched CI does not replace branch-protection checks. Real Oracle access is required for final qualification, not for locally testable feature work.
+- Current release sequence: #166 consumes the merged Character data/metadata and paired UI contracts; #152 and bounded KPI planning follow. Keep one approved implementation release at a time. Planning tasks must use a recent accepted checkout; old setup PR #131 is historical. PR-triggered runs marked action_required need supervisor approval for the trusted exact head; dispatched CI does not replace branch-protection checks. Real Oracle access is required for final qualification, not for locally testable feature work.

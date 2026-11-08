@@ -18,20 +18,28 @@ public final class ResourceIconUrls {
 
     private ResourceIconUrls() {}
 
-    public record ResourceIconRequest(BuildResourceType type, int id, String sourceKey, String extension) {}
+    public record ResourceIconRequest(BuildResourceType type, int id, String sourceKey, String extension, String image) {}
 
     /** The icon URL, or null when there is no acceptable retained source. */
     public static String iconUrlFor(BuildResourceType type, int id, String rawIconSource) {
-        Optional<IconSource> source = IconSourcePolicy.accept(rawIconSource);
-        if (source.isEmpty()) return null;
-        return PREFIX + type.segment() + "/" + id + "/icon/" + source.get().sourceKey() + "."
+        return imageUrlFor(type, id, "icon", rawIconSource);
+    }
+
+    public static String imageUrlFor(BuildResourceType type, int id, String image, String rawSource) {
+        Optional<IconSource> source = IconSourcePolicy.accept(rawSource);
+        if (source.isEmpty() || !validImage(type, image)) return null;
+        return PREFIX + type.segment() + "/" + id + "/" + image + "/" + source.get().sourceKey() + "."
                 + source.get().extension();
     }
 
     public static Optional<ResourceIconRequest> parse(String rawType, String rawId, String fileName) {
+        return parse(rawType, rawId, "icon", fileName);
+    }
+
+    public static Optional<ResourceIconRequest> parse(String rawType, String rawId, String image, String fileName) {
         if (rawType == null || rawId == null || fileName == null) return Optional.empty();
         Optional<BuildResourceType> type = BuildResourceType.ofSegment(rawType);
-        if (type.isEmpty()) return Optional.empty();
+        if (type.isEmpty() || !validImage(type.get(), image)) return Optional.empty();
         int id;
         try {
             id = Integer.parseInt(rawId);
@@ -44,6 +52,14 @@ public final class ResourceIconUrls {
         String key = fileName.substring(0, dot);
         String ext = fileName.substring(dot + 1);
         if (!IconSourcePolicy.isSourceKey(key) || !IconSourcePolicy.isExtension(ext)) return Optional.empty();
-        return Optional.of(new ResourceIconRequest(type.get(), id, key, ext));
+        return Optional.of(new ResourceIconRequest(type.get(), id, key, ext, image));
+    }
+
+    private static boolean validImage(BuildResourceType type, String image) {
+        if (image == null) return false;
+        if (image.equals("icon")) return true;
+        if (image.equals("background")) return type == BuildResourceType.SPECIALIZATIONS;
+        return (type == BuildResourceType.TRAITS || type == BuildResourceType.SKILLS)
+                && image.matches("fact-(?:0|[1-9][0-9]{0,2})");
     }
 }

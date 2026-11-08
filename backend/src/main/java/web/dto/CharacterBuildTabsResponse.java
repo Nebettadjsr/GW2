@@ -20,8 +20,8 @@ import java.util.Set;
 /**
  * Body of the selected-character saved-build-tabs read (STORY-CHAR-007). {@code tabs} is present only for
  * AVAILABLE or STALE, so missing, pending or incompatible coverage never reads as an empty list. Reference
- * ids are returned as {@code {id, resolved:false}}: names and icons are not available yet and are not
- * fabricated. Null positions stay explicit JSON nulls; absent Revenant/Ranger sections are omitted.
+ * ids are returned as {@code {id, resolved:false}} when no metadata is stored; name and icon are present
+ * only for resolved references and are never fabricated. Null positions stay explicit JSON nulls; absent Revenant/Ranger sections are omitted.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record CharacterBuildTabsResponse(String state, String reason, String message, String character,
@@ -33,8 +33,9 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
 
     /** A numeric reference; name and app-relative image URL only when metadata is resolved. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record IdRef(int id, boolean resolved, String name, String iconUrl) {
-        public IdRef(int id, boolean resolved) { this(id, resolved, null, null); }
+    public record IdRef(int id, boolean resolved, String name, String iconUrl,
+                        String description, List<BuildReferenceDetails.Fact> facts) {
+        public IdRef(int id, boolean resolved) { this(id, resolved, null, null, null, null); }
     }
 
     /**
@@ -47,10 +48,12 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record TraitRef(int id, boolean resolved, String name, String iconUrl, Integer specializationId,
-                           Integer tier, Integer order, String slot, String placement) {}
+                           Integer tier, Integer order, String slot, String placement,
+                           String description, List<BuildReferenceDetails.Fact> facts) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record SpecRef(int id, boolean resolved, String name, String iconUrl, String profession, Boolean elite) {}
+    public record SpecRef(int id, boolean resolved, String name, String iconUrl, String profession, Boolean elite,
+                          String backgroundUrl) {}
 
     /**
      * A STRING legend id. Legends have no native name or icon; {@code swapSkill} is the explicitly related
@@ -107,9 +110,10 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
 
     private static SpecializationDto specialization(Specialization s, Metadata m) {
         var row = s.id() == null ? null : m.specializations().get(s.id());
-        SpecRef spec = s.id() == null ? null : row == null ? new SpecRef(s.id(), false, null, null, null, null)
+        SpecRef spec = s.id() == null ? null : row == null ? new SpecRef(s.id(), false, null, null, null, null, null)
                 : new SpecRef(s.id(), true, row.name(), url(BuildResourceType.SPECIALIZATIONS, s.id(), row.iconUrl()),
-                        row.profession(), row.elite());
+                        row.profession(), row.elite(), ResourceIconUrls.imageUrlFor(BuildResourceType.SPECIALIZATIONS,
+                        s.id(), "background", BuildReferenceDetails.read(row.displayDetails()).path("background").asText(null)));
         Set<Integer> offeredMajor = row == null ? Set.of() : new HashSet<>(row.majorTraits());
         Set<Integer> dupMajor = row == null ? Set.of() : duplicates(row.majorTraits(), m);
         List<TraitRef> selected = s.traits() == null ? null
@@ -146,7 +150,7 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
     /** {@code offered} false or {@code duplicate} true marks a conflict; the expected owner/slot are checked here. */
     private static TraitRef trait(int id, Metadata m, Integer owner, String slot, boolean offered, Boolean duplicate) {
         var t = m.traits().get(id);
-        if (t == null) return new TraitRef(id, false, null, null, null, null, null, null, "UNRESOLVED");
+        if (t == null) return new TraitRef(id, false, null, null, null, null, null, null, "UNRESOLVED", null, null);
         String placement;
         if (!offered || Boolean.TRUE.equals(duplicate) || owner == null || !owner.equals(t.specializationId())
                 || !slot.equals(t.slot())) {
@@ -158,8 +162,9 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
         } else {
             placement = "ORDINARY";
         }
+        var details = BuildReferenceDetails.of(BuildResourceType.TRAITS, id, t.displayDetails());
         return new TraitRef(id, true, t.name(), url(BuildResourceType.TRAITS, id, t.iconUrl()),
-                t.specializationId(), t.tier(), t.order(), t.slot(), placement);
+                t.specializationId(), t.tier(), t.order(), t.slot(), placement, details.description(), details.facts());
     }
 
     private static SkillsDto skills(SkillsView s, Metadata m) {
@@ -170,7 +175,9 @@ public record CharacterBuildTabsResponse(String state, String reason, String mes
     private static IdRef idRef(Integer id, BuildResourceType type, Metadata m) {
         if (id == null) return null;
         var row = type == BuildResourceType.SKILLS ? m.skills().get(id) : m.pets().get(id);
-        return row == null ? new IdRef(id, false) : new IdRef(id, true, row.name(), url(type, id, row.iconUrl()));
+        if (row == null) return new IdRef(id, false);
+        var details = BuildReferenceDetails.of(type, id, row.displayDetails());
+        return new IdRef(id, true, row.name(), url(type, id, row.iconUrl()), details.description(), details.facts());
     }
 
     private static List<IdRef> refs(List<Integer> ids, BuildResourceType type, Metadata m) {

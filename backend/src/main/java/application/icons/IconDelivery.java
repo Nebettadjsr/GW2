@@ -62,7 +62,11 @@ public class IconDelivery {
      * a miss verify the retained source of exactly this type and id before the shared acquisition.
      */
     public IconDeliveryResult deliverResource(String rawType, String rawId, String fileName) {
-        Optional<ResourceIconUrls.ResourceIconRequest> parsed = ResourceIconUrls.parse(rawType, rawId, fileName);
+        return deliverResource(rawType, rawId, "icon", fileName);
+    }
+
+    public IconDeliveryResult deliverResource(String rawType, String rawId, String image, String fileName) {
+        Optional<ResourceIconUrls.ResourceIconRequest> parsed = ResourceIconUrls.parse(rawType, rawId, image, fileName);
         if (parsed.isEmpty()) {
             return new IconDeliveryResult.InvalidRequest("the resource icon route's type, id, key or extension is malformed");
         }
@@ -76,7 +80,8 @@ public class IconDelivery {
         if (resourceRepo == null) return new IconDeliveryResult.NotFound("resource images are not configured");
         Optional<String> retained;
         try {
-            retained = resourceRepo.findIconSource(request.type(), request.id());
+            retained = request.image().equals("icon") ? resourceRepo.findIconSource(request.type(), request.id())
+                    : resourceRepo.findDetailImageSource(request.type(), request.id(), request.image());
         } catch (SQLException metadataUnavailable) {
             return unavailable("icon metadata is unavailable");
         }

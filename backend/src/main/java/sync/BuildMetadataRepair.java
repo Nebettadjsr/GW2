@@ -7,6 +7,7 @@ import model.BuildResourceType;
 import repo.BuildMetadataRepository;
 import repo.BuildMetadataRepository.*;
 import repo.Db;
+import parser.BuildDisplayDetails;
 
 import java.io.IOException;
 import java.net.URI;
@@ -139,7 +140,7 @@ public final class BuildMetadataRepair {
                 if (id == null || !batch.contains(id) || name == null || profession == null || minor == null
                         || major == null || !n.path("elite").isBoolean() || !seen.add(id)) continue;
                 rows.add(new SpecRow(id, name, profession, n.get("elite").asBoolean(),
-                        text(n, "icon"), minor, major));
+                        text(n, "icon"), minor, major, BuildDisplayDetails.capture(n)));
             }
             try (Connection con = Db.open()) { repo.upsertSpecializations(con, rows, clock.instant()); }
         }
@@ -160,7 +161,7 @@ public final class BuildMetadataRepair {
                 // A partial answer is never stored: it would replace a complete row's facts with nulls.
                 if (id == null || !batch.contains(id) || name == null || spec == null || tier == null
                         || order == null || slot == null || !seen.add(id)) continue;
-                rows.add(new TraitRow(id, name, text(n, "icon"), spec, tier, order, slot));
+                rows.add(new TraitRow(id, name, text(n, "icon"), spec, tier, order, slot, BuildDisplayDetails.capture(n)));
             }
             try (Connection con = Db.open()) { repo.upsertTraits(con, rows, clock.instant()); }
         }
@@ -175,7 +176,7 @@ public final class BuildMetadataRepair {
                 Integer id = intOf(n, "id");
                 String name = text(n, "name");
                 if (id == null || !batch.contains(id) || name == null || !seen.add(id)) continue;
-                rows.add(new NamedRow(id, name, text(n, "icon")));
+                rows.add(new NamedRow(id, name, text(n, "icon"), BuildDisplayDetails.capture(n)));
             }
             try (Connection con = Db.open()) { repo.upsertNamed(con, type, rows, clock.instant()); }
         }

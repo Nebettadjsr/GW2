@@ -27,12 +27,13 @@ public class BuildResourceIconApiController {
         this.iconDelivery = iconDelivery;
     }
 
-    @GetMapping("/{type}/{id}/icon/{fileName}")
+    @GetMapping("/{type}/{id}/{image}/{fileName}")
     public ResponseEntity<?> icon(@PathVariable("type") String type, @PathVariable("id") String id,
+                                  @PathVariable("image") String image,
                                   @PathVariable("fileName") String fileName,
                                   @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false)
                                   String ifNoneMatch) {
-        return switch (iconDelivery.deliverResource(type, id, fileName)) {
+        return switch (iconDelivery.deliverResource(type, id, image, fileName)) {
             case IconDeliveryResult.Delivered delivered -> ItemIconApiController.image(delivered, ifNoneMatch);
             case IconDeliveryResult.InvalidRequest(String reason) -> ItemIconApiController.failure(
                     HttpStatus.BAD_REQUEST, ItemIconApiController.ERROR_INVALID_REQUEST, reason, null);

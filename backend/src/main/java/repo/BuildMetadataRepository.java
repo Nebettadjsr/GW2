@@ -19,10 +19,21 @@ import java.util.*;
 public class BuildMetadataRepository {
 
     public record SpecRow(int id, String name, String profession, boolean elite, String iconUrl,
-                          List<Integer> minorTraits, List<Integer> majorTraits) {}
+                          List<Integer> minorTraits, List<Integer> majorTraits, String displayDetails) {
+        public SpecRow(int id, String name, String profession, boolean elite, String iconUrl,
+                       List<Integer> minorTraits, List<Integer> majorTraits) {
+            this(id, name, profession, elite, iconUrl, minorTraits, majorTraits, "{}");
+        }
+    }
     public record TraitRow(int id, String name, String iconUrl, Integer specializationId, Integer tier,
-                           Integer order, String slot) {}
-    public record NamedRow(int id, String name, String iconUrl) {}
+                           Integer order, String slot, String displayDetails) {
+        public TraitRow(int id, String name, String iconUrl, Integer specializationId, Integer tier, Integer order, String slot) {
+            this(id, name, iconUrl, specializationId, tier, order, slot, "{}");
+        }
+    }
+    public record NamedRow(int id, String name, String iconUrl, String displayDetails) {
+        public NamedRow(int id, String name, String iconUrl) { this(id, name, iconUrl, "{}"); }
+    }
     public record LegendRow(String id, int swapSkillId) {}
 
     /** A set of native references by namespace. */
@@ -98,7 +109,8 @@ public class BuildMetadataRepository {
         Set<Integer> out = new TreeSet<>();
         if (ids.isEmpty()) return out;
         try (PreparedStatement ps = con.prepareStatement("SELECT " + type.idColumn() + " FROM " + type.table()
-                + " WHERE " + type.idColumn() + " = ANY(?) AND " + completeCondition(type))) {
+                + " WHERE " + type.idColumn() + " = ANY(?) AND " + completeCondition(type)
+                + " AND display_details IS NOT NULL")) {
             ps.setArray(1, con.createArrayOf("integer", ids.toArray()));
             try (ResultSet rs = ps.executeQuery()) { while (rs.next()) out.add(rs.getInt(1)); }
         }
@@ -144,16 +156,18 @@ public class BuildMetadataRepository {
     public void upsertSpecializations(Connection con, List<SpecRow> rows, Instant at) throws SQLException {
         try (PreparedStatement ps = con.prepareStatement("""
                 INSERT INTO build_specializations (specialization_id, name, profession, elite, icon_url,
-                    minor_traits, major_traits, fetched_at) VALUES (?,?,?,?,?,?,?,?)
+                    minor_traits, major_traits, fetched_at, display_details) VALUES (?,?,?,?,?,?,?,?,?::jsonb)
                 ON CONFLICT (specialization_id) DO UPDATE SET name = EXCLUDED.name, profession = EXCLUDED.profession,
                     elite = EXCLUDED.elite, icon_url = EXCLUDED.icon_url, minor_traits = EXCLUDED.minor_traits,
-                    major_traits = EXCLUDED.major_traits, fetched_at = EXCLUDED.fetched_at""")) {
+                    major_traits = EXCLUDED.major_traits, fetched_at = EXCLUDED.fetched_at,
+                    display_details = EXCLUDED.display_details""")) {
             for (SpecRow r : rows) {
                 ps.setInt(1, r.id()); ps.setString(2, r.name()); ps.setString(3, r.profession());
                 ps.setBoolean(4, r.elite()); ps.setString(5, r.iconUrl());
                 ps.setArray(6, con.createArrayOf("integer", r.minorTraits().toArray()));
                 ps.setArray(7, con.createArrayOf("integer", r.majorTraits().toArray()));
                 ps.setTimestamp(8, Timestamp.from(at));
+                ps.setString(9, r.displayDetails());
                 ps.addBatch();
             }
             ps.executeBatch();
@@ -162,17 +176,18 @@ public class BuildMetadataRepository {
 
     public void upsertTraits(Connection con, List<TraitRow> rows, Instant at) throws SQLException {
         try (PreparedStatement ps = con.prepareStatement("""
-                INSERT INTO build_traits (trait_id, name, icon_url, specialization_id, tier, trait_order, slot, fetched_at)
-                VALUES (?,?,?,?,?,?,?,?)
+                INSERT INTO build_traits (trait_id, name, icon_url, specialization_id, tier, trait_order, slot, fetched_at, display_details)
+                VALUES (?,?,?,?,?,?,?,?,?::jsonb)
                 ON CONFLICT (trait_id) DO UPDATE SET name = EXCLUDED.name, icon_url = EXCLUDED.icon_url,
                     specialization_id = EXCLUDED.specialization_id, tier = EXCLUDED.tier,
                     trait_order = EXCLUDED.trait_order, slot = EXCLUDED.slot,
-                    fetched_at = EXCLUDED.fetched_at""")) {
+                    fetched_at = EXCLUDED.fetched_at, display_details = EXCLUDED.display_details""")) {
             for (TraitRow r : rows) {
                 ps.setInt(1, r.id()); ps.setString(2, r.name()); ps.setString(3, r.iconUrl());
                 ps.setObject(4, r.specializationId()); ps.setObject(5, r.tier());
                 ps.setObject(6, r.order()); ps.setString(7, r.slot());
                 ps.setTimestamp(8, Timestamp.from(at));
+                ps.setString(9, r.displayDetails());
                 ps.addBatch();
             }
             ps.executeBatch();
@@ -182,11 +197,13 @@ public class BuildMetadataRepository {
     public void upsertNamed(Connection con, BuildResourceType type, List<NamedRow> rows, Instant at) throws SQLException {
         if (type != BuildResourceType.SKILLS && type != BuildResourceType.PETS) throw new IllegalArgumentException(type.name());
         try (PreparedStatement ps = con.prepareStatement("INSERT INTO " + type.table() + " (" + type.idColumn()
-                + ", name, icon_url, fetched_at) VALUES (?,?,?,?) ON CONFLICT (" + type.idColumn()
-                + ") DO UPDATE SET name = EXCLUDED.name, icon_url = EXCLUDED.icon_url, fetched_at = EXCLUDED.fetched_at")) {
+                + ", name, icon_url, fetched_at, display_details) VALUES (?,?,?,?,?::jsonb) ON CONFLICT (" + type.idColumn()
+                + ") DO UPDATE SET name = EXCLUDED.name, icon_url = EXCLUDED.icon_url, fetched_at = EXCLUDED.fetched_at,"
+                + " display_details = EXCLUDED.display_details")) {
             for (NamedRow r : rows) {
                 ps.setInt(1, r.id()); ps.setString(2, r.name()); ps.setString(3, r.iconUrl());
                 ps.setTimestamp(4, Timestamp.from(at));
+                ps.setString(5, r.displayDetails());
                 ps.addBatch();
             }
             ps.executeBatch();
@@ -213,13 +230,13 @@ public class BuildMetadataRepository {
         Map<Integer, SpecRow> specs = new HashMap<>();
         if (!refs.specializations().isEmpty()) {
             try (PreparedStatement ps = con.prepareStatement("""
-                    SELECT specialization_id, name, profession, elite, icon_url, minor_traits, major_traits
+                    SELECT specialization_id, name, profession, elite, icon_url, minor_traits, major_traits, display_details
                     FROM build_specializations WHERE specialization_id = ANY(?)\sAND\s"""
                     + completeCondition(BuildResourceType.SPECIALIZATIONS))) {
                 ps.setArray(1, con.createArrayOf("integer", refs.specializations().toArray()));
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) specs.put(rs.getInt(1), new SpecRow(rs.getInt(1), rs.getString(2), rs.getString(3),
-                            rs.getBoolean(4), rs.getString(5), ints(rs.getArray(6)), ints(rs.getArray(7))));
+                            rs.getBoolean(4), rs.getString(5), ints(rs.getArray(6)), ints(rs.getArray(7)), rs.getString(8)));
                 }
             }
         }
@@ -228,7 +245,7 @@ public class BuildMetadataRepository {
         Map<Integer, TraitRow> traits = new HashMap<>();
         if (!traitIds.isEmpty()) {
             try (PreparedStatement ps = con.prepareStatement("""
-                    SELECT trait_id, name, icon_url, specialization_id, tier, trait_order, slot FROM build_traits
+                    SELECT trait_id, name, icon_url, specialization_id, tier, trait_order, slot, display_details FROM build_traits
                     WHERE trait_id = ANY(?)\sAND\s""" + completeCondition(BuildResourceType.TRAITS))) {
                 ps.setArray(1, con.createArrayOf("integer", traitIds.toArray()));
                 try (ResultSet rs = ps.executeQuery()) {
@@ -237,7 +254,7 @@ public class BuildMetadataRepository {
                         Integer tier = (Integer) rs.getObject(5);
                         Integer order = (Integer) rs.getObject(6);
                         traits.put(rs.getInt(1), new TraitRow(rs.getInt(1), rs.getString(2), rs.getString(3), spec,
-                                tier, order, rs.getString(7)));
+                                tier, order, rs.getString(7), rs.getString(8)));
                     }
                 }
             }
@@ -261,11 +278,11 @@ public class BuildMetadataRepository {
     private Map<Integer, NamedRow> named(Connection con, BuildResourceType type, Collection<Integer> ids) throws SQLException {
         Map<Integer, NamedRow> out = new HashMap<>();
         if (ids.isEmpty()) return out;
-        try (PreparedStatement ps = con.prepareStatement("SELECT " + type.idColumn() + ", name, icon_url FROM "
+        try (PreparedStatement ps = con.prepareStatement("SELECT " + type.idColumn() + ", name, icon_url, display_details FROM "
                 + type.table() + " WHERE " + type.idColumn() + " = ANY(?) AND " + completeCondition(type))) {
             ps.setArray(1, con.createArrayOf("integer", ids.toArray()));
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) out.put(rs.getInt(1), new NamedRow(rs.getInt(1), rs.getString(2), rs.getString(3)));
+                while (rs.next()) out.put(rs.getInt(1), new NamedRow(rs.getInt(1), rs.getString(2), rs.getString(3), rs.getString(4)));
             }
         }
         return out;
@@ -286,6 +303,20 @@ public class BuildMetadataRepository {
 
     public Optional<String> findIconSource(BuildResourceType type, int id) throws SQLException {
         try (Connection con = Db.open()) { return findIconSource(con, type, id); }
+    }
+
+    /** Called only with a validated resource type and image role. Sources are never supplied by the browser. */
+    public Optional<String> findDetailImageSource(BuildResourceType type, int id, String image) throws SQLException {
+        String[] path = image.equals("background") ? new String[]{"background"}
+                : new String[]{"facts", image.substring("fact-".length()), "icon"};
+        try (Connection con = Db.open(); PreparedStatement ps = con.prepareStatement(
+                "SELECT display_details #>> ? FROM " + type.table() + " WHERE " + type.idColumn() + " = ?")) {
+            ps.setArray(1, con.createArrayOf("text", path));
+            ps.setInt(2, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? Optional.ofNullable(rs.getString(1)).filter(s -> !s.isBlank()) : Optional.empty();
+            }
+        }
     }
 
     private static List<Integer> ints(Array array) throws SQLException {

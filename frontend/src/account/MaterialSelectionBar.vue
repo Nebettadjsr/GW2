@@ -31,7 +31,7 @@ function items(n: number): string { return `${n} ${n === 1 ? 'item' : 'items'}` 
       Saved selection: {{ items(committedCount) }}.
     </p>
     <p class="selection-bar__note meta" data-test="selection-activation-note">
-      A saved selection only affects calculations when material protection is turned on in Crafting Profit. Confirming your selection here does not turn it on.
+      Select materials that can be excluded from Crafting Profit calculations.
     </p>
     <p v-if="storageNotice" class="notice notice--warning" role="status" data-test="selection-storage-notice">{{ storageNotice }}</p>
     <p role="status" class="selection-bar__state" :data-state="dirty ? 'pending' : 'clean'" data-test="selection-state">
