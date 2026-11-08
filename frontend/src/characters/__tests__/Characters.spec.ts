@@ -102,7 +102,10 @@ describe('Characters screen', () => {
       mk('Bea', { profession: 'Elementalist', createdAt: '2020-06-01T00:00:00Z' }), // playtime unknown
       mk('Dov', { profession: 'Guardian', ageSeconds: 7_200, deaths: 9, createdAt: '2019-01-01T00:00:00Z', nextBirthdayAt: '2027-02-01T00:00:00Z' })
     ]
-    const api = fakeApi({ loadRoster: async () => ({ ...roster, characterCount: 4, characters: chars }) })
+    const api = fakeApi({ loadRoster: async () => {
+      api.calls.push('roster')
+      return { ...roster, characterCount: 4, characters: chars }
+    } })
     const w = mount(CharactersScreen, { props: { api } })
     await flushPromises()
     const names = () => w.findAll('[data-test="roster-item"]').map((r) => r.attributes('data-name'))
