@@ -66,9 +66,9 @@ async function loadSystemStatus(): Promise<void> {
 async function loadOwnerDetails(): Promise<void> {
   if (!isConnected.value) return
   const generation = connection.generation
-  if (ownerInflight === generation) return
-  ownerInflight = generation
   const epoch = ownerEpoch
+  if (ownerInflight === epoch) return
+  ownerInflight = epoch
   try {
     const details = await systemApi.readOwnerDetails()
     if (isUnmounted || epoch !== ownerEpoch || !isCurrent(generation)) return
@@ -79,7 +79,7 @@ async function loadOwnerDetails(): Promise<void> {
     if (cause instanceof ApiRequestError && cause.status === 403) withdrawOwner('not-owner')
     else withdrawOwner('unavailable')
   } finally {
-    if (ownerInflight === generation) ownerInflight = null
+    if (ownerInflight === epoch) ownerInflight = null
   }
 }
 
@@ -97,14 +97,18 @@ function withdrawOwner(next: OwnerState): void {
 
 // A new account generation (or no connection) forgets everything of the former account immediately.
 watch(
-  () => [isConnected.value, connection.generation] as const,
-  ([connected]) => {
-    systemStatus.value = null
-    systemStatusError.value = null
-    systemStatusLoaded.value = false
+  () => [isConnected.value, connection.generation, connection.leaseVersion] as [boolean, number, number],
+  ([connected, generation], previous) => {
+    const previousGeneration = previous?.[1] ?? -1
+    // A renewed lease for the same account only re-discovers owner capability; ordinary data stays.
+    if (generation !== previousGeneration || !connected) {
+      systemStatus.value = null
+      systemStatusError.value = null
+      systemStatusLoaded.value = false
+    }
     withdrawOwner('checking')
     if (connected) {
-      void loadSystemStatus()
+      if (generation !== previousGeneration) void loadSystemStatus()
       void loadOwnerDetails()
     }
   },

@@ -35,6 +35,12 @@ export interface ConnectionState {
   /** Set after a disconnect whose server-side logout did not succeed. */
   logoutNotice: string | null
   generation: number
+  /**
+   * Changes each time a session proof installs a (new or renewed) lease, including a renewal for the
+   * same account. Distinct from `generation`, which workspaces reset on; it only tells server-derived
+   * authority (such as owner capability) that it must be discovered again with the current proof.
+   */
+  leaseVersion: number
   grants: readonly string[]
   /**
    * The backend-verified stable GW2 account GUID of the current session, or null while there is none
@@ -50,6 +56,7 @@ export const connection: ConnectionState = reactive({
   errorIsDefinitive: false,
   logoutNotice: null,
   generation: 0,
+  leaseVersion: 0,
   grants: [],
   accountId: null
 })
@@ -149,6 +156,7 @@ function describeProofFailure(error: unknown): string {
 
 function adopt(proven: Proven): void {
   lease = { accessContext: proven.accessContext, expiresAtMs: Date.parse(proven.expiresAt) }
+  connection.leaseVersion += 1
   connection.grants = proven.grants
   if (connection.accountId !== null && connection.accountId !== proven.accountId) {
     // A different account behind the same retained intent: everything in flight belongs to the old one.
@@ -379,6 +387,7 @@ export function resetAccountSession(): void {
   connection.errorIsDefinitive = false
   connection.logoutNotice = null
   connection.generation = 0
+  connection.leaseVersion = 0
   connection.grants = []
   connection.accountId = null
 }

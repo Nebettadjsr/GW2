@@ -270,7 +270,7 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
   }
 
   // Owner presentation belongs to one connected account generation; nothing survives a change.
-  watch(() => [connection.generation, connection.phase], resetOwnerOperations)
+  watch(() => [connection.generation, connection.phase, connection.leaseVersion], resetOwnerOperations)
 
   onScopeDispose(() => {
     isDisposed = true
