@@ -94,6 +94,7 @@ class OwnerAdministrationTest {
         assertFalse(new OwnerPolicy(null).isOwner(a));
         assertFalse(new OwnerPolicy("   ").isOwner(a));
         assertTrue(new OwnerPolicy(OWNER).isOwner(a));
+        assertTrue(new OwnerPolicy("AAAAAAAA-1111-2222-3333-444444444444").isOwner(a));
         assertTrue(new OwnerPolicy(" " + OWNER.toUpperCase() + " ").isOwner(a));
         assertFalse(new OwnerPolicy(OWNER).isOwner(session(OTHER).context()));
         assertFalse(new OwnerPolicy(OWNER).isOwner(null));
@@ -101,7 +102,9 @@ class OwnerAdministrationTest {
 
     @Test
     void malformedNonblankConfigurationFailsClearly() {
-        for (String bad : new String[] {"not-a-guid", "12345", OWNER + "x", "aaaaaaaa-1-2-3-4"}) {
+        for (String bad : new String[] {"not-a-guid", "12345", OWNER + "x", "aaaaaaaa-1-2-3-4",
+                "+aaaaaa-1111-2222-3333-444444444444", "aaaaaaaa-1111-2222-3333-4444444444-4",
+                "aaaaaaaa-111-12222-3333-444444444444", "-aaaaaaa-1111-2222-3333-44444444444"}) {
             var e = assertThrows(IllegalArgumentException.class, () -> new OwnerPolicy(bad), bad);
             assertTrue(e.getMessage().contains("gw2.owner.account-guid"));
         }
@@ -203,6 +206,86 @@ class OwnerAdministrationTest {
             Thread.sleep(10);
         }
         fail("task never reached " + state);
+    }
+
+    // ---- eviction race, PENDING and expiry ----
+
+    /** Models the supervisor's race: a separate classification lookup reports the task already evicted. */
+    @Test
+    void evictionBetweenLookupAndClassificationNeverExposesAdministrativePayload() throws Exception {
+        var racing = new BackgroundTaskService() {
+            @Override public boolean isAdministrative(String taskId) { return false; }
+        };
+        try {
+            String id = racing.submitAdministrative("GLOBAL_SYNC", () -> { });
+            long end = System.nanoTime() + 10_000_000_000L;
+            while (!racing.find(id).get().state().isTerminal() && System.nanoTime() < end) Thread.sleep(5);
+            var owner = new OwnerAccess(access, new OwnerPolicy(OWNER));
+            var m = MockMvcBuilders.standaloneSetup(new SyncTaskApiController(racing, access, null, owner))
+                    .setControllerAdvice(new SyncApiExceptionHandler()).build();
+            String anon = m.perform(get("/api/sync/tasks/" + id)).andExpect(status().isUnauthorized())
+                    .andReturn().getResponse().getContentAsString();
+            assertFalse(anon.contains("GLOBAL_SYNC") || anon.contains(id));
+            m.perform(as(get("/api/sync/tasks/" + id), session(OTHER))).andExpect(status().isForbidden());
+            m.perform(as(get("/api/sync/tasks/" + id), session(OWNER))).andExpect(status().isOk());
+        } finally {
+            racing.close();
+        }
+    }
+
+    private static final class MutableClock extends Clock {
+        volatile Instant now = Instant.parse("2026-11-08T10:00:00Z");
+        @Override public java.time.ZoneId getZone() { return ZoneOffset.UTC; }
+        @Override public Clock withZone(java.time.ZoneId z) { return this; }
+        @Override public Instant instant() { return now; }
+    }
+
+    @Test
+    void pendingAdministrativeTaskIsOwnerOnlyAndBlocksDuplicateAdmission() throws Exception {
+        var deferred = new java.util.ArrayList<Runnable>();
+        var pendingTasks = new BackgroundTaskService(deferred::add);
+        var owner = new OwnerAccess(access, new OwnerPolicy(OWNER));
+        var m = MockMvcBuilders.standaloneSetup(new GlobalSyncApiController(refresh, pendingTasks, owner),
+                        new SyncTaskApiController(pendingTasks, access, null, owner))
+                .setControllerAdvice(new SyncApiExceptionHandler()).build();
+        var ownerSession = session(OWNER);
+        String body = m.perform(as(post("/api/sync/global"), ownerSession)).andExpect(status().isAccepted())
+                .andReturn().getResponse().getContentAsString();
+        String id = com.jayway.jsonpath.JsonPath.read(body, "$.taskId");
+        assertEquals("PENDING", pendingTasks.find(id).get().state().name(), "body has not been started");
+        assertEquals(1, deferred.size());
+        assertEquals(0, refreshRuns.get());
+        m.perform(get("/api/sync/tasks/" + id)).andExpect(status().isUnauthorized());
+        m.perform(as(get("/api/sync/tasks/" + id), session(OTHER))).andExpect(status().isForbidden());
+        m.perform(as(get("/api/sync/tasks/" + id), ownerSession)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("PENDING"));
+        m.perform(as(post("/api/sync/global"), ownerSession)).andExpect(status().isConflict());
+        m.perform(as(post("/api/sync/global"), session(OTHER))).andExpect(status().isForbidden());
+        assertEquals(1, deferred.size(), "no second admission");
+    }
+
+    @Test
+    void expiredSessionIsRejectedForAdmissionTaskReadsAndDetailedStatus() throws Exception {
+        var clock = new MutableClock();
+        var expiring = new AccountSessions(clock, 8);
+        var exAccess = new AccountAccessService(key -> { throw new InvalidCredentialException("no"); }, expiring);
+        var owner = new OwnerAccess(exAccess, new OwnerPolicy(OWNER));
+        var priceService = new application.TradingPostPriceCacheStatusService(new repo.tp.TpPriceRepository() {
+            @Override public CacheStatus cacheStatus() { return new CacheStatus(5, 2, null); }
+        });
+        var m = MockMvcBuilders.standaloneSetup(new GlobalSyncApiController(refresh, tasks, owner),
+                        new SyncTaskApiController(tasks, exAccess, null, owner),
+                        new SystemStatusApiController(refresh, priceService, exAccess, (s, src) -> java.util.Map.of(), null, owner))
+                .setControllerAdvice(new SyncApiExceptionHandler()).build();
+        var s = expiring.establish(new AccountProof(OWNER, Set.of(AccountGrant.ACCOUNT), Set.of(), null));
+        String id = tasks.submitAdministrative("GLOBAL_SYNC", () -> { });
+        m.perform(as(get("/api/sync/tasks/" + id), s)).andExpect(status().isOk());
+        m.perform(as(get("/api/system/status/details"), s)).andExpect(status().isOk());
+        clock.now = clock.now.plus(AccountSessions.LEASE).plusSeconds(1);
+        m.perform(as(get("/api/sync/tasks/" + id), s)).andExpect(status().isUnauthorized());
+        m.perform(as(get("/api/system/status/details"), s)).andExpect(status().isUnauthorized());
+        m.perform(as(post("/api/sync/global"), s)).andExpect(status().isUnauthorized());
+        assertEquals(0, refreshRuns.get());
     }
 
     // ---- status ----

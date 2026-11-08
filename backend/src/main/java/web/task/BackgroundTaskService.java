@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
@@ -55,7 +56,22 @@ public class BackgroundTaskService implements AutoCloseable {
     /** Upper bound on retained task records; see the lifetime note above. */
     private static final int RETAINED_TASKS = 100;
 
-    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+    private final Executor executor;
+    private final ExecutorService ownedExecutor;
+
+    public BackgroundTaskService() {
+        this.ownedExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        this.executor = ownedExecutor;
+    }
+
+    /** Test seam: runs task bodies on the supplied executor, so a deferred one keeps tasks PENDING. */
+    public BackgroundTaskService(Executor executor) {
+        this.ownedExecutor = null;
+        this.executor = executor;
+    }
+
+    /** A task snapshot with its trusted administrative classification, read under one lock. */
+    public record Classified(TaskSnapshot task, boolean administrative) {}
 
     /** Submission-ordered so eviction can start at the oldest record. Guarded by {@code this}. */
     private final Map<String, MutableTask> tasks = new LinkedHashMap<>();
@@ -133,10 +149,16 @@ public class BackgroundTaskService implements AutoCloseable {
         return task == null ? Optional.empty() : Optional.of(task.snapshot());
     }
 
+    /** Atomic lookup: the snapshot and its classification can never disagree after eviction. */
+    public synchronized Optional<Classified> findClassified(String taskId) {
+        MutableTask task = tasks.get(taskId);
+        return task == null ? Optional.empty() : Optional.of(new Classified(task.snapshot(), task.administrative));
+    }
+
     /** Interrupts anything still running; already-committed work is unaffected. */
     @Override
     public void close() {
-        executor.shutdownNow();
+        if (ownedExecutor != null) ownedExecutor.shutdownNow();
     }
 
     private void run(MutableTask task, TaskBody body) {

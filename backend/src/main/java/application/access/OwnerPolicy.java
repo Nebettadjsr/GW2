@@ -11,6 +11,9 @@ import java.util.UUID;
  */
 public final class OwnerPolicy {
 
+    private static final java.util.regex.Pattern CANONICAL = java.util.regex.Pattern.compile(
+            "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+
     private final String ownerAccountId;
 
     /** @param configuredGuid the configured owner account GUID; null or blank means no owner */
@@ -30,11 +33,13 @@ public final class OwnerPolicy {
     }
 
     private static String normalize(String guid) {
-        if (guid.length() != 36) {
+        if (!CANONICAL.matcher(guid).matches()) {
             throw new IllegalArgumentException("gw2.owner.account-guid must be a GUID");
         }
         try {
-            return UUID.fromString(guid).toString().toLowerCase(Locale.ROOT);
+            String lower = guid.toLowerCase(Locale.ROOT);
+            if (!UUID.fromString(lower).toString().equals(lower)) throw new IllegalArgumentException();
+            return lower;
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("gw2.owner.account-guid must be a GUID");
         }

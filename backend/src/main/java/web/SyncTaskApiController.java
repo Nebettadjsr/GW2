@@ -73,10 +73,11 @@ public class SyncTaskApiController {
      */
     @GetMapping(path = "/{taskId}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> status(@PathVariable("taskId") String taskId, HttpServletRequest request) {
-        TaskSnapshot task = taskService.find(taskId)
+        var classified = taskService.findClassified(taskId)
                 .orElseThrow(() -> new UnknownTaskException(taskId));
+        TaskSnapshot task = classified.task();
 
-        if (taskService.isAdministrative(taskId)) {
+        if (classified.administrative()) {
             // Owner-administrative task: current owner authorization precedes serialization.
             var denial = ownerAccess == null ? null : ownerAccess.deny(request);
             if (denial != null || ownerAccess == null) {
