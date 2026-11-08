@@ -113,13 +113,22 @@ public class BackgroundTaskService implements AutoCloseable {
      * {@link #submit(String, TaskBody)}; the classification is never derived from request data.
      */
     public String submitAdministrative(String operation, TaskBody body) {
+        return submitAdministrative(operation, operation, body);
+    }
+
+    /**
+     * Administrative admission whose exclusion is keyed separately from the reported operation, so
+     * the full item and recipe catalog tasks share the {@code GLOBAL_SYNC} exclusion while reporting
+     * their own stable operation names. The exclusion is released only after the body has exited.
+     */
+    public String submitAdministrative(String operation, String exclusionKey, TaskBody body) {
         MutableTask task;
         synchronized (this) {
-            unfinishedTaskId(operation).ifPresent(existing -> {
+            unfinishedTaskId(exclusionKey).ifPresent(existing -> {
                 throw new TaskAlreadyRunningException(operation, existing);
             });
             evictOldestTerminalRecords();
-            task = new MutableTask(UUID.randomUUID().toString(), operation, operation, Instant.now());
+            task = new MutableTask(UUID.randomUUID().toString(), operation, exclusionKey, Instant.now());
             task.administrative = true;
             tasks.put(task.id, task);
         }

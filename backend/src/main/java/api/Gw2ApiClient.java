@@ -12,7 +12,8 @@ import java.net.http.HttpResponse;
 
 public final class Gw2ApiClient {
 
-    private static final HttpClient CLIENT = HttpClient.newHttpClient();
+    private static final HttpClient CLIENT = HttpClient.newBuilder()
+            .connectTimeout(TaskDeadline.CONNECT_TIMEOUT).build();
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private Gw2ApiClient() {}
@@ -145,6 +146,7 @@ public final class Gw2ApiClient {
         return HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Accept", "application/json")
+                .timeout(TaskDeadline.REQUEST_TIMEOUT)
                 .GET()
                 .build();
     }

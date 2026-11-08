@@ -5,7 +5,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import api.TaskDeadline;
 import java.io.IOException;
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -151,6 +154,34 @@ class TpPriceApiTest {
         assertTrue(e.getMessage().contains("HTTP 429"), e.getMessage());
         assertEquals(5, server.requests().size());
         assertEquals(4, sleeps.size());
+    }
+
+    @Test
+    void boundedFullCatalogCallStillMakesAtMostFiveRequestsAndCapsSleepsByRemainingTime() {
+        for (int i = 0; i < 6; i++) server.reply(429, "limited", "1000");
+        var clock = new AtomicLong();
+        var deadline = TaskDeadline.after(Duration.ofSeconds(3), clock::get);
+        TpPriceApi.sleeper = ms -> { sleeps.add(ms); clock.addAndGet(Duration.ofMillis(ms).toNanos()); };
+        assertThrows(TaskDeadline.ExceededException.class, () -> TpPriceApi.fetchBatch(List.of(1), deadline));
+        assertTrue(server.requests().size() <= 5);
+        assertEquals(List.of(3000L), sleeps, "Retry-After of 1000s is capped by the 3s remaining budget");
+        assertEquals(1, server.requests().size());
+    }
+
+    @Test
+    void expiredBoundMakesNoRequest() {
+        var clock = new AtomicLong();
+        var deadline = TaskDeadline.after(Duration.ofSeconds(1), clock::get);
+        clock.addAndGet(Duration.ofSeconds(2).toNanos());
+        assertThrows(TaskDeadline.ExceededException.class, () -> TpPriceApi.fetchSingle(1, deadline));
+        assertEquals(0, server.requests().size());
+    }
+
+    @Test
+    void serverErrorsFailWithoutRetry() {
+        server.reply(503, "down");
+        assertThrows(RuntimeException.class, () -> TpPriceApi.fetchBatch(List.of(1), TaskDeadline.start()));
+        assertEquals(1, server.requests().size());
     }
 
     @Test

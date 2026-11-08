@@ -1,6 +1,7 @@
 package sync;
 
 import api.BatchUtils;
+import api.TaskDeadline;
 import api.tp.TpPriceApi;
 import com.fasterxml.jackson.databind.JsonNode;
 import parser.TpPriceParser;
@@ -23,6 +24,14 @@ public final class TpSync {
         TpPriceApi.BatchResult fetchBatch(List<Integer> batch) throws Exception;
         JsonNode fetchSingle(int itemId) throws Exception;
         Set<Integer> fetchAllTradeableItemIds() throws Exception;
+
+        /** Deadline-aware variants used by the full-catalog operation; fakes may keep the plain ones. */
+        default TpPriceApi.BatchResult fetchBatch(List<Integer> batch, TaskDeadline deadline) throws Exception {
+            return fetchBatch(batch);
+        }
+        default JsonNode fetchSingle(int itemId, TaskDeadline deadline) throws Exception {
+            return fetchSingle(itemId);
+        }
     }
 
     static volatile TpUpstream upstream = new TpUpstream() {
@@ -32,12 +41,40 @@ public final class TpSync {
         @Override public JsonNode fetchSingle(int itemId) throws Exception {
             return TpPriceApi.fetchSingle(itemId);
         }
+        @Override public TpPriceApi.BatchResult fetchBatch(List<Integer> batch, TaskDeadline deadline) throws Exception {
+            return TpPriceApi.fetchBatch(batch, deadline);
+        }
+        @Override public JsonNode fetchSingle(int itemId, TaskDeadline deadline) throws Exception {
+            return TpPriceApi.fetchSingle(itemId, deadline);
+        }
         @Override public Set<Integer> fetchAllTradeableItemIds() throws Exception {
             return TpPriceApi.fetchAllTradeableItemIds();
         }
     };
 
     public static void syncTpPrices(Set<Integer> itemIds) throws Exception {
+        syncTpPrices(itemIds, TaskDeadline.NONE);
+    }
+
+    /**
+     * Owner full Trading Post synchronization (STORY-STATUS-004): snapshots every ID in
+     * {@code tp_tradeable_items}, bypassing the ordinary ten-minute freshness selection, through the
+     * same shared {@code tp_prices} write path. Fails (never silently succeeds) on an empty catalog.
+     */
+    public static void syncAllTradeablePrices(TaskDeadline deadline) throws Exception {
+        Set<Integer> ids = new HashSet<>();
+        try (Connection con = Db.open();
+             PreparedStatement ps = con.prepareStatement("SELECT item_id FROM tp_tradeable_items");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) ids.add(rs.getInt(1));
+        }
+        if (ids.isEmpty()) {
+            throw new IllegalStateException("tp_tradeable_items is empty; synchronize the tradeable catalog first");
+        }
+        syncTpPrices(ids, deadline);
+    }
+
+    static void syncTpPrices(Set<Integer> itemIds, TaskDeadline deadline) throws Exception {
 
         // NOTE (TP refresh scope):
         // This method intentionally refreshes TP prices only for items relevant to the current view
@@ -67,11 +104,16 @@ public final class TpSync {
 
             for (List<Integer> batch : BatchUtils.chunk(ids, SyncConstants.HTTP_IDS_BATCH)) {
 
-                List<TpPrice> quotes = fetchTpBatchParsed(batch);
+                deadline.check();
+                List<TpPrice> quotes = fetchTpBatchParsed(batch, deadline);
 
                 try {
+                    deadline.check();
+                    deadline.limitTransaction(con);
                     upsertTpPrices(con, quotes, runTs);
+                    deadline.check();
                     con.commit();
+                    deadline.check();
 
                 } catch (Exception ex) {
                     con.rollback();
@@ -132,10 +174,10 @@ public final class TpSync {
     }
 
 
-    private static List<TpPrice> fetchTpBatchParsed(List<Integer> batch)
+    private static List<TpPrice> fetchTpBatchParsed(List<Integer> batch, TaskDeadline deadline)
             throws Exception {
 
-        TpPriceApi.BatchResult br = upstream.fetchBatch(batch);
+        TpPriceApi.BatchResult br = upstream.fetchBatch(batch, deadline);
 
         List<TpPrice> out = new ArrayList<>();
 
@@ -143,7 +185,7 @@ public final class TpSync {
 
             for (int id : batch) {
 
-                JsonNode one = upstream.fetchSingle(id);
+                JsonNode one = upstream.fetchSingle(id, deadline);
                 if (one == null) continue;
 
                 TpPrice q = TpPriceParser.parse(one);
@@ -167,7 +209,7 @@ public final class TpSync {
 
                 if (returned.contains(id)) continue;
 
-                JsonNode one = upstream.fetchSingle(id);
+                JsonNode one = upstream.fetchSingle(id, deadline);
                 if (one == null) continue;
 
                 TpPrice q = TpPriceParser.parse(one);

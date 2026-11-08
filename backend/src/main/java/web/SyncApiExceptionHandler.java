@@ -32,6 +32,7 @@ import java.util.logging.Logger;
 @RestControllerAdvice(assignableTypes = {
         AccountSyncApiController.class,
         GlobalSyncApiController.class,
+        FullCatalogAdminApiController.class,
         PriceRefreshApiController.class,
         SyncTaskApiController.class})
 public class SyncApiExceptionHandler {

@@ -216,6 +216,12 @@ public class Gw2ApiApplication {
         return new GlobalDataRefreshService(graphCache);
     }
 
+    /** Owner full-catalog operations (STORY-STATUS-004); opens no connection until a task runs. */
+    @Bean
+    public application.FullCatalogAdministrationService fullCatalogAdministrationService(CraftingGraphCache graphCache) {
+        return new application.FullCatalogAdministrationService(graphCache);
+    }
+
     /**
      * The Trading Post price-refresh use case (STORY-API-005), shared for the same reason as the two
      * above: it keeps no per-call state, holding only its {@code sync.TradingPostPriceRefreshGateway}
