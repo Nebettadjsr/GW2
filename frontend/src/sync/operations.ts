@@ -1,11 +1,11 @@
-import type { SyncApi } from '@/api/syncApi'
+import { startAccountViewRefresh, type SyncApi } from '@/api/syncApi'
 import type { SyncTaskAccepted } from '@/api/types'
 
 /**
- * Operations available from System Status. Price refreshes are requested by the calculation that
- * needs them and use the same shared backend cache; they are not separate admin actions.
+ * Manual System Status actions and source-specific automatic refreshes share task tracking.
  */
-export type SyncOperationKey = 'ACCOUNT_SYNC' | 'GLOBAL_SYNC'
+export type AccountViewOperation = 'BANK_SYNC' | 'MATERIALS_SYNC' | 'CHARACTERS_SYNC'
+export type SyncOperationKey = 'ACCOUNT_SYNC' | 'GLOBAL_SYNC' | AccountViewOperation
 
 export interface SyncOperation {
   key: SyncOperationKey
@@ -18,7 +18,7 @@ export interface SyncOperation {
   submit(api: SyncApi): Promise<SyncTaskAccepted>
 }
 
-/** Manual admin actions; normal feature workflows refresh their own required data. */
+/** Shell-owned tracking for manual actions and the visible view's automatic refresh. */
 export const SYNC_OPERATIONS: readonly SyncOperation[] = [
   {
     key: 'ACCOUNT_SYNC',
@@ -29,5 +29,20 @@ export const SYNC_OPERATIONS: readonly SyncOperation[] = [
     key: 'GLOBAL_SYNC',
     label: 'Synchronize game data',
     submit: (api) => api.startGlobalSync()
+  },
+  {
+    key: 'BANK_SYNC',
+    label: 'Refresh bank',
+    submit: () => startAccountViewRefresh('bank')
+  },
+  {
+    key: 'MATERIALS_SYNC',
+    label: 'Refresh materials',
+    submit: () => startAccountViewRefresh('materials')
+  },
+  {
+    key: 'CHARACTERS_SYNC',
+    label: 'Refresh characters',
+    submit: () => startAccountViewRefresh('characters')
   }
 ]

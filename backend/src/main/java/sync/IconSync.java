@@ -285,10 +285,11 @@ public final class IconSync {
         if (wanted.isEmpty()) return failed;
 
         Set<Integer> hasIcon = new HashSet<>();
+        String craftingMetadata = repo.ManagedSchema.isManaged(con) ? " AND no_mystic_forge IS NOT NULL" : "";
         try (PreparedStatement ps = con.prepareStatement(
                 "SELECT item_id, icon_url FROM items WHERE item_id = ANY(?) AND icon_url IS NOT NULL"
                         + " AND btrim(coalesce(name, '')) <> '' AND btrim(coalesce(type, '')) <> ''"
-                        + " AND btrim(coalesce(rarity, '')) <> ''")) {
+                        + " AND btrim(coalesce(rarity, '')) <> ''" + craftingMetadata)) {
             ps.setArray(1, con.createArrayOf("int", wanted.toArray()));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -391,6 +392,7 @@ public final class IconSync {
                 if (!existedBefore.contains(rows.get(i).itemId())) created++;
             }
 
+            ItemCraftingMetadata.store(con, rows);
             con.commit();
             return new MetadataWrite(written, created);
 

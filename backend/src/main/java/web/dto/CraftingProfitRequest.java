@@ -44,7 +44,16 @@ public record CraftingProfitRequest(ScopeDto scope, SettingsDto settings) {
                               Boolean listingBuy,
                               Boolean allowDailyCrafts,
                               Boolean materialProtectionEnabled,
-                              java.util.List<Integer> protectedItemIds) {
+                              java.util.List<Integer> protectedItemIds,
+                              java.util.List<Integer> protectedBankItemIds,
+                              java.util.List<Integer> protectedMaterialItemIds) {
+
+        public SettingsDto(Boolean useOwnMats, Boolean allowBuying, Integer maxBuyCopper,
+                           Boolean listingSell, Boolean listingBuy, Boolean allowDailyCrafts,
+                           Boolean materialProtectionEnabled, java.util.List<Integer> protectedItemIds) {
+            this(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
+                    materialProtectionEnabled, protectedItemIds, null, null);
+        }
 
         public SettingsDto(Boolean useOwnMats, Boolean allowBuying, Integer maxBuyCopper,
                            Boolean listingSell, Boolean listingBuy, Boolean allowDailyCrafts) {

@@ -15,6 +15,8 @@ public class CraftingSettings {
     public final boolean materialProtectionEnabled;
     /** Immutable request-local membership set; empty unless protection is enabled with a selection. */
     public final Set<Integer> protectedItemIds;
+    public final Set<Integer> protectedBankItemIds;
+    public final Set<Integer> protectedMaterialItemIds;
 
     public CraftingSettings(boolean useOwnMats,
                             boolean allowBuy,
@@ -34,8 +36,18 @@ public class CraftingSettings {
                             boolean allowDailyCrafts,
                             boolean materialProtectionEnabled,
                             Collection<Integer> protectedItemIds) {
+        this(useOwnMats, allowBuy, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
+                materialProtectionEnabled, protectedItemIds, Set.of(), Set.of());
+    }
+
+    public CraftingSettings(boolean useOwnMats, boolean allowBuy, int maxBuyCopper,
+                            boolean listingSell, boolean listingBuy, boolean allowDailyCrafts,
+                            boolean materialProtectionEnabled, Collection<Integer> protectedItemIds,
+                            Collection<Integer> protectedBankItemIds, Collection<Integer> protectedMaterialItemIds) {
         this.materialProtectionEnabled = materialProtectionEnabled;
         this.protectedItemIds = protectedItemIds == null ? Set.of() : Set.copyOf(protectedItemIds);
+        this.protectedBankItemIds = protectedBankItemIds == null ? Set.of() : Set.copyOf(protectedBankItemIds);
+        this.protectedMaterialItemIds = protectedMaterialItemIds == null ? Set.of() : Set.copyOf(protectedMaterialItemIds);
         this.useOwnMats = useOwnMats;
         this.allowBuying = allowBuy;
         this.maxBuyCopper = maxBuyCopper;
@@ -53,7 +65,7 @@ public class CraftingSettings {
     /** Same settings with buying disabled and no budget; protection is preserved. */
     public CraftingSettings withBuyingDisabled() {
         return new CraftingSettings(useOwnMats, false, 0, listingSell, listingBuy, allowDailyCrafts,
-                materialProtectionEnabled, protectedItemIds);
+                materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds);
     }
 
 }

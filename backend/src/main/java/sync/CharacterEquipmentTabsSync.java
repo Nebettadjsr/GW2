@@ -142,12 +142,15 @@ public final class CharacterEquipmentTabsSync {
     static Set<Integer> sharedItemIds(AccountScope scope) throws SQLException {
         Set<Integer> ids = new LinkedHashSet<>();
         try (Connection con = Db.open(); PreparedStatement ps = con.prepareStatement(
-                "SELECT DISTINCT item_id FROM character_items WHERE account_id = ? AND location = 'EQUIPMENT' "
+                "SELECT item_id, upgrade_ids FROM character_items WHERE account_id = ? AND location = 'EQUIPMENT' "
                         + "AND equipment_slot = ANY(?)")) {
             ps.setObject(1, scope.accountId());
             ps.setArray(2, con.createArrayOf("text", repo.CharacterEquipmentTabsRepository.SHARED_SLOTS.toArray()));
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) ids.add(rs.getInt(1));
+                while (rs.next()) {
+                    ids.add(rs.getInt(1));
+                    for (Object upgrade : (Object[]) rs.getArray(2).getArray()) ids.add(((Number) upgrade).intValue());
+                }
             }
         }
         return ids;

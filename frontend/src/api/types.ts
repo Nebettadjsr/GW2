@@ -102,6 +102,8 @@ export interface EffectiveSettings {
   materialProtectionEnabled?: boolean
   /** Canonical protected item IDs the backend calculated with; absent from older backends. */
   protectedItemIds?: number[]
+  protectedBankItemIds?: number[]
+  protectedMaterialItemIds?: number[]
 }
 
 /**
@@ -225,7 +227,7 @@ export interface ScopeRequest {
 /** Request body of `POST /api/crafting/profit`. An empty body requests the documented defaults. */
 export interface CraftingProfitRequest {
   scope?: ScopeRequest
-  settings?: EffectiveSettings
+  settings?: Partial<EffectiveSettings>
 }
 
 /**
@@ -504,6 +506,8 @@ export interface BankSlot {
   count: number | null
   iconUrl: string | null
   rarity: string | null
+  /** False only when the backend can rule out crafting and Mystic Forge use. */
+  protectionSelectable?: boolean
 }
 
 /** Response body of `GET /api/account/bank`. `slots` is in the backend's slot order. */
@@ -631,6 +635,33 @@ export interface EquipmentItemRef {
   type?: string
   rarity?: string
   icon?: string
+  details?: EquipmentItemDetails
+}
+
+export interface EquipmentItemDetails {
+  description?: string
+  level?: number
+  subtype?: string
+  weightClass?: string
+  defense?: number
+  minPower?: number
+  maxPower?: number
+  attributes?: Record<string, number>
+  effects?: string[]
+  runeBonuses?: string[]
+  vendorValue?: number
+}
+
+export interface EquipmentAttributeSet {
+  available: boolean
+  complete: boolean
+  values: Record<string, number>
+  warnings?: string[]
+}
+export interface EquipmentStats {
+  scope: string
+  weaponSets: { A?: EquipmentAttributeSet; B?: EquipmentAttributeSet }
+  profiles?: Record<string, { A?: EquipmentAttributeSet; B?: EquipmentAttributeSet }>
 }
 
 export interface EquipmentEntry {
@@ -641,11 +672,12 @@ export interface EquipmentEntry {
   infusions: EquipmentItemRef[]
   statId?: number
   statAttributes?: Record<string, number>
+  runeCount?: number
   binding?: string
   boundTo?: string
 }
 
-export interface EquipmentTab { tab: number; name: string | null; active: boolean; equipment: EquipmentEntry[] }
+export interface EquipmentTab { tab: number; name: string | null; active: boolean; equipment: EquipmentEntry[]; stats?: EquipmentStats }
 
 export interface EquipmentCoverage { generation?: number; completedAt?: string }
 
@@ -658,6 +690,7 @@ export interface CharacterEquipmentTabsResponse {
   equipment?: EquipmentCoverage
   coveredParentGeneration?: number
   tabs?: EquipmentTab[]
+  sharedEquipment?: EquipmentEntry[]
 }
 
 /** Saved-build tabs read (`GET /api/account/characters/{name}/build-tabs`); only what the header consumes is typed. */

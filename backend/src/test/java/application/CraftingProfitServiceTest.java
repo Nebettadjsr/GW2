@@ -60,6 +60,25 @@ class CraftingProfitServiceTest {
     }
 
     @Test
+    void sourceProtectionFiltersTheRequestedStoresBeforePlanningAndIsIgnoredWhenDisabled() throws SQLException {
+        var recipeRepo = new FakeRecipeRepository();
+        recipeRepo.visible = List.of(RECIPE);
+        var characterRepo = new FakeCharacterRepository();
+        characterRepo.canned = List.of(new CharacterRepository.DiscRow("Aria", "Artificer", 500, true));
+        var inventory = new FakeInventoryRepository();
+        var service = serviceWith(recipeRepo, inventory, new FakeTpPriceRepository(), new FakeItemRepository(),
+                characterRepo, List.of(RECIPE), new RecordingCraftingPlanner());
+        service.reload(DiscChoice.all(), new CraftingSettings(true, false, 0, false, false, false,
+                true, Set.of(), Set.of(200), Set.of(300)));
+        assertEquals(Set.of(200), inventory.capturedBankIds);
+        assertEquals(Set.of(300), inventory.capturedMaterialIds);
+        inventory.capturedBankIds = null;
+        service.reload(DiscChoice.all(), new CraftingSettings(true, false, 0, false, false, false,
+                false, Set.of(), Set.of(200), Set.of(300)));
+        assertNull(inventory.capturedBankIds, "disabled protection uses the ordinary inventory read");
+    }
+
+    @Test
     void allScopeQueriesAllDisciplineAndKeepsFullMultiDisciplineRoster() throws SQLException {
         var recipeRepo = new FakeRecipeRepository();
         recipeRepo.visible = List.of(RECIPE);
@@ -279,6 +298,16 @@ class CraftingProfitServiceTest {
         CoordinatedInventory canned = new CoordinatedInventory(Map.of(), Map.of(), Map.of());
         boolean called = false;
         Set<String> capturedNames;
+        Set<Integer> capturedBankIds;
+        Set<Integer> capturedMaterialIds;
+
+        @Override
+        public CoordinatedInventory loadOwnedInventoryForCharacters(Set<String> characterNames,
+                Set<Integer> excludedBankIds, Set<Integer> excludedMaterialIds) {
+            capturedBankIds = excludedBankIds;
+            capturedMaterialIds = excludedMaterialIds;
+            return loadOwnedInventoryForCharacters(characterNames);
+        }
 
         @Override
         public CoordinatedInventory loadOwnedInventoryForCharacters(Set<String> characterNames) {

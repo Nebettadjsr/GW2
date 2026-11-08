@@ -37,7 +37,8 @@ function failureOf(cause: unknown): ReadFailure {
 export function useCharacters(
   api: CharactersApi = charactersApi,
   tasks: Pick<SyncApi, 'readTaskStatus'> = syncApi,
-  sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms))
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms)),
+  managedRefresh = false
 ) {
   const generation = connection.generation
   let disposed = false
@@ -151,7 +152,7 @@ export function useCharacters(
     }
     equipmentPhase.value = 'loaded'
     reconcile(name)
-    if (equipmentResponse.value?.state === 'PENDING' && !autoRecoveryTried) {
+    if (!managedRefresh && equipmentResponse.value?.state === 'PENDING' && !autoRecoveryTried) {
       autoRecoveryTried = true
       void refreshEquipment()
     }
@@ -171,7 +172,7 @@ export function useCharacters(
     }
     buildPhase.value = 'loaded'
     // Optional source not covered yet: one automatic recovery attempt per selection, like equipment.
-    if (buildResponse.value?.state === 'PENDING' && !buildRecoveryTried && !refreshing.value) {
+    if (!managedRefresh && buildResponse.value?.state === 'PENDING' && !buildRecoveryTried && !refreshing.value) {
       buildRecoveryTried = true
       void recoverBuilds(name)
     }
@@ -179,10 +180,14 @@ export function useCharacters(
 
   async function recoverBuilds(name: string): Promise<void> {
     try {
-      const accepted = await api.startBuildTabsRefresh()
-      if (!stillSelected(name, buildId, buildId) || !(await awaitTask(accepted.statusUrl))) return
-      if (stillSelected(name, buildId, buildId) && accepted.coversRequest !== false) await loadBuildTabs(name)
-    } catch { /* optional decoration only: stay on the base profession */ }
+      for (let attempt = 0; attempt <= EQUIPMENT_MAX_COVER_RETRIES; attempt += 1) {
+        if (!current() || selectedName.value !== name) return
+        const accepted = await api.startBuildTabsRefresh()
+        if (!current() || selectedName.value !== name || !(await awaitTask(accepted.statusUrl))) return
+        if (accepted.coversRequest !== false) { await loadBuildTabs(name); return }
+      }
+      throw new Error('Build refresh is still waiting for another update')
+    } catch (cause) { if (managedRefresh) throw cause /* otherwise optional decoration: base profession */ }
   }
 
   /**
@@ -444,6 +449,6 @@ export function useCharacters(
     refreshing, refreshMessage, refreshEquipment,
     section, showSection, inventoryPhase, inventoryResponse, inventoryFailure, inventorySource, inventoryIsRetained,
     equipmentOlderThanInventory, inventoryOlderThanEquipment, loadInventory,
-    buildPhase, buildResponse, activeElite, loadBuildTabs
+    buildPhase, buildResponse, activeElite, loadBuildTabs, recoverBuilds
   }
 }

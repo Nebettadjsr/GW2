@@ -496,7 +496,7 @@ function onMaximumDisplayedChange(event: Event): void {
 
 <style scoped>
 
-/* Heading, left inputs and right checkbox column share one grid so the checkbox column starts at the heading. */
+/* The heading spans both input columns; controls start together on the next row. */
 .control-column--calculation {
   display: grid;
   grid-template-columns: minmax(0, 55fr) minmax(0, 45fr);
@@ -505,7 +505,7 @@ function onMaximumDisplayedChange(event: Event): void {
 }
 
 .control-column--calculation > .control-column__title {
-  grid-column: 1;
+  grid-column: 1 / -1;
   grid-row: 1;
 }
 
@@ -520,7 +520,7 @@ function onMaximumDisplayedChange(event: Event): void {
 
 .calculation-layout__checks {
   grid-column: 2;
-  grid-row: 1 / span 2;
+  grid-row: 2;
 }
 
 .calculation-layout__main {

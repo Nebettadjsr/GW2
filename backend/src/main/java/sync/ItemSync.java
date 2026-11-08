@@ -103,5 +103,6 @@ public final class ItemSync {
             }
             ps.executeBatch();
         }
+        ItemCraftingMetadata.store(con, rows);
     }
 }

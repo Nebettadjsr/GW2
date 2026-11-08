@@ -160,6 +160,53 @@ class CharacterEquipmentTabsHttpTest {
     private static final String PATH = "/api/account/characters/Ana%20B/equipment-tabs";
 
     @Test
+    void gatheringGlyphIsReadFromTheSelectedAccountsToolWithItsEffect() throws Exception {
+        seedRoster();
+        seedEquipment();
+        exec("INSERT INTO items (item_id,name,type,rarity) VALUES"
+                        + " (100227,'Choya Mining Tool','Gathering','Rare'),"
+                        + " (87698,'Glyph of Volatility','UpgradeComponent','Rare')",
+                "INSERT INTO equipment_item_details (item_id,details,fetched_at) VALUES"
+                        + " (87698,'{\"format\":2,\"itemId\":87698,\"itemType\":\"UpgradeComponent\","
+                        + "\"subtype\":\"Default\",\"attributes\":{},\"runeBonuses\":[],"
+                        + "\"effects\":[\"Rewards bonus volatile magic while gathering.\"]}',now())",
+                "INSERT INTO character_items (account_id,character_id,location,equipment_slot,item_id,upgrade_ids) VALUES"
+                        + " ('" + A + "',1,'EQUIPMENT','Pick',100227,'{87698}'),"
+                        + " ('" + B + "',3,'EQUIPMENT','Pick',100227,'{999}')");
+        mvc.perform(as(A, ALL, PATH)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.sharedEquipment[0].slot").value("Pick"))
+                .andExpect(jsonPath("$.sharedEquipment[0].upgrades.length()").value(1))
+                .andExpect(jsonPath("$.sharedEquipment[0].upgrades[0].itemId").value(87698))
+                .andExpect(jsonPath("$.sharedEquipment[0].upgrades[0].name").value("Glyph of Volatility"))
+                .andExpect(jsonPath("$.sharedEquipment[0].upgrades[0].details.effects[0]")
+                        .value("Rewards bonus volatile magic while gathering."));
+        exec("UPDATE character_items SET upgrade_ids='{}' WHERE account_id='" + A + "'");
+        mvc.perform(as(A, ALL, PATH)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.sharedEquipment[0].upgrades.length()").value(0));
+    }
+
+    @Test
+    void newerCharacterDataKeepsStoredEquipmentVisibleUntilItsRefreshFinishes() throws Exception {
+        seedRoster();
+        seedEquipment();
+        exec("UPDATE account_source_state SET generation=3 WHERE account_id='" + A + "' AND source='CHARACTERS'");
+        mvc.perform(as(A, ALL, PATH)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("STALE"))
+                .andExpect(jsonPath("$.reason").value("COVERAGE_INCOMPATIBLE"))
+                .andExpect(jsonPath("$.parent.generation").value(3))
+                .andExpect(jsonPath("$.coveredParentGeneration").value(2))
+                .andExpect(jsonPath("$.tabs.length()").value(2))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].item.name").value("Ascended Helm"));
+        mvc.perform(as(A, ALL, "/api/account/characters/Bo/equipment-tabs"))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.tabs").doesNotExist());
+        exec("UPDATE character_equipment_coverage SET parent_generation=3 WHERE account_id='" + A + "'");
+        mvc.perform(as(A, ALL, PATH)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("AVAILABLE"))
+                .andExpect(jsonPath("$.coveredParentGeneration").value(3))
+                .andExpect(jsonPath("$.tabs.length()").value(2));
+    }
+
+    @Test
     void availableSelectedCharacterSerializesTabOrderActiveMarkerItemsUpgradesInfusionsAndStats() throws Exception {
         seedRoster();
         seedEquipment();

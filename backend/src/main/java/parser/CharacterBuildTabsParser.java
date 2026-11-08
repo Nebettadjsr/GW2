@@ -112,7 +112,7 @@ public final class CharacterBuildTabsParser {
         List<Integer> out = new ArrayList<>();
         for (JsonNode u : utilities) out.add(nullableId(u, what + " utility"));
         return new Skills(requiredNullableId(s, "heal", what), java.util.Collections.unmodifiableList(out),
-                requiredNullableId(s, "elite", what));
+                nullableId(s.get("elite"), what + " elite"));
     }
 
     /** Two ordered positions, each a non-blank string or null; null/absent array means none. */

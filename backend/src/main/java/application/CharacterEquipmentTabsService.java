@@ -17,9 +17,8 @@ import java.util.List;
 
 /**
  * Bounded read of one selected character's saved equipment tabs (STORY-CHAR-005). Stored rows only:
- * it never fetches, starts a refresh or writes. Equipment is served only when the parent
- * {@code CHARACTERS} publication exists and the equipment coverage names that exact parent generation;
- * every other case is a distinct explicit state, never {@code tabs: []}.
+ * it never fetches, starts a refresh or writes. A newer character publication keeps the same
+ * character's stored equipment visible as STALE until equipment coverage catches up.
  */
 public class CharacterEquipmentTabsService {
 
@@ -122,6 +121,12 @@ public class CharacterEquipmentTabsService {
         var equipment = snapshot.equipment().get();
         long covered = snapshot.coveredParentGeneration().get();
         if (covered != parentGeneration) {
+            if (covered < parentGeneration && !snapshot.tabs().isEmpty()) {
+                return new Result(State.STALE, "COVERAGE_INCOMPATIBLE",
+                        "Showing previously saved equipment while it is updated.",
+                        name, parentAt, parentGeneration, equipment.completedAt(), equipment.generation(),
+                        covered, snapshot.tabs(), snapshot.sharedEquipment());
+            }
             return pending("COVERAGE_INCOMPATIBLE",
                     "Equipment tabs describe an older character roster; they are pending for the current one.",
                     name, parentAt, parentGeneration, equipment.completedAt(), equipment.generation(), covered);

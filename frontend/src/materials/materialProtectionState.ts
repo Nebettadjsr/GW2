@@ -35,8 +35,10 @@ export type StorageDiagnostic =
 
 export type RestoreStatus = 'uninitialized' | 'loading' | 'ready'
 
-/** UI-only hint: where a committed selection was made. Never sent to the backend. */
 export type SelectionView = 'bank' | 'materials'
+type ViewSelections = Record<SelectionView, number[]>
+const emptySelections = (): ViewSelections => ({ bank: [], materials: [] })
+const copySelections = (value: ViewSelections): ViewSelections => ({ bank: [...value.bank], materials: [...value.materials] })
 
 interface StoredPreference {
   version: number
@@ -44,6 +46,7 @@ interface StoredPreference {
   enabled: boolean
   /** Optional, backwards compatible. Absent (legacy) means the origin is unknown. */
   sources?: SelectionView[]
+  selections?: ViewSelections
 }
 
 function canonicalSources(value: unknown): SelectionView[] | null {
@@ -104,6 +107,8 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     status: 'uninitialized' as RestoreStatus,
     committed: [] as number[],
     pending: [] as number[],
+    pendingByView: emptySelections(),
+    committedByView: emptySelections(),
     /** Views whose checkboxes/presets edited the current pending selection. */
     pendingViews: [] as SelectionView[],
     /** Views the committed selection came from; null when unknown (legacy record). */
@@ -116,7 +121,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
    * Latest COMMITTED values per account for this page. It backs restoration when storage is unavailable
    * or a read/write failed, so A->B->A and reconnect never fall back to a stale stored record.
    */
-  const shadow = new Map<string, { ids: number[]; enabled: boolean; sources: SelectionView[] | null }>()
+  const shadow = new Map<string, { ids: number[]; enabled: boolean; sources: SelectionView[] | null; selections: ViewSelections }>()
   /** Bumped on every local edit and account change; guards delayed canonical responses. */
   let editVersion = 0
   /** Last started request; a canonical response is accepted only from this one. */
@@ -124,7 +129,20 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
   /** Detached so the watcher outlives whichever component first created the instance. */
   const scope = effectScope(true)
 
-  const dirty: ComputedRef<boolean> = scope.run(() => computed(() => !sameIds(state.pending, state.committed)))!
+  const dirty: ComputedRef<boolean> = scope.run(() => computed(() =>
+    !sameIds(state.pendingByView.bank, state.committedByView.bank)
+    || !sameIds(state.pendingByView.materials, state.committedByView.materials)))!
+
+  function restoredSelections(ids: number[], sources: SelectionView[] | null, selections?: ViewSelections): ViewSelections {
+    if (selections) return copySelections(selections)
+    return { bank: sources?.length === 1 && sources[0] === 'materials' ? [] : [...ids],
+      materials: sources?.length === 1 && sources[0] === 'bank' ? [] : [...ids] }
+  }
+
+  function syncSelectionTotals(): void {
+    state.pending = canonicalIds([...state.pendingByView.bank, ...state.pendingByView.materials])
+    state.committed = canonicalIds([...state.committedByView.bank, ...state.committedByView.materials])
+  }
 
   function keyFor(accountId: string): string {
     return PREFERENCE_KEY_PREFIX + accountId
@@ -153,7 +171,10 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
         version: PREFERENCE_SCHEMA_VERSION,
         protectedItemIds: canonicalIds(record.protectedItemIds),
         enabled: record.enabled === true,
-        sources: canonicalSources(record.sources) ?? undefined
+        sources: canonicalSources(record.sources) ?? undefined,
+        selections: typeof record.selections === 'object' && record.selections !== null
+          ? { bank: canonicalIds((record.selections as ViewSelections).bank), materials: canonicalIds((record.selections as ViewSelections).materials) }
+          : undefined
       },
       diagnostic: Array.isArray(record.protectedItemIds) && typeof record.enabled === 'boolean' ? null : 'corrupt'
     }
@@ -165,7 +186,8 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
       state.diagnostic = 'storage-unavailable'
       return
     }
-    const value: StoredPreference = { version: PREFERENCE_SCHEMA_VERSION, protectedItemIds: [...ids], enabled }
+    const value: StoredPreference = { version: PREFERENCE_SCHEMA_VERSION, protectedItemIds: [...ids], enabled,
+      selections: copySelections(state.committedByView) }
     if (sources !== null) value.sources = [...sources]
     try {
       storage.setItem(keyFor(accountId), JSON.stringify(value))
@@ -208,6 +230,8 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     state.status = 'uninitialized'
     state.committed = []
     state.pending = []
+    state.pendingByView = emptySelections()
+    state.committedByView = emptySelections()
     state.pendingViews = []
     state.committedSources = null
     state.activation = false
@@ -226,9 +250,11 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
         state.committed = value.protectedItemIds
         state.activation = value.enabled
         state.committedSources = value.sources ?? null
+        state.committedByView = restoredSelections(value.protectedItemIds, value.sources ?? null, value.selections)
         // A successfully restored committed preference is also this page's latest committed value,
         // but never replaces a newer in-memory commit already in the shadow.
-        if (!shadow.has(accountId)) shadow.set(accountId, { ids: [...value.protectedItemIds], enabled: value.enabled, sources: value.sources ?? null })
+        if (!shadow.has(accountId)) shadow.set(accountId, { ids: [...value.protectedItemIds], enabled: value.enabled,
+          sources: value.sources ?? null, selections: copySelections(state.committedByView) })
       }
       if (diagnostic === 'unsupported-version' || (diagnostic === 'corrupt' && value === null)) {
         discardStored(accountId)
@@ -239,8 +265,11 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
       state.committed = [...latest.ids]
       state.activation = latest.enabled
       state.committedSources = latest.sources === null ? null : [...latest.sources]
+      state.committedByView = copySelections(latest.selections)
     }
     state.pending = [...state.committed]
+    state.pendingByView = copySelections(state.committedByView)
+    syncSelectionTotals()
     state.status = 'ready'
   }
 
@@ -278,44 +307,58 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
   function setPending(ids: readonly number[], view?: SelectionView): void {
     if (ready() === null) return
     editVersion += 1
-    state.pending = canonicalIds([...ids])
+    const selected = canonicalIds([...ids])
+    if (view === undefined) state.pendingByView = { bank: [...selected], materials: [...selected] }
+    else state.pendingByView[view] = selected
+    syncSelectionTotals()
     if (view !== undefined && !state.pendingViews.includes(view)) state.pendingViews = [...state.pendingViews, view].sort()
   }
 
   function togglePending(itemId: number, view?: SelectionView): void {
     if (ready() === null) return
-    const next = new Set(state.pending)
+    const next = new Set(view === undefined ? state.pending : state.pendingByView[view])
     if (next.has(itemId)) next.delete(itemId)
     else next.add(itemId)
     setPending([...next], view)
   }
 
-  function discardPending(): void {
+  /** A partially selected group becomes fully selected; a full group is deselected. */
+  function togglePendingGroup(itemIds: readonly number[], view?: SelectionView): void {
+    const ids = canonicalIds(itemIds)
+    if (ready() === null || ids.length === 0) return
+    const next = new Set(view === undefined ? state.pending : state.pendingByView[view])
+    const deselect = ids.every(id => next.has(id))
+    for (const id of ids) {
+      if (deselect) next.delete(id)
+      else next.add(id)
+    }
+    setPending([...next], view)
+  }
+
+  function discardPending(view?: SelectionView): void {
     if (ready() === null) return
     editVersion += 1
-    state.pending = [...state.committed]
-    state.pendingViews = []
+    if (view === undefined) state.pendingByView = copySelections(state.committedByView)
+    else state.pendingByView[view] = [...state.committedByView[view]]
+    syncSelectionTotals()
+    state.pendingViews = view === undefined ? [] : state.pendingViews.filter(value => value !== view)
   }
 
   /** Explicit confirmation: the canonical pending selection becomes the committed one and is stored. */
-  function commit(): void {
+  function commit(view?: SelectionView): void {
     const accountId = ready()
     if (accountId === null) return
     editVersion += 1
-    const wasEmpty = state.committed.length === 0
-    state.committed = canonicalIds(state.pending)
-    state.pending = [...state.committed]
-    // Origin hints: accumulate edited views; a non-empty legacy (unknown) origin stays unknown, not guessed.
-    if (state.committed.length === 0) state.committedSources = []
-    else {
-      const base = wasEmpty ? [] : state.committedSources
-      state.committedSources = base === null ? null : [...new Set([...base, ...state.pendingViews])].sort()
-    }
-    state.pendingViews = []
+    if (view === undefined) state.committedByView = copySelections(state.pendingByView)
+    else state.committedByView[view] = [...state.pendingByView[view]]
+    syncSelectionTotals()
+    state.committedSources = (['bank', 'materials'] as const).filter(source => state.committedByView[source].length > 0)
+    state.pendingViews = view === undefined ? [] : state.pendingViews.filter(value => value !== view)
     // Empty-selection safety rule: an empty committed selection cannot stay activated, and a later
     // non-empty Save must not silently re-enable it.
     if (state.committed.length === 0) state.activation = false
-    shadow.set(accountId, { ids: [...state.committed], enabled: state.activation, sources: state.committedSources && [...state.committedSources] })
+    shadow.set(accountId, { ids: [...state.committed], enabled: state.activation,
+      sources: state.committedSources && [...state.committedSources], selections: copySelections(state.committedByView) })
     persist(accountId, state.committed, state.activation, state.committedSources)
   }
 
@@ -325,7 +368,8 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     if (accountId === null) return
     editVersion += 1
     state.activation = enabled
-    shadow.set(accountId, { ids: [...state.committed], enabled, sources: state.committedSources && [...state.committedSources] })
+    shadow.set(accountId, { ids: [...state.committed], enabled, sources: state.committedSources && [...state.committedSources],
+      selections: copySelections(state.committedByView) })
     persist(accountId, state.committed, enabled, state.committedSources)
   }
 
@@ -368,8 +412,12 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
   return {
     state,
     dirty,
+    pendingFor: (view: SelectionView) => state.pendingByView[view],
+    committedFor: (view: SelectionView) => state.committedByView[view],
+    dirtyFor: (view: SelectionView) => !sameIds(state.pendingByView[view], state.committedByView[view]),
     setPending,
     togglePending,
+    togglePendingGroup,
     discardPending,
     commit,
     setActivation,

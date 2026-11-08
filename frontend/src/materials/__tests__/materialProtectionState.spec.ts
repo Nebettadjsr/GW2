@@ -53,6 +53,42 @@ describe('canonicalIds', () => {
 })
 
 describe('partitioning, commit and restart', () => {
+  it('toggles a whole group without changing other items or saving pending edits', () => {
+    const m = make()
+    source.id = A
+    m.setPending([2, 9], 'materials')
+    m.commit('materials')
+    m.togglePendingGroup([2, 3, 4], 'materials')
+    expect(m.state.pending).toEqual([2, 3, 4, 9])
+    m.togglePendingGroup([2, 3, 4], 'materials')
+    expect(m.state.pending).toEqual([9])
+    expect(m.state.committed).toEqual([2, 9])
+    expect(JSON.parse(storage.data.get(PREFERENCE_KEY_PREFIX + A)!).protectedItemIds).toEqual([2, 9])
+    m.discardPending()
+    expect(m.state.pending).toEqual([2, 9])
+  })
+
+  it('keeps the same item independently selected, saved and discarded in each view', () => {
+    const m = make()
+    source.id = A
+    m.setPending([19718], 'bank')
+    m.setPending([19718, 19719], 'materials')
+    m.commit('bank')
+    expect(m.committedFor('bank')).toEqual([19718])
+    expect(m.committedFor('materials')).toEqual([])
+    expect(m.pendingFor('materials')).toEqual([19718, 19719])
+    m.discardPending('bank')
+    expect(m.pendingFor('materials')).toEqual([19718, 19719])
+    m.commit('materials')
+    m.setPending([], 'bank')
+    m.commit('bank')
+    expect(m.pendingFor('materials')).toEqual([19718, 19719])
+    const restored = make()
+    expect(restored.pendingFor('bank')).toEqual([])
+    expect(restored.pendingFor('materials')).toEqual([19718, 19719])
+    expect(restored.state.committedSources).toEqual(['materials'])
+  })
+
   it('stores independent values per account and restores them in a new instance', () => {
     const m = make()
     source.id = A

@@ -90,7 +90,6 @@ class CharacterBuildTabsParserTest {
                 ok.replace(spec, "{\"traits\":[null,null,null]}"),          // id missing
                 ok.replace(spec, "{\"id\":null}"),                          // traits missing
                 ok.replace("\"heal\":null,", ""),                           // heal missing
-                ok.replace(",\"elite\":9", ""),                              // elite missing
                 ok.replace("\"name\":\"B1\",", ""),                          // name missing
                 ok.replace("\"profession\":\"Revenant\",", ""),              // profession missing
                 "[" + tab(1, true, ",\"pets\":{\"terrestrial\":[1,null]}") + "]",   // aquatic pets missing
@@ -101,5 +100,7 @@ class CharacterBuildTabsParserTest {
         for (String b : bad) {
             assertThrows(IllegalStateException.class, () -> CharacterBuildTabsParser.parse(json(b)), b);
         }
+        assertNull(CharacterBuildTabsParser.parse(json("[" + ok.replace(",\"elite\":9", "") + "]"))
+                .getFirst().build().skills().elite());
     }
 }

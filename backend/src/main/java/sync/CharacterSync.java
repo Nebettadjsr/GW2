@@ -158,7 +158,8 @@ public final class CharacterSync {
         }
 
         metadata.repair(payloads.stream().flatMap(p -> java.util.stream.Stream.concat(
-                        p.items().stream().map(model.CharacterItemRow::itemId),
+                        p.items().stream().flatMap(item -> java.util.stream.Stream.concat(
+                                java.util.stream.Stream.of(item.itemId()), item.upgradeIds().stream())),
                         p.bags() == null ? java.util.stream.Stream.<Integer>empty()
                                 : p.bags().stream().map(model.CharacterBagRow::containerItemId)
                                         .filter(java.util.Objects::nonNull)))
@@ -492,13 +493,14 @@ public final class CharacterSync {
             try (PreparedStatement ps = con.prepareStatement("""
                     INSERT INTO character_items
                       (account_id, character_id, location, bag_index, slot_index, equipment_slot,
-                       item_id, count, binding, bound_to, fetched_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       item_id, count, binding, bound_to, fetched_at, upgrade_ids)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT ON CONSTRAINT uq_character_items_slot DO UPDATE SET
                       item_id    = EXCLUDED.item_id,
                       count      = EXCLUDED.count,
                       binding    = EXCLUDED.binding,
                       bound_to   = EXCLUDED.bound_to,
+                      upgrade_ids = EXCLUDED.upgrade_ids,
                       fetched_at = EXCLUDED.fetched_at
                     """)) {
                 for (var row : rows) {
@@ -514,6 +516,7 @@ public final class CharacterSync {
                     DbBind.setStringOrNull(ps, 9, row.binding());
                     DbBind.setStringOrNull(ps, 10, row.boundTo());
                     ps.setTimestamp(11, runTs);
+                    ps.setArray(12, con.createArrayOf("integer", row.upgradeIds().toArray()));
                     ps.addBatch();
                 }
                 ps.executeBatch();

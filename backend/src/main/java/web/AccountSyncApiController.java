@@ -127,6 +127,27 @@ public class AccountSyncApiController {
         return admit(request, PROFIT_SOURCES);
     }
 
+    @PostMapping(path = "/account/bank", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> syncBank(HttpServletRequest request,
+                                      @RequestBody(required = false) Map<String, Object> body) {
+        SyncRequestValidation.rejectAnyRequestField("/api/sync/account/bank", body);
+        return admit(request, Set.of(AccountSyncStateRepository.BANK));
+    }
+
+    @PostMapping(path = "/account/materials", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> syncMaterials(HttpServletRequest request,
+                                           @RequestBody(required = false) Map<String, Object> body) {
+        SyncRequestValidation.rejectAnyRequestField("/api/sync/account/materials", body);
+        return admit(request, Set.of(AccountSyncStateRepository.MATERIALS));
+    }
+
+    @PostMapping(path = "/account/characters", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> syncCharacters(HttpServletRequest request,
+                                            @RequestBody(required = false) Map<String, Object> body) {
+        SyncRequestValidation.rejectAnyRequestField("/api/sync/account/characters", body);
+        return admit(request, Set.of(AccountSyncStateRepository.CHARACTERS));
+    }
+
     @PostMapping(path = "/account/luck", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> syncAccountLuck(HttpServletRequest request,
                                              @RequestBody(required = false) Map<String, Object> body) {

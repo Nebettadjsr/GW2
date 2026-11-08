@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { connection } from './api/accountSession'
 import { useAccountBootstrap } from './account/useAccountBootstrap'
 import BankScreen from './account/BankScreen.vue'
@@ -25,8 +25,7 @@ import SyncScreen from './sync/SyncScreen.vue'
  *
  * This workspace is created per connected account (the app keys it by the connection generation), so
  * replacing or disconnecting the key discards every screen, selection, result and tracked task of the
- * previous account at once. Account screens mount only while connected and after the account data
- * check has run (`TARGET_ARCHITECTURE.md` 8.2).
+ * previous account at once. Each account screen loads its own inputs after connecting.
  *
  * The synchronization tracking state is created here, not on the page that renders it, so an
  * unfinished task stays tracked while the user works elsewhere — with no duplicated trigger and no
@@ -38,10 +37,13 @@ const bootstrap = useAccountBootstrap()
 const isConnected = computed(() => connection.phase === 'connected')
 const isConnecting = computed(() => connection.phase === 'restoring' || connection.phase === 'connecting')
 const onSystemStatus = computed(() => route.current.value.id === 'synchronization')
+const onCraftingPage = computed(() => ['crafting', 'discovery'].includes(route.current.value.id))
+const craftingReady = computed(() => !['checking', 'syncing'].includes(bootstrap.phase.value))
 
-onMounted(() => {
-  if (isConnected.value) void bootstrap.run()
-})
+// Only crafting needs these combined inputs on first use. Other pages recover their own sources.
+watch(() => isConnected.value && onCraftingPage.value, needed => {
+  if (needed) void bootstrap.run()
+}, { immediate: true })
 
 const main = ref<HTMLElement | null>(null)
 
@@ -105,14 +107,13 @@ watch(
     </section>
 
     <template v-if="isConnected">
-    <p v-if="!onSystemStatus && bootstrap.phase.value === 'syncing'" class="account-bootstrap" role="status" data-test="bootstrap-syncing">
-      Synchronizing your account data for the first time. This can take a minute.
+    <p v-if="onCraftingPage && bootstrap.phase.value === 'syncing'" class="account-bootstrap" role="status" data-test="bootstrap-syncing">
+      Loading crafting data…
     </p>
-    <p v-else-if="!onSystemStatus && bootstrap.phase.value === 'failed'" class="account-bootstrap account-bootstrap--failed" role="alert" data-test="bootstrap-failed">
+    <p v-else-if="onCraftingPage && bootstrap.phase.value === 'failed'" class="account-bootstrap account-bootstrap--failed" role="alert" data-test="bootstrap-failed">
       {{ bootstrap.error.value }}
       <button type="button" @click="bootstrap.run()">Try again</button>
     </p>
-    <template v-if="bootstrap.phase.value !== 'checking' && bootstrap.phase.value !== 'syncing'">
     <!--
       Only the open screen is mounted. The two crafting screens are kept alive across navigation
       because their results belong to a scope and settings the user chose: re-mounting one would both
@@ -122,11 +123,11 @@ watch(
       so each keeps reading its own route when opened (STORY-WEB-003).
     -->
     <KeepAlive>
-      <CraftingProfitScreen v-if="route.current.value.id === 'crafting'" />
+      <CraftingProfitScreen v-if="route.current.value.id === 'crafting' && craftingReady" />
     </KeepAlive>
 
     <KeepAlive>
-      <CraftingDiscoveryScreen v-if="route.current.value.id === 'discovery'" />
+      <CraftingDiscoveryScreen v-if="route.current.value.id === 'discovery' && craftingReady" />
     </KeepAlive>
 
     <!-- Characters keeps its selection and tab while the user visits another page of this account. -->
@@ -143,7 +144,6 @@ watch(
 
     <BankScreen v-else-if="route.current.value.id === 'bank'" />
     <MaterialsScreen v-else-if="route.current.value.id === 'materials'" />
-    </template>
     </template>
   </main>
 </template>

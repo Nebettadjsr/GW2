@@ -7,6 +7,7 @@
  */
 import { onScopeDispose, ref, shallowRef, type Ref } from 'vue'
 import { ApiRequestError } from '@/api/http'
+import { connection } from '@/api/accountSession'
 
 /**
  * `loading` and `failed` are distinct from `loaded`; a retained snapshot is labelled as older,
@@ -30,6 +31,7 @@ export interface AccountReadState<T> {
 }
 
 export function useAccountRead<T>(read: () => Promise<T>): AccountReadState<T> {
+  const generation = connection.generation
   const phase = ref<AccountReadPhase>('loading')
   const data = shallowRef<T | null>(null)
   const failure = ref<AccountReadFailure | null>(null)
@@ -57,7 +59,7 @@ export function useAccountRead<T>(read: () => Promise<T>): AccountReadState<T> {
 
   /** True once the owning screen is gone, or once a newer read has superseded this answer. */
   function isStale(requestId: number): boolean {
-    return isDisposed || requestId !== newestRequestId
+    return isDisposed || generation !== connection.generation || requestId !== newestRequestId
   }
 
   onScopeDispose(() => {

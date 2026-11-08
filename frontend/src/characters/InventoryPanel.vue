@@ -63,13 +63,13 @@ function describe(slot: InventorySlot, bag: number): string {
 </template>
 
 <style scoped>
-.inventory { display: grid; grid-template-columns: minmax(0, max-content) 56px; gap: 16px; align-items: start; justify-content: start; }
-.inventory__center { min-width: 0; max-width: 100%; overflow-x: auto; }
+.inventory { display: grid; grid-template-columns: minmax(72px, 1fr) minmax(0, 636px) minmax(72px, 1fr); align-items: start; }
+.inventory__center { grid-column: 2; grid-row: 1; min-width: 0; max-width: 100%; overflow-x: auto; }
 .inventory__slots { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(10, 60px); gap: 4px; }
 .inventory__slot { position: relative; box-sizing: border-box; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .inventory__slot--empty { border: 1px solid var(--color-border); border-radius: 2px; background: rgba(0, 0, 0, 0.18); }
 .inventory__slot:focus-visible, .inventory__rail-item:focus-visible { outline: 2px solid var(--color-accent, #2f6fdb); outline-offset: 1px; }
-.inventory__rail { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.inventory__rail { grid-column: 3; grid-row: 1; list-style: none; margin: 0 0 0 16px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .inventory__rail-item { position: relative; box-sizing: border-box; width: 56px; height: 44px; display: flex; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--color-border); border-radius: 2px; }
 .inventory__rail-item--empty { border-style: dashed; opacity: 0.6; }
 .inventory__rail-label { font-size: 0.75rem; }

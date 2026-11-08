@@ -42,6 +42,7 @@ public record BankContentsResponse(Integer slotCount, List<BankSlotDto> slots,
                               Integer itemId,
                               Integer count,
                               String iconUrl,
-                              String rarity) {
+                              String rarity,
+                              boolean protectionSelectable) {
     }
 }

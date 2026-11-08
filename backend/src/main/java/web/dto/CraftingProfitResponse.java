@@ -55,7 +55,16 @@ public record CraftingProfitResponse(String status,
                                        boolean listingBuy,
                                        boolean allowDailyCrafts,
                                        boolean materialProtectionEnabled,
-                                       List<Integer> protectedItemIds) {
+                                       List<Integer> protectedItemIds,
+                                       List<Integer> protectedBankItemIds,
+                                       List<Integer> protectedMaterialItemIds) {
+
+        public EffectiveSettingsDto(boolean useOwnMats, boolean allowBuying, int maxBuyCopper,
+                                    boolean listingSell, boolean listingBuy, boolean allowDailyCrafts,
+                                    boolean materialProtectionEnabled, List<Integer> protectedItemIds) {
+            this(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
+                    materialProtectionEnabled, protectedItemIds, List.of(), List.of());
+        }
 
         public EffectiveSettingsDto(boolean useOwnMats, boolean allowBuying, int maxBuyCopper,
                                     boolean listingSell, boolean listingBuy, boolean allowDailyCrafts) {

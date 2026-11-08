@@ -471,7 +471,7 @@ export function echoedProfitResponse(
       characterName: scope?.characterName ?? null,
       rating: scope?.rating ?? 0
     },
-    settings: request.settings ?? DEFAULT_SETTINGS,
+    settings: { ...DEFAULT_SETTINGS, ...request.settings },
     rowCount: rows.length,
     rows,
     freshness
@@ -673,7 +673,7 @@ export function resolutionResponse(
   }
   return {
     recipeId: request.recipeId,
-    calculation: { scope: echoedScope, settings: request.calculation.settings ?? DEFAULT_SETTINGS },
+    calculation: { scope: echoedScope, settings: { ...DEFAULT_SETTINGS, ...request.calculation.settings } },
     consistency: 'FRESH_CALCULATION',
     calculatedAt: '2026-09-25T10:20:30Z',
     row: profitableRow,

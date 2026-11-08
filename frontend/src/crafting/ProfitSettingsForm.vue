@@ -263,6 +263,15 @@ function onMaxBuyCopperChange(event: Event): void {
         />
         <span>Allow daily craft</span>
       </label>
+
+      <label class="check-row check-row--disabled">
+        <input
+          type="checkbox"
+          data-test="setting-allowMysticForge"
+          disabled
+        />
+        <span>Allow Mystic Forge recipes</span>
+      </label>
     </div>
   </div>
 </template>
@@ -346,6 +355,14 @@ function onMaxBuyCopperChange(event: Event): void {
   align-items: center;
   gap: var(--space-2);
   min-height: 0;
+}
+
+.check-row--disabled {
+  color: var(--color-muted);
+}
+
+.settings__checks > .check-row:first-child {
+  min-height: 2.5rem;
 }
 
 @media (max-width: 700px) {

@@ -52,7 +52,12 @@ public class CharacterEquipmentTabsRepository {
     }
 
     /** Backend-derived totals: {@code scope} BASE_PLUS_EQUIPMENT with land weapon sets A and B separately. */
-    public record Stats(String scope, Map<String, EquipmentTotals.SetResult> weaponSets) {}
+    public record Stats(String scope, Map<String, EquipmentTotals.SetResult> weaponSets,
+                        Map<String, Map<String, EquipmentTotals.SetResult>> profiles) {
+        public Stats(String scope, Map<String, EquipmentTotals.SetResult> weaponSets) {
+            this(scope, weaponSets, Map.of());
+        }
+    }
 
     public record TabView(int number, String name, boolean active, List<Entry> equipment, Stats stats) {
         public TabView(int number, String name, boolean active, List<Entry> equipment) {
@@ -114,7 +119,7 @@ public class CharacterEquipmentTabsRepository {
     }
 
     /** Character-wide equipment slots that equipment tabs often omit; read from the CHARACTERS data only. */
-    public static final List<String> SHARED_SLOTS = List.of("FishingRod", "FishingBait", "FishingLure", "PowerCore",
+    public static final List<String> SHARED_SLOTS = List.of("Relic", "FishingRod", "FishingBait", "FishingLure", "PowerCore",
             "SensoryArray", "ServiceChip", "Sickle", "Axe", "Pick");
 
     private record RawEntry(int tab, String slot, int itemId, String location, List<Integer> upgrades,
@@ -158,10 +163,10 @@ public class CharacterEquipmentTabsRepository {
                 }
             }
         }
-        record RawShared(String slot, int itemId, String binding, String boundTo) {}
+        record RawShared(String slot, int itemId, String binding, String boundTo, List<Integer> upgrades) {}
         List<RawShared> sharedRaw = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement("""
-                SELECT equipment_slot, item_id, binding, bound_to FROM character_items
+                SELECT equipment_slot, item_id, binding, bound_to, upgrade_ids FROM character_items
                 WHERE account_id = ? AND character_id = ? AND location = 'EQUIPMENT' AND equipment_slot = ANY(?)
                 ORDER BY equipment_slot""")) {
             ps.setObject(1, scope.accountId());
@@ -169,8 +174,10 @@ public class CharacterEquipmentTabsRepository {
             ps.setArray(3, con.createArrayOf("text", SHARED_SLOTS.toArray()));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    sharedRaw.add(new RawShared(rs.getString(1), rs.getInt(2), rs.getString(3), rs.getString(4)));
+                    List<Integer> upgrades = ints(rs.getArray(5));
+                    sharedRaw.add(new RawShared(rs.getString(1), rs.getInt(2), rs.getString(3), rs.getString(4), upgrades));
                     ids.add(rs.getInt(2));
+                    ids.addAll(upgrades);
                 }
             }
         }
@@ -210,16 +217,54 @@ public class CharacterEquipmentTabsRepository {
             ItemRef ref = refs.get(r.itemId());
             Map<String, Integer> derived = ref == null || ref.details() == null ? null
                     : EquipmentTotals.coreAttributes(r.slot(), ref.details().description());
-            shared.add(new Entry(r.slot(), ref, "Equipped", List.of(), List.of(), null, derived,
+            shared.add(new Entry(r.slot(), ref, "Equipped", r.upgrades().stream().map(refs::get).toList(), List.of(), null, derived,
                     r.binding(), r.boundTo(), null));
         }
         List<TabView> out = new ArrayList<>();
+        Map<Integer, List<Integer>> activeTraits = activeTraits(con, scope, characterId);
         for (RawTab t : rawTabs) {
             List<Entry> entries = withRuneCounts(byTab.getOrDefault(t.number(), List.of()));
+            Map<String, EquipmentTotals.SetResult> gear = totals(profession, level, entries, shared);
+            Map<String, Map<String, EquipmentTotals.SetResult>> profiles = new LinkedHashMap<>();
+            for (String profile : List.of("PVE", "PVE_REINFORCED", "WVW", "WVW_REINFORCED")) {
+                Map<String, EquipmentTotals.SetResult> sets = new LinkedHashMap<>();
+                for (var set : gear.entrySet()) sets.put(set.getKey(), domain.PassiveCharacterStats.apply(
+                        set.getValue(), profession, activeTraits, !activeTraits.isEmpty(),
+                        profile.startsWith("WVW"), profile.endsWith("_REINFORCED")));
+                profiles.put(profile, sets);
+            }
             out.add(new TabView(t.number(), t.name(), t.active(), entries,
-                    new Stats(EquipmentTotals.SCOPE, totals(profession, level, entries, shared))));
+                    new Stats(EquipmentTotals.SCOPE, gear, profiles)));
         }
         return new Snapshot(true, covered, out, parent, equipment, shared);
+    }
+
+    /** Active build of this account/character only, from the same published parent snapshot. */
+    private static Map<Integer, List<Integer>> activeTraits(Connection con, AccountScope scope, long characterId)
+            throws SQLException {
+        Map<Integer, List<Integer>> selections = new LinkedHashMap<>();
+        try (PreparedStatement ps = con.prepareStatement("""
+                SELECT s.specialization_id, s.traits
+                FROM character_build_tabs b
+                JOIN character_build_tab_specializations s USING (account_id, character_id, tab_number)
+                JOIN character_build_coverage c ON c.account_id = b.account_id
+                JOIN account_source_state p ON p.account_id = b.account_id AND p.source = 'CHARACTERS'
+                    AND p.generation = c.parent_generation
+                JOIN account_source_state m ON m.account_id = b.account_id AND m.source = 'CHARACTER_BUILD_TABS'
+                WHERE b.account_id = ? AND b.character_id = ? AND b.is_active
+                ORDER BY s.position
+                """)) {
+            ps.setObject(1, scope.accountId());
+            ps.setLong(2, characterId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    int specialization = rs.getInt(1);
+                    if (!rs.wasNull()) selections.put(specialization,
+                            ints(rs.getArray(2)).stream().filter(java.util.Objects::nonNull).toList());
+                }
+            }
+        }
+        return selections;
     }
 
     private static Map<String, EquipmentTotals.SetResult> totals(String profession, Integer level,

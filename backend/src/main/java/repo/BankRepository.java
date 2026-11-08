@@ -36,7 +36,12 @@ public class BankRepository {
                               Integer count,
                               String iconPath,
                               String iconUrl,
-                              String rarity) {}
+                              String rarity,
+                              boolean protectionSelectable) {
+        public BankSlotRow(int slot, Integer itemId, Integer count, String iconPath, String iconUrl, String rarity) {
+            this(slot, itemId, count, iconPath, iconUrl, rarity, true);
+        }
+    }
 
     /**
      * One account's bank slots, ordered by slot (STORY-APP-015).
@@ -56,7 +61,10 @@ public class BankRepository {
     public List<BankSlotRow> loadBankSlots(Connection con, model.AccountScope scope) throws SQLException {
         ManagedSchema.requireManagedAccountSchema(con, "account_bank");
         String sql = """
-            SELECT b.slot, b.item_id, b.count, i.icon_path, i.icon_url, i.rarity
+            SELECT b.slot, b.item_id, b.count, i.icon_path, i.icon_url, i.rarity, i.no_mystic_forge,
+                   EXISTS (SELECT 1 FROM material_category_items m WHERE m.item_id = b.item_id) AS material,
+                   EXISTS (SELECT 1 FROM recipe_ingredients r WHERE r.item_id = b.item_id) AS recipe_ingredient,
+                   EXISTS (SELECT 1 FROM recipe_catalog_publication WHERE complete) AS catalog_complete
             FROM account_bank b
             LEFT JOIN items i ON i.item_id = b.item_id
             WHERE b.account_id = ?
@@ -67,7 +75,9 @@ public class BankRepository {
         try (PreparedStatement ps = con.prepareStatement(sql)) {
             ps.setObject(1, scope.accountId());
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) out.add(rowOf(rs));
+                while (rs.next()) out.add(rowOf(rs, domain.CraftingIngredientEligibility.isSelectable(
+                        rs.getBoolean("material"), rs.getBoolean("recipe_ingredient"),
+                        rs.getBoolean("catalog_complete"), (Boolean) rs.getObject("no_mystic_forge"))));
             }
         }
         return out;
@@ -126,12 +136,16 @@ public class BankRepository {
     }
 
     private static BankSlotRow rowOf(ResultSet rs) throws SQLException {
+        return rowOf(rs, true);
+    }
+
+    private static BankSlotRow rowOf(ResultSet rs, boolean protectionSelectable) throws SQLException {
         return new BankSlotRow(
                 rs.getInt("slot"),
                 (Integer) rs.getObject("item_id"),
                 (Integer) rs.getObject("count"),
                 rs.getString("icon_path"),
                 rs.getString("icon_url"),
-                rs.getString("rarity"));
+                rs.getString("rarity"), protectionSelectable);
     }
 }
