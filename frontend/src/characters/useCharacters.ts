@@ -109,6 +109,8 @@ export function useCharacters(
   const buildResponse = shallowRef<CharacterBuildTabsResponse | null>(null)
   let buildId = 0
   let buildRecoveryTried = false
+  /** Bumped on every select/back so an old attempt for a same-name earlier selection cannot act. */
+  let selectionToken = 0
 
   const stillSelected = (name: string, id: number, newest: number): boolean =>
     current() && selectedName.value === name && id === newest
@@ -172,18 +174,31 @@ export function useCharacters(
     }
     buildPhase.value = 'loaded'
     // Optional source not covered yet: one automatic recovery attempt per selection, like equipment.
-    if (!managedRefresh && buildResponse.value?.state === 'PENDING' && !buildRecoveryTried && !refreshing.value) {
+    if (!managedRefresh && buildResponse.value?.state === 'PENDING' && !buildRecoveryTried) {
       buildRecoveryTried = true
-      void recoverBuilds(name)
+      void recoverBuilds(name, selectionToken)
     }
   }
 
-  async function recoverBuilds(name: string): Promise<void> {
+  /**
+   * Request Builds coverage through the existing refresh operation. `token` is the selection the
+   * caller captured; every request and continuation is guarded by account, disposal, the same
+   * selected name and that token. An equipment refresh already in flight for the same selection is
+   * awaited first (its task may cover Builds), so no parallel waiter is started for the same task.
+   */
+  async function recoverBuilds(name: string, token: number = selectionToken): Promise<void> {
+    const live = (): boolean => current() && selectedName.value === name && token === selectionToken
     try {
+      if (equipmentAttempt) {
+        await equipmentAttempt
+        if (!live()) return
+        await loadBuildTabs(name)
+        if (!live() || buildResponse.value?.state !== 'PENDING') return
+      }
       for (let attempt = 0; attempt <= EQUIPMENT_MAX_COVER_RETRIES; attempt += 1) {
-        if (!current() || selectedName.value !== name) return
+        if (!live()) return
         const accepted = await api.startBuildTabsRefresh()
-        if (!current() || selectedName.value !== name || !(await awaitTask(accepted.statusUrl))) return
+        if (!live() || !(await awaitTask(accepted.statusUrl)) || !live()) return
         if (accepted.coversRequest !== false) { await loadBuildTabs(name); return }
       }
       throw new Error('Build refresh is still waiting for another update')
@@ -337,6 +352,7 @@ export function useCharacters(
   function select(name: string): void {
     if (selectedName.value === name) return
     selectedName.value = name
+    selectionToken += 1
     detail.value = null
     detailResponse.value = null
     equipmentResponse.value = null
@@ -360,6 +376,7 @@ export function useCharacters(
 
   function back(): void {
     selectedName.value = null
+    selectionToken += 1
     detailId += 1
     equipmentId += 1
     detail.value = null
@@ -394,10 +411,15 @@ export function useCharacters(
   const refreshing = ref(false)
   const refreshMessage = ref<string | null>(null)
   let autoRecoveryTried = false
+  /** The single in-flight equipment refresh attempt, shared by anything that needs to wait for it. */
+  let equipmentAttempt: Promise<void> | null = null
 
   async function refreshEquipment(): Promise<void> {
+    if (equipmentAttempt) return equipmentAttempt
     const name = selectedName.value
-    if (refreshing.value || name === null) return
+    if (name === null) return
+    let done!: () => void
+    equipmentAttempt = new Promise<void>((resolve) => { done = resolve })
     refreshing.value = true
     refreshMessage.value = null
     try {
@@ -422,6 +444,8 @@ export function useCharacters(
         : `Equipment could not be updated: ${failure.message}`
     } finally {
       refreshing.value = false
+      equipmentAttempt = null
+      done()
     }
   }
 

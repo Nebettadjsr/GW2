@@ -739,4 +739,78 @@ describe('Character inventory section', () => {
     await eq.trigger('keydown', { key: 'End' }); await flushPromises()
     expect(inv.attributes('aria-selected')).toBe('true')
   })
+
+  describe('optional Builds recovery', () => {
+    const pending = { state: 'PENDING', reason: 'COVERAGE_NOT_PUBLISHED' } as CharacterBuildTabsResponse
+    const pendingEquip = { state: 'PENDING', reason: 'COVERAGE_NOT_PUBLISHED' } as CharacterEquipmentTabsResponse
+
+    it('equipment-first: both PENDING, waits for the equipment attempt then recovers Builds without reselect', async () => {
+      let covered = false
+      const gate = deferred<void>()
+      const api = fakeApi({
+        loadEquipmentTabs: async () => (covered ? tabsResponse : pendingEquip),
+        loadBuildTabs: async (n) => (covered ? { ...buildsResponse, character: n } : pending),
+        startEquipmentTabsRefresh: async () => { api.calls.push('refresh'); await gate.promise; covered = true; return { taskId: 't', operation: 'X', statusUrl: '/s' } }
+      })
+      const c = useCharacters(api, tasks, noSleep)
+      c.select('Ana B'); await flushPromises()
+      expect(c.refreshing.value).toBe(true)
+      expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(0)
+      gate.resolve(); await flushPromises()
+      expect(api.calls.filter((x) => x === 'refresh')).toHaveLength(1)
+      expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(0) // covered by the equipment task's publication
+      expect(c.activeElite.value).toBe('Willbender')
+    })
+
+    it('builds-first with a narrower active task: retries with bounded attempts and then shows the elite', async () => {
+      let n = 0
+      const api = fakeApi({
+        loadBuildTabs: async (name) => (n >= 3 ? { ...buildsResponse, character: name } : pending),
+        startBuildTabsRefresh: async () => { n += 1; api.calls.push('build-refresh'); return { taskId: 'b', operation: 'X', statusUrl: '/s', coversRequest: n >= 3 } as never }
+      })
+      const c = useCharacters(api, tasks, noSleep)
+      c.select('Ana B'); await flushPromises()
+      expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(3)
+      expect(c.activeElite.value).toBe('Willbender')
+    })
+
+    it('stops after the bounded number of non-covering tasks', async () => {
+      const api = fakeApi({
+        loadBuildTabs: async () => pending,
+        startBuildTabsRefresh: async () => { api.calls.push('build-refresh'); return { taskId: 'b', operation: 'X', statusUrl: '/s', coversRequest: false } as never }
+      })
+      const c = useCharacters(api, tasks, noSleep)
+      c.select('Ana B'); await flushPromises()
+      expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(3)
+      expect(c.activeElite.value).toBeNull()
+    })
+
+    it('an old same-name selection (A->B->A) issues no request after it was replaced', async () => {
+      const gate = deferred<void>()
+      const api = fakeApi({
+        loadBuildTabs: async (name) => (name === 'Ana B' ? pending : { ...buildsResponse, character: name }),
+        startBuildTabsRefresh: async () => { api.calls.push('build-refresh'); await gate.promise; return { taskId: 'b', operation: 'X', statusUrl: '/s', coversRequest: false } as never }
+      })
+      const c = useCharacters(api, tasks, noSleep)
+      c.select('Ana B'); await flushPromises()
+      c.back(); c.select('Bo'); c.back(); c.select('Ana B'); await flushPromises()
+      gate.resolve(); await flushPromises()
+      // The replaced first attempt had one request in flight and starts no retry; the current
+      // selection makes its own bounded three. Without the guard the stale loop would add two more.
+      expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(4)
+    })
+
+    it('makes no request after the account generation is replaced', async () => {
+      const gate = deferred<void>()
+      const api = fakeApi({
+        loadBuildTabs: async () => pending,
+        startBuildTabsRefresh: async () => { api.calls.push('build-refresh'); await gate.promise; return { taskId: 'b', operation: 'X', statusUrl: '/s', coversRequest: false } as never }
+      })
+      const c = useCharacters(api, tasks, noSleep)
+      c.select('Ana B'); await flushPromises()
+      connection.generation += 1
+      gate.resolve(); await flushPromises()
+      expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(1)
+    })
+  })
 })
