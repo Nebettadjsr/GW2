@@ -3,6 +3,7 @@ package api.tp;
 import api.BatchUtils;
 import api.Gw2ApiClient;
 import api.HttpStatus;
+import api.TaskDeadline;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.io.IOException;
@@ -37,12 +38,17 @@ public final class TpPriceApi {
 
     /** Fetch /v2/commerce/prices?ids=... and return status + parsed array for 200/206 (404 means retry single) */
     public static BatchResult fetchBatch(List<Integer> batch) throws IOException, InterruptedException {
+        return fetchBatch(batch, TaskDeadline.NONE);
+    }
+
+    /** As {@link #fetchBatch(List)}, cooperatively bounded by {@code deadline}. */
+    public static BatchResult fetchBatch(List<Integer> batch, TaskDeadline deadline) throws IOException, InterruptedException {
         String idsParam = BatchUtils.idsParam(batch);
         if (idsParam.isBlank()) return new BatchResult(200, null, Set.of());
 
         String url = base + "/v2/commerce/prices?ids=" + idsParam;
 
-        HttpResponse<String> res = getWithRetry429(url);
+        HttpResponse<String> res = getWithRetry429(url, deadline);
         int code = res.statusCode();
 
         // Centralized status policy for TP batch
@@ -68,9 +74,14 @@ public final class TpPriceApi {
 
     /** Fetch /v2/commerce/prices/<id> and return parsed JSON object, or null if 404 */
     public static JsonNode fetchSingle(int itemId) throws IOException, InterruptedException {
+        return fetchSingle(itemId, TaskDeadline.NONE);
+    }
+
+    /** As {@link #fetchSingle(int)}, cooperatively bounded by {@code deadline}. */
+    public static JsonNode fetchSingle(int itemId, TaskDeadline deadline) throws IOException, InterruptedException {
         String url = base + "/v2/commerce/prices/" + itemId;
 
-        HttpResponse<String> res = getWithRetry429(url);
+        HttpResponse<String> res = getWithRetry429(url, deadline);
         int code = res.statusCode();
 
         // Centralized status policy for TP single
@@ -83,21 +94,36 @@ public final class TpPriceApi {
     // ---- Centralized status policy (429 retry/backoff) ----
 
     private static HttpResponse<String> getWithRetry429(String url) throws IOException, InterruptedException {
+        return getWithRetry429(url, TaskDeadline.NONE);
+    }
+
+    /**
+     * At most five requests per call: loop attempts 0..3 (each 429 is followed by a sleep) plus one
+     * terminal request. A bounded deadline is checked around every request and sleep, and each sleep
+     * is capped by the remaining budget; {@link TaskDeadline#NONE} leaves the behavior unchanged.
+     */
+    private static HttpResponse<String> getWithRetry429(String url, TaskDeadline deadline)
+            throws IOException, InterruptedException {
         final int maxRetries = 3;
 
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            deadline.check();
             HttpResponse<String> res = Gw2ApiClient.getPublicResponse(url);
+            deadline.check();
             int code = res.statusCode();
 
             if (code != 429) return res;
             HttpStatus.logWarn(429, "TP rate limit hit for " + url);
             // 429: honor Retry-After if present, else exponential backoff
-            long sleepMs = retryAfterMs(res, attempt);
+            long sleepMs = Math.min(retryAfterMs(res, attempt), deadline.remainingMillis());
             sleeper.sleep(sleepMs);
+            deadline.check();
         }
 
         // last attempt
-        return Gw2ApiClient.getPublicResponse(url);
+        HttpResponse<String> last = Gw2ApiClient.getPublicResponse(url);
+        deadline.check();
+        return last;
     }
 
     private static long retryAfterMs(HttpResponse<String> res, int attempt) {

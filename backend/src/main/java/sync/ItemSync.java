@@ -2,6 +2,7 @@ package sync;
 
 import api.BatchUtils;
 import api.Gw2ApiClient;
+import api.TaskDeadline;
 import com.fasterxml.jackson.databind.JsonNode;
 import parser.ItemParser;
 import repo.Db;
@@ -84,6 +85,74 @@ public final class ItemSync {
                                            + Math.min(done, idsList.size())
                                            + " / "
                                            + idsList.size());
+            }
+        }
+    }
+
+    /**
+     * Owner full item-catalog synchronization (STORY-STATUS-004): captures one finite
+     * {@code /v2/items} ID snapshot, re-downloads the detail of <em>every</em> captured ID (unchanged
+     * ones included) in 200-ID batches, and only after all batches validated and committed removes
+     * rows absent from the snapshot that no {@code recipe_ingredients} row still references. A
+     * referenced absent item stays as disposable referential metadata until a later run.
+     */
+    static void syncAllItemsFull(TaskDeadline deadline) throws Exception {
+        deadline.check();
+        List<Integer> ids = FullCatalogSupport.parseIdSnapshot(fetcher.get("https://api.guildwars2.com/v2/items"), "items");
+        syncItemsStrict(ids, deadline);
+        deadline.check();
+        try (Connection con = Db.open()) {
+            con.setAutoCommit(false);
+            try {
+                deadline.limitTransaction(con);
+                try (PreparedStatement ps = con.prepareStatement("""
+                        DELETE FROM items i
+                        WHERE NOT (i.item_id = ANY (?))
+                          AND NOT EXISTS (SELECT 1 FROM recipe_ingredients r WHERE r.item_id = i.item_id)
+                        """)) {
+                    ps.setArray(1, con.createArrayOf("int4", ids.toArray(Integer[]::new)));
+                    ps.executeUpdate();
+                }
+                deadline.check();
+                con.commit();
+            } catch (Exception ex) {
+                con.rollback();
+                throw ex;
+            }
+        }
+    }
+
+    /** Detail batches that must cover the requested IDs exactly; used by the full operations. */
+    static void syncItemsStrict(java.util.Collection<Integer> itemIds, TaskDeadline deadline) throws Exception {
+        List<Integer> idsList = new ArrayList<>(itemIds);
+        if (idsList.isEmpty()) return;
+        try (Connection con = Db.open();
+             PreparedStatement psNow = con.prepareStatement("SELECT now()")) {
+            for (List<Integer> batch : BatchUtils.chunk(idsList, SyncConstants.HTTP_IDS_BATCH)) {
+                deadline.check();
+                JsonNode root = fetcher.get("https://api.guildwars2.com/v2/items?ids=" + BatchUtils.idsParam(batch));
+                deadline.check();
+                List<ItemParser.ItemRow> rows =
+                        FullCatalogSupport.parseExact(root, batch,
+                                n -> ItemParser.parse(FullCatalogSupport.requireItem(n)), ItemParser.ItemRow::itemId, "items");
+                con.setAutoCommit(false);
+                try {
+                    deadline.limitTransaction(con);
+                    Timestamp runTs;
+                    try (ResultSet rs = psNow.executeQuery()) {
+                        if (!rs.next()) throw new SQLException("SELECT now() returned no row");
+                        runTs = rs.getTimestamp(1);
+                    }
+                    upsertItems(con, rows, runTs);
+                    // Same validated payload: refresh only equipment projections that are already cached.
+                    EquipmentDetailsSync.refreshCached(con, root, runTs);
+                    deadline.check();
+                    con.commit();
+                    deadline.check();
+                } catch (Exception ex) {
+                    con.rollback();
+                    throw ex;
+                }
             }
         }
     }

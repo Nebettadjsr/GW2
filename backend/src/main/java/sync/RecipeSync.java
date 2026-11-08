@@ -2,6 +2,7 @@ package sync;
 
 import api.BatchUtils;
 import api.Gw2ApiClient;
+import api.TaskDeadline;
 import com.fasterxml.jackson.databind.JsonNode;
 import parser.IdListParser;
 import parser.RecipeParser;
@@ -108,10 +109,73 @@ public final class RecipeSync {
 
         ItemSync.syncItemsByIds(neededItemIds);
 
-        syncRecipeIngredients(fetchedBatches);
-        removeDeletedRecipes(remoteIds);
+        syncRecipeIngredients(fetchedBatches, TaskDeadline.NONE);
+        removeDeletedRecipes(remoteIds, TaskDeadline.NONE);
         markPublication(true);
         return true;
+    }
+
+    /**
+     * Owner full recipe-catalog synchronization (STORY-STATUS-004): the same publication protocol as
+     * {@link #syncAllRecipesGlobalSafe()} (incomplete before detail batches, committed disposable
+     * batches stay after a failure, complete only after the whole sequence), but it never skips on an
+     * unchanged ID list, re-downloads every captured recipe, and rejects incomplete or malformed
+     * detail batches. Graph invalidation and rebuild belong to the calling application service.
+     */
+    static void syncAllRecipesFull(TaskDeadline deadline) throws Exception {
+        deadline.check();
+        List<Integer> ids = FullCatalogSupport.parseIdSnapshot(fetcher.get("https://api.guildwars2.com/v2/recipes"), "recipes");
+        Set<Integer> remoteIds = new HashSet<>(ids);
+
+        markPublication(false, deadline);
+
+        Set<Integer> neededItemIds = new HashSet<>();
+        List<RecipeBatch> fetchedBatches = new ArrayList<>();
+
+        try (Connection con = Db.open();
+             PreparedStatement psNow = con.prepareStatement("SELECT now()")) {
+            for (List<Integer> batch : BatchUtils.chunk(ids, SyncConstants.HTTP_IDS_BATCH)) {
+                deadline.check();
+                JsonNode root = fetcher.get("https://api.guildwars2.com/v2/recipes?ids=" + BatchUtils.idsParam(batch));
+                deadline.check();
+                List<RecipeParser.RecipeRow> rows = FullCatalogSupport.parseExact(
+                        root, batch, n -> RecipeParser.parseRecipe(FullCatalogSupport.requireRecipe(n)),
+                        RecipeParser.RecipeRow::recipeId, "recipes");
+                List<RecipeParser.IngredientRow> ingredientRows = new ArrayList<>();
+                for (JsonNode r : root) {
+                    var ingredients = RecipeParser.parseIngredients(r);
+                    ingredientRows.addAll(ingredients);
+                    for (var ing : ingredients) if (ing.itemId() > 0) neededItemIds.add(ing.itemId());
+                }
+                for (var rr : rows) if (rr.outputItem() > 0) neededItemIds.add(rr.outputItem());
+
+                con.setAutoCommit(false);
+                try {
+                    deadline.limitTransaction(con);
+                    Timestamp runTs;
+                    try (ResultSet rs = psNow.executeQuery()) {
+                        if (!rs.next()) throw new SQLException("SELECT now() returned no row");
+                        runTs = rs.getTimestamp(1);
+                    }
+                    upsertRecipes(con, rows, runTs);
+                    deadline.check();
+                    con.commit();
+                    fetchedBatches.add(new RecipeBatch(List.copyOf(batch), List.copyOf(ingredientRows)));
+                    deadline.check();
+                } catch (Exception ex) {
+                    con.rollback();
+                    throw ex;
+                }
+            }
+        }
+
+        ItemSync.syncItemsStrict(neededItemIds, deadline);
+        syncRecipeIngredients(fetchedBatches, deadline);
+        deadline.check();
+        removeDeletedRecipes(remoteIds, deadline);
+        deadline.check();
+        markPublication(true, deadline);
+        deadline.check();
     }
 
     private static boolean isPublicationComplete() throws SQLException {
@@ -123,8 +187,33 @@ public final class RecipeSync {
     }
 
     private static void markPublication(boolean complete) throws SQLException {
-        try (Connection con = Db.open();
-             PreparedStatement ps = con.prepareStatement("""
+        try {
+            markPublication(complete, TaskDeadline.NONE);
+        } catch (InterruptedException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+    }
+
+    /** Publication flag write inside one transaction limited to the remaining task budget. */
+    private static void markPublication(boolean complete, TaskDeadline deadline)
+            throws SQLException, InterruptedException {
+        deadline.check();
+        try (Connection con = Db.open()) {
+            con.setAutoCommit(false);
+            try {
+                deadline.limitTransaction(con);
+                writePublication(con, complete);
+                deadline.check();
+                con.commit();
+            } catch (Exception ex) {
+                con.rollback();
+                throw ex;
+            }
+        }
+    }
+
+    private static void writePublication(Connection con, boolean complete) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("""
                      INSERT INTO recipe_catalog_publication (singleton, complete, updated_at)
                      VALUES (TRUE, ?, now())
                      ON CONFLICT (singleton) DO UPDATE SET complete = EXCLUDED.complete, updated_at = now()
@@ -134,9 +223,11 @@ public final class RecipeSync {
         }
     }
 
-    private static void removeDeletedRecipes(Set<Integer> remoteIds) throws SQLException {
+    private static void removeDeletedRecipes(Set<Integer> remoteIds, TaskDeadline deadline) throws Exception {
+        deadline.check();
         try (Connection con = Db.open()) {
             con.setAutoCommit(false);
+            deadline.limitTransaction(con);
             try (PreparedStatement ps = con.prepareStatement("DELETE FROM recipe_ingredients WHERE NOT (recipe_id = ANY (?))")) {
                 Integer[] ids = remoteIds.toArray(Integer[]::new);
                 ps.setArray(1, con.createArrayOf("int4", ids));
@@ -147,6 +238,7 @@ public final class RecipeSync {
                 ps.setArray(1, con.createArrayOf("int4", ids));
                 ps.executeUpdate();
             }
+            deadline.check();
             con.commit();
         }
     }
@@ -201,7 +293,7 @@ public final class RecipeSync {
 
     private record RecipeBatch(List<Integer> ids, List<RecipeParser.IngredientRow> ingredients) { }
 
-    private static void syncRecipeIngredients(List<RecipeBatch> batches) throws Exception {
+    private static void syncRecipeIngredients(List<RecipeBatch> batches, TaskDeadline deadline) throws Exception {
 
         int ingDone = 0;
         int total = batches.stream().mapToInt(batch -> batch.ids().size()).sum();
@@ -210,16 +302,20 @@ public final class RecipeSync {
 
             for (RecipeBatch batch : batches) {
 
+                deadline.check();
                 con.setAutoCommit(false);
 
                 try {
+                    deadline.limitTransaction(con);
                     try (PreparedStatement delete = con.prepareStatement(
                             "DELETE FROM recipe_ingredients WHERE recipe_id = ANY (?)")) {
                         delete.setArray(1, con.createArrayOf("int4", batch.ids().toArray(Integer[]::new)));
                         delete.executeUpdate();
                     }
                     upsertRecipeIngredients(con, batch.ingredients());
+                    deadline.check();
                     con.commit();
+                    deadline.check();
                 } catch (Exception ex) {
                     con.rollback();
                     throw ex;

@@ -23,6 +23,11 @@ public class CraftingGraphRebuildService {
         cache.rebuild();
     }
 
+    /** Full-catalog-task rebuild bounded by the task's remaining budget (see the cache method). */
+    public void rebuild(api.TaskDeadline deadline) throws Exception {
+        cache.rebuild(deadline);
+    }
+
     public void invalidate() {
         cache.invalidate();
     }
