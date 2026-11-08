@@ -1,6 +1,6 @@
 import { shellProvide } from '@/sync/__tests__/shellProvide'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { ApiRequestError, UNREACHABLE_CODE } from '@/api/http'
 import type { BankContents } from '@/api/types'
 import BankScreen from '../BankScreen.vue'
@@ -15,8 +15,12 @@ import {
  * Rendering and state checks for the Bank screen against controlled responses
  * (`CURRENT_ARCHITECTURE.md` 5.12). Nothing here reaches a backend or a browser.
  */
+const mounted: Array<ReturnType<typeof mount>> = []
+afterEach(() => { mounted.splice(0).forEach((wrapper) => wrapper.unmount()) })
+
 async function openScreen(api: FakeAccountApi): Promise<VueWrapper> {
   const wrapper = mount(BankScreen, { props: { api }, global: { stubs: { InventoryRefresh: true }, provide: shellProvide() } })
+  mounted.push(wrapper)
   await flushPromises()
   return wrapper
 }
@@ -33,7 +37,7 @@ describe('BankScreen', () => {
 
   it('repeatsOnlyThatOneReadWhenTheViewIsAutomaticallyReloaded', async () => {
     const api = new FakeAccountApi()
-    const wrapper = await openScreen(api)
+    await openScreen(api)
 
     document.dispatchEvent(new Event('visibilitychange'))
     await flushPromises()
@@ -96,6 +100,7 @@ describe('BankScreen', () => {
     api.bankHandler = () => pending.promise
 
   const wrapper = mount(BankScreen, { props: { api }, global: { stubs: { InventoryRefresh: true }, provide: shellProvide() } })
+  mounted.push(wrapper)
     await flushPromises()
 
     expect(wrapper.find('[data-test="bank-loading"]').exists()).toBe(true)

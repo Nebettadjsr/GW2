@@ -2,14 +2,19 @@ import { flushPromises, mount as baseMount } from '@vue/test-utils'
 import { shellProvide } from '@/sync/__tests__/shellProvide'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { connection } from '@/api/accountSession'
+import { syncApi } from '@/api/syncApi'
 import type { CharactersApi } from '@/api/charactersApi'
 import type { CharacterBuildTabsResponse, CharacterInventoryResponse, CharacterEquipmentTabsResponse, CharacterOverview, CharacterReadResponse } from '@/api/types'
 import CharactersScreen from '../CharactersScreen.vue'
 import { useCharacters } from '../useCharacters'
 
 /** Mounts under the shell's shared synchronization context, as the application does. */
-const mount: typeof baseMount = ((component: unknown, options: Record<string, unknown> = {}) =>
-  baseMount(component as never, { ...options, global: { ...(options.global as object), provide: shellProvide() } })) as unknown as typeof baseMount
+const mounted: Array<ReturnType<typeof baseMount>> = []
+const mount: typeof baseMount = ((component: unknown, options: Record<string, unknown> = {}) => {
+  const wrapper = baseMount(component as never, { ...options, global: { ...(options.global as object), provide: shellProvide() } })
+  mounted.push(wrapper)
+  return wrapper
+}) as unknown as typeof baseMount
 
 const ana: CharacterOverview = { name: 'Ana B', profession: 'Guardian', race: 'Human', gender: 'Female', level: 80,
   createdAt: '2020-01-01T00:00:00Z', craftingDisciplines: [{ discipline: 'Weaponsmith', rating: 500, active: true }] }
@@ -67,7 +72,10 @@ function fakeApi(over: Partial<CharactersApi> = {}): CharactersApi & { calls: st
 const tasks = { readTaskStatus: async () => ({ taskId: 't', operation: 'X', state: 'SUCCEEDED' }) as never }
 const noSleep = async () => {}
 
-afterEach(() => { connection.generation = 0 })
+afterEach(() => {
+  mounted.splice(0).forEach(wrapper => wrapper.unmount())
+  connection.generation = 0
+})
 
 describe('Characters screen', () => {
   it('lists only the supplied overview, loads detail lazily on selection and goes back', async () => {
@@ -76,7 +84,7 @@ describe('Characters screen', () => {
     await flushPromises()
     expect(api.calls).toEqual(['roster'])
     expect(w.findAll('[data-test="roster-item"]')).toHaveLength(2)
-    expect(w.text()).toContain('Weaponsmith 500')
+    expect(w.text()).toContain('Weaponsmith: 500')
     await w.findAll('[data-test="roster-item"]')[0]!.trigger('click')
     await flushPromises()
     expect(api.calls).toEqual(['roster', 'detail:Ana B', 'equip:Ana B', 'builds:Ana B'])
@@ -86,16 +94,52 @@ describe('Characters screen', () => {
     expect(w.find('[data-test="roster"]').exists()).toBe(true)
   })
 
+  it('sorts the roster by playtime by default, offers the alternatives and never fans out detail reads', async () => {
+    const mk = (name: string, over: Partial<CharacterOverview>): CharacterOverview => ({ ...ana, name, ...over })
+    const chars = [
+      mk('Cy', { profession: 'Warrior', ageSeconds: 3_600, deaths: 5, createdAt: '2021-01-01T00:00:00Z', nextBirthdayAt: '2027-03-01T00:00:00Z' }),
+      mk('Al', { profession: 'Thief', ageSeconds: 7_200, deaths: 1, createdAt: '2022-01-01T00:00:00Z', nextBirthdayAt: '2027-01-01T00:00:00Z' }),
+      mk('Bea', { profession: 'Elementalist', createdAt: '2020-06-01T00:00:00Z' }), // playtime unknown
+      mk('Dov', { profession: 'Guardian', ageSeconds: 7_200, deaths: 9, createdAt: '2019-01-01T00:00:00Z', nextBirthdayAt: '2027-02-01T00:00:00Z' })
+    ]
+    const api = fakeApi({ loadRoster: async () => ({ ...roster, characterCount: 4, characters: chars }) })
+    const w = mount(CharactersScreen, { props: { api } })
+    await flushPromises()
+    const names = () => w.findAll('[data-test="roster-item"]').map((r) => r.attributes('data-name'))
+    const select = w.get('[data-test="roster-sort"]')
+    expect((select.element as HTMLSelectElement).value).toBe('playtime')
+    expect(select.findAll('option').map((o) => o.text())).toEqual(['Playtime', 'Next birthday', 'Age', 'Deaths', 'Alphabetical', 'Profession'])
+    // Longest playtime first, ties by name, unknown playtime last.
+    expect(names()).toEqual(['Al', 'Dov', 'Cy', 'Bea'])
+    const expected: Record<string, string[]> = {
+      birthday: ['Al', 'Dov', 'Cy', 'Bea'], age: ['Dov', 'Bea', 'Cy', 'Al'], deaths: ['Dov', 'Cy', 'Al', 'Bea'],
+      name: ['Al', 'Bea', 'Cy', 'Dov'], profession: ['Bea', 'Dov', 'Al', 'Cy']
+    }
+    for (const [value, order] of Object.entries(expected)) {
+      await select.setValue(value)
+      expect(names(), value).toEqual(order)
+    }
+    expect(api.calls).toEqual(['roster']) // sorting uses only the supplied overview
+  })
+
   it('shows rarity as text, upgrades, infusions, stats and honest unresolved/unspecified entries', async () => {
     const w = mount(CharactersScreen, { props: { api: fakeApi() } })
     await flushPromises()
     await w.find('[data-test="roster-item"]').trigger('click')
     await flushPromises()
-    const text = w.find('[data-test="equipment-tabpanel"]').text()
-    expect(text).toContain('Cool Helm'); expect(text).toContain('Ascended'); expect(text).toContain('Power +100')
-    expect(text).toContain('Upgrade: Rune'); expect(text).toContain('Infusion: Item #3 (details unavailable)')
-    expect(text).toContain('Unspecified slot'); expect(text).toContain('Helm Aquatic')
-    expect(w.find('[data-test="equipment-rarity"]').classes()).toContain('rarity--ascended')
+    const panel = w.find('[data-test="equipment-tabpanel"]')
+    const entries = panel.findAll('[data-test="equipment-entry"]')
+    const labels = entries.map((e) => e.attributes('aria-label'))
+    expect(labels).toContain('Helm Aquatic: Cool Helm')
+    expect(panel.text().includes('Item #9 (details unavailable)')).toBe(true)
+    const helm = entries[labels.indexOf('Helm Aquatic: Cool Helm')]!
+    await helm.trigger('mouseenter'); await flushPromises()
+    const tip = document.body.querySelector('[role="tooltip"]')!.textContent!
+    expect(tip).toContain('Cool Helm'); expect(tip).toContain('Ascended'); expect(tip).toContain('+100 Power')
+    expect(tip).toContain('Rune'); expect(tip).toContain('Item #3')
+    expect(tip).toContain('Helm Aquatic')
+    await helm.trigger('mouseleave')
+    w.unmount()
   })
 
   it('selects the actual active tab first, keeps it identified when inspecting another, supports keyboard, is read-only', async () => {
@@ -105,13 +149,15 @@ describe('Characters screen', () => {
     await w.find('[data-test="roster-item"]').trigger('click')
     await flushPromises()
     const tabs = () => w.findAll('[data-test="equipment-tab"]')
-    expect(tabs().map((t) => t.text().replace(' In use', ''))).toEqual(['PvE', 'WvW', 'Fractal'])
+    expect(tabs().map((t) => t.text().replace('●', ''))).toEqual(['1', '2', '3'])
+    expect(tabs().map((t) => t.attributes('title'))).toEqual(['PvE', 'WvW · In use in game', 'Fractal'])
+    expect(w.find('[data-test="equipment-tablist"]').exists()).toBe(true)
     expect(tabs()[1]!.attributes('aria-selected')).toBe('true')
     await tabs()[1]!.trigger('keydown', { key: 'ArrowRight' })
     await flushPromises()
     expect(tabs()[2]!.attributes('aria-selected')).toBe('true')
     expect(document.activeElement).toBe(tabs()[2]!.element)
-    expect(w.find('[data-test="equipment-inspecting"]').exists()).toBe(true)
+    expect(w.find('[data-test="equipment-tabpanel"]').attributes('aria-labelledby')).toBe('equipment-tab-3')
     expect(tabs()[1]!.find('[data-test="equipment-tab-active"]').exists()).toBe(true)
     await tabs()[2]!.trigger('keydown', { key: 'Home' })
     expect(tabs()[0]!.attributes('aria-selected')).toBe('true')
@@ -377,7 +423,7 @@ describe('remaining acceptance fixes', () => {
     Object.defineProperty(window, 'scrollY', { value: 640, configurable: true })
     const w = mount(CharactersScreen, { props: { api }, attachTo: document.body })
     await flushPromises()
-    await w.findAll('[data-test="roster-item"]')[25]!.trigger('click'); await flushPromises()
+    await w.get('[data-name="Char 25"]').trigger('click'); await flushPromises()
     Object.defineProperty(window, 'scrollY', { value: 0, configurable: true }) // short detail clamped the page
     await w.find('[data-test="character-back"]').trigger('click'); await flushPromises()
     expect((document.activeElement as HTMLElement).dataset.name).toBe('Char 25')
@@ -502,9 +548,9 @@ describe('Character inventory section', () => {
     const w = await open(fakeApi({ loadCharacter: async () => detailOf(full) }))
     expect(w.find('[data-test="character-subtitle"]').text()).toBe('Lvl 80 Human Willbender')
     expect(w.find('[data-test="profession-glyph"]').exists()).toBe(true)
-    expect(w.find('[data-test="summary-playtime"]').text()).toBe('3 d 2 h')
+    expect(w.find('[data-test="summary-playtime"]').text()).toBe('74 hours')
     expect(w.find('[data-test="summary-deaths"]').text()).toBe('0')
-    expect(w.find('[data-test="summary-birthday"]').text()).toMatch(/^in 2 d /)
+    expect(w.find('[data-test="summary-birthday"]').text()).toBe('in 2 days')
     expect(w.findAll('[data-test="summary-discipline"]')).toHaveLength(1)
     const html = w.html()
     expect(html.indexOf('character-summary')).toBeLessThan(html.indexOf('section-tablist'))
@@ -633,9 +679,11 @@ describe('Character inventory section', () => {
     expect(api.calls.filter((c) => c === 'inv:Ana B')).toHaveLength(2)
   })
 
+  // UNAVAILABLE rather than PENDING/STALE: those states legitimately start the screen's own timed
+  // automatic refresh, whose extra read would race this test of the user-driven re-entry read.
   it('rereads on section re-entry when the last read gave no layout', async () => {
     let ok = false
-    const api = fakeApi({ loadInventory: async (n) => { api.calls.push(`inv:${n}`); return ok ? inventoryResponse : { state: 'PENDING', reason: 'REFRESH_IN_PROGRESS' } } })
+    const api = fakeApi({ loadInventory: async (n) => { api.calls.push(`inv:${n}`); return ok ? inventoryResponse : { state: 'UNAVAILABLE', reason: 'LAYOUT_REFRESH_REQUIRED' } } })
     const w = await open(api)
     await w.find('[data-test="section-inventory"]').trigger('click'); await flushPromises()
     await w.find('[data-test="section-equipment"]').trigger('click')
@@ -744,22 +792,51 @@ describe('Character inventory section', () => {
     const pending = { state: 'PENDING', reason: 'COVERAGE_NOT_PUBLISHED' } as CharacterBuildTabsResponse
     const pendingEquip = { state: 'PENDING', reason: 'COVERAGE_NOT_PUBLISHED' } as CharacterEquipmentTabsResponse
 
-    it('equipment-first: both PENDING, waits for the equipment attempt then recovers Builds without reselect', async () => {
-      let covered = false
+    // The real equipment-only refresh publishes equipment and NOT Builds: the two flags are independent.
+    function equipmentFirstApi() {
+      const published = { equipment: false, builds: false }
       const gate = deferred<void>()
       const api = fakeApi({
-        loadEquipmentTabs: async () => (covered ? tabsResponse : pendingEquip),
-        loadBuildTabs: async (n) => (covered ? { ...buildsResponse, character: n } : pending),
-        startEquipmentTabsRefresh: async () => { api.calls.push('refresh'); await gate.promise; covered = true; return { taskId: 't', operation: 'X', statusUrl: '/s' } }
+        loadEquipmentTabs: async () => (published.equipment ? tabsResponse : pendingEquip),
+        loadBuildTabs: async (n) => (published.builds ? { ...buildsResponse, character: n } : pending),
+        startEquipmentTabsRefresh: async () => { api.calls.push('refresh'); await gate.promise; published.equipment = true; return { taskId: 't', operation: 'X', statusUrl: '/s' } },
+        startBuildTabsRefresh: async () => { api.calls.push('build-refresh'); published.builds = true; return { taskId: 'b', operation: 'X', statusUrl: '/s' } }
       })
+      return { api, gate, published }
+    }
+
+    it('equipment-first: both PENDING, admits the separate Builds refresh after equipment and shows the elite (composable)', async () => {
+      const { api, gate, published } = equipmentFirstApi()
       const c = useCharacters(api, tasks, noSleep)
       c.select('Ana B'); await flushPromises()
       expect(c.refreshing.value).toBe(true)
-      expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(0)
+      expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(0) // waits for the equipment attempt
+      expect(c.activeElite.value).toBeNull()
       gate.resolve(); await flushPromises()
-      expect(api.calls.filter((x) => x === 'refresh')).toHaveLength(1)
-      expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(0) // covered by the equipment task's publication
+      expect(published).toEqual({ equipment: true, builds: true })
+      expect(api.calls.filter((x) => x === 'refresh' || x === 'build-refresh')).toEqual(['refresh', 'build-refresh'])
       expect(c.activeElite.value).toBe('Willbender')
+    })
+
+    it('equipment-first: the managed CharactersScreen path recovers Builds after the equipment refresh', async () => {
+      const { api, gate, published } = equipmentFirstApi()
+      const status = vi.spyOn(syncApi, 'readTaskStatus').mockResolvedValue({ taskId: 't', operation: 'X', state: 'SUCCEEDED' } as never)
+      const w = mount(CharactersScreen, { props: { api } })
+      try {
+        await flushPromises()
+        await w.find('[data-test="roster-item"]').trigger('click')
+        await vi.waitFor(() => expect(api.calls).toContain('refresh'))
+        expect(api.calls).not.toContain('build-refresh') // not before equipment has published
+        expect(w.find('[data-test="character-subtitle"]').text()).toBe('Lvl 80 Human Guardian')
+        gate.resolve()
+        await vi.waitFor(() => expect(w.find('[data-test="character-subtitle"]').text()).toBe('Lvl 80 Human Willbender'))
+        expect(published).toEqual({ equipment: true, builds: true })
+        const order = api.calls.filter((x) => x === 'refresh' || x === 'build-refresh')
+        expect(order).toEqual(['refresh', 'build-refresh'])
+      } finally {
+        w.unmount()
+        status.mockRestore()
+      }
     })
 
     it('builds-first with a narrower active task: retries with bounded attempts and then shows the elite', async () => {
