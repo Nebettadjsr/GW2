@@ -64,16 +64,31 @@ public final class CharacterEquipmentTabsSync {
 
     static void sync(AccountScope scope, AccountSync.AuthFetcher fetcher, IconSync.ItemMetadataRepair metadata)
             throws Exception {
+        sync(scope, fetcher, metadata, EquipmentDetailsSync.NONE);
+    }
+
+    /**
+     * As above, and keeps the shared equipment details cache current: already stored references are
+     * repaired first (so details recover even if the fetch below fails), then the newly fetched ones.
+     */
+    static void sync(AccountScope scope, AccountSync.AuthFetcher fetcher, IconSync.ItemMetadataRepair metadata,
+                     EquipmentDetailsSync.Source details) throws Exception {
         AccountSync.requireCredentialOwner(scope, fetcher);
         Capture capture;
         try (Connection con = Db.open()) {
             capture = capture(con, scope);
         }
+        if (details != EquipmentDetailsSync.NONE) storedReferences(scope, details);
         Map<String, List<Tab>> fetched = new LinkedHashMap<>();
         for (String name : capture.names()) {
             fetched.put(name, CharacterEquipmentTabsParser.parse(fetcher.get(url(name))));
         }
         metadata.repair(itemIds(fetched));
+        if (details != EquipmentDetailsSync.NONE) {
+            Set<Integer> ids = new LinkedHashSet<>(itemIds(fetched));
+            ids.addAll(sharedItemIds(scope));
+            EquipmentDetailsSync.repair(ids, statIds(fetched), details, java.time.Clock.systemUTC());
+        }
         try (Connection con = Db.open()) {
             publish(con, scope, capture, fetched, java.time.Clock.systemUTC());
         }
@@ -89,6 +104,52 @@ public final class CharacterEquipmentTabsSync {
                     ids.addAll(e.upgrades());
                     ids.addAll(e.infusions());
                 }
+        return ids;
+    }
+
+    /** Selected stat ids that arrived without their attributes and so need itemstats to be resolved. */
+    static Set<Integer> statIds(Map<String, List<Tab>> fetched) {
+        Set<Integer> ids = new LinkedHashSet<>();
+        for (List<Tab> tabs : fetched.values())
+            for (Tab tab : tabs)
+                for (var e : tab.equipment()) if (e.statId() != null && e.statAttributes() == null) ids.add(e.statId());
+        return ids;
+    }
+
+    private static void storedReferences(AccountScope scope, EquipmentDetailsSync.Source details) throws Exception {
+        Set<Integer> items = new LinkedHashSet<>();
+        Set<Integer> stats = new LinkedHashSet<>();
+        try (Connection con = Db.open(); PreparedStatement ps = con.prepareStatement("""
+                SELECT item_id, upgrade_ids, infusion_ids, stat_id, stat_attributes IS NULL
+                FROM character_equipment_tab_entries WHERE account_id = ?""")) {
+            ps.setObject(1, scope.accountId());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    items.add(rs.getInt(1));
+                    for (int i = 2; i <= 3; i++) {
+                        for (Object o : (Object[]) rs.getArray(i).getArray()) items.add(((Number) o).intValue());
+                    }
+                    int stat = rs.getInt(4);
+                    if (!rs.wasNull() && rs.getBoolean(5)) stats.add(stat);
+                }
+            }
+        }
+        items.addAll(sharedItemIds(scope));
+        EquipmentDetailsSync.repair(items, stats, details, java.time.Clock.systemUTC());
+    }
+
+    /** Character-wide equipped items (e.g. PowerCore) already stored from CHARACTERS; no new source. */
+    static Set<Integer> sharedItemIds(AccountScope scope) throws SQLException {
+        Set<Integer> ids = new LinkedHashSet<>();
+        try (Connection con = Db.open(); PreparedStatement ps = con.prepareStatement(
+                "SELECT DISTINCT item_id FROM character_items WHERE account_id = ? AND location = 'EQUIPMENT' "
+                        + "AND equipment_slot = ANY(?)")) {
+            ps.setObject(1, scope.accountId());
+            ps.setArray(2, con.createArrayOf("text", repo.CharacterEquipmentTabsRepository.SHARED_SLOTS.toArray()));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) ids.add(rs.getInt(1));
+            }
+        }
         return ids;
     }
 

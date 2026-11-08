@@ -235,7 +235,8 @@ class CharacterEquipmentTabsHttpTest {
         assertFalse(new String(body, StandardCharsets.UTF_8).contains("Bo1"));
         assertTrue(body.length < 5_000);
         // schema guard + parent/equipment marker reads + character + coverage + tabs + entries + items
-        assertTrue(sql.size() <= 12, "bounded statement count: " + sql.size());
+        // + (STORY-CHAR-014) shared-slot read, batched equipment details and batched itemstats: constant, not per entry
+        assertTrue(sql.size() <= 15, "bounded statement count: " + sql.size());
     }
 
     @Test

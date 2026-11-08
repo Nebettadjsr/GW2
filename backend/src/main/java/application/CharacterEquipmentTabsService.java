@@ -35,7 +35,16 @@ public class CharacterEquipmentTabsService {
     public record Result(State state, String reason, String message, String character,
                          Instant parentCompletedAt, Long parentGeneration,
                          Instant equipmentCompletedAt, Long equipmentGeneration,
-                         Long coveredParentGeneration, List<CharacterEquipmentTabsRepository.TabView> tabs) {}
+                         Long coveredParentGeneration, List<CharacterEquipmentTabsRepository.TabView> tabs,
+                         List<CharacterEquipmentTabsRepository.Entry> sharedEquipment) {
+        public Result(State state, String reason, String message, String character,
+                      Instant parentCompletedAt, Long parentGeneration,
+                      Instant equipmentCompletedAt, Long equipmentGeneration,
+                      Long coveredParentGeneration, List<CharacterEquipmentTabsRepository.TabView> tabs) {
+            this(state, reason, message, character, parentCompletedAt, parentGeneration, equipmentCompletedAt,
+                    equipmentGeneration, coveredParentGeneration, tabs, null);
+        }
+    }
 
     private final CharacterRosterService.RefreshStatus coordinator;
     private final CharacterEquipmentTabsRepository repository;
@@ -126,7 +135,7 @@ public class CharacterEquipmentTabsService {
                 : expired ? "Equipment-tab data is older than the freshness limit; showing the last successful data."
                 : null;
         return new Result(state, reason, message, name, parentAt, parentGeneration, equipment.completedAt(),
-                equipment.generation(), covered, snapshot.tabs());
+                equipment.generation(), covered, snapshot.tabs(), snapshot.sharedEquipment());
     }
 
     private static Result pending(String reason, String message, String name, Instant parentAt, long parentGeneration,
