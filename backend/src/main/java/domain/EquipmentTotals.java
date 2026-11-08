@@ -162,6 +162,12 @@ public final class EquipmentTotals {
                 if (!item.statsResolved()) { complete = false; warnings.add("Stats of the " + s.slot() + " item are unresolved"); }
                 if (!add(item.attributes(), flat)) { complete = false; warnings.add(s.slot() + " has an unknown attribute"); }
                 if (ARMOR_SLOTS.contains(s.slot()) || "Shield".equals(item.subtype())) defense += item.defense();
+                for (String line : item.effects()) {
+                    if (!parseLine(line, flat, percent)) {
+                        complete = false;
+                        warnings.add("Unsupported intrinsic effect in " + s.slot() + ": " + line);
+                    }
+                }
             }
             List<Gear> ups = new ArrayList<>(s.upgrades());
             ups.addAll(s.infusions());

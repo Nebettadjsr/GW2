@@ -10,6 +10,23 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class EquipmentTotalsTest {
+    @Test
+    void intrinsicItemBonusesContributeOnceAndUnknownEffectsStayIncomplete() {
+        Gear back = new Gear(900, true, null, Map.of("Power", 63), 0,
+                List.of("+32 Power", "+18 Precision"), List.of(), null, true);
+        List<Slot> equipment = List.of(slot("Backpack", back), slot("WeaponA1", item(2, Map.of(), 0)));
+        var known = EquipmentTotals.compute("Necromancer", 80, equipment, List.of()).a();
+        assertTrue(known.complete(), known.warnings().toString());
+        assertEquals(1095, known.values().get("Power"));
+        assertEquals(1018, known.values().get("Precision"));
+        Gear unsupported = new Gear(901, true, null, Map.of("Power", 63), 0,
+                List.of("Additional attributes depend on an unknown effect"), List.of(), null, true);
+        var partial = EquipmentTotals.compute("Necromancer", 80,
+                List.of(slot("Backpack", unsupported), slot("WeaponA1", item(2, Map.of(), 0))), List.of()).a();
+        assertFalse(partial.complete());
+        assertEquals(1063, partial.values().get("Power"));
+    }
+
     private static Gear item(int id, Map<String, Integer> attrs, int defense) {
         return new Gear(id, true, null, attrs, defense, List.of(), List.of(), null, true);
     }
