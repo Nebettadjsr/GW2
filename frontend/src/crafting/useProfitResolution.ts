@@ -91,7 +91,9 @@ export function calculationKey(
     settings.listingBuy,
     settings.allowDailyCrafts,
     settings.materialProtectionEnabled ?? null,
-    settings.protectedItemIds === undefined ? null : canonicalIds(settings.protectedItemIds)
+    settings.protectedItemIds === undefined ? null : canonicalIds(settings.protectedItemIds),
+    settings.protectedBankItemIds === undefined ? null : canonicalIds(settings.protectedBankItemIds),
+    settings.protectedMaterialItemIds === undefined ? null : canonicalIds(settings.protectedMaterialItemIds)
   ])
 }
 

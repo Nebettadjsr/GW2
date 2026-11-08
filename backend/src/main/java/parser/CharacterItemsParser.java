@@ -26,7 +26,7 @@ public final class CharacterItemsParser {
                 if (item == null) continue;
 
                 out.add(new CharacterItemRow("BAG", bagIndex, slotIndex, null,
-                        item.itemId(), item.count(), item.binding(), item.boundTo()));
+                        item.itemId(), item.count(), item.binding(), item.boundTo(), upgrades(inventory.get(slotIndex))));
             }
         }
 
@@ -46,13 +46,26 @@ public final class CharacterItemsParser {
             if (equipmentSlot == null || equipmentSlot.isBlank()) continue;
 
             out.add(new CharacterItemRow("EQUIPMENT", null, null, equipmentSlot,
-                    item.itemId(), item.count(), item.binding(), item.boundTo()));
+                    item.itemId(), item.count(), item.binding(), item.boundTo(), upgrades(entry)));
         }
 
         return out;
     }
 
     private record ParsedItem(int itemId, Integer count, String binding, String boundTo) {}
+
+    private static List<Integer> upgrades(JsonNode entry) {
+        JsonNode upgrades = entry.get("upgrades");
+        if (upgrades == null || upgrades.isNull()) return List.of();
+        if (!upgrades.isArray()) throw new IllegalStateException("Malformed character item upgrades");
+        List<Integer> ids = new ArrayList<>();
+        for (JsonNode id : upgrades) {
+            if (!id.isIntegralNumber() || !id.canConvertToInt() || id.intValue() <= 0)
+                throw new IllegalStateException("Malformed character item upgrade id");
+            ids.add(id.intValue());
+        }
+        return List.copyOf(ids);
+    }
 
     // Mirrors BankParser.parseSlot's field extraction for item_id/count/binding/bound_to.
     private static ParsedItem parseItem(JsonNode entry) {

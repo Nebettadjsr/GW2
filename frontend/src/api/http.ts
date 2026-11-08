@@ -8,6 +8,9 @@ import type { ApiErrorBody } from './types'
  * contacted from the browser. The GW2 key is held by the account session module, never here.
  */
 export const API_BASE_PATH: string = import.meta.env.VITE_API_BASE_PATH ?? '/api'
+let accountMaxAgeMs: number | null = null
+/** Cache policy advertised by our backend; never a frontend guess about freshness. */
+export function getAccountMaxAgeMs(): number | null { return accountMaxAgeMs }
 
 /** A mapped backend failure, carrying the backend's own error code where it supplied one. */
 export class ApiRequestError extends Error {
@@ -130,6 +133,10 @@ async function sendJsonAttempt<T>(
     throw new ApiRequestError('The account changed while this request was in flight.', ACCOUNT_CHANGED_CODE, null)
   }
 
+  if (path.startsWith('/account/')) {
+    const maxAge = Number(response.headers.get('X-Account-Max-Age-Ms'))
+    if (Number.isFinite(maxAge) && maxAge > 0) accountMaxAgeMs = maxAge
+  }
   if (!response.ok && acceptStateBody) {
     const stateBody = await readStateBody<T>(response.clone())
     if (stateBody !== null) {

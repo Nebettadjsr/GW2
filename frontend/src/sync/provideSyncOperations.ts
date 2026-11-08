@@ -19,7 +19,7 @@ export interface SharedSyncOperations extends SyncOperationsState {
   readonly trackedTaskCount: ComputedRef<number>
 }
 
-const SYNC_OPERATIONS_KEY: InjectionKey<SharedSyncOperations> = Symbol('syncOperations')
+export const SYNC_OPERATIONS_KEY: InjectionKey<SharedSyncOperations> = Symbol('syncOperations')
 
 /** Called once, by the shell. The returned state is disposed with the calling scope. */
 export function provideSyncOperations(api: SyncApi = syncApi): SharedSyncOperations {

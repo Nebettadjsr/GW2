@@ -8,5 +8,14 @@ public record CharacterItemRow(
         int itemId,
         Integer count,
         String binding,
-        String boundTo
-) {}
+        String boundTo,
+        java.util.List<Integer> upgradeIds
+) {
+    public CharacterItemRow {
+        upgradeIds = upgradeIds == null ? java.util.List.of() : java.util.List.copyOf(upgradeIds);
+    }
+    public CharacterItemRow(String location, Integer bagIndex, Integer slotIndex, String equipmentSlot,
+                            int itemId, Integer count, String binding, String boundTo) {
+        this(location, bagIndex, slotIndex, equipmentSlot, itemId, count, binding, boundTo, java.util.List.of());
+    }
+}

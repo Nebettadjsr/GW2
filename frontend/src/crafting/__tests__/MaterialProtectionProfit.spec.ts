@@ -17,6 +17,8 @@ const A = 'aaaaaaaa-0000-0000-0000-000000000001'
 const B = 'bbbbbbbb-0000-0000-0000-000000000002'
 
 const syncApi = {} as SyncApi
+const scopedSelection = (ids: number[]) => ({ materialProtectionEnabled: true, protectedItemIds: [],
+  protectedBankItemIds: ids, protectedMaterialItemIds: ids })
 
 /** Echoes request settings merged over the defaults, like the backend's canonical echo. */
 function echo(request: CraftingProfitRequest): CraftingProfitResponse {
@@ -59,6 +61,32 @@ function commit(ids: number[]): void {
 }
 
 describe('Crafting Profit material protection', () => {
+  it('sends separate store selections and recalculates when a shared item changes protection source', async () => {
+    const protection = useMaterialProtection()
+    protection.setPending([19718], 'bank')
+    protection.commit('bank')
+    protection.setActivation(true)
+    const fake = api()
+    const w = await open(fake)
+    expect(fake.profitRequests.at(-1)!.settings).toMatchObject({ materialProtectionEnabled: true,
+      protectedItemIds: [], protectedBankItemIds: [19718], protectedMaterialItemIds: [] })
+    const before = fake.profitRequests.length
+    protection.setPending([19718], 'materials')
+    await flushPromises()
+    expect(fake.profitRequests).toHaveLength(before)
+    protection.commit('materials')
+    await flushPromises()
+    expect(fake.profitRequests).toHaveLength(before + 1)
+    protection.setPending([], 'bank')
+    protection.commit('bank')
+    await flushPromises()
+    expect(fake.profitRequests).toHaveLength(before + 2)
+    expect(fake.profitRequests.at(-1)!.settings).toMatchObject({ materialProtectionEnabled: true,
+      protectedItemIds: [], protectedBankItemIds: [], protectedMaterialItemIds: [19718] })
+    expect(protection.state.committed).toEqual([19718])
+    w.unmount()
+  })
+
   it('warns on activation with zero committed IDs and sends nothing enabled', async () => {
     const fake = api()
     const w = await open(fake)
@@ -85,12 +113,12 @@ describe('Crafting Profit material protection', () => {
     await flushPromises()
     const last = fake.profitRequests.at(-1)!
     expect(last.settings?.materialProtectionEnabled).toBe(true)
-    expect(last.settings?.protectedItemIds).toEqual([3, 9])
+    expect(last.settings).toMatchObject(scopedSelection([3, 9]))
     expect(last.settings?.allowBuying).toBe(DEFAULT_SETTINGS.allowBuying)
     expect(JSON.parse(localStorage.getItem(PREFIX(A))!).enabled).toBe(true)
     await toggle(w).setValue(false)
     await flushPromises()
-    expect(fake.profitRequests.at(-1)!.settings).toMatchObject({ materialProtectionEnabled: false, protectedItemIds: [3, 9] })
+    expect(fake.profitRequests.at(-1)!.settings).toMatchObject({ ...scopedSelection([3, 9]), materialProtectionEnabled: false })
   })
 
   it('pending edits change nothing; committing while enabled recalculates and invalidates detail', async () => {
@@ -102,7 +130,7 @@ describe('Crafting Profit material protection', () => {
     await w.find('[data-test="max-displayed"]').setValue(7)
     await w.find('[data-test="max-displayed"]').trigger('change')
     const count = fake.profitRequests.length
-    expect(fake.profitRequests[0]!.settings).toEqual({ materialProtectionEnabled: true, protectedItemIds: [3] })
+    expect(fake.profitRequests[0]!.settings).toEqual(scopedSelection([3]))
 
     useMaterialProtection().setPending([3, 4, 5])
     await flushPromises()
@@ -113,15 +141,15 @@ describe('Crafting Profit material protection', () => {
     await flushPromises()
     const detailRequests = fake.resolutionRequests.length
     expect(detailRequests).toBeGreaterThan(0)
-    expect(fake.resolutionRequests.at(-1)!.calculation.settings?.protectedItemIds).toEqual([3])
+    expect(fake.resolutionRequests.at(-1)!.calculation.settings).toMatchObject(scopedSelection([3]))
 
     useMaterialProtection().commit()
     await flushPromises()
     expect(fake.profitRequests).toHaveLength(count + 1)
-    expect(fake.profitRequests.at(-1)!.settings?.protectedItemIds).toEqual([3, 4, 5])
+    expect(fake.profitRequests.at(-1)!.settings).toMatchObject(scopedSelection([3, 4, 5]))
     expect((w.find('[data-test="max-displayed"]').element as HTMLInputElement).value).toBe('7')
     // Detail was re-requested for the new echoed settings, identical to the list echo.
-    expect(fake.resolutionRequests.at(-1)!.calculation.settings?.protectedItemIds).toEqual([3, 4, 5])
+    expect(fake.resolutionRequests.at(-1)!.calculation.settings).toMatchObject(scopedSelection([3, 4, 5]))
     expect(fake.resolutionRequests.at(-1)!.calculation.settings?.materialProtectionEnabled).toBe(true)
   })
 
@@ -184,7 +212,8 @@ describe('Crafting Profit material protection', () => {
       'Use own materials',
       expect.stringContaining('Respect excluded items/ mats'),
       'Allow buying',
-      'Allow daily craft'
+      'Allow daily craft',
+      'Allow Mystic Forge recipes'
     ])
     const toggle = w.find('[data-test="protection-toggle"]')
     expect((toggle.element as HTMLInputElement).checked).toBe(false)
@@ -355,7 +384,7 @@ describe('delayed detail responses', () => {
     await w.findAll('tbody tr')[0]!.trigger('click')
     await flushPromises()
     const first = fake.resolutionRequests[0]!
-    expect(first.calculation.settings).toMatchObject({ materialProtectionEnabled: true, protectedItemIds: [3] })
+    expect(first.calculation.settings).toMatchObject(scopedSelection([3]))
     expect(first.basedOnCalculationId).toBeDefined()
     // New list is held back: the interval before the new list returns.
     const list = deferred<CraftingProfitResponse>()
@@ -366,12 +395,12 @@ describe('delayed detail responses', () => {
     await flushPromises()
     expect(w.find('[data-test="resolution-tree"]').exists()).toBe(false)
     expect(fake.resolutionRequests).toHaveLength(1)
-    list.resolve(echo({ settings: { ...DEFAULT_SETTINGS, materialProtectionEnabled: true, protectedItemIds: [3, 4] } }))
+    list.resolve(echo({ settings: { ...DEFAULT_SETTINGS, ...scopedSelection([3, 4]) } }))
     await flushPromises()
     // Any detail now shown belongs to a request made from the new list's echoed settings.
     const latest = fake.resolutionRequests.at(-1)!
     if (fake.resolutionRequests.length > 1) {
-      expect(latest.calculation.settings).toMatchObject({ materialProtectionEnabled: true, protectedItemIds: [3, 4] })
+      expect(latest.calculation.settings).toMatchObject(scopedSelection([3, 4]))
     }
   })
 

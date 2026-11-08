@@ -163,6 +163,11 @@ public final class EquipmentTotals {
                 if (!add(item.attributes(), flat)) { complete = false; warnings.add(s.slot() + " has an unknown attribute"); }
                 if (ARMOR_SLOTS.contains(s.slot()) || "Shield".equals(item.subtype())) defense += item.defense();
                 for (String line : item.effects()) {
+                    // The API repeats built-in ascended jewel bonuses in buff.description although
+                    // infix_upgrade.attributes already contains them (e.g. item 39273: 157 Power).
+                    Matcher flatBonus = FLAT.matcher(line.strip());
+                    if (flatBonus.matches() && item.attributes().keySet().stream().anyMatch(k ->
+                            flatBonus.group(2).replace(" ", "").equals(canonical(k)))) continue;
                     if (!parseLine(line, flat, percent)) {
                         complete = false;
                         warnings.add("Unsupported intrinsic effect in " + s.slot() + ": " + line);

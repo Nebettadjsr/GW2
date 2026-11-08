@@ -6,7 +6,7 @@ import { syncApi } from '@/api/syncApi'
 import type { SyncTaskAccepted } from '@/api/types'
 
 /**
- * First-use synchronization for a connected account (`TARGET_ARCHITECTURE.md` 8.1, 9.1).
+ * First-use input synchronization for the crafting screens only.
  *
  * The selector options are the cheapest read that reveals whether the account's characters were ever
  * published. When they were not, the account's data is missing rather than empty, so one keyed

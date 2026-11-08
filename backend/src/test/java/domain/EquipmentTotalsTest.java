@@ -11,13 +11,27 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class EquipmentTotalsTest {
     @Test
+    void ascendedTrinketBuiltInJewelIsAlreadyIncludedInApiAttributes() {
+        // Real /v2/items/39273 shape: the old built-in jewel text repeats a subset of the total.
+        Gear amulet = new Gear(39273, true, "Amulet", Map.of("Power", 157, "Precision", 108, "CritDamage", 108), 0,
+                List.of("+32 Power", "+18 Ferocity", "+18 Precision"), List.of(), null, true);
+        List<Slot> equipment = List.of(slot("Amulet", amulet), slot("WeaponA1", item(2, Map.of(), 0)));
+        var known = EquipmentTotals.compute("Necromancer", 80, equipment, List.of()).a();
+        assertTrue(known.complete(), known.warnings().toString());
+        assertEquals(1157, known.values().get("Power"));
+        assertEquals(1108, known.values().get("Precision"));
+        assertEquals(108, known.values().get("Ferocity"));
+    }
+
+    @Test
     void intrinsicItemBonusesContributeOnceAndUnknownEffectsStayIncomplete() {
         Gear back = new Gear(900, true, null, Map.of("Power", 63), 0,
-                List.of("+32 Power", "+18 Precision"), List.of(), null, true);
+                List.of("+32 Condition Damage", "+18 Precision"), List.of(), null, true);
         List<Slot> equipment = List.of(slot("Backpack", back), slot("WeaponA1", item(2, Map.of(), 0)));
         var known = EquipmentTotals.compute("Necromancer", 80, equipment, List.of()).a();
         assertTrue(known.complete(), known.warnings().toString());
-        assertEquals(1095, known.values().get("Power"));
+        assertEquals(1063, known.values().get("Power"));
+        assertEquals(32, known.values().get("ConditionDamage"));
         assertEquals(1018, known.values().get("Precision"));
         Gear unsupported = new Gear(901, true, null, Map.of("Power", 63), 0,
                 List.of("Additional attributes depend on an unknown effect"), List.of(), null, true);

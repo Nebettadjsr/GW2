@@ -1,3 +1,4 @@
+import { shellProvide } from '@/sync/__tests__/shellProvide'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { connection } from '@/api/accountSession'
@@ -5,16 +6,15 @@ import { resetMaterialProtection, useMaterialProtection } from '@/materials/mate
 import BankScreen from '../BankScreen.vue'
 import MaterialsScreen from '../MaterialsScreen.vue'
 import InventoryTile from '../InventoryTile.vue'
-import InventoryRefresh from '../InventoryRefresh.vue'
 import { PREFERENCE_KEY_PREFIX } from '@/materials/materialProtectionState'
 import { FakeAccountApi, deferred, materialStorage } from './accountFixtures'
 
 const A = 'aaaaaaaa-0000-0000-0000-000000000001'
 const B = 'bbbbbbbb-0000-0000-0000-000000000002'
-const stubs = { global: { stubs: { InventoryRefresh: true } } }
+const stubs = () => ({ global: { stubs: { InventoryRefresh: true }, provide: shellProvide() } })
 
 async function open(screen: typeof BankScreen | typeof MaterialsScreen, api: FakeAccountApi) {
-  const w = mount(screen, { props: { api }, ...stubs })
+  const w = mount(screen, { props: { api }, ...stubs() })
   await flushPromises()
   return w
 }
@@ -64,11 +64,18 @@ describe('Bank and Materials selection', () => {
     mats.unmount()
 
     const bank = await open(BankScreen, api)
+    // Pending selections are scoped to their own view: the unconfirmed Materials edit is not
+    // shown (or confirmable) in Bank, and Bank toggles do not touch it.
     const bankBoxes = boxes(bank).map((c) => (c.element as HTMLInputElement).checked)
-    expect(bankBoxes).toEqual([false, false, true]) // 19697, 24295, 12134
-    expect(bank.find('[data-test="selection-state"]').text()).toContain('Unconfirmed changes')
+    expect(bankBoxes).toEqual([false, false, false]) // 19697, 24295, 12134
+    expect(bank.find('[data-test="selection-state"]').text()).toBe('No pending changes.')
+    await box(bank, 2).setValue(true)
+    expect(useMaterialProtection().pendingFor('bank')).toEqual([12134])
+    expect(useMaterialProtection().pendingFor('materials')).toEqual([12134])
     await box(bank, 2).setValue(false)
-    expect(state.pending).toEqual([])
+    expect(useMaterialProtection().pendingFor('bank')).toEqual([])
+    expect(useMaterialProtection().pendingFor('materials')).toEqual([12134])
+    expect(state.committed).toEqual([])
   })
 
   it('confirmationCommitsPending_emptyConfirmClears_navigationNeverCommits', async () => {
@@ -80,7 +87,12 @@ describe('Bank and Materials selection', () => {
     await box(w, 0).setValue(true)
     w.unmount()
     expect(state.committed).toEqual([])
-    const m = await open(MaterialsScreen, api)
+    // Leaving a view never commits, and another view has nothing of its own to confirm.
+    const other = await open(MaterialsScreen, api)
+    expect(other.find('[data-test="selection-confirm"]').attributes('disabled')).toBeDefined()
+    expect(state.committed).toEqual([])
+    other.unmount()
+    const m = await open(BankScreen, api)
     expect(m.find('[data-test="selection-committed"]').text()).toContain('0 items')
     await m.find('[data-test="selection-confirm"]').trigger('click')
     expect(state.committed).toEqual([19697])
@@ -127,8 +139,8 @@ describe('Bank and Materials selection', () => {
       }]
     }
     api.materialsHandler = () => Promise.resolve(replacement as typeof materialStorage)
-    // Exercise the InventoryRefresh @updated path via the stub's emission.
-    w.findComponent(InventoryRefresh).vm.$emit('updated')
+    // The visible view re-reads on its own; the selection is keyed by item id.
+    document.dispatchEvent(new Event('visibilitychange'))
     await flushPromises()
     expect(api.materialCalls).toBe(2)
     expect(w.findAll('[data-test="material-stack"]').map((s) => s.text())).toEqual(
@@ -138,10 +150,10 @@ describe('Bank and Materials selection', () => {
       ['Protect item #555', 'Protect item #19698', 'Protect item #12134', 'Protect item #12134', 'Protect item #12134', 'Protect item #19697'])
     expect(state.pending).toEqual([12134, 19697, 19698])
     expect(state.committed).toEqual([12134, 19698])
-    expect(w.find('[data-test="selection-state"]').text()).toContain('Unconfirmed changes')
+    expect(w.find('[data-test="selection-state"]').text()).toContain('Unsaved changes')
 
-    // A cached reread via the reload button also leaves both sets untouched.
-    await w.find('[data-test="materials-reload"]').trigger('click')
+    // A further automatic reread also leaves both sets untouched.
+    document.dispatchEvent(new Event('visibilitychange'))
     await flushPromises()
     expect(api.materialCalls).toBe(3)
     expect(state.pending).toEqual([12134, 19697, 19698])
@@ -161,7 +173,7 @@ describe('Bank and Materials selection', () => {
         { slot: 2, itemId: 12134, count: 1, iconUrl: null, rarity: null }
       ]
     } as never)
-    w.findComponent(InventoryRefresh).vm.$emit('updated')
+    document.dispatchEvent(new Event('visibilitychange'))
     await flushPromises()
     expect(state.pending).toEqual([12134])
     expect(state.committed).toEqual([])
@@ -217,7 +229,7 @@ describe('Bank and Materials selection', () => {
     const late = deferred<typeof materialStorage>()
     const slow = new FakeAccountApi()
     slow.loadMaterials = () => late.promise as never
-    const w = mount(MaterialsScreen, { props: { api: slow }, ...stubs })
+    const w = mount(MaterialsScreen, { props: { api: slow }, ...stubs() })
     await flushPromises()
     connection.accountId = B
     await flushPromises()
@@ -237,29 +249,42 @@ describe('Bank and Materials selection', () => {
 })
 
 describe('Selection presets', () => {
-  it('unionIsAdditiveIdempotent_manualAdjustable_noCommit_noFetch', async () => {
+  it('presetsToggleTheirGroupInThePendingMaterialsSelection_manualAdjustable_noCommit_noFetch', async () => {
     const api = new FakeAccountApi()
-    const w = await open(BankScreen, api)
+    const t1 = [24290, 24342, 24346, 24272, 24352, 24284, 24296, 24278]
+    const t6 = [24295, 24358, 24351, 24277, 24357, 24289, 24300, 24283]
+    const stack = (itemId: number, position: number) => ({ position, itemId, count: 1, iconUrl: null, rarity: null })
+    // Presets are offered only inside the categories that own them (29 tiered, 37 extras).
+    api.materialsHandler = () => Promise.resolve({
+      categoryCount: 2,
+      categories: [
+        { category: 29, name: 'Crafting Materials', order: 1, materials: [...t1, ...t6].map(stack) },
+        { category: 37, name: 'Common Crafting Materials', order: 2, materials: [19697, 19675, 19976, 19721, 19925].map(stack) }
+      ]
+    } as unknown as typeof materialStorage)
+    const w = await open(MaterialsScreen, api)
     const state = useMaterialProtection().state
     const fetches = vi.spyOn(globalThis, 'fetch')
-    await box(w, 0).setValue(true) // manual 19697
+    const manual = boxes(w).findIndex((c) => c.attributes('aria-label') === 'Protect item #19697')
+    await box(w, manual).setValue(true)
     await w.find('[data-test="preset-extra"]').trigger('click')
     expect(state.pending).toEqual([19675, 19697, 19721, 19925, 19976])
+    // A preset is a toggle: a second click removes only its own group and keeps the manual pick.
     await w.find('[data-test="preset-extra"]').trigger('click')
-    expect(state.pending).toEqual([19675, 19697, 19721, 19925, 19976])
+    expect(state.pending).toEqual([19697])
+    await w.find('[data-test="preset-extra"]').trigger('click')
     await w.find('[data-test="preset-t1"]').trigger('click')
     expect(state.pending).toHaveLength(13)
     expect(state.committed).toEqual([])
     expect(fetches).not.toHaveBeenCalled()
     fetches.mockRestore()
-    // Manual removal of a preset item, and shared-state reflection on a tile.
-    state.pending = [...state.pending]
-    await box(w, 0).setValue(false)
+    // Manual removal of a manually picked item.
+    await box(w, manual).setValue(false)
     expect(state.pending).not.toContain(19697)
     await w.find('[data-test="selection-discard"]').trigger('click')
     expect(state.pending).toEqual([])
     await w.find('[data-test="preset-t6"]').trigger('click')
-    expect(boxes(w).map((c) => (c.element as HTMLInputElement).checked)).toEqual([false, true, false]) // 24295 is T6
+    expect(state.pending).toEqual([...t6].sort((a, b) => a - b))
     await w.find('[data-test="selection-confirm"]').trigger('click')
     expect(state.committed).toHaveLength(8)
   })

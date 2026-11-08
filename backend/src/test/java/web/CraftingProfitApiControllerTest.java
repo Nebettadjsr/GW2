@@ -155,6 +155,31 @@ class CraftingProfitApiControllerTest {
     }
 
     @Test
+    void sourceSelectionsAreValidatedAndReachTheDomainIndependently() throws Exception {
+        factory.next(service -> service.canned = profitData(List.of(), Map.of(), Map.of(), Map.of()));
+        mockMvc.perform(post("/api/crafting/profit").contentType(MediaType.APPLICATION_JSON).content("""
+                {"settings":{"materialProtectionEnabled":true,"protectedBankItemIds":[19718,19718],
+                  "protectedMaterialItemIds":[19719]}}
+                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.settings.protectedItemIds").isEmpty())
+                .andExpect(jsonPath("$.settings.protectedBankItemIds[0]").value(19718))
+                .andExpect(jsonPath("$.settings.protectedBankItemIds.length()").value(1))
+                .andExpect(jsonPath("$.settings.protectedMaterialItemIds[0]").value(19719));
+        var settings = factory.only().capturedSettings;
+        assertEquals(Set.of(19718), settings.protectedBankItemIds);
+        assertEquals(Set.of(19719), settings.protectedMaterialItemIds);
+        assertEquals(Set.of(19718), settings.withBuyingDisabled().protectedBankItemIds);
+        assertFalse(settings.isProtected(19718), "a bank exclusion must not globally block other stores");
+        for (String field : List.of("protectedBankItemIds", "protectedMaterialItemIds")) {
+            mockMvc.perform(post("/api/crafting/profit").contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"settings\":{\"" + field + "\":[0]}}"))
+                    .andExpect(status().isBadRequest());
+        }
+        assertEquals(1, factory.created.size());
+    }
+
+    @Test
     void disabledProtectionWithSelectionIsEchoedButChangesNothingForTheDomain() throws Exception {
         factory.next(service -> service.canned = profitData(List.of(), Map.of(), Map.of(), Map.of()));
 

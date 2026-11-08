@@ -23,6 +23,13 @@ export function startLuckRefresh(): Promise<SyncTaskAccepted> {
   return postJson<SyncTaskAccepted>('/sync/account/luck', {})
 }
 
+export type AccountView = 'bank' | 'materials' | 'characters'
+
+/** Refreshes only this view's account source, with the same keyed admission as other refreshes. */
+export function startAccountViewRefresh(view: AccountView): Promise<SyncTaskAccepted> {
+  return postJson<SyncTaskAccepted>(`/sync/account/${view}`, {})
+}
+
 /** Code used when the backend advertised a status location this client will not follow. */
 export const UNUSABLE_STATUS_URL_CODE = 'UNUSABLE_STATUS_URL'
 

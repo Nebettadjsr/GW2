@@ -104,17 +104,19 @@ final class CraftingProfitApiMapper {
                 orDefault(settings == null ? null : settings.allowDailyCrafts(),
                         DEFAULT_ALLOW_DAILY_CRAFTS),
                 orDefault(settings == null ? null : settings.materialProtectionEnabled(), false),
-                canonicalProtectedIds(settings == null ? null : settings.protectedItemIds()));
+                canonicalProtectedIds(settings == null ? null : settings.protectedItemIds(), "protectedItemIds"),
+                canonicalProtectedIds(settings == null ? null : settings.protectedBankItemIds(), "protectedBankItemIds"),
+                canonicalProtectedIds(settings == null ? null : settings.protectedMaterialItemIds(), "protectedMaterialItemIds"));
     }
 
     /** Positive IDs only; duplicates removed; ascending numeric order. No inventory/item reads. */
-    private static List<Integer> canonicalProtectedIds(List<Integer> ids) {
+    private static List<Integer> canonicalProtectedIds(List<Integer> ids, String field) {
         if (ids == null) return List.of();
         java.util.TreeSet<Integer> sorted = new java.util.TreeSet<>();
         for (Integer id : ids) {
             if (id == null || id <= 0) {
                 throw new ApiValidationException(
-                        "settings.protectedItemIds must contain only positive item IDs");
+                        "settings." + field + " must contain only positive item IDs");
             }
             sorted.add(id);
         }
@@ -143,7 +145,7 @@ final class CraftingProfitApiMapper {
                     settings.listingBuy(),
                     settings.allowDailyCrafts(),
                     settings.materialProtectionEnabled(),
-                    settings.protectedItemIds());
+                    settings.protectedItemIds(), settings.protectedBankItemIds(), settings.protectedMaterialItemIds());
         }
     }
 

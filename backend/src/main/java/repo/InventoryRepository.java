@@ -107,11 +107,21 @@ public class InventoryRepository {
 
     private static void forEachScopedRow(Connection con, model.AccountScope scope, OwnedRowHandler handler)
             throws SQLException {
-        for (String sql : SCOPED_POOL_QUERIES) {
+        forEachScopedRow(con, scope, Set.of(), Set.of(), handler);
+    }
+
+    private static void forEachScopedRow(Connection con, model.AccountScope scope,
+                                         Set<Integer> excludedBankIds, Set<Integer> excludedMaterialIds,
+                                         OwnedRowHandler handler) throws SQLException {
+        for (int pool = 0; pool < SCOPED_POOL_QUERIES.length; pool++) {
+            String sql = SCOPED_POOL_QUERIES[pool];
+            if (scope == null) sql = sql.replace("account_id = ? AND ", "");
+            Set<Integer> excluded = pool == 0 ? excludedMaterialIds : pool == 1 ? excludedBankIds : Set.of();
             try (PreparedStatement ps = con.prepareStatement(sql)) {
-                ps.setObject(1, scope.accountId());
+                if (scope != null) ps.setObject(1, scope.accountId());
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
+                        if (excluded.contains(rs.getInt("item_id"))) continue;
                         handler.accept(rs.getInt("item_id"), rs.getInt("count"),
                                 rs.getString("binding"), rs.getString("bound_to"));
                     }
@@ -343,6 +353,30 @@ public class InventoryRepository {
     public record CoordinatedInventory(Map<Integer, Integer> sellable,
                                         Map<Integer, Integer> accountBound,
                                         Map<String, Map<Integer, Integer>> characterBound) {
+    }
+
+    public CoordinatedInventory loadOwnedInventoryForCharacters(Set<String> characterNames,
+                                                                Set<Integer> excludedBankIds,
+                                                                Set<Integer> excludedMaterialIds) throws SQLException {
+        try (Connection con = Db.open()) {
+            return loadOwnedInventoryForCharacters(con, null, characterNames, excludedBankIds, excludedMaterialIds);
+        }
+    }
+
+    /** Source exclusions apply before aggregation; cached quantities and character stock are untouched. */
+    public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con, model.AccountScope scope,
+                                                                Set<String> characterNames,
+                                                                Set<Integer> excludedBankIds,
+                                                                Set<Integer> excludedMaterialIds) throws SQLException {
+        if (scope == null) ManagedSchema.rejectUnscopedAccountAccess(con, "owned inventory without an account scope");
+        else ManagedSchema.requireManagedAccountSchema(con, "owned inventory");
+        Map<Integer, Integer> sellable = new HashMap<>();
+        Map<Integer, Integer> accountBound = new HashMap<>();
+        Map<String, Map<Integer, Integer>> characterBound = new HashMap<>();
+        forEachScopedRow(con, scope, excludedBankIds, excludedMaterialIds, (itemId, count, binding, boundTo) ->
+                classifyCoordinatedRow(itemId, count, binding, boundTo, characterNames,
+                        sellable, accountBound, characterBound));
+        return new CoordinatedInventory(sellable, accountBound, characterBound);
     }
 
     /**

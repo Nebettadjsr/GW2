@@ -160,6 +160,100 @@ class CharacterEquipmentTabsHttpTest {
     private static final String PATH = "/api/account/characters/Ana%20B/equipment-tabs";
 
     @Test
+    void gatheringGlyphIsReadFromTheSelectedAccountsToolWithItsEffect() throws Exception {
+        seedRoster();
+        seedEquipment();
+        exec("INSERT INTO items (item_id,name,type,rarity) VALUES"
+                        + " (100227,'Choya Mining Tool','Gathering','Rare'),"
+                        + " (87698,'Glyph of Volatility','UpgradeComponent','Rare')",
+                "INSERT INTO equipment_item_details (item_id,details,fetched_at) VALUES"
+                        + " (87698,'{\"format\":2,\"itemId\":87698,\"itemType\":\"UpgradeComponent\","
+                        + "\"subtype\":\"Default\",\"attributes\":{},\"runeBonuses\":[],"
+                        + "\"effects\":[\"Rewards bonus volatile magic while gathering.\"]}',now())",
+                "INSERT INTO character_items (account_id,character_id,location,equipment_slot,item_id,upgrade_ids) VALUES"
+                        + " ('" + A + "',1,'EQUIPMENT','Pick',100227,'{87698}'),"
+                        + " ('" + B + "',3,'EQUIPMENT','Pick',100227,'{999}')");
+        mvc.perform(as(A, ALL, PATH)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.sharedEquipment[0].slot").value("Pick"))
+                .andExpect(jsonPath("$.sharedEquipment[0].upgrades.length()").value(1))
+                .andExpect(jsonPath("$.sharedEquipment[0].upgrades[0].itemId").value(87698))
+                .andExpect(jsonPath("$.sharedEquipment[0].upgrades[0].name").value("Glyph of Volatility"))
+                .andExpect(jsonPath("$.sharedEquipment[0].upgrades[0].details.effects[0]")
+                        .value("Rewards bonus volatile magic while gathering."));
+        exec("UPDATE character_items SET upgrade_ids='{}' WHERE account_id='" + A + "'");
+        mvc.perform(as(A, ALL, PATH)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.sharedEquipment[0].upgrades.length()").value(0));
+    }
+
+    @Test
+    void newerCharacterDataKeepsStoredEquipmentVisibleUntilItsRefreshFinishes() throws Exception {
+        seedRoster();
+        seedEquipment();
+        exec("UPDATE account_source_state SET generation=3 WHERE account_id='" + A + "' AND source='CHARACTERS'");
+        mvc.perform(as(A, ALL, PATH)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("STALE"))
+                .andExpect(jsonPath("$.reason").value("COVERAGE_INCOMPATIBLE"))
+                .andExpect(jsonPath("$.parent.generation").value(3))
+                .andExpect(jsonPath("$.coveredParentGeneration").value(2))
+                .andExpect(jsonPath("$.tabs.length()").value(2))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].item.name").value("Ascended Helm"));
+        mvc.perform(as(A, ALL, "/api/account/characters/Bo/equipment-tabs"))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.tabs").doesNotExist());
+        exec("UPDATE character_equipment_coverage SET parent_generation=3 WHERE account_id='" + A + "'");
+        mvc.perform(as(A, ALL, PATH)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("AVAILABLE"))
+                .andExpect(jsonPath("$.coveredParentGeneration").value(3))
+                .andExpect(jsonPath("$.tabs.length()").value(2));
+    }
+
+    @Test
+    void passiveTraitsAreAdmittedOnlyWhenBuildCoverageMatchesTheRetainedEquipmentGeneration() throws Exception {
+        seedRoster();
+        seedEquipment();
+        exec("UPDATE characters SET profession='Necromancer' WHERE account_id='" + A + "' AND character_id=1");
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        // Baseline: no build at all -> gear only, trait exclusion reported.
+        var plain = json.readTree(mvc.perform(as(A, ALL, PATH)).andExpect(status().isOk()).andReturn()
+                .getResponse().getContentAsString(StandardCharsets.UTF_8));
+        var plainSet = plain.path("tabs").get(1).path("stats").path("profiles").path("PVE").path("A");
+        assertTrue(plainSet.path("warnings").toString().contains("traits excluded"));
+        // Equipment stays covered at parent generation 2 while CHARACTERS and Builds move to 3.
+        exec("UPDATE account_source_state SET generation=3 WHERE account_id='" + A + "' AND source='CHARACTERS'",
+                "INSERT INTO account_source_state (account_id, source, generation, completed_at) VALUES"
+                        + " ('" + A + "', 'CHARACTER_BUILD_TABS', 1, '" + NOW.minusSeconds(20) + "')",
+                "INSERT INTO character_build_coverage (account_id, parent_generation) VALUES ('" + A + "', 3)",
+                "INSERT INTO character_build_tabs (account_id, character_id, tab_number, name, profession, is_active,"
+                        + " land_utilities, aquatic_utilities, land_legends, aquatic_legends, land_pets, aquatic_pets) VALUES"
+                        + " ('" + A + "', 1, 1, NULL, 'Necromancer', true, '{NULL,NULL,NULL}', '{NULL,NULL,NULL}',"
+                        + "  NULL, NULL, NULL, NULL)",
+                "INSERT INTO character_build_tab_specializations (account_id, character_id, tab_number, position,"
+                        + " specialization_id, traits) VALUES ('" + A + "', 1, 1, 1, 53, '{916,829,853}'),"
+                        + " ('" + A + "', 1, 1, 2, 50, '{888,894,893}'), ('" + A + "', 1, 1, 3, 34, '{2020,1969,2021}')");
+        var mismatched = json.readTree(mvc.perform(as(A, ALL, PATH)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("STALE"))
+                .andExpect(jsonPath("$.coveredParentGeneration").value(2))
+                .andExpect(jsonPath("$.tabs.length()").value(2))
+                .andExpect(jsonPath("$.tabs[1].equipment[0].item.name").value("Ascended Helm"))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8));
+        assertEquals(plain.path("tabs").get(1).path("stats").path("profiles"),
+                mismatched.path("tabs").get(1).path("stats").path("profiles"),
+                "newer traits must not be mixed into older gear");
+        assertEquals(plain.path("tabs").get(1).path("equipment"), mismatched.path("tabs").get(1).path("equipment"));
+        var mismatchedSet = mismatched.path("tabs").get(1).path("stats").path("profiles").path("PVE").path("A");
+        assertFalse(mismatchedSet.path("complete").asBoolean());
+        assertTrue(mismatchedSet.path("warnings").toString().contains("traits excluded"));
+        // Equipment catches up to generation 3: the build is now compatible and its bonus applies.
+        exec("UPDATE character_equipment_coverage SET parent_generation=3 WHERE account_id='" + A + "'");
+        var compatible = json.readTree(mvc.perform(as(A, ALL, PATH)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("AVAILABLE")).andReturn().getResponse()
+                .getContentAsString(StandardCharsets.UTF_8));
+        var set = compatible.path("tabs").get(1).path("stats").path("profiles").path("PVE").path("A");
+        assertFalse(set.path("warnings").toString().contains("traits excluded"));
+        assertTrue(set.path("values").path("Vitality").asInt() > plainSet.path("values").path("Vitality").asInt(),
+                "compatible traits add their Vitality bonus");
+    }
+
+    @Test
     void availableSelectedCharacterSerializesTabOrderActiveMarkerItemsUpgradesInfusionsAndStats() throws Exception {
         seedRoster();
         seedEquipment();
@@ -233,7 +327,25 @@ class CharacterEquipmentTabsHttpTest {
         assertEquals(1, metadata, "one batched metadata lookup");
         assertEquals(2, tabRows, "one tab read and one entry read for the selected character only");
         assertFalse(new String(body, StandardCharsets.UTF_8).contains("Bo1"));
-        assertTrue(body.length < 5_000);
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var payloadWithoutProfiles = mapper.readTree(body);
+        for (var tab : payloadWithoutProfiles.path("tabs")) {
+            var stats = (com.fasterxml.jackson.databind.node.ObjectNode) tab.path("stats");
+            var profiles = stats.path("profiles");
+            assertEquals(4, profiles.size(), "PvE/WvW, each with and without Reinforced Armor");
+            for (String profile : List.of("PVE", "PVE_REINFORCED", "WVW", "WVW_REINFORCED")) {
+                assertEquals(2, profiles.path(profile).size(), "both weapon sets in " + profile);
+                assertTrue(profiles.path(profile).has("A") && profiles.path(profile).has("B"));
+            }
+            stats.remove("profiles");
+        }
+        int baseBytes = mapper.writeValueAsBytes(payloadWithoutProfiles).length;
+        assertTrue(baseBytes < 5_000, "the original projection keeps its existing byte budget");
+        // The approved buff/mode options add four backend-calculated profiles. Bound their complete
+        // payload as well, while preserving the original projection and statement-count budgets.
+        assertTrue(body.length < 8_192, "equipment plus four passive profiles: " + body.length);
+        System.out.println("CHAR-EQUIPMENT-PROFILES-REPORT baseBytes=" + baseBytes
+                + " profileBytes=" + (body.length - baseBytes) + " totalBytes=" + body.length);
         // schema guard + parent/equipment marker reads + character + coverage + tabs + entries + items
         // + (STORY-CHAR-014) shared-slot read, batched equipment details and batched itemstats: constant, not per entry
         assertTrue(sql.size() <= 15, "bounded statement count: " + sql.size());

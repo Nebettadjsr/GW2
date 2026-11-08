@@ -11,8 +11,13 @@ public final class ItemParser {
             String type,
             String rarity,
             Integer vendorValue,   // nullable ok
-            String iconUrl         // nullable ok (optional, aber praktisch)
-    ) {}
+            String iconUrl,        // nullable ok (optional, aber praktisch)
+            Boolean noMysticForge  // null when flags are missing or malformed
+    ) {
+        public ItemRow(int itemId, String name, String type, String rarity, Integer vendorValue, String iconUrl) {
+            this(itemId, name, type, rarity, vendorValue, iconUrl, null);
+        }
+    }
 
     public static ItemRow parse(JsonNode it) {
         if (it == null || it.isNull()) return null;
@@ -28,6 +33,16 @@ public final class ItemParser {
 
         String iconUrl = it.hasNonNull("icon") ? it.get("icon").asText() : null;
 
-        return new ItemRow(itemId, name, type, rarity, vendorValue, iconUrl);
+        return new ItemRow(itemId, name, type, rarity, vendorValue, iconUrl, noMysticForge(it.get("flags")));
+    }
+
+    private static Boolean noMysticForge(JsonNode flags) {
+        if (flags == null || !flags.isArray()) return null;
+        boolean excluded = false;
+        for (JsonNode flag : flags) {
+            if (!flag.isTextual()) return null;
+            if ("NoMysticForge".equals(flag.asText())) excluded = true;
+        }
+        return excluded;
     }
 }

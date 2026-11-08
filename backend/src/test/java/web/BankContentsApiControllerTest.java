@@ -61,6 +61,18 @@ class BankContentsApiControllerTest {
     // ---------- successful reads ----------
 
     @Test
+    void exposesTheBackendSelectionDecisionWithoutRemovingTheSlot() throws Exception {
+        var service = new StubBankContentsService(List.of(
+                new BankRepository.BankSlotRow(0, 20017, 2, null, null, "Fine", false),
+                new BankRepository.BankSlotRow(1, 19997, 3, null, null, "Fine", true)));
+        mockMvcFor(service).perform(get("/api/account/bank"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.slots.length()").value(2))
+                .andExpect(jsonPath("$.slots[0].protectionSelectable").value(false))
+                .andExpect(jsonPath("$.slots[1].protectionSelectable").value(true));
+    }
+
+    @Test
     void returnsEverySlotInServiceOrderWithItsIdentityQuantityAndDisplayMetadata() throws Exception {
         StubBankContentsService service = new StubBankContentsService(List.of(
                 new BankRepository.BankSlotRow(0, 19721, 250, LOCAL_ICON_PATH, ECTO_SOURCE, "Rare"),
@@ -128,7 +140,7 @@ class BankContentsApiControllerTest {
         List<String> fields = new ArrayList<>();
         slot.fieldNames().forEachRemaining(fields::add);
 
-        assertEquals(List.of("slot", "itemId", "count", "iconUrl", "rarity"), fields,
+        assertEquals(List.of("slot", "itemId", "count", "iconUrl", "rarity", "protectionSelectable"), fields,
                 "the slot must be a transport record, not a serialized repository row");
         assertFalse(body.contains("C:\\icons"),
                 "the backend filesystem path must not reach the browser: " + body);

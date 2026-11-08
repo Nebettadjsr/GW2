@@ -259,10 +259,11 @@ export function useCraftingProfit(
    * The committed protection context for the verified account, or null while it is not restored.
    * Activation is effective only with at least one committed ID; pending edits are never read.
    */
-  function protectionContext(): { enabled: boolean; ids: number[] } | null {
+  function protectionContext(): { enabled: boolean; ids: number[]; bankIds: number[]; materialIds: number[] } | null {
     if (protection.state.status !== 'ready' || protection.state.accountId === null) return null
     const ids = [...protection.state.committed]
-    return { enabled: protection.state.activation && ids.length > 0, ids }
+    return { enabled: protection.state.activation && ids.length > 0, ids,
+      bankIds: [...protection.committedFor('bank')], materialIds: [...protection.committedFor('materials')] }
   }
 
   function contextKey(): string {
@@ -273,7 +274,7 @@ export function useCraftingProfit(
   function effectiveKey(): string {
     const context = protectionContext()
     if (context === null) return 'none'
-    return `${protection.state.accountId}|${context.enabled}|${context.enabled ? context.ids.join(',') : ''}`
+    return `${protection.state.accountId}|${context.enabled}|${context.enabled ? JSON.stringify([context.bankIds, context.materialIds]) : ''}`
   }
 
   /** Whether an enabled-protection request was echoed back as such (order/duplicate insensitive). */
@@ -281,9 +282,12 @@ export function useCraftingProfit(
     if (request.settings?.materialProtectionEnabled !== true) return true
     const echoed = response.settings
     if (echoed?.materialProtectionEnabled !== true || !Array.isArray(echoed.protectedItemIds)) return false
-    const wanted = canonicalIds(request.settings.protectedItemIds)
-    const got = canonicalIds(echoed.protectedItemIds)
-    return wanted.length === got.length && wanted.every((id, index) => id === got[index])
+    return (['protectedItemIds', 'protectedBankItemIds', 'protectedMaterialItemIds'] as const).every(field => {
+      if (!Array.isArray(echoed[field])) return false
+      const wanted = canonicalIds(request.settings?.[field])
+      const got = canonicalIds(echoed[field])
+      return wanted.length === got.length && wanted.every((id, index) => id === got[index])
+    })
   }
 
   /**
@@ -578,15 +582,19 @@ export function useCraftingProfit(
       request.settings = { ...settings.value }
       if (context !== null) {
         request.settings.materialProtectionEnabled = context.enabled
-        request.settings.protectedItemIds = context.ids
+        request.settings.protectedItemIds = []
+        request.settings.protectedBankItemIds = context.bankIds
+        request.settings.protectedMaterialItemIds = context.materialIds
       } else {
         delete request.settings.materialProtectionEnabled
         delete request.settings.protectedItemIds
+        delete request.settings.protectedBankItemIds
+        delete request.settings.protectedMaterialItemIds
       }
     } else if (context !== null && context.enabled) {
       // Backend defaults for everything else; only the committed protection is supplied.
-      // The route accepts a partial settings object; the type is the full echo shape.
-      request.settings = { materialProtectionEnabled: true, protectedItemIds: context.ids } as EffectiveSettings
+      request.settings = { materialProtectionEnabled: true, protectedItemIds: [],
+        protectedBankItemIds: context.bankIds, protectedMaterialItemIds: context.materialIds }
     }
     return request
   }

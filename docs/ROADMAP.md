@@ -1,6 +1,6 @@
 # GW2 active roadmap
 
-Updated: 2026-11-07. Owner: GitHub Codex planner; changes are reviewed by the interactive Codex supervisor.
+Updated: 2026-11-08. Owner: GitHub Codex planner; changes are reviewed by the interactive Codex supervisor.
 
 **Workflow execution authorized by the Product Owner on 2026-11-07; interactive Codex supervises one released story at a time.** Draft order, active handoffs and execution evidence live in [the backlog](../agent/BACKLOG.md) and GitHub issues/PRs. The Product Owner owns product intent and material hosting/budget decisions.
 
@@ -60,7 +60,7 @@ Users saving for a legendary or another goal can protect owned item/material typ
 
 ### Confirmed product/UI contract
 
-- Product behavior: [DOMAIN_SPEC.md section 9.1](DOMAIN_SPEC.md). Protect all owned copies while preserving normal acquisition rules for replacements.
+- Product behavior: [DOMAIN_SPEC.md section 9.1](DOMAIN_SPEC.md). Protect quantities independently in Bank and Materials while preserving character inventory and normal acquisition rules for replacements.
 - Selection UI: [FRONTEND_UX_GUIDELINES.md section 2.1](FRONTEND_UX_GUIDELINES.md). Tile checkboxes plus explicit confirmation, presets for every tier T1–T6 and room for more, Profit toggle/count, short empty-selection warning and links back to relevant selection pages.
 - Remember the committed selection and activation setting per account on the same browser. No cross-device synchronization is required.
 
@@ -68,7 +68,7 @@ These choices were confirmed by the Product Owner. The planner can now refine th
 
 ### Acceptance and resource constraints
 
-- Bank and Materials edit one coherent selection by item type; real inventory quantities remain visible and unchanged. Use committed selection consistently across repeated stacks and locations.
+- Bank and Materials edit independent selections by item type within each store; real inventory quantities remain visible and unchanged. Bulk/save/discard actions stay on their own page, preserve absent-item preferences, and apply consistently to repeated stacks in that store.
 - The backend applies the approved restriction throughout Crafting Profit, including recursive ingredients. List/detail calculations, costs, quantities, shopping lists and any cached results must agree with the same effective settings.
 - Feature disabled or an empty list preserves existing results. Account changes must not reuse another account's selections or stale in-flight results. Discovery and Ecto are outside the requested scope.
 - Preserve existing selection/navigation, sorting, filtering, refresh and item-link interactions; define accessible keyboard operation and a visible enabled/count summary. Consult the Product Owner for unresolved UI decisions rather than inventing them.
@@ -76,7 +76,7 @@ These choices were confirmed by the Product Owner. The planner can now refine th
 - Measure feature-disabled, enabled-empty and enabled-populated cases using comparable catalogs/accounts and selected-list sizes. Record calculation latency/CPU/allocation, request size and desktop interaction cost; do not claim zero overhead without evidence.
 - Final Oracle qualification includes this feature under the agreed workload. Do not introduce an unmeasured per-account copy of the entire catalog or shared mutable calculation state to support it.
 
-Status: awaiting bounded story refinement/release under active supervision. Detailed story order and decisions are in the [backlog](../agent/BACKLOG.md). Feature planning can proceed alongside KPI planning; final product qualification follows feature integration.
+Status: the Product Owner approved the paired selection and Crafting UI on 2026-11-08, including source-specific protection, ingredient checkbox eligibility and category-local preset placement. Integrate that reviewed implementation and reconcile its regression tests and owning documentation before accepting completion. Detailed release order is in the [backlog](../agent/BACKLOG.md); final resource qualification remains outstanding.
 
 ## Milestone 3: Characters overview and equipment-first details
 
@@ -94,15 +94,21 @@ Owning scope: [DOMAIN_SPEC.md section 56](DOMAIN_SPEC.md). UI intent: [FRONTEND_
 4. Verify account isolation, metadata-based rarity, missing versus empty slots, template-reference deduplication, refresh/recovery and navigation. Do not change existing crafting inventory totals through duplicated template equipment.
 5. Measure roster/detail response size, desktop rendering, metadata/upstream requests, cold/warm behavior and whole-stack CPU/memory/storage under the Oracle workload. No per-character polling loop, new service or eager download of every detail on each roster visit without measured justification.
 
-Status: awaiting bounded story refinement/release under active supervision. Final product hosting qualification depends on this milestone, material protection, owner administration and automatic inventory freshness. The backlog records story release; unreleased drafts are not executable.
+Status: roster rows/sorting, character summary, Equipment and Inventory layouts were approved through direct pairing on 2026-11-08. Reconcile tests and current-state documentation with that baseline; do not redesign it in maintenance. Builds data and referenced metadata are delivered, while Builds UI #166 still needs implementation and a final visual review. Story/recipes/map exclusions remain unchanged. Final hosting qualification and owner administration remain outstanding.
 
 ## Operational follow-up: owner administration and automatic inventory refresh
 
 Confirmed scope: [DOMAIN_SPEC.md section 57](DOMAIN_SPEC.md), [UX sections 2.3–2.4](FRONTEND_UX_GUIDELINES.md) and [owner authorization target](TARGET_ARCHITECTURE.md). Only the Product Owner's verified account gets global item/recipe/full-TP controls and detailed diagnostics. Other users get their account connection/freshness/refresh controls and generic shared health. Backend authorization is required before public deployment; a hidden button is not the acceptance criterion.
 
-Bank/Materials move to automatic stale-data refresh with saved data retained and an updating hint. Remove both manual refresh and cached-reload buttons there; keep manual account refresh in System Status. Reuse the existing shared task/freshness model, preserve material-protection selections and prevent refresh storms across views.
+The paired Bank/Materials/Characters implementation uses automatic page-scoped stale refresh, retained saved data and a compact updating hint. Keep manual full-account refresh in System Status. Reconcile and verify shared admission, missing-grant/error recovery, retained inspected equipment and account switching before acceptance. Do not refresh unrelated sources when navigating a feature page.
 
 Prepare separate backend authorization, status UI and inventory freshness stories. Verify owner versus non-owner direct requests, task visibility, key replacement, empty owner configuration, account switching, duplicate refresh admission and stale/error recovery. Batch and bound full-catalog admin work; include its CPU/memory/storage/upstream impact in Oracle qualification rather than assuming on-demand TP measurements represent it. Implementation follows supervisor release of a concrete contract.
+
+## Deferred crafting extension and live verification
+
+The Product Owner approved future Mystic Forge recipe support behind `Allow Mystic Forge recipes`, below `Allow daily craft`; it is currently a disabled UI placeholder. Forge steps will use that setting rather than a crafting discipline/rating. [The product request](../agent/product-owner-requests/mystic-forge-crafting.md) owns the remaining data/random-output questions. Do not activate calculation work merely because the placeholder exists.
+
+Issue [#154](https://github.com/Nebettadjsr/GW2/issues/154) prepares live-account verification: establish observed API propagation delay first, then select a small representative recipe set and compare before/after wallet, owned quantities, executable craft counts and realized net economics. Research evidence and measured observations must stay distinct. The owner performs game purchases/crafting; no unattended spending is authorized. This evidence complements automated correctness tests and is not Oracle capacity qualification.
 
 ## Existing architecture and historical migration
 

@@ -3,13 +3,14 @@ export const MATERIAL_PRESETS_VERSION = 1
 
 export interface MaterialPreset {
   readonly id: string
+  readonly categoryId: number
   readonly label: string
   readonly tooltip: string
   readonly itemIds: readonly number[]
 }
 
 function tier(n: number, ids: readonly number[]): MaterialPreset {
-  return { id: `t${n}`, label: `T${n}`, tooltip: `Select the eight tier ${n} intermediate materials (blood, bone, claw, dust, fang, scale, totem, venom sac).`, itemIds: ids }
+  return { id: `t${n}`, categoryId: 29, label: `T${n}`, tooltip: `Select or deselect the eight tier ${n} intermediate materials (blood, bone, claw, dust, fang, scale, totem, venom sac).`, itemIds: ids }
 }
 
 export const MATERIAL_PRESETS: readonly MaterialPreset[] = [
@@ -21,8 +22,9 @@ export const MATERIAL_PRESETS: readonly MaterialPreset[] = [
   tier(6, [24295, 24358, 24351, 24277, 24357, 24289, 24300, 24283]),
   {
     id: 'extra',
+    categoryId: 37,
     label: 'Clovers, coins, ecto & obsidian',
-    tooltip: 'Select Mystic Clover, Mystic Coin, Glob of Ectoplasm and Obsidian Shard.',
+    tooltip: 'Select or deselect Mystic Clover, Mystic Coin, Glob of Ectoplasm and Obsidian Shard.',
     itemIds: [19675, 19976, 19721, 19925]
   }
 ]

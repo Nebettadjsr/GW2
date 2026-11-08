@@ -492,7 +492,7 @@ describe('Crafting Profit provisional refresh workflow', () => {
       const second: CraftingRow = { ...cachedRow, recipeId: 12, outputItemId: 1202, outputName: 'Bowl of Soup' }
       const secondRefreshed: CraftingRow = { ...second, totalProfitCopper: 2_468 }
       api.profitHandler = (request, callIndex) => {
-        const settings = request.settings ?? DEFAULT_SETTINGS
+        const settings = { ...DEFAULT_SETTINGS, ...request.settings }
         if (callIndex === 0) {
           return Promise.resolve(profitResponse([cachedRow, second], 'ALL', settings, provisionalFreshness()))
         }
@@ -566,7 +566,7 @@ describe('Crafting Profit provisional refresh workflow', () => {
           profitResponse(
             [{ ...refreshedRow, recipeId: 12, outputItemId: 1202, outputName: 'Bowl of Soup' }],
             request.scope?.kind ?? 'DISCIPLINE',
-            request.settings ?? DEFAULT_SETTINGS,
+            { ...DEFAULT_SETTINGS, ...request.settings },
             finalFreshness()
           )
         )
@@ -1184,7 +1184,7 @@ describe('Crafting Profit provisional refresh workflow', () => {
       // rather than a null, which is how this request contract expresses "not supplied".
       api.profitHandler = (request) =>
         Promise.resolve({
-          ...profitResponse([cachedRow], 'ALL', request.settings ?? DEFAULT_SETTINGS),
+          ...profitResponse([cachedRow], 'ALL', { ...DEFAULT_SETTINGS, ...request.settings }),
           freshness: undefined as unknown as CalculationFreshness
         })
       const { wrapper } = await openScreen(api, recordingSyncApi(statesByTask({})))

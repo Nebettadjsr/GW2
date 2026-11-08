@@ -2,11 +2,22 @@
 
 **Status: ACTIVE SUPERVISION. Execution authorized by the Product Owner on 2026-11-07.**
 
+The Product Owner resumed supervision on 2026-11-08 after approving the directly paired UI, most recently the character roster and its default playtime sort. First integrate that approved baseline and reconcile tests/documentation; then resume the dependency-complete sequence below. This supersedes earlier draft layout proposals and shared-selection assumptions. No repeated approval is needed for the already accepted layouts.
+
 Authorization: start the agreed workflow, supervise progress and stop only for necessary product/UI decisions or missing access. Supervisor: interactive Codex. Planner: Codex on GitHub. Programmer: Claude. Release one approved story at a time; no new paid API integration is authorized.
 
 Historical migration context is in setup PR [#131](https://github.com/Nebettadjsr/GW2/pull/131). Reconcile legacy issues #21, #60, #111 and #116 on GitHub before selecting them; their presence does not authorize release.
 
 Planning handoff: the Characters sequence is Inventory UI #162, Builds core #161, referenced Builds metadata/images #164, then Builds UI #166. Release each only after its actual merged dependencies and contract have been reviewed. The full trait-row choice is resolved in #164/#166; retain their bounded specialization-choice metadata scope. System Status owner boundary #152 and the remaining KPI contracts follow. Earlier material contracts remain linked below for context. Read GitHub issues, PRs, CI and reviews for execution state and evidence before release; this file does not mirror completion, merge hashes, test outcomes or running attempts. Local measurement evidence is not Oracle qualification.
+
+## Immediate integration handoff
+
+- Continue held PR #170 / issue #169 with the Product Owner's approved paired changes. The old left-facts layout and no-backend-change limits were superseded by direct instructions. UX guidelines §§2.1–2.4 and DOMAIN_SPEC §§9.1, 56–57 now own the final contracts. Preserve the approved UI while repairing stale tests, backend fixtures and current-state documentation.
+- Finish narrow parser fix PR #175 / issue #174 against its exact reviewed head and CI; keep it separate from the larger UI reconciliation.
+- Resolve actual outstanding PR #170 recovery findings: finite `coversRequest:false` retries, simultaneous missing Equipment/Builds recovery, stale character/account responses and selection return races. Verify both the screen's managed refresh path and any retained composable path. Do not close a finding based on changed layout alone.
+- Current-state docs must distinguish implemented scoped freshness and equipment projections from pending owner authorization, Builds UI, incomplete passive trait coverage and unqualified live economics/Oracle capacity. Do not repeat historical NOT_IMPLEMENTED claims for delivered equipment/inventory.
+- Update obsolete manual-refresh, shared-selection, nested-tab and left-facts assertions with meaningful behavioral coverage. Keep account isolation, source coverage, retained snapshots, finite recovery and duplicate-stack tests. Do not skip or weaken tests merely to make CI green.
+- Record remaining Mystic Forge work through `agent/product-owner-requests/mystic-forge-crafting.md`; the checkbox is a disabled placeholder, not authorization to implement it now. Prepare the live verification work in #154 at a suitable point; the owner executes game actions after a concrete experiment plan exists.
 
 ## Activation and state
 
@@ -31,24 +42,35 @@ Planning handoff: the Characters sequence is Inventory UI #162, Builds core #161
 | STORY-KPI-005 | Claude adds project-scoped storage, database, volume and log accounting; tenancy-wide allocation remains explicit | STORY-KPI-001 | DRAFT |
 | STORY-KPI-006 | Claude adds transfer-boundary observations without treating Docker/internal traffic as billable Oracle egress | STORY-KPI-001 | DRAFT |
 | REVIEW-KPI-001 | Supervisor validates real target-host evidence and reports free-tier fit/gaps | STORY-KPI-001–006, qualification workloads/reporting, all final features, target-host/tenancy access | BLOCKED |
-| PLAN-FEATURE-001 | Planner refines material-protection stories and prepares concrete UI review | Confirmed domain/UX contracts; inspect current code | DRAFT |
+| PLAN-FEATURE-001 | Material-protection planning | Owning domain/UX contracts | ACCEPTED — published contracts #136, #138, #139, #143, #145, #146; paired corrections in #169 |
 | STORY-MAT-004 | Claude exposes the verified account GUID additively in session responses for browser preference partitioning | STORY-KPI-001; approved #136 | PUBLISHED — #136 |
 | STORY-MAT-001 | Claude implements backend settings/validation and recursive calculation restrictions, with real list/detail and overhead evidence | STORY-VALUE-001, STORY-KPI-001, STORY-MAT-004; approved #138 | PUBLISHED — #138 |
-| STORY-MAT-002 | Claude adds per-account browser persistence, canonical state and pending/committed selection foundation | STORY-MAT-001, STORY-MAT-004; approved #139 | PUBLISHED — #139; next proposed release |
-| STORY-MAT-003 | Claude adds Bank/Materials tile checkboxes, pending edits and explicit confirmation | STORY-MAT-002; approved draft #143 | PUBLISHED — #143; later release |
-| STORY-MAT-005 | Claude adds verified T1–T6 intermediate-material presets and the four-item extra preset | STORY-MAT-003; membership and extra label confirmed | DRAFT |
-| STORY-MAT-006 | Claude adds Profit activation/count, empty-selection warning, links and request integration | STORY-MAT-001, STORY-MAT-003; approved UX | DRAFT |
-| STORY-MAT-007 | Claude verifies integrated navigation, refresh, account switching and list/detail behavior | STORY-MAT-005, STORY-MAT-006; comparable KPI workload | DRAFT |
-| PLAN-CHAR-001 | Planner audits character API/storage coverage and prepares equipment-first UI review with in-game-style tabs | Confirmed DOMAIN_SPEC.md section 56 and UX section 2.2 | DRAFT |
-| STORY-CHAR-001 | Claude adds compact scoped roster and selected-character core/crafting reads using existing publication state | Approved draft #141; material work first in supervisor release order | PUBLISHED — #141; later release |
-| STORY-CHAR-002 | Claude implements character roster and equipment-focused detail view | STORY-CHAR-001, approved UI design | DRAFT |
-| STORY-CHAR-003 | Claude implements character inventory and build details with navigation and account-isolation regressions | STORY-CHAR-001, STORY-CHAR-002; approved template scope | DRAFT |
+| STORY-MAT-002 | Per-account browser pending/committed selection | STORY-MAT-001, STORY-MAT-004 | PUBLISHED — #139 |
+| STORY-MAT-003 | Bank/Materials checkboxes and confirmation | STORY-MAT-002 | PUBLISHED — #143 |
+| STORY-MAT-005 | Verified T1–T6 and four-item presets | STORY-MAT-003 | PUBLISHED — #145; category placement refined in #169 |
+| STORY-MAT-006 | Profit activation, count, links and request integration | STORY-MAT-001, STORY-MAT-003 | PUBLISHED — #146 |
+| STORY-MAT-007 | Reserved integrated verification draft | Current source-specific implementation and #169 reconciliation | DEFERRED — inspect #169 evidence before drafting any distinct remaining gap |
+| PLAN-CHAR-001 | Character API/storage and equipment-first planning | DOMAIN_SPEC §56 and UX §2.2 | ACCEPTED — published contracts below; final paired layouts approved |
+| STORY-CHAR-001 | Scoped roster and character core reads | Approved contract | PUBLISHED — #141 |
+| STORY-CHAR-002 | Equipment-first roster/detail UI | STORY-CHAR-001, reviewed UI | PUBLISHED — #156 |
+| STORY-CHAR-003 | Original combined inventory/build draft | Later bounded contracts below | DEFERRED — split into #159, #162, #161, #164 and #166; do not release this old combined draft |
 | STORY-CHAR-004 | Reserved character Story outcome | A new Product Owner decision is required to resume | DEFERRED — Product Owner confirmed 2026-11-07 |
+| STORY-CHAR-005 | Independent saved-equipment data | Approved contract | PUBLISHED — #148 |
+| STORY-CHAR-006 | Bag-layout inventory data | Scoped character core | PUBLISHED — #159 |
+| STORY-CHAR-007 | Saved Builds data | Scoped character core | PUBLISHED — #161 |
+| STORY-CHAR-008 | Bag-layout Inventory UI | STORY-CHAR-006 | PUBLISHED — #162 |
+| STORY-CHAR-009 | Shared Builds reference metadata/images | STORY-CHAR-007 | PUBLISHED — #164 |
+| STORY-CHAR-010 | Full-trait-row Builds UI | STORY-CHAR-007, 008, 009, 011 | PUBLISHED DRAFT — #166; next proposed implementation after reconciliation, final UI review required |
+| STORY-CHAR-011 | Approved paired UI and regression/documentation reconciliation | STORY-CHAR-008 and integrated current master | PUBLISHED — #169 / PR #170; current supervisor handoff above |
+| STORY-CHAR-012 | Character playtime, deaths and next birthday | Scoped character core | PUBLISHED — #171 |
+| STORY-CHAR-013 | Narrow missing land elite compatibility | Saved Builds data | PUBLISHED — #174 |
+| STORY-CHAR-014 | Equipment details and base/equipment totals | Saved equipment data | PUBLISHED — #176; paired stats refinements in #169 |
 | REVIEW-CHAR-001 | Supervisor reviews correctness, desktop behavior and Oracle resource evidence including both new features | Character/material stories and KPI qualification workloads | DRAFT |
-| PLAN-STATUS-001 | Planner audits current global routes/status projections and defines owner/admin and automatic inventory-freshness contracts | DOMAIN_SPEC.md section 57; TARGET_ARCHITECTURE.md section 8.3 | DRAFT |
-| STORY-STATUS-001 | Claude implements backend owner authorization and owner/generic status and task access contracts | Approved PLAN-STATUS-001; verified owner GUID/config before enabling privileges | DRAFT |
-| STORY-STATUS-002 | Claude implements ordinary versus owner System Status views and global refresh controls | STORY-STATUS-001, reviewed UX; bounded full-catalog refresh contract | DRAFT |
-| STORY-STATUS-003 | Claude replaces Bank/Materials refresh buttons with retained-snapshot automatic stale refresh and updating/failure hints | Approved PLAN-STATUS-001; shared freshness/task coverage and grant policy | DRAFT |
+| PLAN-STATUS-001 | Owner/admin planning | DOMAIN_SPEC §57; TARGET_ARCHITECTURE §8.3 | ACCEPTED first bounded contract — #152; later contracts remain drafts |
+| STORY-STATUS-001 | Backend owner policy, existing global action/task authorization and generic/detailed status | Approved #152; synthetic principals suffice for implementation | PUBLISHED DRAFT — #152; actual owner configuration needed only to enable privilege |
+| STORY-STATUS-004 | Distinct owner-only full-item, full-recipe and full-tradable-TP operations | STORY-STATUS-001 | DRAFT |
+| STORY-STATUS-002 | Ordinary/owner System Status UI | STORY-STATUS-001, STORY-STATUS-004, UI review | DRAFT |
+| STORY-STATUS-003 | Reserved automatic inventory-freshness draft | #169 delivers paired page-scoped refresh | DEFERRED — reconcile #169 before releasing any distinct remaining gap |
 
 Story IDs are distinct from GitHub issue numbers. Published contracts are linked above; unpublished rows remain drafts. Never reuse a published ID for a different outcome. Existing selector compatibility is retained by `STORY-AREA-NNN` naming; publication/labels still require supervisor release.
 
@@ -66,27 +88,27 @@ The valuation prerequisite is tracked in #132/#133. Consult its actual acceptanc
 
 Confirmed intent and feature-level criteria: `docs/ROADMAP.md`, Milestone 2; domain contract: `docs/DOMAIN_SPEC.md` section 9.1; UI contract: `docs/FRONTEND_UX_GUIDELINES.md` section 2.1. Core product questions are resolved. Draft contracts still require planner refinement and supervisor release; they are not implementation authorization.
 
-Directly relevant current code: `frontend/src/account/BankScreen.vue`, `MaterialsScreen.vue`, `InventoryTile.vue`, `BankSlotTile.vue`; `frontend/src/crafting/ProfitSettingsForm.vue`, `useCraftingProfit.ts`; `backend/src/main/java/craft/CraftingSettings.java`; `backend/src/main/java/application/CraftingProfitService.java`. Existing owned inventory combines bank, material storage and character inventories (`docs/DOMAIN_SPEC.md` section 9); excluding only a displayed bank stack could leave other copies available. Current settings contain no protected-item list.
+Directly relevant code: `frontend/src/account/BankScreen.vue`, `MaterialsScreen.vue`, `MaterialSelectionBar.vue`; `frontend/src/materials/materialProtectionState.ts`; `frontend/src/crafting/ProfitSettingsForm.vue`, `useCraftingProfit.ts`; `backend/src/main/java/craft/CraftingSettings.java`, `application/CraftingProfitService.java`, `repo/InventoryRepository.java`. Current settings include independent Bank/material-storage exclusions in addition to legacy global exclusions. Source-specific selection is intentional: unselected stores and character inventory remain usable.
 
-Planner must cover before release: all owned copies unavailable, replacements allowed under existing acquisition rules; recursive availability and intermediate alternatives; effective settings in list/detail/calculation identity; pending versus committed selection; exact tier-preset membership; verified-account browser retention and account-switch cleanup; stale-response handling; default toggle behavior and visible UX feedback. Do not delete or alter cached inventory rows to represent a preference. Any future result cache must distinguish effective exclusion settings.
+Planner must preserve: all copies within a selected store unavailable, replacements allowed under existing acquisition rules; recursive availability and intermediate alternatives; effective source settings in list/detail/calculation identity; per-page pending/committed selection; exact preset membership and category placement; verified-account retention and account-switch cleanup; stale-response handling; default activation and compact UX feedback. Do not alter cached inventory rows to represent a preference. Any result cache must distinguish effective exclusion settings.
 
-Prefer one bounded item-ID set and existing account/request boundaries, with no new polling or service. Browser-local, per-account retention is approved; server preference storage/cross-device synchronization is not needed. Record functional and CPU/memory/latency evidence rather than promising that the feature is free.
+Use bounded item-ID sets per store and existing account/request boundaries, with no new service. Browser-local, per-account retention is approved; cross-device synchronization is not needed. Record functional and CPU/memory/latency evidence rather than promising that the feature is free.
 
 ## Characters planning handoff
 
 Milestone 3 scope is in `docs/DOMAIN_SPEC.md` section 56; UI intent is in `docs/FRONTEND_UX_GUIDELINES.md` section 2.2. Prioritize equipment so users can identify ascended/legendary items and gear gaps, then inventory and builds; story requires API feasibility. Discovered recipes are out and map completion is deferred. The supplied screenshots are interaction references, not a requirement to replicate all fields or controls.
 
-Existing `sync/CharacterSync.java`, `model/CharacterInfo.java`, `model/CharacterItemRow.java`, `parser/CharacterItemsParser.java` and `repo/CharacterRepository.java` provide reusable identity/crafting and flat bag/equipment data. The inspected records do not retain a full equipment/build-template representation or upgrade/stat details; do not assume new views can be delivered from existing rows alone. Verify API schema/version, permissions, missing metadata and account-scoped publication before choosing storage extensions.
+Current character services include core summaries, bag manifests, saved equipment/build tabs, shared reference metadata and item/upgrade projections. Audit those existing publications and account boundaries before adding another fetch/storage path; the original flat-record feasibility assessment is historical. Equipment references must never duplicate owned crafting stock.
 
 ArenaNet's [template API announcement](https://en-forum.guildwars2.com/topic/65255-api-updates-december-18-2019/) documents equipment/build tabs and warns that several tabs may reference one owned item. It is historical API evidence, not a substitute for checking the current schema. Keep template associations distinct from actual inventory quantities. Product Owner deferred Story after the API coverage assessment; do not substitute backstory or partial quest history.
 
-Template scope is confirmed: all saved available equipment/build tabs, adjacent like the in-game Hero panel, preserving original slot order, with the in-game active tab initially selected. Build/equipment selections are independent and read-only; inspecting another tab must not pretend to activate it in the game. Concrete overview fields and equipment layout still go through UI review before implementation. Prefer cached shared item/skill metadata, bounded account data and on-demand detail loading; no additional services or background poller. Include the feature in final Oracle resource qualification.
+Template scope is confirmed: all saved available tabs in original slot order, initially selecting the in-game active tab. Equipment selectors now sit right of the Equipment/Inventory navigation; Builds keeps adjacent saved-build tabs. Selections are independent and read-only. Overview, Equipment and Inventory layout approval is complete; Builds still needs final visual review. Reuse shared metadata, bounded account data and lazy details; include the feature in final Oracle qualification.
 
 ## System Status and inventory-refresh handoff
 
 The Product Owner wants owner-only global operations/details, ordinary users' own connection/data-age/refresh controls and generic shared health, and automatic stale refresh in Bank/Materials. Owning contracts are `DOMAIN_SPEC.md` section 57, `FRONTEND_UX_GUIDELINES.md` sections 2.3–2.4 and `TARGET_ARCHITECTURE.md` section 8.3. Audit existing endpoints and task/diagnostic projections before claiming the boundary is enforced.
 
-Current grey "Reload saved" buttons only reread SQL snapshots; the red account-refresh component triggers ArenaNet account synchronization. Remove both from Bank/Materials under the new contract. Reuse `useSyncOperations`, existing account freshness/source coverage and retained-view behavior, rather than layering another polling/refresh coordinator. In-flight refresh admission must be shared with Profit/System Status. Cover missing grants and avoid an automatic full-account refresh unnecessarily requiring unrelated Luck permissions.
+The paired feature pages have removed manual/reload controls and use scoped automatic refresh through the shared task mechanism. Reconcile this delivered path rather than reimplementing the old button-removal story. Verify coverage, missing grants, retained equipment and finite recovery; opening Bank, Materials or Characters must not request unrelated sources. Full-account refresh remains explicit in System Status.
 
 Resolve the owner via a configured, verified account GUID; do not request/store a second API key for admin identification. Actual owner GUID is not yet provisioned by this setup. No broad RBAC service, user-admin editor, impersonation or paid monitoring product is requested. Full TP administration needs an explicit bounded tradable-catalog path, not an alias for refreshing a single user's price demand. Keep diagnostic KPIs owner-only where detailed; ordinary users receive generic health.
 

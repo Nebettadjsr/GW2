@@ -48,7 +48,14 @@ function backend(path: string, init: RequestInit | undefined): Response {
   if (path === '/api/sync/tasks/task-1') {
     return json({ taskId: 'task-1', operation: 'ACCOUNT_SYNC', state: 'SUCCEEDED', submittedAt: 'x', startedAt: 'x', finishedAt: 'x', failure: null })
   }
-  if (path === '/api/account/bank') return json(bankFor(headers['X-Account-Context'] ?? ''))
+  if (path === '/api/sync/account/bank') {
+    syncDone = true
+    return json({ taskId: 'task-1', operation: 'BANK_SYNC', statusUrl: '/api/sync/tasks/task-1', coversRequest: true }, 202)
+  }
+  if (path === '/api/account/bank') {
+    const bank = bankFor(headers['X-Account-Context'] ?? '') as object
+    return json(selectorPublished || syncDone ? bank : { ...bank, freshness: { status: 'PENDING', completedAt: null } })
+  }
   if (path === '/api/account/materials') return json(materialStorage)
   if (path === '/api/crafting/profit') return json({ status: 'PENDING', rows: null, scope: { kind: 'ALL' }, settings: {}, freshness: null }, 202)
   return json({ error: 'NOT_FOUND', message: path }, 404)
@@ -181,10 +188,12 @@ describe('account connection flow', () => {
     await enterKey(app, 'KEY-A')
     await goTo(app, 'bank')
 
+    // The visible Bank view refreshes itself when its data was never published, then re-reads.
+    await vi.waitFor(() => expect(seen.map((request) => request.path)).toContain('/api/sync/account/bank'))
+    await vi.waitFor(() => expect(seen.filter((request) => request.path === '/api/account/bank').length).toBeGreaterThan(1))
     const paths = seen.map((request) => request.path)
-    expect(paths).toContain('/api/sync/account/crafting-profit')
-    expect(paths.indexOf('/api/sync/account/crafting-profit')).toBeLessThan(paths.indexOf('/api/account/bank'))
-    expect(seen.find((request) => request.path === '/api/sync/account/crafting-profit')?.headers['X-GW2-API-Key']).toBe('KEY-A')
+    expect(paths.indexOf('/api/sync/account/bank')).toBeLessThan(paths.lastIndexOf('/api/account/bank'))
+    expect(seen.find((request) => request.path === '/api/sync/account/bank')?.headers['X-GW2-API-Key']).toBe('KEY-A')
     expect(app.find('[data-test="bootstrap-failed"]').exists()).toBe(false)
   })
 

@@ -17,7 +17,7 @@ import { ApiRequestError } from '@/api/http'
 import { charactersApi, type CharactersApi } from '@/api/charactersApi'
 import { syncApi, type SyncApi } from '@/api/syncApi'
 import type {
-  CharacterEquipmentTabsResponse, CharacterInventoryResponse, CharacterOverview, CharacterReadResponse, EquipmentTab
+  CharacterBuildTabsResponse, CharacterEquipmentTabsResponse, CharacterInventoryResponse, CharacterOverview, CharacterReadResponse, EquipmentTab
 } from '@/api/types'
 
 export const EQUIPMENT_POLL_MS = 2_000
@@ -37,7 +37,8 @@ function failureOf(cause: unknown): ReadFailure {
 export function useCharacters(
   api: CharactersApi = charactersApi,
   tasks: Pick<SyncApi, 'readTaskStatus'> = syncApi,
-  sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms))
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms)),
+  managedRefresh = false
 ) {
   const generation = connection.generation
   let disposed = false
@@ -102,6 +103,15 @@ export function useCharacters(
   const inventoryFailure = ref<ReadFailure | null>(null)
   let inventoryId = 0
 
+  // Saved builds: read only for the selected character, solely to name its ACTIVE elite specialization
+  // in the header. Not retained across characters; any doubt falls back to the base profession.
+  const buildPhase = ref<ReadPhase>('idle')
+  const buildResponse = shallowRef<CharacterBuildTabsResponse | null>(null)
+  let buildId = 0
+  let buildRecoveryTried = false
+  /** Bumped on every select/back so an old attempt for a same-name earlier selection cannot act. */
+  let selectionToken = 0
+
   const stillSelected = (name: string, id: number, newest: number): boolean =>
     current() && selectedName.value === name && id === newest
 
@@ -144,11 +154,79 @@ export function useCharacters(
     }
     equipmentPhase.value = 'loaded'
     reconcile(name)
-    if (equipmentResponse.value?.state === 'PENDING' && !autoRecoveryTried) {
+    if (!managedRefresh && equipmentResponse.value?.state === 'PENDING' && !autoRecoveryTried) {
       autoRecoveryTried = true
       void refreshEquipment()
     }
   }
+
+  async function loadBuildTabs(name: string): Promise<void> {
+    if (!current()) return
+    const id = ++buildId
+    buildPhase.value = 'loading'
+    try {
+      const response = await api.loadBuildTabs(name)
+      if (!stillSelected(name, id, buildId)) return
+      buildResponse.value = response
+    } catch {
+      if (!stillSelected(name, id, buildId)) return
+      buildResponse.value = null // transport failure: no decoration, base profession is shown
+    }
+    buildPhase.value = 'loaded'
+    // Optional source not covered yet: one automatic recovery attempt per selection, like equipment.
+    if (!managedRefresh && buildResponse.value?.state === 'PENDING' && !buildRecoveryTried) {
+      buildRecoveryTried = true
+      void recoverBuilds(name, selectionToken)
+    }
+  }
+
+  /**
+   * Request Builds coverage through the existing refresh operation. `token` is the selection the
+   * caller captured; every request and continuation is guarded by account, disposal, the same
+   * selected name and that token. An equipment refresh already in flight for the same selection is
+   * awaited first (its task may cover Builds), so no parallel waiter is started for the same task.
+   */
+  async function recoverBuilds(name: string, token: number = selectionToken): Promise<void> {
+    const live = (): boolean => current() && selectedName.value === name && token === selectionToken
+    try {
+      if (equipmentAttempt) {
+        await equipmentAttempt
+        if (!live()) return
+        await loadBuildTabs(name)
+        if (!live() || buildResponse.value?.state !== 'PENDING') return
+      }
+      for (let attempt = 0; attempt <= EQUIPMENT_MAX_COVER_RETRIES; attempt += 1) {
+        if (!live()) return
+        const accepted = await api.startBuildTabsRefresh()
+        if (!live() || !(await awaitTask(accepted.statusUrl)) || !live()) return
+        if (accepted.coversRequest !== false) { await loadBuildTabs(name); return }
+      }
+      throw new Error('Build refresh is still waiting for another update')
+    } catch (cause) { if (managedRefresh) throw cause /* otherwise optional decoration: base profession */ }
+  }
+
+  /**
+   * The ACTIVE elite specialization's name for the header, or null for the base-profession fallback.
+   * Requires: this character's AVAILABLE/STALE build answer covering the current parent generation
+   * (and no newer parent known from equipment/inventory); exactly one tab marked active; exactly one
+   * resolved elite specialization in it whose parent profession is this character's profession.
+   */
+  const activeElite = computed<string | null>(() => {
+    const r = buildResponse.value
+    const d = shownDetail.value
+    if (!r || !d || !HAS_DATA.includes(r.state) || !r.tabs) return null
+    if (r.character !== undefined && r.character !== selectedName.value) return null
+    const parent = r.parent?.generation
+    if (parent === undefined || r.coveredParentGeneration !== parent) return null
+    const known = newest(knownEquipmentParent.value, knownInventoryParent.value)
+    if (known !== undefined && known > parent) return null
+    const active = r.tabs.filter((t) => t.active)
+    if (active.length !== 1) return null
+    const elites = active[0]!.specializations
+      .map((s) => s.specialization)
+      .filter((s) => s && s.resolved && s.elite === true && s.name && s.profession?.toLowerCase() === d.profession.toLowerCase())
+    return elites.length === 1 ? elites[0]!.name! : null
+  })
 
   async function loadInventory(name: string): Promise<void> {
     if (!current()) return
@@ -264,9 +342,17 @@ export function useCharacters(
     section.value = 'equipment'
   }
 
+  function resetBuilds(): void {
+    buildId += 1
+    buildResponse.value = null
+    buildPhase.value = 'idle'
+    buildRecoveryTried = false
+  }
+
   function select(name: string): void {
     if (selectedName.value === name) return
     selectedName.value = name
+    selectionToken += 1
     detail.value = null
     detailResponse.value = null
     equipmentResponse.value = null
@@ -276,8 +362,10 @@ export function useCharacters(
     // Invalidate anything in flight for the previous character.
     detailId += 1
     equipmentId += 1
+    resetBuilds()
     void loadDetail(name)
     void loadEquipment(name)
+    void loadBuildTabs(name)
   }
 
   /** Inspection for a (re)opened character: its retained tabs' actual active tab, else nothing yet. */
@@ -288,6 +376,7 @@ export function useCharacters(
 
   function back(): void {
     selectedName.value = null
+    selectionToken += 1
     detailId += 1
     equipmentId += 1
     detail.value = null
@@ -297,6 +386,7 @@ export function useCharacters(
     inspectedTab.value = null
     detailPhase.value = 'idle'
     equipmentPhase.value = 'idle'
+    resetBuilds()
   }
 
   function inspect(tab: number): void {
@@ -321,10 +411,15 @@ export function useCharacters(
   const refreshing = ref(false)
   const refreshMessage = ref<string | null>(null)
   let autoRecoveryTried = false
+  /** The single in-flight equipment refresh attempt, shared by anything that needs to wait for it. */
+  let equipmentAttempt: Promise<void> | null = null
 
   async function refreshEquipment(): Promise<void> {
+    if (equipmentAttempt) return equipmentAttempt
     const name = selectedName.value
-    if (refreshing.value || name === null) return
+    if (name === null) return
+    let done!: () => void
+    equipmentAttempt = new Promise<void>((resolve) => { done = resolve })
     refreshing.value = true
     refreshMessage.value = null
     try {
@@ -349,6 +444,8 @@ export function useCharacters(
         : `Equipment could not be updated: ${failure.message}`
     } finally {
       refreshing.value = false
+      equipmentAttempt = null
+      done()
     }
   }
 
@@ -375,6 +472,7 @@ export function useCharacters(
     activeTab, inspectedTab, shownTab, inspect, loadEquipment,
     refreshing, refreshMessage, refreshEquipment,
     section, showSection, inventoryPhase, inventoryResponse, inventoryFailure, inventorySource, inventoryIsRetained,
-    equipmentOlderThanInventory, inventoryOlderThanEquipment, loadInventory
+    equipmentOlderThanInventory, inventoryOlderThanEquipment, loadInventory,
+    buildPhase, buildResponse, activeElite, loadBuildTabs, recoverBuilds
   }
 }

@@ -123,6 +123,29 @@ class AccountSyncApiControllerTest {
     }
 
     @Test
+    void viewRefreshesDemandOnlyTheirOwnSourceWithOnlyThatSourcesGrants() throws Exception {
+        var views = Map.of("bank", repo.AccountSyncStateRepository.BANK,
+                "materials", repo.AccountSyncStateRepository.MATERIALS,
+                "characters", repo.AccountSyncStateRepository.CHARACTERS);
+        int expectedRuns = 0;
+        for (var entry : views.entrySet()) {
+            var operation = ScopedAccountRefreshCoordinator.operationFor(entry.getValue());
+            var proof = new AccountProof(A, operation.requiredGrants(), Set.of(), null);
+            String key = "view-key-" + entry.getKey();
+            keys.put(key, proof);
+            var session = sessions.establish(proof);
+            String path = "/api/sync/account/" + entry.getKey();
+            mvc.perform(trigger(path, session, key)).andExpect(status().isAccepted());
+            awaitRuns(++expectedRuns);
+            long deadline = System.nanoTime() + TIMEOUT.toNanos();
+            while (coordinator.isActive(model.AccountScope.of(A)) && System.nanoTime() < deadline) Thread.sleep(10);
+            assertFalse(coordinator.isActive(model.AccountScope.of(A)));
+            assertEquals(A + ":[" + entry.getValue() + "]", runs.get(expectedRuns - 1));
+            mvc.perform(trigger(path, session, null)).andExpect(status().isBadRequest());
+        }
+    }
+
+    @Test
     void equipmentTabsTriggerDemandsOnlyTheOptionalSourceAndReusesOwnerScopedObservation() throws Exception {
         var s = session(A, "key-a");
         String body = mvc.perform(trigger("/api/sync/account/character-equipment-tabs", s, "key-a"))

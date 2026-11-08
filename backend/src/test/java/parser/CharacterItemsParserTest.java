@@ -13,6 +13,20 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 class CharacterItemsParserTest {
 
+    @Test
+    void preservesInstalledGatheringGlyphAndDoesNotInventOneForAnEmptyTool() throws Exception {
+        var rows = CharacterItemsParser.parseEquipment(MAPPER.readTree("""
+                [{"id":100227,"slot":"Pick","upgrades":[87698],"binding":"Account"},
+                 {"id":100968,"slot":"Axe","binding":"Account"}]
+                """));
+        assertEquals(List.of(87698), rows.getFirst().upgradeIds());
+        assertEquals(List.of(), rows.get(1).upgradeIds());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () ->
+                CharacterItemsParser.parseEquipment(MAPPER.readTree("""
+                        [{"id":100227,"slot":"Pick","upgrades":[87698.5]}]
+                        """)));
+    }
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static JsonNode loadFixture(String resourceName) throws Exception {

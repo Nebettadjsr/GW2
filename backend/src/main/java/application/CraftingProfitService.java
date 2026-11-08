@@ -285,12 +285,7 @@ public class CraftingProfitService {
         Map<String, Map<Integer, Integer>> characterBoundInv = Map.of();
         if (settings.useOwnMats && !roster.isEmpty()) {
             Set<String> names = roster.stream().map(CharacterCraftingProfile::name).collect(Collectors.toSet());
-            AccountScope scope = session.scope();
-            InventoryRepository.CoordinatedInventory inv = con == null
-                    ? invRepo.loadOwnedInventoryForCharacters(names)
-                    : scope == null
-                            ? invRepo.loadOwnedInventoryForCharacters(con, names)
-                            : invRepo.loadOwnedInventoryForCharacters(con, scope, names);
+            InventoryRepository.CoordinatedInventory inv = loadOwnedInventory(con, names, settings);
             sellableInv = inv.sellable();
             accountBoundInv = inv.accountBound();
             characterBoundInv = inv.characterBound();
@@ -298,6 +293,20 @@ public class CraftingProfitService {
 
         return new CalculationInputs(roster, sellableInv, accountBoundInv, characterBoundInv, tp,
                 items);
+    }
+
+    private InventoryRepository.CoordinatedInventory loadOwnedInventory(Connection con, Set<String> names,
+                                                                        CraftingSettings settings) throws SQLException {
+        AccountScope scope = session.scope();
+        if (settings.materialProtectionEnabled
+                && (!settings.protectedBankItemIds.isEmpty() || !settings.protectedMaterialItemIds.isEmpty())) {
+            return con == null
+                    ? invRepo.loadOwnedInventoryForCharacters(names, settings.protectedBankItemIds, settings.protectedMaterialItemIds)
+                    : invRepo.loadOwnedInventoryForCharacters(con, scope, names, settings.protectedBankItemIds, settings.protectedMaterialItemIds);
+        }
+        if (con == null) return invRepo.loadOwnedInventoryForCharacters(names);
+        return scope == null ? invRepo.loadOwnedInventoryForCharacters(con, names)
+                : invRepo.loadOwnedInventoryForCharacters(con, scope, names);
     }
 
     /**
