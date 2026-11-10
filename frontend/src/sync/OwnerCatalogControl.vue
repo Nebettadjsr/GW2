@@ -13,6 +13,7 @@ const props = defineProps<{
   noun: string
   /** What a row without a fetch time means for this dataset. */
   unknownMeaning: string
+  stalePrices?: number | null
 }>()
 const emit = defineEmits<{ trigger: []; retryStatus: [] }>()
 
@@ -21,7 +22,7 @@ const key = computed(() => props.operation.key)
 function formatInstant(value: string | null): string {
   if (value === null) return '—'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }).format(date)
 }
 
 /** Honest coverage: no count implies completeness, and absent data is never shown as zero or fresh. */
@@ -49,25 +50,30 @@ const isBusyRefusal = computed(() => props.operation.submissionCode === 'SYNC_AL
   <article class="panel status-card" :data-test="`owner-control-${key}`">
     <div class="status-card__heading">
       <h3>{{ title }}</h3>
-      <span class="status" :class="`status--${state.tone}`" role="status" :data-test="`sync-state-${key}`">{{ state.text }}</span>
+      <span v-show="operation.taskId || operation.isBusy || operation.submissionError || operation.lookupError" class="status" :class="`status--${state.tone}`" role="status" :data-test="`sync-state-${key}`">{{ state.text }}</span>
     </div>
     <p class="meta">{{ description }}</p>
     <div class="coverage" :data-test="`dataset-${key}`" :data-coverage="coverage.kind">
-      <p v-if="coverage.kind === 'unknown'" class="meta">Stored-data summary not reported.</p>
-      <p v-else-if="coverage.kind === 'unavailable'" class="meta" :data-test="`dataset-unavailable-${key}`">Stored-data summary unavailable. This is not zero.</p>
+      <p v-if="coverage.kind === 'unknown'" class="meta">Stored data: unknown.</p>
+      <p v-else-if="coverage.kind === 'unavailable'" class="meta" :data-test="`dataset-unavailable-${key}`">Stored data is temporarily unavailable.</p>
       <p v-else-if="coverage.kind === 'empty'" class="meta" :data-test="`dataset-empty-${key}`">No stored {{ noun }}.</p>
       <dl v-else class="coverage__facts">
-        <dt>Stored {{ noun }}</dt><dd :data-test="`dataset-stored-${key}`">{{ coverage.stored }}</dd>
+        <dt>Stored {{ noun }}</dt><dd :data-test="`dataset-stored-${key}`">{{ coverage.stored.toLocaleString() }}</dd>
         <template v-if="coverage.kind === 'untimed'">
-          <dt>Fetch times</dt><dd :data-test="`dataset-untimed-${key}`">Unknown for all stored {{ noun }}</dd>
+          <dt>Last refreshed</dt><dd :data-test="`dataset-untimed-${key}`">Unknown for all stored {{ noun }}</dd>
         </template>
         <template v-else>
-          <dt>With fetch time</dt><dd>{{ coverage.stamped }}</dd>
-          <template v-if="coverage.unknown > 0">
-            <dt>{{ unknownMeaning }}</dt><dd :data-test="`dataset-unknown-${key}`">{{ coverage.unknown }}</dd>
+          <template v-if="key === 'FULL_ITEM_CATALOG' && coverage.unknown > 0">
+            <dt>Synced items</dt><dd :data-test="`dataset-synced-${key}`">{{ coverage.stamped.toLocaleString() }}</dd>
           </template>
-          <dt>Oldest fetch</dt><dd :data-test="`dataset-oldest-${key}`">{{ coverage.oldest }}</dd>
-          <dt>Newest fetch</dt><dd :data-test="`dataset-newest-${key}`">{{ coverage.newest }}</dd>
+          <template v-if="coverage.unknown > 0">
+            <dt>{{ unknownMeaning }}</dt><dd :data-test="`dataset-unknown-${key}`">{{ coverage.unknown.toLocaleString() }}</dd>
+          </template>
+          <dt>Oldest refresh</dt><dd :data-test="`dataset-oldest-${key}`">{{ coverage.oldest }}</dd>
+          <dt>Newest refresh</dt><dd :data-test="`dataset-newest-${key}`">{{ coverage.newest }}</dd>
+          <template v-if="key === 'FULL_TP_CATALOG' && stalePrices != null">
+            <dt>Need refresh</dt><dd>{{ stalePrices.toLocaleString() }}</dd>
+          </template>
         </template>
       </dl>
     </div>

@@ -32,11 +32,11 @@ const OWNER_CONTROLS: readonly {
   field: DatasetField; noun: string; unknownMeaning: string
 }[] = [
   { key: 'FULL_ITEM_CATALOG', title: 'Items', description: 'Update all item information.',
-    field: 'items', noun: 'items', unknownMeaning: 'Known only (not fetched)' },
-  { key: 'FULL_RECIPE_CATALOG', title: 'Recipes', description: 'Update every recipe, including saved recipes.',
-    field: 'recipes', noun: 'recipes', unknownMeaning: 'Fetch time unknown' },
-  { key: 'FULL_TP_CATALOG', title: 'Trading Post prices', description: 'Update prices for all tradable items.',
-    field: 'tradingPostPrices', noun: 'price entries', unknownMeaning: 'Fetch time unknown' }
+    field: 'items', noun: 'items', unknownMeaning: 'Not yet fetched' },
+  { key: 'FULL_RECIPE_CATALOG', title: 'Recipes', description: 'Update all recipe information.',
+    field: 'recipes', noun: 'recipes', unknownMeaning: 'Refresh time unknown' },
+  { key: 'FULL_TP_CATALOG', title: 'Trading Post prices', description: 'Update all tradable items, including those without current offers.',
+    field: 'tradingPostPrices', noun: 'price entries', unknownMeaning: 'Refresh time unknown' }
 ]
 
 let statusInflight: number | null = null
@@ -210,7 +210,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
     </p>
 
     <p class="meta" data-test="status-data-explainer">
-      Account data belongs to your account. Shared game data — items, recipes and prices — is stored once and reused across accounts.
+      Items, recipes and Trading Post prices are shared by all accounts.
     </p>
 
     <section class="status-grid health-grid" aria-label="System health">
@@ -283,26 +283,25 @@ function operation(key: SyncOperationKey): SyncOperationView {
       <article class="panel status-card" data-test="owner-accounts">
         <div class="status-card__heading"><h2>Accounts</h2></div>
         <p v-if="ownerDetails.accounts.state !== 'AVAILABLE' || ownerDetails.accounts.totalAccounts === null" class="meta" data-test="owner-accounts-unavailable">
-          Account counts unavailable. This is not zero.
+          Account counts are temporarily unavailable.
         </p>
         <dl v-else class="status-facts">
-          <dt>Total stored</dt><dd data-test="owner-accounts-total">{{ ownerDetails.accounts.totalAccounts }}</dd>
-          <dt>Active past 60 min</dt><dd data-test="owner-accounts-active">{{ ownerDetails.accounts.activeLast60Minutes }}</dd>
+          <dt>Stored accounts</dt><dd data-test="owner-accounts-total">{{ ownerDetails.accounts.totalAccounts.toLocaleString() }}</dd>
+          <dt>Active in last 60 min</dt><dd data-test="owner-accounts-active">{{ ownerDetails.accounts.activeLast60Minutes?.toLocaleString() ?? '—' }}</dd>
         </dl>
-        <p class="meta">Counts only; no account is identified.</p>
       </article>
       </div>
       <div v-else class="shared-health">
       <article class="panel status-card" data-test="global-refresh-status">
         <div class="status-card__heading">
-          <h2>Shared game data</h2>
+          <h2>Items and recipes</h2>
           <span class="status" :class="`status--${global.tone}`" data-test="global-health">{{ global.text }}</span>
         </div>
       </article>
 
       <article class="panel status-card" data-test="price-cache-status">
         <div class="status-card__heading">
-          <h2>Shared price data</h2>
+          <h2>Trading Post prices</h2>
           <span class="status" :class="`status--${prices.tone}`" data-test="price-cache-health">{{ prices.text }}</span>
         </div>
       </article>
@@ -314,7 +313,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
     </p>
 
     <section v-if="ownerState === 'owner' && ownerDetails" class="owner-admin" aria-label="Owner administration" data-test="owner-admin">
-      <h2>Owner administration</h2>
+      <h2>Shared game data</h2>
       <div class="status-grid">
         <OwnerCatalogControl
           v-for="control in OWNER_CONTROLS"
@@ -325,23 +324,23 @@ function operation(key: SyncOperationKey): SyncOperationView {
           :dataset="ownerDetails[control.field]"
           :noun="control.noun"
           :unknown-meaning="control.unknownMeaning"
+          :stale-prices="control.key === 'FULL_TP_CATALOG' ? ownerDetails.stalePriceItems : undefined"
           @trigger="onTrigger(control.key)"
           @retry-status="onRetryStatus(control.key)"
         />
       </div>
-      <article class="panel status-card" data-test="owner-diagnostics">
-        <h3>Shared diagnostics</h3>
+      <article class="status-card" data-test="owner-diagnostics">
         <p v-if="ownerDetails.lastFailure" class="status-card__error notice notice--error" data-test="global-last-failure">{{ ownerDetails.lastFailure }}</p>
         <p v-if="ownerDetails.priceCacheError" class="status-card__error notice notice--error">{{ ownerDetails.priceCacheError }}</p>
+        <details class="panel background-checks">
+        <summary>Automatic reference checks</summary>
         <dl class="status-facts">
           <dt>Last checked</dt><dd>{{ formatDate(ownerDetails.lastCheckedAt) }}</dd>
           <dt>Last changed</dt><dd>{{ formatDate(ownerDetails.lastChangedAt) }}</dd>
-          <dt>Recipes synced</dt><dd>{{ formatDate(ownerDetails.lastRecipeSyncAt) }}</dd>
+          <dt>Recipe refresh</dt><dd>{{ formatDate(ownerDetails.lastRecipeSyncAt) }}</dd>
           <dt>Crafting graph rebuilt</dt><dd>{{ formatDate(ownerDetails.lastGraphRebuildAt) }}</dd>
-          <dt>Cached item prices</dt><dd>{{ ownerDetails.cachedPriceItems ?? '—' }}</dd>
-          <dt>Stale prices</dt><dd>{{ ownerDetails.stalePriceItems ?? '—' }}</dd>
-          <dt>Newest price fetched</dt><dd>{{ formatDate(ownerDetails.newestPriceFetchedAt) }}</dd>
         </dl>
+        </details>
       </article>
     </section>
     </template>

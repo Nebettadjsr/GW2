@@ -15,7 +15,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Real-database contract for the owner aggregates, in an isolated per-test schema. */
-class SharedDataSummaryRepositoryIT {
+class SharedDataSummaryRepositoryTest {
     private final String schema = "test_shared_summary_" + UUID.randomUUID().toString().replace("-", "");
     private final SharedDataSummaryRepository repo = new SharedDataSummaryRepository();
     private Connection con;
