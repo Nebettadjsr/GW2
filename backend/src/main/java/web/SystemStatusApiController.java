@@ -41,6 +41,7 @@ public class SystemStatusApiController {
     private final AccountStateReader accountStates;
     private final application.ScopedSourceGate gate;
     private final web.access.OwnerAccess ownerAccess;
+    private final application.OwnerCatalogSummaryService catalogSummary;
 
     /** Reads one account's published source markers; a seam so the projection is testable offline. */
     @FunctionalInterface
@@ -68,11 +69,20 @@ public class SystemStatusApiController {
         this(globalDataRefreshService, priceCacheStatusService, access, accountStates, gate, null);
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
     public SystemStatusApiController(GlobalDataRefreshService globalDataRefreshService,
                                      TradingPostPriceCacheStatusService priceCacheStatusService,
                                      AccountAccessService access, AccountStateReader accountStates,
                                      application.ScopedSourceGate gate, web.access.OwnerAccess ownerAccess) {
+        this(globalDataRefreshService, priceCacheStatusService, access, accountStates, gate, ownerAccess, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SystemStatusApiController(GlobalDataRefreshService globalDataRefreshService,
+                                     TradingPostPriceCacheStatusService priceCacheStatusService,
+                                     AccountAccessService access, AccountStateReader accountStates,
+                                     application.ScopedSourceGate gate, web.access.OwnerAccess ownerAccess,
+                                     application.OwnerCatalogSummaryService catalogSummary) {
+        this.catalogSummary = catalogSummary;
         this.ownerAccess = ownerAccess;
         this.gate = gate;
         this.globalDataRefreshService = globalDataRefreshService;
@@ -88,7 +98,13 @@ public class SystemStatusApiController {
                 ? denied(HttpStatus.FORBIDDEN, "OWNER_REQUIRED", "This operation is restricted to the system owner")
                 : ownerAccess.deny(request);
         if (denial != null) return denial;
-        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store").body(detailedStatus());
+        // Aggregates are read only here, after authorization; the generic route never reaches them.
+        var summary = catalogSummary == null ? null : catalogSummary.read();
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(new OwnerDetails(detailedStatus(), summary == null ? null : summary.items(),
+                        summary == null ? null : summary.recipes(),
+                        summary == null ? null : summary.tradingPostPrices(),
+                        summary == null ? null : summary.accounts()));
     }
 
     /** Generic shared health plus the requesting account's own freshness; no detailed diagnostics. */
@@ -178,4 +194,11 @@ public class SystemStatusApiController {
                                  String lastFailure, Long cachedPriceItems,
                                  Long stalePriceItems, Instant newestPriceFetchedAt,
                                  String priceCacheError) { }
+
+    /** Owner-only response: the existing diagnostics plus shared-data coverage and account counts. */
+    public record OwnerDetails(@com.fasterxml.jackson.annotation.JsonUnwrapped DetailedStatus status,
+                               application.OwnerCatalogSummaryService.Dataset items,
+                               application.OwnerCatalogSummaryService.Dataset recipes,
+                               application.OwnerCatalogSummaryService.Dataset tradingPostPrices,
+                               application.OwnerCatalogSummaryService.Accounts accounts) { }
 }

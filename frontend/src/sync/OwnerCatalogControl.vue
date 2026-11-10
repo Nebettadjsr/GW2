@@ -1,12 +1,45 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { describeOperationStatus } from './statusPresentation'
+import type { DatasetSummary } from '@/api/systemApi'
 import type { SyncOperationView } from './useSyncOperations'
 
-const props = defineProps<{ operation: SyncOperationView; title: string; description: string }>()
+const props = defineProps<{
+  operation: SyncOperationView
+  title: string
+  description: string
+  dataset?: DatasetSummary | null
+  /** Plural noun for stored rows, e.g. "items". */
+  noun: string
+  /** What a row without a fetch time means for this dataset. */
+  unknownMeaning: string
+}>()
 const emit = defineEmits<{ trigger: []; retryStatus: [] }>()
 
 const key = computed(() => props.operation.key)
+
+function formatInstant(value: string | null): string {
+  if (value === null) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+}
+
+/** Honest coverage: no count implies completeness, and absent data is never shown as zero or fresh. */
+const coverage = computed(() => {
+  const d = props.dataset
+  if (d === undefined || d === null) return { kind: 'unknown' as const }
+  if (d.state !== 'AVAILABLE' || d.storedRows === null) return { kind: 'unavailable' as const }
+  if (d.storedRows === 0) return { kind: 'empty' as const }
+  const stamped = d.timestampedRows ?? 0
+  return {
+    kind: stamped === 0 ? 'untimed' as const : 'known' as const,
+    stored: d.storedRows,
+    stamped,
+    unknown: d.unknownTimestampRows ?? 0,
+    oldest: formatInstant(d.oldestFetchedAt),
+    newest: formatInstant(d.newestFetchedAt)
+  }
+})
 const state = computed(() => describeOperationStatus(props.operation))
 /** An already-running refresh is ordinary busy feedback, not a failure of this client. */
 const isBusyRefusal = computed(() => props.operation.submissionCode === 'SYNC_ALREADY_RUNNING')
@@ -19,6 +52,25 @@ const isBusyRefusal = computed(() => props.operation.submissionCode === 'SYNC_AL
       <span class="status" :class="`status--${state.tone}`" role="status" :data-test="`sync-state-${key}`">{{ state.text }}</span>
     </div>
     <p class="meta">{{ description }}</p>
+    <div class="coverage" :data-test="`dataset-${key}`" :data-coverage="coverage.kind">
+      <p v-if="coverage.kind === 'unknown'" class="meta">Stored-data summary not reported.</p>
+      <p v-else-if="coverage.kind === 'unavailable'" class="meta" :data-test="`dataset-unavailable-${key}`">Stored-data summary unavailable. This is not zero.</p>
+      <p v-else-if="coverage.kind === 'empty'" class="meta" :data-test="`dataset-empty-${key}`">No stored {{ noun }}.</p>
+      <dl v-else class="coverage__facts">
+        <dt>Stored {{ noun }}</dt><dd :data-test="`dataset-stored-${key}`">{{ coverage.stored }}</dd>
+        <template v-if="coverage.kind === 'untimed'">
+          <dt>Fetch times</dt><dd :data-test="`dataset-untimed-${key}`">Unknown for all stored {{ noun }}</dd>
+        </template>
+        <template v-else>
+          <dt>With fetch time</dt><dd>{{ coverage.stamped }}</dd>
+          <template v-if="coverage.unknown > 0">
+            <dt>{{ unknownMeaning }}</dt><dd :data-test="`dataset-unknown-${key}`">{{ coverage.unknown }}</dd>
+          </template>
+          <dt>Oldest fetch</dt><dd :data-test="`dataset-oldest-${key}`">{{ coverage.oldest }}</dd>
+          <dt>Newest fetch</dt><dd :data-test="`dataset-newest-${key}`">{{ coverage.newest }}</dd>
+        </template>
+      </dl>
+    </div>
     <div class="status-card__action">
       <button
         type="button"
@@ -71,5 +123,9 @@ const isBusyRefusal = computed(() => props.operation.submissionCode === 'SYNC_AL
 .status-card__heading h3 { margin: 0; font-size: var(--text-md, 1rem); }
 .meta { margin: var(--space-3) 0; }
 .status-card__action { margin-top: auto; padding-top: var(--space-3); border-top: 1px solid var(--color-border); }
+.coverage { margin: 0 0 var(--space-3); }
+.coverage__facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--space-3); row-gap: var(--space-1, 0.25rem); margin: 0; }
+.coverage__facts dt { color: var(--color-muted); }
+.coverage__facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .status-card__error, .status-card__message { margin: var(--space-3) 0 0; }
 </style>

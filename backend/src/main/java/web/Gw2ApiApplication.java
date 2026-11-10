@@ -109,6 +109,13 @@ public class Gw2ApiApplication {
         };
     }
 
+    /** Owner-only aggregates; connects only when the authorized details route calls it. */
+    @Bean
+    public application.OwnerCatalogSummaryService ownerCatalogSummaryService() {
+        return new application.OwnerCatalogSummaryService(repo.Db::open, new repo.SharedDataSummaryRepository(),
+                java.time.Clock.systemUTC());
+    }
+
     /** Shared Trading Post demand coordination, deliberately separate from the account one. */
     @Bean
     public TradingPostRefreshCoordinator tradingPostRefreshCoordinator(

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref, type PropType } from 'vue'
 import { connection } from '@/api/accountSession'
 import { ACCOUNT_CHANGED_CODE, ApiRequestError } from '@/api/http'
-import { systemApi, type OwnerSystemDetails } from '@/api/systemApi'
+import { systemApi, type DatasetSummary, type OwnerSystemDetails } from '@/api/systemApi'
 import { provideSyncOperations } from '../provideSyncOperations'
 import SyncScreen from '../SyncScreen.vue'
 import { STATUS_POLL_INTERVAL_MS } from '../useSyncOperations'
@@ -420,6 +420,79 @@ describe('System Status owner projection', () => {
       await settle()
       expect(has(wrapper, 'owner-admin')).toBe(true)
       expect(wrapper.find(`[data-test="sync-state-${RUNNING}"]`).text()).toBe('Not started')
+      wrapper.unmount()
+    })
+  })
+
+  describe('shared dataset groups and account counts', () => {
+    const ds = (over: Partial<DatasetSummary>): DatasetSummary => ({
+      state: 'AVAILABLE', storedRows: 5, timestampedRows: 3, unknownTimestampRows: 2,
+      oldestFetchedAt: '2026-11-01T10:00:00Z', newestFetchedAt: '2026-11-05T10:00:00Z', ...over
+    })
+    const coverage = (w: VueWrapper, key: string): string | undefined =>
+      w.find(`[data-test="dataset-${key}"]`).attributes('data-coverage')
+
+    it('rendersEveryCoverageStateBesideItsActionWithoutImplyingCompleteness', async () => {
+      vi.spyOn(systemApi, 'readOwnerDetails').mockResolvedValue({
+        ...DETAILS,
+        items: ds({}),
+        recipes: ds({ storedRows: 0, timestampedRows: 0, unknownTimestampRows: 0, oldestFetchedAt: null, newestFetchedAt: null }),
+        tradingPostPrices: ds({ storedRows: 4, timestampedRows: 0, unknownTimestampRows: 4, oldestFetchedAt: null, newestFetchedAt: null })
+      })
+      const wrapper = await mountPage()
+      expect(coverage(wrapper, 'FULL_ITEM_CATALOG')).toBe('known')
+      expect(wrapper.find('[data-test="dataset-stored-FULL_ITEM_CATALOG"]').text()).toBe('5')
+      expect(wrapper.find('[data-test="dataset-unknown-FULL_ITEM_CATALOG"]').text()).toBe('2')
+      expect(wrapper.find('[data-test="dataset-oldest-FULL_ITEM_CATALOG"]').text()).not.toBe('—')
+      expect(coverage(wrapper, 'FULL_RECIPE_CATALOG')).toBe('empty')
+      expect(wrapper.find('[data-test="dataset-empty-FULL_RECIPE_CATALOG"]').text()).toBe('No stored recipes.')
+      expect(coverage(wrapper, 'FULL_TP_CATALOG')).toBe('untimed')
+      expect(wrapper.find('[data-test="dataset-untimed-FULL_TP_CATALOG"]').text()).toContain('Unknown')
+      expect(has(wrapper, 'dataset-oldest-FULL_TP_CATALOG')).toBe(false)
+      // The action sits in the same card as its coverage.
+      expect(wrapper.find('[data-test="owner-control-FULL_ITEM_CATALOG"] [data-test="dataset-FULL_ITEM_CATALOG"]').exists()).toBe(true)
+      expect(wrapper.find('[data-test="owner-control-FULL_ITEM_CATALOG"] [data-test="sync-trigger-FULL_ITEM_CATALOG"]').exists()).toBe(true)
+      wrapper.unmount()
+    })
+
+    it('showsUnavailableOrUnreportedSummariesNeverAsZero', async () => {
+      vi.spyOn(systemApi, 'readOwnerDetails').mockResolvedValue({
+        ...DETAILS,
+        items: ds({ state: 'UNAVAILABLE', storedRows: null, timestampedRows: null, unknownTimestampRows: null, oldestFetchedAt: null, newestFetchedAt: null }),
+        accounts: { state: 'UNAVAILABLE', totalAccounts: null, activeLast60Minutes: null }
+      })
+      const wrapper = await mountPage()
+      expect(coverage(wrapper, 'FULL_ITEM_CATALOG')).toBe('unavailable')
+      expect(wrapper.find('[data-test="dataset-unavailable-FULL_ITEM_CATALOG"]').text()).toContain('not zero')
+      expect(coverage(wrapper, 'FULL_RECIPE_CATALOG')).toBe('unknown')
+      expect(has(wrapper, 'owner-accounts-total')).toBe(false)
+      expect(wrapper.find('[data-test="owner-accounts-unavailable"]').text()).toContain('not zero')
+      wrapper.unmount()
+    })
+
+    it('showsOwnerAccountCountsInPlaceOfTheGenericHealthBoxesAndKeepsActionsWorking', async () => {
+      vi.spyOn(systemApi, 'readOwnerDetails').mockResolvedValue({
+        ...DETAILS, accounts: { state: 'AVAILABLE', totalAccounts: 7, activeLast60Minutes: 2 }
+      })
+      const api = new FakeSyncApi()
+      const wrapper = await mountPage(api)
+      expect(wrapper.find('[data-test="owner-accounts-total"]').text()).toBe('7')
+      expect(wrapper.find('[data-test="owner-accounts-active"]').text()).toBe('2')
+      expect(has(wrapper, 'global-health')).toBe(false)
+      expect(has(wrapper, 'price-cache-health')).toBe(false)
+      expect(has(wrapper, 'status-data-explainer')).toBe(true)
+      await click(wrapper, 'sync-trigger-FULL_ITEM_CATALOG')
+      expect(api.submissions).toEqual(['FULL_ITEM_CATALOG'])
+      wrapper.unmount()
+    })
+
+    it('ordinaryUsersKeepConciseSharedHealthAndTheExplanationButNoOwnerCounts', async () => {
+      vi.spyOn(systemApi, 'readOwnerDetails').mockRejectedValue(FORBIDDEN)
+      const wrapper = await mountPage()
+      expect(has(wrapper, 'status-data-explainer')).toBe(true)
+      expect(has(wrapper, 'global-health')).toBe(true)
+      expect(has(wrapper, 'owner-accounts')).toBe(false)
+      expect(wrapper.find('[data-test="dataset-FULL_ITEM_CATALOG"]').exists()).toBe(false)
       wrapper.unmount()
     })
   })

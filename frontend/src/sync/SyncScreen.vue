@@ -26,10 +26,17 @@ const ownerDetails = ref<OwnerSystemDetails | null>(null)
 
 const isConnected = computed(() => connection.phase === 'connected')
 
-const OWNER_CONTROLS: readonly { key: OwnerOperationKey; title: string; description: string }[] = [
-  { key: 'FULL_ITEM_CATALOG', title: 'Items', description: 'Update all item information.' },
-  { key: 'FULL_RECIPE_CATALOG', title: 'Recipes', description: 'Update every recipe, including saved recipes.' },
-  { key: 'FULL_TP_CATALOG', title: 'Trading Post prices', description: 'Update prices for all tradable items.' }
+type DatasetField = 'items' | 'recipes' | 'tradingPostPrices'
+const OWNER_CONTROLS: readonly {
+  key: OwnerOperationKey; title: string; description: string
+  field: DatasetField; noun: string; unknownMeaning: string
+}[] = [
+  { key: 'FULL_ITEM_CATALOG', title: 'Items', description: 'Update all item information.',
+    field: 'items', noun: 'items', unknownMeaning: 'Known only (not fetched)' },
+  { key: 'FULL_RECIPE_CATALOG', title: 'Recipes', description: 'Update every recipe, including saved recipes.',
+    field: 'recipes', noun: 'recipes', unknownMeaning: 'Fetch time unknown' },
+  { key: 'FULL_TP_CATALOG', title: 'Trading Post prices', description: 'Update prices for all tradable items.',
+    field: 'tradingPostPrices', noun: 'price entries', unknownMeaning: 'Fetch time unknown' }
 ]
 
 let statusInflight: number | null = null
@@ -202,6 +209,10 @@ function operation(key: SyncOperationKey): SyncOperationView {
       Status unavailable: {{ systemStatusError }}
     </p>
 
+    <p class="meta" data-test="status-data-explainer">
+      Account data belongs to your account. Shared game data — items, recipes and prices — is stored once and reused across accounts.
+    </p>
+
     <section class="status-grid health-grid" aria-label="System health">
       <article class="panel status-card" data-test="account-status">
         <div class="status-card__heading">
@@ -268,17 +279,30 @@ function operation(key: SyncOperationKey): SyncOperationView {
         </details>
       </article>
 
-      <div class="shared-health">
+      <div v-if="ownerState === 'owner' && ownerDetails?.accounts" class="shared-health">
+      <article class="panel status-card" data-test="owner-accounts">
+        <div class="status-card__heading"><h2>Accounts</h2></div>
+        <p v-if="ownerDetails.accounts.state !== 'AVAILABLE' || ownerDetails.accounts.totalAccounts === null" class="meta" data-test="owner-accounts-unavailable">
+          Account counts unavailable. This is not zero.
+        </p>
+        <dl v-else class="status-facts">
+          <dt>Total stored</dt><dd data-test="owner-accounts-total">{{ ownerDetails.accounts.totalAccounts }}</dd>
+          <dt>Active past 60 min</dt><dd data-test="owner-accounts-active">{{ ownerDetails.accounts.activeLast60Minutes }}</dd>
+        </dl>
+        <p class="meta">Counts only; no account is identified.</p>
+      </article>
+      </div>
+      <div v-else class="shared-health">
       <article class="panel status-card" data-test="global-refresh-status">
         <div class="status-card__heading">
-          <h2>Global game data</h2>
+          <h2>Shared game data</h2>
           <span class="status" :class="`status--${global.tone}`" data-test="global-health">{{ global.text }}</span>
         </div>
       </article>
 
       <article class="panel status-card" data-test="price-cache-status">
         <div class="status-card__heading">
-          <h2>Trading Post price cache</h2>
+          <h2>Shared price data</h2>
           <span class="status" :class="`status--${prices.tone}`" data-test="price-cache-health">{{ prices.text }}</span>
         </div>
       </article>
@@ -298,6 +322,9 @@ function operation(key: SyncOperationKey): SyncOperationView {
           :operation="operation(control.key)"
           :title="control.title"
           :description="control.description"
+          :dataset="ownerDetails[control.field]"
+          :noun="control.noun"
+          :unknown-meaning="control.unknownMeaning"
           @trigger="onTrigger(control.key)"
           @retry-status="onRetryStatus(control.key)"
         />

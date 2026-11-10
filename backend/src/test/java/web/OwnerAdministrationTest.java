@@ -336,4 +336,41 @@ class OwnerAdministrationTest {
                 .andExpect(jsonPath("$.accountLastRefreshedAt").exists())
                 .andExpect(jsonPath("$.lastFailure").doesNotExist());
     }
+
+    // ---- revised System Status aggregates ----
+
+    @Test
+    void authorizationPrecedesAggregatesAndGenericStatusNeverReadsThem() throws Exception {
+        var reads = new AtomicInteger();
+        var summary = new application.OwnerCatalogSummaryService(() -> null, new repo.SharedDataSummaryRepository() {
+            @Override public Coverage items(java.sql.Connection c) { reads.incrementAndGet(); return new Coverage(3, 2, 1, null, null); }
+            @Override public Coverage recipes(java.sql.Connection c) throws java.sql.SQLException { throw new java.sql.SQLException("down"); }
+            @Override public Coverage tradingPostPrices(java.sql.Connection c) { reads.incrementAndGet(); return new Coverage(0, 0, 0, null, null); }
+            @Override public AccountUsage accounts(java.sql.Connection c, Instant at) { reads.incrementAndGet(); return new AccountUsage(7, 2); }
+        }, Clock.systemUTC());
+        var priceService = new application.TradingPostPriceCacheStatusService(new repo.tp.TpPriceRepository() {
+            @Override public CacheStatus cacheStatus() { return new CacheStatus(5, 2, null); }
+        });
+        var m = MockMvcBuilders.standaloneSetup(new SystemStatusApiController(refresh, priceService, access,
+                (s, src) -> java.util.Map.of(), null, new OwnerAccess(access, new OwnerPolicy(OWNER)), summary)).build();
+
+        m.perform(get("/api/system/status/details")).andExpect(status().isUnauthorized());
+        m.perform(as(get("/api/system/status/details"), session(OTHER))).andExpect(status().isForbidden());
+        m.perform(as(get("/api/system/status"), session(OWNER))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.accounts").doesNotExist()).andExpect(jsonPath("$.items").doesNotExist());
+        m.perform(get("/api/system/status")).andExpect(status().isOk());
+        assertEquals(0, reads.get(), "denial and generic status run zero aggregate queries");
+
+        String body = m.perform(as(get("/api/system/status/details"), session(OWNER)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.state").value("AVAILABLE"))
+                .andExpect(jsonPath("$.items.unknownTimestampRows").value(1))
+                .andExpect(jsonPath("$.recipes.state").value("UNAVAILABLE"))
+                .andExpect(jsonPath("$.recipes.storedRows").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.accounts.totalAccounts").value(7))
+                .andExpect(jsonPath("$.accounts.activeLast60Minutes").value(2))
+                .andExpect(jsonPath("$.cachedPriceItems").value(5))
+                .andReturn().getResponse().getContentAsString();
+        assertFalse(body.contains(OWNER) || body.contains(OTHER), "no account identifiers are disclosed");
+    }
 }
