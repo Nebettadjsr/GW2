@@ -112,4 +112,48 @@ class SystemStatusApiControllerTest {
         mvc.perform(get("/api/system/status")).andExpect(jsonPath("$.accountOverview").doesNotExist());
         org.junit.jupiter.api.Assertions.assertEquals(1, asked.size());
     }
+
+    @Test
+    void reducedGrantsAloneOrUrlRestrictionsAloneNeverReachTheSourceReader() throws Exception {
+        record Case(java.util.Set<application.access.AccountGrant> grants, java.util.Set<String> restrictions,
+                    java.util.Set<String> expected) {}
+        var account = application.access.AccountGrant.ACCOUNT;
+        var cases = java.util.List.of(
+                // Grants reduced: no unlocks (recipes), no URL restriction.
+                new Case(java.util.Set.of(account, application.access.AccountGrant.CHARACTERS,
+                        application.access.AccountGrant.INVENTORIES), java.util.Set.of(),
+                        java.util.Set.of("CHARACTERS", "MATERIALS")),
+                // Broad grants but URLs restrict everything away.
+                new Case(java.util.Set.of(account, application.access.AccountGrant.CHARACTERS,
+                        application.access.AccountGrant.INVENTORIES, application.access.AccountGrant.UNLOCKS),
+                        java.util.Set.of("/v2/account"), java.util.Set.of()));
+        for (Case c : cases) {
+            var sessions = new application.access.AccountSessions(java.time.Clock.systemUTC(), 4);
+            var access = new application.access.AccountAccessService(key -> { throw new application.access.InvalidCredentialException("no"); }, sessions);
+            var issued = sessions.establish(new application.access.AccountProof("11111111-2222-3333-4444-555555555555",
+                    c.grants(), c.restrictions(), null));
+            var asked = new java.util.ArrayList<java.util.Set<String>>();
+            var overview = new application.AccountOverviewService(() -> { throw new java.sql.SQLException("x"); },
+                    new repo.AccountOverviewRepository(), java.time.Clock.systemUTC(), java.time.Duration.ofMinutes(15)) {
+                @Override public java.util.Map<String, SourceOverview> read(model.AccountScope scope, java.util.Set<String> sources) {
+                    asked.add(java.util.Set.copyOf(sources));
+                    var m = new java.util.LinkedHashMap<String, SourceOverview>();
+                    for (String s : sources) m.put(s, new SourceOverview("CURRENT", 1L, null, null));
+                    return m;
+                }
+            };
+            MockMvc mvc = standaloneSetup(new SystemStatusApiController(new GlobalDataRefreshService(),
+                    new application.TradingPostPriceCacheStatusService(new repo.tp.TpPriceRepository() {
+                        @Override public CacheStatus cacheStatus() { return new CacheStatus(0, 0, null); }
+                    }), access, (scope, sources) -> new java.util.LinkedHashMap<>(), null, null, null, overview)).build();
+            mvc.perform(get("/api/system/status")
+                            .cookie(new jakarta.servlet.http.Cookie(web.access.AccountAccessHttp.SESSION_COOKIE, issued.sessionId()))
+                            .header(web.access.AccountAccessHttp.ACCESS_CONTEXT_HEADER, issued.context().accessContext()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.accountOverview.recipes").doesNotExist());
+            for (var sources : asked) {
+                org.junit.jupiter.api.Assertions.assertEquals(c.expected(), sources, "only permitted sources are read");
+            }
+        }
+    }
 }

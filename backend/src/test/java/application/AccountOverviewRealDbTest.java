@@ -130,4 +130,48 @@ class AccountOverviewRealDbTest {
             assertNull(failing.get(s).count());
         }
     }
+
+    /**
+     * Publication race: a replacement marker and rows commit (on another connection) after the reader has
+     * read its marker but before it counts. REPEATABLE READ must keep marker and count from one snapshot.
+     * The proxy hook is deterministic: it fires on the first count query, with no sleeps or live calls.
+     */
+    @Test
+    void replacementPublishedBetweenMarkerAndCountReadsIsNotMixedIntoTheSnapshot() throws Exception {
+        marker(A, "CHARACTERS", "2026-11-11T11:00:00Z");
+        exec("INSERT INTO characters(account_id, name) VALUES ('" + A + "','Old1'),('" + A + "','Old2')");
+        boolean[] fired = {false};
+        AccountOverviewService raced = new AccountOverviewService(() -> {
+            Connection real = Db.open();
+            return (Connection) java.lang.reflect.Proxy.newProxyInstance(Connection.class.getClassLoader(),
+                    new Class<?>[] {Connection.class}, (proxy, method, args) -> {
+                        if (method.getName().equals("prepareStatement") && !fired[0]
+                                && ((String) args[0]).toLowerCase().contains("count(")) {
+                            fired[0] = true;
+                            // Committed on the independent admin connection (autocommit) mid-read.
+                            exec("UPDATE account_source_state SET generation = 2, completed_at = '2026-11-11T11:58:00Z'"
+                                    + " WHERE account_id = '" + A + "' AND source = 'CHARACTERS'");
+                            exec("DELETE FROM characters WHERE account_id = '" + A + "'");
+                            exec("INSERT INTO characters(account_id, name) VALUES ('" + A + "','N1'),('" + A + "','N2'),"
+                                    + "('" + A + "','N3'),('" + A + "','N4'),('" + A + "','N5')");
+                        }
+                        try {
+                            return method.invoke(real, args);
+                        } catch (java.lang.reflect.InvocationTargetException e) {
+                            throw e.getCause();
+                        }
+                    });
+        }, new AccountOverviewRepository(), Clock.fixed(NOW, ZoneOffset.UTC), Duration.ofMinutes(60));
+
+        var during = raced.read(AccountScope.of(A), Set.of("CHARACTERS"));
+        assertEquals(true, fired[0], "the replacement must have been committed between the reads");
+        // Old marker with the old rows, never the old marker with the new count (or vice versa).
+        assertEquals(Instant.parse("2026-11-11T11:00:00Z"), during.get("CHARACTERS").completedAt());
+        assertEquals(2L, during.get("CHARACTERS").count());
+
+        // A later read sees the replacement publication as a whole.
+        var after = service.read(AccountScope.of(A), Set.of("CHARACTERS"));
+        assertEquals(Instant.parse("2026-11-11T11:58:00Z"), after.get("CHARACTERS").completedAt());
+        assertEquals(5L, after.get("CHARACTERS").count());
+    }
 }

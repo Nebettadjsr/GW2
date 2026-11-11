@@ -40,6 +40,12 @@ const OWNER_CONTROLS: readonly {
 ]
 
 let statusInflight: number | null = null
+/**
+ * Identifies the current proof (account generation plus lease). Bumped on every connect, disconnect,
+ * account replacement, lease renewal/permission change and on disposal, so a generic-status answer
+ * requested under an earlier proof can neither apply its grant-scoped counts nor block a fresh request.
+ */
+let statusEpoch = 0
 let ownerInflight: number | null = null
 /** Bumped whenever owner presentation is withdrawn; any discovery answer from before is discarded. */
 let ownerEpoch = 0
@@ -51,21 +57,24 @@ function isCurrent(generation: number): boolean {
 }
 
 async function loadSystemStatus(): Promise<void> {
-  if (!isConnected.value) return
+  if (!isConnected.value || isUnmounted) return
   const generation = connection.generation
-  if (statusInflight === generation) return
-  statusInflight = generation
+  const epoch = statusEpoch
+  const lease = connection.leaseVersion
+  if (statusInflight === epoch) return
+  statusInflight = epoch
+  const isLive = () => !isUnmounted && epoch === statusEpoch && lease === connection.leaseVersion && isCurrent(generation)
   try {
     const status = await systemApi.readStatus()
-    if (!isCurrent(generation)) return
+    if (!isLive()) return
     systemStatus.value = status
     systemStatusError.value = null
   } catch (cause) {
-    if (!isCurrent(generation) || isAccountChange(cause)) return
+    if (!isLive() || isAccountChange(cause)) return
     systemStatusError.value = cause instanceof Error ? cause.message : String(cause)
   } finally {
-    if (statusInflight === generation) statusInflight = null
-    if (isCurrent(generation)) systemStatusLoaded.value = true
+    if (statusInflight === epoch) statusInflight = null
+    if (isLive()) systemStatusLoaded.value = true
   }
 }
 
@@ -113,6 +122,9 @@ watch(
   () => [isConnected.value, connection.generation, connection.leaseVersion] as [boolean, number, number],
   ([connected, generation], previous) => {
     const previousGeneration = previous?.[1] ?? -1
+    // Any proof change invalidates in-flight generic answers and withdraws grant-scoped own counts at once.
+    statusEpoch += 1
+    if (systemStatus.value) systemStatus.value = { ...systemStatus.value, accountOverview: undefined }
     // A renewed lease for the same account only re-discovers owner capability; ordinary data stays.
     if (generation !== previousGeneration || !connected) {
       systemStatus.value = null
@@ -121,7 +133,7 @@ watch(
     }
     withdrawOwner('checking', false)
     if (connected) {
-      if (generation !== previousGeneration) void loadSystemStatus()
+      void loadSystemStatus()
       void loadOwnerDetails()
     }
   },
@@ -135,6 +147,7 @@ const statusTimer = setInterval(() => {
 }, 5000)
 onUnmounted(() => {
   isUnmounted = true
+  statusEpoch += 1
   clearInterval(statusTimer)
 })
 
