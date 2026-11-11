@@ -148,12 +148,21 @@ class AccountOverviewRealDbTest {
                         if (method.getName().equals("prepareStatement") && !fired[0]
                                 && ((String) args[0]).toLowerCase().contains("count(")) {
                             fired[0] = true;
-                            // Committed on the independent admin connection (autocommit) mid-read.
-                            exec("UPDATE account_source_state SET generation = 2, completed_at = '2026-11-11T11:58:00Z'"
-                                    + " WHERE account_id = '" + A + "' AND source = 'CHARACTERS'");
-                            exec("DELETE FROM characters WHERE account_id = '" + A + "'");
-                            exec("INSERT INTO characters(account_id, name) VALUES ('" + A + "','N1'),('" + A + "','N2'),"
-                                    + "('" + A + "','N3'),('" + A + "','N4'),('" + A + "','N5')");
+                            // Replace marker and rows in one publication on the independent connection.
+                            admin.setAutoCommit(false);
+                            try {
+                                exec("UPDATE account_source_state SET generation = 2, completed_at = '2026-11-11T11:58:00Z'"
+                                        + " WHERE account_id = '" + A + "' AND source = 'CHARACTERS'");
+                                exec("DELETE FROM characters WHERE account_id = '" + A + "'");
+                                exec("INSERT INTO characters(account_id, name) VALUES ('" + A + "','N1'),('" + A + "','N2'),"
+                                        + "('" + A + "','N3'),('" + A + "','N4'),('" + A + "','N5')");
+                                admin.commit();
+                            } catch (SQLException failure) {
+                                admin.rollback();
+                                throw failure;
+                            } finally {
+                                admin.setAutoCommit(true);
+                            }
                         }
                         try {
                             return method.invoke(real, args);

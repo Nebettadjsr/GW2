@@ -273,10 +273,12 @@ function operation(key: SyncOperationKey): SyncOperationView {
             <dt>Data refreshed</dt>
             <dd>{{ systemStatus.accountRefreshScope }}</dd>
           </template>
-          <template v-for="row in savedRows" :key="row.key">
+        </dl>
+        <dl v-if="savedRows.length" class="account-overview" aria-label="Saved account overview">
+          <div v-for="row in savedRows" :key="row.key">
             <dt>{{ row.label }}</dt>
-            <dd :data-test="`saved-${row.key}`">{{ row.value }}<span v-if="row.note" class="meta"> ({{ row.note }})</span></dd>
-          </template>
+            <dd :data-test="`saved-${row.key}`">{{ row.value }}<span v-if="row.note" class="meta">{{ row.note }}</span></dd>
+          </div>
         </dl>
         <div class="status-card__action">
           <button
@@ -443,6 +445,30 @@ function operation(key: SyncOperationKey): SyncOperationView {
 
 .status-facts dt { color: var(--color-muted); }
 .status-facts dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+
+.account-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+.account-overview > div { min-width: 0; }
+.account-overview dt { color: var(--color-muted); }
+.account-overview dd {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xl, 1.5rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.account-overview .meta {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-sm, 0.875rem);
+  font-weight: 400;
+}
 
 .status-card__action {
   justify-content: flex-start;
