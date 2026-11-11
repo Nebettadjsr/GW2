@@ -17,6 +17,21 @@ export interface AccountUsageSummary {
   activeLast60Minutes: number | null
 }
 
+/** One saved own-account source; counts are null (never zero) unless state is CURRENT or STALE. */
+export interface SavedSourceOverview {
+  state: 'CURRENT' | 'STALE' | 'NOT_LOADED' | 'UNAVAILABLE'
+  count: number | null
+  total?: number | null
+  completedAt?: string | null
+}
+
+/** Members are absent when the connected key does not permit that source. */
+export interface AccountOverview {
+  characters?: SavedSourceOverview
+  recipes?: SavedSourceOverview
+  materials?: SavedSourceOverview
+}
+
 export type SharedHealth = 'OK' | 'RUNNING' | 'PROBLEM' | 'NOT_RUN'
 
 /**
@@ -29,6 +44,7 @@ export interface GlobalSystemStatus {
   priceHealth?: SharedHealth
   accountLastRefreshedAt?: string | null
   accountRefreshScope?: string | null
+  accountOverview?: AccountOverview | null
   // Owner-only details; never present in the generic response.
   running?: boolean
   lastCheckedAt?: string | null
@@ -50,7 +66,7 @@ type OwnerSummaryKey = 'items' | 'recipes' | 'tradingPostPrices' | 'accounts'
 
 /** Summaries stay optional: an older or partial backend answer renders as "not reported", never zero. */
 export type OwnerSystemDetails = Required<Omit<GlobalSystemStatus,
-  'globalHealth' | 'priceHealth' | 'accountLastRefreshedAt' | 'accountRefreshScope' | OwnerSummaryKey>>
+  'globalHealth' | 'priceHealth' | 'accountLastRefreshedAt' | 'accountRefreshScope' | 'accountOverview' | OwnerSummaryKey>>
   & Pick<GlobalSystemStatus, OwnerSummaryKey>
 
 export const systemApi = {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
-import { systemApi, type GlobalSystemStatus, type OwnerSystemDetails, type SharedHealth } from '@/api/systemApi'
+import { systemApi, type SavedSourceOverview, type GlobalSystemStatus, type OwnerSystemDetails, type SharedHealth } from '@/api/systemApi'
 import { connection } from '@/api/accountSession'
 import { ACCOUNT_CHANGED_CODE, ApiRequestError } from '@/api/http'
 import ConnectionPanel from '@/account/ConnectionPanel.vue'
@@ -182,6 +182,40 @@ function sharedLabel(health: SharedHealth | undefined): Label {
   }
 }
 
+interface SavedRow { key: string; label: string; value: string; note: string }
+
+/** A count is shown only for a published source; every other state says why, never "0". */
+function savedValue(source: SavedSourceOverview | undefined, pick: 'count' | 'total'): { value: string; note: string } | null {
+  if (source === undefined) return null
+  const n = pick === 'count' ? source.count : (source.total ?? null)
+  switch (source.state) {
+    case 'CURRENT':
+    case 'STALE':
+      if (n === null) return { value: 'Unknown', note: '' }
+      return { value: n.toLocaleString(), note: source.state === 'STALE' ? 'may be out of date' : '' }
+    case 'NOT_LOADED': return { value: 'Not loaded yet', note: '' }
+    default: return { value: 'Unknown', note: 'could not be read' }
+  }
+}
+
+const savedRows = computed<SavedRow[]>(() => {
+  const o = systemStatus.value?.accountOverview
+  if (!o || systemStatusError.value !== null) return []
+  const defs: [string, string, SavedSourceOverview | undefined, 'count' | 'total'][] = [
+    ['characters', 'Characters', o.characters, 'count'],
+    ['recipes', 'Unlocked recipes', o.recipes, 'count'],
+    ['material-types', 'Material types', o.materials, 'count'],
+    ['material-total', 'Total materials stored', o.materials, 'total']
+  ]
+  const rows: SavedRow[] = []
+  for (const [key, label, src, pick] of defs) {
+    const v = savedValue(src, pick)
+    if (v) rows.push({ key, label, ...v })
+  }
+  return rows
+})
+
+const ownerLayout = computed(() => ownerState.value === 'owner' && !!ownerDetails.value?.accounts)
 const account = computed(accountStatus)
 const global = computed(() => sharedLabel(systemStatus.value?.globalHealth))
 const prices = computed(() => sharedLabel(systemStatus.value?.priceHealth))
@@ -213,7 +247,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
       Items, recipes and Trading Post prices are shared by all accounts.
     </p>
 
-    <section class="status-grid health-grid" aria-label="System health">
+    <section class="status-grid health-grid" :class="{ 'health-grid--single': !ownerLayout }" aria-label="System health">
       <article class="panel status-card" data-test="account-status">
         <div class="status-card__heading">
           <h2>Account data</h2>
@@ -225,6 +259,10 @@ function operation(key: SyncOperationKey): SyncOperationView {
           <template v-if="systemStatus?.accountRefreshScope">
             <dt>Data refreshed</dt>
             <dd>{{ systemStatus.accountRefreshScope }}</dd>
+          </template>
+          <template v-for="row in savedRows" :key="row.key">
+            <dt>{{ row.label }}</dt>
+            <dd :data-test="`saved-${row.key}`">{{ row.value }}<span v-if="row.note" class="meta"> ({{ row.note }})</span></dd>
           </template>
         </dl>
         <div class="status-card__action">
@@ -291,22 +329,15 @@ function operation(key: SyncOperationKey): SyncOperationView {
         </dl>
       </article>
       </div>
-      <div v-else class="shared-health">
-      <article class="panel status-card" data-test="global-refresh-status">
-        <div class="status-card__heading">
-          <h2>Items and recipes</h2>
-          <span class="status" :class="`status--${global.tone}`" data-test="global-health">{{ global.text }}</span>
-        </div>
-      </article>
-
-      <article class="panel status-card" data-test="price-cache-status">
-        <div class="status-card__heading">
-          <h2>Trading Post prices</h2>
-          <span class="status" :class="`status--${prices.tone}`" data-test="price-cache-health">{{ prices.text }}</span>
-        </div>
-      </article>
-      </div>
     </section>
+
+    <p v-if="!ownerLayout" class="service-line" role="status" data-test="shared-service-line">
+      <span class="service-line__label">Shared game data:</span>
+      <span class="service-line__item" data-test="global-refresh-status">Items and recipes
+        <span class="status" :class="`status--${global.tone}`" data-test="global-health">{{ global.text }}</span></span>
+      <span class="service-line__item" data-test="price-cache-status">Trading Post prices
+        <span class="status" :class="`status--${prices.tone}`" data-test="price-cache-health">{{ prices.text }}</span></span>
+    </p>
 
     <p v-if="ownerState === 'unavailable'" class="notice notice--warning" role="status" data-test="owner-status-unavailable">
       Owner tools are temporarily unavailable. Retrying automatically.
@@ -368,6 +399,9 @@ function operation(key: SyncOperationKey): SyncOperationView {
   align-items: start;
 }
 
+.health-grid--single { grid-template-columns: minmax(0, 1fr); }
+.service-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin: 0; font-size: 0.9rem; }
+.service-line__label { color: var(--color-text-muted, inherit); }
 .shared-health { display: grid; gap: var(--space-4); min-width: 0; }
 
 .status-card { min-width: 0; }

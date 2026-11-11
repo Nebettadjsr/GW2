@@ -106,6 +106,8 @@ Prepare separate backend authorization, status UI and inventory freshness storie
 
 Current gate: the owner backend and full-catalog operations are integrated. The System Status UI (#182), revised on 2026-11-10 for grouped shared dataset counts/refresh ranges and stored/active account counts, is awaiting local visual approval; actual owner provisioning and final resource qualification are separate. The next offline workload proposal is #184, with workload/latency/headroom choices still open rather than approved thresholds.
 
+System Status gate (2026-11-11): the owner-only layout is approved at `5e1de1b`; the regular-user account overview (own-account counts, compact service line) is implemented in #182 and awaits explicit local visual approval of the ordinary wide/narrow layouts.
+
 ## Deferred crafting extension and live verification
 
 The Product Owner approved future Mystic Forge recipe support behind `Allow Mystic Forge recipes`, below `Allow daily craft`; it is currently a disabled UI placeholder. Forge steps will use that setting rather than a crafting discipline/rating. [The product request](../agent/product-owner-requests/mystic-forge-crafting.md) owns the remaining data/random-output questions. Do not activate calculation work merely because the placeholder exists.
