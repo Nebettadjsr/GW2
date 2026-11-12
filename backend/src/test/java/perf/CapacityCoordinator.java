@@ -30,13 +30,29 @@ public final class CapacityCoordinator {
         CapacityOutcome outcome;
         try {
             outcome = run();
-        } finally {
-            // stop scheduling is the runner's job; drain must finish before any teardown
+        } catch (RuntimeException | Error failure) {
+            // Preserve the original failure as the result; still stop and drain below.
+            outcome = new CapacityOutcome(CapacityOutcome.Status.INVALID, null, null, null,
+                    "Runner failed: " + failure.getClass().getSimpleName() + ": " + failure.getMessage(),
+                    false, baseline, warmup, measured);
         }
-        boolean drained = runner.drain(config.drainTimeoutMillis());
-        if (!drained) {
+        String extra = null;
+        boolean drained;
+        try {
+            runner.stopScheduling();
+        } catch (RuntimeException e) {
+            extra = "stopScheduling failed: " + e.getClass().getSimpleName();
+        }
+        try {
+            drained = runner.drain(config.drainTimeoutMillis());
+        } catch (RuntimeException e) {
+            drained = false;
+            extra = (extra == null ? "" : extra + "; ") + "drain failed: " + e.getClass().getSimpleName();
+        }
+        if (!drained || extra != null) {
             outcome = new CapacityOutcome(outcome.status(), outcome.lastPassingLevel(), outcome.firstBreachLevel(),
-                    outcome.confirmedCapacity(), outcome.detail() + " Workers did not drain: isolated resources retained; cleanup required.",
+                    outcome.confirmedCapacity(), outcome.detail() + " Workers did not drain"
+                    + (extra == null ? "" : " (" + extra + ")") + ": isolated resources retained; cleanup required.",
                     true, baseline, warmup, measured);
         }
         return outcome;
@@ -44,15 +60,25 @@ public final class CapacityCoordinator {
 
     private CapacityOutcome run() {
         // Preflight no-load baseline and warmup (separate sample sets, not measured stages).
+        if (config.observationWindowMillis() > config.maxMillisPerProfile()) {
+            return end(CapacityOutcome.Status.CENSORED_NOT_REACHED, null, null, null,
+                    "Profile budget cannot cover even the baseline window; nothing was started.");
+        }
         StageObservation b = runner.run(1, StageObservation.BASELINE, config.seed());
         baseline.add(b);
         spentMillis += b.elapsedMillis();
         String bad = validate(b, false);
         if (bad != null) return end(CapacityOutcome.Status.INVALID, null, null, null, "Baseline invalid: " + bad);
+        if (!fits()) {
+            return end(CapacityOutcome.Status.CENSORED_NOT_REACHED, null, null, null,
+                    "Profile budget exhausted after the baseline; warmup and measured stages were not started.");
+        }
         StageObservation w = runner.run(1, StageObservation.WARMUP, config.seed());
         warmup.add(w);
         spentMillis += w.elapsedMillis();
-        if (w.invalid()) return end(CapacityOutcome.Status.INVALID, null, null, null, "Warmup invalid: " + w.invalidReason());
+        // Warmup latency is separate evidence, but its correctness/isolation/coverage must hold.
+        String warmBad = validate(w, true);
+        if (warmBad != null) return end(CapacityOutcome.Status.INVALID, null, null, null, "Warmup invalid: " + warmBad);
 
         int lastPass = 0;
         int breach = -1;
@@ -114,8 +140,17 @@ public final class CapacityCoordinator {
         return new CapacityOutcome(s, pass, breach, cap, detail, false, baseline, warmup, measured);
     }
 
+    /** Forecast: the next window is expected to need at least the configured window or the longest window seen. */
+    private boolean fits() {
+        long need = config.observationWindowMillis();
+        for (var list : List.of(baseline, warmup, measured)) {
+            for (StageObservation o : list) need = Math.max(need, o.elapsedMillis());
+        }
+        return spentMillis + need <= config.maxMillisPerProfile();
+    }
+
     private Result observe(int level, String role, long seed) {
-        if (spentMillis + config.observationWindowMillis() > config.maxMillisPerProfile()) {
+        if (!fits()) {
             return new Result(Verdict.BUDGET, "Time budget exhausted before level " + level + " (" + role
                     + "); result is censored/provisional, not extrapolated.");
         }

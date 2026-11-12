@@ -25,6 +25,7 @@
     "smoke:ecto": "node scripts/ecto-browser-smoke.mjs",
     "smoke:ecto:live": "node scripts/ecto-live-smoke.mjs",
     "smoke:account": "node scripts/account-browser-smoke.mjs",
+    "capacity:probe": "node scripts/capacity-probe.mjs",
     "smoke:icons": "node scripts/icon-browser-smoke.mjs",
     "smoke:favicon": "node scripts/favicon-browser-smoke.mjs",
     "check:icons:live": "node scripts/icon-live-check.mjs",

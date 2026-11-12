@@ -28,8 +28,14 @@ public record StageObservation(int level, String role, long seed, List<CapacityS
 
     public boolean coverageComplete(List<String> enabled) { return missingJourneys(enabled).isEmpty(); }
 
+    /** Capacity decisions use BROWSER usable-page samples only; slow protocol samples are retained separately. */
     public boolean breached(long thresholdMillis) {
-        return samples.stream().anyMatch(s -> s.overReference(thresholdMillis));
+        return browserSamples().stream().anyMatch(s -> s.overReference(thresholdMillis));
+    }
+
+    /** Slow protocol (HTTP) measurements: retained and reported, never the capacity boundary. */
+    public boolean protocolOver(long thresholdMillis) {
+        return samples.stream().anyMatch(s -> CapacitySample.PROTOCOL.equals(s.kind()) && s.overReference(thresholdMillis));
     }
 
     public boolean incorrect() { return samples.stream().anyMatch(s -> !s.correct()); }

@@ -42,6 +42,7 @@ Planning handoff: the Characters sequence is Inventory UI #162, Builds core #161
 | STORY-KPI-007 | Claude adds representative offline account/catalog fixtures, expected results and an optional ignored local snapshot import | STORY-KPI-001 and accepted final feature baseline; native planner revision reviewed | PUBLISHED — #185; supervisor-approved contract; release after this planning reconciliation |
 | STORY-KPI-002 | Claude discovers capacity with realistic cadence profiles, gradual concurrency and a 2-second usable-page reference | STORY-KPI-001, STORY-KPI-007 and accepted final feature baseline | PUBLISHED DRAFT — #184; capacity discovery selected; revise driver contract against accepted foundation before release |
 | STORY-KPI-003 | Claude exposes a concise capacity/health summary and documented reproduction path | STORY-KPI-001, STORY-KPI-002 | DRAFT |
+| STORY-KPI-008 | Claude measures cold start, freshness/refresh expiry, fault, restart and owner-overlap behavior separately from steady warm capacity | STORY-KPI-002 | DRAFT — reserved; not activated |
 | STORY-KPI-004 | Claude adds safe JVM heap/committed/max and GC observations and relates them to container/host memory without treating 12 GB as a JVM allowance | STORY-KPI-001 | DRAFT |
 | STORY-KPI-005 | Claude adds project-scoped storage, database, volume and log accounting; tenancy-wide allocation remains explicit | STORY-KPI-001 | DRAFT |
 | STORY-KPI-006 | Claude adds transfer-boundary observations without treating Docker/internal traffic as billable Oracle egress | STORY-KPI-001 | DRAFT |

@@ -183,4 +183,99 @@ class CapacityCoordinatorTest {
         assertEquals(List.of("baseline:1"), f.calls);
         assertTrue(f.drained);
     }
+
+    @Test void runnerExceptionStillStopsAndDrainsAndPreservesTheOriginalFailure() {
+        boolean[] stopped = {false};
+        Fake f = new Fake(l -> 100L) {
+            @Override public StageObservation run(int level, String role, long seed) {
+                if (role.equals("coarse") && level == 2) throw new IllegalStateException("worker blew up");
+                return super.run(level, role, seed);
+            }
+            @Override public void stopScheduling() { stopped[0] = true; }
+            @Override public boolean drain(long t) { drained = true; return false; }
+        };
+        CapacityOutcome o = new CapacityCoordinator(cfg(), f).discover();
+        assertTrue(stopped[0]);
+        assertTrue(f.drained);
+        assertEquals(CapacityOutcome.Status.INVALID, o.status());
+        assertTrue(o.detail().contains("worker blew up"), o.detail());
+        assertTrue(o.cleanupRequired(), "undrained workers retain resources and require cleanup");
+    }
+
+    @Test void drainThatThrowsIsCleanupRequiredNotALostResult() {
+        Fake f = new Fake(l -> 100L) {
+            @Override public boolean drain(long t) { throw new IllegalStateException("drain broke"); }
+        };
+        CapacityOutcome o = new CapacityCoordinator(cfg(), f).discover();
+        assertTrue(o.cleanupRequired());
+        assertEquals(CapacityOutcome.Status.CENSORED_NOT_REACHED, o.status());
+    }
+
+    @Test void slowProtocolSamplesNeverDecideTheBrowserBoundary() {
+        Fake f = new Fake(l -> 100L) {
+            @Override public StageObservation run(int level, String role, long seed) {
+                StageObservation s = super.run(level, role, seed);
+                List<CapacitySample> ss = new ArrayList<>(s.samples());
+                ss.add(new CapacitySample("bank", CapacitySample.PROTOCOL, level, role, 0, 0, 0, 9000, true, true));
+                return new StageObservation(level, role, seed, ss, 1, 1, 0, 0, false, null, 1000);
+            }
+        };
+        CapacityOutcome o = new CapacityCoordinator(cfg(), f).discover();
+        assertEquals(CapacityOutcome.Status.CENSORED_NOT_REACHED, o.status());
+        assertTrue(o.measured().get(0).protocolOver(2000));
+        assertFalse(o.measured().get(0).breached(2000));
+        String json = new CapacityReport(cfg(), o, Map.of()).toJsonString("run-1");
+        assertTrue(json.contains("\"protocolOverReference\" : true"));
+        assertTrue(json.contains("\"overReferenceSamples\""));
+    }
+
+    @Test void profileBudgetIsEnforcedBeforeBaselineAndWarmup() {
+        CapacityConfig tiny = new CapacityConfig(2000, List.of(1, 2), 2, 500, 1, 1, 1, WorkloadProfile.BALANCED, J, 1000, 1000);
+        Fake none = new Fake(l -> 100L);
+        CapacityOutcome o = new CapacityCoordinator(tiny, none).discover();
+        assertEquals(List.of(), none.calls, "nothing may start when not even the baseline window fits");
+        assertEquals(CapacityOutcome.Status.CENSORED_NOT_REACHED, o.status());
+
+        CapacityConfig afterBaseline = new CapacityConfig(2000, List.of(1, 2), 2, 1500, 1, 1, 1, WorkloadProfile.BALANCED, J, 1000, 1000);
+        Fake one = new Fake(l -> 100L);
+        new CapacityCoordinator(afterBaseline, one).discover();
+        assertEquals(List.of("baseline:1"), one.calls, "warmup must not start without a forecast window");
+    }
+
+    @Test void longestObservedWindowForecastsTheNextOne() {
+        // windows really take 4000ms though 1000ms was configured: after baseline+warmup+coarse1 (12s) a 13s budget cannot fit another
+        Fake slow = new Fake(l -> 100L) {
+            @Override public StageObservation run(int level, String role, long seed) {
+                StageObservation s = super.run(level, role, seed);
+                return new StageObservation(level, role, seed, s.samples(), 1, 1, 0, 0, false, null, 4000);
+            }
+        };
+        CapacityConfig c = new CapacityConfig(2000, List.of(1, 2, 4), 4, 13_000, 1, 1, 1, WorkloadProfile.BALANCED, J, 1000, 1000);
+        new CapacityCoordinator(c, slow).discover();
+        assertEquals(List.of("baseline:1", "warmup:1", "coarse:1"), slow.calls);
+    }
+
+    @Test void warmupCorrectnessCoverageAndIsolationFailuresInvalidateTheExperiment() {
+        Fake wrong = new Fake(l -> 100L) {
+            @Override public StageObservation run(int level, String role, long seed) {
+                StageObservation s = super.run(level, role, seed);
+                if (!role.equals("warmup")) return s;
+                List<CapacitySample> ss = new ArrayList<>(s.samples());
+                ss.set(0, new CapacitySample("bank", "browser", level, role, 0, 0, 0, 100, true, false));
+                return new StageObservation(level, role, seed, ss, 1, 1, 0, 0, false, null, 1000);
+            }
+        };
+        CapacityOutcome o = new CapacityCoordinator(cfg(), wrong).discover();
+        assertEquals(CapacityOutcome.Status.INVALID, o.status());
+        assertTrue(o.detail().startsWith("Warmup invalid"), o.detail());
+        assertTrue(wrong.calls.stream().noneMatch(c -> c.startsWith("coarse")));
+
+        // Slow warmup latency alone is not an invalidation: it is separate evidence.
+        Fake slowWarm = new Fake(l -> 100L) {
+            @Override public StageObservation run(int level, String role, long seed) {
+                return super.run(level, role, seed);
+            }
+        };
+        assertNotEquals(CapacityOutcome.Status.INVALID, new CapacityCoordinator(cfg(), slowWarm).discover().status());
+    }
 }

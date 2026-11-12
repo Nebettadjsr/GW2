@@ -244,7 +244,34 @@ p95/mean SLA; every over-reference sample is kept.
   artifact id) with every sample; per-journey min/p50/p90/p95/p99/max, over-reference counts, low-sample warnings, scheduled vs
   achieved/late/missed starts. No GUIDs, names, keys, cookies, bodies or filesystem paths (metadata paths are rejected).
 
-**Not yet delivered:** a concrete `StageRunner` that starts the isolated Spring/PostgreSQL fixture application with N
-`SnapshotImporter.principalCopies`, generates protocol traffic, serves the built frontend through a same-origin proxy and drives
-sparse Playwright probes, plus the one-command entry point. Until it exists no capacity has been measured and none is claimed.
-Cold start, refresh/expiry, fault, restart and owner overlap remain the separate DRAFT STORY-KPI-008.
+**Runtime (explicit, local-only; never part of default CI):** `backend/src/test/java/perf/CapacityExperimentIT`
+starts the real Spring/Flyway/PostgreSQL application on loopback against a fresh `kpi_` schema (never `public`), loads the
+fixture through `FixtureLoader`, and starts `frontend/scripts/capacity-probe.mjs`, which serves the **unchanged built
+`frontend/dist`** and forwards `/api/` same-origin to that application. Sparse sequential real-Chromium probes (default 1,
+max 2 contexts; existing `data-test` markers only) measure initiation to rendered usable page for all eight journeys at every
+stage; the open-loop seeded protocol generator (`CapacityStageRunner`) loads the same application with independent HTTP
+sessions and account partitions. Browser samples alone decide the boundary; slow protocol samples are retained and reported
+separately. A level of L users is `min(probes, L)` browser principals plus protocol users, so probes are inside L. Proof,
+account, global and price edges are controlled fakes; any unexpected external call fails the run.
+
+Prerequisites: `DATABASE_URL`/`DATABASE_USER`/`DATABASE_PASSWORD`, `npm ci && npm run build` in `frontend/`, Chromium
+(`GW2_BROWSER_PATH` or a discovered Chrome/Chromium). Commands (run in `backend/`):
+
+- Boundary check (2 principals, all journeys, no capacity claim, no timing assertion):
+  `mvn test -Dtest=CapacityExperimentIT`
+- Experiment: `mvn test -Dtest=CapacityExperimentIT -Dgw2.capacity.mode=experiment` with optional
+  `-Dgw2.capacity.profile=browse-heavy|balanced|crafting-context`, `.seed`, `.levels=1,2,4`, `.max-users`, `.window-ms`,
+  `.budget-ms`, `.confirmations`, `.probes` (1..2). Output: `backend/target/capacity/capacity-<profile>-<seed>.{json,md,jsonl}`.
+- Private snapshot: set `GW2_PERF_SNAPSHOT_DIR` (or the existing system property) to the ignored local directory; otherwise the
+  synthetic fixture is used. Reports carry original and prepared identities and the warm policy, never the path.
+
+Warm preparation happens outside every measured window: a single clock delta moves stored timestamps to now (disclosed as
+fixture preparation, not evidence the capture was fresh); production freshness checks are untouched. Per-principal results
+are compared with the serial no-load baseline (bank/materials/profit fingerprints and counts) as *consistency* evidence, not an
+independent economics oracle. Resource observations are reported `unavailable` (no probe is attached to this local run).
+Cleanup: workers (protocol, browser, application tasks) are stopped and drained first; the browser process is closed and the
+owned schema dropped afterwards. If anything cannot drain the report says `cleanupRequired` and the schema is not asserted away.
+
+Limitations: the generator and Chromium share the host with the application and PostgreSQL; logical cores are not Oracle OCPU.
+No capacity is claimed until the supervisor runs the representative experiment; cold start, refresh/expiry, fault, restart and
+owner overlap remain the separate DRAFT STORY-KPI-008.

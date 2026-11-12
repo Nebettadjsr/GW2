@@ -34,10 +34,28 @@ public final class CapacityReport {
         this.outcome = outcome;
         this.metadata = new LinkedHashMap<>(metadata);
         for (String v : this.metadata.values()) {
-            if (v != null && (v.startsWith("/") || v.matches("(?i)^[a-z]:\\\\.*"))) {
+            if (looksLikePrivatePath(v)) {
                 throw new IllegalArgumentException("metadata must not contain raw filesystem paths");
             }
         }
+    }
+
+    private static final java.util.regex.Pattern SAFE_ID = java.util.regex.Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,99}");
+
+    /** POSIX absolute/home paths, Windows drive paths with either slash, UNC and any backslash path. */
+    static boolean looksLikePrivatePath(String v) {
+        if (v == null) return false;
+        String t = v.strip();
+        return t.startsWith("/") || t.startsWith("~") || t.contains("\\")
+                || t.matches("(?is)^[a-z]:.*") && t.length() > 1 && (t.charAt(2 - 0 > t.length() - 1 ? 1 : 2) == '/' || t.length() == 2)
+                || t.matches("(?s).*(^|[\\s=,;\"'(])/(home|Users|root|tmp|var|etc|mnt|opt)/.*");
+    }
+
+    static String requireSafeArtifactId(String id) {
+        if (id == null || !SAFE_ID.matcher(id).matches() || id.contains("..")) {
+            throw new IllegalArgumentException("companion artifact id must be a safe public identifier");
+        }
+        return id;
     }
 
     public List<StageObservation> allStages() {
@@ -94,6 +112,7 @@ public final class CapacityReport {
     }
 
     public ObjectNode toJson(String companionArtifactId) {
+        requireSafeArtifactId(companionArtifactId);
         String jsonl = samplesJsonl();
         ObjectNode root = MAPPER.createObjectNode();
         root.put("schemaVersion", SCHEMA_VERSION);
@@ -143,6 +162,8 @@ public final class CapacityReport {
             n.put("generatorSaturated", st.generatorSaturated());
             if (st.invalidReason() != null) n.put("invalidReason", st.invalidReason());
             n.put("breached", st.breached(config.thresholdMillis()));
+            n.put("browserBreached", st.breached(config.thresholdMillis()));
+            n.put("protocolOverReference", st.protocolOver(config.thresholdMillis()));
             n.set("missingBrowserJourneys", MAPPER.valueToTree(st.missingJourneys(config.journeys())));
             n.put("browserSampleCount", st.browserSamples().size());
             n.put("sampleCount", st.samples().size());

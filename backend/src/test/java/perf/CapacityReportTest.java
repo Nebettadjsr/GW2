@@ -86,4 +86,23 @@ class CapacityReportTest {
         assertThrows(IllegalArgumentException.class, () -> CapacityConfig.defaults(WorkloadProfile.BALANCED, 1).withBudget(0));
         assertEquals(WorkloadProfile.BROWSE_HEAVY, WorkloadProfile.parse("browse-heavy"));
     }
+
+    @Test void privatePathsOfEveryStyleAreRejectedInReportInputs() {
+        CapacityConfig c = CapacityConfig.defaults(WorkloadProfile.BALANCED, 3).withJourneys(J);
+        CapacityOutcome o = outcome();
+        for (String bad : List.of("/home/me/snap", "C:\\Users\\me\\snap", "C:/Users/me/snap", "d:/x", "\\\\server\\share\\snap",
+                "~/snap", "see /home/me/snap for input", "dir=/Users/me/x", "..\\up")) {
+            assertThrows(IllegalArgumentException.class, () -> new CapacityReport(c, o, Map.of("input", bad)), bad);
+        }
+        new CapacityReport(c, o, Map.of("commit", "abc", "fixtureSource", "synthetic", "note", "50/50 mix, 1..64 users"));
+    }
+
+    @Test void companionArtifactIdMustBeASafePublicIdentifier() {
+        CapacityConfig c = CapacityConfig.defaults(WorkloadProfile.BALANCED, 3).withJourneys(J);
+        CapacityReport r = new CapacityReport(c, outcome(), Map.of());
+        for (String bad : List.of("/tmp/x.jsonl", "..\\x", "a/b", "C:\\x", "", "a b", ".hidden", "x..y")) {
+            assertThrows(IllegalArgumentException.class, () -> r.toJson(bad), bad);
+        }
+        assertNotNull(r.toJson("capacity-balanced-42.jsonl"));
+    }
 }
