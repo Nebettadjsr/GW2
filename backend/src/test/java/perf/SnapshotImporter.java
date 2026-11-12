@@ -62,8 +62,13 @@ public final class SnapshotImporter {
 
     /** Absent opt-in is "unavailable", not an error and not an empty fixture. */
     public static Result fromConfiguration() throws ImportException {
-        String dir = System.getProperty(PROPERTY);
-        if (dir == null || dir.isBlank()) dir = System.getenv(ENV);
+        return resolve(System.getProperty(PROPERTY), System.getenv(ENV));
+    }
+
+    /** Pure resolution of the opt-in values, so tests need not touch process-wide configuration. */
+    static Result resolve(String property, String environment) throws ImportException {
+        String dir = property;
+        if (dir == null || dir.isBlank()) dir = environment;
         if (dir == null || dir.isBlank()) {
             return new Result(null, "no local snapshot configured (opt in with -D" + PROPERTY + "=<dir>)");
         }
@@ -225,7 +230,9 @@ public final class SnapshotImporter {
                 }
             }
         }
-        // Optional parent coverage must be consistent with the parent source marker.
+        // Optional coverage legitimately lags its parent: CHARACTERS may have advanced while equipment/build
+        // tabs have not caught up (production reports stale saved equipment / pending builds). Only coverage
+        // that claims a generation the parent never reached, or has no parent marker, is inconsistent.
         Map<String, Long> charGen = new HashMap<>();
         for (ObjectNode r : t.get("account_source_state")) {
             if ("CHARACTERS".equals(r.path("source").asText())) charGen.put(r.path("account_id").asText(), r.path("generation").asLong());
@@ -233,7 +240,8 @@ public final class SnapshotImporter {
         for (String cov : List.of("character_equipment_coverage", "character_build_coverage")) {
             for (ObjectNode r : t.get(cov)) {
                 Long g = charGen.get(r.path("account_id").asText());
-                if (g == null || g != r.path("parent_generation").asLong()) throw new ImportException("table " + cov + " does not match the CHARACTERS marker generation");
+                long parent = r.path("parent_generation").asLong(-1);
+                if (g == null || parent < 0 || parent > g) throw new ImportException("table " + cov + " claims a CHARACTERS generation the parent marker has not reached");
             }
         }
     }

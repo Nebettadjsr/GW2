@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Real Flyway + production repositories on a disposable schema: the populated synthetic fixtures (and,
  * when the maintainer opts in, the local snapshot) load through the shared loader and the independent
  * principals stay partitioned for bank, characters and saved Status counts. Never touches public.
- * Run: {@code mvn -f backend/pom.xml -Dit.test=PopulatedFixtureIsolationIT verify} (DATABASE_URL/USER/PASSWORD set).
+ * Run: {@code mvn -f backend/pom.xml -Dtest=PopulatedFixtureIsolationIT test} (Surefire; the capture revision is recorded as provenance.sourceRevision, the report commit is the executing code) (DATABASE_URL/USER/PASSWORD set).
  */
 class PopulatedFixtureIsolationIT {
 
@@ -156,7 +156,7 @@ class PopulatedFixtureIsolationIT {
         }
         java.nio.file.Path out = java.nio.file.Path.of("target", "perf");
         java.nio.file.Files.createDirectories(out);
-        MeasurementReport report = new MeasurementReport(r.snapshot().sourceRevision(), java.time.Instant.now(), r.snapshot().version(), Map.of());
+        MeasurementReport report = new MeasurementReport(ApplicationBenchmarkHarness.commit(), java.time.Instant.now(), r.snapshot().version(), Map.of());
         report.setFixtureProvenance(FixtureProvenance.of(r.snapshot()));
         java.nio.file.Files.writeString(out.resolve("snapshot-readiness.json"), report.toJsonString());
         java.nio.file.Files.writeString(out.resolve("snapshot-readiness.md"), report.toMarkdown());

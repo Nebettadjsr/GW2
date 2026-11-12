@@ -56,6 +56,38 @@ class PerformanceSummaryTest(unittest.TestCase):
             self.assertIn("incompatible: " + why, text)
             self.assertNotIn("%)", text)
 
+    def test_fixture_provenance_gates_comparison(self):
+        def populated(**over):
+            r = report(value=12.0, fixture="kpi-fixtures-1")
+            r["fixtureProvenance"] = {"state": "available", "fixtureKind": "synthetic-populated",
+                                      "fixtureVersion": "kpi-fixtures-1", "fixtureIdentity": "f1",
+                                      "expectedResultIdentity": "e1", "topology": {"kind": "synthetic"}}
+            r["fixtureProvenance"].update(over)
+            return r
+        prev = populated()
+        prev["commit"] = "c0"
+        # identical supported identities keep a legitimate comparison
+        self.assertIn("compatible report from commit `c0`", run(populated(), prev)[1])
+        # a mismatched fixture, expected-result identity or topology produces no comparison
+        for over in ({"fixtureIdentity": "f2"}, {"expectedResultIdentity": "e2"}, {"topology": {"kind": "locally-captured-cache"}},
+                     {"fixtureIdentity": None}):
+            code, text, _ = run(populated(**over), prev)
+            self.assertEqual(0, code)
+            self.assertNotIn("compatible report from commit", text, over)
+            self.assertIn("provenance" if "topology" not in over else "topology", text)
+        # local snapshots are never compared, even with themselves
+        local = populated(fixtureKind="local-snapshot")
+        self.assertNotIn("compatible report from commit", run(local, dict(local, commit="c0"))[1])
+
+    def test_historical_and_scalable_generator_reports_still_compare(self):
+        historical = report("c0", 10.0)  # no fixtureProvenance at all
+        current = report(value=12.0)
+        current["fixtureProvenance"] = {"state": "available", "fixtureKind": "scalable-generator",
+                                        "fixtureVersion": "perf-fixtures-1"}
+        self.assertIn("compatible report from commit `c0`", run(current, historical)[1])
+        current["fixtureProvenance"] = {"state": "absent"}
+        self.assertIn("compatible report from commit `c0`", run(current, historical)[1])
+
     def test_no_history_is_stated(self):
         _, text, _ = run(report())
         self.assertIn("no previous report to compare", text)

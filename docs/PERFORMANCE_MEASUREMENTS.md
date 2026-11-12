@@ -196,11 +196,15 @@ Offline inputs for later capacity discovery; nothing here runs a sustained load.
   failed/partial) sharing item/recipe IDs and overlapping character IDs, covering Materials, Bank, Characters, bags,
   saved equipment, Builds, recipes and Status sources. Expected results are literals in `SyntheticFixtures.expected()`.
   Account count is coverage, not a capacity target. Default tests: `mvn test -Dtest='SyntheticFixturesTest,SnapshotImporterTest,FixtureProvenanceTest'`
-  (no database, no network). Database boundary with real Flyway and production repositories (explicit, local):
-  `mvn test -Dtest=PopulatedFixtureIsolationIT` with `DATABASE_URL/USER/PASSWORD`; it creates and drops a `kpi_*` schema, never `public`.
+  (no database, no network). Default CI (Surefire `*Test`, disposable PostgreSQL via `DATABASE_URL/USER/PASSWORD`) also runs
+  `PopulatedFixtureHttpTest`: the running application, independent synthetic proof keys/sessions, real HTTP reads of Bank,
+  Materials, Characters, equipment/inventory, Crafting Profit (with source-specific bank/material protection) and Status, grants,
+  and the ordinary-versus-owner boundary (owner configured through `gw2.owner.account-guid`), with hand-written outcomes.
+  `PopulatedFixtureIsolationIT` (explicit, local: Surefire only, so name it with `-Dtest`) adds repository-level checks:
+  `mvn test -Dtest=PopulatedFixtureIsolationIT`. Both create and drop a `kpi_*` schema, never `public`.
 - **Optional local snapshot**: shape `local-postgres-jsonl-1` (`manifest.json` + one `<table>.jsonl` per allowlisted table,
   `to_jsonb(row)` per line, hashes over exact bytes). Opt in with `-Dgw2.perf.snapshot-dir=<ignored dir>` or `GW2_PERF_SNAPSHOT_DIR`;
-  absent means *unavailable*. Run `mvn test -Dtest=PopulatedFixtureIsolationIT -Dgw2.perf.snapshot-dir=<dir>`: it validates manifest
+  absent means *unavailable*. Run `mvn -f backend/pom.xml test -Dtest=PopulatedFixtureIsolationIT -Dgw2.perf.snapshot-dir=<dir>` (Surefire; there is no Failsafe `-Dit.test`): it validates manifest
   version/format, allowlisted names, counts, hashes, UTF-8, schema/publication relationships, remaps account GUIDs, character
   IDs/names and `bound_to` to fake principals, loads into a fresh `kpi_*` schema and writes `target/perf/snapshot-readiness.{json,md}`.
   Unsupported, incomplete or corrupt input fails with a message naming tables and counts only. A clock shift is opt-in
@@ -208,4 +212,10 @@ Offline inputs for later capacity discovery; nothing here runs a sustained load.
 - **Reports**: `fixtureProvenance` (additive; `schemaVersion` stays `1`) carries kind, version, fixture and expected-result identity,
   topology kind (`synthetic` or `locally-captured-cache`; public-only capture stays `unavailable`), row-count coverage, comparison
   eligibility and `oracleQualification: not-qualified`. Reports without it say `absent`; different identities are incomparable.
+  `.github/scripts/performance_summary.py` applies the same rule when choosing a previous report to compare: mismatched kind,
+  fixture/expected-result identity or topology gives no delta; identical `synthetic-populated` identities and the historical
+  scalable generator (versioned by `fixtureVersion`) still compare; local snapshots never do. The report `commit` is the code
+  that ran; the capture's revision is `fixtureProvenance.sourceRevision`.
+- Older optional equipment/build coverage (a `parent_generation` behind the CHARACTERS marker) is a valid retained state and is
+  imported as is; coverage ahead of the parent marker is rejected.
 - Never commit, upload or log a real snapshot; keep it under an ignored path. Default CI never reads it.

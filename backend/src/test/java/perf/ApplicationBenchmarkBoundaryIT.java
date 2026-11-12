@@ -91,7 +91,7 @@ class ApplicationBenchmarkBoundaryIT extends ApplicationBenchmarkHarness {
 
         // Account refresh persisted 20 bank slots + 12 materials + recipes + Luck; the repeat rewrote rows.
         MeasurementReport.Workload full = workload(report, "account_sync_full");
-        assertTrue(value(full, "db_rows_inserted") >= 20 + 12, "full sync inserts the fixture rows");
+        assertTrue(value(full, "db_rows_inserted") >= 20 + 12, "full sync inserts the fixture rows: " + value(full, "db_rows_inserted") + " " + full.diagnostics());
         assertTrue(value(full, "background_job_duration") > 0);
         // Submission plus at least the terminal status poll are recorded in the same HTTP figures.
         assertTrue(value(full, "http_requests") >= 2, "task polls are counted");

@@ -69,7 +69,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 @SpringBootTest(classes = web.Gw2ApiApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"gw2.account-luck.schema-init=false", "gw2.account-access.enforce=true",
-                "gw2.global-refresh.initial-delay-ms=3600000"})
+                "gw2.global-refresh.initial-delay-ms=3600000", "gw2.owner.account-guid=" + ApplicationBenchmarkHarness.ACCOUNT})
 @Import(ApplicationBenchmarkHarness.Fixtures.class)
 abstract class ApplicationBenchmarkHarness {
 

@@ -41,11 +41,41 @@ def load(path: Path | None) -> tuple[dict | None, str | None]:
     return data, None
 
 
+def _provenance_kind(report: dict) -> str:
+    """Fixture kind recorded by STORY-KPI-007; historical or absent provenance is the legacy scalable generator."""
+    p = report.get("fixtureProvenance")
+    if isinstance(p, dict) and p.get("state") == "available":
+        return str(p.get("fixtureKind"))
+    return "scalable-generator"
+
+
+def provenance_incompatibility(current: dict, previous: dict) -> str | None:
+    """Mirror of perf.FixtureProvenance.comparable: only identical supported generator identities compare."""
+    cur, prev = current.get("fixtureProvenance"), previous.get("fixtureProvenance")
+    cur_kind, prev_kind = _provenance_kind(current), _provenance_kind(previous)
+    if cur_kind != prev_kind:
+        return f"fixture kind differs ({prev_kind!r} -> {cur_kind!r})"
+    if cur_kind == "scalable-generator":
+        return None  # versioned by fixtureVersion, already compared; historical reports carry no provenance
+    if cur_kind != "synthetic-populated":
+        return f"fixture kind {cur_kind!r} is not comparable (private or local input)"
+    for key in ("fixtureVersion", "fixtureIdentity", "expectedResultIdentity"):
+        a, b = cur.get(key), prev.get(key)
+        if not a or not b or a != b:
+            return f"fixture provenance {key} differs or is unavailable"
+    if (cur.get("topology") or {}).get("kind") != (prev.get("topology") or {}).get("kind"):
+        return "fixture topology kind differs"
+    return None
+
+
 def incompatibility(current: dict, previous: dict) -> str | None:
     """Why the two reports must not be compared, or None when they may be."""
     for key in ("schemaVersion", "fixtureVersion", "measurementScope", "workloadVersion"):
         if current.get(key) != previous.get(key):
             return f"{key} differs ({previous.get(key)!r} -> {current.get(key)!r})"
+    reason = provenance_incompatibility(current, previous)
+    if reason:
+        return reason
     cur_env, prev_env = current.get("environment") or {}, previous.get("environment") or {}
     if current.get("measurementScope") == "container-stack":
         for key in ("engineVersion", "enginePlatform", "postgresImageId", "backendRuntimeBaseLayers", "frontendRuntimeBaseLayers"):

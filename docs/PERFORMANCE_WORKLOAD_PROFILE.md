@@ -14,6 +14,19 @@ app-specific average cadence exists.** Four kinds of statement are kept apart be
   (`backend/src/main/java/application/access/AccountSessions.java:38`); credentials are proven once per session, not per request.
 - Crafting recovery polling: 1 s interval inside a 5 min budget — `RECOVERY_POLL_INTERVAL_MS`, `RECOVERY_BUDGET_MS`
   (`frontend/src/crafting/useCraftingProfit.ts:32-35`). A stale result therefore causes a poll *burst*, not steady load.
+- Account data freshness: the backend default account max age is 15 min (`gw2.account-data.max-age-ms:900000`,
+  `backend/src/main/java/web/Gw2ApiApplication.java:115`; `CachedCraftingProfitService.DEFAULT_ACCOUNT_MAX_AGE`, `:50`).
+  The browser schedules an automatic account refresh from the oldest source timestamp plus that max age (+1 s), 30 s when
+  already expired, 60 s when unknown, with failure backoff 60 s–300 s, a 300 s bound per refresh, and nothing while the tab
+  is hidden (`frontend/src/account/useAutomaticAccountRefresh.ts:54-64,99`). Visible tabs therefore re-sync about every 15 min
+  of use; hidden tabs generate no refresh traffic.
+- Account task status polling in the shell: `STATUS_POLL_INTERVAL_MS = 3_000` while a task is running
+  (`frontend/src/sync/useSyncOperations.ts:23,195`).
+- System Status screen: while mounted it polls `loadSystemStatus()` every 5 s, and owner details every 5 s for an owner or
+  while owner status is unreachable; non-owners are discovered once per generation (`frontend/src/sync/SyncScreen.vue:143-147`).
+- Client-local interaction (checkbox, search, sort) on already-loaded lists is computed in the browser by the screen
+  components; it is not shown here to issue backend requests. Whether any particular control does so must be confirmed per
+  journey from the screen source; this note does not assign it a request rate.
 - Ingredient search is debounced client-side (`frontend/src/crafting/useIngredientSearch.ts:23`).
 - Global data refresh runs on a fixed delay (default 6 h, 60 s initial) — `GlobalDataRefreshScheduler` (`:20-21`); it is
   background load independent of browsing.

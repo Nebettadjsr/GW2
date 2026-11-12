@@ -49,4 +49,14 @@ class FixtureProvenanceTest {
         changed.put("fixtureIdentity", "other");
         assertFalse(FixtureProvenance.comparable(synthetic, changed));
     }
+
+    @Test
+    void scalableGeneratorReportsCompareByVersionAndKind() {
+        ObjectNode a = FixtureProvenance.scalableGenerator("perf-fixtures-2");
+        assertTrue(FixtureProvenance.comparable(a, FixtureProvenance.scalableGenerator("perf-fixtures-2")));
+        assertFalse(FixtureProvenance.comparable(a, FixtureProvenance.scalableGenerator("perf-fixtures-3")));
+        ObjectNode local = FixtureProvenance.of(SyntheticFixtures.build());
+        local.put("fixtureKind", "local-snapshot");
+        assertFalse(FixtureProvenance.comparable(local, local.deepCopy()), "local snapshots are never comparable");
+    }
 }

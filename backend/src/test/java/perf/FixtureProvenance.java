@@ -67,14 +67,22 @@ public final class FixtureProvenance {
         t.put("publicOnlyCapture", "unavailable");
     }
 
-    /** Two provenance nodes are comparable only when both are available and identical in kind, version and identities. */
+    /**
+     * Two provenance nodes are comparable only when both are available and identical in kind and version,
+     * and, for populated fixtures, in fixture and expected-result identity. The scalable generator has no
+     * per-run identities: it is versioned by {@code fixtureVersion} alone. A local snapshot is never comparable.
+     */
     public static boolean comparable(ObjectNode a, ObjectNode b) {
         if (!"available".equals(a.path("state").asText()) || !"available".equals(b.path("state").asText())) return false;
-        for (String f : new String[] {"fixtureKind", "fixtureVersion", "fixtureIdentity", "expectedResultIdentity"}) {
-            if (!a.path(f).asText("a").equals(b.path(f).asText("b"))) return false;
+        String kind = a.path("fixtureKind").asText();
+        if (!kind.equals(b.path("fixtureKind").asText())) return false;
+        if (!a.path("fixtureVersion").asText("a").equals(b.path("fixtureVersion").asText("b"))) return false;
+        if (kind.equals("scalable-generator")) return true;
+        if (!kind.equals("synthetic-populated")) return false;
+        for (String f : new String[] {"fixtureIdentity", "expectedResultIdentity"}) {
+            if (!a.hasNonNull(f) || !b.hasNonNull(f) || !a.get(f).asText().equals(b.get(f).asText())) return false;
         }
-        return a.path("fixtureKind").asText().equals("synthetic-populated")
-                || a.path("fixtureKind").asText().equals("scalable-generator");
+        return true;
     }
 
     public static String markdown(ObjectNode p) {

@@ -66,9 +66,7 @@ class SnapshotImporterTest {
 
     @Test
     void absentOptInIsUnavailableNotFabricated() throws Exception {
-        System.clearProperty(SnapshotImporter.PROPERTY);
-        if (System.getenv(SnapshotImporter.ENV) != null) return; // a maintainer machine may opt in via the environment
-        SnapshotImporter.Result r = SnapshotImporter.fromConfiguration();
+        SnapshotImporter.Result r = SnapshotImporter.resolve(null, "  ");
         assertFalse(r.available());
         assertTrue(r.unavailableReason().contains("no local snapshot configured"));
     }
@@ -153,5 +151,20 @@ class SnapshotImporterTest {
         assertTrue(shifted.rows("account_source_state").stream().anyMatch(r -> r.get("completed_at").asText().startsWith("2030-01-01")));
         assertTrue(FixtureProvenance.of(shifted).get("clockTransformation").asText().contains("fixture preparation"));
         assertEquals(s.rows("account_bank").size(), shifted.rows("account_bank").size());
+    }
+
+    @Test
+    void olderOptionalCoverageIsPreservedButCoverageAheadOfTheParentIsRejected() throws Exception {
+        // CHARACTERS advanced to generation 3 while equipment/build coverage stayed at 1 (valid lagging state).
+        Path lagging = snapshot(s -> s.replace("\"source\":\"CHARACTERS\",\"generation\":1", "\"source\":\"CHARACTERS\",\"generation\":3"));
+        FixtureSnapshot imported = SnapshotImporter.read(lagging);
+        assertTrue(imported.rows("character_equipment_coverage").stream().allMatch(r -> r.get("parent_generation").asInt() == 1));
+        assertTrue(imported.rows("character_build_coverage").stream().allMatch(r -> r.get("parent_generation").asInt() == 1));
+        assertTrue(imported.rows("account_source_state").stream().anyMatch(r -> r.get("source").asText().equals("CHARACTERS") && r.get("generation").asInt() == 3));
+
+        Path ahead = snapshot(s -> s.replace("\"parent_generation\":1", "\"parent_generation\":2"));
+        String msg = fail(ahead);
+        assertTrue(msg.contains("has not reached"), msg);
+        assertNoMarker(msg);
     }
 }
