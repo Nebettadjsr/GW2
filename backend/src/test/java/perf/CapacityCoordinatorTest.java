@@ -1,0 +1,186 @@
+package perf;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.function.IntFunction;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class CapacityCoordinatorTest {
+    static final List<String> J = List.of("bank", "materials");
+
+    /** Fake application: duration of every sample is decided by the user level; fake clock = elapsed field. */
+    static class Fake implements StageRunner {
+        final IntFunction<Long> durationAt;
+        final List<String> calls = new ArrayList<>();
+        boolean drainOk = true;
+        boolean drained;
+        boolean skipJourney;
+        boolean saturate;
+        Fake(IntFunction<Long> d) { durationAt = d; }
+        @Override public StageObservation run(int level, String role, long seed) {
+            calls.add(role + ":" + level);
+            List<CapacitySample> ss = new ArrayList<>();
+            for (String j : skipJourney && !role.equals("baseline") ? List.of("bank") : J) {
+                ss.add(new CapacitySample(j, CapacitySample.BROWSER, level, role, 0, 0, 0, durationAt.apply(level), true, true));
+            }
+            return new StageObservation(level, role, seed, ss, 10, 10, 0, 0, saturate && !role.equals("baseline"), null, 1000);
+        }
+        @Override public boolean drain(long t) { drained = true; return drainOk; }
+    }
+
+    static CapacityConfig cfg() {
+        return CapacityConfig.defaults(WorkloadProfile.BALANCED, 7).withJourneys(J).withBudget(10_000_000);
+    }
+
+    @Test void exactThresholdIsNotOverButOneMoreMillisecondIs() {
+        CapacitySample at = new CapacitySample("bank", "browser", 1, "coarse", 0, 0, 0, 2000, true, true);
+        CapacitySample over = new CapacitySample("bank", "browser", 1, "coarse", 0, 0, 0, 2001, true, true);
+        assertFalse(at.overReference(2000));
+        assertTrue(over.overReference(2000));
+    }
+
+    @Test void findsAndConfirmsIntegerBoundaryAtThirteen() {
+        Fake f = new Fake(l -> l <= 13 ? 2000L : 2001L); // 13 passes at exactly 2000
+        CapacityOutcome o = new CapacityCoordinator(cfg(), f).discover();
+        assertEquals(CapacityOutcome.Status.BOUNDARY_CONFIRMED, o.status());
+        assertEquals(13, o.confirmedCapacity());
+        assertEquals(14, o.firstBreachLevel());
+        // coarse 1,2,4,8,16 then refinement between 8 and 16, then 3 confirmations at 13 and 14
+        assertEquals(List.of("baseline:1", "warmup:1", "coarse:1", "coarse:2", "coarse:4", "coarse:8", "coarse:16"),
+                f.calls.subList(0, 7));
+        assertEquals(3, f.calls.stream().filter(c -> c.equals("confirm:13")).count());
+        assertEquals(3, f.calls.stream().filter(c -> c.equals("confirm:14")).count());
+        assertTrue(f.drained);
+        assertFalse(o.cleanupRequired());
+        assertEquals(1, o.baseline().size());
+        assertEquals(1, o.warmup().size());
+        assertTrue(o.measured().stream().noneMatch(s -> s.role().equals("baseline") || s.role().equals("warmup")));
+    }
+
+    @Test void neverBreachingIsCensoredNotCapacityEqualToCeiling() {
+        CapacityOutcome o = new CapacityCoordinator(cfg(), new Fake(l -> 100L)).discover();
+        assertEquals(CapacityOutcome.Status.CENSORED_NOT_REACHED, o.status());
+        assertNull(o.confirmedCapacity());
+        assertEquals(64, o.lastPassingLevel());
+    }
+
+    @Test void breachAtSmallestLevelIsBelowMinimum() {
+        CapacityOutcome o = new CapacityCoordinator(cfg(), new Fake(l -> 5000L)).discover();
+        assertEquals(CapacityOutcome.Status.BELOW_MINIMUM_CONFIRMED, o.status());
+        assertNull(o.confirmedCapacity());
+        assertEquals(1, o.firstBreachLevel());
+    }
+
+    @Test void disagreeingConfirmationsYieldUnstableInterval() {
+        int[] seen = {0};
+        Fake f = new Fake(l -> 0L) {
+            @Override public StageObservation run(int level, String role, long seed) {
+                boolean flaky = role.equals("confirm") && level == 3 && (seen[0]++ == 1);
+                List<CapacitySample> ss = new ArrayList<>();
+                for (String j : J) ss.add(new CapacitySample(j, "browser", level, role, 0, 0, 0,
+                        (level >= 4 || flaky) ? 3000 : 500, true, true));
+                return new StageObservation(level, role, seed, ss, 1, 1, 0, 0, false, null, 1000);
+            }
+        };
+        CapacityOutcome o = new CapacityCoordinator(cfg(), f).discover();
+        assertEquals(CapacityOutcome.Status.UNSTABLE, o.status());
+        assertNull(o.confirmedCapacity());
+        assertEquals(3, o.lastPassingLevel());
+        assertEquals(4, o.firstBreachLevel());
+    }
+
+    @Test void budgetExhaustionAfterBreachIsProvisionalAndNotExtrapolated() {
+        // each window is 1000ms elapsed; baseline+warmup+coarse1,2,4,8,16 = 7s; allow 8.5s -> cannot refine
+        CapacityConfig c = cfg().withBudget(8_500).withJourneys(J);
+        c = new CapacityConfig(c.thresholdMillis(), c.coarseLevels(), 64, 8_500, 3, 1, 7, c.profile(), J, 1000, 1000);
+        CapacityOutcome o = new CapacityCoordinator(c, new Fake(l -> l <= 13 ? 100L : 3000L)).discover();
+        assertEquals(CapacityOutcome.Status.PROVISIONAL, o.status());
+        assertNull(o.confirmedCapacity());
+        // one refinement (12) fits the budget; the next (14) does not, so the interval stays [12,16]
+        assertEquals(12, o.lastPassingLevel());
+        assertEquals(16, o.firstBreachLevel());
+    }
+
+    @Test void budgetExhaustionBeforeAnyBreachIsCensored() {
+        CapacityConfig c = new CapacityConfig(2000, List.of(1, 2, 4, 8, 16, 32, 64), 64, 4_500, 3, 1, 7, WorkloadProfile.BALANCED, J, 1000, 1000);
+        CapacityOutcome o = new CapacityCoordinator(c, new Fake(l -> 100L)).discover();
+        assertEquals(CapacityOutcome.Status.CENSORED_NOT_REACHED, o.status());
+        assertNull(o.confirmedCapacity());
+    }
+
+    @Test void maxUsersCeilingLimitsCoarseLevels() {
+        CapacityConfig c = cfg().withLevels(List.of(1, 2, 4, 8, 16, 32, 64), 8);
+        Fake f = new Fake(l -> 100L);
+        CapacityOutcome o = new CapacityCoordinator(c, f).discover();
+        assertEquals(8, o.lastPassingLevel());
+        assertTrue(f.calls.stream().noneMatch(s -> s.endsWith(":16")));
+    }
+
+    @Test void missingJourneyCoverageCannotEstablishPassOrCapacity() {
+        Fake f = new Fake(l -> 100L);
+        f.skipJourney = true;
+        CapacityOutcome o = new CapacityCoordinator(cfg(), f).discover();
+        assertEquals(CapacityOutcome.Status.INVALID, o.status());
+        assertNull(o.confirmedCapacity());
+        assertTrue(o.detail().contains("materials"));
+    }
+
+    @Test void generatorSaturationAndCorrectnessInvalidateEvidence() {
+        Fake sat = new Fake(l -> 100L);
+        sat.saturate = true;
+        CapacityOutcome o = new CapacityCoordinator(cfg(), sat).discover();
+        assertEquals(CapacityOutcome.Status.INVALID, o.status());
+        assertTrue(o.detail().contains("generator"));
+
+        Fake bad = new Fake(l -> 100L) {
+            @Override public StageObservation run(int level, String role, long seed) {
+                StageObservation s = super.run(level, role, seed);
+                if (!role.equals("coarse") || level < 2) return s;
+                List<CapacitySample> ss = new ArrayList<>(s.samples());
+                ss.set(0, new CapacitySample("bank", "browser", level, role, 0, 0, 0, 100, true, false));
+                return new StageObservation(level, role, seed, ss, 1, 1, 0, 0, false, null, 1000);
+            }
+        };
+        CapacityOutcome o2 = new CapacityCoordinator(cfg(), bad).discover();
+        assertEquals(CapacityOutcome.Status.INVALID, o2.status());
+        assertEquals(1, o2.lastPassingLevel());
+    }
+
+    @Test void provisionalContentIsNotFinalUsableSuccess() {
+        Fake f = new Fake(l -> 100L) {
+            @Override public StageObservation run(int level, String role, long seed) {
+                List<CapacitySample> ss = new ArrayList<>();
+                for (String j : J) ss.add(new CapacitySample(j, "browser", level, role, 0, 0, 0, 100, !role.equals("coarse"), true));
+                return new StageObservation(level, role, seed, ss, 1, 1, 0, 0, false, null, 1000);
+            }
+        };
+        assertEquals(CapacityOutcome.Status.INVALID, new CapacityCoordinator(cfg(), f).discover().status());
+    }
+
+    @Test void undrainedWorkersRequireCleanupAndAreReported() {
+        Fake f = new Fake(l -> 100L);
+        f.drainOk = false;
+        CapacityOutcome o = new CapacityCoordinator(cfg(), f).discover();
+        assertTrue(o.cleanupRequired());
+        assertTrue(o.detail().contains("cleanup required"));
+        String md = new CapacityReport(cfg(), o, Map.of()).toMarkdown();
+        assertTrue(md.contains("CLEANUP REQUIRED"));
+    }
+
+    @Test void invalidBaselineStopsBeforeMeasuredStagesButStillDrains() {
+        Fake f = new Fake(l -> 100L) {
+            @Override public StageObservation run(int level, String role, long seed) {
+                calls.add(role + ":" + level);
+                return new StageObservation(level, role, seed, List.of(), 0, 0, 0, 0, false, "baseline answers wrong", 1);
+            }
+        };
+        CapacityOutcome o = new CapacityCoordinator(cfg(), f).discover();
+        assertEquals(CapacityOutcome.Status.INVALID, o.status());
+        assertEquals(List.of("baseline:1"), f.calls);
+        assertTrue(f.drained);
+    }
+}

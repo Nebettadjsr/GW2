@@ -219,3 +219,32 @@ Offline inputs for later capacity discovery; nothing here runs a sustained load.
 - Older optional equipment/build coverage (a `parent_generation` behind the CHARACTERS marker) is a valid retained state and is
   imported as is; coverage ahead of the parent marker is rejected.
 - Never commit, upload or log a real snapshot; keep it under an ignored path. Default CI never reads it.
+
+## Steady warm capacity discovery (STORY-KPI-002) — decision core
+
+Capacity is a **measurement result**, never a requirement. The reference is exactly **2000 ms** of browser
+initiation-to-rendered-usability: a sample is *over* only when strictly greater than 2000 ms (exactly 2000 is not over). It is not a
+p95/mean SLA; every over-reference sample is kept.
+
+**Delivered (default Surefire, fake runners, no capacity experiment in CI):**
+`mvn -f backend/pom.xml test -Dtest='CapacityCoordinatorTest,CapacityReportTest'`
+
+- `CapacityConfig` (defaults: levels 1,2,4,8,16,32,64; max 64 users; 30 min per profile; 3 confirmations; 1 browser probe context,
+  max 2; finite window/drain timeouts), `WorkloadProfile` (browse-heavy / balanced / crafting-context cadence and account/crafting
+  mix — **assumptions, not measured averages**; seeded random per-user phases; open-loop `plan(...)` offered independently of
+  response completion; local-only actions such as sort/search/checkbox are not journeys and schedule nothing).
+- `CapacityCoordinator` over a `StageRunner`: no-load baseline, warmup (kept separate from measured stages), coarse ramp, integer
+  refinement between last pass and first breach, then confirmations of the candidate and the adjacent breached level. Outcomes:
+  `BOUNDARY_CONFIRMED`, `BELOW_MINIMUM_CONFIRMED`, `UNSTABLE` (interval), `PROVISIONAL` (breach seen, budget ended),
+  `CENSORED_NOT_REACHED` (ceiling/budget before any breach — never "capacity = ceiling"), `INVALID`.
+  A stage is evidence only if every enabled journey has a browser sample, all content is final usable and correct, and the
+  generator was not saturated. Workers are drained before teardown; if they cannot drain the outcome carries `cleanupRequired` and
+  isolated resources must be retained.
+- `CapacityReport`: JSON (`capacity-1`) + Markdown + a checksummed companion JSONL (`capacity-sample-1`: count, bytes, SHA-256,
+  artifact id) with every sample; per-journey min/p50/p90/p95/p99/max, over-reference counts, low-sample warnings, scheduled vs
+  achieved/late/missed starts. No GUIDs, names, keys, cookies, bodies or filesystem paths (metadata paths are rejected).
+
+**Not yet delivered:** a concrete `StageRunner` that starts the isolated Spring/PostgreSQL fixture application with N
+`SnapshotImporter.principalCopies`, generates protocol traffic, serves the built frontend through a same-origin proxy and drives
+sparse Playwright probes, plus the one-command entry point. Until it exists no capacity has been measured and none is claimed.
+Cold start, refresh/expiry, fault, restart and owner overlap remain the separate DRAFT STORY-KPI-008.
