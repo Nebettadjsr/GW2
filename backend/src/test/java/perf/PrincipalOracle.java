@@ -31,15 +31,23 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 final class PrincipalOracle {
     /** Declared transient fields: per-request identifiers and publication timestamps. Everything else is compared. */
-    static final Set<String> TRANSIENT_FIELDS = Set.of("calculationId", "basedOnCalculationId", "ageSeconds", "ageMillis",
-            "elapsedMillis", "durationMillis");
+    static final Set<String> TRANSIENT_FIELDS = Set.of("requestId", "calculationId", "basedOnCalculationId", "ageMillis",
+            "elapsedMillis", "durationMillis", "generatedAt", "calculatedAt",
+            "accountLastRefreshedAt", "buildsAt", "buildsCompletedAt", "completedAt", "credentialExpiresAt", "equipmentAt",
+            "equipmentCompletedAt", "evaluatedAt", "expiresAt", "fetchedAt", "finishedAt", "lastChangedAt", "lastCheckedAt",
+            "lastGraphRebuildAt", "lastRecipeSyncAt", "lastRefreshedAt", "newestFetchedAt", "newestPriceFetchedAt",
+            "oldestFetchedAt", "parentAt", "parentCompletedAt", "provedAt", "startedAt", "submittedAt");
+    /**
+     * Narrow, explicit whitelist of operational timestamps. Character facts stay compared: {@code ageSeconds} is PLAYED
+     * time, {@code createdAt} and {@code nextBirthdayAt} are the character's creation and birthday, deaths and economics.
+     */
     private static boolean transientField(String name) {
-        return TRANSIENT_FIELDS.contains(name) || name.endsWith("At");
+        return TRANSIENT_FIELDS.contains(name);
     }
 
     /** Facts retained from one principal's loaded source rows. */
     record Facts(Set<String> characters, int bankSlots, long bankCountSum, int materialRows, long materialTotal,
-                 List<Integer> bankItemIds, List<Integer> materialItemIds) { }
+                 List<Integer> bankItemIds, List<Integer> materialItemIds, List<String> displayedMaterials) { }
 
     private final List<Facts> byUser;
     private final Map<String, String> frozen = new ConcurrentHashMap<>();
@@ -58,8 +66,9 @@ final class PrincipalOracle {
             long sum = 0;
             List<Integer> bankIds = new ArrayList<>();
             for (ObjectNode r : copies.snapshot().rows("account_bank")) {
-                if (account.equals(r.path("account_id").asText()) && !r.path("item_id").isNull()) {
-                    slots++;
+                if (!account.equals(r.path("account_id").asText())) continue;
+                slots++; // every persisted slot is served (BankRepository.loadBankSlots), empty ones included
+                if (!r.path("item_id").isNull()) {
                     sum += r.path("count").asLong();
                     bankIds.add(r.path("item_id").asInt());
                 }
@@ -75,9 +84,34 @@ final class PrincipalOracle {
                 }
             }
             out.add(new Facts(Set.copyOf(names), slots, sum, rows, total,
-                    bankIds.stream().distinct().sorted().toList(), matIds.stream().distinct().sorted().toList()));
+                    bankIds.stream().distinct().sorted().toList(), matIds.stream().distinct().sorted().toList(),
+                    displayed(copies.snapshot(), account)));
         }
         return new PrincipalOracle(List.copyOf(out));
+    }
+
+    /**
+     * The ordered catalog the Materials controller serves (MaterialStorageRepository: material_categories LEFT JOIN
+     * material_category_items LEFT JOIN this account's stock, zero when absent): {@code category:position:item:count}.
+     */
+    static List<String> displayed(FixtureSnapshot snap, String account) {
+        Map<Integer, Long> stock = new java.util.HashMap<>();
+        for (ObjectNode r : snap.rows("account_materials")) {
+            if (account.equals(r.path("account_id").asText())) stock.put(r.path("item_id").asInt(), r.path("count").asLong());
+        }
+        List<ObjectNode> cats = new ArrayList<>(snap.rows("material_categories"));
+        cats.sort(java.util.Comparator.<ObjectNode>comparingInt(c -> c.path("display_order").asInt()).thenComparingInt(c -> c.path("category_id").asInt()));
+        List<String> out = new ArrayList<>();
+        for (ObjectNode c : cats) {
+            List<ObjectNode> items = new ArrayList<>();
+            for (ObjectNode i : snap.rows("material_category_items")) if (i.path("category_id").asInt() == c.path("category_id").asInt()) items.add(i);
+            items.sort(java.util.Comparator.comparingInt(i -> i.path("position").asInt()));
+            for (ObjectNode i : items) {
+                int id = i.path("item_id").asInt();
+                out.add(c.path("category_id").asInt() + ":" + i.path("position").asInt() + ":" + id + ":" + stock.getOrDefault(id, 0L));
+            }
+        }
+        return List.copyOf(out);
     }
 
     Facts facts(int user) { return byUser.get(user); }
@@ -103,13 +137,15 @@ final class PrincipalOracle {
         return true;
     }
 
+    /** The served DTO is the ordered shared catalog with this principal's quantities: order, duplicates and zeros included. */
     boolean verifyMaterials(int user, JsonNode materials) {
         Facts f = facts(user);
-        long sum = 0;
-        int rows = 0;
-        for (JsonNode c : materials.path("categories")) for (JsonNode m : c.path("materials")) { sum += m.path("count").asLong(); rows++; }
-        if (rows != f.materialRows()) return fail(user, "materials", "material row count differs from the principal's loaded rows");
-        if (sum != f.materialTotal()) return fail(user, "materials", "material total differs from the principal's loaded rows");
+        List<String> got = new ArrayList<>();
+        for (JsonNode c : materials.path("categories")) for (JsonNode m : c.path("materials")) {
+            got.add(c.path("category").asInt() + ":" + m.path("position").asInt() + ":" + m.path("itemId").asInt() + ":" + m.path("count").asLong());
+        }
+        if (got.size() != f.displayedMaterials().size()) return fail(user, "materials", "displayed material positions differ from the shared catalog");
+        if (!got.equals(f.displayedMaterials())) return fail(user, "materials", "displayed material item or quantity differs from the catalog and the principal's stock");
         return true;
     }
 
@@ -179,21 +215,25 @@ final class PrincipalOracle {
 
     // ---- protection regression ---------------------------------------------------------------------------
 
-    /** Sum of the per-recipe craftable counts of a profit payload (rows/results/opportunities). */
+    /** Sum of the per-recipe craftable counts; -1 (unavailable, never coerced to zero) when any row lacks a numeric count. */
     static long craftableTotal(JsonNode profit) {
         long sum = 0;
-        for (String f : List.of("rows", "results", "opportunities")) for (JsonNode r : profit.path(f)) sum += r.path("craftableCount").asLong();
+        for (String f : List.of("rows", "results", "opportunities")) for (JsonNode r : profit.path(f)) {
+            if (!r.path("craftableCount").isNumber()) return -1;
+            sum += r.path("craftableCount").asLong();
+        }
         return sum;
     }
 
     /**
-     * Monotonic protection invariant for one principal over the normal crafting payload: protecting stock can only
-     * reduce what own materials can craft, and protecting EVERY bank and material id (no buying) leaves nothing.
+     * Source-specific protection invariants over the normal crafting payload. Protecting a source can only reduce what
+     * own stock crafts; protecting both leaves at most what the unprotected sources (character inventories, DOMAIN_SPEC
+     * section 9) can craft, so combined is NOT required to be zero. Unavailable counts (negative) are never coerced.
      */
     boolean verifyProtection(int user, long none, long bankOnly, long materialsOnly, long combined) {
+        if (Math.min(Math.min(none, bankOnly), Math.min(materialsOnly, combined)) < 0) return fail(user, "protection", "a craftable count was unavailable");
         if (bankOnly > none || materialsOnly > none) return fail(user, "protection", "single-source protection increased craftable counts");
         if (combined > bankOnly || combined > materialsOnly) return fail(user, "protection", "combined protection is weaker than a single source");
-        if (combined != 0) return fail(user, "protection", "protecting every bank and material id still leaves craftable recipes");
         return true;
     }
 }

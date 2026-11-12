@@ -39,6 +39,7 @@ class PrincipalOracleTest {
             assertEquals(3, f.bankSlots());
             assertEquals(85, f.bankCountSum());
             assertEquals(4, f.materialRows());
+            assertEquals(java.util.List.of("5:1:1:200", "5:2:2:150", "5:3:3:40", "5:4:4:10", "5:5:5:0", "5:6:6:0"), f.displayedMaterials());
             assertEquals(400, f.materialTotal());
             assertEquals(2, f.characters().size());
         }
@@ -65,10 +66,55 @@ class PrincipalOracleTest {
         assertFalse(fresh().verifyBank(0, json("{\"slotCount\":3,\"slots\":[{\"count\":50},{\"count\":30},{\"count\":6}]}")), "wrong sum");
         assertFalse(fresh().verifyBank(0, json("{\"slotCount\":2,\"slots\":[{\"count\":50},{\"count\":35}]}")), "wrong slot count");
         assertFalse(fresh().verifyBank(0, json("{\"slotCount\":0,\"slots\":[]}")), "empty is not A's bank");
-        String mats = "{\"categories\":[{\"materials\":[{\"count\":100},{\"count\":100}]},{\"materials\":[{\"count\":100},{\"count\":100}]}]}";
-        assertTrue(fresh().verifyMaterials(1, json(mats)));
-        assertFalse(fresh().verifyMaterials(1, json(mats.replace("\"count\":100}]}]}", "\"count\":101}]}]}"))), "wrong total");
+        String mats = matsJson(200, 150, 40, 10, 0, 0);
+        assertTrue(fresh().verifyMaterials(1, json(mats)), "six catalog positions, two zero-filled");
+        assertFalse(fresh().verifyMaterials(1, json(matsJson(200, 150, 40, 11, 0, 0))), "wrong quantity");
+        assertFalse(fresh().verifyMaterials(1, json(matsJson(150, 200, 40, 10, 0, 0))), "swapped quantities, same total");
+        assertFalse(fresh().verifyMaterials(1, json(matsJson(200, 150, 40, 10, 1, 0))), "zero position shown non-zero");
         assertFalse(fresh().verifyMaterials(1, json("{\"categories\":[]}")), "missing materials");
+        assertFalse(fresh().verifyMaterials(1, json(mats.replace(",{\"position\":6,\"itemId\":6,\"count\":0}", ""))), "missing catalog position");
+    }
+
+    private static String matsJson(int... counts) {
+        StringBuilder sb = new StringBuilder("{\"categories\":[{\"category\":5,\"materials\":[");
+        for (int i = 0; i < counts.length; i++) {
+            sb.append(i == 0 ? "" : ",").append("{\"position\":").append(i + 1).append(",\"itemId\":").append(i + 1)
+                    .append(",\"count\":").append(counts[i]).append("}");
+        }
+        return sb.append("]}]}").toString();
+    }
+
+    @Test
+    void mixedOccupiedAndEmptyBankSlotsCountEverySlotButOnlyOccupiedQuantities() throws Exception {
+        FixtureSnapshot base = SyntheticFixtures.build();
+        Map<String, List<ObjectNode>> rows = new LinkedHashMap<>();
+        for (String t : FixtureSnapshot.ALL_TABLES) {
+            boolean scoped = FixtureSnapshot.SCOPED_TABLES.contains(t);
+            rows.put(t, new java.util.ArrayList<>(base.rows(t).stream().filter(r -> !scoped || SyntheticFixtures.A.equals(r.get("account_id").asText())).toList()));
+        }
+        ObjectNode empty = rows.get("account_bank").get(0).deepCopy();
+        empty.put("slot", 3);
+        empty.putNull("item_id");
+        empty.putNull("count");
+        rows.get("account_bank").add(empty);
+        PrincipalOracle o = PrincipalOracle.from(SnapshotImporter.principalCopies(
+                new FixtureSnapshot(base.kind(), base.version(), rows, Map.of(), base.sourceRevision(), null), 1));
+        assertEquals(4, o.facts(0).bankSlots(), "empty slot is a served slot");
+        assertEquals(85, o.facts(0).bankCountSum());
+        assertEquals(3, o.facts(0).bankItemIds().size());
+        String bank = "{\"slotCount\":4,\"slots\":[{\"count\":50},{\"count\":30},{\"count\":5},{\"itemId\":null}]}";
+        assertTrue(o.verifyBank(0, json(bank)));
+        assertFalse(o.verifyBank(0, json(bank.replace("\"slotCount\":4", "\"slotCount\":3"))));
+    }
+
+    @Test
+    void playedTimeCreationAndBirthdayAreCharacterFactsNotTransient() throws Exception {
+        String base = "{\"ageSeconds\":100,\"createdAt\":\"2020-01-01T00:00:00Z\",\"nextBirthdayAt\":\"2027-01-01T00:00:00Z\",\"deaths\":3,\"completedAt\":\"x\"}";
+        String c = PrincipalOracle.canonical(json(base));
+        assertEquals(c, PrincipalOracle.canonical(json(base.replace("\"x\"", "\"y\""))), "operational timestamp ignored");
+        for (String changed : List.of(base.replace("100", "101"), base.replace("2020", "2021"), base.replace("2027", "2028"), base.replace(":3", ":4"))) {
+            assertNotEquals(c, PrincipalOracle.canonical(json(changed)), changed);
+        }
     }
 
     @Test
@@ -101,18 +147,20 @@ class PrincipalOracleTest {
     }
 
     @Test
-    void protectionMustReduceMonotonicallyAndCombinedLeavesNothing() {
+    void protectionIsMonotonicNotZeroAndUnavailableCountsAreNeverCoerced() {
         assertTrue(fresh().verifyProtection(0, 60, 50, 10, 0));
-        assertTrue(fresh().verifyProtection(1, 3, 3, 3, 0));
+        assertTrue(fresh().verifyProtection(0, 60, 50, 10, 7), "character-inventory stock remains craftable");
+        assertTrue(fresh().verifyProtection(1, 3, 3, 3, 3));
         assertFalse(fresh().verifyProtection(0, 60, 61, 10, 0), "protection raised the count");
-        assertFalse(fresh().verifyProtection(0, 60, 50, 10, 5), "protecting everything still crafts");
         assertFalse(fresh().verifyProtection(0, 60, 50, 10, 20), "combined weaker than a single source");
+        assertFalse(fresh().verifyProtection(0, 60, 50, -1, 0), "unavailable is not zero");
     }
 
     @Test
     void craftableTotalSumsRowsAndTreatsMissingAsZeroOnlyWhenAbsentFromEveryRowField() throws Exception {
         assertEquals(63, PrincipalOracle.craftableTotal(json("{\"rows\":[{\"craftableCount\":60},{\"craftableCount\":3}]}")));
         assertEquals(0, PrincipalOracle.craftableTotal(json("{\"rows\":[]}")));
+        assertEquals(-1, PrincipalOracle.craftableTotal(json("{\"rows\":[{\"recipeId\":1}]}")), "missing count is unavailable, not zero");
     }
 
     @Test

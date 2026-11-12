@@ -369,6 +369,35 @@ class PopulatedFixtureHttpTest {
     }
 
     @Test
+    void actualSerializedBankAndMaterialsDtosSatisfyTheOracleAndTheCharacterInventoryProtectionExampleIsNonzero() throws Exception {
+        java.util.Map<String, List<com.fasterxml.jackson.databind.node.ObjectNode>> only = new java.util.LinkedHashMap<>();
+        FixtureSnapshot base = SyntheticFixtures.build();
+        for (String t : FixtureSnapshot.ALL_TABLES) {
+            boolean scoped = FixtureSnapshot.SCOPED_TABLES.contains(t);
+            only.put(t, base.rows(t).stream().filter(r -> !scoped || SyntheticFixtures.A.equals(r.get("account_id").asText())).toList());
+        }
+        PrincipalOracle o = PrincipalOracle.from(SnapshotImporter.principalCopies(
+                new FixtureSnapshot(base.kind(), base.version(), only, java.util.Map.of(), base.sourceRevision(), null), 1));
+        Principal a = new Principal(SyntheticFixtures.A);
+        JsonNode bank = a.json(a.get("/api/account/bank"));
+        JsonNode mats = a.json(a.get("/api/account/materials"));
+        assertTrue(o.verifyBank(0, bank), o.mismatch());
+        assertTrue(o.verifyMaterials(0, mats), o.mismatch());
+        // Hand-written: four stored stock rows, six displayed catalog positions (items 5 and 6 zero-filled).
+        int positions = 0;
+        for (JsonNode c : mats.path("categories")) positions += c.path("materials").size();
+        assertEquals(6, positions);
+        // Specific manual zero case (kept): protecting items 1 and 2 in both sources leaves recipe 20001 nothing.
+        // Nonzero case: recipe 20002 needs 2 x item 3 + 1 x item 100. A's item 3 is 40 material + 7 in character Aria's
+        // inventory. Protecting item 3 and 100 in BOTH bank and materials leaves the 7 inventory units => 3 crafts of
+        // 20002 (item 100 is craftable from the unprotected items 1 and 2), proving protection does not suppress
+        // character-inventory stock (DOMAIN_SPEC section 9).
+        String protectedBoth = ",\"materialProtectionEnabled\":true,\"protectedBankItemIds\":[3,100],\"protectedMaterialItemIds\":[3,100]";
+        assertEquals(3, row(a.json(a.post("/api/crafting/profit", String.format(OWN_MATS, protectedBoth))), 20002).path("craftableCount").asInt(),
+                "character-inventory stock remains craftable after bank and materials are protected");
+    }
+
+    @Test
     void statusIsPartitionedAndOwnerDetailsAreRestrictedToTheConfiguredOwner() throws Exception {
         Principal a = new Principal(SyntheticFixtures.A);
         Principal b = new Principal(SyntheticFixtures.B);

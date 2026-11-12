@@ -153,6 +153,7 @@ async function probe(cmd) {
     await target.click()
   }
   let usable = true
+  let failure = ''
   try {
     await page.waitForFunction(j.usable, null, { timeout: TIMEOUT_MS, polling: 'raf' })
     if (j.freshCall) {
@@ -168,11 +169,11 @@ async function probe(cmd) {
       await page.click(`[data-test="${j.then}"]`)
       await page.waitForFunction(j.thenUsable, null, { timeout: TIMEOUT_MS, polling: 'raf' })
     }
-  } catch { usable = false }
+  } catch (e) { usable = false; failure = String(e?.message ?? e).split('\n')[0].slice(0, 160) + ' calls=' + s.apiCalls.slice(mark).map((c) => `${c.path}=${c.status}`).join(',') }
   // Ceil: a fractional overrun of the 2000 ms threshold must never round down into a pass.
   const durationMillis = Math.ceil(performance.now() - start)
   let correct = true
-  let detail = ''
+  let detail = failure
   if (usable && cmd.expectCount != null && j.count) {
     const n = await page.evaluate(j.count)
     if (n !== cmd.expectCount) { correct = false; detail = `rendered ${n} entries, expected ${cmd.expectCount}` }
