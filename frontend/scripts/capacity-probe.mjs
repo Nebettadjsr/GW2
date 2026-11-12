@@ -22,7 +22,7 @@ import { readFile } from 'node:fs/promises'
 import { extname, join, normalize, resolve } from 'node:path'
 import { chromium } from 'playwright-core'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
-import { isAllowedUrl } from './capacityGuard.mjs'
+import { isAllowedUrl, isRequiredApiFailure } from './capacityGuard.mjs'
 
 const args = process.argv.slice(2)
 const opt = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback)
@@ -152,7 +152,7 @@ async function probe(cmd) {
     const n = await page.evaluate(j.count)
     if (n !== cmd.expectCount) { correct = false; detail = `rendered ${n} entries, expected ${cmd.expectCount}` }
   }
-  const errorCalls = s.apiCalls.filter((c) => c.status >= 500 || c.status === 401 || c.status === 403)
+  const errorCalls = s.apiCalls.filter(isRequiredApiFailure)
   if (errorCalls.length) { correct = false; detail += ' error responses: ' + errorCalls.map((c) => `${c.path}=${c.status}`).join(',') }
   return { durationMillis, usable, correct, detail, httpCalls: s.apiCalls.length, polls: s.apiCalls.filter((c) => c.path.startsWith('/api/sync/tasks')).length }
 }

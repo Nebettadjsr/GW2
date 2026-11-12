@@ -10,3 +10,9 @@ export function isAllowedUrl(raw) {
   if (u.protocol === 'data:' || u.protocol === 'blob:' || u.protocol === 'about:') return true
   return (u.protocol === 'http:' || u.protocol === 'ws:') && LOOPBACK.has(u.hostname)
 }
+
+/** Ordinary fixture users receive 403 from owner capability discovery; required page reads must succeed. */
+export function isRequiredApiFailure(call) {
+  if (call.status === 403 && call.path === '/api/system/status/details') return false
+  return call.status >= 500 || call.status === 401 || call.status === 403
+}
