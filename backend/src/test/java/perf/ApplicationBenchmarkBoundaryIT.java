@@ -18,6 +18,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ApplicationBenchmarkBoundaryIT extends ApplicationBenchmarkHarness {
 
+    /** The explicit smoke asserts exact row counters, so it may expand the pool to flush idle backends. */
+    @Override
+    boolean flushIdlePoolForStats() { return true; }
+
     @Override
     Sizes sizes() {
         return new Sizes(12, 6, 30, 20, 2, 1, 2, 4, 200);

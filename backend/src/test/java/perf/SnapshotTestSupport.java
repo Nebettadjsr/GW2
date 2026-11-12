@@ -24,6 +24,11 @@ final class SnapshotTestSupport {
 
     /** Writes a manifest + jsonl directory derived from the synthetic fixtures with real-looking identities. */
     static void write(Path dir, UnaryOperator<String> perFileTransform) throws IOException {
+        write(dir, perFileTransform, java.util.Set.of());
+    }
+
+    /** As above, but the named tables are captured empty (coherent zero count and hash). */
+    static void write(Path dir, UnaryOperator<String> perFileTransform, java.util.Set<String> emptyTables) throws IOException {
         FixtureSnapshot base = SyntheticFixtures.build();
         ObjectNode manifest = M.createObjectNode();
         manifest.put("format", SnapshotImporter.FORMAT);
@@ -32,15 +37,16 @@ final class SnapshotTestSupport {
         manifest.put("capturedAt", "2026-11-12T01:02:03Z");
         manifest.put("isolation", "read-only-repeatable-read");
         ArrayNode tables = manifest.putArray("tables");
-        for (String name : FixtureSnapshot.SHARED_TABLES) writeTable(dir, name, "shared", base, tables, perFileTransform);
-        for (String name : FixtureSnapshot.SCOPED_TABLES) writeTable(dir, name, "account", base, tables, perFileTransform);
+        for (String name : FixtureSnapshot.SHARED_TABLES) writeTable(dir, name, "shared", base, tables, perFileTransform, emptyTables);
+        for (String name : FixtureSnapshot.SCOPED_TABLES) writeTable(dir, name, "account", base, tables, perFileTransform, emptyTables);
         Files.writeString(dir.resolve("manifest.json"), manifest.toString());
     }
 
     private static void writeTable(Path dir, String name, String scope, FixtureSnapshot base, ArrayNode tables,
-                                   UnaryOperator<String> transform) throws IOException {
+                                   UnaryOperator<String> transform, java.util.Set<String> emptyTables) throws IOException {
         StringBuilder sb = new StringBuilder();
-        for (ObjectNode r : base.rows(name)) {
+        java.util.List<ObjectNode> rows = emptyTables.contains(name) ? java.util.List.of() : base.rows(name);
+        for (ObjectNode r : rows) {
             String line = r.toString()
                     .replace(SyntheticFixtures.A, REAL_ACCOUNT).replace(SyntheticFixtures.B, REAL_OTHER_ACCOUNT)
                     .replace("\"Aria\"", "\"" + REAL_NAME + "\"").replace("\"Cato\"", "\"" + REAL_OTHER_NAME + "\"");
@@ -52,6 +58,6 @@ final class SnapshotTestSupport {
         byte[] bytes = transform.apply(sb.toString()).getBytes(StandardCharsets.UTF_8);
         Files.write(dir.resolve(name + ".jsonl"), bytes);
         ObjectNode t = tables.addObject();
-        t.put("name", name).put("scope", scope).put("rows", base.rows(name).size()).put("sha256", FixtureSnapshot.sha256(bytes));
+        t.put("name", name).put("scope", scope).put("rows", rows.size()).put("sha256", FixtureSnapshot.sha256(bytes));
     }
 }

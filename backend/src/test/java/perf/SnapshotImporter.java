@@ -44,7 +44,7 @@ public final class SnapshotImporter {
     private static final Pattern HEX40 = Pattern.compile("[0-9a-f]{40}");
     private static final Pattern HEX64 = Pattern.compile("[0-9a-f]{64}");
     private static final Set<String> TIME_COLUMNS = Set.of("fetched_at", "completed_at", "last_seen_at",
-            "last_successful_sync_at", "created_at", "updated_at");
+            "last_successful_sync_at", "created_at", "updated_at", "created_at_gw");
     private static final Set<String> KNOWN_SOURCES = Set.of("BANK", "MATERIALS", "ACCOUNT_RECIPES", "LUCK",
             "CHARACTERS", "CHARACTER_EQUIPMENT_TABS", "CHARACTER_BUILD_TABS");
 
@@ -191,10 +191,10 @@ public final class SnapshotImporter {
     }
 
     static void validateRelationships(Map<String, List<ObjectNode>> t) throws ImportException {
-        if (!t.get("recipes").isEmpty()) {
-            List<ObjectNode> pub = t.get("recipe_catalog_publication");
-            if (pub.size() != 1 || !pub.get(0).path("singleton").asBoolean(false)) throw new ImportException("recipes exist without exactly one recipe_catalog_publication row");
-        }
+        // An absent marker is the valid "recipe publication not finished" cache state (V3); it is preserved, never
+        // fabricated. Only a present marker is validated: at most one, and it must be the singleton row.
+        List<ObjectNode> pub = t.get("recipe_catalog_publication");
+        if (pub.size() > 1 || (pub.size() == 1 && !pub.get(0).path("singleton").asBoolean(false))) throw new ImportException("recipe_catalog_publication must hold at most the singleton row");
         Set<String> recipeIds = keys(t.get("recipes"), "recipe_id");
         Set<String> itemIds = keys(t.get("items"), "item_id");
         for (ObjectNode r : t.get("recipe_ingredients")) {

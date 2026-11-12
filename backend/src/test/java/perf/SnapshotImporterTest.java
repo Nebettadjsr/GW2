@@ -151,6 +151,27 @@ class SnapshotImporterTest {
         assertTrue(shifted.rows("account_source_state").stream().anyMatch(r -> r.get("completed_at").asText().startsWith("2030-01-01")));
         assertTrue(FixtureProvenance.of(shifted).get("clockTransformation").asText().contains("fixture preparation"));
         assertEquals(s.rows("account_bank").size(), shifted.rows("account_bank").size());
+        // created_at_gw moves by the same delta as the markers, so age/birthday relationships are preserved.
+        java.time.Duration delta = java.time.Duration.between(
+                OffsetDateTime.parse(s.rows("account_source_state").stream().map(r -> r.get("completed_at").asText())
+                        .max(java.util.Comparator.comparing(OffsetDateTime::parse)).orElseThrow()),
+                OffsetDateTime.parse("2030-01-01T00:00:00Z"));
+        assertFalse(s.rows("characters").isEmpty());
+        for (int i = 0; i < s.rows("characters").size(); i++) {
+            OffsetDateTime before = OffsetDateTime.parse(s.rows("characters").get(i).get("created_at_gw").asText());
+            OffsetDateTime after = OffsetDateTime.parse(shifted.rows("characters").get(i).get("created_at_gw").asText());
+            assertEquals(delta, java.time.Duration.between(before, after));
+            assertEquals(s.rows("characters").get(i).get("age_seconds"), shifted.rows("characters").get(i).get("age_seconds"));
+        }
+    }
+
+    @Test
+    void absentRecipePublicationIsAValidUnpublishedStateAndIsNotFabricated() throws Exception {
+        Path d = Files.createDirectory(tmp.resolve("nopub"));
+        SnapshotTestSupport.write(d, UnaryOperator.identity(), java.util.Set.of("recipe_catalog_publication"));
+        FixtureSnapshot s = SnapshotImporter.read(d);
+        assertFalse(s.rows("recipes").isEmpty());
+        assertTrue(s.rows("recipe_catalog_publication").isEmpty());
     }
 
     @Test
