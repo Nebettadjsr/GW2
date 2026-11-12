@@ -144,9 +144,18 @@ async function probe(cmd) {
       const idx = await page.evaluate(() => {
         const rows = [...document.querySelectorAll('[data-test="profit-row"]')]
         const i = rows.findIndex((r) => r.getAttribute('aria-current') !== 'true')
-        return i < 0 ? 0 : i
+        return i
       })
-      target = page.locator('[data-test="profit-row"]').nth(idx).locator(`[data-test="${j.after}"]`).first()
+      if (idx < 0) {
+        // A one-row result has no different selection to click. Reopen the page untimed, keeping
+        // this context's cookie, session storage and HTTP cache, to start with no selected recipe.
+        await page.reload({ waitUntil: 'domcontentloaded' })
+        await page.waitForSelector('[data-test="profit-row"]')
+        await page.waitForFunction(`!document.querySelector('[data-test="loading"],[data-test="pending"],[data-test="resolution-loading"]') && document.querySelector('[data-test="refresh-data-and-results"]')?.disabled === false`, null, { timeout: TIMEOUT_MS })
+        target = page.locator(`[data-test="${j.after}"]`).first()
+      } else {
+        target = page.locator('[data-test="profit-row"]').nth(idx).locator(`[data-test="${j.after}"]`).first()
+      }
     }
     mark = s.apiCalls.length
     start = performance.now()

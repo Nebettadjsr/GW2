@@ -305,7 +305,8 @@ final class CapacityStageRunner implements StageRunner {
             for (int b = 0; b < browserUsers; b++) ensureBrowser(b);
             for (int u = 0; u < level; u++) session(u);
             freezeBaselines(level);
-            isolationChecks(level);
+            // Verify the two-principal boundary in serial preflight even if level one already breaches.
+            isolationChecks(Math.min(2, oracle.principals()));
             if (oracle.mismatch() != null) throw new IllegalStateException("principal correctness mismatch before measured traffic");
             if (serial) {
                 for (String j : cfg.journeys()) {

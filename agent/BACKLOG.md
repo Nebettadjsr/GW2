@@ -6,6 +6,8 @@ The Product Owner resumed supervision on 2026-11-08 after approving the directly
 
 Authorization: start the agreed workflow, supervise progress and stop only for necessary product/UI decisions or missing access. Supervisor: interactive Codex. Planner: Codex on GitHub. Programmer: Claude. Release one approved story at a time; no new paid API integration is authorized.
 
+Product Owner instruction on 2026-11-12: finish current issue #184, then pause Claude. Do not activate or dispatch another implementation story. The profit-calculation value-display request #188 remains queued; this instruction supersedes automatic continuation of the sequence below.
+
 Historical migration context is in setup PR [#131](https://github.com/Nebettadjsr/GW2/pull/131). Reconcile legacy issues #21, #60, #111 and #116 on GitHub before selecting them; their presence does not authorize release.
 
 Planning handoff: the Characters sequence is Inventory UI #162, Builds core #161, referenced Builds metadata/images #164, then Builds UI #166. Release each only after its actual merged dependencies and contract have been reviewed. The full trait-row choice is resolved in #164/#166; retain their bounded specialization-choice metadata scope. System Status owner boundary #152 and the remaining KPI contracts follow. Earlier material contracts remain linked below for context. Read GitHub issues, PRs, CI and reviews for execution state and evidence before release; this file does not mirror completion, merge hashes, test outcomes or running attempts. Local measurement evidence is not Oracle qualification.
