@@ -1,6 +1,6 @@
 # GW2 active roadmap
 
-Updated: 2026-11-08. Owner: GitHub Codex planner; changes are reviewed by the interactive Codex supervisor.
+Updated: 2026-11-12. Owner: GitHub Codex planner; changes are reviewed by the interactive Codex supervisor.
 
 **Workflow execution authorized by the Product Owner on 2026-11-07; interactive Codex supervises one released story at a time.** Draft order, active handoffs and execution evidence live in [the backlog](../agent/BACKLOG.md) and GitHub issues/PRs. The Product Owner owns product intent and material hosting/budget decisions.
 
@@ -25,13 +25,15 @@ The Product Owner confirmed Oracle Always Free on 2026-11-07; Cloudflare is not 
 
 Qualification target: ARM64 Ampere A1, combined 2 OCPU / 12 GB RAM for the entire deployment, including OS, Docker, PostgreSQL, backend, frontend and monitoring overhead. This is an allocation ceiling, not permission for Java alone to use 12 GB. Confirm the actual tenancy's available resources and shared storage/network usage before qualification.
 
-Oracle's [Always Free resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm), checked 2026-11-07, specify 1,500 OCPU-hours and 9,000 GB-hours monthly, equivalent to 2 OCPU / 12 GB, plus 200 GB combined boot/block storage across the tenancy. The planner must include storage, transfer, logs and any other required services in the budget; workload, latency and safety-headroom targets remain to be agreed. No target host is currently verified by this setup.
+Oracle's [Always Free resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm), checked 2026-11-07, specify 1,500 OCPU-hours and 9,000 GB-hours monthly, equivalent to 2 OCPU / 12 GB, plus 200 GB combined boot/block storage across the tenancy. The planner must include storage, transfer, logs and any other required services in the budget. No target host is currently verified by this setup.
+
+The Product Owner selected capacity discovery on 2026-11-12: find how many simultaneous users can be supported before a rendered, usable page takes longer than **2 seconds**. This replaces the older 3–5-second proposal and fixed normal/busy user counts. Research workload methodology and distinguish measured behavior from provisional rates: crafting involves planning bursts followed by minutes acting in game, whereas Bank, Materials and Characters involve more frequent browsing. Test cadence/mix sensitivity and actual frontend background requests, not continuous clicking by every connected session. Use populated synthetic fixtures for default CI and the explicitly authorized, ignored local account snapshot for representative local runs; independent test principals preserve account separation. Record every over-limit sample, latency distributions, first breach and repeatability without silently substituting a percentile SLA. Actual capacity is the result, not an approval prerequisite. Observe resource headroom without inventing a mandatory percentage.
 
 ### Sequence
 
 1. Reconcile existing measurements/reports and open work; identify gaps.
-2. Verify available Oracle resources and agree workload/KPI budgets with units, quota periods and operating headroom.
-3. Extend existing instrumentation/reporting only where needed.
+2. Prepare representative offline inputs and researched workload profiles; actual Oracle tenancy access is required for final host qualification, not independent local development.
+3. Extend existing instrumentation/reporting only where needed, then discover the 2-second capacity boundary under named profiles and report resource usage/headroom with units and measurement limits.
 4. Run reproducible correctness, multi-account, desktop, sustained-load and recovery qualification with simulated upstream failures.
 5. Produce a concise usage/headroom report and supervisor health review. Propose optional improvements separately; do not implement them automatically.
 
@@ -104,7 +106,7 @@ The paired Bank/Materials/Characters implementation uses automatic page-scoped s
 
 Prepare separate backend authorization, status UI and inventory freshness stories. Verify owner versus non-owner direct requests, task visibility, key replacement, empty owner configuration, account switching, duplicate refresh admission and stale/error recovery. Batch and bound full-catalog admin work; include its CPU/memory/storage/upstream impact in Oracle qualification rather than assuming on-demand TP measurements represent it. Implementation follows supervisor release of a concrete contract.
 
-Current gate: the owner backend and full-catalog operations are integrated, and the System Status owner and regular-user layouts are visually accepted. The next offline workload proposal is #184, with workload/latency/headroom choices still open rather than approved thresholds. Actual owner provisioning and final resource qualification remain separate.
+Current sequence: the owner backend and full-catalog operations are integrated, and the System Status owner and regular-user layouts are visually accepted. Prepare representative offline fixtures (#185), then capacity-discovery workloads (#184) against the Product Owner's 2-second reference. Deployment owner configuration and final resource qualification remain separate; unknown capacity does not block the local test foundation.
 
 System Status visual decisions: owner-only composition accepted on 2026-11-11; regular-user account overview (own-account counts, compact service line) accepted on 2026-11-12. Preserve the accepted layouts; execution and final quality evidence belong to #182 / #183.
 
