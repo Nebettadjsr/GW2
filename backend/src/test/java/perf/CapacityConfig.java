@@ -17,7 +17,20 @@ public record CapacityConfig(
         WorkloadProfile profile,
         List<String> journeys,
         long observationWindowMillis,
-        long drainTimeoutMillis) {
+        long drainTimeoutMillis,
+        int craftBurstMin,
+        int craftBurstMax,
+        int probeSamplesPerJourney) {
+
+    /** Documented crafting burst: 5-30 PROFIT requests within one minute (assumption, configurable). */
+    public static final int DEFAULT_BURST_MIN = 5, DEFAULT_BURST_MAX = 30;
+
+    public CapacityConfig(long thresholdMillis, List<Integer> coarseLevels, int maxUsers, long maxMillisPerProfile,
+                          int confirmations, int probeBudget, long seed, WorkloadProfile profile, List<String> journeys,
+                          long observationWindowMillis, long drainTimeoutMillis) {
+        this(thresholdMillis, coarseLevels, maxUsers, maxMillisPerProfile, confirmations, probeBudget, seed, profile, journeys,
+                observationWindowMillis, drainTimeoutMillis, DEFAULT_BURST_MIN, DEFAULT_BURST_MAX, 1);
+    }
 
     public static final long REFERENCE_MILLIS = 2000;
     public static final List<String> DEFAULT_JOURNEYS = List.of(
@@ -41,6 +54,10 @@ public record CapacityConfig(
         if (confirmations < 1) throw new IllegalArgumentException("confirmations must be >= 1");
         if (probeBudget < 1 || probeBudget > 2) throw new IllegalArgumentException("probeBudget (browser contexts) must be 1..2");
         if (journeys.isEmpty()) throw new IllegalArgumentException("at least one journey must be enabled");
+        if (craftBurstMin < 1 || craftBurstMax < craftBurstMin || craftBurstMax > 200) {
+            throw new IllegalArgumentException("crafting burst must satisfy 1 <= min <= max <= 200");
+        }
+        if (probeSamplesPerJourney < 1 || probeSamplesPerJourney > 5) throw new IllegalArgumentException("probeSamplesPerJourney must be 1..5");
         if (profile == null) throw new IllegalArgumentException("profile is required");
     }
 
@@ -52,16 +69,26 @@ public record CapacityConfig(
 
     public CapacityConfig withJourneys(List<String> enabled) {
         return new CapacityConfig(thresholdMillis, coarseLevels, maxUsers, maxMillisPerProfile, confirmations,
-                probeBudget, seed, profile, enabled, observationWindowMillis, drainTimeoutMillis);
+                probeBudget, seed, profile, enabled, observationWindowMillis, drainTimeoutMillis, craftBurstMin, craftBurstMax, probeSamplesPerJourney);
     }
 
     public CapacityConfig withLevels(List<Integer> levels, int max) {
         return new CapacityConfig(thresholdMillis, levels, max, maxMillisPerProfile, confirmations,
-                probeBudget, seed, profile, journeys, observationWindowMillis, drainTimeoutMillis);
+                probeBudget, seed, profile, journeys, observationWindowMillis, drainTimeoutMillis, craftBurstMin, craftBurstMax, probeSamplesPerJourney);
     }
 
     public CapacityConfig withBudget(long maxMillis) {
         return new CapacityConfig(thresholdMillis, coarseLevels, maxUsers, maxMillis, confirmations,
-                probeBudget, seed, profile, journeys, observationWindowMillis, drainTimeoutMillis);
+                probeBudget, seed, profile, journeys, observationWindowMillis, drainTimeoutMillis, craftBurstMin, craftBurstMax, probeSamplesPerJourney);
+    }
+
+    public CapacityConfig withBurst(int min, int max) {
+        return new CapacityConfig(thresholdMillis, coarseLevels, maxUsers, maxMillisPerProfile, confirmations,
+                probeBudget, seed, profile, journeys, observationWindowMillis, drainTimeoutMillis, min, max, probeSamplesPerJourney);
+    }
+
+    public CapacityConfig withProbeSamples(int perJourney) {
+        return new CapacityConfig(thresholdMillis, coarseLevels, maxUsers, maxMillisPerProfile, confirmations,
+                probeBudget, seed, profile, journeys, observationWindowMillis, drainTimeoutMillis, craftBurstMin, craftBurstMax, perJourney);
     }
 }

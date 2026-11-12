@@ -71,6 +71,64 @@ class CapacityReportTest {
         assertTrue(a.stream().allMatch(s -> s.offsetMillis() >= 0 && s.offsetMillis() < 600_000));
     }
 
+    @Test void craftingBurstIsConfigurableProfitRequestsWithinAMinuteThenDetailThenPause() {
+        for (int[] range : new int[][]{{5, 30}, {7, 7}}) {
+            List<WorkloadProfile.ScheduledStart> plan = WorkloadProfile.CRAFTING_CONTEXT.plan(1, 9, 0, 3_600_000,
+                    List.of("crafting-profit", "recipe-detail"), range[0], range[1]);
+            List<WorkloadProfile.ScheduledStart> profit = plan.stream().filter(s -> s.journey().equals("crafting-profit")).toList();
+            List<WorkloadProfile.ScheduledStart> detail = plan.stream().filter(s -> s.journey().equals("recipe-detail")).toList();
+            assertFalse(detail.isEmpty());
+            // walk workflows: PROFIT requests precede each detail, the burst spans < 60 s, and the next burst follows the pause
+            int idx = 0;
+            for (WorkloadProfile.ScheduledStart d : detail) {
+                List<WorkloadProfile.ScheduledStart> burst = new java.util.ArrayList<>();
+                while (idx < profit.size() && profit.get(idx).offsetMillis() < d.offsetMillis()) burst.add(profit.get(idx++));
+                assertTrue(burst.size() >= range[0] && burst.size() <= range[1], "burst size " + burst.size());
+                assertTrue(burst.get(burst.size() - 1).offsetMillis() - burst.get(0).offsetMillis() < WorkloadProfile.BURST_SPAN_MS);
+                assertTrue(d.offsetMillis() > burst.get(burst.size() - 1).offsetMillis());
+                if (idx < profit.size()) {
+                    assertTrue(profit.get(idx).offsetMillis() - d.offsetMillis() >= WorkloadProfile.CRAFTING_CONTEXT.pauseMinMs(), "in-game pause follows detail");
+                }
+            }
+        }
+        assertThrows(IllegalArgumentException.class, () -> CapacityConfig.defaults(WorkloadProfile.BALANCED, 1).withBurst(10, 5));
+    }
+
+    @Test void adjacentWindowsContinueTheSameUserTimelineInsteadOfRestarting() {
+        List<String> all = CapacityConfig.DEFAULT_JOURNEYS;
+        List<WorkloadProfile.ScheduledStart> whole = WorkloadProfile.BALANCED.plan(6, 11, 0, 600_000, all, 5, 30);
+        List<WorkloadProfile.ScheduledStart> first = WorkloadProfile.BALANCED.plan(6, 11, 0, 300_000, all, 5, 30);
+        List<WorkloadProfile.ScheduledStart> second = WorkloadProfile.BALANCED.plan(6, 11, 300_000, 300_000, all, 5, 30);
+        List<WorkloadProfile.ScheduledStart> shifted = second.stream()
+                .map(s -> new WorkloadProfile.ScheduledStart(s.user(), s.offsetMillis() + 300_000, s.journey(), s.poll())).toList();
+        List<WorkloadProfile.ScheduledStart> joined = new java.util.ArrayList<>(first);
+        joined.addAll(shifted);
+        joined.sort(java.util.Comparator.comparingLong(WorkloadProfile.ScheduledStart::offsetMillis)
+                .thenComparingInt(WorkloadProfile.ScheduledStart::user).thenComparing(WorkloadProfile.ScheduledStart::journey));
+        assertEquals(whole, joined, "two adjacent windows are exactly the slices of one continuous timeline");
+        assertTrue(second.stream().mapToLong(WorkloadProfile.ScheduledStart::offsetMillis).distinct().count() > 1,
+                "users are not all re-started at the window start");
+    }
+
+    @Test void statusPollsRunEveryFiveSecondsOnlyWhileTheActorStaysOnStatus() {
+        List<WorkloadProfile.ScheduledStart> plan = WorkloadProfile.BROWSE_HEAVY.plan(1, 4, 0, 1_200_000, List.of("system-status"), 5, 30);
+        List<WorkloadProfile.ScheduledStart> visits = plan.stream().filter(s -> !s.poll()).toList();
+        List<WorkloadProfile.ScheduledStart> polls = plan.stream().filter(WorkloadProfile.ScheduledStart::poll).toList();
+        assertFalse(polls.isEmpty());
+        for (WorkloadProfile.ScheduledStart p : polls) {
+            long since = visits.stream().filter(v -> v.offsetMillis() <= p.offsetMillis()).mapToLong(v -> p.offsetMillis() - v.offsetMillis()).min().orElseThrow();
+            assertEquals(0, since % WorkloadProfile.STATUS_POLL_MS);
+            assertTrue(since < WorkloadProfile.BROWSE_HEAVY.browseMaxMs(), "polls stop when the actor navigates away");
+        }
+    }
+
+    @Test void sparseProbeAndBurstConfigAreValidated() {
+        assertEquals(1, CapacityConfig.defaults(WorkloadProfile.BALANCED, 1).probeSamplesPerJourney());
+        assertEquals(5, CapacityConfig.defaults(WorkloadProfile.BALANCED, 1).craftBurstMin());
+        assertEquals(30, CapacityConfig.defaults(WorkloadProfile.BALANCED, 1).craftBurstMax());
+        assertThrows(IllegalArgumentException.class, () -> CapacityConfig.defaults(WorkloadProfile.BALANCED, 1).withProbeSamples(0));
+    }
+
     @Test void profilesChangeTheAccountCraftingMix() {
         long[] account = new long[2];
         int i = 0;

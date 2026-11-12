@@ -7,11 +7,20 @@ import java.util.stream.Collectors;
 /** Result of one finite measured window at one user level. */
 public record StageObservation(int level, String role, long seed, List<CapacitySample> samples,
                                int scheduledStarts, int achievedStarts, int lateStarts, int missedStarts,
-                               boolean generatorSaturated, String invalidReason, long elapsedMillis) {
+                               boolean generatorSaturated, String invalidReason, long elapsedMillis,
+                               StartAccounting accounting) {
     public static final String COARSE = "coarse", REFINE = "refine", CONFIRM = "confirm", BASELINE = "baseline", WARMUP = "warmup";
 
     public StageObservation {
         samples = List.copyOf(samples);
+        if (accounting == null) accounting = StartAccounting.EMPTY;
+    }
+
+    public StageObservation(int level, String role, long seed, List<CapacitySample> samples, int scheduledStarts,
+                            int achievedStarts, int lateStarts, int missedStarts, boolean generatorSaturated,
+                            String invalidReason, long elapsedMillis) {
+        this(level, role, seed, samples, scheduledStarts, achievedStarts, lateStarts, missedStarts, generatorSaturated,
+                invalidReason, elapsedMillis, StartAccounting.EMPTY);
     }
 
     public boolean invalid() { return invalidReason != null; }

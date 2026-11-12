@@ -151,6 +151,11 @@ class CapacityExperimentIT {
                 assertEquals(1, r.path("blockedNow").asInt(), "blocked by the probe: " + url);
             }
             assertEquals(List.of("render.guildwars2.com", "api.guildwars2.com"), probe.blockedRequests());
+            // Offline enforcement must not disable the browser HTTP cache: a reload serves fingerprinted assets from cache.
+            var cache = probe.cacheCheck("proof");
+            assertTrue(cache.path("ok").asBoolean(), cache.toString());
+            assertTrue(cache.path("assetsLoaded").asInt() > 0, "the page loaded build assets: " + cache);
+            assertEquals(0, cache.path("assetsFromServer").asInt(), "warm assets must be answered by the browser cache, not the server: " + cache);
         }
         assertEquals(List.of(), OfflineIcons.OFFLINE_ACQUISITIONS.stream().filter(k -> k.startsWith("http")).toList(), "offline edge never records a network URL");
     }

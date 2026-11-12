@@ -41,42 +41,91 @@ public enum WorkloadProfile {
         throw new IllegalArgumentException("unknown profile " + id);
     }
 
-    /** One planned journey start. {@code offsetMillis} is the scheduled time from window start, independent of any response. */
-    public record ScheduledStart(int user, long offsetMillis, String journey) { }
+    /** Mounted Status page poll interval (frontend default), per actor while it stays on Status. */
+    public static final long STATUS_POLL_MS = 5_000;
+    /** The documented crafting burst: all PROFIT requests fall inside one minute. */
+    public static final long BURST_SPAN_MS = 60_000;
 
     /**
-     * Seeded open-loop schedule: each user has an independent random phase, so users do not start
-     * in an identical burst. A crafting burst (profit + recipe detail) is followed by the in-game
-     * pause; account browsing uses the think-time range. Local-only actions (checkboxes, sorting,
-     * Profit search/limit, tab inspection) deliberately generate no starts. Offered independently
-     * of response completion so slowdowns cannot reduce offered load.
+     * One planned start. {@code offsetMillis} is the scheduled time from window start, independent of any response.
+     * {@code poll} marks a background Status poll (counted separately from user journeys).
      */
+    public record ScheduledStart(int user, long offsetMillis, String journey, boolean poll) {
+        public ScheduledStart(int user, long offsetMillis, String journey) { this(user, offsetMillis, journey, false); }
+    }
+
     public List<ScheduledStart> plan(int users, long seed, long windowMillis, List<String> enabled) {
+        return plan(users, seed, 0, windowMillis, enabled, CapacityConfig.DEFAULT_BURST_MIN, CapacityConfig.DEFAULT_BURST_MAX);
+    }
+
+    /**
+     * Seeded open-loop schedule. Each user owns ONE continuous, seeded timeline (random initial phase, then
+     * workflow after workflow); a measured window is the slice {@code [windowStart, windowStart+window)} of that
+     * timeline, with offsets relative to the slice start. Adjacent windows therefore continue each user's
+     * browse/idle phase instead of restarting every user at once. A crafting workflow is
+     * {@code burstMin..burstMax} PROFIT requests spread within one minute, then one recipe detail, then the
+     * in-game pause. Account browsing uses the think-time range; a Status visit adds mounted 5 s polls until
+     * the actor navigates away. Local-only actions (checkboxes, sorting, Profit search/limit, tab inspection)
+     * deliberately generate no starts.
+     */
+    public List<ScheduledStart> plan(int users, long seed, long windowStart, long windowMillis, List<String> enabled,
+                                     int burstMin, int burstMax) {
         if (users < 1) throw new IllegalArgumentException("users must be >= 1");
+        if (burstMin < 1 || burstMax < burstMin) throw new IllegalArgumentException("invalid burst range");
+        long end = windowStart + windowMillis;
+        boolean profit = enabled.contains("crafting-profit");
+        boolean detail = enabled.contains("recipe-detail");
+        boolean canCraft = profit || detail;
         List<String> account = ACCOUNT_JOURNEYS.stream().filter(enabled::contains).toList();
-        List<String> crafting = CRAFTING_JOURNEYS.stream().filter(enabled::contains).toList();
         boolean status = enabled.contains(STATUS_JOURNEY);
+        boolean canBrowse = !account.isEmpty() || status;
         java.util.ArrayList<ScheduledStart> out = new java.util.ArrayList<>();
         for (int u = 0; u < users; u++) {
             Random r = new Random(seed * 1_000_003L + u);
-            long t = (long) (r.nextDouble() * browseMaxMs); // random phase
-            while (t < windowMillis) {
-                boolean craft = !crafting.isEmpty() && (account.isEmpty() || r.nextInt(100) >= accountPercent);
+            long t = (long) (r.nextDouble() * Math.max(browseMaxMs, pauseMaxMs)); // random initial phase
+            while (t < end) {
+                boolean craft = canCraft && (!canBrowse || r.nextInt(100) >= accountPercent);
                 if (craft) {
-                    for (String j : crafting) { out.add(new ScheduledStart(u, t, j)); t += 1_500 + r.nextInt(2_000); }
-                    t += between(r, pauseMinMs, pauseMaxMs);
-                } else if (!account.isEmpty()) {
-                    out.add(new ScheduledStart(u, t, account.get(r.nextInt(account.size()))));
-                    if (status && r.nextInt(10) == 0) out.add(new ScheduledStart(u, t + 500, STATUS_JOURNEY));
-                    t += between(r, browseMinMs, browseMaxMs);
+                    long burstEnd = t;
+                    if (profit) {
+                        int n = burstMin + r.nextInt(burstMax - burstMin + 1);
+                        long[] offs = new long[n];
+                        for (int i = 0; i < n; i++) offs[i] = t + (long) (r.nextDouble() * BURST_SPAN_MS);
+                        java.util.Arrays.sort(offs);
+                        for (long o : offs) add(out, new ScheduledStart(u, o, "crafting-profit"), windowStart, end);
+                        burstEnd = offs[n - 1];
+                    }
+                    if (detail) {
+                        burstEnd += 1_500 + r.nextInt(2_000);
+                        add(out, new ScheduledStart(u, burstEnd, "recipe-detail"), windowStart, end);
+                    }
+                    t = burstEnd + between(r, pauseMinMs, pauseMaxMs);
+                } else if (canBrowse) {
+                    long think = between(r, browseMinMs, browseMaxMs);
+                    boolean visitStatus = status && (account.isEmpty() || r.nextInt(10) == 0);
+                    if (visitStatus) {
+                        add(out, new ScheduledStart(u, t, STATUS_JOURNEY), windowStart, end);
+                        for (long p = t + STATUS_POLL_MS; p < t + think; p += STATUS_POLL_MS) {
+                            add(out, new ScheduledStart(u, p, STATUS_JOURNEY, true), windowStart, end);
+                        }
+                    } else {
+                        add(out, new ScheduledStart(u, t, account.get(r.nextInt(account.size()))), windowStart, end);
+                    }
+                    t += think;
                 } else {
                     break;
                 }
             }
         }
-        out.removeIf(s -> s.offsetMillis() >= windowMillis);
-        out.sort(java.util.Comparator.comparingLong(ScheduledStart::offsetMillis).thenComparingInt(ScheduledStart::user));
+        out.sort(java.util.Comparator.comparingLong(ScheduledStart::offsetMillis).thenComparingInt(ScheduledStart::user)
+                .thenComparing(ScheduledStart::journey));
         return List.copyOf(out);
+    }
+
+    private static void add(List<ScheduledStart> out, ScheduledStart s, long from, long to) {
+        if (s.offsetMillis() >= from && s.offsetMillis() < to) {
+            out.add(new ScheduledStart(s.user(), s.offsetMillis() - from, s.journey(), s.poll()));
+        }
     }
 
     private static long between(Random r, long min, long max) {

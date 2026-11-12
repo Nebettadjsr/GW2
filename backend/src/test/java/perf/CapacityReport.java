@@ -132,6 +132,10 @@ public final class CapacityReport {
         cfg.put("confirmations", config.confirmations());
         cfg.put("probeBudgetBrowserContexts", config.probeBudget());
         cfg.put("seed", config.seed());
+        cfg.put("craftBurstProfitRequests", config.craftBurstMin() + ".." + config.craftBurstMax() + " within one minute, then recipe detail, then the in-game pause");
+        cfg.put("browserProbeSamplesPerJourneyPerStage", config.probeSamplesPerJourney());
+        cfg.put("craftScope", "ALL (frontend default)");
+        cfg.put("workloadPhases", "one continuous seeded timeline per user; each measured window is the next slice, so phases continue across stages");
         cfg.set("journeys", MAPPER.valueToTree(config.journeys()));
         ObjectNode prof = cfg.putObject("profile");
         prof.put("id", config.profile().id());
@@ -160,6 +164,17 @@ public final class CapacityReport {
             n.put("lateStarts", st.lateStarts());
             n.put("missedStarts", st.missedStarts());
             n.put("generatorSaturated", st.generatorSaturated());
+            StartAccounting a = st.accounting();
+            ObjectNode acc = n.putObject("accounting");
+            acc.set("journeys", MAPPER.valueToTree(a.journeys()));
+            acc.set("polls", MAPPER.valueToTree(a.polls()));
+            acc.put("httpCalls", a.httpCalls());
+            acc.set("httpStatuses", MAPPER.valueToTree(a.httpStatuses()));
+            acc.put("browserProbeCalls", a.browserProbeCalls());
+            acc.put("browserApiCalls", a.browserApiCalls());
+            acc.put("browserStatusPolls", a.browserPolls());
+            acc.put("maxQueueDelayMillis", a.maxQueueDelayMillis());
+            acc.put("note", "protocol users' starts are recorded inside workers; browser probes are sparse and counted inside L");
             if (st.invalidReason() != null) n.put("invalidReason", st.invalidReason());
             n.put("breached", st.breached(config.thresholdMillis()));
             n.put("browserBreached", st.breached(config.thresholdMillis()));

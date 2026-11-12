@@ -31,6 +31,8 @@ const dist = resolve(opt('--dist', 'dist'))
 const TIMEOUT_MS = Number(process.env.GW2_PROBE_TIMEOUT_MS ?? 15_000)
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.woff2': 'font/woff2', '.ico': 'image/x-icon' }
 
+/** Static-asset requests that reached the loopback server (a warm browser cache answers without reaching it). */
+const staticHits = new Map()
 const server = createServer(async (req, res) => {
   if (req.url.startsWith('/api/')) {
     const headers = { ...req.headers, host: backend.host }
@@ -49,7 +51,11 @@ const server = createServer(async (req, res) => {
     if (!file.startsWith(dist)) throw new Error('outside dist')
     let body
     try { body = await readFile(file) } catch { file = join(dist, 'index.html'); body = await readFile(file) }
-    res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' })
+    const pathname = new URL(req.url, 'http://x').pathname
+    staticHits.set(pathname, (staticHits.get(pathname) ?? 0) + 1)
+    // Fingerprinted build assets are cacheable like the production frontend serves them; index.html is revalidated.
+    const cacheable = pathname.startsWith('/assets/')
+    res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', 'cache-control': cacheable ? 'public, max-age=3600, immutable' : 'no-cache' })
     res.end(body)
   } catch (e) { res.writeHead(404); res.end('not found') }
 })
@@ -75,11 +81,12 @@ const out = (o) => process.stdout.write(JSON.stringify(o) + '\n')
 async function login(principal, key, origin) {
   if (sessions.has(principal)) await sessions.get(principal).context.close()
   const context = await browser.newContext()
-  await context.route('**/*', (route) => {
-    const url = route.request().url()
-    if (isAllowedUrl(url)) return route.continue()
-    blocked.push(new URL(url, 'http://invalid').host)
-    return route.abort('blockedbyclient')
+  // Offline enforcement WITHOUT context.route(): routing disables the browser HTTP cache, which would make
+  // a "warm asset" experiment silently cold. Non-loopback hosts cannot resolve (--host-resolver-rules) so the
+  // request never leaves the machine; the attempt is still recorded here as the explicit blocked-host proof.
+  context.on('request', (req) => {
+    const url = req.url()
+    if (!isAllowedUrl(url)) blocked.push(new URL(url, 'http://invalid').host)
   })
   const page = await context.newPage()
   page.setDefaultTimeout(TIMEOUT_MS)
@@ -150,6 +157,23 @@ async function probe(cmd) {
   return { durationMillis, usable, correct, detail, httpCalls: s.apiCalls.length, polls: s.apiCalls.filter((c) => c.path.startsWith('/api/sync/tasks')).length }
 }
 
+/**
+ * Real-browser cached-asset observation: reload the logged-in page and count how many /assets/ files the
+ * page loaded versus how many actually reached the server. Cached assets load without reaching it.
+ */
+async function cacheCheck(principal) {
+  const s = sessions.get(principal)
+  if (!s) throw new Error('unknown principal')
+  const assetResponses = new Set()
+  const onResp = (r) => { const p = new URL(r.url()).pathname; if (p.startsWith('/assets/')) assetResponses.add(p) }
+  s.page.on('response', onResp)
+  const before = [...staticHits.entries()].filter(([p]) => p.startsWith('/assets/')).reduce((n, [, c]) => n + c, 0)
+  await s.page.reload({ waitUntil: 'load' })
+  const after = [...staticHits.entries()].filter(([p]) => p.startsWith('/assets/')).reduce((n, [, c]) => n + c, 0)
+  s.page.off('response', onResp)
+  return { assetsLoaded: assetResponses.size, assetsFromServer: after - before, cacheEnabled: assetResponses.size > 0 && after - before < assetResponses.size }
+}
+
 /** Proof hook: the logged-in page itself tries to load a URL (e.g. an ArenaNet render host); the guard must stop it. */
 async function attempt(principal, url) {
   const s = sessions.get(principal)
@@ -178,6 +202,7 @@ server.listen(0, '127.0.0.1', async () => {
       if (cmd.cmd === 'login') { await login(cmd.principal, cmd.key, origin); out({ id: cmd.id, ok: true }) }
       else if (cmd.cmd === 'probe') out({ id: cmd.id, ok: true, ...(await probe(cmd)) })
       else if (cmd.cmd === 'blocked') out({ id: cmd.id, ok: true, blocked: [...blocked] })
+      else if (cmd.cmd === 'cachecheck') out({ id: cmd.id, ok: true, ...(await cacheCheck(cmd.principal)) })
       else if (cmd.cmd === 'attempt') out({ id: cmd.id, ok: true, ...(await attempt(cmd.principal, cmd.url)) })
       else out({ id: cmd.id, ok: false, error: 'unknown command' })
     } catch (e) { out({ id: cmd.id, ok: false, error: String(e.message ?? e).split('\n')[0].slice(0, 200) }) }

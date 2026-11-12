@@ -82,6 +82,11 @@ final class BrowserProbe implements AutoCloseable {
         return call(M.createObjectNode().put("cmd", "attempt").put("principal", principal).put("url", url), 30_000);
     }
 
+    /** Real-browser warm-cache observation: reloads the logged-in page and reports assets loaded vs. assets that reached the server. */
+    JsonNode cacheCheck(String principal) throws Exception {
+        return call(M.createObjectNode().put("cmd", "cachecheck").put("principal", principal), 60_000);
+    }
+
     boolean isAlive() { return process.isAlive(); }
 
     @Override

@@ -272,6 +272,18 @@ independent economics oracle. Resource observations are reported `unavailable` (
 Cleanup: workers (protocol, browser, application tasks) are stopped and drained first; the browser process is closed and the
 owned schema dropped afterwards. If anything cannot drain the report says `cleanupRequired` and the schema is not asserted away.
 
+Workload semantics (assumptions, configurable): a crafting workflow is 5–30 PROFIT requests (`ALL` scope, the frontend default)
+spread within one minute, then one recipe detail (resolving a row of that actor's own result), then the in-game pause. Each user
+has one continuous seeded timeline and every measured window is the next slice of it, so phases continue across stages. A Status
+visit adds the mounted 5 s poll only until the actor navigates away; checkboxes, sorting, Profit search/limit and tab inspection
+issue no requests. Per stage the report's `accounting` lists, separately for journeys and polls, offered/submitted/started/
+completed/failed/pending/missed/late/in-flight peak (starts are recorded inside the worker, so executor queueing shows as start
+delay), plus actual HTTP calls by status and browser API/poll counts. Any undelivered offered demand marks the stage
+generator-saturated and it is not capacity evidence. Browser probes are sparse: by default one sample of every enabled journey
+per measured stage, sequential, spread across the window and counted inside L. The browser's HTTP cache is NOT disabled: offline
+enforcement uses name-resolution blocking plus request observation (no `context.route`), and the boundary check asserts that a
+reload serves build assets from cache. Deterministic icon bytes remain a disclosed limitation.
+
 Limitations: the generator and Chromium share the host with the application and PostgreSQL; logical cores are not Oracle OCPU.
 No capacity is claimed until the supervisor runs the representative experiment; cold start, refresh/expiry, fault, restart and
 owner overlap remain the separate DRAFT STORY-KPI-008.
