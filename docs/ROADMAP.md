@@ -104,9 +104,9 @@ The paired Bank/Materials/Characters implementation uses automatic page-scoped s
 
 Prepare separate backend authorization, status UI and inventory freshness stories. Verify owner versus non-owner direct requests, task visibility, key replacement, empty owner configuration, account switching, duplicate refresh admission and stale/error recovery. Batch and bound full-catalog admin work; include its CPU/memory/storage/upstream impact in Oracle qualification rather than assuming on-demand TP measurements represent it. Implementation follows supervisor release of a concrete contract.
 
-Current gate: the owner backend and full-catalog operations are integrated. The System Status UI (#182), revised on 2026-11-10 for grouped shared dataset counts/refresh ranges and stored/active account counts, is awaiting local visual approval; actual owner provisioning and final resource qualification are separate. The next offline workload proposal is #184, with workload/latency/headroom choices still open rather than approved thresholds.
+Current gate: the owner backend and full-catalog operations are integrated, and the System Status owner and regular-user layouts are visually accepted. The next offline workload proposal is #184, with workload/latency/headroom choices still open rather than approved thresholds. Actual owner provisioning and final resource qualification remain separate.
 
-System Status gate (2026-11-11): the owner-only layout is approved at `5e1de1b`; the regular-user account overview (own-account counts, compact service line) is implemented in #182 and awaits explicit local visual approval of the ordinary wide/narrow layouts.
+System Status visual decisions: owner-only composition accepted on 2026-11-11; regular-user account overview (own-account counts, compact service line) accepted on 2026-11-12. Preserve the accepted layouts; execution and final quality evidence belong to #182 / #183.
 
 ## Deferred crafting extension and live verification
 
