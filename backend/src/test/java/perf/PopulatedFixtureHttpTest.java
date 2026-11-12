@@ -350,6 +350,25 @@ class PopulatedFixtureHttpTest {
     }
 
     @Test
+    void mismatchedCookieContextIsDeniedAndCombinedProtectionLeavesNothingForEachPrincipal() throws Exception {
+        Principal a = new Principal(SyntheticFixtures.A);
+        Principal b = new Principal(SyntheticFixtures.B);
+        // A's session cookie with B's account context (and the reverse) must never serve either principal's bank.
+        for (Principal[] p : new Principal[][] {{a, b}, {b, a}}) {
+            int status = raw("GET", "/api/account/bank", null, null, p[0].cookie, p[1].context).statusCode();
+            assertTrue(status == 401 || status == 403, "mismatched cookie/context: " + status);
+        }
+        // Hand arithmetic (see the per-principal profit test): A item 1 = 250, item 2 = 180; B item 1 = 12, item 2 = 9.
+        String both = ",\"materialProtectionEnabled\":true,\"protectedBankItemIds\":[1,2],\"protectedMaterialItemIds\":[1,2]";
+        assertEquals(0, row(a.json(a.post("/api/crafting/profit", String.format(OWN_MATS, both))), 20001).path("craftableCount").asInt(),
+                "A: protecting every bank and material unit leaves nothing to craft");
+        assertEquals(0, row(b.json(b.post("/api/crafting/profit", String.format(OWN_MATS, both))), 20001).path("craftableCount").asInt(),
+                "B: same");
+        assertEquals(60, row(a.json(a.post("/api/crafting/profit", String.format(OWN_MATS, ""))), 20001).path("craftableCount").asInt(),
+                "protection settings of one request do not persist into the next");
+    }
+
+    @Test
     void statusIsPartitionedAndOwnerDetailsAreRestrictedToTheConfiguredOwner() throws Exception {
         Principal a = new Principal(SyntheticFixtures.A);
         Principal b = new Principal(SyntheticFixtures.B);

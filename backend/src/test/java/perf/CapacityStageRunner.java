@@ -42,7 +42,8 @@ final class CapacityStageRunner implements StageRunner {
     private final java.util.concurrent.atomic.AtomicInteger browserInFlight = new java.util.concurrent.atomic.AtomicInteger();
     private final Map<Integer, Session> sessions = new ConcurrentHashMap<>();
     private final Set<Integer> browserLoggedIn = new HashSet<>();
-    private final Map<String, String> baselinePrints = new ConcurrentHashMap<>();
+    private final PrincipalOracle oracle;
+    private volatile boolean isolationChecked;
     /** Bounded: a start the pool cannot take is counted as missed (generator saturation), never queued unboundedly. */
     private final ExecutorService workers = new ThreadPoolExecutor(0, MAX_WORKERS, 30, TimeUnit.SECONDS, new SynchronousQueue<>(), r -> {
         Thread t = new Thread(r, "capacity-worker");
@@ -72,7 +73,8 @@ final class CapacityStageRunner implements StageRunner {
     }
 
     CapacityStageRunner(CapacityConfig cfg, String baseUrl, IntFunction<String> keyOf, BrowserProbe probe,
-                        Supplier<Boolean> applicationDrained) {
+                        Supplier<Boolean> applicationDrained, PrincipalOracle oracle) {
+        this.oracle = oracle;
         this.cfg = cfg;
         this.baseUrl = baseUrl;
         this.keyOf = keyOf;
@@ -128,15 +130,21 @@ final class CapacityStageRunner implements StageRunner {
         switch (journey) {
             case "bank": {
                 HttpResponse<String> r = raw("GET", "/api/account/bank", null, null, s);
-                return outcome(r, "bank:" + r.body());
+                if (r.statusCode() != 200) return new Outcome(false, false, null);
+                JsonNode bank = M.readTree(r.body());
+                return new Outcome(true, oracle.verifyBank(user, bank), "bank:" + PrincipalOracle.canonical(bank));
             }
             case "materials": {
                 HttpResponse<String> r = raw("GET", "/api/account/materials", null, null, s);
-                return outcome(r, "materials:" + r.body());
+                if (r.statusCode() != 200) return new Outcome(false, false, null);
+                JsonNode mats = M.readTree(r.body());
+                return new Outcome(true, oracle.verifyMaterials(user, mats), "materials:" + PrincipalOracle.canonical(mats));
             }
             case "characters": {
                 HttpResponse<String> r = raw("GET", "/api/account/characters", null, null, s);
-                return new Outcome(r.statusCode() == 200, r.statusCode() == 200, "characters:" + rosterNames(r).size());
+                if (r.statusCode() != 200) return new Outcome(false, false, null);
+                List<String> names = rosterNames(r);
+                return new Outcome(true, oracle.verifyRoster(user, names), "characters:" + PrincipalOracle.canonical(M.readTree(r.body())));
             }
             case "character-core": {
                 String name = firstCharacter(s);
@@ -145,19 +153,24 @@ final class CapacityStageRunner implements StageRunner {
                 HttpResponse<String> b = raw("GET", "/api/account/characters/" + enc + "/equipment-tabs", null, null, s);
                 HttpResponse<String> c = raw("GET", "/api/account/characters/" + enc + "/build-tabs", null, null, s);
                 boolean ok = a.statusCode() == 200 && b.statusCode() == 200 && c.statusCode() == 200;
-                return new Outcome(ok, ok, null);
+                if (!ok) return new Outcome(false, false, null);
+                JsonNode detail = M.readTree(a.body());
+                boolean own = oracle.ownsCharacter(user, name) && oracle.verifyDetailNames(user, name, detail);
+                return new Outcome(true, own, "core:" + PrincipalOracle.canonical(detail) + PrincipalOracle.canonical(M.readTree(b.body()))
+                        + PrincipalOracle.canonical(M.readTree(c.body())));
             }
             case "character-inventory": {
                 String enc = URLEncoder.encode(firstCharacter(s), StandardCharsets.UTF_8).replace("+", "%20");
                 HttpResponse<String> r = raw("GET", "/api/account/characters/" + enc + "/inventory", null, null, s);
-                return new Outcome(r.statusCode() == 200, r.statusCode() == 200, null);
+                if (r.statusCode() != 200) return new Outcome(false, false, null);
+                return new Outcome(true, oracle.ownsCharacter(user, firstCharacter(s)), "inventory:" + PrincipalOracle.canonical(M.readTree(r.body())));
             }
             case "crafting-profit": {
                 HttpResponse<String> r = raw("POST", "/api/crafting/profit", PROFIT_BODY, null, s);
                 if (r.statusCode() != 200) return new Outcome(false, false, null);
                 JsonNode root = M.readTree(r.body());
                 s.lastProfit = root;
-                return new Outcome(true, true, "profit:" + profitPrint(root));
+                return new Outcome(true, true, "profit:" + PrincipalOracle.canonical(root));
             }
             case "recipe-detail": {
                 JsonNode root = s.lastProfit;
@@ -174,19 +187,18 @@ final class CapacityStageRunner implements StageRunner {
                 req.set("calculation", M.readTree(PROFIT_BODY));
                 if (root.hasNonNull("calculationId")) req.put("basedOnCalculationId", root.get("calculationId").asText());
                 HttpResponse<String> r = raw("POST", "/api/crafting/profit/resolution", req.toString(), null, s);
-                return new Outcome(r.statusCode() == 200, r.statusCode() == 200, null);
+                if (r.statusCode() != 200) return new Outcome(false, false, null);
+                return new Outcome(true, true, "detail:" + PrincipalOracle.canonical(M.readTree(r.body())));
             }
             case "system-status": {
                 HttpResponse<String> r = raw("GET", "/api/system/status", null, null, s);
-                return new Outcome(r.statusCode() == 200, r.statusCode() == 200, null);
+                if (r.statusCode() != 200) return new Outcome(false, false, null);
+                // the principal's own saved-source counts and states; the live status body also carries moving clocks
+                return new Outcome(true, true, "status:" + PrincipalOracle.canonical(M.readTree(r.body()).path("accountOverview")));
             }
             default:
                 throw new IllegalArgumentException("unknown journey " + journey);
         }
-    }
-
-    private static Outcome outcome(HttpResponse<String> r, String print) {
-        return new Outcome(r.statusCode() == 200, r.statusCode() == 200, print);
     }
 
     private static JsonNode firstRow(JsonNode profit) {
@@ -194,15 +206,6 @@ final class CapacityStageRunner implements StageRunner {
             if (profit.path(f).isArray() && profit.path(f).size() > 0) return profit.path(f).get(0);
         }
         return null;
-    }
-
-    private static String profitPrint(JsonNode profit) {
-        List<String> rows = new ArrayList<>();
-        for (String f : List.of("rows", "results", "opportunities")) {
-            for (JsonNode n : profit.path(f)) rows.add(n.path("recipeId").asText() + ":" + n.path("craftableCount").asText());
-        }
-        Collections.sort(rows);
-        return String.join(",", rows);
     }
 
     private List<String> rosterNames(HttpResponse<String> r) throws Exception {
@@ -219,8 +222,67 @@ final class CapacityStageRunner implements StageRunner {
         return names.get(0);
     }
 
-    private static String fingerprint(String s) {
-        return s == null ? null : CapacityReport.sha256(s);
+    // ---- per-principal correctness ---------------------------------------------------------------------------
+
+    /**
+     * Freezes each principal's serial no-load response per journey BEFORE that principal contributes measured
+     * traffic (outside every window). Absolute retained-source checks run on the same responses.
+     */
+    private void freezeBaselines(int level) throws Exception {
+        for (int u = 0; u < level; u++) {
+            for (String j : cfg.journeys()) {
+                if (oracle.frozen(u, j)) continue;
+                Outcome o = protocolJourney(u, j);
+                if (!o.usable() || !o.correct()) { oracle.fail(u, j, "serial baseline is not a correct final response"); return; }
+                if (o.print() != null) oracle.freeze(u, j, o.print());
+            }
+        }
+    }
+
+    private static String profitWith(String protection) {
+        return PROFIT_BODY.substring(0, PROFIT_BODY.length() - 2) + protection + "}}";
+    }
+
+    private long craftable(Session s, String protection) throws Exception {
+        HttpResponse<String> r = raw("POST", "/api/crafting/profit", profitWith(protection), null, s);
+        if (r.statusCode() != 200) return -1;
+        return PrincipalOracle.craftableTotal(M.readTree(r.body()));
+    }
+
+    private static String ids(List<Integer> ids) {
+        return ids.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(",", "[", "]"));
+    }
+
+    /**
+     * Real HTTP isolation checks over two principals, once, before measured traffic: a session cookie with another
+     * principal's account context is denied; an ordinary principal is denied owner diagnostics (a normal 403, not a
+     * failure of a required read); bank-only, material-only and combined protection change the normal crafting payload
+     * monotonically for each principal.
+     */
+    private void isolationChecks(int level) throws Exception {
+        if (isolationChecked || level < 2 || oracle.principals() < 2) return;
+        Session a = session(0), b = session(1);
+        for (Session[] pair : new Session[][] {{a, b}, {b, a}}) {
+            HttpRequest.Builder q = HttpRequest.newBuilder(URI.create(baseUrl + "/api/account/bank")).header("Origin", baseUrl)
+                    .header("Cookie", pair[0].cookie()).header("X-Account-Context", pair[1].context());
+            HttpResponse<String> r = http.send(q.GET().build(), HttpResponse.BodyHandlers.ofString());
+            ledger.httpCall(r.statusCode());
+            if (r.statusCode() != 401 && r.statusCode() != 403) { oracle.fail(pair[0] == a ? 0 : 1, "isolation", "mismatched cookie/context was not denied"); return; }
+        }
+        for (int u = 0; u < 2; u++) {
+            Session s = u == 0 ? a : b;
+            int owner = raw("GET", "/api/system/status/details", null, null, s).statusCode();
+            if (owner != 403) { oracle.fail(u, "isolation", "ordinary principal was not denied owner diagnostics"); return; }
+            PrincipalOracle.Facts f = oracle.facts(u);
+            long none = craftable(s, "");
+            long bank = craftable(s, ",\"materialProtectionEnabled\":true,\"protectedBankItemIds\":" + ids(f.bankItemIds()) + ",\"protectedMaterialItemIds\":[]");
+            long mats = craftable(s, ",\"materialProtectionEnabled\":true,\"protectedBankItemIds\":[],\"protectedMaterialItemIds\":" + ids(f.materialItemIds()));
+            long both = craftable(s, ",\"materialProtectionEnabled\":true,\"protectedBankItemIds\":" + ids(f.bankItemIds())
+                    + ",\"protectedMaterialItemIds\":" + ids(f.materialItemIds()));
+            if (Math.min(Math.min(none, bank), Math.min(mats, both)) < 0) { oracle.fail(u, "protection", "a protection calculation failed"); return; }
+            if (!oracle.verifyProtection(u, none, bank, mats, both)) return;
+        }
+        isolationChecked = true;
     }
 
     // ---- stages ---------------------------------------------------------------------------------------------
@@ -242,6 +304,9 @@ final class CapacityStageRunner implements StageRunner {
             int protocolUsers = level - browserUsers;
             for (int b = 0; b < browserUsers; b++) ensureBrowser(b);
             for (int u = 0; u < level; u++) session(u);
+            freezeBaselines(level);
+            isolationChecks(level);
+            if (oracle.mismatch() != null) throw new IllegalStateException("principal correctness mismatch before measured traffic");
             if (serial) {
                 for (String j : cfg.journeys()) {
                     protocolSample(samples, 0, j, role, level, 0, 0, serial);
@@ -293,6 +358,7 @@ final class CapacityStageRunner implements StageRunner {
                 if (invalid == null) invalid = "stage workers did not drain within the bound; resources retained";
             }
         }
+        if (oracle.mismatch() != null) invalid = "principal correctness mismatch (evidence invalid): " + oracle.mismatch();
         StartAccounting acc = led.snapshot();
         boolean saturated = !serial && (led.saturated() || acc.journeys().pending() > 0 || acc.polls().pending() > 0);
         int offered = serial ? scheduledSerial : acc.journeys().offered() + acc.polls().offered();
@@ -355,11 +421,7 @@ final class CapacityStageRunner implements StageRunner {
         catch (Exception e) { o = new Outcome(false, false, null); }
         long ms = (System.nanoTime() - t) / 1_000_000;
         boolean correct = o.correct();
-        String print = fingerprint(o.print());
-        if (print != null) {
-            if (role.equals(StageObservation.BASELINE)) baselinePrints.putIfAbsent(journey, print);
-            else if (baselinePrints.containsKey(journey) && !baselinePrints.get(journey).equals(print)) correct = false;
-        }
+        if (o.print() != null && !oracle.matchesFrozen(user, journey, o.print())) correct = false;
         out.add(new CapacitySample(journey, CapacitySample.PROTOCOL, level, role, user, offset, delay, ms, o.usable(), correct));
         if (!correct) stageStop = true;
         return correct && o.usable();

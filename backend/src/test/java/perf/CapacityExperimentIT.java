@@ -169,7 +169,7 @@ class CapacityExperimentIT {
         cleanupBlocked = false;
         BrowserProbe probe = new BrowserProbe(frontend, backend);
         CapacityStageRunner runner = new CapacityStageRunner(cfg, backend, PopulatedFixtureHttpTest::copyKey, probe,
-                () -> PopulatedFixtureHttpTest.OUTSTANDING.get() == 0);
+                () -> PopulatedFixtureHttpTest.OUTSTANDING.get() == 0, PrincipalOracle.from(PopulatedFixtureHttpTest.copies));
         try {
             outcome = new CapacityCoordinator(cfg, runner).discover();
         } finally {
