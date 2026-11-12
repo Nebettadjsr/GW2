@@ -291,6 +291,46 @@ public final class SnapshotImporter {
         return out;
     }
 
+    /** The independent fake principals created by {@link #principalCopies}, in copy order. */
+    public record Copies(FixtureSnapshot snapshot, List<String> accountIds) {}
+
+    /**
+     * The narrow seam for the later multi-user driver: instantiates the single-account (already remapped)
+     * scoped data as {@code count} independent fake principals while the shared catalog is carried once.
+     * Each copy gets its own account GUID, character names, bound-owner names and display name; the dependent
+     * references (account_id on every scoped row, and the per-account character ids they key) stay inside
+     * their own copy. Callers use this instead of repeating the import/remap logic.
+     */
+    public static Copies principalCopies(FixtureSnapshot single, int count) throws ImportException {
+        if (count < 1 || count > 1000) throw new ImportException("copy count must be between 1 and 1000");
+        List<ObjectNode> registry = single.rows("account_registry");
+        if (registry.size() != 1) throw new ImportException("principal copies need a single-account snapshot");
+        String base = registry.get(0).path("account_id").asText();
+        Map<String, List<ObjectNode>> out = new LinkedHashMap<>();
+        for (String t : FixtureSnapshot.SHARED_TABLES) out.put(t, single.rows(t));
+        List<String> ids = new ArrayList<>();
+        for (int k = 0; k < count; k++) {
+            ids.add(UUID.nameUUIDFromBytes(("kpi-copy-" + k + "-" + base).getBytes(StandardCharsets.UTF_8)).toString());
+        }
+        for (String t : FixtureSnapshot.SCOPED_TABLES) {
+            List<ObjectNode> rows = new ArrayList<>();
+            for (int k = 0; k < count; k++) {
+                for (ObjectNode r : single.rows(t)) {
+                    ObjectNode c = r.deepCopy();
+                    if (!base.equals(r.path("account_id").asText())) throw new ImportException("table " + t + " references a foreign account");
+                    c.put("account_id", ids.get(k));
+                    if (t.equals("characters")) c.put("name", r.get("name").asText() + " c" + k);
+                    if (t.equals("account_registry") && c.hasNonNull("display_name")) c.put("display_name", r.get("display_name").asText() + " c" + k);
+                    if (c.hasNonNull("bound_to")) c.put("bound_to", r.get("bound_to").asText() + " c" + k);
+                    rows.add(c);
+                }
+            }
+            out.put(t, rows);
+        }
+        return new Copies(new FixtureSnapshot(single.kind(), single.version() + "+copies" + count, out, Map.of(),
+                single.sourceRevision(), single.clockTransformation()), List.copyOf(ids));
+    }
+
     /**
      * Explicit, reported clock transformation: shifts every stored timestamp by the same delta so the
      * newest account marker equals {@code newestMarkerAt}. It is fixture preparation, never a claim that

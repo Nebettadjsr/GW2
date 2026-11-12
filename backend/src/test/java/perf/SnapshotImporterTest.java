@@ -167,4 +167,41 @@ class SnapshotImporterTest {
         assertTrue(msg.contains("has not reached"), msg);
         assertNoMarker(msg);
     }
+
+    @Test
+    void principalCopiesAreIndependentAndShareTheCatalogOnce() throws Exception {
+        FixtureSnapshot all = SnapshotImporter.read(snapshot(UnaryOperator.identity()));
+        // Reduce the stand-in to one account (the owner's real snapshot has exactly one).
+        String first = all.rows("account_registry").get(0).get("account_id").asText();
+        java.util.Map<String, java.util.List<ObjectNode>> t = new java.util.LinkedHashMap<>();
+        for (String table : FixtureSnapshot.ALL_TABLES) {
+            boolean scoped = FixtureSnapshot.SCOPED_TABLES.contains(table);
+            t.put(table, all.rows(table).stream().filter(r -> !scoped || first.equals(r.get("account_id").asText())).toList());
+        }
+        FixtureSnapshot single = new FixtureSnapshot(all.kind(), all.version(), t, java.util.Map.of(), all.sourceRevision(), null);
+        var copies = SnapshotImporter.principalCopies(single, 3);
+        assertEquals(3, copies.accountIds().size());
+        assertEquals(3, new java.util.HashSet<>(copies.accountIds()).size());
+        assertFalse(copies.accountIds().contains(first));
+        FixtureSnapshot c = copies.snapshot();
+        for (String shared : FixtureSnapshot.SHARED_TABLES) assertEquals(single.rows(shared), c.rows(shared), "shared once: " + shared);
+        for (String table : FixtureSnapshot.SCOPED_TABLES) {
+            assertEquals(single.rows(table).size() * 3, c.rows(table).size(), table);
+            for (String id : copies.accountIds()) {
+                assertEquals(single.rows(table).size(), c.rows(table).stream().filter(r -> id.equals(r.get("account_id").asText())).count(), table);
+            }
+            assertTrue(c.rows(table).stream().noneMatch(r -> first.equals(r.get("account_id").asText())), table);
+        }
+        // Same per-account character ids, but distinct names per principal; bound owners follow the copy.
+        var names = c.rows("characters").stream().map(r -> r.get("name").asText()).toList();
+        assertEquals(names.size(), new java.util.HashSet<>(names).size());
+        for (ObjectNode r : c.rows("account_bank")) {
+            if (r.hasNonNull("bound_to")) assertTrue(r.get("bound_to").asText().matches("Fake Character .* c\\d"));
+        }
+        assertNotEquals(single.identity(), c.identity());
+        assertEquals(c.identity(), SnapshotImporter.principalCopies(single, 3).snapshot().identity(), "deterministic");
+        assertNoMarker(c.tables().toString().replace(SnapshotTestSupport.REVISION, ""));
+        assertThrows(SnapshotImporter.ImportException.class, () -> SnapshotImporter.principalCopies(all, 2), "multi-account input refused");
+        assertThrows(SnapshotImporter.ImportException.class, () -> SnapshotImporter.principalCopies(single, 0));
+    }
 }

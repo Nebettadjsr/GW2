@@ -42,7 +42,32 @@ public final class DatabaseProbe {
     /** Schema storage: heap plus TOAST, indexes, and the sum of both ({@code pg_total_relation_size}). */
     public record Storage(long tableBytes, long indexBytes, long totalBytes, long rows) {}
 
+    /**
+     * PostgreSQL publishes a backend's pending table statistics only when it next runs a command (or exits);
+     * an idle pooled application connection can hold its inserts unpublished indefinitely (verified against
+     * PostgreSQL 18: an idle session published nothing for 4 s until its next statement). Checking out every
+     * pooled connection at once and running {@code pg_stat_force_next_flush()} makes each backend publish
+     * before the observer reads. Test-only; failures are ignored because the counters then simply lag.
+     */
+    static void flushApplicationPool() {
+        java.util.List<Connection> held = new java.util.ArrayList<>();
+        try {
+            for (int i = 0; i < repo.AppConfig.DB_POOL_SIZE; i++) held.add(repo.Db.open());
+            for (Connection c : held) {
+                try (java.sql.Statement st = c.createStatement()) {
+                    st.execute("SELECT pg_stat_force_next_flush()");
+                    st.execute("SELECT 1");
+                }
+            }
+        } catch (Exception ignored) {
+            // best effort
+        } finally {
+            for (Connection c : held) { try { c.close(); } catch (Exception ignored) { } }
+        }
+    }
+
     public Counters counters() throws SQLException {
+        flushApplicationPool();
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement("""
                      SELECT coalesce(sum(n_tup_ins), 0), coalesce(sum(n_tup_upd), 0), coalesce(sum(n_tup_del), 0),
