@@ -360,7 +360,7 @@ public final class SnapshotImporter {
                 "uniform shift of " + delta.toSeconds() + "s applied to all stored timestamps (fixture preparation)");
     }
 
-    private static OffsetDateTime parse(String v) throws ImportException {
+    static OffsetDateTime parse(String v) throws ImportException {
         try {
             return OffsetDateTime.parse(v.replace(' ', 'T').replaceAll("([+-]\\d\\d)$", "$1:00")).withOffsetSameInstant(ZoneOffset.UTC);
         } catch (java.time.format.DateTimeParseException e) {

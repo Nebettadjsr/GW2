@@ -38,7 +38,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(classes = web.Gw2ApiApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"gw2.account-luck.schema-init=false", "gw2.account-access.enforce=true",
                 "gw2.global-refresh.initial-delay-ms=3600000", "gw2.owner.account-guid=" + SyntheticFixtures.A})
-@Import(PopulatedFixtureHttpTest.Proofs.class)
+@Import({PopulatedFixtureHttpTest.Proofs.class, OfflineIcons.class})
 class CapacityExperimentIT {
     static final String SCHEMA = "kpi_" + UUID.randomUUID().toString().replace("-", "");
     static final ObjectMapper JSON = new ObjectMapper();
@@ -46,8 +46,11 @@ class CapacityExperimentIT {
     static final Map<String, String> IDENTITY = new LinkedHashMap<>();
     static int copyCount;
     static Path graphFile;
+    static long preparedAt;
+    static java.time.Duration warmWindow;
     /** Set when workers did not drain: the owned schema/files are retained instead of dropped. */
     static volatile boolean cleanupBlocked;
+    static volatile List<String> blockedBrowserRequests = List.of();
 
     @LocalServerPort int port;
 
@@ -60,7 +63,7 @@ class CapacityExperimentIT {
         CapacityConfig d = CapacityConfig.defaults(profile, seed);
         List<Integer> levels = boundary ? List.of(1, 2) : Arrays.stream(prop("levels", "1,2,4,8,16,32,64").split(",")).map(String::trim).map(Integer::parseInt).toList();
         int maxUsers = boundary ? 2 : Integer.parseInt(prop("max-users", "64"));
-        long window = Long.parseLong(prop("window-ms", boundary ? "6000" : String.valueOf(d.observationWindowMillis())));
+        long window = Long.parseLong(prop("window-ms", boundary ? "20000" : String.valueOf(d.observationWindowMillis())));
         long budget = Long.parseLong(prop("budget-ms", boundary ? "300000" : String.valueOf(d.maxMillisPerProfile())));
         int confirmations = Integer.parseInt(prop("confirmations", boundary ? "1" : "3"));
         int probes = Integer.parseInt(prop("probes", "1"));
@@ -87,15 +90,20 @@ class CapacityExperimentIT {
             original = new FixtureSnapshot(base.kind(), base.version(), only, Map.of(), base.sourceRevision(), null);
             IDENTITY.put("fixtureSource", "synthetic");
         }
-        // Warm-state preparation, outside every measured window and disclosed: only timestamps are shifted so
-        // the captured cache is current; facts and parent/optional-source relationships are preserved.
-        FixtureSnapshot prepared = SnapshotImporter.shiftClock(original, OffsetDateTime.now());
+        // Warm-publication preparation, outside every measured window and disclosed (see WarmPreparation): source,
+        // price and optional-coverage publication metadata is re-dated and coverage parents are re-pointed so the
+        // NORMAL production freshness/coverage checks pass for a bounded window; facts are untouched.
+        WarmPreparation.Result warm = WarmPreparation.prepare(original, OffsetDateTime.now());
+        preparedAt = System.nanoTime();
+        warmWindow = warm.warmWindow();
+        FixtureSnapshot prepared = warm.snapshot();
+        warm.disclosure().forEach((k, v) -> IDENTITY.put(k, v));
         SnapshotImporter.Copies copies = SnapshotImporter.principalCopies(prepared, copyCount);
         PopulatedFixtureHttpTest.copies = copies;
         IDENTITY.put("originalInputIdentity", original.identity());
         IDENTITY.put("preparedIdentity", prepared.identity());
         IDENTITY.put("loadedFixtureIdentity", copies.snapshot().identity());
-        IDENTITY.put("warmPolicy", "timestamps shifted to now by a single delta; facts, relationships and production freshness checks unchanged; not evidence the raw capture was fresh");
+        IDENTITY.put("iconEdge", OfflineIcons.FIDELITY);
         IDENTITY.put("principalCopies", String.valueOf(copyCount));
         IDENTITY.put("sharedCatalog", "loaded once for all principals");
         PopulatedFixtureIsolationIT.createSchema(SCHEMA);
@@ -129,6 +137,24 @@ class CapacityExperimentIT {
         } catch (Exception e) { return "unavailable"; }
     }
 
+    /** Tiny real-browser boundary: a page that tries to reach live ArenaNet is stopped before leaving the machine. */
+    @Test
+    void realBrowserCannotReachLiveArenaNet() throws Exception {
+        Path frontend = Path.of(System.getProperty("gw2.capacity.frontend-dir", "../frontend")).toAbsolutePath().normalize();
+        try (BrowserProbe probe = new BrowserProbe(frontend, "http://127.0.0.1:" + port)) {
+            ObjectNode login = JSON.createObjectNode().put("cmd", "login").put("principal", "proof").put("key", PopulatedFixtureHttpTest.copyKey(0));
+            assertTrue(probe.call(login, 60_000).path("ok").asBoolean(), "proof login");
+            for (String url : List.of("https://render.guildwars2.com/file/0123ABCD/456789.png", "https://api.guildwars2.com/v2/items")) {
+                var r = probe.attempt("proof", url);
+                assertTrue(r.path("ok").asBoolean(), r.toString());
+                assertFalse(r.path("loaded").asBoolean(), "must not load " + url);
+                assertEquals(1, r.path("blockedNow").asInt(), "blocked by the probe: " + url);
+            }
+            assertEquals(List.of("render.guildwars2.com", "api.guildwars2.com"), probe.blockedRequests());
+        }
+        assertEquals(List.of(), OfflineIcons.OFFLINE_ACQUISITIONS.stream().filter(k -> k.startsWith("http")).toList(), "offline edge never records a network URL");
+    }
+
     @Test
     void steadyWarmCapacityDiscovery() throws Exception {
         CapacityConfig cfg = config();
@@ -143,7 +169,10 @@ class CapacityExperimentIT {
             outcome = new CapacityCoordinator(cfg, runner).discover();
         } finally {
             // Never destroy a browser with an in-flight action or workers that failed to drain: retain them.
-            if (runner.shutdown()) probe.close();
+            if (runner.shutdown()) {
+                try { blockedBrowserRequests = probe.blockedRequests(); } catch (Exception e) { blockedBrowserRequests = List.of("unavailable: " + e.getMessage()); }
+                probe.close();
+            }
             else {
                 cleanupBlocked = true;
                 System.err.println("RETAINED: generator workers/browser action still in flight; browser, application and schema "
@@ -152,6 +181,7 @@ class CapacityExperimentIT {
         }
         if (!cleanupBlocked) assertFalse(probe.isAlive(), "browser probe process must be stopped");
         assertEquals(List.of(), PopulatedFixtureHttpTest.UNEXPECTED, "no external/live edge may be reached");
+        assertEquals(List.of(), blockedBrowserRequests, "the browser must never have tried a non-loopback host (icons are offline)");
 
         Map<String, String> meta = new LinkedHashMap<>(IDENTITY);
         meta.put("commit", git("rev-parse", "HEAD"));
@@ -163,6 +193,12 @@ class CapacityExperimentIT {
         meta.put("generatorBoundary", "protocol generator and one sequential Chromium probe run in the same host as the application and PostgreSQL (colocated; logical cores are not Oracle OCPU)");
         meta.put("userAccounting", "level L = " + cfg.probeBudget() + " browser-probe principal(s) + (L - probes) protocol users; probes are inside L");
         meta.put("resourceObservations", "unavailable: no container/process resource probe is attached to this local run");
+        meta.put("warmWindowElapsedSeconds", String.valueOf(java.time.Duration.ofNanos(System.nanoTime() - preparedAt).toSeconds()));
+        boolean pastWindow = java.time.Duration.ofNanos(System.nanoTime() - preparedAt).compareTo(warmWindow) > 0;
+        meta.put("warmWindowExceeded", String.valueOf(pastWindow)
+                + (pastWindow ? " - source/price data may have expired naturally; this is NOT a valid steady warm result (re-run with a smaller budget/levels)" : ""));
+        meta.put("browserRequests", "non-loopback browser requests are aborted by the probe; blocked=" + blockedBrowserRequests
+                + "; offline icon acquisitions=" + OfflineIcons.OFFLINE_ACQUISITIONS.size());
         meta.put("noLiveUpstream", "all proof, account, global and price edges are controlled fakes; unexpected calls fail the run");
 
         CapacityReport report = new CapacityReport(cfg, outcome, meta);

@@ -22,6 +22,7 @@ import { readFile } from 'node:fs/promises'
 import { extname, join, normalize, resolve } from 'node:path'
 import { chromium } from 'playwright-core'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
+import { isAllowedUrl } from './capacityGuard.mjs'
 
 const args = process.argv.slice(2)
 const opt = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback)
@@ -67,11 +68,19 @@ const JOURNEYS = {
 
 let browser
 const sessions = new Map()
+/** Requests the browser attempted to non-loopback hosts; each one is aborted before it can leave the machine. */
+const blocked = []
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\n')
 
 async function login(principal, key, origin) {
   if (sessions.has(principal)) await sessions.get(principal).context.close()
   const context = await browser.newContext()
+  await context.route('**/*', (route) => {
+    const url = route.request().url()
+    if (isAllowedUrl(url)) return route.continue()
+    blocked.push(new URL(url, 'http://invalid').host)
+    return route.abort('blockedbyclient')
+  })
   const page = await context.newPage()
   page.setDefaultTimeout(TIMEOUT_MS)
   const apiCalls = []
@@ -141,8 +150,23 @@ async function probe(cmd) {
   return { durationMillis, usable, correct, detail, httpCalls: s.apiCalls.length, polls: s.apiCalls.filter((c) => c.path.startsWith('/api/sync/tasks')).length }
 }
 
+/** Proof hook: the logged-in page itself tries to load a URL (e.g. an ArenaNet render host); the guard must stop it. */
+async function attempt(principal, url) {
+  const s = sessions.get(principal)
+  if (!s) throw new Error('unknown principal')
+  const before = blocked.length
+  const loaded = await s.page.evaluate((u) => new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve(true)
+    img.onerror = () => resolve(false)
+    img.src = u
+  }), url)
+  return { loaded, blockedNow: blocked.length - before }
+}
+
 server.listen(0, '127.0.0.1', async () => {
-  browser = await chromium.launch({ executablePath: resolveBrowserPath() })
+  // Defence in depth with the per-context route guard: any non-loopback host fails to resolve at all.
+  browser = await chromium.launch({ executablePath: resolveBrowserPath(), args: ['--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost'] })
   const origin = `http://127.0.0.1:${server.address().port}`
   out({ ready: true, origin })
   const rl = createInterface({ input: process.stdin })
@@ -153,6 +177,8 @@ server.listen(0, '127.0.0.1', async () => {
     try {
       if (cmd.cmd === 'login') { await login(cmd.principal, cmd.key, origin); out({ id: cmd.id, ok: true }) }
       else if (cmd.cmd === 'probe') out({ id: cmd.id, ok: true, ...(await probe(cmd)) })
+      else if (cmd.cmd === 'blocked') out({ id: cmd.id, ok: true, blocked: [...blocked] })
+      else if (cmd.cmd === 'attempt') out({ id: cmd.id, ok: true, ...(await attempt(cmd.principal, cmd.url)) })
       else out({ id: cmd.id, ok: false, error: 'unknown command' })
     } catch (e) { out({ id: cmd.id, ok: false, error: String(e.message ?? e).split('\n')[0].slice(0, 200) }) }
   }

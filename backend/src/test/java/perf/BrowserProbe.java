@@ -69,6 +69,19 @@ final class BrowserProbe implements AutoCloseable {
         }
     }
 
+    /** Hosts of every non-loopback browser request that the probe aborted (empty when none was attempted). */
+    java.util.List<String> blockedRequests() throws Exception {
+        JsonNode r = call(M.createObjectNode().put("cmd", "blocked"), 15_000);
+        java.util.List<String> out = new java.util.ArrayList<>();
+        r.path("blocked").forEach(n -> out.add(n.asText()));
+        return out;
+    }
+
+    /** Proof hook: the logged-in page tries to load {@code url}; returns whether it loaded and how many requests were blocked. */
+    JsonNode attempt(String principal, String url) throws Exception {
+        return call(M.createObjectNode().put("cmd", "attempt").put("principal", principal).put("url", url), 30_000);
+    }
+
     boolean isAlive() { return process.isAlive(); }
 
     @Override
