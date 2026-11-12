@@ -74,7 +74,7 @@ class WarmPreparationTest {
             assertEquals(raw.rows(table).size(), r.snapshot().rows(table).size(), table);
             for (int i = 0; i < raw.rows(table).size(); i++) {
                 ObjectNode a = raw.rows(table).get(i).deepCopy(), b = r.snapshot().rows(table).get(i).deepCopy();
-                for (String f : List.of("fetched_at", "completed_at", "last_seen_at", "last_successful_sync_at", "created_at", "updated_at", "created_at_gw", "parent_generation")) { a.remove(f); b.remove(f); }
+                for (String f : List.of("fetched_at", "completed_at", "last_seen_at", "last_successful_sync_at", "created_at", "updated_at", "parent_generation")) { a.remove(f); b.remove(f); }
                 assertEquals(a, b, table + " facts");
             }
         }

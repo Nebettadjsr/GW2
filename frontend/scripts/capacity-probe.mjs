@@ -75,7 +75,7 @@ function resolutionMatches(e) {
 const JOURNEYS = {
   bank: { expect: [{ method: 'GET', path: '/api/account/bank', accept: (e) => (e.json?.slots ? null : 'bank response has no slots') }],  nav: 'bank', usable: `document.querySelectorAll('[data-test="bank-screen"] [data-test="bank-slot"]').length > 0 && !document.querySelector('[data-test="bank-loading"],[data-test="bank-error"]')`, count: `document.querySelectorAll('[data-test="bank-screen"] [data-test="bank-slot"]').length` },
   materials: { expect: [{ method: 'GET', path: '/api/account/materials', accept: (e) => (Array.isArray(e.json?.categories) && e.json.categories.length ? null : 'materials response has no categories') }],  nav: 'materials', usable: `!!document.querySelector('[data-test="materials-screen"]') && !document.querySelector('[data-test="materials-loading"],[data-test="materials-error"],[data-test="materials-empty"]') && document.querySelectorAll('[data-test="materials-screen"] [title]').length > 0` },
-  characters: { expect: [{ method: 'GET', path: '/api/account/characters' }],  nav: 'characters', usable: `document.querySelectorAll('[data-test="roster-item"]').length > 0 && !document.querySelector('[data-test="roster-loading"],[data-test="roster-error"]')`, count: `document.querySelectorAll('[data-test="roster-item"]').length` },
+  characters: { expect: [{ method: 'GET', path: '/api/account/characters' }],  nav: 'characters', renderCount: '[data-test="roster-item"]', usable: `document.querySelectorAll('[data-test="roster-item"]').length > 0 && !document.querySelector('[data-test="roster-loading"],[data-test="roster-error"]')`, count: `document.querySelectorAll('[data-test="roster-item"]').length` },
   'character-core': { expect: [{ method: 'GET', pattern: CHAR }, { method: 'GET', pattern: /^\/api\/account\/characters\/[^/]+\/equipment-tabs$/ }], thenExpect: [{ method: 'GET', pattern: /^\/api\/account\/characters\/[^/]+\/build-tabs$/ }],  nav: 'characters', pre: 'select-character', usable: `document.querySelectorAll('[data-test="equipment-entry"]').length > 0 && !document.querySelector('[data-test="detail-loading"],[data-test="equipment-loading"],[data-test="detail-error"],[data-test="equipment-error"]')`, then: 'section-builds', thenUsable: `!!document.querySelector('[data-test="builds-panel"]') && !document.querySelector('[data-test="builds-loading"],[data-test="builds-error"]')` },
   'character-inventory': { expect: [{ method: 'GET', pattern: /^\/api\/account\/characters\/[^/]+\/inventory$/ }],  nav: 'characters', pre: 'select-character', after: 'section-inventory', usable: `document.querySelectorAll('[data-test="inventory-grid"],[data-test="inventory-bag"],[data-test="inventory-slot-item"],[data-test="inventory-slot-empty"]').length > 0 && !document.querySelector('[data-test="inventory-loading"],[data-test="inventory-error"]')` },
   // Profit is kept alive across navigation, so reactivating it shows retained rows. The timed action is the
@@ -127,7 +127,7 @@ async function login(principal, key, origin) {
       if (e.status === 200 && /json/.test(resp.headers()['content-type'] ?? '')) { try { e.json = JSON.parse(text) } catch { /* not json */ } }
     } catch { e.failed = true }
     totals.http += 1
-    if (e.path.startsWith('/api/sync/tasks')) totals.polls += 1
+    if (e.path.startsWith('/api/sync/tasks') || e.path === '/api/system/status') totals.polls += 1 // task polls and ordinary mounted status polls
     e.done = true
   })
   page.on('requestfailed', (r) => { const e = byRequest.get(r); if (e) { e.failed = true; e.done = true; totals.http += 1 } })
@@ -222,6 +222,15 @@ async function probe(cmd) {
     firstUsableMillis = Math.ceil(performance.now() - start)
     const matched = await complete(j.expect, rmark)
     await page.waitForFunction(j.usable, null, { timeout: TIMEOUT_MS, polling: 'raf' })
+    // Render correlation (in memory only): the DOM must show the entries of the matched response, not stale content.
+    if (j.renderCount) {
+      const body = matched[0]?.json
+      const want = Array.isArray(body) ? body.length : Array.isArray(body?.characters) ? body.characters.length : null
+      if (want != null) {
+        await page.waitForFunction(({ q, n }) => document.querySelectorAll(q).length === n, { q: j.renderCount, n: want }, { timeout: TIMEOUT_MS, polling: 'raf' })
+          .catch(() => { throw new Error(`rendered entries do not match the matched response (${want})`) })
+      }
+    }
     if (j.then) {
       const rmark2 = s.reqs.length
       await page.click(`[data-test="${j.then}"]`)

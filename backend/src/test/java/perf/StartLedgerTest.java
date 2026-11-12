@@ -31,14 +31,15 @@ class StartLedgerTest {
         StartLedger l = new StartLedger(clock::get);
         for (boolean poll : new boolean[]{false, true, true}) { l.offered(poll); l.submitted(poll); l.started(poll, 0); l.finished(poll, true); }
         l.httpCall(200); l.httpCall(200); l.httpCall(503);
-        l.browserCall(3, 1);
+        for (int i = 0; i < 8; i++) l.probeCall();
+        l.browserWindow(3, 1);
         StartAccounting a = l.snapshot();
         assertEquals(1, a.journeys().started());
         assertEquals(2, a.polls().started());
         assertEquals(3, a.httpCalls());
         assertEquals(2, a.httpStatuses().get(200));
         assertEquals(1, a.httpStatuses().get(503));
-        assertEquals(1, a.browserProbeCalls());
+        assertEquals(8, a.browserProbeCalls(), "actual probe calls, not window reads");
         assertEquals(3, a.browserApiCalls());
         assertEquals(1, a.browserPolls());
         assertFalse(l.saturated());

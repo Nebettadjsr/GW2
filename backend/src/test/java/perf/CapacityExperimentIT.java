@@ -47,6 +47,7 @@ class CapacityExperimentIT {
     static int copyCount;
     static Path graphFile;
     static long preparedAt;
+    static String runStartedUtc;
     static java.time.Duration warmWindow;
     static WarmDeadline deadline;
     /** Set when workers did not drain: the owned schema/files are retained instead of dropped. */
@@ -74,6 +75,7 @@ class CapacityExperimentIT {
 
     @BeforeAll
     static void load() throws Exception {
+        runStartedUtc = java.time.Instant.now().toString();
         CapacityConfig cfg = config();
         copyCount = cfg.maxUsers();
         FixtureSnapshot original;
@@ -104,6 +106,18 @@ class CapacityExperimentIT {
         SnapshotImporter.Copies copies = SnapshotImporter.principalCopies(prepared, copyCount);
         PopulatedFixtureHttpTest.copies = copies;
         IDENTITY.put("originalInputIdentity", original.identity());
+        IDENTITY.put("captureSourceRevision", original.sourceRevision() == null ? "unavailable" : original.sourceRevision());
+        IDENTITY.put("expectedResultIdentity", original.expectedIdentity().equals("unavailable")
+                ? "unavailable for private input (expected values are derived in memory by PrincipalOracle; none persisted)"
+                : original.expectedIdentity());
+        IDENTITY.put("sharedCatalogIdentity", FixtureSnapshot.sha256(original.tables().entrySet().stream()
+                .filter(e -> FixtureSnapshot.SHARED_TABLES.contains(e.getKey()))
+                .map(e -> e.getKey() + "=" + e.getValue().stream().map(Object::toString).sorted().collect(java.util.stream.Collectors.joining(",")))
+                .collect(java.util.stream.Collectors.joining("\n"))));
+        IDENTITY.put("coverage", "accounts=" + original.rows("account_registry").size() + " characters=" + original.rows("characters").size()
+                + " equipmentTabs=" + original.rows("character_equipment_tabs").size() + " buildTabs=" + original.rows("character_build_tabs").size()
+                + " tableRows=" + original.tableCounts().values().stream().mapToInt(Integer::intValue).sum()
+                + " (aggregate counts only; no identifiers)");
         IDENTITY.put("preparedIdentity", prepared.identity());
         IDENTITY.put("loadedFixtureIdentity", copies.snapshot().identity());
         IDENTITY.put("iconEdge", OfflineIcons.FIDELITY);
@@ -195,11 +209,18 @@ class CapacityExperimentIT {
 
         Map<String, String> meta = new LinkedHashMap<>(IDENTITY);
         meta.put("commit", git("rev-parse", "HEAD"));
-        meta.put("sourceRevision", meta.get("commit"));
-        meta.put("runStartedUtc", java.time.Instant.now().toString());
-        meta.put("configIdentity", FixtureProvenance.class.getSimpleName() + ":" + Integer.toHexString(cfg.toString().hashCode()) + " thresholdMs=" + cfg.thresholdMillis()
-                + " levels=" + cfg.coarseLevels() + " seed=" + cfg.seed() + " profile=" + cfg.profile().id());
-        meta.put("expectedIdentity", "unavailable for private input (expected values are derived in memory by PrincipalOracle from the loaded copies; none persisted)");
+        meta.put("sourceRevision", meta.get("captureSourceRevision"));
+        meta.put("executingCommit", meta.get("commit"));
+        meta.put("runStartedUtc", runStartedUtc);
+        meta.put("runFinishedUtc", java.time.Instant.now().toString());
+        String normalizedConfig = "thresholdMs=" + cfg.thresholdMillis() + " levels=" + cfg.coarseLevels() + " maxUsers=" + cfg.maxUsers()
+                + " budgetMs=" + cfg.maxMillisPerProfile() + " confirmations=" + cfg.confirmations() + " probes=" + cfg.probeBudget()
+                + " seed=" + cfg.seed() + " profile=" + cfg.profile().id() + " windowMs=" + cfg.observationWindowMillis() + " journeys=" + cfg.journeys();
+        meta.put("configIdentity", "sha256:" + FixtureSnapshot.sha256(normalizedConfig));
+        meta.put("profileIdentity", cfg.profile().id());
+        meta.put("coverageAgentPresent", String.valueOf(java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
+                .anyMatch(a -> a.startsWith("-javaagent:") && a.contains("jacoco"))));
+        meta.put("expectedIdentity", meta.get("expectedResultIdentity"));
         meta.put("preparationPolicyIdentity", "WarmPreparation BASE=" + WarmPreparation.BASE_SECONDS + "s SPREAD=" + WarmPreparation.SPREAD_SECONDS + "s; hard warm deadline "
                 + deadline.ceilingSeconds() + "s");
         meta.put("firstCoarseBreach", String.valueOf(coordinator.firstCoarseBreachLevel()));

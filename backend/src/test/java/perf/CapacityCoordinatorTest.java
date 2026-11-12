@@ -313,7 +313,10 @@ hardWarmDeadlineAdmitsOnlyStagesThatFitAndCensors() {
         Fake f = clocked(clock, r -> r.equals("coarse") ? 5_000_000_000L : 1_000_000_000L);
         CapacityOutcome o = new CapacityCoordinator(shortWindows(), f, d).discover();
         assertEquals(List.of("baseline:1", "warmup:1", "coarse:1"), f.calls);
-        assertTrue(o.measured().isEmpty(), "the crossing stage is not evidence");
+        assertEquals(1, o.measured().size(), "the slow stage is retained, not deleted");
+        assertEquals(CapacityCoordinator.EXPIRY, o.measured().get(0).invalidReason());
+        assertFalse(o.measured().get(0).samples().isEmpty(), "its samples are retained");
+        assertNull(o.confirmedCapacity());
         assertNotEquals(CapacityOutcome.Status.BOUNDARY_CONFIRMED, o.status());
         assertTrue(o.detail().contains("crossed the warm deadline"), o.detail());
         assertTrue(f.drained);
@@ -326,6 +329,9 @@ hardWarmDeadlineAdmitsOnlyStagesThatFitAndCensors() {
         CapacityOutcome o = new CapacityCoordinator(shortWindows(), f, d).discover();
         assertEquals(CapacityOutcome.Status.INVALID, o.status());
         assertEquals(List.of("baseline:1"), f.calls);
+        assertEquals(1, o.baseline().size());
+        assertEquals(CapacityCoordinator.EXPIRY, o.baseline().get(0).invalidReason());
+        assertNull(o.confirmedCapacity());
     }
 
     @Test void confirmationsUseIndependentSeedFamiliesAndFirstCoarseBreachIsPreserved() {

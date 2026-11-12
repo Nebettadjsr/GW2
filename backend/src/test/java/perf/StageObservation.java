@@ -23,6 +23,12 @@ public record StageObservation(int level, String role, long seed, List<CapacityS
                 invalidReason, elapsedMillis, StartAccounting.EMPTY);
     }
 
+    /** Same observation, retained but disqualified as evidence (e.g. the warm deadline expired during the window). */
+    public StageObservation rejected(String reason) {
+        return new StageObservation(level, role, seed, samples, scheduledStarts, achievedStarts, lateStarts, missedStarts,
+                generatorSaturated, invalidReason == null ? reason : invalidReason + "; " + reason, elapsedMillis, accounting);
+    }
+
     public boolean invalid() { return invalidReason != null; }
 
     public List<CapacitySample> browserSamples() {

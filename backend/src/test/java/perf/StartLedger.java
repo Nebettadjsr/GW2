@@ -66,8 +66,11 @@ final class StartLedger {
         statuses.computeIfAbsent(status, s -> new AtomicInteger()).incrementAndGet();
     }
 
-    void browserCall(int apiCalls, int polls) {
-        browserCalls.incrementAndGet();
+    /** One actual browser probe journey call (counted when it runs, not once per window). */
+    void probeCall() { browserCalls.incrementAndGet(); }
+
+    /** Whole-window browser HTTP/poll counter deltas; independent of the number of probe calls. */
+    void browserWindow(int apiCalls, int polls) {
         browserApi.addAndGet(apiCalls);
         browserPolls.addAndGet(polls);
     }

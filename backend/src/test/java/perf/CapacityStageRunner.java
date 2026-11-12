@@ -369,7 +369,11 @@ final class CapacityStageRunner implements StageRunner {
         if (oracle.mismatch() != null) invalid = "principal correctness mismatch (evidence invalid): " + oracle.mismatch();
         // Browser API/poll accounting: monotonic counters across the WHOLE observation interval, as deltas.
         long[] c1 = browserCounters();
-        led.browserCall((int) Math.max(0, c1[0] - c0[0]), (int) Math.max(0, c1[1] - c0[1]));
+        if (c0 == null || c1 == null) {
+            if (invalid == null) invalid = "browser HTTP/poll counters could not be read; window accounting unavailable (not treated as zero)";
+        } else {
+            led.browserWindow((int) Math.max(0, c1[0] - c0[0]), (int) Math.max(0, c1[1] - c0[1]));
+        }
         long cpu1 = ProcessProbe.cpuNanos();
         long elapsed = (System.nanoTime() - begin) / 1_000_000;
         resourceWindows.add(new ResourceWindow(role + ":" + level + ":seed" + seed, elapsed, cpu0 < 0 || cpu1 < 0 ? -1 : cpu1 - cpu0,
@@ -426,7 +430,7 @@ final class CapacityStageRunner implements StageRunner {
         try {
             JsonNode r = probe.call(M.createObjectNode().put("cmd", "counters"), 30_000);
             return new long[] {r.path("httpCalls").asLong(), r.path("polls").asLong()};
-        } catch (Exception e) { return new long[] {0, 0}; }
+        } catch (Exception e) { return null; }
     }
 
     /** One line per stage window: CPU/heap/RSS with units and limitations. */
@@ -493,12 +497,14 @@ final class CapacityStageRunner implements StageRunner {
         }
         JsonNode r;
         browserInFlight.incrementAndGet();
+        if (ledger != null) ledger.probeCall();
         try { r = probe.call(c, 90_000); } finally { browserInFlight.decrementAndGet(); }
         boolean ok = r.path("ok").asBoolean();
         if (!ok) System.err.println("browser probe " + journey + " failed: " + r.path("error").asText());
         else if (!r.path("correct").asBoolean() || !r.path("usable").asBoolean()) System.err.println("browser probe " + journey + ": usable=" + r.path("usable").asBoolean() + " " + r.path("detail").asText());
         CapacitySample smp = new CapacitySample(journey, CapacitySample.BROWSER, level, role, user, offset, 0,
-                ok ? r.path("durationMillis").asLong() : 0, ok && r.path("usable").asBoolean(), ok && r.path("correct").asBoolean());
+                ok ? r.path("durationMillis").asLong() : 0, ok && r.path("usable").asBoolean(), ok && r.path("correct").asBoolean(),
+                ok && r.hasNonNull("firstUsableMillis") ? r.path("firstUsableMillis").asLong() : null);
         out.add(smp);
         if (!smp.correct()) stageStop = true;
     }

@@ -31,6 +31,8 @@ public final class CapacityCoordinator {
         this.deadline = deadline;
     }
 
+    public static final String EXPIRY = "expired: stage crossed the warm-data deadline; retained, not evidence";
+
     private enum Verdict { PASS, BREACH, INVALID, INCOMPLETE, SATURATED, BUDGET, EXPIRED }
 
     private record Result(Verdict verdict, String detail) { }
@@ -78,7 +80,7 @@ public final class CapacityCoordinator {
                     "Warm deadline too short for the baseline window; nothing was started.");
         }
         StageObservation b = runner.run(1, StageObservation.BASELINE, config.seed());
-        if (crossed()) return end(CapacityOutcome.Status.INVALID, null, null, null, "Baseline crossed the warm deadline; rejected (prepared data may have expired).");
+        if (crossed()) { baseline.add(b.rejected(EXPIRY)); return end(CapacityOutcome.Status.INVALID, null, null, null, "Baseline crossed the warm deadline; rejected (prepared data may have expired)."); }
         baseline.add(b);
         spentMillis += b.elapsedMillis();
         String bad = validate(b, false);
@@ -92,7 +94,7 @@ public final class CapacityCoordinator {
                     "Warm deadline reached after the baseline; warmup and measured stages were not started.");
         }
         StageObservation w = runner.run(1, StageObservation.WARMUP, config.seed());
-        if (crossed()) return end(CapacityOutcome.Status.INVALID, null, null, null, "Warmup crossed the warm deadline; rejected (prepared data may have expired).");
+        if (crossed()) { warmup.add(w.rejected(EXPIRY)); return end(CapacityOutcome.Status.INVALID, null, null, null, "Warmup crossed the warm deadline; rejected (prepared data may have expired)."); }
         warmup.add(w);
         spentMillis += w.elapsedMillis();
         // Warmup latency is separate evidence, but its correctness/isolation/coverage must hold.
@@ -192,6 +194,9 @@ public final class CapacityCoordinator {
         }
         StageObservation o = runner.run(level, role, seed);
         if (crossed()) {
+            // Lossless: keep the slow observation, explicitly disqualified; it never counts as pass/breach/confirmed.
+            measured.add(o.rejected(EXPIRY));
+            spentMillis += o.elapsedMillis();
             return new Result(Verdict.EXPIRED, "Level " + level + " (" + role + ") crossed the warm deadline and was rejected; "
                     + "prepared data may have expired, so it is not evidence.");
         }

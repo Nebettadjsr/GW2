@@ -84,6 +84,7 @@ public final class CapacityReport {
                 n.put("scheduledOffsetMillis", s.scheduledOffsetMillis());
                 n.put("startDelayMillis", s.startDelayMillis());
                 n.put("durationMillis", s.durationMillis());
+                if (s.firstUsableMillis() == null) n.putNull("firstUsableMillis"); else n.put("firstUsableMillis", s.firstUsableMillis());
                 n.put("finalUsable", s.finalUsable());
                 n.put("correct", s.correct());
                 n.put("overReference", s.overReference(config.thresholdMillis()));

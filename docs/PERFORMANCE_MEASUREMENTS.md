@@ -287,3 +287,21 @@ reload serves build assets from cache. Deterministic icon bytes remain a disclos
 Limitations: the generator and Chromium share the host with the application and PostgreSQL; logical cores are not Oracle OCPU.
 No capacity is claimed until the supervisor runs the representative experiment; cold start, refresh/expiry, fault, restart and
 owner overlap remain the separate DRAFT STORY-KPI-008.
+
+### Capacity boundaries: instrumented vs uninstrumented, and report fields (STORY-KPI-002 corrections)
+
+- `backend/pom.xml` enables JaCoCo by default, so default native CI/coverage runs are *instrumented*. Fresh Profit
+  measured about 0.9–1.1 s uninstrumented against about 2.7 s instrumented. For capacity/timing runs use the
+  separate uninstrumented boundary: `mvn -f backend/pom.xml -Djacoco.skip=true -Dtest=CapacityExperimentIT test`.
+  The report records only a boolean `coverageAgentPresent` (no raw JVM arguments or paths). Default CI is unchanged.
+- Expired stages are retained: a baseline/warmup/measured stage that crosses the warm deadline keeps all its samples,
+  marked with an `expired:` invalid reason; it is never counted as passing, breaching or confirmed capacity.
+- Provenance: `sourceRevision` is the fixture capture revision; `executingCommit` is the code that ran;
+  `runStartedUtc` is captured at start (`runFinishedUtc` at the end); `configIdentity` is a SHA-256 of the normalized
+  configuration; also `sharedCatalogIdentity`, `expectedResultIdentity` (unavailable for private input) and aggregate coverage counts.
+- Warm preparation rewrites publication and operational timestamps only; the business timestamp `characters.created_at_gw` is preserved.
+- Samples carry a nullable `firstUsableMillis` (possibly saved/retained content) separate from the final `durationMillis`.
+- `browserProbeCalls` counts actual probe journey calls; browser HTTP/poll counts are whole-window deltas (task polls and
+  `/api/system/status` polls). An unreadable counters read invalidates the stage instead of counting zero.
+- Known limits: render correlation with the matched response is implemented for the roster count only; other journeys
+  still rely on the existing usable markers plus exact request matching.

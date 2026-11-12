@@ -14,7 +14,7 @@ import java.util.*;
  * coverage whose parent reference no longer equals the current CHARACTERS generation). A single uniform
  * clock shift cannot make that state pass the <em>normal</em> production freshness and coverage
  * compatibility checks, and there is deliberately no product bypass. This class rewrites only publication
- * metadata, outside every measured window, and discloses every change:
+ * and operational timestamps (never the business timestamp characters.created_at_gw), outside every measured window, and discloses every change:
  *
  * <ul>
  *   <li>Every source marker is re-dated to {@code now - (BASE + SPREAD * lag / maxLag)} (lag = behind the
@@ -120,7 +120,7 @@ public final class WarmPreparation {
                 } else {
                     Duration delta = source != null && newAt.containsKey(source) ? Duration.between(oldAt.get(source), newAt.get(source)) : global;
                     OffsetDateTime cap = source != null && newAt.containsKey(source) ? newAt.get(source) : now;
-                    for (String f : List.of("fetched_at", "last_seen_at", "last_successful_sync_at", "created_at", "updated_at", "created_at_gw")) {
+                    for (String f : List.of("fetched_at", "last_seen_at", "last_successful_sync_at", "created_at", "updated_at")) { // created_at_gw is a character business fact and is preserved
                         if (!c.hasNonNull(f)) continue;
                         OffsetDateTime v = SnapshotImporter.parse(c.get(f).asText()).plus(f.equals("fetched_at") ? delta : global);
                         OffsetDateTime limit = f.equals("fetched_at") ? cap : now;
@@ -141,7 +141,7 @@ public final class WarmPreparation {
         d.put("parentGeneration", "equipment/Builds coverage parent_generation set to CHARACTERS generation " + generation.get("CHARACTERS")
                 + " (original values: " + originalParents(raw) + ")");
         d.put("clockDelta", "global delta " + global.toSeconds() + "s for non-source time columns, never into the future");
-        d.put("factsPreserved", "stock, items, recipes, equipment, builds, inventory, prices and source generations unchanged");
+        d.put("factsPreserved", "characters.created_at_gw (business timestamp), stock, items, recipes, equipment, builds, inventory, prices and source generations unchanged");
         d.put("warmWindowSeconds", String.valueOf(window.toSeconds()));
         d.put("warmWindowRule", "min(account max age " + ACCOUNT_MAX_AGE.toSeconds() + "s - oldest source age, price TTL " + TP_TTL.toSeconds() + "s - oldest price age); after it the data would expire naturally and the run is not a steady warm run");
         FixtureSnapshot prepared = new FixtureSnapshot(raw.kind(), raw.version(), out, raw.expected(), raw.sourceRevision(),
