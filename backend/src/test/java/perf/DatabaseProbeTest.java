@@ -2,43 +2,61 @@ package perf;
 
 import org.junit.jupiter.api.Test;
 import repo.EnvConfig;
+import com.zaxxer.hikari.HikariDataSource;
+import com.zaxxer.hikari.HikariPoolMXBean;
 
 import java.sql.Connection;
-import java.sql.ResultSet;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** A generic statistics read must be observationally neutral: it may not grow the application pool. */
 class DatabaseProbeTest {
 
-    private static long untaggedClients(DatabaseProbe probe) throws Exception {
-        try (Connection c = probe.openObserverConnection();
-             ResultSet rs = c.createStatement().executeQuery(
-                     "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
-                             + "AND backend_type = 'client backend' AND coalesce(application_name, '') <> '"
-                             + ConnectionObserver.APPLICATION_NAME + "'")) {
-            rs.next();
-            return rs.getLong(1);
-        }
+    // Test-only access keeps pool instrumentation out of the production API. This class owns the
+    // pool for its duration; unrelated database clients never enter the observed count.
+    private static void resetPool() throws Exception {
+        var close = repo.Db.class.getDeclaredMethod("closePool");
+        close.setAccessible(true);
+        close.invoke(null);
+    }
+
+    private static HikariPoolMXBean metrics() throws Exception {
+        var holder = repo.Db.class.getDeclaredField("connections");
+        holder.setAccessible(true);
+        Object connections = holder.get(null);
+        var field = connections.getClass().getDeclaredField("pool");
+        field.setAccessible(true);
+        return ((HikariDataSource) field.get(connections)).getHikariPoolMXBean();
     }
 
     @Test
-    void genericStatisticsReadsDoNotGrowTheApplicationPoolButTheOptInFlushDoes() throws Exception {
+    void genericReadsPreserveBothWarmedAndFullPoolsWhileOnlyTheOptInFlushExpands() throws Exception {
         DatabaseProbe probe = new DatabaseProbe(EnvConfig.require("DATABASE_URL"), EnvConfig.require("DATABASE_USER"),
                 EnvConfig.require("DATABASE_PASSWORD"), "kpi_probe_neutrality_unused");
-        try (Connection warm = repo.Db.open()) {
-            warm.createStatement().execute("SELECT 1");
-        }
-        long before = untaggedClients(probe);
-        assertTrue(before >= 1, "the application pool holds its warmed connection");
-        probe.counters();
-        probe.storage();
-        assertEquals(before, untaggedClients(probe), "a generic read must not borrow or open application connections");
+        resetPool();
+        try {
+            try (Connection warm = repo.Db.open(); var statement = warm.createStatement()) {
+                statement.execute("SELECT 1");
+            }
+            HikariPoolMXBean pool = metrics();
+            assertEquals(1, pool.getTotalConnections(), "controlled lazy pool starts with one used connection");
+            probe.counters();
+            probe.storage();
+            assertEquals(1, pool.getTotalConnections(), "generic reads must not fill a partially populated pool");
 
-        if (repo.AppConfig.DB_POOL_SIZE > 1) {
-            probe.withApplicationPoolFlush().counters();
-            assertTrue(untaggedClients(probe) > before, "the opt-in flush is the pool-expanding path (guard is meaningful)");
+            DatabaseProbe explicit = new DatabaseProbe(EnvConfig.require("DATABASE_URL"),
+                    EnvConfig.require("DATABASE_USER"), EnvConfig.require("DATABASE_PASSWORD"),
+                    "kpi_probe_neutrality_unused").withApplicationPoolFlush();
+            explicit.counters();
+            assertEquals(repo.AppConfig.DB_POOL_SIZE, pool.getTotalConnections(), "explicit flush may fill the pool");
+
+            probe.counters();
+            probe.storage();
+            explicit.counters();
+            assertEquals(repo.AppConfig.DB_POOL_SIZE, pool.getTotalConnections(),
+                    "reads and repeated explicit flushes must also work when the pool was already full");
+        } finally {
+            resetPool();
         }
     }
 }
