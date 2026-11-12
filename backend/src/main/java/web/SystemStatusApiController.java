@@ -41,6 +41,8 @@ public class SystemStatusApiController {
     private final AccountStateReader accountStates;
     private final application.ScopedSourceGate gate;
     private final web.access.OwnerAccess ownerAccess;
+    private final application.OwnerCatalogSummaryService catalogSummary;
+    private final application.AccountOverviewService overview;
 
     /** Reads one account's published source markers; a seam so the projection is testable offline. */
     @FunctionalInterface
@@ -68,11 +70,31 @@ public class SystemStatusApiController {
         this(globalDataRefreshService, priceCacheStatusService, access, accountStates, gate, null);
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
     public SystemStatusApiController(GlobalDataRefreshService globalDataRefreshService,
                                      TradingPostPriceCacheStatusService priceCacheStatusService,
                                      AccountAccessService access, AccountStateReader accountStates,
                                      application.ScopedSourceGate gate, web.access.OwnerAccess ownerAccess) {
+        this(globalDataRefreshService, priceCacheStatusService, access, accountStates, gate, ownerAccess, null);
+    }
+
+    public SystemStatusApiController(GlobalDataRefreshService globalDataRefreshService,
+                                     TradingPostPriceCacheStatusService priceCacheStatusService,
+                                     AccountAccessService access, AccountStateReader accountStates,
+                                     application.ScopedSourceGate gate, web.access.OwnerAccess ownerAccess,
+                                     application.OwnerCatalogSummaryService catalogSummary) {
+        this(globalDataRefreshService, priceCacheStatusService, access, accountStates, gate, ownerAccess,
+                catalogSummary, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SystemStatusApiController(GlobalDataRefreshService globalDataRefreshService,
+                                     TradingPostPriceCacheStatusService priceCacheStatusService,
+                                     AccountAccessService access, AccountStateReader accountStates,
+                                     application.ScopedSourceGate gate, web.access.OwnerAccess ownerAccess,
+                                     application.OwnerCatalogSummaryService catalogSummary,
+                                     application.AccountOverviewService overview) {
+        this.overview = overview;
+        this.catalogSummary = catalogSummary;
         this.ownerAccess = ownerAccess;
         this.gate = gate;
         this.globalDataRefreshService = globalDataRefreshService;
@@ -88,7 +110,13 @@ public class SystemStatusApiController {
                 ? denied(HttpStatus.FORBIDDEN, "OWNER_REQUIRED", "This operation is restricted to the system owner")
                 : ownerAccess.deny(request);
         if (denial != null) return denial;
-        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store").body(detailedStatus());
+        // Aggregates are read only here, after authorization; the generic route never reaches them.
+        var summary = catalogSummary == null ? null : catalogSummary.read();
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(new OwnerDetails(detailedStatus(), summary == null ? null : summary.items(),
+                        summary == null ? null : summary.recipes(),
+                        summary == null ? null : summary.tradingPostPrices(),
+                        summary == null ? null : summary.accounts()));
     }
 
     /** Generic shared health plus the requesting account's own freshness; no detailed diagnostics. */
@@ -96,7 +124,7 @@ public class SystemStatusApiController {
     public ResponseEntity<?> status(HttpServletRequest request) {
         var presented = AccountAccessHttp.presentedSessionId(request);
         if (presented.isEmpty() || access == null || accountStates == null) {
-            return ResponseEntity.ok(genericStatus(null, null));
+            return ResponseEntity.ok(genericStatus(null, null, null));
         }
         var resolution = access.resolve(presented.get(), AccountAccessHttp.assertedAccessContext(request));
         switch (resolution.outcome()) {
@@ -116,11 +144,23 @@ public class SystemStatusApiController {
         }
         Instant latest = null;
         String scopeLabel = null;
+        Map<String, application.AccountOverviewService.SourceOverview> saved = null;
         try {
             AccountScope scope = AccountScope.of(UUID.fromString(context.accountId()));
             Map<String, AccountSourceStateRepository.SourceState> states = accountStates.read(scope, permitted);
             // Ordinary authorized use: activity only, never freshness, and only after the proof passed.
             if (gate != null) gate.recordUse(scope);
+            if (overview != null) {
+                // Only sources this live proof permits (grants and URL restrictions) reach the queries.
+                Set<String> overviewSources = new java.util.LinkedHashSet<>(java.util.List.of(
+                        AccountSyncStateRepository.CHARACTERS, AccountSyncStateRepository.RECIPES,
+                        AccountSyncStateRepository.MATERIALS));
+                overviewSources.retainAll(permitted);
+                var read = overview.read(scope, overviewSources);
+                saved = new AccountOverview(read.get(AccountSyncStateRepository.CHARACTERS),
+                        read.get(AccountSyncStateRepository.RECIPES),
+                        read.get(AccountSyncStateRepository.MATERIALS)).asMap();
+            }
             Map<String, AccountSourceStateRepository.SourceState> sorted = new TreeMap<>(states);
             for (var state : sorted.values()) {
                 if (latest == null || state.completedAt().isAfter(latest)) latest = state.completedAt();
@@ -131,7 +171,7 @@ public class SystemStatusApiController {
         }
         return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .header(AccountAccessHttp.ACCESS_CONTEXT_HEADER, context.accessContext())
-                .body(genericStatus(latest, scopeLabel));
+                .body(genericStatus(latest, scopeLabel, saved));
     }
 
     private static ResponseEntity<ApiErrorResponse> denied(HttpStatus status, String code, String message) {
@@ -139,14 +179,17 @@ public class SystemStatusApiController {
                 .body(new ApiErrorResponse(code, message));
     }
 
-    private GenericStatus genericStatus(Instant accountLastRefreshedAt, String accountRefreshScope) {
+    private GenericStatus genericStatus(Instant accountLastRefreshedAt, String accountRefreshScope,
+                                        Map<String, application.AccountOverviewService.SourceOverview> saved) {
         DetailedStatus detail = detailedStatus();
         String global = detail.running() ? "RUNNING"
                 : detail.lastFailure() != null ? "PROBLEM"
                 : detail.lastCheckedAt() != null ? "OK" : "NOT_RUN";
         String prices = detail.priceCacheError() != null ? "PROBLEM"
                 : detail.cachedPriceItems() != null && detail.cachedPriceItems() > 0 ? "OK" : "NOT_RUN";
-        return new GenericStatus(global, prices, accountLastRefreshedAt, accountRefreshScope);
+        var o = saved == null || saved.isEmpty() ? null : new AccountOverview(saved.get("characters"),
+                saved.get("recipes"), saved.get("materials"));
+        return new GenericStatus(global, prices, accountLastRefreshedAt, accountRefreshScope, o);
     }
 
     private DetailedStatus detailedStatus() {
@@ -171,11 +214,33 @@ public class SystemStatusApiController {
     /** Coarse states only ({@code OK|RUNNING|PROBLEM|NOT_RUN}); account fields appear only when authorized. */
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
     public record GenericStatus(String globalHealth, String priceHealth,
-                                Instant accountLastRefreshedAt, String accountRefreshScope) { }
+                                Instant accountLastRefreshedAt, String accountRefreshScope,
+                                AccountOverview accountOverview) { }
+
+    /** Own-account saved-data counts; a member is absent when its source is not permitted. */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record AccountOverview(application.AccountOverviewService.SourceOverview characters,
+                                  application.AccountOverviewService.SourceOverview recipes,
+                                  application.AccountOverviewService.SourceOverview materials) {
+        Map<String, application.AccountOverviewService.SourceOverview> asMap() {
+            Map<String, application.AccountOverviewService.SourceOverview> m = new java.util.LinkedHashMap<>();
+            if (characters != null) m.put("characters", characters);
+            if (recipes != null) m.put("recipes", recipes);
+            if (materials != null) m.put("materials", materials);
+            return m;
+        }
+    }
 
     public record DetailedStatus(boolean running, Instant lastCheckedAt, Instant lastChangedAt,
                                  Instant lastRecipeSyncAt, Instant lastGraphRebuildAt,
                                  String lastFailure, Long cachedPriceItems,
                                  Long stalePriceItems, Instant newestPriceFetchedAt,
                                  String priceCacheError) { }
+
+    /** Owner-only response: the existing diagnostics plus shared-data coverage and account counts. */
+    public record OwnerDetails(@com.fasterxml.jackson.annotation.JsonUnwrapped DetailedStatus status,
+                               application.OwnerCatalogSummaryService.Dataset items,
+                               application.OwnerCatalogSummaryService.Dataset recipes,
+                               application.OwnerCatalogSummaryService.Dataset tradingPostPrices,
+                               application.OwnerCatalogSummaryService.Accounts accounts) { }
 }

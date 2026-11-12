@@ -5,7 +5,8 @@ import type { SyncTaskAccepted } from '@/api/types'
  * Manual System Status actions and source-specific automatic refreshes share task tracking.
  */
 export type AccountViewOperation = 'BANK_SYNC' | 'MATERIALS_SYNC' | 'CHARACTERS_SYNC'
-export type SyncOperationKey = 'ACCOUNT_SYNC' | 'GLOBAL_SYNC' | AccountViewOperation
+export type OwnerOperationKey = 'FULL_ITEM_CATALOG' | 'FULL_RECIPE_CATALOG' | 'FULL_TP_CATALOG'
+export type SyncOperationKey = 'ACCOUNT_SYNC' | 'GLOBAL_SYNC' | AccountViewOperation | OwnerOperationKey
 
 export interface SyncOperation {
   key: SyncOperationKey
@@ -15,6 +16,12 @@ export interface SyncOperation {
    * (`FRONTEND_UX_GUIDELINES.md` 5, 6).
    */
   label: string
+  /**
+   * Owner-only full-catalog operation. Its task is accepted only when the backend reports exactly
+   * this key as the operation, never repeated after a narrower run, and its state is cleared when
+   * the account or owner authorization changes.
+   */
+  ownerOnly?: boolean
   submit(api: SyncApi): Promise<SyncTaskAccepted>
 }
 
@@ -29,6 +36,24 @@ export const SYNC_OPERATIONS: readonly SyncOperation[] = [
     key: 'GLOBAL_SYNC',
     label: 'Synchronize game data',
     submit: (api) => api.startGlobalSync()
+  },
+  {
+    key: 'FULL_ITEM_CATALOG',
+    label: 'Refresh all items',
+    ownerOnly: true,
+    submit: (api) => api.startFullCatalog('items')
+  },
+  {
+    key: 'FULL_RECIPE_CATALOG',
+    label: 'Refresh all recipes',
+    ownerOnly: true,
+    submit: (api) => api.startFullCatalog('recipes')
+  },
+  {
+    key: 'FULL_TP_CATALOG',
+    label: 'Refresh all prices',
+    ownerOnly: true,
+    submit: (api) => api.startFullCatalog('trading-post')
   },
   {
     key: 'BANK_SYNC',

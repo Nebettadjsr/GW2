@@ -109,6 +109,21 @@ public class Gw2ApiApplication {
         };
     }
 
+    /** Own-account saved-data counts; reuses the configured account freshness limit. */
+    @Bean
+    public application.AccountOverviewService accountOverviewService(
+            @Value("${gw2.account-data.max-age-ms:900000}") long accountMaxAgeMs) {
+        return new application.AccountOverviewService(repo.Db::open, new repo.AccountOverviewRepository(),
+                java.time.Clock.systemUTC(), java.time.Duration.ofMillis(accountMaxAgeMs));
+    }
+
+    /** Owner-only aggregates; connects only when the authorized details route calls it. */
+    @Bean
+    public application.OwnerCatalogSummaryService ownerCatalogSummaryService() {
+        return new application.OwnerCatalogSummaryService(repo.Db::open, new repo.SharedDataSummaryRepository(),
+                java.time.Clock.systemUTC());
+    }
+
     /** Shared Trading Post demand coordination, deliberately separate from the account one. */
     @Bean
     public TradingPostRefreshCoordinator tradingPostRefreshCoordinator(

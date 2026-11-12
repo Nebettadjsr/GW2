@@ -189,6 +189,7 @@ function recordingSyncApi(
     startAccountSync: refuse('startAccountSync'),
     startProfitDataRefresh: refuse('startProfitDataRefresh'),
     startGlobalSync: refuse('startGlobalSync'),
+    startFullCatalog: refuse('startFullCatalog'),
     startPriceRefresh: refuse('startPriceRefresh'),
     async readTaskStatus(statusUrl: string): Promise<SyncTaskStatus> {
       const callIndex = statusReads.length

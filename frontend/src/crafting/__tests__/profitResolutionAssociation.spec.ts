@@ -24,6 +24,7 @@ const completedSyncApi: SyncApi = {
   async startAccountSync() { return { taskId: 'account', operation: 'ACCOUNT_SYNC', statusUrl: '/api/sync/tasks/account' } },
   async startProfitDataRefresh() { return { taskId: 'profit-data', operation: 'ACCOUNT_SYNC', statusUrl: '/api/sync/tasks/profit-data' } },
   async startGlobalSync() { return { taskId: 'global', operation: 'GLOBAL_SYNC', statusUrl: '/api/sync/tasks/global' } },
+  async startFullCatalog() { throw new Error('not used') },
   async startPriceRefresh(variant) { return { taskId: variant, operation: `PRICE_REFRESH_${variant}`, statusUrl: `/api/sync/tasks/${variant}` } },
   async readTaskStatus(statusUrl) {
     const taskId = statusUrl.split('/').at(-1) ?? 'task'

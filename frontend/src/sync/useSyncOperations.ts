@@ -12,7 +12,8 @@
  * disposed — the tracking really going away — which for the shell means the application unmounting.
  * Nothing is persisted, so a browser reload starts with no tracked task at all.
  */
-import { onScopeDispose, reactive } from 'vue'
+import { onScopeDispose, reactive, watch } from 'vue'
+import { connection } from '@/api/accountSession'
 import { ApiRequestError, UNREACHABLE_CODE } from '@/api/http'
 import { syncApi, type SyncApi } from '@/api/syncApi'
 import type { SyncTaskAccepted, SyncTaskStatus } from '@/api/types'
@@ -51,10 +52,15 @@ export interface SyncOperationView {
   status: SyncTaskStatus | null
   /** The trigger was refused or never answered, so no task of this client's is running. */
   submissionError: string | null
+  /** Backend error code / HTTP status of a refused trigger, when it answered. */
+  submissionCode: string | null
+  submissionStatus: number | null
   /** The trigger failed in transport: whether the backend admitted it is unknown. */
   isAdmissionUnknown: boolean
   /** The status lookup failed — distinct from a task that ran and failed. */
   lookupError: string | null
+  /** HTTP status of a failed status lookup, when the backend answered. */
+  lookupStatus: number | null
   /** The backend cannot resolve the identifier, so asking it again cannot establish the outcome. */
   isTaskUnresolvable: boolean
   readonly canRetryStatus: boolean
@@ -64,6 +70,8 @@ export interface SyncOperationsState {
   operations: readonly SyncOperationView[]
   trigger(key: SyncOperationKey): Promise<void>
   retryStatus(key: SyncOperationKey): Promise<void>
+  /** Forgets every owner-only task: stops lookups and discards late answers. */
+  resetOwnerOperations(): void
 }
 
 interface OperationRuntime {
@@ -114,12 +122,11 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
       track(runtime, accepted, token)
     } catch (cause) {
       if (isStale(runtime, token)) return
-      runtime.view.submissionError = describeFailure(cause)
+      recordSubmissionFailure(runtime, cause)
       // A trigger that never got an answer may or may not have been admitted. This client never
       // resubmits on its own; a further run stays a deliberate decision of the user's.
-      runtime.view.isAdmissionUnknown = isTransportFailure(cause)
     } finally {
-      runtime.view.isSubmitting = false
+      if (token === runtime.token) runtime.view.isSubmitting = false
     }
   }
 
@@ -134,7 +141,22 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
     await readStatus(runtime, runtime.token)
   }
 
+  function recordSubmissionFailure(runtime: OperationRuntime, cause: unknown): void {
+    runtime.view.submissionError = describeFailure(cause)
+    runtime.view.isAdmissionUnknown = isTransportFailure(cause)
+    if (cause instanceof ApiRequestError) {
+      runtime.view.submissionCode = cause.code
+      runtime.view.submissionStatus = cause.status
+    }
+  }
+
   function track(runtime: OperationRuntime, accepted: SyncTaskAccepted, token: number): void {
+    if (runtime.operation.ownerOnly === true &&
+        (accepted.operation !== runtime.operation.key || accepted.coversRequest === false)) {
+      // A different or narrower task is not this full operation, and is neither followed nor repeated.
+      runtime.view.submissionError = NOT_THE_REQUESTED_OPERATION
+      return
+    }
     runtime.view.taskId = accepted.taskId
     runtime.view.isTracking = true
     runtime.statusUrl = accepted.statusUrl
@@ -155,6 +177,10 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
     try {
       const status = await api.readTaskStatus(statusUrl)
       if (isStale(runtime, token)) return
+      if (runtime.operation.ownerOnly === true && status.operation !== runtime.operation.key) {
+        stopTracking(runtime, NOT_THE_REQUESTED_OPERATION, true)
+        return
+      }
       runtime.view.status = status
       runtime.view.lookupError = null
       if (TERMINAL_STATES.includes(status.state)) {
@@ -170,6 +196,7 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
     } catch (cause) {
       if (isStale(runtime, token)) return
       stopTracking(runtime, describeFailure(cause), isUnresolvableTask(cause))
+      runtime.view.lookupStatus = cause instanceof ApiRequestError ? cause.status : null
     }
   }
 
@@ -189,8 +216,7 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
     } catch (cause) {
       if (isStale(runtime, token)) return
       runtime.view.isTracking = false
-      runtime.view.submissionError = describeFailure(cause)
-      runtime.view.isAdmissionUnknown = isTransportFailure(cause)
+      recordSubmissionFailure(runtime, cause)
     }
   }
 
@@ -212,8 +238,11 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
     runtime.view.taskId = null
     runtime.view.status = null
     runtime.view.submissionError = null
+    runtime.view.submissionCode = null
+    runtime.view.submissionStatus = null
     runtime.view.isAdmissionUnknown = false
     runtime.view.lookupError = null
+    runtime.view.lookupStatus = null
     runtime.view.isTaskUnresolvable = false
   }
 
@@ -228,6 +257,21 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
     return runtime
   }
 
+  function resetOwnerOperations(): void {
+    for (const runtime of runtimes) {
+      if (runtime.operation.ownerOnly !== true) continue
+      stopPolling(runtime)
+      runtime.token += 1
+      runtime.awaitingCover = false
+      clearOutcome(runtime)
+      runtime.view.isSubmitting = false
+      runtime.view.isTracking = false
+    }
+  }
+
+  // Owner presentation belongs to one connected account generation; nothing survives a change.
+  watch(() => [connection.generation, connection.phase, connection.leaseVersion], resetOwnerOperations)
+
   onScopeDispose(() => {
     isDisposed = true
     runtimes.forEach((runtime) => stopPolling(runtime))
@@ -236,7 +280,8 @@ export function useSyncOperations(api: SyncApi = syncApi): SyncOperationsState {
   return {
     operations: runtimes.map((runtime) => runtime.view),
     trigger,
-    retryStatus
+    retryStatus,
+    resetOwnerOperations
   }
 }
 
@@ -249,8 +294,11 @@ function createView(operation: SyncOperation): SyncOperationView {
     taskId: null as string | null,
     status: null as SyncTaskStatus | null,
     submissionError: null as string | null,
+    submissionCode: null as string | null,
+    submissionStatus: null as number | null,
     isAdmissionUnknown: false,
     lookupError: null as string | null,
+    lookupStatus: null as number | null,
     isTaskUnresolvable: false,
 
     get isBusy(): boolean {
@@ -263,6 +311,9 @@ function createView(operation: SyncOperation): SyncOperationView {
     }
   })
 }
+
+const NOT_THE_REQUESTED_OPERATION =
+  'The backend did not report this full operation, so it is not shown as completing it.'
 
 const COVER_BOUND_MESSAGE =
   'A smaller refresh kept running, so the requested full refresh did not start. Try again in a moment.'

@@ -1,5 +1,37 @@
 import { getJson } from './http'
 
+/** Stored shared rows; figures are null (never zero) when state is UNAVAILABLE. */
+export interface DatasetSummary {
+  state: 'AVAILABLE' | 'UNAVAILABLE'
+  storedRows: number | null
+  timestampedRows: number | null
+  unknownTimestampRows: number | null
+  oldestFetchedAt: string | null
+  newestFetchedAt: string | null
+}
+
+/** Aggregate counts only; never identities. */
+export interface AccountUsageSummary {
+  state: 'AVAILABLE' | 'UNAVAILABLE'
+  totalAccounts: number | null
+  activeLast60Minutes: number | null
+}
+
+/** One saved own-account source; counts are null (never zero) unless state is CURRENT or STALE. */
+export interface SavedSourceOverview {
+  state: 'CURRENT' | 'STALE' | 'NOT_LOADED' | 'UNAVAILABLE'
+  count: number | null
+  total?: number | null
+  completedAt?: string | null
+}
+
+/** Members are absent when the connected key does not permit that source. */
+export interface AccountOverview {
+  characters?: SavedSourceOverview
+  recipes?: SavedSourceOverview
+  materials?: SavedSourceOverview
+}
+
 export type SharedHealth = 'OK' | 'RUNNING' | 'PROBLEM' | 'NOT_RUN'
 
 /**
@@ -12,6 +44,7 @@ export interface GlobalSystemStatus {
   priceHealth?: SharedHealth
   accountLastRefreshedAt?: string | null
   accountRefreshScope?: string | null
+  accountOverview?: AccountOverview | null
   // Owner-only details; never present in the generic response.
   running?: boolean
   lastCheckedAt?: string | null
@@ -23,10 +56,18 @@ export interface GlobalSystemStatus {
   stalePriceItems?: number | null
   newestPriceFetchedAt?: string | null
   priceCacheError?: string | null
+  items?: DatasetSummary | null
+  recipes?: DatasetSummary | null
+  tradingPostPrices?: DatasetSummary | null
+  accounts?: AccountUsageSummary | null
 }
 
+type OwnerSummaryKey = 'items' | 'recipes' | 'tradingPostPrices' | 'accounts'
+
+/** Summaries stay optional: an older or partial backend answer renders as "not reported", never zero. */
 export type OwnerSystemDetails = Required<Omit<GlobalSystemStatus,
-  'globalHealth' | 'priceHealth' | 'accountLastRefreshedAt' | 'accountRefreshScope'>>
+  'globalHealth' | 'priceHealth' | 'accountLastRefreshedAt' | 'accountRefreshScope' | 'accountOverview' | OwnerSummaryKey>>
+  & Pick<GlobalSystemStatus, OwnerSummaryKey>
 
 export const systemApi = {
   readStatus(): Promise<GlobalSystemStatus> {

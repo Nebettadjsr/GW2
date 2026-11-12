@@ -322,7 +322,7 @@ Verify usable key entry/reload/replacement/disconnect, no stale A response enter
 
 ---
 
-## 8.3 Owner administration (approved target; not yet implemented)
+## 8.3 Owner administration (approved target)
 
 Identify the Product Owner's administrator account by its backend-verified GW2 account GUID, configured server-side. Do not tie ownership to one replaceable API key, a display name, a client-supplied GUID/role or the first account to connect. No configured owner means no owner privilege; provisioning/verification of the intended GUID is required before enabling admin actions. Reuse the existing session/proof boundary rather than introducing a separate identity platform.
 
@@ -338,7 +338,7 @@ Trading Post prices are a globally shared cache. A calculation supplies its feat
 
 Global GW2 metadata and the crafting graph are shared. The backend checks cheap recipe and TP-tradeable ID lists every six hours by default (initial delay one minute), compares them with stored IDs, and downloads detailed recipe/item data only when those IDs changed. This detects additions/removals; it does not detect an in-place recipe edit when the recipe ID set is unchanged. Recipe additions/removals trigger the necessary detail persistence; the graph cache is initialized on first use if absent and is rebuilt during refresh only after changed recipe data has been persisted. The interval is configurable using `GW2_GLOBAL_REFRESH_INTERVAL_MS` and `GW2_GLOBAL_REFRESH_INITIAL_DELAY_MS`. Manual System Status execution and the scheduler submit the same application service and share in-process duplicate-task protection.
 
-The System Status page is an administrative diagnostics/maintenance area, not a prerequisite for normal feature use. It groups account refresh time/scope, global check/change/recipe/graph timestamps, and shared TP cache counts/fetch time into health cards with clear OK, Problem, Running, or not-run states. Manual actions are limited to account refresh and global-data check; TP prices refresh on demand through feature workflows. It shows currently tracked task states and last global failure. Refresh timestamps/task history are not durable telemetry. This is not a general monitoring platform.
+The System Status page is not a prerequisite for normal feature use. Ordinary users receive their own connection, account-data age/state and manual account refresh, plus generic shared health. The configured, verified owner receives the separate detailed diagnostics and full item, recipe and tradable-TP actions defined in `DOMAIN_SPEC.md` section 57, with the backend boundary in section 8.3. Feature-demand TP refresh remains separate. Task state and status lookup failures remain distinct; refresh timestamps/task history are process-local rather than durable telemetry. This is not a general monitoring platform.
 
 The current runtime is single-user and single-backend-instance. In-process duplicate-job prevention is sufficient. Future account data will be scoped/refreshed per account/user; GW2 global metadata, TP prices, and the crafting graph remain shared. If multiple backend replicas are introduced, global scheduled work and refresh deduplication will then require shared coordination, for example PostgreSQL-backed leases or advisory locks. That coordination is explicitly future work; do not introduce Redis, distributed locks, or a job queue for the current deployment.
 

@@ -14,6 +14,8 @@ export interface SyncApi {
   startProfitDataRefresh(): Promise<SyncTaskAccepted>
   startGlobalSync(): Promise<SyncTaskAccepted>
   startPriceRefresh(variant: PriceRefreshVariant): Promise<SyncTaskAccepted>
+  /** Owner-only full catalog operation; the request carries no body fields at all. */
+  startFullCatalog(catalog: FullCatalog): Promise<SyncTaskAccepted>
   /** Reads one task's state from the location the acceptance advertised. */
   readTaskStatus(statusUrl: string): Promise<SyncTaskStatus>
 }
@@ -22,6 +24,8 @@ export interface SyncApi {
 export function startLuckRefresh(): Promise<SyncTaskAccepted> {
   return postJson<SyncTaskAccepted>('/sync/account/luck', {})
 }
+
+export type FullCatalog = 'items' | 'recipes' | 'trading-post'
 
 export type AccountView = 'bank' | 'materials' | 'characters'
 
@@ -50,6 +54,10 @@ export const syncApi: SyncApi = {
   /** The variant is required and there are exactly two; no combined refresh exists. */
   startPriceRefresh(variant: PriceRefreshVariant): Promise<SyncTaskAccepted> {
     return postJson<SyncTaskAccepted>('/prices/refresh', { variant })
+  },
+
+  startFullCatalog(catalog: FullCatalog): Promise<SyncTaskAccepted> {
+    return postJson<SyncTaskAccepted>(`/sync/full/${catalog}`, {})
   },
 
   async readTaskStatus(statusUrl: string): Promise<SyncTaskStatus> {
