@@ -186,3 +186,26 @@ evidence. Architecture classification: `local-x86-64`, `local-or-ci-arm64` (non-
 (Linux), `unknown`. Point samples (seconds apart) are not sustained peaks; none of this is capacity evidence.
 
 Earlier ad-hoc observations: `scripts/container-smoke.sh` prints `image_bytes`, `build_ms` and `startup_to_readiness_ms` for a single image; they are not part of the informational reports.
+
+## Populated fixtures and optional local snapshot (STORY-KPI-007)
+
+Offline inputs for later capacity discovery; nothing here runs a sustained load. Code: `backend/src/test/java/perf`
+(`SyntheticFixtures`, `SnapshotImporter`, `FixtureLoader`, `FixtureProvenance`). Workload assumptions: `docs/PERFORMANCE_WORKLOAD_PROFILE.md`.
+
+- **Synthetic default (`kpi-fixtures-1`)**: five independent principals (two populated, one empty-granted, one stale, one
+  failed/partial) sharing item/recipe IDs and overlapping character IDs, covering Materials, Bank, Characters, bags,
+  saved equipment, Builds, recipes and Status sources. Expected results are literals in `SyntheticFixtures.expected()`.
+  Account count is coverage, not a capacity target. Default tests: `mvn test -Dtest='SyntheticFixturesTest,SnapshotImporterTest,FixtureProvenanceTest'`
+  (no database, no network). Database boundary with real Flyway and production repositories (explicit, local):
+  `mvn test -Dtest=PopulatedFixtureIsolationIT` with `DATABASE_URL/USER/PASSWORD`; it creates and drops a `kpi_*` schema, never `public`.
+- **Optional local snapshot**: shape `local-postgres-jsonl-1` (`manifest.json` + one `<table>.jsonl` per allowlisted table,
+  `to_jsonb(row)` per line, hashes over exact bytes). Opt in with `-Dgw2.perf.snapshot-dir=<ignored dir>` or `GW2_PERF_SNAPSHOT_DIR`;
+  absent means *unavailable*. Run `mvn test -Dtest=PopulatedFixtureIsolationIT -Dgw2.perf.snapshot-dir=<dir>`: it validates manifest
+  version/format, allowlisted names, counts, hashes, UTF-8, schema/publication relationships, remaps account GUIDs, character
+  IDs/names and `bound_to` to fake principals, loads into a fresh `kpi_*` schema and writes `target/perf/snapshot-readiness.{json,md}`.
+  Unsupported, incomplete or corrupt input fails with a message naming tables and counts only. A clock shift is opt-in
+  (`SnapshotImporter.shiftClock`), uniform and reported as fixture preparation; the snapshot is never claimed current.
+- **Reports**: `fixtureProvenance` (additive; `schemaVersion` stays `1`) carries kind, version, fixture and expected-result identity,
+  topology kind (`synthetic` or `locally-captured-cache`; public-only capture stays `unavailable`), row-count coverage, comparison
+  eligibility and `oracleQualification: not-qualified`. Reports without it say `absent`; different identities are incomparable.
+- Never commit, upload or log a real snapshot; keep it under an ignored path. Default CI never reads it.

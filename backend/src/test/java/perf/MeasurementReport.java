@@ -39,6 +39,7 @@ public final class MeasurementReport {
     private final String fixtureVersion;
     private final Map<String, String> environment;
     private final List<Workload> workloads = new ArrayList<>();
+    private ObjectNode fixtureProvenance = FixtureProvenance.absent("no fixture provenance was attached to this report");
 
     public MeasurementReport(String commit, Instant timestamp, String fixtureVersion, Map<String, String> environment) {
         this.commit = require(commit, "commit");
@@ -50,6 +51,11 @@ public final class MeasurementReport {
     private static String require(String v, String what) {
         if (v == null || v.isBlank()) throw new IllegalArgumentException(what + " is required");
         return v;
+    }
+
+    /** Additive (schemaVersion unchanged): consumers that ignore unknown fields keep working. */
+    public void setFixtureProvenance(ObjectNode provenance) {
+        this.fixtureProvenance = provenance;
     }
 
     public void add(Workload workload) {
@@ -70,6 +76,7 @@ public final class MeasurementReport {
         root.put("measurementScope", MEASUREMENT_SCOPE);
         root.put("containerMeasurements", CONTAINER_NOTE);
         root.put("informationalOnly", true);
+        root.set("fixtureProvenance", fixtureProvenance.deepCopy());
         ObjectNode env = root.putObject("environment");
         environment.forEach(env::put);
         ArrayNode list = root.putArray("workloads");
@@ -104,6 +111,7 @@ public final class MeasurementReport {
         sb.append("- Commit: `").append(commit).append("`\n- Timestamp: ").append(timestamp)
                 .append("\n- Fixture version: `").append(fixtureVersion).append("`\n- Scope: ")
                 .append(MEASUREMENT_SCOPE).append(" (").append(CONTAINER_NOTE).append(")\n");
+        sb.append(FixtureProvenance.markdown(fixtureProvenance));
         environment.forEach((k, v) -> sb.append("- ").append(k).append(": ").append(v).append('\n'));
         for (Workload w : workloads) {
             sb.append("\n## ").append(w.name()).append("\n\n").append(w.description()).append("\n\n")

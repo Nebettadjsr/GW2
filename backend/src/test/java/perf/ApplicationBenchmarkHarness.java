@@ -287,6 +287,7 @@ abstract class ApplicationBenchmarkHarness {
             System.setProperty(Db.TEST_SCHEMA_PROPERTY, SCHEMA);
             login();
             MeasurementReport report = new MeasurementReport(commit(), Instant.now(), FIXTURE_VERSION, environment(s));
+            report.setFixtureProvenance(FixtureProvenance.scalableGenerator(FIXTURE_VERSION));
             report.add(measure("idle", "Application idle: no requests, no tasks.",
                     "Application JVM process; the load-generating client lives in the same JVM but sends nothing.",
                     1, rec -> Thread.sleep(s.idleMillis())));
