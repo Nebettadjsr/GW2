@@ -48,6 +48,7 @@ class CapacityExperimentIT {
     static Path graphFile;
     static long preparedAt;
     static java.time.Duration warmWindow;
+    static WarmDeadline deadline;
     /** Set when workers did not drain: the owned schema/files are retained instead of dropped. */
     static volatile boolean cleanupBlocked;
     static volatile List<String> blockedBrowserRequests = List.of();
@@ -94,8 +95,10 @@ class CapacityExperimentIT {
         // price and optional-coverage publication metadata is re-dated and coverage parents are re-pointed so the
         // NORMAL production freshness/coverage checks pass for a bounded window; facts are untouched.
         WarmPreparation.Result warm = WarmPreparation.prepare(original, OffsetDateTime.now());
-        preparedAt = System.nanoTime();
         warmWindow = warm.warmWindow();
+        // Conservative 10% safety margin below the computed freshness window; starts now, so all later setup counts.
+        deadline = WarmDeadline.start(warmWindow.minus(warmWindow.dividedBy(10)));
+        preparedAt = System.nanoTime();
         FixtureSnapshot prepared = warm.snapshot();
         warm.disclosure().forEach((k, v) -> IDENTITY.put(k, v));
         SnapshotImporter.Copies copies = SnapshotImporter.principalCopies(prepared, copyCount);
@@ -167,11 +170,13 @@ class CapacityExperimentIT {
         String backend = "http://127.0.0.1:" + port;
         CapacityOutcome outcome;
         cleanupBlocked = false;
+        CapacityCoordinator coordinator;
         BrowserProbe probe = new BrowserProbe(frontend, backend);
         CapacityStageRunner runner = new CapacityStageRunner(cfg, backend, PopulatedFixtureHttpTest::copyKey, probe,
-                () -> PopulatedFixtureHttpTest.OUTSTANDING.get() == 0, PrincipalOracle.from(PopulatedFixtureHttpTest.copies));
+                PopulatedFixtureHttpTest::serverIdle, PrincipalOracle.from(PopulatedFixtureHttpTest.copies));
+        coordinator = new CapacityCoordinator(cfg, runner, deadline);
         try {
-            outcome = new CapacityCoordinator(cfg, runner).discover();
+            outcome = coordinator.discover();
         } finally {
             // Never destroy a browser with an in-flight action or workers that failed to drain: retain them.
             if (runner.shutdown()) {
@@ -190,6 +195,14 @@ class CapacityExperimentIT {
 
         Map<String, String> meta = new LinkedHashMap<>(IDENTITY);
         meta.put("commit", git("rev-parse", "HEAD"));
+        meta.put("sourceRevision", meta.get("commit"));
+        meta.put("runStartedUtc", java.time.Instant.now().toString());
+        meta.put("configIdentity", FixtureProvenance.class.getSimpleName() + ":" + Integer.toHexString(cfg.toString().hashCode()) + " thresholdMs=" + cfg.thresholdMillis()
+                + " levels=" + cfg.coarseLevels() + " seed=" + cfg.seed() + " profile=" + cfg.profile().id());
+        meta.put("expectedIdentity", "unavailable for private input (expected values are derived in memory by PrincipalOracle from the loaded copies; none persisted)");
+        meta.put("preparationPolicyIdentity", "WarmPreparation BASE=" + WarmPreparation.BASE_SECONDS + "s SPREAD=" + WarmPreparation.SPREAD_SECONDS + "s; hard warm deadline "
+                + deadline.ceilingSeconds() + "s");
+        meta.put("firstCoarseBreach", String.valueOf(coordinator.firstCoarseBreachLevel()));
         meta.put("dirty", git("status", "--porcelain").isEmpty() ? "clean" : "dirty");
         meta.put("mode", mode());
         meta.put("logicalCores", String.valueOf(Runtime.getRuntime().availableProcessors()));
@@ -197,7 +210,11 @@ class CapacityExperimentIT {
         meta.put("java", System.getProperty("java.version"));
         meta.put("generatorBoundary", "protocol generator and one sequential Chromium probe run in the same host as the application and PostgreSQL (colocated; logical cores are not Oracle OCPU)");
         meta.put("userAccounting", "level L = " + cfg.probeBudget() + " browser-probe principal(s) + (L - probes) protocol users; probes are inside L");
-        meta.put("resourceObservations", "unavailable: no container/process resource probe is attached to this local run");
+        meta.put("resourceObservations", String.join(" | ", runner.resourceSummary()) + " | scope: benchmark JVM (application + Java generator); Chromium, Node and PostgreSQL are separate processes and not included");
+        meta.put("warmBudgetVsCeiling", "configured profile budget " + cfg.maxMillisPerProfile() / 1000 + "s; effective warm freshness ceiling "
+                + deadline.ceilingSeconds() + "s (computed window " + warmWindow.toSeconds() + "s less a 10% margin, measured from preparation, "
+                + "monotonic); the smaller one governs and stages that do not fit are censored, never run past it");
+        meta.put("warmDeadlineRemainingMillisAtEnd", String.valueOf(deadline.remainingMillis()));
         meta.put("warmWindowElapsedSeconds", String.valueOf(java.time.Duration.ofNanos(System.nanoTime() - preparedAt).toSeconds()));
         boolean pastWindow = java.time.Duration.ofNanos(System.nanoTime() - preparedAt).compareTo(warmWindow) > 0;
         meta.put("warmWindowExceeded", String.valueOf(pastWindow)
@@ -207,7 +224,9 @@ class CapacityExperimentIT {
         meta.put("noLiveUpstream", "all proof, account, global and price edges are controlled fakes; unexpected calls fail the run");
 
         CapacityReport report = new CapacityReport(cfg, outcome, meta);
-        String artifactId = "capacity-" + cfg.profile().id() + "-" + cfg.seed();
+        // Unique, filesystem-safe artifact identity: rerunning a seed never overwrites earlier evidence.
+        String runUtc = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.now());
+        String artifactId = "capacity-" + cfg.profile().id().replaceAll("[^A-Za-z0-9_-]", "_") + "-" + cfg.seed() + "-" + runUtc + "-" + UUID.randomUUID().toString().substring(0, 8);
         String jsonl = report.samplesJsonl();
         String json = report.toJsonString(artifactId);
         assertTrue(CapacityReport.verifyCompanion((ObjectNode) JSON.readTree(json), jsonl), "companion round trip");

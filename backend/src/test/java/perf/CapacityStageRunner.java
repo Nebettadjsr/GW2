@@ -53,7 +53,9 @@ final class CapacityStageRunner implements StageRunner {
     private final RetainedWorkers retainedWorkers = new RetainedWorkers();
     private volatile StartLedger ledger = new StartLedger(() -> 0);
     /** Position on each user's continuous seeded timeline; advances by one window per measured stage. */
-    private long workloadClockMillis;
+    private final Map<Long, Long> workloadClocks = new HashMap<>();
+    private final List<ResourceWindow> resourceWindows = new CopyOnWriteArrayList<>();
+    private volatile long browserHttp0, browserPolls0;
     private final AtomicStop stop = new AtomicStop();
     /** Per-stage admission stop: set on a correctness failure or at window end; reset by each run. */
     private volatile boolean stageStop;
@@ -295,6 +297,10 @@ final class CapacityStageRunner implements StageRunner {
         ledger = led;
         List<CapacitySample> samples = new CopyOnWriteArrayList<>();
         String invalid = null;
+        long cpu0 = ProcessProbe.cpuNanos();
+        ProcessProbe.PeakSampler heapPeak = new ProcessProbe.PeakSampler("heap", ProcessProbe::heapUsedBytes, 100);
+        ProcessProbe.PeakSampler rssPeak = new ProcessProbe.PeakSampler("rss", ProcessProbe::rssBytes, 250);
+        long[] c0 = browserCounters();
         stageStop = false;
         List<Future<?>> stageFutures = new CopyOnWriteArrayList<>();
         boolean serial = role.equals(StageObservation.BASELINE) || role.equals(StageObservation.WARMUP);
@@ -316,10 +322,11 @@ final class CapacityStageRunner implements StageRunner {
                 scheduledSerial = cfg.journeys().size();
             } else {
                 // The plan is a slice of each user's continuous timeline; the workload clock advances per measured window.
-                long windowStart = workloadClockMillis;
-                workloadClockMillis += cfg.observationWindowMillis();
+                // Each confirmation seed is an independent family whose phases continue within the family.
+                long windowStart = workloadClocks.getOrDefault(seed, 0L);
+                workloadClocks.put(seed, windowStart + cfg.observationWindowMillis());
                 List<WorkloadProfile.ScheduledStart> plan = protocolUsers == 0 ? List.of()
-                        : cfg.profile().plan(protocolUsers, cfg.seed(), windowStart, cfg.observationWindowMillis(), cfg.journeys(),
+                        : cfg.profile().plan(protocolUsers, seed, windowStart, cfg.observationWindowMillis(), cfg.journeys(),
                                 cfg.craftBurstMin(), cfg.craftBurstMax());
                 t0Holder[0] = System.nanoTime();
                 long t0 = t0Holder[0];
@@ -360,6 +367,15 @@ final class CapacityStageRunner implements StageRunner {
             }
         }
         if (oracle.mismatch() != null) invalid = "principal correctness mismatch (evidence invalid): " + oracle.mismatch();
+        // Browser API/poll accounting: monotonic counters across the WHOLE observation interval, as deltas.
+        long[] c1 = browserCounters();
+        led.browserCall((int) Math.max(0, c1[0] - c0[0]), (int) Math.max(0, c1[1] - c0[1]));
+        long cpu1 = ProcessProbe.cpuNanos();
+        long elapsed = (System.nanoTime() - begin) / 1_000_000;
+        resourceWindows.add(new ResourceWindow(role + ":" + level + ":seed" + seed, elapsed, cpu0 < 0 || cpu1 < 0 ? -1 : cpu1 - cpu0,
+                ProcessProbe.processors(), heapPeak.peak(), Runtime.getRuntime().maxMemory(), rssPeak.peak()));
+        heapPeak.close();
+        rssPeak.close();
         StartAccounting acc = led.snapshot();
         boolean saturated = !serial && (led.saturated() || acc.journeys().pending() > 0 || acc.polls().pending() > 0);
         int offered = serial ? scheduledSerial : acc.journeys().offered() + acc.polls().offered();
@@ -404,6 +420,17 @@ final class CapacityStageRunner implements StageRunner {
         }
         return true;
     }
+
+    private long[] browserCounters() {
+        if (browserLoggedIn.isEmpty()) return new long[] {0, 0};
+        try {
+            JsonNode r = probe.call(M.createObjectNode().put("cmd", "counters"), 30_000);
+            return new long[] {r.path("httpCalls").asLong(), r.path("polls").asLong()};
+        } catch (Exception e) { return new long[] {0, 0}; }
+    }
+
+    /** One line per stage window: CPU/heap/RSS with units and limitations. */
+    List<String> resourceSummary() { return resourceWindows.stream().map(ResourceWindow::describe).toList(); }
 
     private void ensureBrowser(int user) throws Exception {
         if (browserLoggedIn.contains(user)) return;
@@ -468,7 +495,6 @@ final class CapacityStageRunner implements StageRunner {
         browserInFlight.incrementAndGet();
         try { r = probe.call(c, 90_000); } finally { browserInFlight.decrementAndGet(); }
         boolean ok = r.path("ok").asBoolean();
-        ledger.browserCall(r.path("httpCalls").asInt(), r.path("polls").asInt());
         if (!ok) System.err.println("browser probe " + journey + " failed: " + r.path("error").asText());
         else if (!r.path("correct").asBoolean() || !r.path("usable").asBoolean()) System.err.println("browser probe " + journey + ": usable=" + r.path("usable").asBoolean() + " " + r.path("detail").asText());
         CapacitySample smp = new CapacitySample(journey, CapacitySample.BROWSER, level, role, user, offset, 0,
@@ -492,11 +518,10 @@ final class CapacityStageRunner implements StageRunner {
         }
         // Retained futures are finished now: forget them so cleanupRequired reflects reality.
         retainedWorkers.reconcile();
-        while (!applicationDrained.get()) {
-            if (System.nanoTime() > deadline) return false;
-            try { Thread.sleep(20); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
-        }
-        return true;
+        // Client completion/timeout alone does not prove server work drained: wait for Tomcat requests and jobs.
+        return ServerDrain.await(Math.max(1, (deadline - System.nanoTime()) / 1_000_000), applicationDrained, System::nanoTime, () -> {
+            try { Thread.sleep(20); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        });
     }
 
     /** True when workers or a browser action may still be running: keep the application, schema and browser. */

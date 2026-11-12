@@ -278,4 +278,67 @@ class CapacityCoordinatorTest {
         };
         assertNotEquals(CapacityOutcome.Status.INVALID, new CapacityCoordinator(cfg(), slowWarm).discover().status());
     }
+
+    /** Fake stage that advances an injected monotonic clock instead of sleeping. */
+    static Fake clocked(java.util.concurrent.atomic.AtomicLong clock, java.util.function.Function<String, Long> advanceNanosByRole) {
+        return new Fake(l -> 100L) {
+            @Override public StageObservation run(int level, String role, long seed) {
+                StageObservation o = super.run(level, role, seed);
+                clock.addAndGet(advanceNanosByRole.apply(role));
+                return o;
+            }
+        };
+    }
+
+    static CapacityConfig shortWindows() {
+        return new CapacityConfig(2000, List.of(1, 2, 4, 8, 16), 16, 10_000_000, 1, 1, 7, WorkloadProfile.BALANCED, J, 1000, 1000);
+    }
+
+    @Test void
+hardWarmDeadlineAdmitsOnlyStagesThatFitAndCensors() {
+        var clock = new java.util.concurrent.atomic.AtomicLong();
+        WarmDeadline d = new WarmDeadline(0, java.time.Duration.ofMillis(4500), clock::get);
+        Fake f = clocked(clock, r -> 1_000_000_000L);
+        CapacityOutcome o = new CapacityCoordinator(shortWindows(), f, d).discover();
+        assertEquals(List.of("baseline:1", "warmup:1", "coarse:1", "coarse:2"), f.calls, "a fifth 1000 ms window does not fit in the 500 ms left");
+        assertEquals(CapacityOutcome.Status.CENSORED_NOT_REACHED, o.status());
+        assertTrue(o.detail().contains("Warm deadline"), o.detail());
+        assertTrue(d.remainingMillis() > 0 && !d.expired(), "stopped before expiry, not after");
+    }
+
+    @Test void stageCrossingTheWarmDeadlineIsRejectedNotCountedAsConfirmedEvidence() {
+        var clock = new java.util.concurrent.atomic.AtomicLong();
+        WarmDeadline d = new WarmDeadline(0, java.time.Duration.ofMillis(3500), clock::get);
+        // forecast says 1000 ms fits, but the coarse window actually takes 5 s: its outcome must be rejected
+        Fake f = clocked(clock, r -> r.equals("coarse") ? 5_000_000_000L : 1_000_000_000L);
+        CapacityOutcome o = new CapacityCoordinator(shortWindows(), f, d).discover();
+        assertEquals(List.of("baseline:1", "warmup:1", "coarse:1"), f.calls);
+        assertTrue(o.measured().isEmpty(), "the crossing stage is not evidence");
+        assertNotEquals(CapacityOutcome.Status.BOUNDARY_CONFIRMED, o.status());
+        assertTrue(o.detail().contains("crossed the warm deadline"), o.detail());
+        assertTrue(f.drained);
+    }
+
+    @Test void baselineCrossingTheDeadlineIsInvalid() {
+        var clock = new java.util.concurrent.atomic.AtomicLong();
+        WarmDeadline d = new WarmDeadline(0, java.time.Duration.ofMillis(1500), clock::get);
+        Fake f = clocked(clock, r -> 2_000_000_000L);
+        CapacityOutcome o = new CapacityCoordinator(shortWindows(), f, d).discover();
+        assertEquals(CapacityOutcome.Status.INVALID, o.status());
+        assertEquals(List.of("baseline:1"), f.calls);
+    }
+
+    @Test void confirmationsUseIndependentSeedFamiliesAndFirstCoarseBreachIsPreserved() {
+        List<Long> seeds = new ArrayList<>();
+        Fake f = new Fake(l -> l <= 13 ? 2000L : 2001L) {
+            @Override public StageObservation run(int level, String role, long seed) {
+                if (role.equals("confirm")) seeds.add(seed);
+                return super.run(level, role, seed);
+            }
+        };
+        CapacityCoordinator c = new CapacityCoordinator(cfg(), f);
+        c.discover();
+        assertEquals(16, c.firstCoarseBreachLevel(), "coarse breach kept separately from the refined boundary (14)");
+        assertEquals(java.util.Set.of(8L, 9L, 10L), new java.util.HashSet<>(seeds), "three independent confirmation families seed+1..3");
+    }
 }

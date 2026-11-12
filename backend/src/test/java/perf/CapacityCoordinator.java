@@ -15,14 +15,23 @@ public final class CapacityCoordinator {
     private final List<StageObservation> baseline = new ArrayList<>();
     private final List<StageObservation> warmup = new ArrayList<>();
     private final List<StageObservation> measured = new ArrayList<>();
+    private final WarmDeadline deadline;
     private long spentMillis;
+    private int firstCoarseBreach = -1;
 
-    public CapacityCoordinator(CapacityConfig config, StageRunner runner) {
+    /** The first level that breached in the coarse ramp (before refinement narrowed the boundary), or -1. */
+    public int firstCoarseBreachLevel() { return firstCoarseBreach; }
+
+    public CapacityCoordinator(CapacityConfig config, StageRunner runner) { this(config, runner, null); }
+
+    /** {@code deadline} (nullable) is the hard warm-data freshness ceiling; stages that do not fit or cross it are not evidence. */
+    public CapacityCoordinator(CapacityConfig config, StageRunner runner, WarmDeadline deadline) {
         this.config = config;
         this.runner = runner;
+        this.deadline = deadline;
     }
 
-    private enum Verdict { PASS, BREACH, INVALID, INCOMPLETE, SATURATED, BUDGET }
+    private enum Verdict { PASS, BREACH, INVALID, INCOMPLETE, SATURATED, BUDGET, EXPIRED }
 
     private record Result(Verdict verdict, String detail) { }
 
@@ -64,7 +73,12 @@ public final class CapacityCoordinator {
             return end(CapacityOutcome.Status.CENSORED_NOT_REACHED, null, null, null,
                     "Profile budget cannot cover even the baseline window; nothing was started.");
         }
+        if (!fitsDeadline()) {
+            return end(CapacityOutcome.Status.CENSORED_NOT_REACHED, null, null, null,
+                    "Warm deadline too short for the baseline window; nothing was started.");
+        }
         StageObservation b = runner.run(1, StageObservation.BASELINE, config.seed());
+        if (crossed()) return end(CapacityOutcome.Status.INVALID, null, null, null, "Baseline crossed the warm deadline; rejected (prepared data may have expired).");
         baseline.add(b);
         spentMillis += b.elapsedMillis();
         String bad = validate(b, false);
@@ -73,7 +87,12 @@ public final class CapacityCoordinator {
             return end(CapacityOutcome.Status.CENSORED_NOT_REACHED, null, null, null,
                     "Profile budget exhausted after the baseline; warmup and measured stages were not started.");
         }
+        if (!fitsDeadline()) {
+            return end(CapacityOutcome.Status.CENSORED_NOT_REACHED, null, null, null,
+                    "Warm deadline reached after the baseline; warmup and measured stages were not started.");
+        }
         StageObservation w = runner.run(1, StageObservation.WARMUP, config.seed());
+        if (crossed()) return end(CapacityOutcome.Status.INVALID, null, null, null, "Warmup crossed the warm deadline; rejected (prepared data may have expired).");
         warmup.add(w);
         spentMillis += w.elapsedMillis();
         // Warmup latency is separate evidence, but its correctness/isolation/coverage must hold.
@@ -85,7 +104,7 @@ public final class CapacityCoordinator {
         for (int level : config.coarseLevels()) {
             if (level > config.maxUsers()) break;
             Result r = observe(level, StageObservation.COARSE, config.seed());
-            if (r.verdict == Verdict.BREACH) { breach = level; break; }
+            if (r.verdict == Verdict.BREACH) { breach = level; firstCoarseBreach = level; break; }
             if (r.verdict == Verdict.PASS) { lastPass = level; continue; }
             return stop(r, lastPass, null);
         }
@@ -131,6 +150,7 @@ public final class CapacityCoordinator {
     private CapacityOutcome stop(Result r, Integer lastPass, Integer firstBreach) {
         CapacityOutcome.Status s = switch (r.verdict) {
             case INVALID, INCOMPLETE, SATURATED -> CapacityOutcome.Status.INVALID;
+            case EXPIRED -> firstBreach != null ? CapacityOutcome.Status.PROVISIONAL : CapacityOutcome.Status.CENSORED_NOT_REACHED;
             default -> firstBreach != null ? CapacityOutcome.Status.PROVISIONAL : CapacityOutcome.Status.CENSORED_NOT_REACHED;
         };
         return end(s, lastPass, firstBreach, null, r.detail);
@@ -149,12 +169,32 @@ public final class CapacityCoordinator {
         return spentMillis + need <= config.maxMillisPerProfile();
     }
 
+    /** Longest window forecast must end before the hard warm deadline. */
+    private boolean fitsDeadline() {
+        if (deadline == null) return true;
+        long need = config.observationWindowMillis();
+        for (var list : List.of(baseline, warmup, measured)) {
+            for (StageObservation o : list) need = Math.max(need, o.elapsedMillis());
+        }
+        return !deadline.expired() && need <= deadline.remainingMillis();
+    }
+
+    private boolean crossed() { return deadline != null && deadline.expired(); }
+
     private Result observe(int level, String role, long seed) {
         if (!fits()) {
             return new Result(Verdict.BUDGET, "Time budget exhausted before level " + level + " (" + role
                     + "); result is censored/provisional, not extrapolated.");
         }
+        if (!fitsDeadline()) {
+            return new Result(Verdict.EXPIRED, "Warm deadline (freshness ceiling) reached before level " + level + " (" + role
+                    + "); remaining stages were not started, result is censored/provisional.");
+        }
         StageObservation o = runner.run(level, role, seed);
+        if (crossed()) {
+            return new Result(Verdict.EXPIRED, "Level " + level + " (" + role + ") crossed the warm deadline and was rejected; "
+                    + "prepared data may have expired, so it is not evidence.");
+        }
         measured.add(o);
         spentMillis += o.elapsedMillis();
         String bad = validate(o, true);

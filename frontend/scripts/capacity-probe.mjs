@@ -23,6 +23,7 @@ import { extname, join, normalize, resolve } from 'node:path'
 import { chromium } from 'playwright-core'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import { isAllowedUrl, isRequiredApiFailure } from './capacityGuard.mjs'
+import { evaluate, pathOf } from './requestCorrelation.mjs'
 
 const args = process.argv.slice(2)
 const opt = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback)
@@ -60,19 +61,29 @@ const server = createServer(async (req, res) => {
   } catch (e) { res.writeHead(404); res.end('not found') }
 })
 
+const CHAR = /^\/api\/account\/characters\/[^/]+$/
+/** The resolved recipe must be the one the click requested (identity echoed by the response). */
+function resolutionMatches(e) {
+  let asked
+  try { asked = JSON.parse(e.post ?? '{}').recipeId } catch { return 'unreadable resolution request' }
+  if (typeof asked !== 'number') return 'resolution request has no recipe identity'
+  if (e.json?.recipeId !== asked) return 'resolution answered a different recipe'
+  return e.json?.consistency ? null : 'resolution has no consistency'
+}
+
 /** journey -> { hash, steps before timing, timed action, usable predicate evaluated in the page } */
 const JOURNEYS = {
-  bank: { nav: 'bank', usable: `document.querySelectorAll('[data-test="bank-screen"] [data-test="bank-slot"]').length > 0 && !document.querySelector('[data-test="bank-loading"],[data-test="bank-error"]')`, count: `document.querySelectorAll('[data-test="bank-screen"] [data-test="bank-slot"]').length` },
-  materials: { nav: 'materials', usable: `!!document.querySelector('[data-test="materials-screen"]') && !document.querySelector('[data-test="materials-loading"],[data-test="materials-error"],[data-test="materials-empty"]') && document.querySelectorAll('[data-test="materials-screen"] [title]').length > 0` },
-  characters: { nav: 'characters', usable: `document.querySelectorAll('[data-test="roster-item"]').length > 0 && !document.querySelector('[data-test="roster-loading"],[data-test="roster-error"]')`, count: `document.querySelectorAll('[data-test="roster-item"]').length` },
-  'character-core': { nav: 'characters', pre: 'select-character', usable: `document.querySelectorAll('[data-test="equipment-entry"]').length > 0 && !document.querySelector('[data-test="detail-loading"],[data-test="equipment-loading"],[data-test="detail-error"],[data-test="equipment-error"]')`, then: 'section-builds', thenUsable: `!!document.querySelector('[data-test="builds-panel"]') && !document.querySelector('[data-test="builds-loading"],[data-test="builds-error"]')` },
-  'character-inventory': { nav: 'characters', pre: 'select-character', after: 'section-inventory', usable: `document.querySelectorAll('[data-test="inventory-grid"],[data-test="inventory-bag"],[data-test="inventory-slot-item"],[data-test="inventory-slot-empty"]').length > 0 && !document.querySelector('[data-test="inventory-loading"],[data-test="inventory-error"]')` },
+  bank: { expect: [{ method: 'GET', path: '/api/account/bank', accept: (e) => (e.json?.slots ? null : 'bank response has no slots') }],  nav: 'bank', usable: `document.querySelectorAll('[data-test="bank-screen"] [data-test="bank-slot"]').length > 0 && !document.querySelector('[data-test="bank-loading"],[data-test="bank-error"]')`, count: `document.querySelectorAll('[data-test="bank-screen"] [data-test="bank-slot"]').length` },
+  materials: { expect: [{ method: 'GET', path: '/api/account/materials', accept: (e) => (Array.isArray(e.json?.categories) && e.json.categories.length ? null : 'materials response has no categories') }],  nav: 'materials', usable: `!!document.querySelector('[data-test="materials-screen"]') && !document.querySelector('[data-test="materials-loading"],[data-test="materials-error"],[data-test="materials-empty"]') && document.querySelectorAll('[data-test="materials-screen"] [title]').length > 0` },
+  characters: { expect: [{ method: 'GET', path: '/api/account/characters' }],  nav: 'characters', usable: `document.querySelectorAll('[data-test="roster-item"]').length > 0 && !document.querySelector('[data-test="roster-loading"],[data-test="roster-error"]')`, count: `document.querySelectorAll('[data-test="roster-item"]').length` },
+  'character-core': { expect: [{ method: 'GET', pattern: CHAR }, { method: 'GET', pattern: /^\/api\/account\/characters\/[^/]+\/equipment-tabs$/ }], thenExpect: [{ method: 'GET', pattern: /^\/api\/account\/characters\/[^/]+\/build-tabs$/ }],  nav: 'characters', pre: 'select-character', usable: `document.querySelectorAll('[data-test="equipment-entry"]').length > 0 && !document.querySelector('[data-test="detail-loading"],[data-test="equipment-loading"],[data-test="detail-error"],[data-test="equipment-error"]')`, then: 'section-builds', thenUsable: `!!document.querySelector('[data-test="builds-panel"]') && !document.querySelector('[data-test="builds-loading"],[data-test="builds-error"]')` },
+  'character-inventory': { expect: [{ method: 'GET', pattern: /^\/api\/account\/characters\/[^/]+\/inventory$/ }],  nav: 'characters', pre: 'select-character', after: 'section-inventory', usable: `document.querySelectorAll('[data-test="inventory-grid"],[data-test="inventory-bag"],[data-test="inventory-slot-item"],[data-test="inventory-slot-empty"]').length > 0 && !document.querySelector('[data-test="inventory-loading"],[data-test="inventory-error"]')` },
   // Profit is kept alive across navigation, so reactivating it shows retained rows. The timed action is the
   // screen's own "Refresh data & results" control and the sample only completes once that new calculation answered.
-  'crafting-profit': { nav: 'crafting', pre: 'profit-rows-ready', after: 'refresh-data-and-results', freshCall: '/api/crafting/profit', usable: `document.querySelectorAll('[data-test="profit-row"]').length > 0 && !document.querySelector('[data-test="request-retry"],[data-test="selector-error"]') && document.querySelector('[data-test="refresh-data-and-results"]')?.disabled === false` },
+  'crafting-profit': { expect: [{ method: 'POST', path: '/api/crafting/profit', accept: (e) => (e.json ? null : 'profit response has no body') }],  nav: 'crafting', pre: 'profit-rows-ready', after: 'refresh-data-and-results', freshCall: '/api/crafting/profit', usable: `document.querySelectorAll('[data-test="profit-row"]').length > 0 && !document.querySelector('[data-test="request-retry"],[data-test="selector-error"]') && document.querySelector('[data-test="refresh-data-and-results"]')?.disabled === false` },
   // The timed click selects a row that is NOT currently selected, so a new resolution request is always initiated.
-  'recipe-detail': { nav: 'crafting', pre: 'profit-rows-ready', after: 'select-row', afterUnselected: true, freshCall: '/api/crafting', usable: `!!document.querySelector('[data-test="resolution-tree"]') && !document.querySelector('[data-test="resolution-loading"],[data-test="resolution-failed"],[data-test="resolution-unavailable"]')` },
-  'system-status': { nav: 'synchronization', usable: `!!document.querySelector('[data-test="account-health"],[data-test="global-health"]') && !document.querySelector('[data-test="status-needs-connection"]') && !/Loading status|Status unavailable/.test(document.querySelector('main')?.innerText ?? document.body.innerText)` }
+  'recipe-detail': { expect: [{ method: 'POST', path: '/api/crafting/profit/resolution', accept: resolutionMatches }],  nav: 'crafting', pre: 'profit-rows-ready', after: 'select-row', afterUnselected: true, freshCall: '/api/crafting', usable: `!!document.querySelector('[data-test="resolution-tree"]') && !document.querySelector('[data-test="resolution-loading"],[data-test="resolution-failed"],[data-test="resolution-unavailable"]')` },
+  'system-status': { expect: [{ method: 'GET', path: '/api/system/status' }],  nav: 'synchronization', usable: `!!document.querySelector('[data-test="account-health"],[data-test="global-health"]') && !document.querySelector('[data-test="status-needs-connection"]') && !/Loading status|Status unavailable/.test(document.querySelector('main')?.innerText ?? document.body.innerText)` }
 }
 
 let browser
@@ -94,7 +105,32 @@ async function login(principal, key, origin) {
   const page = await context.newPage()
   page.setDefaultTimeout(TIMEOUT_MS)
   const apiCalls = []
+  const reqs = []
+  const totals = { http: 0, polls: 0 }
   page.on('response', (r) => { const u = new URL(r.url()); if (u.pathname.startsWith('/api/')) apiCalls.push({ path: u.pathname.replace(/\/[0-9a-f-]{8,}/gi, '/{id}'), status: r.status() }) })
+  // Every /api request is recorded at its START (monotonic sequence) and completed only after its body was read.
+  const byRequest = new Map()
+  page.on('request', (r) => {
+    const path = pathOf(r.url())
+    if (!path.startsWith('/api/')) return
+    const e = { seq: reqs.length, method: r.method(), path, post: r.postData(), status: null, done: false, failed: false, json: null }
+    reqs.push(e)
+    byRequest.set(r, e)
+  })
+  page.on('requestfinished', async (r) => {
+    const e = byRequest.get(r)
+    if (!e) return
+    try {
+      const resp = await r.response()
+      e.status = resp.status()
+      const text = await resp.text()
+      if (e.status === 200 && /json/.test(resp.headers()['content-type'] ?? '')) { try { e.json = JSON.parse(text) } catch { /* not json */ } }
+    } catch { e.failed = true }
+    totals.http += 1
+    if (e.path.startsWith('/api/sync/tasks')) totals.polls += 1
+    e.done = true
+  })
+  page.on('requestfailed', (r) => { const e = byRequest.get(r); if (e) { e.failed = true; e.done = true; totals.http += 1 } })
   await page.goto(origin + '/#/synchronization', { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('[data-test="api-key-input"]')
   await page.fill('[data-test="api-key-input"]', key)
@@ -103,7 +139,7 @@ async function login(principal, key, origin) {
   const resp = await done
   if (resp.status() !== 200) throw new Error('login answered HTTP ' + resp.status())
   await page.waitForSelector('[data-test="disconnect"]')
-  sessions.set(principal, { context, page, apiCalls })
+  sessions.set(principal, { context, page, apiCalls, reqs, totals })
 }
 
 async function probe(cmd) {
@@ -118,15 +154,18 @@ async function probe(cmd) {
   await page.click('[data-test="nav-ecto"]')
   await page.waitForTimeout(150)
   s.apiCalls.length = 0
+  let rmark = 0 // sequence of the first request that can belong to the timed action
   const navSel = `[data-test="nav-${j.nav}"]`
   let start
   if (!j.pre) {
+    rmark = s.reqs.length
     start = performance.now()
     await page.click(navSel)
   } else {
     await page.click(navSel)
     if (j.pre === 'select-character') {
       await page.waitForSelector('[data-test="roster-item"]')
+      rmark = s.reqs.length
       start = performance.now()
       await page.click('[data-test="roster-item"] >> nth=0')
     } else if (j.pre === 'profit-rows-ready') {
@@ -158,26 +197,38 @@ async function probe(cmd) {
       }
     }
     mark = s.apiCalls.length
+    rmark = s.reqs.length
     start = performance.now()
     await target.click()
   }
   let usable = true
   let failure = ''
-  try {
-    await page.waitForFunction(j.usable, null, { timeout: TIMEOUT_MS, polling: 'raf' })
-    if (j.freshCall) {
-      // The measured work must be a request started by the timed action itself and finished successfully.
-      const deadline = performance.now() + TIMEOUT_MS
-      while (!s.apiCalls.slice(mark).some((c) => c.path.startsWith(j.freshCall) && c.status === 200)) {
-        if (performance.now() > deadline) throw new Error('no fresh request answered')
-        await page.waitForTimeout(10)
-      }
-      await page.waitForFunction(j.usable, null, { timeout: TIMEOUT_MS, polling: 'raf' })
+  let firstUsableMillis = null
+  // Waits until every request the action started (by START index, exact method/path/identity) finished with
+  // 200 and a fully read body, and the DOM then shows the meaningful (non-loading) content of that response.
+  const complete = async (expect, fromMark) => {
+    const deadline = performance.now() + TIMEOUT_MS
+    for (;;) {
+      const r = evaluate(s.reqs, fromMark, expect)
+      if (r.state === 'failed') throw new Error(r.reason)
+      if (r.state === 'complete') return r.matched
+      if (performance.now() > deadline) throw new Error('no fresh response: ' + r.reason)
+      await page.waitForTimeout(5)
     }
+  }
+  try {
+    // First usable (possibly saved/retained) content is recorded separately; it never decides capacity.
+    await page.waitForFunction(j.usable, null, { timeout: TIMEOUT_MS, polling: 'raf' })
+    firstUsableMillis = Math.ceil(performance.now() - start)
+    const matched = await complete(j.expect, rmark)
+    await page.waitForFunction(j.usable, null, { timeout: TIMEOUT_MS, polling: 'raf' })
     if (j.then) {
+      const rmark2 = s.reqs.length
       await page.click(`[data-test="${j.then}"]`)
+      await complete(j.thenExpect, Math.min(rmark, rmark2))
       await page.waitForFunction(j.thenUsable, null, { timeout: TIMEOUT_MS, polling: 'raf' })
     }
+    if (j.count && cmd.expectCount == null && matched[0]?.json?.slots) cmd.expectCount = matched[0].json.slots.length
   } catch (e) { usable = false; failure = String(e?.message ?? e).split('\n')[0].slice(0, 160) + ' calls=' + s.apiCalls.slice(mark).map((c) => `${c.path}=${c.status}`).join(',') }
   // Ceil: a fractional overrun of the 2000 ms threshold must never round down into a pass.
   const durationMillis = Math.ceil(performance.now() - start)
@@ -189,7 +240,7 @@ async function probe(cmd) {
   }
   const errorCalls = s.apiCalls.filter(isRequiredApiFailure)
   if (errorCalls.length) { correct = false; detail += ' error responses: ' + errorCalls.map((c) => `${c.path}=${c.status}`).join(',') }
-  return { durationMillis, usable, correct, detail, httpCalls: s.apiCalls.length, polls: s.apiCalls.filter((c) => c.path.startsWith('/api/sync/tasks')).length }
+  return { durationMillis, usable, correct, detail, firstUsableMillis }
 }
 
 /**
@@ -236,6 +287,7 @@ server.listen(0, '127.0.0.1', async () => {
     try {
       if (cmd.cmd === 'login') { await login(cmd.principal, cmd.key, origin); out({ id: cmd.id, ok: true }) }
       else if (cmd.cmd === 'probe') out({ id: cmd.id, ok: true, ...(await probe(cmd)) })
+      else if (cmd.cmd === 'counters') out({ id: cmd.id, ok: true, httpCalls: [...sessions.values()].reduce((n, x) => n + x.totals.http, 0), polls: [...sessions.values()].reduce((n, x) => n + x.totals.polls, 0) })
       else if (cmd.cmd === 'blocked') out({ id: cmd.id, ok: true, blocked: [...blocked] })
       else if (cmd.cmd === 'cachecheck') out({ id: cmd.id, ok: true, ...(await cacheCheck(cmd.principal)) })
       else if (cmd.cmd === 'attempt') out({ id: cmd.id, ok: true, ...(await attempt(cmd.principal, cmd.url)) })

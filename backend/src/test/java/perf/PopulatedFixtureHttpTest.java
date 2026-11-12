@@ -77,6 +77,9 @@ class PopulatedFixtureHttpTest {
     static final List<String> TP_CALLS = new CopyOnWriteArrayList<>();
     /** Background work submitted to the application and not yet finished. */
     static final AtomicInteger OUTSTANDING = new AtomicInteger();
+    /** Test-only count of HTTP requests currently inside the server (Tomcat/JDBC work), independent of client timeouts. */
+    static final AtomicInteger IN_FLIGHT_REQUESTS = new AtomicInteger();
+    static boolean serverIdle() { return OUTSTANDING.get() == 0 && IN_FLIGHT_REQUESTS.get() == 0; }
 
     static void drain() throws InterruptedException {
         long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
@@ -103,6 +106,14 @@ class PopulatedFixtureHttpTest {
 
     @TestConfiguration
     static class Proofs {
+        @Bean
+        jakarta.servlet.Filter inFlightRequestCounter() {
+            return (request, response, chain) -> {
+                IN_FLIGHT_REQUESTS.incrementAndGet();
+                try { chain.doFilter(request, response); } finally { IN_FLIGHT_REQUESTS.decrementAndGet(); }
+            };
+        }
+
         @Bean @Primary
         BackgroundTaskService trackedTaskService() {
             Executor pool = java.util.concurrent.Executors.newCachedThreadPool(r -> {
