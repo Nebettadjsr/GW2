@@ -46,6 +46,8 @@ class CapacityExperimentIT {
     static final Map<String, String> IDENTITY = new LinkedHashMap<>();
     static int copyCount;
     static Path graphFile;
+    /** Set when workers did not drain: the owned schema/files are retained instead of dropped. */
+    static volatile boolean cleanupBlocked;
 
     @LocalServerPort int port;
 
@@ -105,6 +107,10 @@ class CapacityExperimentIT {
 
     @AfterAll
     static void cleanup() throws Exception {
+        if (cleanupBlocked) {
+            System.err.println("Cleanup skipped: resources retained for schema " + SCHEMA + " (drop it manually once workers exit).");
+            return;
+        }
         PopulatedFixtureHttpTest.drain(); // owned workers exit before the owned schema is dropped
         System.clearProperty(Db.TEST_SCHEMA_PROPERTY);
         System.clearProperty(CraftingGraphCache.TEST_CACHE_FILE_PROPERTY);
@@ -129,16 +135,22 @@ class CapacityExperimentIT {
         Path frontend = Path.of(System.getProperty("gw2.capacity.frontend-dir", "../frontend")).toAbsolutePath().normalize();
         String backend = "http://127.0.0.1:" + port;
         CapacityOutcome outcome;
+        cleanupBlocked = false;
         BrowserProbe probe = new BrowserProbe(frontend, backend);
         CapacityStageRunner runner = new CapacityStageRunner(cfg, backend, PopulatedFixtureHttpTest::copyKey, probe,
                 () -> PopulatedFixtureHttpTest.OUTSTANDING.get() == 0);
         try {
             outcome = new CapacityCoordinator(cfg, runner).discover();
         } finally {
-            runner.shutdown();
-            probe.close();
+            // Never destroy a browser with an in-flight action or workers that failed to drain: retain them.
+            if (runner.shutdown()) probe.close();
+            else {
+                cleanupBlocked = true;
+                System.err.println("RETAINED: generator workers/browser action still in flight; browser, application and schema "
+                        + SCHEMA + " kept. After they finish drop the schema and stop the probe manually.");
+            }
         }
-        assertFalse(probe.isAlive(), "browser probe process must be stopped");
+        if (!cleanupBlocked) assertFalse(probe.isAlive(), "browser probe process must be stopped");
         assertEquals(List.of(), PopulatedFixtureHttpTest.UNEXPECTED, "no external/live edge may be reached");
 
         Map<String, String> meta = new LinkedHashMap<>(IDENTITY);
@@ -165,6 +177,7 @@ class CapacityExperimentIT {
         Files.writeString(out.resolve(artifactId + ".md"), report.toMarkdown());
         System.out.println("capacity outcome: " + outcome.status() + " - " + outcome.detail());
 
+        if (outcome.cleanupRequired()) cleanupBlocked = true;
         assertFalse(outcome.cleanupRequired(), "workers must drain");
         if (mode().equals("boundary")) {
             // Correctness boundary only: no timing assertion.

@@ -61,7 +61,7 @@ const JOURNEYS = {
   'character-core': { nav: 'characters', pre: 'select-character', usable: `document.querySelectorAll('[data-test="equipment-entry"]').length > 0 && !document.querySelector('[data-test="detail-loading"],[data-test="equipment-loading"],[data-test="detail-error"],[data-test="equipment-error"]')`, then: 'section-builds', thenUsable: `!!document.querySelector('[data-test="builds-panel"]') && !document.querySelector('[data-test="builds-loading"],[data-test="builds-error"]')` },
   'character-inventory': { nav: 'characters', pre: 'select-character', after: 'section-inventory', usable: `document.querySelectorAll('[data-test="inventory-grid"],[data-test="inventory-bag"],[data-test="inventory-slot-item"],[data-test="inventory-slot-empty"]').length > 0 && !document.querySelector('[data-test="inventory-loading"],[data-test="inventory-error"]')` },
   'crafting-profit': { nav: 'crafting', usable: `document.querySelectorAll('[data-test="profit-row"]').length > 0 && !document.querySelector('[data-test="request-retry"],[data-test="selector-error"]')` },
-  'recipe-detail': { nav: 'crafting', pre: 'profit-rows', after: 'select-row', usable: `!!document.querySelector('[data-test="resolution-tree"]') && !document.querySelector('[data-test="resolution-loading"],[data-test="resolution-failed"],[data-test="resolution-unavailable"]')` },
+  'recipe-detail': { nav: 'crafting', pre: 'profit-rows-ready', after: 'select-row', afterNth: true, usable: `!!document.querySelector('[data-test="resolution-tree"]') && !document.querySelector('[data-test="resolution-loading"],[data-test="resolution-failed"],[data-test="resolution-unavailable"]')` },
   'system-status': { nav: 'synchronization', usable: `!!document.querySelector('[data-test="account-health"],[data-test="global-health"]') && !document.querySelector('[data-test="status-needs-connection"]')` }
 }
 
@@ -110,16 +110,15 @@ async function probe(cmd) {
       await page.waitForSelector('[data-test="roster-item"]')
       start = performance.now()
       await page.click('[data-test="roster-item"] >> nth=0')
-    } else if (j.pre === 'profit-rows') {
+    } else if (j.pre === 'profit-rows-ready') {
+      // Untimed: only wait for the rows. The single timed action is the 'after' click below.
       await page.waitForSelector('[data-test="profit-row"]')
-      start = performance.now()
-      await page.click('[data-test="select-row"] >> nth=0')
     }
   }
   if (j.after) {
     await page.waitForSelector(`[data-test="${j.after}"]`)
     start = performance.now()
-    await page.click(`[data-test="${j.after}"]`)
+    await page.click(`[data-test="${j.after}"]${j.afterNth ? ' >> nth=0' : ''}`)
   }
   let usable = true
   try {
@@ -129,7 +128,8 @@ async function probe(cmd) {
       await page.waitForFunction(j.thenUsable, null, { timeout: TIMEOUT_MS, polling: 'raf' })
     }
   } catch { usable = false }
-  const durationMillis = Math.round(performance.now() - start)
+  // Ceil: a fractional overrun of the 2000 ms threshold must never round down into a pass.
+  const durationMillis = Math.ceil(performance.now() - start)
   let correct = true
   let detail = ''
   if (usable && cmd.expectCount != null && j.count) {

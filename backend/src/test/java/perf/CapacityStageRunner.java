@@ -32,11 +32,15 @@ final class CapacityStageRunner implements StageRunner {
     private final String baseUrl;
     private final IntFunction<String> keyOf;
     private final BrowserProbe probe;
-    private final HttpClient http = HttpClient.newBuilder().executor(Executors.newCachedThreadPool(r -> {
+    private final ExecutorService httpExecutor = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "capacity-http");
         t.setDaemon(true);
         return t;
-    })).build();
+    });
+    private final HttpClient http = HttpClient.newBuilder().executor(httpExecutor).build();
+    /** True while a browser action is in flight; the browser must not be destroyed then. */
+    private final java.util.concurrent.atomic.AtomicInteger browserInFlight = new java.util.concurrent.atomic.AtomicInteger();
+    private volatile boolean workersRetained;
     private final Map<Integer, Session> sessions = new ConcurrentHashMap<>();
     private final Set<Integer> browserLoggedIn = new HashSet<>();
     private final Map<String, String> baselinePrints = new ConcurrentHashMap<>();
@@ -46,6 +50,8 @@ final class CapacityStageRunner implements StageRunner {
         return t;
     });
     private final AtomicStop stop = new AtomicStop();
+    /** Per-stage admission stop: set on a correctness failure or at window end; reset by each run. */
+    private volatile boolean stageStop;
     private final List<Future<?>> outstanding = new CopyOnWriteArrayList<>();
     private final Supplier<Boolean> applicationDrained;
     private final Map<String, Integer> expectedBank = new ConcurrentHashMap<>();
@@ -188,6 +194,8 @@ final class CapacityStageRunner implements StageRunner {
         String invalid = null;
         int scheduled = 0, achieved = 0, late = 0, missed = 0;
         boolean saturated = false;
+        stageStop = false;
+        List<Future<?>> stageFutures = new CopyOnWriteArrayList<>();
         boolean serial = role.equals(StageObservation.BASELINE) || role.equals(StageObservation.WARMUP);
         try {
             int browserUsers = Math.min(cfg.probeBudget(), level);
@@ -206,31 +214,56 @@ final class CapacityStageRunner implements StageRunner {
                 scheduled = plan.size();
                 long t0 = System.nanoTime();
                 int[] counters = new int[3]; // achieved, late, missed
-                Future<?> browserLoop = workers.submit(() -> browserCycle(samples, browserUsers, role, level, t0));
-                outstanding.add(browserLoop);
+                stageFutures.add(workers.submit(() -> browserCycle(samples, browserUsers, role, level, t0)));
                 for (WorkloadProfile.ScheduledStart st : plan) {
-                    long wait = st.offsetMillis() - (System.nanoTime() - t0) / 1_000_000;
-                    if (wait > 0) Thread.sleep(wait);
-                    if (stop.stopped) { counters[2]++; continue; }
+                    if (!sleepUntil(t0, st.offsetMillis())) { counters[2]++; continue; }
+                    if (stop.stopped || stageStop) { counters[2]++; continue; }
                     long delay = Math.max(0, (System.nanoTime() - t0) / 1_000_000 - st.offsetMillis());
-                    synchronized (counters) { counters[0]++; if (delay > LATE_MS) counters[1]++; }
+                    counters[0]++;
+                    if (delay > LATE_MS) counters[1]++;
                     int principal = browserUsers + st.user();
-                    outstanding.add(workers.submit(() -> {
+                    stageFutures.add(workers.submit(() -> {
                         try { protocolSample(samples, principal, st.journey(), role, level, st.offsetMillis(), delay, false); }
-                        catch (Exception e) { samples.add(new CapacitySample(st.journey(), CapacitySample.PROTOCOL, level, role, principal, st.offsetMillis(), delay, 0, false, false)); }
+                        catch (Exception e) { samples.add(new CapacitySample(st.journey(), CapacitySample.PROTOCOL, level, role, principal, st.offsetMillis(), delay, 0, false, false)); stageStop = true; }
                     }));
                 }
-                long remain = cfg.observationWindowMillis() - (System.nanoTime() - t0) / 1_000_000;
-                if (remain > 0) Thread.sleep(remain);
-                browserLoop.get(cfg.observationWindowMillis() + 120_000, TimeUnit.MILLISECONDS);
+                sleepUntil(t0, cfg.observationWindowMillis());
                 achieved = counters[0]; late = counters[1]; missed = counters[2];
-                saturated = scheduled > 0 && (missed > 0 || late > Math.max(1, scheduled / 20));
+                saturated = scheduled > 0 && (missed > 0 && !stageStop || late > Math.max(1, scheduled / 20));
             }
         } catch (Exception e) {
-            invalid = "stage failed: " + e.getClass().getSimpleName() + ": " + String.valueOf(e.getMessage()).split("\n")[0];
+            stageStop = true;
+            invalid = "stage failed: " + e.getClass().getSimpleName();
+        } finally {
+            stageStop = true; // stop admission, then bound-wait for ALL stage workers before freezing samples
+            if (!awaitAll(stageFutures, cfg.drainTimeoutMillis())) {
+                stageFutures.stream().filter(f -> !f.isDone()).forEach(outstanding::add);
+                workersRetained = true;
+                if (invalid == null) invalid = "stage workers did not drain within the bound; resources retained";
+            }
         }
-        return new StageObservation(level, role, seed, samples, scheduled, achieved, late, missed, saturated, invalid,
+        return new StageObservation(level, role, seed, new ArrayList<>(samples), scheduled, achieved, late, missed, saturated, invalid,
                 (System.nanoTime() - begin) / 1_000_000);
+    }
+
+    /** Sleeps until offset ms after t0, waking early (false) when admission is stopped. */
+    private boolean sleepUntil(long t0, long offsetMillis) {
+        while (true) {
+            if (stop.stopped || stageStop) return false;
+            long wait = offsetMillis - (System.nanoTime() - t0) / 1_000_000;
+            if (wait <= 0) return true;
+            try { Thread.sleep(Math.min(wait, 50)); } catch (InterruptedException e) { Thread.currentThread().interrupt(); stageStop = true; return false; }
+        }
+    }
+
+    private static boolean awaitAll(List<Future<?>> fs, long timeoutMillis) {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+        for (Future<?> f : fs) {
+            try { f.get(Math.max(1, (deadline - System.nanoTime()) / 1_000_000), TimeUnit.MILLISECONDS); }
+            catch (TimeoutException e) { return false; }
+            catch (Exception ignored) { /* a failed worker is no longer running */ }
+        }
+        return true;
     }
 
     private void ensureBrowser(int user) throws Exception {
@@ -256,6 +289,7 @@ final class CapacityStageRunner implements StageRunner {
             else if (baselinePrints.containsKey(journey) && !baselinePrints.get(journey).equals(print)) correct = false;
         }
         out.add(new CapacitySample(journey, CapacitySample.PROTOCOL, level, role, user, offset, delay, ms, o.usable(), correct));
+        if (!correct) stageStop = true;
     }
 
     private void browserCycle(List<CapacitySample> out, int browserUsers, String role, int level, long t0) {
@@ -266,7 +300,7 @@ final class CapacityStageRunner implements StageRunner {
         Random r = new Random(level * 31L + js.size());
         int start = r.nextInt(js.size());
         // Cycle until the window ends AND every enabled journey has at least one browser sample.
-        while (!stop.stopped && (System.nanoTime() < end || covered < js.size())) {
+        while (!stop.stopped && !stageStop && (System.nanoTime() < end || covered < js.size())) {
             String j = js.get((start + i) % js.size());
             long offset = (System.nanoTime() - t0) / 1_000_000;
             try { browserSample(out, i % browserUsers, j, role, level, offset); }
@@ -289,12 +323,16 @@ final class CapacityStageRunner implements StageRunner {
             }
             c.put("expectCount", n);
         }
-        JsonNode r = probe.call(c, 90_000);
+        JsonNode r;
+        browserInFlight.incrementAndGet();
+        try { r = probe.call(c, 90_000); } finally { browserInFlight.decrementAndGet(); }
         boolean ok = r.path("ok").asBoolean();
         if (!ok) System.err.println("browser probe " + journey + " failed: " + r.path("error").asText());
         else if (!r.path("correct").asBoolean() || !r.path("usable").asBoolean()) System.err.println("browser probe " + journey + ": usable=" + r.path("usable").asBoolean() + " " + r.path("detail").asText());
-        out.add(new CapacitySample(journey, CapacitySample.BROWSER, level, role, user, offset, 0,
-                ok ? r.path("durationMillis").asLong() : 0, ok && r.path("usable").asBoolean(), ok && r.path("correct").asBoolean()));
+        CapacitySample smp = new CapacitySample(journey, CapacitySample.BROWSER, level, role, user, offset, 0,
+                ok ? r.path("durationMillis").asLong() : 0, ok && r.path("usable").asBoolean(), ok && r.path("correct").asBoolean());
+        out.add(smp);
+        if (!smp.correct()) stageStop = true;
     }
 
     @Override
@@ -317,5 +355,16 @@ final class CapacityStageRunner implements StageRunner {
         return true;
     }
 
-    void shutdown() { workers.shutdownNow(); }
+    /** True when workers or a browser action may still be running: keep the application, schema and browser. */
+    boolean resourcesRetained() { return workersRetained || browserInFlight.get() > 0; }
+
+    /** Releases generator-owned resources. Returns false (and keeps them) if anything is still in flight. */
+    boolean shutdown() {
+        stop.stopped = true;
+        stageStop = true;
+        if (resourcesRetained()) return false;
+        workers.shutdownNow();
+        httpExecutor.shutdownNow();
+        return true;
+    }
 }
