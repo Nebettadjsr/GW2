@@ -163,4 +163,18 @@ class CapacityReportTest {
         }
         assertNotNull(r.toJson("capacity-balanced-42.jsonl"));
     }
+
+    @Test
+    void browseHeavyUsersWithABrowseWorkflowOfferTrafficInTheFirstMinute() {
+        List<WorkloadProfile.ScheduledStart> plan = WorkloadProfile.BROWSE_HEAVY.plan(200, 7, 0, 60_000,
+                CapacityConfig.DEFAULT_JOURNEYS, 5, 30);
+        long active = plan.stream().map(WorkloadProfile.ScheduledStart::user).distinct().count();
+        // ~80% choose browsing (initial phase <= 45 s), so most users must be active in the first minute.
+        assertTrue(active > 100, "initial phase must follow the selected workflow, active users: " + active);
+    }
+
+    @Test
+    void protocolSessionsAreRenewedBeforeTheBackendLeaseLapses() {
+        assertTrue(CapacityStageRunner.SESSION_RENEW_AFTER_NANOS < java.time.Duration.ofMinutes(15).toNanos());
+    }
 }

@@ -69,7 +69,7 @@ const JOURNEYS = {
   'character-inventory': { nav: 'characters', pre: 'select-character', after: 'section-inventory', usable: `document.querySelectorAll('[data-test="inventory-grid"],[data-test="inventory-bag"],[data-test="inventory-slot-item"],[data-test="inventory-slot-empty"]').length > 0 && !document.querySelector('[data-test="inventory-loading"],[data-test="inventory-error"]')` },
   'crafting-profit': { nav: 'crafting', usable: `document.querySelectorAll('[data-test="profit-row"]').length > 0 && !document.querySelector('[data-test="request-retry"],[data-test="selector-error"]')` },
   'recipe-detail': { nav: 'crafting', pre: 'profit-rows-ready', after: 'select-row', afterNth: true, usable: `!!document.querySelector('[data-test="resolution-tree"]') && !document.querySelector('[data-test="resolution-loading"],[data-test="resolution-failed"],[data-test="resolution-unavailable"]')` },
-  'system-status': { nav: 'synchronization', usable: `!!document.querySelector('[data-test="account-health"],[data-test="global-health"]') && !document.querySelector('[data-test="status-needs-connection"]')` }
+  'system-status': { nav: 'synchronization', usable: `!!document.querySelector('[data-test="account-health"],[data-test="global-health"]') && !document.querySelector('[data-test="status-needs-connection"]') && !/Loading status|Status unavailable/.test(document.querySelector('main')?.innerText ?? document.body.innerText)` }
 }
 
 let browser

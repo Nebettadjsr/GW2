@@ -63,6 +63,7 @@ final class CapacityStageRunner implements StageRunner {
 
     private static final class Session {
         final String cookie, context;
+        final long createdNanos = System.nanoTime();
         /** The profit result this actor's Crafting screen currently shows (recipe detail resolves one of its rows). */
         volatile JsonNode lastProfit;
         Session(String cookie, String context) { this.cookie = cookie; this.context = context; }
@@ -94,11 +95,28 @@ final class CapacityStageRunner implements StageRunner {
 
     private Session session(int user) throws Exception {
         Session s = sessions.get(user);
-        if (s != null) return s;
+        if (s != null && !sessionNeedsRenewal(s)) return s;
+        synchronized (sessions) {
+            s = sessions.get(user);
+            if (s != null && !sessionNeedsRenewal(s)) return s;
+            return establish(user, s);
+        }
+    }
+
+    /** The backend lease is an absolute 15 minutes (AccountSessions.LEASE); renew well before it lapses. */
+    static final long SESSION_RENEW_AFTER_NANOS = java.util.concurrent.TimeUnit.MINUTES.toNanos(12);
+
+    static boolean sessionNeedsRenewal(Session s) {
+        return System.nanoTime() - s.createdNanos >= SESSION_RENEW_AFTER_NANOS;
+    }
+
+    private Session establish(int user, Session previous) throws Exception {
+        Session s;
         HttpResponse<String> r = raw("POST", "/api/session", "{}", keyOf.apply(user), null);
         if (r.statusCode() != 200) throw new IllegalStateException("fixture login failed for user " + user + ": HTTP " + r.statusCode());
         String set = r.headers().firstValue("Set-Cookie").orElseThrow();
         s = new Session(set.substring(0, set.indexOf(';')), r.headers().firstValue("X-Account-Context").orElseThrow());
+        if (previous != null) s.lastProfit = previous.lastProfit;
         sessions.put(user, s);
         return s;
     }

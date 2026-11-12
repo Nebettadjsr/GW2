@@ -82,9 +82,15 @@ public enum WorkloadProfile {
         java.util.ArrayList<ScheduledStart> out = new java.util.ArrayList<>();
         for (int u = 0; u < users; u++) {
             Random r = new Random(seed * 1_000_003L + u);
-            long t = (long) (r.nextDouble() * Math.max(browseMaxMs, pauseMaxMs)); // random initial phase
+            long t = 0;
+            boolean first = true;
             while (t < end) {
                 boolean craft = canCraft && (!canBrowse || r.nextInt(100) >= accountPercent);
+                if (first) { // random initial phase within the SELECTED workflow's own cycle, not the longest one
+                    first = false;
+                    t = (long) (r.nextDouble() * (craft ? pauseMaxMs : browseMaxMs));
+                    if (t >= end) break;
+                }
                 if (craft) {
                     long burstEnd = t;
                     if (profit) {
