@@ -67,8 +67,11 @@ const JOURNEYS = {
   characters: { nav: 'characters', usable: `document.querySelectorAll('[data-test="roster-item"]').length > 0 && !document.querySelector('[data-test="roster-loading"],[data-test="roster-error"]')`, count: `document.querySelectorAll('[data-test="roster-item"]').length` },
   'character-core': { nav: 'characters', pre: 'select-character', usable: `document.querySelectorAll('[data-test="equipment-entry"]').length > 0 && !document.querySelector('[data-test="detail-loading"],[data-test="equipment-loading"],[data-test="detail-error"],[data-test="equipment-error"]')`, then: 'section-builds', thenUsable: `!!document.querySelector('[data-test="builds-panel"]') && !document.querySelector('[data-test="builds-loading"],[data-test="builds-error"]')` },
   'character-inventory': { nav: 'characters', pre: 'select-character', after: 'section-inventory', usable: `document.querySelectorAll('[data-test="inventory-grid"],[data-test="inventory-bag"],[data-test="inventory-slot-item"],[data-test="inventory-slot-empty"]').length > 0 && !document.querySelector('[data-test="inventory-loading"],[data-test="inventory-error"]')` },
-  'crafting-profit': { nav: 'crafting', usable: `document.querySelectorAll('[data-test="profit-row"]').length > 0 && !document.querySelector('[data-test="request-retry"],[data-test="selector-error"]')` },
-  'recipe-detail': { nav: 'crafting', pre: 'profit-rows-ready', after: 'select-row', afterNth: true, usable: `!!document.querySelector('[data-test="resolution-tree"]') && !document.querySelector('[data-test="resolution-loading"],[data-test="resolution-failed"],[data-test="resolution-unavailable"]')` },
+  // Profit is kept alive across navigation, so reactivating it shows retained rows. The timed action is the
+  // screen's own "Refresh data & results" control and the sample only completes once that new calculation answered.
+  'crafting-profit': { nav: 'crafting', pre: 'profit-rows-ready', after: 'refresh-data-and-results', freshCall: '/api/crafting/profit', usable: `document.querySelectorAll('[data-test="profit-row"]').length > 0 && !document.querySelector('[data-test="request-retry"],[data-test="selector-error"]') && document.querySelector('[data-test="refresh-data-and-results"]')?.disabled === false` },
+  // The timed click selects a row that is NOT currently selected, so a new resolution request is always initiated.
+  'recipe-detail': { nav: 'crafting', pre: 'profit-rows-ready', after: 'select-row', afterUnselected: true, freshCall: '/api/crafting', usable: `!!document.querySelector('[data-test="resolution-tree"]') && !document.querySelector('[data-test="resolution-loading"],[data-test="resolution-failed"],[data-test="resolution-unavailable"]')` },
   'system-status': { nav: 'synchronization', usable: `!!document.querySelector('[data-test="account-health"],[data-test="global-health"]') && !document.querySelector('[data-test="status-needs-connection"]') && !/Loading status|Status unavailable/.test(document.querySelector('main')?.innerText ?? document.body.innerText)` }
 }
 
@@ -129,16 +132,38 @@ async function probe(cmd) {
     } else if (j.pre === 'profit-rows-ready') {
       // Untimed: only wait for the rows. The single timed action is the 'after' click below.
       await page.waitForSelector('[data-test="profit-row"]')
+      // Untimed: let the activation-time work (calculation / resolution of a retained selection) finish.
+      await page.waitForFunction(`!document.querySelector('[data-test="loading"],[data-test="pending"],[data-test="resolution-loading"]') && document.querySelector('[data-test="refresh-data-and-results"]')?.disabled === false`, null, { timeout: TIMEOUT_MS })
     }
   }
+  let mark = 0
   if (j.after) {
     await page.waitForSelector(`[data-test="${j.after}"]`)
+    let target = page.locator(`[data-test="${j.after}"]`).first()
+    if (j.afterUnselected) {
+      const idx = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('[data-test="profit-row"]')]
+        const i = rows.findIndex((r) => r.getAttribute('aria-current') !== 'true')
+        return i < 0 ? 0 : i
+      })
+      target = page.locator('[data-test="profit-row"]').nth(idx).locator(`[data-test="${j.after}"]`).first()
+    }
+    mark = s.apiCalls.length
     start = performance.now()
-    await page.click(`[data-test="${j.after}"]${j.afterNth ? ' >> nth=0' : ''}`)
+    await target.click()
   }
   let usable = true
   try {
     await page.waitForFunction(j.usable, null, { timeout: TIMEOUT_MS, polling: 'raf' })
+    if (j.freshCall) {
+      // The measured work must be a request started by the timed action itself and finished successfully.
+      const deadline = performance.now() + TIMEOUT_MS
+      while (!s.apiCalls.slice(mark).some((c) => c.path.startsWith(j.freshCall) && c.status === 200)) {
+        if (performance.now() > deadline) throw new Error('no fresh request answered')
+        await page.waitForTimeout(10)
+      }
+      await page.waitForFunction(j.usable, null, { timeout: TIMEOUT_MS, polling: 'raf' })
+    }
     if (j.then) {
       await page.click(`[data-test="${j.then}"]`)
       await page.waitForFunction(j.thenUsable, null, { timeout: TIMEOUT_MS, polling: 'raf' })
