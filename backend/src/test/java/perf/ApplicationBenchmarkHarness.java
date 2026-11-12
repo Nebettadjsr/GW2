@@ -69,7 +69,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 @SpringBootTest(classes = web.Gw2ApiApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"gw2.account-luck.schema-init=false", "gw2.account-access.enforce=true",
-                "gw2.global-refresh.initial-delay-ms=3600000"})
+                "gw2.global-refresh.initial-delay-ms=3600000", "gw2.owner.account-guid=" + ApplicationBenchmarkHarness.ACCOUNT})
 @Import(ApplicationBenchmarkHarness.Fixtures.class)
 abstract class ApplicationBenchmarkHarness {
 
@@ -98,8 +98,18 @@ abstract class ApplicationBenchmarkHarness {
     @Autowired org.springframework.core.env.Environment env;
 
     private final HttpClient client = HttpClient.newHttpClient();
-    private final DatabaseProbe db = new DatabaseProbe(EnvConfig.require("DATABASE_URL"),
-            EnvConfig.require("DATABASE_USER"), EnvConfig.require("DATABASE_PASSWORD"), SCHEMA);
+    /** Pool-expanding statistics flush; false for every generic measurement, true only in explicit boundary assertions. */
+    boolean flushIdlePoolForStats() { return false; }
+
+    private DatabaseProbe db() {
+        if (dbProbe != null) return dbProbe;
+        DatabaseProbe p = new DatabaseProbe(EnvConfig.require("DATABASE_URL"),
+                EnvConfig.require("DATABASE_USER"), EnvConfig.require("DATABASE_PASSWORD"), SCHEMA);
+        dbProbe = flushIdlePoolForStats() ? p.withApplicationPoolFlush() : p;
+        return dbProbe;
+    }
+
+    private DatabaseProbe dbProbe;
     private String cookie;
     private String context;
 
@@ -287,6 +297,7 @@ abstract class ApplicationBenchmarkHarness {
             System.setProperty(Db.TEST_SCHEMA_PROPERTY, SCHEMA);
             login();
             MeasurementReport report = new MeasurementReport(commit(), Instant.now(), FIXTURE_VERSION, environment(s));
+            report.setFixtureProvenance(FixtureProvenance.scalableGenerator(FIXTURE_VERSION));
             report.add(measure("idle", "Application idle: no requests, no tasks.",
                     "Application JVM process; the load-generating client lives in the same JVM but sends nothing.",
                     1, rec -> Thread.sleep(s.idleMillis())));
@@ -402,14 +413,15 @@ abstract class ApplicationBenchmarkHarness {
         List<Metric> metrics = new ArrayList<>();
         List<String> limits = new ArrayList<>(List.of(
                 "Process figures cover the whole JVM, which also hosts the in-process load-generating client and fixture writers.",
+                "Row counters come from PostgreSQL statistics; the application pool is not touched, so rows written by a still-idle pooled connection may be published late.",
                 "Fixture data is synthetic (" + FIXTURE_VERSION + "); sizes are not a claim about real GW2 data volumes."));
         DatabaseProbe.Counters dbBefore = null;
         try {
-            dbBefore = db.counters();
+            dbBefore = db().counters();
         } catch (Exception e) {
             rec.diagnostics.add("database counters unavailable before run: " + e);
         }
-        ConnectionObserver observer = new ConnectionObserver(db::openObserverConnection, CONNECTION_SAMPLE_MILLIS);
+        ConnectionObserver observer = new ConnectionObserver(db()::openObserverConnection, CONNECTION_SAMPLE_MILLIS);
         long cpu0 = ProcessProbe.cpuNanos();
         long wall0 = System.nanoTime();
         try (ProcessProbe.PeakSampler heap = new ProcessProbe.PeakSampler("heap", ProcessProbe::heapUsedBytes, 20);
@@ -437,7 +449,7 @@ abstract class ApplicationBenchmarkHarness {
                 metrics.add(frequency());
             }
         }
-        DatabaseMetrics.collect(db, dbBefore, DatabaseProbe.SETTLE_MILLIS, metrics, rec.diagnostics);
+        DatabaseMetrics.collect(db(), dbBefore, DatabaseProbe.SETTLE_MILLIS, metrics, rec.diagnostics);
         return new MeasurementReport.Workload(name, description, boundary, iterations, metrics, limits, rec.diagnostics);
     }
 
@@ -644,7 +656,7 @@ abstract class ApplicationBenchmarkHarness {
         e.put("os", System.getProperty("os.name") + " " + System.getProperty("os.version") + " " + System.getProperty("os.arch"));
         e.put("availableProcessors", Integer.toString(ProcessProbe.processors()));
         e.put("maxHeapBytes", Long.toString(Runtime.getRuntime().maxMemory()));
-        e.put("postgresql", db.serverVersion());
+        e.put("postgresql", db().serverVersion());
         e.put("runner", System.getenv("GITHUB_ACTIONS") != null ? "GitHub Actions" : "local");
         e.put("sizes", s.toString());
         return e;

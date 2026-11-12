@@ -42,7 +42,39 @@ public final class DatabaseProbe {
     /** Schema storage: heap plus TOAST, indexes, and the sum of both ({@code pg_total_relation_size}). */
     public record Storage(long tableBytes, long indexBytes, long totalBytes, long rows) {}
 
+    /**
+     * PostgreSQL publishes a backend's pending table statistics only when it next runs a command (or exits),
+     * so an idle pooled application connection can hold its inserts unpublished. Making it publish requires
+     * borrowing every pooled connection at once, which grows the lazy application pool to its maximum and
+     * therefore changes the very idle/connection/resource figures a measurement reports. It is consequently
+     * opt-in ({@link #withApplicationPoolFlush()}), meant only for explicit boundary assertions; generic
+     * reads never touch the application pool. Failures throw so the figures become unavailable, never zero.
+     */
+    static void flushApplicationPool() throws SQLException {
+        java.util.List<Connection> held = new java.util.ArrayList<>();
+        try {
+            for (int i = 0; i < repo.AppConfig.DB_POOL_SIZE; i++) held.add(repo.Db.open());
+            for (Connection c : held) {
+                try (java.sql.Statement st = c.createStatement()) {
+                    st.execute("SELECT pg_stat_force_next_flush()");
+                    st.execute("SELECT 1");
+                }
+            }
+        } finally {
+            for (Connection c : held) { try { c.close(); } catch (Exception ignored) { } }
+        }
+    }
+
+    private boolean flushPool;
+
+    /** Opt in to {@link #flushApplicationPool()} before each counter read (pool-expanding; assertion paths only). */
+    public DatabaseProbe withApplicationPoolFlush() {
+        this.flushPool = true;
+        return this;
+    }
+
     public Counters counters() throws SQLException {
+        if (flushPool) flushApplicationPool();
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement("""
                      SELECT coalesce(sum(n_tup_ins), 0), coalesce(sum(n_tup_upd), 0), coalesce(sum(n_tup_del), 0),

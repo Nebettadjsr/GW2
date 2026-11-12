@@ -17,6 +17,8 @@ agent/docker/
 agent/runtime/
 coverage-input/
 coverage-kpi/
+local-snapshots/
+backend/target/perf/
 quality-reports/
 container-perf-out/
 .jqwik-database*
