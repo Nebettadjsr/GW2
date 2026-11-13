@@ -207,11 +207,14 @@ describe('origin, in-memory bounds and sampling during actions', () => {
 
 describe('real Playwright record → replay roundtrip (synthetic page, ongoing polling)', () => {
   const html = `<!doctype html><title>t</title><label for="c">Opt in</label><input id="c" type="checkbox">
-    <button id="go">Go</button><div id="out"></div>
+    <button id="go">Go</button><button id="done">Done</button>
+    <span id="busy" style="visibility:hidden">Working</span><div id="out"></div>
     <script>
       setInterval(() => fetch('/poll').catch(() => {}), 100)
       document.getElementById('go').onclick = () => {
         const on = document.getElementById('c').checked
+        busy.style.visibility = 'visible'
+        setTimeout(() => { busy.style.visibility = 'hidden' }, 600)
         setTimeout(() => { out.innerHTML = '<p id="saved">saved result</p>' }, 200)
         setTimeout(() => { out.innerHTML = '<p id="final">final result checked=' + on + '</p>' }, 1500)
       }
@@ -228,7 +231,7 @@ describe('real Playwright record → replay roundtrip (synthetic page, ongoing p
     const url = `http://127.0.0.1:${server.address().port}/page.html`
     try {
       const recorded = await recordSession(
-        { url, name: 'roundtrip', initial: '#saved::saved result', final: '#final::final result checked=true', out: dir },
+        { url, name: 'roundtrip', initial: '#saved::saved result', final: '#final::final result checked=true', busy: '#busy', out: dir },
         {
           headless: true,
           arm: async () => {},
@@ -237,13 +240,18 @@ describe('real Playwright record → replay roundtrip (synthetic page, ongoing p
             await page.click('label')
             await page.click('#go')
             await page.waitForSelector('#final')
+            await page.click('#done')
             await page.click('[data-gw2-recorder] button')
             await stopped
           }
         }
       )
       const steps = recorded.scenario.steps
-      expect(steps.map((x) => x.type)).toEqual(['navigate', 'check', 'click'])
+      expect(steps.map((x) => x.type)).toEqual(['navigate', 'check', 'click', 'click'])
+      const observedGap = steps.at(-1).gap
+      expect(observedGap.waitingMs).toBeGreaterThan(100)
+      expect(observedGap.waitingMs).toBeLessThan(1100)
+      expect(observedGap.unclassifiedMs).toBeGreaterThan(200)
       expect(steps[1]).toMatchObject({ checked: true })
       expect(steps[0].url).toBe('/page.html')
       expect(JSON.stringify(recorded.scenario)).not.toMatch(/Stop|gw2-recorder/)

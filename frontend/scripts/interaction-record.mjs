@@ -52,7 +52,12 @@ function overlayScript(busySelector) {
     if (window.__gw2RecorderInstalled) return
     window.__gw2RecorderInstalled = true
     let busyMs = 0, busySince = null
-    const busy = () => ${busySelector ? `!!document.querySelector(${JSON.stringify(busySelector)})` : 'false'}
+    const busy = () => {
+      const el = ${busySelector ? `document.querySelector(${JSON.stringify(busySelector)})` : 'null'}
+      if (!el) return false
+      const rect = el.getBoundingClientRect(), style = getComputedStyle(el)
+      return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.visibility !== 'collapse'
+    }
     setInterval(() => {
       const now = performance.now()
       if (busy()) { if (busySince === null) busySince = now } else if (busySince !== null) { busyMs += now - busySince; busySince = null }
