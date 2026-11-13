@@ -41,3 +41,6 @@ crafting_graph_cache.json
 # Python helper bytecode is generated, never source.
 __pycache__/
 *.py[cod]
+
+# Owner-local interaction recordings (scripts/interaction-record.mjs); may hold ordinary character labels.
+frontend/.interaction-recordings/

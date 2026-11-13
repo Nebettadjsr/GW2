@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "synthetic-example",
+  "synthetic": true,
+  "baseUrl": "",
+  "truncatedSteps": 0,
+  "checkpoints": {
+    "initial": { "selector": "#saved", "text": "saved result" },
+    "final": { "selector": "#final", "text": "final result" }
+  },
+  "steps": [
+    { "type": "navigate", "url": "/synthetic.html" },
+    { "type": "click", "selector": "#go",
+      "gap": { "gapMs": 1200, "waitingMs": 400, "unclassifiedMs": 800 },
+      "pause": { "kind": "dwell", "dwellMs": 500, "observed": false, "note": "UNOBSERVED placeholder — not a measured value" } },
+    { "type": "select", "selector": "#mode", "value": "b", "pause": { "kind": "unclassified", "dwellMs": null, "observed": false } },
+    { "type": "input", "selector": "#label", "value": "Synthetic Character", "pause": { "kind": "game-pause", "dwellMs": 300, "observed": true } }
+  ]
+}

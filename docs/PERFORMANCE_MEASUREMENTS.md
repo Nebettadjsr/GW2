@@ -87,10 +87,11 @@ Compare two runs only when `schemaVersion`, `fixtureVersion`, the sizes and the 
   those workloads understate real refresh cost. Runs on shared CI runners are noisy.
 - Nothing here is a measurement of hosting capacity.
 
-## Automatic reporting in GitHub Actions
+## Manual reporting in GitHub Actions
 
-`.github/workflows/performance.yml` (job "Performance report (informational)") runs on every push, pull request
-and manually (`workflow_dispatch`); there is no schedule. It runs `ApplicationResourceBenchmarkIT` and
+`.github/workflows/performance.yml` (job "Performance report (informational)") runs only on explicit manual dispatch
+(`workflow_dispatch`: Actions tab or `gh workflow run performance.yml`); it has no push, pull_request or schedule
+trigger (STORY-RESOURCE-001). The benchmarks, report helpers and container measurement are unchanged. It runs `ApplicationResourceBenchmarkIT` and
 `ApplicationBenchmarkBoundaryIT` against a job-local PostgreSQL service with a placeholder key, no live ArenaNet
 access and no display. `ci.yml` never runs them.
 
@@ -219,3 +220,37 @@ Offline inputs for later capacity discovery; nothing here runs a sustained load.
 - Older optional equipment/build coverage (a `parent_generation` behind the CHARACTERS marker) is a valid retained state and is
   imported as is; coverage ahead of the parent marker is rejected.
 - Never commit, upload or log a real snapshot; keep it under an ignored path. Default CI never reads it.
+
+## Local interaction recorder/replayer (STORY-RESOURCE-001)
+
+Preparation tooling only: it makes no capacity claim, and the checked-in example is synthetic (not observed owner
+behavior). Source: `frontend/scripts/interactionRecorder.mjs` (pure logic: serialization, credential exclusion, gap
+classification, checkpoint attribution, size bounds) and `frontend/scripts/interaction-record.mjs` (Playwright driver,
+uses `playwright-core` and `resolveBrowserPath.mjs`; no new framework).
+
+```
+cd frontend
+npm run record:interaction -- record --url http://127.0.0.1:5173/ --name my-flow \
+    --initial "#saved::saved text" --final "#done::final text" [--busy ".loading"]
+npm run record:interaction -- replay .interaction-recordings/my-flow.scenario.json [--replay-gaps]
+npm run record:interaction -- skeleton --out my-baseline.json
+```
+
+- `record` opens an external headed browser. Log in / enter keys manually first; recording starts only when you press
+  Enter in the terminal, after which the overlay (REC timer, Stop button) is injected from outside. The application
+  code, startup, polling and caching are untouched.
+- Navigation, clicks, selections and text input are stored with monotonic gaps. A gap is split into `waitingMs` (the
+  optional `--busy` indicator was visible) and `unclassifiedMs`; nothing is called think time automatically. Edit a
+  step's `pause` to `{"kind":"dwell"|"game-pause","dwellMs":N,"observed":true}`. Skeleton/placeholder dwell values carry
+  `observed:false` and an UNOBSERVED note.
+- Checkpoints are rendered-content selectors (`selector[::text]`), never `networkidle`; background polling does not
+  block completion. `initialContentMs` (saved content) and `finalRenderMs` (correct final render) are separate, and the
+  final time comes only from a sample where the final checkpoint held. If it never does, the output says
+  `finalQualified:false` instead of stopping the timer on quiet network/DOM.
+- Credential exclusion: no cookies, storage state or headers are read; password/key/token-like fields, GW2-key-,
+  bearer-, cookie- or JWT-looking values and credential-looking URL query parameters are replaced by
+  `[redacted-credential]`. Ordinary character labels and workflow values are kept.
+- Outputs go to `frontend/.interaction-recordings/` (git-ignored) and may hold character labels; commit only synthetic
+  examples (`frontend/scripts/examples/`) or aggregate reports. Bounds: 200 steps, 200 chars per value/selector, 300
+  per URL, 500 checkpoint samples; truncation is reported (`truncatedSteps`, `samplesTruncated`, `[truncated]`).
+- Tests: `npx vitest run scripts/__tests__/interactionRecorder.spec.mjs`.
