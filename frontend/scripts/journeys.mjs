@@ -39,13 +39,14 @@ const sel = (id) => `[data-test="${id}"]`
 
 const visible = (page, id) => page.isVisible(sel(id)).catch(() => false)
 const anyVisible = async (page, ids) => { for (const id of ids) if (await visible(page, id)) return true; return false }
-const text = (page, id) => page.textContent(sel(id)).then((t) => shortText(t)).catch(() => '')
+const text = (page, id) => page.locator(sel(id)).allTextContents().then((t) => shortText(t[0] ?? '')).catch(() => '')
+const automaticSettled = async (page) => await page.locator('.refresh-status:visible, .refresh-error:visible, [data-test="bootstrap-syncing"]:visible').count() === 0
 
 /** The intended route and page heading are present. */
 async function onPage(page, hash, headingPart) {
   const current = await page.evaluate(() => window.location.hash).catch(() => '')
   if (current !== hash) return false
-  return (await text(page, 'page-heading')).includes(headingPart)
+  return (await text(page, 'page-heading')).includes(headingPart) && await automaticSettled(page)
 }
 
 async function navigate(page, origin, hash) {
@@ -96,7 +97,7 @@ export async function craftingFlow(user, options) {
     initial: async () => visible(page, 'profit-row'),
     perform: () => page.selectOption(setting, target),
     final: async (performedAt) => (await onPage(page, hash, 'Crafting')) && (await page.inputValue(setting).catch(() => null)) === target &&
-      user.matchRequests({ method: 'POST', path: PROFIT_PATH, sinceMono: performedAt }).length > 0 &&
+      user.matchRequests({ method: 'POST', path: PROFIT_PATH, sinceMono: performedAt, listingSell: target === 'listing' }).length > 0 &&
       !(await anyVisible(page, busy)) && (await resultsShown()) && (await refreshEnabled()),
     outcome: async () => ({ setting: 'sell price', from: original, to: target })
   })
@@ -220,7 +221,7 @@ export async function charactersFlow(user, options) {
       name = shortText(await item.getAttribute('data-name'))
       await item.click()
     },
-    final: async () => name !== '' && (await visible(page, 'character-detail')) && (await text(page, 'page-heading')).includes(name)
+    final: async () => name !== '' && (await visible(page, 'character-detail')) && (await text(page, 'page-heading')).includes(name) && await automaticSettled(page)
   })
   const rendered = []
   const sectionOutcomes = {}
@@ -234,7 +235,7 @@ export async function charactersFlow(user, options) {
       name: `section-${section}`, description: `Open the ${section} section of the selected character`, dwell: true, optional: true,
       perform: () => page.click(sel(`section-${section}`)),
       final: async () => (await page.getAttribute(sel(`section-${section}`), 'aria-selected').catch(() => null)) === 'true' &&
-        (await text(page, 'page-heading')).includes(name) && (await sectionOutcome(page, section)) !== null,
+        (await text(page, 'page-heading')).includes(name) && await automaticSettled(page) && (await sectionOutcome(page, section)) !== null,
       // missing/empty/unavailable/failed are observed results of OPTIONAL detail, never a roster failure; a timeout is not one of them.
       outcome: () => sectionOutcome(page, section)
     })

@@ -36,6 +36,7 @@ export const DEFAULT_JOURNEY_OUTPUT_DIR = join(dirname(fileURLToPath(import.meta
 const sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms))
 
 const T0 = Symbol('startedMono')
+const LISTING_SELL = Symbol('calculationListingSell')
 
 /** One browser context = one virtual user. Observes requests and renders; never alters traffic. */
 function createUser({ index, options, runStart, health, accountHash }) {
@@ -63,6 +64,9 @@ function createUser({ index, options, runStart, health, accountHash }) {
         fromCache: null, boundary: REQUEST_BOUNDARY, requestId: null, actionId: null
       }
       record[T0] = started
+      if (record.method === 'POST' && record.path === '/api/crafting/profit') {
+        try { record[LISTING_SELL] = request.postDataJSON()?.settings?.listingSell } catch { /* no matching settings */ }
+      }
       requests.push(record)
       pending.set(request, record)
     })
@@ -86,8 +90,9 @@ function createUser({ index, options, runStart, health, accountHash }) {
   }
 
   /** Completed, successful requests of THIS user that were offered after `sinceMono` (a performance.now value). */
-  user.matchRequests = ({ method, path, sinceMono }) => requests.items.filter((r) =>
-    r.method === method && r.path === path && r.state === 'completed' && r.status >= 200 && r.status < 300 && r[T0] >= sinceMono)
+  user.matchRequests = ({ method, path, sinceMono, listingSell }) => requests.items.filter((r) =>
+    r.method === method && r.path === path && r.state === 'completed' && r.status >= 200 && r.status < 300 && r[T0] >= sinceMono &&
+    (listingSell === undefined || r[LISTING_SELL] === listingSell))
 
   /** Bounded drain at the end of the journey; whatever is still pending is classified, not dropped. */
   user.drain = async () => {
@@ -128,6 +133,8 @@ function createUser({ index, options, runStart, health, accountHash }) {
     }
     actions.push(record)
     const offered = mono()
+    let observingInitial = false
+    let initialProbe
     try {
       if (spec.dwell && options.dwellMs > 0) {
         await sleep(options.dwellMs)
@@ -137,14 +144,22 @@ function createUser({ index, options, runStart, health, accountHash }) {
       record.startedAtUtc = new Date().toISOString()
       record.startOffsetMs = offset(started)
       // The saved/previous content is observed alongside the action, never by delaying it to go looking.
-      const initialProbe = spec.initial
-        ? Promise.resolve().then(spec.initial).then(
-          (seen) => (seen === true ? { offsetMs: offset() } : { offsetMs: null, unavailableReason: 'no saved/previous content was visible when the action started' }),
-          () => ({ offsetMs: null, unavailableReason: 'saved/previous content could not be read while the action ran' }))
-        : null
+      record.initialContent = { offsetMs: null, unavailableReason: spec.initial
+        ? 'saved/previous content was not observed during the action' : 'journey step has no saved-content checkpoint' }
+      if (spec.initial) {
+        observingInitial = true
+        initialProbe = (async () => {
+          while (observingInitial) {
+            if (await Promise.resolve().then(spec.initial).catch(() => false)) {
+              record.initialContent = { offsetMs: offset() }
+              break
+            }
+            await sleep(50)
+          }
+        })()
+      }
       const performedAt = mono()
       await spec.perform()
-      record.initialContent = initialProbe ? await initialProbe : { offsetMs: null, unavailableReason: 'journey step has no saved-content checkpoint' }
       const result = await awaitStable({
         check: async () => (await spec.final(performedAt)) === true, now: mono, sleep, timeoutMs: options.timeoutMs, stableMs: options.stableMs, startMs: started
       })
@@ -168,6 +183,9 @@ function createUser({ index, options, runStart, health, accountHash }) {
       record.finalRender = { offsetMs: null, unavailableReason: 'action raised an error' }
       record.error = shortText(error?.message ?? error)
       record.terminal = 'error'
+    } finally {
+      observingInitial = false
+      await initialProbe
     }
     events.push({ atOffsetMs: record.endOffsetMs, type: 'action-end', action_id: record.action_id, terminal: record.terminal })
     return record
@@ -233,6 +251,8 @@ export async function runJourney(journey, options, io = {}) {
     const contexts = []
     for (let index = 0; index < options.concurrency; index += 1) {
       const context = await browser.newContext({ ignoreHTTPSErrors: options.ignoreHttpsErrors })
+      context.setDefaultTimeout(options.timeoutMs)
+      context.setDefaultNavigationTimeout(options.timeoutMs)
       await context.addInitScript(WRITE_GUARD_SCRIPT(STORAGE_PREFIX))
       const page = await context.newPage()
       contexts.push(context)

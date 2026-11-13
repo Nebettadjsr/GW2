@@ -263,7 +263,7 @@ npm run record:interaction -- skeleton --out my-baseline.json
   page already current after its click is skipped on replay instead of reloading. In-memory event/sample buffers are bounded too; dropped counts
   go into `truncatedSteps`/`samplesTruncated`.
 - Pure checks: `npx vitest run scripts/__tests__/interactionRecorder.spec.mjs` (no installed browser required).
-  The two real-browser roundtrips are explicitly opt-in: `npm run test:interaction-browser`; install Chrome/Edge
+  Real-browser roundtrips are explicitly opt-in: `npm run test:interaction-browser`; install Chrome/Edge
   or set `GW2_BROWSER_PATH`. They retain all assertions and fail if the explicitly requested browser is unavailable.
   Record timing uses the UTC arming timestamp, so monotonic offsets align with the actual recording window.
 - Headed replay opens the target first and prompts for manual account connection before starting the timer.
@@ -300,3 +300,10 @@ python3 scripts/guest_observe.py overhead --seconds 30 --out overhead.json      
 ```
 
 Whole-VM and per-container readings stay separate; generator health (Node/browser) is reported apart and is not VM saturation. Opt-in regression: `GW2_RECORDER_BROWSER=1 npx vitest run scripts/__tests__/journeyRunner.browser.spec.mjs` (synthetic origin only).
+
+Cross-platform aliases: `npm run journey:crafting -- <options>`, `npm run journey:bank-materials -- <options>`,
+and `npm run journey:characters -- <options>`. Run browser regressions with `npm run test:journey-browser`.
+Navigation observes retained content concurrently and waits for visible automatic-refresh indicators to settle
+before calling data final. A refresh failure is not fresh-data completion. Text probes do not wait for absent
+optional elements; every browser context has explicit action/navigation timeouts. Calculation completion also
+matches the requested sell-price flag in memory; request bodies and that private matching metadata are not exported.

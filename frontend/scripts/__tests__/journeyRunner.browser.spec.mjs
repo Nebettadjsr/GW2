@@ -49,6 +49,20 @@ describe('journeys against the synthetic origin', () => {
     expect(result.virtualUsers[0].flow.safety).toMatchObject({ violations: [], savedSelectionUnchanged: true, savedSelectionWritesDuringJourney: 0, blockedCommitClicks: 0, commitControlInvoked: false })
   }, 60000)
 
+  browserIt('records retained content early and waits for the automatic update to settle', async () => {
+    const refreshing = await startSyntheticApp({ bug: 'retained-update' })
+    try {
+      const { result } = await runJourney('bank-materials', options({ origin: refreshing.origin, stableMs: 50 }), {
+        arm: page => page.goto(`${refreshing.origin}/#/crafting`)
+      })
+      expect(result.result.status).toBe('completed')
+      const open = actions(result).find(action => action.name === 'open-bank')
+      expect(open.initialContent.offsetMs).not.toBeNull()
+      expect(open.finalRender.offsetMs - open.initialContent.offsetMs).toBeGreaterThan(650)
+      expect(open.durationMs).toBeGreaterThanOrEqual(850)
+    } finally { await refreshing.close() }
+  }, 60000)
+
   browserIt('bank-materials fails when the discard path writes the saved selection', async () => {
     const buggy = await startSyntheticApp({ bug: 'discard-writes' })
     try {
@@ -90,7 +104,8 @@ describe('journeys against the synthetic origin', () => {
       expect(change.terminal).toBe('completed')
       expect(change.durationMs).toBeGreaterThanOrEqual(850)
       expect(slow.apiPaths.filter((p) => p === 'GET /api/sync/status').length).toBeGreaterThan(10)
-      const calc = result.requests.find((r) => r.method === 'POST' && r.path === '/api/crafting/profit')
+      const calc = result.requests.find((r) => r.method === 'POST' && r.path === '/api/crafting/profit' && r.latencyMs >= 850)
+      expect(result.requests.some(r => r.method === 'POST' && r.path === '/api/crafting/profit' && r.latencyMs < 850)).toBe(true)
       expect(calc.latencyMs).toBeGreaterThanOrEqual(850)
       expect(change.finalRender.offsetMs).toBeGreaterThanOrEqual(calc.endOffsetMs - 1)
     } finally { await slow.close() }

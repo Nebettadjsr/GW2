@@ -28,6 +28,10 @@ async function render() {
   } else if (hash === '#/bank') {
     heading.textContent = 'Bank'; h('<p data-test="bank-loading">Loading</p>'); await wait(120)
     h('<ol><li data-test="bank-slot">Slot</li></ol>')
+    if (BUG === 'retained-update') {
+      main.insertAdjacentHTML('beforeend', '<p class="refresh-status">Stale data – refreshing</p>')
+      setTimeout(() => main.querySelector('.refresh-status')?.remove(), 900)
+    }
   } else if (hash === '#/materials') {
     heading.textContent = 'Materials'; h('<p data-test="materials-loading">Loading</p>'); await wait(120); drawMaterials()
   } else if (hash === '#/characters') {
@@ -45,7 +49,8 @@ function drawCrafting(busy) {
   const select = main.querySelector('[data-test=setting-listingSell]')
   select.onchange = async () => {
     sell = select.value; drawCrafting(true)
-    await fetch('/api/crafting/profit', { method: 'POST', body: '{}' }); recalcs += 1; shownSell = sell; drawCrafting(false)
+    if (BUG === 'hide-busy') fetch('/api/crafting/profit?noise=1', { method: 'POST', body: JSON.stringify({settings:{listingSell:sell !== 'listing'}}) })
+    await fetch('/api/crafting/profit', { method: 'POST', body: JSON.stringify({settings:{listingSell:sell === 'listing'}}) }); recalcs += 1; shownSell = sell; drawCrafting(false)
   }
   main.querySelector('[data-test=refresh-data-and-results]').onclick = async () => {
     drawCrafting(true); await fetch('/api/account/refresh', { method: 'POST' }); await wait(100); recalcs += 1; drawCrafting(false)
