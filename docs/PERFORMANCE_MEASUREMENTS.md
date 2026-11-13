@@ -232,7 +232,7 @@ uses `playwright-core` and `resolveBrowserPath.mjs`; no new framework).
 cd frontend
 npm run record:interaction -- record --url http://127.0.0.1:5173/ --name my-flow \
     --initial "#saved::saved text" --final "#done::final text" [--busy ".loading"]
-npm run record:interaction -- replay .interaction-recordings/my-flow.scenario.json [--replay-gaps]
+npm run record:interaction -- replay .interaction-recordings/my-flow.scenario.json [--url http://host:port] [--replay-gaps]
 npm run record:interaction -- skeleton --out my-baseline.json
 ```
 
@@ -253,4 +253,11 @@ npm run record:interaction -- skeleton --out my-baseline.json
 - Outputs go to `frontend/.interaction-recordings/` (git-ignored) and may hold character labels; commit only synthetic
   examples (`frontend/scripts/examples/`) or aggregate reports. Bounds: 200 steps, 200 chars per value/selector, 300
   per URL, 500 checkpoint samples; truncation is reported (`truncatedSteps`, `samplesTruncated`, `[truncated]`).
-- Tests: `npx vitest run scripts/__tests__/interactionRecorder.spec.mjs`.
+- The scenario stores the safe origin (`baseUrl`, no userinfo/path/query) and is seeded with the armed starting page as its
+  first `navigate` step, so it replays from a blank browser; `replay --url` overrides the origin. Record mode samples the
+  checkpoints from arming to stop and writes `<name>.record-timing.json`; replay samples continuously during actions and
+  waits (only state changes are stored). The recorder's own overlay (Stop) is never captured, and a label click is
+  recorded once (not again as its derived control click). In-memory event/sample buffers are bounded too; dropped counts
+  go into `truncatedSteps`/`samplesTruncated`.
+- Tests (include a real headless Chromium record→replay roundtrip; set `GW2_BROWSER_PATH` if needed):
+  `npx vitest run scripts/__tests__/interactionRecorder.spec.mjs`.

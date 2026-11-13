@@ -1,14 +1,16 @@
 /** Narrow checks for the local interaction recorder (STORY-RESOURCE-001). Synthetic data only. */
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import {
-  LIMITS, REDACTED, annotatePause, attributeCheckpoints, baselineSkeleton, buildScenario, buildTimingOutput,
+  LIMITS, REDACTED, boundEvent, createBuffer, resolveStepUrl, annotatePause, attributeCheckpoints, baselineSkeleton, buildScenario, buildTimingOutput,
   classifyGap, replayScenario, safeUrl, safeValue
 } from '../interactionRecorder.mjs'
-import { DEFAULT_OUTPUT_DIR } from '../interaction-record.mjs'
+import { DEFAULT_OUTPUT_DIR, recordSession, replay } from '../interaction-record.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const KEY = '12345678-ABCD-1234-ABCD-12345678901234567890-ABCD-1234-ABCD-123456789012'
@@ -155,4 +157,107 @@ describe('replay against a stubbed page with continuing polling', () => {
     const bad = { ...scenario, steps: [{ type: 'input', selector: '#k', value: REDACTED }] }
     await expect(replayScenario(page, bad, deps)).rejects.toThrow(/manual only/)
   })
+})
+
+describe('origin, in-memory bounds and sampling during actions', () => {
+  it('keeps the safe origin, seeds the armed start page and allows a replay override', () => {
+    const s = buildScenario({
+      name: 'o', checkpoints: CP, baseUrl: 'http://user:pw@127.0.0.1:5173/p?token=1', startUrl: 'http://127.0.0.1:5173/a?key=1&v=2',
+      armedAtMs: 5, events: [{ type: 'click', selector: '#go', atMs: 50 }]
+    })
+    expect(s.baseUrl).toBe('http://127.0.0.1:5173')
+    expect(s.steps.map((x) => x.type)).toEqual(['navigate', 'click'])
+    expect(s.steps[0].url).toBe('/a?v=2')
+    expect(JSON.stringify(s)).not.toContain('pw')
+    expect(resolveStepUrl(s, '/a?v=2')).toBe('http://127.0.0.1:5173/a?v=2')
+    expect(resolveStepUrl(s, '/a', 'http://localhost:9')).toBe('http://localhost:9/a')
+    expect(() => resolveStepUrl({ baseUrl: '' }, '/a')).toThrow(/--url/)
+  })
+
+  it('bounds the in-memory buffers and reports dropped counts', () => {
+    const buffer = createBuffer(2)
+    for (let i = 0; i < 5; i++) buffer.push(i)
+    expect(buffer.items).toHaveLength(2)
+    expect(buffer.dropped).toBe(3)
+    const e = boundEvent({ type: 'input', atMs: 1, selector: 's'.repeat(999), value: `x${KEY}`, field: { name: 'note' } })
+    expect(e.value).toBe(REDACTED)
+    expect(e.selector.length).toBeLessThan(LIMITS.maxSelectorLength + 20)
+    expect(buildScenario({ name: 'd', checkpoints: CP, events: [], droppedEvents: 4 }).truncatedSteps).toBe(4)
+  })
+
+  it('sees a saved result that is replaced while the actions are still running', async () => {
+    let t = 0
+    const sleep = async (ms) => { t += ms; await Promise.resolve() }
+    const page = {
+      goto: async () => {}, selectOption: async () => {}, fill: async () => {},
+      click: async () => { for (let i = 0; i < 6; i++) await sleep(50) }, // a long action
+      isVisible: async (sel) => (sel === '#saved' ? t >= 100 && t < 400 : t >= 400),
+      textContent: async (sel) => (sel === '#saved' ? 'saved result' : 'final result')
+    }
+    const timing = await replayScenario(page, {
+      baseUrl: 'http://127.0.0.1:1', checkpoints: CP.initial && { initial: { selector: '#saved', text: 'saved' }, final: { selector: '#final', text: 'final' } },
+      steps: [{ type: 'click', selector: 'a' }, { type: 'click', selector: 'b' }]
+    }, { now: () => t, sleep, pollMs: 50 })
+    expect(timing.attribution.initialQualified).toBe(true)
+    expect(timing.attribution.finalRenderMs).toBeGreaterThanOrEqual(timing.attribution.initialContentMs)
+  })
+})
+
+describe('real Playwright record → replay roundtrip (synthetic page, ongoing polling)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gw2-rec-'))
+  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+  const html = `<!doctype html><title>t</title><label for="c">Opt in</label><input id="c" type="checkbox">
+    <button id="go">Go</button><div id="out"></div>
+    <script>
+      setInterval(() => fetch('/poll').catch(() => {}), 100)
+      document.getElementById('go').onclick = () => {
+        const on = document.getElementById('c').checked
+        setTimeout(() => { out.innerHTML = '<p id="saved">saved result</p>' }, 200)
+        setTimeout(() => { out.innerHTML = '<p id="final">final result checked=' + on + '</p>' }, 1500)
+      }
+    </script>`
+
+  it('records a replayable scenario with timing, no Stop click and one checkbox toggle', async () => {
+    let polls = 0
+    const server = createServer((req, res) => {
+      if (req.url === '/poll') { polls++; res.end('{}') } else res.end(html)
+    })
+    await new Promise((r) => server.listen(0, '127.0.0.1', r))
+    const url = `http://127.0.0.1:${server.address().port}/page.html`
+    try {
+      const recorded = await recordSession(
+        { url, name: 'roundtrip', initial: '#saved::saved result', final: '#final::final result checked=true', out: dir },
+        {
+          headless: true,
+          arm: async () => {},
+          untilStop: async (page, stopped) => {
+            await page.click('label')
+            await page.click('#go')
+            await page.waitForSelector('#final')
+            await page.click('[data-gw2-recorder] button')
+            await stopped
+          }
+        }
+      )
+      const steps = recorded.scenario.steps
+      expect(steps.map((x) => x.type)).toEqual(['navigate', 'click', 'click'])
+      expect(steps[0].url).toBe('/page.html')
+      expect(JSON.stringify(recorded.scenario)).not.toMatch(/Stop|gw2-recorder/)
+      expect(steps.filter((x) => /Opt in|#c/.test(x.selector ?? ''))).toHaveLength(1)
+      const rt = recorded.timing.attribution
+      expect(rt.initialContentMs).not.toBeNull()
+      expect(rt.finalRenderMs).toBeGreaterThan(rt.initialContentMs)
+      expect(readdirSync(dir).sort()).toEqual(['roundtrip.record-timing.json', 'roundtrip.scenario.json'])
+
+      const replayed = await replay({ _: [recorded.files[0]], out: dir, 'timeout-ms': '8000' }, { headless: true })
+      const a = replayed.timing.attribution
+      expect(a.initialQualified).toBe(true)
+      expect(a.finalQualified).toBe(true) // 'checked=true' only if the checkbox toggled exactly once
+      expect(a.finalRenderMs).toBeGreaterThan(a.initialContentMs)
+      expect(polls).toBeGreaterThan(10)
+      expect(readdirSync(dir)).toContain('roundtrip.timing.json')
+    } finally {
+      server.close()
+    }
+  }, 60000)
 })

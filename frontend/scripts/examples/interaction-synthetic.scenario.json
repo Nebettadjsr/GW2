@@ -2,7 +2,7 @@
   "version": 1,
   "name": "synthetic-example",
   "synthetic": true,
-  "baseUrl": "",
+  "baseUrl": "http://127.0.0.1:4173",
   "truncatedSteps": 0,
   "checkpoints": {
     "initial": { "selector": "#saved", "text": "saved result" },

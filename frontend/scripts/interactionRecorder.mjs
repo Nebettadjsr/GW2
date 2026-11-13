@@ -27,9 +27,34 @@ const SENSITIVE_VALUE = [
 ]
 const SENSITIVE_QUERY = /pass|secret|token|key|auth|cookie|session|credential/i
 
+const TRUNCATED = '…[truncated]'
+
 export function truncate(text, max) {
   const value = String(text ?? '')
-  return value.length <= max ? value : `${value.slice(0, max)}…[truncated]`
+  if (value.length <= max || (value.endsWith(TRUNCATED) && value.length <= max + TRUNCATED.length)) return value
+  return `${value.slice(0, max)}${TRUNCATED}`
+}
+
+/** Fixed-size buffer: keeps the first `max` items and counts what it had to drop. */
+export function createBuffer(max) {
+  const items = []
+  return {
+    items,
+    dropped: 0,
+    push(item) {
+      if (items.length < max) items.push(item)
+      else this.dropped++
+    }
+  }
+}
+
+/** Bounds a raw page event at ingestion (credential check on the full value) so memory stays small. */
+export function boundEvent(event) {
+  const bounded = { type: String(event.type).slice(0, 20), atMs: event.atMs, busyMs: Number(event.busyMs) || 0 }
+  if (event.selector !== undefined) bounded.selector = truncate(event.selector, LIMITS.maxSelectorLength)
+  if (event.url !== undefined) bounded.url = truncate(event.url, LIMITS.maxUrlLength * 4)
+  if (event.value !== undefined) bounded.value = safeValue(event.value, event.field ?? {})
+  return bounded
 }
 
 /** True when a field descriptor (type/name/id/placeholder/label) marks a login or key-entry field. */
@@ -63,6 +88,23 @@ export function safeUrl(raw) {
   return truncate(`${path}${query}`, LIMITS.maxUrlLength)
 }
 
+/** Origin only (scheme://host:port): carries no userinfo, path, query or hash. Empty when unusable. */
+export function safeOrigin(raw) {
+  try {
+    const { origin } = new URL(raw)
+    return origin === 'null' || looksLikeCredential(origin) ? '' : origin
+  } catch {
+    return ''
+  }
+}
+
+/** Absolute URL for a step: `override` (replay --url) wins over the recorded origin. */
+export function resolveStepUrl(scenario, stepUrl, override) {
+  const base = safeOrigin(override ?? '') || safeOrigin(scenario.baseUrl ?? '')
+  if (base === '') throw new Error('scenario has no baseUrl; pass --url http://host:port to replay')
+  return new URL(stepUrl, base).href
+}
+
 /**
  * Splits an observed gap before an action. `busyMs` is time the page was demonstrably still working on the
  * preceding action (the configured busy indicator was visible); the rest is `unclassified` — never reported
@@ -92,10 +134,14 @@ export function buildStep(event, previousAtMs) {
 }
 
 /** Bounded, editable scenario from raw events (already ordered by monotonic `atMs`). */
-export function buildScenario({ name, events, checkpoints, synthetic = false, baseUrl = '' }) {
+export function buildScenario({
+  name, events, checkpoints, synthetic = false, baseUrl = '', startUrl, armedAtMs = 0, droppedEvents = 0
+}) {
   const steps = []
   let previous
-  for (const event of events.slice(0, LIMITS.maxSteps)) {
+  // The armed starting page seeds the scenario so click-only recordings can replay from a blank context.
+  const seeded = startUrl === undefined ? events : [{ type: 'navigate', url: startUrl, atMs: armedAtMs }, ...events]
+  for (const event of seeded.slice(0, LIMITS.maxSteps)) {
     steps.push(buildStep(event, previous))
     previous = event.atMs
   }
@@ -103,8 +149,8 @@ export function buildScenario({ name, events, checkpoints, synthetic = false, ba
     version: 1,
     name: truncate(name, LIMITS.maxNameLength),
     synthetic,
-    baseUrl: safeUrl(baseUrl).replace(/\?.*$/, ''),
-    truncatedSteps: Math.max(0, events.length - LIMITS.maxSteps),
+    baseUrl: safeOrigin(baseUrl),
+    truncatedSteps: Math.max(0, seeded.length - LIMITS.maxSteps) + droppedEvents,
     checkpoints,
     steps
   }
@@ -191,9 +237,39 @@ export function buildTimingOutput({ scenario, stepTimings, attribution, startedA
 }
 
 /**
+ * Samples the initial/final rendered checkpoints of `page`. Only state changes are stored (first-true
+ * attribution loses nothing), bounded by LIMITS.maxSamples with an explicit dropped count.
+ */
+export function createObserver(page, { initial, final }, now) {
+  const buffer = createBuffer(LIMITS.maxSamples)
+  let last
+  const read = async (cp) => {
+    if (!cp) return false
+    const visible = await page.isVisible(cp.selector).catch(() => false)
+    const text = visible && cp.text ? await page.textContent(cp.selector).catch(() => '') : ''
+    return checkpointMatches(cp, { visible, text })
+  }
+  return {
+    buffer,
+    async sample() {
+      const entry = { atMs: now(), initial: await read(initial), final: await read(final) }
+      if (last === undefined || last.initial !== entry.initial || last.final !== entry.final) buffer.push(entry)
+      last = entry
+      return entry
+    },
+    attribution(startMs) {
+      const { initial: i, final: f } = { initial, final }
+      const result = attributeCheckpoints(buffer.items, startMs, { distinct: checkpointsDistinct(i, f) })
+      return { ...result, samplesTruncated: buffer.dropped }
+    }
+  }
+}
+
+/**
  * Replays a scenario on a Playwright-like `page` (goto, click, selectOption, fill, isVisible, textContent).
- * The timer starts at the first step; checkpoints are polled by rendered content, never `networkidle`, so a
- * page that keeps polling in the background still completes. `deps` injects clock/sleep for tests.
+ * The timer starts at the first step. Checkpoints are polled by rendered content (never `networkidle`)
+ * continuously WHILE the actions and waits run and afterwards until completion/timeout, so a saved result that
+ * is replaced mid-run is still seen. `options` injects clock/sleep for tests; `options.url` overrides the origin.
  */
 export async function replayScenario(page, scenario, options = {}) {
   const now = options.now ?? (() => performance.now())
@@ -202,51 +278,57 @@ export async function replayScenario(page, scenario, options = {}) {
   const timeoutMs = options.timeoutMs ?? 30000
   const replayGaps = options.replayGaps === true
   const stepTimings = []
-  const samples = []
   const { initial, final } = scenario.checkpoints ?? {}
   const distinct = checkpointsDistinct(initial, final)
+  const observer = createObserver(page, { initial, final }, now)
   const startedAt = new Date().toISOString()
   let start
+  let poller
+  let actionsEnd
+  let failed = false
 
-  async function sample() {
-    const read = async (cp) => {
-      if (!cp) return false
-      const visible = await page.isVisible(cp.selector).catch(() => false)
-      const text = visible && cp.text ? await page.textContent(cp.selector).catch(() => '') : ''
-      return checkpointMatches(cp, { visible, text })
+  const complete = () => observer.buffer.items.some((entry) => (distinct ? entry.final : entry.initial))
+  const poll = async () => {
+    while (!failed) {
+      await observer.sample()
+      if (actionsEnd !== undefined && (complete() || now() >= actionsEnd + timeoutMs)) break
+      await sleep(pollMs)
     }
-    const entry = { atMs: now(), initial: await read(initial), final: await read(final) }
-    samples.push(entry)
-    return entry
   }
 
-  for (const step of scenario.steps) {
-    const pause = step.pause
-    if (pause?.dwellMs && (pause.kind === 'dwell' || pause.kind === 'game-pause')) await sleep(pause.dwellMs)
-    else if (replayGaps && step.gap) await sleep(step.gap.unclassifiedMs)
-    if (start === undefined) start = now()
-    const stepStart = now()
-    if (step.type === 'navigate') await page.goto(`${scenario.baseUrl ?? ''}${step.url}`)
-    else if (step.type === 'click') await page.click(step.selector)
-    else if (step.type === 'select') await page.selectOption(step.selector, step.value)
-    else if (step.type === 'input') {
-      if (step.value === REDACTED) throw new Error(`step input ${step.selector} was redacted; credential entry is manual only`)
-      await page.fill(step.selector, step.value)
-    } else throw new Error(`unknown step type: ${step.type}`)
-    stepTimings.push({
-      type: step.type, selector: step.selector ?? null, url: step.url ?? null,
-      actionMs: Math.round(now() - stepStart),
-      pause: pause ? { kind: pause.kind, dwellMs: pause.dwellMs, observed: pause.observed === true } : null
-    })
+  try {
+    for (const step of scenario.steps) {
+      const pause = step.pause
+      if (pause?.dwellMs && (pause.kind === 'dwell' || pause.kind === 'game-pause')) await sleep(pause.dwellMs)
+      else if (replayGaps && step.gap) await sleep(step.gap.unclassifiedMs)
+      if (start === undefined) {
+        start = now()
+        poller = poll()
+      }
+      const stepStart = now()
+      if (step.type === 'navigate') await page.goto(resolveStepUrl(scenario, step.url, options.url))
+      else if (step.type === 'click') await page.click(step.selector)
+      else if (step.type === 'select') await page.selectOption(step.selector, step.value)
+      else if (step.type === 'input') {
+        if (step.value === REDACTED) throw new Error(`step input ${step.selector} was redacted; credential entry is manual only`)
+        await page.fill(step.selector, step.value)
+      } else throw new Error(`unknown step type: ${step.type}`)
+      stepTimings.push({
+        type: step.type, selector: step.selector ?? null, url: step.url ?? null,
+        offsetMs: Math.round(stepStart - start), actionMs: Math.round(now() - stepStart),
+        pause: pause ? { kind: pause.kind, dwellMs: pause.dwellMs, observed: pause.observed === true } : null
+      })
+    }
+  } catch (error) {
+    failed = true
+    await poller
+    throw error
   }
-  if (start === undefined) start = now()
-
-  const deadline = start + timeoutMs
-  while (now() < deadline) {
-    const entry = await sample()
-    if (entry.final && distinct) break
-    if (!distinct && entry.initial) break
-    await sleep(pollMs)
+  if (start === undefined) {
+    start = now()
+    poller = poll()
   }
-  return buildTimingOutput({ scenario, stepTimings, attribution: attributeCheckpoints(samples, start, { distinct }), startedAt })
+  actionsEnd = now()
+  await poller
+  return buildTimingOutput({ scenario, stepTimings, attribution: observer.attribution(start), startedAt })
 }
