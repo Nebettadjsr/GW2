@@ -54,6 +54,7 @@ export function boundEvent(event) {
   if (event.selector !== undefined) bounded.selector = truncate(event.selector, LIMITS.maxSelectorLength)
   if (event.url !== undefined) bounded.url = truncate(event.url, LIMITS.maxUrlLength * 4)
   if (event.value !== undefined) bounded.value = safeValue(event.value, event.field ?? {})
+  if (event.checked !== undefined) bounded.checked = event.checked === true
   return bounded
 }
 
@@ -74,7 +75,21 @@ export function safeValue(value, descriptor = {}) {
   return truncate(value, LIMITS.maxValueLength)
 }
 
-/** URL reduced to origin-relative path; credential-looking query parameters, userinfo and hash are dropped. */
+function safeQuery(searchParams) {
+  const kept = [...searchParams].filter(([name, value]) => !SENSITIVE_QUERY.test(name) && !looksLikeCredential(value))
+  return kept.length === 0 ? '' : `?${new URLSearchParams(kept).toString()}`
+}
+
+/** Hash kept only for application routes (`#/path?query`); credential-looking params and non-route fragments are dropped. */
+function safeHash(hash) {
+  if (!hash.startsWith('#/')) return ''
+  const q = hash.indexOf('?')
+  const route = q === -1 ? hash.slice(1) : hash.slice(1, q)
+  if (looksLikeCredential(route)) return ''
+  return `#${route}${q === -1 ? '' : safeQuery(new URLSearchParams(hash.slice(q + 1)))}`
+}
+
+/** URL reduced to origin-relative path; credential-looking query parameters and userinfo are dropped; only `#/route` hashes survive. */
 export function safeUrl(raw) {
   let url
   try {
@@ -82,10 +97,8 @@ export function safeUrl(raw) {
   } catch {
     return REDACTED
   }
-  const kept = [...url.searchParams].filter(([name, value]) => !SENSITIVE_QUERY.test(name) && !looksLikeCredential(value))
-  const query = kept.length === 0 ? '' : `?${new URLSearchParams(kept).toString()}`
   const path = looksLikeCredential(url.pathname) ? REDACTED : url.pathname
-  return truncate(`${path}${query}`, LIMITS.maxUrlLength)
+  return truncate(`${path}${safeQuery(url.searchParams)}${safeHash(url.hash)}`, LIMITS.maxUrlLength)
 }
 
 /** Origin only (scheme://host:port): carries no userinfo, path, query or hash. Empty when unusable. */
@@ -125,6 +138,7 @@ export function buildStep(event, previousAtMs) {
     delete step.selector
   }
   if (event.type === 'select' || event.type === 'input') step.value = safeValue(event.value, descriptor)
+  if (event.type === 'check') step.checked = event.checked === true
   const gap = previousAtMs === undefined ? undefined : classifyGap(event.atMs - previousAtMs, event.busyMs)
   if (gap !== undefined) {
     step.gap = gap
@@ -306,7 +320,12 @@ export async function replayScenario(page, scenario, options = {}) {
         poller = poll()
       }
       const stepStart = now()
-      if (step.type === 'navigate') await page.goto(resolveStepUrl(scenario, step.url, options.url))
+      if (step.type === 'navigate') {
+        const target = resolveStepUrl(scenario, step.url, options.url)
+        // a navigation observed right after its recorded click is already current: do not reload the app
+        const current = typeof page.url === 'function' ? page.url() : ''
+        if (current !== target) await page.goto(target)
+      } else if (step.type === 'check') await page.setChecked(step.selector, step.checked === true)
       else if (step.type === 'click') await page.click(step.selector)
       else if (step.type === 'select') await page.selectOption(step.selector, step.value)
       else if (step.type === 'input') {

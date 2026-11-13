@@ -256,8 +256,11 @@ npm run record:interaction -- skeleton --out my-baseline.json
 - The scenario stores the safe origin (`baseUrl`, no userinfo/path/query) and is seeded with the armed starting page as its
   first `navigate` step, so it replays from a blank browser; `replay --url` overrides the origin. Record mode samples the
   checkpoints from arming to stop and writes `<name>.record-timing.json`; replay samples continuously during actions and
-  waits (only state changes are stored). The recorder's own overlay (Stop) is never captured, and a label click is
-  recorded once (not again as its derived control click). In-memory event/sample buffers are bounded too; dropped counts
+  waits (only state changes are stored). The recorder's own overlay (Stop) is never captured, and a checkbox/radio
+  (by label or directly) is recorded once as its resulting checked state (`check` step, replayed idempotently with
+  `setChecked`, using a unique id/data-test/aria/name selector or an explicit index). Application `#/route` hashes
+  are kept (credential-looking hash parameters and non-route fragments are dropped), and a recorded navigation to the
+  page already current after its click is skipped on replay instead of reloading. In-memory event/sample buffers are bounded too; dropped counts
   go into `truncatedSteps`/`samplesTruncated`.
 - Tests (include a real headless Chromium record→replay roundtrip; set `GW2_BROWSER_PATH` if needed):
   `npx vitest run scripts/__tests__/interactionRecorder.spec.mjs`.

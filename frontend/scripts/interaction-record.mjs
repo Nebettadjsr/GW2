@@ -58,26 +58,37 @@ function overlayScript(busySelector) {
       if (busy()) { if (busySince === null) busySince = now } else if (busySince !== null) { busyMs += now - busySince; busySince = null }
     }, 100)
     const takeBusy = () => { const now = performance.now(); const total = busyMs + (busySince !== null ? now - busySince : 0); busyMs = 0; if (busySince !== null) busySince = now; return total }
+    const unique = (css) => { try { return document.querySelectorAll(css).length === 1 } catch { return false } }
     const selectorOf = (el) => {
-      if (el.id) return '#' + CSS.escape(el.id)
-      for (const attr of ['data-testid', 'aria-label', 'name']) if (el.getAttribute(attr)) return el.tagName.toLowerCase() + '[' + attr + '=' + JSON.stringify(el.getAttribute(attr)) + ']'
+      const tag = el.tagName.toLowerCase()
+      if (el.id && unique('#' + CSS.escape(el.id))) return '#' + CSS.escape(el.id)
+      for (const attr of ['data-testid', 'data-test', 'aria-label', 'name']) {
+        const value = el.getAttribute(attr)
+        const css = tag + '[' + attr + '=' + JSON.stringify(value) + ']'
+        if (value && unique(css)) return css
+      }
+      if (el.type === 'checkbox' || el.type === 'radio') {
+        const css = 'input[name=' + JSON.stringify(el.name) + '][value=' + JSON.stringify(el.value) + ']'
+        if (el.name && unique(css)) return css
+        const same = [...document.querySelectorAll('input[type=' + el.type + ']')]
+        return 'input[type=' + el.type + '] >> nth=' + same.indexOf(el)
+      }
       const text = (el.textContent || '').trim().slice(0, 40)
-      return text && !/input|select|textarea/i.test(el.tagName) ? el.tagName.toLowerCase() + ':has-text(' + JSON.stringify(text) + ')' : el.tagName.toLowerCase()
+      return text && !/input|select|textarea/i.test(tag) ? tag + ':has-text(' + JSON.stringify(text) + ')' : tag
     }
     const field = (el) => ({ type: el.type, name: el.name, id: el.id, placeholder: el.placeholder, autocomplete: el.autocomplete, label: el.labels && el.labels[0] ? el.labels[0].textContent : undefined })
     const send = (event) => window.gw2Record({ ...event, busyMs: takeBusy() })
     const ours = (el) => !!(el.closest && el.closest('[data-gw2-recorder]'))
-    let derived = null
+    const checkable = (el) => !!el && /^input$/i.test(el.tagName) && /checkbox|radio/i.test(el.type)
     document.addEventListener('click', (e) => {
       if (ours(e.target)) return
-      if (derived && e.target === derived) { derived = null; return }
       const el = e.target.closest('button, a, [role=button], summary, label, input[type=checkbox], input[type=radio]') || e.target
       if (/^(input|select|textarea)$/i.test(el.tagName) && !/checkbox|radio/i.test(el.type)) return
-      // a label click makes the browser click its control again: record the label once, skip the derived click
-      if (/^label$/i.test(el.tagName) && el.control) { derived = el.control; setTimeout(() => { derived = null }, 0) }
+      // checkbox/radio (direct or via label) are recorded once, as their resulting state, by the change handler
+      if (checkable(el) || (/^label$/i.test(el.tagName) && checkable(el.control))) return
       send({ type: 'click', selector: selectorOf(el) })
     }, true)
-    document.addEventListener('change', (e) => { if (ours(e.target)) return; const el = e.target; if (/select/i.test(el.tagName)) send({ type: 'select', selector: selectorOf(el), value: el.value, field: field(el) }); else if (/input|textarea/i.test(el.tagName) && !/checkbox|radio/i.test(el.type)) send({ type: 'input', selector: selectorOf(el), value: el.value, field: field(el) }) }, true)
+    document.addEventListener('change', (e) => { if (ours(e.target)) return; const el = e.target; if (/select/i.test(el.tagName)) send({ type: 'select', selector: selectorOf(el), value: el.value, field: field(el) }); else if (checkable(el)) send({ type: 'check', selector: selectorOf(el), checked: el.checked }); else if (/input|textarea/i.test(el.tagName)) send({ type: 'input', selector: selectorOf(el), value: el.value, field: field(el) }) }, true)
     const box = document.createElement('div'); box.setAttribute('data-gw2-recorder', '')
     box.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:2147483647;background:#222;color:#fff;font:12px monospace;padding:6px 8px;border-radius:4px;opacity:.9'
     const clock = document.createElement('span'); const stop = document.createElement('button'); stop.textContent = 'Stop'; stop.style.marginLeft = '8px'

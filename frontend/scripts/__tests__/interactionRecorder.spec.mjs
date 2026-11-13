@@ -240,7 +240,8 @@ describe('real Playwright record → replay roundtrip (synthetic page, ongoing p
         }
       )
       const steps = recorded.scenario.steps
-      expect(steps.map((x) => x.type)).toEqual(['navigate', 'click', 'click'])
+      expect(steps.map((x) => x.type)).toEqual(['navigate', 'check', 'click'])
+      expect(steps[1]).toMatchObject({ checked: true })
       expect(steps[0].url).toBe('/page.html')
       expect(JSON.stringify(recorded.scenario)).not.toMatch(/Stop|gw2-recorder/)
       expect(steps.filter((x) => /Opt in|#c/.test(x.selector ?? ''))).toHaveLength(1)
@@ -258,6 +259,74 @@ describe('real Playwright record → replay roundtrip (synthetic page, ongoing p
       expect(readdirSync(dir)).toContain('roundtrip.timing.json')
     } finally {
       server.close()
+    }
+  }, 60000)
+})
+
+describe('hash routes and idempotent checked state', () => {
+  it('keeps application hash routes but drops credential-bearing fragments', () => {
+    expect(safeUrl('http://h/#/crafting')).toBe('/#/crafting')
+    expect(safeUrl('http://h/app?x=1#/bank?tab=2')).toBe('/app?x=1#/bank?tab=2')
+    expect(safeUrl('http://h/#/bank?token=abc&tab=2')).toBe('/#/bank?tab=2')
+    expect(safeUrl('http://h/#access_token=abc')).toBe('/')
+    expect(safeUrl(`http://h/#/x/${KEY}`)).toBe('/')
+  })
+
+  it('serializes a check step with its resulting state and replays it with setChecked', async () => {
+    const step = buildScenario({ name: 'c', events: [{ type: 'check', selector: '#c', checked: true, atMs: 1 }], checkpoints: CP }).steps[0]
+    expect(step).toMatchObject({ type: 'check', selector: '#c', checked: true })
+    const calls = []
+    const page = {
+      goto: async () => {}, setChecked: async (...a) => calls.push(a), isVisible: async () => true, textContent: async () => 'saved'
+    }
+    await replayScenario(page, { name: 'c', checkpoints: { initial: CP.initial, final: CP.initial }, steps: [step] }, { sleep: async () => {} })
+    expect(calls).toEqual([['#c', true]])
+  })
+
+  const html = `<!doctype html><label for="a">Opt A</label><input id="a" type="checkbox" checked>
+    <input type="checkbox" name="f" value="2"><input type="radio" name="r" value="1"><input type="radio" name="r" value="2" checked>
+    <a id="nav" href="#/bank">Bank</a><div id="out"></div>
+    <script>
+      const show = () => { out.innerHTML = '<p id="page">' + location.hash + '</p><p id="state">' + [a.checked, document.querySelectorAll('input[type=checkbox]')[1].checked, document.querySelector('input[name=r][value="1"]').checked].join(',') + '</p>' }
+      addEventListener('hashchange', show); addEventListener('change', show); show()
+    </script>`
+
+  it('records route and checked state and replays them from a different initial state', async () => {
+    const server = createServer((req, res) => res.end(html))
+    await new Promise((r) => server.listen(0, '127.0.0.1', r))
+    const dir = mkdtempSync(join(tmpdir(), 'gw2-rec2-'))
+    const url = `http://127.0.0.1:${server.address().port}/`
+    try {
+      const recorded = await recordSession(
+        { url, name: 'hash', initial: '#page::#/bank', final: '#state::false,true,true', out: dir },
+        {
+          headless: true,
+          arm: async () => {},
+          untilStop: async (page, stopped) => {
+            await page.click('#nav')
+            await page.waitForSelector('#page:has-text("#/bank")')
+            await page.click('label') // a: checked -> unchecked
+            await page.check('input[name=f]')
+            await page.check('input[name=r][value="1"]')
+            await page.waitForSelector('#state:has-text("false,true,true")')
+            await page.click('[data-gw2-recorder] button')
+            await stopped
+          }
+        }
+      )
+      const steps = recorded.scenario.steps
+      expect(steps.map((x) => x.type)).toEqual(['navigate', 'click', 'navigate', 'check', 'check', 'check'])
+      expect(steps[2].url).toBe('/#/bank')
+      expect(steps.slice(3).map((x) => x.checked)).toEqual([false, true, true])
+      expect(steps.slice(3).map((x) => x.selector)).toEqual(['#a', 'input[name="f"]', 'input[name="r"][value="1"]'])
+      // replay starts from the page's own initial state (a checked, r=2); intended states must still hold
+      const replayed = await replay({ _: [recorded.files[0]], out: dir, 'timeout-ms': '8000' }, { headless: true })
+      expect(replayed.timing.attribution.finalQualified).toBe(true)
+      // a second replay is idempotent for check steps too
+      expect(replayed.timing.steps.filter((x) => x.type === 'navigate')).toHaveLength(2)
+    } finally {
+      server.close()
+      rmSync(dir, { recursive: true, force: true })
     }
   }, 60000)
 })
