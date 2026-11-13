@@ -40,6 +40,7 @@ def sample_doc(containers):
     return {"samples": [
         {"utc": f"2026-11-13T10:00:0{i}.000Z", "monoMs": i * 1000,
          "wholeVm": {"boundary": hr.BOUNDARY_HOST, "cpuPercent": 10.0 * (i + 1), "memUsedBytes": 1000 * (i + 1),
+                     "cpuObservationStartedUtc": f"2026-11-13T10:00:0{i}.000Z", "cpuObservationEndedUtc": f"2026-11-13T10:00:0{i}.000Z",
                      "collectionStartedUtc": f"2026-11-13T10:00:0{i}.000Z", "collectionEndedUtc": f"2026-11-13T10:00:0{i}.000Z"},
          "containers": {**containers, "collectionStartedUtc": f"2026-11-13T10:00:0{i}.000Z", "collectionEndedUtc": f"2026-11-13T10:00:0{i}.000Z"}}
         for i in range(5)]}
@@ -75,6 +76,7 @@ class SampleTest(unittest.TestCase):
         self.assertEqual(first["memUsedBytes"], 12000000 * 1024)
         second = go.host_point(sampler)
         self.assertAlmostEqual(second["cpuPercent"], 100.0 * 200 / 1000, places=3)
+        self.assertLessEqual(second["cpuObservationStartedUtc"], second["cpuObservationEndedUtc"])
 
     def test_non_linux_host_is_unavailable(self):
         point = go.host_point(hr.HostSampler(reader=reader(STAT), system="Windows"))
@@ -99,7 +101,7 @@ class AlignTest(unittest.TestCase):
         doc["samples"][1]["containers"].update(collectionStartedUtc="2026-11-13T10:00:02.000Z", collectionEndedUtc="2026-11-13T10:00:04.000Z")
         result = go.align(doc, RUN)
         self.assertTrue(result["covered"])
-        self.assertEqual(result["window"]["sampleCounts"], {"wholeVm": 1, "containers": 1})
+        self.assertEqual(result["window"]["sampleCounts"], {"wholeVm": 1, "wholeVmCpu": 1, "containers": 1})
         self.assertEqual(result["window"]["wholeVm"]["cpuPercent"]["peak"], 20)
         self.assertEqual(result["window"]["containers"]["perContainer"]["backend"]["cpu_peak"], 5)
 
@@ -110,6 +112,25 @@ class AlignTest(unittest.TestCase):
                 point[boundary].pop("collectionStartedUtc")
                 point[boundary].pop("collectionEndedUtc")
         self.assertFalse(go.align(doc, RUN)["covered"])
+
+    def test_cpu_delta_before_run_is_excluded_even_when_memory_read_is_inside(self):
+        doc = sample_doc({"value": {"backend": {"cpuPercent": 5, "memBytes": 100}}})
+        doc["samples"] = [doc["samples"][2]]
+        doc["samples"][0]["wholeVm"].update(cpuObservationStartedUtc="2026-11-13T10:00:00.000Z", cpuObservationEndedUtc="2026-11-13T10:00:02.000Z")
+        run = {**RUN, "resources": {"alignmentWindow": {"startUtc": "2026-11-13T10:00:01.900Z", "endUtc": "2026-11-13T10:00:02.100Z"}}}
+        result = go.align(doc, run)
+        self.assertFalse(result["covered"])
+        self.assertEqual(result["window"]["wholeVm"]["cpuPercent"]["count"], 0)
+        self.assertEqual(result["window"]["wholeVm"]["memUsedBytes"]["peak"], 3000)
+
+    def test_missing_cpu_observation_interval_is_not_inferred_from_collection(self):
+        doc = sample_doc({"value": None})
+        for point in doc["samples"]:
+            point["wholeVm"].pop("cpuObservationStartedUtc")
+            point["wholeVm"].pop("cpuObservationEndedUtc")
+        result = go.align(doc, RUN)
+        self.assertFalse(result["coverage"]["wholeVmCpu"])
+        self.assertEqual(result["window"]["wholeVm"]["cpuPercent"]["count"], 0)
 
     def test_slices_to_the_run_window_keeping_boundaries_apart(self):
         containers = {"boundary": hr.BOUNDARY_CONTAINERS, "value": {"gw2-backend-1": {"cpuPercent": 5.0, "memBytes": 100.0}}}

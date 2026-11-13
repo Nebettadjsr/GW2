@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import container_measure as cm  # noqa: E402
 import host_resources as hr  # noqa: E402
 
-SCHEMA = "gw2-guest-observation-2"
+SCHEMA = "gw2-guest-observation-3"
 MODE = {"mode": "preparation-only", "qualification": "not-qualified"}
 MAX_SAMPLES = 3600
 MAX_SECONDS = 3600
@@ -65,12 +65,21 @@ def container_sample(project: str, runner=cm.run) -> dict:
 
 def host_point(sampler: hr.HostSampler) -> dict:
     before_cpu, before_mem = len(sampler.cpu), len(sampler.mem_used)
+    previous_read_start = getattr(sampler, "guest_cpu_read_start", None)
+    read_start = utc_now()
     sampler.sample()
+    read_end = utc_now()
+    # A CPU delta spans two counter reads, unlike the current memory point. Bracket both
+    # reads conservatively; the actual /proc/stat reads occur inside these sample calls.
+    sampler.guest_cpu_read_start = read_start if sampler.prev is not None else None
     cpu = sampler.cpu[-1] if len(sampler.cpu) > before_cpu else None
     mem = sampler.mem_used[-1] if len(sampler.mem_used) > before_mem else None
     point = {"boundary": hr.BOUNDARY_HOST}
     point["cpuPercent"] = cpu if cpu is not None else None
     point["memUsedBytes"] = mem if mem is not None else None
+    if cpu is not None and previous_read_start is not None:
+        point["cpuObservationStartedUtc"] = previous_read_start
+        point["cpuObservationEndedUtc"] = read_end
     if cpu is None:
         point["cpuUnavailableReason"] = (sampler.cpu_reasons or ["first sample has no delta"])[-1]
     if mem is None:
@@ -106,9 +115,10 @@ def sample(seconds: int, project: str, containers=container_sample, sampler=None
     }
 
 
-def window_summary(samples: list[dict], container_samples: list[dict] | None = None) -> dict:
+def window_summary(samples: list[dict], container_samples: list[dict] | None = None, cpu_samples: list[dict] | None = None) -> dict:
     container_samples = samples if container_samples is None else container_samples
-    cpu = [s["wholeVm"]["cpuPercent"] for s in samples if s["wholeVm"].get("cpuPercent") is not None]
+    cpu_samples = samples if cpu_samples is None else cpu_samples
+    cpu = [s["wholeVm"]["cpuPercent"] for s in cpu_samples if s["wholeVm"].get("cpuPercent") is not None]
     mem = [s["wholeVm"]["memUsedBytes"] for s in samples if s["wholeVm"].get("memUsedBytes") is not None]
     vm = {"boundary": hr.BOUNDARY_HOST, "cpuPercent": hr.stats(cpu) if cpu else {"count": 0, "unavailableReason": "no whole-VM CPU samples in window"},
           "memUsedBytes": hr.stats(mem) if mem else {"count": 0, "unavailableReason": "no whole-VM memory samples in window"}}
@@ -124,7 +134,7 @@ def window_summary(samples: list[dict], container_samples: list[dict] | None = N
     containers = {"boundary": hr.BOUNDARY_CONTAINERS, "perContainer": {name: cm.summarize(rows) for name, rows in sorted(per.items())}}
     if not per:
         containers["unavailableReason"] = reasons[-1] if reasons else "no container samples in window"
-    return {"sampleCount": len(samples), "sampleCounts": {"wholeVm": len(samples), "containers": len(container_samples)}, "wholeVm": vm, "containers": containers,
+    return {"sampleCount": len(samples), "sampleCounts": {"wholeVm": len(samples), "wholeVmCpu": len(cpu_samples), "containers": len(container_samples)}, "wholeVm": vm, "containers": containers,
             "note": "Whole-VM and container readings are separate; host minus containers is not attributed overhead."}
 
 
@@ -133,21 +143,22 @@ def align(samples_doc: dict, run: dict, clock_offset_ms: int = 0) -> dict:
     window = run["resources"]["alignmentWindow"]
     start = parse_utc(window["startUtc"]) + clock_offset_ms / 1000
     end = parse_utc(window["endUtc"]) + clock_offset_ms / 1000
-    def contained(point, boundary):
+    def contained(point, boundary, a_key="collectionStartedUtc", b_key="collectionEndedUtc"):
         reading = point.get(boundary, {})
-        a, b = reading.get("collectionStartedUtc"), reading.get("collectionEndedUtc")
+        a, b = reading.get(a_key), reading.get(b_key)
         return bool(a and b and start <= parse_utc(a) <= parse_utc(b) <= end)
 
     host_inside = [s for s in samples_doc["samples"] if contained(s, "wholeVm")]
+    cpu_inside = [s for s in samples_doc["samples"] if contained(s, "wholeVm", "cpuObservationStartedUtc", "cpuObservationEndedUtc")]
     container_inside = [s for s in samples_doc["samples"] if contained(s, "containers")]
     out = {
         "schema": SCHEMA, "kind": "aligned", **MODE, "runId": run["runId"], "journey": run["journey"],
         "generatorWindow": window, "clockOffsetMs": clock_offset_ms,
         "clockNote": "Generator and guest clocks are independent; the offset is operator-supplied, never inferred.",
-        "covered": bool(host_inside and container_inside),
-        "coverage": {"wholeVm": bool(host_inside), "containers": bool(container_inside)},
-        "alignmentNote": "Each boundary uses its own full collection interval. Partial overlaps and legacy samples without intervals are excluded; CPU values remain interval observations, not instantaneous peaks.",
-        "window": window_summary(host_inside, container_inside) if host_inside or container_inside else {
+        "covered": bool(host_inside and cpu_inside and container_inside),
+        "coverage": {"wholeVm": bool(host_inside), "wholeVmCpu": bool(cpu_inside), "containers": bool(container_inside)},
+        "alignmentNote": "Memory and containers use their own full collection intervals; whole-VM CPU uses conservative brackets around BOTH counter reads. Partial overlaps and legacy samples without intervals are excluded. CPU values are interval observations, not instantaneous peaks.",
+        "window": window_summary(host_inside, container_inside, cpu_inside) if host_inside or cpu_inside or container_inside else {
             "sampleCount": 0, "unavailableReason": "no guest samples fall inside the run window"},
         "generatorHealth": run.get("generatorHealth"),
         "generatorHealthNote": "Generator health is reported apart from guest/container health; it is not VM saturation.",

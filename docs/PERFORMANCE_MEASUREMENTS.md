@@ -307,3 +307,7 @@ Navigation observes retained content concurrently and waits for visible automati
 before calling data final. A refresh failure is not fresh-data completion. Text probes do not wait for absent
 optional elements; every browser context has explicit action/navigation timeouts. Calculation completion also
 matches the requested sell-price flag in memory; request bodies and that private matching metadata are not exported.
+Guest schema `gw2-guest-observation-3` aligns memory and container readings by their separate collection
+intervals. Whole-VM CPU deltas require the conservative interval bracketing both counter reads to fit inside
+the run; the final counter read alone never establishes CPU coverage. Missing or partially overlapping intervals
+are excluded with per-metric coverage reported. Supply `align --clock-offset-ms N` when guest and generator clocks differ.
