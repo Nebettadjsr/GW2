@@ -149,6 +149,13 @@ describe('bounded output and explicit truncation', () => {
     expect(list.items).toEqual([1, 2])
     expect(list.dropped).toBe(2)
   })
+  it('counts the final truncation metadata and newline in the written byte cap', () => {
+    const input = { requests: ['x'.repeat(100)], events: [], rest: 'keep' }
+    const limit = Buffer.byteLength(JSON.stringify(input)) + 1
+    const bounded = boundResult(input, limit)
+    expect(bounded.truncation.truncated).toBe(true)
+    expect(Buffer.byteLength(JSON.stringify(bounded)) + 1).toBeLessThanOrEqual(limit)
+  })
   it('has bounded limits', () => { expect(LIMITS.maxOutputBytes).toBeLessThanOrEqual(1048576) })
 })
 

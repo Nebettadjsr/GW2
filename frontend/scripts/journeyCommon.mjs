@@ -297,7 +297,10 @@ export function generatorHealth(sample) {
 
 /** Returns an object that fits `maxBytes`: arrays are cut with an explicit truncation record. */
 export function boundResult(result, maxBytes = LIMITS.maxOutputBytes) {
-  if (Buffer.byteLength(JSON.stringify(result)) <= maxBytes) return { ...result, truncation: { truncated: false, reason: null, droppedFields: [] } }
+  const whole = { ...result, truncation: { truncated: false, reason: null, droppedFields: [] } }
+  // finish() writes compact JSON plus one newline: include both metadata and newline.
+  const fits = (value) => Buffer.byteLength(JSON.stringify(value)) + 1 <= maxBytes
+  if (fits(whole)) return whole
   const trimmed = { ...result }
   const dropped = []
   for (const field of ['requests', 'events']) {
@@ -306,7 +309,7 @@ export function boundResult(result, maxBytes = LIMITS.maxOutputBytes) {
       trimmed[field] = []
     }
     trimmed.truncation = { truncated: true, reason: `output exceeded ${maxBytes} bytes`, droppedFields: dropped }
-    if (Buffer.byteLength(JSON.stringify(trimmed)) <= maxBytes) return trimmed
+    if (fits(trimmed)) return trimmed
   }
   throw new Error(`result still exceeds ${maxBytes} bytes after truncation`)
 }

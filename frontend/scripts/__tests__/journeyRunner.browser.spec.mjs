@@ -133,6 +133,23 @@ describe('journeys against the synthetic origin', () => {
     } finally { await hung.close() }
   }, 60000)
 
+  browserIt.each(['resolution-failed', 'resolution-unavailable'])('classifies the actual explanation terminal state: %s', async (bug) => {
+    const detail = await startSyntheticApp({ bug })
+    try {
+      const { result } = await runJourney('crafting', options({ origin: detail.origin }), { arm: page => page.goto(`${detail.origin}/#/crafting`) })
+      const inspect = actions(result).find(a => a.name === 'inspect-result')
+      if (bug === 'resolution-failed') {
+        expect(result.result.status).toBe('incomplete')
+        expect(inspect.terminal).toBe('error')
+        expect(inspect.error).toContain('resolution-failed')
+        expect(inspect.finalRender.offsetMs).toBeNull()
+      } else {
+        expect(result.result.status).toBe('completed')
+        expect(inspect).toMatchObject({ terminal: 'completed', outcome: { resolution: 'unavailable' } })
+      }
+    } finally { await detail.close() }
+  }, 60000)
+
   browserIt('keeps calculation checkpoints working after the request log fills', async () => {
     const flooded = await startSyntheticApp({ bug: 'request-flood' })
     try {

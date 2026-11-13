@@ -325,7 +325,7 @@ export function finish(result, options) {
   const outDir = resolve(options.out ?? DEFAULT_JOURNEY_OUTPUT_DIR)
   mkdirSync(outDir, { recursive: true })
   const file = join(outDir, `${bounded.journey}-${bounded.runId}.json`)
-  const text = `${JSON.stringify(bounded, null, 2)}\n`
+  const text = `${JSON.stringify(bounded)}\n`
   if (scanForSecrets(text).length > 0) throw new Error('refusing to write the run artifact: credential-looking content')
   writeFileSync(file, text)
   return { file, result: bounded }

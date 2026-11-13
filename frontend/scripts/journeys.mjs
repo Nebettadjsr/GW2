@@ -114,9 +114,14 @@ export async function craftingFlow(user, options) {
         rowName = shortText(await row.locator('.recipe-name').first().textContent())
         await row.locator(sel('select-row')).click()
       },
-      final: async () => rowName !== '' && (await visible(page, 'detail-name')) && !(await anyVisible(page, ['detail-loading', 'resolution-loading'])) &&
-        (await text(page, 'detail-name')).includes(rowName.slice(0, 20)),
-      outcome: async () => ({ detailMatchesSelectedRow: true })
+      final: async () => {
+        if (await visible(page, 'resolution-failed')) throw new Error('recipe explanation request failed (resolution-failed)')
+        return rowName !== '' && (await visible(page, 'detail-name')) && !(await anyVisible(page, ['detail-loading', 'resolution-loading'])) &&
+          (await text(page, 'detail-name')).includes(rowName.slice(0, 20)) &&
+          (await anyVisible(page, ['resolution-tree', 'resolution-unavailable', 'resolution-absent']))
+      },
+      outcome: async () => ({ detailMatchesSelectedRow: true, resolution: await visible(page, 'resolution-tree') ? 'rendered' :
+        await visible(page, 'resolution-unavailable') ? 'unavailable' : 'absent' })
     })
   }
   await changeTo('restore-setting', 'Put the sell-price setting back to the value found at the start', original, false)

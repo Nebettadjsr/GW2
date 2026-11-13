@@ -60,8 +60,9 @@ function drawCrafting(busy) {
     drawCrafting(true); await fetch('/api/account/refresh', { method: 'POST' }); await wait(100); recalcs += 1; drawCrafting(false)
   }
   main.querySelector('[data-test=select-row]').onclick = async () => {
-    document.getElementById('detail').innerHTML = '<p data-test="detail-loading">Loading detail</p>'; await wait(100)
-    document.getElementById('detail').innerHTML = '<h3 data-test="detail-name">Synthetic Recipe</h3>'
+    document.getElementById('detail').innerHTML = '<h3 data-test="detail-name">Synthetic Recipe</h3><p data-test="resolution-loading">Loading detail</p>'; await wait(100)
+    const state = BUG === 'resolution-failed' ? 'resolution-failed' : BUG === 'resolution-unavailable' ? 'resolution-unavailable' : 'resolution-tree'
+    document.getElementById('detail').innerHTML = '<h3 data-test="detail-name">Synthetic Recipe</h3><div data-test="' + state + '">Explanation outcome</div>'
   }
 }
 function drawMaterials() {
