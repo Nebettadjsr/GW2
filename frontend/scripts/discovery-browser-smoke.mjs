@@ -178,6 +178,8 @@ function resolutionTree(recipeId) {
     cashCostCopper: 0,
     opportunityCostCopper: 0,
     effectiveCostCopper: 0,
+    effectiveUnitCostCopper: 0,
+    effectiveUnitCostApproximate: false,
     children: [],
     iconUrl: null,
     ...overrides
@@ -196,7 +198,9 @@ function resolutionTree(recipeId) {
       // No recipe was selected for this root, so it has no ingredients of its own either.
       cashCostCopper: 0,
       opportunityCostCopper: 6_543,
-      effectiveCostCopper: 6_543
+      effectiveCostCopper: 6_543,
+      effectiveUnitCostCopper: 3_272,
+      effectiveUnitCostApproximate: true
     })
   }
 
@@ -213,6 +217,7 @@ function resolutionTree(recipeId) {
     cashCostCopper: 777_777,
     opportunityCostCopper: 5_555,
     effectiveCostCopper: 783_332,
+    effectiveUnitCostCopper: 783_332,
     children: [
       node({
         itemId: 19_700,
@@ -223,7 +228,8 @@ function resolutionTree(recipeId) {
         methods: ['INVENTORY', 'BUY'],
         cashCostCopper: 480,
         opportunityCostCopper: 240,
-        effectiveCostCopper: 720
+        effectiveCostCopper: 720,
+        effectiveUnitCostCopper: 120
       }),
       node({
         itemId: 19_701,
@@ -235,7 +241,8 @@ function resolutionTree(recipeId) {
         blockedReasons: ['PRICE_UNAVAILABLE'],
         cashCostCopper: null,
         opportunityCostCopper: null,
-        effectiveCostCopper: null
+        effectiveCostCopper: null,
+        effectiveUnitCostCopper: null
       })
     ]
   })
@@ -642,12 +649,12 @@ async function run() {
     // own inclusive 783_332 copper, not the children's added up.
     const rootCost = await textOf(page, '[data-path="0"] [data-test="node-value"]')
     check(
-      rootCost === 'Value: 78g 33s 32c',
+      rootCost.includes('Value per item: 78g 33s 32c') && rootCost.includes('Total value for 1 item: 78g 33s 32c'),
       `The root's inclusive cost is not the supplied figure: ${rootCost}`
     )
     const unpricedCost = await textOf(page, '[data-path="0.1"] [data-test="node-value"]')
     check(
-      unpricedCost === 'Value: —',
+      unpricedCost.includes('Value per item: —') && unpricedCost.includes('Total value for 3 items: —'),
       `A cost the backend could not establish became a number: ${unpricedCost}`
     )
     // Discovery shares the tree component, so it inherits the collapsed presentation: every
@@ -700,7 +707,9 @@ async function run() {
     // And the requirement itself is the stock the answer named, with its own supplied value: the
     // sentence describes the tree on screen rather than standing on its own.
     check(
-      stockRoot.methods === 'From stock ×2' && stockRoot.value === 'Value: 65s 43c' && stockRoot.nodes === 1,
+      stockRoot.methods === 'From stock ×2' && stockRoot.nodes === 1 &&
+        stockRoot.value.includes('Value per item: ≈ 32s 72c') &&
+        stockRoot.value.includes('Total value for 2 items: 65s 43c'),
       `The root this sentence is about is not the supplied one: ${JSON.stringify(stockRoot)}`
     )
     record(

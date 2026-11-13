@@ -10,8 +10,9 @@ import java.util.List;
  *
  * <p>A transport copy of the domain's {@code craft.CraftTraceNode}, with an optional Discovery-only
  * recipe-knowledge label derived from the explicit account-known and eligible-candidate sets. No
- * quantity or cost is repaired, summed or rounded here, no state is inferred from a price quote,
- * and no node is dropped or truncated. Enum-valued
+ * domain quantity or total cost is repaired, summed or rounded. The mapper supplies a separate
+ * display-only rounded unit average; no state is inferred from a price quote and no node is dropped
+ * or truncated. Enum-valued
  * domain facts are carried as their own names, so a state or reason this schema does not yet
  * enumerate stays visible instead of silently reading as success.
  *

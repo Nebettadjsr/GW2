@@ -52,6 +52,10 @@ function fact(wrapper: VueWrapper, path: string, test: string): string {
   return nodeAt(wrapper, path).find(`[data-test="${test}"]`).text()
 }
 
+function valueLines(wrapper: VueWrapper, path: string): string[] {
+  return ['node-unit-value', 'node-total-value'].map((test) => fact(wrapper, path, test))
+}
+
 /**
  * A node's *own* element, not one of its descendants': a parent `<li>` contains every child node's
  * markup, so `find` inside it would report a child's explanation as the parent's.
@@ -189,13 +193,13 @@ describe('CraftingResolution', () => {
 
       expect(nodeAt(region, '0').find('[data-test="node-requested"]').text()).toBe('41 needed')
       expect(nodeAt(region, '0.0').find('[data-test="node-requested"]').text()).toBe('205 needed')
-      expect(nodeAt(region, '0').find('[data-test="node-value"]').text()).toBe(
-        'Value per item: ≈ 30c · Total value for 41 items: 12s 34c'
-      )
+      expect(valueLines(region, '0')).toEqual([
+        'Value per item: ≈ 30c', 'Total value for 41 items: 12s 34c'
+      ])
       // The 205-item child: 1234 / 205 = 6.02 -> 6c, approximate, independent of its parent.
-      expect(nodeAt(region, '0.0').find('[data-test="node-value"]').text()).toBe(
-        'Value per item: ≈ 6c · Total value for 205 items: 12s 34c'
-      )
+      expect(valueLines(region, '0.0')).toEqual([
+        'Value per item: ≈ 6c', 'Total value for 205 items: 12s 34c'
+      ])
     })
   })
 
@@ -208,12 +212,12 @@ describe('CraftingResolution', () => {
       })
       const region = ready({ tree: root })
 
-      expect(nodeAt(region, '0').find('[data-test="node-value"]').text()).toBe(
-        'Value per item: 11c · Total value for 123 items: 13s 53c'
-      )
-      expect(nodeAt(region, '0.0').find('[data-test="node-value"]').text()).toBe(
-        'Value per item: — · Total value for 0 items: 0c'
-      )
+      expect(valueLines(region, '0')).toEqual([
+        'Value per item: 11c', 'Total value for 123 items: 13s 53c'
+      ])
+      expect(valueLines(region, '0.0')).toEqual([
+        'Value per item: —', 'Total value for 0 items: 0c'
+      ])
     })
 
     it('showsOnlyTheBackendApproximationFlagAndNeverRecomputesIt', () => {
@@ -225,9 +229,9 @@ describe('CraftingResolution', () => {
       })
       const region = ready({ tree: root })
 
-      expect(nodeAt(region, '0').find('[data-test="node-value"]').text()).toBe(
-        'Value per item: 77c · Total value for 3 items: 10c'
-      )
+      expect(valueLines(region, '0')).toEqual([
+        'Value per item: 77c', 'Total value for 3 items: 10c'
+      ])
     })
   })
 
@@ -263,7 +267,7 @@ describe('CraftingResolution', () => {
       const region = ready({ tree: blockedTree }, blockedTree.recipeId ?? 13)
 
       expect(region.text()).not.toContain('Nothing supplied this requirement')
-      expect(fact(region, '0', 'node-value')).toBe('Value per item: — · Total value for 1 item: —')
+      expect(valueLines(region, '0')).toEqual(['Value per item: —', 'Total value for 1 item: —'])
     })
   })
 
@@ -323,8 +327,8 @@ describe('CraftingResolution', () => {
       const region = ready({ tree: blockedTree })
 
       // A known zero remains distinct from a missing valuation; resolver codes stay out of the UI.
-      expect(fact(region, '0.1', 'node-value')).toBe('Value per item: 0c · Total value for 2 items: 0c')
-      expect(fact(region, '0.0', 'node-value')).toBe('Value per item: — · Total value for 4 items: —')
+      expect(valueLines(region, '0.1')).toEqual(['Value per item: 0c', 'Total value for 2 items: 0c'])
+      expect(valueLines(region, '0.0')).toEqual(['Value per item: —', 'Total value for 4 items: —'])
       expect(ownFacts(region, '0.0', 'node-player-status')[0]).toContain('Not available on TP')
       expect(region.find('[data-test="node-technical-details"]').exists()).toBe(false)
       expect(nodeAt(region, '0.0').find('[data-test="node-wiki"]').attributes('href')).toContain('Pile%20of%20Dust')

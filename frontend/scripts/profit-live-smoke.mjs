@@ -73,12 +73,16 @@ async function checkCompactSummaries(body) {
     supplied.map((node) => `${node.requestedQuantity} needed`),
     'A displayed required quantity is not the one the backend supplied'
   )
-  // One `Value` per requirement, which is the only presentation `ResolutionTreeNode.vue` has; the
-  // three separate cost figures this once read are not rendered by either crafting page.
+  // Each occurrence displays the backend unit projection and unchanged inclusive total separately.
   assert.deepEqual(
-    await locator('node-value').allTextContents().then((texts) => texts.map((t) => t.trim())),
-    supplied.map((node) => `Value: ${money(node.effectiveCostCopper)}`),
-    'A displayed effective value is not the one the backend supplied'
+    await locator('node-unit-value').allTextContents().then((texts) => texts.map((t) => t.trim())),
+    supplied.map((node) => `Value per item: ${node.effectiveUnitCostApproximate ? '≈ ' : ''}${money(node.effectiveUnitCostCopper)}`),
+    'A displayed unit value is not the backend projection'
+  )
+  assert.deepEqual(
+    await locator('node-total-value').allTextContents().then((texts) => texts.map((t) => t.replace(/\s+/g, ' ').trim())),
+    supplied.map((node) => `Total value for ${node.requestedQuantity} ${node.requestedQuantity === 1 ? 'item' : 'items'}: ${money(node.effectiveCostCopper)}`),
+    'A displayed inclusive total is not the backend value for this occurrence'
   )
   assert.deepEqual(
     await locator('node-crafter').allTextContents().then((texts) => texts.map((t) => t.trim())),

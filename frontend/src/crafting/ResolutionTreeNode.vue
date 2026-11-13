@@ -94,15 +94,13 @@ const childSummary = computed(() =>
     </p>
 
     <!--
-      One `Value` per requirement, the backend's own `effectiveCostCopper` (`DOMAIN_SPEC.md` 2.1.1).
-      The separate cash/opportunity/effective figures remain in the API contract for diagnostics and
-      are deliberately not a per-node disclosure here.
+      The backend's display-only unit average and unchanged inclusive total, each on its own line
+      (`DOMAIN_SPEC.md` 2.1.1). Cash and opportunity breakdowns remain in API diagnostics.
     -->
     <p class="node__value" data-test="node-value">
-      <span class="node__value-part" data-test="node-unit-value">Value per item: {{ unitText }}</span>
-      <span aria-hidden="true"> · </span>
+      <span class="node__value-part" data-test="node-unit-value">Value per item: <span class="node__value-amount">{{ unitText }}</span></span>
       <span class="node__value-part" data-test="node-total-value">Total value for {{ node.requestedQuantity }}
-        {{ node.requestedQuantity === 1 ? 'item' : 'items' }}: {{ formatCopper(node.effectiveCostCopper) }}</span>
+        {{ node.requestedQuantity === 1 ? 'item' : 'items' }}: <span class="node__value-amount">{{ formatCopper(node.effectiveCostCopper) }}</span></span>
     </p>
 
     <details v-if="childCount > 0" class="node__children" data-test="node-children">
@@ -154,8 +152,8 @@ const childSummary = computed(() =>
   overflow-wrap: anywhere;
 }
 
-.node__value { overflow-wrap: anywhere; }
-.node__value-part { display: inline-block; }
+.node__value-part { display: block; }
+.node__value-amount { white-space: nowrap; }
 
 .node__identity a { color: inherit; text-decoration: underline; text-decoration-color: var(--color-muted); }
 
@@ -212,7 +210,9 @@ const childSummary = computed(() =>
 
 .node__value {
   display: flex;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: 0;
+  overflow-wrap: anywhere;
   margin: 0;
   color: var(--color-muted);
   font-size: var(--text-sm);
