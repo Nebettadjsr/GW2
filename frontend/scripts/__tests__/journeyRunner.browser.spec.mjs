@@ -83,6 +83,17 @@ describe('journeys against the synthetic origin', () => {
     expect(byName['section-builds']).toMatchObject({ terminal: 'completed', outcome: 'empty' })
   }, 60000)
 
+  browserIt('does not mistake an immediate character heading for loaded details', async () => {
+    const slow = await startSyntheticApp({ bug: 'detail-delayed' })
+    try {
+      const { result } = await runJourney('characters', options({ origin: slow.origin, stableMs: 50, sections: ['equipment'] }), {
+        arm: page => page.goto(`${slow.origin}/#/crafting`)
+      })
+      expect(result.result.status).toBe('completed')
+      expect(actions(result).find(action => action.name === 'select-character').durationMs).toBeGreaterThanOrEqual(850)
+    } finally { await slow.close() }
+  }, 60000)
+
   browserIt('long dwell does not inflate click-to-final latency and initial content is observed without delaying the action', async () => {
     const { result } = await runJourney('crafting', options({ dwellMs: 1500, stableMs: 50 }), io)
     const change = actions(result).find((a) => a.name === 'change-setting')

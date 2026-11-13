@@ -17,7 +17,7 @@ const KEY = 'gw2.materialProtection.v1.acct'
 if (localStorage.getItem(KEY) === null) localStorage.setItem(KEY, JSON.stringify({ committed: [1] }))
 const main = document.getElementById('main'), heading = document.querySelector('[data-test=page-heading]')
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-let pending = false, checked = false, selected = null, section = 'equipment', recalcs = 0, sell = 'instant', shownSell = 'instant'
+let pending = false, checked = false, selected = null, section = 'equipment', recalcs = 0, sell = 'instant', shownSell = 'instant', detailDelayed = false
 setInterval(() => { fetch('/api/sync/status').catch(() => {}) }, 40)
 const h = (html) => { main.innerHTML = html }
 async function render() {
@@ -77,7 +77,16 @@ function drawMaterials() {
 function drawDetail() {
   selected = 'Synthetic Hero'; heading.textContent = selected
   const tabs = ['equipment', 'inventory', 'builds'].map((s) => '<button data-test="section-' + s + '" aria-selected="' + (s === section) + '">' + s + '</button>').join('')
-  h('<section data-test="character-detail">' + tabs + '<div id="panel"></div></section>')
+  h('<section data-test="character-detail"><div data-test="character-summary">' + selected + '</div>' + tabs + '<div id="panel"></div></section>')
+  if (BUG === 'detail-delayed' && !detailDelayed) {
+    detailDelayed = true
+    main.querySelector('[data-test=character-summary]').hidden = true
+    main.insertAdjacentHTML('beforeend', '<p data-test="detail-loading">Loading character</p>')
+    setTimeout(() => {
+      main.querySelector('[data-test=detail-loading]')?.remove()
+      const summary = main.querySelector('[data-test=character-summary]'); if (summary) summary.hidden = false
+    }, 900)
+  }
   for (const s of ['equipment', 'inventory', 'builds']) main.querySelector('[data-test=section-' + s + ']').onclick = async () => {
     section = s; drawDetail(); document.getElementById('panel').innerHTML = '<p data-test="' + s + '-loading">Loading</p>'; await wait(100)
     const panel = { equipment: '<div data-test="equipment-panel">ok</div>', inventory: '<div data-test="inventory-state">GRANT_REQUIRED</div>', builds: BUG === 'builds-nohook' ? '<p>unknown</p>' : '<p data-test="builds-none">No saved builds</p>' }

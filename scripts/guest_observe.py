@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import container_measure as cm  # noqa: E402
 import host_resources as hr  # noqa: E402
 
-SCHEMA = "gw2-guest-observation-1"
+SCHEMA = "gw2-guest-observation-2"
 MODE = {"mode": "preparation-only", "qualification": "not-qualified"}
 MAX_SAMPLES = 3600
 MAX_SECONDS = 3600
@@ -87,8 +87,10 @@ def sample(seconds: int, project: str, containers=container_sample, sampler=None
     while time.monotonic() - started_mono < seconds and len(points) < MAX_SAMPLES:
         tick = time.monotonic()
         point = {"utc": utc_now(), "monoMs": round((tick - started_mono) * 1000)}
-        point["wholeVm"] = host_point(sampler)
-        point["containers"] = containers(project)  # docker stats takes ~1-2 s, which paces the loop
+        host_start = utc_now()
+        point["wholeVm"] = {**host_point(sampler), "collectionStartedUtc": host_start, "collectionEndedUtc": utc_now()}
+        container_start = utc_now()
+        point["containers"] = {**containers(project), "collectionStartedUtc": container_start, "collectionEndedUtc": utc_now()}
         points.append(point)
         sleep(max(0.0, 1.0 - (time.monotonic() - tick)))
     return {
@@ -104,14 +106,15 @@ def sample(seconds: int, project: str, containers=container_sample, sampler=None
     }
 
 
-def window_summary(samples: list[dict]) -> dict:
+def window_summary(samples: list[dict], container_samples: list[dict] | None = None) -> dict:
+    container_samples = samples if container_samples is None else container_samples
     cpu = [s["wholeVm"]["cpuPercent"] for s in samples if s["wholeVm"].get("cpuPercent") is not None]
     mem = [s["wholeVm"]["memUsedBytes"] for s in samples if s["wholeVm"].get("memUsedBytes") is not None]
     vm = {"boundary": hr.BOUNDARY_HOST, "cpuPercent": hr.stats(cpu) if cpu else {"count": 0, "unavailableReason": "no whole-VM CPU samples in window"},
           "memUsedBytes": hr.stats(mem) if mem else {"count": 0, "unavailableReason": "no whole-VM memory samples in window"}}
     per: dict[str, list[dict]] = {}
     reasons = []
-    for s in samples:
+    for s in container_samples:
         value = s["containers"].get("value")
         if value is None:
             reasons.append(s["containers"].get("unavailableReason", "unavailable"))
@@ -121,7 +124,7 @@ def window_summary(samples: list[dict]) -> dict:
     containers = {"boundary": hr.BOUNDARY_CONTAINERS, "perContainer": {name: cm.summarize(rows) for name, rows in sorted(per.items())}}
     if not per:
         containers["unavailableReason"] = reasons[-1] if reasons else "no container samples in window"
-    return {"sampleCount": len(samples), "wholeVm": vm, "containers": containers,
+    return {"sampleCount": len(samples), "sampleCounts": {"wholeVm": len(samples), "containers": len(container_samples)}, "wholeVm": vm, "containers": containers,
             "note": "Whole-VM and container readings are separate; host minus containers is not attributed overhead."}
 
 
@@ -130,12 +133,21 @@ def align(samples_doc: dict, run: dict, clock_offset_ms: int = 0) -> dict:
     window = run["resources"]["alignmentWindow"]
     start = parse_utc(window["startUtc"]) + clock_offset_ms / 1000
     end = parse_utc(window["endUtc"]) + clock_offset_ms / 1000
-    inside = [s for s in samples_doc["samples"] if start <= parse_utc(s["utc"]) <= end]
+    def contained(point, boundary):
+        reading = point.get(boundary, {})
+        a, b = reading.get("collectionStartedUtc"), reading.get("collectionEndedUtc")
+        return bool(a and b and start <= parse_utc(a) <= parse_utc(b) <= end)
+
+    host_inside = [s for s in samples_doc["samples"] if contained(s, "wholeVm")]
+    container_inside = [s for s in samples_doc["samples"] if contained(s, "containers")]
     out = {
         "schema": SCHEMA, "kind": "aligned", **MODE, "runId": run["runId"], "journey": run["journey"],
         "generatorWindow": window, "clockOffsetMs": clock_offset_ms,
         "clockNote": "Generator and guest clocks are independent; the offset is operator-supplied, never inferred.",
-        "covered": bool(inside), "window": window_summary(inside) if inside else {
+        "covered": bool(host_inside and container_inside),
+        "coverage": {"wholeVm": bool(host_inside), "containers": bool(container_inside)},
+        "alignmentNote": "Each boundary uses its own full collection interval. Partial overlaps and legacy samples without intervals are excluded; CPU values remain interval observations, not instantaneous peaks.",
+        "window": window_summary(host_inside, container_inside) if host_inside or container_inside else {
             "sampleCount": 0, "unavailableReason": "no guest samples fall inside the run window"},
         "generatorHealth": run.get("generatorHealth"),
         "generatorHealthNote": "Generator health is reported apart from guest/container health; it is not VM saturation.",

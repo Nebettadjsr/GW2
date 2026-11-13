@@ -221,7 +221,8 @@ export async function charactersFlow(user, options) {
       name = shortText(await item.getAttribute('data-name'))
       await item.click()
     },
-    final: async () => name !== '' && (await visible(page, 'character-detail')) && (await text(page, 'page-heading')).includes(name) && await automaticSettled(page)
+    final: async () => name !== '' && (await visible(page, 'character-detail')) && (await visible(page, 'character-summary')) &&
+      !(await anyVisible(page, ['detail-loading', 'detail-error'])) && (await text(page, 'page-heading')).includes(name) && await automaticSettled(page)
   })
   const rendered = []
   const sectionOutcomes = {}

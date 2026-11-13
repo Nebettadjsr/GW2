@@ -39,7 +39,9 @@ STATS_LINE = json.dumps({"Name": "gw2-backend-1", "CPUPerc": "12.5%", "MemUsage"
 def sample_doc(containers):
     return {"samples": [
         {"utc": f"2026-11-13T10:00:0{i}.000Z", "monoMs": i * 1000,
-         "wholeVm": {"boundary": hr.BOUNDARY_HOST, "cpuPercent": 10.0 * (i + 1), "memUsedBytes": 1000 * (i + 1)}, "containers": containers}
+         "wholeVm": {"boundary": hr.BOUNDARY_HOST, "cpuPercent": 10.0 * (i + 1), "memUsedBytes": 1000 * (i + 1),
+                     "collectionStartedUtc": f"2026-11-13T10:00:0{i}.000Z", "collectionEndedUtc": f"2026-11-13T10:00:0{i}.000Z"},
+         "containers": {**containers, "collectionStartedUtc": f"2026-11-13T10:00:0{i}.000Z", "collectionEndedUtc": f"2026-11-13T10:00:0{i}.000Z"}}
         for i in range(5)]}
 
 
@@ -89,6 +91,26 @@ class SampleTest(unittest.TestCase):
 
 
 class AlignTest(unittest.TestCase):
+    def test_boundaries_use_their_own_collection_intervals(self):
+        containers = {"value": {"backend": {"cpuPercent": 5, "memBytes": 100}}}
+        doc = sample_doc(containers)
+        doc["samples"] = doc["samples"][:2]
+        doc["samples"][0]["containers"].update(collectionStartedUtc="2026-11-13T10:00:01.400Z", collectionEndedUtc="2026-11-13T10:00:01.500Z")
+        doc["samples"][1]["containers"].update(collectionStartedUtc="2026-11-13T10:00:02.000Z", collectionEndedUtc="2026-11-13T10:00:04.000Z")
+        result = go.align(doc, RUN)
+        self.assertTrue(result["covered"])
+        self.assertEqual(result["window"]["sampleCounts"], {"wholeVm": 1, "containers": 1})
+        self.assertEqual(result["window"]["wholeVm"]["cpuPercent"]["peak"], 20)
+        self.assertEqual(result["window"]["containers"]["perContainer"]["backend"]["cpu_peak"], 5)
+
+    def test_legacy_shared_timestamps_cannot_prove_collection_alignment(self):
+        doc = sample_doc({"value": None})
+        for point in doc["samples"]:
+            for boundary in ("wholeVm", "containers"):
+                point[boundary].pop("collectionStartedUtc")
+                point[boundary].pop("collectionEndedUtc")
+        self.assertFalse(go.align(doc, RUN)["covered"])
+
     def test_slices_to_the_run_window_keeping_boundaries_apart(self):
         containers = {"boundary": hr.BOUNDARY_CONTAINERS, "value": {"gw2-backend-1": {"cpuPercent": 5.0, "memBytes": 100.0}}}
         aligned = go.align(sample_doc(containers), RUN)
