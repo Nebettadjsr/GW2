@@ -133,6 +133,7 @@ export async function recordSession(options, io = {}) {
       await rl.question('Log in / enter keys manually in the browser now. Press Enter here to ARM recording... ')
     }
     const startUrl = page.url()
+    const armedAtUtc = new Date().toISOString()
     const armedAtMs = performance.now()
     armed = true
     await page.evaluate(overlayScript(options.busy))
@@ -158,7 +159,7 @@ export async function recordSession(options, io = {}) {
       type: event.type, selector: event.selector ?? null, url: event.url === undefined ? null : safeUrl(event.url),
       offsetMs: Math.round(event.atMs - armedAtMs)
     }))]
-    const timing = buildTimingOutput({ scenario, stepTimings, attribution: observer.attribution(armedAtMs), startedAt: new Date().toISOString() })
+    const timing = buildTimingOutput({ scenario, stepTimings, attribution: observer.attribution(armedAtMs), startedAt: armedAtUtc })
     writeFileSync(`${base}.record-timing.json`, `${JSON.stringify({ mode: 'record', ...timing }, null, 2)}\n`)
     console.log(`Wrote ${base}.scenario.json (${scenario.steps.length} steps) and ${base}.record-timing.json. Edit pauses, then run replay.`)
     return { scenario, timing, files: [`${base}.scenario.json`, `${base}.record-timing.json`] }

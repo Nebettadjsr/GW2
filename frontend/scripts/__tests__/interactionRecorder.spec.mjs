@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   LIMITS, REDACTED, boundEvent, createBuffer, resolveStepUrl, annotatePause, attributeCheckpoints, baselineSkeleton, buildScenario, buildTimingOutput,
   classifyGap, replayScenario, safeUrl, safeValue
@@ -15,6 +15,7 @@ import { DEFAULT_OUTPUT_DIR, recordSession, replay } from '../interaction-record
 const here = dirname(fileURLToPath(import.meta.url))
 const KEY = '12345678-ABCD-1234-ABCD-12345678901234567890-ABCD-1234-ABCD-123456789012'
 const CP = { initial: { selector: '#saved', text: 'saved' }, final: { selector: '#final', text: 'final' } }
+const browserIt = it.runIf(process.env.GW2_RECORDER_BROWSER === '1')
 
 describe('serialization and credential exclusion', () => {
   const events = [
@@ -204,8 +205,6 @@ describe('origin, in-memory bounds and sampling during actions', () => {
 })
 
 describe('real Playwright record → replay roundtrip (synthetic page, ongoing polling)', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'gw2-rec-'))
-  afterAll(() => rmSync(dir, { recursive: true, force: true }))
   const html = `<!doctype html><title>t</title><label for="c">Opt in</label><input id="c" type="checkbox">
     <button id="go">Go</button><div id="out"></div>
     <script>
@@ -217,7 +216,9 @@ describe('real Playwright record → replay roundtrip (synthetic page, ongoing p
       }
     </script>`
 
-  it('records a replayable scenario with timing, no Stop click and one checkbox toggle', async () => {
+  browserIt('records a replayable scenario with timing, no Stop click and one checkbox toggle', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gw2-rec-'))
+    let firstActionUtc
     let polls = 0
     const server = createServer((req, res) => {
       if (req.url === '/poll') { polls++; res.end('{}') } else res.end(html)
@@ -231,6 +232,7 @@ describe('real Playwright record → replay roundtrip (synthetic page, ongoing p
           headless: true,
           arm: async () => {},
           untilStop: async (page, stopped) => {
+            firstActionUtc = Date.now()
             await page.click('label')
             await page.click('#go')
             await page.waitForSelector('#final')
@@ -246,6 +248,7 @@ describe('real Playwright record → replay roundtrip (synthetic page, ongoing p
       expect(JSON.stringify(recorded.scenario)).not.toMatch(/Stop|gw2-recorder/)
       expect(steps.filter((x) => /Opt in|#c/.test(x.selector ?? ''))).toHaveLength(1)
       const rt = recorded.timing.attribution
+      expect(Date.parse(recorded.timing.startedAt)).toBeLessThanOrEqual(firstActionUtc)
       expect(rt.initialContentMs).not.toBeNull()
       expect(rt.finalRenderMs).toBeGreaterThan(rt.initialContentMs)
       expect(readdirSync(dir).sort()).toEqual(['roundtrip.record-timing.json', 'roundtrip.scenario.json'])
@@ -259,6 +262,7 @@ describe('real Playwright record → replay roundtrip (synthetic page, ongoing p
       expect(readdirSync(dir)).toContain('roundtrip.timing.json')
     } finally {
       server.close()
+      rmSync(dir, { recursive: true, force: true })
     }
   }, 60000)
 })
@@ -291,7 +295,7 @@ describe('hash routes and idempotent checked state', () => {
       addEventListener('hashchange', show); addEventListener('change', show); show()
     </script>`
 
-  it('records route and checked state and replays them from a different initial state', async () => {
+  browserIt('records route and checked state and replays them from a different initial state', async () => {
     const server = createServer((req, res) => res.end(html))
     await new Promise((r) => server.listen(0, '127.0.0.1', r))
     const dir = mkdtempSync(join(tmpdir(), 'gw2-rec2-'))

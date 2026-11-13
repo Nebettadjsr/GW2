@@ -262,5 +262,7 @@ npm run record:interaction -- skeleton --out my-baseline.json
   are kept (credential-looking hash parameters and non-route fragments are dropped), and a recorded navigation to the
   page already current after its click is skipped on replay instead of reloading. In-memory event/sample buffers are bounded too; dropped counts
   go into `truncatedSteps`/`samplesTruncated`.
-- Tests (include a real headless Chromium record→replay roundtrip; set `GW2_BROWSER_PATH` if needed):
-  `npx vitest run scripts/__tests__/interactionRecorder.spec.mjs`.
+- Pure checks: `npx vitest run scripts/__tests__/interactionRecorder.spec.mjs` (no installed browser required).
+  The two real-browser roundtrips are explicitly opt-in: `npm run test:interaction-browser`; install Chrome/Edge
+  or set `GW2_BROWSER_PATH`. They retain all assertions and fail if the explicitly requested browser is unavailable.
+  Record timing uses the UTC arming timestamp, so monotonic offsets align with the actual recording window.
