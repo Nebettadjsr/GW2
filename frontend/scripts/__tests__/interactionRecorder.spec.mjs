@@ -1,7 +1,7 @@
 /** Narrow checks for the local interaction recorder (STORY-RESOURCE-001). Synthetic data only. */
 import { execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -115,6 +115,7 @@ describe('replay against a stubbed page with continuing polling', () => {
       click: async (s) => calls.push(['click', s]),
       selectOption: async (s, v) => calls.push(['select', s, v]),
       fill: async (s, v) => calls.push(['fill', s, v]),
+      locator: () => ({ blur: async () => {} }),
       isVisible: async (sel) => {
         if (sel === '#poll-status') return true
         return sel === '#saved' ? clock.t >= initialAt : finalAt !== null && clock.t >= finalAt
@@ -334,3 +335,34 @@ describe('hash routes and idempotent checked state', () => {
     }
   }, 60000)
 })
+
+browserIt('connects before timing and commits a final text input through change', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gw2-rec-connect-'))
+  const server = createServer((_req, res) => res.end(`<!doctype html>
+    <button id="connect">Connect</button><section id="form" hidden>
+    <p id="saved">connected</p><input id="amount"><p id="final"></p></section>
+    <script>
+      connect.onclick = () => { document.getElementById('form').hidden = false }
+      amount.onchange = () => { document.getElementById('final').textContent = 'committed ' + amount.value }
+    </script>`))
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  let connectedAt
+  try {
+    const scenarioFile = join(dir, 'connect.scenario.json')
+    writeFileSync(scenarioFile, JSON.stringify({
+      name: 'synthetic-connect', synthetic: true, baseUrl: `http://127.0.0.1:${server.address().port}`,
+      checkpoints: { initial: { selector: '#saved', text: 'connected' }, final: { selector: '#final', text: 'committed 42' } },
+      steps: [{ type: 'navigate', url: '/' }, { type: 'input', selector: '#amount', value: '42' }]
+    }))
+    const result = await replay({ _: [scenarioFile], out: dir, 'timeout-ms': '3000' }, {
+      headless: true,
+      arm: async page => { await page.click('#connect'); connectedAt = Date.now() }
+    })
+    expect(result.timing.attribution.finalQualified).toBe(true)
+    expect(Date.parse(result.timing.startedAt)).toBeGreaterThanOrEqual(connectedAt)
+    expect(readFileSync(result.file, 'utf8')).not.toContain('storageState')
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+    rmSync(dir, { recursive: true, force: true })
+  }
+}, 30000)

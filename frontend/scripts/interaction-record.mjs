@@ -23,7 +23,7 @@ import { createInterface } from 'node:readline/promises'
 import { chromium } from 'playwright-core'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import {
-  LIMITS, baselineSkeleton, boundEvent, buildScenario, buildTimingOutput, createBuffer, createObserver, replayScenario, safeUrl
+  LIMITS, baselineSkeleton, boundEvent, buildScenario, buildTimingOutput, createBuffer, createObserver, replayScenario, resolveStepUrl, safeUrl
 } from './interactionRecorder.mjs'
 
 export const DEFAULT_OUTPUT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '.interaction-recordings')
@@ -34,7 +34,7 @@ function parseArgs(argv) {
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i]
     if (!arg.startsWith('--')) options._.push(arg)
-    else if (['--replay-gaps'].includes(arg)) options[arg.slice(2)] = true
+    else if (['--replay-gaps', '--ignore-https-errors'].includes(arg)) options[arg.slice(2)] = true
     else options[arg.slice(2)] = rest[++i]
   }
   return { command, options }
@@ -115,8 +115,10 @@ export async function recordSession(options, io = {}) {
   let finish
   const stopped = new Promise((resolveStop) => { finish = resolveStop })
   let rl
+  let observing = false
+  let poller
   try {
-    const page = await (await browser.newContext()).newPage()
+    const page = await (await browser.newContext({ ignoreHTTPSErrors: options['ignore-https-errors'] === true })).newPage()
     await page.exposeBinding('gw2Record', (_source, event) => {
       if (!armed) return
       if (event.type === '__stop') return finish()
@@ -139,8 +141,8 @@ export async function recordSession(options, io = {}) {
     await page.evaluate(overlayScript(options.busy))
     // Observe the rendered checkpoints from arming until stop, so initial and final transitions get timestamps.
     const observer = createObserver(page, checkpoints, () => performance.now())
-    let observing = true
-    const poller = (async () => {
+    observing = true
+    poller = (async () => {
       while (observing) { await observer.sample(); await new Promise((r) => setTimeout(r, 50)) }
     })()
     console.log('Recording. Press Enter here (or Stop in the overlay) to finish.')
@@ -164,6 +166,8 @@ export async function recordSession(options, io = {}) {
     console.log(`Wrote ${base}.scenario.json (${scenario.steps.length} steps) and ${base}.record-timing.json. Edit pauses, then run replay.`)
     return { scenario, timing, files: [`${base}.scenario.json`, `${base}.record-timing.json`] }
   } finally {
+    observing = false
+    await poller?.catch(() => {})
     rl?.close()
     await browser.close()
   }
@@ -175,9 +179,21 @@ export async function replay(options, io = {}) {
   const scenario = JSON.parse(readFileSync(file, 'utf8'))
   const outDir = resolve(options.out ?? DEFAULT_OUTPUT_DIR)
   mkdirSync(outDir, { recursive: true })
-  const browser = await chromium.launch({ executablePath: resolveBrowserPath(), headless: io.headless === true || options.headless === 'true' })
+  const headless = io.headless === true || options.headless === 'true'
+  const browser = await chromium.launch({ executablePath: resolveBrowserPath(), headless })
+  let rl
   try {
-    const page = await (await browser.newContext()).newPage()
+    const page = await (await browser.newContext({ ignoreHTTPSErrors: options['ignore-https-errors'] === true })).newPage()
+    // Authenticate in the live browser before timing; never export or restore auth/storage state.
+    if (!headless || io.arm) {
+      const firstNavigation = scenario.steps.find(step => step.type === 'navigate')
+      await page.goto(resolveStepUrl(scenario, firstNavigation?.url ?? '/', options.url))
+      if (io.arm) await io.arm(page)
+      else {
+        rl = createInterface({ input: process.stdin, output: process.stdout })
+        await rl.question('Connect the account manually if needed. Press Enter to START replay timing... ')
+      }
+    }
     const timing = await replayScenario(page, scenario, {
       replayGaps: options['replay-gaps'] === true, timeoutMs: Number(options['timeout-ms'] ?? 30000), url: options.url
     })
@@ -187,6 +203,7 @@ export async function replay(options, io = {}) {
     console.log(JSON.stringify(timing.attribution))
     return { timing, file: out }
   } finally {
+    rl?.close()
     await browser.close()
   }
 }

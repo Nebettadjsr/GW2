@@ -266,3 +266,7 @@ npm run record:interaction -- skeleton --out my-baseline.json
   The two real-browser roundtrips are explicitly opt-in: `npm run test:interaction-browser`; install Chrome/Edge
   or set `GW2_BROWSER_PATH`. They retain all assertions and fail if the explicitly requested browser is unavailable.
   Record timing uses the UTC arming timestamp, so monotonic offsets align with the actual recording window.
+- Headed replay opens the target first and prompts for manual account connection before starting the timer.
+  Headless synthetic replay starts without an account; actual-account automation supplies an in-memory bootstrap
+  before timing and never exports auth state. Text input replay blurs the field to reproduce its recorded change.
+  For the self-signed local VM only, `record` and `replay` accept the explicit `--ignore-https-errors` flag.

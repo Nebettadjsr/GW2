@@ -331,6 +331,8 @@ export async function replayScenario(page, scenario, options = {}) {
       else if (step.type === 'input') {
         if (step.value === REDACTED) throw new Error(`step input ${step.selector} was redacted; credential entry is manual only`)
         await page.fill(step.selector, step.value)
+        // The recorder captures committed `change`, including controls whose calculation runs on blur.
+        await page.locator(step.selector).blur()
       } else throw new Error(`unknown step type: ${step.type}`)
       stepTimings.push({
         type: step.type, selector: step.selector ?? null, url: step.url ?? null,
