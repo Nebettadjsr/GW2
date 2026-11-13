@@ -133,6 +133,20 @@ describe('journeys against the synthetic origin', () => {
     } finally { await hung.close() }
   }, 60000)
 
+  browserIt('keeps calculation checkpoints working after the request log fills', async () => {
+    const flooded = await startSyntheticApp({ bug: 'request-flood' })
+    try {
+      const { result } = await runJourney('crafting', options({ origin: flooded.origin, timeoutMs: 15000 }), {
+        arm: page => page.goto(`${flooded.origin}/#/crafting`)
+      })
+      expect(result.result.status).toBe('completed')
+      expect(result.requestSummary.truncatedRequests).toBeGreaterThan(0)
+      expect(result.requests).toHaveLength(400)
+      expect(result.requests.some(r => r.method === 'POST' && r.path === '/api/crafting/profit')).toBe(false)
+      expect(actions(result).filter(a => a.name === 'change-setting' || a.name === 'restore-setting').every(a => a.terminal === 'completed')).toBe(true)
+    } finally { await flooded.close() }
+  }, 60000)
+
   browserIt('an unknown character section hook is a timeout and the run is not completed', async () => {
     const odd = await startSyntheticApp({ bug: 'builds-nohook' })
     try {

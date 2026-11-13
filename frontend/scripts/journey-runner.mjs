@@ -47,6 +47,9 @@ function createUser({ index, options, runStart, health, accountHash }) {
   const mono = () => performance.now()
   const offset = (t = mono()) => Math.round((t - runStart) * 1000) / 1000
   const pending = new Map()
+  // At most two private checkpoints (one per sell-price flag), independent of the
+  // bounded exported trace. Background traffic must not change journey outcomes.
+  const latestCalculations = new Map()
   const user = { offset, id, actions, events, requests, page: null, context: null, sequence: 0, accountHash }
 
   user.attach = (page) => {
@@ -84,13 +87,18 @@ function createUser({ index, options, runStart, health, accountHash }) {
       record.endOffsetMs = offset(ended)
       record.latencyMs = failure ? null : Math.round(ended - record[T0])
       record.requestId = response ? shortText(response.headers()[REQUEST_ID_HEADER] ?? '', 64) || null : null
+      if (record.method === 'POST' && record.path === '/api/crafting/profit' && typeof record[LISTING_SELL] === 'boolean' &&
+          record.state === 'completed' && record.status >= 200 && record.status < 300) {
+        const previous = latestCalculations.get(record[LISTING_SELL])
+        if (!previous || previous[T0] < record[T0]) latestCalculations.set(record[LISTING_SELL], record)
+      }
     }
     page.on('requestfinished', (request) => { settle(request, false).catch(() => {}) })
     page.on('requestfailed', (request) => { settle(request, true).catch(() => {}) })
   }
 
   /** Completed, successful requests of THIS user that were offered after `sinceMono` (a performance.now value). */
-  user.matchRequests = ({ method, path, sinceMono, listingSell }) => requests.items.filter((r) =>
+  user.matchRequests = ({ method, path, sinceMono, listingSell }) => [...latestCalculations.values()].filter((r) =>
     r.method === method && r.path === path && r.state === 'completed' && r.status >= 200 && r.status < 300 && r[T0] >= sinceMono &&
     (listingSell === undefined || r[LISTING_SELL] === listingSell))
 

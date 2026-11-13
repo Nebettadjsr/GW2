@@ -49,6 +49,10 @@ function drawCrafting(busy) {
   const select = main.querySelector('[data-test=setting-listingSell]')
   select.onchange = async () => {
     sell = select.value; drawCrafting(true)
+    if (BUG === 'request-flood') {
+      // Exhaust the exported trace before the calculation is offered.
+      for (let batch = 0; batch < 11; batch++) await Promise.all(Array.from({length:40}, () => fetch('/api/sync/status')))
+    }
     if (BUG === 'hide-busy') fetch('/api/crafting/profit?noise=1', { method: 'POST', body: JSON.stringify({settings:{listingSell:sell !== 'listing'}}) })
     await fetch('/api/crafting/profit', { method: 'POST', body: JSON.stringify({settings:{listingSell:sell === 'listing'}}) }); recalcs += 1; shownSell = sell; drawCrafting(false)
   }
