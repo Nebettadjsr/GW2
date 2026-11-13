@@ -190,9 +190,23 @@ final class CraftingResolutionMapper {
                 node.cashCostCopper(),
                 node.opportunityCostCopper(),
                 node.effectiveCostCopper(),
+                unitCost(node.effectiveCostCopper(), node.requestedQuantity()),
+                isApproximate(node.effectiveCostCopper(), node.requestedQuantity()),
                 children,
                 iconUrl(node.itemId(), items),
                 recipeKnowledge(node.recipeId(), knownRecipeIds, discoverableRecipeIds));
+    }
+
+    /** Display projection only: whole-copper HALF_UP average of the node total; null if undefined. */
+    static Integer unitCost(Integer totalCopper, int requestedQuantity) {
+        if (totalCopper == null || requestedQuantity <= 0) return null;
+        return java.math.BigDecimal.valueOf(totalCopper)
+                .divide(java.math.BigDecimal.valueOf(requestedQuantity), 0, java.math.RoundingMode.HALF_UP)
+                .intValueExact();
+    }
+
+    static boolean isApproximate(Integer totalCopper, int requestedQuantity) {
+        return totalCopper != null && requestedQuantity > 0 && totalCopper % requestedQuantity != 0;
     }
 
     private static String recipeKnowledge(Integer recipeId,

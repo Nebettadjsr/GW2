@@ -12,7 +12,7 @@ import { wikiUrl } from './recipeLabel'
 /**
  * One requirement of the resolution tree, recursively including the ingredients of a selected or
  * attempted craft. Both crafting pages use this one compact presentation: backend-supplied identity,
- * needed and source quantities, the named crafter and a single `Value`. Raw state, blocked-reason and
+ * needed and source quantities, the named crafter and a per-item and a total `Value`. Raw state, blocked-reason and
  * acquisition-method codes remain in backend/API diagnostics. No value is recalculated, and repeated
  * items remain separate ordered occurrences.
  *
@@ -35,6 +35,11 @@ const sourcing = computed(() => [
 ].filter((source) => source.quantity > 0))
 const playerStatus = computed(() => nodePlayerStatus(props.node))
 const wikiHref = computed(() => wikiUrl(props.node.itemName))
+
+const unitText = computed(() => {
+  const text = formatCopper(props.node.effectiveUnitCostCopper)
+  return props.node.effectiveUnitCostApproximate && props.node.effectiveUnitCostCopper !== null ? `≈ ${text}` : text
+})
 
 const childCount = computed(() => props.node.children.length)
 const childSummary = computed(() =>
@@ -94,7 +99,10 @@ const childSummary = computed(() =>
       are deliberately not a per-node disclosure here.
     -->
     <p class="node__value" data-test="node-value">
-      Value: {{ formatCopper(node.effectiveCostCopper) }}
+      <span class="node__value-part" data-test="node-unit-value">Value per item: {{ unitText }}</span>
+      <span aria-hidden="true"> · </span>
+      <span class="node__value-part" data-test="node-total-value">Total value for {{ node.requestedQuantity }}
+        {{ node.requestedQuantity === 1 ? 'item' : 'items' }}: {{ formatCopper(node.effectiveCostCopper) }}</span>
     </p>
 
     <details v-if="childCount > 0" class="node__children" data-test="node-children">
@@ -145,6 +153,9 @@ const childSummary = computed(() =>
   font-weight: 600;
   overflow-wrap: anywhere;
 }
+
+.node__value { overflow-wrap: anywhere; }
+.node__value-part { display: inline-block; }
 
 .node__identity a { color: inherit; text-decoration: underline; text-decoration-color: var(--color-muted); }
 

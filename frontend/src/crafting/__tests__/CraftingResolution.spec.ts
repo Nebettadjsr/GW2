@@ -172,6 +172,8 @@ describe('CraftingResolution', () => {
         cashCostCopper: 900,
         opportunityCostCopper: 334,
         effectiveCostCopper: 1234,
+        effectiveUnitCostCopper: 30,
+        effectiveUnitCostApproximate: true,
         children: [node({
           itemId: 200,
           itemName: 'Cured Thin Leather Square',
@@ -187,7 +189,45 @@ describe('CraftingResolution', () => {
 
       expect(nodeAt(region, '0').find('[data-test="node-requested"]').text()).toBe('41 needed')
       expect(nodeAt(region, '0.0').find('[data-test="node-requested"]').text()).toBe('205 needed')
-      expect(nodeAt(region, '0').find('[data-test="node-value"]').text()).toBe('Value: 12s 34c')
+      expect(nodeAt(region, '0').find('[data-test="node-value"]').text()).toBe(
+        'Value per item: ≈ 30c · Total value for 41 items: 12s 34c'
+      )
+      // The 205-item child: 1234 / 205 = 6.02 -> 6c, approximate, independent of its parent.
+      expect(nodeAt(region, '0.0').find('[data-test="node-value"]').text()).toBe(
+        'Value per item: ≈ 6c · Total value for 205 items: 12s 34c'
+      )
+    })
+  })
+
+  describe('per-item and total value wording', () => {
+    it('showsBackendUnitValueWithoutApproximationMarkerWhenExactAndHandlesZeroQuantity', () => {
+      const root = node({
+        requestedQuantity: 123,
+        effectiveCostCopper: 1353,
+        children: [node({ requestedQuantity: 0, effectiveCostCopper: 0 })]
+      })
+      const region = ready({ tree: root })
+
+      expect(nodeAt(region, '0').find('[data-test="node-value"]').text()).toBe(
+        'Value per item: 11c · Total value for 123 items: 13s 53c'
+      )
+      expect(nodeAt(region, '0.0').find('[data-test="node-value"]').text()).toBe(
+        'Value per item: — · Total value for 0 items: 0c'
+      )
+    })
+
+    it('showsOnlyTheBackendApproximationFlagAndNeverRecomputesIt', () => {
+      const root = node({
+        requestedQuantity: 3,
+        effectiveCostCopper: 10,
+        effectiveUnitCostCopper: 77,
+        effectiveUnitCostApproximate: false
+      })
+      const region = ready({ tree: root })
+
+      expect(nodeAt(region, '0').find('[data-test="node-value"]').text()).toBe(
+        'Value per item: 77c · Total value for 3 items: 10c'
+      )
     })
   })
 
@@ -223,7 +263,7 @@ describe('CraftingResolution', () => {
       const region = ready({ tree: blockedTree }, blockedTree.recipeId ?? 13)
 
       expect(region.text()).not.toContain('Nothing supplied this requirement')
-      expect(fact(region, '0', 'node-value')).toBe('Value: —')
+      expect(fact(region, '0', 'node-value')).toBe('Value per item: — · Total value for 1 item: —')
     })
   })
 
@@ -283,8 +323,8 @@ describe('CraftingResolution', () => {
       const region = ready({ tree: blockedTree })
 
       // A known zero remains distinct from a missing valuation; resolver codes stay out of the UI.
-      expect(fact(region, '0.1', 'node-value')).toBe('Value: 0c')
-      expect(fact(region, '0.0', 'node-value')).toBe('Value: —')
+      expect(fact(region, '0.1', 'node-value')).toBe('Value per item: 0c · Total value for 2 items: 0c')
+      expect(fact(region, '0.0', 'node-value')).toBe('Value per item: — · Total value for 4 items: —')
       expect(ownFacts(region, '0.0', 'node-player-status')[0]).toContain('Not available on TP')
       expect(region.find('[data-test="node-technical-details"]').exists()).toBe(false)
       expect(nodeAt(region, '0.0').find('[data-test="node-wiki"]').attributes('href')).toContain('Pile%20of%20Dust')

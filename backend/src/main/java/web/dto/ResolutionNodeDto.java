@@ -28,6 +28,11 @@ import java.util.List;
  *
  * <p>This type exists only at the HTTP boundary: it is not a domain, persistence or GW2 API model.
  *
+ * @param effectiveUnitCostCopper display-only average of {@code effectiveCostCopper} over
+ *                           {@code requestedQuantity}, whole copper rounded HALF_UP; null when the
+ *                           total is missing or the quantity is not positive. Not a quote
+ * @param effectiveUnitCostApproximate true exactly when a known total does not divide evenly by a
+ *                           positive requested quantity, so the unit value was rounded
  * @param itemName           null when this operation captured no usable name; display may fall back
  *                           to the ID
  * @param methods            the acquisition methods that actually contributed
@@ -65,6 +70,8 @@ public record ResolutionNodeDto(int itemId,
                                 Integer cashCostCopper,
                                 Integer opportunityCostCopper,
                                 Integer effectiveCostCopper,
+                                Integer effectiveUnitCostCopper,
+                                boolean effectiveUnitCostApproximate,
                                 List<ResolutionNodeDto> children,
                                 String iconUrl,
                                 @JsonInclude(JsonInclude.Include.NON_NULL) String recipeKnowledge) {

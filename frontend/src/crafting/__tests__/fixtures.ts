@@ -486,7 +486,13 @@ export function echoedProfitResponse(
  * `producedQuantity` exceeds `craftedQuantity`, and the same item appears twice in one tree.
  */
 export function node(overrides: Partial<ResolutionNode> = {}): ResolutionNode {
+  // Test-fixture stand-in for the backend projection (HALF_UP whole copper), so fixtures stay terse.
+  const total = overrides.effectiveCostCopper === undefined ? 0 : overrides.effectiveCostCopper
+  const quantity = overrides.requestedQuantity ?? 1
+  const hasUnit = total !== null && quantity > 0
   return {
+    effectiveUnitCostCopper: hasUnit ? Math.floor(total / quantity + 0.5) : null,
+    effectiveUnitCostApproximate: hasUnit && total % quantity !== 0,
     itemId: 9001,
     itemName: 'Requirement',
     requestedQuantity: 1,
