@@ -67,50 +67,59 @@ async function savedSelectionDigest(page) {
 
 const guardCounters = (page) => page.evaluate(() => ({ ...(window.__gw2JourneyGuard ?? { writes: -1, blockedCommitClicks: -1 }) }))
 
+const PROFIT_PATH = '/api/crafting/profit'
+
 export async function craftingFlow(user, options) {
   const { page } = user
   const hash = '#/crafting'
   const busy = ['loading', 'pending', 'resolution-loading']
-  const resultsShown = (ids) => anyVisible(page, ids)
+  const resultsShown = () => anyVisible(page, ['profit-row', 'empty', 'no-matches'])
+  const refreshEnabled = () => page.isEnabled(sel('refresh-data-and-results')).catch(() => false)
+  const setting = sel('setting-listingSell')
   await user.action({
     name: 'open-crafting', description: 'Open the Crafting Profit destination',
     initial: async () => visible(page, 'profit-row'),
     perform: () => navigate(page, options.origin, hash),
     final: async () => (await onPage(page, hash, 'Crafting')) && !(await anyVisible(page, busy)) &&
-      (await resultsShown(['profit-row', 'empty', 'no-matches'])) && (await page.isEnabled(sel('refresh-data-and-results')).catch(() => false))
+      (await resultsShown()) && (await visible(page, 'setting-listingSell')) && (await refreshEnabled())
   })
-  const before = await text(page, 'summary')
-  await user.action({
-    name: 'recalculate', description: 'Run the provisional calculation control and wait for the new result', dwell: true,
-    initial: async () => visible(page, 'profit-row'),
-    perform: () => page.click(sel('refresh-data-and-results')),
-    // The result belongs to THIS action only when an API response to a request started after the click completed.
-    final: async (performedAt) => (await onPage(page, hash, 'Crafting')) && !(await anyVisible(page, busy)) &&
-      user.requests.items.some((r) => r.path.startsWith('/api/') && r.completed && r.startOffsetMs >= user.offset(performedAt)) &&
-      (await resultsShown(['profit-row', 'empty', 'no-matches'])) && (await page.isEnabled(sel('refresh-data-and-results')).catch(() => false)),
-    outcome: async () => ({ summaryChanged: (await text(page, 'summary')) !== before, summaryBefore: before === '' ? null : 'present' })
-  })
-  if (!(await visible(page, 'profit-row'))) {
-    await user.action({
-      name: 'inspect-result', description: 'Result detail interaction (no result row is available)', optional: true,
-      perform: async () => { throw new Error('no result row is rendered, so the detail interaction is unsupported on this account') },
-      final: async () => false
-    })
-    return { sections: [], note: 'detail interaction unsupported: no result rows' }
+  const original = await page.inputValue(setting).catch(() => null)
+  if (original === null) {
+    user.skip('change-setting', 'the calculation settings control is not rendered')
+    user.skip('inspect-result', 'no calculation result is available')
+    return { sections: [], note: 'calculation setting control unavailable' }
   }
-  let rowName = ''
-  await user.action({
-    name: 'inspect-result', description: 'Select the first result row and wait for its detail', dwell: true,
-    perform: async () => {
-      const button = page.locator(`${sel('profit-row')} button`).first()
-      rowName = shortText(await button.textContent())
-      await button.click()
-    },
-    final: async () => (await visible(page, 'detail-name')) && !(await visible(page, 'detail-loading')) &&
-      rowName !== '' && (await text(page, 'detail-name')).includes(rowName.slice(0, 20)),
-    outcome: async () => ({ detailMatchesSelectedRow: true })
+  // A real calculation-setting change (not a broad account refresh). It is complete only when THIS change's
+  // calculation request, offered after the click, has answered AND the page shows the new setting with usable results.
+  const changeTo = async (name, description, target, dwell) => user.action({
+    name, description, dwell,
+    initial: async () => visible(page, 'profit-row'),
+    perform: () => page.selectOption(setting, target),
+    final: async (performedAt) => (await onPage(page, hash, 'Crafting')) && (await page.inputValue(setting).catch(() => null)) === target &&
+      user.matchRequests({ method: 'POST', path: PROFIT_PATH, sinceMono: performedAt }).length > 0 &&
+      !(await anyVisible(page, busy)) && (await resultsShown()) && (await refreshEnabled()),
+    outcome: async () => ({ setting: 'sell price', from: original, to: target })
   })
-  return { sections: ['crafting-detail'] }
+  const target = original === 'listing' ? 'instant' : 'listing'
+  await changeTo('change-setting', 'Switch the sell-price calculation setting and wait for its own result', target, true)
+  let rowName = ''
+  if (!(await visible(page, 'profit-row'))) {
+    user.skip('inspect-result', 'no result row is rendered, so the detail interaction is unsupported on this account')
+  } else {
+    await user.action({
+      name: 'inspect-result', description: 'Select the first result row and wait for its detail', dwell: true,
+      perform: async () => {
+        const row = page.locator(sel('profit-row')).first()
+        rowName = shortText(await row.locator('.recipe-name').first().textContent())
+        await row.locator(sel('select-row')).click()
+      },
+      final: async () => rowName !== '' && (await visible(page, 'detail-name')) && !(await anyVisible(page, ['detail-loading', 'resolution-loading'])) &&
+        (await text(page, 'detail-name')).includes(rowName.slice(0, 20)),
+      outcome: async () => ({ detailMatchesSelectedRow: true })
+    })
+  }
+  await changeTo('restore-setting', 'Put the sell-price setting back to the value found at the start', original, false)
+  return { sections: rowName === '' ? [] : ['crafting-detail'] }
 }
 
 export async function bankMaterialsFlow(user, options) {
@@ -145,9 +154,14 @@ export async function bankMaterialsFlow(user, options) {
     },
     final: async () => (await pendingState()) && (await page.isEnabled(sel('selection-discard')).catch(() => false)) && (await checkbox().isChecked()) !== initiallyChecked
   })
+  const bankReady = async () => (await onPage(page, '#/bank', 'Bank')) && !(await visible(page, 'bank-loading')) && (await anyVisible(page, ['bank-slot', 'bank-no-slots']))
   await user.action({
-    name: 'navigate-with-pending', description: 'Bank → Materials navigation while the selection stays pending', dwell: true,
-    perform: async () => { await page.click(sel('nav-bank')); await page.waitForTimeout(100); await page.click(sel('nav-materials')) },
+    name: 'return-to-bank', description: 'Navigate Materials → Bank while the selection stays pending', dwell: true,
+    perform: () => page.click(sel('nav-bank')), final: bankReady
+  })
+  await user.action({
+    name: 'return-to-materials', description: 'Navigate Bank → Materials; the pending selection must still be there', dwell: true,
+    perform: () => page.click(sel('nav-materials')),
     final: async () => (await materialsReady()) && (await pendingState()) && (await page.isEnabled(sel('selection-discard')).catch(() => false))
   })
   await user.action({
@@ -171,15 +185,31 @@ export async function bankMaterialsFlow(user, options) {
   }
 }
 
+
+/** The actual hooks of each Characters section; the first group that is visible names the observed outcome. */
+const SECTION_HOOKS = Object.freeze({
+  equipment: { loading: 'equipment-loading', failed: ['equipment-error'], unavailable: ['equipment-state'], empty: ['equipment-empty', 'equipment-no-tabs'], rendered: ['equipment-panel'] },
+  inventory: { loading: 'inventory-loading', failed: ['inventory-error'], unavailable: ['inventory-state'], empty: ['inventory-no-bags', 'inventory-all-empty'], rendered: ['inventory-panel', 'inventory-grid'] },
+  builds: { loading: 'builds-loading', failed: ['builds-error'], unavailable: ['builds-state'], empty: ['builds-none'], rendered: ['builds-panel'] }
+})
+
+/** `rendered | empty | unavailable | failed`, or null while still loading or when no known hook is shown (never a guess). */
+export async function sectionOutcome(page, section) {
+  const hooks = SECTION_HOOKS[section]
+  if (await visible(page, hooks.loading)) return null
+  for (const kind of ['failed', 'unavailable', 'empty', 'rendered']) if (await anyVisible(page, hooks[kind])) return kind
+  return null
+}
+
 export async function charactersFlow(user, options) {
   const { page } = user
-  const failed = ['roster-error']
+  const failed = ['roster-error', 'roster-state']
   await user.action({
     name: 'open-characters', description: 'Open Characters and wait for the rendered roster',
     initial: async () => visible(page, 'roster-row'),
     perform: () => navigate(page, options.origin, '#/characters'),
     final: async () => (await onPage(page, '#/characters', 'Characters')) && !(await visible(page, 'roster-loading')) && (await anyVisible(page, ['roster-row', 'roster-empty', ...failed])),
-    outcome: async () => ((await visible(page, 'roster-row')) ? 'roster-rendered' : (await visible(page, 'roster-error')) ? 'roster-unavailable' : 'roster-empty')
+    outcome: async () => ((await visible(page, 'roster-row')) ? 'roster-rendered' : (await anyVisible(page, ['roster-error', 'roster-state'])) ? 'roster-unavailable' : 'roster-empty')
   })
   if (!(await visible(page, 'roster-row'))) return { sections: [], note: 'roster unavailable or empty; no character selected' }
   let name = ''
@@ -193,19 +223,25 @@ export async function charactersFlow(user, options) {
     final: async () => name !== '' && (await visible(page, 'character-detail')) && (await text(page, 'page-heading')).includes(name)
   })
   const rendered = []
-  for (const section of options.sections.filter((s) => CHARACTER_SECTIONS.includes(s))) {
-    await user.action({
+  const sectionOutcomes = {}
+  for (const section of options.sections.filter((x) => CHARACTER_SECTIONS.includes(x))) {
+    if (!(await visible(page, `section-${section}`))) {
+      user.skip(`section-${section}`, 'the section tab is not rendered').outcome = 'missing'
+      sectionOutcomes[section] = 'missing'
+      continue
+    }
+    const record = await user.action({
       name: `section-${section}`, description: `Open the ${section} section of the selected character`, dwell: true, optional: true,
       perform: () => page.click(sel(`section-${section}`)),
       final: async () => (await page.getAttribute(sel(`section-${section}`), 'aria-selected').catch(() => null)) === 'true' &&
-        (await text(page, 'page-heading')).includes(name) && !(await visible(page, `${section}-loading`)) &&
-        (await anyVisible(page, [`${section}-panel`, `${section}-error`])),
-      // Optional detail that is unavailable is an observed result, not a roster failure.
-      outcome: async () => ((await visible(page, `${section}-error`)) ? 'unavailable-optional-detail' : 'rendered')
+        (await text(page, 'page-heading')).includes(name) && (await sectionOutcome(page, section)) !== null,
+      // missing/empty/unavailable/failed are observed results of OPTIONAL detail, never a roster failure; a timeout is not one of them.
+      outcome: () => sectionOutcome(page, section)
     })
+    sectionOutcomes[section] = record.terminal === 'completed' ? record.outcome : record.terminal
     rendered.push(section)
   }
-  return { sections: rendered }
+  return { sections: rendered, sectionOutcomes }
 }
 
 export const JOURNEY_FLOWS = Object.freeze({ crafting: craftingFlow, 'bank-materials': bankMaterialsFlow, characters: charactersFlow })

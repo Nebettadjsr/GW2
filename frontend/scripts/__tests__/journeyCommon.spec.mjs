@@ -1,8 +1,8 @@
 /** Unit checks for the journey runner's pure helpers (STORY-RESOURCE-002). Synthetic data only; no browser. */
 import { describe, expect, it } from 'vitest'
 import {
-  JOURNEYS, LIMITS, actionId, awaitStable, boundResult, boundedList, classifyStatus, generatorHealth, newRunId, parseJourneyArgs,
-  resourceObservation, safePath, scanForSecrets, summarizeRequests, validateOrigin, validateRunResult, virtualUserId
+  JOURNEYS, LIMITS, actionId, awaitStable, boundResult, boundedList, classifyStatus, generatorHealth, hashAccountId, keyForSession, newRunId, parseJourneyArgs, parseKeyList,
+  resourceObservation, safePath, scanForSecrets, settleAtCutoff, summarizeAccounts, summarizeRequests, validateOrigin, validateRunResult, virtualUserId
 } from '../journeyCommon.mjs'
 
 const KEY = '12345678-ABCD-1234-ABCD-12345678901234567890-ABCD-1234-ABCD-123456789012'
@@ -27,9 +27,12 @@ describe('argument validation', () => {
     expect(() => ok(['--headless', '--headed'])).toThrow(/exclusive/)
     expect(() => ok(['--run-id', '../x'])).toThrow(/run-id/)
   })
-  it('refuses more than one live session without the extra authorization flag', () => {
-    expect(() => ok(['--concurrency', '2'])).toThrow(/authorized-multi-session/)
-    expect(ok(['--concurrency', '2', '--authorized-multi-session']).concurrency).toBe(2)
+  it('treats an explicit --concurrency as the request, with a configurable generator bound and no confirmation flag', () => {
+    expect(ok(['--concurrency', '2']).concurrency).toBe(2)
+    expect(() => ok(['--concurrency', '2', '--authorized-multi-session'])).toThrow(/unknown option/)
+    expect(ok(['--concurrency', '40', '--max-sessions', '64'])).toMatchObject({ concurrency: 40, maxSessions: 64 })
+    expect(() => ok(['--concurrency', '33'])).toThrow(/between 1 and 32/)
+    expect(() => ok(['--max-sessions', '100000'])).toThrow(/max-sessions/)
   })
   it('validates the origin as an origin only, without credentials', () => {
     expect(validateOrigin('http://vm:8080/')).toBe('http://vm:8080')
@@ -72,7 +75,7 @@ describe('final-render stability', () => {
 })
 
 describe('request classification and correlation', () => {
-  const request = (path, start, extra = {}) => ({ path, completed: true, latencyMs: 20, startOffsetMs: start, errorClass: 'ok', requestId: null, fromCache: null, ...extra })
+  const request = (path, start, extra = {}) => ({ path, state: 'completed', completed: true, latencyMs: 20, startOffsetMs: start, errorClass: 'ok', requestId: null, fromCache: null, ...extra })
   it('classifies status classes', () => {
     expect([classifyStatus(200), classifyStatus(404), classifyStatus(503), classifyStatus(302), classifyStatus(undefined), classifyStatus(200, true)])
       .toEqual(['ok', 'client-error', 'server-error', 'redirect', 'no-response', 'transport-error'])
@@ -88,12 +91,46 @@ describe('request classification and correlation', () => {
     expect(summary.outboundGw2.value).toBeNull()
     expect(summary.outboundGw2.unavailableReason).toBeTruthy()
   })
+  it('keeps in-flight requests: unfinished ones are classified at the cutoff, never dropped', () => {
+    const slow = request('/api/slow', 30, { state: 'inflight', completed: false, latencyMs: null, errorClass: 'inflight' })
+    const failed = request('/api/gone', 40, { state: 'failed', completed: false, latencyMs: null, errorClass: 'transport-error' })
+    expect(settleAtCutoff(slow)).toMatchObject({ state: 'unfinished-at-cutoff', errorClass: 'unfinished' })
+    expect(settleAtCutoff(failed).state).toBe('failed')
+    const summary = summarizeRequests([request('/api/a', 1), slow, failed], 0, [])
+    expect(summary).toMatchObject({ offeredApi: 3, completedApi: 1, failedApi: 1, unfinishedAtCutoffApi: 1 })
+    expect(summary.latency.count).toBe(1)
+    expect(summary.notWireRequests).toMatch(/not counted as backend wire/)
+  })
   it('states unavailable latency instead of zero when nothing completed', () => {
     expect(summarizeRequests([], 0, []).latency).toEqual({ count: 0, unavailableReason: 'no completed requests observed' })
   })
   it('drops query strings and credential-shaped path segments', () => {
     expect(safePath(`https://vm/api/x?access_token=zzz&k=${KEY}`)).toBe('/api/x')
     expect(safePath(`/api/${KEY}/y`)).toBe('/api/[redacted]/y')
+  })
+})
+
+describe('multiple accounts from an in-memory key list', () => {
+  const K1 = 'AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAAAAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA'
+  const K2 = 'BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBBBBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB'
+  it('parses separators, dedupes and never echoes a bad entry', () => {
+    expect(parseKeyList(`${K1}, ${K2}\n${K1}`)).toEqual([K1, K2])
+    expect(parseKeyList(undefined)).toEqual([])
+    let message = ''
+    try { parseKeyList('abc$%^secret') } catch (error) { message = error.message }
+    expect(message).toMatch(/malformed/)
+    expect(message).not.toContain('secret')
+  })
+  it('maps session i to key i and repeats only when keys run out', () => {
+    expect([0, 1, 2].map((i) => keyForSession([K1, K2], i))).toEqual([K1, K2, K1])
+    expect(keyForSession([], 0)).toBeNull()
+  })
+  it('counts distinct verified accounts separately from sessions and labels repeats as shared-account traffic', () => {
+    const a = hashAccountId('acct-1'), b = hashAccountId('acct-2')
+    expect(hashAccountId('acct-1')).not.toContain('acct-1')
+    expect(summarizeAccounts([a, b], 2)).toMatchObject({ browserSessions: 2, distinctVerifiedAccounts: 2, sharedAccountTraffic: false })
+    expect(summarizeAccounts([a, a, a], 1)).toMatchObject({ browserSessions: 3, distinctVerifiedAccounts: 1, sharedAccountTraffic: true })
+    expect(summarizeAccounts([null, null], 0)).toMatchObject({ browserSessions: 2, sessionsWithVerifiedAccount: 0, distinctVerifiedAccounts: 0 })
   })
 })
 
@@ -116,9 +153,9 @@ describe('bounded output and explicit truncation', () => {
 })
 
 describe('unavailable fields and schema', () => {
-  const action = { action_id: 'vu-1.a1.x', name: 'x', offeredAtUtc: 'u', startedAtUtc: 'u', startOffsetMs: 0, initialContent: { offsetMs: null, unavailableReason: 'none seen' }, finalRender: { offsetMs: 5 }, durationMs: 5, terminal: 'completed' }
+  const action = { action_id: 'vu-1.a1.x', name: 'x', offeredAtUtc: 'u', startedAtUtc: 'u', startOffsetMs: 0, dwellMs: 0, initialContent: { offsetMs: null, unavailableReason: 'none seen' }, finalRender: { offsetMs: 5 }, durationMs: 5, terminal: 'completed' }
   const base = () => ({
-    schema: 'gw2-journey-run-1', runId: 'r', journey: 'crafting', scenario: {}, commit: 'c', targetOrigin: 'http://x', configuredConcurrency: 1, startedAtUtc: 'u', endedAtUtc: 'u',
+    schema: 'gw2-journey-run-1', runId: 'r', accounts: {}, journey: 'crafting', scenario: {}, commit: 'c', targetOrigin: 'http://x', configuredConcurrency: 1, startedAtUtc: 'u', endedAtUtc: 'u',
     virtualUsers: [{ virtual_user_id: 'vu-1', actions: [action] }], requests: [], resources: resourceObservation({ startUtc: 'a', endUtc: 'b' }),
     generatorHealth: generatorHealth({ cpuMs: 1, rssBytes: 2, maxLagMs: 3, pageErrors: 0, browserDisconnected: false }), result: {},
     mode: 'preparation-only', qualification: 'not-qualified', truncation: { truncated: false }

@@ -15,7 +15,7 @@ export const QUALIFICATION = Object.freeze({ mode: 'preparation-only', qualifica
 export const PROVISIONAL_NOTE = 'Provisional/unobserved flow: not a recording of real user behavior; dwell values carry no user rate.'
 
 export const LIMITS = Object.freeze({
-  maxConcurrency: 16, maxEvents: 200, maxRequests: 400, maxActions: 40, maxOutputBytes: 262144,
+  defaultMaxSessions: 32, hardMaxSessions: 512, maxEvents: 200, maxRequests: 400, maxActions: 40, maxOutputBytes: 262144,
   maxDwellMs: 60000, minTimeoutMs: 1000, maxTimeoutMs: 600000, maxStableMs: 10000, maxTextLength: 120
 })
 export const DEFAULT_DWELL_MS = 1000
@@ -24,8 +24,8 @@ export const REQUEST_ID_HEADER = 'x-gw2-test-request-id'
 export const STORAGE_PREFIX = 'gw2.materialProtection.v1.'
 export const CHARACTER_SECTIONS = Object.freeze(['equipment', 'inventory', 'builds'])
 
-const FLAGS = new Set(['headless', 'headed', 'ignore-https-errors', 'authorized-multi-session', 'help'])
-const VALUE_OPTIONS = new Set(['origin', 'concurrency', 'out', 'dwell-profile', 'dwell-ms', 'timeout-ms', 'stable-ms', 'sections', 'commit', 'run-id', 'bootstrap'])
+const FLAGS = new Set(['headless', 'headed', 'ignore-https-errors', 'help'])
+const VALUE_OPTIONS = new Set(['origin', 'concurrency', 'out', 'dwell-profile', 'dwell-ms', 'timeout-ms', 'stable-ms', 'max-sessions', 'drain-ms', 'sections', 'commit', 'run-id', 'bootstrap'])
 
 /** Parses `<journey> --option value ...`; throws a usage error naming the bad value. Never echoes secrets. */
 export function parseJourneyArgs(argv) {
@@ -68,12 +68,10 @@ export function validateOrigin(text) {
 
 export function validateOptions(raw) {
   if (raw.headless && raw.headed) throw new Error('--headless and --headed are mutually exclusive')
-  const concurrency = raw.concurrency === undefined ? 1 : integerInRange('concurrency', raw.concurrency, 1, LIMITS.maxConcurrency)
-  // Concurrency is validated and recorded for later authorized testing; running more than one live session
-  // now needs an explicit extra flag so a typo cannot start multi-user load.
-  if (concurrency > 1 && raw['authorized-multi-session'] !== true) {
-    throw new Error('--concurrency above 1 needs --authorized-multi-session; readiness evidence uses exactly one session')
-  }
+  // A configurable generator bound (not a discovery ceiling); an explicit --concurrency is itself the request
+  // for that many independent sessions, so no extra confirmation flag exists.
+  const maxSessions = raw['max-sessions'] === undefined ? LIMITS.defaultMaxSessions : integerInRange('max-sessions', raw['max-sessions'], 1, LIMITS.hardMaxSessions)
+  const concurrency = raw.concurrency === undefined ? 1 : integerInRange('concurrency', raw.concurrency, 1, maxSessions)
   const dwellProfile = raw['dwell-profile'] ?? 'provisional'
   if (!['provisional', 'none'].includes(dwellProfile)) throw new Error('--dwell-profile must be provisional or none')
   const sections = raw.sections === undefined ? [...CHARACTER_SECTIONS] : raw.sections.split(',').map((s) => s.trim())
@@ -87,6 +85,8 @@ export function validateOptions(raw) {
   return {
     origin: validateOrigin(raw.origin),
     concurrency,
+    maxSessions,
+    drainMs: raw['drain-ms'] === undefined ? 2000 : integerInRange('drain-ms', raw['drain-ms'], 0, 10000),
     out: raw.out,
     headless: raw.headed === true ? false : raw.headless === true || process.env.GW2_JOURNEY_HEADLESS === '1',
     ignoreHttpsErrors: raw['ignore-https-errors'] === true,
@@ -98,6 +98,39 @@ export function validateOptions(raw) {
     sections,
     commit: raw.commit ?? process.env.GITHUB_SHA ?? 'unknown',
     runId
+  }
+}
+
+/**
+ * Splits an in-memory list of read-only keys (comma/whitespace separated, from the process environment only)
+ * into distinct non-empty entries. Never echoes a key; errors name counts only.
+ */
+export function parseKeyList(text) {
+  const keys = [...new Set(String(text ?? '').split(/[\s,;]+/).filter((k) => k !== ''))]
+  if (keys.some((k) => k.length > 200 || !/^[\w-]+$/.test(k))) throw new Error('GW2_JOURNEY_API_KEYS contains a malformed entry')
+  return keys
+}
+
+/** Session i uses key i; with fewer keys than sessions the keys repeat, which is shared-account traffic. */
+export const keyForSession = (keys, index) => (keys.length === 0 ? null : keys[index % keys.length])
+
+/** One-way digest of a verified account id; the id itself is never recorded. */
+export const hashAccountId = (id) => hashText(`account:${id}`)
+
+/** Browser sessions and distinct verified accounts are separate quantities. */
+export function summarizeAccounts(sessionAccountHashes, configuredKeys) {
+  const verified = sessionAccountHashes.filter((h) => h !== null)
+  const distinct = new Set(verified).size
+  return {
+    browserSessions: sessionAccountHashes.length,
+    sessionsWithVerifiedAccount: verified.length,
+    distinctVerifiedAccounts: distinct,
+    configuredKeys,
+    accountDigests: [...new Set(verified)],
+    sharedAccountTraffic: verified.length > distinct,
+    note: verified.length === 0 ? 'No account identity was verified (manual/none bootstrap): distinct accounts are unknown, not one.'
+      : verified.length > distinct ? 'Some sessions share an account: that is shared-account traffic, not that many independent users.'
+        : 'Every verified session used a different account.'
   }
 }
 
@@ -184,6 +217,15 @@ export function classifyStatus(status, failure) {
   return 'ok'
 }
 
+/** Final state of a request record once the drain is over: anything still pending is unfinished, never dropped. */
+export function settleAtCutoff(record) {
+  if (record.state === 'inflight') {
+    record.state = 'unfinished-at-cutoff'
+    record.errorClass = 'unfinished'
+  }
+  return record
+}
+
 export const REQUEST_BOUNDARY = 'browser-observed-incoming'
 
 export function latencyStats(values) {
@@ -203,11 +245,14 @@ export function summarizeRequests(requests, droppedRequests, actions) {
   for (const r of api) byClass[r.errorClass] = (byClass[r.errorClass] ?? 0) + 1
   return {
     boundary: REQUEST_BOUNDARY,
+    offeredCounting: 'A request is recorded when the browser offers it; unfinished ones are kept and classified at the cutoff after a bounded drain.',
     notWireRequests: 'Browser-observed; cache hits, service workers and background polling are labelled, not counted as backend wire requests.',
     offeredApi: api.length,
-    completedApi: api.filter((r) => r.completed).length,
+    completedApi: api.filter((r) => r.state === 'completed').length,
+    failedApi: api.filter((r) => r.state === 'failed').length,
+    unfinishedAtCutoffApi: api.filter((r) => r.state === 'unfinished-at-cutoff').length,
     byErrorClass: byClass,
-    latency: latencyStats(api.filter((r) => r.completed && r.latencyMs !== null).map((r) => r.latencyMs)),
+    latency: latencyStats(api.filter((r) => r.state === 'completed' && r.latencyMs !== null).map((r) => r.latencyMs)),
     cacheStatusUnknownOrCached: api.filter((r) => r.fromCache !== false).length,
     withApplicationRequestId: api.filter((r) => r.requestId !== null).length,
     actionCorrelation: {
@@ -266,7 +311,7 @@ export function boundResult(result, maxBytes = LIMITS.maxOutputBytes) {
   throw new Error(`result still exceeds ${maxBytes} bytes after truncation`)
 }
 
-const REQUIRED_TOP = ['schema', 'runId', 'journey', 'scenario', 'commit', 'targetOrigin', 'configuredConcurrency', 'startedAtUtc', 'endedAtUtc', 'virtualUsers', 'requests', 'resources', 'generatorHealth', 'result', 'mode', 'qualification', 'truncation']
+const REQUIRED_TOP = ['schema', 'runId', 'accounts', 'journey', 'scenario', 'commit', 'targetOrigin', 'configuredConcurrency', 'startedAtUtc', 'endedAtUtc', 'virtualUsers', 'requests', 'resources', 'generatorHealth', 'result', 'mode', 'qualification', 'truncation']
 
 /** Structural check shared by the tests and the writer: one schema for all three journeys. */
 export function validateRunResult(result) {
@@ -276,7 +321,7 @@ export function validateRunResult(result) {
   for (const user of result.virtualUsers ?? []) {
     if (!user.virtual_user_id) problems.push('virtual user without id')
     for (const action of user.actions ?? []) {
-      for (const key of ['action_id', 'name', 'offeredAtUtc', 'startedAtUtc', 'startOffsetMs', 'initialContent', 'finalRender', 'durationMs', 'terminal']) {
+      for (const key of ['action_id', 'name', 'offeredAtUtc', 'startedAtUtc', 'startOffsetMs', 'dwellMs', 'initialContent', 'finalRender', 'durationMs', 'terminal']) {
         if (!(key in action)) problems.push(`action ${action.action_id ?? '?'} missing ${key}`)
       }
       for (const point of [action.initialContent, action.finalRender]) {
