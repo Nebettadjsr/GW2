@@ -1,6 +1,6 @@
 # GW2 active roadmap
 
-Updated: 2026-11-12. Owner: GitHub Codex planner; changes are reviewed by the interactive Codex supervisor.
+Updated: 2026-11-13. Owner: GitHub Codex planner; changes are reviewed by the interactive Codex supervisor.
 
 **Workflow execution authorized by the Product Owner on 2026-11-07; interactive Codex supervises one released story at a time.** Draft order, active handoffs and execution evidence live in [the backlog](../agent/BACKLOG.md) and GitHub issues/PRs. The Product Owner owns product intent and material hosting/budget decisions.
 
@@ -106,7 +106,9 @@ The paired Bank/Materials/Characters implementation uses automatic page-scoped s
 
 Prepare separate backend authorization, status UI and inventory freshness stories. Verify owner versus non-owner direct requests, task visibility, key replacement, empty owner configuration, account switching, duplicate refresh admission and stale/error recovery. Batch and bound full-catalog admin work; include its CPU/memory/storage/upstream impact in Oracle qualification rather than assuming on-demand TP measurements represent it. Implementation follows supervisor release of a concrete contract.
 
-Current sequence: the owner backend and full-catalog operations are integrated, and the System Status owner and regular-user layouts are visually accepted. Prepare representative offline fixtures (#185), then capacity-discovery workloads (#184) against the Product Owner's 2-second reference. Deployment owner configuration and final resource qualification remain separate; unknown capacity does not block the local test foundation.
+Current sequence: the owner backend and full-catalog operations are integrated, and the System Status owner and regular-user layouts are visually accepted. #188 is held for final visual review. Independent resource tooling in #193 proceeds against merged master without depending on #188's value-display DOM: first a manual-only legacy benchmark workflow and an opt-in local Playwright interaction recorder/final-render timer, then correlated VM/container/JVM/database observations, marginal account-storage measurement, and backend offered/completed-rate reporting. Owner recordings and final capacity tests use the accepted product baseline. #184 and unmerged PR #190 are superseded. Deployment owner configuration, concurrent stress execution, and final Oracle qualification remain separately authorized work.
+
+Preparation may record and replay reviewed owner interactions and collect bounded observations. Concurrent stress, live ArenaNet load, VM creation, paid services, and capacity claims require their own execution scope. Resource-test preparation follows the Product Owner's 2026-11-13 instruction; the complete stack belongs inside the local VM budget and real browser sessions run outside it. Local Intel results approximate the resource envelope; Oracle ARM and storage throughput require target-host verification.
 
 System Status visual decisions: owner-only composition accepted on 2026-11-11; regular-user account overview (own-account counts, compact service line) accepted on 2026-11-12. Preserve the accepted layouts; execution and final quality evidence belong to #182 / #183.
 

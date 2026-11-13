@@ -28,7 +28,9 @@
     "smoke:icons": "node scripts/icon-browser-smoke.mjs",
     "smoke:favicon": "node scripts/favicon-browser-smoke.mjs",
     "check:icons:live": "node scripts/icon-live-check.mjs",
-    "perf:profit-page": "node scripts/profit-page-perf.mjs"
+    "perf:profit-page": "node scripts/profit-page-perf.mjs",
+    "record:interaction": "node scripts/interaction-record.mjs",
+    "test:interaction-browser": "node scripts/test-interaction-browser.mjs"
   },
   "dependencies": {
     "vue": "^3.5.43"
