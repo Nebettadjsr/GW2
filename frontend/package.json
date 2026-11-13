@@ -30,6 +30,11 @@
     "check:icons:live": "node scripts/icon-live-check.mjs",
     "perf:profit-page": "node scripts/profit-page-perf.mjs",
     "record:interaction": "node scripts/interaction-record.mjs",
+    "journey": "node scripts/journey-runner.mjs",
+    "journey:crafting": "node scripts/journey-runner.mjs crafting",
+    "journey:bank-materials": "node scripts/journey-runner.mjs bank-materials",
+    "journey:characters": "node scripts/journey-runner.mjs characters",
+    "test:journey-browser": "node scripts/test-interaction-browser.mjs scripts/__tests__/journeyRunner.browser.spec.mjs",
     "test:interaction-browser": "node scripts/test-interaction-browser.mjs"
   },
   "dependencies": {

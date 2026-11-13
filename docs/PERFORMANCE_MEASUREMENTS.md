@@ -263,10 +263,51 @@ npm run record:interaction -- skeleton --out my-baseline.json
   page already current after its click is skipped on replay instead of reloading. In-memory event/sample buffers are bounded too; dropped counts
   go into `truncatedSteps`/`samplesTruncated`.
 - Pure checks: `npx vitest run scripts/__tests__/interactionRecorder.spec.mjs` (no installed browser required).
-  The two real-browser roundtrips are explicitly opt-in: `npm run test:interaction-browser`; install Chrome/Edge
+  Real-browser roundtrips are explicitly opt-in: `npm run test:interaction-browser`; install Chrome/Edge
   or set `GW2_BROWSER_PATH`. They retain all assertions and fail if the explicitly requested browser is unavailable.
   Record timing uses the UTC arming timestamp, so monotonic offsets align with the actual recording window.
 - Headed replay opens the target first and prompts for manual account connection before starting the timer.
   Headless synthetic replay starts without an account; actual-account automation supplies an in-memory bootstrap
   before timing and never exports auth state. Text input replay blurs the field to reproduce its recorded change.
   For the self-signed local VM only, `record` and `replay` accept the explicit `--ignore-https-errors` flag.
+
+## Actual-app readiness journeys (STORY-RESOURCE-002)
+
+Operator-run, `preparation-only` and `not-qualified`: they prepare one authorized single-session run against a deployed stack and can never state supported users or capacity. Flows are **provisional/unobserved** until the owner replaces them with recordings; dwell values are editable placeholders marked `unobserved`.
+
+Generator (any machine with Chrome/Edge; `GW2_BROWSER_PATH` overrides discovery), from `frontend/`:
+
+```
+node scripts/journey-runner.mjs crafting       --origin https://172.24.59.83:8443 --ignore-https-errors --concurrency 1
+node scripts/journey-runner.mjs bank-materials --origin https://172.24.59.83:8443 --ignore-https-errors --concurrency 1
+node scripts/journey-runner.mjs characters     --origin https://172.24.59.83:8443 --ignore-https-errors --concurrency 1
+```
+
+- `--ignore-https-errors` is explicit and only for a self-signed lab certificate; application cookie/CSRF settings are untouched.
+- Authentication happens before timing and is never serialized. `GW2_JOURNEY_API_KEYS` (process environment only: a comma/space separated list of read-only keys, key *i* → session *i*; `GW2_JOURNEY_API_KEY` is the single-key form) is typed into the connection form (`--bootstrap env-key`); `--bootstrap manual --headed` waits for a manual connect; `none` is for synthetic origins. Artifacts are scanned and written under git-ignored `frontend/.journey-runs/`; a credential-looking hit refuses the write.
+- `--concurrency` is validated and recorded; an explicit value above 1 is itself the request for that many independent sessions (bounded by the configurable generator limit `--max-sessions`, default 32; this is a generator bound, not a discovered capacity). Readiness evidence uses exactly one session. The result's `accounts` block counts browser sessions and *distinct verified accounts* (one-way digests of the backend-verified account id) separately: fewer keys than sessions repeat keys, which is reported as shared-account traffic, not as that many users.
+- Timing: `durationMs` runs from the UI action (click) to the first moment its final checkpoint held; the provisional dwell is separate (`dwellMs`, `offeredToFinalMs` includes it). Saved/previous content is probed alongside the action, never before it. Crafting changes the real sell-price calculation setting and completes only when that setting's `POST /api/crafting/profit`, offered after the click, has answered and the page shows the new setting with usable results; the setting is restored afterwards. Requests are recorded when offered; those still pending after a bounded drain (`--drain-ms`) are kept as `unfinished-at-cutoff`. This remains a browser-observed count, not a backend wire counter. Characters sections report `rendered`, `empty`, `unavailable` or `failed` from the real `*-panel`/`*-state`/`*-none`/`*-error` hooks; a section with no known hook times out and the run is `incomplete`.
+- Final render is a rendered-content checkpoint that stays stable for `--stable-ms`; `networkidle` is never used. Request/action linkage is `unavailable` (no application action id; overlap is reported only as overlap). Request counts and latency are browser-observed, not backend wire counts; cache status and outbound GW2 calls are unavailable.
+- Bank/Materials changes one protection checkbox as pending only, navigates, discards, then verifies the saved-selection digest is unchanged and that no write under the `gw2.materialProtection.v1.` prefix occurred. A guard also swallows any "Save selection" click; the run fails on any violation.
+
+Guest (over operator SSH, existing Compose project `gw2`; nothing is started, stopped or redeployed):
+
+```
+python3 scripts/guest_observe.py sample --seconds 120 --out ~/guest-samples.json   # start just before the journey
+scp gw2lab@172.24.59.83:~/guest-samples.json .                                       # copy back
+python3 scripts/guest_observe.py align --samples guest-samples.json --run frontend/.journey-runs/<journey>-<id>.json --out aligned.json
+python3 scripts/guest_observe.py overhead --seconds 30 --out overhead.json           # observer-disabled vs enabled idle windows
+```
+
+Whole-VM and per-container readings stay separate; generator health (Node/browser) is reported apart and is not VM saturation. Opt-in regression: `GW2_RECORDER_BROWSER=1 npx vitest run scripts/__tests__/journeyRunner.browser.spec.mjs` (synthetic origin only).
+
+Cross-platform aliases: `npm run journey:crafting -- <options>`, `npm run journey:bank-materials -- <options>`,
+and `npm run journey:characters -- <options>`. Run browser regressions with `npm run test:journey-browser`.
+Navigation observes retained content concurrently and waits for visible automatic-refresh indicators to settle
+before calling data final. A refresh failure is not fresh-data completion. Text probes do not wait for absent
+optional elements; every browser context has explicit action/navigation timeouts. Calculation completion also
+matches the requested sell-price flag in memory; request bodies and that private matching metadata are not exported.
+Guest schema `gw2-guest-observation-3` aligns memory and container readings by their separate collection
+intervals. Whole-VM CPU deltas require the conservative interval bracketing both counter reads to fit inside
+the run; the final counter read alone never establishes CPU coverage. Missing or partially overlapping intervals
+are excluded with per-metric coverage reported. Supply `align --clock-offset-ms N` when guest and generator clocks differ.
