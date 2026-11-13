@@ -30,6 +30,7 @@
     "check:icons:live": "node scripts/icon-live-check.mjs",
     "perf:profit-page": "node scripts/profit-page-perf.mjs",
     "record:interaction": "node scripts/interaction-record.mjs",
+    "journey": "node scripts/journey-runner.mjs",
     "test:interaction-browser": "node scripts/test-interaction-browser.mjs"
   },
   "dependencies": {

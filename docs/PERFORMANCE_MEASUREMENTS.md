@@ -270,3 +270,32 @@ npm run record:interaction -- skeleton --out my-baseline.json
   Headless synthetic replay starts without an account; actual-account automation supplies an in-memory bootstrap
   before timing and never exports auth state. Text input replay blurs the field to reproduce its recorded change.
   For the self-signed local VM only, `record` and `replay` accept the explicit `--ignore-https-errors` flag.
+
+## Actual-app readiness journeys (STORY-RESOURCE-002)
+
+Operator-run, `preparation-only` and `not-qualified`: they prepare one authorized single-session run against a deployed stack and can never state supported users or capacity. Flows are **provisional/unobserved** until the owner replaces them with recordings; dwell values are editable placeholders marked `unobserved`.
+
+Generator (any machine with Chrome/Edge; `GW2_BROWSER_PATH` overrides discovery), from `frontend/`:
+
+```
+node scripts/journey-runner.mjs crafting       --origin https://172.24.59.83:8443 --ignore-https-errors --concurrency 1
+node scripts/journey-runner.mjs bank-materials --origin https://172.24.59.83:8443 --ignore-https-errors --concurrency 1
+node scripts/journey-runner.mjs characters     --origin https://172.24.59.83:8443 --ignore-https-errors --concurrency 1
+```
+
+- `--ignore-https-errors` is explicit and only for a self-signed lab certificate; application cookie/CSRF settings are untouched.
+- Authentication happens before timing and is never serialized. `GW2_JOURNEY_API_KEY` (process environment, read-only key) is typed into the connection form (`--bootstrap env-key`); `--bootstrap manual --headed` waits for a manual connect; `none` is for synthetic origins. Artifacts are scanned and written under git-ignored `frontend/.journey-runs/`; a credential-looking hit refuses the write.
+- `--concurrency` is validated and recorded; above 1 additionally needs `--authorized-multi-session`. Readiness evidence uses exactly one session.
+- Final render is a rendered-content checkpoint that stays stable for `--stable-ms`; `networkidle` is never used. Request/action linkage is `unavailable` (no application action id; overlap is reported only as overlap). Request counts and latency are browser-observed, not backend wire counts; cache status and outbound GW2 calls are unavailable.
+- Bank/Materials changes one protection checkbox as pending only, navigates, discards, then verifies the saved-selection digest is unchanged and that no write under the `gw2.materialProtection.v1.` prefix occurred. A guard also swallows any "Save selection" click; the run fails on any violation.
+
+Guest (over operator SSH, existing Compose project `gw2`; nothing is started, stopped or redeployed):
+
+```
+python3 scripts/guest_observe.py sample --seconds 120 --out ~/guest-samples.json   # start just before the journey
+scp gw2lab@172.24.59.83:~/guest-samples.json .                                       # copy back
+python3 scripts/guest_observe.py align --samples guest-samples.json --run frontend/.journey-runs/<journey>-<id>.json --out aligned.json
+python3 scripts/guest_observe.py overhead --seconds 30 --out overhead.json           # observer-disabled vs enabled idle windows
+```
+
+Whole-VM and per-container readings stay separate; generator health (Node/browser) is reported apart and is not VM saturation. Opt-in regression: `GW2_RECORDER_BROWSER=1 npx vitest run scripts/__tests__/journeyRunner.browser.spec.mjs` (synthetic origin only).
