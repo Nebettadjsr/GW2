@@ -108,7 +108,7 @@ async function confirmDelete(): Promise<void> {
   deleteError.value = null
   try {
     const result = await deleteAccountData()
-    if (result === 'deleted' || result === 'already-deleted') {
+    if (result === 'deleted' || result === 'already-deleted' || result === 'stale') {
       deleteDialog.value?.close()
       await nextTick()
       document.getElementById('gw2-api-key')?.focus()

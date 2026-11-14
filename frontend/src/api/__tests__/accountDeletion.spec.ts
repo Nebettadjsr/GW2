@@ -162,3 +162,90 @@ describe('ACCOUNT_DATA_DELETED recovery and cross-tab invalidation', () => {
     expect(connection.deletionNotice).not.toBeNull()
   })
 })
+
+describe('deletion cleanup of the captured GUID and deferred races', () => {
+  const seed = async (): Promise<void> => {
+    window.localStorage.setItem(PREFERENCE_KEY_PREFIX + B, '{"version":1,"protectedItemIds":[2],"enabled":true}')
+    await connectKey('KEY')
+    const mp = useMaterialProtection()
+    mp.setPending([5])
+    mp.commit()
+  }
+  const deferredDelete = (): { release: (r: Response) => void } => {
+    const box: { release: (r: Response) => void } = { release: () => undefined }
+    vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+      const call = { path: input, method: init?.method ?? 'GET' }
+      calls.push(call)
+      if (call.method === 'DELETE') return new Promise<Response>((r) => { box.release = r })
+      return handler(call)
+    }))
+    return box
+  }
+
+  it('transport recovery on ACCOUNT_DATA_DELETED removes that GUID preference without any tab signal', async () => {
+    installAccountTransport(null)
+    installAccountSession()
+    await seed()
+    handler = (call) => (call.path.includes('/account/') ? deleted() : proof())
+    await expect(getJson('/account/inventory')).rejects.toMatchObject({ code: 'ACCOUNT_DATA_DELETED' })
+    expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).toBeNull()
+    expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + B)).not.toBeNull()
+    await connectKey('KEY')
+    expect(useMaterialProtection().state.committed).toEqual([])
+  })
+
+  it('an already-deleted DELETE answer cleans that GUID and preserves others', async () => {
+    await seed()
+    handler = (call) => (call.method === 'DELETE' ? deleted() : proof())
+    expect(await deleteAccountData()).toBe('already-deleted')
+    expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).toBeNull()
+    expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + B)).not.toBeNull()
+    expect(connection.phase).toBe('disconnected')
+    await connectKey('KEY')
+    expect(useMaterialProtection().state.committed).toEqual([])
+  })
+
+  it('a delayed 204 does not reset a newer explicit same-GUID connection or claim success', async () => {
+    await seed()
+    const box = deferredDelete()
+    const pending = deleteAccountData()
+    await vi.waitFor(() => expect(calls.some((c) => c.method === 'DELETE')).toBe(true))
+    await connectKey('KEY2') // newer explicit connection to the same GUID
+    box.release(new Response(null, { status: 204 }))
+    expect(await pending).toBe('stale')
+    expect(connection.phase).toBe('connected')
+    expect(connection.accountId).toBe(A)
+    expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe('KEY2')
+    expect(connection.deletionNotice).toBeNull()
+    expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).toBeNull()
+    expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + B)).not.toBeNull()
+  })
+
+  it('a delayed 204 does not reset a replacement account but still cleans the deleted GUID', async () => {
+    await seed()
+    const box = deferredDelete()
+    const pending = deleteAccountData()
+    await vi.waitFor(() => expect(calls.some((c) => c.method === 'DELETE')).toBe(true))
+    account = B
+    await connectKey('KEY-B')
+    box.release(new Response(null, { status: 204 }))
+    expect(await pending).toBe('stale')
+    expect(connection.accountId).toBe(B)
+    expect(connection.phase).toBe('connected')
+    expect(connection.deletionNotice).toBeNull()
+    expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).toBeNull()
+    expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + B)).not.toBeNull()
+  })
+
+  it('a delayed ACCOUNT_DATA_DELETED answer does not reset a newer connection', async () => {
+    await seed()
+    const box = deferredDelete()
+    const pending = deleteAccountData()
+    await vi.waitFor(() => expect(calls.some((c) => c.method === 'DELETE')).toBe(true))
+    await connectKey('KEY2')
+    box.release(deleted())
+    expect(await pending).toBe('stale')
+    expect(connection.phase).toBe('connected')
+    expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).toBeNull()
+  })
+})

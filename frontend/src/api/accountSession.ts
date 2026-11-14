@@ -365,15 +365,29 @@ function localDeletionReset(notice: string): void {
   connection.deletionNotice = notice
 }
 
-export type DeleteAccountDataResult = 'deleted' | 'already-deleted' | 'work-in-progress' | 'failed'
+export type DeleteAccountDataResult = 'deleted' | 'already-deleted' | 'work-in-progress' | 'failed' | 'stale'
 
-/** Deletes the connected account's cached data; local cleanup happens only after a 204. */
+/** Authoritative deletion of one GUID: its saved browser state goes first, then (if still current) the session. */
+function applyDeletion(accountId: string, notice: string, stillCurrent: boolean): void {
+  for (const cleanup of deletionCleanups) cleanup(accountId)
+  if (stillCurrent && connection.accountId === accountId) localDeletionReset(notice)
+}
+
+/**
+ * Deletes the connected account's cached data; local cleanup happens only after a 204 or an
+ * authoritative ACCOUNT_DATA_DELETED. The intended GUID and request epoch are captured up front: a
+ * connection that changed meanwhile (new explicit connect, other account) is never reset or reported
+ * as deleted, while the actually deleted GUID's saved browser state is still removed.
+ */
 export async function deleteAccountData(): Promise<DeleteAccountDataResult> {
   const accountId = connection.accountId
   if (accountId === null || connection.phase !== 'connected') return 'failed'
+  const epoch = accountEpoch
+  const current = (): boolean => epoch === accountEpoch && connection.accountId === accountId
   let response: Response
   try {
     const ticket = await transport.begin(false)
+    if (!current()) return 'stale'
     response = await fetch(`${API_BASE_PATH}/account/data`, {
       method: 'DELETE',
       headers: { Accept: 'application/json', ...ticket.headers }
@@ -382,24 +396,25 @@ export async function deleteAccountData(): Promise<DeleteAccountDataResult> {
     return 'failed'
   }
   if (response.status === 204) {
-    for (const cleanup of deletionCleanups) cleanup(accountId)
-    if (connection.accountId === accountId) localDeletionReset(DELETION_SUCCESS_NOTICE)
+    const wasCurrent = current()
+    applyDeletion(accountId, DELETION_SUCCESS_NOTICE, wasCurrent)
     publishDeletionSignal(accountId)
-    return 'deleted'
+    return wasCurrent ? 'deleted' : 'stale'
   }
   const error = await toRequestError(response)
   if (error.code === ACCOUNT_DATA_DELETED_CODE) {
-    if (connection.accountId === accountId) localDeletionReset(DELETION_NOTICE)
-    return 'already-deleted'
+    const wasCurrent = current()
+    applyDeletion(accountId, DELETION_NOTICE, wasCurrent)
+    return wasCurrent ? 'already-deleted' : 'stale'
   }
+  if (!current()) return 'stale'
   return error.code === 'ACCOUNT_WORK_IN_PROGRESS' ? 'work-in-progress' : 'failed'
 }
 
 // Another tab deleted the account this tab is connected to: clear locally, never prove or log out.
 onDeletionSignal((deletedId) => {
   if (connection.accountId === null || connection.accountId !== deletedId) return
-  for (const cleanup of deletionCleanups) cleanup(deletedId)
-  localDeletionReset(DELETION_NOTICE)
+  applyDeletion(deletedId, DELETION_NOTICE, true)
 })
 
 /* ------------------------------------------------------------------------- transport --- */
@@ -437,7 +452,9 @@ const transport: AccountTransport = {
     }
     // Deleted data is final until an explicit Connect: never the generic SESSION_REQUIRED re-proof.
     if (error.code === ACCOUNT_DATA_DELETED_CODE) {
-      localDeletionReset(DELETION_NOTICE)
+      const deletedId = connection.accountId
+      if (deletedId !== null) applyDeletion(deletedId, DELETION_NOTICE, true)
+      else localDeletionReset(DELETION_NOTICE)
       return false
     }
     // A lapsed lease (401) or a context another tab replaced in the shared cookie (403): prove the
