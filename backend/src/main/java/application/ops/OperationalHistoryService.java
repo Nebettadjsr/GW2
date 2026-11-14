@@ -2,7 +2,6 @@ package application.ops;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,43 +14,18 @@ public final class OperationalHistoryService {
     private final ForegroundActivityTracker activity;
     private final RequestAggregator aggregator;
     private final HistoryStore store;
-    private Instant openHour;
+    private final OperationalPeriodStore periods;
 
     public OperationalHistoryService(Clock clock, ForegroundActivityTracker activity, HistoryStore store) {
+        this(clock, activity, store, OperationalPeriodStore.EMPTY);
+    }
+
+    public OperationalHistoryService(Clock clock, ForegroundActivityTracker activity, HistoryStore store,
+                                     OperationalPeriodStore periods) {
         this.activity = activity;
         this.aggregator = new RequestAggregator(clock, activity::snapshotAt);
         this.store = store;
-        initializeHourCursor();
-    }
-
-    /**
-     * After a restart, hours already present in retained minutes but never rolled up get a (partial) summary,
-     * and the cursor resumes at the latest retained hour so that hour still rolls up when it closes.
-     */
-    private void initializeHourCursor() {
-        try {
-            HistoryStore.Snapshot snap = store.snapshot();
-            Instant latest = null;
-            for (MinuteBucket m : snap.minutes()) {
-                Instant h = m.startUtc().truncatedTo(ChronoUnit.HOURS);
-                if (latest == null || h.isAfter(latest)) latest = h;
-            }
-            if (latest == null) return;
-            java.util.TreeSet<Instant> unrolled = new java.util.TreeSet<>();
-            for (MinuteBucket m : snap.minutes()) unrolled.add(m.startUtc().truncatedTo(ChronoUnit.HOURS));
-            for (HourBucket h : snap.hours()) unrolled.remove(h.startUtc());
-            unrolled.remove(latest);
-            for (Instant hour : unrolled) rollUp(hour, snap.minutes());
-            openHour = latest;
-        } catch (RuntimeException telemetryFailure) {
-            // History problems never block startup.
-        }
-    }
-
-    private void rollUp(Instant hour, List<MinuteBucket> minutes) {
-        List<MinuteBucket> inHour = minutes.stream()
-                .filter(m -> m.startUtc().truncatedTo(ChronoUnit.HOURS).equals(hour)).toList();
-        if (!inHour.isEmpty()) store.appendHour(HourBucket.rollUp(hour, inHour));
+        this.periods = periods;
     }
 
     /** In-memory only: bumps fixed counters and, for an eligible verified account, its activity timestamp. */
@@ -75,29 +49,33 @@ public final class OperationalHistoryService {
 
     public ForegroundAccounts currentActivity() { return activity.snapshot(); }
 
-    /** The scheduled once-a-minute step: persist closed minutes and any hour that has just closed. */
+    /** The scheduled once-a-minute step: closes elapsed minutes (also without later traffic) and persists them. */
     public synchronized void flush() {
         try {
-            List<MinuteBucket> closed = aggregator.drainClosed();
-            for (MinuteBucket bucket : closed) {
-                store.appendMinute(bucket);
-                rollHourIfClosed(bucket.startUtc());
-            }
+            for (MinuteBucket bucket : aggregator.drainClosed()) store.appendMinute(bucket);
         } catch (RuntimeException telemetryFailure) {
             // Persistence problems surface as an unavailable history state, never as a failed request.
         }
     }
 
-    /** An hour closes when the first minute of a later hour arrives (so a missed last minute still rolls up). */
-    private void rollHourIfClosed(Instant minuteStart) {
-        Instant hour = minuteStart.truncatedTo(ChronoUnit.HOURS);
-        Instant closing = openHour;
-        if (closing == null || hour.isAfter(closing)) openHour = hour;
-        if (closing != null && hour.isAfter(closing)) {
-            boolean rolled = store.snapshot().hours().stream().anyMatch(h -> h.startUtc().equals(closing));
-            if (!rolled) rollUp(closing, store.snapshot().minutes());
+    public HistoryStore.Snapshot history() { return store.snapshot(); }
+
+    /** Closes elapsed minutes first so a day or week advances at its UTC boundary without further traffic. */
+    public List<PeriodDescriptor> listPeriods() {
+        flush();
+        try {
+            return periods.listPeriods();
+        } catch (RuntimeException failure) {
+            return List.of();
         }
     }
 
-    public HistoryStore.Snapshot history() { return store.snapshot(); }
+    public OperationalPeriodStore.Download openDownload(String selectionId) {
+        flush();
+        try {
+            return periods.openDownload(selectionId);
+        } catch (RuntimeException failure) {
+            return OperationalPeriodStore.Download.unavailable();
+        }
+    }
 }

@@ -22,7 +22,6 @@ class OwnerOperationsServiceTest {
     private final AtomicInteger touched = new AtomicInteger();
     private final HistoryStore store = new HistoryStore() {
         public void appendMinute(MinuteBucket b) { }
-        public void appendHour(HourBucket b) { }
         public Snapshot snapshot() { touched.incrementAndGet(); return new Snapshot(true, false, List.of(), List.of()); }
     };
     private final OperationalHistoryService history = new OperationalHistoryService(clock,
@@ -51,6 +50,31 @@ class OwnerOperationsServiceTest {
         assertEquals(0, touched.get(), "no history/database collaborator may run before authorization");
         assertEquals(0, new OwnerOperationsService(access, null, history, size, clock)
                 .summary(ordinary.sessionId(), ordinary.context().accessContext()).value() == null ? 0 : 1);
+    }
+
+    @Test
+    void periodDeniedBeforeAnyStoreCallOrIdentifierResolution() throws Exception {
+        AtomicInteger storeCalls = new AtomicInteger();
+        OperationalPeriodStore counting = new OperationalPeriodStore() {
+            public List<PeriodDescriptor> listPeriods() { storeCalls.incrementAndGet(); return List.of(); }
+            public Download openDownload(String id) { storeCalls.incrementAndGet(); return Download.notFound(); }
+        };
+        var h = new OperationalHistoryService(clock, new ForegroundActivityTracker(clock), store, counting);
+        var facade = new OwnerOperationsService(access, new OwnerPolicy(OWNER), h, size, clock);
+        var ordinary = access.establish("other");
+        assertEquals(OwnerOperationsService.Denial.UNAUTHENTICATED, facade.periods(null, null).denial());
+        assertEquals(OwnerOperationsService.Denial.UNAUTHENTICATED, facade.download("nope", null, "x").denial());
+        assertEquals(OwnerOperationsService.Denial.FORBIDDEN,
+                facade.periods(ordinary.sessionId(), ordinary.context().accessContext()).denial());
+        var forbidden = facade.download(ordinary.sessionId(), ordinary.context().accessContext(), "any");
+        assertEquals(OwnerOperationsService.Denial.FORBIDDEN, forbidden.denial());
+        assertNull(forbidden.value());
+        assertEquals(0, storeCalls.get());
+        var owner = access.establish("owner");
+        assertTrue(facade.periods(owner.sessionId(), owner.context().accessContext()).authorized());
+        assertEquals(OperationalPeriodStore.Status.NOT_FOUND,
+                facade.download(owner.sessionId(), owner.context().accessContext(), "gone").value().status());
+        assertEquals(2, storeCalls.get());
     }
 
     @Test
