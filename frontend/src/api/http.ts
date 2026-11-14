@@ -50,6 +50,10 @@ export async function getStateJson<T extends { state: string }>(path: string): P
  * rejects when the account changed while the request or its body was in flight; the caller owns the abort.
  */
 export async function getText(path: string, accept: string, signal?: AbortSignal): Promise<string> {
+  return getTextAttempt(path, accept, signal, true)
+}
+
+async function getTextAttempt(path: string, accept: string, signal: AbortSignal | undefined, mayRecover: boolean): Promise<string> {
   const transport = accountTransport !== null && isAccountPath(path) ? accountTransport : null
   const ticket = transport === null ? null : await transport.begin(false)
   let response: Response
@@ -60,7 +64,17 @@ export async function getText(path: string, accept: string, signal?: AbortSignal
   } catch (cause) {
     throw new ApiRequestError(`The backend could not be reached (${describeCause(cause)}).`, UNREACHABLE_CODE, null)
   }
-  if (!response.ok) throw await toRequestError(response)
+  if (transport !== null && ticket !== null && !transport.isCurrent(ticket)) {
+    throw new ApiRequestError('The account changed while this request was in flight.', ACCOUNT_CHANGED_CODE, null)
+  }
+  if (!response.ok) {
+    const error = await toRequestError(response)
+    if (transport !== null && ticket !== null && mayRecover && !signal?.aborted &&
+        (await transport.recover(ticket, error)) && !signal?.aborted) {
+      return getTextAttempt(path, accept, signal, false)
+    }
+    throw error
+  }
   const text = await response.text()
   if (transport !== null && ticket !== null && !transport.isCurrent(ticket)) {
     throw new ApiRequestError('The account changed while this response was downloading.', ACCOUNT_CHANGED_CODE, null)

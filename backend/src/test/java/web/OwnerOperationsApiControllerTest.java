@@ -36,13 +36,15 @@ class OwnerOperationsApiControllerTest {
     private final AccountSessions sessions = new AccountSessions(clock, 8);
     private final AccountAccessService access = new AccountAccessService(
             key -> { throw new InvalidCredentialException("no"); }, sessions);
+    private boolean unavailable;
+    private boolean truncated;
     private final AtomicInteger touched = new AtomicInteger();
     private final List<MinuteBucket> minutes = new ArrayList<>();
     private final List<HourBucket> hours = new ArrayList<>();
     private final HistoryStore store = new HistoryStore() {
         public void appendMinute(MinuteBucket b) { }
         public void appendHour(HourBucket b) { }
-        public Snapshot snapshot() { touched.incrementAndGet(); return new Snapshot(true, false, minutes, hours); }
+        public Snapshot snapshot() { touched.incrementAndGet(); return new Snapshot(!unavailable, truncated, minutes, hours); }
     };
     private final DatabaseSizeService size = new DatabaseSizeService(() -> { touched.incrementAndGet(); return 0; }, clock);
 
@@ -141,7 +143,7 @@ class OwnerOperationsApiControllerTest {
         var csv = mvc(OWNER, null).perform(as(get("/api/system/operations/export?format=csv&resolution=minute" + RANGE), owner))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                 .andReturn().getResponse().getContentAsString();
-        String[] lines = csv.split("\n");
+        String[] lines = java.util.Arrays.stream(csv.split("\n")).filter(l -> !l.startsWith("# ")).toArray(String[]::new);
         assertEquals(9, lines.length, "header plus eight route rows for one top-level bucket");
         assertTrue(lines[0].startsWith("resolution,bucket_start_utc,observed_seconds,completeness,activity_state"));
         assertTrue(lines[1].endsWith(",5000,true,5000,true"), lines[1]);
@@ -155,6 +157,73 @@ class OwnerOperationsApiControllerTest {
                 .andExpect(jsonPath("$.buckets[0].routeGroups[0].p95.display").value(">5 s"))
                 .andReturn().getResponse().getContentAsString();
         assertFalse(json.contains("Infinity") || json.contains("Inf\""));
+    }
+
+    private String exportBody(String format, String resolution, String range) throws Exception {
+        return mvc(OWNER, null).perform(as(get("/api/system/operations/export?format=" + format + "&resolution="
+                        + resolution + range), session(OWNER)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+    }
+
+    @Test
+    void exportCarriesAvailabilityRangeAndGapMetadataInBothFormatsWithoutSynthesizedBuckets() throws Exception {
+        // sparse: buckets at 12:00 and 12:03 inside 12:00..12:05 -> gaps 12:01-12:02 and 12:04-12:05
+        minutes.add(minute(Instant.parse("2026-11-14T12:00:00Z")));
+        minutes.add(minute(Instant.parse("2026-11-14T12:03:00Z")));
+        String range = "&from=2026-11-14T12:00:00Z&to=2026-11-14T12:05:00Z";
+        String json = exportBody("json", "minute", range);
+        var root = new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules().readTree(json);
+        assertEquals("PARTIAL", root.get("coverage").asText());
+        assertTrue(root.get("historyAvailable").asBoolean());
+        assertFalse(root.get("retentionTruncated").asBoolean());
+        assertEquals(2, root.get("bucketCount").asInt());
+        assertEquals(2, root.get("buckets").size());
+        assertEquals(2, root.get("gaps").size());
+        assertEquals(2, root.get("gaps").get(0).get("missingBuckets").asInt());
+        assertEquals("2026-11-14T12:01:00Z", root.get("gaps").get(0).get("fromUtc").asText());
+        assertEquals("2026-11-14T12:02:00Z", root.get("gaps").get(0).get("toUtc").asText());
+        assertTrue(root.has("requestedFromUtc") && root.has("requestedToUtc"));
+        String csv = exportBody("csv", "minute", range);
+        assertTrue(csv.contains("# history_available=true\n"), csv);
+        assertTrue(csv.contains("# retention_truncated=false\n"));
+        assertTrue(csv.contains("# coverage=PARTIAL\n"));
+        assertTrue(csv.contains("# requested_from_utc=2026-11-14T12:00:00Z\n"));
+        assertTrue(csv.contains("# requested_to_utc=2026-11-14T12:05:00Z\n"));
+        assertTrue(csv.contains("# gap_from_utc=2026-11-14T12:01:00Z gap_to_utc=2026-11-14T12:02:00Z missing_buckets=2\n"));
+        assertEquals(2, java.util.Arrays.stream(csv.split("\n")).filter(l -> l.startsWith("minute,")).map(l -> l.split(",")[1]).distinct().count());
+    }
+
+    @Test
+    void emptyReadableRangeIsNoneAndUnavailableHistoryIsUnavailableInBothFormats() throws Exception {
+        String range = "&from=2026-11-14T12:00:00Z&to=2026-11-14T12:02:00Z";
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var empty = mapper.readTree(exportBody("json", "minute", range));
+        assertEquals("NONE", empty.get("coverage").asText());
+        assertEquals(0, empty.get("bucketCount").asInt());
+        assertEquals(1, empty.get("gaps").size());
+        assertEquals(3, empty.get("gaps").get(0).get("missingBuckets").asInt());
+        assertTrue(exportBody("csv", "minute", range).contains("# coverage=NONE\n"));
+        unavailable = true;
+        var down = mapper.readTree(exportBody("json", "minute", range));
+        assertEquals("UNAVAILABLE", down.get("coverage").asText());
+        assertFalse(down.get("historyAvailable").asBoolean());
+        assertEquals(0, down.get("gaps").size());
+        String csv = exportBody("csv", "minute", range);
+        assertTrue(csv.contains("# history_available=false\n"), csv);
+        assertTrue(csv.contains("# coverage=UNAVAILABLE\n"));
+        assertFalse(csv.contains("# gap_"));
+    }
+
+    @Test
+    void retentionLossIsReportedInBothFormats() throws Exception {
+        truncated = true;
+        minutes.add(minute(Instant.parse("2026-11-14T12:00:00Z")));
+        String range = "&from=2026-11-14T12:00:00Z&to=2026-11-14T12:00:00Z";
+        assertTrue(new com.fasterxml.jackson.databind.ObjectMapper().readTree(exportBody("json", "minute", range))
+                .get("retentionTruncated").asBoolean());
+        String csv = exportBody("csv", "minute", range);
+        assertTrue(csv.contains("# retention_truncated=true\n"), csv);
+        assertTrue(csv.contains("# coverage=FULL\n"));
     }
 
     @Test

@@ -94,8 +94,47 @@ public class OwnerOperationsApiController {
                 new Link(oracleConsoleUrl != null, oracleConsoleUrl)));
     }
 
-    public record ExportBody(Instant generatedAt, String resolution, boolean historyAvailable,
-                             boolean retentionTruncated, List<Bucket> buckets) {}
+    /** A run of expected bucket starts with no retained bucket; reported, never filled with zero buckets. */
+    public record Gap(Instant fromUtc, Instant toUtc, int missingBuckets) {}
+
+    /**
+     * Export-level facts: {@code coverage} is UNAVAILABLE (history could not be read; not an empty range),
+     * NONE (readable history, no bucket in range), PARTIAL (some expected buckets are missing) or FULL.
+     */
+    public record ExportBody(Instant generatedAt, String resolution, Instant requestedFromUtc, Instant requestedToUtc,
+                             boolean historyAvailable, boolean retentionTruncated, String coverage, int bucketCount,
+                             List<Gap> gaps, List<Bucket> buckets) {}
+
+    static String coverage(boolean available, List<Bucket> buckets, List<Gap> gaps) {
+        if (!available) return "UNAVAILABLE";
+        if (buckets.isEmpty()) return "NONE";
+        return gaps.isEmpty() ? "FULL" : "PARTIAL";
+    }
+
+    /** Missing aligned bucket starts inside the requested range, grouped into runs. Empty when history is unavailable. */
+    static List<Gap> gaps(boolean available, boolean hourly, Instant from, Instant to, List<Bucket> buckets) {
+        List<Gap> out = new ArrayList<>();
+        if (!available) return out;
+        long step = hourly ? 3600 : 60;
+        java.util.Set<Instant> present = new java.util.HashSet<>();
+        for (Bucket b : buckets) present.add(b.startUtc());
+        long first = Math.floorDiv(from.getEpochSecond() + step - 1, step) * step;
+        Instant runStart = null, last = null;
+        int run = 0;
+        for (long t = first; t <= to.getEpochSecond(); t += step) {
+            Instant at = Instant.ofEpochSecond(t);
+            if (present.contains(at)) {
+                if (run > 0) out.add(new Gap(runStart, last, run));
+                run = 0;
+            } else {
+                if (run == 0) runStart = at;
+                last = at;
+                run++;
+            }
+        }
+        if (run > 0) out.add(new Gap(runStart, last, run));
+        return out;
+    }
 
     @GetMapping("/export")
     public ResponseEntity<?> export(HttpServletRequest request,
@@ -129,8 +168,11 @@ public class OwnerOperationsApiController {
         List<Bucket> buckets = hourly ? e.hours().stream().map(OwnerOperationsApiController::hour).toList()
                 : e.minutes().stream().map(OwnerOperationsApiController::minute).toList();
         String name = "attachment; filename=\"activity-" + resolution + "." + (csv ? "csv" : "json") + "\"";
-        var body = csv ? (Object) csv(resolution, e, buckets)
-                : new ExportBody(e.generatedAt(), resolution, e.historyAvailable(), e.retentionTruncated(), buckets);
+        List<Gap> gaps = gaps(e.historyAvailable(), hourly, start, end, buckets);
+        String coverage = coverage(e.historyAvailable(), buckets, gaps);
+        var body = csv ? (Object) csv(resolution, e, start, end, coverage, gaps, buckets)
+                : new ExportBody(e.generatedAt(), resolution, start, end, e.historyAvailable(), e.retentionTruncated(),
+                coverage, buckets.size(), gaps, buckets);
         return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .header(HttpHeaders.CONTENT_DISPOSITION, name)
                 .header("X-Content-Type-Options", "nosniff")
@@ -147,9 +189,26 @@ public class OwnerOperationsApiController {
             + "activity_exact_count,activity_lower_bound,route_group,request_count,http_2xx_3xx,http_4xx,http_5xx,"
             + "failed_incomplete,mean_ms,max_ms,p50_upper_bound_ms,p50_overflow,p95_upper_bound_ms,p95_overflow\n";
 
-    private static String csv(String resolution, OwnerOperationsService.Export e, List<Bucket> buckets) {
-        StringBuilder sb = new StringBuilder(CSV_HEADER);
-        // Export-level facts are explicit comment-free rows only via the JSON form; CSV never invents gap rows.
+    /**
+     * Export-level facts precede the header as {@code # key=value} lines (documented in the runbook); gaps are
+     * listed there as ranges and CSV never invents zero rows for them.
+     */
+    private static String csv(String resolution, OwnerOperationsService.Export e, Instant from, Instant to,
+                              String coverage, List<Gap> gaps, List<Bucket> buckets) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# generated_at_utc=").append(e.generatedAt()).append('\n')
+                .append("# resolution=").append(resolution).append('\n')
+                .append("# requested_from_utc=").append(from).append('\n')
+                .append("# requested_to_utc=").append(to).append('\n')
+                .append("# history_available=").append(e.historyAvailable()).append('\n')
+                .append("# retention_truncated=").append(e.retentionTruncated()).append('\n')
+                .append("# coverage=").append(coverage).append('\n')
+                .append("# bucket_count=").append(buckets.size()).append('\n');
+        for (Gap g : gaps) {
+            sb.append("# gap_from_utc=").append(g.fromUtc()).append(" gap_to_utc=").append(g.toUtc())
+                    .append(" missing_buckets=").append(g.missingBuckets()).append('\n');
+        }
+        sb.append(CSV_HEADER);
         for (Bucket b : buckets) {
             String state; String exact = ""; String lower = "";
             if (b.foregroundAccounts() != null) {

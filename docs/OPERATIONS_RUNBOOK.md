@@ -10,6 +10,7 @@ deployment exists or that monitoring or log forwarding is configured.
 2. Open System Status → Application activity.
 3. Choose Last 6 hours (minute) or Last 7 days (hour), set a bounded UTC range (minute ≤ 360 minutes, hour ≤ 720 hours, never over 30 days).
 4. Download CSV or JSON.
+   Both formats carry export-level facts: requested UTC range, `historyAvailable`, `retentionTruncated`, `coverage` (`UNAVAILABLE` = history unreadable, not an empty range; `NONE` = readable but no bucket in range; `PARTIAL`; `FULL`), bucket count and missing-bucket gap ranges. JSON has them as fields; CSV has them as `# key=value` lines before the header. No zero buckets are synthesized for gaps.
 5. Record the application version, export UTC time and range, resolution, and any partial, gap or truncated states shown.
 
 ## Direct aggregate-file retrieval

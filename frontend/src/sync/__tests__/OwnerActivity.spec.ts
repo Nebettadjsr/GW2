@@ -196,6 +196,87 @@ describe('OwnerActivity', () => {
     expect(create).toHaveBeenCalledTimes(1)
   })
 
+  function stubDownload() {
+    const blobs: Blob[] = []
+    vi.stubGlobal('URL', Object.assign(URL, {
+      createObjectURL: vi.fn((b: Blob) => { blobs.push(b); return 'blob:x' }), revokeObjectURL: vi.fn()
+    }))
+    const names: string[] = []
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { names.push(this.download) })
+    return { blobs, names }
+  }
+
+  it('showsAnObservedIdleMinuteAsKnownZeroButAZeroCoverageGapAsNoObservation', async () => {
+    const idle = minute('2026-11-14T12:29:00Z', { overall: null, routeGroups: [] })
+    expect(text(await mountWith(summary({ latestMinute: idle, minutes: [idle] })), 'activity-requests')).toContain('0 / min (60 s observed)')
+    const gap = minute('2026-11-14T12:29:00Z', { observedSeconds: 0, overall: null })
+    expect(text(await mountWith(summary({ latestMinute: gap, minutes: [gap] })), 'activity-requests')).toContain('No observation')
+  })
+
+  it('keepsAPartlyUnavailableHourlyPeakAsALowerBound', async () => {
+    const hour: OperationsBucket = minute('2026-11-14T11:00:00Z', {
+      foregroundAccounts: null, minuteBuckets: 60,
+      activityPeak: { maxReportedActive: 7, anyPartialStartup: false, anyTruncated: false, anyUnavailable: true }
+    })
+    const w = await mountWith(summary({ hours: [hour] }))
+    await w.find('[data-test="activity-view-hour"]').trigger('click')
+    const row = w.find('[data-test="activity-row"]').text()
+    expect(row).toContain('peak ≥ 7')
+    expect(row).toContain('partly unavailable')
+  })
+
+  it('namesAndTypesTheFileFromSubmittedParametersEvenIfControlsChangeWhileHeld', async () => {
+    const w = await mountWith(summary())
+    const { blobs, names } = stubDownload()
+    let release!: (s: string) => void
+    vi.spyOn(systemApi, 'readOperationsExport').mockReturnValue(new Promise((r) => { release = r }))
+    await w.find('[data-test="activity-export"]').trigger('submit')
+    await w.find('[data-test="activity-export-format"]').setValue('json')
+    await w.find('[data-test="activity-view-hour"]').trigger('click')
+    release('a,b\n')
+    await flushPromises()
+    expect(names).toEqual(['application-activity-minute.csv'])
+    expect(blobs[0]?.type).toBe('text/csv')
+  })
+
+  it('refreshDuringAnExportAbortsItResetsBusyStateAndAllowsANewDownload', async () => {
+    const w = await mountWith(summary())
+    const { names } = stubDownload()
+    let signal: AbortSignal | undefined
+    let release!: (s: string) => void
+    const read = vi.spyOn(systemApi, 'readOperationsExport').mockImplementationOnce((_f, _r, _a, _b, s) => {
+      signal = s
+      return new Promise((r) => { release = r })
+    })
+    await w.find('[data-test="activity-export"]').trigger('submit')
+    expect(w.find('[data-test="activity-export-submit"]').attributes('disabled')).toBeDefined()
+    await w.find('[data-test="activity-refresh"]').trigger('click')
+    await flushPromises()
+    expect(signal?.aborted).toBe(true)
+    expect(w.find('[data-test="activity-export-submit"]').attributes('disabled')).toBeUndefined()
+    release('late')
+    await flushPromises()
+    expect(names).toEqual([])
+    read.mockResolvedValue('fresh')
+    await w.find('[data-test="activity-export"]').trigger('submit')
+    await flushPromises()
+    expect(names).toEqual(['application-activity-minute.csv'])
+  })
+
+  it.each([401, 403])('withdrawsOwnerStateAndNotifiesTheParentOnADenial%i DuringAPendingExport', async (status) => {
+    const w = await mountWith(summary())
+    stubDownload()
+    let reject!: (e: unknown) => void
+    vi.spyOn(systemApi, 'readOperationsExport').mockReturnValue(new Promise((_, r) => { reject = r }))
+    await w.find('[data-test="activity-export"]').trigger('submit')
+    reject(new ApiRequestError('no', 'OWNER_REQUIRED', status))
+    await flushPromises()
+    expect(w.emitted('denied')).toHaveLength(1)
+    expect(w.find('[data-test="activity-facts"]').exists()).toBe(false)
+    expect(w.find('[data-test="activity-history-table"]').exists()).toBe(false)
+    expect(text(w, 'activity-error')).toContain('not available')
+  })
+
   it('exposesAccessibleTableHeadingsAndKeyboardReachableControls', async () => {
     const w = await mountWith(summary())
     expect(w.find('table caption').exists()).toBe(true)

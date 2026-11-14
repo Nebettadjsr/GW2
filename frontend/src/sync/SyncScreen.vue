@@ -386,7 +386,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
         </details>
       </article>
     </section>
-    <OwnerActivity v-if="ownerState === 'owner' && ownerDetails" :active-last60-minutes="ownerDetails.accounts?.activeLast60Minutes ?? null" />
+    <OwnerActivity v-if="ownerState === 'owner' && ownerDetails" :active-last60-minutes="ownerDetails.accounts?.activeLast60Minutes ?? null" @denied="withdrawOwner('not-owner', true)" />
     </template>
   </div>
 </template>

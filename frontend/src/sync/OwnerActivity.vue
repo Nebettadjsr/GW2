@@ -11,6 +11,8 @@ import { systemApi, type ForegroundActivity, type OperationsBucket, type Operati
  * and on the explicit refresh control, never on a timer.
  */
 const props = defineProps<{ activeLast60Minutes?: number | null }>()
+/** A confirmed 401/403 for an owner read: the parent owner boundary must withdraw owner presentation. */
+const emit = defineEmits<{ denied: [] }>()
 
 const PAGE = 10
 const summary = ref<OperationsSummary | null>(null)
@@ -27,12 +29,15 @@ const exporting = ref(false)
 
 let epoch = 0
 let controller: AbortController | null = null
+let exportController: AbortController | null = null
+let exportToken = 0
 let unmounted = false
 
 function invalidate(): void {
   epoch += 1
   controller?.abort()
   controller = null
+  cancelExport()
   summary.value = null
   error.value = null
   loading.value = false
@@ -41,8 +46,18 @@ function invalidate(): void {
   page.value = 0
 }
 
+/** Aborts and invalidates any export in flight and clears its busy state. */
+function cancelExport(): void {
+  exportToken += 1
+  exportController?.abort()
+  exportController = null
+  exporting.value = false
+  exportError.value = null
+}
+
 async function load(): Promise<void> {
   if (connection.phase !== 'connected' || unmounted) return
+  cancelExport()
   const mine = ++epoch
   const generation = connection.generation
   const lease = connection.leaseVersion
@@ -60,7 +75,9 @@ async function load(): Promise<void> {
   } catch (cause) {
     if (!live() || (cause instanceof ApiRequestError && cause.code === ACCOUNT_CHANGED_CODE)) return
     summary.value = null
-    error.value = cause instanceof ApiRequestError && (cause.status === 401 || cause.status === 403)
+    const denied = cause instanceof ApiRequestError && (cause.status === 401 || cause.status === 403)
+    if (denied) emit('denied')
+    error.value = denied
       ? 'Activity is not available for this account.'
       : 'Application activity is temporarily unavailable.'
   } finally {
@@ -84,26 +101,33 @@ watch(view, () => { page.value = 0; resetRange() })
 
 async function download(): Promise<void> {
   if (exporting.value || connection.phase !== 'connected') return
+  // Everything that labels the file is captured at submission; later control changes cannot relabel it.
+  const format = exportFormat.value
+  const resolution = view.value
+  const from = exportFrom.value
+  const to = exportTo.value
+  const filename = `application-activity-${resolution}.${format}`
+  const type = format === 'csv' ? 'text/csv' : 'application/json'
   const mine = epoch
+  const token = ++exportToken
   const generation = connection.generation
   const lease = connection.leaseVersion
-  const live = () => !unmounted && mine === epoch && connection.phase === 'connected' &&
+  const live = () => !unmounted && mine === epoch && token === exportToken && connection.phase === 'connected' &&
     connection.generation === generation && connection.leaseVersion === lease
   exporting.value = true
   exportError.value = null
-  controller?.abort()
-  controller = new AbortController()
+  exportController?.abort()
+  const mineController = new AbortController()
+  exportController = mineController
   try {
-    const text = await systemApi.readOperationsExport(exportFormat.value, view.value, exportFrom.value,
-      exportTo.value, controller.signal)
+    const text = await systemApi.readOperationsExport(format, resolution, from, to, mineController.signal)
     if (!live()) return
     // The object URL exists only for this authorized response and is revoked right after the download starts.
-    const type = exportFormat.value === 'csv' ? 'text/csv' : 'application/json'
     const url = URL.createObjectURL(new Blob([text], { type }))
     try {
       const link = document.createElement('a')
       link.href = url
-      link.download = `application-activity-${view.value}.${exportFormat.value}`
+      link.download = filename
       link.rel = 'noopener'
       link.click()
     } finally {
@@ -111,11 +135,21 @@ async function download(): Promise<void> {
     }
   } catch (cause) {
     if (!live() || (cause instanceof ApiRequestError && cause.code === ACCOUNT_CHANGED_CODE)) return
+    if (cause instanceof ApiRequestError && (cause.status === 401 || cause.status === 403)) {
+      // Confirmed denial: withdraw all owner state, abort other work and tell the parent boundary.
+      invalidate()
+      error.value = 'Activity is not available for this account.'
+      emit('denied')
+      return
+    }
     exportError.value = cause instanceof ApiRequestError && cause.status === 400
       ? 'Check the format, resolution and UTC range (at most 360 minutes or 720 hours).'
       : 'The export could not be created.'
   } finally {
-    if (live()) exporting.value = false
+    if (live()) {
+      exporting.value = false
+      if (exportController === mineController) exportController = null
+    }
   }
 }
 
@@ -177,8 +211,9 @@ const requestRate = computed(() => {
   const c = current.value
   if (!c) return 'No recent observation'
   if (!c.fresh) return `No recent observation (latest ${formatTime(c.bucket.startUtc)})`
-  if (!c.observed || !c.bucket.overall) return 'No observation in the latest minute'
-  const perMinute = (c.bucket.overall.requests * 60) / c.bucket.observedSeconds
+  if (!c.observed) return 'No observation in the latest minute'
+  // An observed minute with no route groups is a known zero, not a gap.
+  const perMinute = ((c.bucket.overall?.requests ?? 0) * 60) / c.bucket.observedSeconds
   return `${Math.round(perMinute * 10) / 10} / min (${c.bucket.observedSeconds} s observed)`
 })
 
@@ -217,7 +252,7 @@ function bucketActivity(b: OperationsBucket): string {
   const a = b.activityPeak
   if (!a || a.maxReportedActive === null) return 'Unavailable'
   const text = a.maxReportedActive.toLocaleString()
-  return a.anyTruncated || a.anyPartialStartup ? `peak ≥ ${text}` : `peak ${text}`
+  return a.anyTruncated || a.anyPartialStartup || a.anyUnavailable ? `peak ≥ ${text}` : `peak ${text}`
 }
 
 function bucketNote(b: OperationsBucket): string {
@@ -225,6 +260,7 @@ function bucketNote(b: OperationsBucket): string {
   if (b.completeness === 'PARTIAL') notes.push('Partial')
   const a = b.foregroundAccounts
   if (a?.state === 'TRUNCATED' || b.activityPeak?.anyTruncated) notes.push('Truncated')
+  if (b.activityPeak?.anyUnavailable) notes.push('Activity partly unavailable')
   return notes.join(', ')
 }
 
