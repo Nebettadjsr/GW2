@@ -33,6 +33,7 @@ class OwnerOperationsServiceTest {
 
     @Test
     void denialsPrecedeEveryCollaboratorAndCarryNoPayload() throws Exception {
+        touched.set(0); // construction reads retained history once; only post-construction access matters
         var ordinary = access.establish("other");
         var summaryNone = service.summary(null, null);
         var summaryUnknown = service.summary("nope", null);

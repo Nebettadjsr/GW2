@@ -21,6 +21,37 @@ public final class OperationalHistoryService {
         this.activity = activity;
         this.aggregator = new RequestAggregator(clock, activity::snapshot);
         this.store = store;
+        initializeHourCursor();
+    }
+
+    /**
+     * After a restart, hours already present in retained minutes but never rolled up get a (partial) summary,
+     * and the cursor resumes at the latest retained hour so that hour still rolls up when it closes.
+     */
+    private void initializeHourCursor() {
+        try {
+            HistoryStore.Snapshot snap = store.snapshot();
+            Instant latest = null;
+            for (MinuteBucket m : snap.minutes()) {
+                Instant h = m.startUtc().truncatedTo(ChronoUnit.HOURS);
+                if (latest == null || h.isAfter(latest)) latest = h;
+            }
+            if (latest == null) return;
+            java.util.TreeSet<Instant> unrolled = new java.util.TreeSet<>();
+            for (MinuteBucket m : snap.minutes()) unrolled.add(m.startUtc().truncatedTo(ChronoUnit.HOURS));
+            for (HourBucket h : snap.hours()) unrolled.remove(h.startUtc());
+            unrolled.remove(latest);
+            for (Instant hour : unrolled) rollUp(hour, snap.minutes());
+            openHour = latest;
+        } catch (RuntimeException telemetryFailure) {
+            // History problems never block startup.
+        }
+    }
+
+    private void rollUp(Instant hour, List<MinuteBucket> minutes) {
+        List<MinuteBucket> inHour = minutes.stream()
+                .filter(m -> m.startUtc().truncatedTo(ChronoUnit.HOURS).equals(hour)).toList();
+        if (!inHour.isEmpty()) store.appendHour(HourBucket.rollUp(hour, inHour));
     }
 
     /** In-memory only: bumps fixed counters and, for an eligible verified account, its activity timestamp. */
@@ -63,9 +94,8 @@ public final class OperationalHistoryService {
         Instant closing = openHour;
         if (closing == null || hour.isAfter(closing)) openHour = hour;
         if (closing != null && hour.isAfter(closing)) {
-            List<MinuteBucket> inHour = store.snapshot().minutes().stream()
-                    .filter(m -> m.startUtc().truncatedTo(ChronoUnit.HOURS).equals(closing)).toList();
-            if (!inHour.isEmpty()) store.appendHour(HourBucket.rollUp(closing, inHour));
+            boolean rolled = store.snapshot().hours().stream().anyMatch(h -> h.startUtc().equals(closing));
+            if (!rolled) rollUp(closing, store.snapshot().minutes());
         }
     }
 

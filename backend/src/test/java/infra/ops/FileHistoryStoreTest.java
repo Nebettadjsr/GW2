@@ -53,6 +53,23 @@ class FileHistoryStoreTest {
     }
 
     @Test
+    void physicalFilesHoldOnlyRetainedWholeBucketsAfterEviction() throws Exception {
+        var store = new FileHistoryStore(dir, mapper, 3, 2, FileHistoryStore.MAX_FILE_BYTES);
+        for (int i = 0; i < 7; i++) store.appendMinute(minute(i, 2));
+        for (int i = 0; i < 5; i++) {
+            store.appendHour(new HourBucket(T0.plusSeconds(3600L * i), 3600, HourBucket.Completeness.COMPLETE, 60,
+                    new HourBucket.ActivitySummary(1, false, false, false), List.of(agg(RouteGroup.CRAFTING))));
+        }
+        List<String> minuteLines = Files.readAllLines(dir.resolve("minute-history.jsonl"));
+        List<String> hourLines = Files.readAllLines(dir.resolve("hour-history.jsonl"));
+        assertEquals(3, minuteLines.size());
+        assertEquals(2, hourLines.size());
+        assertTrue(minuteLines.get(0).contains(T0.plusSeconds(240).toString()));
+        assertFalse(String.join("", minuteLines).contains(T0.plusSeconds(180).toString()));
+        assertTrue(hourLines.get(0).contains(T0.plusSeconds(3 * 3600L).toString()));
+    }
+
+    @Test
     void byteBoundDiscardsOldestWholeBucketsAndNeverExceedsCeiling() throws Exception {
         long maxFile = 20_000;
         var store = new FileHistoryStore(dir, mapper, 360, 720, maxFile);

@@ -74,7 +74,8 @@ public final class BoundedHistoryFile<T> {
             int bytes = text.getBytes(StandardCharsets.UTF_8).length + 1;
             if (bytes > maxBytes) return;
             retain(bucket, bytes);
-            boolean overflow = fileBytes + bytes > maxBytes || fileLines >= 2 * maxBuckets;
+            // The file mirrors the retained buckets: any eviction (count or bytes) rewrites it without them.
+            boolean overflow = fileBytes + bytes > maxBytes || fileLines + 1 > retained.size();
             if (overflow || !Files.exists(file)) {
                 rewrite();
             } else {

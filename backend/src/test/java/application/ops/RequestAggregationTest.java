@@ -59,9 +59,63 @@ class RequestAggregationTest {
 
         clock.advance(Duration.ofMinutes(2)); // idle minutes: zero buckets with coverage
         service.flush();
-        assertEquals(3, minutes.size());
+        // 10:02 was never closed on time: it is a gap, not a synthesized zero bucket.
+        assertEquals(2, minutes.size());
+        assertEquals(Instant.parse("2026-11-14T10:01:00Z"), minutes.get(1).startUtc());
         assertEquals(60, minutes.get(1).observedSeconds());
         assertTrue(minutes.get(1).routeGroups().isEmpty());
+        assertEquals(ForegroundAccounts.State.UNAVAILABLE, minutes.get(1).foregroundAccounts().state());
+    }
+
+    @Test
+    void delayedFlushNeverBackdatesTheCurrentActivitySnapshot() {
+        observe("/api/account/bank", 200, 5, UUID.randomUUID().toString());
+        clock.advance(Duration.ofMinutes(6)); // 10:06:20: flush delayed far beyond the 10:01 boundary
+        service.flush();
+        assertEquals(1, minutes.size());
+        assertEquals(Instant.parse("2026-11-14T10:00:00Z"), minutes.get(0).startUtc());
+        assertEquals(ForegroundAccounts.State.UNAVAILABLE, minutes.get(0).foregroundAccounts().state());
+        assertEquals(1, minutes.get(0).routeGroups().get(0).requests());
+    }
+
+    @Test
+    void onTimeFlushKeepsTheActivityReading() {
+        observe("/api/account/bank", 200, 5, UUID.randomUUID().toString());
+        clock.advance(Duration.ofSeconds(45)); // 10:01:05
+        service.flush();
+        assertEquals(ForegroundAccounts.State.PARTIAL_STARTUP, minutes.get(0).foregroundAccounts().state());
+    }
+
+    @Test
+    void longClockJumpCreatesOneBucketAndNoCatchUpMinutes() {
+        observe("/api/account/bank", 200, 5, null);
+        clock.advance(Duration.ofDays(3650)); // deterministic long suspend / forward jump
+        observe("/api/account/bank", 200, 5, null); // request-side roll must stay O(1)
+        clock.advance(Duration.ofMinutes(1));
+        service.flush();
+        assertTrue(minutes.size() <= 2, "no per-skipped-minute buckets: " + minutes.size());
+        assertEquals(Instant.parse("2026-11-14T10:00:00Z"), minutes.get(0).startUtc());
+    }
+
+    @Test
+    void restartInitializesHourCursorFromRetainedMinutes() {
+        List<MinuteBucket> retained = new ArrayList<>(List.of(new MinuteBucket(
+                Instant.parse("2026-11-14T10:58:00Z"), 60, MinuteBucket.Completeness.COMPLETE,
+                ForegroundAccounts.unavailable(), List.of())));
+        List<HourBucket> savedHours = new ArrayList<>();
+        HistoryStore restarted = new HistoryStore() {
+            public void appendMinute(MinuteBucket b) { retained.add(b); }
+            public void appendHour(HourBucket b) { savedHours.add(b); }
+            public Snapshot snapshot() { return new Snapshot(true, false, List.copyOf(retained), List.copyOf(savedHours)); }
+        };
+        TestClock c = new TestClock(Instant.parse("2026-11-14T11:01:20Z"));
+        var svc = new OperationalHistoryService(c, new ForegroundActivityTracker(c, c, 10), restarted);
+        c.advance(Duration.ofMinutes(1));
+        svc.flush();
+        assertEquals(1, savedHours.size());
+        assertEquals(Instant.parse("2026-11-14T10:00:00Z"), savedHours.get(0).startUtc());
+        assertEquals(HourBucket.Completeness.PARTIAL, savedHours.get(0).completeness());
+        assertEquals(1, savedHours.get(0).minuteBuckets());
     }
 
     @Test

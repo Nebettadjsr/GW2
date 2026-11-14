@@ -16,6 +16,8 @@ import java.util.function.Supplier;
  */
 public final class RequestAggregator {
     static final int MAX_PENDING = 30;
+    /** How late after the boundary a closing minute may still be given the current activity reading. */
+    static final Duration ACTIVITY_GRACE = Duration.ofSeconds(10);
 
     private static final class Counters {
         long requests, success, client, server, failed, sum, max;
@@ -71,22 +73,21 @@ public final class RequestAggregator {
             return;
         }
         if (minute.equals(openMinute)) return;
-        ForegroundAccounts state = activity.get();
-        boolean first = true;
-        for (Instant m = openMinute; m.isBefore(minute); m = m.plus(Duration.ofMinutes(1))) {
-            int covered = first ? (int) Math.min(60, Math.max(0,
-                    Duration.between(observedFrom, m.plusSeconds(60)).toSeconds())) : 60;
-            List<RouteGroupAggregate> groups = new ArrayList<>();
-            if (first) {
-                open.forEach((g, c) -> groups.add(new RouteGroupAggregate(g, c.requests, c.success, c.client,
-                        c.server, c.failed, c.sum, c.max, LatencyHistogram.toBins(c.bins))));
-            }
-            // Only the minute that just closed has a trustworthy activity reading; later catch-up minutes do not.
-            pending.add(new MinuteBucket(m, covered,
-                    covered >= 60 ? MinuteBucket.Completeness.COMPLETE : MinuteBucket.Completeness.PARTIAL,
-                    first ? state : ForegroundAccounts.unavailable(), List.copyOf(groups)));
-            first = false;
-        }
+        // Only the minute that just closed carries data. Skipped minutes (a delayed flush, a suspend or a long
+        // clock jump) stay gaps: nothing is iterated or allocated for them and no zero bucket is invented.
+        int covered = (int) Math.min(60, Math.max(0,
+                Duration.between(observedFrom, openMinute.plusSeconds(60)).toSeconds()));
+        // The activity reading is a trailing window sampled now, so it describes the minute only when that
+        // minute closed just now; otherwise its boundary was missed and the reading is unavailable.
+        boolean onTime = minute.equals(openMinute.plusSeconds(60))
+                && !now.isAfter(minute.plus(ACTIVITY_GRACE));
+        ForegroundAccounts state = onTime ? activity.get() : ForegroundAccounts.unavailable();
+        List<RouteGroupAggregate> groups = new ArrayList<>();
+        open.forEach((g, c) -> groups.add(new RouteGroupAggregate(g, c.requests, c.success, c.client,
+                c.server, c.failed, c.sum, c.max, LatencyHistogram.toBins(c.bins))));
+        pending.add(new MinuteBucket(openMinute, covered,
+                covered >= 60 ? MinuteBucket.Completeness.COMPLETE : MinuteBucket.Completeness.PARTIAL,
+                state, List.copyOf(groups)));
         while (pending.size() > MAX_PENDING) pending.remove(0);
         open.clear();
         openMinute = minute;
