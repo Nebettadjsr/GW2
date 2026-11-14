@@ -94,6 +94,12 @@ public class AccountAccessApiController {
             return proofUnavailable(e);
         } catch (AccountAccessService.AccountMismatchException e) {
             return accountRejected();
+        } catch (AccountAccessService.SessionEnded e) {
+            return switch (e.outcome()) {
+                case DELETION_INVALIDATED -> dataDeleted();
+                case CONTEXT_MISMATCH -> contextRejected();
+                default -> sessionRequired();
+            };
         } catch (application.access.AccountLifecycleGate.Unavailable e) {
             return error(HttpStatus.SERVICE_UNAVAILABLE, "DATA_STORE_UNAVAILABLE",
                     "The account is busy; try again shortly");

@@ -51,18 +51,18 @@ class AccountDataDeletionContractTest {
     @Test
     void deletionMapsEveryOutcomeAsNoStoreWithFixedCodes() throws Exception {
         var a = prove("fixture-key-a");
-        when(deletion.delete(any(), anyInt())).thenReturn(AccountDataDeletionService.Result.DELETED);
+        when(deletion.delete(any(), anyInt(), any())).thenReturn(AccountDataDeletionService.Result.DELETED);
         http.perform(delete("/api/account/data").header("Origin", ORIGIN).cookie(a.cookie())
                         .header("X-Account-Context", a.context()))
                 .andExpect(status().isNoContent()).andExpect(header().string("Cache-Control", containsString("no-store")));
 
-        when(deletion.delete(any(), anyInt())).thenReturn(AccountDataDeletionService.Result.WORK_IN_PROGRESS);
+        when(deletion.delete(any(), anyInt(), any())).thenReturn(AccountDataDeletionService.Result.WORK_IN_PROGRESS);
         http.perform(delete("/api/account/data").header("Origin", ORIGIN).cookie(a.cookie())
                         .header("X-Account-Context", a.context()))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("ACCOUNT_WORK_IN_PROGRESS"))
                 .andExpect(header().string("Cache-Control", containsString("no-store")));
 
-        when(deletion.delete(any(), anyInt())).thenReturn(AccountDataDeletionService.Result.UNAVAILABLE);
+        when(deletion.delete(any(), anyInt(), any())).thenReturn(AccountDataDeletionService.Result.UNAVAILABLE);
         http.perform(delete("/api/account/data").header("Origin", ORIGIN).cookie(a.cookie())
                         .header("X-Account-Context", a.context()))
                 .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.error").value("DATA_STORE_UNAVAILABLE"))
@@ -82,25 +82,25 @@ class AccountDataDeletionContractTest {
                 .andExpect(header().string("Cache-Control", containsString("no-store")));
         http.perform(delete("/api/account/data").cookie(a.cookie()).header("X-Account-Context", a.context()))
                 .andExpect(status().isForbidden());
-        verify(deletion, never()).delete(any(), anyInt());
+        verify(deletion, never()).delete(any(), anyInt(), any());
     }
 
     @Test
     void callerSuppliedAccountIdentityCannotRedirectTheTarget() throws Exception {
         var a = prove("fixture-key-a");
-        when(deletion.delete(any(), anyInt())).thenReturn(AccountDataDeletionService.Result.DELETED);
+        when(deletion.delete(any(), anyInt(), any())).thenReturn(AccountDataDeletionService.Result.DELETED);
         // A query asserting another account is refused at the guard...
         http.perform(delete("/api/account/data").param("accountId", ACCOUNT_B).header("Origin", ORIGIN)
                         .cookie(a.cookie()).header("X-Account-Context", a.context()))
                 .andExpect(status().isForbidden());
-        verify(deletion, never()).delete(any(), anyInt());
+        verify(deletion, never()).delete(any(), anyInt(), any());
         // ...and a body naming one is ignored: the target is the session's own account.
         http.perform(delete("/api/account/data").header("Origin", ORIGIN).cookie(a.cookie())
                         .header("X-Account-Context", a.context()).contentType("application/json")
                         .content("{\"accountId\":\"" + ACCOUNT_B + "\"}"))
                 .andExpect(status().isNoContent());
         var captor = org.mockito.ArgumentCaptor.forClass(model.AccountScope.class);
-        verify(deletion).delete(captor.capture(), org.mockito.ArgumentMatchers.eq(0));
+        verify(deletion).delete(captor.capture(), org.mockito.ArgumentMatchers.eq(0), any());
         org.junit.jupiter.api.Assertions.assertEquals(a.accountId().toLowerCase(), captor.getValue().id().toLowerCase());
     }
 
@@ -122,5 +122,39 @@ class AccountDataDeletionContractTest {
         http.perform(get("/api/account/luck").cookie(b.cookie()).header("X-Account-Context", b.context()))
                 .andExpect(status().isOk());
         prove("fixture-key-a");
+    }
+
+    /**
+     * Request-entry race: the request resolved a live session, then waits at the account gate behind
+     * a deletion; once the deletion commits and invalidates sessions it must be refused, not run.
+     */
+    @Test
+    void requestEntryAndRenewalWaitingBehindDeletionAreRefusedAfterItCommits() throws Exception {
+        var a = prove("fixture-key-a");
+        var b = prove("fixture-key-b");
+        var attempt = access.lifecycle().beginDeletion(java.util.UUID.fromString(a.accountId()), () -> false, 0);
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(3);
+        try {
+            var read = pool.submit(() -> http.perform(get("/api/account/luck").cookie(a.cookie())
+                    .header("X-Account-Context", a.context())).andReturn().getResponse());
+            var renewal = pool.submit(() -> http.perform(post("/api/session/renew").header("Origin", ORIGIN)
+                    .cookie(a.cookie()).header("X-Account-Context", a.context())
+                    .header("X-GW2-API-Key", "fixture-key-a")).andReturn().getResponse());
+            // Account B is independent of A's deletion while A is closed.
+            http.perform(get("/api/account/luck").cookie(b.cookie()).header("X-Account-Context", b.context()))
+                    .andExpect(status().isOk());
+            Thread.sleep(200);
+            org.junit.jupiter.api.Assertions.assertFalse(read.isDone(), "A's request waits for the deletion");
+            access.invalidateAccountSessions(a.accountId());
+            attempt.exclusive().close();
+            for (var future : java.util.List.of(read, renewal)) {
+                var response = future.get(5, java.util.concurrent.TimeUnit.SECONDS);
+                org.junit.jupiter.api.Assertions.assertEquals(401, response.getStatus());
+                org.junit.jupiter.api.Assertions.assertTrue(response.getContentAsString().contains("ACCOUNT_DATA_DELETED"));
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        prove("fixture-key-a"); // a later explicit Connect is preserved
     }
 }

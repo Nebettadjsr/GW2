@@ -39,7 +39,7 @@ class AccountDataDeletionSchemaTest {
                 .dataSource(EnvConfig.require("DATABASE_URL"), EnvConfig.require("DATABASE_USER"),
                         EnvConfig.require("DATABASE_PASSWORD"))
                 .schemas(schema).defaultSchema(schema).locations("classpath:db/migration").load().migrate();
-        try (Statement st = connect(true).createStatement()) {
+        try (Statement st = reader().createStatement()) {
             st.execute("INSERT INTO account_registry (account_id) VALUES ('" + A + "'), ('" + B + "')");
             for (UUID id : new UUID[] {A, B}) {
                 st.execute("INSERT INTO account_bank (account_id, slot, item_id, count) VALUES ('" + id + "', 1, 19721, 2)");
@@ -50,7 +50,32 @@ class AccountDataDeletionSchemaTest {
                 st.execute("INSERT INTO character_crafting (account_id, character_id, discipline, rating) VALUES ('" + id + "', 41, 'Artificer', 400)");
                 st.execute("INSERT INTO character_recipes (account_id, character_id, recipe_id) VALUES ('" + id + "', 41, 7319)");
                 st.execute("INSERT INTO account_source_state (account_id, source, generation, completed_at) VALUES ('" + id + "', 'BANK', 1, now())");
+                st.execute("INSERT INTO character_items (account_id, character_id, location, item_id, count) VALUES ('" + id + "', 41, 'INVENTORY', 19721, 3)");
+                st.execute("INSERT INTO character_bags (account_id, character_id, bag_index, installed, container_item_id, capacity) VALUES ('" + id + "', 41, 0, true, 8932, 20)");
+                st.execute("INSERT INTO character_bag_layout_publication (account_id) VALUES ('" + id + "')");
+                st.execute("INSERT INTO character_equipment_coverage (account_id, parent_generation) VALUES ('" + id + "', 1)");
+                st.execute("INSERT INTO character_equipment_tabs (account_id, character_id, tab_number, name, is_active) VALUES ('" + id + "', 41, 1, 'Main', true)");
+                st.execute("INSERT INTO character_equipment_tab_entries (account_id, character_id, tab_number, entry_order, slot, item_id) VALUES ('" + id + "', 41, 1, 0, 'Helm', 19721)");
+                st.execute("INSERT INTO character_build_coverage (account_id, parent_generation) VALUES ('" + id + "', 1)");
+                st.execute("INSERT INTO character_build_tabs (account_id, character_id, tab_number, name, is_active, land_utilities, aquatic_utilities) VALUES ('" + id + "', 41, 1, 'Build', true, '{1,2,3}', '{4,5,6}')");
+                st.execute("INSERT INTO character_build_tab_specializations (account_id, character_id, tab_number, position, specialization_id, traits) VALUES ('" + id + "', 41, 1, 1, 7, '{1,2,3}')");
             }
+            // Shared, account-independent data that deletion must never touch.
+            st.execute("INSERT INTO items (item_id, name, type, rarity, level, vendor_value, fetched_at) VALUES (19721, 'Glob of Ectoplasm', 'CraftingMaterial', 'Exotic', 80, 0, now())");
+            st.execute("INSERT INTO recipes (recipe_id, type, output_item_id, output_item_count, min_rating, disciplines, fetched_at) VALUES (7319, 'Refinement', 19721, 1, 400, '{Artificer}', now())");
+            st.execute("INSERT INTO recipe_ingredients (recipe_id, item_id, count) VALUES (7319, 19721, 2)");
+            st.execute("INSERT INTO tp_tradeable_items (item_id) VALUES (19721)");
+            st.execute("INSERT INTO tp_prices (item_id, buy_quantity, buy_unit_price, sell_quantity, sell_unit_price, fetched_at) VALUES (19721, 5, 100, 6, 120, now())");
+            st.execute("INSERT INTO material_categories (category_id, name, display_order) VALUES (5, 'Cooking', 1)");
+            st.execute("INSERT INTO material_category_items (category_id, position, item_id) VALUES (5, 1, 19721)");
+            st.execute("INSERT INTO recipe_catalog_publication (complete) VALUES (true)");
+            st.execute("INSERT INTO build_specializations (specialization_id, name, elite, minor_traits, major_traits, fetched_at) VALUES (7, 'Spec', false, '{1}', '{2}', now())");
+            st.execute("INSERT INTO build_traits (trait_id, name, fetched_at) VALUES (1, 'Trait', now())");
+            st.execute("INSERT INTO build_skills (skill_id, name, fetched_at) VALUES (1, 'Skill', now())");
+            st.execute("INSERT INTO build_pets (pet_id, name, fetched_at) VALUES (1, 'Pet', now())");
+            st.execute("INSERT INTO build_legends (legend_id, swap_skill_id, fetched_at) VALUES ('Legend1', 1, now())");
+            st.execute("INSERT INTO equipment_item_details (item_id, details, fetched_at) VALUES (19721, '{}', now())");
+            st.execute("INSERT INTO equipment_item_stats (stat_id, attributes, fetched_at) VALUES (1, '{}', now())");
         }
     }
 
@@ -64,7 +89,7 @@ class AccountDataDeletionSchemaTest {
 
     @Test
     void everyForeignKeyToTheRootCascadesAndTheGraphStaysInsideAccountTables() throws Exception {
-        try (Statement st = connect(true).createStatement();
+        try (Statement st = reader().createStatement();
              ResultSet rs = st.executeQuery("""
                 SELECT count(*) FROM pg_constraint
                 WHERE contype = 'f' AND confrelid = 'account_registry'::regclass AND confdeltype <> 'c'""")) {
@@ -72,7 +97,7 @@ class AccountDataDeletionSchemaTest {
             assertEquals(0, rs.getInt(1), "a non-cascading FK would block deleting the account root");
         }
         // Everything reachable from the root by foreign key is account-owned, never shared data.
-        try (Statement st = connect(true).createStatement();
+        try (Statement st = reader().createStatement();
              ResultSet rs = st.executeQuery("""
                 WITH RECURSIVE reach(rel) AS (
                   SELECT 'account_registry'::regclass
@@ -89,32 +114,44 @@ class AccountDataDeletionSchemaTest {
 
     @Test
     void deletingAWipesAEverywhereAndLeavesBAndSharedDataExactlyAsTheyWere() throws Exception {
-        long sharedBefore = total("items") + total("recipes") + total("recipe_catalog_publication");
-        long bBefore = ownedBy(B);
+        // Every account-owned table reachable from the root must be seeded for both accounts, so a
+        // table added later without seeding fails here rather than silently going unchecked.
+        for (String table : accountTables()) {
+            assertTrue(rows(table, A) > 0, "seed missing for " + table);
+            assertEquals(rows(table, A), rows(table, B), "seed differs for " + table);
+        }
+        assertTrue(accountTables().size() >= 17, "account graph: " + accountTables());
+        String sharedBefore = sharedFingerprint();
+        String bBefore = ownedFingerprint(B);
         assertTrue(ownedBy(A) > 0);
 
         deleteA(connect(false));
 
         assertEquals(0, ownedBy(A));
-        assertEquals(bBefore, ownedBy(B));
-        assertEquals(sharedBefore, total("items") + total("recipes") + total("recipe_catalog_publication"));
+        assertEquals(bBefore, ownedFingerprint(B));
+        assertEquals(sharedBefore, sharedFingerprint());
         // Repeating is harmless and reports nothing.
         deleteA(connect(false));
-        assertEquals(bBefore, ownedBy(B));
+        assertEquals(bBefore, ownedFingerprint(B));
+        assertEquals(sharedBefore, sharedFingerprint());
     }
 
     @Test
     void injectedMidTransactionFailureRollsBackTheWholeDataset() throws Exception {
-        try (Statement st = connect(true).createStatement()) {
+        try (Statement st = reader().createStatement()) {
             st.execute("""
                 CREATE FUNCTION fail_delete() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'injected'; END $$ LANGUAGE plpgsql""");
             st.execute("CREATE TRIGGER boom BEFORE DELETE ON characters FOR EACH ROW EXECUTE FUNCTION fail_delete()");
         }
-        long before = ownedBy(A);
+        String before = ownedFingerprint(A);
+        String bBefore = ownedFingerprint(B);
+        String sharedBefore = sharedFingerprint();
         Connection con = connect(false);
         assertThrows(SQLException.class, () -> registry.deleteAccount(con, AccountScope.of(A)));
         con.rollback();
-        assertEquals(before, ownedBy(A));
+        assertEquals(before, ownedFingerprint(A), "the whole A dataset is back after rollback");
+        assertEquals(bBefore, ownedFingerprint(B));
+        assertEquals(sharedBefore, sharedFingerprint());
     }
 
     @Test
@@ -163,7 +200,7 @@ class AccountDataDeletionSchemaTest {
     }
 
     private long roots(UUID id) throws Exception {
-        try (Statement st = connect(true).createStatement();
+        try (Statement st = reader().createStatement();
              ResultSet rs = st.executeQuery("SELECT count(*) FROM account_registry WHERE account_id = '" + id + "'")) {
             rs.next();
             return rs.getLong(1);
@@ -171,7 +208,30 @@ class AccountDataDeletionSchemaTest {
     }
 
     private long total(String table) throws Exception {
-        try (Statement st = connect(true).createStatement(); ResultSet rs = st.executeQuery("SELECT count(*) FROM " + table)) {
+        try (Statement st = reader().createStatement(); ResultSet rs = st.executeQuery("SELECT count(*) FROM " + table)) {
+            rs.next();
+            return rs.getLong(1);
+        }
+    }
+
+    /** Every table reachable from the registry root by foreign key, discovered from the real schema. */
+    private List<String> accountTables() throws Exception {
+        List<String> tables = new ArrayList<>();
+        try (Statement st = reader().createStatement();
+             ResultSet rs = st.executeQuery("""
+                WITH RECURSIVE reach(rel) AS (
+                  SELECT 'account_registry'::regclass
+                  UNION
+                  SELECT c.conrelid FROM pg_constraint c JOIN reach r ON c.confrelid = r.rel WHERE c.contype = 'f')
+                SELECT rel::text FROM reach ORDER BY 1""")) {
+            while (rs.next()) tables.add(rs.getString(1));
+        }
+        return tables;
+    }
+
+    private long rows(String table, UUID id) throws Exception {
+        try (Statement st = reader().createStatement();
+             ResultSet rs = st.executeQuery("SELECT count(*) FROM " + table + " WHERE account_id = '" + id + "'")) {
             rs.next();
             return rs.getLong(1);
         }
@@ -179,15 +239,47 @@ class AccountDataDeletionSchemaTest {
 
     private long ownedBy(UUID id) throws Exception {
         long sum = 0;
-        for (String t : List.of("account_registry", "account_source_state", "account_bank", "account_materials",
-                "account_recipes", "account_luck", "characters", "character_crafting", "character_recipes")) {
-            try (Statement st = connect(true).createStatement();
-                 ResultSet rs = st.executeQuery("SELECT count(*) FROM " + t + " WHERE account_id = '" + id + "'")) {
+        for (String t : accountTables()) sum += rows(t, id);
+        return sum;
+    }
+
+    /** Row content of every account-owned table for one account, so any change is detected. */
+    private String ownedFingerprint(UUID id) throws Exception {
+        StringBuilder out = new StringBuilder();
+        for (String t : accountTables()) {
+            try (Statement st = reader().createStatement();
+                 ResultSet rs = st.executeQuery("SELECT count(*), coalesce(md5(string_agg(x::text, '|' ORDER BY x::text)), '') FROM "
+                         + t + " x WHERE account_id = '" + id + "'")) {
                 rs.next();
-                sum += rs.getLong(1);
+                out.append(t).append('=').append(rs.getLong(1)).append(':').append(rs.getString(2)).append(';');
             }
         }
-        return sum;
+        return out.toString();
+    }
+
+    private static final List<String> SHARED = List.of("items", "recipes", "recipe_ingredients", "tp_tradeable_items",
+            "tp_prices", "material_categories", "material_category_items", "recipe_catalog_publication",
+            "build_specializations", "build_traits", "build_skills", "build_pets", "build_legends",
+            "equipment_item_details", "equipment_item_stats");
+
+    private String sharedFingerprint() throws Exception {
+        StringBuilder out = new StringBuilder();
+        for (String t : SHARED) {
+            try (Statement st = reader().createStatement();
+                 ResultSet rs = st.executeQuery("SELECT count(*), coalesce(md5(string_agg(x::text, '|' ORDER BY x::text)), '') FROM " + t + " x")) {
+                rs.next();
+                assertTrue(rs.getLong(1) > 0, "shared table not seeded: " + t);
+                out.append(t).append('=').append(rs.getLong(1)).append(':').append(rs.getString(2)).append(';');
+            }
+        }
+        return out.toString();
+    }
+
+    private Connection reader;
+
+    private Connection reader() throws SQLException {
+        if (reader == null) reader = connect(true);
+        return reader;
     }
 
     private Connection connect(boolean autoCommit) throws SQLException {

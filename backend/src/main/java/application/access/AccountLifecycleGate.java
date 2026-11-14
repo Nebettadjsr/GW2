@@ -109,28 +109,48 @@ public final class AccountLifecycleGate {
      * @param ownAdmissions shared admissions the caller itself holds (it must not wait on itself)
      */
     public DeletionAttempt beginDeletion(UUID accountId, BooleanSupplier unfinishedWork, int ownAdmissions) {
+        // Lock order is always coordinator -> gate (refresh admission holds the coordinator's monitor
+        // while calling requireOpen), so unfinishedWork is never asked while this gate's monitor is held.
         if (unfinishedWork.getAsBoolean()) return new DeletionAttempt(DeletionStart.WORK_IN_PROGRESS, null);
         long deadline = System.nanoTime() + wait.toNanos();
-        synchronized (this) {
-            State state = states.computeIfAbsent(accountId, k -> new State());
-            while (state.deleting) {
-                long left = deadline - System.nanoTime();
-                if (left <= 0) return new DeletionAttempt(DeletionStart.TIMED_OUT, null);
-                waitNanos(left);
-                state = states.computeIfAbsent(accountId, k -> new State());
-            }
-            state.deleting = true;
-            while (state.shared > ownAdmissions) {
-                long left = deadline - System.nanoTime();
-                if (left <= 0) {
-                    reopen(accountId);
-                    return new DeletionAttempt(DeletionStart.TIMED_OUT, null);
+        boolean closedGate = false;
+        try {
+            synchronized (this) {
+                State state = states.computeIfAbsent(accountId, k -> new State());
+                while (state.deleting) {
+                    long left = deadline - System.nanoTime();
+                    if (left <= 0) return new DeletionAttempt(DeletionStart.TIMED_OUT, null);
+                    waitNanos(left);
+                    state = states.computeIfAbsent(accountId, k -> new State());
                 }
-                waitNanos(left);
+                state.deleting = true;
+                closedGate = true;
+                while (state.shared > ownAdmissions) {
+                    long left = deadline - System.nanoTime();
+                    if (left <= 0) {
+                        closedGate = false;
+                        reopen(accountId);
+                        return new DeletionAttempt(DeletionStart.TIMED_OUT, null);
+                    }
+                    waitNanos(left);
+                }
             }
+            // The gate is closed and admitted operations have left, so no refresh can be admitted
+            // any more; this is the authoritative check, made outside the gate's monitor.
             if (unfinishedWork.getAsBoolean()) {
-                reopen(accountId);
+                closedGate = false;
+                close(accountId);
                 return new DeletionAttempt(DeletionStart.WORK_IN_PROGRESS, null);
+            }
+            closedGate = false; // ownership of the closed gate passes to the Exclusive below
+        } catch (Unavailable interrupted) {
+            // interruption while waiting: report truthfully as unavailable, never leave the gate closed
+            if (closedGate) { closedGate = false; close(accountId); }
+            return new DeletionAttempt(DeletionStart.TIMED_OUT, null);
+        } finally {
+            if (closedGate) {
+                // exception path (for example the work supplier threw): the gate must reopen
+                close(accountId);
             }
         }
         return new DeletionAttempt(DeletionStart.ENTERED, new Exclusive() {
@@ -144,6 +164,10 @@ public final class AccountLifecycleGate {
                 }
             }
         });
+    }
+
+    private synchronized void close(UUID accountId) {
+        reopen(accountId);
     }
 
     private void reopen(UUID accountId) {

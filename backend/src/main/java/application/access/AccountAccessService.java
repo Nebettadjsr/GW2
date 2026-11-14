@@ -25,8 +25,14 @@ public final class AccountAccessService {
     }
 
     /** Session installation participates in the account gate, so deletion cannot miss a new session. */
-    private AccountSessions.Issued install(AccountProof proved) {
+    private AccountSessions.Issued install(AccountProof proved, String presentedSessionId, String assertedContext) {
         try (var ignored = lifecycle.enter(java.util.UUID.fromString(proved.accountId()))) {
+            if (presentedSessionId != null) {
+                // Authority is rechecked after actual admission: a deletion that ran while this
+                // renewal waited has invalidated the old session, which must not install a new one.
+                AccountSessions.Resolution again = sessions.resolve(presentedSessionId, assertedContext);
+                if (!again.authenticated()) throw new SessionEnded(again.outcome());
+            }
             return sessions.establish(proved);
         }
     }
@@ -34,6 +40,20 @@ public final class AccountAccessService {
     /** Deletion-invalidates every session of the account; call only after the deletion committed. */
     public int invalidateAccountSessions(String accountId) {
         return sessions.invalidateAccount(accountId);
+    }
+
+    /** The presented session was no longer authoritative once the account admitted the operation. */
+    public static final class SessionEnded extends RuntimeException {
+        private final AccountSessions.Outcome outcome;
+
+        public SessionEnded(AccountSessions.Outcome outcome) {
+            super("the session is no longer live", null, false, false);
+            this.outcome = outcome;
+        }
+
+        public AccountSessions.Outcome outcome() {
+            return outcome;
+        }
     }
 
     /** Raised when a proved key resolves to an account other than the one already authorized. */
@@ -62,7 +82,7 @@ public final class AccountAccessService {
         if (!proved.grants().contains(AccountGrant.ACCOUNT)) {
             throw new InvalidCredentialException("the credential has no account identity permission");
         }
-        return install(proved);
+        return install(proved, null, null);
     }
 
     /**
@@ -96,7 +116,7 @@ public final class AccountAccessService {
         if (!proved.accountId().equalsIgnoreCase(current.context().accountId())) {
             throw new AccountMismatchException("the credential resolves to a different account");
         }
-        return install(proved);
+        return install(proved, sessionId, assertedContext);
     }
 
     /** Resolves a presented cookie and asserted context; no upstream call, so an outage is fine. */

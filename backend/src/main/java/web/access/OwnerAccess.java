@@ -31,11 +31,18 @@ public final class OwnerAccess {
         if (presented.isEmpty() || access == null) return denied(HttpStatus.UNAUTHORIZED);
         var resolution = access.resolve(presented.get(), AccountAccessHttp.assertedAccessContext(request));
         switch (resolution.outcome()) {
-            case NO_SESSION, EXPIRED, DELETION_INVALIDATED -> { return denied(HttpStatus.UNAUTHORIZED); }
+            case DELETION_INVALIDATED -> { return deleted(); }
+            case NO_SESSION, EXPIRED -> { return denied(HttpStatus.UNAUTHORIZED); }
             case CONTEXT_MISMATCH -> { return denied(HttpStatus.FORBIDDEN); }
             case AUTHENTICATED -> { /* owner check below */ }
         }
         return policy != null && policy.isOwner(resolution.context()) ? null : denied(HttpStatus.FORBIDDEN);
+    }
+
+    private static ResponseEntity<ApiErrorResponse> deleted() {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(new ApiErrorResponse("ACCOUNT_DATA_DELETED",
+                        "This account's data was deleted; connect again to continue"));
     }
 
     private static ResponseEntity<ApiErrorResponse> denied(HttpStatus status) {

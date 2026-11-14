@@ -19,8 +19,11 @@ public class AccountDataDeletionApiController {
 
     private final AccountDataDeletionService deletion;
     private final AccountAccessHttp http;
+    private final application.access.AccountAccessService access;
 
-    public AccountDataDeletionApiController(AccountDataDeletionService deletion, AccountAccessHttp http) {
+    public AccountDataDeletionApiController(AccountDataDeletionService deletion, AccountAccessHttp http,
+                                         application.access.AccountAccessService access) {
+        this.access = access;
         this.deletion = deletion;
         this.http = http;
     }
@@ -32,7 +35,11 @@ public class AccountDataDeletionApiController {
                     "This request did not come from this application's own origin");
         }
         var scope = RequestAccountContext.scopeOf(request);
-        return switch (deletion.delete(scope, 0)) {
+        var presented = AccountAccessHttp.presentedSessionId(request).orElse("");
+        String asserted = AccountAccessHttp.assertedAccessContext(request);
+        return switch (deletion.delete(scope, 0, () -> access.resolve(presented, asserted).authenticated())) {
+            case SESSION_INVALIDATED -> error(HttpStatus.UNAUTHORIZED, "ACCOUNT_DATA_DELETED",
+                    "This account's data was deleted; connect again to continue");
             case DELETED -> ResponseEntity.status(HttpStatus.NO_CONTENT)
                     .header(HttpHeaders.CACHE_CONTROL, "no-store").build();
             case WORK_IN_PROGRESS -> error(HttpStatus.CONFLICT, "ACCOUNT_WORK_IN_PROGRESS",

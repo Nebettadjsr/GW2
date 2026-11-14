@@ -21,7 +21,7 @@ import java.sql.SQLException;
  */
 public final class AccountDataDeletionService {
 
-    public enum Result { DELETED, WORK_IN_PROGRESS, UNAVAILABLE }
+    public enum Result { DELETED, WORK_IN_PROGRESS, UNAVAILABLE, SESSION_INVALIDATED }
 
     /** The transactional deletion primitive; the default opens a real transaction. */
     @FunctionalInterface
@@ -46,6 +46,14 @@ public final class AccountDataDeletionService {
 
     /** @param ownAdmissions shared gate admissions held by the calling request itself */
     public Result delete(AccountScope scope, int ownAdmissions) {
+        return delete(scope, ownAdmissions, () -> true);
+    }
+
+    /**
+     * @param stillAuthorized rechecked inside the exclusive point: a request that waited behind an
+     *                        earlier deletion must not delete again on a session that deletion ended
+     */
+    public Result delete(AccountScope scope, int ownAdmissions, java.util.function.BooleanSupplier stillAuthorized) {
         AccountLifecycleGate.DeletionAttempt attempt = access.lifecycle().beginDeletion(
                 scope.accountId(), () -> coordinator.hasUnfinishedWork(scope), ownAdmissions);
         switch (attempt.start()) {
@@ -54,6 +62,7 @@ public final class AccountDataDeletionService {
             case ENTERED -> { /* proceed */ }
         }
         try (var ignored = attempt.exclusive()) {
+            if (!stillAuthorized.getAsBoolean()) return Result.SESSION_INVALIDATED;
             try {
                 deleter.delete(scope);
             } catch (SQLException | RuntimeException failure) {

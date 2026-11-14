@@ -184,4 +184,99 @@ class AccountDataDeletionServiceTest {
                 sessions.resolve(a1.sessionId(), a1.context().accessContext()).outcome());
         assertEquals(0, sessions.size());
     }
+
+    @Test
+    void refreshAdmissionOfBAndDeletionOfAAreIndependentAndNeverDeadlock() throws Exception {
+        AccountSessions.Issued a = session("a1");
+        AccountSessions.Issued b = session("b1");
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+        try {
+            var svc = service(s -> deletes.incrementAndGet());
+            for (int round = 0; round < 50; round++) {
+                var del = pool.submit(() -> svc.delete(scope(A), 0));
+                var adm = pool.submit(() -> coordinator.require(b.context(), b.sessionId(), "b1",
+                        Set.of(AccountSyncStateRepository.BANK)));
+                assertEquals(AccountDataDeletionService.Result.DELETED, del.get(5, TimeUnit.SECONDS));
+                adm.get(5, TimeUnit.SECONDS);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void interruptedDrainWaitReopensTheGateAndReportsUnavailable() throws Exception {
+        var gate = new AccountLifecycleGate(Duration.ofSeconds(5));
+        UUID id = UUID.fromString(A);
+        var held = gate.enter(id);
+        AtomicReference<AccountLifecycleGate.DeletionAttempt> result = new AtomicReference<>();
+        Thread t = new Thread(() -> result.set(gate.beginDeletion(id, () -> false, 0)));
+        t.start();
+        // wait until the deleter has closed the gate (refresh admission now refused)
+        long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < end) {
+            try { gate.requireOpen(id); Thread.sleep(5); } catch (AccountLifecycleGate.Unavailable closed) { break; }
+        }
+        t.interrupt();
+        t.join(5000);
+        assertFalse(t.isAlive());
+        assertEquals(AccountLifecycleGate.DeletionStart.TIMED_OUT, result.get().start());
+        gate.requireOpen(id); // reopened
+        held.close();
+        try (var again = gate.enter(id)) { assertNotNull(again); }
+    }
+
+    @Test
+    void throwingWorkSupplierReopensTheGate() {
+        var gate = new AccountLifecycleGate(Duration.ofSeconds(1));
+        UUID id = UUID.fromString(A);
+        int[] calls = {0};
+        assertThrows(IllegalStateException.class, () -> gate.beginDeletion(id, () -> {
+            if (calls[0]++ == 1) throw new IllegalStateException("boom");
+            return false;
+        }, 0));
+        gate.requireOpen(id);
+    }
+
+    @Test
+    void renewalThatWaitedBehindDeletionDoesNotInstallASessionButAnExplicitConnectDoes() throws Exception {
+        AccountSessions.Issued a = session("a1");
+        var gate = access.lifecycle();
+        var attempt = gate.beginDeletion(UUID.fromString(A), () -> false, 0);
+        var pool = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            var renewal = pool.submit(() -> access.renew(a.sessionId(), a.context().accessContext(), "a1"));
+            Thread.sleep(100); // renewal proved and is now waiting for the account's admission
+            access.invalidateAccountSessions(A);
+            attempt.exclusive().close();
+            var failure = assertThrows(java.util.concurrent.ExecutionException.class,
+                    () -> renewal.get(5, TimeUnit.SECONDS));
+            var ended = assertInstanceOf(AccountAccessService.SessionEnded.class, failure.getCause());
+            assertEquals(AccountSessions.Outcome.DELETION_INVALIDATED, ended.outcome());
+        } finally {
+            pool.shutdownNow();
+        }
+        assertEquals(0, sessions.resolve(a.sessionId(), a.context().accessContext()).authenticated() ? 1 : 0);
+        assertTrue(session("a1").context() != null); // explicit Connect still works
+    }
+
+    @Test
+    void concurrentDeletionWaiterRechecksItsSessionInsideTheExclusivePoint() throws Exception {
+        AccountSessions.Issued a = session("a1");
+        var first = service(s -> deletes.incrementAndGet());
+        var second = service(s -> deletes.incrementAndGet());
+        var attempt = access.lifecycle().beginDeletion(UUID.fromString(A), () -> false, 0);
+        var pool = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            var waiter = pool.submit(() -> second.delete(scope(A), 0,
+                    () -> access.resolve(a.sessionId(), a.context().accessContext()).authenticated()));
+            Thread.sleep(100);
+            access.invalidateAccountSessions(A);
+            attempt.exclusive().close();
+            assertEquals(AccountDataDeletionService.Result.SESSION_INVALIDATED, waiter.get(5, TimeUnit.SECONDS));
+            assertEquals(0, deletes.get());
+        } finally {
+            pool.shutdownNow();
+        }
+    }
 }
