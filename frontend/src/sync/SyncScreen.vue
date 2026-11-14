@@ -6,6 +6,7 @@ import { ACCOUNT_CHANGED_CODE, ApiRequestError } from '@/api/http'
 import ConnectionPanel from '@/account/ConnectionPanel.vue'
 import PageHeader from '@/shell/PageHeader.vue'
 import OwnerCatalogControl from './OwnerCatalogControl.vue'
+import OwnerActivity from './OwnerActivity.vue'
 import type { OwnerOperationKey, SyncOperationKey } from './operations'
 import { useSharedSyncOperations } from './provideSyncOperations'
 import { describeOperationStatus } from './statusPresentation'
@@ -385,6 +386,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
         </details>
       </article>
     </section>
+    <OwnerActivity v-if="ownerState === 'owner' && ownerDetails" :active-last60-minutes="ownerDetails.accounts?.activeLast60Minutes ?? null" @denied="withdrawOwner('not-owner', true)" />
     </template>
   </div>
 </template>

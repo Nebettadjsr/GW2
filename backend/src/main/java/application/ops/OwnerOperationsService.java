@@ -5,6 +5,7 @@ import application.access.OwnerPolicy;
 import application.access.AccountSessions;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -15,7 +16,7 @@ import java.util.List;
  * and asserted access context and maps {@link Denial} to its transport.
  */
 public final class OwnerOperationsService {
-    public enum Denial { UNAUTHENTICATED, DELETED, FORBIDDEN }
+    public enum Denial { UNAUTHENTICATED, DELETED, CONTEXT_MISMATCH, FORBIDDEN }
 
     /** Either the privileged payload or a content-free denial; {@code cacheControl} is always no-store. */
     public record Result<T>(T value, Denial denial) {
@@ -28,7 +29,12 @@ public final class OwnerOperationsService {
 
     public record Summary(Instant generatedAt, ForegroundAccounts foregroundAccounts, DatabaseSize databaseSize,
                           boolean historyAvailable, boolean retentionTruncated, int minuteBuckets, int hourBuckets,
-                          MinuteBucket latestMinute, HourBucket latestHour) {}
+                          MinuteBucket latestMinute, HourBucket latestHour,
+                          List<MinuteBucket> minutes, List<HourBucket> hours) {}
+
+    public static final int MAX_MINUTE_BUCKETS = 360;
+    public static final Duration SUMMARY_MINUTE_WINDOW = Duration.ofHours(6);
+    public static final Duration SUMMARY_HOUR_WINDOW = Duration.ofDays(7);
 
     /** Bounded: at most 360 minute and 720 hour buckets, each with at most eight route groups. */
     public record Export(Instant generatedAt, boolean historyAvailable, boolean retentionTruncated,
@@ -53,12 +59,18 @@ public final class OwnerOperationsService {
         Denial denial = authorize(sessionId, assertedAccessContext);
         if (denial != null) return new Result<>(null, denial);
         HistoryStore.Snapshot snapshot = history.history();
-        List<MinuteBucket> minutes = snapshot.minutes();
-        List<HourBucket> hours = snapshot.hours();
-        return new Result<>(new Summary(clock.instant(), history.currentActivity(), databaseSize.current(),
+        Instant now = clock.instant();
+        // The normal view is filtered by elapsed time, not just by retained row count.
+        List<MinuteBucket> minutes = snapshot.minutes().stream()
+                .filter(m -> !m.startUtc().isBefore(now.minus(SUMMARY_MINUTE_WINDOW)) && !m.startUtc().isAfter(now))
+                .sorted(java.util.Comparator.comparing(MinuteBucket::startUtc)).limit(MAX_MINUTE_BUCKETS).toList();
+        List<HourBucket> hours = snapshot.hours().stream()
+                .filter(h -> !h.startUtc().isBefore(now.minus(SUMMARY_HOUR_WINDOW)) && !h.startUtc().isAfter(now))
+                .sorted(java.util.Comparator.comparing(HourBucket::startUtc)).limit(168).toList();
+        return new Result<>(new Summary(now, history.currentActivity(), databaseSize.current(),
                 snapshot.available(), snapshot.retentionTruncated(), minutes.size(), hours.size(),
                 minutes.isEmpty() ? null : minutes.get(minutes.size() - 1),
-                hours.isEmpty() ? null : hours.get(hours.size() - 1)), null);
+                hours.isEmpty() ? null : hours.get(hours.size() - 1), minutes, hours), null);
     }
 
     public Result<Export> export(String sessionId, String assertedAccessContext) {
@@ -67,6 +79,11 @@ public final class OwnerOperationsService {
         HistoryStore.Snapshot snapshot = history.history();
         return new Result<>(new Export(clock.instant(), snapshot.available(), snapshot.retentionTruncated(),
                 snapshot.minutes(), snapshot.hours()), null);
+    }
+
+    /** Authorization only; touches no history or database collaborator. */
+    public Denial authorizeOnly(String sessionId, String assertedAccessContext) {
+        return authorize(sessionId, assertedAccessContext);
     }
 
     /** Owner-only period descriptors; no store is touched before authorization succeeds. */
@@ -90,7 +107,7 @@ public final class OwnerOperationsService {
         return switch (resolution.outcome()) {
             case DELETION_INVALIDATED -> Denial.DELETED;
             case NO_SESSION, EXPIRED -> Denial.UNAUTHENTICATED;
-            case CONTEXT_MISMATCH -> Denial.FORBIDDEN;
+            case CONTEXT_MISMATCH -> Denial.CONTEXT_MISMATCH;
             case AUTHENTICATED -> owner != null && owner.isOwner(resolution.context()) ? null : Denial.FORBIDDEN;
         };
     }
