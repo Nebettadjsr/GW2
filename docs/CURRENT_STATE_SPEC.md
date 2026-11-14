@@ -113,3 +113,7 @@ The informational Performance workflow publishes separate application-process an
 - [Known Problems](KNOWN_PROBLEMS.md): confirmed open defects and risks.
 - [Test Strategy](TEST_STRATEGY.md): verification layers and procedures.
 - [Crafting Glossary](crafting/GLOSSARY.md): player-facing terms and UI-label mapping.
+
+## Delete cached data (browser)
+
+The key card offers **Delete cached data** for a verified connected account (STORY-DELETE-002). Confirmation uses a native modal; a `204` removes only that GUID's Material Protection record and in-memory state, resets the connection locally without calling `/session/logout`, and broadcasts a GUID-only invalidation to other same-origin tabs (`BroadcastChannel`, `storage` event fallback). `ACCOUNT_DATA_DELETED` bypasses the generic `SESSION_REQUIRED` re-proof. Final local Product Owner visual approval is still outstanding.

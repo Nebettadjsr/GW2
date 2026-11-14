@@ -139,7 +139,7 @@ it('opens one modal help dialog at a time, with the official links, and closes b
     'ArenaNet never shares your email, password or payment details through this API key.',
     'You control access: choose permissions for each key and revoke it at any time in your ArenaNet account.',
     'No separate sign-up: no email address or password needed here.',
-    'Disconnect removes the key from this browser tab. Delete (planned) will remove your saved account data from our database.'
+    'Disconnect removes the key from this browser session. Delete cached data removes your saved account data from our database.'
   ])
   const details = safety.get('[data-test="safety-details"]')
   expect(details.attributes('open')).toBeUndefined()

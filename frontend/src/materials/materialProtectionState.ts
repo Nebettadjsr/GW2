@@ -1,5 +1,5 @@
 import { computed, effectScope, reactive, watch, type ComputedRef } from 'vue'
-import { connection } from '@/api/accountSession'
+import { connection, registerDeletionCleanup } from '@/api/accountSession'
 import type { EffectiveSettings } from '@/api/types'
 
 /**
@@ -373,6 +373,25 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     persist(accountId, state.committed, enabled, state.committedSources)
   }
 
+  /**
+   * Account-data deletion: removes only this GUID's persisted record and in-memory shadow, and clears the
+   * reactive state when that account is the current one. Other GUIDs' preferences are untouched.
+   */
+  function forgetAccount(accountId: string): void {
+    shadow.delete(accountId)
+    if (storage !== null) {
+      try {
+        storage.removeItem(keyFor(accountId))
+      } catch {
+        /* nothing more can be done; the record is only a preference cache */
+      }
+    }
+    if (state.accountId === accountId) {
+      editVersion += 1
+      reset()
+    }
+  }
+
   /** Captures the account and edit state a later request is built from; null before restoration. */
   function beginRequest(): RequestToken | null {
     const accountId = ready()
@@ -423,6 +442,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     setActivation,
     beginRequest,
     reconcile,
+    forgetAccount,
     dispose: stop
   }
 }
@@ -442,3 +462,6 @@ export function resetMaterialProtection(): void {
   shared?.dispose()
   shared = null
 }
+
+// Account-data deletion removes this GUID's preference record and shadow (STORY-DELETE-002).
+registerDeletionCleanup(accountId => useMaterialProtection().forgetAccount(accountId))

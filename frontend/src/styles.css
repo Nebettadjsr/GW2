@@ -845,3 +845,23 @@ html {
 .account-needed {
   margin: var(--space-4) 0;
 }
+
+.connection-panel__delete {
+  padding: 0;
+  width: min(26rem, calc(100vw - 2rem));
+}
+
+.connection-panel__delete-content {
+  padding: 1.25rem;
+}
+
+.connection-panel__delete-copy {
+  margin: 0 0 0.75rem;
+  line-height: 1.6;
+}
+
+.connection-panel__delete-trigger,
+.connection-panel__delete-confirm {
+  border-color: var(--color-danger, #b3261e);
+  color: var(--color-danger, #b3261e);
+}

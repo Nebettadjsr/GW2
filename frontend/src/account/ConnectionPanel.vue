@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
-import { connection, disconnect, retryConnection } from '@/api/accountSession'
+import { connection, deleteAccountData, disconnect, retryConnection } from '@/api/accountSession'
+import '@/materials/materialProtectionState'
 import { clearDraft, draft, isAttempting, showDraft, submitDraft } from './keyDraft'
 
 /**
@@ -36,6 +37,89 @@ function onHelpClosed(): void {
   help.value = null
   openedFrom = null
   if (kind) helpTriggers[kind]?.focus()
+}
+
+/* Delete cached data: a small native confirmation modal; nothing is requested until Confirm. */
+const confirmingDelete = ref(false)
+const deleting = ref(false)
+const deleteError = ref<string | null>(null)
+const deleteTrigger = ref<HTMLButtonElement | null>(null)
+const deleteDialog = ref<HTMLDialogElement | null>(null)
+const deleteHeading = ref<HTMLHeadingElement | null>(null)
+const deleteCancel = ref<HTMLButtonElement | null>(null)
+const deleteConfirm = ref<HTMLButtonElement | null>(null)
+
+async function openDelete(): Promise<void> {
+  deleteError.value = null
+  confirmingDelete.value = true
+  await nextTick()
+  if (deleteDialog.value && !deleteDialog.value.open) deleteDialog.value.showModal()
+  deleteHeading.value?.focus()
+}
+
+function cancelDelete(): void {
+  if (deleting.value) return
+  deleteDialog.value?.close()
+}
+
+function onDeleteClosed(): void {
+  confirmingDelete.value = false
+  deleteError.value = null
+  deleteTrigger.value?.focus()
+}
+
+/** Escape is the native `cancel` event: honoured only while idle. */
+function onDeleteCancel(event: Event): void {
+  if (deleting.value) event.preventDefault()
+}
+
+/** A click on the backdrop lands on the dialog element itself, never on its content. */
+function onDeleteBackdrop(event: MouseEvent): void {
+  if (event.target === deleteDialog.value) cancelDelete()
+}
+
+/** Keeps Tab inside the modal even where the platform does not trap it. */
+function onDeleteKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Tab') return
+  const order = [deleteCancel.value, deleteConfirm.value].filter(
+    (el): el is HTMLButtonElement => el !== null && !el.disabled
+  )
+  if (order.length === 0) {
+    event.preventDefault()
+    return
+  }
+  const active = document.activeElement
+  const index = order.findIndex((el) => el === active)
+  if (event.shiftKey && (index <= 0)) {
+    event.preventDefault()
+    order[order.length - 1]?.focus()
+  } else if (!event.shiftKey && (index === order.length - 1)) {
+    event.preventDefault()
+    order[0]?.focus()
+  } else if (index === -1) {
+    event.preventDefault()
+    order[0]?.focus()
+  }
+}
+
+async function confirmDelete(): Promise<void> {
+  if (deleting.value) return
+  deleting.value = true
+  deleteError.value = null
+  try {
+    const result = await deleteAccountData()
+    if (result === 'deleted' || result === 'already-deleted') {
+      deleteDialog.value?.close()
+      await nextTick()
+      document.getElementById('gw2-api-key')?.focus()
+    } else if (result === 'work-in-progress') {
+      deleteError.value = 'Account work is still finishing, so nothing was deleted. Confirm again when it has finished.'
+    } else {
+      deleteError.value = 'The cached data could not be deleted right now. Nothing was changed; you can try again.'
+    }
+  } finally {
+    deleting.value = false
+  }
 }
 
 onBeforeUnmount(() => {
@@ -153,8 +237,57 @@ async function onDisconnect(): Promise<void> {
         >
           Disconnect
         </button>
+        <button
+          v-if="isConnected && connection.accountId !== null"
+          ref="deleteTrigger"
+          type="button"
+          class="connection-panel__delete-trigger"
+          aria-haspopup="dialog"
+          data-test="delete-cached-data"
+          @click="openDelete"
+        >
+          Delete cached data
+        </button>
       </span>
     </form>
+
+    <dialog
+      v-if="confirmingDelete"
+      ref="deleteDialog"
+      class="connection-panel__help connection-panel__delete"
+      aria-labelledby="delete-cached-title"
+      aria-describedby="delete-cached-body"
+      data-test="delete-dialog"
+      @close="onDeleteClosed"
+      @cancel="onDeleteCancel"
+      @click="onDeleteBackdrop"
+      @keydown="onDeleteKeydown"
+    >
+      <div class="connection-panel__delete-content">
+        <h3 id="delete-cached-title" ref="deleteHeading" tabindex="-1">Delete cached account data?</h3>
+        <p id="delete-cached-body" class="connection-panel__delete-copy">
+          This removes this app’s cached data and saved selections for the connected GW2 account. It does not
+          affect your Guild Wars 2 account. Data can be downloaded again after reconnecting.
+        </p>
+        <p v-if="deleteError" class="connection-panel__error" role="alert" data-test="delete-error">{{ deleteError }}</p>
+        <footer class="help-footer help-footer--safety">
+          <button ref="deleteCancel" type="button" :disabled="deleting" data-test="delete-cancel" @click="cancelDelete">
+            Cancel
+          </button>
+          <button
+            ref="deleteConfirm"
+            type="button"
+            class="connection-panel__delete-confirm"
+            :disabled="deleting"
+            :aria-busy="deleting ? 'true' : 'false'"
+            data-test="delete-confirm"
+            @click="confirmDelete"
+          >
+            Delete cached data
+          </button>
+        </footer>
+      </div>
+    </dialog>
 
     <dialog
       v-if="help"
@@ -190,7 +323,7 @@ async function onDisconnect(): Promise<void> {
           <li><strong>ArenaNet never shares</strong> your email, password or payment details through this API key.</li>
           <li><strong>You control access:</strong> choose permissions for each key and revoke it at any time in your ArenaNet account.</li>
           <li><strong>No separate sign-up:</strong> no email address or password needed here.</li>
-          <li><strong>Disconnect</strong> removes the key from this browser tab. <strong>Delete (planned)</strong> will remove your saved account data from our database.</li>
+          <li><strong>Disconnect</strong> removes the key from this browser session. <strong>Delete cached data</strong> removes your saved account data from our database.</li>
         </ul>
         <details ref="storageDetails" class="help-details" data-test="safety-details">
           <summary>What this app stores</summary>
@@ -244,6 +377,9 @@ async function onDisconnect(): Promise<void> {
 
     <p v-if="connection.error" class="connection-panel__error" role="alert" data-test="connection-error">
       {{ connection.error }}
+    </p>
+    <p v-if="connection.deletionNotice" class="connection-panel__notice" role="status" data-test="deletion-notice">
+      {{ connection.deletionNotice }}
     </p>
     <p v-if="connection.logoutNotice" class="connection-panel__notice" role="status" data-test="logout-notice">
       {{ connection.logoutNotice }}
