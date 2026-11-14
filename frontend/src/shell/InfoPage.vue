@@ -69,7 +69,7 @@ const heading = computed(() => ({
     <template v-else>
       <h2>Session cookie</h2>
       <ul>
-        <li>Connecting sets a <code>GW2_SESSION</code> cookie. It is HttpOnly, SameSite=Strict and not readable by page scripts.</li>
+        <li>The <code>GW2_SESSION</code> cookie identifies your connection. It does not contain your API key.</li>
         <li>The server session behind it lasts 15 minutes after the key is checked.</li>
       </ul>
       <h2>Session storage</h2>
@@ -80,7 +80,8 @@ const heading = computed(() => ({
       </ul>
       <h2>Local storage</h2>
       <ul>
-        <li>Saved Material Protection choices (protected items and the Profit preference) are stored per account.</li>
+        <li>Your saved exclusions for Crafting Profit are kept in this browser separately for each account.</li>
+        <li>They remain after Disconnect. Delete cached data clears this account's saved choices in this browser.</li>
         <li>A short-lived entry is written and removed when cached data is deleted, so other tabs of this browser can react.</li>
       </ul>
       <h2>Still to be completed</h2>
