@@ -374,14 +374,14 @@ public class Gw2ApiApplication {
                 new repo.CharacterInventoryLayoutRepository(), Clock.systemUTC(), Duration.ofMillis(accountMaxAgeMs));
     }
 
-    /** Bounded disposable operational history (STORY-OPS-001): two small files under {@code OPS_HISTORY_DIR}. */
+    /** Bounded sparse UTC daily activity files (STORY-OPS-003) under {@code OPS_HISTORY_DIR}. */
     @Bean
     public application.ops.OperationalHistoryService operationalHistoryService(
             @Value("${gw2.ops.history-dir}") String directory, tools.jackson.databind.ObjectMapper mapper) {
         Clock clock = Clock.systemUTC();
+        var store = new infra.ops.SparseActivityStore(Path.of(directory), clock);
         return new application.ops.OperationalHistoryService(clock,
-                new application.ops.ForegroundActivityTracker(clock),
-                new infra.ops.FileHistoryStore(Path.of(directory), mapper));
+                new application.ops.ForegroundActivityTracker(clock), store, store);
     }
 
     @Bean
