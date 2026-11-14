@@ -84,6 +84,7 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
     private final TreeSet<LocalDate> truncatedDays = new TreeSet<>();
     private final TreeSet<LocalDate> lossDays = new TreeSet<>();
     private final TreeSet<LocalDate> prunedWeeks = new TreeSet<>();
+    private final TreeSet<LocalDate> lossWeeks = new TreeSet<>();
     static final int MAX_LOSS_DAYS = 64;
     /** Recognized owned/legacy artifacts that could not be removed; they stay inside the byte bound. */
     private final java.util.HashMap<Path, Long> stuck = new java.util.HashMap<>();
@@ -147,6 +148,7 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
             lossDays.addAll(days.keySet());
         }
         truncatedDays.retainAll(days.keySet());
+        lossWeeks.removeIf(w -> days.keySet().stream().noneMatch(d -> weekStart(d).equals(w)));
         trimLoss();
         while (!days.isEmpty() && overBounds(0)) {
             if (!evictOldest(null)) break;
@@ -166,7 +168,12 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
                 if (in.consumed() > maxDayBytes) { capped = true; break; }
                 if (first) {
                     first = false;
-                    if (!line.equals(HEADER)) { if (!deleteQuietly(file)) stuck.put(file, Files.size(file)); return null; }
+                    if (!line.equals(HEADER)) {
+                        lossDays.add(date);
+                        repairedAtStart = true;
+                        if (!deleteQuietly(file)) stuck.put(file, Files.size(file));
+                        return null;
+                    }
                 } else {
                     MinuteBucket parsed = parse(line);
                     if (parsed == null || parsed.completeness() != MinuteBucket.Completeness.COMPLETE
@@ -175,7 +182,7 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
                     }
                     Instant minute = rowMinute(line);
                     RouteGroup group = rowGroup(line);
-                    if (minute != null && group != null) {
+                    if (parsed != null && minute != null && group != null) {
                         if (day.lastMinute == null || minute.isAfter(day.lastMinute)) {
                             day.lastMinute = minute;
                             day.lastGroups = EnumSet.noneOf(RouteGroup.class);
@@ -185,8 +192,17 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
                 }
                 valid = in.consumed();
             }
+            if (in.skippedMalformed()) {
+                lossDays.add(date);
+                repairedAtStart = true;
+            }
         }
-        if (first) { if (!deleteQuietly(file)) stuck.put(file, Files.size(file)); return null; }
+        if (first || day.lastMinute == null) {
+            lossDays.add(date);
+            repairedAtStart = true;
+            if (!deleteQuietly(file)) stuck.put(file, Files.size(file));
+            return null;
+        }
         if (capped) truncatedDays.add(date);
         if (Files.size(file) > valid) {
             try (FileChannel ch = FileChannel.open(file, StandardOpenOption.WRITE)) { ch.truncate(valid); }
@@ -216,6 +232,7 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
                         case "T" -> truncatedDays.add(d);
                         case "L" -> lossDays.add(d);
                         case "P" -> prunedWeeks.add(d);
+                        case "W" -> lossWeeks.add(d);
                         default -> ok = false;
                     }
                 } catch (RuntimeException e) { ok = false; }
@@ -231,6 +248,8 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
         while (lossDays.size() > MAX_LOSS_DAYS) {
             LocalDate discard = lossDays.stream().filter(d -> !days.containsKey(d)).findFirst().orElse(null);
             if (discard == null) break; // retained-day flags stay attached to their surviving rows
+            LocalDate week = weekStart(discard);
+            if (days.keySet().stream().anyMatch(d -> weekStart(d).equals(week))) lossWeeks.add(week);
             lossDays.remove(discard);
         }
     }
@@ -348,6 +367,7 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
             LocalDate week = weekStart(d);
             if (days.keySet().stream().anyMatch(x -> weekStart(x).equals(week))) prunedWeeks.add(week);
             prunedWeeks.removeIf(w -> days.keySet().stream().noneMatch(x -> weekStart(x).equals(w)));
+            lossWeeks.removeIf(w -> days.keySet().stream().noneMatch(x -> weekStart(x).equals(w)));
             writeIndex();
             return true;
         }
@@ -368,6 +388,7 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
             for (LocalDate d : truncatedDays) byDate.computeIfAbsent(d, k -> new ArrayList<>()).add("T," + d);
             for (LocalDate d : lossDays) byDate.computeIfAbsent(d, k -> new ArrayList<>()).add("L," + d);
             for (LocalDate d : prunedWeeks) byDate.computeIfAbsent(d, k -> new ArrayList<>()).add("P," + d);
+            for (LocalDate d : lossWeeks) byDate.computeIfAbsent(d, k -> new ArrayList<>()).add("W," + d);
             StringBuilder text = new StringBuilder();
             outer:
             for (List<String> lines : byDate.values()) { // newest first, so trimming drops the oldest flags
@@ -456,6 +477,7 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
         private final InputStream in;
         private long remaining;
         private long consumed;
+        private boolean skippedMalformed;
         private final byte[] line = new byte[MAX_ROW_BYTES];
 
         RowReader(InputStream in, long limit) {
@@ -465,6 +487,8 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
 
         /** Offset just after the last line returned (including skipped over-long ones). */
         long consumed() { return consumed; }
+
+        boolean skippedMalformed() { return skippedMalformed; }
 
         String nextLine() throws IOException {
             int n = 0;
@@ -476,7 +500,7 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
                 remaining--;
                 consumed++;
                 if (b == '\n') {
-                    if (overflow) { n = 0; overflow = false; start = consumed; continue; }
+                    if (overflow) { skippedMalformed = true; n = 0; overflow = false; start = consumed; continue; }
                     return new String(line, 0, n, StandardCharsets.US_ASCII);
                 }
                 if (n < line.length) line[n++] = (byte) b; else overflow = true;
@@ -575,7 +599,7 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
     private PeriodDescriptor week(LocalDate w, Instant now) {
         boolean closed = !now.isBefore(at(w.plusDays(7)));
         boolean truncated = false;
-        boolean loss = !lossDays.subSet(w, true, w.plusDays(7), false).isEmpty();
+        boolean loss = lossWeeks.contains(w) || !lossDays.subSet(w, true, w.plusDays(7), false).isEmpty();
         long bytes = 0;
         int count = 0;
         for (var e : days.subMap(w, true, w.plusDays(6), true).entrySet()) {
@@ -654,8 +678,8 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
                     continue;
                 }
                 if (!currentHeaderSkipped) { currentHeaderSkipped = true; continue; }
-                Instant minute = rowMinute(line);
-                if (minute == null || rowGroup(line) == null || minute.isBefore(from) || !minute.isBefore(to)) continue;
+                MinuteBucket parsed = parse(line);
+                if (parsed == null || parsed.startUtc().isBefore(from) || !parsed.startUtc().isBefore(to)) continue;
                 byte[] b = line.getBytes(StandardCharsets.US_ASCII);
                 System.arraycopy(b, 0, out, len, b.length);
                 len += b.length;

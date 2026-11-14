@@ -89,6 +89,57 @@ class SparseActivityStoreTest {
                 find(store(), PeriodDescriptor.Kind.WEEK, "2026-11-09T00:00:00Z").coverage());
     }
 
+    @Test
+    void trimmingFilelessLossDatesPreservesTheRetainedWeeksLoss() throws Exception {
+        var s = store();
+        s.appendMinute(minute("2026-11-09T10:00:00Z", RouteGroup.CRAFTING));
+        for (int i = 1; i <= SparseActivityStore.MAX_LOSS_DAYS + 8; i++) {
+            var date = java.time.LocalDate.parse("2026-11-09").plusDays(i);
+            Path obstructed = dir.resolve("activity-" + date + ".csv");
+            Files.createDirectory(obstructed);
+            Files.writeString(obstructed.resolve("blocker"), "controlled first-append failure");
+            now = date.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
+            s.appendMinute(minute(date + "T10:00:00Z", RouteGroup.CRAFTING));
+        }
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL,
+                find(s, PeriodDescriptor.Kind.WEEK, "2026-11-09T00:00:00Z").coverage());
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL,
+                find(store(), PeriodDescriptor.Kind.WEEK, "2026-11-09T00:00:00Z").coverage());
+    }
+
+    @Test
+    void recoveryMarksOversizedSkippedRowsAsLoss() throws Exception {
+        var s = store();
+        s.appendMinute(minute("2026-11-10T10:00:00Z", RouteGroup.CRAFTING));
+        Path file = dir.resolve("activity-2026-11-10.csv");
+        String validRow = Files.readAllLines(file).get(1);
+        Files.writeString(file, SparseActivityStore.HEADER + "\n" + "x".repeat(1100) + "\n" + validRow + "\n");
+        now = Instant.parse("2026-11-20T00:00:00Z");
+        var restarted = store();
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL,
+                find(restarted, PeriodDescriptor.Kind.DAY, "2026-11-10T00:00:00Z").coverage());
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL,
+                find(restarted, PeriodDescriptor.Kind.WEEK, "2026-11-09T00:00:00Z").coverage());
+        assertEquals(2, read(restarted.openDownload(find(restarted, PeriodDescriptor.Kind.DAY,
+                "2026-11-10T00:00:00Z").selectionId())).split("\n").length);
+    }
+
+    @Test
+    void headerOnlyCrashFileIsNotAnEmptyDownloadAndItsWeekKeepsTheLoss() throws Exception {
+        var s = store();
+        s.appendMinute(minute("2026-11-10T10:00:00Z", RouteGroup.CRAFTING));
+        s.appendMinute(minute("2026-11-11T10:00:00Z", RouteGroup.CRAFTING));
+        Files.writeString(dir.resolve("activity-2026-11-10.csv"), SparseActivityStore.HEADER + "\n");
+        now = Instant.parse("2026-11-20T00:00:00Z");
+        var restarted = store();
+        assertFalse(restarted.listPeriods().stream().anyMatch(p -> p.kind() == PeriodDescriptor.Kind.DAY
+                && p.fromUtc().equals(Instant.parse("2026-11-10T00:00:00Z"))));
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL,
+                find(restarted, PeriodDescriptor.Kind.WEEK, "2026-11-09T00:00:00Z").coverage());
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL,
+                find(store(), PeriodDescriptor.Kind.WEEK, "2026-11-09T00:00:00Z").coverage());
+    }
+
     private static MinuteBucket minute(String utc, RouteGroup... groups) { return minute(utc, 1, groups); }
 
     private static MinuteBucket minute(String utc, long width, RouteGroup... groups) {
