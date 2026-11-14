@@ -11,11 +11,10 @@ log_format gw2_minimal '$request_method $gw2_log_path $status $body_bytes_sent $
 server {
     listen 8080;
     access_log /dev/stdout gw2_minimal;
-    # Request-associated error lines (even critical ones, e.g. a failed body temp file) append the
-    # request line with query string, upstream URI and Referer. Nothing request-bound is therefore
-    # written here; the 5xx status stays visible in the access log above. Startup/config events use
-    # the global error log, which carries no request context.
-    error_log /dev/stderr emerg;
+    # Nginx appends request/query/referrer context even to emerg allocation errors. Discard this
+    # server's raw error stream at every level; keep the global startup/process log and the
+    # query-free access status/size/time diagnostics above.
+    error_log /dev/null;
     server_name _;
     root /usr/share/nginx/html;
     index index.html;

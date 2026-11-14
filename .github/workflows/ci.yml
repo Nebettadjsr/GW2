@@ -39,6 +39,11 @@ jobs:
           tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
           "$RUNNER_TEMP/actionlint" -color -shellcheck= -pyflakes=
 
+      - name: Install native proxy test runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends nginx
+
       - name: Test workflow helpers
         run: python -m unittest discover -s .github/scripts
 

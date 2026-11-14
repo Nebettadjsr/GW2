@@ -1,6 +1,6 @@
 # Local three-container stack (STORY-INFRA-008): PostgreSQL, Java backend, Nginx frontend.
 #   cd docker && docker compose up --build --wait (then open http://127.0.0.1:8088)
-# Stack settings use GW2_STACK_* names only and are listed in compose.env.example. The backend gets
+# Stack settings and optional owner/public operator facts are listed in compose.env.example. The backend gets
 # exactly the variables below, so a maintainer's root .env (DATABASE_URL, credentials, GW2_API_KEY)
 # is never forwarded and this stack never connects to a maintainer database. Not a hosted deployment.
 name: gw2

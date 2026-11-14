@@ -4,6 +4,11 @@ Updated: 2026-11-14. Interactive Codex supervises; native GitHub Codex plans; Cl
 one released story at a time. GitHub issues/PRs own execution evidence; this file owns planning
 order, authorization and handoffs. Earlier planning and experiments remain available in Git history.
 
+Immediate handoff: after accepted footer/log integration, the owner says “pls continue building”.
+Release #216 as the sole portable production-configuration implementation. Host/domain/TLS choices,
+actual Oracle setup and verified legal content remain later coordinated launch work. Claude codes;
+Codex supervises and performs actual hosting setup with the owner. No Oracle manual is requested.
+
 ## Current authorization: public production preparation
 
 The Product Owner ends the multi-user/capacity-test and pre-launch analysis programme. Additional
@@ -22,6 +27,11 @@ services, a domain/email purchase, public deployment, Docker/VM startup or renew
 Coordinate a concrete later stack smoke/release window with the owner; never delete live owner data
 during verification. Preserve unrelated main-checkout edits.
 
+The 2026-11-14 continuation releases independent #216 configuration now: owner-GUID forwarding,
+separate required production credentials, bounded logs, public operator-fact build inputs and
+meaningful static/offline checks. No Docker/VM startup or new capacity work on the owner's host.
+Do not silently choose the still-unselected public TLS/edge or claim target-host execution.
+
 ## Production planning order
 
 Native handoff and amendments: [PLAN-LAUNCH-001 / #213](https://github.com/Nebettadjsr/GW2/issues/213).
@@ -31,8 +41,8 @@ to these same bounded contracts.
 | Contract | Outcome | Supervisor handoff |
 | --- | --- | --- |
 | [STORY-LAUNCH-001 / #214](https://github.com/Nebettadjsr/GW2/issues/214) | Retire capacity experiment tools; preserve correctness and operational monitoring | Accepted cleanup [#217](https://github.com/Nebettadjsr/GW2/pull/217); no new work released here |
-| [STORY-LAUNCH-002 / #215](https://github.com/Nebettadjsr/GW2/issues/215) | Public footer/info pages and noindex defaults | Current sole released coding/rework story; [#218](https://github.com/Nebettadjsr/GW2/pull/218) requires final local visual approval |
-| [STORY-LAUNCH-003 / #216](https://github.com/Nebettadjsr/GW2/issues/216) | Concrete production application/container configuration | Reviewed draft; not released; no setup guide/runbook |
+| [STORY-LAUNCH-002 / #215](https://github.com/Nebettadjsr/GW2/issues/215) | Public footer/info pages and noindex defaults | Owner-approved shell accepted in [#218](https://github.com/Nebettadjsr/GW2/pull/218); no repeated visual gate for this layout |
+| [STORY-LAUNCH-003 / #216](https://github.com/Nebettadjsr/GW2/issues/216) | Concrete production application/container configuration | Sole released coding contract; independent preparation now, actual host/HTTPS execution later; no setup guide/runbook |
 | STORY-LAUNCH-004 | Verified legal/privacy/storage content and publication gate | Draft in #213; factual operator/deployment inputs required |
 | STORY-LAUNCH-005 | Exact-revision release handoff | Draft in #213; deployment remains a later concrete action |
 
@@ -96,8 +106,12 @@ do not weaken regular assertions. All new UI returns to the owner in the local a
 explicit visual approval under agent/SUPERVISOR_INSTRUCTIONS.md. Automated browser checks and
 screenshots do not substitute for that approval.
 
-The ordinary dev app on 5173/8080 remains untouched. The current footer preview, when running, is
-http://127.0.0.1:5174/#/legal from target/supervision/launch-info-review, with a synthetic-only API on
-18081. Owned PIDs are in target/supervision/launch-info-preview-processes.json. Do not enter real keys.
-Completed System Status review processes/worktrees were stopped/removed. Keep verification output
-ignored, stop owned processes and remove completed worktrees after review; preserve concise evidence.
+The ordinary dev app on 5173/8080 now runs the locally integrated accepted master changes, including
+the owner activity download and cached-data deletion. The previous stale runtime caused the owner
+to miss the approved download despite its merged PR; update the daily app when accepting features.
+Runtime launch settings/PIDs are in ignored target/supervision/daily-runtime*.json; the API key is
+not stored there. Preserve unrelated local edits and existing account data during restarts.
+The accepted footer runs in that same daily app. Its confirmed Germany operator-country value is
+set in ignored frontend/.env.local; unknown operator/hosting details remain unset. The former
+synthetic 5174/18081 footer preview processes are stopped. Keep verification output ignored, stop owned review
+processes and remove completed worktrees after review; preserve concise evidence.
