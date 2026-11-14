@@ -25,7 +25,6 @@ class OperationalObservationFilterTest {
     private final java.util.List<MinuteBucket> written = new java.util.ArrayList<>();
     private final HistoryStore store = new HistoryStore() {
         public void appendMinute(MinuteBucket b) { written.add(b); }
-        public void appendHour(HourBucket b) { }
         public Snapshot snapshot() { return new Snapshot(true, false, List.copyOf(written), List.of()); }
     };
     private final OperationalHistoryService service = new OperationalHistoryService(clock, tracker, store);

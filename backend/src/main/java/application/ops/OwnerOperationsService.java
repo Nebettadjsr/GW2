@@ -69,6 +69,21 @@ public final class OwnerOperationsService {
                 snapshot.minutes(), snapshot.hours()), null);
     }
 
+    /** Owner-only period descriptors; no store is touched before authorization succeeds. */
+    public Result<OperationalPeriodStore.Periods> periods(String sessionId, String assertedAccessContext) {
+        Denial denial = authorize(sessionId, assertedAccessContext);
+        if (denial != null) return new Result<>(null, denial);
+        return new Result<>(history.periods(), null);
+    }
+
+    /** Owner-only bounded download; the opaque id is resolved only after authorization, inside the store. */
+    public Result<OperationalPeriodStore.Download> download(String sessionId, String assertedAccessContext,
+                                                            String selectionId) {
+        Denial denial = authorize(sessionId, assertedAccessContext);
+        if (denial != null) return new Result<>(null, denial);
+        return new Result<>(history.openDownload(selectionId), null);
+    }
+
     private Denial authorize(String sessionId, String assertedAccessContext) {
         if (sessionId == null || sessionId.isBlank() || access == null) return Denial.UNAUTHENTICATED;
         AccountSessions.Resolution resolution = access.resolve(sessionId, assertedAccessContext);
