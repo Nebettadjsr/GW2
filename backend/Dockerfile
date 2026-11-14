@@ -22,13 +22,15 @@ RUN ./mvnw -B -q -DskipTests package spring-boot:repackage
 
 FROM ${JRE_IMAGE}
 RUN useradd --system --uid 10001 --user-group --home-dir /app --shell /usr/sbin/nologin gw2 \
- && mkdir -p /app/data/icons && chown -R gw2:gw2 /app
+ && mkdir -p /app/data/icons /app/data/ops && chown -R gw2:gw2 /app
 COPY --from=build --chown=gw2:gw2 /src/target/gw2-tool.jar /app/gw2-tool.jar
 USER gw2
 # The working directory is the writable data location: the crafting graph cache file is cwd-relative.
 WORKDIR /app/data
 # Icon cache boundary stays configurable through ICON_CACHE_DIR; this is its container default.
 ENV ICON_CACHE_DIR=/app/data/icons
+# Bounded disposable operational history files (aggregates only); a volume keeps them across restarts.
+ENV OPS_HISTORY_DIR=/app/data/ops
 # DATABASE_URL, DATABASE_USER and DATABASE_PASSWORD are required at start; GW2_API_KEY is not.
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/gw2-tool.jar"]

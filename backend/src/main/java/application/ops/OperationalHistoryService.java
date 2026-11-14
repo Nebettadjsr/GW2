@@ -1,0 +1,103 @@
+package application.ops;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+/**
+ * The collection facade of STORY-OPS-001: request observation, foreground activity and the once-per-minute
+ * flush into bounded history. Telemetry never throws to the caller, so a business request cannot fail on it.
+ */
+public final class OperationalHistoryService {
+    private final ForegroundActivityTracker activity;
+    private final RequestAggregator aggregator;
+    private final HistoryStore store;
+    private Instant openHour;
+
+    public OperationalHistoryService(Clock clock, ForegroundActivityTracker activity, HistoryStore store) {
+        this.activity = activity;
+        this.aggregator = new RequestAggregator(clock, activity::snapshotAt);
+        this.store = store;
+        initializeHourCursor();
+    }
+
+    /**
+     * After a restart, hours already present in retained minutes but never rolled up get a (partial) summary,
+     * and the cursor resumes at the latest retained hour so that hour still rolls up when it closes.
+     */
+    private void initializeHourCursor() {
+        try {
+            HistoryStore.Snapshot snap = store.snapshot();
+            Instant latest = null;
+            for (MinuteBucket m : snap.minutes()) {
+                Instant h = m.startUtc().truncatedTo(ChronoUnit.HOURS);
+                if (latest == null || h.isAfter(latest)) latest = h;
+            }
+            if (latest == null) return;
+            java.util.TreeSet<Instant> unrolled = new java.util.TreeSet<>();
+            for (MinuteBucket m : snap.minutes()) unrolled.add(m.startUtc().truncatedTo(ChronoUnit.HOURS));
+            for (HourBucket h : snap.hours()) unrolled.remove(h.startUtc());
+            unrolled.remove(latest);
+            for (Instant hour : unrolled) rollUp(hour, snap.minutes());
+            openHour = latest;
+        } catch (RuntimeException telemetryFailure) {
+            // History problems never block startup.
+        }
+    }
+
+    private void rollUp(Instant hour, List<MinuteBucket> minutes) {
+        List<MinuteBucket> inHour = minutes.stream()
+                .filter(m -> m.startUtc().truncatedTo(ChronoUnit.HOURS).equals(hour)).toList();
+        if (!inHour.isEmpty()) store.appendHour(HourBucket.rollUp(hour, inHour));
+    }
+
+    /** In-memory only: bumps fixed counters and, for an eligible verified account, its activity timestamp. */
+    public void observe(String method, String path, Optional<String> verifiedAccountId, int status,
+                        boolean failedResponse, long elapsedNanos) {
+        try {
+            Optional<RouteGroup> group = RouteClassifier.classify(method, path);
+            if (group.isEmpty()) return;
+            aggregator.record(group.get(), status, failedResponse, elapsedNanos / 1_000);
+            if (group.get().foreground() && verifiedAccountId.isPresent()) {
+                try {
+                    activity.record(UUID.fromString(verifiedAccountId.get().trim()));
+                } catch (IllegalArgumentException notAGuid) {
+                    // Not a verified GUID: not countable.
+                }
+            }
+        } catch (RuntimeException telemetryFailure) {
+            // Telemetry must never fail the request.
+        }
+    }
+
+    public ForegroundAccounts currentActivity() { return activity.snapshot(); }
+
+    /** The scheduled once-a-minute step: persist closed minutes and any hour that has just closed. */
+    public synchronized void flush() {
+        try {
+            List<MinuteBucket> closed = aggregator.drainClosed();
+            for (MinuteBucket bucket : closed) {
+                store.appendMinute(bucket);
+                rollHourIfClosed(bucket.startUtc());
+            }
+        } catch (RuntimeException telemetryFailure) {
+            // Persistence problems surface as an unavailable history state, never as a failed request.
+        }
+    }
+
+    /** An hour closes when the first minute of a later hour arrives (so a missed last minute still rolls up). */
+    private void rollHourIfClosed(Instant minuteStart) {
+        Instant hour = minuteStart.truncatedTo(ChronoUnit.HOURS);
+        Instant closing = openHour;
+        if (closing == null || hour.isAfter(closing)) openHour = hour;
+        if (closing != null && hour.isAfter(closing)) {
+            boolean rolled = store.snapshot().hours().stream().anyMatch(h -> h.startUtc().equals(closing));
+            if (!rolled) rollUp(closing, store.snapshot().minutes());
+        }
+    }
+
+    public HistoryStore.Snapshot history() { return store.snapshot(); }
+}
