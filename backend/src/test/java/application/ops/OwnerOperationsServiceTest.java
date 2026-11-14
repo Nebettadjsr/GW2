@@ -41,7 +41,7 @@ class OwnerOperationsServiceTest {
         assertEquals(OwnerOperationsService.Denial.UNAUTHENTICATED, summaryNone.denial());
         assertEquals(OwnerOperationsService.Denial.UNAUTHENTICATED, summaryUnknown.denial());
         assertEquals(OwnerOperationsService.Denial.FORBIDDEN, summaryOrdinary.denial());
-        assertEquals(OwnerOperationsService.Denial.FORBIDDEN, mismatch.denial());
+        assertEquals(OwnerOperationsService.Denial.CONTEXT_MISMATCH, mismatch.denial());
         for (var r : List.of(summaryNone, summaryUnknown, summaryOrdinary)) {
             assertNull(r.value());
             assertEquals("no-store", r.cacheControl());

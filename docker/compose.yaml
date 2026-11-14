@@ -37,6 +37,8 @@ services:
       DATABASE_POOL_TIMEOUT_MS: ${GW2_STACK_DB_POOL_TIMEOUT_MS:-15000}
       ICON_CACHE_DIR: /app/data/icons
       OPS_HISTORY_DIR: /app/data/ops
+      # Optional non-secret HTTPS Oracle Console link shown to the owner; empty means "not configured".
+      GW2_OPS_ORACLE_CONSOLE_URL: ${GW2_OPS_ORACLE_CONSOLE_URL:-}
     volumes:
       # Empty named volumes copy the image's gw2-owned directory, so the non-root user can write.
       - gw2-icons:/app/data/icons
