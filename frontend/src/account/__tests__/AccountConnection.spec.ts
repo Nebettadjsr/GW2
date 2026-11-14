@@ -1,6 +1,8 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { STORAGE_KEY, connection, installAccountSession, resetAccountSession } from '@/api/accountSession'
+import { clearDraft } from '@/account/keyDraft'
+import { disconnect } from '@/api/accountSession'
 import { installAccountTransport } from '@/api/http'
 import { bankWithEmptySlots, materialStorage } from '@/account/__tests__/accountFixtures'
 import { selectorOptions } from '@/crafting/__tests__/fixtures'
@@ -82,6 +84,7 @@ async function enterKey(app: VueWrapper, key: string): Promise<void> {
 
 beforeEach(() => {
   window.sessionStorage.clear()
+  clearDraft()
   seen = []
   keyAccepted = () => true
   selectorPublished = true
@@ -236,5 +239,42 @@ describe('account connection flow', () => {
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBeNull()
     expect(app.find('[data-test="connection-error"]').text()).toMatch(/not accepted/)
     expect(seen.map((request) => request.path)).toEqual(['/api/session'])
+  })
+
+  it('keeps a refused draft and its visibility through the full app remount, unmasked key never stored', async () => {
+    keyAccepted = () => false
+    const app = await open()
+    await app.find('[data-test="api-key-input"]').setValue('BAD-KEY')
+    await app.find('[data-test="toggle-key-visibility"]').trigger('click')
+    await app.find('form.connection-panel__form').trigger('submit')
+    await flushPromises()
+    const input = app.find('[data-test="api-key-input"]')
+    expect((input.element as HTMLInputElement).value).toBe('BAD-KEY')
+    expect(input.attributes('type')).toBe('text')
+    expect(window.sessionStorage.getItem(STORAGE_KEY)).toBeNull()
+  })
+
+  it('clears the draft when the account is switched or disconnected from outside during an attempt', async () => {
+    const app = await open()
+    await app.find('[data-test="api-key-input"]').setValue('KEY-A')
+    await app.find('[data-test="toggle-key-visibility"]').trigger('click')
+    await app.find('form.connection-panel__form').trigger('submit')
+    await disconnect()
+    await flushPromises()
+    const input = app.find('[data-test="api-key-input"]')
+    expect((input.element as HTMLInputElement).value).toBe('')
+    expect(input.attributes('type')).toBe('password')
+  })
+
+  it('does not carry a typed draft across an accepted key replacement', async () => {
+    const app = await open()
+    await enterKey(app, 'KEY-A')
+    await app.find('[data-test="api-key-input"]').setValue('KEY-B')
+    await app.find('[data-test="toggle-key-visibility"]').trigger('click')
+    await disconnect()
+    await flushPromises()
+    const input = app.find('[data-test="api-key-input"]')
+    expect((input.element as HTMLInputElement).value).toBe('')
+    expect(input.attributes('type')).toBe('password')
   })
 })

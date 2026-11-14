@@ -695,7 +695,15 @@ legend {
   border: 1px solid currentColor;
   border-radius: 0.5rem;
   background: Canvas;
+  color: CanvasText;
   overflow-wrap: anywhere;
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+
+.connection-panel__help::backdrop {
+  background: rgb(0 0 0 / 0.4);
 }
 
 .connection-panel__error,

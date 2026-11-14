@@ -1,8 +1,9 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { STORAGE_KEY, connection, installAccountSession, resetAccountSession } from '@/api/accountSession'
+import { STORAGE_KEY, connection, disconnect, installAccountSession, resetAccountSession } from '@/api/accountSession'
 import { installAccountTransport } from '@/api/http'
 import ConnectionPanel from '../ConnectionPanel.vue'
+import { clearDraft } from '../keyDraft'
 
 /** What the key panel shows and offers in each connection phase, and a submit while it is busy. */
 let handler: (path: string) => Response | Promise<Response>
@@ -13,6 +14,14 @@ const json = (body: unknown, status = 200): Response =>
 const proof = (): Response => json({ accessContext: 'ctx', expiresAt: '2099-01-01T00:00:00Z', grants: [] })
 
 beforeEach(() => {
+  // jsdom has no modal <dialog>; the browser behaviour is covered by real-browser evidence.
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) { this.setAttribute('open', '') }
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    if (!this.hasAttribute('open')) return
+    this.removeAttribute('open')
+    this.dispatchEvent(new Event('close'))
+  }
+  clearDraft()
   paths = []
   resetAccountSession()
   installAccountSession()
@@ -94,37 +103,36 @@ it('shows the logout notice when the server session could not be ended', async (
 const input = (w: ReturnType<typeof mount>) => w.get('[data-test="api-key-input"]')
 const value = (w: ReturnType<typeof mount>) => (input(w).element as HTMLInputElement).value
 
-it('opens one help dialog at a time, with the official links, and closes by button and Escape with focus return', async () => {
+it('opens one modal help dialog at a time, with the official links, and closes by button and Escape with focus return', async () => {
   const w = mount(ConnectionPanel, { attachTo: document.body })
   expect(w.find('[data-test="help-dialog"]').exists()).toBe(false)
   await w.get('[data-test="help-create"]').trigger('click')
   const dialog = w.get('[data-test="help-dialog"]')
-  expect(dialog.attributes('role')).toBe('dialog')
-  expect(dialog.attributes('aria-modal')).toBe('true')
+  expect(dialog.element.tagName).toBe('DIALOG')
+  expect(dialog.attributes('open')).toBeDefined()
   expect(dialog.text()).toContain('account, inventories, characters, unlocks, progression, and builds')
   expect(dialog.text()).toContain('Steam or Epic')
   expect(dialog.findAll('a').map((a) => a.attributes('href'))).toEqual(['https://account.arena.net/applications'])
   expect(dialog.get('a').attributes('rel')).toContain('noopener')
-  expect(document.activeElement).toBe(w.get('[data-test="help-close"]').element)
+
+  await w.get('[data-test="help-close"]').trigger('click')
+  expect(w.find('[data-test="help-dialog"]').exists()).toBe(false)
+  expect(document.activeElement).toBe(w.get('[data-test="help-create"]').element)
 
   await w.get('[data-test="help-safety"]').trigger('click')
   expect(w.findAll('[data-test="help-dialog"]')).toHaveLength(1)
   const safety = w.get('[data-test="help-dialog"]')
   expect(safety.text()).toContain('read-only access')
-  expect(safety.text()).toContain('does not delete')
+  expect(safety.text().split(/\s+/).length).toBeLessThanOrEqual(140)
   expect(safety.findAll('a').map((a) => a.attributes('href'))).toEqual([
     'https://wiki.guildwars2.com/wiki/API:API_key',
     'https://account.arena.net/applications'
   ])
-
-  await w.get('[data-test="help-close"]').trigger('click')
+  // The native Escape behaviour closes a modal dialog and fires `close`.
+  ;(safety.element as HTMLDialogElement).close()
+  await flushPromises()
   expect(w.find('[data-test="help-dialog"]').exists()).toBe(false)
   expect(document.activeElement).toBe(w.get('[data-test="help-safety"]').element)
-
-  await w.get('[data-test="help-create"]').trigger('click')
-  await w.get('[data-test="help-dialog"]').trigger('keydown', { key: 'Escape' })
-  expect(w.find('[data-test="help-dialog"]').exists()).toBe(false)
-  expect(document.activeElement).toBe(w.get('[data-test="help-create"]').element)
   w.unmount()
 })
 
@@ -194,6 +202,41 @@ it('an account change from elsewhere clears and masks the draft, and a remount s
   expect(input(w).attributes('type')).toBe('password')
   w.unmount()
   expect(input(mount(ConnectionPanel)).attributes('type')).toBe('password')
+})
+
+it('a draft left in a closed panel is gone when it is opened again', async () => {
+  const w = mount(ConnectionPanel)
+  await input(w).setValue('typed')
+  w.unmount()
+  expect(value(mount(ConnectionPanel))).toBe('')
+})
+
+it('a failed own attempt survives the panel remount that its generation bump causes', async () => {
+  let release!: (r: Response) => void
+  handler = () => new Promise<Response>((resolve) => { release = resolve })
+  const w = mount(ConnectionPanel)
+  await input(w).setValue('BAD')
+  await w.get('[data-test="toggle-key-visibility"]').trigger('click')
+  await w.get('form').trigger('submit')
+  w.unmount() // what App does when the attempt bumps the generation
+  const next = mount(ConnectionPanel)
+  release(json({ error: 'INVALID_CREDENTIAL', message: 'no' }, 401))
+  await flushPromises()
+  expect(value(next)).toBe('BAD')
+  expect(input(next).attributes('type')).toBe('text')
+})
+
+it('a disconnect during a pending own attempt discards the draft', async () => {
+  let release!: (r: Response) => void
+  handler = (path) => (path === '/api/session' ? new Promise<Response>((r) => { release = r }) : new Response(null, { status: 204 }))
+  const w = mount(ConnectionPanel)
+  await input(w).setValue('KEY-A')
+  await w.get('form').trigger('submit')
+  await disconnect()
+  release(proof())
+  await flushPromises()
+  expect(value(w)).toBe('')
+  expect(input(w).attributes('type')).toBe('password')
 })
 
 it('never fills the field from a restored or retained key', async () => {

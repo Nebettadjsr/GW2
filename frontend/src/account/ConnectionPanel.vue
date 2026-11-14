@@ -1,50 +1,39 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
-import { connectKey, connection, disconnect, retryConnection } from '@/api/accountSession'
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { connection, disconnect, retryConnection } from '@/api/accountSession'
+import { clearDraft, draft, isAttempting, showDraft, submitDraft } from './keyDraft'
 
 /**
  * The API-key area (`TARGET_ARCHITECTURE.md` 8.2): a masked field with Connect, Replace and
  * Disconnect, and the connection state in words. The key is handed to the session module and the
  * field is cleared at once; nothing here stores, logs or displays it.
  */
-const draft = ref('')
 const busy = ref(false)
-/** Presentation-only: whether the typed draft (never a stored key) is shown as text. */
-const showDraft = ref(false)
-/** True while this panel's own connect attempt runs; it bumps the account generation itself. */
-let ownAttempt = false
 type HelpKind = 'create' | 'safety'
 const help = ref<HelpKind | null>(null)
 const helpTriggers: Record<HelpKind, HTMLButtonElement | null> = { create: null, safety: null }
-const helpClose = ref<HTMLButtonElement | null>(null)
-
-// An account change that did not come from this panel's own attempt discards the draft.
-watch(
-  () => connection.generation,
-  () => {
-    if (ownAttempt) return
-    draft.value = ''
-    showDraft.value = false
-  },
-  { flush: 'sync' }
-)
+const helpDialog = ref<HTMLDialogElement | null>(null)
 
 async function openHelp(kind: HelpKind): Promise<void> {
-  help.value = help.value === kind ? null : kind
-  if (help.value) {
-    await nextTick()
-    helpClose.value?.focus()
-  }
+  help.value = kind
+  await nextTick()
+  helpDialog.value?.showModal()
 }
 
-async function closeHelp(): Promise<void> {
+/** Closes the popup; the native `close` event returns focus to the trigger that opened it. */
+function closeHelp(): void {
+  helpDialog.value?.close()
+}
+
+function onHelpClosed(): void {
   const kind = help.value
   help.value = null
-  if (kind) {
-    await nextTick()
-    helpTriggers[kind]?.focus()
-  }
+  if (kind) helpTriggers[kind]?.focus()
 }
+
+onBeforeUnmount(() => {
+  if (!isAttempting()) clearDraft()
+})
 
 const isConnected = computed(() => connection.phase === 'connected')
 const isWorking = computed(() => busy.value || connection.phase === 'restoring' || connection.phase === 'connecting')
@@ -67,23 +56,15 @@ const statusText = computed(() => {
 async function submit(): Promise<void> {
   if (isWorking.value) return
   busy.value = true
-  ownAttempt = true
-  let accepted = false
   try {
-    accepted = await connectKey(draft.value)
+    await submitDraft()
   } finally {
-    ownAttempt = false
     busy.value = false
-  }
-  if (accepted) {
-    draft.value = ''
-    showDraft.value = false
   }
 }
 
 async function onDisconnect(): Promise<void> {
-  draft.value = ''
-  showDraft.value = false
+  clearDraft()
   await disconnect()
 }
 </script>
@@ -100,8 +81,7 @@ async function onDisconnect(): Promise<void> {
           :ref="(el) => (helpTriggers.create = el as HTMLButtonElement | null)"
           type="button"
           class="link-button"
-          :aria-expanded="help === 'create'"
-          aria-controls="api-key-help"
+          aria-haspopup="dialog"
           data-test="help-create"
           @click="openHelp('create')"
         >
@@ -111,8 +91,7 @@ async function onDisconnect(): Promise<void> {
           :ref="(el) => (helpTriggers.safety = el as HTMLButtonElement | null)"
           type="button"
           class="link-button"
-          :aria-expanded="help === 'safety'"
-          aria-controls="api-key-help"
+          aria-haspopup="dialog"
           data-test="help-safety"
           @click="openHelp('safety')"
         >
@@ -138,7 +117,11 @@ async function onDisconnect(): Promise<void> {
           data-test="toggle-key-visibility"
           @click="showDraft = !showDraft"
         >
-          <span aria-hidden="true">{{ showDraft ? '🙈' : '👁' }}</span>
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" />
+            <circle cx="12" cy="12" r="3" />
+            <path v-if="showDraft" d="M3 3l18 18" />
+          </svg>
         </button>
       </span>
       <button type="submit" :disabled="isWorking" data-test="connect">
@@ -163,15 +146,14 @@ async function onDisconnect(): Promise<void> {
       </button>
     </form>
 
-    <div
+    <dialog
       v-if="help"
       id="api-key-help"
+      ref="helpDialog"
       class="connection-panel__help"
-      role="dialog"
-      aria-modal="true"
       aria-labelledby="api-key-help-title"
       data-test="help-dialog"
-      @keydown.esc.stop="closeHelp"
+      @close="onHelpClosed"
     >
       <h3 id="api-key-help-title">{{ help === 'create' ? 'How to get an API key' : 'Is my API key safe here?' }}</h3>
       <template v-if="help === 'create'">
@@ -192,21 +174,17 @@ async function onDisconnect(): Promise<void> {
       </template>
       <template v-else>
         <p>
-          An API key gives <strong>read-only access to the account and game data</strong> its permissions allow. It
-          is not your game password and cannot log in, move or sell items, spend gold, or change your account.
+          An API key gives <strong>read-only access to the game data</strong> you select. It is not your
+          password and cannot sign in, trade, spend gold or change your account.
         </p>
         <p>
-          This app keeps the key in this tab’s browser storage so a reload can reconnect, and sends it to the
-          app’s server only to check your account and fetch your data. The server does not save the key. It may
-          keep game data it fetched, even after you disconnect.
+          This tab remembers the key so a reload can reconnect. The server uses it only to check your account
+          and fetch your data, and does not save it, but may keep fetched game data.
+          <strong>Disconnect</strong> forgets the key here without deleting that data;
+          <strong>Replace key</strong> checks the new key.
         </p>
         <p>
-          <strong>Disconnect</strong> forgets the key in this browser and ends your session, but does not delete
-          that kept data. <strong>Replace key</strong> checks the new key and uses the data for its account.
-        </p>
-        <p>
-          Revoking a key stops future access with it. It does not delete data already kept by this app or
-          instantly stop work already under way.
+          Revoking a key stops future access, but does not delete kept data or instantly stop work under way.
           <a href="https://wiki.guildwars2.com/wiki/API:API_key" target="_blank" rel="noopener noreferrer"
             >About API keys</a
           >
@@ -216,8 +194,8 @@ async function onDisconnect(): Promise<void> {
           >
         </p>
       </template>
-      <button ref="helpClose" type="button" data-test="help-close" @click="closeHelp">Close</button>
-    </div>
+      <button type="button" data-test="help-close" @click="closeHelp">Close</button>
+    </dialog>
 
     <p v-if="connection.error" class="connection-panel__error" role="alert" data-test="connection-error">
       {{ connection.error }}
