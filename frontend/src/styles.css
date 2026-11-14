@@ -847,14 +847,24 @@ html {
 }
 
 /* Owner "Application activity" (STORY-OPS-002): compact facts, collapsed paginated history, export row. */
-.owner-activity__facts .meta { display: block; }
-.owner-activity__history { margin-top: var(--space-3); }
+.owner-activity__heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.owner-activity__heading h2 { margin: 0; }
+.owner-activity__facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4, 1rem) var(--space-4, 1rem); margin: var(--space-3) 0; }
+.owner-activity__fact { min-width: 0; margin: 0; }
+.owner-activity__fact dt { color: var(--color-muted); font-size: 0.85rem; margin: 0; }
+.owner-activity__fact dd { margin: 0.15rem 0 0; min-width: 0; overflow-wrap: anywhere; }
+.owner-activity__fact .meta { display: block; margin: var(--space-1, 0.25rem) 0 0; }
+@media (max-width: 64rem) { .owner-activity__facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 40rem) { .owner-activity__facts { grid-template-columns: minmax(0, 1fr); } }
+.owner-activity__history { margin-top: var(--space-3); min-width: 0; }
 .owner-activity__controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-block: var(--space-2); }
 .owner-activity__controls [aria-pressed="true"] { font-weight: 700; text-decoration: underline; }
-.owner-activity__table-wrap { overflow-x: auto; }
+.owner-activity__table-wrap { overflow-x: auto; max-width: 100%; }
 .owner-activity__table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .owner-activity__table th, .owner-activity__table td { text-align: left; padding: 0.25rem 0.5rem; white-space: nowrap; }
-.owner-activity__export { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-2); margin-top: var(--space-3); }
-.owner-activity__export h3 { flex-basis: 100%; margin: 0; font-size: 1rem; }
-.owner-activity__export label { display: flex; flex-direction: column; gap: 0.25rem; }
-@media (max-width: 40rem) { .owner-activity__export label, .owner-activity__export button { flex: 1 1 100%; } }
+.owner-activity__export { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); align-items: end; gap: var(--space-3); margin-top: var(--space-4, 1rem); }
+.owner-activity__export h3 { grid-column: 1 / -1; margin: 0; font-size: 1rem; }
+.owner-activity__export label { display: flex; flex-direction: column; align-items: stretch; text-align: left; gap: 0.25rem; min-width: 0; }
+.owner-activity__export input, .owner-activity__export select, .owner-activity__export button { width: 100%; box-sizing: border-box; }
+.owner-activity__export .notice { grid-column: 1 / -1; margin: 0; }
+.owner-activity > .meta { margin: var(--space-3) 0 0; }

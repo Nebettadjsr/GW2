@@ -268,8 +268,8 @@ function setView(next: 'minute' | 'hour'): void { view.value = next }
 </script>
 
 <template>
-  <section class="panel status-card owner-activity" aria-labelledby="owner-activity-heading" data-test="owner-activity">
-    <div class="status-card__heading">
+  <section class="panel owner-activity" aria-labelledby="owner-activity-heading" data-test="owner-activity">
+    <div class="owner-activity__heading">
       <h2 id="owner-activity-heading">Application activity</h2>
       <button type="button" class="button--secondary" :disabled="loading" data-test="activity-refresh" @click="load()">
         {{ loading ? 'Refreshing…' : 'Refresh' }}
@@ -278,28 +278,40 @@ function setView(next: 'minute' | 'hour'): void { view.value = next }
 
     <p v-if="error" class="notice notice--warning" role="status" data-test="activity-error">{{ error }}</p>
     <template v-else-if="summary">
-      <dl class="status-facts owner-activity__facts" data-test="activity-facts">
-        <dt>Active accounts, last 5 minutes</dt>
-        <dd data-test="activity-5min">{{ activityText(summary.foregroundAccounts) }}
-          <span class="meta">Distinct verified GW2 accounts with foreground activity; estimate. {{ activityNote(summary.foregroundAccounts) }}</span></dd>
-        <dt>Active in last 60 minutes</dt>
-        <dd data-test="activity-60min">{{ props.activeLast60Minutes?.toLocaleString() ?? '—' }}</dd>
-        <dt>Total PostgreSQL database size</dt>
-        <dd data-test="activity-db">{{ database.text }} <span class="meta">{{ database.note }}</span></dd>
-        <dt>Requests</dt>
-        <dd data-test="activity-requests">{{ requestRate }}</dd>
-        <dt>Server response time</dt>
-        <dd data-test="activity-latency">
-          <template v-if="response">p50 {{ pct(response.p50) }}, p95 {{ pct(response.p95) }}</template>
-          <template v-else>—</template>
-          <span class="meta">Backend response time; does not include browser rendering.</span>
-        </dd>
-        <dt>Responses</dt>
-        <dd data-test="activity-responses">
-          <template v-if="response">4xx {{ response.http4xx }} · 5xx {{ response.http5xx }} · failed/incomplete {{ response.failedIncomplete }}</template>
-          <template v-else>—</template>
-        </dd>
-      </dl>
+      <div class="owner-activity__facts" data-test="activity-facts">
+        <dl class="owner-activity__fact">
+          <dt>Active accounts, last 5 minutes</dt>
+          <dd data-test="activity-5min">{{ activityText(summary.foregroundAccounts) }}
+            <span class="meta">Distinct verified GW2 accounts with foreground activity; estimate. {{ activityNote(summary.foregroundAccounts) }}</span></dd>
+        </dl>
+        <dl class="owner-activity__fact">
+          <dt>Active in last 60 minutes</dt>
+          <dd data-test="activity-60min">{{ props.activeLast60Minutes?.toLocaleString() ?? '—' }}</dd>
+        </dl>
+        <dl class="owner-activity__fact">
+          <dt>Total PostgreSQL database size</dt>
+          <dd data-test="activity-db">{{ database.text }} <span class="meta">{{ database.note }}</span></dd>
+        </dl>
+        <dl class="owner-activity__fact">
+          <dt>Requests</dt>
+          <dd data-test="activity-requests">{{ requestRate }}</dd>
+        </dl>
+        <dl class="owner-activity__fact">
+          <dt>Server response time</dt>
+          <dd data-test="activity-latency">
+            <template v-if="response">p50 {{ pct(response.p50) }}, p95 {{ pct(response.p95) }}</template>
+            <template v-else>—</template>
+            <span class="meta">Backend response time; does not include browser rendering.</span>
+          </dd>
+        </dl>
+        <dl class="owner-activity__fact">
+          <dt>Responses</dt>
+          <dd data-test="activity-responses">
+            <template v-if="response">4xx {{ response.http4xx }} · 5xx {{ response.http5xx }} · failed/incomplete {{ response.failedIncomplete }}</template>
+            <template v-else>—</template>
+          </dd>
+        </dl>
+      </div>
 
       <p v-if="!summary.historyAvailable" class="meta" role="status" data-test="activity-history-unavailable">
         Activity history is unavailable.

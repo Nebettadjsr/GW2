@@ -1,6 +1,5 @@
 package web;
 
-import application.OwnerCatalogSummaryService;
 import application.ops.ForegroundAccounts;
 import application.ops.HourBucket;
 import application.ops.LatencyHistogram;
@@ -34,14 +33,12 @@ import java.util.Optional;
 @RequestMapping("/api/system/operations")
 public class OwnerOperationsApiController {
     private final OwnerOperationsService operations;
-    private final OwnerCatalogSummaryService catalogSummary;
     private final String oracleConsoleUrl;
 
-    public OwnerOperationsApiController(OwnerOperationsService operations, OwnerCatalogSummaryService catalogSummary,
+    public OwnerOperationsApiController(OwnerOperationsService operations,
                                         @org.springframework.beans.factory.annotation.Value("${gw2.ops.oracle-console-url:}")
                                         String oracleConsoleUrl) {
         this.operations = operations;
-        this.catalogSummary = catalogSummary;
         this.oracleConsoleUrl = validLink(oracleConsoleUrl);
     }
 
@@ -73,9 +70,13 @@ public class OwnerOperationsApiController {
 
     public record Link(boolean configured, String url) {}
 
+    /**
+     * No catalog/account projection here: the UI takes the 60-minute figure from the existing owner details, and
+     * reading the catalog summary would query all catalog datasets for one duplicate field.
+     */
     public record SummaryBody(Instant generatedAt, ForegroundAccounts foregroundAccounts,
                               application.ops.DatabaseSize databaseSize,
-                              OwnerCatalogSummaryService.Accounts accounts, boolean historyAvailable,
+                              boolean historyAvailable,
                               boolean retentionTruncated, List<Bucket> minutes, List<Bucket> hours,
                               Bucket latestMinute, Link oracleConsole) {}
 
@@ -85,11 +86,10 @@ public class OwnerOperationsApiController {
                 AccountAccessHttp.assertedAccessContext(request));
         if (!result.authorized()) return denied(result.denial());
         var s = result.value();
-        var accounts = catalogSummary == null ? null : catalogSummary.read().accounts();
         List<Bucket> minutes = s.minutes().stream().map(OwnerOperationsApiController::minute).toList();
         List<Bucket> hours = s.hours().stream().map(OwnerOperationsApiController::hour).toList();
         return ok(MediaType.APPLICATION_JSON, new SummaryBody(s.generatedAt(), s.foregroundAccounts(), s.databaseSize(),
-                accounts, s.historyAvailable(), s.retentionTruncated(), minutes, hours,
+                s.historyAvailable(), s.retentionTruncated(), minutes, hours,
                 s.latestMinute() == null ? null : minute(s.latestMinute()),
                 new Link(oracleConsoleUrl != null, oracleConsoleUrl)));
     }

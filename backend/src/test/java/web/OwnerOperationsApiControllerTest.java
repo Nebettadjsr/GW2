@@ -51,7 +51,7 @@ class OwnerOperationsApiControllerTest {
     private MockMvc mvc(String owner, String link) {
         var history = new OperationalHistoryService(clock, new ForegroundActivityTracker(clock), store);
         var service = new OwnerOperationsService(access, new OwnerPolicy(owner), history, size, clock);
-        return MockMvcBuilders.standaloneSetup(new OwnerOperationsApiController(service, null, link)).build();
+        return MockMvcBuilders.standaloneSetup(new OwnerOperationsApiController(service, link)).build();
     }
 
     private AccountSessions.Issued session(String guid) {
@@ -80,6 +80,19 @@ class OwnerOperationsApiControllerTest {
     }
 
     private static final String RANGE = "&from=2026-11-14T06:30:00Z&to=2026-11-14T12:30:00Z";
+
+    @Test
+    void summaryCarriesNoCatalogAccountProjectionAndHasNoCatalogDependency() throws Exception {
+        var owner = session(OWNER);
+        mvc(OWNER, null).perform(as(get("/api/system/operations/summary"), owner)).andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.accounts").doesNotExist());
+        for (var c : OwnerOperationsApiController.class.getConstructors()) {
+            for (var type : c.getParameterTypes()) {
+                assertEquals(false, type.getName().contains("OwnerCatalogSummaryService"),
+                        "the operations read must not be able to query catalog datasets");
+            }
+        }
+    }
 
     @Test
     void everyDenialPrecedesCollaboratorsForSummaryAndExportIncludingInvalidRequests() throws Exception {
