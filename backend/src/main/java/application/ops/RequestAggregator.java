@@ -7,7 +7,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
-import java.util.function.Supplier;
+import java.util.function.Function;
 
 /**
  * Bounded in-memory request aggregation (STORY-OPS-001 sections 3-4): a request only bumps fixed
@@ -16,8 +16,6 @@ import java.util.function.Supplier;
  */
 public final class RequestAggregator {
     static final int MAX_PENDING = 30;
-    /** How late after the boundary a closing minute may still be given the current activity reading. */
-    static final Duration ACTIVITY_GRACE = Duration.ofSeconds(10);
 
     private static final class Counters {
         long requests, success, client, server, failed, sum, max;
@@ -25,13 +23,13 @@ public final class RequestAggregator {
     }
 
     private final Clock clock;
-    private final Supplier<ForegroundAccounts> activity;
+    private final Function<Instant, ForegroundAccounts> activity;
     private final EnumMap<RouteGroup, Counters> open = new EnumMap<>(RouteGroup.class);
     private final List<MinuteBucket> pending = new ArrayList<>();
     private Instant openMinute;
     private Instant observedFrom;
 
-    public RequestAggregator(Clock clock, Supplier<ForegroundAccounts> activity) {
+    public RequestAggregator(Clock clock, Function<Instant, ForegroundAccounts> activity) {
         this.clock = clock;
         this.activity = activity;
         Instant now = clock.instant();
@@ -77,11 +75,9 @@ public final class RequestAggregator {
         // clock jump) stay gaps: nothing is iterated or allocated for them and no zero bucket is invented.
         int covered = (int) Math.min(60, Math.max(0,
                 Duration.between(observedFrom, openMinute.plusSeconds(60)).toSeconds()));
-        // The activity reading is a trailing window sampled now, so it describes the minute only when that
-        // minute closed just now; otherwise its boundary was missed and the reading is unavailable.
-        boolean onTime = minute.equals(openMinute.plusSeconds(60))
-                && !now.isAfter(minute.plus(ACTIVITY_GRACE));
-        ForegroundAccounts state = onTime ? activity.get() : ForegroundAccounts.unavailable();
+        // The reading is reconstructed as of the closing minute's own boundary; when that cannot be done
+        // faithfully (late flush, later activity, expiry, lost continuity) it is UNAVAILABLE, never the current one.
+        ForegroundAccounts state = activity.apply(openMinute.plusSeconds(60));
         List<RouteGroupAggregate> groups = new ArrayList<>();
         open.forEach((g, c) -> groups.add(new RouteGroupAggregate(g, c.requests, c.success, c.client,
                 c.server, c.failed, c.sum, c.max, LatencyHistogram.toBins(c.bins))));

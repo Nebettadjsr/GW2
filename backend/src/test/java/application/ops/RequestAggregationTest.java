@@ -64,7 +64,8 @@ class RequestAggregationTest {
         assertEquals(Instant.parse("2026-11-14T10:01:00Z"), minutes.get(1).startUtc());
         assertEquals(60, minutes.get(1).observedSeconds());
         assertTrue(minutes.get(1).routeGroups().isEmpty());
-        assertEquals(ForegroundAccounts.State.UNAVAILABLE, minutes.get(1).foregroundAccounts().state());
+        // Reconstructed as of its own boundary (start-up warm-up still running), not the flush-time reading.
+        assertEquals(ForegroundAccounts.State.PARTIAL_STARTUP, minutes.get(1).foregroundAccounts().state());
     }
 
     @Test
@@ -74,7 +75,8 @@ class RequestAggregationTest {
         service.flush();
         assertEquals(1, minutes.size());
         assertEquals(Instant.parse("2026-11-14T10:00:00Z"), minutes.get(0).startUtc());
-        assertEquals(ForegroundAccounts.State.UNAVAILABLE, minutes.get(0).foregroundAccounts().state());
+        // Boundary-time reading (warm-up), never the 10:06:20 reading; no COMPLETE/zero claim.
+        assertEquals(ForegroundAccounts.State.PARTIAL_STARTUP, minutes.get(0).foregroundAccounts().state());
         assertEquals(1, minutes.get(0).routeGroups().get(0).requests());
     }
 
@@ -84,6 +86,33 @@ class RequestAggregationTest {
         clock.advance(Duration.ofSeconds(45)); // 10:01:05
         service.flush();
         assertEquals(ForegroundAccounts.State.PARTIAL_STARTUP, minutes.get(0).foregroundAccounts().state());
+    }
+
+    @Test
+    void subTenSecondFlushReportsTheBoundaryCountNotTheExpiredCurrentOne() {
+        clock.advance(Duration.ofSeconds(40)); // 10:01:00
+        observe("/api/account/bank", 200, 5, UUID.randomUUID().toString());
+        for (int i = 0; i < 4; i++) { clock.advance(Duration.ofSeconds(60)); service.flush(); } // 10:05:00
+        clock.advance(Duration.ofSeconds(65)); // 10:06:05: the 10:01:00 activity has left the window now
+        service.flush();
+        assertEquals(0, activity.snapshot().exactCount());
+        var m = minutes.get(minutes.size() - 1);
+        assertEquals(Instant.parse("2026-11-14T10:05:00Z"), m.startUtc());
+        assertEquals(ForegroundAccounts.State.COMPLETE, m.foregroundAccounts().state());
+        assertEquals(1, m.foregroundAccounts().exactCount()); // as of 10:06:00, not the 10:06:05 reading
+    }
+
+    @Test
+    void activityAfterTheBoundaryMakesTheReadingUnavailable() {
+        String account = UUID.randomUUID().toString();
+        clock.advance(Duration.ofSeconds(40));
+        observe("/api/account/bank", 200, 5, account);
+        for (int i = 0; i < 4; i++) { clock.advance(Duration.ofSeconds(60)); service.flush(); }
+        clock.advance(Duration.ofSeconds(65)); // 10:06:05
+        activity.record(java.util.UUID.fromString(account)); // overwrites the timestamp after the boundary
+        service.flush();
+        assertEquals(ForegroundAccounts.State.UNAVAILABLE,
+                minutes.get(minutes.size() - 1).foregroundAccounts().state());
     }
 
     @Test

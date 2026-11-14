@@ -19,7 +19,7 @@ public final class OperationalHistoryService {
 
     public OperationalHistoryService(Clock clock, ForegroundActivityTracker activity, HistoryStore store) {
         this.activity = activity;
-        this.aggregator = new RequestAggregator(clock, activity::snapshot);
+        this.aggregator = new RequestAggregator(clock, activity::snapshotAt);
         this.store = store;
         initializeHourCursor();
     }
