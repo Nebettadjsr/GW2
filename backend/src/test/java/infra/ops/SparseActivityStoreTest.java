@@ -74,6 +74,21 @@ class SparseActivityStoreTest {
         assertEquals(PeriodDescriptor.Coverage.PARTIAL, retained.coverage());
     }
 
+    @Test
+    void weekIncludesKnownLossFromDayWhoseFileWasNeverCreated() throws Exception {
+        Path obstructed = dir.resolve("activity-2026-11-10.csv");
+        Files.createDirectory(obstructed);
+        Files.writeString(obstructed.resolve("blocker"), "controlled first-append failure");
+        var s = store();
+        s.appendMinute(minute("2026-11-10T10:00:00Z", RouteGroup.CRAFTING));
+        s.appendMinute(minute("2026-11-11T10:00:00Z", RouteGroup.CRAFTING));
+        now = Instant.parse("2026-11-20T00:00:00Z");
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL,
+                find(s, PeriodDescriptor.Kind.WEEK, "2026-11-09T00:00:00Z").coverage());
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL,
+                find(store(), PeriodDescriptor.Kind.WEEK, "2026-11-09T00:00:00Z").coverage());
+    }
+
     private static MinuteBucket minute(String utc, RouteGroup... groups) { return minute(utc, 1, groups); }
 
     private static MinuteBucket minute(String utc, long width, RouteGroup... groups) {

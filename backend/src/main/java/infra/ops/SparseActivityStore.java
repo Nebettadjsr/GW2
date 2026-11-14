@@ -574,7 +574,8 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
 
     private PeriodDescriptor week(LocalDate w, Instant now) {
         boolean closed = !now.isBefore(at(w.plusDays(7)));
-        boolean truncated = false, loss = false;
+        boolean truncated = false;
+        boolean loss = !lossDays.subSet(w, true, w.plusDays(7), false).isEmpty();
         long bytes = 0;
         int count = 0;
         for (var e : days.subMap(w, true, w.plusDays(6), true).entrySet()) {
