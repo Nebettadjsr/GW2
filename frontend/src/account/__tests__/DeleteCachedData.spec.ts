@@ -117,7 +117,7 @@ it('issues one request while busy, blocks dismissal, then shows the notice only 
 
 it.each([
   ['409', () => json({ error: 'ACCOUNT_WORK_IN_PROGRESS', message: 'x' }, 409), 'Account work is still finishing'],
-  ['503', () => json({ error: 'DATA_STORE_UNAVAILABLE', message: 'x' }, 503), 'could not be deleted right now']
+  ['503', () => json({ error: 'DATA_STORE_UNAVAILABLE', message: 'x' }, 503), 'deletion could not be confirmed']
 ])('%s keeps the modal open with an announced error and the connection', async (_n, response, text) => {
   answer = response
   const w = mountPanel()

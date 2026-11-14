@@ -115,7 +115,7 @@ async function confirmDelete(): Promise<void> {
     } else if (result === 'work-in-progress') {
       deleteError.value = 'Account work is still finishing, so nothing was deleted. Confirm again when it has finished.'
     } else {
-      deleteError.value = 'The cached data could not be deleted right now. Nothing was changed; you can try again.'
+      deleteError.value = 'The deletion could not be confirmed. Please try again.'
     }
   } finally {
     deleting.value = false
