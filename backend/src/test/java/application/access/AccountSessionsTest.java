@@ -38,6 +38,23 @@ class AccountSessionsTest {
     }
 
     @Test
+    void deletedSharedCookieCannotDeclareAnotherTabsContextDeleted() {
+        var time = new MutableClock(START);
+        var sessions = new AccountSessions(time, 4);
+        var a = sessions.establish(proof("account-a", null));
+        var b = sessions.establish(proof("account-b", null));
+        sessions.invalidateAccount("account-a");
+
+        assertEquals(AccountSessions.Outcome.CONTEXT_MISMATCH,
+                sessions.resolve(a.sessionId(), b.context().accessContext()).outcome());
+        assertEquals(AccountSessions.Outcome.CONTEXT_MISMATCH,
+                sessions.resolve(a.sessionId(), null).outcome());
+        assertEquals(AccountSessions.Outcome.DELETION_INVALIDATED,
+                sessions.resolve(a.sessionId(), a.context().accessContext()).outcome());
+        assertTrue(sessions.resolve(b.sessionId(), b.context().accessContext()).authenticated());
+    }
+
+    @Test
     void capacityEvictsOldestProofAndRemainsBounded() {
         var sessions = new AccountSessions(new MutableClock(START), 2);
         var a = sessions.establish(proof("account-a", null));

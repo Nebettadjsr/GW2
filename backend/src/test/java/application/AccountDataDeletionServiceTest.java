@@ -176,8 +176,8 @@ class AccountDataDeletionServiceTest {
         for (var s : List.of(a1, a2)) {
             assertEquals(AccountSessions.Outcome.DELETION_INVALIDATED,
                     sessions.resolve(s.sessionId(), s.context().accessContext()).outcome());
-            // Not "context mismatch" either: a wrong context still reports the deletion.
-            assertEquals(AccountSessions.Outcome.DELETION_INVALIDATED,
+            // A different tab's context must never be told that its own account was deleted.
+            assertEquals(AccountSessions.Outcome.CONTEXT_MISMATCH,
                     sessions.resolve(s.sessionId(), "wrong").outcome());
         }
         assertTrue(sessions.resolve(b.sessionId(), b.context().accessContext()).authenticated());
