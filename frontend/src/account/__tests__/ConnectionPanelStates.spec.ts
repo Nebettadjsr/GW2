@@ -113,14 +113,18 @@ it('opens one modal help dialog at a time, with the official links, and closes b
   expect(dialog.element.tagName).toBe('DIALOG')
   expect(dialog.attributes('open')).toBeDefined()
   expect(dialog.get('h3').text()).toBe('Get your API key')
-  expect(dialog.findAll('ol > li')).toHaveLength(3)
-  expect(dialog.findAll('[data-test="permission-list"] li').map((l) => l.text())).toEqual([
-    'account', 'inventories', 'characters', 'unlocks', 'progression', 'builds'
-  ])
+  const steps = dialog.findAll('ol > li')
+  expect(steps).toHaveLength(4)
+  expect(steps[1]!.findAll('strong').map((phrase) => phrase.text())).toEqual(['Create a new key', 'all permissions'])
+  expect(steps[1]!.text()).toContain('all permissions')
+  expect(steps[2]!.get('strong').text()).toBe('Copy & Paste')
+  expect(steps[3]!.text()).toBe('Click Connect.')
+  expect(dialog.find('[data-test="permission-list"]').exists()).toBe(false)
   expect(dialog.text()).toContain('Steam or Epic')
   expect(dialog.findAll('a').map((a) => a.attributes('href'))).toEqual(['https://account.arena.net/applications'])
-  expect(dialog.get('a').text()).toBe('Open ArenaNet')
+  expect(steps[0]!.get('a').text()).toBe('your ArenaNet account')
   expect(dialog.get('a').attributes('rel')).toContain('noopener')
+  expect(dialog.get('[data-test="help-create-safety"]').text()).toBe('Is my API key safe here?')
 
   await w.get('[data-test="help-close"]').trigger('click')
   expect(w.find('[data-test="help-dialog"]').exists()).toBe(false)
@@ -131,28 +135,64 @@ it('opens one modal help dialog at a time, with the official links, and closes b
   const safety = w.get('[data-test="help-dialog"]')
   expect(safety.get('h3').text()).toBe('Your key is read-only')
   expect(safety.findAll('[data-test="safety-facts"] li').map((l) => l.text())).toEqual([
-    'Cannot play, move items or spend gold',
-    'Shares only the game data you allow',
-    'Revoke it anytime on ArenaNet'
+    'Cannot change your GW2 account: your characters, items and gold stay untouched.',
+    'ArenaNet never shares your email, password or payment details through this API key.',
+    'You control access: choose permissions for each key and revoke it at any time in your ArenaNet account.',
+    'No separate sign-up: no email address or password needed here.',
+    'Disconnect removes the key from this browser tab. Delete (planned) will remove your saved account data from our database.'
   ])
   const details = safety.get('[data-test="safety-details"]')
   expect(details.attributes('open')).toBeUndefined()
   expect(details.get('summary').text()).toBe('What this app stores')
-  // The initial (collapsed) view stays brief: everything outside the collapsed details.
+  // Five owner-requested facts remain short; the account/storage explanation stays collapsed.
   const visible = safety.text().replace(details.text(), '')
-  expect(visible.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(65)
-  expect(details.text()).toContain('Disconnect')
-  expect(details.text()).toContain('Replace key')
-  expect(details.text()).toContain('Revoking')
+  expect(visible.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(120)
+  expect(details.findAll('dt').map((label) => label.text())).toEqual([
+    'Your API key', 'How we find your account', 'Game data we cache', 'Why we cache it'
+  ])
+  expect(details.text()).toContain('Saved only in this browser tab')
+  expect(details.text()).toContain('Reloading keeps it; a fresh tab normally starts without it')
+  expect(details.text()).toContain('Duplicated or restored tabs can keep the key')
+  expect(details.text()).toContain('Our server receives it to read your GW2 data, but never saves it')
+  expect(details.text()).toContain('GW2 account ID')
+  expect(details.text()).toContain('ArenaNet checks your key')
+  expect(details.text()).toContain("Another valid key for the same account retrieves the same data, within that key's permissions")
+  expect(details.text()).toContain('A revoked key cannot reconnect')
+  expect(details.text()).toContain('up to 15 minutes')
+  expect(details.text()).not.toContain('Disconnect does not delete this cached data')
+  expect(details.text()).toContain('GW2 limits API requests')
+  expect(details.text()).toContain('crafting calculations are demanding')
+  expect(details.findAll('dd li').map((row) => row.text())).toEqual([
+    'Bank items, material quantities and unlocked recipes',
+    'Character names and profiles, crafting levels, playtime and deaths',
+    'Inventories, equipment and saved builds',
+    'Account Luck'
+  ])
+  expect(details.text()).not.toContain('Replace key')
   expect(safety.findAll('.help-footer a').map((a) => [a.text(), a.attributes('href')])).toEqual([
-    ['Manage keys', 'https://account.arena.net/applications'],
-    ['API key information', 'https://wiki.guildwars2.com/wiki/API:API_key']
+    ['Manage your key at ArenaNet', 'https://account.arena.net/applications'],
+    ['What ArenaNet says about API keys', 'https://help.guildwars2.com/hc/en-us/articles/230899908-Managing-Your-ArenaNet-Account']
   ])
   // The native Escape behaviour closes a modal dialog and fires `close`.
   ;(safety.element as HTMLDialogElement).close()
   await flushPromises()
   expect(w.find('[data-test="help-dialog"]').exists()).toBe(false)
   expect(document.activeElement).toBe(w.get('[data-test="help-safety"]').element)
+  w.unmount()
+})
+
+it('opens safety help from the creation guide in the same modal and returns focus to the original trigger', async () => {
+  const w = mount(ConnectionPanel, { attachTo: document.body })
+  await w.get('[data-test="help-create"]').trigger('click')
+  const dialog = w.get('[data-test="help-dialog"]').element
+  await w.get('[data-test="help-create-safety"]').trigger('click')
+  expect(w.findAll('[data-test="help-dialog"]')).toHaveLength(1)
+  expect(w.get('[data-test="help-dialog"]').element).toBe(dialog)
+  expect(w.get('[data-test="help-dialog"] h3').text()).toBe('Your key is read-only')
+  expect(document.activeElement).toBe(w.get('[data-test="help-dialog"] h3').element)
+  expect(paths).toEqual([])
+  await w.get('[data-test="help-close"]').trigger('click')
+  expect(document.activeElement).toBe(w.get('[data-test="help-create"]').element)
   w.unmount()
 })
 

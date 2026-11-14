@@ -724,6 +724,10 @@ html {
   overflow-wrap: anywhere;
 }
 
+.connection-panel__help--safety {
+  width: min(39rem, calc(100vw - 2rem));
+}
+
 .connection-panel__help::backdrop {
   background: rgb(0 0 0 / 0.55);
   backdrop-filter: blur(4px);
@@ -731,6 +735,11 @@ html {
 
 .connection-panel__help h3 {
   margin: 0 0 0.75rem;
+}
+
+/* The title receives reading focus, while links and buttons keep their visible focus rings. */
+.connection-panel__help h3:focus {
+  outline: none;
 }
 
 .help-facts,
@@ -752,29 +761,15 @@ html {
 }
 
 .help-facts li + li,
-.help-steps li + li {
+.help-steps > li + li {
   margin-top: 0.75rem;
 }
 
 .help-note {
   display: block;
+  margin-top: 0.5rem;
+  line-height: 1.5;
   opacity: 0.85;
-}
-
-.help-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  margin: 0.5rem 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.help-chips li {
-  padding: 0.125rem 0.625rem;
-  border: 1px solid var(--color-border, #3a4855);
-  border-radius: 999px;
-  font-size: 0.875rem;
 }
 
 .help-details {
@@ -783,6 +778,34 @@ html {
 
 .help-details summary {
   cursor: pointer;
+}
+
+.help-storage {
+  margin: 1rem 0 0;
+}
+
+.help-storage > div + div {
+  margin-top: 1rem;
+}
+
+.help-storage dt {
+  font-weight: 700;
+}
+
+.help-storage dd {
+  margin: 0.375rem 0 0;
+}
+
+.help-storage ul {
+  margin: 0.5rem 0;
+}
+
+.help-storage li + li {
+  margin-top: 0.375rem;
+}
+
+.help-storage p {
+  margin: 0.5rem 0 0;
 }
 
 .help-footer {
@@ -796,10 +819,22 @@ html {
   border-top: 1px solid var(--color-border, #3a4855);
 }
 
+.help-footer--safety {
+  justify-content: flex-end;
+}
+
 .help-links {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
+  flex: 1 1 15rem;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  gap: 0.5rem;
+}
+
+.help-footer > .link-button {
+  color: var(--color-secondary);
+  text-align: left;
 }
 
 .connection-panel__error,

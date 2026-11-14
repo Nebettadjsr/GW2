@@ -1,5 +1,83 @@
 # Active planning backlog
 
+**CURRENT AUTHORIZATION — 2026-11-14, supervision resumed:** After the final direct key-help copy
+correction, the Product Owner accepts the local UI and asks to continue the to-do list. Resume one
+dependency-complete implementation at a time: publish the accepted paired #199/#200 refinements, check
+CI/review, finish the #201/#203 history corrections, and release the bounded deletion contracts from
+#204 once their prerequisites are ready. #202 remains dependent on the history foundation. The deletion
+UI must remove "planned" from the safety explanation when its button is actually functional, keeping
+the accepted copy and layout. This resumes supervision/feature work, not VM or load-test execution.
+
+**Direct UI pairing — 2026-11-14:** The Product Owner explicitly asks interactive Codex to code the
+current guide revision itself, without delegating to Claude. Scope is the API-key creation dialog:
+four steps, an inline ArenaNet link, a spaced Steam/Epic hint, recommend all permissions without chips,
+bold Copy & Paste, a separate Connect step, and a footer link to the safety explanation. Keep the true
+modal/no-shift behavior. Other feature implementation stays held; this is not general workflow resumption.
+The following safety-dialog revision is direct coding too: explain read-only protection, concretely name
+password/email/payment exclusions, and separate browser key retention, cached game data linked by account
+ID, and the API-limit/calculation reasons for caching. Remove the Replace-key explanation; keep details
+collapsed initially and retained-cache behavior truthful. Do not claim that account-linked data is anonymous.
+The next owner copy pass adds five short safety facts, per-tab key lifetime, ArenaNet-verified identity and
+reuse of cached data with a new key for the same account. Prepare Delete wording, marked planned until the
+action exists; this copy request does not activate deletion implementation. Keep browser-restoration and
+the existing 15-minute session limit accurate, rather than promising immediate key removal or revocation.
+The safety dialog is 30% wider (39rem), still constrained to the viewport, at the owner's request.
+
+**Current handoff — 2026-11-14, UI pairing requested:** Finish the in-flight #199 functional correction,
+then stop further implementation dispatch and return to the Product Owner for System Status UI rework.
+Keep its local preview available and its PR unmerged pending visual approval. Independent owner-history
+and deletion work remains unfinished; its contracts/review findings stay on GitHub for later resumption.
+This handoff is not authorization to accept UI, start another story or restart resource measurements.
+
+**Product Owner follow-up — 2026-11-14, System Status:** The API-key controls belong in one themed card:
+compact help links replace routine connection prose, the input has its own row, and action buttons are
+underneath. Help must be a small centered modal over a dimmed/blurred background, with no layout shift.
+Use a short headline, separated key facts/numbered steps, optional collapsed detail and a separate footer;
+the rejected inline paragraph block is not an accepted baseline. These instructions are binding on #199.
+The owner now also requests a separate delete-data action alongside key removal. Plan actual deletion of
+the current verified account's cached app data in [#204](https://github.com/Nebettadjsr/GW2/issues/204),
+preserving other accounts/shared catalogs and fencing old background work. This extends the earlier scope;
+it does not authorize deleting the owner's live cached data during implementation or verification.
+
+**CURRENT AUTHORIZATION — 2026-11-14, System Status:** The owner requests compact API-key creation and
+read-only/privacy help, an input visibility toggle, truthful replace/disconnect wording, and owner-only
+database-size and concise activity/performance history. Distinct GW2 accounts active within five minutes
+is confirmed; preserve the existing last-60-minute count separately. Reuse Oracle infrastructure monitoring
+instead of logging the same CPU/memory/host metrics again. Include practical hosted log retrieval/export.
+Use native planning and one scoped implementation at a time; retain final local UI review. The request does
+not ask for account-data deletion: current Disconnect ends access and clears the browser key, without
+deleting cached database rows. No resumption of load tests, general roadmap work or paid services is implied.
+
+Native planning handoff: [#198](https://github.com/Nebettadjsr/GW2/issues/198). Supervisor-approved
+connection-help contract: [STORY-KEYHELP-001 / #199](https://github.com/Nebettadjsr/GW2/issues/199).
+The amended native owner-history contract is approved as backend foundation
+[STORY-OPS-001 / #201](https://github.com/Nebettadjsr/GW2/issues/201), followed by dependent owner
+presentation/export/runbook [STORY-OPS-002 / #202](https://github.com/Nebettadjsr/GW2/issues/202).
+UI work retains the local Product Owner visual-review gate.
+No unrelated held story is reactivated. GitHub owns coding/review progress and any rework findings.
+
+**CURRENT AUTHORIZATION — 2026-11-14:** The owner explicitly authorizes running the tests and starting
+Docker and the local VM. Resume the browser/VM resource tests: collect a new baseline, verify host contention,
+then run bounded concurrency experiments with the available real accounts. Keep account count distinct from
+browser-session count and provisional scripted behavior distinct from recorded owner behavior. Prior readings
+from 2026-11-13 remain invalid as performance baselines because the owner was playing GW2 on the host.
+Stop owned measurement processes and shut down the test VM after the authorized run; preserve test evidence.
+This authorization supersedes the preparation-only restriction below for this test session only.
+
+Local measurement evidence and remaining qualification gaps are in the
+[2026-11-14 resource-test report](../docs/investigations/2026-11-14-resource-test-results.md).
+That bounded session has ended with the test VM Off and owned observers/runners stopped. It does not
+authorize another unattended run or release unrelated implementation work.
+
+**Previous owner correction — 2026-11-13: PREPARATION ONLY.** The owner clarified that preparing for measurements did
+not authorize starting a VM or running measurements. The local `GW2-resource-test` VM has been shut down
+and the identified test runners stopped. Do not start the VM, browser journeys, measurements or load tests
+without a new explicit instruction. Readiness language below is historical and supplies no execution authority.
+The owner was actively playing GW2 on this same host during the runs; the resulting performance numbers
+are contended observations and must not be used as an application baseline or for capacity decisions.
+Preserve the prepared tooling and stopped VM for later use. This correction supersedes conflicting scope
+interpretations recorded below.
+
 **Status: LIMITED EXECUTION resumed by the Product Owner on 2026-11-13: simplify measurement tooling, prepare recorded browser/VM tests, fix #188 and relevant functional prerequisites.**
 
 The Product Owner's latest 2026-11-13 instruction extends this scope through runnable local test readiness: continue without stopping for routine implementation choices, prepare at least three browser journeys (Crafting, Bank/Materials, Characters), create and deploy the resource-constrained local VM, and verify bounded single-session dry runs with useful timing/resource output. This supersedes the earlier preparation-only restriction on VM creation. Capacity discovery remains the subsequent test, not a result to claim during preparation. No paid service or live ArenaNet stress is authorized; normal bounded account bootstrap uses the already authorized account key without exporting credentials.
