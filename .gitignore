@@ -45,4 +45,3 @@ __pycache__/
 # Historical local experiment output may contain account-derived labels; keep it out of Git.
 frontend/.interaction-recordings/
 frontend/.journey-runs/
-

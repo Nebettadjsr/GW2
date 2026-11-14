@@ -12,6 +12,7 @@ covers any behavior that remains required.
 | profit-page-perf.mjs, profitTiming.mjs, __tests__/profitTiming.spec.mjs | Removed | Timing injector and its tests; no behavior assertion beyond timing |
 | recordingProxy.mjs | Moved to requestObserver.mjs | Still needed by `icon-live-check.mjs` to count backend requests; per-request timing removed, API otherwise unchanged |
 | icon-live-check.mjs | Kept, refactored | Imports requestObserver.mjs |
+| __tests__/requestObserver.spec.mjs | Added | Real local HTTP checks preserve request/session headers, body, image bytes, cache validators and upstream-failure behavior without timing or credential recording |
 | bundleFreshness.mjs (+ spec), resolveBrowserPath.mjs, stubOrigin.mjs, upstream-proxy.mjs | Kept | Shared functional helpers |
 | all `*-browser-smoke.mjs`, `*-live-smoke.mjs`, `profit-envelope-live-check.mjs`, `stack-browser-smoke.mjs`, `inventory-refresh-smoke.mjs` | Kept | Focused correctness/smoke checks |
 | `package.json` scripts `perf:profit-page`, `record:interaction`, `journey*`, `test:journey-browser`, `test:interaction-browser` | Removed | Pointed only at removed files |
@@ -46,3 +47,4 @@ benchmark-related and production code never imports it.
 - `PopulatedFixtureIsolationIT`: the optional local-snapshot test no longer writes a readiness report; it still imports the snapshot into a fresh schema.
 - `FullCatalogSyncTest`: the `resourceEvidence_...` test (heap/RSS sampling, printed timings) became `multiBatchCatalog_requestsEveryDetailBatchAndStoresEveryItem`; both correctness assertions (21 requests, 4000 stored items) are kept.
 - Removed with their tooling: MeasurementReportTest, DatabaseProbeTest, interactionRecorder/journeyCommon/journeyRunner/profitTiming specs and the Python collector/summary tests.
+- Historical recording/journey output directories remain ignored, so old private local artifacts do not become commit candidates after tool removal.
