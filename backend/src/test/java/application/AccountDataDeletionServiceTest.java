@@ -80,6 +80,15 @@ class AccountDataDeletionServiceTest {
     }
 
     @Test
+    void renewalDeniedAtItsInitialCheckKeepsTheDeletionOutcome() throws Exception {
+        var a = session("a1");
+        access.invalidateAccountSessions(A);
+        var ended = assertThrows(AccountAccessService.SessionEnded.class,
+                () -> access.renew(a.sessionId(), a.context().accessContext(), "a1"));
+        assertEquals(AccountSessions.Outcome.DELETION_INVALIDATED, ended.outcome());
+    }
+
+    @Test
     void unfinishedRefreshReturnsConflictWithoutDeletingThenSucceedsAfterCompletion() throws Exception {
         AccountSessions.Issued a = session("a1");
         var admission = coordinator.require(a.context(), a.sessionId(), "a1", Set.of(AccountSyncStateRepository.BANK));

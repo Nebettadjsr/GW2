@@ -100,7 +100,7 @@ public final class AccountAccessService {
             AccountMismatchException {
         AccountSessions.Resolution current = sessions.resolve(sessionId, assertedContext);
         if (!current.authenticated()) {
-            throw new IllegalStateException("renewal requires an authenticated session");
+            throw new SessionEnded(current.outcome());
         }
         AccountProof proved;
         try {
