@@ -845,3 +845,16 @@ html {
 .account-needed {
   margin: var(--space-4) 0;
 }
+
+/* Owner "Application activity" (STORY-OPS-002): compact facts, collapsed paginated history, export row. */
+.owner-activity__facts .meta { display: block; }
+.owner-activity__history { margin-top: var(--space-3); }
+.owner-activity__controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-block: var(--space-2); }
+.owner-activity__controls [aria-pressed="true"] { font-weight: 700; text-decoration: underline; }
+.owner-activity__table-wrap { overflow-x: auto; }
+.owner-activity__table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.owner-activity__table th, .owner-activity__table td { text-align: left; padding: 0.25rem 0.5rem; white-space: nowrap; }
+.owner-activity__export { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-2); margin-top: var(--space-3); }
+.owner-activity__export h3 { flex-basis: 100%; margin: 0; font-size: 1rem; }
+.owner-activity__export label { display: flex; flex-direction: column; gap: 0.25rem; }
+@media (max-width: 40rem) { .owner-activity__export label, .owner-activity__export button { flex: 1 1 100%; } }

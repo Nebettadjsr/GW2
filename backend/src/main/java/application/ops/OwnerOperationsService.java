@@ -5,6 +5,7 @@ import application.access.OwnerPolicy;
 import application.access.AccountSessions;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -28,7 +29,19 @@ public final class OwnerOperationsService {
 
     public record Summary(Instant generatedAt, ForegroundAccounts foregroundAccounts, DatabaseSize databaseSize,
                           boolean historyAvailable, boolean retentionTruncated, int minuteBuckets, int hourBuckets,
-                          MinuteBucket latestMinute, HourBucket latestHour) {}
+                          MinuteBucket latestMinute, HourBucket latestHour,
+                          List<MinuteBucket> minutes, List<HourBucket> hours) {}
+
+    /** Thrown only after authorization, for a malformed or oversized export request. */
+    public static final class InvalidExport extends RuntimeException {
+        public InvalidExport(String message) { super(message); }
+    }
+
+    public static final int MAX_MINUTE_BUCKETS = 360;
+    public static final int MAX_HOUR_BUCKETS = 720;
+    public static final Duration SUMMARY_MINUTE_WINDOW = Duration.ofHours(6);
+    public static final Duration SUMMARY_HOUR_WINDOW = Duration.ofDays(7);
+    public static final Duration MAX_EXPORT_RANGE = Duration.ofDays(30);
 
     /** Bounded: at most 360 minute and 720 hour buckets, each with at most eight route groups. */
     public record Export(Instant generatedAt, boolean historyAvailable, boolean retentionTruncated,
@@ -53,12 +66,18 @@ public final class OwnerOperationsService {
         Denial denial = authorize(sessionId, assertedAccessContext);
         if (denial != null) return new Result<>(null, denial);
         HistoryStore.Snapshot snapshot = history.history();
-        List<MinuteBucket> minutes = snapshot.minutes();
-        List<HourBucket> hours = snapshot.hours();
-        return new Result<>(new Summary(clock.instant(), history.currentActivity(), databaseSize.current(),
+        Instant now = clock.instant();
+        // The normal view is filtered by elapsed time, not just by retained row count.
+        List<MinuteBucket> minutes = snapshot.minutes().stream()
+                .filter(m -> !m.startUtc().isBefore(now.minus(SUMMARY_MINUTE_WINDOW)) && !m.startUtc().isAfter(now))
+                .sorted(java.util.Comparator.comparing(MinuteBucket::startUtc)).limit(MAX_MINUTE_BUCKETS).toList();
+        List<HourBucket> hours = snapshot.hours().stream()
+                .filter(h -> !h.startUtc().isBefore(now.minus(SUMMARY_HOUR_WINDOW)) && !h.startUtc().isAfter(now))
+                .sorted(java.util.Comparator.comparing(HourBucket::startUtc)).limit(168).toList();
+        return new Result<>(new Summary(now, history.currentActivity(), databaseSize.current(),
                 snapshot.available(), snapshot.retentionTruncated(), minutes.size(), hours.size(),
                 minutes.isEmpty() ? null : minutes.get(minutes.size() - 1),
-                hours.isEmpty() ? null : hours.get(hours.size() - 1)), null);
+                hours.isEmpty() ? null : hours.get(hours.size() - 1), minutes, hours), null);
     }
 
     public Result<Export> export(String sessionId, String assertedAccessContext) {
@@ -67,6 +86,48 @@ public final class OwnerOperationsService {
         HistoryStore.Snapshot snapshot = history.history();
         return new Result<>(new Export(clock.instant(), snapshot.available(), snapshot.retentionTruncated(),
                 snapshot.minutes(), snapshot.hours()), null);
+    }
+
+    /**
+     * Bounded range export. Authorization first; only then is the request validated and history read.
+     * Caps count distinct top-level bucket timestamps, never nested route records. Missing buckets are
+     * never synthesized.
+     *
+     * @throws InvalidExport for a malformed, unordered, over-30-day or over-cap request
+     */
+    public Result<Export> export(String sessionId, String assertedAccessContext, boolean hourly,
+                                 Instant from, Instant to) {
+        Denial denial = authorize(sessionId, assertedAccessContext);
+        if (denial != null) return new Result<>(null, denial);
+        if (from == null || to == null || from.isAfter(to)) throw new InvalidExport("from/to must be ordered instants");
+        if (Duration.between(from, to).compareTo(MAX_EXPORT_RANGE) > 0) throw new InvalidExport("range exceeds 30 days");
+        if (Duration.between(from, to).compareTo(hourly ? Duration.ofHours(MAX_HOUR_BUCKETS)
+                : Duration.ofMinutes(MAX_MINUTE_BUCKETS)) > 0) {
+            throw new InvalidExport("range exceeds the bucket cap for this resolution");
+        }
+        HistoryStore.Snapshot snapshot = history.history();
+        List<MinuteBucket> minutes = List.of();
+        List<HourBucket> hours = List.of();
+        if (hourly) {
+            hours = snapshot.hours().stream().filter(h -> !h.startUtc().isBefore(from) && !h.startUtc().isAfter(to))
+                    .sorted(java.util.Comparator.comparing(HourBucket::startUtc)).toList();
+            if (hours.stream().map(HourBucket::startUtc).distinct().count() > MAX_HOUR_BUCKETS) {
+                throw new InvalidExport("more than 720 hour buckets requested");
+            }
+        } else {
+            minutes = snapshot.minutes().stream().filter(m -> !m.startUtc().isBefore(from) && !m.startUtc().isAfter(to))
+                    .sorted(java.util.Comparator.comparing(MinuteBucket::startUtc)).toList();
+            if (minutes.stream().map(MinuteBucket::startUtc).distinct().count() > MAX_MINUTE_BUCKETS) {
+                throw new InvalidExport("more than 360 minute buckets requested");
+            }
+        }
+        return new Result<>(new Export(clock.instant(), snapshot.available(), snapshot.retentionTruncated(),
+                minutes, hours), null);
+    }
+
+    /** Authorization only; touches no history or database collaborator. */
+    public Denial authorizeOnly(String sessionId, String assertedAccessContext) {
+        return authorize(sessionId, assertedAccessContext);
     }
 
     private Denial authorize(String sessionId, String assertedAccessContext) {

@@ -46,6 +46,9 @@ beforeEach(async () => {
     return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
   }))
   vi.spyOn(systemApi, 'readStatus').mockResolvedValue({ globalHealth: 'OK', priceHealth: 'OK' })
+  // The owner activity section makes its own request; keep it off the real transport so the lapsed lease
+  // is renewed by the request this spec controls.
+  vi.spyOn(systemApi, 'readOperationsSummary').mockRejectedValue(new Error('not under test'))
   await connectKey('KEY-A')
   nextExpiry = '2099-01-01T00:00:00Z'
 })
