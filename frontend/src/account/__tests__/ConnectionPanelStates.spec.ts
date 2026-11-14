@@ -90,3 +90,119 @@ it('shows the logout notice when the server session could not be ended', async (
   await flushPromises()
   expect(w.get('[data-test="logout-notice"]').text()).toContain('could not be ended')
 })
+
+const input = (w: ReturnType<typeof mount>) => w.get('[data-test="api-key-input"]')
+const value = (w: ReturnType<typeof mount>) => (input(w).element as HTMLInputElement).value
+
+it('opens one help dialog at a time, with the official links, and closes by button and Escape with focus return', async () => {
+  const w = mount(ConnectionPanel, { attachTo: document.body })
+  expect(w.find('[data-test="help-dialog"]').exists()).toBe(false)
+  await w.get('[data-test="help-create"]').trigger('click')
+  const dialog = w.get('[data-test="help-dialog"]')
+  expect(dialog.attributes('role')).toBe('dialog')
+  expect(dialog.attributes('aria-modal')).toBe('true')
+  expect(dialog.text()).toContain('account, inventories, characters, unlocks, progression, and builds')
+  expect(dialog.text()).toContain('Steam or Epic')
+  expect(dialog.findAll('a').map((a) => a.attributes('href'))).toEqual(['https://account.arena.net/applications'])
+  expect(dialog.get('a').attributes('rel')).toContain('noopener')
+  expect(document.activeElement).toBe(w.get('[data-test="help-close"]').element)
+
+  await w.get('[data-test="help-safety"]').trigger('click')
+  expect(w.findAll('[data-test="help-dialog"]')).toHaveLength(1)
+  const safety = w.get('[data-test="help-dialog"]')
+  expect(safety.text()).toContain('read-only access')
+  expect(safety.text()).toContain('does not delete')
+  expect(safety.findAll('a').map((a) => a.attributes('href'))).toEqual([
+    'https://wiki.guildwars2.com/wiki/API:API_key',
+    'https://account.arena.net/applications'
+  ])
+
+  await w.get('[data-test="help-close"]').trigger('click')
+  expect(w.find('[data-test="help-dialog"]').exists()).toBe(false)
+  expect(document.activeElement).toBe(w.get('[data-test="help-safety"]').element)
+
+  await w.get('[data-test="help-create"]').trigger('click')
+  await w.get('[data-test="help-dialog"]').trigger('keydown', { key: 'Escape' })
+  expect(w.find('[data-test="help-dialog"]').exists()).toBe(false)
+  expect(document.activeElement).toBe(w.get('[data-test="help-create"]').element)
+  w.unmount()
+})
+
+it('help never touches the draft, storage or connection', async () => {
+  const w = mount(ConnectionPanel)
+  await input(w).setValue('typed')
+  const generation = connection.generation
+  await w.get('[data-test="help-safety"]').trigger('click')
+  expect(value(w)).toBe('typed')
+  expect(connection.generation).toBe(generation)
+  expect(window.sessionStorage.getItem(STORAGE_KEY)).toBeNull()
+})
+
+it('the eye toggles only the typed draft, with a changing label, and does not submit', async () => {
+  const w = mount(ConnectionPanel)
+  const eye = w.get('[data-test="toggle-key-visibility"]')
+  expect(eye.attributes('type')).toBe('button')
+  expect([eye.attributes('aria-label'), eye.attributes('aria-pressed'), input(w).attributes('type')]).toEqual([
+    'Show API key', 'false', 'password'
+  ])
+  await input(w).setValue('typed')
+  await eye.trigger('click')
+  expect([eye.attributes('aria-label'), eye.attributes('aria-pressed'), input(w).attributes('type')]).toEqual([
+    'Hide API key', 'true', 'text'
+  ])
+  expect(paths).toEqual([])
+  await eye.trigger('click')
+  expect(input(w).attributes('type')).toBe('password')
+})
+
+it('a failed submission keeps the draft and its visibility', async () => {
+  handler = () => json({ error: 'INVALID_CREDENTIAL', message: 'no' }, 401)
+  const w = mount(ConnectionPanel)
+  await input(w).setValue('BAD')
+  await w.get('[data-test="toggle-key-visibility"]').trigger('click')
+  await w.get('form').trigger('submit')
+  await flushPromises()
+  expect(value(w)).toBe('BAD')
+  expect(input(w).attributes('type')).toBe('text')
+})
+
+it('an accepted submission and Disconnect clear the draft and mask it again', async () => {
+  handler = (path) => (path === '/api/session' ? proof() : new Response(null, { status: 204 }))
+  const w = mount(ConnectionPanel)
+  await input(w).setValue('KEY-A')
+  await w.get('[data-test="toggle-key-visibility"]').trigger('click')
+  await w.get('form').trigger('submit')
+  await flushPromises()
+  expect(value(w)).toBe('')
+  expect(input(w).attributes('type')).toBe('password')
+
+  await input(w).setValue('again')
+  await w.get('[data-test="toggle-key-visibility"]').trigger('click')
+  await w.get('[data-test="disconnect"]').trigger('click')
+  await flushPromises()
+  expect(value(w)).toBe('')
+  expect(input(w).attributes('type')).toBe('password')
+})
+
+it('an account change from elsewhere clears and masks the draft, and a remount starts masked', async () => {
+  const w = mount(ConnectionPanel)
+  await input(w).setValue('typed')
+  await w.get('[data-test="toggle-key-visibility"]').trigger('click')
+  connection.generation += 1
+  await flushPromises()
+  expect(value(w)).toBe('')
+  expect(input(w).attributes('type')).toBe('password')
+  w.unmount()
+  expect(input(mount(ConnectionPanel)).attributes('type')).toBe('password')
+})
+
+it('never fills the field from a restored or retained key', async () => {
+  window.sessionStorage.setItem(STORAGE_KEY, 'KEY-SECRET')
+  connection.phase = 'unavailable'
+  const w = mount(ConnectionPanel)
+  await w.get('[data-test="toggle-key-visibility"]').trigger('click')
+  expect(value(w)).toBe('')
+  expect(w.html()).not.toContain('KEY-SECRET')
+  await w.get('[data-test="help-safety"]').trigger('click')
+  expect(w.html()).not.toContain('KEY-SECRET')
+})

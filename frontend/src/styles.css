@@ -650,9 +650,52 @@ legend {
   gap: var(--space-2);
 }
 
-.connection-panel__form input {
+.connection-panel__field {
+  position: relative;
+  display: flex;
   flex: 1 1 20rem;
   min-width: 0;
+}
+
+.connection-panel__field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 2.5rem;
+}
+
+.connection-panel__eye {
+  position: absolute;
+  top: 50%;
+  right: var(--space-1, 0.25rem);
+  transform: translateY(-50%);
+  padding: 0 var(--space-1, 0.25rem);
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.connection-panel__help-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.connection-panel__help {
+  max-width: 36rem;
+  padding: var(--space-3);
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  background: Canvas;
+  overflow-wrap: anywhere;
 }
 
 .connection-panel__error,
