@@ -15,7 +15,7 @@ import java.util.List;
  * and asserted access context and maps {@link Denial} to its transport.
  */
 public final class OwnerOperationsService {
-    public enum Denial { UNAUTHENTICATED, FORBIDDEN }
+    public enum Denial { UNAUTHENTICATED, DELETED, FORBIDDEN }
 
     /** Either the privileged payload or a content-free denial; {@code cacheControl} is always no-store. */
     public record Result<T>(T value, Denial denial) {
@@ -88,6 +88,7 @@ public final class OwnerOperationsService {
         if (sessionId == null || sessionId.isBlank() || access == null) return Denial.UNAUTHENTICATED;
         AccountSessions.Resolution resolution = access.resolve(sessionId, assertedAccessContext);
         return switch (resolution.outcome()) {
+            case DELETION_INVALIDATED -> Denial.DELETED;
             case NO_SESSION, EXPIRED -> Denial.UNAUTHENTICATED;
             case CONTEXT_MISMATCH -> Denial.FORBIDDEN;
             case AUTHENTICATED -> owner != null && owner.isOwner(resolution.context()) ? null : Denial.FORBIDDEN;

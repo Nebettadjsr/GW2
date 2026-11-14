@@ -128,6 +128,8 @@ public class SystemStatusApiController {
         }
         var resolution = access.resolve(presented.get(), AccountAccessHttp.assertedAccessContext(request));
         switch (resolution.outcome()) {
+            case DELETION_INVALIDATED -> { return denied(HttpStatus.UNAUTHORIZED, "ACCOUNT_DATA_DELETED",
+                    "This account's data was deleted; connect again to continue"); }
             case NO_SESSION, EXPIRED -> { return denied(HttpStatus.UNAUTHORIZED, "SESSION_REQUIRED",
                     "Prove a GW2 API key to continue"); }
             case CONTEXT_MISMATCH -> { return denied(HttpStatus.FORBIDDEN, "ACCOUNT_ACCESS_DENIED",
@@ -135,6 +137,33 @@ public class SystemStatusApiController {
             case AUTHENTICATED -> { /* project below */ }
         }
         AccountContext context = resolution.context();
+        // This route is outside the lifecycle interceptor: hold the shared admission through the final
+        // activity write so a deletion cannot commit under it, then recheck authority.
+        application.access.AccountLifecycleGate.Admission admission;
+        try {
+            admission = access.lifecycle().enter(UUID.fromString(context.accountId()));
+        } catch (application.access.AccountLifecycleGate.Unavailable busy) {
+            return denied(HttpStatus.SERVICE_UNAVAILABLE, "DATA_STORE_UNAVAILABLE",
+                    "The account is busy; try again shortly");
+        }
+        try {
+            resolution = access.resolve(presented.get(), AccountAccessHttp.assertedAccessContext(request));
+            switch (resolution.outcome()) {
+                case DELETION_INVALIDATED -> { return denied(HttpStatus.UNAUTHORIZED, "ACCOUNT_DATA_DELETED",
+                        "This account's data was deleted; connect again to continue"); }
+                case NO_SESSION, EXPIRED -> { return denied(HttpStatus.UNAUTHORIZED, "SESSION_REQUIRED",
+                        "Prove a GW2 API key to continue"); }
+                case CONTEXT_MISMATCH -> { return denied(HttpStatus.FORBIDDEN, "ACCOUNT_ACCESS_DENIED",
+                        "This session is not authorized for this account operation"); }
+                case AUTHENTICATED -> { /* continue */ }
+            }
+            return projectAccount(resolution.context());
+        } finally {
+            admission.close();
+        }
+    }
+
+    private ResponseEntity<?> projectAccount(AccountContext context) {
         Set<String> permitted = new java.util.LinkedHashSet<>();
         for (String source : java.util.List.of(AccountSyncStateRepository.BANK, AccountSyncStateRepository.MATERIALS,
                 AccountSyncStateRepository.RECIPES, AccountSyncStateRepository.LUCK,

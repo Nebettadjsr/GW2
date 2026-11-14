@@ -53,10 +53,59 @@ public final class AccountRegistryRepository {
      */
     public boolean register(Connection con, AccountScope scope) throws SQLException {
         ManagedSchema.requireManagedAccountSchema(con, "account_registry registration");
-        try (PreparedStatement ps = con.prepareStatement("""
-                INSERT INTO account_registry (account_id) VALUES (?)
-                ON CONFLICT (account_id) DO NOTHING
-                """)) {
+        return underWriterLock(con, scope, () -> {
+            try (PreparedStatement ps = con.prepareStatement("""
+                    INSERT INTO account_registry (account_id) VALUES (?)
+                    ON CONFLICT (account_id) DO NOTHING
+                    """)) {
+                ps.setObject(1, scope.accountId());
+                return ps.executeUpdate() == 1;
+            }
+        });
+    }
+
+    @FunctionalInterface
+    private interface Write {
+        boolean run() throws SQLException;
+    }
+
+    /**
+     * Runs a root-creating write under the account's writer lock, the same lock publication and
+     * deletion take. On an autocommit connection (the production path of ordinary authorized reads)
+     * a short real transaction wraps lock and statement together, because an advisory transaction
+     * lock taken in its own autocommit statement is released before the next statement runs. On a
+     * connection already in a transaction the lock is held until the caller commits.
+     */
+    private static boolean underWriterLock(Connection con, AccountScope scope, Write write) throws SQLException {
+        if (!con.getAutoCommit()) {
+            AccountSourcePublication.lockAccount(con, scope);
+            return write.run();
+        }
+        con.setAutoCommit(false);
+        try {
+            AccountSourcePublication.lockAccount(con, scope);
+            boolean result = write.run();
+            con.commit();
+            return result;
+        } catch (SQLException | RuntimeException failure) {
+            try { con.rollback(); } catch (SQLException suppressed) { failure.addSuppressed(suppressed); }
+            throw failure;
+        } finally {
+            con.setAutoCommit(true);
+        }
+    }
+
+    /**
+     * Deletes the account root; every account-owned table cascades from it. The caller owns the
+     * transaction. Takes the writer lock first so it serializes with every root-creating write.
+     *
+     * @return true when a root existed
+     */
+    public boolean deleteAccount(Connection con, AccountScope scope) throws SQLException {
+        ManagedSchema.requireManagedAccountSchema(con, "account data deletion");
+        if (con.getAutoCommit()) throw new IllegalStateException("account deletion requires a transaction");
+        AccountSourcePublication.lockAccount(con, scope);
+        try (PreparedStatement ps = con.prepareStatement("DELETE FROM account_registry WHERE account_id = ?")) {
             ps.setObject(1, scope.accountId());
             return ps.executeUpdate() == 1;
         }
@@ -83,15 +132,32 @@ public final class AccountRegistryRepository {
     public boolean recordAuthorizedUse(Connection con, AccountScope scope, Instant seenAt) throws SQLException {
         if (seenAt == null) throw new IllegalArgumentException("activity instant is required");
         ManagedSchema.requireManagedAccountSchema(con, "account activity (last_seen_at)");
-        try (PreparedStatement ps = con.prepareStatement("""
-                INSERT INTO account_registry (account_id, last_seen_at) VALUES (?, ?)
-                ON CONFLICT (account_id) DO UPDATE SET
-                  last_seen_at = GREATEST(account_registry.last_seen_at, EXCLUDED.last_seen_at)
-                """)) {
-            ps.setObject(1, scope.accountId());
-            ps.setTimestamp(2, Timestamp.from(seenAt));
-            return ps.executeUpdate() == 1;
+        if (con.getAutoCommit()) {
+            // Existing root on the production autocommit path: one short statement, no advisory lock.
+            // It cannot create a root, so it needs no writer serialization; against a concurrent
+            // deletion it waits on the row lock and then matches nothing (READ COMMITTED), falling
+            // through to the locked path below, which the deletion's lock/lifecycle fence governs.
+            // A publisher holding the advisory lock mid-write therefore never blocks a read.
+            try (PreparedStatement ps = con.prepareStatement("""
+                    UPDATE account_registry SET last_seen_at = GREATEST(last_seen_at, ?)
+                    WHERE account_id = ?
+                    """)) {
+                ps.setTimestamp(1, Timestamp.from(seenAt));
+                ps.setObject(2, scope.accountId());
+                if (ps.executeUpdate() == 1) return true;
+            }
         }
+        return underWriterLock(con, scope, () -> {
+            try (PreparedStatement ps = con.prepareStatement("""
+                    INSERT INTO account_registry (account_id, last_seen_at) VALUES (?, ?)
+                    ON CONFLICT (account_id) DO UPDATE SET
+                      last_seen_at = GREATEST(account_registry.last_seen_at, EXCLUDED.last_seen_at)
+                    """)) {
+                ps.setObject(1, scope.accountId());
+                ps.setTimestamp(2, Timestamp.from(seenAt));
+                return ps.executeUpdate() == 1;
+            }
+        });
     }
 
     /**
