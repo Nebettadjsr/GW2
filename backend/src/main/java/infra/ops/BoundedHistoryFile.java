@@ -42,7 +42,28 @@ public final class BoundedHistoryFile<T> {
         this.mapper = mapper;
         this.maxBuckets = maxBuckets;
         this.maxBytes = maxBytes;
+        removeAbandonedReplacements();
         load();
+    }
+
+    private Path replacementPath() {
+        return file.toAbsolutePath().resolveSibling(file.getFileName() + ".tmp");
+    }
+
+    /** Deletes this file's own abandoned replacement files (fixed name and legacy random names) only. */
+    private void removeAbandonedReplacements() {
+        Path dir = file.toAbsolutePath().getParent();
+        String prefix = file.getFileName().toString();
+        if (dir == null || !Files.isDirectory(dir)) return;
+        try (var entries = Files.newDirectoryStream(dir, prefix + "*.tmp")) {
+            for (Path p : entries) {
+                if (Files.isRegularFile(p, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                    try { Files.deleteIfExists(p); } catch (IOException ignored) { /* best effort */ }
+                }
+            }
+        } catch (IOException ignored) {
+            // Scratch cleanup is best effort; the bound is still held by the single fixed replacement name.
+        }
     }
 
     private void load() {
@@ -102,7 +123,11 @@ public final class BoundedHistoryFile<T> {
         Path dir = file.toAbsolutePath().getParent();
         Files.createDirectories(dir);
         restrict(dir, "rwx------");
-        Path temp = Files.createTempFile(dir, file.getFileName().toString(), ".tmp");
+        // One fixed replacement name per history file: at most one scratch file can ever exist, and a
+        // leftover from an interrupted rewrite is replaced here or removed on the next start.
+        Path temp = replacementPath();
+        Files.deleteIfExists(temp);
+        Files.createFile(temp);
         try {
             restrict(temp, "rw-------");
             StringBuilder out = new StringBuilder();

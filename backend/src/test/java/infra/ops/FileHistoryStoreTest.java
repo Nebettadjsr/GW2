@@ -128,4 +128,70 @@ class FileHistoryStoreTest {
         assertFalse(text.toLowerCase().contains("account\""));
         assertTrue(text.contains("\"overflow\":true"));
     }
+
+    private long dirBytes() throws Exception {
+        try (Stream<Path> files = Files.list(dir)) { return files.mapToLong(p -> p.toFile().length()).sum(); }
+    }
+
+    private long dirCount() throws Exception {
+        try (Stream<Path> files = Files.list(dir)) { return files.count(); }
+    }
+
+    @Test
+    void startupRemovesAbandonedReplacementsOnlyAndKeepsRetainedFilesAndUnrelatedContent() throws Exception {
+        var seed = new FileHistoryStore(dir, mapper);
+        seed.appendMinute(minute(0, 1));
+        seed.appendHour(new HourBucket(T0, 3600, HourBucket.Completeness.COMPLETE, 60,
+                new HourBucket.ActivitySummary(1, false, false, false), List.of(agg(RouteGroup.CRAFTING))));
+        byte[] big = new byte[1_000_000];
+        Files.write(dir.resolve("minute-history.jsonl123456.tmp"), big);
+        Files.write(dir.resolve("minute-history.jsonl9876.tmp"), big);
+        Files.write(dir.resolve("hour-history.jsonl555.tmp"), big);
+        Files.write(dir.resolve("minute-history.jsonl.tmp"), big);
+        Files.write(dir.resolve("hour-history.jsonl.tmp"), big);
+        Files.writeString(dir.resolve("other.tmp"), "keep");
+        Files.writeString(dir.resolve("notes.txt"), "keep");
+        Files.createDirectory(dir.resolve("minute-history.jsonl-dir.tmp"));
+
+        var store = new FileHistoryStore(dir, mapper);
+        assertEquals(1, store.snapshot().minutes().size());
+        assertEquals(1, store.snapshot().hours().size());
+        try (Stream<Path> files = Files.list(dir)) {
+            assertEquals(java.util.Set.of("minute-history.jsonl", "hour-history.jsonl", "other.tmp", "notes.txt",
+                    "minute-history.jsonl-dir.tmp"),
+                    files.map(p -> p.getFileName().toString()).collect(java.util.stream.Collectors.toSet()));
+        }
+        assertTrue(dirBytes() < 100_000, "bytes " + dirBytes());
+    }
+
+    @Test
+    void repeatedInterruptedCompactionsKeepDirectoryWithinCeiling() throws Exception {
+        long maxFile = 20_000;
+        for (int round = 0; round < 5; round++) {
+            var store = new FileHistoryStore(dir, mapper, 3, 2, maxFile);
+            for (int i = 0; i < 6; i++) store.appendMinute(minute(round * 10 + i, 2));
+            for (int i = 0; i < 4; i++) {
+                store.appendHour(new HourBucket(T0.plusSeconds(3600L * (round * 10 + i)), 3600,
+                        HourBucket.Completeness.COMPLETE, 60,
+                        new HourBucket.ActivitySummary(1, false, false, false), List.of(agg(RouteGroup.CRAFTING))));
+            }
+            // simulate a process killed mid-rewrite: replacements of both kinds left behind
+            Files.write(dir.resolve("minute-history.jsonl.tmp"), new byte[(int) maxFile]);
+            Files.write(dir.resolve("hour-history.jsonl" + round + ".tmp"), new byte[(int) maxFile]);
+        }
+        var last = new FileHistoryStore(dir, mapper, 3, 2, maxFile);
+        assertEquals(2, dirCount());
+        assertTrue(dirBytes() <= 2 * maxFile, "bytes " + dirBytes());
+        assertEquals(3, last.snapshot().minutes().size());
+        assertEquals(2, last.snapshot().hours().size());
+    }
+
+    @Test
+    void rewriteLeavesNoReplacementFileBehind() throws Exception {
+        var store = new FileHistoryStore(dir, mapper, 2, 2, FileHistoryStore.MAX_FILE_BYTES);
+        for (int i = 0; i < 6; i++) store.appendMinute(minute(i, 1));
+        try (Stream<Path> files = Files.list(dir)) {
+            assertEquals(List.of("minute-history.jsonl"), files.map(p -> p.getFileName().toString()).toList());
+        }
+    }
 }
