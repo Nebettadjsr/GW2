@@ -1,4 +1,4 @@
-import { getJson, getText } from './http'
+import { getAttachment, getJson } from './http'
 
 /** Stored shared rows; figures are null (never zero) when state is UNAVAILABLE. */
 export interface DatasetSummary {
@@ -82,9 +82,6 @@ export interface ForegroundActivity {
 export interface OperationsBucket {
   startUtc: string; observedSeconds: number; completeness: 'COMPLETE' | 'PARTIAL'
   foregroundAccounts: ForegroundActivity | null
-  /** Hour buckets only: the peak per-minute estimate, never an hourly distinct-account total. */
-  activityPeak: { maxReportedActive: number | null; anyPartialStartup: boolean; anyTruncated: boolean; anyUnavailable: boolean } | null
-  minuteBuckets: number | null
   /** All route groups merged from raw counts; null when the bucket recorded no groups. */
   overall: OperationsRoute | null
   routeGroups: OperationsRoute[]
@@ -94,20 +91,29 @@ export interface OperationsSummary {
   foregroundAccounts: ForegroundActivity
   databaseSize: { state: 'AVAILABLE' | 'STALE' | 'UNAVAILABLE'; bytes: number | null; measuredAt: string | null }
   historyAvailable: boolean; retentionTruncated: boolean
-  minutes: OperationsBucket[]; hours: OperationsBucket[]
+  minutes: OperationsBucket[]
   latestMinute: OperationsBucket | null
   oracleConsole: { configured: boolean; url: string | null }
 }
+/** Server description of one downloadable UTC day or week; the id is opaque and only echoed back. */
+export interface OperationsPeriod {
+  selectionId: string; kind: 'DAY' | 'WEEK'; fromUtc: string; toUtc: string
+  state: 'OPEN' | 'CLOSED'; coverage: 'FULL' | 'PARTIAL'; truncated: boolean; pruned: boolean
+  retainedBytes: number; filename: string
+}
+export interface OperationsPeriods { available: boolean; periods: OperationsPeriod[] }
 
 export const systemApi = {
   /** Owner-only summary; read on explicit request, never polled. */
   readOperationsSummary(): Promise<OperationsSummary> {
     return getJson<OperationsSummary>('/system/operations/summary')
   },
-  readOperationsExport(format: 'csv' | 'json', resolution: 'minute' | 'hour', from: string, to: string,
-                       signal?: AbortSignal): Promise<string> {
-    const query = new URLSearchParams({ format, resolution, from, to }).toString()
-    return getText(`/system/operations/export?${query}`, format === 'csv' ? 'text/csv' : 'application/json', signal)
+  readOperationsPeriods(): Promise<OperationsPeriods> {
+    return getJson<OperationsPeriods>('/system/operations/periods')
+  },
+  /** Sends only the opaque selection id; the file name comes from the server's attachment header. */
+  downloadOperationsPeriod(selectionId: string, signal?: AbortSignal): Promise<{ text: string; filename: string | null }> {
+    return getAttachment(`/system/operations/download?${new URLSearchParams({ selection: selectionId })}`, 'text/csv', signal)
   },
   readStatus(): Promise<GlobalSystemStatus> {
     return getJson<GlobalSystemStatus>('/system/status')

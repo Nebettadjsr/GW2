@@ -1,12 +1,13 @@
 package web;
 
 import application.ops.ForegroundAccounts;
-import application.ops.HourBucket;
 import application.ops.LatencyHistogram;
 import application.ops.MinuteBucket;
 import application.ops.OwnerOperationsService;
+import application.ops.PeriodDescriptor;
 import application.ops.RouteGroupAggregate;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -25,7 +26,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Owner-only operational summary and bounded export (STORY-OPS-002). Authorization is performed by
+ * Owner-only operational summary, period manifest and single-period download (STORY-OPS-002). Authorization is performed by
  * {@link OwnerOperationsService} before any collaborator runs; every answer is {@code no-store}.
  * Deliberately separate from the generic status response.
  */
@@ -66,7 +67,7 @@ public class OwnerOperationsApiController {
     }
 
     public record Bucket(Instant startUtc, int observedSeconds, String completeness, ForegroundAccounts foregroundAccounts,
-                         HourBucket.ActivitySummary activityPeak, Integer minuteBuckets, Route overall, List<Route> routeGroups) {}
+                         Route overall, List<Route> routeGroups) {}
 
     public record Link(boolean configured, String url) {}
 
@@ -77,7 +78,7 @@ public class OwnerOperationsApiController {
     public record SummaryBody(Instant generatedAt, ForegroundAccounts foregroundAccounts,
                               application.ops.DatabaseSize databaseSize,
                               boolean historyAvailable,
-                              boolean retentionTruncated, List<Bucket> minutes, List<Bucket> hours,
+                              boolean retentionTruncated, List<Bucket> minutes,
                               Bucket latestMinute, Link oracleConsole) {}
 
     @GetMapping("/summary")
@@ -87,168 +88,54 @@ public class OwnerOperationsApiController {
         if (!result.authorized()) return denied(result.denial());
         var s = result.value();
         List<Bucket> minutes = s.minutes().stream().map(OwnerOperationsApiController::minute).toList();
-        List<Bucket> hours = s.hours().stream().map(OwnerOperationsApiController::hour).toList();
         return ok(MediaType.APPLICATION_JSON, new SummaryBody(s.generatedAt(), s.foregroundAccounts(), s.databaseSize(),
-                s.historyAvailable(), s.retentionTruncated(), minutes, hours,
+                s.historyAvailable(), s.retentionTruncated(), minutes,
                 s.latestMinute() == null ? null : minute(s.latestMinute()),
                 new Link(oracleConsoleUrl != null, oracleConsoleUrl)));
     }
 
-    /** A run of expected bucket starts with no retained bucket; reported, never filled with zero buckets. */
-    public record Gap(Instant fromUtc, Instant toUtc, int missingBuckets) {}
+    /** Manifest of retained periods; {@code available=false} is an unreadable store, never an idle one. */
+    public record PeriodsBody(boolean available, List<PeriodDescriptor> periods) {}
 
-    /**
-     * Export-level facts: {@code coverage} is UNAVAILABLE (history could not be read; not an empty range),
-     * NONE (readable history, no bucket in range), PARTIAL (some expected buckets are missing) or FULL.
-     */
-    public record ExportBody(Instant generatedAt, String resolution, Instant requestedFromUtc, Instant requestedToUtc,
-                             boolean historyAvailable, boolean retentionTruncated, String coverage, int bucketCount,
-                             List<Gap> gaps, List<Bucket> buckets) {}
-
-    static String coverage(boolean available, List<Bucket> buckets, List<Gap> gaps) {
-        if (!available) return "UNAVAILABLE";
-        if (buckets.isEmpty()) return "NONE";
-        return gaps.isEmpty() ? "FULL" : "PARTIAL";
-    }
-
-    /** Missing aligned bucket starts inside the requested range, grouped into runs. Empty when history is unavailable. */
-    static List<Gap> gaps(boolean available, boolean hourly, Instant from, Instant to, List<Bucket> buckets) {
-        List<Gap> out = new ArrayList<>();
-        if (!available) return out;
-        long step = hourly ? 3600 : 60;
-        java.util.Set<Instant> present = new java.util.HashSet<>();
-        for (Bucket b : buckets) present.add(b.startUtc());
-        long first = Math.floorDiv(from.getEpochSecond() + step - 1, step) * step;
-        Instant runStart = null, last = null;
-        int run = 0;
-        for (long t = first; t <= to.getEpochSecond(); t += step) {
-            Instant at = Instant.ofEpochSecond(t);
-            if (present.contains(at)) {
-                if (run > 0) out.add(new Gap(runStart, last, run));
-                run = 0;
-            } else {
-                if (run == 0) runStart = at;
-                last = at;
-                run++;
-            }
-        }
-        if (run > 0) out.add(new Gap(runStart, last, run));
-        return out;
-    }
-
-    @GetMapping("/export")
-    public ResponseEntity<?> export(HttpServletRequest request,
-                                    @RequestParam(name = "format", required = false) String format,
-                                    @RequestParam(name = "resolution", required = false) String resolution,
-                                    @RequestParam(name = "from", required = false) String from,
-                                    @RequestParam(name = "to", required = false) String to) {
-        // Parameters are only parsed after the service has authorized; a bad proof never learns validity.
-        String session = AccountAccessHttp.presentedSessionId(request).orElse(null);
-        String context = AccountAccessHttp.assertedAccessContext(request);
-        var probe = operations.authorizeOnly(session, context);
-        if (probe != null) return denied(probe);
-        boolean csv = "csv".equals(format);
-        boolean hourly = "hour".equals(resolution);
-        if (!csv && !"json".equals(format) || !hourly && !"minute".equals(resolution)) return invalid("format/resolution");
-        Instant start, end;
-        try {
-            start = strictUtc(from);
-            end = strictUtc(to);
-        } catch (RuntimeException e) {
-            return invalid("from/to");
-        }
-        OwnerOperationsService.Result<OwnerOperationsService.Export> result;
-        try {
-            result = operations.export(session, context, hourly, start, end);
-        } catch (OwnerOperationsService.InvalidExport e) {
-            return invalid("range");
-        }
+    @GetMapping("/periods")
+    public ResponseEntity<?> periods(HttpServletRequest request) {
+        var result = operations.periods(AccountAccessHttp.presentedSessionId(request).orElse(null),
+                AccountAccessHttp.assertedAccessContext(request));
         if (!result.authorized()) return denied(result.denial());
-        var e = result.value();
-        List<Bucket> buckets = hourly ? e.hours().stream().map(OwnerOperationsApiController::hour).toList()
-                : e.minutes().stream().map(OwnerOperationsApiController::minute).toList();
-        String name = "attachment; filename=\"activity-" + resolution + "." + (csv ? "csv" : "json") + "\"";
-        List<Gap> gaps = gaps(e.historyAvailable(), hourly, start, end, buckets);
-        String coverage = coverage(e.historyAvailable(), buckets, gaps);
-        var body = csv ? (Object) csv(resolution, e, start, end, coverage, gaps, buckets)
-                : new ExportBody(e.generatedAt(), resolution, start, end, e.historyAvailable(), e.retentionTruncated(),
-                coverage, buckets.size(), gaps, buckets);
-        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
-                .header(HttpHeaders.CONTENT_DISPOSITION, name)
-                .header("X-Content-Type-Options", "nosniff")
-                .contentType(csv ? MediaType.parseMediaType("text/csv;charset=UTF-8") : MediaType.APPLICATION_JSON)
-                .body(body);
+        return ok(MediaType.APPLICATION_JSON, new PeriodsBody(result.value().available(), result.value().items()));
     }
-
-    private static Instant strictUtc(String raw) {
-        if (raw == null || !raw.endsWith("Z")) throw new IllegalArgumentException("UTC instant required");
-        return Instant.parse(raw);
-    }
-
-    static final String CSV_HEADER = "resolution,bucket_start_utc,observed_seconds,completeness,activity_state,"
-            + "activity_exact_count,activity_lower_bound,route_group,request_count,http_2xx_3xx,http_4xx,http_5xx,"
-            + "failed_incomplete,mean_ms,max_ms,p50_upper_bound_ms,p50_overflow,p95_upper_bound_ms,p95_overflow\n";
 
     /**
-     * Export-level facts precede the header as {@code # key=value} lines (documented in the runbook); gaps are
-     * listed there as ranges and CSV never invents zero rows for them.
+     * Streams exactly one server-described CSV. Authorization happens inside the service before the opaque
+     * identifier is looked at; an unknown or expired identifier is a 410 and never selects another period.
      */
-    private static String csv(String resolution, OwnerOperationsService.Export e, Instant from, Instant to,
-                              String coverage, List<Gap> gaps, List<Bucket> buckets) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("# generated_at_utc=").append(e.generatedAt()).append('\n')
-                .append("# resolution=").append(resolution).append('\n')
-                .append("# requested_from_utc=").append(from).append('\n')
-                .append("# requested_to_utc=").append(to).append('\n')
-                .append("# history_available=").append(e.historyAvailable()).append('\n')
-                .append("# retention_truncated=").append(e.retentionTruncated()).append('\n')
-                .append("# coverage=").append(coverage).append('\n')
-                .append("# bucket_count=").append(buckets.size()).append('\n');
-        for (Gap g : gaps) {
-            sb.append("# gap_from_utc=").append(g.fromUtc()).append(" gap_to_utc=").append(g.toUtc())
-                    .append(" missing_buckets=").append(g.missingBuckets()).append('\n');
-        }
-        sb.append(CSV_HEADER);
-        for (Bucket b : buckets) {
-            String state; String exact = ""; String lower = "";
-            if (b.foregroundAccounts() != null) {
-                state = b.foregroundAccounts().state().name();
-                exact = b.foregroundAccounts().exactCount() == null ? "" : b.foregroundAccounts().exactCount().toString();
-                lower = b.foregroundAccounts().lowerBound() == null ? "" : b.foregroundAccounts().lowerBound().toString();
-            } else {
-                var a = b.activityPeak();
-                state = a.anyUnavailable() ? "UNAVAILABLE" : a.anyTruncated() ? "TRUNCATED"
-                        : a.anyPartialStartup() ? "PARTIAL_STARTUP" : "COMPLETE";
-                // Hourly: peak per-minute estimate, never an hourly distinct total.
-                lower = a.maxReportedActive() == null ? "" : a.maxReportedActive().toString();
+    @GetMapping("/download")
+    public ResponseEntity<?> download(HttpServletRequest request,
+                                      @RequestParam(name = "selection", required = false) String selection) {
+        var result = operations.download(AccountAccessHttp.presentedSessionId(request).orElse(null),
+                AccountAccessHttp.assertedAccessContext(request), selection == null ? "" : selection);
+        if (!result.authorized()) return denied(result.denial());
+        var download = result.value();
+        return switch (download.status()) {
+            case OK -> {
+                String name = download.descriptor().filename().replaceAll("[^A-Za-z0-9._-]", "_");
+                yield ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
+                        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
+                        .header("X-Content-Type-Options", "nosniff")
+                        .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                        .body(new InputStreamResource(download.stream()));
             }
-            String prefix = resolution + "," + b.startUtc() + "," + b.observedSeconds() + "," + b.completeness() + ","
-                    + state + "," + exact + "," + lower + ",";
-            if (b.routeGroups().isEmpty()) {
-                sb.append(prefix).append(",,,,,,,,,,,\n");
-            }
-            for (Route r : b.routeGroups()) {
-                sb.append(prefix).append(r.group()).append(',').append(r.requests()).append(',').append(r.http2xx3xx())
-                        .append(',').append(r.http4xx()).append(',').append(r.http5xx()).append(',')
-                        .append(r.failedIncomplete()).append(',').append(r.meanMs()).append(',').append(r.maxMs())
-                        .append(',').append(pct(r.p50())).append(',').append(pct(r.p95())).append('\n');
-            }
-        }
-        return sb.toString();
-    }
-
-    private static String pct(Percentile p) {
-        return p == null ? ",": p.upperBoundMs() + "," + p.overflow();
+            case NOT_FOUND -> ResponseEntity.status(HttpStatus.GONE).header(HttpHeaders.CACHE_CONTROL, "no-store")
+                    .body(new ApiErrorResponse("PERIOD_GONE", "That period is no longer available"));
+            case UNAVAILABLE -> ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                    .body(new ApiErrorResponse("HISTORY_UNAVAILABLE", "Activity history is temporarily unavailable"));
+        };
     }
 
     private static Bucket minute(MinuteBucket m) {
-        return new Bucket(m.startUtc(), m.observedSeconds(), m.completeness().name(), m.foregroundAccounts(), null,
-                null, overall(m.routeGroups()), routes(m.routeGroups()));
-    }
-
-    private static Bucket hour(HourBucket h) {
-        return new Bucket(h.startUtc(), h.observedSeconds(), h.completeness().name(), null, h.activity(),
-                h.minuteBuckets(), overall(h.routeGroups()), routes(h.routeGroups()));
+        return new Bucket(m.startUtc(), m.observedSeconds(), m.completeness().name(), m.foregroundAccounts(),
+                overall(m.routeGroups()), routes(m.routeGroups()));
     }
 
     /** All route groups merged from raw counts and bins (never by averaging percentiles); null when none. */
@@ -276,11 +163,6 @@ public class OwnerOperationsApiController {
 
     private ResponseEntity<?> ok(MediaType type, Object body) {
         return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store").contentType(type).body(body);
-    }
-
-    private static ResponseEntity<ApiErrorResponse> invalid(String what) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).header(HttpHeaders.CACHE_CONTROL, "no-store")
-                .body(new ApiErrorResponse("INVALID_EXPORT_REQUEST", "Invalid export request: " + what));
     }
 
     private static ResponseEntity<ApiErrorResponse> denied(OwnerOperationsService.Denial denial) {

@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { connection } from '@/api/accountSession'
 import { ApiRequestError } from '@/api/http'
-import { systemApi, type OperationsBucket, type OperationsRoute, type OperationsSummary } from '@/api/systemApi'
+import { systemApi, type OperationsBucket, type OperationsPeriod, type OperationsRoute, type OperationsSummary } from '@/api/systemApi'
 import OwnerActivity from '../OwnerActivity.vue'
 
 const NOW = '2026-11-14T12:30:00Z'
@@ -14,14 +14,14 @@ const route = (over: Partial<OperationsRoute> = {}): OperationsRoute => ({
 const minute = (startUtc: string, over: Partial<OperationsBucket> = {}): OperationsBucket => ({
   startUtc, observedSeconds: 60, completeness: 'COMPLETE',
   foregroundAccounts: { state: 'COMPLETE', exactCount: 2, lowerBound: null },
-  activityPeak: null, minuteBuckets: null, overall: route(), routeGroups: [], ...over
+  overall: route(), routeGroups: [], ...over
 })
 function summary(over: Partial<OperationsSummary> = {}): OperationsSummary {
   const latest = minute('2026-11-14T12:29:00Z')
   return {
     generatedAt: NOW, foregroundAccounts: { state: 'COMPLETE', exactCount: 4, lowerBound: null },
     databaseSize: { state: 'AVAILABLE', bytes: 5 * 1024 * 1024, measuredAt: '2026-11-14T12:28:00Z' },
-    historyAvailable: true, retentionTruncated: false, minutes: [latest], hours: [], latestMinute: latest,
+    historyAvailable: true, retentionTruncated: false, minutes: [latest], latestMinute: latest,
     oracleConsole: { configured: false, url: null }, ...over
   }
 }
@@ -38,8 +38,21 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function mountWith(s: OperationsSummary) {
+const period = (id: string, kind: 'DAY' | 'WEEK', from: string, over: Partial<OperationsPeriod> = {}): OperationsPeriod => ({
+  selectionId: id, kind, fromUtc: from, toUtc: new Date(Date.parse(from) + (kind === 'DAY' ? 1 : 7) * 86_400_000).toISOString().replace('.000Z', 'Z'),
+  state: 'CLOSED', coverage: 'FULL', truncated: false, pruned: false, retainedBytes: 100, filename: `activity-${id}.csv`, ...over
+})
+const DEFAULT_PERIODS: OperationsPeriod[] = [
+  period('w1', 'WEEK', '2026-11-09T00:00:00Z', { state: 'OPEN', coverage: 'PARTIAL', pruned: true }),
+  period('d-open', 'DAY', '2026-11-14T00:00:00Z', { state: 'OPEN', coverage: 'PARTIAL', truncated: true }),
+  period('d-empty', 'DAY', '2026-11-13T00:00:00Z', { retainedBytes: 0 }),
+  period('d-old', 'DAY', '2026-11-12T00:00:00Z'),
+  period('w0', 'WEEK', '2026-11-02T00:00:00Z')
+]
+
+async function mountWith(s: OperationsSummary, periods: OperationsPeriod[] = DEFAULT_PERIODS) {
   vi.spyOn(systemApi, 'readOperationsSummary').mockResolvedValue(s)
+  vi.spyOn(systemApi, 'readOperationsPeriods').mockResolvedValue({ available: true, periods })
   const w = mount(OwnerActivity, { props: { activeLast60Minutes: 17 } })
   await flushPromises()
   return w
@@ -99,24 +112,12 @@ describe('OwnerActivity', () => {
     const rows = w.findAll('[data-test="activity-row"], [data-test="activity-gap"]').map((r) => r.text())
     expect(rows[0]).toContain('12:29 UTC')
     expect(rows[0]).toContain('0 ')
-    expect(rows[1]).toContain('No observation (8 minutes)')
+    expect(rows[1]).toContain('No stored activity (8 minutes)')
     expect(rows[2]).toContain('Partial')
     const many = Array.from({ length: 30 }, (_, i) => minute(`2026-11-14T11:${String(i).padStart(2, '0')}:00Z`))
     const paged = await mountWith(summary({ minutes: many }))
     expect(paged.findAll('[data-test="activity-row"]')).toHaveLength(10)
     expect(paged.find('[data-test="activity-pager"]').text()).toContain('Page 1 of 3')
-  })
-
-  it('showsHourlyActivityAsPeakNeverATotal', async () => {
-    const hour: OperationsBucket = minute('2026-11-14T11:00:00Z', {
-      foregroundAccounts: null, minuteBuckets: 60,
-      activityPeak: { maxReportedActive: 9, anyPartialStartup: false, anyTruncated: true, anyUnavailable: false }
-    })
-    const w = await mountWith(summary({ hours: [hour] }))
-    await w.find('[data-test="activity-view-hour"]').trigger('click')
-    const row = w.find('[data-test="activity-row"]').text()
-    expect(row).toContain('peak ≥ 9')
-    expect(row).toContain('Truncated')
   })
 
   it('showsConfiguredOracleLinkOrTheTruthfulUnconfiguredText', async () => {
@@ -131,11 +132,13 @@ describe('OwnerActivity', () => {
   it('doesNotPollAndStoresNothingInBrowserStorage', async () => {
     vi.useFakeTimers()
     const read = vi.spyOn(systemApi, 'readOperationsSummary').mockResolvedValue(summary())
+    const manifest = vi.spyOn(systemApi, 'readOperationsPeriods').mockResolvedValue({ available: true, periods: DEFAULT_PERIODS })
     const local = vi.spyOn(Storage.prototype, 'setItem')
     mount(OwnerActivity, { props: {} })
     await flushPromises()
     await vi.advanceTimersByTimeAsync(10 * 60_000)
     expect(read).toHaveBeenCalledTimes(1)
+    expect(manifest).toHaveBeenCalledTimes(1)
     expect(local).not.toHaveBeenCalled()
     vi.useRealTimers()
   })
@@ -143,6 +146,7 @@ describe('OwnerActivity', () => {
   it('clearsStateAndRejectsLateAnswersOnDisconnectLeaseChangeAndUnmount', async () => {
     let resolve!: (s: OperationsSummary) => void
     const read = vi.spyOn(systemApi, 'readOperationsSummary').mockReturnValueOnce(new Promise((r) => { resolve = r }))
+    vi.spyOn(systemApi, 'readOperationsPeriods').mockResolvedValue({ available: true, periods: DEFAULT_PERIODS })
     const w = mount(OwnerActivity, { props: {} })
     await flushPromises()
     connection.leaseVersion = 2
@@ -167,33 +171,11 @@ describe('OwnerActivity', () => {
 
   it('turnsADenialIntoANeutralMessageWithoutData', async () => {
     vi.spyOn(systemApi, 'readOperationsSummary').mockRejectedValue(new ApiRequestError('no', 'OWNER_REQUIRED', 403))
+    vi.spyOn(systemApi, 'readOperationsPeriods').mockRejectedValue(new ApiRequestError('no', 'OWNER_REQUIRED', 403))
     const w = mount(OwnerActivity, { props: {} })
     await flushPromises()
     expect(text(w, 'activity-error')).toContain('not available')
     expect(w.find('[data-test="activity-facts"]').exists()).toBe(false)
-  })
-
-  it('downloadsThroughABlobUrlThatIsRevokedImmediatelyAndRejectsAfterDisconnect', async () => {
-    const w = await mountWith(summary())
-    const create = vi.fn(() => 'blob:x')
-    const revoke = vi.fn()
-    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke }))
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-    const exportRead = vi.spyOn(systemApi, 'readOperationsExport').mockResolvedValue('a,b\n')
-    await w.find('[data-test="activity-export"]').trigger('submit')
-    await flushPromises()
-    expect(exportRead.mock.calls[0]?.slice(0, 2)).toEqual(['csv', 'minute'])
-    expect(create).toHaveBeenCalledTimes(1)
-    expect(click).toHaveBeenCalledTimes(1)
-    expect(revoke).toHaveBeenCalledWith('blob:x')
-    let late!: (s: string) => void
-    exportRead.mockReturnValueOnce(new Promise((r) => { late = r }))
-    await w.find('[data-test="activity-export"]').trigger('submit')
-    connection.phase = 'disconnected'
-    await flushPromises()
-    late('x')
-    await flushPromises()
-    expect(create).toHaveBeenCalledTimes(1)
   })
 
   function stubDownload() {
@@ -213,65 +195,171 @@ describe('OwnerActivity', () => {
     expect(text(await mountWith(summary({ latestMinute: gap, minutes: [gap] })), 'activity-requests')).toContain('No observation')
   })
 
-  it('keepsAPartlyUnavailableHourlyPeakAsALowerBound', async () => {
-    const hour: OperationsBucket = minute('2026-11-14T11:00:00Z', {
-      foregroundAccounts: null, minuteBuckets: 60,
-      activityPeak: { maxReportedActive: 7, anyPartialStartup: false, anyTruncated: false, anyUnavailable: true }
-    })
-    const w = await mountWith(summary({ hours: [hour] }))
-    await w.find('[data-test="activity-view-hour"]').trigger('click')
-    const row = w.find('[data-test="activity-row"]').text()
-    expect(row).toContain('peak ≥ 7')
-    expect(row).toContain('partly unavailable')
+  const submit = (w: ReturnType<typeof mount>) => w.find('[data-test="activity-export"]').trigger('submit')
+  const options = (w: ReturnType<typeof mount>, group: string) =>
+    w.findAll(`optgroup[label="${group}"] option`).map((o) => o.text())
+
+  it('offersGroupedDaysAndWeeksNewestFirstWithUtcLabelsAndCoverageAndNoEmptyPeriods', async () => {
+    const w = await mountWith(summary())
+    const days = options(w, 'Days')
+    expect(days).toEqual([
+      '2026-11-14 00:00 UTC – 2026-11-15 00:00 UTC · open, partial, truncated',
+      '2026-11-12 00:00 UTC – 2026-11-13 00:00 UTC · closed'
+    ])
+    expect(options(w, 'Weeks')).toEqual([
+      '2026-11-09 00:00 UTC – 2026-11-16 00:00 UTC · open, partial, pruned',
+      '2026-11-02 00:00 UTC – 2026-11-09 00:00 UTC · closed'
+    ])
+    expect(w.findAll('optgroup')).toHaveLength(2)
   })
 
-  it('namesAndTypesTheFileFromSubmittedParametersEvenIfControlsChangeWhileHeld', async () => {
+  it('selectsTheLatestNonemptyDayByDefaultEvenWhenAWeekIsNewer', async () => {
+    const w = await mountWith(summary())
+    expect((w.find('[data-test="activity-period"]').element as HTMLSelectElement).value).toBe('d-open')
+    const onlyOldDay = await mountWith(summary(), [DEFAULT_PERIODS[0]!, DEFAULT_PERIODS[3]!])
+    expect((onlyOldDay.find('[data-test="activity-period"]').element as HTMLSelectElement).value).toBe('d-old')
+  })
+
+  it('hasNoRawTimestampRangeOrFormatControlsAndKeepsFileRowCompact', async () => {
+    const w = await mountWith(summary())
+    const form = w.find('[data-test="activity-export"]')
+    expect(form.findAll('input')).toHaveLength(0)
+    expect(form.findAll('select')).toHaveLength(1)
+    expect(form.findAll('button[type="submit"]')).toHaveLength(1)
+    expect(form.text()).not.toMatch(/\bJSON\b|Format|From \(UTC\)|To \(UTC\)/)
+    expect(form.find('.owner-activity__pick select').exists() && form.find('.owner-activity__pick button').exists()).toBe(true)
+    expect(form.findAll(':scope > p.meta')).toHaveLength(1) // at most two visible sentences; detail is collapsed
+    expect(form.find('details').attributes('open')).toBeUndefined()
+    const help = form.find('details').text()
+    for (const fact of ['UTC boundaries', 'partial, truncated or pruned', 'not browser page-load time', 'same minute']) expect(help).toContain(fact)
+    expect(form.text()).toContain('five-minute estimate')
+    expect(form.text()).toContain('not zero users or an outage')
+    expect(form.text()).not.toMatch(/\b[0-9]+ users\b/)
+  })
+
+  it('showsQuietNoActivityCopyAndNoDownloadWhenNoNonemptyPeriodExists', async () => {
+    const w = await mountWith(summary(), [DEFAULT_PERIODS[2]!])
+    expect(w.find('[data-test="activity-export-empty"]').exists()).toBe(true)
+    expect(w.find('[data-test="activity-export-submit"]').exists()).toBe(false)
+    const down = await mountWith(summary(), [])
+    expect(down.find('[data-test="activity-export-submit"]').exists()).toBe(false)
+  })
+
+  it('distinguishesAnUnavailableManifestFromNoActivity', async () => {
+    vi.spyOn(systemApi, 'readOperationsSummary').mockResolvedValue(summary())
+    vi.spyOn(systemApi, 'readOperationsPeriods').mockResolvedValue({ available: false, periods: [] })
+    const w = mount(OwnerActivity, { props: {} })
+    await flushPromises()
+    expect(w.find('[data-test="activity-export-unavailable"]').exists()).toBe(true)
+    expect(w.find('[data-test="activity-export-empty"]').exists()).toBe(false)
+    expect(w.find('[data-test="activity-facts"]').exists()).toBe(true)
+  })
+
+  it('changingTheSelectionNeitherDownloadsNorPolls', async () => {
+    const w = await mountWith(summary())
+    const dl = vi.spyOn(systemApi, 'downloadOperationsPeriod')
+    await w.find('[data-test="activity-period"]').setValue('w0')
+    expect(dl).not.toHaveBeenCalled()
+  })
+
+  it('downloadsTheSelectedOpaqueIdWithTheServerFilenameAndRevokesTheBlobUrl', async () => {
     const w = await mountWith(summary())
     const { blobs, names } = stubDownload()
-    let release!: (s: string) => void
-    vi.spyOn(systemApi, 'readOperationsExport').mockReturnValue(new Promise((r) => { release = r }))
-    await w.find('[data-test="activity-export"]').trigger('submit')
-    await w.find('[data-test="activity-export-format"]').setValue('json')
-    await w.find('[data-test="activity-view-hour"]').trigger('click')
-    release('a,b\n')
+    const dl = vi.spyOn(systemApi, 'downloadOperationsPeriod').mockResolvedValue({ text: 'h\nrow\n', filename: 'server-name.csv' })
+    await w.find('[data-test="activity-period"]').setValue('w0')
+    await submit(w)
     await flushPromises()
-    expect(names).toEqual(['application-activity-minute.csv'])
+    expect(dl.mock.calls[0]?.[0]).toBe('w0')
+    expect(names).toEqual(['server-name.csv'])
     expect(blobs[0]?.type).toBe('text/csv')
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:x')
   })
 
-  it('refreshDuringAnExportAbortsItResetsBusyStateAndAllowsANewDownload', async () => {
+  it('aStartedDownloadKeepsItsSubmittedIdentifierWhenTheSelectionLaterChanges', async () => {
+    const w = await mountWith(summary())
+    const { names } = stubDownload()
+    let release!: (f: { text: string; filename: string | null }) => void
+    const dl = vi.spyOn(systemApi, 'downloadOperationsPeriod').mockReturnValue(new Promise((r) => { release = r }))
+    await submit(w)
+    await w.find('[data-test="activity-period"]').setValue('w0')
+    release({ text: 'x', filename: null })
+    await flushPromises()
+    expect(dl.mock.calls[0]?.[0]).toBe('d-open')
+    expect(names).toEqual(['activity-d-open.csv'])
+  })
+
+  it('refreshDuringADownloadAbortsItIndependentlyResetsBusyStateAndAllowsANewDownload', async () => {
     const w = await mountWith(summary())
     const { names } = stubDownload()
     let signal: AbortSignal | undefined
-    let release!: (s: string) => void
-    const read = vi.spyOn(systemApi, 'readOperationsExport').mockImplementationOnce((_f, _r, _a, _b, s) => {
+    let release!: (f: { text: string; filename: string | null }) => void
+    const read = vi.spyOn(systemApi, 'downloadOperationsPeriod').mockImplementationOnce((_id, s) => {
       signal = s
       return new Promise((r) => { release = r })
     })
-    await w.find('[data-test="activity-export"]').trigger('submit')
+    await submit(w)
     expect(w.find('[data-test="activity-export-submit"]').attributes('disabled')).toBeDefined()
     await w.find('[data-test="activity-refresh"]').trigger('click')
     await flushPromises()
     expect(signal?.aborted).toBe(true)
     expect(w.find('[data-test="activity-export-submit"]').attributes('disabled')).toBeUndefined()
-    release('late')
+    release({ text: 'late', filename: null })
     await flushPromises()
     expect(names).toEqual([])
-    read.mockResolvedValue('fresh')
-    await w.find('[data-test="activity-export"]').trigger('submit')
+    read.mockResolvedValue({ text: 'fresh', filename: null })
+    await submit(w)
     await flushPromises()
-    expect(names).toEqual(['application-activity-minute.csv'])
+    expect(names).toEqual(['activity-d-open.csv'])
+  })
+
+  it('aGoneSelectionShowsASafeMessageAndDoesNotSwitchToAnotherPeriod', async () => {
+    const w = await mountWith(summary())
+    const { names } = stubDownload()
+    const dl = vi.spyOn(systemApi, 'downloadOperationsPeriod').mockRejectedValue(new ApiRequestError('gone', 'PERIOD_GONE', 410))
+    await submit(w)
+    await flushPromises()
+    expect(text(w, 'activity-export-error')).toContain('no longer available')
+    expect(names).toEqual([])
+    expect(dl).toHaveBeenCalledTimes(1)
+    expect((w.find('[data-test="activity-period"]').element as HTMLSelectElement).value).toBe('d-open')
+  })
+
+  it('clearsChoicesAndSelectionOnDisconnectAndRejectsALateDownload', async () => {
+    const w = await mountWith(summary())
+    const { names } = stubDownload()
+    let late!: (f: { text: string; filename: string | null }) => void
+    vi.spyOn(systemApi, 'downloadOperationsPeriod').mockReturnValue(new Promise((r) => { late = r }))
+    await submit(w)
+    connection.phase = 'disconnected'
+    await flushPromises()
+    expect(w.find('[data-test="activity-period"]').exists()).toBe(false)
+    late({ text: 'x', filename: null })
+    await flushPromises()
+    expect(names).toEqual([])
+  })
+
+  it('anAccountChangeClearsThePreviousAccountsChoicesBeforeTheNewManifestArrives', async () => {
+    const w = await mountWith(summary())
+    let next!: (m: { available: boolean; periods: OperationsPeriod[] }) => void
+    vi.spyOn(systemApi, 'readOperationsPeriods').mockReturnValue(new Promise((r) => { next = r }))
+    connection.generation = 2
+    await flushPromises()
+    expect(w.find('[data-test="activity-period"]').exists()).toBe(false)
+    next({ available: true, periods: [period('x1', 'DAY', '2026-11-01T00:00:00Z')] })
+    await flushPromises()
+    expect((w.find('[data-test="activity-period"]').element as HTMLSelectElement).value).toBe('x1')
   })
 
   it.each([401, 403])('withdrawsOwnerStateAndNotifiesTheParentOnADenial%i DuringAPendingExport', async (status) => {
     const w = await mountWith(summary())
     stubDownload()
     let reject!: (e: unknown) => void
-    vi.spyOn(systemApi, 'readOperationsExport').mockReturnValue(new Promise((_, r) => { reject = r }))
-    await w.find('[data-test="activity-export"]').trigger('submit')
+    vi.spyOn(systemApi, 'downloadOperationsPeriod').mockReturnValue(new Promise((_, r) => { reject = r }))
+    await submit(w)
     reject(new ApiRequestError('no', 'OWNER_REQUIRED', status))
     await flushPromises()
     expect(w.emitted('denied')).toHaveLength(1)
+    expect(w.find('[data-test="activity-period"]').exists()).toBe(false)
     expect(w.find('[data-test="activity-facts"]').exists()).toBe(false)
     expect(w.find('[data-test="activity-history-table"]').exists()).toBe(false)
     expect(text(w, 'activity-error')).toContain('not available')
@@ -282,7 +370,7 @@ describe('OwnerActivity', () => {
     expect(w.find('table caption').exists()).toBe(true)
     expect(w.findAll('thead th[scope="col"]').length).toBeGreaterThan(4)
     expect(w.find('#owner-activity-heading').text()).toBe('Application activity')
-    expect(w.find('[data-test="activity-view-minute"]').attributes('aria-pressed')).toBe('true')
+    expect(w.find('label[for="owner-activity-period"]').exists()).toBe(true)
     expect(w.find('[data-test="activity-history-toggle"]').element.tagName).toBe('SUMMARY')
   })
 })

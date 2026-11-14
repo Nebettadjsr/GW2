@@ -34,24 +34,25 @@ describe('systemApi', () => {
   })
 
   it('recoversAnExportSessionRequiredOnceThroughTheAccountTransport', async () => {
-    const stub = vi.fn().mockResolvedValueOnce(denied()).mockResolvedValueOnce(new Response('a,b\n', { status: 200 }))
+    const stub = vi.fn().mockResolvedValueOnce(denied()).mockResolvedValueOnce(new Response('a,b\n', { status: 200, headers: { 'Content-Disposition': 'attachment; filename="activity-day-2026-11-13.csv"' } }))
     vi.stubGlobal('fetch', stub)
     const recover = vi.fn(async () => true)
     installAccountTransport(transport({ recover }))
-    await expect(systemApi.readOperationsExport('csv', 'minute', 'f', 't')).resolves.toBe('a,b\n')
+    await expect(systemApi.downloadOperationsPeriod('id 1')).resolves.toEqual({ text: 'a,b\n', filename: 'activity-day-2026-11-13.csv' })
     expect(recover).toHaveBeenCalledTimes(1)
     expect(stub).toHaveBeenCalledTimes(2)
+    expect(String(stub.mock.calls[0]?.[0])).toBe('/api/system/operations/download?selection=id+1')
   })
 
   it('doesNotRetryAnExportMoreThanOnceOrWhenRecoveryDeclines', async () => {
     const stub = vi.fn(() => Promise.resolve(denied()))
     vi.stubGlobal('fetch', stub)
     installAccountTransport(transport())
-    await expect(systemApi.readOperationsExport('csv', 'minute', 'f', 't')).rejects.toMatchObject({ status: 401 })
+    await expect(systemApi.downloadOperationsPeriod('d1')).rejects.toMatchObject({ status: 401 })
     expect(stub).toHaveBeenCalledTimes(2)
     stub.mockClear()
     installAccountTransport(transport({ recover: async () => false }))
-    await expect(systemApi.readOperationsExport('csv', 'minute', 'f', 't')).rejects.toMatchObject({ status: 401 })
+    await expect(systemApi.downloadOperationsPeriod('d1')).rejects.toMatchObject({ status: 401 })
     expect(stub).toHaveBeenCalledTimes(1)
   })
 
@@ -59,7 +60,7 @@ describe('systemApi', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(denied())))
     const recover = vi.fn(async () => true)
     installAccountTransport(transport({ isCurrent: () => false, recover }))
-    await expect(systemApi.readOperationsExport('json', 'hour', 'f', 't')).rejects.toMatchObject({ code: ACCOUNT_CHANGED_CODE })
+    await expect(systemApi.downloadOperationsPeriod('d1')).rejects.toMatchObject({ code: ACCOUNT_CHANGED_CODE })
     expect(recover).not.toHaveBeenCalled()
   })
 })

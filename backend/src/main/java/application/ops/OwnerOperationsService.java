@@ -32,16 +32,9 @@ public final class OwnerOperationsService {
                           MinuteBucket latestMinute, HourBucket latestHour,
                           List<MinuteBucket> minutes, List<HourBucket> hours) {}
 
-    /** Thrown only after authorization, for a malformed or oversized export request. */
-    public static final class InvalidExport extends RuntimeException {
-        public InvalidExport(String message) { super(message); }
-    }
-
     public static final int MAX_MINUTE_BUCKETS = 360;
-    public static final int MAX_HOUR_BUCKETS = 720;
     public static final Duration SUMMARY_MINUTE_WINDOW = Duration.ofHours(6);
     public static final Duration SUMMARY_HOUR_WINDOW = Duration.ofDays(7);
-    public static final Duration MAX_EXPORT_RANGE = Duration.ofDays(30);
 
     /** Bounded: at most 360 minute and 720 hour buckets, each with at most eight route groups. */
     public record Export(Instant generatedAt, boolean historyAvailable, boolean retentionTruncated,
@@ -86,43 +79,6 @@ public final class OwnerOperationsService {
         HistoryStore.Snapshot snapshot = history.history();
         return new Result<>(new Export(clock.instant(), snapshot.available(), snapshot.retentionTruncated(),
                 snapshot.minutes(), snapshot.hours()), null);
-    }
-
-    /**
-     * Bounded range export. Authorization first; only then is the request validated and history read.
-     * Caps count distinct top-level bucket timestamps, never nested route records. Missing buckets are
-     * never synthesized.
-     *
-     * @throws InvalidExport for a malformed, unordered, over-30-day or over-cap request
-     */
-    public Result<Export> export(String sessionId, String assertedAccessContext, boolean hourly,
-                                 Instant from, Instant to) {
-        Denial denial = authorize(sessionId, assertedAccessContext);
-        if (denial != null) return new Result<>(null, denial);
-        if (from == null || to == null || from.isAfter(to)) throw new InvalidExport("from/to must be ordered instants");
-        if (Duration.between(from, to).compareTo(MAX_EXPORT_RANGE) > 0) throw new InvalidExport("range exceeds 30 days");
-        if (Duration.between(from, to).compareTo(hourly ? Duration.ofHours(MAX_HOUR_BUCKETS)
-                : Duration.ofMinutes(MAX_MINUTE_BUCKETS)) > 0) {
-            throw new InvalidExport("range exceeds the bucket cap for this resolution");
-        }
-        HistoryStore.Snapshot snapshot = history.history();
-        List<MinuteBucket> minutes = List.of();
-        List<HourBucket> hours = List.of();
-        if (hourly) {
-            hours = snapshot.hours().stream().filter(h -> !h.startUtc().isBefore(from) && !h.startUtc().isAfter(to))
-                    .sorted(java.util.Comparator.comparing(HourBucket::startUtc)).toList();
-            if (hours.stream().map(HourBucket::startUtc).distinct().count() > MAX_HOUR_BUCKETS) {
-                throw new InvalidExport("more than 720 hour buckets requested");
-            }
-        } else {
-            minutes = snapshot.minutes().stream().filter(m -> !m.startUtc().isBefore(from) && !m.startUtc().isAfter(to))
-                    .sorted(java.util.Comparator.comparing(MinuteBucket::startUtc)).toList();
-            if (minutes.stream().map(MinuteBucket::startUtc).distinct().count() > MAX_MINUTE_BUCKETS) {
-                throw new InvalidExport("more than 360 minute buckets requested");
-            }
-        }
-        return new Result<>(new Export(clock.instant(), snapshot.available(), snapshot.retentionTruncated(),
-                minutes, hours), null);
     }
 
     /** Authorization only; touches no history or database collaborator. */

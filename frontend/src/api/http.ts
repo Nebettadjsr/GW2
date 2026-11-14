@@ -50,10 +50,22 @@ export async function getStateJson<T extends { state: string }>(path: string): P
  * rejects when the account changed while the request or its body was in flight; the caller owns the abort.
  */
 export async function getText(path: string, accept: string, signal?: AbortSignal): Promise<string> {
+  return (await getTextAttempt(path, accept, signal, true)).text
+}
+
+/** An authorized text attachment: the body plus the server-chosen file name (never built by the browser). */
+export async function getAttachment(path: string, accept: string, signal?: AbortSignal):
+    Promise<{ text: string; filename: string | null }> {
   return getTextAttempt(path, accept, signal, true)
 }
 
-async function getTextAttempt(path: string, accept: string, signal: AbortSignal | undefined, mayRecover: boolean): Promise<string> {
+function attachmentName(header: string | null): string | null {
+  const match = header === null ? null : /filename="([A-Za-z0-9._-]+)"/.exec(header)
+  return match?.[1] ?? null
+}
+
+async function getTextAttempt(path: string, accept: string, signal: AbortSignal | undefined, mayRecover: boolean):
+    Promise<{ text: string; filename: string | null }> {
   const transport = accountTransport !== null && isAccountPath(path) ? accountTransport : null
   const ticket = transport === null ? null : await transport.begin(false)
   let response: Response
@@ -79,7 +91,7 @@ async function getTextAttempt(path: string, accept: string, signal: AbortSignal 
   if (transport !== null && ticket !== null && !transport.isCurrent(ticket)) {
     throw new ApiRequestError('The account changed while this response was downloading.', ACCOUNT_CHANGED_CODE, null)
   }
-  return text
+  return { text, filename: attachmentName(response.headers.get('Content-Disposition')) }
 }
 
 export async function postJson<T>(path: string, body: unknown): Promise<T> {

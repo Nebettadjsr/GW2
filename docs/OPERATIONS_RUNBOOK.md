@@ -8,28 +8,27 @@ deployment exists or that monitoring or log forwarding is configured.
 
 1. Connect as the configured owner.
 2. Open System Status → Application activity.
-3. Choose Last 6 hours (minute) or Last 7 days (hour), set a bounded UTC range (minute ≤ 360 minutes, hour ≤ 720 hours, never over 30 days).
-4. Download CSV or JSON.
-   Both formats carry export-level facts: requested UTC range, `historyAvailable`, `retentionTruncated`, `coverage` (`UNAVAILABLE` = history unreadable, not an empty range; `NONE` = readable but no bucket in range; `PARTIAL`; `FULL`), bucket count and missing-bucket gap ranges. JSON has them as fields; CSV has them as `# key=value` lines before the header. No zero buckets are synthesized for gaps.
-5. Record the application version, export UTC time and range, resolution, and any partial, gap or truncated states shown.
+3. In "Download activity file", pick one UTC day or week from the grouped dropdown (newest first; the latest nonempty day is preselected) and press Download. The browser sends only the server's opaque selection id and saves the server-named single CSV attachment. There are no range or format controls.
+4. Entries show their UTC bounds, open/closed, and partial/truncated/pruned limits. The current (open) period and partial periods are downloadable. An expired selection answers 410; refresh the list and choose again, nothing is substituted.
+5. Weeks are streamed by the server from the retained daily files. A missing minute means no stored included application request activity, not zero users, zero latency or an outage.
+6. Record the application version, download UTC time, the selected period and any partial, truncated or pruned label.
 
 ## Direct aggregate-file retrieval
 
-The history is two files, `minute-history.jsonl` and `hour-history.jsonl`, in the `gw2-ops` volume mounted at
-`/app/data/ops` of the Compose service `backend` (`docker/compose.yaml`, `OPS_HISTORY_DIR`). The set is bounded to 32 MiB.
+The history is sparse per-UTC-day files `activity-YYYY-MM-DD.csv` in the `gw2-ops` volume mounted at
+`/app/data/ops` of the Compose service `backend` (`docker/compose.yaml`, `OPS_HISTORY_DIR`). The set is bounded.
 
 1. Identify the service and volume: `docker compose -f docker/compose.yaml ps backend` and `docker volume ls --filter name=gw2-ops`.
 2. Do not stop the application or database for retrieval.
-3. Copy only those two files (over SSH, run on the host):
+3. Copy only the needed day files (over SSH, run on the host):
    ```
    mkdir -p ./ops-export
-   docker compose -f docker/compose.yaml cp backend:/app/data/ops/minute-history.jsonl ./ops-export/
-   docker compose -f docker/compose.yaml cp backend:/app/data/ops/hour-history.jsonl ./ops-export/
+   docker compose -f docker/compose.yaml cp backend:/app/data/ops/activity-2026-11-14.csv ./ops-export/
    ```
-   From a workstation: `scp user@host:ops-export/*.jsonl .`
+   From a workstation: `scp user@host:ops-export/*.csv .`
 4. Do not print environment variables, cookies, request headers or unrelated application logs.
-5. Record filenames, byte sizes and checksums: `ls -l ./ops-export` and `sha256sum ./ops-export/*.jsonl`.
-6. Expect no more than the configured 32 MiB for the whole set.
+5. Record filenames, byte sizes and checksums: `ls -l ./ops-export` and `sha256sum ./ops-export/*.csv`.
+6. Expect the retained set to stay within its configured bound.
 7. A missing, truncated or corrupt file means that history is unavailable or lost by design; do not repair or recover it.
 
 ## Oracle metrics
