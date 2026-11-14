@@ -271,6 +271,10 @@ export interface ResolutionNode {
   cashCostCopper: number | null
   opportunityCostCopper: number | null
   effectiveCostCopper: number | null
+  /** Backend display average of effectiveCostCopper per requested item (HALF_UP copper); null if undefined. */
+  effectiveUnitCostCopper: number | null
+  /** True when the backend rounded effectiveUnitCostCopper. */
+  effectiveUnitCostApproximate: boolean
   /** In the resolver's own order; a repeated item stays a separate occurrence. */
   children: ResolutionNode[]
   /**

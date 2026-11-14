@@ -234,6 +234,8 @@ class CraftingDiscoveryResolutionApiControllerTest {
                 .andExpect(jsonPath("$.tree.craftCount").value(1))
                 .andExpect(jsonPath("$.tree.methods[0]").value("CRAFT"))
                 .andExpect(jsonPath("$.tree.effectiveCostCopper").value(18))
+                .andExpect(jsonPath("$.tree.effectiveUnitCostApproximate").value(false))
+                .andExpect(jsonPath("$.tree.effectiveUnitCostCopper").exists())
                 .andExpect(jsonPath("$.tree.children[0].itemId").value(200))
                 .andExpect(jsonPath("$.tree.children[0].itemName").value("Carrot"))
                 .andExpect(jsonPath("$.tree.children[0].boughtQuantity").value(2))
