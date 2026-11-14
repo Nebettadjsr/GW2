@@ -72,6 +72,13 @@ class OwnerOperationsServiceTest {
         assertEquals(0, storeCalls.get());
         var owner = access.establish("owner");
         assertTrue(facade.periods(owner.sessionId(), owner.context().accessContext()).authorized());
+        var throwing = new OperationalPeriodStore() {
+            public List<PeriodDescriptor> listPeriods() { throw new IllegalStateException(); }
+            public Download openDownload(String id) { return Download.notFound(); }
+        };
+        var broken = new OwnerOperationsService(access, new OwnerPolicy(OWNER),
+                new OperationalHistoryService(clock, new ForegroundActivityTracker(clock), store, throwing), size, clock);
+        assertFalse(broken.periods(owner.sessionId(), owner.context().accessContext()).value().available());
         assertEquals(OperationalPeriodStore.Status.NOT_FOUND,
                 facade.download(owner.sessionId(), owner.context().accessContext(), "gone").value().status());
         assertEquals(2, storeCalls.get());

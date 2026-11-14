@@ -59,14 +59,14 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
     public static final String HEADER = "schema_version,minute_start_utc,minute_coverage,active_accounts_estimate,"
             + "active_accounts_state,route_group,requests,success,client_errors,server_errors,failed,"
             + "backend_elapsed_micros_sum,backend_elapsed_micros_max,bin_le_25ms,bin_le_50ms,bin_le_100ms,"
-            + "bin_le_250ms,bin_le_500ms,bin_le_1000ms,bin_le_2000ms,bin_le_5000ms,bin_gt_5000ms";
-    private static final int FIELDS = 22;
+            + "bin_le_250ms,bin_le_500ms,bin_le_1000ms,bin_le_2000ms,bin_le_5000ms,bin_gt_5000ms,observed_seconds";
+    private static final int FIELDS = 23;
     private static final byte[] HEADER_LINE = (HEADER + "\n").getBytes(StandardCharsets.US_ASCII);
     private static final String INDEX_NAME = "activity-index";
     private static final String INDEX_TEMP = "activity-index.tmp";
     private static final Pattern DAY_FILE = Pattern.compile("activity-(\\d{4}-\\d{2}-\\d{2})\\.csv");
     private static final Pattern LEGACY = Pattern.compile("(minute|hour)-history\\.jsonl(.*\\.tmp)?");
-    private static final Pattern OWNED_SCRATCH = Pattern.compile("activity-.*\\.tmp");
+    private static final Pattern OWNED_SCRATCH = Pattern.compile("activity-index\\.tmp");
 
     private static final class Day {
         long bytes;
@@ -84,6 +84,12 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
     private final TreeSet<LocalDate> truncatedDays = new TreeSet<>();
     private final TreeSet<LocalDate> lossDays = new TreeSet<>();
     private final TreeSet<LocalDate> prunedWeeks = new TreeSet<>();
+    static final int MAX_LOSS_DAYS = 64;
+    /** Recognized owned/legacy artifacts that could not be removed; they stay inside the byte bound. */
+    private final java.util.HashMap<Path, Long> stuck = new java.util.HashMap<>();
+    private boolean metadataUncertain;
+    private boolean indexDirty;
+    private boolean blocked;
     private boolean readFailed;
     private boolean writeFailed;
     private boolean everLimited;
@@ -123,7 +129,7 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
                 if (!Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS)) continue;
                 var m = DAY_FILE.matcher(name);
                 if (LEGACY.matcher(name).matches() || OWNED_SCRATCH.matcher(name).matches()) {
-                    deleteQuietly(p); // recognized legacy history and abandoned owned scratch only
+                    if (!deleteQuietly(p)) stuck.put(p, Files.size(p)); // recognized legacy/scratch only; still counted
                 } else if (m.matches()) {
                     try { candidates.put(LocalDate.parse(m.group(1)), p); } catch (RuntimeException ignored) { }
                 }
@@ -133,25 +139,38 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
             Day day = recover(e.getValue(), e.getKey());
             if (day != null) days.put(e.getKey(), day);
         }
-        loadIndex();
+        boolean indexOk = loadIndex();
+        if (!days.isEmpty() && !indexOk) {
+            // Flags were lost or unreadable: never upgrade surviving days to FULL.
+            metadataUncertain = true;
+            everLimited = true;
+            lossDays.addAll(days.keySet());
+        }
         truncatedDays.retainAll(days.keySet());
-        lossDays.retainAll(days.keySet());
+        trimLoss();
         while (!days.isEmpty() && overBounds(0)) evictOldest(null);
-        if (repairedAtStart) writeIndex();
+        if (repairedAtStart || (metadataUncertain && !days.isEmpty())) writeIndex();
     }
 
-    /** Validates a day file, trimming a torn final row in place; deletes files without a whole header. */
+    /** Validates a day file, trimming a torn final row or bytes past the day cap; deletes files without a header. */
     private Day recover(Path file, LocalDate date) throws IOException {
         Day day = new Day();
         long valid = 0;
         boolean first = true;
+        boolean capped = false;
         try (RowReader in = new RowReader(Files.newInputStream(file), Files.size(file))) {
             String line;
             while ((line = in.nextLine()) != null) {
+                if (in.consumed() > maxDayBytes) { capped = true; break; }
                 if (first) {
                     first = false;
-                    if (!line.equals(HEADER)) { deleteQuietly(file); return null; }
+                    if (!line.equals(HEADER)) { if (!deleteQuietly(file)) stuck.put(file, Files.size(file)); return null; }
                 } else {
+                    MinuteBucket parsed = parse(line);
+                    if (parsed == null || parsed.completeness() != MinuteBucket.Completeness.COMPLETE
+                            || parsed.foregroundAccounts().state() != ForegroundAccounts.State.COMPLETE) {
+                        lossDays.add(date); // skipped malformed rows and incomplete minutes are known loss
+                    }
                     Instant minute = rowMinute(line);
                     RouteGroup group = rowGroup(line);
                     if (minute != null && group != null) {
@@ -165,37 +184,49 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
                 valid = in.consumed();
             }
         }
-        if (first) { deleteQuietly(file); return null; }
+        if (first) { if (!deleteQuietly(file)) stuck.put(file, Files.size(file)); return null; }
+        if (capped) truncatedDays.add(date);
         if (Files.size(file) > valid) {
             try (FileChannel ch = FileChannel.open(file, StandardOpenOption.WRITE)) { ch.truncate(valid); }
-            lossDays.add(date); // a torn final row is a known persistence loss for that day
+            if (!capped) lossDays.add(date); // a torn final row is a known persistence loss for that day
             repairedAtStart = true;
         }
         day.bytes = valid;
         return day;
     }
 
-    private void loadIndex() {
+    /** Reads the advisory index; false when it is missing, unreadable, oversized or has malformed lines. */
+    private boolean loadIndex() {
         Path index = dir.resolve(INDEX_NAME);
         try {
-            if (!Files.isRegularFile(index, LinkOption.NOFOLLOW_LINKS)) return;
-            if (Files.size(index) > maxIndexBytes) { deleteQuietly(index); return; }
+            if (!Files.isRegularFile(index, LinkOption.NOFOLLOW_LINKS)) return false;
+            if (Files.size(index) > maxIndexBytes) {
+                if (!deleteQuietly(index)) stuck.put(index, Files.size(index));
+                return false;
+            }
+            boolean ok = true;
             for (String line : Files.readAllLines(index, StandardCharsets.US_ASCII)) {
                 String[] f = line.split(",");
-                if (f.length != 2) continue;
+                if (f.length != 2) { ok = false; continue; }
                 try {
                     LocalDate d = LocalDate.parse(f[1]);
                     switch (f[0]) {
                         case "T" -> truncatedDays.add(d);
                         case "L" -> lossDays.add(d);
                         case "P" -> prunedWeeks.add(d);
-                        default -> { }
+                        default -> ok = false;
                     }
-                } catch (RuntimeException ignored) { /* malformed index line */ }
+                } catch (RuntimeException e) { ok = false; }
             }
+            return ok;
         } catch (IOException | RuntimeException e) {
-            // The index is advisory metadata; unreadable means unknown flags are lost, not a failure to serve.
+            return false;
         }
+    }
+
+    /** Keeps loss metadata bounded by dropping the oldest flagged days. */
+    private void trimLoss() {
+        while (lossDays.size() > MAX_LOSS_DAYS) lossDays.pollFirst();
     }
 
     // ---- writing ---------------------------------------------------------------------------------------------
@@ -204,7 +235,7 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
     public synchronized void appendMinute(MinuteBucket bucket) {
         LocalDate date = null;
         try {
-            if (readFailed || bucket == null || bucket.routeGroups().isEmpty()) return;
+            if (readFailed || blocked || bucket == null || bucket.routeGroups().isEmpty()) return;
             Instant minute = bucket.startUtc();
             date = minute.atZone(ZoneOffset.UTC).toLocalDate();
             Day newest = days.isEmpty() ? null : days.lastEntry().getValue();
@@ -236,6 +267,7 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
                 }
             }
             write(date, day, data);
+            boolean created = day == null;
             day = days.get(date);
             day.lastMinute = minute;
             if (!sameMinute) day.lastGroups = EnumSet.noneOf(RouteGroup.class);
@@ -244,10 +276,11 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
                     || bucket.foregroundAccounts().state() != ForegroundAccounts.State.COMPLETE) {
                 flag(lossDays, date);
             }
-            writeFailed = false;
+            if (created || indexDirty) writeIndex(); // a present index distinguishes "no flags" from "flags lost"
+            if (!indexDirty) writeFailed = false;
         } catch (IOException | RuntimeException e) {
             writeFailed = true;
-            if (date != null && days.containsKey(date)) flag(lossDays, date);
+            if (date != null) flag(lossDays, date); // kept (bounded) even before the day exists, until restart
         }
     }
 
@@ -286,14 +319,22 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
     private boolean overBounds(long extra) {
         long files = 0;
         for (Day d : days.values()) files += d.bytes;
+        for (long b : stuck.values()) files += b;
         return days.size() > maxDays || files + extra + 2 * maxIndexBytes > ceilingBytes;
     }
 
-    /** Removes the whole oldest retained day (never {@code keep}); returns false when none can go. */
+    /**
+     * Removes the whole oldest retained day (never {@code keep}); returns false when none can go. Accounting
+     * changes only after the file is confirmed gone; a failed unlink stops all admission and reports failure.
+     */
     private boolean evictOldest(LocalDate keep) {
         for (LocalDate d : days.keySet()) {
             if (d.equals(keep)) continue;
-            deleteQuietly(dayFile(d));
+            if (!deleteQuietly(dayFile(d))) {
+                blocked = true;
+                writeFailed = true;
+                return false;
+            }
             days.remove(d);
             truncatedDays.remove(d);
             lossDays.remove(d);
@@ -308,7 +349,10 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
     }
 
     private void flag(TreeSet<LocalDate> set, LocalDate date) {
-        if (set.add(date)) writeIndex();
+        if (set.add(date)) {
+            if (set == lossDays) trimLoss();
+            writeIndex();
+        }
     }
 
     /** Rewrites the small index through one fixed scratch name; its worst case is reserved in the ceiling. */
@@ -342,7 +386,9 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
             } finally {
                 Files.deleteIfExists(temp);
             }
+            indexDirty = false;
         } catch (IOException | RuntimeException e) {
+            indexDirty = true;
             writeFailed = true;
         }
     }
@@ -357,6 +403,7 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
                 .append(a.failed()).append(',').append(a.elapsedMicrosSum()).append(',')
                 .append(a.elapsedMicrosMax());
         for (long b : LatencyHistogram.toCounts(a.histogram())) sb.append(',').append(b);
+        sb.append(',').append(Math.max(0, Math.min(60, m.observedSeconds())));
         return sb.toString();
     }
 
@@ -389,7 +436,9 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
                     Long.parseLong(f[7]), Long.parseLong(f[8]), Long.parseLong(f[9]), Long.parseLong(f[10]),
                     Long.parseLong(f[11]), Long.parseLong(f[12]), LatencyHistogram.toBins(bins));
             MinuteBucket.Completeness c = MinuteBucket.Completeness.valueOf(f[2]);
-            return new MinuteBucket(Instant.parse(f[1]), c == MinuteBucket.Completeness.COMPLETE ? 60 : 0, c, fa,
+            int observed = Integer.parseInt(f[22]);
+            if (observed < 0 || observed > 60) return null;
+            return new MinuteBucket(Instant.parse(f[1]), observed, c, fa,
                     List.of(a));
         } catch (RuntimeException e) {
             return null;
@@ -485,6 +534,12 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
     private static String id(char kind, LocalDate d) {
         return Base64.getUrlEncoder().withoutPadding()
                 .encodeToString((kind + ":" + d).getBytes(StandardCharsets.US_ASCII));
+    }
+
+    @Override
+    public synchronized Periods periods() {
+        if (readFailed || blocked || writeFailed && days.isEmpty()) return Periods.unavailable();
+        return new Periods(true, listPeriods());
     }
 
     @Override
@@ -626,8 +681,9 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
 
     // ---- helpers ---------------------------------------------------------------------------------------------
 
-    private static void deleteQuietly(Path p) {
-        try { Files.deleteIfExists(p); } catch (IOException ignored) { /* best effort */ }
+    /** True only when the file is confirmed absent afterwards. */
+    private static boolean deleteQuietly(Path p) {
+        try { Files.deleteIfExists(p); return !Files.exists(p, LinkOption.NOFOLLOW_LINKS); } catch (IOException e) { return false; }
     }
 
     private static void restrict(Path path, String perms) {

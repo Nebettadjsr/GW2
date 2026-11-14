@@ -70,10 +70,10 @@ public final class OwnerOperationsService {
     }
 
     /** Owner-only period descriptors; no store is touched before authorization succeeds. */
-    public Result<List<PeriodDescriptor>> periods(String sessionId, String assertedAccessContext) {
+    public Result<OperationalPeriodStore.Periods> periods(String sessionId, String assertedAccessContext) {
         Denial denial = authorize(sessionId, assertedAccessContext);
         if (denial != null) return new Result<>(null, denial);
-        return new Result<>(history.listPeriods(), null);
+        return new Result<>(history.periods(), null);
     }
 
     /** Owner-only bounded download; the opaque id is resolved only after authorization, inside the store. */

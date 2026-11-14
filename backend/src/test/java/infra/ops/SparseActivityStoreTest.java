@@ -82,7 +82,7 @@ class SparseActivityStoreTest {
         assertEquals(SparseActivityStore.HEADER, lines[0]);
         assertEquals(3, lines.length);
         assertTrue(lines[1].startsWith("1,2026-11-14T10:05:00Z,COMPLETE,3,COMPLETE,ACCOUNT_DATA,100,"));
-        assertEquals(22, lines[1].split(",").length);
+        assertEquals(23, lines[1].split(",").length);
         assertEquals(day.retainedBytes(), csv.length());
         String all = csv + day + s.listPeriods();
         for (String forbidden : new String[] {"/api", "guid", "token", "cookie", "Bearer", "127.0.0.1", "?"}) {
@@ -108,7 +108,7 @@ class SparseActivityStoreTest {
         assertEquals(PeriodDescriptor.State.CLOSED, find(s, PeriodDescriptor.Kind.WEEK, "2026-11-09T00:00:00Z").state());
         assertEquals(2, s.listPeriods().size());
         assertEquals(mtime, Files.getLastModifiedTime(file).toMillis());
-        assertEquals(1, Files.list(dir).count());
+        assertEquals(2, Files.list(dir).count(), "one day file plus its index; idle time creates nothing");
     }
 
     @Test
@@ -149,7 +149,7 @@ class SparseActivityStoreTest {
         assertEquals(PeriodDescriptor.Coverage.PARTIAL, week.coverage());
         String csv = read(s.openDownload(day.selectionId()));
         assertTrue(csv.endsWith("\n"));
-        for (String l : csv.split("\n")) assertEquals(22, l.split(",").length);
+        for (String l : csv.split("\n")) assertEquals(23, l.split(",").length);
         assertTrue(csv.split("\n").length > 1, "durable whole rows stay downloadable");
         var again = new SparseActivityStore(dir, clock, 30, 2_000, 32L << 20, 1024);
         assertTrue(find(again, PeriodDescriptor.Kind.DAY, "2026-11-10T00:00:00Z").truncated());
@@ -265,5 +265,125 @@ class SparseActivityStoreTest {
         assertEquals(2, snap.minutes().get(0).routeGroups().size());
         assertEquals(3, snap.minutes().get(0).foregroundAccounts().exactCount());
         assertTrue(snap.hours().isEmpty());
+    }
+
+    private MinuteBucket partial(String utc, int observed) {
+        var b = minute(utc, RouteGroup.CRAFTING);
+        return new MinuteBucket(b.startUtc(), observed, MinuteBucket.Completeness.PARTIAL, b.foregroundAccounts(),
+                b.routeGroups());
+    }
+
+    private PeriodDescriptor closedDay(SparseActivityStore s) {
+        now = Instant.parse("2026-11-20T00:00:00Z");
+        return find(s, PeriodDescriptor.Kind.DAY, "2026-11-14T00:00:00Z");
+    }
+
+    @Test
+    void observedSecondsSurviveCsvRoundTripAndShortIntervalDiffersFromNone() throws Exception {
+        var s = store();
+        s.appendMinute(partial("2026-11-14T10:00:00Z", 37));
+        s.appendMinute(partial("2026-11-14T10:01:00Z", 0));
+        var again = store();
+        var mins = again.snapshot().minutes();
+        assertEquals(37, mins.get(0).observedSeconds());
+        assertEquals(0, mins.get(1).observedSeconds());
+        assertTrue(Files.readString(dir.resolve("activity-2026-11-14.csv")).contains(",37\n"));
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL, closedDay(again).coverage());
+    }
+
+    @Test
+    void partialRowsStayPartialAfterIndexLossAndLostIndexNeverUpgradesToFull() throws Exception {
+        var s = store();
+        s.appendMinute(partial("2026-11-14T10:00:00Z", 37));
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL, closedDay(s).coverage());
+        Files.delete(dir.resolve("activity-index"));
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL, closedDay(store()).coverage());
+        // a healthy complete day also becomes conservative once its index is gone
+        var clean = new SparseActivityStore(dir.resolve("c"), clock);
+        clean.appendMinute(minute("2026-11-14T10:00:00Z", RouteGroup.CRAFTING));
+        assertEquals(PeriodDescriptor.Coverage.FULL, closedDay(clean).coverage());
+        assertEquals(PeriodDescriptor.Coverage.FULL, closedDay(new SparseActivityStore(dir.resolve("c"), clock)).coverage());
+        Files.delete(dir.resolve("c").resolve("activity-index"));
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL, closedDay(new SparseActivityStore(dir.resolve("c"), clock)).coverage());
+        Files.writeString(dir.resolve("c").resolve("activity-index"), "garbage\n");
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL, closedDay(new SparseActivityStore(dir.resolve("c"), clock)).coverage());
+    }
+
+    @Test
+    void malformedRowIsKnownLossAfterRestart() throws Exception {
+        var s = store();
+        s.appendMinute(minute("2026-11-14T10:00:00Z", RouteGroup.CRAFTING));
+        Files.writeString(dir.resolve("activity-2026-11-14.csv"), "bad,row\n", StandardOpenOption.APPEND);
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL, closedDay(store()).coverage());
+    }
+
+    @Test
+    void failedFirstAppendLossSurvivesLaterSuccess() throws Exception {
+        Path root = Files.createDirectory(dir.resolve("r"));
+        var s = new SparseActivityStore(root.resolve("sub"), clock);
+        Files.writeString(root.resolve("sub"), "blocker"); // the directory cannot be created: first append fails
+        s.appendMinute(minute("2026-11-14T10:00:00Z", RouteGroup.CRAFTING));
+        Files.delete(root.resolve("sub"));
+        s.appendMinute(minute("2026-11-14T10:05:00Z", RouteGroup.CRAFTING));
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL, closedDay(s).coverage());
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL, closedDay(new SparseActivityStore(root.resolve("sub"), clock)).coverage());
+    }
+
+    @Test
+    void failedEvictionKeepsAccountingStopsAdmissionAndReportsUnavailable() throws Exception {
+        var s = new SparseActivityStore(dir, clock, 2, 20_000, 32L << 20, 4096);
+        s.appendMinute(minute("2026-11-10T10:00:00Z", RouteGroup.CRAFTING));
+        s.appendMinute(minute("2026-11-11T10:00:00Z", RouteGroup.CRAFTING));
+        Path oldest = dir.resolve("activity-2026-11-10.csv");
+        // A non-empty directory under the file name makes the unlink fail for real.
+        Files.delete(oldest);
+        Files.createDirectory(oldest);
+        Files.writeString(oldest.resolve("x"), "x");
+        s.appendMinute(minute("2026-11-12T10:00:00Z", RouteGroup.CRAFTING));
+        assertFalse(Files.exists(dir.resolve("activity-2026-11-12.csv")), "no admission while the old day cannot go");
+        assertFalse(s.periods().available());
+        assertFalse(s.snapshot().available());
+        assertTrue(Files.exists(dir.resolve("activity-2026-11-11.csv")));
+    }
+
+    @Test
+    void undeletableLegacyArtifactStaysCountedInTheBound() throws Exception {
+        Path legacy = dir.resolve("minute-history.jsonl");
+        Files.createDirectory(legacy); // not a regular file: untouched and unrecognized for deletion
+        Files.writeString(dir.resolve("hour-history.jsonl"), "x".repeat(30_000));
+        var s = new SparseActivityStore(dir, clock, 30, 20_000, 40_000, 4096);
+        long before = ownedBytes();
+        for (int m = 0; m < 20; m++) s.appendMinute(minute("2026-11-14T10:%02d:00Z".formatted(m), 2, RouteGroup.CRAFTING));
+        assertTrue(ownedBytes() <= 40_000, "owned bytes " + ownedBytes() + " from " + before);
+    }
+
+    @Test
+    void oversizedLoadedDayFileIsTrimmedToTheDayCap() throws Exception {
+        var big = new SparseActivityStore(dir, clock, 30, 1 << 20, 32L << 20, 1024);
+        for (int m = 0; m < 20; m++) big.appendMinute(minute("2026-11-14T10:%02d:00Z".formatted(m), 2, RouteGroup.CRAFTING));
+        long full = Files.size(dir.resolve("activity-2026-11-14.csv"));
+        var capped = new SparseActivityStore(dir, clock, 30, full / 2, 32L << 20, 1024);
+        long size = Files.size(dir.resolve("activity-2026-11-14.csv"));
+        assertTrue(size <= full / 2);
+        assertTrue(Files.readString(dir.resolve("activity-2026-11-14.csv")).endsWith("\n"));
+        var d = closedDay(capped);
+        assertTrue(d.truncated());
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL, d.coverage());
+    }
+
+    @Test
+    void unrelatedActivityPrefixedTempFileIsNotDeleted() throws Exception {
+        Files.writeString(dir.resolve("activity-report.tmp"), "keep");
+        Files.writeString(dir.resolve("activity-index.tmp"), "x");
+        store();
+        assertTrue(Files.exists(dir.resolve("activity-report.tmp")));
+        assertFalse(Files.exists(dir.resolve("activity-index.tmp")));
+    }
+
+    @Test
+    void unreadableStoreIsUnavailableNotEmpty() throws Exception {
+        Path blocker = Files.writeString(dir.resolve("file"), "x");
+        assertFalse(new SparseActivityStore(blocker, clock).periods().available());
+        assertTrue(store().periods().available());
     }
 }

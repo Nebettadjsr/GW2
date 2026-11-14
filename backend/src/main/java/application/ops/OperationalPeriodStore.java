@@ -5,6 +5,13 @@ import java.util.List;
 
 /** Transport-neutral, bounded read seam over the retained activity periods. Authorization lives in the consumer. */
 public interface OperationalPeriodStore {
+    /** Periods plus availability, so an unreadable store is never shown as a healthy idle one. */
+    record Periods(boolean available, List<PeriodDescriptor> items) {
+        public static Periods unavailable() { return new Periods(false, List.of()); }
+    }
+
+    default Periods periods() { return new Periods(true, listPeriods()); }
+
     /** Retained periods, newest {@code fromUtc} first; a week sorts before the day that starts it. */
     List<PeriodDescriptor> listPeriods();
 

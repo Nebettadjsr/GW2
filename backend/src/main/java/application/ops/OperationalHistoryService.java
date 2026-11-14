@@ -61,14 +61,16 @@ public final class OperationalHistoryService {
     public HistoryStore.Snapshot history() { return store.snapshot(); }
 
     /** Closes elapsed minutes first so a day or week advances at its UTC boundary without further traffic. */
-    public List<PeriodDescriptor> listPeriods() {
+    public OperationalPeriodStore.Periods periods() {
         flush();
         try {
-            return periods.listPeriods();
+            return periods.periods();
         } catch (RuntimeException failure) {
-            return List.of();
+            return OperationalPeriodStore.Periods.unavailable();
         }
     }
+
+    public List<PeriodDescriptor> listPeriods() { return periods().items(); }
 
     public OperationalPeriodStore.Download openDownload(String selectionId) {
         flush();
