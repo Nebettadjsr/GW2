@@ -19,11 +19,9 @@ class RequestAggregationTest {
     private final TestClock clock = new TestClock(Instant.parse("2026-11-14T10:00:20Z"));
     private final ForegroundActivityTracker activity = new ForegroundActivityTracker(clock, clock, 10);
     private final List<MinuteBucket> minutes = new ArrayList<>();
-    private final List<HourBucket> hours = new ArrayList<>();
     private final HistoryStore store = new HistoryStore() {
         public void appendMinute(MinuteBucket b) { minutes.add(b); }
-        public void appendHour(HourBucket b) { hours.add(b); }
-        public Snapshot snapshot() { return new Snapshot(true, false, List.copyOf(minutes), List.copyOf(hours)); }
+        public Snapshot snapshot() { return new Snapshot(true, false, List.copyOf(minutes), List.of()); }
     };
     private final OperationalHistoryService service = new OperationalHistoryService(clock, activity, store);
 
@@ -32,7 +30,7 @@ class RequestAggregationTest {
     }
 
     @Test
-    void partialFirstMinuteThenZeroBucketsAndGapsAreExplicit() {
+    void partialFirstMinuteThenIdleMinutesStoreNothing() {
         observe("/api/account/bank", 200, 10, UUID.randomUUID().toString());
         observe("/api/account/bank", 404, 3000, UUID.randomUUID().toString());
         observe("/api/account/bank", 500, 6000, null);
@@ -57,15 +55,9 @@ class RequestAggregationTest {
         assertEquals(2, a.histogram().get(0).count());
         assertEquals(ForegroundAccounts.State.PARTIAL_STARTUP, first.foregroundAccounts().state());
 
-        clock.advance(Duration.ofMinutes(2)); // idle minutes: zero buckets with coverage
+        clock.advance(Duration.ofMinutes(2)); // idle minutes: nothing is stored for them
         service.flush();
-        // 10:02 was never closed on time: it is a gap, not a synthesized zero bucket.
-        assertEquals(2, minutes.size());
-        assertEquals(Instant.parse("2026-11-14T10:01:00Z"), minutes.get(1).startUtc());
-        assertEquals(60, minutes.get(1).observedSeconds());
-        assertTrue(minutes.get(1).routeGroups().isEmpty());
-        // Reconstructed as of its own boundary (start-up warm-up still running), not the flush-time reading.
-        assertEquals(ForegroundAccounts.State.PARTIAL_STARTUP, minutes.get(1).foregroundAccounts().state());
+        assertEquals(1, minutes.size(), "idle minutes create no zero bucket and no catch-up row");
     }
 
     @Test
@@ -92,7 +84,8 @@ class RequestAggregationTest {
     void subTenSecondFlushReportsTheBoundaryCountNotTheExpiredCurrentOne() {
         clock.advance(Duration.ofSeconds(40)); // 10:01:00
         observe("/api/account/bank", 200, 5, UUID.randomUUID().toString());
-        for (int i = 0; i < 4; i++) { clock.advance(Duration.ofSeconds(60)); service.flush(); } // 10:05:00
+        for (int i = 0; i < 4; i++) { clock.advance(Duration.ofSeconds(60)); service.flush(); }
+        observe("/api/items/5", 200, 5, null); // an active 10:05 minute (non-foreground) carries the reading // 10:05:00
         clock.advance(Duration.ofSeconds(65)); // 10:06:05: the 10:01:00 activity has left the window now
         service.flush();
         assertEquals(0, activity.snapshot().exactCount());
@@ -108,6 +101,7 @@ class RequestAggregationTest {
         clock.advance(Duration.ofSeconds(40));
         observe("/api/account/bank", 200, 5, account);
         for (int i = 0; i < 4; i++) { clock.advance(Duration.ofSeconds(60)); service.flush(); }
+        observe("/api/items/5", 200, 5, null); // an active 10:05 minute (non-foreground) carries the reading
         clock.advance(Duration.ofSeconds(65)); // 10:06:05
         activity.record(java.util.UUID.fromString(account)); // overwrites the timestamp after the boundary
         service.flush();
@@ -122,29 +116,8 @@ class RequestAggregationTest {
         observe("/api/account/bank", 200, 5, null); // request-side roll must stay O(1)
         clock.advance(Duration.ofMinutes(1));
         service.flush();
-        assertTrue(minutes.size() <= 2, "no per-skipped-minute buckets: " + minutes.size());
+        assertEquals(2, minutes.size(), "exactly the two active minutes, no per-skipped-minute buckets");
         assertEquals(Instant.parse("2026-11-14T10:00:00Z"), minutes.get(0).startUtc());
-    }
-
-    @Test
-    void restartInitializesHourCursorFromRetainedMinutes() {
-        List<MinuteBucket> retained = new ArrayList<>(List.of(new MinuteBucket(
-                Instant.parse("2026-11-14T10:58:00Z"), 60, MinuteBucket.Completeness.COMPLETE,
-                ForegroundAccounts.unavailable(), List.of())));
-        List<HourBucket> savedHours = new ArrayList<>();
-        HistoryStore restarted = new HistoryStore() {
-            public void appendMinute(MinuteBucket b) { retained.add(b); }
-            public void appendHour(HourBucket b) { savedHours.add(b); }
-            public Snapshot snapshot() { return new Snapshot(true, false, List.copyOf(retained), List.copyOf(savedHours)); }
-        };
-        TestClock c = new TestClock(Instant.parse("2026-11-14T11:01:20Z"));
-        var svc = new OperationalHistoryService(c, new ForegroundActivityTracker(c, c, 10), restarted);
-        c.advance(Duration.ofMinutes(1));
-        svc.flush();
-        assertEquals(1, savedHours.size());
-        assertEquals(Instant.parse("2026-11-14T10:00:00Z"), savedHours.get(0).startUtc());
-        assertEquals(HourBucket.Completeness.PARTIAL, savedHours.get(0).completeness());
-        assertEquals(1, savedHours.get(0).minuteBuckets());
     }
 
     @Test
@@ -157,7 +130,7 @@ class RequestAggregationTest {
         clock.advance(Duration.ofMinutes(6));
         assertEquals(0, activity.snapshot().exactCount());
         service.flush();
-        assertTrue(minutes.get(0).routeGroups().isEmpty());
+        assertTrue(minutes.isEmpty(), "excluded traffic never creates an active minute");
     }
 
     @Test
@@ -169,29 +142,6 @@ class RequestAggregationTest {
         assertEquals(0, activity.snapshot().exactCount());
         observe("/api/account/bank", 403, 5, UUID.randomUUID().toString()); // app-level 4xx after resolution
         assertEquals(1, activity.snapshot().exactCount());
-    }
-
-    @Test
-    void hourRollupMergesBinsComputesPercentileFromMergedCountsAndKeepsGaps() {
-        // start at 10:00:20; observe in minute 0, then skip minutes and close the hour.
-        for (int i = 0; i < 99; i++) observe("/api/account/bank", 200, 200, null);   // bin <=250
-        clock.advance(Duration.ofMinutes(1));
-        observe("/api/account/bank", 200, 10, null);                                // bin <=25 (1 request)
-        for (int i = 0; i < 60; i++) { clock.advance(Duration.ofMinutes(1)); service.flush(); } // into hour 11
-        observe("/api/account/bank", 200, 10, null);
-        clock.advance(Duration.ofMinutes(1));
-        service.flush();
-        assertEquals(1, hours.size());
-        HourBucket h = hours.get(0);
-        assertEquals(Instant.parse("2026-11-14T10:00:00Z"), h.startUtc());
-        assertEquals(HourBucket.Completeness.PARTIAL, h.completeness());
-        assertEquals(60, h.minuteBuckets());
-        assertEquals(3580, h.observedSeconds()); // startup minute covered only its last 40 s
-        RouteGroupAggregate a = h.routeGroups().get(0);
-        assertEquals(100, a.requests());
-        assertEquals(250, LatencyHistogram.percentile(LatencyHistogram.toCounts(a.histogram()), 0.5)
-                .orElseThrow().upperBoundMs());
-        assertFalse(h.activity().anyTruncated());
     }
 
     @Test
@@ -233,7 +183,6 @@ class RequestAggregationTest {
     void telemetryFailureNeverPropagates() {
         var throwing = new HistoryStore() {
             public void appendMinute(MinuteBucket b) { throw new IllegalStateException("disk"); }
-            public void appendHour(HourBucket b) { throw new IllegalStateException("disk"); }
             public Snapshot snapshot() { throw new IllegalStateException("disk"); }
         };
         var s = new OperationalHistoryService(clock, activity, throwing);

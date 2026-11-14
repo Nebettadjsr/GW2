@@ -75,16 +75,23 @@ public final class RequestAggregator {
         // clock jump) stay gaps: nothing is iterated or allocated for them and no zero bucket is invented.
         int covered = (int) Math.min(60, Math.max(0,
                 Duration.between(observedFrom, openMinute.plusSeconds(60)).toSeconds()));
+        if (open.isEmpty()) {
+            openMinute = minute;
+            return;
+        }
         // The reading is reconstructed as of the closing minute's own boundary; when that cannot be done
         // faithfully (late flush, later activity, expiry, lost continuity) it is UNAVAILABLE, never the current one.
         ForegroundAccounts state = activity.apply(openMinute.plusSeconds(60));
         List<RouteGroupAggregate> groups = new ArrayList<>();
         open.forEach((g, c) -> groups.add(new RouteGroupAggregate(g, c.requests, c.success, c.client,
                 c.server, c.failed, c.sum, c.max, LatencyHistogram.toBins(c.bins))));
-        pending.add(new MinuteBucket(openMinute, covered,
-                covered >= 60 ? MinuteBucket.Completeness.COMPLETE : MinuteBucket.Completeness.PARTIAL,
-                state, List.copyOf(groups)));
-        while (pending.size() > MAX_PENDING) pending.remove(0);
+        // Sparse (STORY-OPS-003): a minute without an included request is never queued, so idle time creates nothing.
+        if (!groups.isEmpty()) {
+            pending.add(new MinuteBucket(openMinute, covered,
+                    covered >= 60 ? MinuteBucket.Completeness.COMPLETE : MinuteBucket.Completeness.PARTIAL,
+                    state, List.copyOf(groups)));
+            while (pending.size() > MAX_PENDING) pending.remove(0);
+        }
         open.clear();
         openMinute = minute;
     }
